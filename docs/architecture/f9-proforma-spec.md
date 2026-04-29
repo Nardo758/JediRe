@@ -1010,3 +1010,4 @@ REFUSAL HANDLING
 ================================================================
 END OF NOTES — revision 2
 ================================================================
+> See also: [Deal Capsule Field Blueprint](./deal-capsule-blueprint.md)

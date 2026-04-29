@@ -1,0 +1,862 @@
+{
+  "generatedAt": "2026-04-29T13:00:50.572Z",
+  "durationMs": 578,
+  "summary": {
+    "typedFieldCount": 33,
+    "smokePassed": 33,
+    "smokeFailed": 0,
+    "uiInputElementCount": 285,
+    "uiOverrideMutationCount": 8,
+    "uiInputFileCount": 58
+  },
+  "typedFields": [
+    {
+      "iface": "ZoningContext",
+      "name": "designation",
+      "leafType": "string",
+      "line": 214,
+      "path": "zoning.designation",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/ZoningCapacitySection.tsx",
+        "frontend/src/components/deal/sections/ZoningIntelligencePanel.tsx",
+        "frontend/src/components/deal/sections/ZoningLearningPanel.tsx"
+      ]
+    },
+    {
+      "iface": "ZoningContext",
+      "name": "maxDensity",
+      "leafType": "number",
+      "line": 215,
+      "path": "zoning.maxDensity",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/ZoningCapacitySection.tsx",
+        "frontend/src/components/deal/sections/ZoningIntelligencePanel.tsx",
+        "frontend/src/components/deal/sections/ZoningLearningPanel.tsx"
+      ]
+    },
+    {
+      "iface": "ZoningContext",
+      "name": "maxHeight",
+      "leafType": "number",
+      "line": 216,
+      "path": "zoning.maxHeight",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/ZoningCapacitySection.tsx",
+        "frontend/src/components/deal/sections/ZoningIntelligencePanel.tsx",
+        "frontend/src/components/deal/sections/ZoningLearningPanel.tsx"
+      ]
+    },
+    {
+      "iface": "ZoningContext",
+      "name": "maxFAR",
+      "leafType": "number",
+      "line": 217,
+      "path": "zoning.maxFAR",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/ZoningCapacitySection.tsx",
+        "frontend/src/components/deal/sections/ZoningIntelligencePanel.tsx",
+        "frontend/src/components/deal/sections/ZoningLearningPanel.tsx"
+      ]
+    },
+    {
+      "iface": "ZoningContext",
+      "name": "maxLotCoverage",
+      "leafType": "number",
+      "line": 218,
+      "path": "zoning.maxLotCoverage",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/ZoningCapacitySection.tsx",
+        "frontend/src/components/deal/sections/ZoningIntelligencePanel.tsx",
+        "frontend/src/components/deal/sections/ZoningLearningPanel.tsx"
+      ]
+    },
+    {
+      "iface": "ZoningContext",
+      "name": "setbacks",
+      "leafType": "{ front: number; side: number; rear: number; }",
+      "line": 219,
+      "path": "zoning.setbacks",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/ZoningCapacitySection.tsx",
+        "frontend/src/components/deal/sections/ZoningIntelligencePanel.tsx",
+        "frontend/src/components/deal/sections/ZoningLearningPanel.tsx"
+      ]
+    },
+    {
+      "iface": "ZoningContext",
+      "name": "parkingRatio",
+      "leafType": "number",
+      "line": 220,
+      "path": "zoning.parkingRatio",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/ZoningCapacitySection.tsx",
+        "frontend/src/components/deal/sections/ZoningIntelligencePanel.tsx",
+        "frontend/src/components/deal/sections/ZoningLearningPanel.tsx"
+      ]
+    },
+    {
+      "iface": "ZoningContext",
+      "name": "guestParkingRatio",
+      "leafType": "number",
+      "line": 221,
+      "path": "zoning.guestParkingRatio",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/ZoningCapacitySection.tsx",
+        "frontend/src/components/deal/sections/ZoningIntelligencePanel.tsx",
+        "frontend/src/components/deal/sections/ZoningLearningPanel.tsx"
+      ]
+    },
+    {
+      "iface": "UnitMixRow",
+      "name": "targetRent",
+      "leafType": "number",
+      "line": 321,
+      "path": "unitmixrow.targetRent",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "UnitMixRow",
+      "name": "marketRent",
+      "leafType": "number",
+      "line": 327,
+      "path": "unitmixrow.marketRent",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "ExistingPropertyContext",
+      "name": "yearBuilt",
+      "leafType": "number",
+      "line": 337,
+      "path": "existing.yearBuilt",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "ExistingPropertyContext",
+      "name": "totalUnits",
+      "leafType": "number",
+      "line": 338,
+      "path": "existing.totalUnits",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "ExistingPropertyContext",
+      "name": "totalSF",
+      "leafType": "number",
+      "line": 339,
+      "path": "existing.totalSF",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "ExistingPropertyContext",
+      "name": "occupancy",
+      "leafType": "number",
+      "line": 342,
+      "path": "existing.occupancy",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "ExistingPropertyContext",
+      "name": "currentNOI",
+      "leafType": "number",
+      "line": 343,
+      "path": "existing.currentNOI",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "ExistingPropertyContext",
+      "name": "askingPrice",
+      "leafType": "number",
+      "line": 344,
+      "path": "existing.askingPrice",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "ExistingPropertyContext",
+      "name": "lastRenovated",
+      "leafType": "number | null",
+      "line": 348,
+      "path": "existing.lastRenovated",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "ExistingPropertyContext",
+      "name": "propertyClass",
+      "leafType": "'A' | 'B+' | 'B' | 'B-' | 'C' | 'D'",
+      "line": 350,
+      "path": "existing.propertyClass",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "SiteContext",
+      "name": "acreage",
+      "leafType": "number",
+      "line": 361,
+      "path": "site.acreage",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/SiteIntelligenceSection.tsx"
+      ]
+    },
+    {
+      "iface": "SiteContext",
+      "name": "buildableAcreage",
+      "leafType": "number",
+      "line": 363,
+      "path": "site.buildableAcreage",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/SiteIntelligenceSection.tsx"
+      ]
+    },
+    {
+      "iface": "SiteContext",
+      "name": "floodZone",
+      "leafType": "string | null",
+      "line": 376,
+      "path": "site.floodZone",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/SiteIntelligenceSection.tsx"
+      ]
+    },
+    {
+      "iface": "MarketContext",
+      "name": "avgRent",
+      "leafType": "number",
+      "line": 387,
+      "path": "market.avgRent",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/pages/development/MarketIntelligencePage.tsx",
+        "frontend/src/components/deal/sections/MarketAnalysisSection.tsx"
+      ]
+    },
+    {
+      "iface": "MarketContext",
+      "name": "avgOccupancy",
+      "leafType": "number",
+      "line": 388,
+      "path": "market.avgOccupancy",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/pages/development/MarketIntelligencePage.tsx",
+        "frontend/src/components/deal/sections/MarketAnalysisSection.tsx"
+      ]
+    },
+    {
+      "iface": "MarketContext",
+      "name": "rentGrowthYoY",
+      "leafType": "number",
+      "line": 389,
+      "path": "market.rentGrowthYoY",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/pages/development/MarketIntelligencePage.tsx",
+        "frontend/src/components/deal/sections/MarketAnalysisSection.tsx"
+      ]
+    },
+    {
+      "iface": "MarketContext",
+      "name": "absorptionRate",
+      "leafType": "number",
+      "line": 391,
+      "path": "market.absorptionRate",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/pages/development/MarketIntelligencePage.tsx",
+        "frontend/src/components/deal/sections/MarketAnalysisSection.tsx"
+      ]
+    },
+    {
+      "iface": "MarketContext",
+      "name": "medianHHI",
+      "leafType": "number",
+      "line": 393,
+      "path": "market.medianHHI",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/pages/development/MarketIntelligencePage.tsx",
+        "frontend/src/components/deal/sections/MarketAnalysisSection.tsx"
+      ]
+    },
+    {
+      "iface": "MarketContext",
+      "name": "popGrowthPct",
+      "leafType": "number",
+      "line": 395,
+      "path": "market.popGrowthPct",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/pages/development/MarketIntelligencePage.tsx",
+        "frontend/src/components/deal/sections/MarketAnalysisSection.tsx"
+      ]
+    },
+    {
+      "iface": "MarketContext",
+      "name": "employmentGrowthPct",
+      "leafType": "number",
+      "line": 397,
+      "path": "market.employmentGrowthPct",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/pages/development/MarketIntelligencePage.tsx",
+        "frontend/src/components/deal/sections/MarketAnalysisSection.tsx"
+      ]
+    },
+    {
+      "iface": "SupplyContext",
+      "name": "pipelineUnits",
+      "leafType": "number",
+      "line": 406,
+      "path": "supply.pipelineUnits",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/SupplySection.tsx"
+      ]
+    },
+    {
+      "iface": "CapitalContext",
+      "name": "totalCapital",
+      "leafType": "number",
+      "line": 461,
+      "path": "capital.totalCapital",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/InvestorCapitalModule.tsx"
+      ]
+    },
+    {
+      "iface": "StrategyContext",
+      "name": "selectedStrategy",
+      "leafType": "StrategyType",
+      "line": 522,
+      "path": "strategy.selectedStrategy",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": [
+        "frontend/src/components/deal/sections/StrategyV2Components.tsx"
+      ]
+    },
+    {
+      "iface": "RedevelopmentContext",
+      "name": "existingNOI",
+      "leafType": "number",
+      "line": 606,
+      "path": "redevelopment.existingNOI",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    },
+    {
+      "iface": "RedevelopmentContext",
+      "name": "projectedNOI",
+      "leafType": "number",
+      "line": 607,
+      "path": "redevelopment.projectedNOI",
+      "smoke": {
+        "ok": true
+      },
+      "uiBindingFiles": []
+    }
+  ],
+  "uiBindings": [
+    {
+      "file": "frontend/src/pages/development/CompetitionPage.tsx",
+      "inputCount": 4,
+      "handlerCount": 4,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/DocumentsShellPage.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/DueDiligencePage.tsx",
+      "inputCount": 4,
+      "handlerCount": 4,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/FinancialEnginePage.tsx",
+      "inputCount": 2,
+      "handlerCount": 2,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/MarketIntelligencePage.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/financial-engine/AssumptionsTab.tsx",
+      "inputCount": 3,
+      "handlerCount": 3,
+      "overrideCount": 5,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/financial-engine/DebtTab.tsx",
+      "inputCount": 6,
+      "handlerCount": 6,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/financial-engine/F9ProtectorsPanel.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/financial-engine/ProFormaSummaryTab.tsx",
+      "inputCount": 3,
+      "handlerCount": 3,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/financial-engine/ReturnsTab.tsx",
+      "inputCount": 1,
+      "handlerCount": 5,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/financial-engine/SourcesUsesTab.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/pages/development/financial-engine/TaxesTab.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    {
+      "file": "frontend/src/pages/development/financial-engine/WaterfallTab.tsx",
+      "inputCount": 14,
+      "handlerCount": 14,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/ActivityFeedSection.tsx",
+      "inputCount": 2,
+      "handlerCount": 2,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/CollaborationSection.tsx",
+      "inputCount": 3,
+      "handlerCount": 3,
+      "overrideCount": 0,
+      "idHints": [
+        "role"
+      ]
+    },
+    {
+      "file": "frontend/src/components/deal/sections/CompetitionSection.tsx",
+      "inputCount": 2,
+      "handlerCount": 2,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/ContactImportModal.tsx",
+      "inputCount": 2,
+      "handlerCount": 2,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/ContextTrackerSection.tsx",
+      "inputCount": 26,
+      "handlerCount": 26,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/CostSheetTab.tsx",
+      "inputCount": 6,
+      "handlerCount": 6,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/DealToolsSection.tsx",
+      "inputCount": 18,
+      "handlerCount": 18,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/DebtSection.legacy.tsx",
+      "inputCount": 2,
+      "handlerCount": 0,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/DebtTab.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/DocumentsFiles/FileUpload.tsx",
+      "inputCount": 4,
+      "handlerCount": 4,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/DocumentsFiles/ListView.tsx",
+      "inputCount": 2,
+      "handlerCount": 2,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/DocumentsFiles/SearchFilters.tsx",
+      "inputCount": 3,
+      "handlerCount": 3,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/DocumentsSection.tsx",
+      "inputCount": 3,
+      "handlerCount": 3,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/DueDiligenceSection.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/FilesSection.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/FinancialAnalysisSection.tsx",
+      "inputCount": 9,
+      "handlerCount": 9,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/FinancialDashboard.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/FinancialModelingSection.tsx",
+      "inputCount": 1,
+      "handlerCount": 0,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/FinancialSection.tsx",
+      "inputCount": 8,
+      "handlerCount": 4,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/InvestorCapitalModule.tsx",
+      "inputCount": 28,
+      "handlerCount": 28,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/LifecycleSection.tsx",
+      "inputCount": 7,
+      "handlerCount": 7,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/MarketAnalysisSection.tsx",
+      "inputCount": 3,
+      "handlerCount": 3,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/MonthlyActualsSection.tsx",
+      "inputCount": 10,
+      "handlerCount": 10,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/NotarizeClosingSection.tsx",
+      "inputCount": 4,
+      "handlerCount": 4,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/NotesSection.tsx",
+      "inputCount": 8,
+      "handlerCount": 8,
+      "overrideCount": 0,
+      "idHints": [
+        "pin-note"
+      ]
+    },
+    {
+      "file": "frontend/src/components/deal/sections/OpportunityEngineSection.tsx",
+      "inputCount": 2,
+      "handlerCount": 2,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/OpusProformaBuilder.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/ProFormaTab.tsx",
+      "inputCount": 26,
+      "handlerCount": 64,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/ProFormaWithTrafficSection.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/ProjectManagementSection.tsx",
+      "inputCount": 2,
+      "handlerCount": 2,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/SiteIntelligenceSection.tsx",
+      "inputCount": 3,
+      "handlerCount": 3,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/SkillsChatSection.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/StrategyV2Components.tsx",
+      "inputCount": 7,
+      "handlerCount": 7,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/SupplySection.tsx",
+      "inputCount": 3,
+      "handlerCount": 3,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/TeamManagementSection.tsx",
+      "inputCount": 12,
+      "handlerCount": 12,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/TrafficEngineV2Section.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/TrafficModule.tsx",
+      "inputCount": 4,
+      "handlerCount": 5,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/UnitMixIntelligence.tsx",
+      "inputCount": 1,
+      "handlerCount": 6,
+      "overrideCount": 0,
+      "idHints": [
+        "Rent",
+        "SF"
+      ]
+    },
+    {
+      "file": "frontend/src/components/deal/sections/UnitMixTab.tsx",
+      "inputCount": 3,
+      "handlerCount": 3,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/ZoningCapacitySection.tsx",
+      "inputCount": 7,
+      "handlerCount": 7,
+      "overrideCount": 3,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/ZoningIntelligencePanel.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/ZoningLearningPanel.tsx",
+      "inputCount": 6,
+      "handlerCount": 6,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/traffic/TrafficCompsTab.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/traffic/TrafficDataSourcesTab.tsx",
+      "inputCount": 1,
+      "handlerCount": 1,
+      "overrideCount": 0,
+      "idHints": []
+    },
+    {
+      "file": "frontend/src/components/deal/sections/traffic/VisibilityAssessmentTab.tsx",
+      "inputCount": 5,
+      "handlerCount": 35,
+      "overrideCount": 0,
+      "idHints": []
+    }
+  ]
+}
