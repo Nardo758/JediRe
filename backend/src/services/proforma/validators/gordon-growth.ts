@@ -51,6 +51,24 @@ export const GORDON_THRESHOLDS = {
   conservativeBps: 100,
 } as const;
 
+/**
+ * Calibration metadata for the Gordon severity thresholds — spec §8 + §14
+ * call out −25bps "high" and +100bps "info" as defaults pending tuning
+ * against broker-pitch over-promise data.
+ */
+export const GORDON_THRESHOLDS_CALIBRATION = {
+  asOf: '2026-04-29',
+  source: 'spec §8 default; broker over-promise backtest TBD per §14',
+  calibrationStatus: 'tbd' as const,
+  notes:
+    'overPromiseBps fires HIGH severity when exit cap is more than 25bps ' +
+    'BELOW Gordon-implied (k − g). conservativeBps fires INFO when exit cap ' +
+    'is more than 100bps ABOVE — conservative but possibly leaving value on ' +
+    'the table. Tune by computing realized vs underwritten exit cap on closed ' +
+    'deals and selecting thresholds that minimise false-positive over-promise ' +
+    'flags while still catching genuine cap-rate compression bets.',
+} as const;
+
 export function validateGordonGrowth(
   input: GordonValidationInput,
 ): GordonValidationResult {

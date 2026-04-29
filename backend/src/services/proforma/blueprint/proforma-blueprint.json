@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "specPath": "docs/architecture/f9-proforma-spec.md",
   "generatedAt": "2026-04-29T00:00:00.000Z",
   "fkeyMap": {
@@ -821,6 +821,37 @@
       ]
     }
   },
+  "templateTuning": {
+    "acquisition_stabilized": null,
+    "acquisition_value_add": null,
+    "development_ground_up": {
+      "growthTruncationYear": 3,
+      "notes": "BTS deals typically exit by Y3 — growth past that year is held at 0 to avoid stacking optimistic perpetual growth onto an exit value."
+    },
+    "redevelopment": null,
+    "flip": {
+      "growthTruncationYear": 1,
+      "notes": "Flips have ~12-18mo holds; growth is effectively a single-period delta."
+    },
+    "str_shortterm": {
+      "seasonalOccupancyFactors": [
+        0.92,
+        0.95,
+        1.1,
+        1.15,
+        1.2,
+        1.18,
+        1.1,
+        1.05,
+        0.85,
+        0.82,
+        0.85,
+        0.83
+      ],
+      "notes": "Seasonal occupancy multipliers replace flat occupancy. Pattern is a sun-belt default; calibrate per-market when bookings data is available."
+    },
+    "land_hold": null
+  },
   "rentTerms": {
     "grossPotentialRent": "Sum of contracted rent across all units at full occupancy.",
     "marketRent": "What a unit would lease for today on a new lease, no concessions.",
@@ -836,49 +867,109 @@
     {
       "key": "propertyTax",
       "label": "Property Tax",
-      "growthDriver": "M26.tax_growth"
+      "growthDriver": "M26.tax_growth",
+      "cycleDriver": {
+        "code": "m26_county_millage",
+        "label": "County Millage Projections (M26)",
+        "source": "platform_intra",
+        "seriesId": null
+      }
     },
     {
       "key": "insurance",
       "label": "Insurance",
-      "growthDriver": "platform.insurance_growth"
+      "growthDriver": "platform.insurance_growth",
+      "cycleDriver": {
+        "code": "reinsurance_hardening",
+        "label": "Property Reinsurance Hardening Index (Guy Carpenter)",
+        "source": "gc_reinsurance_index",
+        "seriesId": null
+      }
     },
     {
       "key": "utilities",
       "label": "Utilities",
-      "growthDriver": "cpi"
+      "growthDriver": "cpi",
+      "cycleDriver": {
+        "code": "bls_cpi_energy_services",
+        "label": "BLS CPI Energy Services",
+        "source": "bls",
+        "seriesId": "CUUR0000SEHF"
+      }
     },
     {
       "key": "repairsMaintenance",
       "label": "Repairs & Maintenance",
-      "growthDriver": "cpi"
+      "growthDriver": "cpi",
+      "cycleDriver": {
+        "code": "bls_ppi_maintenance_repair",
+        "label": "BLS PPI Maintenance & Repair Services",
+        "source": "bls",
+        "seriesId": "PCU8113"
+      }
     },
     {
       "key": "managementFee",
       "label": "Property Management",
-      "growthDriver": "pct_of_egi"
+      "growthDriver": "pct_of_egi",
+      "cycleDriver": {
+        "code": "couples_to_revenue",
+        "label": "Auto-couples to revenue (no external driver)",
+        "source": "derived",
+        "seriesId": null
+      }
     },
     {
       "key": "payroll",
       "label": "On-site Payroll",
-      "growthDriver": "wage_index"
+      "growthDriver": "wage_index",
+      "cycleDriver": {
+        "code": "bls_eci_services",
+        "label": "BLS Employment Cost Index — Services",
+        "source": "bls",
+        "seriesId": "CIU2010000000000A"
+      }
     },
     {
       "key": "marketingAdmin",
       "label": "Marketing & Admin",
-      "growthDriver": "cpi"
+      "growthDriver": "cpi",
+      "cycleDriver": {
+        "code": "bls_cpi_all_items",
+        "label": "BLS CPI All-Items",
+        "source": "bls",
+        "seriesId": "CUSR0000SA0"
+      }
     },
     {
       "key": "replacementReserves",
       "label": "Replacement Reserves",
-      "growthDriver": "cpi"
+      "growthDriver": "cpi",
+      "cycleDriver": {
+        "code": "bls_cpi_all_items",
+        "label": "BLS CPI All-Items + age curve",
+        "source": "bls",
+        "seriesId": "CUSR0000SA0"
+      }
     },
     {
       "key": "other",
       "label": "Other / Misc",
-      "growthDriver": "cpi"
+      "growthDriver": "cpi",
+      "cycleDriver": {
+        "code": "bls_cpi_all_items",
+        "label": "BLS CPI All-Items",
+        "source": "bls",
+        "seriesId": "CUSR0000SA0"
+      }
     }
   ],
+  "opexCycleDriverCalibration": {
+    "asOf": "2026-04-29",
+    "source": "spec §14: per-line cycle driver mapping",
+    "calibrationStatus": "partial",
+    "notes": "BLS series IDs are upstream-stable; insurance reinsurance index requires a paid Guy Carpenter feed and is currently a calibration TBD."
+  },
   "revenueFormulas": {
     "mark_to_market": {
       "id": "mark_to_market",

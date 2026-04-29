@@ -264,19 +264,136 @@ export type RentTerm = keyof typeof RENT_TERMS;
 // 5. OPEX 9-line stack (spec §7)
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * OPEX line items with their cycle drivers — concrete external indicator
+ * mappings per spec §14 calibration TBD. Each line carries:
+ *   - `growthDriver`: legacy short string (kept for back-compat)
+ *   - `cycleDriver`: structured indicator metadata for the cycle component
+ *
+ * Mapping rationale:
+ *   - propertyTax     → M26 county millage projections (intra-platform)
+ *   - insurance       → reinsurance hardening (Guy Carpenter property
+ *                       reinsurance index — calibrate annually)
+ *   - utilities       → BLS CPI Energy Services (CUUR0000SEHF)
+ *   - repairsMaint    → BLS PPI maintenance & repair services (PCU8113)
+ *   - managementFee   → couples to revenue (no external driver)
+ *   - payroll         → BLS Employment Cost Index, services (CIU2010000000000A)
+ *   - marketingAdmin  → BLS CPI All-Items (CUSR0000SA0)
+ *   - replacementRes  → BLS CPI All-Items + age curve
+ *   - other           → BLS CPI All-Items
+ */
 export const OPEX_LINE_ITEMS = [
-  { key: 'propertyTax', label: 'Property Tax', growthDriver: 'M26.tax_growth' },
-  { key: 'insurance', label: 'Insurance', growthDriver: 'platform.insurance_growth' },
-  { key: 'utilities', label: 'Utilities', growthDriver: 'cpi' },
-  { key: 'repairsMaintenance', label: 'Repairs & Maintenance', growthDriver: 'cpi' },
-  { key: 'managementFee', label: 'Property Management', growthDriver: 'pct_of_egi' },
-  { key: 'payroll', label: 'On-site Payroll', growthDriver: 'wage_index' },
-  { key: 'marketingAdmin', label: 'Marketing & Admin', growthDriver: 'cpi' },
-  { key: 'replacementReserves', label: 'Replacement Reserves', growthDriver: 'cpi' },
-  { key: 'other', label: 'Other / Misc', growthDriver: 'cpi' },
+  {
+    key: 'propertyTax',
+    label: 'Property Tax',
+    growthDriver: 'M26.tax_growth',
+    cycleDriver: {
+      code: 'm26_county_millage',
+      label: 'County Millage Projections (M26)',
+      source: 'platform_intra',
+      seriesId: null,
+    },
+  },
+  {
+    key: 'insurance',
+    label: 'Insurance',
+    growthDriver: 'platform.insurance_growth',
+    cycleDriver: {
+      code: 'reinsurance_hardening',
+      label: 'Property Reinsurance Hardening Index (Guy Carpenter)',
+      source: 'gc_reinsurance_index',
+      seriesId: null,
+    },
+  },
+  {
+    key: 'utilities',
+    label: 'Utilities',
+    growthDriver: 'cpi',
+    cycleDriver: {
+      code: 'bls_cpi_energy_services',
+      label: 'BLS CPI Energy Services',
+      source: 'bls',
+      seriesId: 'CUUR0000SEHF',
+    },
+  },
+  {
+    key: 'repairsMaintenance',
+    label: 'Repairs & Maintenance',
+    growthDriver: 'cpi',
+    cycleDriver: {
+      code: 'bls_ppi_maintenance_repair',
+      label: 'BLS PPI Maintenance & Repair Services',
+      source: 'bls',
+      seriesId: 'PCU8113',
+    },
+  },
+  {
+    key: 'managementFee',
+    label: 'Property Management',
+    growthDriver: 'pct_of_egi',
+    cycleDriver: {
+      code: 'couples_to_revenue',
+      label: 'Auto-couples to revenue (no external driver)',
+      source: 'derived',
+      seriesId: null,
+    },
+  },
+  {
+    key: 'payroll',
+    label: 'On-site Payroll',
+    growthDriver: 'wage_index',
+    cycleDriver: {
+      code: 'bls_eci_services',
+      label: 'BLS Employment Cost Index — Services',
+      source: 'bls',
+      seriesId: 'CIU2010000000000A',
+    },
+  },
+  {
+    key: 'marketingAdmin',
+    label: 'Marketing & Admin',
+    growthDriver: 'cpi',
+    cycleDriver: {
+      code: 'bls_cpi_all_items',
+      label: 'BLS CPI All-Items',
+      source: 'bls',
+      seriesId: 'CUSR0000SA0',
+    },
+  },
+  {
+    key: 'replacementReserves',
+    label: 'Replacement Reserves',
+    growthDriver: 'cpi',
+    cycleDriver: {
+      code: 'bls_cpi_all_items',
+      label: 'BLS CPI All-Items + age curve',
+      source: 'bls',
+      seriesId: 'CUSR0000SA0',
+    },
+  },
+  {
+    key: 'other',
+    label: 'Other / Misc',
+    growthDriver: 'cpi',
+    cycleDriver: {
+      code: 'bls_cpi_all_items',
+      label: 'BLS CPI All-Items',
+      source: 'bls',
+      seriesId: 'CUSR0000SA0',
+    },
+  },
 ] as const;
 
 export type OpexLineKey = typeof OPEX_LINE_ITEMS[number]['key'];
+
+export const OPEX_CYCLE_DRIVER_CALIBRATION = {
+  asOf: '2026-04-29',
+  source: 'spec §14: per-line cycle driver mapping',
+  calibrationStatus: 'partial' as const,
+  notes:
+    'BLS series IDs are upstream-stable; insurance reinsurance index requires ' +
+    'a paid Guy Carpenter feed and is currently a calibration TBD.',
+} as const;
 
 /**
  * Mapping from each blueprint OPEX line (camelCase) to one or more keys the
@@ -297,6 +414,109 @@ export const BLUEPRINT_TO_ENGINE_OPEX_MAP: Record<OpexLineKey, readonly string[]
   replacementReserves: ['replacement_reserves'],
   other: ['contract_services', 'hoa_dues'],
 };
+
+// ────────────────────────────────────────────────────────────────────────────
+// 5b. Per-strategy template tuning (spec §15 Tier 3)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Strategy-specific knobs that fine-tune the generic template behaviour.
+ * Each template has either a tuning record or `null` (no special tuning).
+ *
+ *   - BTS (development_ground_up): `growthTruncationYear` — most BTS deals
+ *     model exit by Y3, so rent + OPEX growth are flat / zero past that
+ *     year (no perpetual compounding).
+ *
+ *   - STR (str_shortterm): `seasonalOccupancyFactors` — 12-month
+ *     multipliers around 1.0 (peak summer >1, shoulder seasons <1) to
+ *     replace flat occupancy assumptions. Anchor metric is
+ *     ADR × occupancy × 365.
+ *
+ * Other templates currently have no special tuning and are listed as `null`
+ * so the registry remains exhaustive.
+ */
+export interface StrategyTemplateTuning {
+  /** Year past which rent + OPEX growth is truncated (set to 0). */
+  growthTruncationYear?: number;
+  /**
+   * 12-element array of monthly occupancy multipliers (Jan..Dec).
+   * Multipliers should average ~1.0 across the year. Used by STR to
+   * project ADR × occupancy × days.
+   */
+  seasonalOccupancyFactors?: ReadonlyArray<number>;
+  /** Optional notes — surfaced in F9 for transparency. */
+  notes?: string;
+}
+
+export const STRATEGY_TEMPLATE_TUNING: Record<
+  ProFormaTemplateId,
+  StrategyTemplateTuning | null
+> = {
+  acquisition_stabilized: null,
+  acquisition_value_add: null,
+  development_ground_up: {
+    growthTruncationYear: 3,
+    notes:
+      'BTS deals typically exit by Y3 — growth past that year is held at 0 ' +
+      'to avoid stacking optimistic perpetual growth onto an exit value.',
+  },
+  redevelopment: null,
+  flip: {
+    growthTruncationYear: 1,
+    notes: 'Flips have ~12-18mo holds; growth is effectively a single-period delta.',
+  },
+  str_shortterm: {
+    // Default seasonal pattern: gulf-coast / sun-belt vacation profile —
+    // peak Mar-Jul, dip Sep-Nov. Average across the 12 months ≈ 1.00.
+    seasonalOccupancyFactors: [
+      0.92, 0.95, 1.10, 1.15, 1.20, 1.18,  // Jan-Jun
+      1.10, 1.05, 0.85, 0.82, 0.85, 0.83,  // Jul-Dec
+    ],
+    notes:
+      'Seasonal occupancy multipliers replace flat occupancy. Pattern is a ' +
+      'sun-belt default; calibrate per-market when bookings data is available.',
+  },
+  land_hold: null,
+};
+
+/**
+ * Apply template-specific growth tuning. Today this implements the BTS /
+ * Flip Y{N}+ truncation rule: any year strictly greater than
+ * `growthTruncationYear` returns 0; earlier years pass through unchanged.
+ *
+ * Returns the input growth verbatim when no tuning applies.
+ */
+export function applyTemplateGrowthTuning(
+  templateId: ProFormaTemplateId,
+  year: number,
+  growth: number,
+): number {
+  const tuning = STRATEGY_TEMPLATE_TUNING[templateId];
+  if (!tuning) return growth;
+  if (
+    typeof tuning.growthTruncationYear === 'number' &&
+    year > tuning.growthTruncationYear
+  ) {
+    return 0;
+  }
+  return growth;
+}
+
+/**
+ * Resolve the seasonal occupancy multiplier for an STR template at the
+ * given month (1-12). Returns 1.0 (flat occupancy) when no seasonal series
+ * is configured.
+ */
+export function resolveSeasonalOccupancyFactor(
+  templateId: ProFormaTemplateId,
+  month: number,
+): number {
+  const tuning = STRATEGY_TEMPLATE_TUNING[templateId];
+  const factors = tuning?.seasonalOccupancyFactors;
+  if (!factors || factors.length !== 12) return 1.0;
+  const idx = Math.min(11, Math.max(0, month - 1));
+  return factors[idx] ?? 1.0;
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // 6. Revenue formulas (spec §11)
@@ -383,7 +603,7 @@ export const PROVENANCE_RULES = {
 // ────────────────────────────────────────────────────────────────────────────
 
 export const PROFORMA_BLUEPRINT = {
-  version: '2.0.0',
+  version: '2.1.0',
   specPath: 'docs/architecture/f9-proforma-spec.md',
   generatedAt: '2026-04-29T00:00:00.000Z',
   fkeyMap: FKEY_MAP,
@@ -391,8 +611,10 @@ export const PROFORMA_BLUEPRINT = {
   m09Inputs: M09_INPUTS,
   m09Cycles: M09_CYCLES,
   templates: PROFORMA_TEMPLATES,
+  templateTuning: STRATEGY_TEMPLATE_TUNING,
   rentTerms: RENT_TERMS,
   opexLineItems: OPEX_LINE_ITEMS,
+  opexCycleDriverCalibration: OPEX_CYCLE_DRIVER_CALIBRATION,
   revenueFormulas: REVENUE_FORMULAS,
   defaultRevenueFormula: DEFAULT_REVENUE_FORMULA,
   provenanceRules: PROVENANCE_RULES,

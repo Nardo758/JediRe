@@ -139,6 +139,23 @@ export const REFUSAL_THRESHOLDS = {
   minHistoryYears: 3,
 } as const;
 
+/**
+ * Calibration metadata for the refusal thresholds — spec §9 + §14 list
+ * these as TBD ("backtest layered model against historical deal performance"
+ * for σ_model; "empirical curve of forecast accuracy vs comp count" for
+ * σ_sparsity). The 5-comp / 3-year cutoffs are sane defaults pending
+ * empirical refinement.
+ */
+export const REFUSAL_THRESHOLDS_CALIBRATION = {
+  asOf: '2026-04-29',
+  source: 'spec §9 + §14 default; empirical accuracy-vs-coverage curve TBD',
+  calibrationStatus: 'tbd' as const,
+  notes:
+    '<5 comps OR <3yr history triggers refusal. Backtest by computing ' +
+    'forecast residuals on historical comp sets stratified by comp count ' +
+    'and history depth; tighten the cutoffs once accuracy curves are stable.',
+} as const;
+
 export interface RefusalDecision {
   refuse: boolean;
   reason?: 'INSUFFICIENT_DATA';

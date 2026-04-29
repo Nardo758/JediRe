@@ -52,6 +52,25 @@ export const ASSET_CLASS_SPREAD_BPS: Record<string, number> = {
   default: 30,
 };
 
+/**
+ * Calibration metadata for the asset-class spread table — spec §14 calls
+ * out these as TBD (backtest from historical BLS CPI shelter vs realized
+ * rent growth by asset class). Surfaced so consumers / dashboards can
+ * mark these constants as TBD and request a calibration refresh.
+ */
+export const ASSET_CLASS_SPREAD_CALIBRATION = {
+  asOf: '2026-04-29',
+  source:
+    'spec §6 + §14 default; multifamily ~30bps anchored to BLS CPI shelter ' +
+    'historical observation (2010-2024); other classes are seed values.',
+  sampleSize: null as number | null,
+  calibrationStatus: 'tbd' as const,
+  notes:
+    'Calibrate by regressing realized 12-month rent growth against BLS CPI ' +
+    'shelter sub-index over a 10-15 year window per asset class. Office ' +
+    'spread of 0bps reflects post-2020 secular reset; revisit when stabilized.',
+} as const;
+
 // ────────────────────────────────────────────────────────────────────────────
 // Weight schedule — mean-reverts to anchor across horizon
 // ────────────────────────────────────────────────────────────────────────────
