@@ -17,6 +17,7 @@ import { parseRentRoll } from './document-extraction/parsers/rent-roll-parser';
 import { parseTaxBillAsync } from './document-extraction/parsers/tax-bill-parser';
 import { parseOMAsync, type OMExtraction } from './document-extraction/parsers/om-parser';
 import { logger } from '../utils/logger';
+import { createProfileFromOM } from './building-profiles/building-profile.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -796,6 +797,25 @@ export async function ingestArchiveDeals(
       
       if (parsed.parseWarnings.length > 0) {
         result.warnings.push(`${folder.name}: ${parsed.parseWarnings.join('; ')}`);
+      }
+      
+      // Create building profile from OM extraction data
+      if (parsed.extractionData?.property) {
+        try {
+          const omProp = parsed.extractionData.property;
+          await createProfileFromOM(assetId, {
+            yearBuilt: omProp.yearBuilt,
+            stories: omProp.stories,
+            units: parsed.units,
+            squareFeet: omProp.squareFeet,
+            siteAcres: parsed.extractionData.site?.acres,
+            parkingSpaces: omProp.parkingSpaces,
+            parkingRatio: omProp.parkingRatio,
+            amenities: omProp.amenities,
+          });
+        } catch (profileErr) {
+          result.warnings.push(`${folder.name}: building profile creation failed — ${profileErr instanceof Error ? profileErr.message : String(profileErr)}`);
+        }
       }
       
       logger.info(`Parsed archive deal: ${folder.name} (${parsed.units || '?'} units, NOI: $${parsed.trailingNoi?.toLocaleString() || '?'})`);

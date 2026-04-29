@@ -28,6 +28,29 @@ const InputSchema = z.object({
   vintage_band: z.string().optional().describe('Vintage band: pre-1990 | 1990-2005 | 2006-2015 | 2016+'),
   unit_count_band: z.string().optional().describe('Size band: <100 | 100-200 | 200-350 | 350+'),
   include_trends: z.boolean().optional().default(false).describe('Include YoY growth trend data'),
+  building_profile_fingerprint: z.string().optional().describe(
+    'Building profile fingerprint for profile-matched benchmarks (e.g. "garden|2010-2019|elev|pool|fit|club"). ' +
+    'When provided, returns additional per-unit benchmarks from properties with the same building profile.'
+  ),
+});
+
+const ProfileBenchmarkSchema = z.object({
+  line_item: z.string(),
+  per_unit: z.object({
+    p10: z.number().nullable(),
+    p25: z.number().nullable(),
+    p50: z.number().nullable(),
+    p75: z.number().nullable(),
+    p90: z.number().nullable(),
+  }),
+  pct_egi: z.object({
+    p10: z.number().nullable(),
+    p25: z.number().nullable(),
+    p50: z.number().nullable(),
+    p75: z.number().nullable(),
+    p90: z.number().nullable(),
+  }).nullable(),
+  sample_count: z.number(),
 });
 
 const LineItemBenchmarkSchema = z.object({
@@ -72,6 +95,12 @@ const OutputSchema = z.object({
     narrowest_match_level: z.string(),
   }),
   note: z.string().optional(),
+  profile_match: z.object({
+    found: z.boolean(),
+    fingerprint: z.string().nullable(),
+    benchmarks: z.array(ProfileBenchmarkSchema),
+    region: z.string(),
+  }).optional(),
 });
 
 export const fetchLineItemBenchmarksTool = {
@@ -102,6 +131,12 @@ export const fetchLineItemBenchmarksTool = {
             narrowest_match_level: 'none',
           },
           note: 'No line items specified',
+          profile_match: input.building_profile_fingerprint ? {
+            found: false,
+            fingerprint: input.building_profile_fingerprint,
+            benchmarks: [],
+            region: 'national',
+          } : undefined,
         };
       }
 
@@ -262,6 +297,56 @@ export const fetchLineItemBenchmarksTool = {
         }
       }
 
+      // ── Profile-matched benchmarks (NEW) ─────────────────────────────────
+      let profileBenchmarks: z.infer<typeof ProfileBenchmarkSchema>[] = [];
+      let profileFound = false;
+      
+      if (input.building_profile_fingerprint) {
+        try {
+          const result = await query(
+            `SELECT line_item,
+                    p10_per_unit, p25_per_unit, p50_per_unit, p75_per_unit, p90_per_unit,
+                    p10_pct_egi, p25_pct_egi, p50_pct_egi, p75_pct_egi, p90_pct_egi,
+                    sample_count
+             FROM building_profile_opex_benchmarks
+             WHERE profile_fingerprint = $1
+               AND region = 'national'
+               AND (line_item = ANY($2) OR $2 IS NULL)
+             ORDER BY line_item`,
+            [input.building_profile_fingerprint, normalizedItems.length > 0 ? normalizedItems : null]
+          );
+          
+          profileBenchmarks = (result.rows as Record<string, unknown>[]).map(row => ({
+            line_item: String(row.line_item),
+            per_unit: {
+              p10: Number(row.p10_per_unit ?? null),
+              p25: Number(row.p25_per_unit ?? null),
+              p50: Number(row.p50_per_unit ?? null),
+              p75: Number(row.p75_per_unit ?? null),
+              p90: Number(row.p90_per_unit ?? null),
+            },
+            pct_egi: row.p10_pct_egi != null ? {
+              p10: Number(row.p10_pct_egi),
+              p25: Number(row.p25_pct_egi),
+              p50: Number(row.p50_pct_egi),
+              p75: Number(row.p75_pct_egi),
+              p90: Number(row.p90_pct_egi),
+            } : null,
+            sample_count: Number(row.sample_count),
+          }));
+          
+          profileFound = profileBenchmarks.length > 0;
+          logger.debug('fetch_line_item_benchmarks: profile-matched benchmarks', {
+            fingerprint: input.building_profile_fingerprint,
+            matched: profileBenchmarks.length,
+          });
+        } catch (profileErr) {
+          logger.warn('fetch_line_item_benchmarks: profile benchmark query failed', {
+            err: profileErr instanceof Error ? profileErr.message : String(profileErr),
+          });
+        }
+      }
+      
       const stillMissing = normalizedItems.filter(item => !foundItems.has(item));
 
       logger.debug('fetch_line_item_benchmarks: completed', {
@@ -286,6 +371,12 @@ export const fetchLineItemBenchmarksTool = {
         note: stillMissing.length > 0 
           ? `${stillMissing.length} line items not found in benchmarks — use conservative defaults`
           : undefined,
+        profile_match: input.building_profile_fingerprint ? {
+          found: profileFound,
+          fingerprint: input.building_profile_fingerprint,
+          benchmarks: profileBenchmarks,
+          region: 'national',
+        } : undefined,
       };
 
     } catch (err) {
@@ -305,6 +396,12 @@ export const fetchLineItemBenchmarksTool = {
           narrowest_match_level: 'error',
         },
         note: 'Benchmark query failed — proceeding with conservative defaults',
+        profile_match: input.building_profile_fingerprint ? {
+          found: false,
+          fingerprint: input.building_profile_fingerprint,
+          benchmarks: [],
+          region: 'national',
+        } : undefined,
       };
     }
   },
