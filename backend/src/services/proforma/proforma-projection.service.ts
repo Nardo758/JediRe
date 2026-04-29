@@ -37,6 +37,7 @@ import {
   computeManagementFeeGrowth,
   noiGrowthIdentity,
   OPEX_LINE_KEYS,
+  DEFAULT_LINE_SHARES,
   type OpexLineInputs,
   type LayeredOpexLineResult,
 } from './layered-growth/opex-growth';
@@ -247,10 +248,11 @@ export function projectProforma(inputs: ProjectionInputs): ProjectionYearResult[
         rawOpexG,
       );
 
-      // Dollar weight via DEFAULT_LINE_SHARES is encoded in lineRes.weights —
-      // for the noi identity we approximate the share as the line's overall
-      // weight contribution sum (good enough as a check).
-      const share = 1 / OPEX_LINE_KEYS.length;
+      // Share-weighted aggregation using DEFAULT_LINE_SHARES so the NOI
+      // identity cross-check reflects each line's typical dollar share of
+      // total OPEX (e.g. propertyTax ~25%, payroll ~20%) instead of an
+      // equal 1/N split. Shares sum to 1.0 across OPEX_LINE_KEYS.
+      const share = DEFAULT_LINE_SHARES[lineKey] ?? 0;
       dollarWeightedOpexGrowth += tunedOpexG * share;
       totalOpexShare += share;
 
