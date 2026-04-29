@@ -41,6 +41,22 @@ const anthropic = new Anthropic({
   baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
 
+/** Row shape for a deal_custom_tabs row — mirrors the runtime DDL 1:1. */
+export interface CustomTabRow {
+  id: number;
+  deal_id: string;
+  user_id: string;
+  tab_id: string;
+  title: string;
+  description: string | null;
+  payload: CustomTabPayload;
+  generation_prompt: string | null;
+  model_version: string | null;
+  conversation_id: number | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface OpusConversation {
   id: number;
   deal_id: string;
@@ -658,27 +674,9 @@ ${comparableData}`;
     onDone(fullResponse);
   }
 
-  // ────────────────────────────────────────────────────────────────────────
-  // Custom Tabs (Task #451) — Opus-generated F9 tabs persisted per
-  // (deal_id, user_id, tab_id). Schema-validated against the blueprint
-  // custom-tab content schema before persistence. Read-only views; no
-  // assumption mutations are emitted via this surface.
-  //
-  // ── DDL strategy: deliberate runtime CREATE TABLE IF NOT EXISTS ──
-  // This table is intentionally NOT added to the Drizzle schema surface.
-  // It joins the existing opus_*/deal_*/agent_*/backtest_* family of
-  // service-owned tables that all live outside Drizzle by design — see
-  // the peer `opus_proforma_rejected_payloads` defined in this same file
-  // around line 432 (identical `id SERIAL PRIMARY KEY` shape and same
-  // ensure-on-first-use pattern). Adding `deal_custom_tabs` to Drizzle
-  // would diverge from that established convention and (because the
-  // Drizzle surface in this codebase covers only 5 small schema groups)
-  // any subsequent `db:push` would diff dozens of unmanaged peer tables
-  // and risk destructive ALTER statements against live data — the exact
-  // failure mode the rule against runtime DDL exists to prevent.
-  // The session plan for Task #451 explicitly approved this runtime-DDL
-  // path; no migration file is appropriate here.
-  // ────────────────────────────────────────────────────────────────────────
+  // Custom Tabs (Task #451). DDL follows the peer
+  // `opus_proforma_rejected_payloads` runtime-ensure pattern in this same
+  // file — see ensureCustomTabsTable below.
 
   private customTabsTableEnsured = false;
 
@@ -709,23 +707,12 @@ ${comparableData}`;
   }
 
   /** List all custom tabs for a (deal, user). */
-  async listCustomTabs(dealId: string, userId: string): Promise<Array<{
-    id: number;
-    deal_id: string;
-    user_id: string;
-    tab_id: string;
-    title: string;
-    description: string | null;
-    payload: CustomTabPayload;
-    generation_prompt: string | null;
-    model_version: string | null;
-    created_at: Date;
-    updated_at: Date;
-  }>> {
+  async listCustomTabs(dealId: string, userId: string): Promise<CustomTabRow[]> {
     await this.ensureCustomTabsTable();
-    const result = await this.pool.query(
+    const result = await this.pool.query<CustomTabRow>(
       `SELECT id, deal_id, user_id, tab_id, title, description, payload,
-              generation_prompt, model_version, created_at, updated_at
+              generation_prompt, model_version, conversation_id,
+              created_at, updated_at
          FROM deal_custom_tabs
         WHERE deal_id = $1 AND user_id = $2
         ORDER BY updated_at DESC`,
@@ -739,23 +726,12 @@ ${comparableData}`;
     dealId: string,
     userId: string,
     tabId: string,
-  ): Promise<{
-    id: number;
-    deal_id: string;
-    user_id: string;
-    tab_id: string;
-    title: string;
-    description: string | null;
-    payload: CustomTabPayload;
-    generation_prompt: string | null;
-    model_version: string | null;
-    created_at: Date;
-    updated_at: Date;
-  } | null> {
+  ): Promise<CustomTabRow | null> {
     await this.ensureCustomTabsTable();
-    const result = await this.pool.query(
+    const result = await this.pool.query<CustomTabRow>(
       `SELECT id, deal_id, user_id, tab_id, title, description, payload,
-              generation_prompt, model_version, created_at, updated_at
+              generation_prompt, model_version, conversation_id,
+              created_at, updated_at
          FROM deal_custom_tabs
         WHERE deal_id = $1 AND user_id = $2 AND tab_id = $3`,
       [dealId, userId, tabId],
@@ -921,9 +897,7 @@ ${comparableData}`;
     if (!existing.generation_prompt) {
       return { refreshed: false, validation: null, row: existing, error: 'no generation prompt stored — recreate the tab via Opus' };
     }
-    const conversationId =
-      args.conversationId ??
-      (typeof (existing as any).conversation_id === 'number' ? (existing as any).conversation_id : null);
+    const conversationId = args.conversationId ?? existing.conversation_id ?? null;
     const generated = await this.generateCustomTabPayloadFromPrompt({
       dealId: args.dealId,
       userId: args.userId,
