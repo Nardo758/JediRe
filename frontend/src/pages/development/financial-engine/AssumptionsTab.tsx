@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { RenovationAssumptionsSection } from './RenovationAssumptionsSection';
 import {
   Lock, Download, AlertTriangle, TrendingUp, Zap,
   ChevronRight, ChevronDown, X, Check, FlaskConical,
@@ -519,6 +520,16 @@ const STATIC_ROWS: RowDef[] = [
     platformSource: 'M07 — Demand elasticity × renovation scope model', brokerSource: 'OM / Value-Add Pro Forma',
     getBroker: (_f, _yr) => null,
     getPlatform: (f, yr) => {
+      // Try renovation data first
+      const renoData = f.renovationData;
+      if (renoData?.premiumRamp?.length) {
+        const yrRamp = renoData.premiumRamp.find(r => r.year === yr);
+        if (yrRamp) {
+          // Convert decimal premium → percentage lift
+          return yrRamp.premiumDecimal;
+        }
+      }
+      // Fallback: M07 traffic projection
       const t = tyr(f, yr);
       if (t?.effRent == null) return null;
       const base = f.rentRollSummary?.avgInPlaceRent;
@@ -535,7 +546,17 @@ const STATIC_ROWS: RowDef[] = [
     getBroker: (_f, _yr) => null,
     getPlatform: (f, yr) => {
       const t = tyr(f, yr);
-      return t?.effRent != null ? Math.round(t.effRent * 1.08) : null;
+      if (t?.effRent == null) return null;
+      // Tier-based premium: try to use the renovation data if available
+      const renoData = f.renovationData;
+      if (renoData?.premiumRamp?.length) {
+        const yrRamp = renoData.premiumRamp.find(r => r.year === yr);
+        if (yrRamp) {
+          return Math.round(t.effRent * (1 + (yrRamp.premiumDecimal || 0)));
+        }
+      }
+      // Fallback: default ×1.08 bump
+      return Math.round(t.effRent * 1.08);
     },
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 50,
   },
@@ -1424,7 +1445,7 @@ function KeystonePanel({
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssumptionsChange }: FinancialEngineTabProps) {
+export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResults, onAssumptionsChange }: FinancialEngineTabProps) {
   const setConfidenceBands = useDealStore(s => s.setConfidenceBands);
   const classifyFieldOverride = useDealStore(s => s.classifyFieldOverride);
   const upsertValidationFlag = useDealStore(s => s.upsertValidationFlag);
@@ -1443,6 +1464,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const [drawerTarget, setDrawerTarget] = useState<DrawerTarget|null>(null);
   const [lockedOverrides, setLockedOverrides] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
+  const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
   const fetchRef   = useRef(0);
   const patchQueue = useRef<Array<{field:string; year:number|null; value:number|null}>>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -2065,6 +2087,15 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
               </tr>
             </thead>
             <tbody>
+              {/* Deal-type specific section: Renovation/Development costs */}
+              {dealType !== 'existing' && (
+                <RenovationAssumptionsSection
+                  dealId={dealId}
+                  dealType={dealType}
+                  collapsed={renoSectionCollapsed}
+                  onToggle={() => setRenoSectionCollapsed(c => !c)}
+                />
+              )}
               {allSections.map(({ sec, rows }) => {
                 const isCollapsed = collapsedSections.has(sec);
                 const isFinancing = sec === 9;

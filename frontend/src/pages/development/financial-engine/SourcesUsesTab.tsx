@@ -1,7 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { BT, SectionPanel, DataRow, Bd, KpiTile } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps } from './types';
 import { fmt$, fmtPct, fmtPctRaw } from './types';
+import { apiClient } from '../../../services/api.client';
 
 const MONO = BT.font.mono;
 
@@ -105,6 +106,13 @@ export function SourcesUsesTab({
 
   // ── Local state for pending overrides (optimistic UI) ─────────────────────
   const [pendingOvr, setPendingOvr] = useState<Record<string, number | null>>({});
+  const [useActualCapex, setUseActualCapex] = useState(false);
+  const [actualCapexItems, setActualCapexItems] = useState<Array<{
+    id: string; category: string; description: string | null; vendor: string | null;
+    budgeted: number; actual: number; remaining: number;
+    completionPct: number | null; status: string | null;
+  }>>([]);
+  const [actualCapexLoading, setActualCapexLoading] = useState(false);
 
   const handleOvr = useCallback(async (key: string, v: number | null) => {
     setPendingOvr(prev => ({ ...prev, [key]: v }));
@@ -214,6 +222,22 @@ export function SourcesUsesTab({
     { key: 'preopeningCosts', id: 'preopeningCosts',label: 'PRE-OPENING COSTS' },
     { key: 'otherUses',       id: 'otherUses',      label: 'OTHER USES' },
   ].filter(r => !usesHasId.has(r.id));
+
+  // Fetch actual capex items from DB when toggle is on
+  useEffect(() => {
+    if (!useActualCapex || !dealId) return;
+    setActualCapexLoading(true);
+    apiClient.get(`/api/v1/deals/${dealId}/renovation`)
+      .then(res => {
+        const items = res.data?.data?.capexItems || [];
+        setActualCapexItems(items);
+      })
+      .catch(err => {
+        console.warn('Failed to load actual capex items:', err.message);
+        setActualCapexItems([]);
+      })
+      .finally(() => setActualCapexLoading(false));
+  }, [useActualCapex, dealId]);
 
   const modelSu = modelResults?.sourcesAndUses;
 
@@ -379,35 +403,124 @@ export function SourcesUsesTab({
         </div>
       </SectionPanel>
 
-      {/* ── Capex line items (from assumptions model) ──────────────────────── */}
-      {capexLineItems.length > 0 && (
-        <SectionPanel title="CAPEX LINE ITEMS" subtitle="Renovation & value-add budget detail" borderColor={BT.text.orange}>
+      {/* ── Capex line items with Model/Actual toggle ───────────────────── */}
+      {(capexLineItems.length > 0 || useActualCapex) && (
+        <SectionPanel
+          title={useActualCapex ? 'CAPEX LINE ITEMS (actual)' : 'CAPEX LINE ITEMS (model)'}
+          subtitle={useActualCapex
+            ? 'From deal_capex_items table — vendor, dates, completion %'
+            : 'Renovation & value-add budget detail — from financial assumptions'
+          }
+          borderColor={BT.text.orange}
+        >
+          {/* Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <button
+              onClick={() => setUseActualCapex(false)}
+              style={{
+                padding: '3px 8px', fontSize: 9, fontFamily: 'system-ui, sans-serif',
+                background: !useActualCapex ? '#1d4ed8' : '#1e293b',
+                color: '#e2e8f0', border: '1px solid #334155', borderRadius: 4, cursor: 'pointer',
+              }}
+            >
+              Modeled
+            </button>
+            <button
+              onClick={() => setUseActualCapex(true)}
+              style={{
+                padding: '3px 8px', fontSize: 9, fontFamily: 'system-ui, sans-serif',
+                background: useActualCapex ? '#1d4ed8' : '#1e293b',
+                color: '#e2e8f0', border: '1px solid #334155', borderRadius: 4, cursor: 'pointer',
+              }}
+            >
+              Actual (DB)
+            </button>
+            {actualCapexLoading && (
+              <span style={{ fontSize: 8, color: '#64748b' }}>Loading…</span>
+            )}
+          </div>
+
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
-              <thead>
-                <tr style={{ borderBottom: `2px solid ${BT.border.medium}`, background: BT.bg.header }}>
-                  {['ITEM', 'AMOUNT', '$/UNIT', '% OF CAPEX'].map(h => (
-                    <th key={h} style={{ padding: '4px 8px', color: BT.text.muted, textAlign: h === 'ITEM' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {capexLineItems.map((item, i) => (
-                  <tr key={i} style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
-                    <td style={{ padding: '3px 8px', color: BT.text.primary }}>{item.description}</td>
-                    <td style={{ padding: '3px 8px', color: BT.text.orange, textAlign: 'right' }}>{fmt$(item.amount)}</td>
-                    <td style={{ padding: '3px 8px', color: BT.text.secondary, textAlign: 'right' }}>{totalUnits > 0 ? fmt$(item.amount / totalUnits) : '—'}</td>
-                    <td style={{ padding: '3px 8px', color: BT.text.amber, textAlign: 'right' }}>{capexTotalFb > 0 ? fmtPct((item.amount / capexTotalFb) * 100) : '—'}</td>
+            {!useActualCapex ? (
+              /* Model-based capex */
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+                <thead>
+                  <tr style={{ borderBottom: `2px solid ${BT.border.medium}`, background: BT.bg.header }}>
+                    {['ITEM', 'AMOUNT', '$/UNIT', '% OF CAPEX'].map(h => (
+                      <th key={h} style={{ padding: '4px 8px', color: BT.text.muted, textAlign: h === 'ITEM' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
+                    ))}
                   </tr>
-                ))}
-                <tr style={{ background: `${BT.text.orange}10`, borderTop: `2px solid ${BT.border.medium}` }}>
-                  <td style={{ padding: '4px 8px', color: BT.text.orange, fontWeight: 700 }}>TOTAL CAPEX + RESERVES</td>
-                  <td style={{ padding: '4px 8px', color: BT.text.orange, textAlign: 'right', fontWeight: 700 }}>{fmt$(totalCapexFb)}</td>
-                  <td style={{ padding: '4px 8px', color: BT.text.secondary, textAlign: 'right' }}>{totalUnits > 0 ? fmt$(totalCapexFb / totalUnits) : '—'}</td>
-                  <td />
-                </tr>
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {capexLineItems.map((item, i) => (
+                    <tr key={i} style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
+                      <td style={{ padding: '3px 8px', color: BT.text.primary }}>{item.description}</td>
+                      <td style={{ padding: '3px 8px', color: BT.text.orange, textAlign: 'right' }}>{fmt$(item.amount)}</td>
+                      <td style={{ padding: '3px 8px', color: BT.text.secondary, textAlign: 'right' }}>{totalUnits > 0 ? fmt$(item.amount / totalUnits) : '—'}</td>
+                      <td style={{ padding: '3px 8px', color: BT.text.amber, textAlign: 'right' }}>{capexTotalFb > 0 ? fmtPct((item.amount / capexTotalFb) * 100) : '—'}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: `${BT.text.orange}10`, borderTop: `2px solid ${BT.border.medium}` }}>
+                    <td style={{ padding: '4px 8px', color: BT.text.orange, fontWeight: 700 }}>TOTAL CAPEX + RESERVES</td>
+                    <td style={{ padding: '4px 8px', color: BT.text.orange, textAlign: 'right', fontWeight: 700 }}>{fmt$(totalCapexFb)}</td>
+                    <td style={{ padding: '4px 8px', color: BT.text.secondary, textAlign: 'right' }}>{totalUnits > 0 ? fmt$(totalCapexFb / totalUnits) : '—'}</td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            ) : (
+              /* Actual capex from deal_capex_items */
+              actualCapexItems.length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+                  <thead>
+                    <tr style={{ borderBottom: `2px solid ${BT.border.medium}`, background: BT.bg.header }}>
+                      {['CATEGORY', 'DESCRIPTION', 'VENDOR', 'BUDGETED', 'ACTUAL', 'REMAINING', '% DONE', 'STATUS'].map(h => (
+                        <th key={h} style={{ padding: '4px 8px', color: BT.text.muted, textAlign: h === 'CATEGORY' || h === 'DESCRIPTION' || h === 'VENDOR' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {actualCapexItems.map((item, i) => (
+                      <tr key={item.id} style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
+                        <td style={{ padding: '3px 8px', color: BT.text.secondary }}>{item.category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</td>
+                        <td style={{ padding: '3px 8px', color: BT.text.primary }}>{item.description || '—'}</td>
+                        <td style={{ padding: '3px 8px', color: BT.text.secondary }}>{item.vendor || '—'}</td>
+                        <td style={{ padding: '3px 8px', color: BT.text.orange, textAlign: 'right' }}>{fmt$(item.budgeted)}</td>
+                        <td style={{ padding: '3px 8px', color: '#10b981', textAlign: 'right' }}>{item.actual > 0 ? fmt$(item.actual) : '—'}</td>
+                        <td style={{ padding: '3px 8px', color: '#f59e0b', textAlign: 'right' }}>{item.remaining > 0 ? fmt$(item.remaining) : '—'}</td>
+                        <td style={{ padding: '3px 8px', color: BT.text.secondary, textAlign: 'right' }}>{item.completionPct != null ? item.completionPct + '%' : '—'}</td>
+                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                          <span style={{
+                            color: item.status === 'completed' ? '#10b981'
+                              : item.status === 'in_progress' ? '#3b82f6'
+                              : item.status === 'planned' ? '#f59e0b' : '#64748b',
+                          }}>
+                            {item.status ? item.status.replace(/_/g, ' ') : '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: `${BT.text.orange}10`, borderTop: `2px solid ${BT.border.medium}` }}>
+                      <td colSpan={3} style={{ padding: '4px 8px', color: BT.text.orange, fontWeight: 700 }}>TOTAL</td>
+                      <td style={{ padding: '4px 8px', color: BT.text.orange, textAlign: 'right', fontWeight: 700 }}>
+                        {fmt$(actualCapexItems.reduce((s, i) => s + i.budgeted, 0))}
+                      </td>
+                      <td style={{ padding: '4px 8px', color: '#10b981', textAlign: 'right', fontWeight: 700 }}>
+                        {fmt$(actualCapexItems.reduce((s, i) => s + (i.actual || 0), 0))}
+                      </td>
+                      <td style={{ padding: '4px 8px', color: '#f59e0b', textAlign: 'right', fontWeight: 700 }}>
+                        {fmt$(actualCapexItems.reduce((s, i) => s + (i.remaining || 0), 0))}
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ padding: 12, textAlign: 'center', color: BT.text.muted, fontSize: 9 }}>
+                  No actual capex items in the database. Add them via the Assumptions tab (Renovation section) or the renovation API.
+                </div>
+              )
+            )}
           </div>
         </SectionPanel>
       )}
