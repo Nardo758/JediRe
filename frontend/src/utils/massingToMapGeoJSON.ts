@@ -92,6 +92,57 @@ export interface ConversionOpts {
  * Convert massing sections to MapBuildingSection array.
  * Section-space origin is at the parcel centroid.
  */
+/**
+ * Convert store BuildingSection[] (flat shape: width, depth, floors, position)
+ * into MapBuildingSection[] for the map. Works with both MassingSection results
+ * and the store's buildingSections array.
+ */
+export function buildingSectionsToMapBuildings(
+  sections: Array<{ id: string; name: string; width?: number; depth?: number; floors?: number; totalStories?: number; position?: { x: number; y: number }; hasRetail?: boolean; units?: any; color?: string; height?: number }>,
+  parcelCoordinates: LatLng[],
+): MapBuildingSection[] {
+  const site = getSiteInfo(parcelCoordinates);
+  if (!site || !sections.length) return [];
+
+  const { center, origin } = site;
+
+  return sections.map((sec, i) => {
+    const ftX = sec.position?.x || 0;
+    const ftY = sec.position?.y || 0;
+    const offsetLat = feetToLatOffset(ftY, center.lat);
+    const offsetLng = feetToLngOffset(ftX, center.lng);
+    const baseLat = origin.lat + offsetLat;
+    const baseLng = origin.lng + offsetLng;
+
+    const w = sec.width || 50;
+    const d = sec.depth || 50;
+    const widthLat = feetToLatOffset(d, center.lat);
+    const widthLng = feetToLngOffset(w, center.lng);
+
+    const polygon: [number, number][] = [
+      [baseLng, baseLat],
+      [baseLng + widthLng, baseLat],
+      [baseLng + widthLng, baseLat + widthLat],
+      [baseLng, baseLat + widthLat],
+      [baseLng, baseLat],
+    ];
+
+    const height = sec.height || (sec.totalStories || sec.floors || 8) * 12;
+    const colors = ['#3b82f6', '#8b5cf6', '#06b6d4', '#f59e0b', '#10b981', '#ef4444'];
+
+    return {
+      id: sec.id,
+      name: sec.name,
+      polygon,
+      height,
+      baseHeight: 0,
+      units: typeof sec.units?.total === 'number' ? sec.units.total : 0,
+      color: (sec as any).color || colors[i % colors.length],
+      hasRetail: sec.hasRetail,
+    };
+  });
+}
+
 export function massingSectionsToMapBuildings(
   opts: ConversionOpts,
 ): MapBuildingSection[] {

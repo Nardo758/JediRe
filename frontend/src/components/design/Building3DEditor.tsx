@@ -15,7 +15,7 @@
  * - AI integration hooks (Phase 2)
  */
 
-import React, { useRef, useState, useCallback, useEffect, Suspense } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo, Suspense } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import {
   OrbitControls,
@@ -48,6 +48,7 @@ import { AIRenderingPanel } from './AIRenderingPanel';
 import { DesignAssistantChat } from './DesignAssistantChat';
 import DesignPromptModal from './DesignPromptModal';
 import MapBuildingView from './MapBuildingView';
+import { buildingSectionsToMapBuildings } from '@/utils/massingToMapGeoJSON';
 
 // ============================================================================
 // Main Component
@@ -344,6 +345,15 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
     }
   }, [state.parcelBoundary, state.zoningEnvelope, designTargets, designMassingGenerate, actions]);
   
+  // Compute map buildings from store sections + parcel boundary
+  const mapBuildings = useMemo(() => {
+    if (!state.parcelBoundary?.coordinates?.length || !state.buildingSections.length) return [];
+    return buildingSectionsToMapBuildings(
+      state.buildingSections as any[],
+      state.parcelBoundary.coordinates,
+    );
+  }, [state.buildingSections, state.parcelBoundary]);
+
   // ============================================================================
   // Render
   // ============================================================================
@@ -414,7 +424,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
           latitude={state.parcelBoundary?.coordinates[0]?.lat || 33.749}
           longitude={state.parcelBoundary?.coordinates[0]?.lng || -84.388}
           parcelPolygon={state.parcelBoundary?.coordinates.map(c => [c.lng, c.lat] as [number, number])}
-          buildingSections={[]} /* will be populated from massing result via massingSectionsToMapBuildings */ }
+          buildingSections={mapBuildings}
           height="100%"
         />
       ) : (
