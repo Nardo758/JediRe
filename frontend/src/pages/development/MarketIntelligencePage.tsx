@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import ProgrammingTab from '../../components/design/ProgrammingTab';
+import KGContextPanel from '../../components/knowledge-graph/KGContextPanel';
 import { useDealModule } from '../../contexts/DealModuleContext';
 import UnitMixIntelligence, {
   DemandMatrix, GapAnalysis, ProgramEditor, ZoningPanel, InventorySnapshot,
@@ -427,6 +428,13 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       <RentCompUnitMixTable unitMix={data.demographics?.unitMixBreakdown || []} />
 
       <ZoningContextBar hasZoningContext={hasZoningContext} zoningCode={zoningCode} activeScenario={activeScenario} />
+
+      {/* KG Context Panel — similar deals, market insights, zoning precedents */}
+      {dealId && (
+        <div style={{ background: BT2.bg.panel, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+          <KGContextPanel dealId={dealId} />
+        </div>
+      )}
 
       <EconomySection data={data.economy} />
       <DemographicsSection data={data.demographics} supply={data.supplyContext} />
