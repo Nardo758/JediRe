@@ -451,6 +451,11 @@ app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/deals', financialDocumentsRoutes);
 import documentsFilesRoutes from './api/rest/documentsFiles.routes';
 app.use('/api/v1', documentsFilesRoutes);
+
+// Scene storage for 3D scenes — must be immediately after documentsFiles so
+// /:dealId/files/3d-scene wins match against documentsFiles' /:dealId/files/:fileId
+app.use('/api/v1/deals', requireAuth, sceneStorageRouter);
+
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
 app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
@@ -588,12 +593,10 @@ app.use('/api/v1/lifecycle', lifecycleRouter);
 // organization.routes.ts: deal team assignments, phase handoffs, context tracker, DocuSign/Notarize/Plaid credentials (/api/v1/organization/...)
 import organizationRouter from './api/rest/organization.routes';
 import { designMassingRouter } from './services/design/design-massing.service';
-import { sceneStorageRouter } from './services/design/scene-storage.service';
 app.use('/api/v1/organization', organizationRouter);
 
-// Design 3D — AI massing generation + scene storage
+// Design 3D — AI massing generation
 app.use('/api/v1/design', requireAuth, designMassingRouter);
-app.use('/api/v1/deals', requireAuth, sceneStorageRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 

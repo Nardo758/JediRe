@@ -20,7 +20,7 @@ const router = Router();
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
 const saveSceneSchema = z.object({
-  scene_data: z.record(z.any()).describe('Full 3d_scene.json content'),
+  scene_data: z.record(z.string(), z.any()).describe('Full 3d_scene.json content'),
   scenario_id: z.string().optional().describe('Scenario variant ID'),
 });
 
