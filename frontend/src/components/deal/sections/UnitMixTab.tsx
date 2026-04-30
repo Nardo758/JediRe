@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw, Loader2, Activity, TrendingUp, TrendingDown, Minus,
   Info, Zap, Edit3, Check, X, AlertTriangle, ChevronDown, ChevronRight,
+  RotateCcw,
 } from 'lucide-react';
 import { BT } from '../bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import { useDealType } from '../../../stores/dealStore';
+import type { FinancialEngineTabProps } from '../../../pages/development/financial-engine/types';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -37,6 +39,11 @@ interface RentRollUnitType {
   marketRent: number | null;
   occupancyPct: number | null;
   concessionPct: number | null;
+  /** Pre-override values from the backend; present only when overridden */
+  inPlaceRentOriginal?: number | null;
+  marketRentOriginal?: number | null;
+  inPlaceRentOverridden?: boolean;
+  marketRentOverridden?: boolean;
 }
 
 interface LeasingSignals {
@@ -278,20 +285,101 @@ function AncillaryPanel({ totalUnits }: { totalUnits: number }) {
   );
 }
 
-export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
+/**
+ * Read-mode cell renderer for in-place / market rent. Shows the value, an Edit
+ * affordance, an "OVR" badge with a tooltip showing the captured original when the
+ * cell has been user-overridden (with a one-click reset), a small spinner while
+ * a PATCH is in flight, and a brief "SAVED" indicator after a successful write.
+ *
+ * This mirrors the Pro Forma corrections-cell pattern so the user always sees:
+ *   • whether a value is the original or has been overridden,
+ *   • what the original was (tooltip on the badge),
+ *   • a clear path back to the original (the reset button).
+ */
+function CellOverrideDisplay({
+  value, overridden, originalValue, saving, justSaved,
+  onEdit, onReset, tone, placeholderHint,
+}: {
+  value: number | null | undefined;
+  overridden: boolean;
+  originalValue: number | null;
+  saving: boolean;
+  justSaved: boolean;
+  onEdit: () => void;
+  onReset: () => void;
+  tone: 'cyan' | 'amber';
+  placeholderHint?: string | null;
+}) {
+  const accent = tone === 'cyan' ? C.cyan : C.amber;
+  const valueColor = overridden ? C.amber : (value != null ? C.text : C.dim);
+  const origLabel = originalValue != null ? `was ${fmt$(originalValue)}` : 'original unknown';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+      {justSaved && (
+        <span style={{ fontFamily: LABEL, fontSize: 7, color: C.green, letterSpacing: '0.06em' }}>SAVED</span>
+      )}
+      {overridden && (
+        <span
+          title={`Override · ${origLabel}`}
+          style={{
+            fontFamily: LABEL, fontSize: 7, fontWeight: 700, color: accent,
+            background: tone === 'cyan' ? C.cyanDim : C.amberDim,
+            border: `1px solid ${accent}66`, borderRadius: 2, padding: '1px 3px',
+            letterSpacing: '0.06em', cursor: 'help',
+          }}
+        >OVR</span>
+      )}
+      <span
+        onClick={saving ? undefined : onEdit}
+        style={{ color: valueColor, cursor: saving ? 'wait' : 'pointer' }}
+      >{fmt$(value)}</span>
+      {placeholderHint && value == null && (
+        <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>{placeholderHint}</span>
+      )}
+      {saving ? (
+        <Loader2 size={9} color={C.muted} style={{ animation: 'spin 1s linear infinite' }} />
+      ) : overridden ? (
+        <button
+          title={`Reset to original (${origLabel})`}
+          onClick={onReset}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.muted, lineHeight: 0 }}
+        ><RotateCcw size={9} /></button>
+      ) : (
+        <Edit3 size={9} color={C.dim} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Unit Mix tab inside the F9 Financial Engine. Accepts the standard
+ * `FinancialEngineTabProps` shape so it composes cleanly with the other F9 tabs;
+ * only `dealId` and `deal` are read here today, but the rest of the prop bag is
+ * accepted for future enhancements (collision filters, evidence map, etc.) and to
+ * keep the parent page's tab dispatcher uniform.
+ */
+export function UnitMixTab(props: FinancialEngineTabProps) {
+  const { dealId, deal, onF9Refresh } = props;
   const dealType = useDealType();
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingRent, setEditingRent] = useState<{ idx: number; field: 'inPlace' | 'market'; val: string } | null>(null);
   const [rentOverrides, setRentOverrides] = useState<Record<string, { inPlace?: number; market?: number }>>({});
+  const [savingCell, setSavingCell] = useState<{ idx: number; field: 'inPlace' | 'market' } | null>(null);
+  const [justSaved, setJustSaved] = useState<{ idx: number; field: 'inPlace' | 'market' } | null>(null);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
       const res = await apiClient.get<{ success: boolean; data: DealFinancials }>(`/api/v1/deals/${dealId}/financials`);
-      if (res.data.success) setData(res.data.data);
-      else setError('Failed to load unit mix data');
+      if (res.data.success) {
+        setData(res.data.data);
+        // Clear local optimistic overlay — server is now SOT
+        setRentOverrides({});
+      } else {
+        setError('Failed to load unit mix data');
+      }
     } catch (e: any) {
       setError(e?.message ?? 'Error loading data');
     } finally {
@@ -302,18 +390,29 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
   useEffect(() => { load(); }, [load]);
 
   // Persist a rent edit to the backend (unit_mix:{idx}:in_place_rent or :market_rent),
-  // then refetch /financials so the Pro Forma GPR view stays in sync.
-  const commitRentEdit = useCallback(async (rowIdx: number, kind: 'inPlace' | 'market', val: number, unitType: string) => {
-    if (!Number.isFinite(val) || val < 0) return;
+  // then refetch /financials so the Pro Forma GPR view stays in sync. Pass `value: null`
+  // to clear an override and restore the original (pre-edit) rent.
+  const commitRentEdit = useCallback(async (rowIdx: number, kind: 'inPlace' | 'market', val: number | null, unitType: string) => {
+    if (val !== null && (!Number.isFinite(val) || val < 0)) return;
     const cellField = kind === 'inPlace' ? 'in_place_rent' : 'market_rent';
-    // Optimistic local update for responsiveness (will be overwritten by load())
-    setRentOverrides(prev => ({ ...prev, [unitType]: { ...(prev[unitType] ?? {}), [kind]: val } }));
+    // Optimistic local overlay (only when setting a value — clears wait for the refetch)
+    if (val !== null) {
+      setRentOverrides(prev => ({ ...prev, [unitType]: { ...(prev[unitType] ?? {}), [kind]: val } }));
+    }
+    setSavingCell({ idx: rowIdx, field: kind });
     try {
       await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
         field: `unit_mix:${rowIdx}:${cellField}`,
         value: val,
       });
       await load();
+      // Briefly flash a "saved" indicator on the cell
+      setJustSaved({ idx: rowIdx, field: kind });
+      setTimeout(() => {
+        setJustSaved(curr => (curr && curr.idx === rowIdx && curr.field === kind ? null : curr));
+      }, 1800);
+      // Tell the parent page to refresh its shared F9 financials view (so Pro Forma KPIs pick up the new GPR)
+      try { onF9Refresh?.(); } catch { /* noop */ }
     } catch (e) {
       // On failure, drop the optimistic value so the UI reflects server truth on next load
       setRentOverrides(prev => {
@@ -325,8 +424,15 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
         return next;
       });
       console.error(`Failed to save unit_mix rent edit (${cellField} row ${rowIdx}):`, e);
+    } finally {
+      setSavingCell(null);
     }
-  }, [dealId, load]);
+  }, [dealId, load, onF9Refresh]);
+
+  /** Reset a previously-overridden cell back to its captured original value. */
+  const resetRentEdit = useCallback((rowIdx: number, kind: 'inPlace' | 'market', unitType: string) => {
+    void commitRentEdit(rowIdx, kind, null, unitType);
+  }, [commitRentEdit]);
 
   const unitMix = data?.rentRollSummary?.unitMix ?? [];
   const totalUnits = data?.totalUnits ?? 0;
@@ -376,8 +482,10 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
 
   const totalNrsf = unitMix.reduce((s, u) => s + (u.avgSf ?? 0) * u.count, 0);
 
-  const assumedTotalUnits = deal?.deal_data?.deal_assumptions?.total_units
-    ?? deal?.deal_data?.extraction_rent_roll?.total_units
+  // `deal` is loosely typed at this layer; reach in defensively for legacy nested fields.
+  const dealData = (deal as { deal_data?: { deal_assumptions?: { total_units?: number }; extraction_rent_roll?: { total_units?: number } } } | undefined)?.deal_data;
+  const assumedTotalUnits = dealData?.deal_assumptions?.total_units
+    ?? dealData?.extraction_rent_roll?.total_units
     ?? null;
   const unitCountMismatch = assumedTotalUnits != null && totalUnits > 0 && Math.abs(assumedTotalUnits - totalUnits) > 2;
 
@@ -538,13 +646,16 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                                 <button onClick={() => setEditingRent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.red }}><X size={11} /></button>
                               </div>
                             ) : (
-                              <div
-                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, cursor: 'pointer' }}
-                                onClick={() => setEditingRent({ idx, field: 'inPlace', val: String(effRent ?? '') })}
-                              >
-                                <span style={{ color: rentOverrides[u.type]?.inPlace != null ? C.amber : C.text }}>{fmt$(effRent)}</span>
-                                <Edit3 size={9} color={C.dim} />
-                              </div>
+                              <CellOverrideDisplay
+                                value={effRent}
+                                overridden={!!u.inPlaceRentOverridden || rentOverrides[u.type]?.inPlace != null}
+                                originalValue={u.inPlaceRentOriginal ?? null}
+                                saving={savingCell?.idx === idx && savingCell?.field === 'inPlace'}
+                                justSaved={justSaved?.idx === idx && justSaved?.field === 'inPlace'}
+                                onEdit={() => setEditingRent({ idx, field: 'inPlace', val: String(effRent ?? '') })}
+                                onReset={() => resetRentEdit(idx, 'inPlace', u.type)}
+                                tone="cyan"
+                              />
                             )}
                           </td>
 
@@ -573,14 +684,17 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                                 <button onClick={() => setEditingRent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.red }}><X size={11} /></button>
                               </div>
                             ) : (
-                              <div
-                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, cursor: 'pointer' }}
-                                onClick={() => setEditingRent({ idx, field: 'market', val: String(mktRent ?? '') })}
-                              >
-                                <span style={{ color: rentOverrides[u.type]?.market != null ? C.amber : mktRent != null ? C.text : C.dim }}>{fmt$(mktRent)}</span>
-                                {mktRent == null && <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>ENTER</span>}
-                                <Edit3 size={9} color={C.dim} />
-                              </div>
+                              <CellOverrideDisplay
+                                value={mktRent}
+                                overridden={!!u.marketRentOverridden || rentOverrides[u.type]?.market != null}
+                                originalValue={u.marketRentOriginal ?? null}
+                                saving={savingCell?.idx === idx && savingCell?.field === 'market'}
+                                justSaved={justSaved?.idx === idx && justSaved?.field === 'market'}
+                                onEdit={() => setEditingRent({ idx, field: 'market', val: String(mktRent ?? '') })}
+                                onReset={() => resetRentEdit(idx, 'market', u.type)}
+                                tone="amber"
+                                placeholderHint={mktRent == null ? 'ENTER' : null}
+                              />
                             )}
                           </td>
 

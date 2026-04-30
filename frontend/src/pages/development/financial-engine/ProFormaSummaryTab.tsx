@@ -145,6 +145,7 @@ const SOURCE_META: Record<string, { label: string; color: string; bg: string }> 
   override:         { label: 'Override',        color: '#c084fc', bg: '#2e1065' },
   box_score:        { label: 'Box Score',       color: '#86efac', bg: '#14532d' },
   computed:         { label: 'Computed',        color: '#94a3b8', bg: '#1e293b' },
+  unit_mix:         { label: 'Unit Mix',        color: '#22d3ee', bg: '#083344' },
 };
 
 function SourceBadge({ source }: { source: string | null }) {

@@ -935,7 +935,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           {activeTab === 0  && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 1  && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 2  && <BtTabWrapper><UnitMixTab dealId={tabProps.dealId} deal={tabProps.deal as Record<string, unknown> | undefined} /></BtTabWrapper>}
+          {activeTab === 2  && <BtTabWrapper><UnitMixTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 3  && (
             <BtTabWrapper><ProjectionsTab {...tabProps} integrityWarning={integrityBlocked} /></BtTabWrapper>
           )}

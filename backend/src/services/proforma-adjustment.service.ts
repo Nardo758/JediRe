@@ -1167,6 +1167,14 @@ export interface RentRollUnitType {
   marketRent: number | null;
   occupancyPct: number | null;
   concessionPct: number | null;
+  /** Pre-override values, present only when the user has overridden a rent. Lets the
+   *  frontend render an "override" badge and offer a one-click reset on that cell. */
+  inPlaceRentOriginal?: number | null;
+  marketRentOriginal?: number | null;
+  /** True when the corresponding rent has been user-overridden (i.e. an entry exists
+   *  in deal_assumptions.unit_mix_overrides for this row + field). */
+  inPlaceRentOverridden?: boolean;
+  marketRentOverridden?: boolean;
 }
 
 export interface DealCapitalStack {
@@ -1607,7 +1615,7 @@ export async function getDealFinancials(
               exit_cap, rent_growth_yr1, rent_growth_stabilized, hold_period_years,
               interest_rate, ltc, avg_lease_term_months, per_year_overrides,
               io_period_months, amortization_years, dscr_min, origination_fee_pct,
-              unit_mix, avg_rent_per_unit, vacancy_pct
+              unit_mix, unit_mix_overrides, avg_rent_per_unit, vacancy_pct
          FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     ),
@@ -2038,16 +2046,42 @@ export async function getDealFinancials(
     return null;
   })();
 
+  // Carry the raw (pre-filter) array index alongside each parsed row so we can look
+  // up the matching unit_mix_overrides entry — overrides are keyed by raw row index.
+  const unitMixOverrides = (assumptionsRow?.unit_mix_overrides ?? {}) as Record<
+    string,
+    { value?: number | null; originalValue?: number | null } | null
+  >;
   const parsedUnitMix: RentRollUnitType[] | null = rawUnitMix
-    ? rawUnitMix.map(e => ({
-        type:           String(e.type ?? e.unit_type ?? 'Unknown'),
-        count:          +(e.count ?? e.units ?? 0),
-        avgSf:          e.avg_sf != null ? +e.avg_sf : (e.avg_sqft != null ? +e.avg_sqft : null),
-        inPlaceRent:    e.in_place_rent != null ? +e.in_place_rent : (e.avg_rent != null ? +e.avg_rent : null),
-        marketRent:     e.market_rent != null ? +e.market_rent : null,
-        occupancyPct:   e.occupancy_pct != null ? +e.occupancy_pct : null,
-        concessionPct:  e.concession_pct != null ? +e.concession_pct : null,
-      })).filter(e => e.count > 0)
+    ? rawUnitMix
+        .map((e, rawIdx) => ({
+          rawIdx,
+          row: {
+            type:           String(e.type ?? e.unit_type ?? 'Unknown'),
+            count:          +(e.count ?? e.units ?? 0),
+            avgSf:          e.avg_sf != null ? +e.avg_sf : (e.avg_sqft != null ? +e.avg_sqft : null),
+            inPlaceRent:    e.in_place_rent != null ? +e.in_place_rent : (e.avg_rent != null ? +e.avg_rent : null),
+            marketRent:     e.market_rent != null ? +e.market_rent : null,
+            occupancyPct:   e.occupancy_pct != null ? +e.occupancy_pct : null,
+            concessionPct:  e.concession_pct != null ? +e.concession_pct : null,
+          } as RentRollUnitType,
+        }))
+        .filter(({ row }) => row.count > 0)
+        .map(({ rawIdx, row }) => {
+          const ipKey = `unit_mix_override:${rawIdx}:in_place_rent`;
+          const mkKey = `unit_mix_override:${rawIdx}:market_rent`;
+          const ipOv = unitMixOverrides[ipKey];
+          const mkOv = unitMixOverrides[mkKey];
+          if (ipOv && ipOv.value !== null && ipOv.value !== undefined) {
+            row.inPlaceRentOverridden = true;
+            row.inPlaceRentOriginal = ipOv.originalValue ?? null;
+          }
+          if (mkOv && mkOv.value !== null && mkOv.value !== undefined) {
+            row.marketRentOverridden = true;
+            row.marketRentOriginal = mkOv.originalValue ?? null;
+          }
+          return row;
+        })
     : null;
 
   const avgInPlaceRent: number | null = parsedUnitMix && parsedUnitMix.length > 0
