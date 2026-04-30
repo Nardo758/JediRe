@@ -169,6 +169,9 @@ export interface Design3DState {
   showContextBuildings: boolean;
   showGrid: boolean;
   showMeasurements: boolean;
+
+  // View mode: 'studio' (Three.js) or 'map' (Mapbox)
+  viewMode: 'studio' | 'map';
   
   // Edit mode
   editMode: EditMode;

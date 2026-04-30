@@ -47,6 +47,7 @@ import { SectionEditorPanel } from './SectionEditorPanel';
 import { AIRenderingPanel } from './AIRenderingPanel';
 import { DesignAssistantChat } from './DesignAssistantChat';
 import DesignPromptModal from './DesignPromptModal';
+import MapBuildingView from './MapBuildingView';
 
 // ============================================================================
 // Main Component
@@ -98,6 +99,8 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   const showScenarioOverlay = useDesign3DStore((s) => s.showScenarioOverlay);
   const saving = useDesign3DStore((s) => s.saving);
   const loading = useDesign3DStore((s) => s.loading);
+  const viewMode = useDesign3DStore((s) => s.viewMode);
+  const setViewMode = useDesign3DStore((s) => s.setViewMode);
   const hasUnsavedChanges = state.lastUpdated > state.lastSynced;
 
   const [showReferencePanel, setShowReferencePanel] = useState(false);
@@ -355,7 +358,66 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         className="hidden"
         onChange={handleImageUpload}
       />
-      
+
+      {/* Toggle View Mode Button */}
+      <div style={{
+        position: 'absolute',
+        top: 12,
+        left: 12,
+        zIndex: 40,
+        display: 'flex',
+        gap: 4,
+        background: 'rgba(15, 23, 42, 0.8)',
+        padding: 3,
+        borderRadius: 8,
+        border: '1px solid rgba(255,255,255,0.1)',
+      }}>
+        <button
+          onClick={() => setViewMode('studio')}
+          style={{
+            padding: '5px 12px',
+            fontSize: 11,
+            fontFamily: 'system-ui, sans-serif',
+            fontWeight: viewMode === 'studio' ? 600 : 400,
+            background: viewMode === 'studio' ? '#3b82f6' : 'transparent',
+            color: viewMode === 'studio' ? '#fff' : '#94a3b8',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+        >
+          🏗️ Studio
+        </button>
+        <button
+          onClick={() => setViewMode('map')}
+          style={{
+            padding: '5px 12px',
+            fontSize: 11,
+            fontFamily: 'system-ui, sans-serif',
+            fontWeight: viewMode === 'map' ? 600 : 400,
+            background: viewMode === 'map' ? '#3b82f6' : 'transparent',
+            color: viewMode === 'map' ? '#fff' : '#94a3b8',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+        >
+          🗺️ Map
+        </button>
+      </div>
+
+      {/* Map or 3D Canvas */}
+      {viewMode === 'map' ? (
+        <MapBuildingView
+          latitude={state.parcelBoundary?.coordinates[0]?.lat || 33.749}
+          longitude={state.parcelBoundary?.coordinates[0]?.lng || -84.388}
+          parcelPolygon={state.parcelBoundary?.coordinates.map(c => [c.lng, c.lat] as [number, number])}
+          buildingSections={[]} /* will be populated from massing result via massingSectionsToMapBuildings */ }
+          height="100%"
+        />
+      ) : (
       {/* 3D Canvas */}
       <Canvas
         camera={{ position: [50, 50, 50], fov: 50 }}
@@ -461,6 +523,8 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
           </GizmoHelper>
         </Suspense>
       </Canvas>
+      )}
+      {/* End view mode conditional */}
       
       {/* Design Targets Sidebar (from F3 Programming + Amenity Gaps) */}
       {showDesignTargets && designTargets && (

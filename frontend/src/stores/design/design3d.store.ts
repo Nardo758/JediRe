@@ -53,6 +53,7 @@ interface Design3DStore extends Design3DState {
   toggleGrid: () => void;
   toggleMeasurements: () => void;
   setEditMode: (mode: EditMode) => void;
+  setViewMode: (mode: 'studio' | 'map') => void;
   
   // Actions - Metrics
   updateMetrics: (metrics: Partial<BuildingMetrics>) => void;
@@ -125,6 +126,7 @@ const initialState: Design3DState & { scenarios: DevelopmentScenario[]; activeSc
   showContextBuildings: true,
   showGrid: true,
   showMeasurements: false,
+  viewMode: 'studio',
   editMode: 'view',
   history: [],
   historyIndex: -1,
@@ -239,6 +241,7 @@ export const useDesign3DStore = create<Design3DStore>()(
           set((state) => ({ showMeasurements: !state.showMeasurements })),
 
         setEditMode: (mode) => set({ editMode: mode }),
+        setViewMode: (mode) => set({ viewMode: mode }),
 
         // Metrics
         updateMetrics: (metrics) =>
