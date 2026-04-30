@@ -455,7 +455,6 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
           </p>
         </div>
       ) : (
-      {/* 3D Canvas */}
       <Canvas
         camera={{ position: [50, 50, 50], fov: 50 }}
         shadows
