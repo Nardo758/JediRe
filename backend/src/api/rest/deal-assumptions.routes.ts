@@ -546,7 +546,7 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     const { field, year = null, value, strValue, rationale } = req.body as {
       field: string;
       year?: number | null;
-      value: number | string | null;
+      value: number | string | boolean | null;
       strValue?: string;
       // F9 Tier-1: Buyer's justification when an override is outside the
       // P10–P90 confidence band. Persisted to the user-assumption layer so
@@ -560,15 +560,24 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     }
     // String fields: debt (loanTypeLabel, rateType, prepayType) and wf (waterfallType, assetMgmtBasis)
     const isStrField = (field.startsWith('debt:') || field.startsWith('wf:')) && strValue != null;
-    if (!isStrField && value !== null && value !== undefined && typeof value !== 'number') {
+    // Boolean fields: per-deal flags routed through "da:" prefix (e.g. da:use_unit_mix_for_gpr)
+    const isFlagField = field.startsWith('da:');
+    if (!isStrField && !isFlagField && value !== null && value !== undefined && typeof value !== 'number') {
       return res.status(400).json({ error: 'value must be a number or null' });
+    }
+    if (isFlagField && value !== null && value !== undefined && typeof value !== 'boolean' && typeof value !== 'number') {
+      return res.status(400).json({ error: 'value for da:* flags must be boolean, 0/1, or null' });
     }
     if (rationale != null && typeof rationale !== 'string') {
       return res.status(400).json({ error: 'rationale must be a string or omitted' });
     }
 
-    // applyFinancialsOverride accepts number | string | null for string override fields
-    const effectiveValue: number | string | null = isStrField ? strValue! : (value as number | null);
+    // applyFinancialsOverride accepts number | string | boolean | null for typed override fields
+    const effectiveValue: number | string | boolean | null = isStrField
+      ? strValue!
+      : isFlagField
+        ? (value as boolean | number | null)
+        : (value as number | null);
     const result = await applyFinancialsOverride(
       pool, dealId, field, year ?? null, effectiveValue, userId,
       rationale ?? null,

@@ -7,6 +7,7 @@ import {
 } from '../../components/deal/bloomberg-ui';
 import { OverviewTab } from './financial-engine/OverviewTab';
 import { ProFormaSummaryTab } from './financial-engine/ProFormaSummaryTab';
+import { UnitMixTab } from '../../components/deal/sections/UnitMixTab';
 import { ProjectionsTab } from './financial-engine/ProjectionsTab';
 import { AssumptionsTab } from './financial-engine/AssumptionsTab';
 import { DebtTab } from './financial-engine/DebtTab';
@@ -34,6 +35,7 @@ const MONO = BT.font.mono;
 const BUILTIN_TAB_LABELS = [
   '⊞ OVERVIEW',
   '≡ PRO FORMA',
+  '⊞ UNIT MIX',
   '⋮≡ PROJECTIONS',
   '⊕ ASSUMPTIONS',
   '$ TAXES',
@@ -933,19 +935,20 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           {activeTab === 0  && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 1  && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 2  && (
+          {activeTab === 2  && <BtTabWrapper><UnitMixTab dealId={tabProps.dealId} deal={tabProps.deal as Record<string, unknown> | undefined} /></BtTabWrapper>}
+          {activeTab === 3  && (
             <BtTabWrapper><ProjectionsTab {...tabProps} integrityWarning={integrityBlocked} /></BtTabWrapper>
           )}
-          {activeTab === 3  && <BtTabWrapper><AssumptionsTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 4  && <BtTabWrapper><TaxesTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 5  && <BtTabWrapper><SourcesUsesTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 6  && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 7  && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 8  && <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 9  && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 10 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 11 && <BtTabWrapper><ReturnsTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 12 && (
+          {activeTab === 4  && <BtTabWrapper><AssumptionsTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 5  && <BtTabWrapper><TaxesTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 6  && <BtTabWrapper><SourcesUsesTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 7  && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 8  && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 9  && <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 10 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 11 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 12 && <BtTabWrapper><ReturnsTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 13 && (
             <div style={{ height: '100%', overflow: 'hidden', padding: 16, display: 'flex', flexDirection: 'column' }}>
               <CostSheetTab
                 dealId={tabProps.dealId}
@@ -955,7 +958,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
               />
             </div>
           )}
-          {activeTab === 13 && (
+          {activeTab === 14 && (
             <BtTabWrapper>
               <UnderwritingWalkthrough dealId={resolvedDealId} />
             </BtTabWrapper>

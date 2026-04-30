@@ -59,6 +59,8 @@ interface DealFinancials {
     unitMix: RentRollUnitType[] | null;
     avgInPlaceRent: number | null;
     weightedOccupancyPct: number | null;
+    gprFromUnitMix: number | null;
+    useUnitMixForGpr: boolean;
   } | null;
   trafficProjection: TrafficProjection | null;
 }
@@ -299,6 +301,33 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Persist a rent edit to the backend (unit_mix:{idx}:in_place_rent or :market_rent),
+  // then refetch /financials so the Pro Forma GPR view stays in sync.
+  const commitRentEdit = useCallback(async (rowIdx: number, kind: 'inPlace' | 'market', val: number, unitType: string) => {
+    if (!Number.isFinite(val) || val < 0) return;
+    const cellField = kind === 'inPlace' ? 'in_place_rent' : 'market_rent';
+    // Optimistic local update for responsiveness (will be overwritten by load())
+    setRentOverrides(prev => ({ ...prev, [unitType]: { ...(prev[unitType] ?? {}), [kind]: val } }));
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
+        field: `unit_mix:${rowIdx}:${cellField}`,
+        value: val,
+      });
+      await load();
+    } catch (e) {
+      // On failure, drop the optimistic value so the UI reflects server truth on next load
+      setRentOverrides(prev => {
+        const next = { ...prev };
+        if (next[unitType]) {
+          const { [kind]: _drop, ...rest } = next[unitType];
+          next[unitType] = rest;
+        }
+        return next;
+      });
+      console.error(`Failed to save unit_mix rent edit (${cellField} row ${rowIdx}):`, e);
+    }
+  }, [dealId, load]);
+
   const unitMix = data?.rentRollSummary?.unitMix ?? [];
   const totalUnits = data?.totalUnits ?? 0;
   const ls = data?.trafficProjection?.leasingSignals;
@@ -498,13 +527,14 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                                   onChange={e => setEditingRent({ ...editingRent!, val: e.target.value })}
                                   onKeyDown={e => {
                                     if (e.key === 'Enter') {
-                                      setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), inPlace: +editingRent!.val } }));
+                                      const v = +editingRent!.val;
+                                      void commitRentEdit(idx, 'inPlace', v, u.type);
                                       setEditingRent(null);
                                     } else if (e.key === 'Escape') setEditingRent(null);
                                   }}
                                   style={{ width: 72, background: C.panelAlt, border: `1px solid ${C.cyan}`, borderRadius: 3, color: C.cyan, fontFamily: MONO, fontSize: 10, padding: '2px 4px', textAlign: 'right' }}
                                 />
-                                <button onClick={() => { setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), inPlace: +editingRent!.val } })); setEditingRent(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.green }}><Check size={11} /></button>
+                                <button onClick={() => { const v = +editingRent!.val; void commitRentEdit(idx, 'inPlace', v, u.type); setEditingRent(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.green }}><Check size={11} /></button>
                                 <button onClick={() => setEditingRent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.red }}><X size={11} /></button>
                               </div>
                             ) : (
@@ -532,13 +562,14 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                                   onChange={e => setEditingRent({ ...editingRent!, val: e.target.value })}
                                   onKeyDown={e => {
                                     if (e.key === 'Enter') {
-                                      setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), market: +editingRent!.val } }));
+                                      const v = +editingRent!.val;
+                                      void commitRentEdit(idx, 'market', v, u.type);
                                       setEditingRent(null);
                                     } else if (e.key === 'Escape') setEditingRent(null);
                                   }}
                                   style={{ width: 72, background: C.panelAlt, border: `1px solid ${C.amber}`, borderRadius: 3, color: C.amber, fontFamily: MONO, fontSize: 10, padding: '2px 4px', textAlign: 'right' }}
                                 />
-                                <button onClick={() => { setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), market: +editingRent!.val } })); setEditingRent(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.green }}><Check size={11} /></button>
+                                <button onClick={() => { const v = +editingRent!.val; void commitRentEdit(idx, 'market', v, u.type); setEditingRent(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.green }}><Check size={11} /></button>
                                 <button onClick={() => setEditingRent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.red }}><X size={11} /></button>
                               </div>
                             ) : (

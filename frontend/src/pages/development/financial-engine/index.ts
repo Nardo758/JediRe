@@ -1,5 +1,6 @@
 export { OverviewTab } from './OverviewTab';
 export { ProFormaSummaryTab } from './ProFormaSummaryTab';
+export { UnitMixTab } from '../../../components/deal/sections/UnitMixTab';
 export { ProjectionsTab } from './ProjectionsTab';
 export { AssumptionsTab } from './AssumptionsTab';
 export { DebtTab } from './DebtTab';

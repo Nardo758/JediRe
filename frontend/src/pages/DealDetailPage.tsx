@@ -81,7 +81,6 @@ import { DealToolsSection } from '../components/deal/sections/DealToolsSection';
 import { FinancialEnginePage } from './development/FinancialEnginePage';
 import { Design3DShellPage } from './development/Design3DShellPage';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
-import { UnitMixTab } from '../components/deal/sections/UnitMixTab';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
@@ -167,11 +166,6 @@ const ProFormaScreen = (props: ScreenProps) => (
             dealType={p.dealType}
           />
         ),
-      },
-      {
-        id: 'unit-mix',
-        label: 'Unit Mix',
-        component: (p: ScreenProps) => <UnitMixTab dealId={p.dealId} deal={p.deal} />,
       },
     ]}
   />

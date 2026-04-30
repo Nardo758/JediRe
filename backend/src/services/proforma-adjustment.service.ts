@@ -1207,6 +1207,10 @@ export interface DealFinancials {
     unitMix: RentRollUnitType[] | null;
     avgInPlaceRent: number | null;
     weightedOccupancyPct: number | null;
+    /** GPR computed from unit mix: Σ(count × in_place_rent × 12). Null when unit mix is empty/unparsable. */
+    gprFromUnitMix: number | null;
+    /** Per-deal flag — when true and gprFromUnitMix is finite, year1 GPR resolution is forced to 'unit_mix'. */
+    useUnitMixForGpr: boolean;
   } | null;
   trafficProjection: {
     yearly: Array<{
@@ -1624,6 +1628,46 @@ export async function getDealFinancials(
     ?? 0;
   const year1Seed: Record<string, unknown> = (assumptionsRes.rows[0]?.year1 as Record<string, unknown>) ?? {};
 
+  // ── F9 Unit-Mix → GPR override (per-deal opt-in) ────────────────────────────
+  // When deal_assumptions.per_year_overrides['da:use_unit_mix_for_gpr'].value === true
+  // AND deal_assumptions.unit_mix yields a finite Σ(count × in_place_rent × 12) > 0,
+  // we mutate year1Seed.gpr to add a 'unit_mix' layer and force resolution = 'unit_mix'
+  // BEFORE Year-1 rows are built. This guarantees every downstream consumer (year1
+  // operating statement, gprDecomposition, unitEconomics, projections) sees the
+  // unit-mix-derived value through the standard resolvedNum() path.
+  const _rawPyOvsForFlag = (assumptionsRes.rows[0]?.per_year_overrides ?? {}) as Record<string, { value?: unknown } | null>;
+  const _useUnitMixFlagEntry = _rawPyOvsForFlag['da:use_unit_mix_for_gpr'];
+  const useUnitMixForGpr: boolean = _useUnitMixFlagEntry?.value === true;
+
+  const _rawUnitMixForGpr: Array<Record<string, unknown>> | null =
+    Array.isArray(assumptionsRes.rows[0]?.unit_mix) ? (assumptionsRes.rows[0]!.unit_mix as Array<Record<string, unknown>>) : null;
+  let gprFromUnitMix: number | null = null;
+  if (_rawUnitMixForGpr && _rawUnitMixForGpr.length > 0) {
+    let sum = 0;
+    let anyFinite = false;
+    for (const row of _rawUnitMixForGpr) {
+      const c = row.count != null ? +(row.count as number) : (row.units != null ? +(row.units as number) : null);
+      const r = row.in_place_rent != null ? +(row.in_place_rent as number) : (row.avg_rent != null ? +(row.avg_rent as number) : null);
+      if (c != null && r != null && isFinite(c) && isFinite(r) && c > 0 && r > 0) {
+        sum += c * r * 12;
+        anyFinite = true;
+      }
+    }
+    gprFromUnitMix = anyFinite ? Math.round(sum) : null;
+  }
+
+  if (useUnitMixForGpr && gprFromUnitMix != null && gprFromUnitMix > 0) {
+    const existingGpr = (year1Seed.gpr && typeof year1Seed.gpr === 'object')
+      ? (year1Seed.gpr as Record<string, unknown>)
+      : {};
+    year1Seed.gpr = {
+      ...existingGpr,
+      unit_mix: gprFromUnitMix,
+      resolved: gprFromUnitMix,
+      resolution: 'unit_mix',
+    };
+  }
+
   // ── Year-1 Operating Statement rows ────────────────────────────────────────
   const REVENUE_FIELDS: Array<[string, string]> = [
     ['gpr', 'Gross Potential Rent'],
@@ -2023,7 +2067,7 @@ export async function getDealFinancials(
     : (assumptionsRow?.vacancy_pct != null ? +(1 - +assumptionsRow.vacancy_pct).toFixed(4) : null);
 
   const rentRollSummary: DealFinancials['rentRollSummary'] = parsedUnitMix || avgInPlaceRent || weightedOccupancyPct
-    ? { unitMix: parsedUnitMix, avgInPlaceRent, weightedOccupancyPct }
+    ? { unitMix: parsedUnitMix, avgInPlaceRent, weightedOccupancyPct, gprFromUnitMix, useUnitMixForGpr }
     : null;
 
   // ── User overrides — reconstruct USER layer state for frontend rehydration ──
@@ -3477,7 +3521,7 @@ async function applyUnitMixOverride(
   const rowIndex = rowIndexRaw;
 
   // Allowed mutable fields in a unit mix row (whitelist — guard against arbitrary column injection)
-  const ALLOWED = new Set(['count', 'avg_sf', 'in_place_rent', 'occupancy_pct', 'concession_pct']);
+  const ALLOWED = new Set(['count', 'avg_sf', 'in_place_rent', 'market_rent', 'occupancy_pct', 'concession_pct']);
   if (!ALLOWED.has(cellField)) {
     throw new Error(`unit_mix cell field '${cellField}' is not overridable`);
   }
@@ -3488,17 +3532,29 @@ async function applyUnitMixOverride(
     [dealId]
   );
   const currentMix: Array<Record<string, unknown>> = res.rows[0]?.unit_mix ?? [];
-  if (rowIndex < 0 || rowIndex >= currentMix.length) {
-    throw new Error(`unit_mix row index ${rowIndex} out of bounds (length ${currentMix.length})`);
-  }
 
-  // We store overrides in unit_mix_overrides keyed as "unit_mix_override:{row}:{field}"
-  // On first write, we capture the originalValue so we can restore on clear (value=null)
-  const overrideKey = `unit_mix_override:${rowIndex}:${cellField}`;
+  // The frontend renders rentRollSummary.unitMix, which getDealFinancials builds
+  // from raw unit_mix WITH `.filter(e => count > 0)` (see parsedUnitMix at ~line 2050).
+  // Hence the rowIndex on the wire is a *displayed* (filtered) index. We must map
+  // it back to the raw array index so we patch the right row.
+  const rawToDisplayed: number[] = []; // displayedIdx → rawIdx
+  currentMix.forEach((row, i) => {
+    const c = +(row.count ?? row.units ?? 0);
+    if (Number.isFinite(c) && c > 0) rawToDisplayed.push(i);
+  });
+  if (rowIndex < 0 || rowIndex >= rawToDisplayed.length) {
+    throw new Error(`unit_mix row index ${rowIndex} out of bounds (visible length ${rawToDisplayed.length})`);
+  }
+  const rawIndex = rawToDisplayed[rowIndex];
+
+  // We store overrides in unit_mix_overrides keyed as "unit_mix_override:{rawRow}:{field}"
+  // (raw index — stable across re-render filtering). On first write we capture the
+  // originalValue so we can restore on clear (value=null).
+  const overrideKey = `unit_mix_override:${rawIndex}:${cellField}`;
 
   // Read existing override entry (to get originalValue if already set)
   const existingOverrideRes = await pool.query(
-    `SELECT unit_mix_overrides->$2 AS entry, unit_mix->${rowIndex}->>$3 AS current_val FROM deal_assumptions WHERE deal_id = $1`,
+    `SELECT unit_mix_overrides->$2 AS entry, unit_mix->${rawIndex}->>$3 AS current_val FROM deal_assumptions WHERE deal_id = $1`,
     [dealId, overrideKey, cellField]
   );
   const existingEntry = existingOverrideRes.rows[0]?.entry as { originalValue?: number } | null;
@@ -3530,7 +3586,7 @@ async function applyUnitMixOverride(
               ),
               updated_at = NOW()
         WHERE deal_id = $1`,
-      [dealId, `{${overrideKey}}`, JSON.stringify(overrideEntry), `{${rowIndex},${cellField}}`, JSON.stringify(value)]
+      [dealId, `{${overrideKey}}`, JSON.stringify(overrideEntry), `{${rawIndex},${cellField}}`, JSON.stringify(value)]
     );
   } else {
     // Clearing: restore originalValue if we captured it, otherwise leave unit_mix unchanged
@@ -3550,7 +3606,7 @@ async function applyUnitMixOverride(
                 ),
                 updated_at = NOW()
           WHERE deal_id = $1`,
-        [dealId, `{${overrideKey}}`, `{${rowIndex},${cellField}}`, JSON.stringify(restoreValue)]
+        [dealId, `{${overrideKey}}`, `{${rawIndex},${cellField}}`, JSON.stringify(restoreValue)]
       );
     } else {
       // No original to restore — just clear the override entry
@@ -3574,9 +3630,9 @@ async function applyUnitMixOverride(
       `INSERT INTO assumption_adjustments
          (proforma_id, adjustment_trigger, assumption_type, previous_value, new_value, calculation_method, calculation_inputs, confidence_score)
        SELECT pa.id, 'manual', $2, NULL, $3::text, 'user_override_unit_mix',
-              jsonb_build_object('field', $2, 'rowIndex', $4, 'cellField', $5, 'userId', $6)::jsonb, 100
+              jsonb_build_object('field', $2, 'displayedIndex', $4, 'rawIndex', $7, 'cellField', $5, 'userId', $6)::jsonb, 100
        FROM proforma_assumptions pa WHERE pa.deal_id = $1 LIMIT 1`,
-      [dealId, field, value?.toString() ?? 'null', rowIndex, cellField, userId]
+      [dealId, field, value?.toString() ?? 'null', rowIndex, cellField, userId, rawIndex]
     );
   } catch {
     // Non-fatal
@@ -3611,7 +3667,7 @@ export async function applyFinancialsOverride(
   dealId: string,
   field: string,
   year: number | null,
-  value: number | string | null,
+  value: number | string | boolean | null,
   userId: string,
   // F9 Tier-1: optional buyer rationale persisted alongside the override
   // entry. Required by the F9 Protectors UI when an override falls outside
@@ -3673,6 +3729,55 @@ export async function applyFinancialsOverride(
   // Route unit_mix cell overrides to dedicated handler
   if (field.startsWith('unit_mix:')) {
     return applyUnitMixOverride(pool, dealId, field, typeof value === 'number' ? value : null, userId);
+  }
+
+  // Route per-deal flags into per_year_overrides under "da:" prefix.
+  // Currently supports da:use_unit_mix_for_gpr (boolean) — overrides Year-1
+  // GPR resolution to Σ(count × in_place_rent × 12) computed from
+  // deal_assumptions.unit_mix at /financials read time.
+  if (field.startsWith('da:')) {
+    const flagOn = value === true || value === 1 || value === '1' || value === 'true';
+    const isClear = value === null;
+    const pyKey = field; // store as-is, e.g. "da:use_unit_mix_for_gpr"
+    if (isClear) {
+      await pool.query(
+        `UPDATE deal_assumptions
+            SET per_year_overrides = COALESCE(per_year_overrides, '{}'::jsonb) - $2,
+                updated_at = NOW()
+          WHERE deal_id = $1`,
+        [dealId, pyKey]
+      );
+      return {
+        year1Key: field, year: 0, appliedValue: null, resolution: 'cleared',
+        updatedCell: { [field]: null },
+        derivedRecomputation: { egi: null, noi: null, totalOpex: null, derivedVacancyPct: null, affectedFields: [field] },
+      };
+    }
+    const pyEntry = {
+      field, year: 0, value: flagOn, updatedBy: userId,
+      updatedAt: new Date().toISOString(), resolution: 'override',
+    };
+    // Upsert: a deal_assumptions row may not yet exist for this deal (a
+    // common state for newly imported deals where pro-forma seeding has not
+    // run). A bare UPDATE would silently match zero rows and the toggle
+    // would be lost.
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, per_year_overrides, updated_at)
+            VALUES ($1, jsonb_build_object($2::text, $3::jsonb), NOW())
+       ON CONFLICT (deal_id) DO UPDATE
+            SET per_year_overrides = jsonb_set(
+                  COALESCE(deal_assumptions.per_year_overrides, '{}'::jsonb),
+                  ARRAY[$2::text],
+                  $3::jsonb
+                ),
+                updated_at = NOW()`,
+      [dealId, pyKey, JSON.stringify(pyEntry)]
+    );
+    return {
+      year1Key: field, year: 0, appliedValue: flagOn ? 1 : 0, resolution: 'user_override',
+      updatedCell: { [field]: flagOn },
+      derivedRecomputation: { egi: null, noi: null, totalOpex: null, derivedVacancyPct: null, affectedFields: [field, 'gpr'] },
+    };
   }
 
   // Route FL tax overrides to per_year_overrides with 'tax:' prefix

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
@@ -68,8 +68,21 @@ interface DealFinancials {
   };
   capitalStack: DealCapitalStack;
   rentRollSummary: {
+    unitMix: Array<{
+      type: string;
+      count: number;
+      avgSf: number | null;
+      inPlaceRent: number | null;
+      marketRent: number | null;
+      occupancyPct: number | null;
+      concessionPct: number | null;
+    }> | null;
     avgInPlaceRent: number | null;
     weightedOccupancyPct: number | null;
+    /** GPR computed from unit mix: Σ(count × in_place_rent × 12). */
+    gprFromUnitMix: number | null;
+    /** Per-deal flag — when true, server resolves Year-1 GPR from the unit mix. */
+    useUnitMixForGpr: boolean;
   } | null;
   assumptions: {
     holdYears: number;
@@ -371,6 +384,21 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
     }
   }, [dealId, load]);
 
+  // Toggle the "Use Unit Mix as GPR source" per-deal flag.
+  // Server resolves Year-1 GPR to Σ(count × in_place_rent × 12) when enabled.
+  const handleToggleUnitMixGpr = useCallback(async (next: boolean) => {
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
+        field: 'da:use_unit_mix_for_gpr',
+        year: null,
+        value: next,
+      });
+      await load();
+    } catch (e: unknown) {
+      console.error('Toggle use_unit_mix_for_gpr failed:', e instanceof Error ? e.message : e);
+    }
+  }, [dealId, load]);
+
   // Clears a user override on the backend (value: null = revert to ingested)
   const handleResetCorrection = useCallback(async (field: string) => {
     try {
@@ -457,7 +485,48 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
         </div>
 
         {/* KPI pills */}
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Per-deal toggle: Use Unit Mix as GPR source.
+              When ON, server resolves Year-1 GPR to Σ(count × in_place_rent × 12) from the Unit Mix tab. */}
+          {(() => {
+            const rrs = data?.rentRollSummary ?? null;
+            const hasUnitMix = !!(rrs?.unitMix && rrs.unitMix.length > 0);
+            const useUM = !!rrs?.useUnitMixForGpr;
+            const gprUM = rrs?.gprFromUnitMix ?? null;
+            if (!hasUnitMix && !useUM) return null;
+            const gprResolved = byField['gpr']?.resolved ?? null;
+            const isActive = useUM && gprUM != null && gprUM > 0;
+            const titleHint = !hasUnitMix
+              ? 'No unit mix on file — add rows in the Unit Mix tab to enable.'
+              : useUM
+                ? `Year-1 GPR resolved from Unit Mix: ${fmt$(gprUM ?? gprResolved)}`
+                : `Would set Year-1 GPR to ${fmt$(gprUM)} (Σ count × in-place rent × 12)`;
+            return (
+              <button
+                type="button"
+                title={titleHint}
+                onClick={() => handleToggleUnitMixGpr(!useUM)}
+                disabled={!hasUnitMix && !useUM}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '2px 8px', borderRadius: 2,
+                  border: `1px solid ${isActive ? '#06b6d4' : '#27272a'}`,
+                  background: isActive ? '#062a3a' : '#111827',
+                  color: isActive ? '#06b6d4' : '#64748b',
+                  fontFamily: LABEL, fontSize: 9, fontWeight: 600,
+                  cursor: (!hasUnitMix && !useUM) ? 'not-allowed' : 'pointer',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                <span style={{
+                  display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                  background: isActive ? '#06b6d4' : '#27272a',
+                  boxShadow: isActive ? '0 0 6px #06b6d4' : 'none',
+                }} />
+                GPR FROM UNIT MIX{isActive ? ' · ON' : ''}
+              </button>
+            );
+          })()}
           {[
             { l: 'GPR', v: fmt$(byField['gpr']?.resolved ?? null) },
             { l: 'EGI', v: fmt$(egiResolved) },
@@ -966,10 +1035,11 @@ function AncillaryExpansionPanel({ totalUnits, dealId }: { totalUnits: number; d
           </span>
           <span style={{ fontFamily: LABEL, fontSize: 8, color: '#334155', marginLeft: 8 }}>click QTY · $/MO · OCC% to edit</span>
         </div>
-        <a href={`/deals/${dealId}/detail?tab=unit-mix`}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: LABEL, fontSize: 8, color: '#475569', textDecoration: 'none' }}>
-          <ExternalLink size={9} />Edit in F13 Unit Mix
-        </a>
+        <span
+          title="Open the Unit Mix tab in this Financial Engine to edit per-unit-type rents and counts."
+          style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: LABEL, fontSize: 8, color: '#475569' }}>
+          See Unit Mix tab to edit unit-level rents
+        </span>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
         <thead>

@@ -1676,94 +1676,15 @@ router.patch('/:dealId/proforma/year1/override', requireAuth, async (req: Authen
  * Returns the shape the frontend DealFinancials interface expects:
  *   { success, data: { dealId, dealName, totalUnits, proforma: { year1, integrityChecks, unitEconomics, valuationSnapshot } } }
  */
-router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { dealId } = req.params;
-    const userId = req.user!.userId;
-
-    // 1. Verify access
-    const dealResult = await pool.query(
-      'SELECT id, name, project_type, data, target_units FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-    if (dealResult.rows.length === 0) {
-      return res.status(403).json({ success: false, error: 'Not authorized' });
-    }
-    const deal = dealResult.rows[0];
-
-    // 2. Auto-seed proforma if empty
-    const existingYear1 = await pool.query(
-      `SELECT year1 FROM deal_assumptions WHERE deal_id = $1`,
-      [dealId]
-    );
-    if (existingYear1.rows.length === 0 || !existingYear1.rows[0].year1) {
-      try {
-        const { seedProFormaYear1 } = await import('../../services/proforma-seeder.service');
-        await seedProFormaYear1(pool, dealId);
-      } catch (seedErr) {
-        console.warn('Proforma seed failed (non-critical):', (seedErr as Error).message);
-      }
-    }
-
-    // 3. Fetch year1 data
-    const year1Result = await pool.query(
-      `SELECT year1, source_type, source_date, updated_at
-       FROM deal_assumptions WHERE deal_id = $1`,
-      [dealId]
-    );
-    const year1Data = year1Result.rows[0]?.year1 || null;
-
-    // 4. Build the response
-    const totalUnits = deal.target_units || 0;
-    const dealName = deal.name || '';
-
-    // Build operating statement rows from the proforma year1 data
-    const operatingRows = buildOperatingStatement(year1Data, totalUnits);
-
-    // Extract unit economics
-    const unitEconomics: Record<string, number | null> = {
-      gpr: operatingRows.find(r => r.field === 'gpr')?.resolved ?? null,
-      avgRent: totalUnits > 0 ? (operatingRows.find(r => r.field === 'gpr')?.resolved ?? 0) / totalUnits : null,
-      effectiveRent: operatingRows.find(r => r.field === 'effective_gross_income')?.resolved ?? null,
-      egiPerUnit: totalUnits > 0 ? (operatingRows.find(r => r.field === 'effective_gross_income')?.resolved ?? 0) / totalUnits : null,
-      opexPerUnit: operatingRows.find(r => r.field === 'total_opex')?.resolved ?? null,
-      opexPerUnitVal: totalUnits > 0 ? (operatingRows.find(r => r.field === 'total_opex')?.resolved ?? 0) / totalUnits : null,
-      noi: operatingRows.find(r => r.field === 'net_operating_income')?.resolved ?? null,
-      noiPerUnit: totalUnits > 0 ? (operatingRows.find(r => r.field === 'net_operating_income')?.resolved ?? 0) / totalUnits : null,
-    };
-
-    // Valuation snapshot
-    const noiValue = operatingRows.find(r => r.field === 'net_operating_income')?.resolved;
-    const valuationSnapshot = noiValue != null && totalUnits > 0
-      ? {
-          capRateImplied: null,
-          pricePerUnit: null,
-          noi: noiValue,
-          noiPerUnit: noiValue / totalUnits,
-          note: 'From proforma year1 seed',
-        }
-      : null;
-
-    res.json({
-      success: true,
-      data: {
-        dealId,
-        dealName,
-        totalUnits,
-        proforma: {
-          year1: operatingRows,
-          integrityChecks: [],
-          unitEconomics,
-          valuationSnapshot,
-        },
-      },
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Financials endpoint error:', message);
-    res.status(500).json({ success: false, error: message });
-  }
-});
+// NOTE: GET /:dealId/financials is intentionally deferred to the canonical
+// rich handler in deal-assumptions.routes.ts (mounted later on the same
+// '/api/v1/deals' prefix). That handler returns the full DealFinancials shape
+// (operatingStatement, rentRollSummary, year1Seed, projections, returns…)
+// expected by ProFormaSummaryTab and the rest of the F9 Financial Engine.
+// A duplicate slim implementation was previously inlined here but it (a)
+// referenced a non-existent `data` column on `deals` (the column is
+// `deal_data`) and (b) returned an incomplete shape that broke the F9 UI.
+router.get('/:dealId/financials', (_req, _res, next) => next());
 
 /**
  * Build the operating statement rows from proforma year1 JSON and unit counts.

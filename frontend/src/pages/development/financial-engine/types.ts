@@ -286,7 +286,17 @@ export interface F9DealFinancials {
     amortizationYears: number|null; dscrMin: number|null;
     originationFeePct: number|null; pricePerUnit: number|null;
   };
-  rentRollSummary: { avgInPlaceRent: number|null; weightedOccupancyPct: number|null }|null;
+  rentRollSummary: {
+    unitMix: Array<{
+      type: string; count: number; avgSf: number|null;
+      inPlaceRent: number|null; marketRent: number|null;
+      occupancyPct: number|null; concessionPct: number|null;
+    }>|null;
+    avgInPlaceRent: number|null;
+    weightedOccupancyPct: number|null;
+    gprFromUnitMix: number|null;
+    useUnitMixForGpr: boolean;
+  }|null;
   trafficProjection: {
     yearly: F9TrafficYear[];
     leaseUp: { weeksTo90: number|null; weeksTo93: number|null; weeksTo95: number|null }|null;
