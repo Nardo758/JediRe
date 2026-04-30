@@ -60,7 +60,7 @@ interface MapBuildingViewProps {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.REACT_APP_MAPBOX_TOKEN || '';
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 const DEFAULT_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
 const ALT_STYLE = 'mapbox://styles/mapbox/light-v11';
