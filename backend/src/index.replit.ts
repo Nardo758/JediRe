@@ -79,6 +79,7 @@ import { createBrokerNarrativesRoutes } from './api/rest/broker-narratives.route
 import { createIntelligenceRefreshRoutes } from './api/rest/intelligence-refresh.routes';
 import { createKnowledgeGraphRoutes } from './api/rest/knowledge-graph.routes';
 import { createKGDealIngestionRoutes } from './services/knowledge-graph/kg-deal-ingestion.routes';
+import { createKGDealContextRoutes } from './services/knowledge-graph/kg-deal-context.routes';
 import { createContextAwarenessRoutes } from './api/rest/context-awareness.routes';
 import scheduledRefreshRoutes from './api/rest/scheduled-refresh.routes';
 import dataMatrixRoutes from './api/rest/data-matrix.routes';
@@ -495,6 +496,7 @@ app.use('/api/v1/broker-narratives', createBrokerNarrativesRoutes(pool));
 app.use('/api/v1/intelligence', createIntelligenceRefreshRoutes());
 app.use('/api/v1/knowledge-graph', createKnowledgeGraphRoutes(pool));
 app.use('/api/v1/knowledge-graph', createKGDealIngestionRoutes(pool));
+app.use('/api/v1/knowledge-graph/context', requireAuth, createKGDealContextRoutes(pool));
 
 // KG Deal Listener — auto-ingests deal analysis results into the knowledge graph.
 // Hooks into zoning analysis, market analysis, and program target events.
