@@ -46,6 +46,7 @@ import { BuildingGeneratorPanel } from './BuildingGeneratorPanel';
 import { SectionEditorPanel } from './SectionEditorPanel';
 import { AIRenderingPanel } from './AIRenderingPanel';
 import { DesignAssistantChat } from './DesignAssistantChat';
+import DesignPromptModal from './DesignPromptModal';
 
 // ============================================================================
 // Main Component
@@ -104,6 +105,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   const [showGeneratorPanel, setShowGeneratorPanel] = useState(false);
   const [showEditorPanel, setShowEditorPanel] = useState(false);
   const [showAIRenderingPanel, setShowAIRenderingPanel] = useState(false);
+  const [showDesignPrompt, setShowDesignPrompt] = useState(false);
   const [showDesignAssistant, setShowDesignAssistant] = useState(false);
   
   // File input ref for image upload
@@ -249,47 +251,64 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   }, [state.buildingSections]);
 
   /**
-   * AI DESIGN GENERATION HOOK (Placeholder for Phase 2 Qwen Integration)
-   * This will eventually send prompts like "Design 280-unit building" to Qwen
+   * AI DESIGN GENERATION — Opens the DesignPromptModal for natural language input
    */
-  const handleAIGenerate = useCallback(async () => {
+  const handleAIGenerate = useCallback(() => {
     if (!state.parcelBoundary) {
       alert('Please set a parcel boundary first (draw or import parcel)');
       return;
     }
+    setShowDesignPrompt(true);
+  }, [state.parcelBoundary]);
 
-    // Build input from design targets (F3 Programming) and zoning envelope (F2)
+  /**
+   * Handles generation with parsed prompt parameters
+   */
+  const handlePromptGenerate = useCallback(async (parsed: {
+    targetUnits?: number;
+    targetStories?: number;
+    formFactor?: string;
+    designPriority?: string;
+    prefersRetail: boolean;
+    rawPrompt: string;
+  }) => {
+    setShowDesignPrompt(false);
+
     const targets = designTargets ? designTargets.program : null;
     const envelope = designTargets?.zoningEnvelope;
-    
-    // Estimate lot square footage from parcel boundary
     const lotSqft = state.parcelBoundary?.lotSquareFootage || 43560;
-    
-    // Get the max GFA from the zoning envelope state (fka building envelope overlay)
     const maxGfaSqft = envelope?.maxGFA || state.zoningEnvelope?.maxGfa || lotSqft * 3;
-    const maxStories = envelope?.maxStories || state.zoningEnvelope?.maxHeight || 10;
-    
-    const targetUnits = targets?.targetUnits || 280;
-    const targetGfa = targets?.targetGFA || maxGfaSqft;
-    
-    console.log(`🤖 Generating massing: ${targetUnits}u / ${Math.round(targetGfa / 1000)}K GFA`);
+    const maxStoriesOverride = envelope?.maxStories || state.zoningEnvelope?.maxHeight || 10;
 
+    const targetUnits = parsed.targetUnits || targets?.targetUnits || 280;
+    const targetStories = parsed.targetStories || maxStoriesOverride;
+    const targetGfa = targets?.targetGFA || maxGfaSqft;
     const mix = targets?.unitMix || { studio: 10, oneBed: 40, twoBed: 35, threeBed: 15 };
+    const designPriority = (parsed.designPriority || 'density') as 'density' | 'unit_mix' | 'open_space' | 'parking';
+    const formFactor = (parsed.formFactor || 'auto') as 'auto' | 'bar' | 'l_shape' | 'u_shape' | 'courtyard' | 'point_tower';
+
+    // If premium priority, tilt mix toward larger units
+    const adjustedMix = parsed.designPriority === 'unit_mix'
+      ? { studio: 5, oneBed: 30, twoBed: 40, threeBed: 25 }
+      : mix;
+
+    console.log(`🤖 [Prompt] ${parsed.rawPrompt}`);
+    console.log(`🤖 Massing: ${targetUnits}u / ${Math.round(targetGfa / 1000)}K GFA / ${targetStories}s / ${formFactor}`);
 
     const result = await designMassingGenerate({
       lotSqft,
       maxGfaSqft,
-      maxStories,
+      maxStories: targetStories,
       targetUnits,
       targetGfa,
-      unitMix: mix,
+      unitMix: adjustedMix,
       parkingRatio: targets?.targetParkingRatio || 1.5,
       parkingStructure: 'podium',
-      designPriority: 'density',
+      designPriority,
+      formFactor,
     });
 
     if (result?.success && result.sections.length > 0) {
-      // Convert massing result sections to BuildingSection format
       const newSections: BuildingSection[] = result.sections.map((sec, i) => ({
         id: sec.id,
         name: sec.name,
@@ -299,7 +318,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         totalStories: sec.totalStories,
         height: sec.floors * 12,
         floorPlan: [],
-        color: `hsl(${(i * 50 + 210) % 360}, 60%, ${50 + (sec.floors / maxStories) * 20}%)`,
+        color: `hsl(${(i * 50 + 210) % 360}, 60%, ${50 + (sec.floors / targetStories) * 20}%)`,
         type: sec.hasRetail ? 'mixed_use' : 'residential',
         position: sec.position,
         units: sec.units,
@@ -307,7 +326,6 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         hasRetail: sec.hasRetail,
       }));
 
-      // Set building sections in state
       actions.setBuildingSections(newSections);
       actions.setMetrics({
         totalUnits: result.totals.totalUnits,
@@ -513,6 +531,16 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         <AIRenderingPanel
           onClose={() => setShowAIRenderingPanel(false)}
           captureScreenshot={captureScreenshot}
+        />
+      )}
+
+      {/* AI Design Prompt Modal */}
+      {showDesignPrompt && (
+        <DesignPromptModal
+          onGenerate={handlePromptGenerate}
+          onClose={() => setShowDesignPrompt(false)}
+          loading={massingLoading}
+          defaultUnits={designTargets?.program?.targetUnits || 280}
         />
       )}
       
