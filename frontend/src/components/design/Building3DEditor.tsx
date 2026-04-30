@@ -38,6 +38,7 @@ import { geoJsonToParcelBoundary } from '@/utils/geoJsonToParcel';
 import { useDesign3DStore } from '@/stores/design/design3d.store';
 import { ScenarioEnvelopeMesh } from './ScenarioEnvelopeMesh';
 import { ScenarioSelectorPanel } from './ScenarioSelectorPanel';
+import { DesignTargetsPanel, type DesignTargets } from './DesignTargetsPanel';
 import { DesignReferencePanel } from './DesignReferencePanel';
 import { ViewportOverlay } from './ViewportOverlay';
 import { BuildingGeneratorPanel } from './BuildingGeneratorPanel';
@@ -56,6 +57,8 @@ interface Building3DEditorProps {
   showMetricsPanel?: boolean;
   onMetricsChange?: (metrics: any) => void;
   onSave?: () => void;
+  /** Program targets and approved amenities from F3 Market tabs */
+  designTargets?: DesignTargets;
 }
 
 export const Building3DEditor: React.FC<Building3DEditorProps> = ({
@@ -65,6 +68,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   showMetricsPanel = true,
   onMetricsChange,
   onSave,
+  designTargets,
 }) => {
   const { state, actions } = useDesign3D();
   const { generateSimpleBuilding, generateFromUnitMix } = useBuildingGenerator();
@@ -102,6 +106,9 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   
   // File input ref for image upload
   const imageInputRef = useRef<HTMLInputElement>(null);
+  
+  // Design targets from F3 for the target sidebar
+  const [showDesignTargets, setShowDesignTargets] = useState(!!designTargets);
   
   // Canvas ref for screenshot capture
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -394,8 +401,24 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         </Suspense>
       </Canvas>
       
+      {/* Design Targets Sidebar (from F3 Programming + Amenity Gaps) */}
+      {showDesignTargets && designTargets && (
+        <DesignTargetsPanel
+          targets={designTargets}
+          metrics={{
+            currentUnits: state.metrics.buildingCount || state.buildingSections.length * (state.metrics.totalUnits || 36),
+            currentGFA: state.metrics.totalGFA || 180000,
+            currentFAR: state.metrics.far || 2.8,
+            currentFloors: state.metrics.maxFloors || Math.max(...state.buildingSections.map(s => s.floors || 2), 8),
+            currentParkingSpaces: state.metrics.parkingSpaces || Math.round(state.metrics.parkingRatio! * (state.metrics.totalUnits || 36)),
+            currentHeight: state.metrics.maxHeight || 80,
+            estimatedCost: state.metrics.estimatedCost || 42500000,
+          }}
+        />
+      )}
+      
       {/* Metrics Panel */}
-      {showMetricsPanel && <MetricsPanel metrics={state.metrics} />}
+      {showMetricsPanel && !showDesignTargets && <MetricsPanel metrics={state.metrics} />}
       
       {/* Toolbar */}
       <Toolbar
