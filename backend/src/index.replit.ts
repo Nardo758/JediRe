@@ -587,7 +587,13 @@ app.use('/api/v1/lifecycle', lifecycleRouter);
 
 // organization.routes.ts: deal team assignments, phase handoffs, context tracker, DocuSign/Notarize/Plaid credentials (/api/v1/organization/...)
 import organizationRouter from './api/rest/organization.routes';
+import { designMassingRouter } from './services/design/design-massing.service';
+import { sceneStorageRouter } from './services/design/scene-storage.service';
 app.use('/api/v1/organization', organizationRouter);
+
+// Design 3D — AI massing generation + scene storage
+app.use('/api/v1/design', requireAuth, designMassingRouter);
+app.use('/api/v1/deals', requireAuth, sceneStorageRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 

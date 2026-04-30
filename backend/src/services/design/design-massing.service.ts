@@ -49,7 +49,7 @@ const generateMassingSchema = z.object({
 /**
  * POST /api/v1/design/generate-massing
  */
-router.post('/api/v1/design/generate-massing', async (req: Request, res: Response) => {
+router.post('/generate-massing', async (req: Request, res: Response) => {
   try {
     const body = generateMassingSchema.parse(req.body);
 

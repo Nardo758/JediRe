@@ -25,7 +25,7 @@ const saveSceneSchema = z.object({
  * POST /api/v1/deals/:dealId/files/3d-scene
  * Save the current 3D scene (or a specific scenario variant).
  */
-router.post('/api/v1/deals/:dealId/files/3d-scene', async (req: Request, res: Response) => {
+router.post('/:dealId/files/3d-scene', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const body = saveSceneSchema.parse(req.body);
@@ -54,7 +54,7 @@ router.post('/api/v1/deals/:dealId/files/3d-scene', async (req: Request, res: Re
  * GET /api/v1/deals/:dealId/files/3d-scene
  * Load the saved 3D scene (optionally for a specific scenario).
  */
-router.get('/api/v1/deals/:dealId/files/3d-scene', async (req: Request, res: Response) => {
+router.get('/:dealId/files/3d-scene', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const scenarioId = req.query.scenario_id as string | undefined;
@@ -87,7 +87,7 @@ router.get('/api/v1/deals/:dealId/files/3d-scene', async (req: Request, res: Res
  * DELETE /api/v1/deals/:dealId/files/3d-scene
  * Delete a saved scene or scenario variant.
  */
-router.delete('/api/v1/deals/:dealId/files/3d-scene', async (req: Request, res: Response) => {
+router.delete('/:dealId/files/3d-scene', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const scenarioId = req.query.scenario_id as string | undefined;
