@@ -260,6 +260,25 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         detectedZoning?.municipality || locationInfo?.city || null,
       );
 
+      // Seed capsule with zoning data
+      try {
+        await apiClient.post(`/api/v1/deals/${dealId}/capsule/seed`, {
+          source: 'zoning',
+          data: {
+            zoneCode,
+            municipality: detectedZoning?.municipality || locationInfo?.city,
+            state: detectedZoning?.state || locationInfo?.state,
+            county: locationInfo?.county,
+            analysis: analysisData || null,
+            far: selectedDistrict?.max_far,
+            maxHeight: selectedDistrict?.max_height_feet,
+            maxStories: selectedDistrict?.max_stories,
+            lotCoverage: selectedDistrict?.lot_coverage_pct,
+            useCategory: selectedDistrict?.use_category,
+          },
+        });
+      } catch { /* non-critical */ }
+
       if (onConfirm) {
         onConfirm(enrichedZoning);
       }

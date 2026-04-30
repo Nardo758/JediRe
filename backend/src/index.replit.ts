@@ -19,6 +19,7 @@ import { taskCoordinatorService } from './services/task-coordinator.service';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
+import { createDealCapsuleBridge } from './api/rest/capsule-bridge.routes';
 import zoningTriangulationRouter from './api/rest/zoning-triangulation.routes';
 import preferencesRouter from './api/rest/preferences.routes';
 import propertyTypesRouter from './api/rest/property-types.routes';
@@ -866,6 +867,9 @@ app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
 app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
 app.use('/api/v1/capsules', requireAuth, createCapsuleRoutes(pool));
 app.use('/api/v1/email', emailRouter);
+
+// ── Deal Capsule Bridge ──────────────────────────────────────────────────────
+app.use('/api/v1/deals/:dealId/capsule', requireAuth, createDealCapsuleBridge(pool));
 
 const activeUsers = new Map<string, any>();
 const dealPresence = new Map<string, Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>>();

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Share2, Download, TrendingUp, Building2, 
   DollarSign, AlertTriangle, CheckCircle, Target,
@@ -255,6 +255,8 @@ const CapsuleIntelligenceView: React.FC<{ address?: string }> = ({ address }) =>
 
 const CapsuleDetailPage: React.FC = () => {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const dealId = searchParams.get('dealId');
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const [activeTab, setActiveTab] = useState<TabId>('overview');
@@ -264,11 +266,17 @@ const CapsuleDetailPage: React.FC = () => {
 
   useEffect(() => {
     if (!id) return;
-    const userId = user?.id || 'demo-user';
+    const userId = (user?.id as string) || 'demo-user';
     setLoading(true);
-    apiClient.get(`/api/v1/capsules/${id}`, { params: { user_id: userId } })
+
+    const loadCapsule = dealId
+      ? apiClient.get(`/api/v1/deals/${dealId}/capsule`, { params: { user_id: userId } })
+      : apiClient.get(`/api/v1/capsules/${id}`, { params: { user_id: userId } });
+
+    loadCapsule
       .then((res) => {
         const data = res.data;
+        // Bridge endpoint returns { capsule, proforma, summary }
         setCapsule(data.capsule || data);
         setError(null);
       })
@@ -277,7 +285,7 @@ const CapsuleDetailPage: React.FC = () => {
         setError(err.response?.status === 404 ? 'Capsule not found' : 'Failed to load capsule');
       })
       .finally(() => setLoading(false));
-  }, [id, user?.id]);
+  }, [id, dealId, user?.id]);
 
   if (loading) {
     return (

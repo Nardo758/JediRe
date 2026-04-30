@@ -260,6 +260,25 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     setUmProgram(p);
     umHasDbRef.current = true;
     saveProgram(p);
+
+    // Seed capsule with program targets
+    (async () => {
+      try {
+        await apiClient.post(`/api/v1/deals/${dealId}/capsule/seed`, {
+          source: 'program',
+          data: {
+            totalUnits: p.totalUnits,
+            unitMix: p.units,
+            totalGFA: p.gfa,
+            averageUnitSize: p.avgUnitSF,
+            rentPSF: p.rentPSF,
+            annualRent: p.annualRent || null,
+            unitCounts: p.units,
+            demandScore: p.demandScore || null,
+          },
+        });
+      } catch { /* non-critical */ }
+    })();
   };
 
   const umComputed = computeProgram(umProgram);
