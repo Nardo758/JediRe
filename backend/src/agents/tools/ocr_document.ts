@@ -131,3 +131,19 @@ export async function ocrDocument(
     return '';
   }
 }
+
+
+export const ocrDocumentTool = {
+  name: 'ocr_document',
+  description: `Extract plain text from base64-encoded PDF attachments.
+Tries pdftotext first, falls back to pdf-parse.
+For generic documents — uses a simpler pipeline than document-extraction service.
+Returns extracted text as string (empty if all extractors fail).`,
+  inputSchema: z.object({
+    content_base64: z.string().describe('Base64-encoded PDF content'),
+    filename: z.string().optional().describe('Original filename for logging'),
+    mime_type: z.string().optional().describe('MIME type (default: application/pdf)'),
+  }),
+  outputSchema: z.string(),
+  execute: ocrDocument,
+};

@@ -87,3 +87,23 @@ A deal email includes: offering memorandums, investment teasers, broker listings
     };
   }
 }
+
+
+export const classifyAsDealOpportunityTool = {
+  name: 'classify_as_deal_opportunity',
+  description: `Classify whether an email or text is a deal opportunity (OM, teaser, offering).
+Uses claude-haiku for cost-efficient binary classification.
+Returns: is_deal (boolean), confidence (0-1), asset_class_hint, reason.`,
+  inputSchema: z.object({
+    subject: z.string().describe('Email subject line'),
+    body_text: z.string().describe('Full email body text (up to 1500 chars)'),
+    from_address: z.string().optional().describe('Sender email address'),
+  }),
+  outputSchema: z.object({
+    is_deal: z.boolean(),
+    confidence: z.number(),
+    asset_class_hint: z.string(),
+    reason: z.string(),
+  }),
+  execute: classifyAsDealOpportunity,
+};

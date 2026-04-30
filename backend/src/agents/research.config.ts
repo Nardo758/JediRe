@@ -36,6 +36,11 @@ import { fetchMarketEventsTool } from './tools/fetch_market_events';
 import { fetchBacktestContextTool } from './tools/fetch_backtest_context';
 import { fetchDataLibraryCompsTool } from './tools/fetch_data_library_comps';
 import { fetchInflationContextTool } from './tools/fetch_inflation_context';
+import { classifyAsDealOpportunityTool } from './tools/classify_as_deal_opportunity';
+import { createDealDraftTool } from './tools/create_deal_draft';
+import { extractDealFieldsTool } from './tools/extract_deal_fields';
+import { scoreFitAgainstProfileTool } from './tools/score_fit_against_profile';
+import { ocrDocumentTool } from './tools/ocr_document';
 
 // ── Citation schema (shared with commentary.config) ────────────────────────
 
@@ -88,6 +93,13 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
     fetchDataLibraryCompsTool,
     // Inflation context — JCIS composite score & regime for rent growth, expense esc, cap spread
     fetchInflationContextTool,
+    // Deal intake pipeline — classify emails, extract fields, score fit, create draft
+    classifyAsDealOpportunityTool,
+    createDealDraftTool,
+    extractDealFieldsTool,
+    scoreFitAgainstProfileTool,
+    // Document OCR for email attachments
+    ocrDocumentTool,
   ],
   outputSchema: ResearchOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.research,

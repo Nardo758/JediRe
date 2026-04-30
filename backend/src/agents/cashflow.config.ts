@@ -256,6 +256,8 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchBacktestContextTool,
     fetchDataLibraryCompsTool,  // Data Library comps for market rent, expenses, cap rates
     fetchTaxIntelTool,          // Property tax math (millage, transfer tax, reassessment)
+    // Email/deal intake
+    readGmailThreadTool,
     // Analysis & output
     detectCollisionTool,
     computeProformaTool,

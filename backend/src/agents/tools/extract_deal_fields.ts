@@ -116,3 +116,32 @@ Return JSON with this exact shape (all fields optional, use null if not found):
     };
   }
 }
+
+
+export const extractDealFieldsTool = {
+  name: 'extract_deal_fields',
+  description: `Extract structured deal fields from email body or OCR text.
+Uses claude-haiku with a tight JSON output schema.
+All fields optional — partial extraction is better than failure.
+Returns: address, city, state, asking_price, units, asset_class, year_built, noi, cap_rate, occupancy, etc.`,
+  inputSchema: z.object({
+    body_text: z.string().describe('Email body or OCR-extracted text'),
+    source_type: z.enum(['email', 'ocr', 'pdf_text']).optional().default('email'),
+  }),
+  outputSchema: z.object({
+    address: z.string().nullable(),
+    city: z.string().nullable(),
+    state: z.string().nullable(),
+    asking_price: z.number().nullable(),
+    units: z.number().nullable(),
+    asset_class: z.string().nullable(),
+    year_built: z.number().nullable(),
+    noi: z.number().nullable(),
+    cap_rate: z.number().nullable(),
+    occupancy: z.number().nullable(),
+    property_type: z.string().nullable(),
+    sqft: z.number().nullable(),
+    deal_name: z.string().nullable(),
+  }),
+  execute: extractDealFields,
+};

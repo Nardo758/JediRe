@@ -123,3 +123,34 @@ export async function scoreFitAgainstProfile(
     profile_found: true,
   };
 }
+
+
+export const scoreFitAgainstProfileTool = {
+  name: 'score_fit_against_profile',
+  description: `Deterministic scoring of extracted deal fields against the user's acquisition preferences.
+No LLM call — pure code scoring against user_acquisition_preferences table.
+Scores on: market_match, asset_match, unit_range, price_range, strategy_match.
+fit_score = dimensions_passed / 5 (0.0–1.0). Returns deal_fits if score >= 0.4.`,
+  inputSchema: z.object({
+    address: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    asking_price: z.number().optional(),
+    units: z.number().optional(),
+    asset_class: z.string().optional(),
+    deal_type: z.string().optional().describe('value_add | core_plus | core | opportunistic'),
+  }),
+  outputSchema: z.object({
+    fit_score: z.number(),
+    fit_breakdown: z.object({
+      market_match: z.boolean(),
+      asset_match: z.boolean(),
+      unit_range: z.boolean(),
+      price_range: z.boolean(),
+      strategy_match: z.boolean(),
+    }),
+    deal_fits: z.boolean(),
+    profile_found: z.boolean(),
+  }),
+  execute: scoreFitAgainstProfile,
+};

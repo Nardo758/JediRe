@@ -187,3 +187,32 @@ async function collectAttachments(
     }
   }
 }
+
+
+export const readGmailThreadTool = {
+  name: 'read_gmail_thread',
+  description: `Fetch a Gmail thread (all messages) for deal intake processing.
+Uses stored OAuth tokens from user_email_accounts.
+Returns subject, sender, combined body text, and base64 attachments.
+Use the thread's triggering message ID to fetch full context including prior replies.`,
+  inputSchema: z.object({
+    message_id: z.string().describe('Gmail message ID of the triggering email'),
+    user_id: z.string().describe('User ID for OAuth token lookup'),
+    include_attachments: z.boolean().optional().default(false),
+    max_attachments: z.number().optional().default(5),
+    max_attachment_mb: z.number().optional().default(10),
+  }),
+  outputSchema: z.object({
+    subject: z.string(),
+    from: z.string(),
+    from_address: z.string(),
+    body_text: z.string(),
+    thread_length: z.number(),
+    attachments: z.array(z.object({
+      name: z.string(),
+      mime_type: z.string(),
+      size_bytes: z.number(),
+    })).optional(),
+  }),
+  execute: readGmailThread,
+};

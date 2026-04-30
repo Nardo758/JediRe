@@ -150,3 +150,32 @@ export async function createDealDraft(
     status: 'awaiting_review',
   };
 }
+
+
+export const createDealDraftTool = {
+  name: 'create_deal_draft',
+  description: `Create an awaiting_review deal draft from email intake.
+Insert directly into deals table with status='awaiting_review' and intake provenance.
+Returns: deal_id, deal_name, status.
+Use after extract_deal_fields + score_fit_against_profile confirm a deal.`,
+  inputSchema: z.object({
+    deal_name: z.string().describe('Proposed deal name'),
+    address: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    asking_price: z.number().optional(),
+    units: z.number().optional(),
+    asset_class: z.string().optional(),
+    purchase_price: z.number().optional().describe('If different from asking'),
+    broker_name: z.string().optional(),
+    deal_type: z.string().optional().describe('value_add | core_plus | core | opportunistic | ground_up'),
+    email_thread_id: z.string().optional().describe('Source Gmail thread ID for provenance'),
+    body_text: z.string().optional().describe('Original email / OM body for deal_data'),
+  }),
+  outputSchema: z.object({
+    deal_id: z.string(),
+    deal_name: z.string(),
+    status: z.string(),
+  }),
+  execute: createDealDraft,
+};
