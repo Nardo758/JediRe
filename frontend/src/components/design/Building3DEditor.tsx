@@ -28,6 +28,7 @@ import {
 } from '@react-three/drei';
 import * as THREE from 'three';
 import { useDesign3D, useDesign3DKeyboardShortcuts, useBuildingGenerator, useAIDesignGeneration, useAIImageToTerrain } from '@/hooks/design/useDesign3D';
+import { useDesignMassing } from '@/hooks/useDesignMassing';
 import {
   BuildingSection,
   ParcelBoundary,
@@ -74,6 +75,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   const { generateSimpleBuilding, generateFromUnitMix } = useBuildingGenerator();
   const { generateDesign: aiGenerateDesign, loading: aiLoading } = useAIDesignGeneration();
   const { generateTerrain: aiImageToTerrain, loading: imageLoading } = useAIImageToTerrain();
+  const { generate: designMassingGenerate, result: massingResult, loading: massingLoading } = useDesignMassing();
   
   // Enable keyboard shortcuts
   useDesign3DKeyboardShortcuts();
@@ -251,34 +253,75 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
    * This will eventually send prompts like "Design 280-unit building" to Qwen
    */
   const handleAIGenerate = useCallback(async () => {
-    if (!state.parcelBoundary || !state.zoningEnvelope) {
-      alert('Please set parcel boundary and zoning envelope first');
+    if (!state.parcelBoundary) {
+      alert('Please set a parcel boundary first (draw or import parcel)');
       return;
     }
+
+    // Build input from design targets (F3 Programming) and zoning envelope (F2)
+    const targets = designTargets ? designTargets.program : null;
+    const envelope = designTargets?.zoningEnvelope;
     
-    const prompt = window.prompt(
-      'AI Design Generation (Phase 2)\n\nEnter your design prompt:',
-      'Design a 280-unit multifamily building with modern amenities'
-    );
+    // Estimate lot square footage from parcel boundary
+    const lotSqft = state.parcelBoundary?.lotSquareFootage || 43560;
     
-    if (!prompt) return;
+    // Get the max GFA from the zoning envelope state (fka building envelope overlay)
+    const maxGfaSqft = envelope?.maxGFA || state.zoningEnvelope?.maxGfa || lotSqft * 3;
+    const maxStories = envelope?.maxStories || state.zoningEnvelope?.maxHeight || 10;
     
-    console.log('🤖 AI Design Prompt:', prompt);
+    const targetUnits = targets?.targetUnits || 280;
+    const targetGfa = targets?.targetGFA || maxGfaSqft;
     
-    // TODO: Phase 2 - Send to Qwen API for intelligent design generation
-    // For now: Use algorithmic fallback
-    alert(`AI Design Generation (Phase 2)\n\nPrompt: "${prompt}"\n\nThis will eventually:\n1. Send prompt to Qwen API\n2. Analyze site constraints\n3. Generate optimal building design\n4. Provide multiple alternatives\n\nFor now, using algorithmic generation...`);
-    
-    await aiGenerateDesign({
-      prompt,
-      constraints: {
-        unitCount: 280,
-        minEfficiency: 82,
-      },
-      parcelBoundary: state.parcelBoundary,
-      zoningEnvelope: state.zoningEnvelope,
+    console.log(`🤖 Generating massing: ${targetUnits}u / ${Math.round(targetGfa / 1000)}K GFA`);
+
+    const mix = targets?.unitMix || { studio: 10, oneBed: 40, twoBed: 35, threeBed: 15 };
+
+    const result = await designMassingGenerate({
+      lotSqft,
+      maxGfaSqft,
+      maxStories,
+      targetUnits,
+      targetGfa,
+      unitMix: mix,
+      parkingRatio: targets?.targetParkingRatio || 1.5,
+      parkingStructure: 'podium',
+      designPriority: 'density',
     });
-  }, [state.parcelBoundary, state.zoningEnvelope, aiGenerateDesign]);
+
+    if (result?.success && result.sections.length > 0) {
+      // Convert massing result sections to BuildingSection format
+      const newSections: BuildingSection[] = result.sections.map((sec, i) => ({
+        id: sec.id,
+        name: sec.name,
+        width: sec.width,
+        depth: sec.depth,
+        floors: sec.floors,
+        totalStories: sec.totalStories,
+        height: sec.floors * 12,
+        floorPlan: [],
+        color: `hsl(${(i * 50 + 210) % 360}, 60%, ${50 + (sec.floors / maxStories) * 20}%)`,
+        type: sec.hasRetail ? 'mixed_use' : 'residential',
+        position: sec.position,
+        units: sec.units,
+        retailSf: sec.retailSf,
+        hasRetail: sec.hasRetail,
+      }));
+
+      // Set building sections in state
+      actions.setBuildingSections(newSections);
+      actions.setMetrics({
+        totalUnits: result.totals.totalUnits,
+        totalGFA: result.totals.totalGFA,
+        far: result.totals.far,
+        maxFloors: result.totals.totalFloors,
+        parkingSpaces: result.totals.parkingSpaces,
+        parkingRatio: result.totals.parkingSpaces / result.totals.totalUnits,
+        maxHeight: result.totals.totalFloors * 12,
+        buildingCount: result.sections.length,
+        estimatedCost: result.totals.totalGFA * 227,
+      });
+    }
+  }, [state.parcelBoundary, state.zoningEnvelope, designTargets, designMassingGenerate, actions]);
   
   // ============================================================================
   // Render
@@ -437,7 +480,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         canRedo={actions.canRedo}
         showGrid={state.showGrid}
         showMeasurements={state.showMeasurements}
-        aiLoading={aiLoading || imageLoading}
+        aiLoading={aiLoading || imageLoading || massingLoading}
         saving={saving}
         loading={loading}
         hasUnsavedChanges={hasUnsavedChanges}

@@ -41,6 +41,8 @@ import { createDealDraftTool } from './tools/create_deal_draft';
 import { extractDealFieldsTool } from './tools/extract_deal_fields';
 import { scoreFitAgainstProfileTool } from './tools/score_fit_against_profile';
 import { ocrDocumentTool } from './tools/ocr_document';
+import { computeEnvelopeTool } from './tools/compute_envelope';
+import { generateDesignMassingTool } from './tools/generate_design_massing';
 
 // ── Citation schema (shared with commentary.config) ────────────────────────
 
@@ -100,6 +102,9 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
     scoreFitAgainstProfileTool,
     // Document OCR for email attachments
     ocrDocumentTool,
+    // Design tools — zoning envelope + AI massing generation
+    computeEnvelopeTool,
+    generateDesignMassingTool,
   ],
   outputSchema: ResearchOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.research,

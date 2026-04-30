@@ -139,6 +139,8 @@ import intelligenceRefreshRoutes from './intelligence-refresh.routes';
 import replacementCostRoutes from './replacement-cost.routes';
 import sentimentRoutes from './sentiment.routes';
 import capsuleIntelligenceRoutes from './capsule-intelligence.routes';
+import { designMassingRouter } from '../../services/design/design-massing.service';
+import { sceneStorageRouter } from '../../services/design/scene-storage.service';
 
 const API_PREFIX = '/api/v1';
 
@@ -549,6 +551,10 @@ export function setupRESTRoutes(app: Application): void {
   app.use(`${API_PREFIX}/capsules`, capsuleIntelligenceRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
+  // Design 3D — AI massing generation + scene storage
+  app.use(`${API_PREFIX}/design`, designMassingRouter);
+  app.use(`${API_PREFIX}/deals`, sceneStorageRouter);
+
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);
 
   // Deal Traffic routes (forecast vs actuals)
