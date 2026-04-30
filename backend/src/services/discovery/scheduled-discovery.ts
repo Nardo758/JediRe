@@ -15,6 +15,7 @@ import { discoveryEngine } from './discovery-engine';
 import { eventDispatcher } from '../agents/event-dispatcher';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { fetchCreTradePressFeeds } from './sources/cre-rss';
 
 // ============================================================================
 // HOURLY DISCOVERY
@@ -204,6 +205,122 @@ export const dailyEconomicDiscovery = inngest.createFunction(
   }
 );
 
+/**
+ * CRE trade-press discovery
+ *
+ * Polls the curated free RSS / JSON feeds in `sources/cre-rss.ts` directly
+ * (independent of NewsAPI / Google News and *without* keyword filters) so the
+ * `news_discoveries` library stays warm even on quiet days when nothing is
+ * actively asking for news.
+ *
+ * Cadence: every 3 hours.
+ */
+export const creTradePressDiscovery = inngest.createFunction(
+  {
+    id: 'discovery-cre-trade-press',
+    name: 'CRE Trade-Press Discovery',
+    triggers: [{ cron: '0 */3 * * *' }],
+  },
+  async ({ step }) => {
+    logger.info('Starting CRE trade-press discovery');
+
+    const runId = await step.run('start-run', async () => {
+      const res = await query(
+        `INSERT INTO discovery_runs (job_id, job_name, status, started_at)
+         VALUES ($1, $2, 'running', NOW())
+         RETURNING id`,
+        ['discovery-cre-trade-press', 'CRE Trade-Press Discovery']
+      );
+      return res.rows[0].id as string;
+    });
+
+    try {
+      const items = await step.run('fetch-feeds', async () => {
+        const fetched = await fetchCreTradePressFeeds({
+          perFeedLimit: 25,
+          maxAgeDays: 7,
+        });
+        logger.info(`cre-trade-press: fetched ${fetched.length} items across all feeds`);
+        return fetched;
+      });
+
+      const counts = await step.run('persist-items', async () => {
+        let inserted = 0;
+        let duplicates = 0;
+        let failed = 0;
+        for (const item of items) {
+          try {
+            const outcome = await discoveryEngine.storeNewsDiscovery({
+              id: item.id,
+              headline: item.headline,
+              source: item.source,
+              url: item.url,
+              publishedAt: new Date(item.publishedAt),
+              summary: item.summary,
+              category: item.category,
+              relevantMsas: item.marketHint ? [item.marketHint] : undefined,
+            });
+            if (outcome === 'inserted') inserted++;
+            else duplicates++;
+          } catch (err) {
+            failed++;
+            logger.warn(
+              `cre-trade-press: failed to persist item ${item.id}:`,
+              err instanceof Error ? err.message : err
+            );
+          }
+        }
+        return { inserted, duplicates, failed };
+      });
+
+      await step.run('complete-run', async () => {
+        // If any inserts failed we mark the run as 'failed' so operators can
+        // see partial-success runs in the discovery_runs table; otherwise it
+        // is a clean 'completed'. items_discovered always reflects truly new
+        // rows, never duplicates or failures.
+        const isPartial = counts.failed > 0;
+        await query(
+          `UPDATE discovery_runs
+             SET status = $1,
+                 items_discovered = $2,
+                 error = $3,
+                 completed_at = NOW()
+           WHERE id = $4`,
+          [
+            isPartial ? 'failed' : 'completed',
+            counts.inserted,
+            isPartial
+              ? `${counts.failed} of ${items.length} items failed to persist`
+              : null,
+            runId,
+          ]
+        );
+      });
+
+      return {
+        itemsFetched: items.length,
+        itemsInserted: counts.inserted,
+        itemsDuplicates: counts.duplicates,
+        itemsFailed: counts.failed,
+      };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('CRE trade-press discovery failed:', message);
+      await step.run('fail-run', async () => {
+        await query(
+          `UPDATE discovery_runs
+             SET status = 'failed',
+                 error = $1,
+                 completed_at = NOW()
+           WHERE id = $2`,
+          [message.slice(0, 1000), runId]
+        );
+      });
+      throw err;
+    }
+  }
+);
+
 // ============================================================================
 // WEEKLY DISCOVERY
 // ============================================================================
@@ -305,6 +422,7 @@ export const scheduledDiscoveryFunctions = [
   dailyNewsDiscovery,
   dailyDealNewsDiscovery,
   dailyEconomicDiscovery,
+  creTradePressDiscovery,
   weeklyMarketScan,
   onDemandNewsDiscovery,
   onDemandWebSearch,

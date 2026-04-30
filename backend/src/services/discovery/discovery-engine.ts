@@ -260,9 +260,16 @@ class DiscoveryEngine {
       }
     }
 
-    // Store and dispatch events for significant news
+    // Store and dispatch events for significant news. We swallow per-item
+    // failures here so a single bad row doesn't abort the whole discovery run;
+    // batch jobs that need accurate persistence stats should call
+    // `storeNewsDiscovery` directly and handle the thrown error themselves.
     for (const news of discoveries) {
-      await this.storeNewsDiscovery(news);
+      try {
+        await this.storeNewsDiscovery(news);
+      } catch (err) {
+        logger.warn(`storeNewsDiscovery failed for id=${news.id}:`, err);
+      }
     }
 
     return discoveries;
@@ -460,50 +467,61 @@ class DiscoveryEngine {
     }
   }
 
-  private async storeNewsDiscovery(news: NewsDiscovery): Promise<void> {
-    try {
-      await query(
-        `INSERT INTO news_discoveries (id, headline, source, url, published_at, summary, category, relevant_msas, relevant_deals)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (id) DO UPDATE SET
-           relevant_msas = (
-             SELECT COALESCE(jsonb_agg(DISTINCT v), '[]'::jsonb)
-             FROM jsonb_array_elements(
-               COALESCE(news_discoveries.relevant_msas, '[]'::jsonb) ||
-               COALESCE(EXCLUDED.relevant_msas, '[]'::jsonb)
-             ) AS v
-           ),
-           relevant_deals = (
-             SELECT COALESCE(jsonb_agg(DISTINCT v), '[]'::jsonb)
-             FROM jsonb_array_elements(
-               COALESCE(news_discoveries.relevant_deals, '[]'::jsonb) ||
-               COALESCE(EXCLUDED.relevant_deals, '[]'::jsonb)
-             ) AS v
-           )`,
-        [
-          news.id,
-          news.headline,
-          news.source,
-          news.url,
-          news.publishedAt,
-          news.summary,
-          news.category,
-          news.relevantMsas ? JSON.stringify(news.relevantMsas) : null,
-          news.relevantDeals ? JSON.stringify(news.relevantDeals) : null,
-        ]
-      );
+  /**
+   * Outcome of an upsert into `news_discoveries`. Distinguishes a fresh
+   * `'inserted'` row from a `'duplicate'` (id already existed and tags were
+   * merged). DB-level failures are surfaced as thrown errors so callers can
+   * decide whether to swallow, retry, or mark a batch run as partially failed.
+   */
+  async storeNewsDiscovery(news: NewsDiscovery): Promise<'inserted' | 'duplicate'> {
+    // The `xmax = 0` trick distinguishes a true INSERT from an ON CONFLICT
+    // DO UPDATE: PostgreSQL only sets `xmax` on rows that were updated.
+    const res = await query(
+      `INSERT INTO news_discoveries (id, headline, source, url, published_at, summary, category, relevant_msas, relevant_deals)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (id) DO UPDATE SET
+         relevant_msas = (
+           SELECT COALESCE(jsonb_agg(DISTINCT v), '[]'::jsonb)
+           FROM jsonb_array_elements(
+             COALESCE(news_discoveries.relevant_msas, '[]'::jsonb) ||
+             COALESCE(EXCLUDED.relevant_msas, '[]'::jsonb)
+           ) AS v
+         ),
+         relevant_deals = (
+           SELECT COALESCE(jsonb_agg(DISTINCT v), '[]'::jsonb)
+           FROM jsonb_array_elements(
+             COALESCE(news_discoveries.relevant_deals, '[]'::jsonb) ||
+             COALESCE(EXCLUDED.relevant_deals, '[]'::jsonb)
+           ) AS v
+         )
+       RETURNING (xmax = 0) AS inserted`,
+      [
+        news.id,
+        news.headline,
+        news.source,
+        news.url,
+        news.publishedAt,
+        news.summary,
+        news.category,
+        news.relevantMsas ? JSON.stringify(news.relevantMsas) : null,
+        news.relevantDeals ? JSON.stringify(news.relevantDeals) : null,
+      ]
+    );
 
-      // Dispatch event for significant news
+    const inserted: boolean = res.rows[0]?.inserted === true;
+
+    // Only dispatch alerts for genuinely new items so recurring feed polls
+    // don't fan out duplicate notifications for the same article.
+    if (inserted) {
       await eventDispatcher.onNewsAlert({
         headline: news.headline,
         source: news.source,
         category: news.category,
         url: news.url,
       });
-
-    } catch (error) {
-      // Ignore duplicates
     }
+
+    return inserted ? 'inserted' : 'duplicate';
   }
 
   /**
