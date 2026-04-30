@@ -78,6 +78,7 @@ import { createReplacementCostRoutes } from './api/rest/replacement-cost.routes'
 import { createBrokerNarrativesRoutes } from './api/rest/broker-narratives.routes';
 import { createIntelligenceRefreshRoutes } from './api/rest/intelligence-refresh.routes';
 import { createKnowledgeGraphRoutes } from './api/rest/knowledge-graph.routes';
+import { createKGDealIngestionRoutes } from './services/knowledge-graph/kg-deal-ingestion.routes';
 import { createContextAwarenessRoutes } from './api/rest/context-awareness.routes';
 import scheduledRefreshRoutes from './api/rest/scheduled-refresh.routes';
 import dataMatrixRoutes from './api/rest/data-matrix.routes';
@@ -493,6 +494,16 @@ app.use('/api/v1/replacement-cost', createReplacementCostRoutes(pool));
 app.use('/api/v1/broker-narratives', createBrokerNarrativesRoutes(pool));
 app.use('/api/v1/intelligence', createIntelligenceRefreshRoutes());
 app.use('/api/v1/knowledge-graph', createKnowledgeGraphRoutes(pool));
+app.use('/api/v1/knowledge-graph', createKGDealIngestionRoutes(pool));
+
+// KG Deal Listener — auto-ingests deal analysis results into the knowledge graph.
+// Hooks into zoning analysis, market analysis, and program target events.
+// Initialized lazily — no background thread, no blocking startup.
+import { getKGDealListener } from './services/knowledge-graph/kg-deal-listener.service';
+
+// Initialize KG Deal Listener — hooks into deal lifecycle events
+// and pushes analysis results into the knowledge graph.
+getKGDealListener(pool);
 // Knowledge Graph public path aliases — see kg-aliases.routes.ts.
 // Mounted at /api (not /api/v1) to satisfy the contracted public paths:
 //   GET  /api/kg/semantic-search
