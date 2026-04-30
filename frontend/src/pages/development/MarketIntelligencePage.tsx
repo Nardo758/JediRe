@@ -9,6 +9,7 @@ import {
   FileText, Shield, Target, BarChart3, Zap, Crosshair, ArrowRightLeft, Eye, Trash2, CheckCircle
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
+import ProgrammingTab from '../../components/design/ProgrammingTab';
 import { useDealModule } from '../../contexts/DealModuleContext';
 import UnitMixIntelligence, {
   DemandMatrix, GapAnalysis, ProgramEditor, ZoningPanel, InventorySnapshot,
@@ -557,7 +558,14 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   );
 
   const renderProgramTab = () => (
-    <ProgramDevPanel program={umProgram} computed={umComputed} zoning={umZoning} comps={umComps} gaps={umGaps} onProgramChange={handleProgramChange} onZoningChange={setUmZoning} />
+    <div style={{ display: 'flex', height: '100%' }}>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <ProgrammingTab />
+      </div>
+      <div style={{ width: 420, overflowY: 'auto', borderLeft: '1px solid #1e2a3d' }}>
+        <ProgramDevPanel program={umProgram} computed={umComputed} zoning={umZoning} comps={umComps} gaps={umGaps} onProgramChange={handleProgramChange} onZoningChange={setUmZoning} />
+      </div>
+    </div>
   );
 
   const renderRepositioningTab = () => (
@@ -588,7 +596,9 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       case 'demand': return renderDemandTab();
       case 'positioning': return renderPositioningTab();
       case 'comps': return renderCompsTab();
-      case 'program': return renderExistingProgramTab();
+      case 'program':
+        if (dealMode === 'development') return renderProgramTab();
+        return renderExistingProgramTab();
       case 'repositioning': return renderRepositioningTab();
       case 'trends': return renderTrendsTab();
       case 'events': return renderEventsTab();
