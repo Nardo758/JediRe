@@ -48,7 +48,7 @@ import { AIRenderingPanel } from './AIRenderingPanel';
 import { DesignAssistantChat } from './DesignAssistantChat';
 import DesignPromptModal from './DesignPromptModal';
 import MapBuildingView from './MapBuildingView';
-import { buildingSectionsToMapBuildings } from '@/utils/massingToMapGeoJSON';
+import { buildingSectionsToMapBuildings, getSiteInfo } from '@/utils/massingToMapGeoJSON';
 
 // ============================================================================
 // Main Component
@@ -354,6 +354,11 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
     );
   }, [state.buildingSections, state.parcelBoundary]);
 
+  // Parcel-aware site info for map centering
+  const siteInfo = state.parcelBoundary?.coordinates?.length
+    ? getSiteInfo(state.parcelBoundary.coordinates)
+    : null;
+
   // ============================================================================
   // Render
   // ============================================================================
@@ -369,64 +374,86 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         onChange={handleImageUpload}
       />
 
-      {/* Toggle View Mode Button */}
-      <div style={{
-        position: 'absolute',
-        top: 12,
-        left: 12,
-        zIndex: 40,
-        display: 'flex',
-        gap: 4,
-        background: 'rgba(15, 23, 42, 0.8)',
-        padding: 3,
-        borderRadius: 8,
-        border: '1px solid rgba(255,255,255,0.1)',
-      }}>
-        <button
-          onClick={() => setViewMode('studio')}
-          style={{
-            padding: '5px 12px',
-            fontSize: 11,
-            fontFamily: 'system-ui, sans-serif',
-            fontWeight: viewMode === 'studio' ? 600 : 400,
-            background: viewMode === 'studio' ? '#3b82f6' : 'transparent',
-            color: viewMode === 'studio' ? '#fff' : '#94a3b8',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            transition: 'all 0.15s',
-          }}
-        >
-          🏗️ Studio
-        </button>
-        <button
-          onClick={() => setViewMode('map')}
-          style={{
-            padding: '5px 12px',
-            fontSize: 11,
-            fontFamily: 'system-ui, sans-serif',
-            fontWeight: viewMode === 'map' ? 600 : 400,
-            background: viewMode === 'map' ? '#3b82f6' : 'transparent',
-            color: viewMode === 'map' ? '#fff' : '#94a3b8',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            transition: 'all 0.15s',
-          }}
-        >
-          🗺️ Map
-        </button>
-      </div>
+      {/* Toggle View Mode Button — only when parcel is set */}
+      {state.parcelBoundary && (
+        <div style={{
+          position: 'absolute',
+          top: 12,
+          left: 12,
+          zIndex: 40,
+          display: 'flex',
+          gap: 4,
+          background: 'rgba(15, 23, 42, 0.8)',
+          padding: 3,
+          borderRadius: 8,
+          border: '1px solid rgba(255,255,255,0.1)',
+        }}>
+          <button
+            onClick={() => setViewMode('studio')}
+            style={{
+              padding: '5px 12px',
+              fontSize: 11,
+              fontFamily: 'system-ui, sans-serif',
+              fontWeight: viewMode === 'studio' ? 600 : 400,
+              background: viewMode === 'studio' ? '#3b82f6' : 'transparent',
+              color: viewMode === 'studio' ? '#fff' : '#94a3b8',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            🏗️ Studio
+          </button>
+          <button
+            onClick={() => setViewMode('map')}
+            style={{
+              padding: '5px 12px',
+              fontSize: 11,
+              fontFamily: 'system-ui, sans-serif',
+              fontWeight: viewMode === 'map' ? 600 : 400,
+              background: viewMode === 'map' ? '#3b82f6' : 'transparent',
+              color: viewMode === 'map' ? '#fff' : '#94a3b8',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            🗺️ Map
+          </button>
+        </div>
+      )}
 
-      {/* Map or 3D Canvas */}
-      {viewMode === 'map' ? (
+      {/* Map view — only when parcel is set */}
+      {viewMode === 'map' && siteInfo ? (
         <MapBuildingView
-          latitude={state.parcelBoundary?.coordinates[0]?.lat || 33.749}
-          longitude={state.parcelBoundary?.coordinates[0]?.lng || -84.388}
-          parcelPolygon={state.parcelBoundary?.coordinates.map(c => [c.lng, c.lat] as [number, number])}
+          latitude={siteInfo.center.lat}
+          longitude={siteInfo.center.lng}
+          parcelPolygon={siteInfo.polygon}
           buildingSections={mapBuildings}
           height="100%"
         />
+      ) : viewMode === 'map' && !siteInfo ? (
+        /* No parcel set — show placeholder message */
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100%',
+          color: '#94a3b8',
+          fontFamily: 'system-ui, sans-serif',
+          fontSize: 14,
+          textAlign: 'center',
+          padding: 24,
+        }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🗺️</div>
+          <p>Draw or import a parcel boundary first</p>
+          <p style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>
+            Switch back to Studio view, then set a parcel
+          </p>
+        </div>
       ) : (
       {/* 3D Canvas */}
       <Canvas
