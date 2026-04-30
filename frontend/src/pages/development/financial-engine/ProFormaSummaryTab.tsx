@@ -31,16 +31,6 @@ interface IntegrityCheck {
   detail?: Record<string, unknown>;
 }
 
-interface RentRollUnitType {
-  type: string;
-  count: number;
-  avgSf: number | null;
-  inPlaceRent: number | null;
-  marketRent: number | null;
-  occupancyPct: number | null;
-  concessionPct: number | null;
-}
-
 interface DealCapitalStack {
   purchasePrice: number | null;
   pricePerUnit: number | null;
@@ -78,7 +68,6 @@ interface DealFinancials {
   };
   capitalStack: DealCapitalStack;
   rentRollSummary: {
-    unitMix: RentRollUnitType[] | null;
     avgInPlaceRent: number | null;
     weightedOccupancyPct: number | null;
   } | null;
@@ -185,11 +174,6 @@ function makeDefaultAncillary(u: number): AncillaryLine[] {
 // ─── Correction state ─────────────────────────────────────────────────────────
 interface CorrectionState {
   [field: string]: { editing: boolean; original: number | null; draft: string; savedAt?: string };
-}
-
-// ─── Unit mix local edits (keyed by `${index}:${field}`) ──────────────────────
-interface UnitMixEdit {
-  [cellKey: string]: { editing: boolean; draft: string; savedAt?: string };
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
@@ -331,7 +315,6 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
   const [error, setError] = useState<string | null>(null);
   const [reparsing, setReparsing] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionState>({});
-  const [unitMixEdits, setUnitMixEdits] = useState<UnitMixEdit>({});
   const [showAncillary, setShowAncillary] = useState(false);
 
   const load = useCallback(async () => {
@@ -401,45 +384,6 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
       console.error('Reset override failed:', e instanceof Error ? e.message : e);
     } finally {
       setCorrections(prev => { const next = { ...prev }; delete next[field]; return next; });
-    }
-  }, [dealId, load]);
-
-  // Unit mix cell: save
-  const handleUnitMixSave = useCallback(async (index: number, field: string, rawDraft: string) => {
-    const cellKey = `${index}:${field}`;
-    const parsed = parseFloat(rawDraft);
-    const value = isNaN(parsed) ? null : parsed;
-    try {
-      await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
-        field: `unit_mix:${index}:${field}`,
-        year: null,
-        value,
-      });
-      setUnitMixEdits(prev => ({
-        ...prev,
-        [cellKey]: { editing: false, draft: rawDraft, savedAt: new Date().toISOString() },
-      }));
-      load();
-    } catch (e: unknown) {
-      console.error('Unit mix override failed:', e instanceof Error ? e.message : e);
-      setUnitMixEdits(prev => ({ ...prev, [cellKey]: { ...prev[cellKey], editing: false } }));
-    }
-  }, [dealId, load]);
-
-  // Unit mix cell: reset
-  const handleUnitMixReset = useCallback(async (index: number, field: string) => {
-    const cellKey = `${index}:${field}`;
-    try {
-      await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
-        field: `unit_mix:${index}:${field}`,
-        year: null,
-        value: null,
-      });
-      load();
-    } catch (e: unknown) {
-      console.error('Unit mix reset failed:', e instanceof Error ? e.message : e);
-    } finally {
-      setUnitMixEdits(prev => { const next = { ...prev }; delete next[cellKey]; return next; });
     }
   }, [dealId, load]);
 
@@ -580,18 +524,6 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
         {/* ── VALUATION SNAPSHOT STRIP ── */}
         {data.proforma.valuationSnapshot && (
           <ValuationSnapshotStrip vs={data.proforma.valuationSnapshot} />
-        )}
-
-        {/* ── SECTION A — In-Place Rent Roll Unit Mix ── */}
-        {data.rentRollSummary && (
-          <RentRollSection
-            summary={data.rentRollSummary}
-            totalUnits={totalUnits}
-            edits={unitMixEdits}
-            setEdits={setUnitMixEdits}
-            onSave={handleUnitMixSave}
-            onReset={handleUnitMixReset}
-          />
         )}
 
         {/* ── SECTION B — T-12 Operating Statement ── */}
@@ -1336,249 +1268,6 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   );
 }
 
-// ─── Section A: In-Place Rent Roll Unit Mix (editable) ────────────────────────
-function UMCell({ value, cellKey, edits, setEdits, onSave, onReset, color, fmt }: {
-  value: number | null;
-  cellKey: string;
-  edits: UnitMixEdit;
-  setEdits: React.Dispatch<React.SetStateAction<UnitMixEdit>>;
-  onSave: (draft: string) => void;
-  onReset: () => void;
-  color: string;
-  fmt: (v: number | null) => string;
-}) {
-  const edit = edits[cellKey];
-  function commit() {
-    if (!edit) return;
-    onSave(edit.draft);
-  }
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
-      {edit?.editing ? (
-        <input
-          autoFocus
-          value={edit.draft}
-          onChange={e => setEdits(prev => ({ ...prev, [cellKey]: { ...prev[cellKey], draft: e.target.value } }))}
-          onBlur={commit}
-          onKeyDown={e => {
-            if (e.key === 'Enter') commit();
-            if (e.key === 'Escape') setEdits(prev => ({ ...prev, [cellKey]: { ...prev[cellKey], editing: false } }));
-          }}
-          style={{
-            width: 70, background: '#0f172a', border: '1px solid #06b6d4', color: '#f8fafc',
-            fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, textAlign: 'right',
-          }}
-        />
-      ) : (
-        <span
-          title={edit?.savedAt ? `Overridden` : undefined}
-          style={{ color: edit?.savedAt ? '#f59e0b' : color, borderBottom: edit?.savedAt ? '1px dotted #f59e0b' : undefined, cursor: 'default' }}
-        >
-          {fmt(value)}
-        </span>
-      )}
-      <button
-        title={edit?.savedAt ? 'Reset to ingested' : 'Edit value'}
-        onClick={() => {
-          if (edit?.savedAt) { onReset(); return; }
-          setEdits(prev => ({ ...prev, [cellKey]: { editing: true, draft: String(value ?? '') } }));
-        }}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: edit?.savedAt ? '#f59e0b' : '#334155', padding: '0 1px', lineHeight: 1 }}
-      >
-        {edit?.savedAt
-          ? <RotateCcw style={{ width: 8, height: 8, display: 'block' }} />
-          : <Pencil style={{ width: 8, height: 8, display: 'block' }} />
-        }
-      </button>
-    </div>
-  );
-}
-
-function RentRollSection({ summary, totalUnits, edits, setEdits, onSave, onReset }: {
-  summary: NonNullable<DealFinancials['rentRollSummary']>;
-  totalUnits: number;
-  edits: UnitMixEdit;
-  setEdits: React.Dispatch<React.SetStateAction<UnitMixEdit>>;
-  onSave: (index: number, field: string, draft: string) => Promise<void>;
-  onReset: (index: number, field: string) => Promise<void>;
-}) {
-  const { unitMix, avgInPlaceRent, weightedOccupancyPct } = summary;
-  const hasUnitMix = unitMix && unitMix.length > 0;
-
-  // Derived totals
-  const totalCount = unitMix ? unitMix.reduce((s, u) => s + u.count, 0) : 0;
-  const gprAnnual = unitMix
-    ? unitMix.reduce((s, u) => s + u.count * (u.inPlaceRent ?? 0) * 12, 0)
-    : 0;
-  const wtdAvgRent = totalCount > 0
-    ? unitMix!.reduce((s, u) => s + u.count * (u.inPlaceRent ?? 0), 0) / totalCount
-    : null;
-  const wtdAvgOcc = totalCount > 0
-    ? unitMix!.reduce((s, u) => s + u.count * (u.occupancyPct ?? 0), 0) / totalCount
-    : null;
-
-  return (
-    <div style={{ borderBottom: '2px solid #1e1e1e', background: '#050d14', padding: '12px 12px 8px' }}>
-      {/* Sub-header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{
-            fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#94a3b8',
-            letterSpacing: 1, textTransform: 'uppercase',
-            borderLeft: '3px solid #0ea5e9', paddingLeft: 6,
-          }}>
-            In-Place Unit Economics · Rent Roll
-          </span>
-          <span style={{ fontFamily: LABEL, fontSize: 8, color: '#334155' }}>at acquisition · pencil icon to correct parser errors</span>
-        </div>
-        <div style={{ display: 'flex', gap: 12 }}>
-          {gprAnnual > 0 && (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
-              <span style={{ fontFamily: LABEL, fontSize: 8, color: '#64748b' }}>GPR (RR)</span>
-              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#22c55e' }}>{fmt$(gprAnnual)}</span>
-            </div>
-          )}
-          {(wtdAvgRent ?? avgInPlaceRent) != null && (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
-              <span style={{ fontFamily: LABEL, fontSize: 8, color: '#64748b' }}>AVG RENT</span>
-              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#06b6d4' }}>${Math.round(wtdAvgRent ?? avgInPlaceRent!).toLocaleString()}</span>
-            </div>
-          )}
-          {(wtdAvgOcc ?? weightedOccupancyPct) != null && (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
-              <span style={{ fontFamily: LABEL, fontSize: 8, color: '#64748b' }}>OCC</span>
-              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#22c55e' }}>{((wtdAvgOcc ?? weightedOccupancyPct!) * 100).toFixed(1)}%</span>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
-            <span style={{ fontFamily: LABEL, fontSize: 8, color: '#64748b' }}>UNITS</span>
-            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#e2e8f0' }}>{totalUnits}</span>
-          </div>
-        </div>
-      </div>
-
-      {hasUnitMix ? (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #1e293b' }}>
-              {['Type', 'Units', '% Mix', 'Avg SF', 'In-Place Rent', 'Market Rent', 'Loss-to-Lease', 'Occupancy', 'On Concession', 'GPR (Ann.)'].map(h => (
-                <th key={h} style={{
-                  padding: '3px 8px', textAlign: h === 'Type' ? 'left' : 'right',
-                  fontFamily: LABEL, fontSize: 8, color: '#475569', fontWeight: 700,
-                  letterSpacing: 0.5, textTransform: 'uppercase',
-                }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {unitMix!.map((ut, i) => {
-              const ltlPct = ut.inPlaceRent && ut.marketRent && ut.marketRent > 0
-                ? ((ut.marketRent - ut.inPlaceRent) / ut.marketRent) * 100
-                : null;
-              const mixPct = totalUnits > 0 ? (ut.count / totalUnits) * 100 : null;
-              const lineGpr = ut.count * (ut.inPlaceRent ?? 0) * 12;
-
-              function ck(field: string) { return `${i}:${field}`; }
-
-              return (
-                <tr key={ut.type} style={{ background: i % 2 === 0 ? '#060e18' : '#040b14', borderBottom: '1px solid #0f172a' }}>
-                  <td style={{ padding: '3px 8px', color: '#94a3b8', fontFamily: LABEL, fontSize: 9, fontWeight: 600 }}>{ut.type}</td>
-
-                  {/* Units (editable) */}
-                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                    <UMCell value={ut.count} cellKey={ck('count')} edits={edits} setEdits={setEdits}
-                      onSave={d => onSave(i, 'count', d)} onReset={() => onReset(i, 'count')}
-                      color="#e2e8f0" fmt={v => v != null ? String(Math.round(v)) : '—'} />
-                  </td>
-
-                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#64748b' }}>
-                    {mixPct != null ? `${mixPct.toFixed(1)}%` : '—'}
-                  </td>
-
-                  {/* Avg SF (editable) */}
-                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                    <UMCell value={ut.avgSf} cellKey={ck('avg_sf')} edits={edits} setEdits={setEdits}
-                      onSave={d => onSave(i, 'avg_sf', d)} onReset={() => onReset(i, 'avg_sf')}
-                      color="#64748b" fmt={v => v != null ? `${v.toLocaleString()} sf` : '—'} />
-                  </td>
-
-                  {/* In-Place Rent (editable) */}
-                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                    <UMCell value={ut.inPlaceRent} cellKey={ck('in_place_rent')} edits={edits} setEdits={setEdits}
-                      onSave={d => onSave(i, 'in_place_rent', d)} onReset={() => onReset(i, 'in_place_rent')}
-                      color="#f59e0b" fmt={v => v != null ? `$${v.toLocaleString()}` : '—'} />
-                  </td>
-
-                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#06b6d4' }}>
-                    {ut.marketRent != null ? `$${ut.marketRent.toLocaleString()}` : '—'}
-                  </td>
-
-                  <td style={{ padding: '3px 8px', textAlign: 'right', color: ltlPct != null && ltlPct > 5 ? '#fb923c' : '#475569' }}>
-                    {ltlPct != null ? `${ltlPct.toFixed(1)}%` : '—'}
-                  </td>
-
-                  {/* Occupancy (editable — pct input 0-100) */}
-                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                    <UMCell value={ut.occupancyPct != null ? ut.occupancyPct * 100 : null} cellKey={ck('occupancy_pct')} edits={edits} setEdits={setEdits}
-                      onSave={d => onSave(i, 'occupancy_pct', d)} onReset={() => onReset(i, 'occupancy_pct')}
-                      color={ut.occupancyPct != null && ut.occupancyPct < 0.9 ? '#fb923c' : '#22c55e'}
-                      fmt={v => v != null ? `${v.toFixed(1)}%` : '—'} />
-                  </td>
-
-                  {/* Concession pct (editable — pct input 0-100) */}
-                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                    <UMCell value={ut.concessionPct != null ? ut.concessionPct * 100 : null} cellKey={ck('concession_pct')} edits={edits} setEdits={setEdits}
-                      onSave={d => onSave(i, 'concession_pct', d)} onReset={() => onReset(i, 'concession_pct')}
-                      color="#475569"
-                      fmt={v => v != null ? `${v.toFixed(1)}%` : '—'} />
-                  </td>
-
-                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#64748b' }}>
-                    {lineGpr > 0 ? fmt$(lineGpr) : '—'}
-                  </td>
-                </tr>
-              );
-            })}
-
-            {/* ── Totals / weighted-average row ── */}
-            <tr style={{ background: '#0a1220', borderTop: '1px solid #1e3a5f' }}>
-              <td style={{ padding: '4px 8px', fontFamily: LABEL, fontSize: 8, color: '#64748b', fontWeight: 700 }}>TOTALS / WTD AVG</td>
-              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontWeight: 700 }}>{totalCount}</td>
-              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#64748b' }}>100%</td>
-              <td />
-              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#f59e0b', fontWeight: 700 }}>
-                {wtdAvgRent != null ? `$${Math.round(wtdAvgRent).toLocaleString()}` : '—'}
-              </td>
-              <td />
-              <td />
-              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22c55e', fontWeight: 700 }}>
-                {wtdAvgOcc != null ? `${(wtdAvgOcc * 100).toFixed(1)}%` : '—'}
-              </td>
-              <td />
-              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22c55e', fontWeight: 700, borderLeft: '1px solid #1e3a5f' }}>
-                {fmt$(gprAnnual)}
-              </td>
-            </tr>
-
-            {/* ── GPR Rollup row ── */}
-            <tr style={{ background: '#040e18', borderTop: '1px solid #0c2a3f' }}>
-              <td colSpan={9} style={{ padding: '4px 8px 4px 12px', fontFamily: LABEL, fontSize: 8, color: '#334155' }}>
-                GPR = Σ (Units × In-Place Rent × 12 months) · matches T-12 GPR if rent roll ties
-              </td>
-              <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: MONO, fontWeight: 700, fontSize: 10, color: '#22c55e' }}>
-                {fmt$(gprAnnual)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      ) : (
-        <div style={{ fontFamily: LABEL, fontSize: 9, color: '#334155', padding: '8px 8px', textAlign: 'center' }}>
-          No unit mix data · Add rent roll to unlock
-        </div>
-      )}
-    </div>
-  );
-}
 
 function NoisBridge({ egiRow, ctrlOpex, nctrlOpex, noi, totalUnits, capRate }: {
   egiRow: OperatingStatementRow | undefined;
