@@ -266,6 +266,7 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   outputSchema: CashflowOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.cashflow,
   modelName: 'deepseek-chat',
+  firstToolCall: 'fetch_data_matrix',  // Force first step to fetch deal context
   capabilities: ['read:all', 'write:deal_context'],
 };
 

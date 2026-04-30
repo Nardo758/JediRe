@@ -56,13 +56,16 @@ export async function cashflowPostProcess(
 
     // Ensure required string fields
     if (typeof output.summary !== 'string' || output.summary === '') {
-      // If summary is an object, try to extract from it or use default
+      // If summary is an object, try to extract a string from it
       if (typeof output.summary === 'object' && output.summary !== null) {
         const obj = output.summary as Record<string, unknown>;
         output.summary = typeof obj.text === 'string' ? obj.text
           : typeof obj.content === 'string' ? obj.content
-          : String(obj);
-      } else {
+          : typeof obj.message === 'string' ? obj.message
+          : typeof obj.synthesis === 'string' ? obj.synthesis
+          : typeof obj.findings === 'string' ? obj.findings
+          : DEFAULT_SUMMARY;
+      } else if (output.summary === null || output.summary === undefined) {
         output.summary = DEFAULT_SUMMARY;
       }
     }
