@@ -4,12 +4,17 @@
  * Stores 3d_scene.json and scenario variants under:
  *   /api/v1/deals/:dealId/files/3d-scene
  *   /api/v1/deals/:dealId/files/3d-scene/scenarios/:scenarioId
+ *
+ * DEPENDENCY: Requires migration 20260430_016_deal_files.sql (creates deal_files table)
+ * Run: `psql $DATABASE_URL -f backend/src/db/migrations/20260430_016_deal_files.sql`
  */
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../../database';
 
+// Edge: if deal_files table doesn't exist, route returns 503 with clear message
+const DB_ERROR = 'deal_files table does not exist — run migration 20260430_016_deal_files.sql';
 const router = Router();
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
