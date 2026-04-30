@@ -10,6 +10,7 @@ import {
   Search,
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
+import KGContextPanel from '../../knowledge-graph/KGContextPanel';
 
 interface ZoningConfirmTabProps {
   deal?: any;
@@ -48,6 +49,8 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
   const [manualEntry, setManualEntry] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [locationInfo, setLocationInfo] = useState<{ city: string; state: string } | null>(null);
+  const [confirmedZoneCode, setConfirmedZoneCode] = useState<string | null>(null);
+  const [confirmedJurisdiction, setConfirmedJurisdiction] = useState<string | null>(null);
 
   useEffect(() => {
     fetchZoningFromBoundary();
@@ -250,6 +253,12 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         state: detectedZoning?.state || locationInfo?.state,
         confirmed_at: new Date().toISOString(),
       });
+
+      // Track the confirmed zone for KG context display
+      setConfirmedZoneCode(zoneCode);
+      setConfirmedJurisdiction(
+        detectedZoning?.municipality || locationInfo?.city || null,
+      );
 
       if (onConfirm) {
         onConfirm(enrichedZoning);
@@ -471,6 +480,17 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {confirmedZoneCode && confirmedJurisdiction && (
+        <div className="mt-6">
+          <KGContextPanel
+            jurisdiction={confirmedJurisdiction}
+            zoneCode={confirmedZoneCode}
+            compact={false}
+            className=""
+          />
         </div>
       )}
 
