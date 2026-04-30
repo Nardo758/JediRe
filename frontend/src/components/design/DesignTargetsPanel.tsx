@@ -26,42 +26,13 @@
  */
 
 import React from 'react';
+import type { DesignTargets } from '../../types/designTargets.types';
+
+// Re-export canonical type so existing imports
+// (`import { type DesignTargets } from './DesignTargetsPanel'`) keep working.
+export type { DesignTargets };
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-export interface DesignTargets {
-  /** Target metrics from F3 Programming tab */
-  program: {
-    /** Target total units */
-    targetUnits: number;
-    /** Target gross floor area (sqft) */
-    targetGFA: number;
-    /** Target floor area ratio */
-    targetFAR: number;
-    /** Target max floors */
-    targetFloors: number;
-    /** Target parking ratio (spaces/unit) */
-    targetParkingRatio: number;
-    /** Target building height (ft) */
-    targetHeight: number;
-  };
-  /** Approved amenities from F3 Amenity Gaps tab */
-  approvedAmenities: string[];
-  /** Budget for construction (optional) */
-  budget?: {
-    /** Total budget for construction */
-    total: number;
-    /** Cost per sqft estimate */
-    costPerSqft: number;
-  };
-  /** Target unit mix breakdown */
-  unitMix?: {
-    studio: number;
-    oneBed: number;
-    twoBed: number;
-    threeBed: number;
-  };
-}
 
 export interface CurrentMetrics {
   currentUnits: number;
@@ -123,9 +94,13 @@ function AmenityBadge({ name, approved }: { name: string; approved: boolean }) {
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export const DesignTargetsPanel: React.FC<DesignTargetsPanelProps> = ({ targets, metrics }) => {
-  const costUsed = targets.budget ? Math.round((metrics.estimatedCost / targets.budget.total) * 100) : 0;
-  const pctFloors = targets.program.targetFloors > 0
-    ? Math.round((metrics.currentFloors / targets.program.targetFloors) * 100)
+  const program = targets.program;
+  const budget = program?.budget;
+  const unitMix = program?.unitMix;
+  const approvedAmenities = program?.approvedAmenities ?? [];
+  const costUsed = budget ? Math.round((metrics.estimatedCost / budget.total) * 100) : 0;
+  const pctFloors = program?.targetFloors > 0
+    ? Math.round((metrics.currentFloors / program.targetFloors) * 100)
     : 0;
 
   return (
@@ -137,37 +112,37 @@ export const DesignTargetsPanel: React.FC<DesignTargetsPanelProps> = ({ targets,
 
       {/* Program Targets */}
       <div className="space-y-2">
-        <ProgressBar value={metrics.currentUnits} max={targets.program.targetUnits} label="Units" />
+        <ProgressBar value={metrics.currentUnits} max={program?.targetUnits ?? 0} label="Units" />
         <ProgressBar
           value={Math.round(metrics.currentGFA / 1000)}
-          max={Math.round(targets.program.targetGFA / 1000)}
+          max={Math.round((program?.targetGFA ?? 0) / 1000)}
           label="GFA (K)"
         />
-        <ProgressBar value={metrics.currentFAR * 10} max={targets.program.targetFAR * 10} label="FAR" />
-        <ProgressBar value={metrics.currentFloors} max={targets.program.targetFloors} label="Floors" />
-        <ProgressBar value={metrics.currentHeight} max={targets.program.targetHeight} label="Height" />
-        {targets.program.targetParkingRatio > 0 && (
+        <ProgressBar value={metrics.currentFAR * 10} max={(program?.targetFAR ?? 0) * 10} label="FAR" />
+        <ProgressBar value={metrics.currentFloors} max={program?.targetFloors ?? 0} label="Floors" />
+        <ProgressBar value={metrics.currentHeight} max={program?.targetHeight ?? 0} label="Height" />
+        {(program?.targetParkingRatio ?? 0) > 0 && (
           <ProgressBar
             value={metrics.currentParkingSpaces / Math.max(1, metrics.currentUnits)}
-            max={targets.program.targetParkingRatio}
+            max={program?.targetParkingRatio ?? 0}
             label="Park"
           />
         )}
       </div>
 
       {/* Unit Mix Breakdown */}
-      {targets.unitMix && (
+      {unitMix && (
         <div>
           <h4 className="text-xs text-gray-500 uppercase tracking-wider mb-1">Unit Mix</h4>
           <div className="grid grid-cols-2 gap-1 text-xs">
             <span className="text-gray-400">Studio:</span>
-            <span className="text-right font-mono">{targets.unitMix.studio}%</span>
+            <span className="text-right font-mono">{unitMix.studio}%</span>
             <span className="text-gray-400">1BR:</span>
-            <span className="text-right font-mono">{targets.unitMix.oneBed}%</span>
+            <span className="text-right font-mono">{unitMix.oneBed}%</span>
             <span className="text-gray-400">2BR:</span>
-            <span className="text-right font-mono">{targets.unitMix.twoBed}%</span>
+            <span className="text-right font-mono">{unitMix.twoBed}%</span>
             <span className="text-gray-400">3BR:</span>
-            <span className="text-right font-mono">{targets.unitMix.threeBed}%</span>
+            <span className="text-right font-mono">{unitMix.threeBed}%</span>
           </div>
         </div>
       )}
@@ -176,18 +151,18 @@ export const DesignTargetsPanel: React.FC<DesignTargetsPanelProps> = ({ targets,
       <div>
         <h4 className="text-xs text-gray-500 uppercase tracking-wider mb-1">??? Approved Amenities</h4>
         <div className="flex flex-wrap gap-1">
-          {targets.approvedAmenities.map((name) => (
-            <AmenityBadge key={name} name={name} approved={true} />
+          {approvedAmenities.map((amenity) => (
+            <AmenityBadge key={amenity.id} name={amenity.name} approved={true} />
           ))}
           {/* Pre-populated with common multifamily amenities for initial display */}
-          {targets.approvedAmenities.length === 0 && (
+          {approvedAmenities.length === 0 && (
             <span className="text-xs text-gray-500 italic">None selected in F3</span>
           )}
         </div>
       </div>
 
       {/* Budget */}
-      {targets.budget && (
+      {budget && (
         <div>
           <h4 className="text-xs text-gray-500 uppercase tracking-wider mb-1">??? Budget Remaining</h4>
           <div className="space-y-1">
@@ -197,7 +172,7 @@ export const DesignTargetsPanel: React.FC<DesignTargetsPanelProps> = ({ targets,
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-gray-400">Total:</span>
-              <span className="font-mono">${(targets.budget.total / 1e6).toFixed(1)}M</span>
+              <span className="font-mono">${(budget.total / 1e6).toFixed(1)}M</span>
             </div>
             <div className="h-2 bg-gray-700 rounded-full overflow-hidden mt-1">
               <div
@@ -219,9 +194,9 @@ export const DesignTargetsPanel: React.FC<DesignTargetsPanelProps> = ({ targets,
         <div className="flex items-center gap-1.5 text-xs">
           {(() => {
             const issues: string[] = [];
-            if (metrics.currentUnits < targets.program.targetUnits * 0.8) issues.push('under units');
-            if (metrics.currentFloors > targets.program.targetFloors) issues.push('exceeds height');
-            if (metrics.currentFAR > targets.program.targetFAR * 1.1) issues.push('exceeds FAR');
+            if (program && metrics.currentUnits < program.targetUnits * 0.8) issues.push('under units');
+            if (program && metrics.currentFloors > program.targetFloors) issues.push('exceeds height');
+            if (program && metrics.currentFAR > program.targetFAR * 1.1) issues.push('exceeds FAR');
             if (issues.length === 0) return <span className="text-emerald-400">✓ Within targets</span>;
             return <span className="text-amber-400">⚠ {issues.join(', ')}</span>;
           })()}
