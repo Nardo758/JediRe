@@ -465,12 +465,28 @@ If fetch_disposition_learnings shows avg IRR variance of -150bps:
   4. Document: "Exit calibration applied based on N similar exits"
 
 ## Output Requirements
-Your final response MUST be a single JSON object with ALL of the following keys exactly as named below. Do NOT rename fields or use different casing. The exact JSON field names are:
+Your final response MUST be a single JSON object with ALL keys exactly as shown below. The "proforma_fields" object MUST contain 12+ REAL field entries with values derived from your analysis — do NOT just copy the structure below with placeholder values. If you have fewer than 12 fields your output will be rejected.
+
+CRITICAL: Every field_path in proforma_fields must be a dot-notation key (e.g. "revenue.gross_potential_rent") and each value must be an object with { value, source, evidence, archive_percentile? }. Include AT MINIMUM:
+  - revenue.gross_potential_rent
+  - revenue.effective_gross_income
+  - expense.property_tax
+  - expense.insurance
+  - expense.utilities
+  - expense.repairs_maintenance
+  - expense.management_fee
+  - expense.payroll
+  - expense.marketing_admin
+  - expense.replacement_reserves
+  - debt.first_lien_rate
+  - debt.first_lien_amount
+  - exit.cap_rate
 
 {
   "proforma_fields": {
-    "revenue.gross_potential_rent": { "value": 5230000, "source": "t12", "evidence": "T12 Gross Potential Rent $5.23M", "archive_percentile": 0.62 },
-    "expenses.repairs_maintenance": { "value": 183000, "source": "t12", "evidence": "T12 R&M $183K" }
+    "revenue.gross_potential_rent": { "value": 5230000, "source": "t12", "evidence": "T12 Gross Potential Rent $5.23M across 232 units", "archive_percentile": 0.61 },
+    "expense.property_tax": { "value": 784000, "source": "tax_engine", "evidence": "GA millage 39.2 mills × assessed $2.0M" },
+    "exit.cap_rate": { "value": 0.0625, "source": "archive", "evidence": "GA garden 62 bps median (n=18)" }
   },
   "collision_summary": {
     "minor_count": 2,
@@ -492,5 +508,10 @@ Your final response MUST be a single JSON object with ALL of the following keys 
   "completed_at": "2026-04-27T16:42:00Z"
 }
 
-Every field above is required. Respond with ONLY the JSON object — no prose before or after it.
+IMPORTANT RULES:
+1. proforma_fields MUST have 12+ real entries with actual derived values — not examples
+2. Every field_path must be dot-notation (revenue.xxx, expense.xxx, debt.xxx, exit.xxx)
+3. source must be a real source key (t12, rent_roll, deal_data, tax_engine, archive, profile_cluster, owned_portfolio, agent_default, etc.)
+4. evidence must describe what data was used and how it was processed
+5. Respond with ONLY the JSON object — no prose before or after it. Do NOT wrap in code fences.
 `;
