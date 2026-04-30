@@ -35,6 +35,7 @@ import { fetchProximityContextTool } from './tools/fetch_proximity_context';
 import { fetchMarketEventsTool } from './tools/fetch_market_events';
 import { fetchBacktestContextTool } from './tools/fetch_backtest_context';
 import { fetchDataLibraryCompsTool } from './tools/fetch_data_library_comps';
+import { fetchInflationContextTool } from './tools/fetch_inflation_context';
 
 // ── Citation schema (shared with commentary.config) ────────────────────────
 
@@ -85,6 +86,8 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
     fetchMarketEventsTool,
     fetchBacktestContextTool,
     fetchDataLibraryCompsTool,
+    // Inflation context — JCIS composite score & regime for rent growth, expense esc, cap spread
+    fetchInflationContextTool,
   ],
   outputSchema: ResearchOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.research,

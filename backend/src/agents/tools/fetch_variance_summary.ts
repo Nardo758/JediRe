@@ -80,6 +80,16 @@ export interface VarianceSummaryResult {
 /**
  * Fetch variance summary for commentary
  */
+function mapPriority(priority: string | null | undefined): 'high' | 'medium' | 'low' {
+  switch(priority?.toLowerCase()) {
+    case 'critical': return 'high';
+    case 'high': return 'high';
+    case 'medium': return 'medium';
+    case 'low': return 'low';
+    default: return 'medium';
+  }
+}
+
 export async function fetchVarianceSummary(
   input: FetchVarianceSummaryInput
 ): Promise<VarianceSummaryResult> {
@@ -143,7 +153,7 @@ export async function fetchVarianceSummary(
   // Get recommendations if requested
   const recsResult = input.include_recommendations
     ? await query(
-        `SELECT category, action, estimated_noi_impact, urgency
+        `SELECT category, title, estimated_monthly_impact, priority
          FROM operations_recommendations
          WHERE deal_id = $1 AND status = 'open'
          ORDER BY estimated_noi_impact DESC
@@ -226,9 +236,9 @@ export async function fetchVarianceSummary(
   // Build recommendations
   const recommendations = (recsResult.rows as Record<string, unknown>[]).map(row => ({
     category: String(row.category),
-    action: String(row.action),
-    estimatedImpact: Number(row.estimated_noi_impact ?? 0),
-    urgency: row.urgency as 'high' | 'medium' | 'low',
+    action: String(row.title),
+    estimatedImpact: Number(row.estimated_monthly_impact ?? (row.estimated_annual_impact ? row.estimated_annual_impact / 12 : 0) ?? 0),
+    urgency: mapPriority(row.priority) as 'high' | 'medium' | 'low',
   }));
 
   // Generate overall assessment
