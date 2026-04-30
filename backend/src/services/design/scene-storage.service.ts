@@ -43,7 +43,7 @@ router.post('/:dealId/files/3d-scene', async (req: Request, res: Response) => {
     await db.query(
       `INSERT INTO deal_files (deal_id, file_path, file_data, mime_type, created_by, updated_by)
        VALUES ($1, $2, $3, $4, $5, $5)
-       ON CONFLICT (deal_id, file_path)
+       ON CONFLICT (deal_id, file_path) WHERE deleted_at IS NULL
        DO UPDATE SET file_data = $3, updated_by = $5, updated_at = NOW()`,
       [dealId, path, JSON.stringify(body.scene_data), 'application/json', userId],
     );
