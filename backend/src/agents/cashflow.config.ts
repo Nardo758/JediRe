@@ -37,6 +37,7 @@ import { fetchM35EventForecastTool } from './tools/fetch_m35_event_forecast';
 import { detectCollisionTool } from './tools/detect_collision';
 import { writeUnderwritingTool } from './tools/write_underwriting';
 import { requestWalkthroughNarrativeTool } from './tools/request_walkthrough_narrative';
+import { readGmailThreadTool } from './tools/read_gmail_thread';
 import { fetchArchiveAssumptionDistributionTool } from './tools/fetch_archive_assumption_distribution';
 import { fetchArchiveAchievementVsAssumptionTool } from './tools/fetch_archive_achievement_vs_assumption';
 import { fetchLineItemBenchmarksTool } from './tools/fetch_line_item_benchmarks';

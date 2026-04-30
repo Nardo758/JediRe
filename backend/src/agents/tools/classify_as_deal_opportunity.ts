@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * classify_as_deal_opportunity
  *

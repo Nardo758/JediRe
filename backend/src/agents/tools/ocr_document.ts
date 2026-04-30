@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * ocr_document
  *

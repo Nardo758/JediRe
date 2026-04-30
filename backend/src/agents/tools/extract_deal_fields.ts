@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * extract_deal_fields
  *

@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * create_deal_draft
  *
