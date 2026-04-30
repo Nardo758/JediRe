@@ -34,7 +34,7 @@ router.post('/:dealId/files/3d-scene', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const body = saveSceneSchema.parse(req.body);
-    const userId = (req as any).user?.id || 'system';
+    const userId = (req as any).user?.id || null;
 
     const path = body.scenario_id
       ? `scenarios/${body.scenario_id}/3d_scene.json`

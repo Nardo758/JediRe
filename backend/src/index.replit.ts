@@ -449,12 +449,14 @@ app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
 app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/deals', financialDocumentsRoutes);
+
+// Scene storage for 3D scenes — must be BEFORE documentsFilesRoutes so
+// /:dealId/files/3d-scene wins match against /:dealId/files/:fileId (Express first-match)
+import { sceneStorageRouter } from './services/design/scene-storage.service';
+app.use('/api/v1/deals', requireAuth, sceneStorageRouter);
+
 import documentsFilesRoutes from './api/rest/documentsFiles.routes';
 app.use('/api/v1', documentsFilesRoutes);
-
-// Scene storage for 3D scenes — must be immediately after documentsFiles so
-// /:dealId/files/3d-scene wins match against documentsFiles' /:dealId/files/:fileId
-app.use('/api/v1/deals', requireAuth, sceneStorageRouter);
 
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
