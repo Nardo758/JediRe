@@ -1,23 +1,23 @@
 /**
  * MapBuildingView — Renders the building massing on a satellite map at the
- * property's real location. Replaces the isolated Three.js viewport with
- * a Mapbox scene showing:
+ * property's real location with optional county parcel overlay.
  *
- *   - Satellite/aerial imagery of the site
- *   - Parcel boundary outlined on the map
+ * Features:
+ *   - Satellite/aerial imagery via Mapbox
+ *   - Subject parcel boundary (green outline)
  *   - Building sections as 3D fill-extrusions at real lat/lng
- *   - Streets, nearby parcels, context buildings
+ *   - Optional county GIS parcel layer (WMS raster overlay) showing all
+ *     surrounding parcel boundaries from the county assessor's data
+ *   - Parcel overlay configurable via props or county presets
  *
- * Props:
- *   parcelBoundary — Parcel coordinates (lat/lng)
- *   buildingSections — Massing tool output sections (converted to map extrusions)
- *   latitude/longitude — Parcel center (fallback)
- *   mapStyle — optional Mapbox style URL (defaults to satellite-streets)
+ * County GIS presets (sources for all-parcel overlay):
+ *   - Fulton County, GA: ArcGIS WMS endpoint
+ *   - Use the `parcelWmsUrl` prop to override with your county's endpoint
  */
 
 import React, { useState, useMemo } from 'react';
 import Map, { Source, Layer, NavigationControl, ScaleControl, Popup } from 'react-map-gl';
-import type { LayerProps, MapRef } from 'react-map-gl';
+import type { LayerProps } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -54,6 +54,8 @@ interface MapBuildingViewProps {
   height?: string | number;
   /** Zoom level */
   zoom?: number;
+  /** County GIS WMS URL for parcel overlay. If provided, shows "Parcels" toggle. */
+  parcelWmsUrl?: string;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -62,6 +64,20 @@ const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.REACT_A
 
 const DEFAULT_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
 const ALT_STYLE = 'mapbox://styles/mapbox/light-v11';
+const DARK_STYLE = 'mapbox://styles/mapbox/dark-v11';
+
+/**
+ * Default county GIS WMS endpoints. These serve parcel boundary overlays
+ * as raster tiles from county assessor data.
+ *
+ * Users can override via `parcelWmsUrl` prop for their specific county.
+ */
+const COUNTY_PARCEL_WMS: Record<string, string> = {
+  'fulton-ga': 'https://gis.fultoncountyga.gov/arcgis/services/Parcels/MapServer/WmsServer?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true&LAYERS=0&STYLES=&WIDTH=512&HEIGHT=512&CRS=EPSG:3857&BBOX={bbox-epsg-3857}',
+  'dekalb-ga': 'https://gis.dekalbcountyga.gov/arcgis/services/Parcel/MapServer/WmsServer?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true&LAYERS=0&STYLES=&WIDTH=512&HEIGHT=512&CRS=EPSG:3857&BBOX={bbox-epsg-3857}',
+  'cobb-ga': 'https://maps.cobbcounty.org/arcgis/services/Parcel/Parcels/MapServer/WmsServer?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true&LAYERS=0&STYLES=&WIDTH=512&HEIGHT=512&CRS=EPSG:3857&BBOX={bbox-epsg-3857}',
+  'gwinnett-ga': 'https://gis.gwinnettcounty.com/arcgis/services/Parcel/Parcels/MapServer/WmsServer?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true&LAYERS=0&STYLES=&WIDTH=512&HEIGHT=512&CRS=EPSG:3857&BBOX={bbox-epsg-3857}',
+};
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -73,10 +89,15 @@ const MapBuildingView: React.FC<MapBuildingViewProps> = ({
   mapStyle,
   height = '100%',
   zoom = 18,
+  parcelWmsUrl,
 }) => {
   const [mapError, setMapError] = useState(false);
   const [currentStyle, setCurrentStyle] = useState(mapStyle || DEFAULT_STYLE);
   const [hoveredSection, setHoveredSection] = useState<string | null>(null);
+  const [showParcels, setShowParcels] = useState(false);
+
+  // Resolve county WMS URL (prop override or use default for Atlanta area)
+  const resolvedWmsUrl = parcelWmsUrl || COUNTY_PARCEL_WMS['fulton-ga'];
 
   // ── GeoJSON sources ────────────────────────────────────────────────────
 
@@ -200,17 +221,19 @@ const MapBuildingView: React.FC<MapBuildingViewProps> = ({
 
   return (
     <div style={{ position: 'relative', height, overflow: 'hidden', borderRadius: 8 }}>
-      {/* Style toggle */}
+      {/* Top-left controls */}
       <div
         style={{
           position: 'absolute',
           top: 8,
-          right: 8,
+          left: 8,
           zIndex: 10,
           display: 'flex',
           gap: 4,
+          flexWrap: 'wrap',
         }}
       >
+        {/* Style toggle */}
         <button
           onClick={() => setCurrentStyle(DEFAULT_STYLE)}
           style={{
@@ -243,6 +266,25 @@ const MapBuildingView: React.FC<MapBuildingViewProps> = ({
         >
           Streets
         </button>
+
+        {/* County Parcel Overlay Toggle */}
+        <button
+          onClick={() => setShowParcels(!showParcels)}
+          style={{
+            padding: '3px 8px',
+            fontSize: 10,
+            fontFamily: 'monospace',
+            background: showParcels ? '#10b981' : '#1e293b',
+            color: '#e2e8f0',
+            border: '1px solid #334155',
+            borderRadius: 4,
+            cursor: 'pointer',
+            opacity: 0.8,
+          }}
+          title={resolvedWmsUrl ? 'Toggle county parcel overlay' : 'No county WMS URL configured'}
+        >
+          {showParcels ? '📋 Hide parcels' : '📋 Parcels'}
+        </button>
       </div>
 
       <Map
@@ -269,7 +311,26 @@ const MapBuildingView: React.FC<MapBuildingViewProps> = ({
         <NavigationControl position="bottom-right" />
         <ScaleControl position="bottom-left" unit="imperial" />
 
-        {/* Parcel boundary */}
+        {/* County parcel overlay (WMS raster tiles) */}
+        {showParcels && resolvedWmsUrl && (
+          <Source
+            id="county-parcels"
+            type="raster"
+            tiles={[resolvedWmsUrl]}
+            tileSize={512}
+          >
+            <Layer
+              id="county-parcels-layer"
+              type="raster"
+              paint={{
+                'raster-opacity': 0.35,
+                'raster-resampling': 'linear',
+              }}
+            />
+          </Source>
+        )}
+
+        {/* Subject parcel boundary */}
         {parcelGeoJSON && (
           <Source id="parcel" type="geojson" data={parcelGeoJSON}>
             <Layer {...parcelLayer} />
