@@ -1,0 +1,68 @@
+# Common Area Improvements — Archetype D (portfolio-benchmark-driven)
+#
+# Amenity and common area renovation budget. Part of repositioning/value-add.
+# Includes: clubhouse, fitness center, pool, courtyard, leasing office,
+# hallways, elevator lobbies, mail room, package lockers.
+#
+# Unlike unit upgrades (repeatable per unit), CA improvements are
+# one-time fixed cost. Quality drives rent premium.
+
+liuid: "strategy.commonAreaImprovements"
+label: "Common Area Improvements"
+section: "strategy"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - redevelopment
+
+sourcePreference: [4, 2.5, 5]
+# Tier 4: broker OM (stated CA budget)
+# Tier 2.5: profile cluster CA spend by product type
+# Tier 5: $3K/unit (moderate CA refresh)
+
+lifecycleOverrides: []
+
+dependsOn:
+  recommended:
+    - "strategy.valueAdd"
+    - "strategy.reposition"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Year 1 CA improvements"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.7
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "strategy.ca_improvements"
+  materiality:
+    absoluteMin: 50000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 15
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Common area improvements of ${{value}} (${{per_unit}}/unit).
+  Scope: {{ca_scope}}.
+  Profile cluster (n={{profile_n}}, {{product_type}}): {{profile_ca_cost}}/unit.
+  {{collision_note}}
+
+notes: |
+  CA improvements have wider cost variability than unit upgrades.
+  Amenity scope is highly submarket-dependent. A $2K/unit refresh may
+  be adequate in a Class B suburban market; $8K+/unit may be needed
+  in a competitive urban submarket with luxury amenity expectations.

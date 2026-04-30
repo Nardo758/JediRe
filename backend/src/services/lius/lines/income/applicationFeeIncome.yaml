@@ -1,0 +1,64 @@
+# Application Fee Income — Archetype E (zero-rule baseline)
+#
+# One-time application fees paid by prospective residents.
+# Revenue depends on: vacancy rate × turnover units × applications per unit
+#
+# Typical: $35-75 per application
+# Applications per vacant unit: 2-5 in strong markets, 1-2 in weak
+# Turnover: 45-65% annually for market-rate multifamily
+
+liuid: "income.applicationFeeIncome"
+label: "Application Fee Income"
+section: "income"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 5]
+# Tier 1: T12 actual application fee revenue
+# Tier 2.5: profile cluster application income per unit
+# Tier 5: estimated turnover × expected applications × fee
+
+lifecycleOverrides: []
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended:
+    - "income.vacancyCollectionLoss"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.application_fees"
+  materiality:
+    absoluteMin: 3000
+    pctMin: 0.30
+
+confidence:
+  minSampleForHigh: 15
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Application fee income of ${{value}} (${{per_unit}}/unit/year).
+  Estimated {{turnover_units}} move-outs × {{apps_per_unit}} applications/unit
+  × ${{fee_per_app}} fee = ${{gross}}.
+  T12 shows {{t12_actual}}/year in application fees.
+  {{collision_note}}
+
+notes: |
+  Application fees are small but worth tracking for consistency.
+  Some jurisdictions limit application fees (e.g., CA: $30-50 cap).
+  Online application platforms (AppFolio, Yardi, etc.) charge $5-15/app,
+  reducing net revenue.

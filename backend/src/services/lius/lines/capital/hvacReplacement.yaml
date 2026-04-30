@@ -1,0 +1,72 @@
+# HVAC Replacement — Archetype E (zero-rule baseline)
+#
+# HVAC system replacement capital expenditure. Modeled as discrete
+# spike events triggered by component age thresholds.
+#
+# Typical system types and lifespans:
+#   Through-wall PTAC: 10-15 years ($3-5K/unit)
+#   Split system (condenser + air handler): 15-20 years ($5-8K/unit)
+#   Rooftop unit (RTU): 15-20 years ($10-25K/unit)
+#   Central chiller: 20-30 years ($50-200K)
+#   Boiler: 25-35 years ($25-100K)
+#
+# Cost: $5-10K per unit for PTAC/split replacement
+# Profile cluster provides replacement age distribution by vintage
+# and mechanical system era.
+
+liuid: "capital.hvacReplacement"
+label: "HVAC Replacement"
+section: "capital"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - reforecast
+
+sourcePreference: [1, 2.5, 5]
+# Tier 1: PCA report (HVAC age, condition, estimated replacement schedule)
+# Tier 2.5: profile cluster HVAC replacement by vintage band + mech era
+# Tier 5: $6K/unit at age 17 (profile cluster default)
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "HVAC replacement year (profile cluster peak replacement age)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: false
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 365
+
+reasoningTemplate: |
+  HVAC replacement capex: ${{value}} ({{units_replaced}} units × {{cost_per_unit}}/unit).
+  System type: {{hvac_type}}.
+  Current age: {{hvac_age}} years (remaining life: {{remaining_life}} years).
+  PCA report: {{pca_condition}}.
+  Profile cluster (n={{profile_n}}): {{profile_replacement_age}} year replacement cycle.
+  {{planned_phase_note}}.
+
+notes: |
+  HVAC replacements are typically phased 20-40% per year over 2-4 years
+  (not all at once). For acquisition underwriting, check if recent
+  replacements reduce Year 1-5 burden. For older properties (pre-2000),
+  expect cascading HVAC replacements starting around year 15-20.
+  PTAC units in garden apartments are the most common replacement driver.

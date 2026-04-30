@@ -1,0 +1,79 @@
+# Exit Transfer Tax — Archetype C (service-derived, jurisdiction-bound)
+#
+# Transfer tax payable by the SELLER at disposition.
+# This is separate from acquisition transfer taxes (which the BUYER pays).
+# Some jurisdictions charge the same rate on both sides; others differentiate.
+#
+# Key jurisdiction differences:
+# - FL: seller may pay doc stamps (negotiable, often split)
+# - NY: seller pays transfer tax (~0.65% state + 1.425% NYC = 2.075%)
+# - MD: ~0.35% state + 0.5% county
+# - PA: 1% state + 1% county (split between buyer/seller)
+# - Most others: seller has minimal transfer tax burden
+
+liuid: "exit.exitTransferTax"
+label: "Exit Transfer Tax"
+section: "exit"
+archetype: "C"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - reforecast
+  - disposition
+
+sourcePreference: [5, 3]
+# Tier 5: jurisdiction-specific seller transfer tax rates
+# Tier 3: archive exit transfer taxes for similar dispositions
+
+lifecycleOverrides: []
+
+dependsOn:
+  required: []
+
+hardRules:
+  - condition: "NY disposition"
+    description: "NY seller pays state (0.65%) + NYC (1.425%) on deals > $1M"
+    effect:
+      sourceActions: []
+      trajectoryOverrides: []
+
+  - condition: "PA disposition"
+    description: "PA seller pays half of 1% state + 1% county (0.5%+0.5%=1% total seller share)"
+    effect:
+      sourceActions: []
+      trajectoryOverrides: []
+
+  - condition: "MD disposition"
+    description: "MD seller pays ~0.35% state + up to 0.5% county transfer"
+    effect:
+      sourceActions: []
+      trajectoryOverrides: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "exit.transfer_tax"
+  materiality:
+    absoluteMin: 15000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Exit transfer tax: ${{value}} ({{pct_exit_price}}%).
+  Jurisdiction: {{jurisdiction}}.
+  Seller share: {{seller_share_rate}}% of {{tax_base}}.
+  {{collision_note}}
+
+notes: |
+  Exit transfer taxes are the second-largest single disposition cost
+  after broker commission in high-tax states. Always verify jurisdiction
+  rates — they change when municipalities pass new transfer tax ordinances.
+  NY/NYC is the most impactful: 2.075% on a $100M exit = $2.075M.

@@ -1,0 +1,55 @@
+# Closing Costs (Disposition) — Archetype D (portfolio-benchmark-driven)
+#
+# Seller-side closing costs at disposition.
+# Includes: legal fees, escrow, title, recording, prorations.
+# Does NOT include broker commission (separate) or transfer taxes (separate).
+#
+# Typically $25-75K for standard multifamily disposition.
+# Higher for complex legal structures or portfolio sales.
+
+liuid: "exit.closingCosts"
+label: "Closing Costs (Disposition)"
+section: "exit"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - disposition
+
+sourcePreference: [4, 3, 5]
+# Tier 4: broker OM (closing cost estimate)
+# Tier 3: archive closing costs for similar dispositions
+# Tier 5: $50K flat (moderate complexity)
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "exit.closing_costs"
+  materiality:
+    absoluteMin: 10000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Closing costs (disposition): ${{value}}.
+  Breakdown: {{closing_cost_breakdown}}.
+  Archive (n={{archive_n}}): {{archive_closing_costs}}.
+  {{collision_note}}
+
+notes: |
+  Closing costs at disposition are generally a small fraction of
+  total exit costs. Focus analytical effort on exit cap rate and
+  broker commission.

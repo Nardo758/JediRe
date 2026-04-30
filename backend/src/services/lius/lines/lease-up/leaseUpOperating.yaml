@@ -1,0 +1,74 @@
+# Lease-Up Operating Expenses — Archetype B (T12-anchored, cross-validated)
+#
+# Operating expenses during lease-up are structurally different from stabilized:
+# - Utilities: higher (vacant units still consume base load)
+# - R&M: lower (fewer occupied units, less wear)
+# - Marketing/admin: much higher (lease-up acquisition costs, ILS spend)
+# - Payroll: higher (more leasing agent capacity)
+# - Insurance: same (property insurance doesn't change)
+# - Property tax: different basis (still under construction/raw land assessment)
+#
+# This schema models the LEASE-UP DURATION ONLY. After stabilization,
+# use standard opex schemas.
+
+liuid: "leaseUp.leaseUpOperating"
+label: "Lease-Up Operating Expenses"
+section: "lease-up"
+archetype: "B"
+version: 1
+
+applicableDealTypes:
+  - development
+
+sourcePreference: [3, 2.5, 5]
+# Tier 3: M07 archive lease-up opex for similar properties
+# Tier 2.5: profile cluster lease-up opex ratios
+# Tier 5: stabilized opex × 1.15 (15% premium)
+
+lifecycleOverrides: []
+
+dependsOn:
+  required:
+    - "leaseUp.leaseUpAbsorption"
+  recommended:
+    - "leaseUp.leaseUpMarketing"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 1
+      description: "Lease-up operating expense premium"
+      deltaPct: 0.15
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "lease_up.opex"
+  materiality:
+    absoluteMin: 50000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 10
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Lease-up operating expenses of ${{value}} (${{per_unit}}/unit).
+  {{months_to_stabilize}} months lease-up duration.
+  Elevated categories: {{elevated_categories}}.
+  Archive (n={{archive_n}}, similar lease-ups): {{archive_lease_up_opex}}/unit.
+  Stabilized benchmark: ${{stabilized_opex}}/unit (${{stabilized_pu_opex}}/unit).
+  Lease-up premium: {{opex_premium_pct}}%.
+  {{collision_note}}
+
+notes: |
+  Lease-up opex is structurally higher than stabilized. Do not use
+  stabilized benchmarks for development proformas. Budget 10-20% above
+  stabilized for the lease-up period. After stabilization, expenses snap
+  to standard opex schemas.

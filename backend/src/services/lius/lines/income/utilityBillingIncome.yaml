@@ -1,0 +1,87 @@
+# Utility Billing Income (RUBS) — Archetype A (rent-roll-anchored)
+#
+# Utility billing recovery via Ratio Utility Billing System (RUBS).
+# Income = recovered utility costs from residents. Not gross utility cost.
+#
+# RUBS recovery rate varies:
+# - Submetered: ~90-100% recovery (actual usage billed)
+# - RUBS (ratio allocation): ~75-85% recovery
+# - Bulk included: $0 recovery
+#
+# Rent roll shows current billing structure and recovery $.
+# Profile cluster shows typical recovery % by building class and metro.
+
+liuid: "income.utilityBillingIncome"
+label: "Utility Billing Income"
+section: "income"
+archetype: "A"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 5]
+# Tier 1: rent roll / T12 — actual utility reimbursement
+# Tier 2.5: profile cluster RUBS recovery by product type
+# Tier 3: archive submarket avg RUBS recovery
+# Tier 5: $15/unit/month conservative
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [2.5, 3, 5]
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended:
+    - "opex.utilities"
+
+hardRules:
+  - condition: "value-add with planned RUBS conversion"
+    description: "RUBS conversion adds $25-40/unit/month income"
+    effect:
+      sourceActions: []
+      trajectoryOverrides:
+        - year: 2
+          primitive: "level_reset"
+          value: null
+          binding: false
+    # Actual value computed by trajectory engine from profile
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 2
+      description: "Utility inflation passes through to RUBS income"
+      deltaPct: 1.0
+      source: "schema"
+      confidence: 0.6
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.utility_reimbursement"
+  materiality:
+    absoluteMin: 10000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 180
+
+reasoningTemplate: |
+  Utility billing income of ${{value}} (${{per_unit}}/unit/mo).
+  Current billing: {{billing_type}} ({{recovery_rate}}% recovery).
+  Utility costs: ${{utility_cost}}/unit/mo.
+  Profile cluster (n={{profile_n}}): {{profile_reimbursement}}/unit/mo.
+  {{conversion_note}}.
+
+notes: |
+  RUBS conversion is a common value-add initiative. Budget $500-800/unit
+  for submetering installation. Recovery should net positive after billing
+  service fees ($2-4/unit/month for third-party RUBS admin).

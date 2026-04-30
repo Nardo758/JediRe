@@ -1,0 +1,76 @@
+# Deferred Maintenance — Archetype E (zero-rule baseline)
+#
+# Catch-up on maintenance that was postponed by the current owner.
+# PCA report is the primary source. Profile cluster provides benchmark.
+#
+# Common deferred maintenance items:
+#   Roof patches approaching end of life ($50-200K)
+#   Parking lot crack-sealing / resurfacing ($25-150K)
+#   HVAC units past service life ($5-15K each)
+#   Exterior paint / stucco patches ($50-200K)
+#   Pool equipment / deck ($15-50K)
+#   Landscaping / tree work ($10-40K)
+#
+# Deferred maintenance is always a discrete_spike (year 1).
+# After catch-up, ongoing R&M should normalize to stabilized levels.
+
+liuid: "strategy.deferredMaintenance"
+label: "Deferred Maintenance"
+section: "strategy"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - redevelopment
+
+sourcePreference: [1, 2.5, 4, 5]
+# Tier 1: PCA report (if available — most authoritative)
+# Tier 2.5: profile cluster deferred maintenance by vintage band
+# Tier 4: broker OM (often understated)
+# Tier 5: $1K/unit (conservative)
+
+lifecycleOverrides: []
+
+dependsOn:
+  recommended:
+    - "strategy.valueAdd"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Deferred maintenance catch-up (year 1 only)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.8
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "strategy.deferred_maint"
+  materiality:
+    absoluteMin: 50000
+    pctMin: 0.25
+
+confidence:
+  minSampleForHigh: 15
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Deferred maintenance of ${{value}} (${{per_unit}}/unit).
+  PCA report: {{pca_status}}.
+  Key items: {{key_items}}.
+  Profile cluster (n={{profile_n}}, {{vintage_band}}): {{profile_dm}}/unit.
+  {{collision_note}}
+
+notes: |
+  Deferred maintenance is the #1 post-acquisition surprise.
+  PCA report is non-negotiable for acquisition underwriting.
+  If no PCA, budget at 2x profile cluster median — operators
+  consistently understate deferred maintenance.

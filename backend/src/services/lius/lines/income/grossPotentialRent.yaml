@@ -1,0 +1,97 @@
+# Gross Potential Rent — Archetype A (rent-roll-anchored)
+#
+# GPR is the theoretical rent at 100% occupancy with no concessions.
+# The rent roll is ground truth — it tells us what tenants are ACTUALLY paying.
+# Market rent comps fill gaps for vacant units and upcoming renewals.
+# Profile cluster provides structural benchmark for unit-mix-adjusted rent.
+#
+# Key jurisdictions:
+# - GA: Generally market-driven, no rent control
+# - FL: No state rent control, but some coastal submarkets have insurance-driven
+#       effective rent ceilings beyond which concessions increase
+# - TX: Property tax pass-throughs in lease structures can inflate reported GPR
+
+liuid: "income.grossPotentialRent"
+label: "Gross Potential Rent"
+section: "income"
+archetype: "A"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 4, 5]
+# Tier 1: rent roll by unit type (unit mix × market rent per unit type)
+# Tier 2.5: profile cluster rent per unit by unit type
+# Tier 3: archive submarket median rent per type
+# Tier 4: broker OM (collision detection only)
+# Tier 5: conservative default based on unit count × state median
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [2.5, 3, 4, 5]
+    # No rent roll yet in lease-up; use profile + market comps
+
+dependsOn:
+  required: []
+  recommended:
+    - "income.vacancyCollectionLoss"
+    - "income.concessions"
+
+hardRules:
+  - condition: "FL acquisition with rent-controlled exposure"
+    description: "No state-wide rent control in FL, check local ordinances"
+    effect:
+      sourceActions: []
+      trajectoryOverrides: []
+
+  - condition: "development"
+    description: "No existing rent roll; use market comps"
+    effect:
+      sourceActions:
+        - tier: 1
+          action: "remove"
+      trajectoryOverrides:
+        - year: 1
+          primitive: "level_reset"
+          value: null
+          binding: false
+
+trajectory:
+  baseGrowth: "rent_growth_index"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 2
+      description: "Market rent growth trajectory from M26/M35"
+      deltaPct: 1.0
+      source: "schema"
+      confidence: 0.7
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.gross_potential_rent"
+  materiality:
+    absoluteMin: 100000
+    pctMin: 0.05
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 90
+
+reasoningTemplate: |
+  GPR of ${{value}} was derived from the rent roll (Tier 1).
+  {{unit_mix_summary}} unit types at ${{weighted_avg_rent}}/unit/month.
+  {{vacant_units}} vacant units filled at market rent of ${{market_rent}}.
+  Tier 2.5 profile cluster (n={{profile_n}}) confirms ${{profile_rent}}/unit.
+  {{collision_note}}
+
+notes: |
+  GPR is the most important line in the proforma. A 3% error in GPR
+  is a ~3% error in NOI, which at a 5.5% cap is ~$545K of value error
+  per $1M of NOI. Be meticulous about the unit mix.

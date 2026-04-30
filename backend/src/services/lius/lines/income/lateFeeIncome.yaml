@@ -1,0 +1,65 @@
+# Late Fee Income — Archetype A (rent-roll-anchored)
+#
+# Late fees charged when rent is paid after the grace period.
+# Rent roll captures actual late fee revenue.
+# Typical: $50-150 per late payment
+# Late payment rate: 5-15% of units/month (varies by product type)
+#
+# NOTE: Late fee income is economically counter-cyclical. It increases
+# when residents are struggling (bad for rent collection). Do not value
+# late fee income as a stable revenue source.
+
+liuid: "income.lateFeeIncome"
+label: "Late Fee Income"
+section: "income"
+archetype: "A"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 5]
+# Tier 1: rent roll / T12 actual late fee charges
+# Tier 2.5: profile cluster late fee per unit by product type
+# Tier 3: archive submarket avg late fee income
+# Tier 5: $5/unit/month (conservative)
+
+lifecycleOverrides: []
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended: []
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.late_fees"
+  materiality:
+    absoluteMin: 3000
+    pctMin: 0.30
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Late fee income of ${{value}} (${{per_unit}}/unit/month).
+  {{late_payment_rate}}% of units pay late (average).
+  T12 shows {{t12_actual}}/year in late fees.
+  Profile cluster (n={{profile_n}}): {{profile_late_fees}}/unit/month.
+  {{collision_note}}
+
+notes: |
+  Late fees are NOT a reliable growth driver. Underwrite conservatively.
+  Some jurisdictions limit late fees (e.g., CA: 5% of rent or $50 max).
+  Do not budget late fees for workforce/affordable at same rate as market-rate.

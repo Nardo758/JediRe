@@ -1,0 +1,70 @@
+# Elevator Modernization — Archetype E (zero-rule baseline)
+#
+# Elevator / lift modernization and replacement capital expenditure.
+# Discrete spike events. For properties with elevators only
+# (mid-rise, high-rise, podium — not garden).
+#
+# Typical costs:
+#   Modernization (full cab, controller, door operator): $100-250K per elevator
+#   Full replacement: $200-500K per elevator
+#   MRL (machine-room-less) modern: $150-300K per elevator
+#
+# Typical service life before modernization: 20-25 years
+# Typical service life before replacement: 30-40 years
+
+liuid: "capital.elevators"
+label: "Elevator Modernization"
+section: "capital"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - reforecast
+
+sourcePreference: [1, 2.5, 5]
+# Tier 1: PCA report (elevator condition, age, maintenance history)
+# Tier 2.5: profile cluster elevator modernization by vintage + story count
+# Tier 5: $150K per elevator at age 25
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Elevator modernization year (PCA or profile-derived)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.4
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: false
+
+confidence:
+  minSampleForHigh: 15
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Elevator modernization: ${{value}} ({{elevator_count}} elevators × {{cost_per_elevator}}/elevator).
+  Building type: {{building_type}} ({{story_count}} stories).
+  Elevator age: {{elevator_age}} years.
+  Maintenance history: {{maintenance_history}}.
+  PCA report: {{pca_condition}}.
+  Profile cluster (n={{profile_n}}): {{profile_mod_age}} year modernization cycle.
+  {{planned_year_note}}.
+
+notes: |
+  Only applies to properties with elevators (3+ stories or podium).
+  Elevator downtime is a top-5 resident complaint for high-rise properties.
+  Budget modernization cost is 50-80% of full replacement but extends
+  life 15-20 years. Code upgrades (fire service, emergency comm) may
+  add 10-20% to modernization cost in certain jurisdictions.

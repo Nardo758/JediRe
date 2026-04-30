@@ -1,0 +1,67 @@
+# Cable / Internet Income — Archetype A (rent-roll-anchored)
+#
+# Revenue from bulk cable/internet billing to residents.
+# The property enters a bulk agreement and charges residents
+# a bundled rate (often $50-100/month per unit).
+#
+# Rent roll shows actual bulk billing charges.
+# T12 shows total cable/internet income net of bulk provider cost.
+# Profile cluster shows typical bulk adoption and pricing.
+
+liuid: "income.cableInternetIncome"
+label: "Cable / Internet Income"
+section: "income"
+archetype: "A"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 5]
+# Tier 1: rent roll / T12 actual bulk billing revenue
+# Tier 2.5: profile cluster bulk cable income by product type
+# Tier 3: archive submarket avg bulk billing
+# Tier 5: $8/unit/month (Class B, ~60% bulk adoption)
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [2.5, 3, 5]
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended:
+    - "income.otherIncome"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.cable_internet"
+  materiality:
+    absoluteMin: 5000
+    pctMin: 0.30
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Cable/internet income of ${{value}} (${{per_unit}}/unit/month).
+  Bulk agreement: {{bulk_status}}.
+  {{adoption_rate}}% adoption at ${{bulk_rate}}/unit/month.
+  Profile cluster (n={{profile_n}}): {{profile_cable}}/unit/month.
+  {{collision_note}}
+
+notes: |
+  Bulk cable agreements typically lock in 3-5 year terms. Check the
+  current contract expiration and rate escalation clause before assuming
+  current income is sustainable.

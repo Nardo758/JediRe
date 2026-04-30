@@ -1,0 +1,59 @@
+# Title Insurance — Archetype D (portfolio-benchmark-driven)
+#
+# Title insurance premium: protects the lender (and owner for owner's policy)
+# against title defects, liens, easement issues, and recording errors.
+#
+# Cost: ~0.5-0.8% of purchase price for lender's policy
+# Owner's policy: additional ~0.3-0.5% (optional but recommended)
+# Simultaneous issue discount: ~30-40% off owner's policy when issued with lender's
+#
+# Most acquisition financing REQUIRES lender's title insurance.
+# Owner's policy is a best practice recommendation for LP protection.
+
+liuid: "transaction.titleInsurance"
+label: "Title Insurance"
+section: "transaction"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+
+sourcePreference: [4, 3, 5]
+# Tier 4: broker OM (title estimate — most authoritative)
+# Tier 3: archive title costs as % of purchase price
+# Tier 5: 0.55% of purchase price (simultaneous lender + owner)
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "transaction.title_insurance"
+  materiality:
+    absoluteMin: 10000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Title insurance: ${{value}} ({{pct_purchase_price}}% of purchase price).
+  Policy type: {{policy_type}}.
+  {{simultaneous_discount_note}}.
+  Archive (n={{archive_n}}): {{archive_title_pct}}% of purchase price.
+  {{collision_note}}
+
+notes: |
+  Title insurance costs are standardized (rate manual) in most states —
+  the broker estimate should match the title company quote within 10%.
+  Any larger variance = flag for deeper review.

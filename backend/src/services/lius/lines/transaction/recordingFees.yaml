@@ -1,0 +1,48 @@
+# Recording Fees — Archetype E (zero-rule baseline)
+#
+# Government recording fees for deed, mortgage, assignments, and
+# other recorded documents at closing.
+#
+# Flat fee per document: $10-100 depending on jurisdiction.
+# Expect 5-10 recorded documents for a standard acquisition closing.
+# Total: $50-1,000 — small enough to be immaterial in most deals.
+
+liuid: "transaction.recordingFees"
+label: "Recording Fees"
+section: "transaction"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+
+sourcePreference: [4, 5]
+# Tier 4: broker OM (title company estimate)
+# Tier 5: $500 (flat, immaterial)
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: false
+
+confidence:
+  minSampleForHigh: 10
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Recording fees: ${{value}}.
+  {{document_count}} documents at {{jurisdiction_rate}}/document.
+  Immaterial line item.
+
+notes: |
+  Recording fees are almost always immaterial. Include for completeness
+  but do not spend analytical effort on this line.

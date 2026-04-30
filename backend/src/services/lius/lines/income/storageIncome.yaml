@@ -1,0 +1,63 @@
+# Storage Income — Archetype A (rent-roll-anchored)
+#
+# Revenue from on-site storage unit rentals (interior storage closets,
+# exterior storage cages, bike storage). Not parking-related.
+#
+# Typical: $25-75/unit/month for interior storage
+# Uptake: 10-30% of units in suburban garden, 5-15% in urban high-rise
+
+liuid: "income.storageIncome"
+label: "Storage Income"
+section: "income"
+archetype: "A"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 5]
+# Tier 1: rent roll (actual storage charges)
+# Tier 2.5: profile cluster storage take rate
+# Tier 3: archive submarket avg storage income
+# Tier 5: $30/unit/year (conservative, most properties)
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [2.5, 3, 5]
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended: []
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.storage"
+  materiality:
+    absoluteMin: 5000
+    pctMin: 0.25
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Storage income of ${{value}} (${{per_unit}}/unit/year).
+  {{uptake_rate}}% uptake rate at ${{storage_rate}}/unit/mo.
+  Profile cluster (n={{profile_n}}): {{profile_storage}}/unit/year.
+  {{collision_note}}
+
+notes: |
+  Storage income is often overlooked in underwriting. Usually insignificant
+  (<$5K/year) at the portfolio level but worth checking for completeness.

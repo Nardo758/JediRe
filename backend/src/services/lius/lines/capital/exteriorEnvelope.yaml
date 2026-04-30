@@ -1,0 +1,82 @@
+# Exterior Envelope — Archetype E (zero-rule baseline)
+#
+# Exterior building envelope refurbishment capital expenditure.
+# Includes: paint, stucco repair, siding replacement, caulking, EIFS repair.
+# Discrete spike events driven by climatic exposure and material lifespan.
+#
+# Typical envelope component lifespans:
+#   Paint (exterior): 5-10 years ($15-30K per building)
+#   Stucco re-coat: 15-20 years ($50-150K per building)
+#   Siding (fiber cement): 25-40 years — partial replacement only
+#   Siding (vinyl): 20-30 years ($30-80K per building)
+#   EIFS repair/seal: 10-15 years ($25-75K per building)
+#   Brick tuckpointing: 25-40 years ($10-40K per building)
+#   Caulking / sealant renewal: 5-8 years ($5-15K per building)
+
+liuid: "capital.exteriorEnvelope"
+label: "Exterior Envelope"
+section: "capital"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - reforecast
+
+sourcePreference: [1, 2.5, 5]
+# Tier 1: PCA report (envelope condition assessment)
+# Tier 2.5: profile cluster envelope maintenance cycle by vintage + exterior type
+# Tier 5: $50K per 8-year cycle (moderate garden, stucco exterior)
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules:
+  - condition: "FL coastal acquisition"
+    description: "FL coastal: higher wind/UV exposure accelerates envelope degradation 1.5x"
+    effect:
+      sourceActions: []
+      trajectoryOverrides:
+        - year: 1
+          primitive: "rate_delta"
+          value: 1.5
+          binding: false
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Exterior envelope refurbishment (paint/seal/caulk cycle)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.4
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: false
+
+confidence:
+  minSampleForHigh: 15
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Exterior envelope capex: ${{value}}.
+  Exterior type: {{exterior_type}}.
+  Last paint/seal: {{last_paint_year}} ({{years_since_paint}} years ago).
+  Current condition: {{exterior_condition}}.
+  PCA report: {{pca_exterior_condition}}.
+  Profile cluster (n={{profile_n}}, {{exterior_type}}):
+    {{profile_envelope_cycle}} year refurbishment cycle.
+  {{planned_year_note}}.
+
+notes: |
+  Exterior envelope maintenance is often deferred in the first 5 years
+  of ownership (no immediate tenant impact). Deferred envelope maintenance
+  accelerates structural degradation (water intrusion) and degrades
+  curb appeal. Budget for the paint/seal cycle in years 5-8 even if
+  the PCA doesn't flag it as urgent. FL/coastal properties need
+  more aggressive envelope maintenance due to UV and salt exposure.

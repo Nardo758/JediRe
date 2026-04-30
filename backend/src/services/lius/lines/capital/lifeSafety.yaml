@@ -1,0 +1,72 @@
+# Life Safety Replacement — Archetype E (zero-rule baseline)
+#
+# Fire and life safety system replacement capital expenditure.
+# Discrete spike events driven by code cycle updates and equipment end of life.
+#
+# Systems included:
+#   Fire alarm panel + devices: replace every 15-20 years ($25-100K)
+#   Sprinkler system: major overhaul every 20-25 years ($50-200K)
+#   Emergency lighting: replace every 10-15 years ($5-15K)
+#   Fire extinguishers: replace every 12 years ($200-500 each)
+#   Smoke/CO detectors: replace every 10 years ($20-50 each)
+#   Standpipe system test valve replacement: every 10-15 years ($10-30K)
+#
+# Life safety upgrades are often triggered by AHJ (Authority Having Jurisdiction)
+# code updates, not just equipment age. Budget for code-driven upgrades.
+
+liuid: "capital.lifeSafety"
+label: "Life Safety Replacement"
+section: "capital"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - reforecast
+
+sourcePreference: [1, 2.5, 5]
+# Tier 1: PCA report / fire marshal inspection history
+# Tier 2.5: profile cluster life safety replacement by vintage
+# Tier 5: $40K per replacement event (moderate garden property)
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Life safety replacement (fire alarm/sprinkler overhaul)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.4
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: false
+
+confidence:
+  minSampleForHigh: 15
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Life safety replacement: ${{value}}.
+  Systems needing attention: {{life_safety_items}}.
+  Fire alarm age: {{fire_alarm_age}} years.
+  Sprinkler system condition: {{sprinkler_condition}}.
+  Last AHJ inspection: {{last_inspection_date}} ({{inspection_result}}).
+  Profile cluster (n={{profile_n}}): {{profile_life_safety_cost}}.
+  {{planned_year_note}}.
+
+notes: |
+  Life safety is non-discretionary capex — failure to maintain can
+  result in insurance coverage gaps, fines, or forced vacancy.
+  Code-driven upgrades are the most common unplanned life safety cost:
+  NFPA 72 (fire alarm) and NFPA 25 (sprinkler) updates at ~10-year intervals.
+  FL and CA have the most aggressive life safety code update schedules.

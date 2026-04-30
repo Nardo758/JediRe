@@ -1,0 +1,74 @@
+# Bad Debt — Archetype E (zero-rule baseline)
+#
+# Bad debt = units occupied but not paying rent. Eviction pipeline,
+# payment plan defaults, bankruptcies. NOT vacancy.
+#
+# Bad debt is a percentage of GPR, not a flat number.
+# Market-rate: 0.5-1.5% of GPR
+# Workforce / affordable: 1.0-2.5% of GPR
+# Student housing: 1.0-3.0% of GPR
+#
+# T12 captures actual bad debt history (write-offs).
+# Profile cluster provides structural benchmark.
+# No effective jurisdiction differences for multifamily.
+
+liuid: "income.badDebt"
+label: "Bad Debt"
+section: "income"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 5]
+# Tier 1: T12 actual bad debt write-offs
+# Tier 2.5: profile cluster bad debt % by product type
+# Tier 3: archive submarket mean bad debt
+# Tier 5: 0.75% of GPR default
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [2.5, 3, 5]
+    # No bad debt history yet
+  - phase: "transition"
+    sourcePreference: [2.5, 3, 5]
+    # Transition period may see elevated bad debt
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended: []
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.bad_debt"
+  materiality:
+    absoluteMin: 10000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Bad debt of {{pct_gpr}}% of GPR (${{value}}).
+  T12 shows {{t12_pct}}% actual write-offs over {{t12_months}} months.
+  Profile cluster (n={{profile_n}}, {{product_type}}): {{profile_pct}}%.
+  {{elevated_note}}.
+
+notes: |
+  Bad debt spikes during economic downturns. Consider downside scenario
+  with 2x bad debt rate. For workforce housing, budget toward the upper
+  end of the range.

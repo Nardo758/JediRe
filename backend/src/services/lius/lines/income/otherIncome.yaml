@@ -1,0 +1,89 @@
+# Other / Ancillary Income — Archetype A (rent-roll-anchored)
+#
+# Ancillary income covers all non-rent revenue streams:
+#   - Parking (reserved spaces, garage access)
+#   - Laundry vending
+#   - Pet rent / pet fees
+#   - Storage unit rental
+#   - Cable / internet (bulk billing)
+#   - Utility billing (RUBS recovery)
+#   - Late fees
+#   - Application fees
+#   - Concession / amenity fees (pool, fitness classes, etc.)
+#
+# Rent roll captures monthly recurring ancillary. One-time fees (application,
+# late fees) are modeled as per-unit-month averages.
+#
+# For value-add deals, ancillary income is often a growth target (RUBS
+# conversion, parking monetization, pet-friendly conversion).
+
+liuid: "income.otherIncome"
+label: "Other / Ancillary Income"
+section: "income"
+archetype: "A"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 4, 5]
+# Tier 1: rent roll detail + T12
+# Tier 2.5: profile cluster ancillary breakdown per unit
+# Tier 3: archive submarket avg ancillary per unit
+# Tier 4: broker OM (often understates ancillary)
+# Tier 5: $50/unit/month conservative default
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [2.5, 3, 5]
+    # Limited history, use profile
+  - phase: "stabilized"
+    sourcePreference: [1, 2.5, 3, 5]
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended: []
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 2
+      description: "Ancillary income growth above inflation (RUBS, parking)
+    monetization)"
+      deltaPct: 1.15
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.other_income"
+  materiality:
+    absoluteMin: 15000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 180
+
+reasoningTemplate: |
+  Other income of ${{value}} (${{per_unit}}/unit/mo) breaks down as:
+  {{ancillary_breakdown}}
+  Rent roll shows {{rent_roll_ancillary}}/unit/mo.
+  Profile cluster (n={{profile_n}}): {{profile_ancillary}}/unit/mo.
+  {{collision_note}}
+
+notes: |
+  Ancillary is often the most under-reported line in broker OMs.
+  A well-run property generates $75-125/unit/month in ancillary.
+  RUBS utility billing alone can be $40-60/unit/month.
+  Parking revenue varies widely by submarket ($25-150/space/month).

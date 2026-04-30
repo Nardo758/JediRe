@@ -1,0 +1,84 @@
+# Structural / Waterproofing — Archetype C (service-derived, jurisdiction-bound)
+#
+# Structural repairs and waterproofing capital expenditure.
+# Condition-driven, not lifecycle-driven. Requires engineer assessment.
+# Discrete spike events when deficiencies are identified (typically via PCA).
+#
+# Common structural issues by building type:
+#   Concrete podium / high-rise: balcony spalling, garage deck waterproofing,
+#     expansion joint failure, post-tension cable corrosion
+#   Wood frame (3-4 story): rot, termite damage, deflection, sill plate decay
+#   Masonry: mortar deterioration, brick spalling, lintel corrosion
+#
+# Typical costs (no specific deficiency found):
+#   Garage waterproofing: $5-15/sqft
+#   Balcony repair: $2-8K per balcony
+#   Window caulking / sealant: $10-25K per building face
+#   Foundation / sill repair: $25-100K (depending on severity)
+
+liuid: "capital.structural"
+label: "Structural / Waterproofing"
+section: "capital"
+archetype: "C"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - reforecast
+
+sourcePreference: [1, 2.5, 5]
+# Tier 1: PCA report / structural engineer assessment (most authoritative)
+# Tier 2.5: profile cluster structural repair incidence by vintage + construction type
+# Tier 5: $50K/year (moderate preventive allocation)
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules:
+  - condition: "FL coastal acquisition"
+    description: "FL coastal: higher wind/water exposure increases structural risk"
+    effect:
+      sourceActions: []
+      trajectoryOverrides:
+        - year: 1
+          primitive: "discrete_spike"
+          value: null
+          binding: false
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Structural deficiency repair (PCA- or condition-driven)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.3
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: false
+
+confidence:
+  minSampleForHigh: 10
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Structural / waterproofing capex: ${{value}}.
+  Building type: {{construction_type}}.
+  Known issues: {{known_issues}}.
+  PCA report: {{pca_structural_condition}}.
+  Profile cluster (n={{profile_n}}, {{construction_type}}):
+    {{profile_structural_cost}} per repair event.
+  {{planned_year_note}}.
+
+notes: |
+  Structural repairs are the most unpredictable capex category.
+  Without a PCA, budget at 1.5-2x profile cluster median.
+  Wood frame buildings (3-4 story garden) have the widest variance
+  — a $20K sill repair vs a $500K dry rot remediation.
+  Concrete podium buildings have predictable waterproofing cycles
+  (10-15 years for garage decks, 20-25 for balcony membranes).

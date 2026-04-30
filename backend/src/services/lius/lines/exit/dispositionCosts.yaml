@@ -1,0 +1,63 @@
+# Disposition Costs — Archetype D (portfolio-benchmark-driven)
+#
+# Total cost to sell the property at disposition (excluding broker
+# commission, which is a separate line item).
+# Includes: legal, closing, transfer taxes, escrow, title, recording.
+#
+# Typically 0.5-1.5% of sale price (with broker commission separate).
+# State transfer taxes are the largest component in most jurisdictions.
+#
+# NOTE: If exit transfer taxes are significant (NY, MD, PA), they
+# should be modeled in exit.exitTransferTax separately.
+
+liuid: "exit.dispositionCosts"
+label: "Disposition Costs"
+section: "exit"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [3, 5]
+# Tier 3: archive disposition costs for similar exit deals
+# Tier 5: 0.8% of exit price (excluding broker commission)
+
+lifecycleOverrides: []
+
+dependsOn:
+  required: []
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "exit.disposition_costs"
+  materiality:
+    absoluteMin: 25000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Disposition costs of ${{value}} ({{pct_exit_price}}% of exit price).
+  Exit price: ${{exit_price}} (at {{exit_cap}}% cap rate).
+  Estimated selling costs: {{cost_breakdown}}.
+  Archive (n={{archive_n}}): {{archive_disp_costs}}% of exit price.
+  {{collision_note}}
+
+notes: |
+  Disposition costs are often understated by 20-30%. Budget toward the
+  high end of the range, especially for complex dispositions
+  (portfolio, 1031 exchange, partnership dissolution).

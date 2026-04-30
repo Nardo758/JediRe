@@ -336,6 +336,7 @@ function queryTier5(
 ): EvidenceSource | null {
   // Conservative defaults per archetype
   const defaults: Record<string, number> = {
+    // OpEx
     propertyTax: ctx.purchasePrice ? ctx.purchasePrice * 0.01 : 0,
     insurance: ctx.units ? ctx.units * 500 : 0,
     utilities: ctx.units ? ctx.units * 800 : 0,
@@ -344,6 +345,38 @@ function queryTier5(
     payroll: ctx.units ? ctx.units * 1500 : 0,
     marketingAdmin: ctx.units ? ctx.units * 200 : 0,
     replacementReserves: ctx.units ? ctx.units * 250 : 0,
+
+    // Income
+    grossPotentialRent: ctx.units ? ctx.units * 18000 : 0,
+    otherIncome: ctx.units ? ctx.units * 600 : 0,
+    concessions: ctx.effectiveGrossIncome ? ctx.effectiveGrossIncome * -0.02 : 0,
+    vacancyCollectionLoss: ctx.effectiveGrossIncome ? ctx.effectiveGrossIncome * -0.05 : 0,
+    badDebt: ctx.effectiveGrossIncome ? ctx.effectiveGrossIncome * -0.0075 : 0,
+    lossToLease: 0,
+    utilityBillingIncome: ctx.units ? ctx.units * 180 : 0,
+    parkingIncome: ctx.units ? ctx.units * 180 : 0,
+    storageIncome: ctx.units ? ctx.units * 30 : 0,
+    petRentIncome: ctx.units ? ctx.units * 300 : 0,
+    laundryIncome: ctx.units ? ctx.units * 216 : 0,
+    cableInternetIncome: ctx.units ? ctx.units * 96 : 0,
+    applicationFeeIncome: ctx.units ? ctx.units * 20 : 0,
+    lateFeeIncome: ctx.units ? ctx.units * 60 : 0,
+
+    // Strategy
+    valueAdd: ctx.units ? ctx.units * 15000 : 0,
+    reposition: ctx.units ? ctx.units * 30000 : 0,
+    unitUpgrades: ctx.units ? ctx.units * 10000 : 0,
+    commonAreaImprovements: ctx.units ? ctx.units * 3000 : 0,
+    deferredMaintenance: ctx.units ? ctx.units * 1000 : 0,
+
+    // Capital
+    roofReplacement: 250000,
+    hvacReplacement: ctx.units ? ctx.units * 3000 : 0,
+    parkingLot: 75000,
+    elevators: 150000,
+    structural: 50000,
+    lifeSafety: 40000,
+    exteriorEnvelope: 50000,
   };
   
   const key = schema.liuid.split('.').pop()!;

@@ -1,0 +1,68 @@
+# Laundry Income — Archetype B (T12-anchored, cross-validated)
+#
+# Laundry vending revenue from on-site laundry rooms.
+# Typically $15-30/unit/month in laundry revenue.
+# T12 / rent roll shows actual vending collection data.
+# Profile cluster provides benchmark by product type.
+#
+# Note: Newer properties with in-unit W/D generate significantly less
+# laundry income ($0-5/unit/month) than those with common-area rooms.
+
+liuid: "income.laundryIncome"
+label: "Laundry Income"
+section: "income"
+archetype: "B"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 5]
+# Tier 1: T12 / rent roll actual laundry collections
+# Tier 2.5: profile cluster laundry per unit by product type + amenity tier
+# Tier 3: archive submarket avg laundry income
+# Tier 5: $18/unit/month
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [2.5, 3, 5]
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended:
+    - "income.otherIncome"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.laundry"
+  materiality:
+    absoluteMin: 5000
+    pctMin: 0.25
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Laundry income of ${{value}} (${{per_unit}}/unit/month).
+  {{in_unit_wd_pct}}% of units have in-unit W/D.
+  Common area machines: {{machine_count}} washers/dryers.
+  Profile cluster (n={{profile_n}}, {{product_type}}):
+    {{profile_laundry}}/unit/month.
+  {{collision_note}}
+
+notes: |
+  Laundry income is declining as in-unit W/D become standard.
+  For 2010+ vintage, budget $0-5/unit/month. For pre-1990 with
+  common laundry rooms, $18-30/unit/month is normal.

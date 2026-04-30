@@ -1,0 +1,99 @@
+# Exit Cap Rate — Archetype F (market-index driven)
+#
+# The capitalization rate at disposition. Primary driver of exit value
+# and the single most impactful assumption in the proforma.
+#
+# Exit cap ≠ going-in cap. Exit cap reflects:
+#   - Market conditions at disposition (typically 5-10 year forward)
+#   - Property condition at exit (stabilized vs transitional)
+#   - Interest rate environment
+#   - Asset class sentiment
+#
+# The trajectory engine models cap rate movement over the hold period
+# using M26 historical cap rate series and forward curve.
+#
+# Default: +25bps expansion from going-in cap (conservative)
+#   (e.g., 5.50% going-in → 5.75% exit)
+
+liuid: "exit.exitCapRate"
+label: "Exit Cap Rate"
+section: "exit"
+archetype: "F"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [3, 2.5, 4, 5]
+# Tier 3: M26 archive submarket cap rate trajectory
+# Tier 2.5: profile cluster exit cap achieved by product type
+# Tier 4: broker OM (going-in cap only — exit cap framed separately)
+# Tier 5: going-in cap + 25bps
+
+lifecycleOverrides: []
+
+dependsOn:
+  required: []
+
+hardRules:
+  - condition: "development"
+    description: "Development exit cap = stabilized cap + risk premium"
+    effect:
+      sourceActions: []
+      trajectoryOverrides: []
+
+trajectory:
+  baseGrowth: "exit_cap_trajectory"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 1
+      description: "Year 1: base exit cap rate"
+      deltaPct: 0.0
+      source: "schema"
+      confidence: 0.6
+      binding: false
+    - primitive: "rate_delta"
+      year: 3
+      description: "Year 3-5: cap rate adjustment based on interest rate trajectory"
+      deltaPct: 1.0
+      source: "schema"
+      confidence: 0.4
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "exit.cap_rate"
+  materiality:
+    absoluteMin: 0.30
+    pctMin: 0.05
+    # 30 bps absolute or 5% relative delta triggers collision
+
+confidence:
+  minSampleForHigh: 50
+  freshnessDays: 180
+
+reasoningTemplate: |
+  Exit cap rate: {{exit_cap}}%.
+  Going-in cap: {{going_in_cap}}%.
+  Basis point expansion: {{bps_expansion}}bps.
+  Hold period: {{hold_years}} years.
+  M26 {{submarket}} {{property_type}} {{vintage}}:
+    Going-in range: {{going_in_range}}
+    5-year forward: {{five_year_forward}}
+    10-year forward: {{ten_year_forward}}
+  Interest rate 10yr treasury: {{treasury_10yr}} ({{treasury_trend}}).
+  {{cap_spread_trend}} bps spread to treasuries ({{spread_assessment}}).
+  Profile cluster exit caps (n={{profile_n}}): {{profile_exit_caps}}.
+  {{collision_note}}
+
+notes: |
+  Exit cap rate is the single most important assumption in the proforma.
+  A 25bps error at a 5.5% exit cap is ~4.5% of value (~$2.7M on a $60M deal).
+  Never use going-in cap as exit cap — always add basis points for
+  uncertainty (25bps minimum, 50bps for development/lease-up).
+  Reference M26 series for submarket-specific cap rate trends.

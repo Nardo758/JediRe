@@ -1,0 +1,67 @@
+# Pet Rent Income — Archetype A (rent-roll-anchored)
+#
+# Monthly pet rent + one-time pet fees + pet deposit amortization.
+# Rent roll shows actual pet charges by unit.
+#
+# Typical: $25-50/month per pet
+# Pet-friendly units: 40-70% of total (depends on property class)
+# Pets per pet-friendly unit: 1.1-1.5 (some have multiple)
+# One-time pet fee: $200-500 (amortize over 24 months for monthly income)
+
+liuid: "income.petRentIncome"
+label: "Pet Rent Income"
+section: "income"
+archetype: "A"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 5]
+# Tier 1: rent roll (actual pet rent charges)
+# Tier 2.5: profile cluster pet rent per unit
+# Tier 3: archive submarket avg pet income
+# Tier 5: $350/unit/year (Class B suburban garden)
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [2.5, 3, 5]
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended:
+    - "income.otherIncome"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.pet_rent"
+  materiality:
+    absoluteMin: 3000
+    pctMin: 0.30
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Pet rent income of ${{value}} (${{per_unit}}/unit/year).
+  {{pet_friendly_units}} pet-friendly units × {{pet_uptake}}% uptake
+  × ${{pet_rent_mo}}/mo average pet rent + ${{pet_fee_annual}}/unit/year fees.
+  Profile cluster (n={{profile_n}}): {{profile_pet_income}}/unit/year.
+  {{collision_note}}
+
+notes: |
+  Pet-friendly properties command both higher pet income and lower vacancy
+  at the cost of potential damage expense. Net positive for most Class B/C.
+  Breed restrictions affect uptake rate.

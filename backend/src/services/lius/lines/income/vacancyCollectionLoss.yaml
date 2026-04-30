@@ -1,0 +1,79 @@
+# Vacancy & Collection Loss — Archetype E (zero-rule baseline)
+#
+# Vacancy is NOT a historical calculation — it's a market-driven assumption
+# about where stabilized occupancy settles. The rent roll tells you current
+# occupancy, not stabilized vacancy. Use M07 absorption data + market comps.
+#
+# Collection loss (bad debt) is separate from economic vacancy:
+#   Economic vacancy = physical vacancy + concessions (accounted elsewhere)
+#   Collection loss = units occupied but not paying (eviction pipeline, disputes)
+#
+# For stabilized deals: market vacancy rate + 0.5-1.0% collection loss
+# For lease-up: absorption curve determines vacancy trajectory
+
+liuid: "income.vacancyCollectionLoss"
+label: "Vacancy & Collection Loss"
+section: "income"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [2.5, 3, 1, 4, 5]
+# Tier 2.5: profile cluster vacancy rate (structural comps)
+# Tier 3: archive submarket vacancy
+# Tier 1: current rent roll (only as a check — may be temporarily full)
+# Tier 4: broker OM (collision detection only)
+# Tier 5: 5% vacancy + 1% collection loss default
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [3, 5]
+    # Use M07 absorption model for lease-up vacancy trajectory
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended: []
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 1
+      description: "Stabilization adjustment if lease-up"
+      deltaPct: 0.0
+      source: "schema"
+      confidence: 0.7
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.vacancy"
+  materiality:
+    absoluteMin: 25000
+    pctMin: 0.10
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 180
+
+reasoningTemplate: |
+  Vacancy & collection loss of {{vacancy_rate}}% + {{collection_rate}}%
+  was derived from profile cluster (n={{profile_n}}, {{submarket}} submarket).
+  Current rent roll shows {{current_occupancy}}% occupied.
+  The {{stabilized_delta}}pp gap between current and stabilized is
+  {{gap_assessment}}.
+
+notes: |
+  Do not over-weight current occupancy for acquisition underwriting.
+  Sellers often fill units just before listing. Use market vacancy.
+  Collection loss is usually 0.5-1.5% of GPR for market-rate multifamily.

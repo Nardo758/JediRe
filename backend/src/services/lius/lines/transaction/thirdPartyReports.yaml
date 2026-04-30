@@ -1,0 +1,64 @@
+# Third-Party Reports — Archetype D (portfolio-benchmark-driven)
+#
+# Third-party due diligence reports required for acquisition financing
+# and investment committee approval.
+#
+# Typical reports and costs:
+#   PCA (Property Condition Assessment): $10-25K
+#   Phase I Environmental: $3-8K
+#   Appraisal: $5-15K
+#   Survey: $3-8K
+#   Seismic (CA/West Coast): $5-15K
+#   ALTA title search: $1-3K
+#   Zoning report: $2-5K
+#   Market study: $5-15K
+#   Insurance review: $1-3K
+
+liuid: "transaction.thirdPartyReports"
+label: "Third-Party Reports"
+section: "transaction"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+
+sourcePreference: [4, 3, 5]
+# Tier 4: broker OM (stated due diligence budget)
+# Tier 3: archive due diligence costs for similar deals
+# Tier 5: $40K bundle for standard multifamily acquisition
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "transaction.third_party_reports"
+  materiality:
+    absoluteMin: 10000
+    pctMin: 0.25
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Third-party reports budget: ${{value}}.
+  Reports required: {{report_list}}.
+  {{environmental_risk_note}}.
+  Archive (n={{archive_n}}): {{archive_third_party}} for similar deals.
+  {{collision_note}}
+
+notes: |
+  Third-party reports are typically lumped into "acquisition costs" and
+  understated. If a PCA reveals significant deferred maintenance, the
+  $15K report saves you from a $500K underwriting error. Do not cut.
+  Phase I Environmental is non-negotiable for acquisition financing.

@@ -1,0 +1,57 @@
+# Legal Due Diligence — Archetype D (portfolio-benchmark-driven)
+#
+# Legal fees for the acquisition due diligence and closing process.
+# Includes: document review, contract negotiation, entity formation,
+# survey review, title review, zoning review, closing attendance.
+#
+# Typical: $30-75K for multifamily acquisition ($7-15/unit for mid-size)
+# Depends on complexity (portfolio vs single asset, entity structure,
+# existing debt assumptions, litigation history).
+
+liuid: "transaction.legalDueDiligence"
+label: "Legal Due Diligence"
+section: "transaction"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+
+sourcePreference: [4, 3, 5]
+# Tier 4: broker OM (stated legal budget)
+# Tier 3: archive legal costs for similar deal size
+# Tier 5: $10/unit
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "transaction.legal_fees"
+  materiality:
+    absoluteMin: 15000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Legal fees of ${{value}} (${{per_unit}}/unit).
+  Scope: {{legal_scope}}.
+  {{complexity_note}}.
+  Archive (n={{archive_n}}): {{archive_legal}} for similar deal size.
+  {{collision_note}}
+
+notes: |
+  Legal fees tend to run 10-20% over budget for first-time sponsors
+  or complex acquisitions (portfolio, partnerships, foreign investment).
+  Budget conservatively.

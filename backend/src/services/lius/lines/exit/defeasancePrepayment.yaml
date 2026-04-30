@@ -1,0 +1,77 @@
+# Defeasance / Prepayment — Archetype D (portfolio-benchmark-driven)
+#
+# Cost to defease or prepay the existing loan upon disposition.
+# Defeasance: replacing the collateral with government securities
+#   that generate the same cash flow as the remaining loan payments.
+# Prepayment penalty: contractual penalty for paying off loan early.
+#
+# Defeasance cost = Treasury cost + legal/administrative fees
+# Typically 1-5% of remaining loan balance, depending on:
+#   - Remaining term (defeasance is more expensive with longer remaining)
+#   - Interest rate environment (lower rates = higher defeasance cost)
+#   - Loan structure (fixed vs floating, lockout period)
+#
+# For floating-rate loans: prepayment penalty (typically 1% of balance)
+# For fixed-rate loans: defeasance (typically 2-5% of balance)
+
+liuid: "exit.defeasancePrepayment"
+label: "Defeasance / Prepayment"
+section: "exit"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - refi
+  - disposition
+
+sourcePreference: [4, 3, 5]
+# Tier 4: broker OM / loan docs (stated prepayment terms)
+# Tier 3: archive defeasance costs for similar loan structures
+# Tier 5: 2% of remaining loan balance (fixed-rate, mid-term)
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Exit year defeasance cost (if loan not assumed)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "exit.defeasance"
+  materiality:
+    absoluteMin: 50000
+    pctMin: 0.25
+
+confidence:
+  minSampleForHigh: 15
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Defeasance / prepayment cost: ${{value}}.
+  Loan type: {{loan_type}}.
+  Remaining balance at exit: ${{remaining_balance}}.
+  Remaining term: {{remaining_term}} years.
+  Defeasance estimate: {{defeasance_estimate}}% of balance.
+  {{rate_environment_note}}.
+  {{collision_note}}
+
+notes: |
+  Defeasance cost is frequently overlooked in disposition underwriting.
+  For fixed-rate loans originated in 2020-2022 at 3-4%, defeasance in
+  2027-2030 with higher rates = expensive. Floating-rate loans exiting
+  a lockout period may have a 1% prepayment penalty only.
+  Verify with the loan documents — do NOT rely on broker estimates alone.

@@ -1,0 +1,61 @@
+# Acquisition Costs — Archetype D (portfolio-benchmark-driven)
+#
+# Soft costs associated with acquiring the property.
+# Includes: legal fees, title, escrow, due diligence, survey, appraisals,
+# environmental reports, third-party reports, filing fees, good faith deposits.
+#
+# Typically 1-3% of purchase price for multifamily acquisitions.
+# Larger deals have lower % due to scale efficiencies.
+
+liuid: "transaction.acquisitionCosts"
+label: "Acquisition Costs"
+section: "transaction"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+
+sourcePreference: [4, 3, 5]
+# Tier 4: broker OM (stated acquisition cost estimate)
+# Tier 3: archive acquisition costs for similar deals
+# Tier 5: 2% of purchase price
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "transaction.acquisition_costs"
+  materiality:
+    absoluteMin: 50000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Acquisition costs of ${{value}} ({{pct_purchase_price}}% of purchase price).
+  Breakdown:
+    Legal: ${{legal}}
+    Title & escrow: ${{title_escrow}}
+    Due diligence: ${{due_diligence}}
+    Third-party reports: ${{third_party}}
+    Filing & recording: ${{filing}}
+    Transfer/transfer taxes (separate line): see transaction.transferTax
+  Archive (n={{archive_n}}) average {{archive_pct}}% of purchase price.
+  {{collision_note}}
+
+notes: |
+  Acquisition costs are often understated in broker OMs by 20-40%.
+  Budget transfer taxes as a separate line item (transaction.transferTax) —
+  they are the single largest acquisition cost in many jurisdictions.

@@ -1,0 +1,83 @@
+# Value-Add Program — Archetype D (portfolio-benchmark-driven)
+#
+# Value-add capex: per-unit renovation costs for a repositioning program.
+# Includes unit interiors (countertops, flooring, fixtures, appliances,
+# backsplash, paint) + common area improvements.
+#
+# This is the GROSS cost of the renovation program. Premium capture
+# is modeled separately in renovationPremium.
+#
+# Typical ranges:
+#   Light reno ($5-15K/unit): paint, flooring, fixtures, appliances
+#   Moderate reno ($15-30K/unit): full kitchen + bath + finishes
+#   Heavy reno ($30-75K/unit): layout changes, MEP, structural
+#   Gut reno ($75-150K/unit): to the studs, full MEP replacement
+
+liuid: "strategy.valueAdd"
+label: "Value-Add Program"
+section: "strategy"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - redevelopment
+
+sourcePreference: [4, 5]
+# Tier 4: broker OM (stated renovation budget)
+# Tier 5: $15K/unit default (moderate value-add)
+
+lifecycleOverrides: []
+
+dependsOn:
+  required: []
+  recommended:
+    - "strategy.unitUpgrades"
+    - "strategy.commonAreaImprovements"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Year 1 renovation program spend"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.7
+      binding: false
+    - primitive: "discrete_spike"
+      year: 2
+      description: "Year 2 renovation program spend"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.7
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "strategy.renovation_budget"
+  materiality:
+    absoluteMin: 100000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Value-add program of ${{value}} (${{per_unit}}/unit).
+  Budget: ${{year1}} year 1, ${{year2}} year 2.
+  Scope: {{renovation_scope}}.
+  {{renovation_pace}} units/month renovation pace over {{duration}} months.
+  Broker states ${{broker_value}} — {{collision_note}}.
+
+notes: |
+  The single biggest risk in value-add underwriting: renovation pace.
+  Operators consistently miss timeline targets by 25-50%.
+  Budget 20% contingency buffer on the non-unit portion of the budget.
+  Track renovation pace vs. underwriting in deal_monthly_actuals.

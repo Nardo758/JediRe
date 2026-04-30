@@ -1,0 +1,79 @@
+# Concessions — Archetype A (rent-roll-anchored)
+#
+# Concessions are temporary rent reductions (free rent, discounted rent,
+# gift cards, waived fees). They are NOT the same as vacancy.
+# Current rent roll shows actual concessions in place.
+# Market comps show what's needed to lease in this submarket.
+#
+# Key distinction: T12 may show NO concessions (all units full) while the
+# RENT ROLL shows 6 weeks free on new leases. The concession lives in the
+# effective rent, not in occupancy. Always read the rent roll.
+
+liuid: "income.concessions"
+label: "Concessions"
+section: "income"
+archetype: "A"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 4, 5]
+# Tier 1: rent roll — concessions on active leases (actual month-to-month)
+# Tier 2.5: profile cluster concession intensity by submarket
+# Tier 3: archive submarket average concessions (weeks free)
+# Tier 4: broker OM (collision detection only — often understates)
+# Tier 5: 2% of GPR default
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [2.5, 3, 5]
+    # Lease-up typically has heavier concessions
+  - phase: "stabilized"
+    sourcePreference: [1, 2.5, 3, 5]
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended: []
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 2
+      description: "Concession normalization as market tightens"
+      deltaPct: -0.15
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.concessions"
+  materiality:
+    absoluteMin: 15000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 90
+
+reasoningTemplate: |
+  Concessions of ${{value}} ({{pct_gpr}}% of GPR) were derived from
+  {{source}}. Current rent roll shows {{weeks_free}} weeks free on average.
+  {{submarket}} average is {{submarket_avg}} weeks free with {{submarket_trend}}.
+  Profile cluster (n={{profile_n}}) shows {{profile_concessions}}.
+
+notes: |
+  Concessions are volatile and submarket-specific. Refresh frequently.
+  A property that shows zero concessions in a submarket averaging 3 weeks free
+  is likely over-stated on GPR, not actually achieving market rents without
+  concessions. Flag for further diligence.

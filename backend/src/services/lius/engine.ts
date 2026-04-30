@@ -22,6 +22,13 @@ import {
   type TrajectoryEvent,
   type ConfidenceScore,
 } from './types';
+import {
+  projectTrajectory,
+  generateLifecycleEvents,
+  type YearProjection,
+  type TrajectoryContext,
+  type LifecyclePhaseTimeline,
+} from './trajectory-engine';
 
 export interface LIUSEngineContext {
   dealId: string;
@@ -35,6 +42,10 @@ export interface LIUSEngineContext {
   effectiveGrossIncome: number | null;
   brokerAssumptions: Record<string, number> | null;
   sectionFilter?: string[];   // optional: only run specific sections
+  holdPeriodYears?: number;    // default 10
+  lifecycleTimeline?: LifecyclePhaseTimeline[];  // phase transitions
+  profileEvents?: Record<string, TrajectoryEvent[]>;  // events by liuid
+  pcaEvents?: Record<string, TrajectoryEvent[]>;      // PCA-derived events by liuid
 }
 
 export interface LIUSEngineResult {
@@ -103,6 +114,16 @@ export async function runLIUSEngine(
         // Collision detection
         const collision = detectCollision(result, resolverCtx, schema);
         
+        // Trajectory: project year-by-year values for the hold period
+        const holdPeriod = ctx.holdPeriodYears ?? 10;
+        const trajectoryCtx: TrajectoryContext = {
+          holdPeriodYears: holdPeriod,
+          lifecycleTimeline: ctx.lifecycleTimeline ?? [],
+          profileEvents: ctx.profileEvents?.[schema.liuid],
+          pcaEvents: ctx.pcaEvents?.[schema.liuid],
+        };
+        const yearProjections = projectTrajectory(schema, result.posterior.value, trajectoryCtx);
+        
         // Build evidence
         const evidence: Evidence = {
           liuid: schema.liuid,
@@ -116,7 +137,7 @@ export async function runLIUSEngine(
           },
           trajectory: {
             events: schema.trajectory?.scheduledEvents ?? [],
-            yearProjections: [], // Week 2: trajectory engine fills this
+            yearProjections,
           },
           crossChecks,
           collision,
@@ -128,6 +149,13 @@ export async function runLIUSEngine(
             schemaFile: entry.filePath,
           },
         };
+        
+        // Add lifecycle events to evidence
+        const lifecycleEvents = generateLifecycleEvents(schema, ctx.lifecycleTimeline ?? []);
+        evidence.trajectory.events = [
+          ...evidence.trajectory.events,
+          ...lifecycleEvents,
+        ];
         
         allEvidences.push(evidence);
         if (!bySection[section]) bySection[section] = [];

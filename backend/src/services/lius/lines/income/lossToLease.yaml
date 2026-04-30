@@ -1,0 +1,78 @@
+# Loss to Lease — Archetype A (rent-roll-anchored)
+#
+# Loss to Lease (LTL) is the gap between in-place rents and market rents.
+# For rent-controlled / rent-stabilized properties, this is a structural
+# value driver (the "upside" from rolling leases to market).
+#
+# LTL = Σ( (market_rent_by_unit_type - in_place_rent) × units_in_place )
+#
+# The rent roll gives in-place rents by unit type.
+# Market comps give market rents by unit type.
+# The gap * rolling units/year = annual LTL recovery.
+
+liuid: "income.lossToLease"
+label: "Loss to Lease"
+section: "income"
+archetype: "A"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 5]
+# Tier 1: rent roll (in-place rent) × market comps (market rent)
+# Tier 2.5: profile cluster rent growth trajectory by vintage
+# Tier 3: archive submarket rent growth
+# Tier 5: 5% of in-place GPR
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [5]
+    # No LTL in lease-up — all units lease at market
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended:
+    - "income.concessions"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 2
+      description: "LTL recovery accelerates in strong markets"
+      deltaPct: 1.0
+      source: "schema"
+      confidence: 0.6
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.loss_to_lease"
+  materiality:
+    absoluteMin: 20000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 90
+
+reasoningTemplate: |
+  Loss to lease of ${{value}} (${{per_unit}}/unit/year).
+  {{total_units}} units × {{avg_rent_gap}} average gap.
+  {{turnover_rate}}%/year turnover × {{recovery_per_lease}} average recovery.
+  Market rents growing at {{market_growth}}%/year.
+  {{fully_stabilized_in}} years to capture full LTL.
+
+notes: |
+  LTL is the single biggest value driver in value-add multifamily.
+  Do NOT treat LTL as instant — it depends on lease turnover schedule.
+  For rent-stabilized properties, the annual max increase caps LTL recovery.

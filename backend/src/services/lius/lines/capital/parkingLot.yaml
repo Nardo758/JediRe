@@ -1,0 +1,68 @@
+# Parking Lot Resurfacing — Archetype E (zero-rule baseline)
+#
+# Parking lot / driveway resurfacing and restriping capital expenditure.
+# Discrete spike events triggered by age/service life thresholds.
+#
+# Asphalt lifespan without full reconstruction:
+#   Seal coat: 3-5 years ($1-3K per coat)
+#   Overlay (2" new asphalt): 10-15 years ($3-8/sqft)
+#   Full reconstruction: 20-30 years ($8-15/sqft)
+#
+# For a 200-unit garden property with ~300 spaces:
+#   Seal coat: $5-15K
+#   Overlay: $50-150K
+#   Full reconstruction: $150-400K
+
+liuid: "capital.parkingLot"
+label: "Parking Lot Resurfacing"
+section: "capital"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - reforecast
+
+sourcePreference: [1, 2.5, 5]
+# Tier 1: PCA report (parking lot condition assessment)
+# Tier 2.5: profile cluster parking lot resurfacing by vintage
+# Tier 5: $75K every 12 years (moderate garden property)
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Parking lot resurfacing year"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.4
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: false
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Parking lot resurfacing: ${{value}}.
+  Lot area: {{lot_area_sqft}} sqft ({{parking_spaces}} spaces).
+  Current condition: {{condition}}.
+  Last resurfacing: {{last_resurfacing_year}} ({{years_since_last}} years ago).
+  Profile cluster (n={{profile_n}}): {{profile_resurface_cycle}} year cycle.
+  {{planned_year_note}}.
+
+notes: |
+  Parking lot condition is a major curb appeal factor and affects
+  resident satisfaction. Deferred parking lot maintenance is one of
+  the most visible signs of a poorly-managed property.

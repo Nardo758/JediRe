@@ -1,0 +1,78 @@
+# Lease-Up Marketing — Archetype B (T12-anchored, cross-validated)
+#
+# Marketing spend during lease-up — structurally 2-3x stabilized levels.
+# Includes: ILS premiums, signage, events, broker co-op, digital marketing,
+# model unit staging, photography, video tours, grand opening event.
+#
+# During lease-up, marketing must fill the entire property from zero.
+# Stabilized marketing is retention + natural vacancy fill only.
+#
+# Typical lease-up marketing: $200-500/unit/year (vs $75-150 stabilized)
+
+liuid: "leaseUp.leaseUpMarketing"
+label: "Lease-Up Marketing & Admin"
+section: "lease-up"
+archetype: "B"
+version: 1
+
+applicableDealTypes:
+  - development
+
+sourcePreference: [3, 2.5, 5]
+# Tier 3: M07 archive lease-up marketing spend
+# Tier 2.5: profile cluster lease-up marketing by product type
+# Tier 5: $350/unit/year (Class A garden, moderate market)
+
+lifecycleOverrides: []
+
+dependsOn:
+  required:
+    - "leaseUp.leaseUpAbsorption"
+  recommended: []
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "level_reset"
+      year: 1
+      description: "Lease-up marketing spend (elevated)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.6
+      binding: false
+    - primitive: "level_reset"
+      year: 2
+      description: "Marketing normalizes toward stabilized as occupancy builds"
+      value: null
+      deltaPct: -0.50
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "lease_up.marketing"
+  materiality:
+    absoluteMin: 20000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 10
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Lease-up marketing of ${{value}} (${{per_unit}}/unit/year).
+  {{market_budget_pct}}% of total lease-up budget.
+  Marketing channels: {{marketing_channels}}.
+  Archive (n={{archive_n}}, similar lease-ups): {{archive_marketing}}/unit.
+  Stabilized benchmark: ${{stabilized_marketing}}/unit.
+  {{collision_note}}
+
+notes: |
+  Lease-up marketing is often the first budget line cut when development
+  costs overrun. A 20% marketing cut can delay stabilization by 2-4 months,
+  costing more than the marketing savings. Protect this line in underwriting.

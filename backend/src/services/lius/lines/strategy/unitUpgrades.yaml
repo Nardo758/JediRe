@@ -1,0 +1,80 @@
+# Unit Upgrades — Archetype D (portfolio-benchmark-driven)
+#
+# Per-unit interior renovation costs. Sub-component of value-add.
+# Unit interiors have the clearest cost basis and premium capture.
+#
+# Cost breakdown (typical per unit):
+#   Cabinetry (reface vs replace): $1,500-5,000
+#   Countertops (laminate vs quartz): $500-2,500
+#   Flooring (LVP vs tile vs hardwood): $1,000-3,500
+#   Appliances: $2,000-5,000
+#   Plumbing fixtures: $300-1,000
+#   Lighting: $200-800
+#   Paint: $300-800
+#   Labor: $3,000-8,000
+
+liuid: "strategy.unitUpgrades"
+label: "Unit Upgrades"
+section: "strategy"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - redevelopment
+
+sourcePreference: [4, 2.5, 5]
+# Tier 4: broker OM (stated per-unit reno budget)
+# Tier 2.5: profile cluster reno cost per unit by product type
+# Tier 5: $8K/unit (light reno) for moderate value-add
+
+lifecycleOverrides: []
+
+dependsOn:
+  recommended:
+    - "strategy.valueAdd"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Year 1 unit renovation spend (first batch)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.7
+      binding: false
+    - primitive: "discrete_spike"
+      year: 2
+      description: "Year 2 unit renovation spend (second batch)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.7
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "strategy.unit_renovation_cost"
+  materiality:
+    absoluteMin: 75000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Unit upgrades of ${{value}} (${{per_unit}}/unit).
+  {{units_to_reno}} units at ${{cost_per_unit}}/unit.
+  Renovation scope: {{reno_scope}}.
+  {{collision_note}}
+
+notes: |
+  Unit renovation cost has been climbing 8-12%/year post-COVID due to
+  material and labor inflation. Budget at current market pricing, not
+  T12 vendor costs from 2 years ago.

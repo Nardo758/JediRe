@@ -1,0 +1,81 @@
+# Transfer Tax — Archetype C (service-derived, jurisdiction-bound)
+#
+# Real estate transfer / documentary stamp / intangible tax on acquisition.
+# This is the single biggest acquisition cost in most transactions.
+# Jurisdiction-specific rate × purchase price.
+#
+# Key jurisdictions:
+# - GA: $1/$1K transfer tax on note (not deed). ~0.10% effective.
+# - FL: $0.70/$100 documentary stamp on deed + 0.2% intangible tax on note
+#       TOTAL: ~0.8-0.9% of purchase price for typical LTV
+# - TX: $0.50/$500 (state deed tax) + local MUD transfer fees
+#       TOTAL: ~0.1-0.3% of purchase price
+# - NY: ~2.825% of purchase price (state + city in NYC)
+# - CA: $1.10/$1,000 + local (1.1-3.6% in some city/county combos)
+
+liuid: "transaction.transferTax"
+label: "Transfer Tax"
+section: "transaction"
+archetype: "C"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+
+sourcePreference: [5, 3]
+# Tier 5: jurisdiction-specific rates computed by fee engine
+# Tier 3: archive transfer taxes for similar acquisition deal types
+
+lifecycleOverrides: []
+
+dependsOn:
+  required: []
+
+hardRules:
+  - condition: "FL acquisition"
+    description: "FL doc stamps at $0.70/$100 deed + 0.2% intangible on note"
+    effect:
+      sourceActions: []
+      trajectoryOverrides: []
+
+  - condition: "GA acquisition"
+    description: "GA $1/$1K transfer on note amount, not purchase price"
+    effect:
+      sourceActions: []
+      trajectoryOverrides: []
+
+  - condition: "TX acquisition"
+    description: "TX $0.50/$500 state deed + local MUD fees"
+    effect:
+      sourceActions: []
+      trajectoryOverrides: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "transaction.transfer_taxes"
+  materiality:
+    absoluteMin: 25000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Transfer tax of ${{value}} ({{pct_purchase_price}}% of purchase price).
+  Jurisdiction: {{jurisdiction}}.
+  Rate: {{transfer_tax_rate}} applied to {{tax_base}}.
+  Breakdown: {{breakdown}}.
+  {{collision_note}}
+
+notes: |
+  Transfer taxes are frequently miscalculated in broker OMs.
+  FL is the most commonly miscalculated: doc stamps apply to the full
+  deed consideration (purchase price), intangible tax to the note.
+  GA has a unique structure (tax on note, not deed) that saves buyers
+  ~0.6% vs neighboring states. Verify with local title company.

@@ -1,0 +1,89 @@
+# Reposition — Archetype D (portfolio-benchmark-driven)
+#
+# Full repositioning budget: converting the asset's market position.
+# More comprehensive than value-add — includes amenity package overhaul,
+# exterior rebranding, parking improvements, landscaping, signage.
+#
+# Repositioning is a strategy-level decision that drives all line-item
+# capex (unitUpgrades, commonAreaImprovements, deferredMaintenance).
+# This schema aggregates those into a program-level budget.
+#
+# Repositioning budget is typically 2-5x the value-add budget.
+
+liuid: "strategy.reposition"
+label: "Reposition"
+section: "strategy"
+archetype: "D"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - redevelopment
+
+sourcePreference: [4, 2.5, 5]
+# Tier 4: broker OM (stated repositioning plan & budget)
+# Tier 2.5: profile cluster repositioning spend by vintage band
+# Tier 5: $30K/unit conservative (moderate-to-heavy reposition)
+
+lifecycleOverrides: []
+
+dependsOn:
+  required: []
+  recommended:
+    - "strategy.valueAdd"
+    - "strategy.deferredMaintenance"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Year 1 repositioning spend (highest intensity)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.7
+      binding: false
+    - primitive: "discrete_spike"
+      year: 2
+      description: "Year 2 repositioning spend"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.6
+      binding: false
+    - primitive: "discrete_spike"
+      year: 3
+      description: "Year 3 repositioning tail spend"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.4
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "strategy.reposition_budget"
+  materiality:
+    absoluteMin: 250000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 15
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Repositioning budget of ${{value}} (${{per_unit}}/unit).
+  Program scope: {{scope_description}}.
+  {{phase_duration}} month timeline.
+  Profile cluster (n={{profile_n}}, {{vintage_band}}): {{profile_reposition_cost}}/unit.
+  {{collision_note}}
+
+notes: |
+  Full repositioning transforms the property's competitive position.
+  Success depends on the submarket's ability to support the new rent point.
+  ALWAYS stress-test: what if repositioning achieves only 60% of premium?
+  If NOI doesn't work at 60%, the repositioning thesis is fragile.

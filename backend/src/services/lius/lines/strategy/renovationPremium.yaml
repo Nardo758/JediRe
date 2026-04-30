@@ -1,0 +1,99 @@
+# Renovation Premium & Absorption — Archetype F (strategy-program-driven)
+#
+# The expected rent premium from the value-add program, plus the
+# absorption curve for renovated units. This determines HOW the
+# rent growth from value-add materializes over time.
+#
+# Premium ranges (post-reno vs pre-reno):
+#   Light ($5-15K/unit): 10-20% premium
+#   Moderate ($15-30K/unit): 20-35% premium
+#   Heavy ($30-75K/unit): 35-60% premium
+#
+# Absorption: 10-25 units/month in stabilized market (fewer in weak)
+# Premium fade: 20-40% of initial premium erodes over 3-5 years as
+#   market rents catch up (competition also renovates)
+#
+# NOTE: This is the ONLY strategy line that models a trajectory —
+# the premium is not static but follows a ramp + fade curve.
+
+liuid: "strategy.renovationPremium"
+label: "Renovation Premium & Absorption"
+section: "strategy"
+archetype: "F"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - redevelopment
+
+sourcePreference: [2.5, 4, 3, 5]
+# Tier 2.5: profile cluster actual premium achieved by similar programs
+# Tier 4: broker OM (stated target premium)
+# Tier 3: archive achievement_vs_assumption for similar programs
+# Tier 5: 20% premium for moderate reno, 50% fade over 5 years
+
+lifecycleOverrides: []
+
+dependsOn:
+  required:
+    - "strategy.valueAdd"
+  recommended:
+    - "strategy.unitUpgrades"
+    - "strategy.commonAreaImprovements"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 1
+      description: "Year 1 rent premium from renovated units"
+      deltaPct: null
+      source: "schema"
+      confidence: 0.6
+      binding: false
+    - primitive: "rate_delta"
+      year: 2
+      description: "Year 2 rent premium from renovated units"
+      deltaPct: null
+      source: "schema"
+      confidence: 0.5
+      binding: false
+    - primitive: "rate_delta"
+      year: 3
+      description: "Year 3 — premium fade begins (competition catches up)"
+      deltaPct: -0.10
+      source: "schema"
+      confidence: 0.4
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: true
+  brokerMapping: "strategy.rent_premium"
+  materiality:
+    absoluteMin: 50000
+    pctMin: 0.15
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Renovation premium of {{pct_premium}}% target (${{value}} incremental).
+  {{renovation_scope}} at ${{reno_cost}}/unit.
+  Expected absorption: {{absorption_rate}} renovated units/month.
+  Premium ramp: {{ramp_months}} months to full premium on renovated units.
+  Premium fade: {{fade_pct}}% over {{fade_years}} years.
+  Archive achievement: archive shows {{archive_achievement_pct}}% of
+    projected premium achieved for similar ({{product_type}}, {{market}}) programs.
+  {{collision_note}}
+
+notes: |
+  Renovation premium is the single most over-estimated line in value-add
+  underwriting. Typical achievement rates: 60-85% of projected premium.
+  Premium fade is real — 40-60% of initial premium may erode in 5 years
+  as competing properties also upgrade. This is the "renovation treadmill."
+  Only organic amenity differentiation (location, layout) provides
+  sustainable premium.

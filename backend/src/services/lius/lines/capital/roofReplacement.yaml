@@ -1,0 +1,71 @@
+# Roof Replacement — Archetype E (zero-rule baseline)
+#
+# Roof lifecycle capital expenditure. Modeled as discrete spike events
+# triggered when the roof reaches end of service life.
+#
+# Roof types and typical lifespans:
+#   Built-up (BUR): 15-20 years
+#   Single-ply (TPO/PVC/EPDM): 15-25 years
+#   Metal standing seam: 30-50 years
+#   Asphalt shingle: 15-25 years
+#   Tile: 30-50 years
+#
+# Cost: $8-15/sqft (varies by roof type, slope, accessibility)
+# Average roof area for multifamily: 2,500-5,000 sqft per building
+# For a 200-unit garden: ~$150-400K per replacement cycle
+
+liuid: "capital.roofReplacement"
+label: "Roof Replacement"
+section: "capital"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - reforecast
+
+sourcePreference: [1, 2.5, 5]
+# Tier 1: PCA report (roof condition, age, estimated remaining life)
+# Tier 2.5: profile cluster roof replacement schedule by vintage band
+# Tier 5: $250K at year 15 of building age (garden, moderate)
+
+lifecycleOverrides: []
+
+dependsOn: {}
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Roof replacement year (PCA-derived or profile-derived)"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: false
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Roof replacement capex: ${{value}}.
+  Roof type: {{roof_type}}.
+  Current age: {{roof_age}} years (remaining life: {{remaining_life}} years).
+  Replacement cost: ${{roof_area_sqft}} sqft × ${{cost_per_sqft}}/sqft.
+  PCA report: {{pca_condition}}.
+  {{planned_year_note}}.
+
+notes: |
+  Roof replacement is the single largest component-level capex item.
+  PCA condition assessment is critical — a roof with 5 years remaining
+  vs 15 years changes the Year 1-5 capex budget significantly.
+  Roof replacement may be phased across multiple buildings in a garden complex.

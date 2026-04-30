@@ -1,0 +1,78 @@
+# Lease-Up Concessions — Archetype E (forward-modeled)
+#
+# Concession program required during lease-up to attract initial tenants.
+# Typically more aggressive than stabilized concessions.
+#
+# Typical: 1-2 months free on a 12-month lease (2-4 weeks is stabilized norm)
+# Duration: first 12-18 months of lease-up, then taper
+#
+# Lease-up concessions are a direct NOI drag. Every free month = one month
+# of lost revenue per leased unit. On 100 units × 1mo free / 12mo = 8.3% of GPR.
+
+liuid: "leaseUp.leaseUpConcessions"
+label: "Lease-Up Concessions"
+section: "lease-up"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - development
+  - acquisition
+  - redevelopment
+
+sourcePreference: [3, 2.5, 5]
+# Tier 3: M07 archive concession programs for similar lease-ups
+# Tier 2.5: profile cluster lease-up concession patterns
+# Tier 5: 1 month free on 12mo lease (conservative)
+
+lifecycleOverrides: []
+
+dependsOn:
+  required:
+    - "leaseUp.leaseUpAbsorption"
+  recommended: []
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 1
+      description: "Elevated lease-up concessions (year 1)"
+      deltaPct: 1.0
+      source: "schema"
+      confidence: 0.6
+      binding: false
+    - primitive: "rate_delta"
+      year: 2
+      description: "Concession taper (year 2)"
+      deltaPct: -0.5
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "lease_up.concessions"
+  materiality:
+    absoluteMin: 25000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 10
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Lease-up concessions of {{weeks_free}} weeks free on {{lease_term}}-month leases.
+  {{pct_gpr}}% of GPR impact (${{value}}/year).
+  First {{concession_duration_months}} months of lease-up.
+  Archive (n={{archive_n}}, similar lease-ups): {{archive_concessions}} weeks free.
+  {{collision_note}}
+
+notes: |
+  Lease-up concessions are a major cash flow drag in the first 12-18 months.
+  Do not understate — operators who offer too little concession see
+  slower absorption, which costs more overall. The right concession level
+  maximizes net present value, not absolute rent.

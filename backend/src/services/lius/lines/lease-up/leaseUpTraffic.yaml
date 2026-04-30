@@ -1,0 +1,61 @@
+# Lease-Up Traffic — Archetype E (forward-modeled)
+#
+# Expected leasing velocity (traffic / tours / applications).
+# Determines how quickly the lease-up progresses and helps calibrate
+# absorption and concession assumptions.
+#
+# Traffic is measured as: tours per month per available unit
+# Typical ranges:
+#   Strong market: 8-15 tours/available unit/month
+#   Moderate market: 4-8 tours/available unit/month
+#   Weak market: 2-4 tours/available unit/month
+#
+# Social / ILS (internet listing service) analytics provide data.
+# M07 comps provide submarket benchmarks.
+
+liuid: "leaseUp.leaseUpTraffic"
+label: "Lease-Up Traffic"
+section: "lease-up"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - development
+  - acquisition
+
+sourcePreference: [3, 5]
+# Tier 3: M07 traffic comps
+# Tier 5: 6 tours/available unit/month (moderate)
+
+lifecycleOverrides: []
+
+dependsOn:
+  required:
+    - "leaseUp.leaseUpAbsorption"
+  recommended: []
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: false
+
+collision:
+  enabled: false
+
+confidence:
+  minSampleForHigh: 10
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Traffic velocity: {{tours_per_available}} tours/available unit/month.
+  {{lease_conversion}}% tour-to-lease conversion rate.
+  Estimated {{applications_per_month}} applications/month.
+  M07 archive (n={{archive_n}}): {{archive_traffic}}.
+  {{traffic_assessment}}.
+
+notes: |
+  Traffic is a leading indicator. If current traffic is strong, concessions
+  may be reduced earlier. If traffic is weak, absorption is at risk.
+  Social / ILS analytics (Yardi, RealPage) provide actual data.

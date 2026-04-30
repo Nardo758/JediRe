@@ -1,0 +1,73 @@
+# Lease-Up Absorption — Archetype E (forward-modeled, no historicals)
+#
+# Units/month absorbed during lease-up. Primary input is M07 absorption
+# study (market comparable lease-ups). This drives the stabilization
+# timeline and vacancy trajectory.
+#
+# Typical absorption: 10-30 units/month across 12-24 month lease-up
+# Factors: submarket velocity, unit mix, pricing strategy, amenity competition
+#
+# For existing deals with vacancy: absorption solves units/month to fill
+# current vacancy (not a full lease-up).
+
+liuid: "leaseUp.leaseUpAbsorption"
+label: "Lease-Up Absorption"
+section: "lease-up"
+archetype: "E"
+version: 1
+
+applicableDealTypes:
+  - development
+  - acquisition
+  - redevelopment
+
+sourcePreference: [3, 5]
+# Tier 3: M07 absorption comps from archive
+# Tier 5: 15 units/month default (moderate submarket)
+
+lifecycleOverrides: []
+
+dependsOn:
+  required: []
+  recommended:
+    - "income.grossPotentialRent"
+    - "leaseUp.leaseUpConcessions"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 1
+      description: "Lease-up period: heavy absorption"
+      value: null
+      deltaPct: null
+      source: "schema"
+      confidence: 0.6
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "lease_up.absorption_rate"
+  materiality:
+    absoluteMin: 50000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 10
+  freshnessDays: 365
+
+reasoningTemplate: |
+  Absorption rate of {{absorption_rate}} units/month.
+  Estimated {{months_to_stabilize}} months to reach {{stabilized_occupancy}}%.
+  {{total_units}} units at {{unit_turnover}}% annual turnover.
+  M07 archive (n={{archive_n}}, {{submarket}}): {{archive_absorption}} units/month.
+  {{collision_note}}
+
+notes: |
+  Absorption rate is the most critical assumption for lease-up underwriting.
+  A 5-unit/month overstatement compresses stabilization by 3-5 months,
+  which shifts the entire NOI trajectory and exit valuation.
+  Always reference M07 absorption comps from comparable properties.

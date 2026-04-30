@@ -1,0 +1,77 @@
+# Parking Income — Archetype A (rent-roll-anchored)
+#
+# Parking revenue from reserved spaces, garage access, or valet.
+# Rent roll shows actual parking charges by unit/resident.
+# Market comps determine achievable parking rent by submarket.
+#
+# Typical ranges:
+#   Surface parking (unreserved): $0-25/space/month
+#   Surface parking (reserved): $25-75/space/month
+#   Covered / garage (reserved): $50-150/space/month
+#   Valet / structured parking: $100-250/space/month
+
+liuid: "income.parkingIncome"
+label: "Parking Income"
+section: "income"
+archetype: "A"
+version: 1
+
+applicableDealTypes:
+  - acquisition
+  - development
+  - refi
+  - reforecast
+  - disposition
+
+sourcePreference: [1, 2.5, 3, 5]
+# Tier 1: rent roll + T12 (actual parking revenue)
+# Tier 2.5: profile cluster parking revenue per space
+# Tier 3: archive submarket avg parking revenue
+# Tier 5: $25/space/month (reserved surface) × assumption on uptake rate
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [2.5, 3, 5]
+
+dependsOn:
+  required:
+    - "income.grossPotentialRent"
+  recommended:
+    - "income.otherIncome"
+
+hardRules: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 3
+      description: "Parking rate premium growth as submarket densifies"
+      deltaPct: 1.05
+      source: "schema"
+      confidence: 0.4
+      binding: false
+  profileDerivedEvents: false
+
+collision:
+  enabled: true
+  brokerMapping: "income.parking"
+  materiality:
+    absoluteMin: 8000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 180
+
+reasoningTemplate: |
+  Parking income of ${{value}} (${{per_space}}/space/mo).
+  {{total_spaces}} total spaces × {{uptake_rate}}% uptake.
+  Rent roll shows {{actual_revenue}}/mo from parking.
+  Profile cluster (n={{profile_n}}): {{profile_parking}}/space/mo.
+  {{collision_note}}
+
+notes: |
+  Parking revenue depends on transit accessibility and submarket density.
+  Urban infill properties often generate 2-3x the parking revenue of
+  suburban garden properties. Do not assume 100% uptake.
