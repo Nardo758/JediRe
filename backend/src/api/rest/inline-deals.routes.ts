@@ -1894,12 +1894,21 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     const rowIdx = parseInt(match[1], 10);
     const cellField = match[2];
 
-    // Fetch existing rent roll rows ordered the same way the frontend expects them
-    const rrRes = await pool.query(
-      `SELECT id, type, in_place_rent, market_rent
-       FROM rent_roll WHERE deal_id = $1 ORDER BY type ASC`,
-      [dealId]
-    );
+    // Fetch existing rent roll rows ordered the same way the frontend expects them.
+    // The legacy `rent_roll` table is sometimes absent (some envs only carry
+    // `rent_roll_snapshots`); treat that the same as zero rows so the auto-INSERT
+    // branch below can still run and surface a clean error if it also can't write.
+    let rrRes: { rows: Array<{ id: string; type: string; in_place_rent: number | null; market_rent: number | null }> };
+    try {
+      rrRes = await pool.query(
+        `SELECT id, type, in_place_rent, market_rent
+         FROM rent_roll WHERE deal_id = $1 ORDER BY type ASC`,
+        [dealId]
+      );
+    } catch (selErr: any) {
+      console.warn('rent_roll SELECT failed (table may be missing):', selErr?.message);
+      rrRes = { rows: [] };
+    }
 
     let rowType = 'Default';
 
