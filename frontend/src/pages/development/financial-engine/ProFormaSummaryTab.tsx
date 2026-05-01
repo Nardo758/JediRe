@@ -322,7 +322,7 @@ function applyEvidenceFilter(
   return rows;
 }
 
-export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields }: FinancialEngineTabProps) {
+export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh }: FinancialEngineTabProps) {
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -345,12 +345,14 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
         const hasErrors = financials.proforma.integrityChecks.some(c => c.status !== 'ok');
         onIntegrityChange(hasErrors);
       }
+      // Also trigger parent refresh so other tabs stay in sync
+      if (onF9Refresh) onF9Refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load financials');
     } finally {
       setLoading(false);
     }
-  }, [dealId, onIntegrityChange]);
+  }, [dealId, onIntegrityChange, onF9Refresh]);
 
   useEffect(() => { load(); }, [load]);
 

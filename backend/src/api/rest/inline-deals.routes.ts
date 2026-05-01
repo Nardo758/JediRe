@@ -1858,4 +1858,86 @@ router.get('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedRe
   }
 });
 
+/**
+ * PATCH /:dealId/financials/override
+ *
+ * Saves a unit mix rent override to the rent_roll table.
+ * Called by UnitMixTab when user edits inPlaceRent or marketRent for a row.
+ * After write, recalculates the deal's GPR from the updated unit mix.
+ */
+router.patch('/:dealId/financials/override', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const { field, value } = req.body;
+
+    // Validate ownership
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    if (!field || typeof field !== 'string') {
+      return res.status(400).json({ success: false, error: 'field is required' });
+    }
+
+    // Parse the field path: unit_mix:<rowIdx>:<field>
+    // E.g. unit_mix:0:inPlace → rent_roll.in_place_rent for row 0 (ordered by type ASC)
+    const match = field.match(/^unit_mix:(\d+):(inPlace|market)$/);
+    if (!match) {
+      return res.status(400).json({ success: false, error: `Invalid field path: ${field}` });
+    }
+
+    const rowIdx = parseInt(match[1], 10);
+    const cellField = match[2];
+
+    // Fetch existing rent roll rows ordered the same way the frontend expects them
+    const rrRes = await pool.query(
+      `SELECT id, type, in_place_rent, market_rent
+       FROM rent_roll WHERE deal_id = $1 ORDER BY type ASC`,
+      [dealId]
+    );
+
+    if (!rrRes.rows[rowIdx]) {
+      return res.status(404).json({ success: false, error: `Rent roll row ${rowIdx} not found` });
+    }
+
+    const row = rrRes.rows[rowIdx];
+    const dbColumn = cellField === 'inPlace' ? 'in_place_rent' : 'market_rent';
+
+    if (value === null) {
+      // Reset to null (remove override)
+      await pool.query(
+        `UPDATE rent_roll SET ${dbColumn} = NULL, updated_at = NOW() WHERE id = $1`,
+        [row.id]
+      );
+    } else {
+      const numVal = parseFloat(value);
+      if (isNaN(numVal)) {
+        return res.status(400).json({ success: false, error: 'Invalid numeric value' });
+      }
+      await pool.query(
+        `UPDATE rent_roll SET ${dbColumn} = $1, updated_at = NOW() WHERE id = $2`,
+        [numVal, row.id]
+      );
+    }
+
+    // Recalculate and return the updated deal financials
+    const { composeDealFinancials } = await import('../../services/financials-composer.service');
+    const result = await composeDealFinancials(pool, dealId, userId);
+
+    res.json({
+      success: true,
+      data: result.data,
+      message: `${cellField === 'inPlace' ? 'In-place rent' : 'Market rent'} updated for ${row.type}`,
+    });
+  } catch (error: any) {
+    console.error('Error in financials/override:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to save override' });
+  }
+});
+
 export default router;
