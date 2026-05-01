@@ -212,19 +212,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     fetchF9Financials();
   }, [fetchF9Financials]);
 
-  // Auto-build model when assumptions and financials are both available
-  const modelBuiltRef = useRef(false);
-  useEffect(() => {
-    if (!resolvedDealId || !assumptions || !f9Financials) return;
-    if (modelBuiltRef.current) return;
-    if (modelResults) {
-      modelBuiltRef.current = true;
-      return;
-    }
-    modelBuiltRef.current = true;
-    handleBuildModel();
-  }, [resolvedDealId, assumptions, f9Financials, modelResults, handleBuildModel]);
-
   // ── Evidence Summary — fetch collision/confidence/tier stats ─────────────
   useEffect(() => {
     if (!resolvedDealId) return;
@@ -275,6 +262,20 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       setBuilding(false);
     }
   }, [resolvedDealId, assumptions]);
+
+  // Auto-build model when assumptions and financials are both available.
+  // Declared after handleBuildModel to avoid a temporal dead zone reference.
+  const modelBuiltRef = useRef(false);
+  useEffect(() => {
+    if (!resolvedDealId || !assumptions || !f9Financials) return;
+    if (modelBuiltRef.current) return;
+    if (modelResults) {
+      modelBuiltRef.current = true;
+      return;
+    }
+    modelBuiltRef.current = true;
+    handleBuildModel();
+  }, [resolvedDealId, assumptions, f9Financials, modelResults, handleBuildModel]);
 
   const handleSaveVersion = useCallback(async () => {
     if (!resolvedDealId || !assumptions) return;
