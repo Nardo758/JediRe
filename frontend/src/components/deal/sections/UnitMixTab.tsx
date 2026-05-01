@@ -195,7 +195,22 @@ function ExpirationBars({ curve, totalUnits }: { curve: ExpirationCurve | null; 
   ];
   const sum = segments.reduce((s, x) => s + x.count, 0);
   if (sum === 0) {
-    return <span style={{ fontFamily: LABEL, fontSize: 9, color: C.dim }}>—</span>;
+    // Explicit zero state: the curve was extracted but every bucket is zero
+    // (typical for a fully vacant floor plan). Render a flat grey bar with a
+    // "0/0/0/0/0" readout instead of "—" so the user can see "the data is
+    // here, the buckets are just empty" — distinct from an OM-only deal where
+    // we never had a curve at all.
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px' }}>
+        <div
+          title="Curve extracted; all buckets are zero (no scheduled lease ends — likely fully vacant)"
+          style={{ display: 'flex', height: 10, width: 110, background: '#0a0e15', borderRadius: 2, overflow: 'hidden', border: `1px dashed ${C.border}` }}
+        />
+        <span style={{ fontFamily: MONO, fontSize: 9, color: C.dim, whiteSpace: 'nowrap' }}>
+          0/0/0/0/0
+        </span>
+      </div>
+    );
   }
   // Bias near-term percentages so a single MTM unit in a 100-unit floorplan
   // is still visible (min 3px width when count>0).
@@ -251,7 +266,7 @@ function FloorPlanUnitDetail({ floorplan, units }: {
 
   return (
     <tr style={{ background: '#050a0f' }}>
-      <td colSpan={11} style={{ padding: 0 }}>
+      <td colSpan={12} style={{ padding: 0 }}>
         <div style={{ borderTop: `1px solid ${C.cyan}33`, borderBottom: `1px solid ${C.cyan}33` }}>
           <div style={{ padding: '6px 12px', background: '#0a0e15', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.cyan, letterSpacing: '0.08em' }}>
@@ -275,6 +290,7 @@ function FloorPlanUnitDetail({ floorplan, units }: {
                     <th style={th()}>STATUS</th>
                     <th style={th()}>TENANT</th>
                     <th style={th(true)}>LEASE RENT</th>
+                    <th style={th(true)}>EFF RENT</th>
                     <th style={th(true)}>MARKET</th>
                     <th style={th()}>MOVE-IN</th>
                     <th style={th()}>LEASE START</th>
@@ -308,6 +324,7 @@ function FloorPlanUnitDetail({ floorplan, units }: {
                           </span>
                         </td>
                         <td style={td(true, false, isVacant ? C.dim : C.text)}>{fmt$(u.leaseRent)}</td>
+                        <td style={td(true, false, isVacant ? C.dim : C.cyan)}>{fmt$(u.effectiveRent)}</td>
                         <td style={td(true, false, ltl != null && ltl > 0 ? C.amber : C.muted)}>{fmt$(u.marketRent)}</td>
                         <td style={td(false, false, C.muted)}>{u.moveInDate || '—'}</td>
                         <td style={td(false, false, C.muted)}>{u.leaseStart || '—'}</td>
@@ -796,15 +813,34 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
         </button>
       </div>
 
-      {/* ── OM-only banner (no rent roll uploaded yet) ── */}
-      {data?.extractionRentRoll == null && unitMix.length > 0 && (
-        <div style={{ background: '#0a0d18', borderBottom: `1px solid ${C.purple}44`, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <AlertTriangle size={13} color={C.purple} />
-          <span style={{ fontFamily: LABEL, fontSize: 9, color: C.purple }}>
-            OM-ONLY UNIT MIX — Floor plan counts and rents come from the offering memorandum (broker-published). Upload a rent roll to unlock per-unit drill-down, lease expiration analysis, and rent-roll-sourced ancillary income.
-          </span>
-        </div>
-      )}
+      {/* ── No-rent-roll banner ──
+          Differentiated by tier so the user knows whether the floor plan
+          rows are real OM extractions, a single-row capsule synthesized
+          default, or pure synthesis. All three states ask for a rent roll
+          upload; only the source attribution changes. */}
+      {data?.extractionRentRoll == null && unitMix.length > 0 && (() => {
+        const rrSource = (data?.rentRollSummary as { source?: string } | null)?.source ?? null;
+        const isOM = rrSource === 'extraction_om';
+        const isSynth = unitMix.length === 1 && unitMix[0].type === 'Default';
+        const headline = isOM
+          ? 'OM-PUBLISHED UNIT MIX'
+          : isSynth
+            ? 'SYNTHESIZED DEFAULT ROW'
+            : 'NO RENT ROLL';
+        const detail = isOM
+          ? 'Floor plan counts and rents come from the offering memorandum (broker-published).'
+          : isSynth
+            ? 'A single Default row was synthesized from capsule aggregates because no per-floorplan data was found.'
+            : 'No rent-roll extraction is available for this deal.';
+        return (
+          <div style={{ background: '#0a0d18', borderBottom: `1px solid ${C.purple}44`, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertTriangle size={13} color={C.purple} />
+            <span style={{ fontFamily: LABEL, fontSize: 9, color: C.purple }}>
+              {headline} — {detail} Upload a rent roll to unlock per-unit drill-down, lease expiration analysis, and rent-roll-sourced ancillary income.
+            </span>
+          </div>
+        );
+      })()}
 
       {/* ── Unit count reconciliation banner ── */}
       {unitCountMismatch && (
