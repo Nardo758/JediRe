@@ -55,6 +55,8 @@ router.post('/goal-seek', async (req, res) => {
       baseAssumptions,
       holdPeriodYears,
       lockedVariables,
+      expenseLineItems,
+      controllableExpenseKeys,
       bundleId,
       regime,
       aggressivenessBudgets,
@@ -72,6 +74,8 @@ router.post('/goal-seek', async (req, res) => {
       baseAssumptions,
       holdPeriodYears: holdPeriodYears ?? 5,
       lockedVariables,
+      expenseLineItems,
+      controllableExpenseKeys,
       bundleId: bundleId ?? 'all',
       regime: regime ?? 'expansion',
       aggressivenessBudgets,
@@ -158,3 +162,5 @@ router.post('/cache/invalidate', async (req, res) => {
 });
 
 export default router;
+
+
