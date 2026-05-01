@@ -11,6 +11,8 @@ import { useDealType } from '../../../stores/dealStore';
 import { getProFormaTemplate, PROFORMA_TEMPLATES } from '../../../shared/config/deal-type-visibility';
 import { useProformaAnchors } from '../../../hooks/useProformaAnchors';
 import { AnchorLabel } from '../../F9/AnchorLabel';
+import { AnchorSensitivityInput } from '../../F9/AnchorSensitivityInput';
+import { SensitivityBar } from '../../F9/SensitivityBar';
 
 interface UnitMixRow {
   floorPlan: string;
@@ -159,7 +161,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [address, setAddress] = useState(deal?.address || deal?.property_address || '');
   const [city, setCity] = useState(deal?.city || deal?.deal_data?.city || '');
   const [state, setState] = useState(deal?.state || deal?.deal_data?.state || '');
-  const { getAnchorTooltip } = useProformaAnchors(state);
+  const { getAnchorTooltip, anchors } = useProformaAnchors(state);
+  const [sensitivityOverrides, setSensitivityOverrides] = useState<Record<string, number | null>>({});
 
   const [unitMix, setUnitMix] = useState<UnitMixRow[]>([
     { floorPlan: '1BR/1BA', unitSize: 0, beds: 1, units: 0, occupied: 0, vacant: 0, marketRent: 0, inPlaceRent: 0 },
@@ -567,6 +570,17 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       setBuilding(false);
     }
   };
+
+  const handleOverride = (expenseKey: string, rate: number | null) => {
+    setSensitivityOverrides(prev => ({ ...prev, [expenseKey]: rate }));
+  };
+
+  const handleResetOverrides = () => {
+    setSensitivityOverrides({});
+  };
+
+  const overriddenCount = Object.values(sensitivityOverrides).filter(v => v != null).length;
+  const totalAnchored = anchors.length;
 
   const handleExportExcel = async () => {
     if (!id) return;
@@ -987,6 +1001,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                       expenses={expenses} setExpenses={setExpenses}
                       totalUnits={totalUnits}
                       getAnchorTooltip={getAnchorTooltip}
+                      sensitivityOverrides={sensitivityOverrides}
+                      onOverride={handleOverride}
                     />
                   )}
                   {section.id === 'financing' && (
@@ -1365,7 +1381,7 @@ const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem
   );
 };
 
-const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpenses: (v: Record<string, ExpenseItem>) => void; totalUnits: number; getAnchorTooltip?: (key: string) => any }> = ({ expenses, setExpenses, totalUnits, getAnchorTooltip }) => {
+const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpenses: (v: Record<string, ExpenseItem>) => void; totalUnits: number; getAnchorTooltip?: (key: string) => any; sensitivityOverrides?: Record<string, number | null>; onOverride?: (key: string, rate: number | null) => void }> = ({ expenses, setExpenses, totalUnits, getAnchorTooltip, sensitivityOverrides, onOverride }) => {
   const totalExpenses = Object.values(expenses).reduce((sum, e) => {
     if (e.type === 'pctEGR') return sum;
     return sum + (e.type === 'perUnit' ? e.amount * totalUnits : e.amount);
@@ -1373,6 +1389,9 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
 
   return (
     <div className="mt-3">
+      <div className="mb-1 flex items-center gap-2 px-2">
+        <SensitivityBar overriddenCount={Object.values(sensitivityOverrides || {}).filter(v => v != null).length} totalAnchored={Object.keys(expenses).length} onResetOverrides={() => onOverride ? Object.keys(sensitivityOverrides || {}).forEach(k => onOverride!(k, null)) : undefined} />
+      </div>
       <table className="w-full text-xs">
         <thead>
           <tr className="text-stone-500 border-b border-stone-200">
@@ -1388,7 +1407,10 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
             <tr key={name} className="border-b border-stone-100">
               <td className="py-1.5 px-2 text-stone-700">
                 {name}
-                {getAnchorTooltip && <AnchorLabel expenseKey={name} anchorTooltip={getAnchorTooltip(name)} originalGrowth={exp.growthRate} />}
+                {getAnchorTooltip && <>
+                  <AnchorLabel expenseKey={name} anchorTooltip={getAnchorTooltip(name)} originalGrowth={exp.growthRate} />
+                  <AnchorSensitivityInput expenseKey={name} anchorTooltip={getAnchorTooltip(name)} currentGrowth={exp.growthRate} onOverride={onOverride || (() => {})} override={sensitivityOverrides?.[name] ?? null} />
+                </>
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={exp.amount}
