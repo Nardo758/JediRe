@@ -99,32 +99,32 @@ export async function scorePlausibility(input: {
   bundleId?: string;
   dealF1Sensitivity?: number;
 }): Promise<PlausibilityResult> {
-  return apiClient.post('/sigma/plausibility', input) as Promise<PlausibilityResult>;
+  return apiClient.post('/api/v2/sigma/plausibility', input) as Promise<PlausibilityResult>;
 }
 
 /** Goal-seek: find assumption sets matching target IRR */
 export async function goalSeek(input: GoalSeekInput): Promise<GoalSeekResult> {
-  return apiClient.post('/sigma/goal-seek', input) as Promise<GoalSeekResult>;
+  return apiClient.post('/api/v2/sigma/goal-seek', input) as Promise<GoalSeekResult>;
 }
 
 /** List available debt bundles */
 export async function getBundles(): Promise<BundleDefinition[]> {
-  return apiClient.get('/sigma/bundles') as Promise<BundleDefinition[]>;
+  return apiClient.get('/api/v2/sigma/bundles') as Promise<BundleDefinition[]>;
 }
 
 /** List factor definitions */
 export async function getFactors(): Promise<FactorDefinition[]> {
-  return apiClient.get('/sigma/factors') as Promise<FactorDefinition[]>;
+  return apiClient.get('/api/v2/sigma/factors') as Promise<FactorDefinition[]>;
 }
 
 /** Get current regime */
 export async function getCurrentRegime(): Promise<{ regime: string }> {
-  return apiClient.get('/sigma/regime/current') as Promise<{ regime: string }>;
+  return apiClient.get('/api/v2/sigma/regime/current') as Promise<{ regime: string }>;
 }
 
 /** Invalidate σ cache */
 export async function invalidateSigmaCache(): Promise<void> {
-  return apiClient.post('/sigma/cache/invalidate') as Promise<void>;
+  return apiClient.post('/api/v2/sigma/cache/invalidate') as Promise<void>;
 }
 
 // ─── Color Helpers ──────────────────────────────────────────────────────────
@@ -139,3 +139,4 @@ export const BAND_COLORS: Record<PlausibilityBand, { bg: string; text: string; b
 export function bandColor(band: PlausibilityBand) {
   return BAND_COLORS[band] ?? BAND_COLORS.Heroic;
 }
+

@@ -19,7 +19,7 @@ import type { PlausibilityResult } from '../../api/sigmaApi';
 import GoalSeekWidget from '../../F9/GoalSeekWidget';
 import GoalSeekRoadmap from '../../F9/GoalSeekRoadmap';
 import type { RoadmapStep, ApplyPayload } from '../../F9/GoalSeekRoadmap';
-import { flattenAssumptionsForSolver, applySolverToAssumptions } from '../../api/sigma/assumptionBridge';
+import { flattenAssumptionsForSolver, applySolverToAssumptions } from '@/services/sigma/assumptionBridge';
 
 interface UnitMixRow {
   floorPlan: string;
