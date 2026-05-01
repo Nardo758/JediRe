@@ -144,7 +144,15 @@ export async function composeDealFinancials(
     extractionRentRoll.floorPlanMix &&
     Object.keys(extractionRentRoll.floorPlanMix).length > 0
   );
-  const capsuleAggregates = (rentRollRows.length === 0 && !extractionHasFloorPlanMix)
+  // Tier 3: OM-extracted per-floorplan unit mix. The OM parser writes a
+  // multi-row table to `deals.deal_data.extraction_om.unit_mix` whenever the
+  // broker published one. We use it ONLY when no rent-roll source upstream
+  // produced floor plan rows — otherwise it would silently override real
+  // rent-roll truth with broker marketing.
+  const omUnitMix = (rentRollRows.length === 0 && !extractionHasFloorPlanMix)
+    ? await loadOmUnitMix(pool, dealId)
+    : null;
+  const capsuleAggregates = (rentRollRows.length === 0 && !extractionHasFloorPlanMix && (!omUnitMix || omUnitMix.length === 0))
     ? await loadCapsuleAggregates(pool, dealId)
     : null;
 
@@ -184,11 +192,15 @@ export async function composeDealFinancials(
   // what the F9 Unit Mix tab displays.
   let derivationRows: any[];
   let extractionDerivationRows: any[] | null = null;
+  let omDerivationRows: any[] | null = null;
   if (rentRollRows.length > 0) {
     derivationRows = rentRollRows;
   } else if (extractionRentRoll && extractionRentRoll.floorPlanMix && Object.keys(extractionRentRoll.floorPlanMix).length > 0) {
     extractionDerivationRows = extractionFloorPlanToRentRollRows(extractionRentRoll, readUnitMixOverride);
     derivationRows = extractionDerivationRows;
+  } else if (omUnitMix && omUnitMix.length > 0) {
+    omDerivationRows = omUnitMixToRentRollRows(omUnitMix, readUnitMixOverride);
+    derivationRows = omDerivationRows;
   } else if (capsuleAggregates || ovInPlace != null || ovMarket != null) {
     derivationRows = [{
       type: 'Default',
@@ -208,7 +220,9 @@ export async function composeDealFinancials(
 
   // Pass the same overrides to the summary builder so the Default row in the
   // Unit Mix tab reflects user edits even when no rent_roll row was inserted.
-  const synthesizedOverrides = (rentRollRows.length === 0 && extractionDerivationRows == null)
+  // Only relevant when we actually fall back to the synthesized Default row
+  // (no rent-roll, no extraction, no OM unit mix).
+  const synthesizedOverrides = (rentRollRows.length === 0 && extractionDerivationRows == null && omDerivationRows == null)
     ? { inPlaceRent: ovInPlace, marketRent: ovMarket }
     : null;
 
@@ -229,6 +243,7 @@ export async function composeDealFinancials(
     rentRollRows, totalUnits, unitMixDerived, useUnitMixForGpr,
     capsuleAggregates, synthesizedOverrides,
     extractionRentRoll, extractionDerivationRows,
+    omDerivationRows,
   );
 
   // 10. Build traffic projection
@@ -305,6 +320,45 @@ function extractionFloorPlanToRentRollRows(
       _inPlaceOverridden: ov.inPlace != null,
       _marketOverridden:  ov.market != null,
       _expirationCurve: fp.expiration_curve ?? null,
+    };
+  });
+}
+
+/**
+ * Convert OM-published unit mix rows into the same rent_roll-row shape used
+ * downstream by `computeUnitMixDerived` and `buildRentRollSummary`. Applies
+ * per-row overrides from `per_year_overrides` so the user can edit OM-only
+ * deals the same way they can edit rent-roll-backed deals.
+ *
+ * Rows are returned in stable name order so override indices remain stable
+ * across reads (so an edit at idx 2 keeps targeting the same floor plan).
+ */
+function omUnitMixToRentRollRows(
+  rows: Array<{ floorplan: string; count: number | null; avgSf: number | null; marketRent: number | null; inPlaceRent: number | null }>,
+  readOverride: (idx: number) => { inPlace: number | null; market: number | null },
+): any[] {
+  const sorted = [...rows].sort((a, b) => a.floorplan.localeCompare(b.floorplan));
+  return sorted.map((r, idx) => {
+    const ov = readOverride(idx);
+    const inPlaceOriginal = (r.inPlaceRent != null && r.inPlaceRent > 0) ? r.inPlaceRent : null;
+    const marketOriginal  = (r.marketRent  != null && r.marketRent  > 0) ? r.marketRent  : null;
+    return {
+      type: r.floorplan,
+      count: r.count ?? 0,
+      avg_sqft: r.avgSf,
+      // OM "in place" is the broker's published "current/avg" rent; when the
+      // OM only published a single rent column, mirror it to in-place so the
+      // tab shows a usable row instead of all nulls.
+      in_place_rent: ov.inPlace ?? inPlaceOriginal ?? marketOriginal,
+      market_rent:   ov.market  ?? marketOriginal  ?? inPlaceOriginal,
+      occupancy_pct: null,
+      concession_pct: null,
+      _originalInPlace: inPlaceOriginal,
+      _originalMarket: marketOriginal,
+      _inPlaceOverridden: ov.inPlace != null,
+      _marketOverridden:  ov.market  != null,
+      _expirationCurve: null,
+      _source: 'extraction_om',
     };
   });
 }
@@ -731,11 +785,46 @@ function buildRentRollSummary(
   synthesizedOverrides: { inPlaceRent: number | null; marketRent: number | null } | null = null,
   extractionRentRoll: ExtractionRentRollPayload | null = null,
   extractionDerivationRows: any[] | null = null,
+  omDerivationRows: any[] | null = null,
 ): any | null {
   // Tier 2: extraction_rent_roll.floor_plan_mix (real per-floorplan rows).
   // Build the unit mix directly from the derivation rows so the OVR badge
   // (overridden + originalValue) and lease-expiration column have the data
   // they need on the frontend.
+  // Tier 3: OM-published per-floorplan unit mix (extraction_om.unit_mix).
+  // Used when no rent-roll source produced rows. Same column shape as the
+  // rent-roll tier so the F9 Unit Mix tab renders identically — only the
+  // source badge changes.
+  if (omDerivationRows && omDerivationRows.length > 0) {
+    const unitMix = omDerivationRows.map(r => ({
+      type: r.type,
+      count: r.count,
+      avgSf: r.avg_sqft,
+      inPlaceRent: r.in_place_rent,
+      marketRent: r.market_rent,
+      occupancyPct: r.occupancy_pct,
+      concessionPct: r.concession_pct,
+      inPlaceRentOriginal: r._originalInPlace ?? null,
+      marketRentOriginal: r._originalMarket ?? null,
+      inPlaceRentOverridden: r._inPlaceOverridden === true,
+      marketRentOverridden:  r._marketOverridden === true,
+      expirationCurve: null,
+      source: 'extraction_om',
+    }));
+    return {
+      unitMix,
+      avgInPlaceRent: derived.avgInPlaceRent,
+      weightedOccupancyPct: derived.weightedOccupancyPct,
+      gprFromUnitMix: derived.gprFromUnitMix,
+      vacancyLossFromUnitMix: derived.vacancyLossFromUnitMix,
+      lossToLeaseFromUnitMix: derived.lossToLeaseFromUnitMix,
+      concessionsFromUnitMix: derived.concessionsFromUnitMix,
+      useUnitMixForGpr,
+      expirationCurve: null,
+      source: 'extraction_om',
+    };
+  }
+
   if (extractionDerivationRows && extractionDerivationRows.length > 0) {
     const unitMix = extractionDerivationRows.map(r => ({
       type: r.type,
@@ -947,6 +1036,53 @@ export async function loadExtractionRentRoll(pool: Pool, dealId: string): Promis
     floorPlanMix: fpm,
     units,
   };
+}
+
+/**
+ * Per-floorplan unit mix as the broker published it in the Offering Memo
+ * (lives at `deals.deal_data.extraction_om.unit_mix`, written by the OM
+ * parser via data-router.persistOMExtraction). Returns `null` when no OM
+ * has been parsed or the OM didn't include a per-floorplan table.
+ *
+ * Schema (per row):
+ *   { floorplan: string, count, avgSf, marketRent, inPlaceRent }
+ */
+export async function loadOmUnitMix(pool: Pool, dealId: string): Promise<Array<{
+  floorplan: string;
+  count: number | null;
+  avgSf: number | null;
+  marketRent: number | null;
+  inPlaceRent: number | null;
+}> | null> {
+  let dealRes;
+  try {
+    dealRes = await pool.query(
+      `SELECT deal_data FROM deals WHERE id = $1 LIMIT 1`,
+      [dealId]
+    );
+  } catch (err) {
+    console.warn('[loadOmUnitMix] deals lookup failed for', dealId,
+      err instanceof Error ? err.message : err);
+    return null;
+  }
+  const dd = dealRes.rows[0]?.deal_data;
+  if (!dd || typeof dd !== 'object') return null;
+  const om = (dd.extraction_om && typeof dd.extraction_om === 'object') ? dd.extraction_om : null;
+  if (!om) return null;
+  const arr = Array.isArray(om.unit_mix) ? om.unit_mix : null;
+  if (!arr || arr.length === 0) return null;
+  // Filter rows with at least a floor plan label and SOMETHING quantitative
+  // — empty rows from a noisy parse would otherwise show up as all-null UI rows.
+  const cleaned = arr
+    .map((r: Record<string, unknown>) => ({
+      floorplan: typeof r.floorplan === 'string' ? r.floorplan.trim() : '',
+      count:       numOrNull(r.count),
+      avgSf:       numOrNull(r.avgSf),
+      marketRent:  numOrNull(r.marketRent),
+      inPlaceRent: numOrNull(r.inPlaceRent),
+    }))
+    .filter(r => r.floorplan.length > 0 && (r.count != null || r.avgSf != null || r.marketRent != null || r.inPlaceRent != null));
+  return cleaned.length > 0 ? cleaned : null;
 }
 
 export async function loadCapsuleAggregates(pool: Pool, dealId: string): Promise<CapsuleAggregates | null> {

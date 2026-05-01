@@ -224,110 +224,110 @@ function ExpirationBars({ curve, totalUnits }: { curve: ExpirationCurve | null; 
 }
 
 /**
- * Expandable per-unit table (only shown when extraction_rent_roll.units is
- * present). Defaults collapsed because rent rolls can be hundreds of rows
- * long. Sorts by lease end date ascending so MTM / soon-to-expire leases
- * surface at the top — that's the renewal-risk worklist.
+ * Per-unit detail panel scoped to one floor plan — rendered inline as an
+ * expander row beneath the floor plan that the user clicked. Fields shown
+ * include the full lease lifecycle (move-in / lease-start / lease-end /
+ * move-out) so renewal-risk and turnover-risk diligence can be done at a
+ * glance. Sorts MTM / soon-to-expire leases first.
  */
-function PerUnitDrilldown({ units }: { units: NonNullable<ExtractionRentRollPayload['units']> }) {
-  const [collapsed, setCollapsed] = useState(true);
-  const [showAll, setShowAll] = useState(false);
-
-  const sorted = useMemo(() => {
+function FloorPlanUnitDetail({ floorplan, units }: {
+  floorplan: string;
+  units: NonNullable<ExtractionRentRollPayload['units']>;
+}) {
+  const slug = floorplan.toLowerCase().replace(/\s+/g, '');
+  // Filter the rent-roll units array to only this floor plan. The parser may
+  // emit `unit_type` in mixed case ('BS-A1', 'bs-a1', 'A1'), so normalize on
+  // both sides.
+  const filtered = useMemo(() => {
+    const matched = units.filter(u => (u.unitType ?? '').toLowerCase().replace(/\s+/g, '') === slug);
     const score = (u: typeof units[0]) => {
       if (u.status?.toLowerCase().includes('vacant')) return Number.MAX_SAFE_INTEGER - 1;
       if (!u.leaseEnd) return Number.MAX_SAFE_INTEGER;
       const t = Date.parse(u.leaseEnd);
       return isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
     };
-    return [...units].sort((a, b) => score(a) - score(b));
-  }, [units]);
-
-  const visible = showAll ? sorted : sorted.slice(0, 25);
-  const occupiedCount = units.filter(u => !u.status?.toLowerCase().includes('vacant')).length;
+    return matched.sort((a, b) => score(a) - score(b));
+  }, [units, slug]);
 
   return (
-    <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', marginTop: 12 }}>
-      <div
-        onClick={() => setCollapsed(c => !c)}
-        style={{ padding: '8px 12px', borderBottom: collapsed ? undefined : `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-      >
-        {collapsed ? <ChevronRight size={12} color={C.muted} /> : <ChevronDown size={12} color={C.muted} />}
-        <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.text, letterSpacing: '0.06em' }}>PER-UNIT DRILL-DOWN</span>
-        <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginLeft: 4 }}>sorted by lease end · soonest first</span>
-        <span style={{ fontFamily: MONO, fontSize: 10, color: C.cyan, marginLeft: 'auto' }}>
-          {units.length} units · {occupiedCount} occupied
-        </span>
-      </div>
-      {!collapsed && (
-        <>
-          <div style={{ overflowX: 'auto', maxHeight: 480, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                <tr style={{ background: C.panelAlt }}>
-                  <th style={th()}>UNIT</th>
-                  <th style={th()}>FLOOR PLAN</th>
-                  <th style={th(true)}>SF</th>
-                  <th style={th()}>STATUS</th>
-                  <th style={th()}>TENANT</th>
-                  <th style={th(true)}>LEASE RENT</th>
-                  <th style={th(true)}>MARKET</th>
-                  <th style={th()}>LEASE END</th>
-                  <th style={th(true)}>BAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((u, idx) => {
-                  const isVacant = u.status?.toLowerCase().includes('vacant');
-                  const ltl = u.marketRent != null && u.leaseRent != null ? u.marketRent - u.leaseRent : null;
-                  const endDate = u.leaseEnd ? new Date(u.leaseEnd) : null;
-                  const monthsToEnd = endDate ? (endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30.44) : null;
-                  const endColor = isVacant ? C.dim
-                    : monthsToEnd == null ? C.muted
-                    : monthsToEnd < 0 ? C.red
-                    : monthsToEnd < 3 ? C.amber
-                    : monthsToEnd < 12 ? C.cyan
-                    : C.green;
-                  return (
-                    <tr key={`${u.unitNumber}-${idx}`} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
-                      <td style={{ ...td(), fontWeight: 700, color: C.cyan }}>{u.unitNumber}</td>
-                      <td style={td(false, false, C.muted)}>{u.unitType || '—'}</td>
-                      <td style={td(true, false, C.muted)}>{u.sqft != null ? u.sqft.toLocaleString() : '—'}</td>
-                      <td style={td(false, false, isVacant ? C.red : u.isFutureResident ? C.amber : C.green)}>
-                        {u.status || '—'}
-                      </td>
-                      <td style={td(false, false, C.muted)}>
-                        <span style={{ display: 'inline-block', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {u.tenantName || (isVacant ? '(vacant)' : '—')}
-                        </span>
-                      </td>
-                      <td style={td(true, false, isVacant ? C.dim : C.text)}>{fmt$(u.leaseRent)}</td>
-                      <td style={td(true, false, ltl != null && ltl > 0 ? C.amber : C.muted)}>{fmt$(u.marketRent)}</td>
-                      <td style={td(false, false, endColor)}>
-                        {u.leaseEnd ? u.leaseEnd : (isVacant ? '—' : 'MTM')}
-                      </td>
-                      <td style={td(true, false, u.balance != null && u.balance > 0 ? C.red : C.dim)}>
-                        {u.balance != null && u.balance !== 0 ? fmt$(u.balance) : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+    <tr style={{ background: '#050a0f' }}>
+      <td colSpan={11} style={{ padding: 0 }}>
+        <div style={{ borderTop: `1px solid ${C.cyan}33`, borderBottom: `1px solid ${C.cyan}33` }}>
+          <div style={{ padding: '6px 12px', background: '#0a0e15', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.cyan, letterSpacing: '0.08em' }}>
+              PER-UNIT DETAIL · {floorplan.toUpperCase()}
+            </span>
+            <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>
+              {filtered.length} unit{filtered.length === 1 ? '' : 's'} · sorted by lease end (soonest first)
+            </span>
           </div>
-          {sorted.length > 25 && (
-            <div style={{ padding: '8px 12px', borderTop: `1px solid ${C.border}`, background: C.panelAlt, textAlign: 'center' }}>
-              <button
-                onClick={() => setShowAll(s => !s)}
-                style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 3, padding: '4px 12px', color: C.cyan, fontFamily: LABEL, fontSize: 9, cursor: 'pointer' }}
-              >
-                {showAll ? `SHOW TOP 25 ONLY` : `SHOW ALL ${sorted.length} UNITS`}
-              </button>
+          {filtered.length === 0 ? (
+            <div style={{ padding: '14px 12px', fontFamily: LABEL, fontSize: 9, color: C.dim, textAlign: 'center' }}>
+              No per-unit rows extracted for this floor plan.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', maxHeight: 360, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                  <tr style={{ background: C.panelAlt }}>
+                    <th style={th()}>UNIT</th>
+                    <th style={th(true)}>SF</th>
+                    <th style={th()}>STATUS</th>
+                    <th style={th()}>TENANT</th>
+                    <th style={th(true)}>LEASE RENT</th>
+                    <th style={th(true)}>MARKET</th>
+                    <th style={th()}>MOVE-IN</th>
+                    <th style={th()}>LEASE START</th>
+                    <th style={th()}>LEASE END</th>
+                    <th style={th()}>MOVE-OUT</th>
+                    <th style={th(true)}>BAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((u, idx) => {
+                    const isVacant = u.status?.toLowerCase().includes('vacant');
+                    const ltl = u.marketRent != null && u.leaseRent != null ? u.marketRent - u.leaseRent : null;
+                    const endDate = u.leaseEnd ? new Date(u.leaseEnd) : null;
+                    const monthsToEnd = endDate ? (endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30.44) : null;
+                    const endColor = isVacant ? C.dim
+                      : monthsToEnd == null ? C.muted
+                      : monthsToEnd < 0 ? C.red
+                      : monthsToEnd < 3 ? C.amber
+                      : monthsToEnd < 12 ? C.cyan
+                      : C.green;
+                    return (
+                      <tr key={`${u.unitNumber}-${idx}`} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
+                        <td style={{ ...td(), fontWeight: 700, color: C.cyan }}>{u.unitNumber}</td>
+                        <td style={td(true, false, C.muted)}>{u.sqft != null ? u.sqft.toLocaleString() : '—'}</td>
+                        <td style={td(false, false, isVacant ? C.red : u.isFutureResident ? C.amber : C.green)}>
+                          {u.status || '—'}
+                        </td>
+                        <td style={td(false, false, C.muted)}>
+                          <span style={{ display: 'inline-block', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {u.tenantName || (isVacant ? '(vacant)' : '—')}
+                          </span>
+                        </td>
+                        <td style={td(true, false, isVacant ? C.dim : C.text)}>{fmt$(u.leaseRent)}</td>
+                        <td style={td(true, false, ltl != null && ltl > 0 ? C.amber : C.muted)}>{fmt$(u.marketRent)}</td>
+                        <td style={td(false, false, C.muted)}>{u.moveInDate || '—'}</td>
+                        <td style={td(false, false, C.muted)}>{u.leaseStart || '—'}</td>
+                        <td style={td(false, false, endColor)}>
+                          {u.leaseEnd ? u.leaseEnd : (isVacant ? '—' : 'MTM')}
+                        </td>
+                        <td style={td(false, false, u.moveOutDate ? C.amber : C.dim)}>{u.moveOutDate || '—'}</td>
+                        <td style={td(true, false, u.balance != null && u.balance > 0 ? C.red : C.dim)}>
+                          {u.balance != null && u.balance !== 0 ? fmt$(u.balance) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
-        </>
-      )}
-    </div>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -377,43 +377,46 @@ const ANCILLARY_LABELS: Record<string, string> = {
  * Convert `extraction_rent_roll.other_income_monthly` (real $/month figures
  * the parser pulled from rent-roll charge codes) into the AncillaryLine row
  * shape. The total-monthly is preserved exactly: qty=1, occ=1, price=monthly.
- * Lines with zero charges are dropped so the user only sees what's actually
- * billed today.
+ * EVERY parser-defined line is emitted — including explicit $0 — so the user
+ * can distinguish "the rent roll has a Pet Rent column with zero charges
+ * this period" from "Pet Rent was never tracked." Missing fields aren't here
+ * to begin with; zero means the data was present and was zero.
  */
 function realAncillaryFromExtraction(otherIncomeMonthly: Record<string, number>): AncillaryLine[] {
-  return Object.entries(otherIncomeMonthly)
-    .filter(([, amt]) => amt > 0)
-    .map(([key, amt]) => ({
-      key,
-      label: ANCILLARY_LABELS[key] ?? key.replace(/_/g, ' '),
-      qty: 1,
-      price: amt,
-      occupancy: 1,
-      note: 'Per rent-roll charge codes',
-    }));
+  return Object.entries(otherIncomeMonthly).map(([key, amt]) => ({
+    key,
+    label: ANCILLARY_LABELS[key] ?? key.replace(/_/g, ' '),
+    qty: 1,
+    price: amt,
+    occupancy: 1,
+    note: amt === 0 ? 'Zero — present in rent roll but no charges' : 'Per rent-roll charge codes',
+  }));
 }
 
+/**
+ * Renders the ancillary income breakdown.
+ *
+ * Visibility contract: the panel is rendered ONLY when an
+ * extraction_rent_roll capsule is available (i.e. the user has uploaded and
+ * processed a rent roll). When `otherIncomeMonthly` is null the parent
+ * suppresses this component entirely — we never fall back to synthetic
+ * estimates, because broker-published OM ancillary is too unreliable to
+ * silently feed into EGI.
+ */
 function AncillaryPanel({
-  totalUnits,
+  totalUnits: _totalUnits,
   otherIncomeMonthly,
 }: {
   totalUnits: number;
-  otherIncomeMonthly: Record<string, number> | null;
+  otherIncomeMonthly: Record<string, number>;
 }) {
-  const isReal = otherIncomeMonthly != null && Object.values(otherIncomeMonthly).some(v => v > 0);
-  const [lines, setLines] = useState<AncillaryLine[]>(() =>
-    isReal
-      ? realAncillaryFromExtraction(otherIncomeMonthly!)
-      : makeDefaultAncillary(totalUnits),
-  );
+  const [lines, setLines] = useState<AncillaryLine[]>(() => realAncillaryFromExtraction(otherIncomeMonthly));
 
-  // Refresh lines when the underlying data source flips (e.g. user uploads a
-  // rent roll mid-session). Without this the synthetic rows would stay frozen.
+  // Refresh lines when the underlying data source updates (e.g. user re-uploads
+  // a rent roll mid-session). Without this the rows would stay frozen.
   useEffect(() => {
-    setLines(isReal
-      ? realAncillaryFromExtraction(otherIncomeMonthly!)
-      : makeDefaultAncillary(totalUnits));
-  }, [totalUnits, isReal, otherIncomeMonthly]);
+    setLines(realAncillaryFromExtraction(otherIncomeMonthly));
+  }, [otherIncomeMonthly]);
 
   const [editingKey, setEditingKey] = useState<{ key: string; field: 'qty' | 'price' | 'occ'; val: string } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -473,13 +476,13 @@ function AncillaryPanel({
           style={{
             fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.06em',
             padding: '2px 6px', borderRadius: 3,
-            background: isReal ? `${C.green}22` : `${C.amber}22`,
-            color: isReal ? C.green : C.amber,
-            border: `1px solid ${isReal ? C.green : C.amber}55`,
+            background: `${C.green}22`,
+            color: C.green,
+            border: `1px solid ${C.green}55`,
           }}
-          title={isReal ? 'Sourced from rent-roll charge codes' : 'Synthesized from per-unit benchmarks (no rent roll uploaded)'}
+          title="Sourced from rent-roll charge codes"
         >
-          {isReal ? 'RENT ROLL' : 'EST'}
+          RENT ROLL
         </span>
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.amber, marginLeft: 'auto' }}>{fmt$(totalAnnual)}/yr</span>
       </div>
@@ -635,6 +638,9 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   const [rentOverrides, setRentOverrides] = useState<Record<string, { inPlace?: number; market?: number }>>({});
   const [savingCell, setSavingCell] = useState<{ idx: number; field: 'inPlace' | 'market' } | null>(null);
   const [justSaved, setJustSaved] = useState<{ idx: number; field: 'inPlace' | 'market' } | null>(null);
+  // Which floor plan rows are expanded into per-unit drilldowns. Keyed by
+  // floor-plan slug so multiple can be open at once and survive re-sorts.
+  const [expandedFloorPlans, setExpandedFloorPlans] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
@@ -896,10 +902,49 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                       const occ       = u.occupancyPct;
                       const rentPerSf = effRent != null && u.avgSf != null && u.avgSf > 0 ? effRent / u.avgSf : null;
                       const isEditing = editingRent?.idx === idx;
+                      const slug = u.type.toLowerCase().replace(/\s+/g, '');
+                      const isExpanded = expandedFloorPlans.has(slug);
+                      const rentRollUnits = data?.extractionRentRoll?.units ?? null;
+                      // Clickable only when there are per-unit rows we can
+                      // actually filter to this floor plan. OM-only deals
+                      // (no rent roll) get a static row — no chevron, no
+                      // hover affordance.
+                      const hasUnits = rentRollUnits != null && rentRollUnits.some(
+                        ru => (ru.unitType ?? '').toLowerCase().replace(/\s+/g, '') === slug,
+                      );
+                      const toggle = () => {
+                        if (!hasUnits) return;
+                        setExpandedFloorPlans(prev => {
+                          const next = new Set(prev);
+                          if (next.has(slug)) next.delete(slug); else next.add(slug);
+                          return next;
+                        });
+                      };
 
                       return (
-                        <tr key={u.type} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
-                          <td style={{ ...td(), fontWeight: 700, color: C.cyan }}>{u.type}</td>
+                        <React.Fragment key={u.type}>
+                        <tr
+                          style={{
+                            background: idx % 2 === 0 ? C.panel : C.panelAlt,
+                            cursor: hasUnits ? 'pointer' : 'default',
+                          }}
+                          onClick={hasUnits ? (e) => {
+                            // Don't toggle when the click came from an editable
+                            // cell (input, button, the ✎/↺ controls).
+                            const tag = (e.target as HTMLElement).tagName.toLowerCase();
+                            if (tag === 'input' || tag === 'button' || tag === 'svg' || tag === 'path') return;
+                            toggle();
+                          } : undefined}
+                          title={hasUnits ? (isExpanded ? 'Click to collapse per-unit detail' : 'Click to view per-unit detail') : undefined}
+                        >
+                          <td style={{ ...td(), fontWeight: 700, color: C.cyan }}>
+                            {hasUnits && (
+                              <span style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 4 }}>
+                                {isExpanded ? <ChevronDown size={10} color={C.muted} /> : <ChevronRight size={10} color={C.muted} />}
+                              </span>
+                            )}
+                            {u.type}
+                          </td>
                           <td style={td(true)}>{u.count}</td>
                           <td style={td(true, false, C.muted)}>{(mixPct * 100).toFixed(1)}%</td>
                           <td style={td(true, false, C.muted)}>{u.avgSf != null ? `${u.avgSf.toLocaleString()}` : '—'}</td>
@@ -990,6 +1035,10 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                           </td>
                           <td style={td(true, false, C.green)}>{fmt$(gpr)}</td>
                         </tr>
+                        {isExpanded && rentRollUnits && (
+                          <FloorPlanUnitDetail floorplan={u.type} units={rentRollUnits} />
+                        )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
@@ -1038,17 +1087,16 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
             </div>
           )}
 
-          {/* ── Ancillary Income Breakdown ── */}
-          {totalUnits > 0 && (
+          {/* ── Ancillary Income Breakdown ──
+              Hidden entirely without a rent-roll extraction. We deliberately
+              do NOT show synthetic per-unit estimates here; ancillary income
+              published by the broker (OM) is too unreliable to silently feed
+              into EGI. */}
+          {data?.extractionRentRoll?.otherIncomeMonthly && (
             <AncillaryPanel
               totalUnits={totalUnits}
-              otherIncomeMonthly={data?.extractionRentRoll?.otherIncomeMonthly ?? null}
+              otherIncomeMonthly={data.extractionRentRoll.otherIncomeMonthly}
             />
-          )}
-
-          {/* ── Per-Unit Drill-down (rent roll only) ── */}
-          {data?.extractionRentRoll?.units && data.extractionRentRoll.units.length > 0 && (
-            <PerUnitDrilldown units={data.extractionRentRoll.units} />
           )}
 
           {/* ── Value-Add Renovation Upside ── */}
@@ -1141,18 +1189,16 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                 const badDebtLoss    = gri != null ? gri * badDebtPct : null;
                 const concessionPct  = unitMix.reduce((s, u) => s + (u.concessionPct ?? 0) * u.count, 0) / Math.max(totalUnits, 1);
                 const concessionLoss = totalMarketGprAnnual > 0 ? concessionPct * totalMarketGprAnnual : null;
-                // Source-aware ancillary: when the rent-roll extraction has
-                // real `other_income_monthly` charge-code totals, use them so
-                // the EGI waterfall matches the AncillaryPanel below. Falls
-                // back to the per-unit synthetic template only when no real
-                // charges are available (OM-only deals, blank fields).
+                // Ancillary feeds EGI only when sourced from a real rent-roll
+                // extraction. We do NOT pad EGI with synthetic per-unit
+                // benchmarks — broker/OM-only deals get $0 here so the user
+                // sees an honest "ancillary unknown" instead of a fabricated
+                // line item. Mirrors AncillaryPanel's visibility contract.
                 const realAncMonthly = data?.extractionRentRoll?.otherIncomeMonthly ?? null;
-                const realAncTotal   = realAncMonthly
+                const ancillaryTotal = realAncMonthly
                   ? Object.values(realAncMonthly).reduce((s, v) => s + (v > 0 ? v : 0), 0) * 12
                   : 0;
-                const ancillaryTotal = realAncTotal > 0
-                  ? realAncTotal
-                  : makeDefaultAncillary(totalUnits).reduce((s, l) => s + l.qty * l.price * l.occupancy * 12, 0);
+                const hasRealAnc = realAncMonthly != null;
                 const egi = gri != null && badDebtLoss != null
                   ? gri - (concessionLoss ?? 0) - badDebtLoss + ancillaryTotal
                   : null;
@@ -1163,7 +1209,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                   { label: '– PHYSICAL VACANCY',value: vacancyLoss != null ? `(${fmt$(vacancyLoss)})` : '—', color: C.red, sign: physicalVacancy != null ? fmtPct(physicalVacancy) : '' },
                   { label: '– BAD DEBT (1%)',   value: badDebtLoss != null ? `(${fmt$(badDebtLoss)})` : '—', color: C.red, sign: '1.0%' },
                   { label: '– CONCESSIONS',     value: concessionLoss != null && concessionLoss > 0 ? `(${fmt$(concessionLoss)})` : '—', color: C.red, sign: concessionPct > 0 ? fmtPct(concessionPct) : '' },
-                  { label: '+ ANCILLARY INCOME',value: fmt$(ancillaryTotal), color: C.amber, sign: '' },
+                  { label: '+ ANCILLARY INCOME',value: hasRealAnc ? fmt$(ancillaryTotal) : '—', color: hasRealAnc ? C.amber : C.dim, sign: hasRealAnc ? '' : 'no rent roll' },
                   { label: '= EGI',             value: fmt$(egi), color: C.green, sign: '', bold: true },
                 ];
 

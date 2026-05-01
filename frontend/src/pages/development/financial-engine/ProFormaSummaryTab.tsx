@@ -136,7 +136,8 @@ function fmtVal(row: OperatingStatementRow, val: number | null): string {
 const SOURCE_META: Record<string, { label: string; color: string; bg: string }> = {
   t12:              { label: 'T-12',           color: '#f8fafc', bg: '#334155' },
   rent_roll:        { label: 'Rent Roll',       color: '#f8fafc', bg: '#1e3a5f' },
-  extraction_rent_roll: { label: 'Rent Roll Extract', color: '#f8fafc', bg: '#1e3a5f' },
+  extraction_rent_roll: { label: 'Rent Roll', color: '#f8fafc', bg: '#1e3a5f' },
+  extraction_om:    { label: 'OM Narrative',    color: '#f59e0b', bg: '#292101' },
   tax_bill:         { label: 'County Assessor', color: '#06b6d4', bg: '#083344' },
   om:               { label: 'OM Narrative',    color: '#f59e0b', bg: '#292101' },
   broker:           { label: 'OM Narrative',    color: '#f59e0b', bg: '#292101' },
