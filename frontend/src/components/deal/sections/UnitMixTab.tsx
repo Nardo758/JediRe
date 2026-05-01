@@ -814,14 +814,33 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
       </div>
 
       {/* ── No-rent-roll banner ──
-          Differentiated by tier so the user knows whether the floor plan
-          rows are real OM extractions, a single-row capsule synthesized
-          default, or pure synthesis. All three states ask for a rent roll
-          upload; only the source attribution changes. */}
-      {data?.extractionRentRoll == null && unitMix.length > 0 && (() => {
+          Gated on FEATURE AVAILABILITY, not just presence of an extraction
+          payload. Even when extraction_rent_roll exists, advanced features
+          (per-unit drill-down, ancillary, expiration analysis) require
+          usable floor-plan + units data. So we show this banner whenever
+          the source label isn't one of the rent-roll-grade tiers AND there
+          are no per-unit rows. Differentiated copy attributes provenance
+          to OM, capsule, or pure synthesis. */}
+      {(() => {
         const rrSource = (data?.rentRollSummary as { source?: string } | null)?.source ?? null;
+        const hasUsefulRentRoll = rrSource === 'rent_roll' || rrSource === 'extraction_rent_roll';
+        const hasPerUnitRows = (data?.extractionRentRoll?.units?.length ?? 0) > 0;
+        if (hasUsefulRentRoll && hasPerUnitRows) return null;
+        if (hasUsefulRentRoll && !hasPerUnitRows) {
+          // Rent-roll mix exists but no per-unit rows — tell the user the
+          // mix is good but per-unit features are unavailable.
+          return (
+            <div style={{ background: '#0a0d18', borderBottom: `1px solid ${C.amber}44`, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertTriangle size={13} color={C.amber} />
+              <span style={{ fontFamily: LABEL, fontSize: 9, color: C.amber }}>
+                RENT ROLL (UNSTRUCTURED) — Floor plan totals were extracted but per-unit rows are unavailable. Re-extract with the latest parser to unlock per-unit drill-down and lease expiration analysis.
+              </span>
+            </div>
+          );
+        }
+        if (unitMix.length === 0) return null;
         const isOM = rrSource === 'extraction_om';
-        const isSynth = unitMix.length === 1 && unitMix[0].type === 'Default';
+        const isSynth = (unitMix.length === 1 && unitMix[0].type === 'Default') || rrSource === 'synthesized' || rrSource === 'capsule';
         const headline = isOM
           ? 'OM-PUBLISHED UNIT MIX'
           : isSynth
@@ -980,6 +999,21 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                               </span>
                             )}
                             {u.type}
+                            {/* Provenance hint when the floor plan name itself
+                                is unknown/blank — clarifies that the mix came
+                                from an unstructured rent-roll extract that
+                                couldn't classify the floorplan. */}
+                            {(() => {
+                              const t = (u.type ?? '').trim().toLowerCase();
+                              const unknown = t === '' || t === 'unknown' || t === 'n/a';
+                              const fromRR = (data?.rentRollSummary as { source?: string } | null)?.source === 'extraction_rent_roll';
+                              if (!unknown || !fromRR) return null;
+                              return (
+                                <span style={{ marginLeft: 6, fontFamily: LABEL, fontSize: 7, fontWeight: 600, color: C.amber, letterSpacing: '0.06em' }}>
+                                  · RENT ROLL (UNSTRUCTURED)
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td style={td(true)}>{u.count}</td>
                           <td style={td(true, false, C.muted)}>{(mixPct * 100).toFixed(1)}%</td>
