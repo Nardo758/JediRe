@@ -53,6 +53,8 @@ import { fetchMarketEventsTool } from './tools/fetch_market_events';
 import { fetchBacktestContextTool } from './tools/fetch_backtest_context';
 import { fetchDataLibraryCompsTool } from './tools/fetch_data_library_comps';
 import { fetchTaxIntelTool } from './tools/fetch_tax_intel';
+import { evaluatePlausibilityTool } from './tools/evaluate_plausibility';
+import { goalSeekTargetIrrTool } from './tools/goal_seek_target_irr';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -257,6 +259,9 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchBacktestContextTool,
     fetchDataLibraryCompsTool,  // Data Library comps for market rent, expenses, cap rates
     fetchTaxIntelTool,          // Property tax math (millage, transfer tax, reassessment)
+    // M36 Sigma (plausibility + goal-seeking)
+    evaluatePlausibilityTool,
+    goalSeekTargetIrrTool,
     // Email/deal intake
     readGmailThreadTool,
     // Analysis & output
