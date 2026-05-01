@@ -1687,7 +1687,7 @@ router.patch('/:dealId/proforma/year1/override', requireAuth, async (req: Authen
 /**
  * GET /api/v1/deals/:dealId/financials
  *
- * Composes the full DealFinancials response for the ProFormaSummaryTab.
+ * Composes the full F9DealFinancials shape from multiple DB tables.
  * Auto-initializes the proforma seed if none exists yet.
  */
 router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -1697,13 +1697,12 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
 
     // 1. Verify access
     const dealResult = await pool.query(
-      'SELECT id, name, project_type, data, target_units FROM deals WHERE id = $1 AND user_id = $2',
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
       [dealId, userId]
     );
     if (dealResult.rows.length === 0) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
-    const deal = dealResult.rows[0];
 
     // 2. Auto-seed proforma if empty
     const existingYear1 = await pool.query(
@@ -1719,171 +1718,16 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       }
     }
 
-    // 3. Fetch year1 data
-    const year1Result = await pool.query(
-      `SELECT year1, source_type, source_date, updated_at
-       FROM deal_assumptions WHERE deal_id = $1`,
-      [dealId]
-    );
-    const year1Data = year1Result.rows[0]?.year1 || null;
-
-    // 4. Build the response
-    const totalUnits = deal.target_units || 0;
-
-    // Build operating statement rows from the proforma year1 data
-    const operatingRows = buildOperatingStatement(year1Data, totalUnits);
-
-    // Extract unit economics
-    const unitEconomics: Record<string, number | null> = {
-      gpr: operatingRows.find(r => r.field === 'gpr')?.resolved ?? null,
-      avgRent: totalUnits > 0 ? (operatingRows.find(r => r.field === 'gpr')?.resolved ?? 0) / totalUnits : null,
-      effectiveRent: operatingRows.find(r => r.field === 'effective_gross_income')?.resolved ?? null,
-      egiPerUnit: totalUnits > 0 ? (operatingRows.find(r => r.field === 'effective_gross_income')?.resolved ?? 0) / totalUnits : null,
-      opexPerUnit: operatingRows.find(r => r.field === 'total_opex')?.resolved ?? null,
-      opexPerUnitVal: totalUnits > 0 ? (operatingRows.find(r => r.field === 'total_opex')?.resolved ?? 0) / totalUnits : null,
-      noi: operatingRows.find(r => r.field === 'net_operating_income')?.resolved ?? null,
-      noiPerUnit: totalUnits > 0 ? (operatingRows.find(r => r.field === 'net_operating_income')?.resolved ?? 0) / totalUnits : null,
-    };
-
-    // Valuation snapshot
-    const noiValue = operatingRows.find(r => r.field === 'net_operating_income')?.resolved;
-    const valuationSnapshot = noiValue != null && totalUnits > 0
-      ? {
-          capRateImplied: null,
-          pricePerUnit: null,
-          noi: noiValue,
-          noiPerUnit: noiValue / totalUnits,
-          note: 'From proforma year1 seed',
-        }
-      : null;
-
-    res.json({
-      success: true,
-      data: {
-        dealId,
-        totalUnits,
-        proforma: {
-          year1: operatingRows,
-          integrityChecks: [],
-          unitEconomics,
-          valuationSnapshot,
-        },
-      },
-    });
+    // 3. Compose full financials from the composer service
+    const { composeDealFinancials } = await import('../../services/financials-composer.service');
+    const result = await composeDealFinancials(pool, dealId, userId);
+    res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Financials endpoint error:', message);
     res.status(500).json({ success: false, error: message });
   }
 });
-
-/**
- * Build the operating statement rows from proforma year1 JSON and unit counts.
- * This matches the OperatingStatementRow interface the ProFormaSummaryTab expects.
- */
-function buildOperatingStatement(year1Data: any, totalUnits: number): OperatingStatementRow[] {
-  if (!year1Data) {
-    return generateEmptyRows(totalUnits);
-  }
-
-  const rows: OperatingStatementRow[] = [];
-
-  // Helper to add a row
-  function addRow(field: string, label: string, broker: number | null, platform: number | null, resolved: number | null, opts?: {
-    source?: string;
-    confidence?: number;
-    evidenceCount?: number;
-    isSubtotal?: boolean;
-    resolutionMethod?: string;
-  }) {
-    rows.push({
-      field,
-      label,
-      broker,
-      platform,
-      resolved,
-      source: opts?.source || 'platform',
-      confidence: opts?.confidence ?? (resolved != null ? 0.5 : null),
-      evidenceCount: opts?.evidenceCount ?? 0,
-      resolution: opts?.resolutionMethod?.toLowerCase() || 'proforma',
-      is_subtotal: opts?.isSubtotal || false,
-    });
-  }
-
-  // Revenue section
-  addRow('gpr', 'Gross Potential Rent', null, null, null, { isSubtotal: true });
-  addRow('rent', 'Rent', null, year1Data.rentGrowthRate != null ? year1Data.rentGrowthRate : null, year1Data.gpr ?? null);
-  addRow('parking', 'Parking', null, null, null);
-  addRow('storage', 'Storage', null, null, null);
-  addRow('other_income', 'Other Income', null, null, year1Data.otherIncome ?? null);
-  addRow('total_gross_income', 'Total Gross Income', null, null, year1Data.gpr ?? year1Data.totalGrossIncome ?? null, { isSubtotal: true });
-  addRow('vacancy', 'Vacancy', null, null, year1Data.vacancy ?? null);
-  addRow('effective_gross_income', 'Effective Gross Income', null, null, year1Data.egi ?? year1Data.effectiveGrossIncome ?? null, { isSubtotal: true });
-
-  // Expense section
-  addRow('total_opex', 'Total Operating Expenses', null, null, null, { isSubtotal: true });
-  addRow('real_estate_taxes', 'Real Estate Taxes', null, null, year1Data.realEstateTaxes ?? null);
-  addRow('insurance', 'Insurance', null, null, year1Data.insurance ?? null);
-  addRow('utilities', 'Utilities', null, null, year1Data.utilities ?? null);
-  addRow('repairs_maintenance', 'Repairs & Maintenance', null, null, year1Data.repairsMaintenance ?? null);
-  addRow('management', 'Management', null, null, year1Data.management ?? null);
-  addRow('payroll', 'Payroll', null, null, year1Data.payroll ?? null);
-  addRow('marketing', 'Marketing', null, null, year1Data.marketing ?? null);
-  addRow('other_opex', 'Other OpEx', null, null, year1Data.otherOpEx ?? null);
-  addRow('total_opex_sum', 'Total OpEx', null, null, year1Data.totalOpEx ?? null, { isSubtotal: true });
-
-  // NOI section
-  addRow('net_operating_income', 'Net Operating Income', null, null, year1Data.noi ?? year1Data.netOperatingIncome ?? null, { isSubtotal: true });
-
-  // Debt service
-  addRow('debt_service', 'Debt Service', null, null, year1Data.debtService ?? null);
-  addRow('pre_tax_cash_flow', 'Pre-Tax Cash Flow', null, null, year1Data.preTaxCashFlow ?? null, { isSubtotal: true });
-
-  return rows;
-}
-
-interface OperatingStatementRow {
-  field: string;
-  label: string;
-  broker: number | null;
-  platform: number | null;
-  resolved: number | null;
-  source: string;
-  confidence: number | null;
-  evidenceCount: number;
-  resolution: string;
-  is_subtotal: boolean;
-}
-
-function generateEmptyRows(totalUnits: number): OperatingStatementRow[] {
-  const empty = (field: string, label: string, isSub = false): OperatingStatementRow => ({
-    field, label, broker: null, platform: null, resolved: null,
-    source: 'platform', confidence: null, evidenceCount: 0, resolution: 'unseeded', is_subtotal: isSub,
-  });
-  return [
-    empty('gpr', 'Gross Potential Rent', true),
-    empty('rent', 'Rent'),
-    empty('parking', 'Parking'),
-    empty('storage', 'Storage'),
-    empty('other_income', 'Other Income'),
-    empty('total_gross_income', 'Total Gross Income', true),
-    empty('vacancy', 'Vacancy'),
-    empty('effective_gross_income', 'Effective Gross Income', true),
-    empty('total_opex', 'Total Operating Expenses', true),
-    empty('real_estate_taxes', 'Real Estate Taxes'),
-    empty('insurance', 'Insurance'),
-    empty('utilities', 'Utilities'),
-    empty('repairs_maintenance', 'Repairs & Maintenance'),
-    empty('management', 'Management'),
-    empty('payroll', 'Payroll'),
-    empty('marketing', 'Marketing'),
-    empty('other_opex', 'Other OpEx'),
-    empty('total_opex_sum', 'Total OpEx', true),
-    empty('net_operating_income', 'Net Operating Income', true),
-    empty('debt_service', 'Debt Service'),
-    empty('pre_tax_cash_flow', 'Pre-Tax Cash Flow', true),
-  ];
-}
 
 router.post('/:dealId/proforma/seed', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
