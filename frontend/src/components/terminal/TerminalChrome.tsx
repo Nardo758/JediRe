@@ -127,6 +127,81 @@ function LiveClock() {
   return <span style={{fontSize:10,color:"inherit"}}>{t.toLocaleTimeString("en-US",{hour12:false})}</span>;
 }
 
+const MODEL_OPTIONS = [
+  { value: 'cheap',    label: 'DeepSeek',  short: 'DSK' },
+  { value: 'fast',     label: 'Haiku',     short: 'HAI' },
+  { value: 'balanced', label: 'Sonnet',    short: 'SON' },
+  { value: 'powerful', label: 'Opus',      short: 'OPS' },
+  { value: 'auto',     label: 'Auto',      short: 'AUT' },
+];
+
+function ModelPicker({ T }: { T: ThemeTokens }) {
+  const [pref, setPref] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    apiClient.get('/api/v1/settings/ai-preferences')
+      .then(r => setPref(r.data?.data?.currentPreference || r.data?.currentPreference || 'auto'))
+      .catch(() => setPref('auto'));
+  }, []);
+
+  const select = async (val: string) => {
+    setOpen(false);
+    setSaving(true);
+    try {
+      await apiClient.put('/api/v1/settings/ai-preferences', { preference: val });
+      setPref(val);
+    } catch { /* silent */ } finally { setSaving(false); }
+  };
+
+  const current = MODEL_OPTIONS.find(o => o.value === pref) || MODEL_OPTIONS[0];
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={saving}
+        title={`AI Model: ${current.label} — click to switch`}
+        style={{
+          fontFamily: T.font.mono, fontSize: 10, fontWeight: 700,
+          background: 'transparent', border: `1px solid ${T.border.medium}`,
+          color: pref === 'cheap' || pref === 'auto' ? T.text.cyan : pref === 'powerful' ? T.text.purple : T.text.amber,
+          padding: '2px 7px', cursor: saving ? 'wait' : 'pointer', height: 20,
+          display: 'flex', alignItems: 'center', gap: 4, letterSpacing: 0.5,
+        }}
+      >
+        <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />
+        {current.short}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 24, right: 0, zIndex: 999,
+          background: T.bg.panel, border: `1px solid ${T.border.medium}`,
+          minWidth: 130, boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+        }}>
+          <div style={{ padding: '4px 8px 2px', fontSize: 9, color: T.text.muted, borderBottom: `1px solid ${T.border.subtle}`, letterSpacing: 1 }}>AI MODEL</div>
+          {MODEL_OPTIONS.map(o => (
+            <button
+              key={o.value}
+              onClick={() => select(o.value)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                padding: '5px 10px', fontFamily: T.font.mono, fontSize: 10, fontWeight: 600,
+                background: pref === o.value ? T.bg.active : 'transparent',
+                color: pref === o.value ? T.text.amber : T.text.secondary,
+                border: 'none', cursor: 'pointer', borderBottom: `1px solid ${T.border.subtle}`,
+              }}
+            >
+              {pref === o.value ? '▸ ' : '  '}{o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export interface TerminalChromeProps {
   activeFkey?: string;
   onFkeyChange?: (fkey: string) => void;
@@ -317,6 +392,7 @@ export function TerminalChrome({
           <span style={{fontSize:10,color:T.text.cyan}}>MAIL: {mailCount}</span>
           <span style={{fontSize:10,color:T.text.secondary}}>KAFKA: 312/s</span>
           <span style={{fontSize:10,color:T.text.amber,fontWeight:600}}><LiveClock /></span>
+          <ModelPicker T={T} />
           <button onClick={toggleTheme} style={{fontFamily:T.font.mono,fontSize:12,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.secondary,padding:"2px 8px",cursor:"pointer",lineHeight:1}} title={theme==="dark"?"Switch to light":"Switch to dark"}>
             {theme==="dark"?"☀":"☾"}
           </button>

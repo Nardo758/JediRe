@@ -126,22 +126,22 @@ const M_HAIKU    = 'claude-haiku-4-5-20251001';
 const M_SONNET   = 'claude-sonnet-4-5';
 
 export const SURFACES: SurfaceDefinition[] = [
-  // Agents — long-running data work runs cheap; specialized financial runs Sonnet.
+  // Agents
   { type: 'agent', id: 'research',    label: 'Research Agent',    description: 'Market research, data assembly, single-source lookups',                                              defaultModel: M_DEEPSEEK },
-  { type: 'agent', id: 'zoning',      label: 'Zoning Agent',      description: 'Zoning analysis, entitlement risk, land-use classification',                                       defaultModel: M_HAIKU },
+  { type: 'agent', id: 'zoning',      label: 'Zoning Agent',      description: 'Zoning analysis, entitlement risk, land-use classification',                                       defaultModel: M_DEEPSEEK },
   { type: 'agent', id: 'supply',      label: 'Supply Agent',      description: 'Pipeline checks, permit tracking, submarket delivery analysis',                                    defaultModel: M_DEEPSEEK },
-  { type: 'agent', id: 'cashflow',    label: 'Cashflow Agent',    description: 'Underwriting, pro forma, sensitivity analysis',                                                    defaultModel: M_SONNET, modelWarning: FINANCIAL_RISK_WARNING },
-  { type: 'agent', id: 'coordinator', label: 'Coordinator',       description: 'Routes chat questions, synthesizes multi-agent answers',                                           defaultModel: M_HAIKU },
-  { type: 'agent', id: 'commentary',  label: 'Commentary Agent',  description: 'Narrative generation, signal/strategy orchestration',                                              defaultModel: M_HAIKU },
+  { type: 'agent', id: 'cashflow',    label: 'Cashflow Agent',    description: 'Underwriting, pro forma, sensitivity analysis',                                                    defaultModel: M_DEEPSEEK, modelWarning: FINANCIAL_RISK_WARNING },
+  { type: 'agent', id: 'coordinator', label: 'Coordinator',       description: 'Routes chat questions, synthesizes multi-agent answers',                                           defaultModel: M_DEEPSEEK },
+  { type: 'agent', id: 'commentary',  label: 'Commentary Agent',  description: 'Narrative generation, signal/strategy orchestration',                                              defaultModel: M_DEEPSEEK },
 
-  // Skills (curated families) — financial/legal advisory runs Sonnet; market/docs run Haiku/cheap.
-  { type: 'skill', id: 'cfo',                  label: 'CFO Skill',             description: 'Portfolio financial analysis & advisory',                                              defaultModel: M_SONNET, modelWarning: FINANCIAL_RISK_WARNING },
-  { type: 'skill', id: 'debt_advisor',         label: 'Debt Advisor',          description: 'Capital stack, debt structuring guidance',                                             defaultModel: M_SONNET },
-  { type: 'skill', id: 'tax_advisor',          label: 'Tax Advisor',           description: 'Tax implications, after-tax return analysis',                                          defaultModel: M_SONNET, modelWarning: FINANCIAL_RISK_WARNING },
-  { type: 'skill', id: 'market_expert',        label: 'Market Expert',         description: 'Market trends, comp analysis, signals',                                                defaultModel: M_HAIKU },
+  // Skills
+  { type: 'skill', id: 'cfo',                  label: 'CFO Skill',             description: 'Portfolio financial analysis & advisory',                                              defaultModel: M_DEEPSEEK, modelWarning: FINANCIAL_RISK_WARNING },
+  { type: 'skill', id: 'debt_advisor',         label: 'Debt Advisor',          description: 'Capital stack, debt structuring guidance',                                             defaultModel: M_DEEPSEEK },
+  { type: 'skill', id: 'tax_advisor',          label: 'Tax Advisor',           description: 'Tax implications, after-tax return analysis',                                          defaultModel: M_DEEPSEEK, modelWarning: FINANCIAL_RISK_WARNING },
+  { type: 'skill', id: 'market_expert',        label: 'Market Expert',         description: 'Market trends, comp analysis, signals',                                                defaultModel: M_DEEPSEEK },
   { type: 'skill', id: 'document_extraction',  label: 'Document Extraction',   description: 'Pulling structured data out of uploaded documents',                                    defaultModel: M_DEEPSEEK },
 
-  // Pipelines (non-agent LLM call sites)
+  // Pipelines
   { type: 'pipeline', id: 'om_parsing',                  label: 'OM Parser',                description: 'Extracts deal data from offering memorandums',                            defaultModel: M_DEEPSEEK },
   { type: 'pipeline', id: 'email_intake_classification', label: 'Email Intake Classifier',  description: 'Decides whether an inbound email is a deal',                              defaultModel: M_DEEPSEEK },
   { type: 'pipeline', id: 'document_classification',     label: 'Document Classifier',      description: 'Identifies T12 / rent roll / tax bill before parsing',                    defaultModel: M_DEEPSEEK },

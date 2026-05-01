@@ -1041,7 +1041,7 @@ router.get('/discoveries', async (req: Request, res: Response, next: NextFunctio
         message: 'deal_id is required',
       });
     }
-    if (!isValidUUID(String(deal_id))) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(deal_id))) {
       return res.status(400).json({ success: false, message: 'Invalid deal_id' });
     }
 
