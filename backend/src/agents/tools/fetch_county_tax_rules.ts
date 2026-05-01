@@ -246,7 +246,7 @@ async function fetchCountyTaxRules(input: unknown): Promise<CountyTaxMethodology
 
   // Resolve millage
   const countyRates = MILLAGE_RATES[stateCode];
-  const millageRate = county && countyRates?.[county] ?? DEFAULT_MILLAGE[stateCode] ?? null;
+  const millageRate = (county && countyRates?.[county]) ?? DEFAULT_MILLAGE[stateCode] ?? null;
   const millageSource = county && countyRates?.[county]
     ? `County-specific: ${county}, ${stateCode}`
     : `Default for ${stateCode}`;
