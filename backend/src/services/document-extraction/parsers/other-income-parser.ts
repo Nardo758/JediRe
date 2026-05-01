@@ -19,15 +19,46 @@ export function parseOtherIncome(buffer: Buffer, filename: string): ExtractionRe
   try {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const { headers, rows } = smartParseSheet(sheet, OI_HEADER_PATTERNS, 2);
+    const { headers: rawHeaders, rows: rawRows } = smartParseSheet(sheet, OI_HEADER_PATTERNS, 2);
 
-    if (rows.length === 0) {
+    if (rawRows.length === 0) {
       return { documentType: 'OTHER_INCOME', success: false, error: 'No data rows found (checked up to 20 title rows)', data: null, summary: {}, warnings };
     }
-    const categoryCol = findCol(headers, [/category/i, /income[\s_-]*type/i, /source/i, /item/i, /description/i, /line[\s_-]*item/i]) || headers[0];
+
+    // Detect and merge multi-row headers (e.g., Market Rent Schedule spans 3 header rows).
+    // A row is a header-continuation if its first column is empty and at least two other
+    // columns contain non-empty strings (not numbers).
+    let headers = rawHeaders;
+    let rows = rawRows;
+    for (let pass = 0; pass < 3; pass++) {
+      const candidate = rows[0];
+      if (!candidate) break;
+      const firstVal = String(candidate[rawHeaders[0]] ?? '').trim();
+      const stringCols = Object.entries(candidate).filter(([, v]) => typeof v === 'string' && (v as string).trim().length > 0);
+      if (!firstVal && stringCols.length >= 2) {
+        // Build a name map merging the continuation label into the column key
+        const nameMap: Record<string, string> = {};
+        for (const [col, contVal] of Object.entries(candidate)) {
+          const label = typeof contVal === 'string' ? contVal.trim() : '';
+          nameMap[col] = label ? `${col} ${label}` : col;
+        }
+        headers = headers.map(h => nameMap[h] || h);
+        rows = rows.slice(1).map(row => {
+          const newRow: Record<string, any> = {};
+          for (const [k, v] of Object.entries(row)) {
+            newRow[nameMap[k] || k] = v;
+          }
+          return newRow;
+        });
+      } else {
+        break;
+      }
+    }
+
+    const categoryCol = findCol(headers, [/category/i, /income[\s_-]*type/i, /source/i, /item/i, /description/i, /line[\s_-]*item/i, /unit[\s_-]*type/i, /floorplan/i, /plan/i]) || headers[0];
     const descCol = findCol(headers, [/description/i, /detail/i, /note/i]);
     const unitCountCol = findCol(headers, [/unit[\s_-]*count/i, /units/i, /quantity/i, /qty/i, /count/i]);
-    const perUnitCol = findCol(headers, [/per[\s_-]*unit/i, /\/[\s]*unit/i, /unit[\s_-]*rate/i, /rate/i]);
+    const perUnitCol = findCol(headers, [/per[\s_-]*unit/i, /\/[\s]*unit/i, /unit[\s_-]*rate/i, /rate/i, /market[\s_-]*rent/i, /effective[\s_-]*rent/i, /asking[\s_-]*rent/i, /unit[\s_-]*rent/i, /\brent\b/i]);
     const annualCol = findCol(headers, [/annual/i, /yearly/i, /total[\s_-]*annual/i, /year/i]);
     const monthlyCol = findCol(headers, [/monthly/i, /month/i, /per[\s_-]*month/i]);
     const assumptionCol = findCol(headers, [/assumption/i, /basis/i, /note/i, /methodology/i]);

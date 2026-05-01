@@ -674,6 +674,7 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
   const [uploading, setUploading] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{ file: File; category: string }>>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [retrying, setRetrying] = useState<Set<string>>(new Set());
 
   const fetchAll = useCallback(async () => {
     if (!dealId) return;
@@ -693,7 +694,18 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
       }
       setVersions(fetchedVersions);
 
-      // Merge into recent activity (uploaded files + model saves)
+      // Deduplicate uploaded files — keep the latest entry per original_filename
+      const latestByName = new Map<string, any>();
+      for (const f of fetched) {
+        const key = f.original_filename || f.name || f.id;
+        const existing = latestByName.get(key);
+        if (!existing || new Date(f.created_at) > new Date(existing.created_at)) {
+          latestByName.set(key, f);
+        }
+      }
+      const deduped = Array.from(latestByName.values());
+
+      // Merge into recent activity (deduplicated files + model saves)
       const modelSaves = fetchedVersions.map((v: any) => ({
         id: `v-${v.version_number}`,
         type: 'model_version',
@@ -710,7 +722,7 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
         model_versions: v.model_versions,
         override_divergences: v.override_divergences,
       }));
-      const merged = [...fetched, ...modelSaves].sort(
+      const merged = [...deduped, ...modelSaves].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ).slice(0, 10);
       setRecentActivity(merged);
@@ -722,6 +734,29 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
   }, [dealId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Poll every 5 s while any file is still in-flight
+  useEffect(() => {
+    const inFlight = recentActivity.some(
+      f => f.type !== 'model_version' && (f.extraction_status === 'running' || f.extraction_status === 'queued')
+    );
+    if (!inFlight) return;
+    const timer = setInterval(fetchAll, 5000);
+    return () => clearInterval(timer);
+  }, [recentActivity, fetchAll]);
+
+  const retryExtraction = async (fileId: string) => {
+    if (!dealId || retrying.has(fileId)) return;
+    setRetrying(prev => new Set(prev).add(fileId));
+    try {
+      await apiClient.post(`/api/v1/deals/${dealId}/files/${fileId}/reextract`);
+      await fetchAll();
+    } catch (err) {
+      console.error('Re-extract failed:', err);
+    } finally {
+      setRetrying(prev => { const s = new Set(prev); s.delete(fileId); return s; });
+    }
+  };
 
   const toggleCategory = (catId: string) => {
     setExpandedCategories(prev => {
@@ -1050,6 +1085,22 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
                       <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{formatSize(f.size || f.file_size)}</span>
                     )}
                     {getStatusBadge(f)}
+                    {!isModelVersion && f.extraction_status === 'failed' && (
+                      <button
+                        onClick={() => retryExtraction(f.id)}
+                        disabled={retrying.has(f.id)}
+                        style={{
+                          fontSize: 7, padding: '1px 5px',
+                          background: 'transparent',
+                          border: `1px solid ${BT.border.subtle}`,
+                          color: retrying.has(f.id) ? BT.text.muted : BT.text.amber,
+                          fontFamily: BT.font.mono, cursor: retrying.has(f.id) ? 'wait' : 'pointer',
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        {retrying.has(f.id) ? '...' : '↺ RETRY'}
+                      </button>
+                    )}
                     {isModelVersion && f.save_trigger && (
                       <span style={{
                         fontSize: 7, padding: '1px 4px',

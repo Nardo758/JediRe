@@ -119,8 +119,14 @@ function parseFromText(text: string): { data: ParsedTaxBill; warnings: string[] 
       if (dekalbMatch[2]) data.countyPin = dekalbMatch[2];
       continue;
     }
-    // Generic: "Parcel ID: 1311667", "PARCEL #...", "Parcel I.D. ABC-123"
-    const genMatch = line.match(/parcel[\s.#:]*(?:i\.?d\.?[\s.:]*)?([A-Z0-9][A-Z0-9\-\s\/.]*?)(?:\s|$)/i);
+    // Fulton County format: "17 -0148- LL-005-7" or "14F-0001-0001-001-8"
+    const fultonMatch = line.match(/\b(\d{2}\s*-\s*\d{4}\s*-\s*[A-Z]{2}-\d{3}-\d)\b/i)
+                     || line.match(/\b(\d{2}[A-Z]?\s*-\s*\d{4}\s*-\s*\d{4}-\d{3}-\d)\b/i);
+    if (fultonMatch && !data.parcelId) {
+      data.parcelId = fultonMatch[1].replace(/\s+/g, '');
+    }
+    // Generic: "Parcel ID: 1311667", "PARCEL #...", "Parcel I.D. ABC-123", "Account Number: XXX"
+    const genMatch = line.match(/(?:parcel|account)[\s.#:]*(?:(?:i\.?d\.?|no\.?|number)[\s.:]*)?([A-Z0-9][A-Z0-9\-\s\/.]*?)(?:\s|$)/i);
     if (genMatch && !data.parcelId) {
       const cleaned = genMatch[1].trim().replace(/\s+/g, ' ');
       if (cleaned.length >= 3 && cleaned.length <= 64) data.parcelId = cleaned;
@@ -285,7 +291,10 @@ function parseFromText(text: string): { data: ParsedTaxBill; warnings: string[] 
   if (!data.totalAnnualTax || data.totalAnnualTax === 0) {
     for (const line of lines) {
       const m = line.match(/total\s+annual\s+tax[\s:]*\$?([\d,]+\.?\d*)/i)
-            || line.match(/(?:20\d{2}\s+)?total\s+(?:annual\s+)?tax[\s:]*\$?([\d,]+\.?\d*)/i);
+            || line.match(/(?:20\d{2}\s+)?total\s+(?:annual\s+)?tax[\s:]*\$?([\d,]+\.?\d*)/i)
+            || line.match(/total\s+estimated\s+tax[\s:]*\$?([\d,]+\.?\d*)/i)
+            || line.match(/total\s+tax\s+(?:due|amount|levied|owed)[\s:]*\$?([\d,]+\.?\d*)/i)
+            || line.match(/estimated\s+(?:annual\s+)?tax(?:es)?[\s:]*\$?([\d,]+\.?\d*)/i);
       if (m) {
         const v = parseNum(m[1]);
         if (v != null && v > data.totalAnnualTax) data.totalAnnualTax = v;
