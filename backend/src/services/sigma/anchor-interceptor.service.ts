@@ -299,4 +299,76 @@ export function applyFullAnchorInterceptor(
   };
 }
 
-export default { applyAnchorInterceptor, applyFullAnchorInterceptor, computeAnchorGrowthRate, EXPENSE_TO_ANCHOR_KEY, MACRO_GROWTH_FALLBACKS };
+// ─── Normalization Helpers: Display names → snake_case keys ─────────────
+
+/**
+ * Display-name-to-snake-key mapping for expense line items.
+ * The frontend sends human-readable names like "Repairs & Maintenance";
+ * the interceptor expects snake_case keys like "repairs_maintenance".
+ */
+const DISPLAY_TO_SNAKE_KEY: Record<string, string> = {
+  'insurance': 'insurance',
+  'real estate taxes': 'real_estate_tax',
+  'personal property tax': 'personal_property_tax',
+  'water / sewer': 'utilities',
+  'electric': 'utilities',
+  'gas': 'utilities',
+  'trash': 'utilities',
+  'utilities': 'utilities',
+  'repairs & maintenance': 'repairs_maintenance',
+  'repairs and maintenance': 'repairs_maintenance',
+  'repairs_maintenance': 'repairs_maintenance',
+  'maintenance': 'repairs_maintenance',
+  'turnover': 'turnover',
+  'contract services': 'contract_services',
+  'contract_services': 'contract_services',
+  'personnel / payroll': 'payroll',
+  'payroll': 'payroll',
+  'marketing': 'marketing',
+  'administrative / g&a': 'g_and_a',
+  'administrative / ga': 'g_and_a',
+  'g_and_a': 'g_and_a',
+  'hoa dues': 'hoa_dues',
+  'management fee': 'management_fee',
+  'management_fee': 'management_fee',
+  'replacement reserves': 'replacement_reserves',
+  'replacement_reserves': 'replacement_reserves',
+};
+
+/**
+ * Normalize frontend expense records (display-name keys like "Repairs & Maintenance")
+ * to interceptor-friendly snake_case keys.
+ */
+export function normalizeExpensesForInterceptor(
+  expenses: Record<string, { amount: number; type?: string; growthRate: number }>
+): Record<string, { amount: number; type: string; growthRate: number }> {
+  const result: Record<string, { amount: number; type: string; growthRate: number }> = {};
+  for (const [key, val] of Object.entries(expenses)) {
+    const normalizedKey = key.toLowerCase().trim();
+    const snakeKey = DISPLAY_TO_SNAKE_KEY[normalizedKey] || normalizedKey.replace(/[\s&\/]+/g, '_');
+    // Merge multiple display names that map to the same snake key (e.g., "Water/Sewer" + "Electric" → "utilities")
+    if (result[snakeKey]) {
+      result[snakeKey].amount += val.amount;
+    } else {
+      result[snakeKey] = {
+        amount: val.amount,
+        type: val.type || 'total',
+        growthRate: val.growthRate ?? 0.03,
+      };
+    }
+  }
+  return result;
+}
+
+/**
+ * Reverse: convert interceptor's snake_case output back to original display-name keys
+ * preserving the original key set so the financial engine sees the keys it expects.
+ */
+export function rekeyExpensesFromInterceptor(
+  intercepted: Record<string, { amount: number; type: string; growthRate: number }>,
+): Record<string, { amount: number; type: string; growthRate: number }> {
+  // intercepted already uses snake_case — they're the right keys for the engine
+  return intercepted;
+}
+
+export default { applyAnchorInterceptor, applyFullAnchorInterceptor, computeAnchorGrowthRate, EXPENSE_TO_ANCHOR_KEY, MACRO_GROWTH_FALLBACKS, normalizeExpensesForInterceptor, rekeyExpensesFromInterceptor };

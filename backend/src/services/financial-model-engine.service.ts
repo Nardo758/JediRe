@@ -3,12 +3,14 @@ import { getPool } from '../database/connection';
 import { getFinancialInputsFromModules, FinancialModuleInputs } from './module-wiring/data-flow-router';
 import { dataFlowRouter } from './module-wiring/data-flow-router';
 import { logger } from '../utils/logger';
-import { applyFullAnchorInterceptor } from './sigma/anchor-interceptor.service';
+import { applyFullAnchorInterceptor, normalizeExpensesForInterceptor, rekeyExpensesFromInterceptor } from './sigma/anchor-interceptor.service';
+import OpenAI from 'openai';
 
 
-const ANTHROPIC_API_KEY = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
-const ANTHROPIC_BASE_URL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
-const CLAUDE_MODEL = 'claude-sonnet-4-5';
+const DEEPSEEK_API_KEY = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
+const DEEPSEEK_BASE_URL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || 'https://api.deepseek.com/v1';
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+const llmClient = new OpenAI({ apiKey: DEEPSEEK_API_KEY, baseURL: DEEPSEEK_BASE_URL });
 
 /**
  * Authoritative list of OPEX line-item keys the financial-model engine and
@@ -378,13 +380,14 @@ export class FinancialModelEngineService {
     try {
       const stateCode = enhancedAssumptions.dealInfo?.state ?? null;
       if (stateCode) {
+        const normalized = normalizeExpensesForInterceptor(enhancedAssumptions.expenses || {});
         const intercepted = applyFullAnchorInterceptor(
           {},
-          enhancedAssumptions.expenses || {},
+          normalized,
           stateCode,
         );
-        enhancedAssumptions.expenses = intercepted.expenses;
-        logger.info(`[Anchor-Interceptor] Applied anchor growth rates for ${dealId} in ${stateCode} (${Object.keys(intercepted.expenses).length} lines)`);
+        enhancedAssumptions.expenses = rekeyExpensesFromInterceptor(intercepted.expenses);
+        logger.info(`[Anchor-Interceptor] Applied anchor growth rates for ${dealId} in ${stateCode} (${Object.keys(normalized).length} source lines → ${Object.keys(intercepted.expenses).length} anchors mapped)`);
       }
     } catch (err: any) {
       logger.warn(`[Anchor-Interceptor] Skipped for ${dealId}: ${err?.message}`);
@@ -402,7 +405,7 @@ export class FinancialModelEngineService {
     const modelId = insertResult.rows[0].id;
 
     try {
-      const result = await this.callClaudeForModel(enhancedAssumptions as any);
+      const result = await this.callLLMForModel(enhancedAssumptions as any);
 
       await pool.query(
         `UPDATE deal_financial_models SET results = $1, status = 'complete', updated_at = NOW() WHERE id = $2`,
@@ -435,34 +438,25 @@ export class FinancialModelEngineService {
     };
   }
 
-  private async callClaudeForModel(assumptions: ProFormaAssumptions): Promise<FinancialModelResult> {
-    if (!ANTHROPIC_API_KEY) {
-      throw new Error('Anthropic API key not configured');
+  private async callLLMForModel(assumptions: ProFormaAssumptions): Promise<FinancialModelResult> {
+    if (!DEEPSEEK_API_KEY) {
+      throw new Error('DeepSeek API key not configured');
     }
 
     const systemPrompt = this.buildSystemPrompt(assumptions.modelType);
     const userPrompt = this.buildUserPrompt(assumptions);
 
-    const response = await axios.post(
-      `${ANTHROPIC_BASE_URL}/v1/messages`,
-      {
-        model: CLAUDE_MODEL,
-        max_tokens: 16000,
-        temperature: 0.1,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-      },
-      {
-        headers: {
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        timeout: 120000,
-      }
-    );
+    const response = await llmClient.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      max_tokens: 16000,
+      temperature: 0.1,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    });
 
-    const text = response.data.content?.[0]?.text || '';
+    const text = response.choices?.[0]?.message?.content || '';
 
     let parsed: FinancialModelResult;
     try {

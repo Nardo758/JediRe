@@ -16,6 +16,10 @@ import { SensitivityBar } from '../../F9/SensitivityBar';
 import PlausibilityBadge from '../../F9/PlausibilityBadge';
 import { scorePlausibility } from '../../api/sigmaApi';
 import type { PlausibilityResult } from '../../api/sigmaApi';
+import GoalSeekWidget from '../../F9/GoalSeekWidget';
+import GoalSeekRoadmap from '../../F9/GoalSeekRoadmap';
+import type { RoadmapStep, ApplyPayload } from '../../F9/GoalSeekRoadmap';
+import { flattenAssumptionsForSolver, applySolverToAssumptions } from '../../api/sigma/assumptionBridge';
 
 interface UnitMixRow {
   floorPlan: string;
@@ -166,6 +170,18 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [state, setState] = useState(deal?.state || deal?.deal_data?.state || '');
   const { getAnchorTooltip, anchors } = useProformaAnchors(state);
   const [sensitivityOverrides, setSensitivityOverrides] = useState<Record<string, number | null>>({});
+  const [solving, setSolving] = useState(false);
+  const [goalSeekResult, setGoalSeekResult] = useState<{
+    targetIRR: number;
+    currentIRR: number;
+    projectedIRR: number;
+    targetReachable: boolean;
+    recommendation: string;
+    bundleId: string;
+    bundleName: string;
+  } | null>(null);
+  const [goalSeekSteps, setGoalSeekSteps] = useState<RoadmapStep[]>([]);
+  const [goalSeekApplyPayload, setGoalSeekApplyPayload] = useState<ApplyPayload | null>(null);
 
   // — M36 Plausibility Scoring —
   const [plausibilityResult, setPlausibilityResult] = useState<PlausibilityResult | null>(null);
@@ -510,7 +526,14 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         collectionLoss,
         otherIncome,
       },
-      expenses,
+      expenses: Object.fromEntries(
+        Object.entries(expenses).map(([key, val]) => [
+          key,
+          sensitivityOverrides[key] != null
+            ? { ...val, growthRate: sensitivityOverrides[key]! }
+            : val,
+        ])
+      ),
       financing: {
         loanAmount, loanType, interestRate, spread, term: loanTerm,
         amortization, ioPeriod, originationFee, rateCapCost, prepayPenalty,
@@ -600,6 +623,85 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     } finally {
       setBuilding(false);
     }
+  };
+
+  const handleGoalSeek = async (targetIRR: number, bundleId: string) => {
+    setSolving(true);
+    setGoalSeekResult(null);
+    setGoalSeekSteps([]);
+    setGoalSeekApplyPayload(null);
+    try {
+      const assumptions = buildAssumptionsPayload();
+      const { baseAssumptions, expenseLineItems, dealParams } = flattenAssumptionsForSolver(assumptions);
+      const res = await apiClient.post('/api/v2/sigma/goal-seek', {
+        targetIRR,
+        baseAssumptions,
+        expenseLineItems,
+        holdPeriodYears: holdPeriod,
+        bundleId,
+        dealParams,
+      });
+      const data = (res as any)?.data;
+      const result = data || (res as any);
+      setGoalSeekResult({
+        targetIRR: result.targetIRR ?? targetIRR,
+        currentIRR: result.currentIRR,
+        projectedIRR: result.projectedIRR,
+        targetReachable: result.targetReachable,
+        recommendation: result.recommendation,
+        bundleId: result.bundleId,
+        bundleName: result.bundleName,
+      });
+      if (result.steps) {
+        setGoalSeekSteps(result.steps);
+      }
+      if (result.applyPayload) {
+        setGoalSeekApplyPayload(result.applyPayload);
+      }
+    } catch (err: any) {
+      console.error('Goal seek failed:', err);
+      alert('Goal seek failed: ' + (err?.response?.data?.error || err.message));
+    } finally {
+      setSolving(false);
+    }
+  };
+
+  const handleApplyGoalSeek = (applyPayload: ApplyPayload) => {
+    const currentAssumptions = buildAssumptionsPayload();
+    const updated = applySolverToAssumptions(currentAssumptions, applyPayload);
+
+    // Update expenses state with the overridden growth rates
+    if (updated.expenses && typeof updated.expenses === 'object') {
+      setExpenses((prev) => {
+        const next = { ...prev };
+        for (const [key, val] of Object.entries(updated.expenses)) {
+          const v = val as { amount: number; type: string; growthRate: number };
+          if (next[key]) {
+            next[key] = { ...next[key], growthRate: v.growthRate };
+          } else {
+            next[key] = v;
+          }
+        }
+        return next;
+      });
+    }
+
+    // Update sensitivity overrides so the UI reflects applied changes
+    if (applyPayload.expenseOverrides) {
+      setSensitivityOverrides(prev => ({
+        ...prev,
+        ...Object.fromEntries(
+          Object.entries(applyPayload.expenseOverrides).filter(([_, v]) => v != null)
+        ),
+      }));
+    }
+
+    // Dismiss the roadmap
+    setGoalSeekSteps([]);
+    setGoalSeekApplyPayload(null);
+
+    // Auto-rebuild
+    setTimeout(() => handleBuildModel(), 100);
   };
 
   const handleOverride = (expenseKey: string, rate: number | null) => {
@@ -811,7 +913,33 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         </div>
       </div>
 
-      {modelResults && <ModelResultsSummary results={modelResults} />}
+      {modelResults && (
+        <>
+          <ModelResultsSummary results={modelResults} />
+          <div className="mt-3">
+            <GoalSeekWidget
+              currentIRR={modelResults.summary?.irr ?? 0}
+              onSolve={handleGoalSeek}
+              solving={solving}
+              result={goalSeekResult}
+            />
+          </div>
+          {goalSeekSteps.length > 0 && goalSeekApplyPayload && goalSeekResult && (
+            <div className="mt-3">
+              <GoalSeekRoadmap
+                steps={goalSeekSteps}
+                currentIRR={goalSeekResult.currentIRR}
+                projectedIRR={goalSeekResult.projectedIRR}
+                targetIRR={goalSeekResult.targetIRR}
+                recommendation={goalSeekResult.recommendation}
+                applyPayload={goalSeekApplyPayload}
+                onApply={handleApplyGoalSeek}
+                onDismiss={() => { setGoalSeekSteps([]); setGoalSeekApplyPayload(null); }}
+              />
+            </div>
+          )}
+        </>
+      )}
 
       <div className="space-y-3">
         {sections.map(section => {
