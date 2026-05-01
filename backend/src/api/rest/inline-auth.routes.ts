@@ -71,8 +71,21 @@ router.get('/dev-login', async (_req, res) => {
     return;
   }
   try {
+    // Pick the dev user that actually has data to look at. Picking purely by
+    // most-recent created_at silently swaps the dev session to whichever
+    // throwaway test user was most recently inserted (e.g. by an automated
+    // test harness), making real seeded deals "disappear" from the UI even
+    // though they are still in the DB. Order by owned-deal count first so
+    // dev-login lands on the user with the richest workspace, and only fall
+    // back to created_at as a tiebreaker.
     const result = await pool.query(
-      'SELECT id, email, full_name, role, subscription_tier, enabled_modules FROM users WHERE password_hash IS NOT NULL ORDER BY created_at DESC LIMIT 1'
+      `SELECT u.id, u.email, u.full_name, u.role, u.subscription_tier, u.enabled_modules
+         FROM users u
+         LEFT JOIN deals d ON d.user_id = u.id
+        WHERE u.password_hash IS NOT NULL
+        GROUP BY u.id
+        ORDER BY COUNT(d.id) DESC, u.created_at DESC
+        LIMIT 1`
     );
     if (result.rows.length === 0) {
       res.status(404).json({ error: 'No dev user available' });
