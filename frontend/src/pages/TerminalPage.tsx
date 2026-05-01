@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useAuth } from "../contexts/AuthContext";
 import { TickerBar } from "../components/terminal/TickerBar";
 import { useNavigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
@@ -608,6 +609,7 @@ export default function TerminalPage() {
 
   const [theme, setTheme] = useState<"dark"|"light">(() => (localStorage.getItem("jedi-theme")||"dark") as "dark"|"light");
   const T = theme==="dark" ? DARK : LIGHT;
+  const { logout } = useAuth();
 
   // Core UI state — resolve fkey from: URL slug > ?fkey param > location state > F1
   const [fkey, setFkey] = useState(() => {
@@ -2810,6 +2812,11 @@ export default function TerminalPage() {
           <span style={{fontSize:10,color:T.text.amber,fontWeight:600}}><LiveClock /></span>
           <button onClick={toggleTheme} style={{fontFamily:T.font.mono,fontSize:12,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.secondary,padding:"2px 8px",cursor:"pointer",lineHeight:1}} title={theme==="dark"?"Switch to light":"Switch to dark"}>
             {theme==="dark"?"☀":"☾"}
+          </button>
+          <button onClick={logout} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.muted,padding:"2px 8px",cursor:"pointer",lineHeight:1,letterSpacing:0.8}} title="Log out"
+            onMouseEnter={e=>{(e.currentTarget.style.color=T.text.red??'#ef4444');(e.currentTarget.style.borderColor=T.text.red??'#ef4444');}}
+            onMouseLeave={e=>{(e.currentTarget.style.color=T.text.muted);(e.currentTarget.style.borderColor=T.border.medium);}}>
+            LOGOUT
           </button>
         </div>
       </div>
