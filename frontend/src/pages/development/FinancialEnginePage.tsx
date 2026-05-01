@@ -19,6 +19,7 @@ import { SensitivityTab } from './financial-engine/SensitivityTab';
 import { DecisionTab } from './financial-engine/DecisionTab';
 import { CompareTab } from './financial-engine/CompareTab';
 import { CostSheetTab } from '../../components/deal/sections/CostSheetTab';
+import InteractiveProformaTab from './financial-engine/InteractiveProformaTab';
 import { CustomTabRenderer } from './financial-engine/CustomTabRenderer';
 import { exportToExcel } from './financial-engine/excel-export';
 import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials, EvidenceFieldMeta } from './financial-engine/types';
@@ -185,6 +186,7 @@ const BUILTIN_TAB_LABELS = [
   '% RETURNS',
   '₵ COST SHEET',
   '⊟ WALKTHROUGH',
+  '△ INTERACTIVE PRO',
 ];
 const BUILTIN_TAB_COUNT = BUILTIN_TAB_LABELS.length;
 
@@ -1108,6 +1110,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 10 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 11 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 12 && <BtTabWrapper><ReturnsTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 14 && <BtTabWrapper><InteractiveProformaTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 13 && (
             <div style={{ height: '100%', overflow: 'hidden', padding: 16, display: 'flex', flexDirection: 'column' }}>
               <CostSheetTab
