@@ -379,14 +379,11 @@ export class FinancialModelEngineService {
       const stateCode = enhancedAssumptions.dealInfo?.state ?? null;
       if (stateCode) {
         const intercepted = applyFullAnchorInterceptor(
-          enhancedAssumptions.revenue?.rentGrowth || {},
+          {},
           enhancedAssumptions.expenses || {},
           stateCode,
         );
         enhancedAssumptions.expenses = intercepted.expenses;
-        if (intercepted.revenue && Object.keys(intercepted.revenue).length > 0) {
-          enhancedAssumptions.revenue.rentGrowth = intercepted.revenue;
-        }
         logger.info(`[Anchor-Interceptor] Applied anchor growth rates for ${dealId} in ${stateCode} (${Object.keys(intercepted.expenses).length} lines)`);
       }
     } catch (err: any) {
