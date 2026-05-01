@@ -13,7 +13,6 @@ import { TickerBar } from '../terminal/TickerBar';
 import { Badge } from '../terminal/Badge';
 import { useTradeAreaStore } from '../../stores/tradeAreaStore';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useAuth } from '../../contexts/AuthContext';
 
 const DEFAULT_MAP_ID = 'default';
 
@@ -201,7 +200,11 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
   const items = isInsideDeal ? DEAL_NAV : PORTFOLIO_NAV;
   const [dealActiveTab, setDealActiveTab] = useState('overview');
   const { isDark, toggleTheme } = useTheme();
-  const { logout } = useAuth();
+  const logout = useCallback(() => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('jedi_user');
+    window.location.replace('/login');
+  }, []);
 
   useEffect(() => {
     if (!isInsideDeal) return;

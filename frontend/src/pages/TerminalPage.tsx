@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useAuth } from "../contexts/AuthContext";
 import { TickerBar } from "../components/terminal/TickerBar";
 import { useNavigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
@@ -609,7 +608,11 @@ export default function TerminalPage() {
 
   const [theme, setTheme] = useState<"dark"|"light">(() => (localStorage.getItem("jedi-theme")||"dark") as "dark"|"light");
   const T = theme==="dark" ? DARK : LIGHT;
-  const { logout } = useAuth();
+  const logout = useCallback(() => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('jedi_user');
+    window.location.replace('/login');
+  }, []);
 
   // Core UI state — resolve fkey from: URL slug > ?fkey param > location state > F1
   const [fkey, setFkey] = useState(() => {
