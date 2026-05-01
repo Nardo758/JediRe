@@ -738,9 +738,23 @@ function computeUnitMixDerived(rentRollRows: any[]): UnitMixDerived {
   const weightedInPlace = totalUnitsInMix > 0
     ? unitMix.reduce((s, u) => s + (u.inPlaceRent ?? 0) * u.count, 0) / totalUnitsInMix
     : null;
-  const weightedOcc = totalUnitsInMix > 0
-    ? unitMix.reduce((s, u) => s + (u.occupancyPct ?? 0) * u.count, 0) / totalUnitsInMix
-    : null;
+  // Null-aware weighted occupancy. OM-derived rows intentionally have null
+  // occupancy because brokers rarely publish per-floorplan vacancy. Treating
+  // null as 0 here would silently propagate "100% vacant" through GPR
+  // vacancy loss math, badly distorting Pro Forma. Skip null rows entirely
+  // (excluded from both numerator and denominator); return null when no row
+  // contributes — downstream `vacancyLossFromUnitMix` already null-checks.
+  const weightedOcc = (() => {
+    let weightedSum = 0;
+    let weightTotal = 0;
+    for (const u of unitMix) {
+      if (u.occupancyPct == null) continue;
+      weightedSum += u.occupancyPct * u.count;
+      weightTotal += u.count;
+    }
+    if (weightTotal === 0) return null;
+    return weightedSum / weightTotal;
+  })();
 
   // GPR = potential annual rent at MARKET rates (matches Projections "Gross Potential Rent")
   const gprFromMix = unitMix.reduce((s, u) => {
