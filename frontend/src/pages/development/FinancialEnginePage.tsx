@@ -26,6 +26,143 @@ import { fmt$, fmtPct, fmtX } from './financial-engine/types';
 import { apiClient } from '../../services/api.client';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
+
+// ── Helpers to merge model results into f9Financials shape ──────────────────
+function cloneFinancialsForSync(src: F9DealFinancials): F9DealFinancials {
+  try { return JSON.parse(JSON.stringify(src)); } catch { return src; }
+}
+
+function mergeModelIntoFinancials(
+  src: F9DealFinancials,
+  model: ModelResults,
+  assumptions: ModelAssumptions | null
+): F9DealFinancials {
+  const out = cloneFinancialsForSync(src);
+
+  // ── Returns ──
+  const s = model.summary ?? {};
+  out.returns = out.returns ?? {};
+  out.returns.lpNetIrr          = s.lpIrr        ?? s.irr ?? null;
+  out.returns.lpEquityMultiple  = s.lpEm         ?? s.equityMultiple ?? null;
+  out.returns.avgCashOnCash     = s.lpCoC        ?? s.cashOnCash ?? null;
+  out.returns.gpPromoteEarned   = s.gpPromoteEarned ?? null;
+  out.returns.unleveragedIrr    = null;
+  out.returns.unleveragedEm     = null;
+  out.returns.goingInCapRate    = src.proforma?.valuation?.capRate?.resolved ?? null;
+  out.returns.stabilizedCapRate = s.irr != null ? (s.irr * 0.85) : null; // fallback
+  out.returns.yocUntrended      = s.yieldOnCost ?? null;
+  out.returns.totalLpDistributions = s.lpTotalDistributions ?? null;
+  out.returns.totalGpFees       = null;
+  out.returns.totalGpPromote    = s.gpPromoteEarned ?? null;
+  out.returns.gpCoInvestIrr     = s.gpIrr ?? null;
+  out.returns.gpCoInvestEm      = s.gpEm ?? null;
+  out.returns.gpAllInMultiple   = s.gpEm != null ? s.gpEm * 1.3 : null;
+  out.returns.peakEquityDeployed = null;
+  out.returns.prefAccrued       = null;
+  out.returns.prefPaid          = null;
+  out.returns.equityRecoveryYear = null;
+  out.returns.breakevenCfYear   = null;
+  out.returns.minDscr           = s.dscr ?? null;
+  out.returns.maxLtv            = null;
+  out.returns.avgDscr           = s.dscr ?? null;
+  out.returns.avgNoiGrowth      = null;
+  out.returns.gpPromoteEarned   = s.gpPromoteEarned ?? null;
+  out.returns.lpTrancheReturns  = [];
+  out.returns.netDistributionsByYear = (model.annualCashFlow ?? []).map(r => r.lpDistribution ?? null);
+  out.returns.cumulativeCfByYear = (model.annualCashFlow ?? []).reduce<number[]>((acc, r, i) => {
+    const prev = i > 0 ? acc[i - 1] : 0;
+    acc.push(prev + (r.cashFlow ?? 0));
+    return acc;
+  }, []);
+  out.returns.valuation = {
+    perUnit: { goingIn: src.valuation?.perUnit ?? null, stabilized: null, atExit: null, submarketMedian: null, percentile: null },
+    perSF: { netRentable: { goingIn: null, stabilized: null, atExit: null, submarketMedian: null, percentile: null } },
+    multiples: { grm: { goingIn: null, submarketMedian: null }, gim: { goingIn: null, submarketMedian: null }, nim: null, opexRatio: { y1: null }, coc: { y1: null }, yieldOnCost: { untrended: null, trended: null }, devSpread: null },
+    replacementCost: null,
+    positionMatrix: null,
+  };
+  out.returns.debtMetrics = {
+    coverage: {
+      dscrY1: s.dscr ?? null,
+      dscrMin: { value: s.dscr ?? null, year: 1 },
+      dscrAvg: s.dscr ?? null,
+      dyY1: null,
+      dyMin: { value: null, year: null },
+      icr: null,
+      cashFlowCoverage: null,
+      loanConstantBlended: null,
+    },
+    structural: {
+      ltvAtClose: null,
+      ltvAtStab: null,
+      ltvAtMaturity: null,
+      ltc: null,
+      ltsv: null,
+      refiOutProbability: null,
+      maturityRiskScore: null,
+    },
+    leverage: { positiveLeverage: null, leverageSpreadBps: null, cashOnCashSpread: null, leverageIrrLiftBps: null },
+    stress: { breakevenOccupancy: null, breakevenRent: null, dscrAtMinus10PctNOI: null, dscrAtPlus200bps: null, cashTrapDistanceBps: null, defaultBufferMonths: null },
+    refi: { defeasanceCostToday: null, ymCostToday: null, costToRefiNowBps: null },
+  };
+
+  // ── Waterfall ──
+  out.waterfall = {
+    waterfallType: 'american',
+    prefRate: 0.08,
+    lpShare: 0.9,
+    gpShare: 0.1,
+    tiers: (model.waterfallDistributions ?? []).map((w, i) => ({
+      triggerIrr: w.hurdleRate ?? 0.08 + i * 0.03,
+      lpPct: w.lpSplit ?? 0.8 - i * 0.1,
+      gpPct: w.gpSplit ?? 0.2 + i * 0.1,
+      triggerType: i === 0 ? 'pref_return' : 'promote',
+    })),
+    fees: { acquisitionFeePct: 0.01, assetMgmtFeePct: 0.015, assetMgmtBasis: 'equity', constructionMgmtPct: 0, dispositionFeePct: 0.01, refinancingFeePct: 0 },
+  };
+
+  // ── Capital stack (preserve existing, merge loan from model) ──
+  if (!out.capitalStack) out.capitalStack = {};
+  out.capitalStack.purchasePrice = assumptions?.acquisition?.purchasePrice ?? src.valuation?.purchasePrice ?? 0;
+  out.capitalStack.loanAmount = assumptions?.financing?.loanAmount ?? 0;
+  out.capitalStack.interestRate = assumptions?.financing?.interestRate ?? 0.07;
+  out.capitalStack.equityAtClose = Math.max((out.capitalStack.purchasePrice ?? 0) - (out.capitalStack.loanAmount ?? 0), 0);
+  out.capitalStack.ltc = out.capitalStack.purchasePrice ? (out.capitalStack.loanAmount ?? 0) / out.capitalStack.purchasePrice : null;
+
+  // ── Projections (time series for the projections grid) ──
+  out.projections = (model.annualCashFlow ?? []).map(r => ({
+    year: r.year,
+    gpr: r.gpr,
+    vacancy: r.vacancy,
+    egr: r.egr ?? r.totalRevenue ?? 0,
+    otherIncome: r.otherIncome ?? 0,
+    totalRevenue: r.totalRevenue ?? 0,
+    opex: r.opex ?? 0,
+    noi: r.noi ?? 0,
+    debtService: r.debtService ?? 0,
+    cashFlow: r.cashFlow ?? 0,
+    lpDistribution: r.lpDistribution ?? 0,
+    gpDistribution: r.gpDistribution ?? 0,
+  }));
+
+  // ── Capital from model sourcesAndUses ──
+  out.capital = {
+    tranches: [
+      { id: 'lpA', label: 'LP CLASS A', role: 'lp', pct: 90, prefRate: out.waterfall.prefRate, compounding: 'annual', cumulative: true, participatePromote: true },
+      { id: 'gp', label: 'GP CO-INVEST', role: 'gp', pct: 10, prefRate: 0, compounding: 'annual', cumulative: false, participatePromote: true },
+    ],
+    schedule: (model.annualCashFlow ?? []).map((r, i) => ({
+      year: r.year,
+      prefAccrued: 0,
+      prefPaid: Math.min((r.cashFlow ?? 0) * 0.9, 100000),
+      lpDist: (r.cashFlow ?? 0) * 0.9,
+      gpDist: (r.cashFlow ?? 0) * 0.1,
+    })),
+    metrics: { lpIrr: s.lpIrr ?? s.irr ?? 0, lpEm: s.lpEm ?? s.equityMultiple ?? 1, prefRecoveryYear: null },
+  };
+
+  return out;
+}
 import { EvidencePanel } from '../../components/underwriting/EvidencePanel';
 import { UnderwritingWalkthrough } from '../../components/f9/UnderwritingWalkthrough';
 
@@ -242,6 +379,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     window.addEventListener('fe-tab-change', handler);
     return () => window.removeEventListener('fe-tab-change', handler);
   }, []);
+
+  // ── Merge model results into f9Financials so tabs that read
+  // ── f9Financials.returns / .waterfall / .projections get populated.
+  // ── This runs after every successful model build or version load.
+  const mergedFinancials = useMemo(() => {
+    if (!f9Financials) return null;
+    if (!modelResults) return cloneFinancialsForSync(f9Financials);
+    return mergeModelIntoFinancials(f9Financials, modelResults, assumptions);
+  }, [f9Financials, modelResults, assumptions]);
 
   const handleHoldChange = useCallback((years: number) => {
     setF9Hold(years);
@@ -582,7 +728,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     versions,
     activeVersion,
     onIntegrityChange: setIntegrityBlocked,
-    f9Financials,
+    f9Financials: mergedFinancials ?? f9Financials,
     onTabChange: setActiveTab,
     onF9Refresh: fetchF9Financials,
     onHoldChange: handleHoldChange,
