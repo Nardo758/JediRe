@@ -9,6 +9,8 @@ import { apiClient } from '@/services/api.client';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { useDealType } from '../../../stores/dealStore';
 import { getProFormaTemplate, PROFORMA_TEMPLATES } from '../../../shared/config/deal-type-visibility';
+import { useProformaAnchors } from '../../../hooks/useProformaAnchors';
+import { AnchorLabel } from '../../F9/AnchorLabel';
 
 interface UnitMixRow {
   floorPlan: string;
@@ -157,6 +159,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [address, setAddress] = useState(deal?.address || deal?.property_address || '');
   const [city, setCity] = useState(deal?.city || deal?.deal_data?.city || '');
   const [state, setState] = useState(deal?.state || deal?.deal_data?.state || '');
+  const { getAnchorTooltip } = useProformaAnchors(state);
 
   const [unitMix, setUnitMix] = useState<UnitMixRow[]>([
     { floorPlan: '1BR/1BA', unitSize: 0, beds: 1, units: 0, occupied: 0, vacant: 0, marketRent: 0, inPlaceRent: 0 },
@@ -983,6 +986,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                     <ExpensesSection
                       expenses={expenses} setExpenses={setExpenses}
                       totalUnits={totalUnits}
+                      getAnchorTooltip={getAnchorTooltip}
                     />
                   )}
                   {section.id === 'financing' && (
@@ -1361,7 +1365,7 @@ const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem
   );
 };
 
-const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpenses: (v: Record<string, ExpenseItem>) => void; totalUnits: number }> = ({ expenses, setExpenses, totalUnits }) => {
+const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpenses: (v: Record<string, ExpenseItem>) => void; totalUnits: number; getAnchorTooltip?: (key: string) => any }> = ({ expenses, setExpenses, totalUnits, getAnchorTooltip }) => {
   const totalExpenses = Object.values(expenses).reduce((sum, e) => {
     if (e.type === 'pctEGR') return sum;
     return sum + (e.type === 'perUnit' ? e.amount * totalUnits : e.amount);
@@ -1382,7 +1386,10 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
         <tbody>
           {Object.entries(expenses).map(([name, exp]) => (
             <tr key={name} className="border-b border-stone-100">
-              <td className="py-1.5 px-2 text-stone-700">{name}</td>
+              <td className="py-1.5 px-2 text-stone-700">
+                {name}
+                {getAnchorTooltip && <AnchorLabel expenseKey={name} anchorTooltip={getAnchorTooltip(name)} originalGrowth={exp.growthRate} />}
+              </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={exp.amount}
                   step={exp.type === 'pctEGR' ? 0.005 : 1000}
