@@ -55,6 +55,7 @@ import { fetchDataLibraryCompsTool } from './tools/fetch_data_library_comps';
 import { fetchTaxIntelTool } from './tools/fetch_tax_intel';
 import { evaluatePlausibilityTool } from './tools/evaluate_plausibility';
 import { goalSeekTargetIrrTool } from './tools/goal_seek_target_irr';
+import { fetchAnchorGrowthRatesTool } from './tools/fetch_anchor_growth_rates';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -262,6 +263,8 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     // M36 Sigma (plausibility + goal-seeking)
     evaluatePlausibilityTool,
     goalSeekTargetIrrTool,
+    // M36 Proforma Anchor Growth Rates (line-item macro anchoring)
+    fetchAnchorGrowthRatesTool,
     // Email/deal intake
     readGmailThreadTool,
     // Analysis & output

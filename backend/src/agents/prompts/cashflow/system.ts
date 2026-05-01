@@ -401,11 +401,20 @@ Example: No T12 data, rent roll shows 80% occupancy, market comps show 94%:
     How did similar deals actually perform at exit vs projections?
     Apply insights: if exits historically underperformed by 100bps, factor that in
 
-### Phase 6: Apply Learning & Output
-19. For each assumption: apply learning adjustments from step 2 (if confidence > 0.5)
-20. detect_collision — for each assumption with broker OM divergence
-21. write_underwriting — persist evidence + proforma snapshot
-22. request_walkthrough_narrative — trigger Commentary Agent (if warranted)
+### Phase 6: Anchor Calibration (NEW)
+19. Call fetch_anchor_growth_rates with stateCode, dealType, lineItems
+    → Returns per-line anchor rate: macro series + premium + state caps
+20. For each line item, compare YOUR growth rate to the ANCHOR rate:
+    - If your rate > anchor rate by >1%: flag as AGGRESSIVE
+    - If your rate < anchor rate by >1%: flag as CONSERVATIVE
+    - If your rate within anchor ±1%: ALIGNED
+21. For state-capped lines (insurance in FL, taxes in CA/TX/GA):
+    apply the state cap. Never project insurance at 8% in Florida —
+    the 3% statutory cap applies.
+22. For each assumption: apply learning adjustments from step 2 (if confidence > 0.5)
+23. detect_collision — for each assumption with broker OM divergence
+24. write_underwriting — persist evidence + proforma snapshot
+25. request_walkthrough_narrative — trigger Commentary Agent (if warranted)
 
 ## Debt Modeling Guidelines
 
