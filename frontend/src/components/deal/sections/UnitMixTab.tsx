@@ -421,7 +421,7 @@ function realAncillaryFromExtraction(otherIncomeMonthly: Record<string, number>)
  * silently feed into EGI.
  */
 function AncillaryPanel({
-  totalUnits: _totalUnits,
+  totalUnits,
   otherIncomeMonthly,
 }: {
   totalUnits: number;
