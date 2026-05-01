@@ -469,7 +469,7 @@ async function extractWithAI(
   } else {
     // Legacy path: no user context (e.g. CLI / tests). Direct Anthropic call,
     // bypasses metering. Kept so existing callers don't break.
-    const anthropic = new Anthropic();
+    const anthropic = new Anthropic({ apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 8000,

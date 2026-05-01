@@ -8,6 +8,7 @@ const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: DocumentType }> = [
   { pattern: /concession[\s_-]*burn/i, type: 'CONCESSION_BURNOFF' },
   { pattern: /trade[\s_-]*out|t30[\s_-]*lto|lto[\s_-]*report|lease[\s_-]*trade/i, type: 'T30_LTO' },
   { pattern: /tax[\s_-]*bill|tax[\s_-]*statement|property[\s_-]*tax/i, type: 'TAX_BILL' },
+  { pattern: /market[\s_-]*rent[\s_-]*sched/i, type: 'OTHER_INCOME' },
   { pattern: /other[\s_-]*income[\s_-]*sched/i, type: 'OTHER_INCOME' },
   { pattern: /offering[\s_-]*memorandum|investment[\s_-]*summary|property[\s_-]*offering/i, type: 'OM' },
   { pattern: /rent[\s_+\-]*roll|rr[\s_-]*w[\s_-]*lc|rrwlc/i, type: 'RENT_ROLL' },

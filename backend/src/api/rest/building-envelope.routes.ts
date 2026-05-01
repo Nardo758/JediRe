@@ -116,7 +116,7 @@ router.post('/deals/:dealId/building-envelope', async (req: Request, res: Respon
     let aiRecommendations = null;
     if (includeAI) {
       try {
-        const anthropic = new Anthropic();
+        const anthropic = new Anthropic({ apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY });
         const constraintSummary = Object.entries(envelope.capacityByConstraint)
           .map(([k, v]) => `${k}: ${v} ${propertyType === 'multifamily' ? 'units' : 'capacity'}`)
           .join(', ');

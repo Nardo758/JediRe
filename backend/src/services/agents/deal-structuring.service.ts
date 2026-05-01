@@ -110,7 +110,7 @@ export interface StructuringRecommendation {
 // ============================================================================
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
 });
 
 // ============================================================================

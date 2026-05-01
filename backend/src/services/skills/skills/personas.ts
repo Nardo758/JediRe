@@ -12,7 +12,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { skillRegistry, SkillDefinition, SkillContext, SkillResult } from '../skill-registry';
 import { logger } from '../../../utils/logger';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY });
 const PERSONA_MODEL = 'claude-sonnet-4-5';
 const MAX_PERSONA_TURNS = 5;
 
