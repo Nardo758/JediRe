@@ -295,7 +295,16 @@ All 6 sub-phases built and tested:
 - ✅ PlausibilityPanel.tsx — overlay detail panel (per-variable breakdown, warnings, bundle assessment)
 - ✅ ProFormaTab integration — auto-scoring (2s debounce), badge in 4 section headers
 
-**Next: M36-C Goal-Seeking UI** — "Solve for IRR" flow, bundle selector, cross-bundle ranking
+**M36-C Goal-Seeking Roadmap: ✅ Complete**
+- ✅ Refactored solver with roadmap output (per-variable IRR lift + d cost)
+- ✅ Per-line-item expense adjustments (controllable lines distributed proportionally)
+- ✅ Expanded adjustable variables (now 9: +loss_to_lease, +collection_loss)
+- ✅ Apply payload format (assumptions + expenseOverrides + changed[])
+- ✅ Target reachability detection with natural-language recommendation
+- ✅ Route updated (expenseLineItems + controllableExpenseKeys passed through)
+- ✅ 6 new tests (34 total Σ tests passing)
+
+**Next: M36-C Goal-Seeking UI** — frontend widget, bundle selector, "Apply" button
 
 ---
 
@@ -321,6 +330,7 @@ All 6 sub-phases built and tested:
 - `backend/src/services/financial-model-engine.service.ts` — anchor interceptor wired here
 - `backend/tests/sigma/sigma-full.test.ts` — 18 tests (plausibility, scoring, warnings, bundles, factors)
 - `backend/tests/sigma/heuristic-sigma-builder.test.ts` — 10 tests (registry, builder, Mahalanobis, bands)
+- `backend/tests/sigma/sigma-goal-seeking.test.ts` — 6 tests (roadmap, expense per-line-item, target reachability, apply payload)
 
 ### Backend — Tax
 - `backend/src/services/tax/taxService.ts` — tax computation engine
