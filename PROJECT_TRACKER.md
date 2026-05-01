@@ -289,7 +289,13 @@ All 6 sub-phases built and tested:
 - ✅ A6: REST API (6 endpoints)
 - ✅ **28/28 tests passing** (18 sigma-full + 10 sigma-builder)
 
-**Next: M36-B Plausibility UI** — frontend badges, goal-seeking flow, bundle config
+**M36-B Plausibility UI: ✅ Complete**
+- ✅ sigmaApi.ts — frontend API client (types, 6 endpoints, band colors)
+- ✅ PlausibilityBadge.tsx — colored badge (d value + band) with refresh
+- ✅ PlausibilityPanel.tsx — overlay detail panel (per-variable breakdown, warnings, bundle assessment)
+- ✅ ProFormaTab integration — auto-scoring (2s debounce), badge in 4 section headers
+
+**Next: M36-C Goal-Seeking UI** — "Solve for IRR" flow, bundle selector, cross-bundle ranking
 
 ---
 
@@ -321,9 +327,15 @@ All 6 sub-phases built and tested:
 - `backend/src/services/tax/rulesets/` — per-state tax rulesets (GA, FL, TX, CA, NY, IL, NC, LA, AZ)
 - `backend/src/services/tax/types.ts` — TaxRuleset interface
 
-### Frontend
-- `frontend/src/components/deal/sections/ProFormaTab.tsx` — main proforma editing tab
-- `frontend/src/components/F9/` — F9 components (AnchorLabel, AnchorSensitivityInput, SensitivityBar, F9SummaryBar)
+### Frontend — Plausibility UI
+- `frontend/src/api/sigmaApi.ts` — Σ API client (types, 6 endpoints, band colors)
+- `frontend/src/components/F9/PlausibilityBadge.tsx` — colored inline badge (d + band), click opens panel
+- `frontend/src/components/F9/PlausibilityPanel.tsx` — modal overlay (per-variable breakdown, warnings, bundle)
+- `frontend/src/components/deal/sections/ProFormaTab.tsx` — main proforma editing tab (PlausibilityBadge in 4 section headers, auto-scoring)
+- `frontend/src/components/F9/AnchorLabel.tsx` — ℹ anchor tooltip
+- `frontend/src/components/F9/AnchorSensitivityInput.tsx` — per-expense override input
+- `frontend/src/components/F9/SensitivityBar.tsx` — override progress bar
+- `frontend/src/components/F9/F9SummaryBar.tsx` — F9 summary
 - `frontend/src/hooks/useProformaAnchors.ts` — anchor tooltip hook
 
 ### DB
