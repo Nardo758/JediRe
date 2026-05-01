@@ -13,6 +13,9 @@ import { useProformaAnchors } from '../../../hooks/useProformaAnchors';
 import { AnchorLabel } from '../../F9/AnchorLabel';
 import { AnchorSensitivityInput } from '../../F9/AnchorSensitivityInput';
 import { SensitivityBar } from '../../F9/SensitivityBar';
+import PlausibilityBadge from '../../F9/PlausibilityBadge';
+import { scorePlausibility } from '../../api/sigmaApi';
+import type { PlausibilityResult } from '../../api/sigmaApi';
 
 interface UnitMixRow {
   floorPlan: string;
@@ -163,6 +166,34 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [state, setState] = useState(deal?.state || deal?.deal_data?.state || '');
   const { getAnchorTooltip, anchors } = useProformaAnchors(state);
   const [sensitivityOverrides, setSensitivityOverrides] = useState<Record<string, number | null>>({});
+
+  // — M36 Plausibility Scoring —
+  const [plausibilityResult, setPlausibilityResult] = useState<PlausibilityResult | null>(null);
+  const [plausibilityLoading, setPlausibilityLoading] = useState(false);
+
+  const handleScorePlausibility = useCallback(async () => {
+    setPlausibilityLoading(true);
+    try {
+      const result = await scorePlausibility({
+        assumptions: {
+          rent_growth: rentGrowth[0] ?? 0.03,
+          vacancy_rate: 1 - stabilizedOccupancy,
+          exit_cap_rate: exitCapRate,
+          expense_growth: 0.03,
+          entry_cap_rate: capRate,
+          debt_rate: interestRate / 100,
+          ltv: loanAmount > 0 && purchasePrice > 0 ? loanAmount / purchasePrice : 0.7,
+        },
+        regime: platformData?.regime ?? undefined,
+      });
+      setPlausibilityResult(result);
+    } catch (err) {
+      console.error('Plausibility scoring failed:', err);
+      setPlausibilityResult(null);
+    } finally {
+      setPlausibilityLoading(false);
+    }
+  }, [rentGrowth, stabilizedOccupancy, exitCapRate, capRate, interestRate, loanAmount, purchasePrice, platformData]);
 
   const [unitMix, setUnitMix] = useState<UnitMixRow[]>([
     { floorPlan: '1BR/1BA', unitSize: 0, beds: 1, units: 0, occupied: 0, vacant: 0, marketRent: 0, inPlaceRent: 0 },
@@ -582,6 +613,15 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const overriddenCount = Object.values(sensitivityOverrides).filter(v => v != null).length;
   const totalAnchored = anchors.length;
 
+  // Auto-score plausibility on mount and when assumptions change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleScorePlausibility();
+    }, 2000); // debounce 2s after change
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rentGrowth, stabilizedOccupancy, exitCapRate, capRate, interestRate, loanAmount, purchasePrice]);
+
   const handleExportExcel = async () => {
     if (!id) return;
     try {
@@ -787,6 +827,13 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                 <div className="flex items-center gap-2">
                   <Icon size={14} className="text-stone-500" />
                   <span className="text-sm font-semibold text-stone-800">{section.label}</span>
+                  {(section.id === 'revenue' || section.id === 'disposition' || section.id === 'expenses' || section.id === 'financing') && (
+                    <PlausibilityBadge
+                      result={plausibilityResult}
+                      loading={plausibilityLoading}
+                      onReScore={handleScorePlausibility}
+                    />
+                  )}
                 </div>
                 {isExpanded ? <ChevronDown size={14} className="text-stone-400" /> : <ChevronRight size={14} className="text-stone-400" />}
               </button>
@@ -1410,7 +1457,7 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
                 {getAnchorTooltip && <>
                   <AnchorLabel expenseKey={name} anchorTooltip={getAnchorTooltip(name)} originalGrowth={exp.growthRate} />
                   <AnchorSensitivityInput expenseKey={name} anchorTooltip={getAnchorTooltip(name)} currentGrowth={exp.growthRate} onOverride={onOverride || (() => {})} override={sensitivityOverrides?.[name] ?? null} />
-                </>
+</>}
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={exp.amount}
