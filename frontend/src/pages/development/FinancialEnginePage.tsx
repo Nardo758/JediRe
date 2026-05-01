@@ -28,6 +28,26 @@ import { apiClient } from '../../services/api.client';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
 
+// ── Normalize ModelResults from any source (DB, build, version load) ─────────
+// The engine stores sourcesAndUses.sources / .uses as Record<string,number>
+// objects; ModelResults and all tabs expect {label,amount}[] arrays.
+// Apply this before every setModelResults call.
+function normalizeModelResults(raw: ModelResults): ModelResults {
+  if (!raw?.sourcesAndUses) return raw;
+  const su = raw.sourcesAndUses as { sources: unknown; uses: unknown };
+  if (su.sources && !Array.isArray(su.sources)) {
+    su.sources = Object.entries(su.sources as Record<string, number>).map(
+      ([label, amount]) => ({ label, amount }),
+    );
+  }
+  if (su.uses && !Array.isArray(su.uses)) {
+    su.uses = Object.entries(su.uses as Record<string, number>).map(
+      ([label, amount]) => ({ label, amount }),
+    );
+  }
+  return raw;
+}
+
 // ── Helpers to merge model results into f9Financials shape ──────────────────
 function cloneFinancialsForSync(src: F9DealFinancials): F9DealFinancials {
   try { return JSON.parse(JSON.stringify(src)); } catch { return src; }
@@ -293,7 +313,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       if (modelRes.status === 'fulfilled') {
         const model = (modelRes.value as any)?.data?.data;
         if (model?.results) {
-          setModelResults(model.results);
+          setModelResults(normalizeModelResults(model.results));
         }
         if (model?.assumptions) {
           setAssumptions(model.assumptions);
@@ -408,17 +428,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       );
       const raw = (res as any)?.data ?? res;
       const result = raw?.data ?? raw;
-      // Normalize sourcesAndUses: engine returns Record<string,number>; ModelResults expects arrays.
-      if (result && result.sourcesAndUses) {
-        const su = result.sourcesAndUses as { sources: unknown; uses: unknown };
-        if (su.sources && !Array.isArray(su.sources)) {
-          su.sources = Object.entries(su.sources as Record<string, number>).map(([label, amount]) => ({ label, amount }));
-        }
-        if (su.uses && !Array.isArray(su.uses)) {
-          su.uses = Object.entries(su.uses as Record<string, number>).map(([label, amount]) => ({ label, amount }));
-        }
-      }
-      if (result) setModelResults(result);
+      if (result) setModelResults(normalizeModelResults(result));
     } catch (e) {
       console.error('Model build failed:', e);
     } finally {
@@ -636,7 +646,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const handleLoadVersion = useCallback((version: ModelVersion) => {
     setActiveVersion(version);
     setAssumptions(version.assumptions);
-    if (version.results) setModelResults(version.results);
+    if (version.results) setModelResults(normalizeModelResults(version.results));
     setShowVersionDropdown(false);
   }, []);
 

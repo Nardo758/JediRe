@@ -185,13 +185,16 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
   // Per-LP-tranche rows built from capital.tranches + schedule
   const lpTranches = useMemo(() => {
     if (!capData?.tranches) return [];
+    const schedule = Array.isArray(capData.schedule) ? capData.schedule : [];
     const equityTotal = cap?.equityAtClose ?? 0;
     return capData.tranches.filter(t => t.role === 'lp').map(t => {
       const equityIn = equityTotal * (t.pct / 100);
-      const distTotal = capData.schedule.reduce((s, p) => s + p.lpDist, 0) * (t.pct / 100);
+      const distTotal = schedule.reduce((s, p) => s + p.lpDist, 0) * (t.pct / 100);
       const em = equityIn > 0 ? distTotal / equityIn : null;
-      const prefAchieved = capData.schedule.every(p => p.prefPaid >= p.prefAccrued * 0.99);
-      return { id: t.id, label: t.label, pctOfEquity: t.pct, prefRate: t.prefRate, irr: capData.metrics.lpIrr, em, prefAchieved };
+      const prefAchieved = schedule.length > 0
+        ? schedule.every(p => p.prefPaid >= p.prefAccrued * 0.99)
+        : false;
+      return { id: t.id, label: t.label, pctOfEquity: t.pct, prefRate: t.prefRate, irr: capData.metrics?.lpIrr ?? null, em, prefAchieved };
     });
   }, [capData, cap]);
 
