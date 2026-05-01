@@ -971,24 +971,68 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
           </div>
         )}
 
-        {/* Recent activity */}
+        {/* ─── AUDIT TRAIL ─── */}
         {recentActivity.length > 0 && (
           <div style={{
-            display: 'flex', flexDirection: 'column', gap: 4,
+            display: 'flex', flexDirection: 'column', gap: 2,
             background: BT.bg.panel,
             border: `1px solid ${BT.border.subtle}`,
             padding: 12,
           }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.muted, fontFamily: BT.font.mono, letterSpacing: 0.5, marginBottom: 4 }}>
-              RECENT ACTIVITY
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.muted, fontFamily: BT.font.mono, letterSpacing: 0.5, marginBottom: 6 }}>
+              ACTIVITY LOG
             </div>
-            {recentActivity.map(f => (
-              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, color: BT.text.secondary, fontFamily: BT.font.mono }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{f.name || f.original_filename}</span>
-                <span style={{ color: BT.text.muted }}>→</span>
-                {getStatusBadge(f)}
-              </div>
-            ))}
+            {recentActivity.map(f => {
+              // Derive a human-readable action from the file metadata
+              const uploadedBy = f.uploaded_by_name || f.uploaded_by || 'unknown';
+              const action = f.version && f.version > 1
+                ? `v${f.version} uploaded`
+                : 'uploaded';
+              const note = f.version_notes || '';
+              const extraction = f.extraction_status === 'completed' || f.extraction_status === 'parsed'
+                ? 'parsed' : f.extraction_status === 'processing' ? 'processing' : null;
+
+              return (
+                <div key={f.id} style={{
+                  display: 'flex', flexDirection: 'column', gap: 1,
+                  padding: '6px 8px',
+                  background: BT.bg.panelAlt,
+                  borderBottom: `1px solid ${BT.border.subtle}`,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 9, color: BT.text.primary, fontWeight: 500, fontFamily: BT.font.mono }}>
+                      {f.name || f.original_filename}
+                    </span>
+                    <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{formatSize(f.size || f.file_size)}</span>
+                    {getStatusBadge(f)}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>
+                    <span>{action} by {uploadedBy}</span>
+                    <span>·</span>
+                    <span>{new Date(f.created_at).toLocaleString()}</span>
+                    {f.version && f.version > 1 && (
+                      <>
+                        <span>·</span>
+                        <span style={{ color: BT.text.amber }}>v{f.version}</span>
+                      </>
+                    )}
+                    {extraction && (
+                      <>
+                        <span>·</span>
+                        <span style={{ color: extraction === 'parsed' ? BT.text.green : BT.text.orange }}>
+                          {extraction}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {note && (
+                    <div style={{ fontSize: 8, color: BT.text.secondary, fontStyle: 'italic', fontFamily: BT.font.mono }}>
+                      "{note}"
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
