@@ -1861,8 +1861,17 @@ router.get('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedRe
 /**
  * PATCH /:dealId/financials/override
  *
- * Saves a unit mix rent override to the rent_roll table.
- * Called by UnitMixTab when user edits inPlaceRent or marketRent for a row.
+ * Saves a unit mix rent override. Called by UnitMixTab when the user edits
+ * inPlaceRent or marketRent for a row. Dual persistence path:
+ *   • If a real `rent_roll` row exists at the given index, the rent column is
+ *     UPDATEd in place (or set to NULL when value=null to clear an override).
+ *   • If no row exists at index 0 (the synthesized Default row backed by
+ *     capsule aggregates) — or the legacy `rent_roll` table is gracefully
+ *     absent — the value is upserted into `deal_assumptions.per_year_overrides`
+ *     JSONB under keys `da:unit_mix:0:in_place_rent` / `:market_rent`. The
+ *     composer reads those keys on every load and layers them on top of the
+ *     capsule-synthesized row, so the Unit Mix tab and the Pro Forma OS see
+ *     the same numbers.
  * After write, recalculates the deal's GPR from the updated unit mix.
  */
 router.patch('/:dealId/financials/override', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -1894,12 +1903,14 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     const rowIdx = parseInt(match[1], 10);
     const cellField = match[2];
 
-    // Fetch existing rent roll rows ordered the same way the frontend expects them.
-    // The legacy `rent_roll` table is sometimes absent (some envs only carry
-    // `rent_roll_snapshots`); self-heal by creating it on demand so first-edit
-    // persistence works in fresh environments. The schema mirrors what the
-    // composer SELECTs against.
+    // Fetch existing rent_roll rows ordered the same way the frontend expects.
+    // The legacy `rent_roll` table is intentionally gracefully absent in many
+    // environments (the canonical store is `rent_roll_snapshots`). When it's
+    // missing or empty, we store overrides in `deal_assumptions.per_year_overrides`
+    // (an already-existing JSON column that the composer reads on every load),
+    // keyed by row index + cell field — naturally idempotent.
     let rrRes: { rows: Array<{ id: string; type: string; in_place_rent: number | null; market_rent: number | null }> };
+    let rentRollAvailable = true;
     try {
       rrRes = await pool.query(
         `SELECT id, type, in_place_rent, market_rent
@@ -1907,87 +1918,52 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
         [dealId]
       );
     } catch (selErr: any) {
-      console.warn('rent_roll SELECT failed; attempting self-heal:', selErr?.message);
-      try {
-        await pool.query(`
-          CREATE TABLE IF NOT EXISTS rent_roll (
-            id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-            deal_id         text NOT NULL,
-            type            text NOT NULL,
-            count           integer,
-            avg_sqft        numeric,
-            in_place_rent   numeric,
-            market_rent     numeric,
-            occupancy_pct   numeric,
-            concession_pct  numeric,
-            created_at      timestamptz DEFAULT NOW(),
-            updated_at      timestamptz DEFAULT NOW()
-          );
-          CREATE INDEX IF NOT EXISTS idx_rent_roll_deal_id ON rent_roll (deal_id);
-        `);
-        rrRes = await pool.query(
-          `SELECT id, type, in_place_rent, market_rent
-           FROM rent_roll WHERE deal_id = $1 ORDER BY type ASC`,
-          [dealId]
-        );
-      } catch (createErr: any) {
-        console.warn('rent_roll self-heal failed; treating as zero rows:', createErr?.message);
-        rrRes = { rows: [] };
-      }
+      console.warn('rent_roll SELECT failed; using per_year_overrides for persistence:', selErr?.message);
+      rrRes = { rows: [] };
+      rentRollAvailable = false;
     }
 
     let rowType = 'Default';
 
     if (!rrRes.rows[rowIdx]) {
-      // Row doesn't exist — if this is the first row (index 0) and no rows exist,
-      // auto-insert a default rent_roll row so the user's edit persists. Seed it
-      // with the deal's actual unit count and any aggregates we have on the
-      // capsule (occupancy, avg SF, avg rent) so the row reflects reality from
-      // the start instead of count=1 and all-null cells.
-      if (rowIdx === 0 && rrRes.rows.length === 0) {
+      // No rent_roll row at this index. For the synthesized Default row (index 0
+      // when no real rent_roll rows exist, or whenever the legacy table is absent),
+      // persist the edit in `deal_assumptions.per_year_overrides` — a JSON column
+      // that already exists and is keyed, so writes are naturally idempotent and
+      // there is no "duplicate insert" race. The composer reads this column on
+      // every load and applies the overrides on top of the capsule-synthesized row.
+      if (rowIdx === 0 && (rrRes.rows.length === 0 || !rentRollAvailable)) {
         const numVal = value === null ? null : parseFloat(value);
         if (value !== null && isNaN(numVal as number)) {
           return res.status(400).json({ success: false, error: 'Invalid numeric value' });
         }
 
-        // Resolve total units from the deal record
-        const dealRes = await pool.query(
-          `SELECT target_units, unit_count, deal_data FROM deals WHERE id = $1`,
-          [dealId]
-        );
-        const drow = dealRes.rows[0] || {};
-        const dd = (drow.deal_data && typeof drow.deal_data === 'object') ? drow.deal_data : {};
-        const totalUnits = drow.target_units || drow.unit_count || dd.units || 0;
-
-        // Pull capsule aggregates so the seeded row carries real metadata
-        const { loadCapsuleAggregates } = await import('../../services/financials-composer.service');
-        let capAgg: Awaited<ReturnType<typeof loadCapsuleAggregates>> = null;
-        try { capAgg = await loadCapsuleAggregates(pool, dealId); } catch { capAgg = null; }
-
-        const seedCount = totalUnits > 0 ? totalUnits : (capAgg?.units ?? 1);
-        // Seed the rents:
-        //   • the cell being edited gets the user-entered value
-        //   • the other rent column prefers capsule avgRent, but if none exists it
-        //     mirrors the edited value as a baseline (avoids a misleading null
-        //     market vs. populated in-place — or vice versa — in the UI).
-        const editedVal    = numVal ?? null;
-        const otherSeed    = capAgg?.avgRent ?? editedVal;
-        const inPlaceSeed  = cellField === 'inPlace' ? editedVal : otherSeed;
-        const marketSeed   = cellField === 'market'  ? editedVal : otherSeed;
+        const ovKey = cellField === 'inPlace'
+          ? 'da:unit_mix:0:in_place_rent'
+          : 'da:unit_mix:0:market_rent';
 
         try {
+          // Upsert the override into per_year_overrides JSONB. jsonb_set is used
+          // to write a single key without clobbering siblings; the row in
+          // deal_assumptions is created if it doesn't exist.
           await pool.query(
-            `INSERT INTO rent_roll (deal_id, type, count, avg_sqft, in_place_rent, market_rent, occupancy_pct, concession_pct, created_at, updated_at)
-             VALUES ($1, 'Default', $2, $3, $4, $5, $6, NULL, NOW(), NOW())`,
-            [dealId, seedCount, capAgg?.avgSf ?? null, inPlaceSeed, marketSeed, capAgg?.occupancyPct ?? null]
+            `INSERT INTO deal_assumptions (deal_id, per_year_overrides, created_at, updated_at)
+             VALUES ($1, jsonb_build_object($2::text, jsonb_build_object('value', $3::jsonb)), NOW(), NOW())
+             ON CONFLICT (deal_id) DO UPDATE
+               SET per_year_overrides = jsonb_set(
+                     COALESCE(deal_assumptions.per_year_overrides, '{}'::jsonb),
+                     ARRAY[$2::text],
+                     jsonb_build_object('value', $3::jsonb),
+                     true
+                   ),
+                   updated_at = NOW()`,
+            [dealId, ovKey, numVal === null ? 'null' : JSON.stringify(numVal)]
           );
-        } catch (insErr: any) {
-          // rent_roll write still failing after self-heal attempt — log internals
-          // but only surface a generic message to the client.
-          console.error('rent_roll insert failed:', insErr?.message);
+        } catch (ovErr: any) {
+          console.error('per_year_overrides upsert failed:', ovErr?.message);
           return res.status(500).json({
             success: false,
-            error: 'Could not persist edit: rent_roll storage is unavailable.',
+            error: 'Could not persist edit.',
           });
         }
       } else {

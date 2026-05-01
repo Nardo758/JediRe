@@ -105,18 +105,24 @@ export async function composeDealFinancials(
     ? await loadCapsuleAggregates(pool, dealId)
     : null;
 
-  // 4. Load per-deal flag: use_unit_mix_for_gpr (controls whether revenue rows draw from unit mix)
+  // 4. Load per-deal flag and per_year_overrides (controls GPR mode AND carries
+  // synthesized-row rent overrides written by PATCH /financials/override when the
+  // legacy rent_roll table is absent — keys: `da:unit_mix:0:in_place_rent`/`:market_rent`).
   let useUnitMixForGpr = false;
+  let pyOvs: Record<string, { value: unknown }> = {};
   try {
     const flagRes = await pool.query(
       `SELECT per_year_overrides FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     );
-    const pyOvs = flagRes.rows[0]?.per_year_overrides ?? {};
+    pyOvs = flagRes.rows[0]?.per_year_overrides ?? {};
     useUnitMixForGpr = pyOvs?.['da:use_unit_mix_for_gpr']?.value === true;
   } catch {
     useUnitMixForGpr = false;
   }
+
+  const ovInPlace = numOrNull(pyOvs?.['da:unit_mix:0:in_place_rent']?.value);
+  const ovMarket  = numOrNull(pyOvs?.['da:unit_mix:0:market_rent']?.value);
 
   // 4a. Pre-compute unit mix derived revenue items (used by both buildOSRows
   // and buildRentRollSummary). When rent_roll is empty but capsule aggregates
@@ -127,18 +133,24 @@ export async function composeDealFinancials(
   // between the F9 Unit Mix tab and the Pro Forma operating statement.
   const derivationRows = rentRollRows.length > 0
     ? rentRollRows
-    : (capsuleAggregates ? [{
+    : (capsuleAggregates || ovInPlace != null || ovMarket != null ? [{
         type: 'Default',
-        count: capsuleAggregates.units ?? (totalUnits > 0 ? totalUnits : 0),
-        avg_sqft: capsuleAggregates.avgSf,
-        in_place_rent: capsuleAggregates.avgRent,
-        // No explicit market rent on the capsule — mirror in-place so loss-to-lease
-        // is zero rather than null (a known unknown is more honest than a phantom gap).
-        market_rent: capsuleAggregates.avgRent,
-        occupancy_pct: capsuleAggregates.occupancyPct,
+        count: capsuleAggregates?.units ?? (totalUnits > 0 ? totalUnits : 0),
+        avg_sqft: capsuleAggregates?.avgSf ?? null,
+        // User overrides take precedence; otherwise capsule avgRent. Mirror to
+        // the other column so loss-to-lease is zero (no phantom gap).
+        in_place_rent: ovInPlace ?? capsuleAggregates?.avgRent ?? null,
+        market_rent:   ovMarket  ?? ovInPlace ?? capsuleAggregates?.avgRent ?? null,
+        occupancy_pct: capsuleAggregates?.occupancyPct ?? null,
         concession_pct: null,
       }] : []);
   const unitMixDerived = computeUnitMixDerived(derivationRows);
+
+  // Pass the same overrides to the summary builder so the Default row in the
+  // Unit Mix tab reflects user edits even when no rent_roll row was inserted.
+  const synthesizedOverrides = (rentRollRows.length === 0)
+    ? { inPlaceRent: ovInPlace, marketRent: ovMarket }
+    : null;
 
   // 5. Build operating statement rows
   const year1Rows: OSRow[] = buildOSRows(year1Data, totalUnits, purchasePrice, rentRollRows, unitMixDerived, useUnitMixForGpr);
@@ -153,7 +165,7 @@ export async function composeDealFinancials(
   const valuationSnapshot = buildValuationSnapshot(purchasePrice, totalUnits, year1Rows, deal);
 
   // 9. Build rent roll summary
-  const rentRollSummary = buildRentRollSummary(rentRollRows, totalUnits, unitMixDerived, useUnitMixForGpr, capsuleAggregates);
+  const rentRollSummary = buildRentRollSummary(rentRollRows, totalUnits, unitMixDerived, useUnitMixForGpr, capsuleAggregates, synthesizedOverrides);
 
   // 10. Build traffic projection
   const trafficProjection = buildTrafficProjection();
@@ -614,43 +626,55 @@ function buildRentRollSummary(
   totalUnits: number,
   derived: UnitMixDerived,
   useUnitMixForGpr: boolean,
-  capsuleAggregates: CapsuleAggregates | null = null
+  capsuleAggregates: CapsuleAggregates | null = null,
+  synthesizedOverrides: { inPlaceRent: number | null; marketRent: number | null } | null = null
 ): any | null {
   if (!rentRollRows || rentRollRows.length === 0) {
     // Pick a unit count: prefer the deal's target_units; fall back to capsule.units
     const synthesizedCount = totalUnits > 0 ? totalUnits : (capsuleAggregates?.units ?? 0);
     if (synthesizedCount > 0) {
       // Synthesize a default unit mix row so the UnitMixTab renders with an editable row.
-      // When the rent-roll table is empty, fall back to capsule aggregates (sourced from
-      // OM extraction) so the row carries real occupancy/avg-SF/avg-rent instead of all nulls.
-      const inPlaceRent = capsuleAggregates?.avgRent ?? null;
+      // Layered values for the DISPLAYED row: user override (per_year_overrides) →
+      // capsule aggregate → null. Both columns share the same fallback chain so the
+      // Unit Mix tab and the OS derivation pipeline agree on what the row "is".
+      const ovInPlace = synthesizedOverrides?.inPlaceRent ?? null;
+      const ovMarket  = synthesizedOverrides?.marketRent  ?? null;
+      const inPlaceRent = ovInPlace ?? capsuleAggregates?.avgRent ?? null;
+      const marketRent  = ovMarket  ?? capsuleAggregates?.avgRent ?? null;
       const occupancyPct = capsuleAggregates?.occupancyPct ?? null;
       const avgSf = capsuleAggregates?.avgSf ?? null;
+      // Mark the row as user-overridden when an explicit override exists so the
+      // tab can render an "OVR" badge / reset affordance correctly.
+      const inPlaceOverridden = ovInPlace != null;
+      const marketOverridden  = ovMarket  != null;
       const defaultMix = [{
         type: 'Default',
         count: synthesizedCount,
         avgSf,
         inPlaceRent,
-        marketRent: null,
+        marketRent,
         occupancyPct,
         concessionPct: null,
-        // Provenance: marks the row as synthesized from capsule aggregates rather than
-        // from a real rent_roll snapshot. Frontend may show a "Capsule" badge.
+        inPlaceRentOriginal: capsuleAggregates?.avgRent ?? null,
+        marketRentOriginal: capsuleAggregates?.avgRent ?? null,
+        inPlaceRentOverridden: inPlaceOverridden,
+        marketRentOverridden: marketOverridden,
+        // Provenance: capsule when capsule had data, synthesized otherwise.
         source: capsuleAggregates ? 'capsule' : 'synthesized',
       }];
-      const gprSynth = inPlaceRent != null && synthesizedCount > 0
-        ? inPlaceRent * synthesizedCount * 12
-        : null;
+      // Use the SAME derivation outputs that buildOSRows consumes — derivationRows
+      // was synthesized from the same overrides + capsule, so this guarantees the
+      // Unit Mix tab metrics (gpr/vacancy/loss-to-lease) cannot drift from the
+      // Pro Forma Operating Statement values. Falls back to single-row math only
+      // when the derivation didn't produce a value (no unit count, all rents null).
       return {
         unitMix: defaultMix,
-        avgInPlaceRent: inPlaceRent,
-        weightedOccupancyPct: occupancyPct,
-        gprFromUnitMix: gprSynth,
-        vacancyLossFromUnitMix: gprSynth != null && occupancyPct != null
-          ? gprSynth * (1 - occupancyPct)
-          : null,
-        lossToLeaseFromUnitMix: null,
-        concessionsFromUnitMix: null,
+        avgInPlaceRent: derived.avgInPlaceRent ?? inPlaceRent,
+        weightedOccupancyPct: derived.weightedOccupancyPct ?? occupancyPct,
+        gprFromUnitMix: derived.gprFromUnitMix,
+        vacancyLossFromUnitMix: derived.vacancyLossFromUnitMix,
+        lossToLeaseFromUnitMix: derived.lossToLeaseFromUnitMix,
+        concessionsFromUnitMix: derived.concessionsFromUnitMix,
         useUnitMixForGpr,
       };
     }
@@ -729,6 +753,15 @@ function normalizeOccupancy(raw: unknown): number | null {
 function num(raw: unknown): number | null {
   const n = typeof raw === 'number' ? raw : (raw != null ? Number(raw) : NaN);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// Like num() but accepts 0 and negative values; only nullish/non-finite return null.
+// Used for user-edited override values where 0 (e.g. concession-driven free rent)
+// is meaningful and must not be coerced away.
+function numOrNull(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 export async function loadCapsuleAggregates(pool: Pool, dealId: string): Promise<CapsuleAggregates | null> {
