@@ -1902,27 +1902,41 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     );
 
     if (!rrRes.rows[rowIdx]) {
-      return res.status(404).json({ success: false, error: `Rent roll row ${rowIdx} not found` });
-    }
-
-    const row = rrRes.rows[rowIdx];
-    const dbColumn = cellField === 'inPlace' ? 'in_place_rent' : 'market_rent';
-
-    if (value === null) {
-      // Reset to null (remove override)
-      await pool.query(
-        `UPDATE rent_roll SET ${dbColumn} = NULL, updated_at = NOW() WHERE id = $1`,
-        [row.id]
-      );
-    } else {
-      const numVal = parseFloat(value);
-      if (isNaN(numVal)) {
-        return res.status(400).json({ success: false, error: 'Invalid numeric value' });
+      // Row doesn't exist — if this is the first row (index 0) and no rows exist,
+      // auto-insert a default rent_roll row so the user's edit persists
+      if (rowIdx === 0 && rrRes.rows.length === 0) {
+        const numVal = value === null ? null : parseFloat(value);
+        if (value !== null && isNaN(numVal as number)) {
+          return res.status(400).json({ success: false, error: 'Invalid numeric value' });
+        }
+        await pool.query(
+          `INSERT INTO rent_roll (deal_id, type, count, in_place_rent, market_rent, occupancy_pct, concession_pct, created_at, updated_at)
+           VALUES ($1, 'Default', 1, $2, $2, NULL, NULL, NOW(), NOW())`,
+          [dealId, numVal]
+        );
+      } else {
+        return res.status(404).json({ success: false, error: `Rent roll row ${rowIdx} not found. Expected ${rrRes.rows.length} rows.` });
       }
-      await pool.query(
-        `UPDATE rent_roll SET ${dbColumn} = $1, updated_at = NOW() WHERE id = $2`,
-        [numVal, row.id]
-      );
+    } else {
+      const row = rrRes.rows[rowIdx];
+      const dbColumn = cellField === 'inPlace' ? 'in_place_rent' : 'market_rent';
+
+      if (value === null) {
+        // Reset to null (remove override)
+        await pool.query(
+          `UPDATE rent_roll SET ${dbColumn} = NULL, updated_at = NOW() WHERE id = $1`,
+          [row.id]
+        );
+      } else {
+        const numVal = parseFloat(value);
+        if (isNaN(numVal)) {
+          return res.status(400).json({ success: false, error: 'Invalid numeric value' });
+        }
+        await pool.query(
+          `UPDATE rent_roll SET ${dbColumn} = $1, updated_at = NOW() WHERE id = $2`,
+          [numVal, row.id]
+        );
+      }
     }
 
     // Recalculate and return the updated deal financials

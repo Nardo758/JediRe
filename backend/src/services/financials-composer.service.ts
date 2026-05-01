@@ -585,11 +585,35 @@ function computeUnitMixDerived(rentRollRows: any[]): UnitMixDerived {
 
 function buildRentRollSummary(
   rentRollRows: any[],
-  _totalUnits: number,
+  totalUnits: number,
   derived: UnitMixDerived,
   useUnitMixForGpr: boolean
 ): any | null {
-  if (!rentRollRows || rentRollRows.length === 0) return null;
+  if (!rentRollRows || rentRollRows.length === 0) {
+    if (totalUnits > 0) {
+      // Synthesize a default unit mix row so the UnitMixTab renders with an editable row
+      const defaultMix = [{
+        type: 'Default',
+        count: totalUnits,
+        avgSf: null,
+        inPlaceRent: null,
+        marketRent: null,
+        occupancyPct: null,
+        concessionPct: null,
+      }];
+      return {
+        unitMix: defaultMix,
+        avgInPlaceRent: null,
+        weightedOccupancyPct: null,
+        gprFromUnitMix: null,
+        vacancyLossFromUnitMix: null,
+        lossToLeaseFromUnitMix: null,
+        concessionsFromUnitMix: null,
+        useUnitMixForGpr,
+      };
+    }
+    return null;
+  }
   return {
     unitMix: derived.unitMix,
     avgInPlaceRent: derived.avgInPlaceRent,
