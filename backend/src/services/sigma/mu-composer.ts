@@ -19,7 +19,7 @@
  */
 
 import { logger } from '../../utils/logger';
-import { getMacroValue, MACRO_ANCHOR_MAP, type MacroAnchorConfig } from './macro-fetcher';
+import { getMacroValue, MACRO_ANCHOR_MAP, type MacroAnchorConfig } from './macro/macro-fetcher';
 
 // ─── Default Blend Weights ───────────────────────────────────────────────────
 

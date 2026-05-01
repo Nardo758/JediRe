@@ -308,8 +308,8 @@ router.post('/anchors/project-all', (req: Request, res: Response) => {
     const { dealType, baseValues, macroGrowthRates, horizonYears, stateCode, isSaleTrigger, egiValue } = req.body;
     const tags = dealType ? (dealType as string).split(',') : [];
     const anchors = getAnchorsByDealType(tags);
-    const baseValMap = new Map(Object.entries(baseValues || {}));
-    const macroMap = new Map(Object.entries(macroGrowthRates || {}));
+    const baseValMap: Map<string, number> = new Map(Object.entries(baseValues || {}).map(([k, v]) => [k, Number(v)]));
+    const macroMap: Map<string, number> = new Map(Object.entries(macroGrowthRates || {}).map(([k, v]) => [k, Number(v)]));
     const results = projectAllLineItems(anchors, baseValMap, macroMap,
       horizonYears ?? 5, (stateCode || 'GA').toUpperCase(), isSaleTrigger === true, egiValue ?? 0);
     res.json({ success: true, count: results.length, data: results });

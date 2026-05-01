@@ -22,7 +22,7 @@ import {
   type SolverConstraints,
 } from './sigma-engine';
 import { composeMu, composeAllAnchoredMu } from './mu-composer';
-import { logger } from '../utils/logger';
+import { logger } from '../../utils/logger';
 
 // ─── Dynamic Prior Resolution ────────────────────────────────────────────────
 

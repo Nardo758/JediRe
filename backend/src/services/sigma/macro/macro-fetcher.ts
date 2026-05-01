@@ -15,8 +15,8 @@
  * configurable defaults. Live API calls require an API key.
  */
 
-import { query } from '../../database/connection';
-import { logger } from '../../utils/logger';
+import { query } from '../../../database/connection';
+import { logger } from '../../../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -221,7 +221,8 @@ export async function getRecentObservations(
 ): Promise<{ value: number; date: string }[]> {
   try {
     const result = await query(OBSERVATIONS_RANGE_SQL, [seriesId, limit]);
-    return (result.rows as Array<{ value: number; obs_date: string }>).map(r => ({
+    const raw = result.rows as Array<{ value: number | string; obs_date: string | Date }>;
+    return raw.map(r => ({
       value: Number(r.value),
       date: r.obs_date instanceof Date ? r.obs_date.toISOString().split('T')[0] : String(r.obs_date),
     }));
