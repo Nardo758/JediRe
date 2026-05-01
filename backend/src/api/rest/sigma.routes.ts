@@ -5,32 +5,61 @@ import {
   DEBT_BUNDLES,
   VARIABLE_META,
 } from '../../services/sigma/sigma-engine';
+import { 
+  computePlausibilityWithContext,
+} from '../../services/sigma/sigma-mu-plausibility';
+import {
+  getMuBreakdown,
+} from '../../services/sigma/mu-composer';
+import {
+  MACRO_SERIES,
+  getMacroValue,
+  storeObservation,
+  seedDefaultObservations,
+} from '../../services/sigma/macro/macro-fetcher';
 
 const router = Router();
 
 /**
  * POST /api/v1/sigma/plausibility
  * Score an assumption set for plausibility via Mahalanobis distance.
+ * If empiricalContext is provided, uses macro-anchored μ instead of static priors.
  */
 router.post('/plausibility', async (req: Request, res: Response) => {
   try {
-    const { assumptions } = req.body;
+    const { assumptions, empiricalContext } = req.body;
     if (!assumptions || typeof assumptions !== 'object') {
       return res.status(400).json({ success: false, error: 'assumptions object required' });
     }
 
-    const result = computePlausibility(assumptions);
-
-    res.json({
-      success: true,
-      data: {
-        mahalanobisD: parseFloat(result.dScore.toFixed(3)),
-        band: result.band,
-        contributions: result.contributions,
-        nVariables: Object.keys(result.contributions).length,
-        topContributors: result.topContributors,
-      },
-    });
+    if (empiricalContext && Object.keys(empiricalContext).length > 0) {
+      // Macro-anchored plausibility with dynamic μ
+      const result = await computePlausibilityWithContext(assumptions, empiricalContext);
+      res.json({
+        success: true,
+        data: {
+          mahalanobisD: result.mahalanobisD,
+          band: result.band,
+          contributions: result.contributions,
+          topContributors: result.topContributors,
+          nVariables: Object.keys(result.contributions).length,
+          macroBreakdown: result.macroBreakdown,
+        },
+      });
+    } else {
+      // Static plausibility (backward compatible)
+      const result = computePlausibility(assumptions);
+      res.json({
+        success: true,
+        data: {
+          mahalanobisD: parseFloat(result.dScore.toFixed(3)),
+          band: result.band,
+          contributions: result.contributions,
+          nVariables: Object.keys(result.contributions).length,
+          topContributors: result.topContributors,
+        },
+      });
+    }
   } catch (error: any) {
     console.error('Plausibility error:', error);
     res.status(500).json({ success: false, error: error.message || 'Failed to compute plausibility' });
@@ -130,6 +159,87 @@ router.get('/variables', (_req: Request, res: Response) => {
       std: meta.std,
     })),
   });
+});
+
+/**
+ * GET /api/v1/sigma/mu/breakdown
+ * Show the macro-anchored μ breakdown for inspection.
+ * Query params: metric, muEmpirical, metricStd
+ */
+router.get('/mu/breakdown', async (req: Request, res: Response) => {
+  try {
+    const { metric, muEmpirical, metricStd } = req.query;
+
+    if (!metric || typeof metric !== 'string') {
+      return res.status(400).json({ success: false, error: 'metric query param required' });
+    }
+
+    const emp = muEmpirical ? parseFloat(muEmpirical as string) : 0.065;
+    const std = metricStd ? parseFloat(metricStd as string) : 0.012;
+
+    const breakdown = await getMuBreakdown(metric, emp, std);
+    res.json({ success: true, data: breakdown });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/sigma/macro/series
+ * List all tracked macro series and their latest values.
+ */
+router.get('/macro/series', async (_req: Request, res: Response) => {
+  try {
+    const seriesInfo = await Promise.all(
+      MACRO_SERIES.map(async (series) => {
+        const latest = await getMacroValue(series.seriesId);
+        return {
+          seriesId: series.seriesId,
+          name: series.name,
+          unit: series.unit,
+          refreshCadence: series.refreshCadence,
+          currentValue: latest.value,
+          source: latest.source,
+          observationDate: latest.observationDate,
+          defaultFallback: series.defaultFallback,
+        };
+      })
+    );
+    res.json({ success: true, data: seriesInfo });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/sigma/macro/seed
+ * Seed default macro observations into DB.
+ * Admin endpoint, called on first deploy.
+ */
+router.post('/macro/seed', async (_req: Request, res: Response) => {
+  try {
+    await seedDefaultObservations();
+    res.json({ success: true, message: 'Default macro observations seeded' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/sigma/macro/observation
+ * Store a manual macro observation (useful for REPL/importer).
+ */
+router.post('/macro/observation', async (req: Request, res: Response) => {
+  try {
+    const { seriesId, value, obsDate, source } = req.body;
+    if (!seriesId || value == null || !obsDate) {
+      return res.status(400).json({ success: false, error: 'seriesId, value, obsDate required' });
+    }
+    await storeObservation(seriesId, value, obsDate, source || 'manual');
+    res.json({ success: true, message: 'Observation stored' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 export default router;
