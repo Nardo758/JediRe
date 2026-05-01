@@ -372,7 +372,7 @@ export class FinancialModelEngineService {
 
     // PHASE 2: Enhance assumptions with M26 tax and M27 comp data
     const { m26m27ProFormaEnhancer } = await import('./financial-model-engine.m26-m27-enhancer');
-    const enhancedAssumptions = await m26m27ProFormaEnhancer.enhanceAssumptions(dealId, assumptions);
+    const enhancedAssumptions = await m26m27ProFormaEnhancer.enhanceAssumptions(dealId, assumptions) as ProFormaAssumptions;
     
     // Phase B2: Apply anchor interceptor to replace flat growth rates with macro-anchored rates
     try {
