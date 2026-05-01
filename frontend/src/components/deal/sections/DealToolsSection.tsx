@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../../services/api.client';
 import {
   MessageSquare, Users, Calendar, FileText, FolderOpen, Files,
-  Plus, Trash2, Pin, Edit2, Save, X, ChevronDown, ChevronUp,
+  Plus, Trash2, Pin, Edit2, Save, X, ChevronDown, ChevronUp, Download,
   Phone, Mail, Building2, User, Clock, Bot, UserCheck,
 } from 'lucide-react';
 import { BT } from '../bloomberg-ui';
@@ -735,6 +735,22 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
     await fetchFiles();
   };
 
+  const downloadFile = async (fileId: string, filename: string) => {
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/files/${fileId}/download`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download file:', err);
+    }
+  };
+
   const deleteFile = async (fileId: string) => {
     try {
       await apiClient.delete(`/api/v1/deals/${dealId}/files/${fileId}`);
@@ -837,7 +853,14 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
                   <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{formatSize(f.size || f.file_size)}</span>
                   <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{new Date(f.created_at).toLocaleDateString()}</span>
                   {getStatusBadge(f)}
-                  <button onClick={() => deleteFile(f.id)} style={{
+                  <button onClick={() => downloadFile(f.id, f.name || f.original_filename)} title="Download" style={{
+                    background: 'transparent', border: 'none',
+                    cursor: 'pointer', color: BT.text.cyan,
+                    padding: 2, display: 'flex',
+                  }}>
+                    <Download size={12} />
+                  </button>
+                  <button onClick={() => deleteFile(f.id)} title="Delete" style={{
                     background: 'transparent', border: 'none',
                     cursor: 'pointer', color: BT.text.muted,
                     padding: 2, display: 'flex',
