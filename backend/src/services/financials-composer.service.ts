@@ -245,20 +245,49 @@ function buildOSRows(
     return rows;
   }
 
+  // ─── LayeredValue extraction ────────────────────────────────────────────────
+  // year1 stores each field as { resolved, t12, om, rent_roll, tax_bill, platform, override, resolution }.
+  // Helpers: lv() returns the LayeredValue object (or empty); res() the resolved number.
+  type LV = {
+    resolved?: number | null; t12?: number | null; om?: number | null;
+    rent_roll?: number | null; tax_bill?: number | null; platform?: number | null;
+    override?: number | null; resolution?: string;
+  };
+  function lv(key: string): LV {
+    const v = y1?.[key];
+    if (v && typeof v === 'object') return v as LV;
+    if (typeof v === 'number') return { resolved: v };  // legacy plain-number fallback
+    return {};
+  }
+  function res(key: string): number | null {
+    const v = lv(key);
+    return v.resolved ?? v.platform ?? null;
+  }
+
   // ─── Revenue ────────────────────────────────────────────────────────────────
   // Mirrors Projections REVENUE block. When useUnitMixForGpr is on AND the unit
   // mix has the relevant data, we resolve from unit mix; otherwise fall back to
-  // year1 platform values. Source field signals provenance to the UI.
+  // year1 platform values.
 
-  // Platform-side values (year1 JSONB shape)
-  const platformGpr           = y1.gpr ?? null;
-  const platformVacancyPct    = y1.vacancyPct ?? y1.vacancy_pct ?? null;
-  const platformVacancyLoss   = y1.vacancyLoss ?? (platformGpr != null && platformVacancyPct != null ? platformGpr * platformVacancyPct : (y1.vacancy ?? null));
-  const platformL2L           = y1.lossToLease ?? (platformGpr != null && y1.lossToLeasePct != null ? platformGpr * y1.lossToLeasePct : (platformGpr != null && y1.loss_to_lease_pct != null ? platformGpr * y1.loss_to_lease_pct : null));
-  const platformConcessions   = y1.concessions ?? (platformGpr != null && (y1.concessionsPct ?? y1.concessions_pct) != null ? platformGpr * (y1.concessionsPct ?? y1.concessions_pct) : null);
-  const platformBadDebt       = y1.badDebt ?? (platformGpr != null && (y1.badDebtPct ?? y1.bad_debt_pct) != null ? platformGpr * (y1.badDebtPct ?? y1.bad_debt_pct) : null);
-  const platformNRU           = y1.nru ?? y1.nonRevenueUnits ?? (platformGpr != null && (y1.nonRevenueUnitsPct ?? y1.non_revenue_units_pct) != null ? platformGpr * (y1.nonRevenueUnitsPct ?? y1.non_revenue_units_pct) : null);
-  const platformOtherIncome   = y1.otherIncome ?? null;
+  // Convert percentage-of-GPR fields to dollar amounts
+  const gprY1 = res('gpr');
+  const pctToDollar = (pctKey: string): number | null => {
+    const pct = res(pctKey);
+    if (pct == null || gprY1 == null) return null;
+    return gprY1 * pct;
+  };
+
+  const platformGpr           = gprY1;
+  const platformVacancyLoss   = pctToDollar('vacancy_pct');
+  const platformL2L           = pctToDollar('loss_to_lease_pct');
+  const platformConcessions   = pctToDollar('concessions_pct');
+  const platformBadDebt       = pctToDollar('bad_debt_pct');
+  const platformNRU           = pctToDollar('non_revenue_units_pct');
+  const totalUnitsForOI       = totalUnits || 0;
+  const otherIncPerUnitMo     = res('other_income_per_unit');  // monthly per unit
+  const platformOtherIncome   = otherIncPerUnitMo != null && totalUnitsForOI > 0
+    ? otherIncPerUnitMo * totalUnitsForOI * 12
+    : null;
 
   // Unit-mix-derived values (when available); chooseSource picks per row
   const um = unitMixDerived;
@@ -273,14 +302,14 @@ function buildOSRows(
   const vacPick   = chooseSource(um.vacancyLossFromUnitMix, platformVacancyLoss);
   const l2lPick   = chooseSource(um.lossToLeaseFromUnitMix, platformL2L);
   const concPick  = chooseSource(um.concessionsFromUnitMix, platformConcessions);
-  const nruPick   = chooseSource<number>(null, platformNRU);  // no per-type non-revenue flag in unit mix yet
+  const nruPick   = chooseSource<number>(null, platformNRU);
   const otherPick = chooseSource<number>(null, platformOtherIncome);
 
-  // Bad Debt: per spec, sourced from T-12 or Rent Roll (never unit mix).
-  // year1.badDebtSource is set by the proforma seeder when the value originated
-  // from a parsed T-12 or rent roll. Fall back to 'platform' (don't mislabel).
-  const badDebtSource: string = (typeof y1.badDebtSource === 'string' && (y1.badDebtSource === 't12' || y1.badDebtSource === 'rent_roll'))
-    ? y1.badDebtSource
+  // Bad Debt: per spec, T-12 or Rent Roll. Use the LayeredValue's resolution to
+  // determine source honestly.
+  const badDebtLV = lv('bad_debt_pct');
+  const badDebtSource: string = badDebtLV.resolution === 't12' || badDebtLV.resolution === 'rent_roll'
+    ? badDebtLV.resolution
     : 'platform';
 
   // Net Rental Income = GPR − Vacancy Loss − L2L − Concessions − Bad Debt − NRU
@@ -295,10 +324,10 @@ function buildOSRows(
   })();
 
   // EGI = NRI + Other Income (prefer year1 stored EGI when present)
-  const egi = y1.egi ?? y1.effectiveGrossIncome
-    ?? (nri != null ? nri + (otherPick.resolved ?? 0) : null);
+  const egiY1 = res('egi');
+  const egi = egiY1 ?? (nri != null ? nri + (otherPick.resolved ?? 0) : null);
 
-  addRow('gpr',                'Gross Potential Rent',       gprPick.resolved,    { isSubtotal: true, source: gprPick.source, platform: platformGpr, rentRoll: um.gprFromUnitMix });
+  addRow('gpr',                'Gross Potential Rent',       gprPick.resolved,    { isSubtotal: true, source: gprPick.source, platform: platformGpr, rentRoll: um.gprFromUnitMix, t12: lv('gpr').t12 });
   addRow('vacancy_loss',       'Vacancy Loss',               vacPick.resolved,    { source: vacPick.source, platform: platformVacancyLoss, rentRoll: um.vacancyLossFromUnitMix });
   addRow('loss_to_lease',      'Loss to Lease',              l2lPick.resolved,    { source: l2lPick.source, platform: platformL2L, rentRoll: um.lossToLeaseFromUnitMix });
   addRow('concessions',        'Concessions',                concPick.resolved,   { source: concPick.source, platform: platformConcessions, rentRoll: um.concessionsFromUnitMix });
@@ -312,24 +341,79 @@ function buildOSRows(
   addRow('other_income',       'Other Income',               otherPick.resolved,  { source: otherPick.source, platform: platformOtherIncome });
   addRow('egi',                'Effective Gross Income',     egi,                  { isSubtotal: true });
 
-  // Expenses
-  addRow('total_opex', 'Total Operating Expenses', null, { isSubtotal: true });
-  addRow('real_estate_taxes', 'Real Estate Taxes', y1.realEstateTaxes ?? null);
-  addRow('insurance', 'Insurance', y1.insurance ?? null);
-  addRow('utilities', 'Utilities', y1.utilities ?? null);
-  addRow('repairs_maintenance', 'Repairs & Maintenance', y1.repairsMaintenance ?? null);
-  addRow('management', 'Management', y1.management ?? null);
-  addRow('payroll', 'Payroll', y1.payroll ?? null);
-  addRow('marketing', 'Marketing', y1.marketing ?? null);
-  addRow('other_opex', 'Other OpEx', y1.otherOpEx ?? null);
-  addRow('total_opex_sum', 'Total OpEx', y1.totalOpEx ?? null, { isSubtotal: true });
+  // ─── Expenses (mirrors Projections EXPENSES section) ───────────────────────
+  // Helper: emit an expense row pulling resolved + source columns from the LayeredValue.
+  function addExpenseRow(field: string, label: string, key: string) {
+    const v = lv(key);
+    addRow(field, label, v.resolved ?? v.platform ?? null, {
+      source:   v.resolution ?? 'platform',
+      t12:      v.t12       ?? null,
+      rentRoll: v.rent_roll ?? null,
+      taxBill:  v.tax_bill  ?? null,
+      platform: v.platform  ?? null,
+    });
+  }
+
+  addExpenseRow('payroll',             'Payroll / Personnel',       'payroll');
+  addExpenseRow('repairs_maintenance', 'Repairs & Maintenance',     'repairs_maintenance');
+  addExpenseRow('turnover',            'Turnover / Make-Ready',     'turnover');
+  addExpenseRow('contract_services',   'Contract Services',         'contract_services');
+  addExpenseRow('marketing',           'Marketing & Leasing',       'marketing');
+  addExpenseRow('utilities',           'Utilities',                 'utilities');
+  addExpenseRow('g_and_a',             'G&A / Administrative',      'g_and_a');
+
+  // Management Fee: stored as a percent of EGI in year1.management_fee_pct.
+  // Convert to a dollar value using the EGI computed above so the row matches Projections.
+  const mgmtPctLV = lv('management_fee_pct');
+  const mgmtPct = mgmtPctLV.resolved ?? mgmtPctLV.platform ?? null;
+  const mgmtFeeDollar = (mgmtPct != null && egi != null) ? mgmtPct * egi : null;
+  addRow('management_fee', 'Management Fee', mgmtFeeDollar, {
+    source:   mgmtPctLV.resolution ?? 'platform',
+    t12:      mgmtPctLV.t12 != null && egi != null ? mgmtPctLV.t12 * egi : null,
+    platform: mgmtPctLV.platform != null && egi != null ? mgmtPctLV.platform * egi : null,
+  });
+
+  addExpenseRow('insurance',            'Insurance',           'insurance');
+  addExpenseRow('real_estate_taxes',    'Real Estate Taxes',   'real_estate_tax');
+  addExpenseRow('replacement_reserves', 'Replacement Reserves','replacement_reserves');
+
+  // Total OpEx — prefer stored value, otherwise sum the rows we just added
+  // plus any custom_opex_* GL line items the seeder may have surfaced.
+  const storedTotalOpex = res('total_opex');
+  const summedOpex = (() => {
+    const keys = ['payroll', 'repairs_maintenance', 'turnover', 'contract_services',
+                  'marketing', 'utilities', 'g_and_a', 'insurance', 'real_estate_tax',
+                  'replacement_reserves', 'amenities', 'office', 'hoa_dues',
+                  'personal_property_tax'];
+    let sum = 0; let any = false;
+    for (const k of keys) {
+      const v = res(k);
+      if (v != null) { sum += v; any = true; }
+    }
+    if (mgmtFeeDollar != null) { sum += mgmtFeeDollar; any = true; }
+    // Pull in any custom_opex_* GL items not in the canonical list
+    if (y1 && typeof y1 === 'object') {
+      for (const k of Object.keys(y1)) {
+        if (k.startsWith('custom_opex_')) {
+          const v = res(k);
+          if (v != null) { sum += v; any = true; }
+        }
+      }
+    }
+    return any ? sum : null;
+  })();
+  addRow('total_opex', 'Total Operating Expenses',
+    storedTotalOpex ?? summedOpex, { isSubtotal: true });
 
   // NOI
-  addRow('noi', 'Net Operating Income', y1.noi ?? y1.netOperatingIncome ?? null, { isSubtotal: true });
+  const noiY1 = res('noi');
+  const totalOpForNoi = storedTotalOpex ?? summedOpex;
+  const computedNoi = (egi != null && totalOpForNoi != null) ? egi - totalOpForNoi : null;
+  addRow('noi', 'Net Operating Income', noiY1 ?? computedNoi, { isSubtotal: true });
 
-  // Debt
-  addRow('debt_service', 'Debt Service', y1.debtService ?? null);
-  addRow('pre_tax_cash_flow', 'Pre-Tax Cash Flow', y1.preTaxCashFlow ?? null, { isSubtotal: true });
+  // Debt (composer doesn't surface debt yet — leave nullable rows)
+  addRow('debt_service',      'Debt Service',      null);
+  addRow('pre_tax_cash_flow', 'Pre-Tax Cash Flow', null, { isSubtotal: true });
 
   return rows;
 }
