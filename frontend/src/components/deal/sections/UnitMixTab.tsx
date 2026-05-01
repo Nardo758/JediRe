@@ -266,7 +266,7 @@ function FloorPlanUnitDetail({ floorplan, units }: {
 
   return (
     <tr style={{ background: '#050a0f' }}>
-      <td colSpan={12} style={{ padding: 0 }}>
+      <td colSpan={11} style={{ padding: 0 }}>
         <div style={{ borderTop: `1px solid ${C.cyan}33`, borderBottom: `1px solid ${C.cyan}33` }}>
           <div style={{ padding: '6px 12px', background: '#0a0e15', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.cyan, letterSpacing: '0.08em' }}>

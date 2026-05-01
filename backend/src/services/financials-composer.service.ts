@@ -901,10 +901,16 @@ function buildRentRollSummary(
         lossToLeaseFromUnitMix: derived.lossToLeaseFromUnitMix,
         concessionsFromUnitMix: derived.concessionsFromUnitMix,
         useUnitMixForGpr,
+        // Top-level provenance mirrors the row's source so downstream
+        // consumers (e.g. ProFormaSummaryTab badges, banners) can read
+        // either field consistently.
+        source: capsuleAggregates ? 'capsule' : 'synthesized',
       };
     }
     return null;
   }
+  // Tier 1: legacy SQL `rent_roll` table — explicit source so downstream
+  // provenance handling is uniform across all tiers.
   return {
     unitMix: derived.unitMix,
     avgInPlaceRent: derived.avgInPlaceRent,
@@ -914,6 +920,7 @@ function buildRentRollSummary(
     lossToLeaseFromUnitMix: derived.lossToLeaseFromUnitMix,
     concessionsFromUnitMix: derived.concessionsFromUnitMix,
     useUnitMixForGpr,
+    source: 'rent_roll',
   };
 }
 
