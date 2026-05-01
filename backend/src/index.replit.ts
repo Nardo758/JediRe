@@ -609,11 +609,15 @@ app.use('/api/v1/lifecycle', lifecycleRouter);
 
 // organization.routes.ts: deal team assignments, phase handoffs, context tracker, DocuSign/Notarize/Plaid credentials (/api/v1/organization/...)
 import organizationRouter from './api/rest/organization.routes';
+import sigmaRouter from './api/rest/sigma.routes';
 import { designMassingRouter } from './services/design/design-massing.service';
 app.use('/api/v1/organization', organizationRouter);
 
 // Design 3D — AI massing generation
 app.use('/api/v1/design', requireAuth, designMassingRouter);
+
+// M36 Joint Distribution Engine — plausibility scoring + goal-seeking
+app.use('/api/v1/sigma', requireAuth, sigmaRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 
