@@ -801,14 +801,20 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
   };
 
   const getStatusBadge = (file: any) => {
-    const status = file.extraction_status || file.status;
-    if (status === 'completed' || status === 'final' || status === 'parsed') {
-      return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.green + '22', color: BT.text.green, fontFamily: BT.font.mono }}>✅ parsed</span>;
+    const exSt = file.extraction_status;
+    if (exSt === 'done' || exSt === 'completed' || exSt === 'parsed' || file.status === 'final') {
+      return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.green + '22', color: BT.text.green, fontFamily: BT.font.mono }}>✓ parsed</span>;
     }
-    if (status === 'processing') {
-      return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.orange + '22', color: BT.text.orange, fontFamily: BT.font.mono }}>🔄 processing</span>;
+    if (exSt === 'failed') {
+      return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.red + '22', color: BT.text.red, fontFamily: BT.font.mono }}>✗ failed</span>;
     }
-    return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.muted + '22', color: BT.text.muted, fontFamily: BT.font.mono }}>⏳ pending</span>;
+    if (exSt === 'running' || exSt === 'processing') {
+      return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.orange + '22', color: BT.text.orange, fontFamily: BT.font.mono }}>↻ processing</span>;
+    }
+    if (exSt === 'skipped') {
+      return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.muted + '22', color: BT.text.muted, fontFamily: BT.font.mono }}>– skipped</span>;
+    }
+    return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.muted + '22', color: BT.text.muted, fontFamily: BT.font.mono }}>⏳ queued</span>;
   };
 
   if (loading) return <LoadingState />;
@@ -1019,8 +1025,8 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
               const isModelVersion = f.type === 'model_version';
               const uploadedBy = f.uploaded_by_name || f.uploaded_by || 'unknown';
               const note = f.version_notes || '';
-              const extraction = !isModelVersion && (f.extraction_status === 'completed' || f.extraction_status === 'parsed')
-                ? 'parsed' : !isModelVersion && f.extraction_status === 'processing' ? 'processing' : null;
+              const extraction = !isModelVersion && (f.extraction_status === 'done' || f.extraction_status === 'completed' || f.extraction_status === 'parsed')
+                ? 'parsed' : !isModelVersion && (f.extraction_status === 'running' || f.extraction_status === 'processing') ? 'processing' : !isModelVersion && f.extraction_status === 'failed' ? 'failed' : null;
 
               return (
                 <div key={f.id} style={{
@@ -1074,7 +1080,7 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
                     {!isModelVersion && extraction && (
                       <>
                         <span>·</span>
-                        <span style={{ color: extraction === 'parsed' ? BT.text.green : BT.text.orange }}>
+                        <span style={{ color: extraction === 'parsed' ? BT.text.green : extraction === 'failed' ? BT.text.red : BT.text.orange }}>
                           {extraction}
                         </span>
                       </>
