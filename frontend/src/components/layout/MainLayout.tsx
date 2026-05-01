@@ -13,6 +13,7 @@ import { TickerBar } from '../terminal/TickerBar';
 import { Badge } from '../terminal/Badge';
 import { useTradeAreaStore } from '../../stores/tradeAreaStore';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 const DEFAULT_MAP_ID = 'default';
 
@@ -200,6 +201,7 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
   const items = isInsideDeal ? DEAL_NAV : PORTFOLIO_NAV;
   const [dealActiveTab, setDealActiveTab] = useState('overview');
   const { isDark, toggleTheme } = useTheme();
+  const { logout } = useAuth();
 
   useEffect(() => {
     if (!isInsideDeal) return;
@@ -286,6 +288,27 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
         onMouseLeave={e => { (e.currentTarget.style.color = T.text.secondary); }}
       >
         {isDark ? '☀' : '☾'}
+      </button>
+      <button
+        onClick={logout}
+        title="Log out"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          height: '100%', padding: '0 12px',
+          background: 'transparent', border: 'none',
+          borderLeft: `1px solid ${T.border.subtle}`,
+          cursor: 'pointer',
+          fontSize: T.fontSize.xs,
+          fontFamily: T.font.mono,
+          fontWeight: 600,
+          letterSpacing: 0.8,
+          color: T.text.muted,
+          transition: 'color 0.15s',
+        }}
+        onMouseEnter={e => { (e.currentTarget.style.color = T.text.red ?? '#ef4444'); }}
+        onMouseLeave={e => { (e.currentTarget.style.color = T.text.muted); }}
+      >
+        LOGOUT
       </button>
       <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${T.border.subtle}`, paddingLeft: 12, paddingRight: 12 }}>
         <span style={{
