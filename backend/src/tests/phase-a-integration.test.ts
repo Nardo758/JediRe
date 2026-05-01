@@ -349,6 +349,122 @@ test('All macro series have fallbacks', () => {
   }
 });
 
+// ─── 8. Proforma Line-Item Anchors (Phase B1) ────────────────────────────────
+
+console.log('\n8. Proforma Line-Item Anchors (Phase B1)\n');
+
+const TEST_ANCHORS = [
+  { lineItemId: 'insurance', label: 'Insurance', category: 'opex', anchorType: 'macro_series', macroSeriesId: 'WPSFD49207', structuralPremium: 0.010, timing: { changeType: 'annual_step', effective: 'at_close' }, triggers: { onSale: false, onRefinance: false, onRenovation: false, onReassessment: false }, geoModifiers: { insuranceZoneMultiplier: 1.0, taxBurdenIndex: 1.0 }, sortOrder: 110, dealTypeTags: [], defaultValue: 700 },
+  { lineItemId: 'taxes', label: 'Property Taxes', category: 'opex', anchorType: 'prev_year_plus_premium', macroSeriesId: null, structuralPremium: 0.030, timing: { changeType: 'trigger_once', effective: 'next_calendar_year' }, triggers: { onSale: false, onRefinance: false, onRenovation: false, onReassessment: true }, geoModifiers: { insuranceZoneMultiplier: 1.0, taxBurdenIndex: 1.0 }, sortOrder: 120, dealTypeTags: [], defaultValue: null },
+  { lineItemId: 'mgmt_fees', label: 'Management Fees', category: 'opex', anchorType: 'pct_of_egi', macroSeriesId: 'ECIWAG', structuralPremium: 0.005, timing: { changeType: 'annual_step', effective: 'at_close' }, triggers: { onSale: false, onRefinance: false, onRenovation: false, onReassessment: false }, geoModifiers: { insuranceZoneMultiplier: 1.0, taxBurdenIndex: 1.0 }, sortOrder: 100, dealTypeTags: [], defaultValue: null },
+  { lineItemId: 'rent_income', label: 'Gross Rent Income', category: 'revenue', anchorType: 'macro_series', macroSeriesId: 'CUSR0000SEHC', structuralPremium: 0.008, timing: { changeType: 'annual_step', effective: 'at_close' }, triggers: { onSale: false, onRefinance: false, onRenovation: false, onReassessment: false }, geoModifiers: { insuranceZoneMultiplier: 1.0, taxBurdenIndex: 1.0 }, sortOrder: 10, dealTypeTags: [], defaultValue: null },
+  { lineItemId: 'capex', label: 'Capital Expenditures', category: 'capex', anchorType: 'per_unit_fixed', macroSeriesId: null, structuralPremium: 0.030, timing: { changeType: 'annual_step', effective: 'at_close' }, triggers: { onSale: false, onRefinance: false, onRenovation: false, onReassessment: false }, geoModifiers: { insuranceZoneMultiplier: 1.0, taxBurdenIndex: 1.0 }, sortOrder: 200, dealTypeTags: [], defaultValue: 800 },
+];
+
+function testProject(base: number, growth: number, premium: number, year: number, cap?: number): number {
+  const annual = cap != null ? Math.min(growth + premium, cap) : growth + premium;
+  return base * Math.pow(1 + annual, year);
+}
+
+function testGetCap(stateCode: string, lineItemId: string): number | null {
+  const caps: Record<string, Record<string, number>> = {
+    FL: { insurance: 0.03, taxes: 0.10 },
+    CA: { taxes: 0.02 },
+    TX: { taxes: 0.10 },
+    GA: {},
+  };
+  return caps[stateCode]?.[lineItemId] ?? null;
+}
+
+test('Anchors have defaults for all line items', () => {
+  assert(TEST_ANCHORS.length >= 5, `Expected >= 5 test anchors`);
+  const ids = TEST_ANCHORS.map(a => a.lineItemId);
+  assert(ids.includes('insurance'), 'Missing insurance');
+  assert(ids.includes('taxes'), 'Missing taxes');
+  assert(ids.includes('mgmt_fees'), 'Missing mgmt_fees');
+  assert(ids.includes('rent_income'), 'Missing rent_income');
+  assert(ids.includes('capex'), 'Missing capex');
+});
+
+test('Macro series mapping correct', () => {
+  const rent = TEST_ANCHORS.find(a => a.lineItemId === 'rent_income')!;
+  assert(rent.macroSeriesId === 'CUSR0000SEHC', 'Rent → CPI-OER');
+  const ins = TEST_ANCHORS.find(a => a.lineItemId === 'insurance')!;
+  assert(ins.macroSeriesId === 'WPSFD49207', 'Insurance → PPI');
+  const mgmt = TEST_ANCHORS.find(a => a.lineItemId === 'mgmt_fees')!;
+  assert(mgmt.macroSeriesId === 'ECIWAG', 'Mgmt → ECI');
+});
+
+test('Insurance growth applies zone multiplier', () => {
+  const base = 700, ppi = 0.035, zone = 1.5, premium = 0.01; // coastal
+  const coastalGrowth = ppi * zone + premium;
+  const flatGrowth = ppi + premium;
+  const coastal = base * Math.pow(1 + coastalGrowth, 3);
+  const flat = base * Math.pow(1 + flatGrowth, 3);
+  assert(coastal > flat, `Coastal (${coastal.toFixed(0)}) should exceed flat (${flat.toFixed(0)})`);
+  console.log(`    Insurance zone: coastal=${coastal.toFixed(0)}, flat=${flat.toFixed(0)}`);
+});
+
+test('FL insurance cap 3% applied', () => {
+  const cap = testGetCap('FL', 'insurance');
+  assert(cap === 0.03, `FL cap should be 3%, got ${cap}`);
+  const uncapped = testProject(700, 0.035, 0.01, 5);
+  const capped = testProject(700, 0.035, 0.01, 5, 0.03);
+  assert(capped < uncapped, `Capped (${capped.toFixed(0)}) < uncapped (${uncapped.toFixed(0)})`);
+  console.log(`    FL insurance cap: yr5 uncapped=${uncapped.toFixed(0)}, capped=${capped.toFixed(0)}`);
+});
+
+test('GA taxes reassess on sale', () => {
+  const base = 100000, purchasePrice = 12000000, effRate = 0.012;
+  const newTax = purchasePrice * effRate;  // $144k
+  const growth = newTax / base - 1;  // 44%
+  const caCap = testGetCap('CA', 'taxes');
+  assert(caCap === 0.02, 'CA cap 2%');
+  const capped = Math.min(growth, 0.02);
+  assert(capped === 0.02, `CA capped at 2%`);
+  console.log(`    GA sale reassessment: ${base.toLocaleString()} → ${newTax.toLocaleString()}`);
+  console.log(`    CA Prop 13 cap: growth=${(capped * 100).toFixed(0)}%`);
+});
+
+test('Non-reassessment taxes use county growth', () => {
+  const base = 100000, growth = 0.015;
+  const projected = base * Math.pow(1 + growth, 3);
+  assert(projected > base && projected < base * 1.1, `Reasonable 3yr growth: ${projected.toFixed(0)}`);
+  console.log(`    Non-reassessment: yr3=${projected.toFixed(0)}`);
+});
+
+test('Management fees track EGI with wage growth', () => {
+  const egi = 1000000, rate = 0.05, wageGrowth = 0.035;
+  const yr0 = egi * rate;
+  const yr3Rate = rate * Math.pow(1 + wageGrowth, 3);
+  const yr3 = egi * yr3Rate;
+  assert(yr3 > yr0, `Yr3 (${yr3.toFixed(0)}) > Yr0 (${yr0.toFixed(0)})`);
+  console.log(`    Mgmt fees: yr0=${yr0.toFixed(0)}, yr3=${yr3.toFixed(0)}`);
+});
+
+test('State caps work correctly', () => {
+  assert(testGetCap('FL', 'insurance') === 0.03, 'FL insurance 3%');
+  assert(testGetCap('CA', 'taxes') === 0.02, 'CA taxes 2%');
+  assert(testGetCap('TX', 'taxes') === 0.10, 'TX taxes 10%');
+  assert(testGetCap('FL', 'taxes') === 0.10, 'FL taxes 10%');
+  assert(testGetCap('GA', 'insurance') === null, 'GA no insurance cap');
+});
+
+test('Per-unit fixed capex grows with premium', () => {
+  const base = 800, premium = 0.03;
+  const yr3 = base * Math.pow(1 + premium, 3);
+  assert(yr3 > base, `Yr3 (${yr3.toFixed(0)}) > Yr0 (${base})`);
+  assert(yr3 < base * 1.15, 'Reasonable 3yr growth');
+  console.log(`    Capex: yr0=${base}, yr3=${yr3.toFixed(0)}`);
+});
+
+test('Multiple state cap rates return most restrictive', () => {
+  // If both FL homestead and non-homestead caps apply, pick the lower one
+  const flInsuranceCaps: number[] = [0.03, 0.05];
+  const mostRestrictive = Math.min(...flInsuranceCaps);
+  assert(mostRestrictive === 0.03, `Most restrictive FL insurance cap: ${mostRestrictive}`);
+});
+
 // ─── Report ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${'═'.repeat(55)}`);

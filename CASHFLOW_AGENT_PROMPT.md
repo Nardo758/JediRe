@@ -163,3 +163,46 @@ Top contributors to score:
 | User locks variables that block target | "With [locked vars] held fixed, the solver can't reach [target]. If you're willing to adjust [which vars], the target becomes achievable at d=[score]." |
 | Multiple bundles hit target at similar d | "Two bundles achieve the target at similar plausibility. [Bundle A] has lower rate risk (fixed); [Bundle B] has faster closing (bridge). Recommend based on your timeline preference." |
 | No debt info provided | Using standard assumptions for this asset class. Run `POST /api/v1/sigma/goal-seek` with current deal data for a calibrated recommendation. |
+
+---
+
+## Proforma Line-Item Anchors
+
+Each line item on the proforma has its own growth driver and timing rules.
+The agent MUST consider these when projecting multi-year cash flows:
+
+| Line Item | Anchor | Timing Rule | State Override Example |
+|-----------|--------|-------------|----------------------|
+| Insurance | PPI insurance (WPSFD49207 proxy) + climate zone | Annual step | FL: 3% cap on rate increases. LA: 10% cap. |
+| Taxes | Local millage rate + county assessment cycle | Trigger on sale (GA, NC). Annual (TX). Triennial (IL). | GA: reassesses on sale within 6mo. CA: Prop 13 caps at 2%/yr. TX: 10% homestead cap |
+| Management | ECI wages (ECIWAG) | Annual step. Can be locked in 3yr contract. | N/A — market-negotiated |
+| Utilities | CPI-OER + 50bps | Annual step. Submetered = pass-through. Bulk = full market. | N/A |
+| Repairs & Maint | PPI residential + 50bps | Annual step. Newer builds = lower. | N/A |
+| Reserves | Previous year + 2.5% | Annual step. Floor by reserve study. | N/A |
+| Other Income | Previous year + 2% | Annual step. | N/A |
+| Capex | Per-unit fixed + 3% | Annual step. Renovation year may spike. | N/A |
+
+### State Tax Reassessment Rules (critical for Y1+ projections)
+
+- **GA**: Reassesses on sale. New bill within 6 months. Buyer pays from closing date forward.
+- **FL**: Save Our Homes caps homestead at 3%/yr. Non-homestead: annual market assessment with 10% cap.
+- **CA**: Prop 13 — 2% annual cap. Reassesses to market only on sale or new construction.
+- **TX**: Annual reassessment. 10% homestead cap year-over-year.
+- **NY**: Annual reassessment with 1-year lag from sale date.
+- **IL**: Triennial cycle. Sale triggers reassessment at next triennial.
+- **NC**: On-sale reassessment + county revaluation every 4-8 years.
+- **LA**: Quadrennial (4 year) reassessment. No on-sale trigger.
+- **AZ**: Annual reassessment, 5% cap on owner-occupied.
+
+### When projecting taxes:
+1. Determine state from property address
+2. Check if state reassesses on sale
+3. If yes AND it's the acquisition year: taxes = purchase price × effective tax rate
+4. If no OR it's year 2+: taxes = prior year × (1 + county millage rate trend)
+5. Apply state cap if applicable
+
+### When projecting insurance:
+1. Get base value from underwriting quote or T12
+2. Apply PPI growth rate × climate zone multiplier
+3. Apply state rate cap if applicable
+4. Florida/coastal properties should use higher zone multiplier (1.3-1.8×)

@@ -17,6 +17,16 @@ import {
   storeObservation,
   seedDefaultObservations,
 } from '../../services/sigma/macro/macro-fetcher';
+import {
+  getAnchorsByDealType,
+  getStateRules,
+  projectLineItem,
+  projectAllLineItems,
+  DEFAULT_ANCHORS,
+  DEFAULT_STATE_RULES,
+  type LineItemAnchor,
+  type StateRule,
+} from '../../services/sigma/proforma-anchors.service';
 
 const router = Router();
 
@@ -237,6 +247,72 @@ router.post('/macro/observation', async (req: Request, res: Response) => {
     }
     await storeObservation(seriesId, value, obsDate, source || 'manual');
     res.json({ success: true, message: 'Observation stored' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Proforma Line-Item Anchor Endpoints (Phase B1)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+router.get('/anchors', (req: Request, res: Response) => {
+  try {
+    const dealType = req.query.dealType as string | undefined;
+    const tags = dealType ? dealType.split(',') : [];
+    const anchors = getAnchorsByDealType(tags);
+    res.json({ success: true, count: anchors.length, data: anchors });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/anchors/state/:stateCode', (req: Request, res: Response) => {
+  try {
+    const stateCode = req.params.stateCode.toUpperCase();
+    const lineItem = req.query.lineItem as string | undefined;
+    const rules = getStateRules(stateCode, lineItem);
+    res.json({ success: true, stateCode, data: rules });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/anchors/project', (req: Request, res: Response) => {
+  try {
+    const { lineItemId, baseValue, macroGrowthRate, year, isSaleTrigger, stateCode } = req.body;
+    if (!lineItemId || baseValue == null) {
+      return res.status(400).json({ success: false, error: 'lineItemId and baseValue required' });
+    }
+    const anchor = getAnchorsByDealType().find(a => a.lineItemId === lineItemId);
+    if (!anchor) {
+      return res.status(404).json({ success: false, error: `No anchor found for: ${lineItemId}` });
+    }
+    const stateRules = stateCode ? getStateRules(stateCode.toUpperCase()) : [];
+    const projected = projectLineItem({
+      anchor, baseValue,
+      macroGrowthRate: macroGrowthRate ?? 0.02,
+      year: year ?? 0,
+      isSaleTrigger: isSaleTrigger === true && (year === 1),
+      egiValue: req.body.egiValue,
+      stateRules,
+    });
+    res.json({ success: true, data: projected });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/anchors/project-all', (req: Request, res: Response) => {
+  try {
+    const { dealType, baseValues, macroGrowthRates, horizonYears, stateCode, isSaleTrigger, egiValue } = req.body;
+    const tags = dealType ? (dealType as string).split(',') : [];
+    const anchors = getAnchorsByDealType(tags);
+    const baseValMap = new Map(Object.entries(baseValues || {}));
+    const macroMap = new Map(Object.entries(macroGrowthRates || {}));
+    const results = projectAllLineItems(anchors, baseValMap, macroMap,
+      horizonYears ?? 5, (stateCode || 'GA').toUpperCase(), isSaleTrigger === true, egiValue ?? 0);
+    res.json({ success: true, count: results.length, data: results });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
