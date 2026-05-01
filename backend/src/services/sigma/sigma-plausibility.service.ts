@@ -148,7 +148,6 @@ export async function scorePlausibility(input: PlausibilityInput): Promise<Plaus
         }
       }
     }
-  }
 
   // Regime mismatch warning
   if (input.assumptions.rent_growth && regime === 'contraction') {

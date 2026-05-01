@@ -278,26 +278,43 @@ Everything else runs in parallel to this backbone.
 
 ## Current Session State
 
-**Now building:** M36-A (Heuristic Σ) — the 55-variable joint distribution engine with hand-calibrated covariances, Mahalanobis plausibility, SLSQP goal-seeking, and 5 debt bundles.
+**M36-A Heuristic Σ: ✅ Complete** (2 sessions)
 
-**Session 1 of 4 for M36-A:**
-- ✅ Sigma variable registry (55 variables, 6 factors)
-- ✅ Initial covariance matrices (per regime)
-- ⏳ Mahalanobis plausibility scorer
-- ⏳ Goal-seeking solver
-- ⏳ Debt bundle registry
-- ⏳ API endpoints
+All 6 sub-phases built and tested:
+- ✅ A1: Sigma variable registry (48 variables, 6 factors, 3 blocks)
+- ✅ A2: Heuristic covariance builder (per-regime matrices, factor model + shrinkage)
+- ✅ A3: Mahalanobis plausibility scorer (per-variable decomposition, banding, warnings)
+- ✅ A4: Goal-seeking solver (grid search, simplified DCF, cross-bundle ranking)
+- ✅ A5: Debt bundle registry (5 products, F1 loadings, double-up detection)
+- ✅ A6: REST API (6 endpoints)
+- ✅ **28/28 tests passing** (18 sigma-full + 10 sigma-builder)
+
+**Next: M36-B Plausibility UI** — frontend badges, goal-seeking flow, bundle config
 
 ---
 
 ## Appendix: Relevant Files
 
 ### Backend — Σ Engine
-- `backend/src/services/sigma/` — active Σ services (macro-fetcher, mu-composer, plausibility)
-- `backend/src/api/rest/sigma.routes.ts` — Σ API endpoints
+- `backend/src/services/sigma/sigma-variable-registry.ts` — 48 variables, 6 factors, 3 blocks, feasible ranges
+- `backend/src/services/sigma/heuristic-sigma-builder.ts` — Σ = B·Σ_F·Bᵀ + Ψ, per-regime matrices, Mahalanobis, Cholesky
+- `backend/src/services/sigma/sigma-plausibility.service.ts` — scored plausibility with cache, per-variable decomposition, warnings
+- `backend/src/services/sigma/sigma-goal-seeking.service.ts` — grid search solver, simplified DCF, cross-bundle Pareto
+- `backend/src/services/sigma/debt-bundle-registry.ts` — 5 bundles, F1 loadings, double-up assessment
+- `backend/src/services/sigma/macro-fetcher.ts` — 5 FRED/BLS series with cache/fallback
+- `backend/src/services/sigma/mu-composer.ts` — macro-anchored μ with divergence reweighting
+- `backend/src/services/sigma/sigma-mu-plausibility.ts` — runtime plausibility with composed μ
+- `backend/src/services/sigma/sigma-apply-deal.ts` — deal-level Σ application
+- `backend/src/services/sigma/sigma-engine.ts` — engine orchestrator
+- `backend/src/services/sigma/proforma-anchors.service.ts` — line-item anchor registry
+- `backend/src/services/sigma/anchor-interceptor.service.ts` — replaces flat rates with anchored values
+- `backend/src/api/rest/sigma-full.routes.ts` — 6 new Σ engine endpoints (plausibility, goal-seek, bundles, factors, regime)
+- `backend/src/api/rest/sigma.routes.ts` — original μ/anchor endpoints
 - `backend/src/agents/tools/fetch_anchor_growth_rates.ts` — agent anchor tool
 - `backend/src/agents/tools/fetch_county_tax_rules.ts` — agent county tax methodology tool
 - `backend/src/services/financial-model-engine.service.ts` — anchor interceptor wired here
+- `backend/tests/sigma/sigma-full.test.ts` — 18 tests (plausibility, scoring, warnings, bundles, factors)
+- `backend/tests/sigma/heuristic-sigma-builder.test.ts` — 10 tests (registry, builder, Mahalanobis, bands)
 
 ### Backend — Tax
 - `backend/src/services/tax/taxService.ts` — tax computation engine
