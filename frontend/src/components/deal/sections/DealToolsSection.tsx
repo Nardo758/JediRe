@@ -28,8 +28,7 @@ const TABS = [
   { id: 'contacts', name: 'Contacts', icon: Users },
   { id: 'dates', name: 'Key Dates', icon: Calendar },
   { id: 'decisions', name: 'Decisions', icon: FileText },
-  { id: 'files', name: 'Files', icon: Files },
-  { id: 'documents', name: 'Documents', icon: FolderOpen },
+  { id: 'documents', name: 'Docs', icon: FolderOpen },
   { id: 'team', name: 'Team', icon: UserCheck },
   { id: 'ai', name: 'AI Agent', icon: Bot },
 ];
@@ -118,8 +117,7 @@ export const DealToolsSection: React.FC<DealToolsSectionProps> = ({ deal, dealId
         {activeTab === 'contacts' && <ContactsTab dealId={resolvedDealId} />}
         {activeTab === 'dates' && <DatesTab dealId={resolvedDealId} />}
         {activeTab === 'decisions' && <DecisionsTab dealId={resolvedDealId} />}
-        {activeTab === 'files' && <FilesTab dealId={resolvedDealId} />}
-        {activeTab === 'documents' && <DocumentsTab dealId={resolvedDealId} />}
+        {activeTab === 'documents' && <DocumentsFilesTab dealId={resolvedDealId} />}
         {activeTab === 'team' && (
           resolvedDealId ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -652,18 +650,37 @@ function DecisionsTab({ dealId }: { dealId: string }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// FILES TAB
 // ═══════════════════════════════════════════════════════════════
-function FilesTab({ dealId }: { dealId: string }) {
+// DOCUMENTS & FILES TAB (unified)
+// Left: scrollable directory by category · Right: upload panel
+// ═══════════════════════════════════════════════════════════════
+
+const DOC_CATEGORIES = [
+  { id: 'om',           name: 'Offering Memorandum',  icon: '📋' },
+  { id: 'financial',    name: 'Financial Statements', icon: '💰' },
+  { id: 'legal',        name: 'Legal Documents',      icon: '⚖️' },
+  { id: 'environmental',name: 'Environmental Reports',icon: '🌿' },
+  { id: 'inspection',   name: 'Inspection Reports',   icon: '🔍' },
+  { id: 'title',        name: 'Title & Survey',       icon: '📐' },
+  { id: 'lease',        name: 'Lease Agreements',     icon: '📝' },
+  { id: 'permits',      name: 'Permits & Approvals',  icon: '✅' },
+];
+
+function DocumentsFilesTab({ dealId }: { dealId: string }) {
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['om', 'financial', 'legal']));
   const [uploading, setUploading] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<Array<{ file: File; category: string }>>([]);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
 
   const fetchFiles = useCallback(async () => {
     if (!dealId) return;
     try {
       const res = await apiClient.get(`/api/v1/deals/${dealId}/files`);
-      setFiles(res.data?.files || []);
+      const fetched = res.data?.files || [];
+      setFiles(fetched);
+      setRecentActivity(fetched.slice(-5).reverse());
     } catch {
       setFiles([]);
     } finally {
@@ -673,27 +690,49 @@ function FilesTab({ dealId }: { dealId: string }) {
 
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
+  const toggleCategory = (catId: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(catId)) next.delete(catId); else next.add(catId);
+      return next;
+    });
+  };
+
+  // Handle drag-and-drop or file picker
+  const addFilesToQueue = (fileList: FileList | File[], preSelectedCategory?: string) => {
+    const newEntries = Array.from(fileList).map(f => ({
+      file: f,
+      category: preSelectedCategory || 'financial',
+    }));
+    setUploadQueue(prev => [...prev, ...newEntries]);
+  };
+
+  const updateQueueCategory = (idx: number, category: string) => {
+    setUploadQueue(prev => prev.map((entry, i) => i === idx ? { ...entry, category } : entry));
+  };
+
+  const removeFromQueue = (idx: number) => {
+    setUploadQueue(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const executeUpload = async () => {
+    if (uploadQueue.length === 0 || uploading) return;
     setUploading(true);
-    try {
-      const formData = new FormData();
-      // Backend route /deals/:dealId/files uses multer.array('files', 10),
-      // so the field name MUST be 'files' (plural) — sending 'file' (singular)
-      // is rejected by multer with MulterError: Unexpected field and the
-      // upload is silently dropped.
-      formData.append('files', file);
-      await apiClient.post(`/api/v1/deals/${dealId}/files`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      fetchFiles();
-    } catch (err) {
-      console.error('Failed to upload file:', err);
-    } finally {
-      setUploading(false);
+    for (const entry of uploadQueue) {
+      try {
+        const formData = new FormData();
+        formData.append('files', entry.file);
+        formData.append('category', entry.category);
+        await apiClient.post(`/api/v1/deals/${dealId}/files`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      } catch (err) {
+        console.error('Upload failed:', err);
+      }
     }
+    setUploadQueue([]);
+    setUploading(false);
+    await fetchFiles();
   };
 
   const deleteFile = async (fileId: string) => {
@@ -706,123 +745,229 @@ function FilesTab({ dealId }: { dealId: string }) {
   };
 
   const formatSize = (bytes: number) => {
+    if (!bytes) return '—';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  if (loading) return <LoadingState />;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 10, color: BT.text.muted }}>{files.length} files</span>
-        <label style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          padding: '6px 12px', background: BT.text.amber,
-          color: BT.bg.terminal, border: 'none', cursor: 'pointer',
-          fontFamily: BT.font.mono, fontSize: 10, fontWeight: 700,
-        }}>
-          <Plus size={12} /> {uploading ? 'UPLOADING...' : 'UPLOAD FILE'}
-          <input type="file" onChange={handleUpload} style={{ display: 'none' }} disabled={uploading} />
-        </label>
-      </div>
-
-      {files.length === 0 ? (
-        <EmptyState message="No files uploaded yet. Upload documents, images, and other files." />
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {files.map(file => (
-            <div key={file.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, padding: 12 }}>
-              <Files size={20} style={{ color: BT.text.cyan }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: BT.text.primary }}>{file.name}</div>
-                <div style={{ display: 'flex', gap: 8, fontSize: 9, color: BT.text.muted, marginTop: 2 }}>
-                  <span>{formatSize(file.size || 0)}</span>
-                  <span>{new Date(file.created_at).toLocaleDateString()}</span>
-                </div>
-              </div>
-              <button onClick={() => deleteFile(file.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: BT.text.muted }}>
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// DOCUMENTS TAB
-// ═══════════════════════════════════════════════════════════════
-function DocumentsTab({ dealId }: { dealId: string }) {
-  const [documents, setDocuments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchDocuments = useCallback(async () => {
-    if (!dealId) return;
-    try {
-      const res = await apiClient.get(`/api/v1/deals/${dealId}/documents`);
-      setDocuments(res.data?.documents || []);
-    } catch {
-      setDocuments([]);
-    } finally {
-      setLoading(false);
+  const getStatusBadge = (file: any) => {
+    const status = file.extraction_status || file.status;
+    if (status === 'completed' || status === 'final' || status === 'parsed') {
+      return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.green + '22', color: BT.text.green, fontFamily: BT.font.mono }}>✅ parsed</span>;
     }
-  }, [dealId]);
-
-  useEffect(() => { fetchDocuments(); }, [fetchDocuments]);
-
-  // Document categories for real estate deals
-  const categories = [
-    { id: 'om', name: 'Offering Memorandum', icon: '📋' },
-    { id: 'financial', name: 'Financial Statements', icon: '💰' },
-    { id: 'legal', name: 'Legal Documents', icon: '⚖️' },
-    { id: 'environmental', name: 'Environmental Reports', icon: '🌿' },
-    { id: 'inspection', name: 'Inspection Reports', icon: '🔍' },
-    { id: 'title', name: 'Title & Survey', icon: '📐' },
-    { id: 'lease', name: 'Lease Agreements', icon: '📝' },
-    { id: 'permits', name: 'Permits & Approvals', icon: '✅' },
-  ];
+    if (status === 'processing') {
+      return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.orange + '22', color: BT.text.orange, fontFamily: BT.font.mono }}>🔄 processing</span>;
+    }
+    return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.muted + '22', color: BT.text.muted, fontFamily: BT.font.mono }}>⏳ pending</span>;
+  };
 
   if (loading) return <LoadingState />;
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ fontSize: 10, color: BT.text.muted }}>
-        Organized document categories for due diligence
-      </div>
+  const filesByCategory = (catId: string) =>
+    files.filter(f => (f.category || 'financial') === catId);
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-        {categories.map(cat => {
-          const catDocs = documents.filter(d => d.category === cat.id);
+  const totalFiles = files.length;
+
+  return (
+    <div style={{ display: 'flex', gap: 16, height: '100%' }}>
+      {/* ─── LEFT: SCROLLABLE DIRECTORY ─── */}
+      <div style={{
+        flex: 3, overflowY: 'auto',
+        display: 'flex', flexDirection: 'column', gap: 4,
+        paddingRight: 8,
+      }}>
+        <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 8, fontFamily: BT.font.mono }}>
+          {totalFiles} documents · organized by type
+        </div>
+
+        {DOC_CATEGORIES.map(cat => {
+          const catFiles = filesByCategory(cat.id);
+          const isExpanded = expandedCategories.has(cat.id);
+          const isEmpty = catFiles.length === 0;
+
           return (
-            <div key={cat.id} style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, padding: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 18 }}>{cat.icon}</span>
-                <div>
+            <div key={cat.id} style={{
+              border: `1px solid ${BT.border.subtle}`,
+              background: BT.bg.panel,
+            }}>
+              {/* Category header */}
+              <div
+                onClick={() => toggleCategory(cat.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '10px 12px', cursor: 'pointer',
+                  borderBottom: isExpanded && !isEmpty ? `1px solid ${BT.border.subtle}` : 'none',
+                  userSelect: 'none',
+                }}
+              >
+                <span style={{ fontSize: 16 }}>{cat.icon}</span>
+                <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: BT.text.primary }}>{cat.name}</div>
-                  <div style={{ fontSize: 9, color: BT.text.muted }}>{catDocs.length} documents</div>
+                  <div style={{ fontSize: 9, color: BT.text.muted }}>{catFiles.length} file{catFiles.length !== 1 ? 's' : ''}</div>
                 </div>
+                {isEmpty && (
+                  <div
+                    onClick={(e) => { e.stopPropagation(); addFilesToQueue([], cat.id); }}
+                    style={{
+                      fontSize: 9, color: BT.text.cyan, cursor: 'pointer',
+                      fontFamily: BT.font.mono,
+                      border: `1px dashed ${BT.text.cyan}44`, padding: '4px 8px',
+                    }}
+                  >
+                    drop here
+                  </div>
+                )}
+                <span style={{ fontSize: 10, color: BT.text.muted }}>
+                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </span>
               </div>
-              {catDocs.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {catDocs.slice(0, 3).map(doc => (
-                    <div key={doc.id} style={{ fontSize: 10, color: BT.text.secondary, padding: '4px 6px', background: BT.bg.active, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {doc.name}
-                    </div>
-                  ))}
-                  {catDocs.length > 3 && (
-                    <div style={{ fontSize: 9, color: BT.text.cyan }}>+{catDocs.length - 3} more</div>
-                  )}
+
+              {/* Category files (collapsible) */}
+              {isExpanded && catFiles.map(f => (
+                <div key={f.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '6px 12px 6px 44px',
+                  borderBottom: `1px solid ${BT.border.subtle}`,
+                  background: BT.bg.panelAlt,
+                }}>
+                  <span style={{ fontSize: 9, fontWeight: 500, color: BT.text.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.name || f.original_filename}
+                  </span>
+                  <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{formatSize(f.size || f.file_size)}</span>
+                  <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{new Date(f.created_at).toLocaleDateString()}</span>
+                  {getStatusBadge(f)}
+                  <button onClick={() => deleteFile(f.id)} style={{
+                    background: 'transparent', border: 'none',
+                    cursor: 'pointer', color: BT.text.muted,
+                    padding: 2, display: 'flex',
+                  }}>
+                    <Trash2 size={12} />
+                  </button>
                 </div>
-              ) : (
-                <div style={{ fontSize: 9, color: BT.text.muted, fontStyle: 'italic' }}>No documents</div>
-              )}
+              ))}
             </div>
           );
         })}
+      </div>
+
+      {/* ─── RIGHT: UPLOAD PANEL ─── */}
+      <div style={{
+        flex: 2,
+        display: 'flex', flexDirection: 'column', gap: 12,
+      }}>
+        {/* Drop zone */}
+        <div
+          onDrop={(e) => { e.preventDefault(); addFilesToQueue(e.dataTransfer.files); }}
+          onDragOver={(e) => e.preventDefault()}
+          onClick={() => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.accept = '.pdf,.xlsx,.xls,.docx,.doc,.png,.jpg,.jpeg';
+            input.onchange = (e) => {
+              const fl = (e.target as HTMLInputElement).files;
+              if (fl) addFilesToQueue(fl);
+            };
+            input.click();
+          }}
+          style={{
+            border: `2px dashed ${BT.border.medium}`,
+            borderRadius: 6,
+            padding: '24px 16px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            background: BT.bg.panelAlt,
+            transition: 'border-color 0.15s',
+          }}
+        >
+          <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.5 }}>📤</div>
+          <div style={{ fontSize: 11, color: BT.text.secondary, fontFamily: BT.font.mono }}>Drop files here or click to browse</div>
+          <div style={{ fontSize: 8, color: BT.text.muted, marginTop: 4, fontFamily: BT.font.mono }}>.pdf .xlsx .docx .png .jpg</div>
+        </div>
+
+        {/* Upload queue */}
+        {uploadQueue.length > 0 && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 8,
+            background: BT.bg.panel,
+            border: `1px solid ${BT.border.subtle}`,
+            padding: 12,
+          }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.muted, fontFamily: BT.font.mono, letterSpacing: 0.5 }}>
+              UPLOAD QUEUE ({uploadQueue.length})
+            </div>
+            {uploadQueue.map((entry, idx) => (
+              <div key={idx} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: BT.bg.panelAlt,
+                border: `1px solid ${BT.border.subtle}`,
+                padding: '6px 8px',
+              }}>
+                <span style={{ fontSize: 9, color: BT.text.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: BT.font.mono }}>
+                  {entry.file.name}
+                </span>
+                <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono, flexShrink: 0 }}>
+                  {formatSize(entry.file.size)}
+                </span>
+                <select
+                  value={entry.category}
+                  onChange={e => updateQueueCategory(idx, e.target.value)}
+                  style={{
+                    background: BT.bg.input, border: `1px solid ${BT.border.subtle}`,
+                    color: BT.text.primary, fontSize: 8, padding: '2px 4px',
+                    fontFamily: BT.font.mono, cursor: 'pointer',
+                    maxWidth: 130,
+                  }}
+                >
+                  {DOC_CATEGORIES.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <button onClick={() => removeFromQueue(idx)} style={{
+                  background: 'transparent', border: 'none',
+                  cursor: 'pointer', color: BT.text.muted, padding: 2, display: 'flex',
+                }}>
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={executeUpload}
+              disabled={uploading}
+              style={{
+                padding: '8px 16px', background: BT.text.amber,
+                color: BT.bg.terminal, border: 'none',
+                cursor: uploading ? 'not-allowed' : 'pointer',
+                fontFamily: BT.font.mono, fontSize: 9, fontWeight: 700,
+                opacity: uploading ? 0.6 : 1,
+              }}
+            >
+              {uploading ? 'UPLOADING...' : `📤 UPLOAD ${uploadQueue.length} FILE${uploadQueue.length > 1 ? 'S' : ''}`}
+            </button>
+          </div>
+        )}
+
+        {/* Recent activity */}
+        {recentActivity.length > 0 && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 4,
+            background: BT.bg.panel,
+            border: `1px solid ${BT.border.subtle}`,
+            padding: 12,
+          }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.muted, fontFamily: BT.font.mono, letterSpacing: 0.5, marginBottom: 4 }}>
+              RECENT ACTIVITY
+            </div>
+            {recentActivity.map(f => (
+              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, color: BT.text.secondary, fontFamily: BT.font.mono }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{f.name || f.original_filename}</span>
+                <span style={{ color: BT.text.muted }}>→</span>
+                {getStatusBadge(f)}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
