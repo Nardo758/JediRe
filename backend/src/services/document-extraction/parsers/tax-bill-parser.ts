@@ -1,4 +1,8 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { TaxBillData, ExtractionResult } from '../types';
+import { ocrPdf, OCR_MIN_TEXT_THRESHOLD } from '../ocr.service';
 
 // ============================================================================
 // Tax Bill Parser v2
@@ -346,17 +350,31 @@ export function parseTaxBill(buffer: Buffer, filename: string): ExtractionResult
 }
 
 export async function parseTaxBillAsync(buffer: Buffer, filename: string): Promise<ExtractionResult> {
-  const text = await extractPdfText(buffer);
+  let text = await extractPdfText(buffer);
+  const warnings: string[] = [];
 
-  if (!text || text.length < 50) {
-    return {
-      documentType: 'TAX_BILL', success: false,
-      error: 'Could not extract text from PDF — may be scanned/image-based and require OCR',
-      data: null, summary: {}, warnings: [],
-    };
+  if (!text || text.length < OCR_MIN_TEXT_THRESHOLD) {
+    // Scanned/image-based PDF — fall back to tesseract OCR
+    let tmpFile: string | null = null;
+    try {
+      tmpFile = path.join(os.tmpdir(), `tax-bill-ocr-${Date.now()}.pdf`);
+      await fs.promises.writeFile(tmpFile, buffer);
+      const ocrResult = await ocrPdf(tmpFile);
+      text = ocrResult.text;
+      warnings.push(`Scanned PDF — OCR used (${ocrResult.pageCount} page(s), ${ocrResult.durationMs}ms)`);
+    } catch (ocrErr: any) {
+      return {
+        documentType: 'TAX_BILL', success: false,
+        error: `Could not extract text and OCR failed: ${ocrErr?.message || ocrErr}`,
+        data: null, summary: {}, warnings,
+      };
+    } finally {
+      if (tmpFile) fs.promises.unlink(tmpFile).catch(() => {});
+    }
   }
 
-  const { data, warnings } = parseFromText(text);
+  const { data, warnings: parseWarnings } = parseFromText(text);
+  warnings.push(...parseWarnings);
 
   if (data.totalAnnualTax === 0 && !data.parcelId) {
     return {
