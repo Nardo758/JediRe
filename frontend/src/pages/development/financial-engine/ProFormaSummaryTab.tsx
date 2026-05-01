@@ -3,6 +3,7 @@ import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCi
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
+import { CommentaryPanel } from './CommentaryPanel';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -726,6 +727,9 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
           noi={noiRow?.resolved ?? null}
           totalUnits={totalUnits}
         />
+
+        {/* ── SECTION D — AI Commentary ── */}
+        <CommentaryPanel dealId={dealId} dealName={data.dealName} />
       </div>
 
       {/* ── Footer legend ── */}
