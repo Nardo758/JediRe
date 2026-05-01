@@ -125,14 +125,14 @@ export async function composeDealFinancials(
     rentRollRows = [];
   }
 
-  // 3a. When no rent-roll rows exist, look for `extraction_rent_roll` in the
-  // capsule (real per-floorplan mix from a parsed rent-roll Excel/CSV). When
-  // that's also missing, fall back to capsule aggregates (single-row OM
-  // averages) so the synthesized Unit Mix Default row renders with real values
-  // instead of all nulls.
-  const extractionRentRoll = rentRollRows.length === 0
-    ? await loadExtractionRentRoll(pool, dealId)
-    : null;
+  // 3a. ALWAYS load `extraction_rent_roll` capsule when present, regardless
+  // of whether SQL rent-roll rows exist. The UI consumes this payload
+  // independently for ancillary income (other_income_monthly), per-unit
+  // drill-down (units array), and expiration curves — even when SQL rows
+  // win the unit-mix derivation tier. Without this decoupling, a deal that
+  // has both legacy SQL rent_roll AND a fresh extraction would lose
+  // ancillary/per-unit features in the UI.
+  const extractionRentRoll = await loadExtractionRentRoll(pool, dealId);
   // Also load capsule aggregates when an extraction is present but its
   // `floor_plan_mix` is empty/malformed — in that case the extraction can
   // still hand us aggregates (otherIncomeMonthly, expirationCurve, totals)

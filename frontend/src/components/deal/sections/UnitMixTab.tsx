@@ -184,7 +184,16 @@ function TrafficSignal({ label, value, unit, linked }: { label: string; value: s
  */
 function ExpirationBars({ curve, totalUnits }: { curve: ExpirationCurve | null; totalUnits: number }) {
   if (!curve || totalUnits <= 0) {
-    return <span style={{ fontFamily: LABEL, fontSize: 9, color: C.dim }}>—</span>;
+    // Empty/dimmed state per spec: NO expiration data is available (typically
+    // OM-only deals or floor plans without leases). Render a faint dimmed
+    // placeholder bar — visually quieter than "—", which the spec calls out
+    // as overly emphatic.
+    return (
+      <div
+        title="No lease expiration data available (no rent roll uploaded)"
+        style={{ display: 'inline-block', height: 10, width: 110, background: '#0a0e15', borderRadius: 2, border: `1px dashed ${C.border}`, opacity: 0.4 }}
+      />
+    );
   }
   const segments: Array<{ key: string; label: string; count: number; color: string }> = [
     { key: 'mtm',     label: 'MTM',       count: curve.mtm,           color: C.red },
