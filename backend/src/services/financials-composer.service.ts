@@ -98,6 +98,13 @@ export async function composeDealFinancials(
     rentRollRows = [];
   }
 
+  // 3a. When no rent-roll rows exist, fall back to capsule aggregates
+  // (units, avg rent, occupancy, avg SF) so the synthesized Unit Mix
+  // Default row renders with real values instead of all nulls.
+  const capsuleAggregates = rentRollRows.length === 0
+    ? await loadCapsuleAggregates(pool, dealId)
+    : null;
+
   // 4. Load per-deal flag: use_unit_mix_for_gpr (controls whether revenue rows draw from unit mix)
   let useUnitMixForGpr = false;
   try {
@@ -127,7 +134,7 @@ export async function composeDealFinancials(
   const valuationSnapshot = buildValuationSnapshot(purchasePrice, totalUnits, year1Rows, deal);
 
   // 9. Build rent roll summary
-  const rentRollSummary = buildRentRollSummary(rentRollRows, totalUnits, unitMixDerived, useUnitMixForGpr);
+  const rentRollSummary = buildRentRollSummary(rentRollRows, totalUnits, unitMixDerived, useUnitMixForGpr, capsuleAggregates);
 
   // 10. Build traffic projection
   const trafficProjection = buildTrafficProjection();
@@ -587,26 +594,42 @@ function buildRentRollSummary(
   rentRollRows: any[],
   totalUnits: number,
   derived: UnitMixDerived,
-  useUnitMixForGpr: boolean
+  useUnitMixForGpr: boolean,
+  capsuleAggregates: CapsuleAggregates | null = null
 ): any | null {
   if (!rentRollRows || rentRollRows.length === 0) {
-    if (totalUnits > 0) {
-      // Synthesize a default unit mix row so the UnitMixTab renders with an editable row
+    // Pick a unit count: prefer the deal's target_units; fall back to capsule.units
+    const synthesizedCount = totalUnits > 0 ? totalUnits : (capsuleAggregates?.units ?? 0);
+    if (synthesizedCount > 0) {
+      // Synthesize a default unit mix row so the UnitMixTab renders with an editable row.
+      // When the rent-roll table is empty, fall back to capsule aggregates (sourced from
+      // OM extraction) so the row carries real occupancy/avg-SF/avg-rent instead of all nulls.
+      const inPlaceRent = capsuleAggregates?.avgRent ?? null;
+      const occupancyPct = capsuleAggregates?.occupancyPct ?? null;
+      const avgSf = capsuleAggregates?.avgSf ?? null;
       const defaultMix = [{
         type: 'Default',
-        count: totalUnits,
-        avgSf: null,
-        inPlaceRent: null,
+        count: synthesizedCount,
+        avgSf,
+        inPlaceRent,
         marketRent: null,
-        occupancyPct: null,
+        occupancyPct,
         concessionPct: null,
+        // Provenance: marks the row as synthesized from capsule aggregates rather than
+        // from a real rent_roll snapshot. Frontend may show a "Capsule" badge.
+        source: capsuleAggregates ? 'capsule' : 'synthesized',
       }];
+      const gprSynth = inPlaceRent != null && synthesizedCount > 0
+        ? inPlaceRent * synthesizedCount * 12
+        : null;
       return {
         unitMix: defaultMix,
-        avgInPlaceRent: null,
-        weightedOccupancyPct: null,
-        gprFromUnitMix: null,
-        vacancyLossFromUnitMix: null,
+        avgInPlaceRent: inPlaceRent,
+        weightedOccupancyPct: occupancyPct,
+        gprFromUnitMix: gprSynth,
+        vacancyLossFromUnitMix: gprSynth != null && occupancyPct != null
+          ? gprSynth * (1 - occupancyPct)
+          : null,
         lossToLeaseFromUnitMix: null,
         concessionsFromUnitMix: null,
         useUnitMixForGpr,
@@ -660,6 +683,91 @@ function buildAssumptions(y1: any): any {
     gprDecomposition: y1?.gprDecomposition ?? null,
     narrative: y1?.narrative ?? null,
   };
+}
+
+// ── Helper: Capsule aggregates fallback ──────────────────────────────────────
+// When no rent_roll rows exist, pull aggregates from deal_capsules.deal_data
+// (sourced from OM extraction) so the synthesized Default unit-mix row carries
+// real units / avg rent / occupancy / avg SF instead of all-null cells.
+
+export interface CapsuleAggregates {
+  units: number | null;
+  avgRent: number | null;
+  occupancyPct: number | null;
+  avgSf: number | null;
+}
+
+/** Coerce occupancy that may arrive as a fraction (0.95) or a percent (95).
+ *  Preserves a real 0 (fully vacant) — only `null`/`undefined`/non-finite/negative are dropped. */
+function normalizeOccupancy(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : (raw != null ? Number(raw) : NaN);
+  if (!Number.isFinite(n) || n < 0) return null;
+  // Percentages > 1.5 are treated as percent; values ≤ 1.5 stay as fractions.
+  const norm = n > 1.5 ? n / 100 : n;
+  return Math.min(Math.max(norm, 0), 1);
+}
+
+function num(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : (raw != null ? Number(raw) : NaN);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export async function loadCapsuleAggregates(pool: Pool, dealId: string): Promise<CapsuleAggregates | null> {
+  // Capsules are stored two ways in the wild:
+  //   • shared-UUID: deal_capsules.id === deals.id (legacy / pre-bridge)
+  //   • bridge:      deal_capsules.deal_data->>'deal_id' = deals.id (auto-created)
+  // Try both so we work for either. id is uuid → cast to text for the param compare.
+  let capRes;
+  try {
+    capRes = await pool.query(
+      `SELECT deal_data
+         FROM deal_capsules
+        WHERE id::text = $1
+           OR deal_data->>'deal_id' = $1
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+      [dealId]
+    );
+  } catch (err) {
+    console.warn('[loadCapsuleAggregates] capsule lookup failed for', dealId,
+      err instanceof Error ? err.message : err);
+    return null;
+  }
+  const dd = capRes.rows[0]?.deal_data;
+  if (!dd || typeof dd !== 'object') return null;
+
+  // OM extraction shape (from `pdf-extractor → broker_claims`):
+  //   deal_data.broker_claims.property  → { units, avgUnitSF, netRentableSF, ... }
+  //   deal_data.broker_claims.proforma  → { stabilizedVacancy, lossToLease, ... }
+  // Older capsules sometimes also stash a flatter copy under `extraction_om.{property,proforma}`.
+  const claims = (dd.broker_claims && typeof dd.broker_claims === 'object') ? dd.broker_claims : {};
+  const om = (dd.extraction_om && typeof dd.extraction_om === 'object') ? dd.extraction_om : {};
+  const property = (claims.property && typeof claims.property === 'object')
+    ? claims.property
+    : (om.property && typeof om.property === 'object' ? om.property : {});
+  const proforma = (claims.proforma && typeof claims.proforma === 'object')
+    ? claims.proforma
+    : (om.proforma && typeof om.proforma === 'object' ? om.proforma : {});
+
+  const units = num(dd.units) ?? num(dd.target_units) ?? num(property.units);
+
+  const avgRent = num(dd.avg_rent) ?? num(claims.avg_rent) ?? num(proforma.avgRent);
+
+  const occRaw = dd.occupancy ?? claims.occupancy ?? dd.broker_occupancy ?? null;
+  let occupancyPct = normalizeOccupancy(occRaw);
+  if (occupancyPct == null) {
+    // Derive from stabilizedVacancy when present (e.g. 0.05 → 0.95)
+    const vac = normalizeOccupancy(proforma.stabilizedVacancy);
+    if (vac != null) occupancyPct = Math.max(0, 1 - vac);
+  }
+
+  const avgSf = num(property.avgUnitSF) ?? num(dd.avg_unit_sf);
+
+  // If nothing usable was found, return null so the row stays all-null (matches old behavior).
+  if (units == null && avgRent == null && occupancyPct == null && avgSf == null) {
+    return null;
+  }
+  return { units, avgRent, occupancyPct, avgSf };
 }
 
 // ── Helper: Capital stack ────────────────────────────────────────────────────

@@ -1901,24 +1901,66 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
       [dealId]
     );
 
+    let rowType = 'Default';
+
     if (!rrRes.rows[rowIdx]) {
       // Row doesn't exist — if this is the first row (index 0) and no rows exist,
-      // auto-insert a default rent_roll row so the user's edit persists
+      // auto-insert a default rent_roll row so the user's edit persists. Seed it
+      // with the deal's actual unit count and any aggregates we have on the
+      // capsule (occupancy, avg SF, avg rent) so the row reflects reality from
+      // the start instead of count=1 and all-null cells.
       if (rowIdx === 0 && rrRes.rows.length === 0) {
         const numVal = value === null ? null : parseFloat(value);
         if (value !== null && isNaN(numVal as number)) {
           return res.status(400).json({ success: false, error: 'Invalid numeric value' });
         }
-        await pool.query(
-          `INSERT INTO rent_roll (deal_id, type, count, in_place_rent, market_rent, occupancy_pct, concession_pct, created_at, updated_at)
-           VALUES ($1, 'Default', 1, $2, $2, NULL, NULL, NOW(), NOW())`,
-          [dealId, numVal]
+
+        // Resolve total units from the deal record
+        const dealRes = await pool.query(
+          `SELECT target_units, unit_count, deal_data FROM deals WHERE id = $1`,
+          [dealId]
         );
+        const drow = dealRes.rows[0] || {};
+        const dd = (drow.deal_data && typeof drow.deal_data === 'object') ? drow.deal_data : {};
+        const totalUnits = drow.target_units || drow.unit_count || dd.units || 0;
+
+        // Pull capsule aggregates so the seeded row carries real metadata
+        const { loadCapsuleAggregates } = await import('../../services/financials-composer.service');
+        let capAgg: Awaited<ReturnType<typeof loadCapsuleAggregates>> = null;
+        try { capAgg = await loadCapsuleAggregates(pool, dealId); } catch { capAgg = null; }
+
+        const seedCount = totalUnits > 0 ? totalUnits : (capAgg?.units ?? 1);
+        // Seed the rents:
+        //   • the cell being edited gets the user-entered value
+        //   • the other rent column prefers capsule avgRent, but if none exists it
+        //     mirrors the edited value as a baseline (avoids a misleading null
+        //     market vs. populated in-place — or vice versa — in the UI).
+        const editedVal    = numVal ?? null;
+        const otherSeed    = capAgg?.avgRent ?? editedVal;
+        const inPlaceSeed  = cellField === 'inPlace' ? editedVal : otherSeed;
+        const marketSeed   = cellField === 'market'  ? editedVal : otherSeed;
+
+        try {
+          await pool.query(
+            `INSERT INTO rent_roll (deal_id, type, count, avg_sqft, in_place_rent, market_rent, occupancy_pct, concession_pct, created_at, updated_at)
+             VALUES ($1, 'Default', $2, $3, $4, $5, $6, NULL, NOW(), NOW())`,
+            [dealId, seedCount, capAgg?.avgSf ?? null, inPlaceSeed, marketSeed, capAgg?.occupancyPct ?? null]
+          );
+        } catch (insErr: any) {
+          // rent_roll table may not exist yet — surface a clear error rather than 500-ing silently
+          console.error('rent_roll insert failed (table may be missing):', insErr?.message);
+          return res.status(500).json({
+            success: false,
+            error: 'Could not persist edit: rent_roll storage is unavailable.',
+            detail: insErr?.message,
+          });
+        }
       } else {
         return res.status(404).json({ success: false, error: `Rent roll row ${rowIdx} not found. Expected ${rrRes.rows.length} rows.` });
       }
     } else {
       const row = rrRes.rows[rowIdx];
+      rowType = row.type;
       const dbColumn = cellField === 'inPlace' ? 'in_place_rent' : 'market_rent';
 
       if (value === null) {
@@ -1946,7 +1988,7 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     res.json({
       success: true,
       data: result.data,
-      message: `${cellField === 'inPlace' ? 'In-place rent' : 'Market rent'} updated for ${row.type}`,
+      message: `${cellField === 'inPlace' ? 'In-place rent' : 'Market rent'} updated for ${rowType}`,
     });
   } catch (error: any) {
     console.error('Error in financials/override:', error);
