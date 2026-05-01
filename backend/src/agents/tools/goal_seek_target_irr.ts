@@ -23,7 +23,7 @@ const InputSchema = z.object({
   holdYears: z.number().int().min(1).max(15).describe(
     'Holding period in years'
   ),
-  currentAssumptions: z.record(z.number()).optional().default({}).describe(
+  currentAssumptions: z.record(z.string(), z.number()).optional().default({}).describe(
     'Current deal assumptions to start from'
   ),
   lockVariables: z.array(z.string()).optional().default([]).describe(
@@ -83,7 +83,7 @@ export async function goalSeekTargetIrr(
   const result = goalSeek(
     input.targetIrR,
     input.holdYears,
-    input.currentAssumptions,
+    input.currentAssumptions as any,
     {
       lockedVariables: input.lockVariables,
       bundleFilter: input.bundleFilter,
@@ -129,3 +129,4 @@ Input: { "targetIrR": 0.15, "holdYears": 5, "currentAssumptions": {...}, "lockVa
   outputSchema: OutputSchema,
   execute: goalSeekTargetIrr,
 };
+

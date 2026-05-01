@@ -13,11 +13,11 @@
  */
 
 import { Router } from 'express';
-import { scorePlausibility, invalidateSigmaCache } from '../services/sigma/sigma-plausibility.service';
-import { runGoalSeek } from '../services/sigma/sigma-goal-seeking.service';
-import { FACTORS } from '../services/sigma/sigma-variable-registry';
-import { DEBT_BUNDLES } from '../services/sigma/debt-bundle-registry';
-import { buildHeuristicSigma } from '../services/sigma/heuristic-sigma-builder';
+import { scorePlausibility, invalidateSigmaCache } from '../../services/sigma/sigma-plausibility.service';
+import { runGoalSeek } from '../../services/sigma/sigma-goal-seeking.service';
+import { FACTORS } from '../../services/sigma/sigma-variable-registry';
+import { DEBT_BUNDLES } from '../../services/sigma/debt-bundle-registry';
+import { buildHeuristicSigma } from '../../services/sigma/heuristic-sigma-builder';
 import { logger } from '../../utils/logger';
 
 const router = Router();

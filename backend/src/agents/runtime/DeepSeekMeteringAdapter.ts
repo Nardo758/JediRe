@@ -281,7 +281,7 @@ export class DeepSeekMeteringAdapter {
       apiParams.model
     );
 
-    const msg = raw.choices?.[0]?.message ?? {};
+    const msg = (raw.choices?.[0]?.message ?? {}) as { tool_calls?: any[]; content?: string };
     const dsToolCalls = msg.tool_calls;
     const content = msg.content ?? '';
     const text = content || '';

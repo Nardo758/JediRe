@@ -258,7 +258,7 @@ async function fetchCountyTaxRules(input: unknown): Promise<CountyTaxMethodology
   let dataSources: string[] = [];
 
   try {
-    const ctx = { state: stateCode, county: parsed.county || '', purchasePrice: 10000000 as const };
+    const ctx = { state: stateCode, county: parsed.county || '', purchasePrice: 10000000, totalUnits: 100, vintage: 1980 } as any;
     const service = taxService as any;
     const ruleset: TaxRuleset | undefined = service.registry?.[stateCode];
 
@@ -271,7 +271,7 @@ async function fetchCountyTaxRules(input: unknown): Promise<CountyTaxMethodology
           !a.name.toLowerCase().includes('homestead'),
       })) ?? [];
 
-      specialTaxes = ruleset.specialTaxes?.(ctx)?.map(t => ({
+      specialTaxes = (ruleset.specialTaxes?.(ctx) as any[])?.map((t: any) => ({
         name: t.name,
         description: t.description,
         rate: t.rate ?? 0,
@@ -360,3 +360,4 @@ Known jurisdictions: GA, FL, TX, CA, NY, IL, NC, LA, AZ`,
 };
 
 export default fetchCountyTaxRulesTool;
+

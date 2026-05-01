@@ -129,7 +129,7 @@ export async function fetchAnchorGrowthRates(input: unknown) {
     projectedValues = results.map(r => ({
       lineItemId: r.lineItemId,
       label: r.label ?? r.lineItemId,
-      baseValue: r.baseValue ?? r.year1 ?? 0,
+      baseValue: r.value ?? 0,
       projections: Object.fromEntries(
         Object.entries(r).filter(([k]) => /^year\d+$/i.test(k)).map(([k, v]) => [k, Number(v)])
       ),
@@ -150,10 +150,10 @@ export async function fetchAnchorGrowthRates(input: unknown) {
     success: true,
     items,
     stateRules: stateRules.length > 0 ? stateRules.map(r => ({
-      stateCode: r.state_code,
-      lineItemId: r.line_item_id,
-      ruleType: r.rule_type,
-      ruleText: r.rule_text,
+      stateCode: r.stateCode,
+      lineItemId: r.lineItemId,
+      ruleType: r.ruleType,
+      ruleText: r.ruleText,
     })) : undefined,
     projectedValues,
     summary,
@@ -180,3 +180,5 @@ your growth rate vs. the anchor rate. If they diverge by >1%, flag it as a risk.
 };
 
 export default fetchAnchorGrowthRatesTool;
+
+

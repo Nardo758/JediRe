@@ -97,7 +97,12 @@ export async function fetchInflationContext(
     regime: context.compositeScore.regime,
     confidence: context.compositeScore.confidence,
     
-    guidance: context.compositeScore.underwritingGuidance,
+    guidance: {
+      rentGrowthRecommendation: context.compositeScore.underwritingGuidance.rentGrowthRecommendation,
+      expenseEscalationRecommendation: context.compositeScore.underwritingGuidance.expenseEscalationRecommendation,
+      capRateSpreadVsTreasury: context.compositeScore.underwritingGuidance.capRateSpreadVsTreasury,
+      constructionContingency: (context.compositeScore.underwritingGuidance as any).constructionCostContingency ?? 15,
+    },
     
     keyIndicators: {
       cpiAllItems: context.cpi.allItems,
@@ -226,3 +231,5 @@ Use this tool to:
   parameters: fetchInflationContextSchema,
   execute: fetchInflationContext
 };
+
+

@@ -70,7 +70,7 @@ function toAnthropicToolSchema(tool: AgentConfig['tools'][number]): Anthropic.To
   return {
     name: tool.name,
     description: tool.description,
-    input_schema: zodToAnthropicInputSchema(tool.inputSchema),
+    input_schema: zodToAnthropicInputSchema(tool.inputSchema) as Anthropic.Tool.InputSchema,
   };
 }
 
@@ -224,7 +224,7 @@ function createMeteringFn(config: AgentConfig): CreateMessageFn {
         dsParams.tool_choice = params.tool_choice;
       }
 
-      const resp = await ds.createMessage(dsParams);
+      const resp = await ds.createMessage(dsParams as any);
 
       // Build Anthropic-style content array from DeepSeek response
       const content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }> = [];
@@ -673,7 +673,7 @@ export class AgentRuntime {
         toolUses.map(tu => this.executeTool(tu, run, ctx, stepIndex++))
       );
 
-      messages.push({ role: 'assistant', content: response.content });
+      messages.push({ role: 'assistant', content: response.content as any });
       messages.push({ role: 'user', content: toolResults });
     }
 
