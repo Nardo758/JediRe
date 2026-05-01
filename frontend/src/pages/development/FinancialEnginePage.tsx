@@ -1110,7 +1110,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 10 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 11 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 12 && <BtTabWrapper><ReturnsTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 14 && <BtTabWrapper><InteractiveProformaTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 15 && <BtTabWrapper><InteractiveProformaTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 13 && (
             <div style={{ height: '100%', overflow: 'hidden', padding: 16, display: 'flex', flexDirection: 'column' }}>
               <CostSheetTab
