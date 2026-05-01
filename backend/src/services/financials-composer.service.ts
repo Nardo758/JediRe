@@ -98,8 +98,24 @@ export async function composeDealFinancials(
     rentRollRows = [];
   }
 
+  // 4. Load per-deal flag: use_unit_mix_for_gpr (controls whether revenue rows draw from unit mix)
+  let useUnitMixForGpr = false;
+  try {
+    const flagRes = await pool.query(
+      `SELECT per_year_overrides FROM deal_assumptions WHERE deal_id = $1`,
+      [dealId]
+    );
+    const pyOvs = flagRes.rows[0]?.per_year_overrides ?? {};
+    useUnitMixForGpr = pyOvs?.['da:use_unit_mix_for_gpr']?.value === true;
+  } catch {
+    useUnitMixForGpr = false;
+  }
+
+  // 4a. Pre-compute unit mix derived revenue items (used by both buildOSRows and buildRentRollSummary)
+  const unitMixDerived = computeUnitMixDerived(rentRollRows);
+
   // 5. Build operating statement rows
-  const year1Rows: OSRow[] = buildOSRows(year1Data, totalUnits, purchasePrice, rentRollRows);
+  const year1Rows: OSRow[] = buildOSRows(year1Data, totalUnits, purchasePrice, rentRollRows, unitMixDerived, useUnitMixForGpr);
 
   // 6. Build integrity checks
   const integrityChecks: IntegrityCheck[] = buildIntegrityChecks(year1Data, totalUnits, year1Rows);
@@ -111,7 +127,7 @@ export async function composeDealFinancials(
   const valuationSnapshot = buildValuationSnapshot(purchasePrice, totalUnits, year1Rows, deal);
 
   // 9. Build rent roll summary
-  const rentRollSummary = buildRentRollSummary(rentRollRows, totalUnits);
+  const rentRollSummary = buildRentRollSummary(rentRollRows, totalUnits, unitMixDerived, useUnitMixForGpr);
 
   // 10. Build traffic projection
   const trafficProjection = buildTrafficProjection();
@@ -160,7 +176,9 @@ function buildOSRows(
   y1: any,
   totalUnits: number,
   _purchasePrice: number | null,
-  _rentRollRows: any[]
+  _rentRollRows: any[],
+  unitMixDerived: UnitMixDerived,
+  useUnitMixForGpr: boolean
 ): OSRow[] {
   const rows: OSRow[] = [];
 
@@ -203,12 +221,13 @@ function buildOSRows(
 
   if (!y1) {
     addRow('gpr', 'Gross Potential Rent', null, { isSubtotal: true, resolution: 'unseeded' });
-    addRow('rent', 'Rent', null, { resolution: 'unseeded' });
-    addRow('parking', 'Parking', null, { resolution: 'unseeded' });
-    addRow('storage', 'Storage', null, { resolution: 'unseeded' });
+    addRow('vacancy_loss', 'Vacancy Loss', null, { resolution: 'unseeded' });
+    addRow('loss_to_lease', 'Loss to Lease', null, { resolution: 'unseeded' });
+    addRow('concessions', 'Concessions', null, { resolution: 'unseeded' });
+    addRow('bad_debt', 'Bad Debt / Collection Loss', null, { resolution: 'unseeded' });
+    addRow('non_revenue_units', 'Non-Revenue Units', null, { resolution: 'unseeded' });
+    addRow('net_rental_income', 'Net Rental Income', null, { isSubtotal: true, resolution: 'unseeded' });
     addRow('other_income', 'Other Income', null, { resolution: 'unseeded' });
-    addRow('total_gross_income', 'Total Gross Income', null, { isSubtotal: true, resolution: 'unseeded' });
-    addRow('vacancy', 'Vacancy', null, { resolution: 'unseeded' });
     addRow('egi', 'Effective Gross Income', null, { isSubtotal: true, resolution: 'unseeded' });
     addRow('total_opex', 'Total Operating Expenses', null, { isSubtotal: true, resolution: 'unseeded' });
     addRow('real_estate_taxes', 'Real Estate Taxes', null, { resolution: 'unseeded' });
@@ -226,15 +245,72 @@ function buildOSRows(
     return rows;
   }
 
-  // Revenue
-  addRow('gpr', 'Gross Potential Rent', y1.gpr ?? null, { isSubtotal: true });
-  addRow('rent', 'Rent', y1.gpr ?? null, { platform: y1.rentGrowthRate ?? null });
-  addRow('parking', 'Parking', null);
-  addRow('storage', 'Storage', null);
-  addRow('other_income', 'Other Income', y1.otherIncome ?? null);
-  addRow('total_gross_income', 'Total Gross Income', y1.gpr ?? y1.totalGrossIncome ?? null, { isSubtotal: true });
-  addRow('vacancy', 'Vacancy', y1.vacancy ?? null);
-  addRow('egi', 'Effective Gross Income', y1.egi ?? y1.effectiveGrossIncome ?? null, { isSubtotal: true });
+  // ─── Revenue ────────────────────────────────────────────────────────────────
+  // Mirrors Projections REVENUE block. When useUnitMixForGpr is on AND the unit
+  // mix has the relevant data, we resolve from unit mix; otherwise fall back to
+  // year1 platform values. Source field signals provenance to the UI.
+
+  // Platform-side values (year1 JSONB shape)
+  const platformGpr           = y1.gpr ?? null;
+  const platformVacancyPct    = y1.vacancyPct ?? y1.vacancy_pct ?? null;
+  const platformVacancyLoss   = y1.vacancyLoss ?? (platformGpr != null && platformVacancyPct != null ? platformGpr * platformVacancyPct : (y1.vacancy ?? null));
+  const platformL2L           = y1.lossToLease ?? (platformGpr != null && y1.lossToLeasePct != null ? platformGpr * y1.lossToLeasePct : (platformGpr != null && y1.loss_to_lease_pct != null ? platformGpr * y1.loss_to_lease_pct : null));
+  const platformConcessions   = y1.concessions ?? (platformGpr != null && (y1.concessionsPct ?? y1.concessions_pct) != null ? platformGpr * (y1.concessionsPct ?? y1.concessions_pct) : null);
+  const platformBadDebt       = y1.badDebt ?? (platformGpr != null && (y1.badDebtPct ?? y1.bad_debt_pct) != null ? platformGpr * (y1.badDebtPct ?? y1.bad_debt_pct) : null);
+  const platformNRU           = y1.nru ?? y1.nonRevenueUnits ?? (platformGpr != null && (y1.nonRevenueUnitsPct ?? y1.non_revenue_units_pct) != null ? platformGpr * (y1.nonRevenueUnitsPct ?? y1.non_revenue_units_pct) : null);
+  const platformOtherIncome   = y1.otherIncome ?? null;
+
+  // Unit-mix-derived values (when available); chooseSource picks per row
+  const um = unitMixDerived;
+  const useUM = useUnitMixForGpr;
+
+  function chooseSource<T>(umVal: T | null, platformVal: T | null): { resolved: T | null; source: string } {
+    if (useUM && umVal != null) return { resolved: umVal, source: 'unit_mix' };
+    return { resolved: platformVal, source: 'platform' };
+  }
+
+  const gprPick   = chooseSource(um.gprFromUnitMix, platformGpr);
+  const vacPick   = chooseSource(um.vacancyLossFromUnitMix, platformVacancyLoss);
+  const l2lPick   = chooseSource(um.lossToLeaseFromUnitMix, platformL2L);
+  const concPick  = chooseSource(um.concessionsFromUnitMix, platformConcessions);
+  const nruPick   = chooseSource<number>(null, platformNRU);  // no per-type non-revenue flag in unit mix yet
+  const otherPick = chooseSource<number>(null, platformOtherIncome);
+
+  // Bad Debt: per spec, sourced from T-12 or Rent Roll (never unit mix).
+  // year1.badDebtSource is set by the proforma seeder when the value originated
+  // from a parsed T-12 or rent roll. Fall back to 'platform' (don't mislabel).
+  const badDebtSource: string = (typeof y1.badDebtSource === 'string' && (y1.badDebtSource === 't12' || y1.badDebtSource === 'rent_roll'))
+    ? y1.badDebtSource
+    : 'platform';
+
+  // Net Rental Income = GPR − Vacancy Loss − L2L − Concessions − Bad Debt − NRU
+  const nri = (() => {
+    if (gprPick.resolved == null) return null;
+    return gprPick.resolved
+      - (vacPick.resolved   ?? 0)
+      - (l2lPick.resolved   ?? 0)
+      - (concPick.resolved  ?? 0)
+      - (platformBadDebt    ?? 0)
+      - (nruPick.resolved   ?? 0);
+  })();
+
+  // EGI = NRI + Other Income (prefer year1 stored EGI when present)
+  const egi = y1.egi ?? y1.effectiveGrossIncome
+    ?? (nri != null ? nri + (otherPick.resolved ?? 0) : null);
+
+  addRow('gpr',                'Gross Potential Rent',       gprPick.resolved,    { isSubtotal: true, source: gprPick.source, platform: platformGpr, rentRoll: um.gprFromUnitMix });
+  addRow('vacancy_loss',       'Vacancy Loss',               vacPick.resolved,    { source: vacPick.source, platform: platformVacancyLoss, rentRoll: um.vacancyLossFromUnitMix });
+  addRow('loss_to_lease',      'Loss to Lease',              l2lPick.resolved,    { source: l2lPick.source, platform: platformL2L, rentRoll: um.lossToLeaseFromUnitMix });
+  addRow('concessions',        'Concessions',                concPick.resolved,   { source: concPick.source, platform: platformConcessions, rentRoll: um.concessionsFromUnitMix });
+  addRow('bad_debt',           'Bad Debt / Collection Loss', platformBadDebt,     {
+    source: badDebtSource,
+    t12:      badDebtSource === 't12'       ? platformBadDebt : null,
+    rentRoll: badDebtSource === 'rent_roll' ? platformBadDebt : null,
+  });
+  addRow('non_revenue_units',  'Non-Revenue Units',          nruPick.resolved,    { source: nruPick.source, platform: platformNRU });
+  addRow('net_rental_income',  'Net Rental Income',          nri,                  { isSubtotal: true });
+  addRow('other_income',       'Other Income',               otherPick.resolved,  { source: otherPick.source, platform: platformOtherIncome });
+  addRow('egi',                'Effective Gross Income',     egi,                  { isSubtotal: true });
 
   // Expenses
   addRow('total_opex', 'Total Operating Expenses', null, { isSubtotal: true });
@@ -346,8 +422,30 @@ function buildValuationSnapshot(
 
 // ── Helper: Rent roll summary ────────────────────────────────────────────────
 
-function buildRentRollSummary(rentRollRows: any[], _totalUnits: number): any | null {
-  if (!rentRollRows || rentRollRows.length === 0) return null;
+// ── Helper: Unit-mix derived revenue items (shared across composer paths) ────
+
+interface UnitMixDerived {
+  unitMix: Array<{
+    type: string; count: number; avgSf: number | null;
+    inPlaceRent: number | null; marketRent: number | null;
+    occupancyPct: number | null; concessionPct: number | null;
+  }>;
+  totalUnitsInMix: number;
+  avgInPlaceRent: number | null;
+  weightedOccupancyPct: number | null;
+  gprFromUnitMix: number | null;        // Σ marketRent × count × 12  (potential gross — Projections semantics)
+  vacancyLossFromUnitMix: number | null; // gpr × (1 − weightedOccupancy)
+  lossToLeaseFromUnitMix: number | null; // Σ max(0, marketRent − inPlaceRent) × count × 12
+  concessionsFromUnitMix: number | null; // Σ marketRent × count × 12 × concessionPct
+}
+
+function computeUnitMixDerived(rentRollRows: any[]): UnitMixDerived {
+  const empty: UnitMixDerived = {
+    unitMix: [], totalUnitsInMix: 0, avgInPlaceRent: null, weightedOccupancyPct: null,
+    gprFromUnitMix: null, vacancyLossFromUnitMix: null,
+    lossToLeaseFromUnitMix: null, concessionsFromUnitMix: null,
+  };
+  if (!rentRollRows || rentRollRows.length === 0) return empty;
 
   const unitMix = rentRollRows.map(r => ({
     type: r.type || 'Unknown',
@@ -359,21 +457,64 @@ function buildRentRollSummary(rentRollRows: any[], _totalUnits: number): any | n
     concessionPct: r.concession_pct ?? null,
   }));
 
-  const totalUnitsInMix = unitMix.reduce((s: number, u: any) => s + u.count, 0);
+  const totalUnitsInMix = unitMix.reduce((s, u) => s + u.count, 0);
   const weightedInPlace = totalUnitsInMix > 0
-    ? unitMix.reduce((s: number, u: any) => s + (u.inPlaceRent ?? 0) * u.count, 0) / totalUnitsInMix
+    ? unitMix.reduce((s, u) => s + (u.inPlaceRent ?? 0) * u.count, 0) / totalUnitsInMix
     : null;
   const weightedOcc = totalUnitsInMix > 0
-    ? unitMix.reduce((s: number, u: any) => s + (u.occupancyPct ?? 0) * u.count, 0) / totalUnitsInMix
+    ? unitMix.reduce((s, u) => s + (u.occupancyPct ?? 0) * u.count, 0) / totalUnitsInMix
     : null;
-  const gprFromMix = unitMix.reduce((s: number, u: any) => s + (u.inPlaceRent ?? 0) * u.count * 12, 0);
+
+  // GPR = potential annual rent at MARKET rates (matches Projections "Gross Potential Rent")
+  const gprFromMix = unitMix.reduce((s, u) => {
+    const rate = u.marketRent ?? u.inPlaceRent ?? 0;
+    return s + rate * u.count * 12;
+  }, 0);
+
+  const vacancyLossFromUnitMix = (gprFromMix > 0 && weightedOcc != null)
+    ? gprFromMix * (1 - weightedOcc)
+    : null;
+
+  const lossToLeaseFromUnitMix = unitMix.reduce((s, u) => {
+    if (u.marketRent == null || u.inPlaceRent == null) return s;
+    const gap = Math.max(0, u.marketRent - u.inPlaceRent);
+    return s + gap * u.count * 12;
+  }, 0);
+
+  const concessionsFromUnitMix = unitMix.reduce((s, u) => {
+    const rate = u.marketRent ?? u.inPlaceRent ?? 0;
+    const cp = u.concessionPct ?? 0;
+    return s + rate * u.count * 12 * cp;
+  }, 0);
 
   return {
     unitMix,
+    totalUnitsInMix,
     avgInPlaceRent: weightedInPlace,
     weightedOccupancyPct: weightedOcc,
     gprFromUnitMix: gprFromMix > 0 ? gprFromMix : null,
-    useUnitMixForGpr: false,
+    vacancyLossFromUnitMix,
+    lossToLeaseFromUnitMix: lossToLeaseFromUnitMix > 0 ? lossToLeaseFromUnitMix : null,
+    concessionsFromUnitMix: concessionsFromUnitMix > 0 ? concessionsFromUnitMix : null,
+  };
+}
+
+function buildRentRollSummary(
+  rentRollRows: any[],
+  _totalUnits: number,
+  derived: UnitMixDerived,
+  useUnitMixForGpr: boolean
+): any | null {
+  if (!rentRollRows || rentRollRows.length === 0) return null;
+  return {
+    unitMix: derived.unitMix,
+    avgInPlaceRent: derived.avgInPlaceRent,
+    weightedOccupancyPct: derived.weightedOccupancyPct,
+    gprFromUnitMix: derived.gprFromUnitMix,
+    vacancyLossFromUnitMix: derived.vacancyLossFromUnitMix,
+    lossToLeaseFromUnitMix: derived.lossToLeaseFromUnitMix,
+    concessionsFromUnitMix: derived.concessionsFromUnitMix,
+    useUnitMixForGpr,
   };
 }
 

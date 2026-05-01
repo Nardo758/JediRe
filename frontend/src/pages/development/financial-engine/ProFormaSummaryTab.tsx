@@ -94,24 +94,24 @@ interface DealFinancials {
 }
 
 // ─── Sections layout ──────────────────────────────────────────────────────────
+// Field names mirror Projections REVENUE block (dollar values, not rates).
 const REVENUE_FIELDS = new Set([
-  'gpr', 'loss_to_lease_pct', 'vacancy_pct', 'concessions_pct',
-  'bad_debt_pct', 'non_revenue_units_pct', 'other_income_per_unit',
-  'net_rental_income', 'egi',
+  'gpr', 'vacancy_loss', 'loss_to_lease', 'concessions',
+  'bad_debt', 'non_revenue_units', 'net_rental_income',
+  'other_income', 'egi',
 ]);
 const CTRL_OPEX_FIELDS = new Set([
   'payroll', 'repairs_maintenance', 'turnover', 'contract_services',
   'marketing', 'utilities', 'g_and_a',
 ]);
 const NCTRL_OPEX_FIELDS = new Set([
-  'management_fee_pct', 'insurance', 'real_estate_tax', 'replacement_reserves', 'total_opex',
+  'management_fee_pct', 'insurance', 'real_estate_taxes', 'replacement_reserves', 'total_opex',
 ]);
-const SUBTOTALS = new Set(['egi', 'total_opex', 'noi']);
+const SUBTOTALS = new Set(['gpr', 'net_rental_income', 'egi', 'total_opex', 'noi']);
 const PCT_FIELDS = new Set([
-  'loss_to_lease_pct', 'vacancy_pct', 'concessions_pct',
-  'bad_debt_pct', 'non_revenue_units_pct', 'management_fee_pct',
+  'management_fee_pct',
 ]);
-const PER_UNIT_FIELDS = new Set(['other_income_per_unit']);
+const PER_UNIT_FIELDS = new Set<string>();
 
 // ─── Formatting ───────────────────────────────────────────────────────────────
 function fmt$(n: number | null): string {
