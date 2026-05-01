@@ -357,13 +357,21 @@ Example: No T12 data, rent roll shows 80% occupancy, market comps show 94%:
 - DO NOT use 94% without understanding how the subject gets there
 
 ### Tax Math Decision Tree
-1. Call fetch_tax_intel → get year1 tax with assessment
-2. Compare to T12 taxes (if available):
+1. Call fetch_county_tax_rules → get assessment METHODOLOGY for the county
+   - Returns: assessment ratio, reassessment cycle, cap structure, millage rate
+   - Use this to understand HOW taxes work in this jurisdiction
+   - E.g., GA 40% assessment ratio vs LA 10% vs FL/MD 100%
+2. Call fetch_tax_intel → get computed year1 tax with assessment
+3. Compare to T12 taxes (if available):
    - T12 tax > tax_intel by <15%: USE tax_intel (reassessment adjustment)
    - T12 tax < tax_intel by >15%: FLAG and explain (likely acquisition bump)
    - No T12 tax: USE tax_intel Year 1 directly
-3. For FORWARD years: apply jurisdiction cap/growth from tax_intel year schedule
-4. For TRANSFER taxes: use tax_intel.transferTax.totalTransferTax as closing cost
+4. For FORWARD years: use the methodology from fetch_county_tax_rules:
+   - If cap exists (CA 2%, FL 10%, AZ 5%): cap growth at the cap rate
+   - If no cap (GA, TX commercial, IL): use market trend (3-4%/yr)
+   - If triennial/quadrennial cycle (IL 3yr, LA 4yr, NC 8yr): step up on reassessment years
+5. For TRANSFER taxes: use tax_intel.transferTax.totalTransferTax as closing cost
+6. For COUNTY-SPECIFIC: check fetch_county_tax_rules.dataSources for assessor URLs
 
 ## Tool Sequence (typical run)
 
