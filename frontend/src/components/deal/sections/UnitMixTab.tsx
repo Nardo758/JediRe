@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   RefreshCw, Loader2, Activity, TrendingUp, TrendingDown, Minus,
   Info, Zap, Edit3, Check, X, AlertTriangle, ChevronDown, ChevronRight,
@@ -31,6 +31,14 @@ const C = {
   dim:      '#334155',
 };
 
+interface ExpirationCurve {
+  months_0_3: number;
+  months_3_6: number;
+  months_6_12: number;
+  months_12_plus: number;
+  mtm: number;
+}
+
 interface RentRollUnitType {
   type: string;
   count: number;
@@ -44,6 +52,36 @@ interface RentRollUnitType {
   marketRentOriginal?: number | null;
   inPlaceRentOverridden?: boolean;
   marketRentOverridden?: boolean;
+  /** Per-floor-plan expiration roll-up (only present when source = extraction_rent_roll) */
+  expirationCurve?: ExpirationCurve | null;
+  source?: string;
+}
+
+interface ExtractionRentRollPayload {
+  totalUnits: number | null;
+  occupiedUnits: number | null;
+  vacantUnits: number | null;
+  asOfDate: string | null;
+  sourceRef: string | null;
+  otherIncomeMonthly: Record<string, number> | null;
+  expirationCurve: ExpirationCurve | null;
+  floorPlanMix: Record<string, unknown> | null;
+  units: Array<{
+    unitNumber: string;
+    unitType: string;
+    sqft: number | null;
+    status: string;
+    tenantName: string | null;
+    marketRent: number | null;
+    leaseRent: number | null;
+    effectiveRent: number | null;
+    leaseStart: string | null;
+    leaseEnd: string | null;
+    moveInDate: string | null;
+    moveOutDate: string | null;
+    isFutureResident: boolean;
+    balance: number | null;
+  }> | null;
 }
 
 interface LeasingSignals {
@@ -68,8 +106,11 @@ interface DealFinancials {
     weightedOccupancyPct: number | null;
     gprFromUnitMix: number | null;
     useUnitMixForGpr: boolean;
+    expirationCurve?: ExpirationCurve | null;
+    source?: string;
   } | null;
   trafficProjection: TrafficProjection | null;
+  extractionRentRoll: ExtractionRentRollPayload | null;
 }
 
 const fmt$ = (v: number | null | undefined) =>
@@ -134,6 +175,162 @@ function TrafficSignal({ label, value, unit, linked }: { label: string; value: s
   );
 }
 
+/**
+ * Compact horizontal stacked-bar viz of a per-floorplan expiration curve.
+ * Renders 5 segments: 0-3mo / 3-6mo / 6-12mo / 12+mo / MTM, each colored by
+ * urgency (MTM red, near-term amber, mid-term cyan, long-term green). Hover
+ * reveals exact unit counts. Falls back to "—" when no curve is available
+ * (OM-only deals, or capsule rows that pre-date this field).
+ */
+function ExpirationBars({ curve, totalUnits }: { curve: ExpirationCurve | null; totalUnits: number }) {
+  if (!curve || totalUnits <= 0) {
+    return <span style={{ fontFamily: LABEL, fontSize: 9, color: C.dim }}>—</span>;
+  }
+  const segments: Array<{ key: string; label: string; count: number; color: string }> = [
+    { key: 'mtm',     label: 'MTM',       count: curve.mtm,           color: C.red },
+    { key: '0_3',     label: '0-3 mo',    count: curve.months_0_3,    color: C.amber },
+    { key: '3_6',     label: '3-6 mo',    count: curve.months_3_6,    color: '#d97706' },
+    { key: '6_12',    label: '6-12 mo',   count: curve.months_6_12,   color: C.cyan },
+    { key: '12_plus', label: '12+ mo',    count: curve.months_12_plus, color: C.green },
+  ];
+  const sum = segments.reduce((s, x) => s + x.count, 0);
+  if (sum === 0) {
+    return <span style={{ fontFamily: LABEL, fontSize: 9, color: C.dim }}>—</span>;
+  }
+  // Bias near-term percentages so a single MTM unit in a 100-unit floorplan
+  // is still visible (min 3px width when count>0).
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px' }}>
+      <div style={{ display: 'flex', height: 10, width: 110, background: '#0a0e15', borderRadius: 2, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+        {segments.map(s => {
+          if (s.count === 0) return null;
+          const pct = (s.count / sum) * 100;
+          return (
+            <div
+              key={s.key}
+              title={`${s.label}: ${s.count} unit${s.count === 1 ? '' : 's'}`}
+              style={{ width: `${Math.max(pct, 3)}%`, background: s.color, minWidth: 3 }}
+            />
+          );
+        })}
+      </div>
+      <span style={{ fontFamily: MONO, fontSize: 9, color: C.muted, whiteSpace: 'nowrap' }}>
+        {curve.mtm > 0 && <span style={{ color: C.red }}>{curve.mtm} MTM</span>}
+        {curve.mtm > 0 && curve.months_0_3 > 0 && <span style={{ color: C.dim }}> · </span>}
+        {curve.months_0_3 > 0 && <span style={{ color: C.amber }}>{curve.months_0_3} ≤3mo</span>}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Expandable per-unit table (only shown when extraction_rent_roll.units is
+ * present). Defaults collapsed because rent rolls can be hundreds of rows
+ * long. Sorts by lease end date ascending so MTM / soon-to-expire leases
+ * surface at the top — that's the renewal-risk worklist.
+ */
+function PerUnitDrilldown({ units }: { units: NonNullable<ExtractionRentRollPayload['units']> }) {
+  const [collapsed, setCollapsed] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+
+  const sorted = useMemo(() => {
+    const score = (u: typeof units[0]) => {
+      if (u.status?.toLowerCase().includes('vacant')) return Number.MAX_SAFE_INTEGER - 1;
+      if (!u.leaseEnd) return Number.MAX_SAFE_INTEGER;
+      const t = Date.parse(u.leaseEnd);
+      return isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
+    };
+    return [...units].sort((a, b) => score(a) - score(b));
+  }, [units]);
+
+  const visible = showAll ? sorted : sorted.slice(0, 25);
+  const occupiedCount = units.filter(u => !u.status?.toLowerCase().includes('vacant')).length;
+
+  return (
+    <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', marginTop: 12 }}>
+      <div
+        onClick={() => setCollapsed(c => !c)}
+        style={{ padding: '8px 12px', borderBottom: collapsed ? undefined : `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+      >
+        {collapsed ? <ChevronRight size={12} color={C.muted} /> : <ChevronDown size={12} color={C.muted} />}
+        <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.text, letterSpacing: '0.06em' }}>PER-UNIT DRILL-DOWN</span>
+        <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginLeft: 4 }}>sorted by lease end · soonest first</span>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.cyan, marginLeft: 'auto' }}>
+          {units.length} units · {occupiedCount} occupied
+        </span>
+      </div>
+      {!collapsed && (
+        <>
+          <div style={{ overflowX: 'auto', maxHeight: 480, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                <tr style={{ background: C.panelAlt }}>
+                  <th style={th()}>UNIT</th>
+                  <th style={th()}>FLOOR PLAN</th>
+                  <th style={th(true)}>SF</th>
+                  <th style={th()}>STATUS</th>
+                  <th style={th()}>TENANT</th>
+                  <th style={th(true)}>LEASE RENT</th>
+                  <th style={th(true)}>MARKET</th>
+                  <th style={th()}>LEASE END</th>
+                  <th style={th(true)}>BAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((u, idx) => {
+                  const isVacant = u.status?.toLowerCase().includes('vacant');
+                  const ltl = u.marketRent != null && u.leaseRent != null ? u.marketRent - u.leaseRent : null;
+                  const endDate = u.leaseEnd ? new Date(u.leaseEnd) : null;
+                  const monthsToEnd = endDate ? (endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30.44) : null;
+                  const endColor = isVacant ? C.dim
+                    : monthsToEnd == null ? C.muted
+                    : monthsToEnd < 0 ? C.red
+                    : monthsToEnd < 3 ? C.amber
+                    : monthsToEnd < 12 ? C.cyan
+                    : C.green;
+                  return (
+                    <tr key={`${u.unitNumber}-${idx}`} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
+                      <td style={{ ...td(), fontWeight: 700, color: C.cyan }}>{u.unitNumber}</td>
+                      <td style={td(false, false, C.muted)}>{u.unitType || '—'}</td>
+                      <td style={td(true, false, C.muted)}>{u.sqft != null ? u.sqft.toLocaleString() : '—'}</td>
+                      <td style={td(false, false, isVacant ? C.red : u.isFutureResident ? C.amber : C.green)}>
+                        {u.status || '—'}
+                      </td>
+                      <td style={td(false, false, C.muted)}>
+                        <span style={{ display: 'inline-block', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {u.tenantName || (isVacant ? '(vacant)' : '—')}
+                        </span>
+                      </td>
+                      <td style={td(true, false, isVacant ? C.dim : C.text)}>{fmt$(u.leaseRent)}</td>
+                      <td style={td(true, false, ltl != null && ltl > 0 ? C.amber : C.muted)}>{fmt$(u.marketRent)}</td>
+                      <td style={td(false, false, endColor)}>
+                        {u.leaseEnd ? u.leaseEnd : (isVacant ? '—' : 'MTM')}
+                      </td>
+                      <td style={td(true, false, u.balance != null && u.balance > 0 ? C.red : C.dim)}>
+                        {u.balance != null && u.balance !== 0 ? fmt$(u.balance) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {sorted.length > 25 && (
+            <div style={{ padding: '8px 12px', borderTop: `1px solid ${C.border}`, background: C.panelAlt, textAlign: 'center' }}>
+              <button
+                onClick={() => setShowAll(s => !s)}
+                style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 3, padding: '4px 12px', color: C.cyan, fontFamily: LABEL, fontSize: 9, cursor: 'pointer' }}
+              >
+                {showAll ? `SHOW TOP 25 ONLY` : `SHOW ALL ${sorted.length} UNITS`}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 interface AncillaryLine {
   key: string;
   label: string;
@@ -143,6 +340,12 @@ interface AncillaryLine {
   note: string;
 }
 
+/**
+ * Default ancillary template — used as a last-resort fallback ONLY when no
+ * rent-roll extraction is available. When `otherIncomeMonthly` is present,
+ * `realAncillaryFromExtraction` is preferred so the user sees their actual
+ * pet / parking / RUBS / fee dollars instead of synthetic estimates.
+ */
 function makeDefaultAncillary(u: number): AncillaryLine[] {
   return [
     { key: 'pet',      label: 'Pet Rent',                    qty: u,                       price: 27.50,  occupancy: 0.30, note: 'Est. 30% of units' },
@@ -158,8 +361,60 @@ function makeDefaultAncillary(u: number): AncillaryLine[] {
   ];
 }
 
-function AncillaryPanel({ totalUnits }: { totalUnits: number }) {
-  const [lines, setLines] = useState<AncillaryLine[]>(() => makeDefaultAncillary(totalUnits));
+/** Pretty labels for the parser's `other_income_monthly` keys. */
+const ANCILLARY_LABELS: Record<string, string> = {
+  parking: 'Parking',
+  pet_rent: 'Pet Rent',
+  storage: 'Storage',
+  rubs: 'RUBS / Utilities',
+  fees: 'Admin / App Fees',
+  insurance_admin: 'Insurance Admin',
+  concessions_other: 'Concessions / Other',
+  other: 'Other Income',
+};
+
+/**
+ * Convert `extraction_rent_roll.other_income_monthly` (real $/month figures
+ * the parser pulled from rent-roll charge codes) into the AncillaryLine row
+ * shape. The total-monthly is preserved exactly: qty=1, occ=1, price=monthly.
+ * Lines with zero charges are dropped so the user only sees what's actually
+ * billed today.
+ */
+function realAncillaryFromExtraction(otherIncomeMonthly: Record<string, number>): AncillaryLine[] {
+  return Object.entries(otherIncomeMonthly)
+    .filter(([, amt]) => amt > 0)
+    .map(([key, amt]) => ({
+      key,
+      label: ANCILLARY_LABELS[key] ?? key.replace(/_/g, ' '),
+      qty: 1,
+      price: amt,
+      occupancy: 1,
+      note: 'Per rent-roll charge codes',
+    }));
+}
+
+function AncillaryPanel({
+  totalUnits,
+  otherIncomeMonthly,
+}: {
+  totalUnits: number;
+  otherIncomeMonthly: Record<string, number> | null;
+}) {
+  const isReal = otherIncomeMonthly != null && Object.values(otherIncomeMonthly).some(v => v > 0);
+  const [lines, setLines] = useState<AncillaryLine[]>(() =>
+    isReal
+      ? realAncillaryFromExtraction(otherIncomeMonthly!)
+      : makeDefaultAncillary(totalUnits),
+  );
+
+  // Refresh lines when the underlying data source flips (e.g. user uploads a
+  // rent roll mid-session). Without this the synthetic rows would stay frozen.
+  useEffect(() => {
+    setLines(isReal
+      ? realAncillaryFromExtraction(otherIncomeMonthly!)
+      : makeDefaultAncillary(totalUnits));
+  }, [totalUnits, isReal, otherIncomeMonthly]);
+
   const [editingKey, setEditingKey] = useState<{ key: string; field: 'qty' | 'price' | 'occ'; val: string } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -214,6 +469,18 @@ function AncillaryPanel({ totalUnits }: { totalUnits: number }) {
         {collapsed ? <ChevronRight size={12} color={C.muted} /> : <ChevronDown size={12} color={C.muted} />}
         <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.text, letterSpacing: '0.06em' }}>ANCILLARY INCOME BREAKDOWN</span>
         <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginLeft: 4 }}>click cells to edit qty · price · occupancy</span>
+        <span
+          style={{
+            fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.06em',
+            padding: '2px 6px', borderRadius: 3,
+            background: isReal ? `${C.green}22` : `${C.amber}22`,
+            color: isReal ? C.green : C.amber,
+            border: `1px solid ${isReal ? C.green : C.amber}55`,
+          }}
+          title={isReal ? 'Sourced from rent-roll charge codes' : 'Synthesized from per-unit benchmarks (no rent roll uploaded)'}
+        >
+          {isReal ? 'RENT ROLL' : 'EST'}
+        </span>
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.amber, marginLeft: 'auto' }}>{fmt$(totalAnnual)}/yr</span>
       </div>
 
@@ -523,6 +790,16 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
         </button>
       </div>
 
+      {/* ── OM-only banner (no rent roll uploaded yet) ── */}
+      {data?.extractionRentRoll == null && unitMix.length > 0 && (
+        <div style={{ background: '#0a0d18', borderBottom: `1px solid ${C.purple}44`, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertTriangle size={13} color={C.purple} />
+          <span style={{ fontFamily: LABEL, fontSize: 9, color: C.purple }}>
+            OM-ONLY UNIT MIX — Floor plan counts and rents come from the offering memorandum (broker-published). Upload a rent roll to unlock per-unit drill-down, lease expiration analysis, and rent-roll-sourced ancillary income.
+          </span>
+        </div>
+      )}
+
       {/* ── Unit count reconciliation banner ── */}
       {unitCountMismatch && (
         <div style={{ background: '#1a0d00', borderBottom: `1px solid ${C.amber}44`, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -604,6 +881,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                       <th style={th(true)}>MARKET RENT</th>
                       <th style={th(true)}>L-T-L</th>
                       <th style={th(true)}>OCC %</th>
+                      <th style={th()}>LEASE EXP</th>
                       <th style={th(true)}>ANNUAL GPR</th>
                     </tr>
                   </thead>
@@ -707,6 +985,9 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                           <td style={td(true, false, occ == null ? C.dim : occ >= 0.90 ? C.green : occ >= 0.80 ? C.amber : C.red)}>
                             {fmtPct(occ)}
                           </td>
+                          <td style={td(false)}>
+                            <ExpirationBars curve={u.expirationCurve ?? null} totalUnits={u.count} />
+                          </td>
                           <td style={td(true, false, C.green)}>{fmt$(gpr)}</td>
                         </tr>
                       );
@@ -737,6 +1018,9 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                       <td style={{ ...td(true), fontWeight: 700, color: weightedOcc != null && weightedOcc >= 0.90 ? C.green : weightedOcc != null && weightedOcc >= 0.80 ? C.amber : C.red }}>
                         {fmtPct(weightedOcc)}
                       </td>
+                      <td style={td(false)}>
+                        <ExpirationBars curve={data?.rentRollSummary?.expirationCurve ?? null} totalUnits={totalUnits} />
+                      </td>
                       <td style={{ ...td(true), fontWeight: 700, color: C.green }}>{fmt$(totalGprAnnual)}</td>
                     </tr>
                   </tfoot>
@@ -755,7 +1039,17 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
           )}
 
           {/* ── Ancillary Income Breakdown ── */}
-          {totalUnits > 0 && <AncillaryPanel totalUnits={totalUnits} />}
+          {totalUnits > 0 && (
+            <AncillaryPanel
+              totalUnits={totalUnits}
+              otherIncomeMonthly={data?.extractionRentRoll?.otherIncomeMonthly ?? null}
+            />
+          )}
+
+          {/* ── Per-Unit Drill-down (rent roll only) ── */}
+          {data?.extractionRentRoll?.units && data.extractionRentRoll.units.length > 0 && (
+            <PerUnitDrilldown units={data.extractionRentRoll.units} />
+          )}
 
           {/* ── Value-Add Renovation Upside ── */}
           {isValueAdd && unitMix.length > 0 && (
@@ -847,7 +1141,18 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                 const badDebtLoss    = gri != null ? gri * badDebtPct : null;
                 const concessionPct  = unitMix.reduce((s, u) => s + (u.concessionPct ?? 0) * u.count, 0) / Math.max(totalUnits, 1);
                 const concessionLoss = totalMarketGprAnnual > 0 ? concessionPct * totalMarketGprAnnual : null;
-                const ancillaryTotal = makeDefaultAncillary(totalUnits).reduce((s, l) => s + l.qty * l.price * l.occupancy * 12, 0);
+                // Source-aware ancillary: when the rent-roll extraction has
+                // real `other_income_monthly` charge-code totals, use them so
+                // the EGI waterfall matches the AncillaryPanel below. Falls
+                // back to the per-unit synthetic template only when no real
+                // charges are available (OM-only deals, blank fields).
+                const realAncMonthly = data?.extractionRentRoll?.otherIncomeMonthly ?? null;
+                const realAncTotal   = realAncMonthly
+                  ? Object.values(realAncMonthly).reduce((s, v) => s + (v > 0 ? v : 0), 0) * 12
+                  : 0;
+                const ancillaryTotal = realAncTotal > 0
+                  ? realAncTotal
+                  : makeDefaultAncillary(totalUnits).reduce((s, l) => s + l.qty * l.price * l.occupancy * 12, 0);
                 const egi = gri != null && badDebtLoss != null
                   ? gri - (concessionLoss ?? 0) - badDebtLoss + ancillaryTotal
                   : null;

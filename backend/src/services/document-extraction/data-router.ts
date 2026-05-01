@@ -651,6 +651,7 @@ async function routeOM(
         document_id: null,
         source_ref: sourceRef,
         source_date: sourceDate,
+        unit_mix: data.unitMix ?? [],
         ...data.metadata,
       },
     })]

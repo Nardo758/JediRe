@@ -201,6 +201,19 @@ export interface OMMetadata {
   textLength: number;
 }
 
+/**
+ * Per-floorplan unit mix as published in the OM. This is what the broker
+ * advertises today, NOT the rent-roll truth — it backs the Unit Mix tab when
+ * no rent roll has been uploaded yet.
+ */
+export interface OMUnitMixEntry {
+  floorplan: string;
+  count: number | null;
+  avgSf: number | null;
+  marketRent: number | null;
+  inPlaceRent: number | null;
+}
+
 export interface OMExtraction {
   property: OMPropertyData;
   replacementCost: OMReplacementCost;
@@ -208,6 +221,7 @@ export interface OMExtraction {
   capitalPlan: OMCapitalPlan;
   debtAssumptions: OMDebtAssumptions;
   marketComps: OMMarketComps;
+  unitMix: OMUnitMixEntry[];
   riskFactors: OMRiskFactors;
   keyEvents: OMKeyEvents;
   investmentHighlights: string[];
@@ -332,6 +346,15 @@ Return ONLY valid JSON matching this schema:
     "submarketRentGrowth": "decimal or null",
     "submarketName": "string or null"
   },
+  "unitMix": [
+    {
+      "floorplan": "string label, e.g. '1BR/1BA', '2BR/2BA', 'A1', 'B2'",
+      "count": "number of units of this floor plan, or null",
+      "avgSf": "average square footage for this floor plan, or null",
+      "marketRent": "asking / pro-forma market rent in $/month, or null",
+      "inPlaceRent": "current in-place rent in $/month, or null"
+    }
+  ],
   "riskFactors": {
     "leaseExpirationConcentration": "string description or null",
     "tenantConcentration": "string or null",
@@ -607,6 +630,18 @@ function normalizeExtraction(raw: any, textLength: number): OMExtraction {
       submarketRentGrowth: raw.marketComps?.submarketRentGrowth ?? null,
       submarketName: raw.marketComps?.submarketName ?? null,
     },
+    unitMix: ((raw.unitMix ?? []) as Array<Record<string, unknown>>)
+      .slice(0, 50)
+      .map((m): OMUnitMixEntry => ({
+        floorplan: typeof m.floorplan === 'string' && m.floorplan.trim().length > 0
+          ? m.floorplan.trim()
+          : (typeof m.type === 'string' ? m.type.trim() : 'unknown'),
+        count: typeof m.count === 'number' && Number.isFinite(m.count) ? m.count : null,
+        avgSf: typeof m.avgSf === 'number' && Number.isFinite(m.avgSf) ? m.avgSf : null,
+        marketRent: typeof m.marketRent === 'number' && Number.isFinite(m.marketRent) ? m.marketRent : null,
+        inPlaceRent: typeof m.inPlaceRent === 'number' && Number.isFinite(m.inPlaceRent) ? m.inPlaceRent : null,
+      }))
+      .filter(m => m.floorplan && m.floorplan !== 'unknown'),
     riskFactors: {
       leaseExpirationConcentration: raw.riskFactors?.leaseExpirationConcentration ?? null,
       tenantConcentration: raw.riskFactors?.tenantConcentration ?? null,

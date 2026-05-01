@@ -380,15 +380,38 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       else otherIncomeMonthly.other += amt;
     }
 
+    // Lease expiration roll (deal-wide) — declared early so per-floor-plan
+    // roll-ups can reuse the same bucketing logic.
+    const today = new Date();
+    const monthsBetween = (a: Date, b: Date) =>
+      (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    const bucketExpiration = (
+      bucket: { months_0_3: number; months_3_6: number; months_6_12: number; months_12_plus: number; mtm: number },
+      leaseExpiration: Date | null,
+    ) => {
+      if (!leaseExpiration) { bucket.mtm++; return; }
+      const m = monthsBetween(today, leaseExpiration);
+      if (m < 0) bucket.mtm++;
+      else if (m <= 3) bucket.months_0_3++;
+      else if (m <= 6) bucket.months_3_6++;
+      else if (m <= 12) bucket.months_6_12++;
+      else bucket.months_12_plus++;
+    };
+
     // Floor plan mix
     const floorPlanMix: Record<string, {
       count: number; avg_sqft: number; total_sqft: number;
       avg_market_rent: number; avg_effective_rent: number; occupancy_pct: number;
+      expiration_curve: { months_0_3: number; months_3_6: number; months_6_12: number; months_12_plus: number; mtm: number };
     }> = {};
     for (const u of currentUnits) {
       const fp = u.unitType || 'unknown';
       if (!floorPlanMix[fp]) {
-        floorPlanMix[fp] = { count: 0, avg_sqft: 0, total_sqft: 0, avg_market_rent: 0, avg_effective_rent: 0, occupancy_pct: 0 };
+        floorPlanMix[fp] = {
+          count: 0, avg_sqft: 0, total_sqft: 0,
+          avg_market_rent: 0, avg_effective_rent: 0, occupancy_pct: 0,
+          expiration_curve: { months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0 },
+        };
       }
       floorPlanMix[fp].count++;
       floorPlanMix[fp].total_sqft += u.sqft ?? 0;
@@ -406,6 +429,10 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
         ? Math.round(fpRentSum / fpOccupied.length) : 0;
       floorPlanMix[fp].occupancy_pct = floorPlanMix[fp].count > 0
         ? fpOccupied.length / floorPlanMix[fp].count : 0;
+      // Per-floor-plan expiration roll — bucket only occupied (current) leases
+      for (const u of fpOccupied) {
+        bucketExpiration(floorPlanMix[fp].expiration_curve, u.leaseExpiration);
+      }
     }
 
     // Bedroom rollup
@@ -423,19 +450,11 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       bedroomMix[br].avg_rent = brOccupied.length > 0 ? Math.round(rentSum / brOccupied.length) : 0;
     }
 
-    // Lease expiration roll
-    const today = new Date();
-    const monthsBetween = (a: Date, b: Date) =>
-      (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    // Lease expiration roll (deal-wide) — shares the same bucketing helper
+    // declared above.
     const expirationCurve = { months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0 };
     for (const u of occupiedUnits) {
-      if (!u.leaseExpiration) { expirationCurve.mtm++; continue; }
-      const m = monthsBetween(today, u.leaseExpiration);
-      if (m < 0) expirationCurve.mtm++;
-      else if (m <= 3) expirationCurve.months_0_3++;
-      else if (m <= 6) expirationCurve.months_3_6++;
-      else if (m <= 12) expirationCurve.months_6_12++;
-      else expirationCurve.months_12_plus++;
+      bucketExpiration(expirationCurve, u.leaseExpiration);
     }
 
     // Risk metrics

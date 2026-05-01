@@ -1894,14 +1894,20 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     }
 
     // Parse the field path: unit_mix:<rowIdx>:<field>
-    // E.g. unit_mix:0:inPlace → rent_roll.in_place_rent for row 0 (ordered by type ASC)
-    const match = field.match(/^unit_mix:(\d+):(inPlace|market)$/);
+    // Accepts both legacy short forms (`inPlace` / `market`) and the canonical
+    // `in_place_rent` / `market_rent` the frontend now sends.
+    // E.g. unit_mix:2:in_place_rent → row 2 (ordered by type ASC).
+    const match = field.match(/^unit_mix:(\d+):(inPlace|market|in_place_rent|market_rent)$/);
     if (!match) {
       return res.status(400).json({ success: false, error: `Invalid field path: ${field}` });
     }
 
     const rowIdx = parseInt(match[1], 10);
-    const cellField = match[2];
+    const rawCell = match[2];
+    // Normalize to the legacy short form used downstream for human messages,
+    // and to the snake_case used as the DB column / per_year_overrides key.
+    const cellField: 'inPlace' | 'market' =
+      (rawCell === 'inPlace' || rawCell === 'in_place_rent') ? 'inPlace' : 'market';
 
     // Fetch existing rent_roll rows ordered the same way the frontend expects.
     // The legacy `rent_roll` table is intentionally gracefully absent in many
@@ -1926,21 +1932,22 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     let rowType = 'Default';
 
     if (!rrRes.rows[rowIdx]) {
-      // No rent_roll row at this index. For the synthesized Default row (index 0
-      // when no real rent_roll rows exist, or whenever the legacy table is absent),
-      // persist the edit in `deal_assumptions.per_year_overrides` — a JSON column
-      // that already exists and is keyed, so writes are naturally idempotent and
-      // there is no "duplicate insert" race. The composer reads this column on
-      // every load and applies the overrides on top of the capsule-synthesized row.
-      if (rowIdx === 0 && (rrRes.rows.length === 0 || !rentRollAvailable)) {
+      // No rent_roll SQL row at this index. This is the common path now that
+      // most deals are sourced from `extraction_rent_roll` (capsule JSONB) or
+      // the synthesized capsule-aggregate Default row. Persist the edit in
+      // `deal_assumptions.per_year_overrides` — a JSON column that already
+      // exists and is keyed, so writes are naturally idempotent. The composer
+      // reads `da:unit_mix:<idx>:<field>` and applies the overrides on top of
+      // the extraction-derived (multi-row) or capsule-synthesized rows.
+      if (rrRes.rows.length === 0 || !rentRollAvailable) {
         const numVal = value === null ? null : parseFloat(value);
         if (value !== null && isNaN(numVal as number)) {
           return res.status(400).json({ success: false, error: 'Invalid numeric value' });
         }
 
         const ovKey = cellField === 'inPlace'
-          ? 'da:unit_mix:0:in_place_rent'
-          : 'da:unit_mix:0:market_rent';
+          ? `da:unit_mix:${rowIdx}:in_place_rent`
+          : `da:unit_mix:${rowIdx}:market_rent`;
 
         try {
           // Upsert the override into per_year_overrides JSONB. jsonb_set is used

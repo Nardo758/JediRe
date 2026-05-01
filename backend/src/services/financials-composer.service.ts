@@ -53,6 +53,33 @@ export interface ComposedFinancials {
   waterfall: any;
   projections: any;
   capital: any;
+  /**
+   * Raw `extraction_rent_roll` capsule payload when present. Carries
+   * `units[]` (per-unit drill-down), `other_income_monthly` (real ancillary
+   * breakdown), `expiration_curve` (deal-wide), and `floor_plan_mix` (with
+   * per-floorplan expiration curves). The frontend uses this to render the
+   * Ancillary panel and the Per-Unit drill-down without re-fetching.
+   */
+  extractionRentRoll: ExtractionRentRollPayload | null;
+}
+
+export interface ExtractionRentRollPayload {
+  totalUnits: number | null;
+  occupiedUnits: number | null;
+  vacantUnits: number | null;
+  asOfDate: string | null;
+  sourceRef: string | null;
+  otherIncomeMonthly: Record<string, number> | null;
+  expirationCurve: Record<string, number> | null;
+  floorPlanMix: Record<string, {
+    count: number;
+    avg_sqft: number;
+    avg_market_rent: number;
+    avg_effective_rent: number;
+    occupancy_pct: number;
+    expiration_curve?: Record<string, number>;
+  }> | null;
+  units: Array<Record<string, unknown>> | null;
 }
 
 export async function composeDealFinancials(
@@ -98,16 +125,32 @@ export async function composeDealFinancials(
     rentRollRows = [];
   }
 
-  // 3a. When no rent-roll rows exist, fall back to capsule aggregates
-  // (units, avg rent, occupancy, avg SF) so the synthesized Unit Mix
-  // Default row renders with real values instead of all nulls.
-  const capsuleAggregates = rentRollRows.length === 0
+  // 3a. When no rent-roll rows exist, look for `extraction_rent_roll` in the
+  // capsule (real per-floorplan mix from a parsed rent-roll Excel/CSV). When
+  // that's also missing, fall back to capsule aggregates (single-row OM
+  // averages) so the synthesized Unit Mix Default row renders with real values
+  // instead of all nulls.
+  const extractionRentRoll = rentRollRows.length === 0
+    ? await loadExtractionRentRoll(pool, dealId)
+    : null;
+  // Also load capsule aggregates when an extraction is present but its
+  // `floor_plan_mix` is empty/malformed — in that case the extraction can
+  // still hand us aggregates (otherIncomeMonthly, expirationCurve, totals)
+  // but we need OM-level fallbacks to render the Default row. Without this,
+  // an extraction with units:[] and {} floor_plan_mix would leave
+  // derivationRows undefined and crash buildOSRows downstream.
+  const extractionHasFloorPlanMix = !!(
+    extractionRentRoll &&
+    extractionRentRoll.floorPlanMix &&
+    Object.keys(extractionRentRoll.floorPlanMix).length > 0
+  );
+  const capsuleAggregates = (rentRollRows.length === 0 && !extractionHasFloorPlanMix)
     ? await loadCapsuleAggregates(pool, dealId)
     : null;
 
   // 4. Load per-deal flag and per_year_overrides (controls GPR mode AND carries
-  // synthesized-row rent overrides written by PATCH /financials/override when the
-  // legacy rent_roll table is absent — keys: `da:unit_mix:0:in_place_rent`/`:market_rent`).
+  // per-row rent overrides written by PATCH /financials/override under keys
+  // `da:unit_mix:<idx>:in_place_rent` / `da:unit_mix:<idx>:market_rent`).
   let useUnitMixForGpr = false;
   let pyOvs: Record<string, { value: unknown }> = {};
   try {
@@ -121,34 +164,51 @@ export async function composeDealFinancials(
     useUnitMixForGpr = false;
   }
 
-  const ovInPlace = numOrNull(pyOvs?.['da:unit_mix:0:in_place_rent']?.value);
-  const ovMarket  = numOrNull(pyOvs?.['da:unit_mix:0:market_rent']?.value);
+  const readUnitMixOverride = (idx: number) => ({
+    inPlace: numOrNull(pyOvs?.[`da:unit_mix:${idx}:in_place_rent`]?.value),
+    market:  numOrNull(pyOvs?.[`da:unit_mix:${idx}:market_rent`]?.value),
+  });
+
+  // Back-compat shorthand for the synthesized Default row (idx 0).
+  const ovIdx0 = readUnitMixOverride(0);
+  const ovInPlace = ovIdx0.inPlace;
+  const ovMarket  = ovIdx0.market;
 
   // 4a. Pre-compute unit mix derived revenue items (used by both buildOSRows
-  // and buildRentRollSummary). When rent_roll is empty but capsule aggregates
-  // are present, synthesize a single row in the rent_roll-shaped format and feed
-  // it through the SAME derivation pipeline so revenue rows resolved by
-  // `buildOSRows` (gpr/vacancy/loss-to-lease) reflect capsule data when the
-  // GPR-from-Unit-Mix toggle is ON. This keeps the source-of-truth consistent
-  // between the F9 Unit Mix tab and the Pro Forma operating statement.
-  const derivationRows = rentRollRows.length > 0
-    ? rentRollRows
-    : (capsuleAggregates || ovInPlace != null || ovMarket != null ? [{
-        type: 'Default',
-        count: capsuleAggregates?.units ?? (totalUnits > 0 ? totalUnits : 0),
-        avg_sqft: capsuleAggregates?.avgSf ?? null,
-        // User overrides take precedence; otherwise capsule avgRent. Mirror to
-        // the other column so loss-to-lease is zero (no phantom gap).
-        in_place_rent: ovInPlace ?? capsuleAggregates?.avgRent ?? null,
-        market_rent:   ovMarket  ?? ovInPlace ?? capsuleAggregates?.avgRent ?? null,
-        occupancy_pct: capsuleAggregates?.occupancyPct ?? null,
-        concession_pct: null,
-      }] : []);
+  // and buildRentRollSummary). Tier ordering:
+  //   1. legacy `rent_roll` SQL rows (multi-row, takes precedence)
+  //   2. `extraction_rent_roll.floor_plan_mix` (multi-row, real per-floorplan)
+  //   3. capsule single-row aggregate (OM averages)
+  // Each tier is fed through the SAME derivation pipeline so revenue rows
+  // resolved by `buildOSRows` (gpr/vacancy/loss-to-lease) cannot drift from
+  // what the F9 Unit Mix tab displays.
+  let derivationRows: any[];
+  let extractionDerivationRows: any[] | null = null;
+  if (rentRollRows.length > 0) {
+    derivationRows = rentRollRows;
+  } else if (extractionRentRoll && extractionRentRoll.floorPlanMix && Object.keys(extractionRentRoll.floorPlanMix).length > 0) {
+    extractionDerivationRows = extractionFloorPlanToRentRollRows(extractionRentRoll, readUnitMixOverride);
+    derivationRows = extractionDerivationRows;
+  } else if (capsuleAggregates || ovInPlace != null || ovMarket != null) {
+    derivationRows = [{
+      type: 'Default',
+      count: capsuleAggregates?.units ?? (totalUnits > 0 ? totalUnits : 0),
+      avg_sqft: capsuleAggregates?.avgSf ?? null,
+      // User overrides take precedence; otherwise capsule avgRent. Mirror to
+      // the other column so loss-to-lease is zero (no phantom gap).
+      in_place_rent: ovInPlace ?? capsuleAggregates?.avgRent ?? null,
+      market_rent:   ovMarket  ?? ovInPlace ?? capsuleAggregates?.avgRent ?? null,
+      occupancy_pct: capsuleAggregates?.occupancyPct ?? null,
+      concession_pct: null,
+    }];
+  } else {
+    derivationRows = [];
+  }
   const unitMixDerived = computeUnitMixDerived(derivationRows);
 
   // Pass the same overrides to the summary builder so the Default row in the
   // Unit Mix tab reflects user edits even when no rent_roll row was inserted.
-  const synthesizedOverrides = (rentRollRows.length === 0)
+  const synthesizedOverrides = (rentRollRows.length === 0 && extractionDerivationRows == null)
     ? { inPlaceRent: ovInPlace, marketRent: ovMarket }
     : null;
 
@@ -165,7 +225,11 @@ export async function composeDealFinancials(
   const valuationSnapshot = buildValuationSnapshot(purchasePrice, totalUnits, year1Rows, deal);
 
   // 9. Build rent roll summary
-  const rentRollSummary = buildRentRollSummary(rentRollRows, totalUnits, unitMixDerived, useUnitMixForGpr, capsuleAggregates, synthesizedOverrides);
+  const rentRollSummary = buildRentRollSummary(
+    rentRollRows, totalUnits, unitMixDerived, useUnitMixForGpr,
+    capsuleAggregates, synthesizedOverrides,
+    extractionRentRoll, extractionDerivationRows,
+  );
 
   // 10. Build traffic projection
   const trafficProjection = buildTrafficProjection();
@@ -204,8 +268,45 @@ export async function composeDealFinancials(
       waterfall: null,
       projections: null,
       capital: null,
+      extractionRentRoll,
     },
   };
+}
+
+/**
+ * Convert `extraction_rent_roll.floor_plan_mix` (the multi-row real per-
+ * floorplan output of the rent-roll parser) into the same row shape the
+ * legacy `rent_roll` SQL table produces. Applies per-row overrides from
+ * `per_year_overrides` (`da:unit_mix:<idx>:in_place_rent` / `:market_rent`).
+ *
+ * Rows are returned in stable name order so override indices remain stable
+ * across reads (so an edit to "1BR/1BA" at idx 2 keeps targeting idx 2).
+ */
+function extractionFloorPlanToRentRollRows(
+  extraction: ExtractionRentRollPayload,
+  readOverride: (idx: number) => { inPlace: number | null; market: number | null },
+): any[] {
+  const fpEntries = Object.entries(extraction.floorPlanMix ?? {})
+    .sort(([a], [b]) => a.localeCompare(b));
+  return fpEntries.map(([type, fp], idx) => {
+    const ov = readOverride(idx);
+    return {
+      type,
+      count: fp.count ?? 0,
+      avg_sqft: fp.avg_sqft ?? null,
+      in_place_rent: ov.inPlace ?? (fp.avg_effective_rent > 0 ? fp.avg_effective_rent : null),
+      market_rent:   ov.market  ?? (fp.avg_market_rent    > 0 ? fp.avg_market_rent    : null),
+      occupancy_pct: fp.occupancy_pct ?? null,
+      concession_pct: null,
+      // Originals retained so the UI can display the pre-edit value in the
+      // OVR badge / reset affordance.
+      _originalInPlace: fp.avg_effective_rent > 0 ? fp.avg_effective_rent : null,
+      _originalMarket:  fp.avg_market_rent    > 0 ? fp.avg_market_rent    : null,
+      _inPlaceOverridden: ov.inPlace != null,
+      _marketOverridden:  ov.market != null,
+      _expirationCurve: fp.expiration_curve ?? null,
+    };
+  });
 }
 
 // ── Helper: Build operating statement rows ───────────────────────────────────
@@ -627,8 +728,43 @@ function buildRentRollSummary(
   derived: UnitMixDerived,
   useUnitMixForGpr: boolean,
   capsuleAggregates: CapsuleAggregates | null = null,
-  synthesizedOverrides: { inPlaceRent: number | null; marketRent: number | null } | null = null
+  synthesizedOverrides: { inPlaceRent: number | null; marketRent: number | null } | null = null,
+  extractionRentRoll: ExtractionRentRollPayload | null = null,
+  extractionDerivationRows: any[] | null = null,
 ): any | null {
+  // Tier 2: extraction_rent_roll.floor_plan_mix (real per-floorplan rows).
+  // Build the unit mix directly from the derivation rows so the OVR badge
+  // (overridden + originalValue) and lease-expiration column have the data
+  // they need on the frontend.
+  if (extractionDerivationRows && extractionDerivationRows.length > 0) {
+    const unitMix = extractionDerivationRows.map(r => ({
+      type: r.type,
+      count: r.count,
+      avgSf: r.avg_sqft,
+      inPlaceRent: r.in_place_rent,
+      marketRent: r.market_rent,
+      occupancyPct: r.occupancy_pct,
+      concessionPct: r.concession_pct,
+      inPlaceRentOriginal: r._originalInPlace ?? null,
+      marketRentOriginal: r._originalMarket ?? null,
+      inPlaceRentOverridden: r._inPlaceOverridden === true,
+      marketRentOverridden:  r._marketOverridden === true,
+      expirationCurve: r._expirationCurve ?? null,
+      source: 'extraction_rent_roll',
+    }));
+    return {
+      unitMix,
+      avgInPlaceRent: derived.avgInPlaceRent,
+      weightedOccupancyPct: derived.weightedOccupancyPct,
+      gprFromUnitMix: derived.gprFromUnitMix,
+      vacancyLossFromUnitMix: derived.vacancyLossFromUnitMix,
+      lossToLeaseFromUnitMix: derived.lossToLeaseFromUnitMix,
+      concessionsFromUnitMix: derived.concessionsFromUnitMix,
+      useUnitMixForGpr,
+      expirationCurve: extractionRentRoll?.expirationCurve ?? null,
+      source: 'extraction_rent_roll',
+    };
+  }
   if (!rentRollRows || rentRollRows.length === 0) {
     // Pick a unit count: prefer the deal's target_units; fall back to capsule.units
     const synthesizedCount = totalUnits > 0 ? totalUnits : (capsuleAggregates?.units ?? 0);
@@ -762,6 +898,55 @@ function numOrNull(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
   const n = typeof raw === 'number' ? raw : Number(raw);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Load the `extraction_rent_roll` capsule payload (parsed rent-roll output).
+ * This is the real per-floorplan mix + per-unit detail produced by the rent-
+ * roll parser. Returns `null` when no rent roll has been processed for the
+ * deal yet — callers should then fall back to capsule aggregates / OM data.
+ */
+export async function loadExtractionRentRoll(pool: Pool, dealId: string): Promise<ExtractionRentRollPayload | null> {
+  // The rent-roll parser writes its output to `deals.deal_data.extraction_rent_roll`
+  // via the data-router (see data-router.ts: persistRentRollExtraction). The
+  // capsule (`deal_capsules`) only carries the capsule aggregates that are
+  // computed from broker_claims + extraction_*; the per-unit rent roll is NOT
+  // mirrored there. So we must read straight from the `deals` row.
+  let dealRes;
+  try {
+    dealRes = await pool.query(
+      `SELECT deal_data FROM deals WHERE id = $1 LIMIT 1`,
+      [dealId]
+    );
+  } catch (err) {
+    console.warn('[loadExtractionRentRoll] deals lookup failed for', dealId,
+      err instanceof Error ? err.message : err);
+    return null;
+  }
+  const dd = dealRes.rows[0]?.deal_data;
+  if (!dd || typeof dd !== 'object') return null;
+  const err = (dd.extraction_rent_roll && typeof dd.extraction_rent_roll === 'object')
+    ? dd.extraction_rent_roll
+    : null;
+  if (!err) return null;
+  // Treat the payload as present only when there's something usable
+  // (a floor plan mix OR per-unit list OR aggregates).
+  const fpm = (err.floor_plan_mix && typeof err.floor_plan_mix === 'object') ? err.floor_plan_mix : null;
+  const units = Array.isArray(err.units) ? err.units : null;
+  if (!fpm && !units && err.total_units == null) return null;
+  return {
+    totalUnits: typeof err.total_units === 'number' ? err.total_units : null,
+    occupiedUnits: typeof err.occupied_units === 'number' ? err.occupied_units : null,
+    vacantUnits: typeof err.vacant_units === 'number' ? err.vacant_units : null,
+    asOfDate: typeof err.as_of_date === 'string' ? err.as_of_date : null,
+    sourceRef: typeof err.source_ref === 'string' ? err.source_ref : null,
+    otherIncomeMonthly: (err.other_income_monthly && typeof err.other_income_monthly === 'object')
+      ? err.other_income_monthly : null,
+    expirationCurve: (err.expiration_curve && typeof err.expiration_curve === 'object')
+      ? err.expiration_curve : null,
+    floorPlanMix: fpm,
+    units,
+  };
 }
 
 export async function loadCapsuleAggregates(pool: Pool, dealId: string): Promise<CapsuleAggregates | null> {
