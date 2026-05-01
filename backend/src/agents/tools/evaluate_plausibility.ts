@@ -13,7 +13,7 @@ import { computePlausibility } from '../../services/sigma/sigma-engine';
 import { logger } from '../../utils/logger';
 
 const InputSchema = z.object({
-  assumptions: z.record(z.number()).describe(
+  assumptions: z.record(z.string(), z.number()).describe(
     'Assumption vector as key→value map (e.g., { goingInCapRate: 0.065, rentGrowthStabilized: 0.03 })'
   ),
 });
