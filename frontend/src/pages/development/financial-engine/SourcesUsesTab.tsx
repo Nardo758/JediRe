@@ -546,24 +546,28 @@ export function SourcesUsesTab({
       </SectionPanel>
 
       {/* ── Model sources & uses (if financial model was run) ─────────────── */}
-      {modelSu && (modelSu.sources.length > 0 || modelSu.uses.length > 0) && (
-        <SectionPanel title="MODEL SOURCES & USES" subtitle="From financial model run" borderColor={'#b78fff'}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
-            <div>
-              <div style={{ padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}` }}>SOURCES</div>
-              {modelSu.sources.map((s, i) => (
-                <DataRow key={i} label={s.label} value={fmt$(s.amount)} valueColor={BT.met.financial} border={i < modelSu.sources.length - 1} />
-              ))}
+      {(() => {
+        const mSrc = Array.isArray(modelSu?.sources) ? modelSu!.sources : [];
+        const mUse = Array.isArray(modelSu?.uses)    ? modelSu!.uses    : [];
+        return mSrc.length > 0 || mUse.length > 0 ? (
+          <SectionPanel title="MODEL SOURCES & USES" subtitle="From financial model run" borderColor={'#b78fff'}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+              <div>
+                <div style={{ padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}` }}>SOURCES</div>
+                {mSrc.map((s, i) => (
+                  <DataRow key={i} label={s.label} value={fmt$(s.amount)} valueColor={BT.met.financial} border={i < mSrc.length - 1} />
+                ))}
+              </div>
+              <div>
+                <div style={{ padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}` }}>USES</div>
+                {mUse.map((u, i) => (
+                  <DataRow key={i} label={u.label} value={fmt$(u.amount)} valueColor={BT.text.amber} border={i < mUse.length - 1} />
+                ))}
+              </div>
             </div>
-            <div>
-              <div style={{ padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}` }}>USES</div>
-              {modelSu.uses.map((u, i) => (
-                <DataRow key={i} label={u.label} value={fmt$(u.amount)} valueColor={BT.text.amber} border={i < modelSu.uses.length - 1} />
-              ))}
-            </div>
-          </div>
-        </SectionPanel>
-      )}
+          </SectionPanel>
+        ) : null;
+      })()}
 
     </div>
   );

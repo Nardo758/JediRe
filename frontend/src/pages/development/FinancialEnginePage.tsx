@@ -400,16 +400,183 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     if (!resolvedDealId || !assumptions) return;
     setBuilding(true);
     try {
-      const res = await apiClient.post('/api/v1/financial-model/build', { dealId: resolvedDealId, assumptions });
-      const data = (res as any)?.data;
-      if (data?.data) setModelResults(data.data);
-      else if (data) setModelResults(data);
+      // The build endpoint calls Claude and can take >30 s — override the global 30 s timeout.
+      const res = await apiClient.post(
+        '/api/v1/financial-model/build',
+        { dealId: resolvedDealId, assumptions },
+        { timeout: 120_000 },
+      );
+      const raw = (res as any)?.data ?? res;
+      const result = raw?.data ?? raw;
+      // Normalize sourcesAndUses: engine returns Record<string,number>; ModelResults expects arrays.
+      if (result && result.sourcesAndUses) {
+        const su = result.sourcesAndUses as { sources: unknown; uses: unknown };
+        if (su.sources && !Array.isArray(su.sources)) {
+          su.sources = Object.entries(su.sources as Record<string, number>).map(([label, amount]) => ({ label, amount }));
+        }
+        if (su.uses && !Array.isArray(su.uses)) {
+          su.uses = Object.entries(su.uses as Record<string, number>).map(([label, amount]) => ({ label, amount }));
+        }
+      }
+      if (result) setModelResults(result);
     } catch (e) {
       console.error('Model build failed:', e);
     } finally {
       setBuilding(false);
     }
   }, [resolvedDealId, assumptions]);
+
+  // Bootstrap default assumptions from f9Financials when no saved model exists.
+  // This breaks the deadlock: assumptions are normally only loaded from a saved model,
+  // but the auto-build guard below requires assumptions to be non-null. For a brand-new
+  // deal (NO MODEL state), this seeds sensible defaults so the build can fire automatically.
+  useEffect(() => {
+    if (!f9Financials || assumptions !== null) return;
+    const ff = f9Financials;
+    const cs = ff.capitalStack;
+    const fa = ff.assumptions;
+    const getY1 = (field: string): number | null => {
+      const v = ff.proforma.year1.find(r => r.field === field)?.resolved;
+      return typeof v === 'number' ? v : null;
+    };
+
+    const holdYears  = fa.holdYears ?? 10;
+    const exitCap    = fa.exitCap ?? 0.055;
+    const rentGr1    = fa.rentGrowthYr1 ?? 0.03;
+    const rentGrStab = fa.rentGrowthStabilized ?? 0.03;
+    const vacPct     = getY1('vacancy_pct') ?? 0.07;
+    const ltl        = getY1('loss_to_lease_pct') ?? 0;
+    const badDebt    = getY1('bad_debt_pct') ?? 0.01;
+    const totalUnits = ff.totalUnits ?? 0;
+
+    // ── Unit mix — map F9 rent roll rows; derive rents from GPR if rents are 0 ──
+    const gprAnnual = getY1('gpr') ?? 0;
+    const rawUnitMix = ff.rentRollSummary?.unitMix ?? [];
+    // Weighted-average sqft across all floor plans (used for sqft-based rent allocation)
+    const totalSF    = rawUnitMix.reduce((s, u) => s + (u.avgSf ?? 0) * u.count, 0);
+    const avgSF      = rawUnitMix.length > 0 && totalSF > 0
+      ? totalSF / rawUnitMix.reduce((s, u) => s + u.count, 0)
+      : 0;
+    // Fallback average rent per unit (annual GPR ÷ 12 months ÷ units)
+    const avgRentPerUnit = totalUnits > 0 && gprAnnual > 0
+      ? gprAnnual / (totalUnits * 12)
+      : ff.rentRollSummary?.avgInPlaceRent ?? 1500;
+
+    const bedsFromType = (t: string): number => {
+      const l = t.toLowerCase();
+      if (l.includes('s') || l.startsWith('studio')) return 0;
+      if (l.startsWith('b') || l.includes('2b') || l.includes('two')) return 2;
+      return 1;
+    };
+
+    const unitMix: UnitMixRow[] = rawUnitMix.map(u => {
+      const sf = u.avgSf ?? avgSF;
+      // Use stored rent if meaningful, otherwise derive from sqft weighting of GPR
+      const derivedRent = avgSF > 0 && sf > 0
+        ? Math.round(avgRentPerUnit * (sf / avgSF))
+        : Math.round(avgRentPerUnit);
+      const marketRent  = u.marketRent  && u.marketRent  > 0 ? u.marketRent  : derivedRent;
+      const inPlaceRent = u.inPlaceRent && u.inPlaceRent > 0 ? u.inPlaceRent : derivedRent;
+      const occ = Math.round(u.count * (u.occupancyPct ?? 0.9));
+      return {
+        floorPlan:    u.type,
+        unitSize:     Math.round(sf),
+        beds:         bedsFromType(u.type),
+        units:        u.count,
+        occupied:     occ,
+        vacant:       u.count - occ,
+        marketRent,
+        inPlaceRent,
+      };
+    });
+
+    // ── Expenses — pull individual platform-resolved categories; fall back to opex ratio ──
+    const opexTotal   = getY1('operating_expenses') ?? getY1('opex_total') ?? getY1('opex') ?? null;
+    const mgmtFee     = getY1('management_fee') ?? getY1('mgmt_fee') ?? null;
+    const realEstate  = getY1('real_estate_tax') ?? getY1('property_tax') ?? null;
+    const insurance   = getY1('insurance') ?? null;
+    const rm          = getY1('repairs_maintenance') ?? getY1('r_and_m') ?? null;
+    const payroll     = getY1('payroll') ?? null;
+    const utilities   = getY1('utilities') ?? null;
+    const admin       = getY1('admin') ?? getY1('g_and_a') ?? null;
+
+    const expenseItems: Array<[string, number]> = [
+      ['Management Fee',        mgmtFee],
+      ['Real Estate Tax',       realEstate],
+      ['Insurance',             insurance],
+      ['Repairs & Maintenance', rm],
+      ['Payroll',               payroll],
+      ['Utilities',             utilities],
+      ['Administrative',        admin],
+    ].filter((e): e is [string, number] => typeof e[1] === 'number' && e[1] > 0);
+
+    // If we got individual items, use them; otherwise use total opex as one line
+    const expenses: Record<string, { amount: number; type: 'total' | 'perUnit' | 'pctEGR'; growthRate: number }> =
+      expenseItems.length > 0
+        ? Object.fromEntries(expenseItems.map(([name, amt]) => [
+            name, { amount: Math.round(Math.abs(amt)), type: 'total' as const, growthRate: 0.03 }
+          ]))
+        : opexTotal && opexTotal > 0
+          ? { 'Operating Expenses': { amount: Math.round(opexTotal), type: 'total', growthRate: 0.03 } }
+          : {};
+
+    const bootstrapped: ModelAssumptions = {
+      dealInfo: {
+        dealName:      ff.dealName ?? 'Deal',
+        totalUnits,
+        netRentableSF: totalSF || 0,
+        vintage:       0,
+        address:       '',
+        city:          '',
+        state:         '',
+      },
+      modelType:  resolvedDealType === 'development' ? 'development' : 'existing',
+      holdPeriod: holdYears,
+      unitMix,
+      acquisition: {
+        purchasePrice: cs.purchasePrice ?? 0,
+        capRate:       ff.proforma.valuationSnapshot?.goingInCapT12 ?? exitCap,
+        closingCosts:  {},
+      },
+      disposition: {
+        exitCapRate:   exitCap,
+        sellingCosts:  0.02,
+        saleNOIMethod: 'trailing',
+      },
+      revenue: {
+        rentGrowth:          Array.from({ length: holdYears }, (_, i) => i === 0 ? rentGr1 : rentGrStab),
+        lossToLease:         ltl,
+        stabilizedOccupancy: Math.max(0, 1 - vacPct),
+        collectionLoss:      badDebt,
+        otherIncome:         {},
+      },
+      expenses,
+      financing: {
+        loanAmount:     cs.loanAmount ?? 0,
+        loanType:       'fixed',
+        interestRate:   cs.interestRate ?? 0.07,
+        spread:         0,
+        term:           holdYears,
+        amortization:   30,
+        ioPeriod:       cs.ioPeriodMonths ? Math.round(cs.ioPeriodMonths / 12) : 0,
+        originationFee: cs.originationFeePct ?? 0,
+        rateCapCost:    0,
+        prepayPenalty:  0,
+      },
+      capex: {
+        lineItems:       [],
+        contingencyPct:  0.05,
+        reservesPerUnit: 250,
+      },
+      waterfall: {
+        lpShare:            0.9,
+        gpShare:            0.1,
+        hurdles:            [],
+        equityContribution: cs.equityAtClose ?? 0,
+      },
+    };
+    setAssumptions(bootstrapped);
+  }, [f9Financials, assumptions, resolvedDealType]);
 
   // Auto-build model when assumptions and financials are both available.
   // Declared after handleBuildModel to avoid a temporal dead zone reference.

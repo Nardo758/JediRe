@@ -77,8 +77,10 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
   ];
   const anyCollision = proFormaRows.some(r => collisionDot(r.brokerRaw, r.platformRaw) != null);
 
-  const totalSources = su?.sources?.reduce((s, r) => s + r.amount, 0) ?? 0;
-  const totalUses = su?.uses?.reduce((s, r) => s + r.amount, 0) ?? 0;
+  const sourcesArr = Array.isArray(su?.sources) ? su!.sources : [];
+  const usesArr    = Array.isArray(su?.uses)    ? su!.uses    : [];
+  const totalSources = sourcesArr.reduce((s, r) => s + (r.amount ?? 0), 0);
+  const totalUses    = usesArr.reduce((s, r) => s + (r.amount ?? 0), 0);
 
   // F9 returns: prefer F9 projection engine (IRR bisection + EM from hold-period CFs),
   // fallback to legacy modelResults.summary if F9 engine hasn't populated yet.
@@ -121,17 +123,21 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
             <SectionPanel title="SOURCES" subtitle="Capital Structure" borderColor={BT.met.financial}>
-              {su?.sources?.map((r, i) => (
-                <DataRow key={i} label={r.label} value={fmt$(r.amount)} valueColor={BT.met.financial} border={i < (su.sources.length - 1)} />
-              )) ?? <DataRow label="—" value="Awaiting model build" valueColor={BT.text.muted} border={false} />}
-              {su && <DataRow label="TOTAL SOURCES" value={fmt$(totalSources)} valueColor={BT.text.white} border={false} />}
+              {sourcesArr.length > 0
+                ? sourcesArr.map((r, i) => (
+                    <DataRow key={i} label={r.label} value={fmt$(r.amount)} valueColor={BT.met.financial} border={i < sourcesArr.length - 1} />
+                  ))
+                : <DataRow label="—" value="Awaiting model build" valueColor={BT.text.muted} border={false} />}
+              {sourcesArr.length > 0 && <DataRow label="TOTAL SOURCES" value={fmt$(totalSources)} valueColor={BT.text.white} border={false} />}
             </SectionPanel>
 
             <SectionPanel title="USES" subtitle="Capital Deployment" borderColor={BT.text.cyan}>
-              {su?.uses?.map((r, i) => (
-                <DataRow key={i} label={r.label} value={fmt$(r.amount)} valueColor={BT.text.cyan} border={i < (su.uses.length - 1)} />
-              )) ?? <DataRow label="—" value="Awaiting model build" valueColor={BT.text.muted} border={false} />}
-              {su && <DataRow label="TOTAL USES" value={fmt$(totalUses)} valueColor={BT.text.white} border={false} />}
+              {usesArr.length > 0
+                ? usesArr.map((r, i) => (
+                    <DataRow key={i} label={r.label} value={fmt$(r.amount)} valueColor={BT.text.cyan} border={i < usesArr.length - 1} />
+                  ))
+                : <DataRow label="—" value="Awaiting model build" valueColor={BT.text.muted} border={false} />}
+              {usesArr.length > 0 && <DataRow label="TOTAL USES" value={fmt$(totalUses)} valueColor={BT.text.white} border={false} />}
             </SectionPanel>
           </div>
 
