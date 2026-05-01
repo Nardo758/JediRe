@@ -13,7 +13,7 @@ import { getPool } from '../database/connection';
 
 async function run() {
   const pool = getPool();
-  const migrationDir = join(__dirname, '..', 'database', 'migrations');
+  const migrationDir = join(__dirname, '..', 'db', 'migrations');
 
   // Ensure tracking table exists (same schema as stripe-replit-sync)
   await pool.query(`
@@ -51,7 +51,7 @@ async function run() {
 
     const base = basename(file, '.sql');
     // Only run the two new migrations
-    if (base !== '100_macro_anchor_observations' && base !== '101_proforma_line_item_anchors') continue;
+    if (base !== '132_macro_anchor_observations' && base !== '133_proforma_line_item_anchors') continue;
 
     const sql = readFileSync(join(migrationDir, file), 'utf8');
     console.log(`[migrate] Running ${file}...`);
