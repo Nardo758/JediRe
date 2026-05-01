@@ -118,8 +118,27 @@ export async function composeDealFinancials(
     useUnitMixForGpr = false;
   }
 
-  // 4a. Pre-compute unit mix derived revenue items (used by both buildOSRows and buildRentRollSummary)
-  const unitMixDerived = computeUnitMixDerived(rentRollRows);
+  // 4a. Pre-compute unit mix derived revenue items (used by both buildOSRows
+  // and buildRentRollSummary). When rent_roll is empty but capsule aggregates
+  // are present, synthesize a single row in the rent_roll-shaped format and feed
+  // it through the SAME derivation pipeline so revenue rows resolved by
+  // `buildOSRows` (gpr/vacancy/loss-to-lease) reflect capsule data when the
+  // GPR-from-Unit-Mix toggle is ON. This keeps the source-of-truth consistent
+  // between the F9 Unit Mix tab and the Pro Forma operating statement.
+  const derivationRows = rentRollRows.length > 0
+    ? rentRollRows
+    : (capsuleAggregates ? [{
+        type: 'Default',
+        count: capsuleAggregates.units ?? (totalUnits > 0 ? totalUnits : 0),
+        avg_sqft: capsuleAggregates.avgSf,
+        in_place_rent: capsuleAggregates.avgRent,
+        // No explicit market rent on the capsule — mirror in-place so loss-to-lease
+        // is zero rather than null (a known unknown is more honest than a phantom gap).
+        market_rent: capsuleAggregates.avgRent,
+        occupancy_pct: capsuleAggregates.occupancyPct,
+        concession_pct: null,
+      }] : []);
+  const unitMixDerived = computeUnitMixDerived(derivationRows);
 
   // 5. Build operating statement rows
   const year1Rows: OSRow[] = buildOSRows(year1Data, totalUnits, purchasePrice, rentRollRows, unitMixDerived, useUnitMixForGpr);

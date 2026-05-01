@@ -1896,8 +1896,9 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
 
     // Fetch existing rent roll rows ordered the same way the frontend expects them.
     // The legacy `rent_roll` table is sometimes absent (some envs only carry
-    // `rent_roll_snapshots`); treat that the same as zero rows so the auto-INSERT
-    // branch below can still run and surface a clean error if it also can't write.
+    // `rent_roll_snapshots`); self-heal by creating it on demand so first-edit
+    // persistence works in fresh environments. The schema mirrors what the
+    // composer SELECTs against.
     let rrRes: { rows: Array<{ id: string; type: string; in_place_rent: number | null; market_rent: number | null }> };
     try {
       rrRes = await pool.query(
@@ -1906,8 +1907,33 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
         [dealId]
       );
     } catch (selErr: any) {
-      console.warn('rent_roll SELECT failed (table may be missing):', selErr?.message);
-      rrRes = { rows: [] };
+      console.warn('rent_roll SELECT failed; attempting self-heal:', selErr?.message);
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS rent_roll (
+            id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            deal_id         text NOT NULL,
+            type            text NOT NULL,
+            count           integer,
+            avg_sqft        numeric,
+            in_place_rent   numeric,
+            market_rent     numeric,
+            occupancy_pct   numeric,
+            concession_pct  numeric,
+            created_at      timestamptz DEFAULT NOW(),
+            updated_at      timestamptz DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rent_roll_deal_id ON rent_roll (deal_id);
+        `);
+        rrRes = await pool.query(
+          `SELECT id, type, in_place_rent, market_rent
+           FROM rent_roll WHERE deal_id = $1 ORDER BY type ASC`,
+          [dealId]
+        );
+      } catch (createErr: any) {
+        console.warn('rent_roll self-heal failed; treating as zero rows:', createErr?.message);
+        rrRes = { rows: [] };
+      }
     }
 
     let rowType = 'Default';
@@ -1956,12 +1982,12 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
             [dealId, seedCount, capAgg?.avgSf ?? null, inPlaceSeed, marketSeed, capAgg?.occupancyPct ?? null]
           );
         } catch (insErr: any) {
-          // rent_roll table may not exist yet — surface a clear error rather than 500-ing silently
-          console.error('rent_roll insert failed (table may be missing):', insErr?.message);
+          // rent_roll write still failing after self-heal attempt — log internals
+          // but only surface a generic message to the client.
+          console.error('rent_roll insert failed:', insErr?.message);
           return res.status(500).json({
             success: false,
             error: 'Could not persist edit: rent_roll storage is unavailable.',
-            detail: insErr?.message,
           });
         }
       } else {
