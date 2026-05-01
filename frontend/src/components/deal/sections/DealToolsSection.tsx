@@ -668,19 +668,52 @@ const DOC_CATEGORIES = [
 
 function DocumentsFilesTab({ dealId }: { dealId: string }) {
   const [files, setFiles] = useState<any[]>([]);
+  const [versions, setVersions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['om', 'financial', 'legal']));
   const [uploading, setUploading] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{ file: File; category: string }>>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
 
-  const fetchFiles = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     if (!dealId) return;
     try {
-      const res = await apiClient.get(`/api/v1/deals/${dealId}/files`);
-      const fetched = res.data?.files || [];
+      // Fetch uploaded files
+      const fileRes = await apiClient.get(`/api/v1/deals/${dealId}/files`);
+      const fetched = fileRes.data?.files || [];
       setFiles(fetched);
-      setRecentActivity(fetched.slice(-5).reverse());
+
+      // Fetch model version history
+      let fetchedVersions: any[] = [];
+      try {
+        const verRes = await apiClient.get(`/api/v1/financial-model/${dealId}/versions`);
+        fetchedVersions = verRes.data?.data || [];
+      } catch {
+        // version endpoints may 404 if no versions saved yet
+      }
+      setVersions(fetchedVersions);
+
+      // Merge into recent activity (uploaded files + model saves)
+      const modelSaves = fetchedVersions.map((v: any) => ({
+        id: `v-${v.version_number}`,
+        type: 'model_version',
+        name: `Model v${v.version_number}`,
+        original_filename: `Model v${v.version_number}`,
+        uploaded_by: v.created_by,
+        uploaded_by_name: v.created_by_name || v.created_by,
+        created_at: v.created_at,
+        version: v.version_number,
+        version_notes: v.note || '',
+        extraction_status: 'completed',
+        file_size: 0,
+        save_trigger: v.save_trigger,
+        model_versions: v.model_versions,
+        override_divergences: v.override_divergences,
+      }));
+      const merged = [...fetched, ...modelSaves].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ).slice(0, 10);
+      setRecentActivity(merged);
     } catch {
       setFiles([]);
     } finally {
@@ -688,7 +721,7 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
     }
   }, [dealId]);
 
-  useEffect(() => { fetchFiles(); }, [fetchFiles]);
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const toggleCategory = (catId: string) => {
     setExpandedCategories(prev => {
@@ -732,7 +765,7 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
     }
     setUploadQueue([]);
     setUploading(false);
-    await fetchFiles();
+    await fetchAll();
   };
 
   const downloadFile = async (fileId: string, filename: string) => {
@@ -754,7 +787,7 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
   const deleteFile = async (fileId: string) => {
     try {
       await apiClient.delete(`/api/v1/deals/${dealId}/files/${fileId}`);
-      fetchFiles();
+      fetchAll();
     } catch (err) {
       console.error('Failed to delete file:', err);
     }
@@ -983,14 +1016,11 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
               ACTIVITY LOG
             </div>
             {recentActivity.map(f => {
-              // Derive a human-readable action from the file metadata
+              const isModelVersion = f.type === 'model_version';
               const uploadedBy = f.uploaded_by_name || f.uploaded_by || 'unknown';
-              const action = f.version && f.version > 1
-                ? `v${f.version} uploaded`
-                : 'uploaded';
               const note = f.version_notes || '';
-              const extraction = f.extraction_status === 'completed' || f.extraction_status === 'parsed'
-                ? 'parsed' : f.extraction_status === 'processing' ? 'processing' : null;
+              const extraction = !isModelVersion && (f.extraction_status === 'completed' || f.extraction_status === 'parsed')
+                ? 'parsed' : !isModelVersion && f.extraction_status === 'processing' ? 'processing' : null;
 
               return (
                 <div key={f.id} style={{
@@ -998,25 +1028,50 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
                   padding: '6px 8px',
                   background: BT.bg.panelAlt,
                   borderBottom: `1px solid ${BT.border.subtle}`,
+                  borderLeft: isModelVersion ? `2px solid ${BT.text.purple}` : 'none',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 9, color: BT.text.primary, fontWeight: 500, fontFamily: BT.font.mono }}>
-                      {f.name || f.original_filename}
-                    </span>
-                    <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{formatSize(f.size || f.file_size)}</span>
+                    {isModelVersion ? (
+                      <span style={{ fontSize: 9, color: BT.text.purple, fontWeight: 700, fontFamily: BT.font.mono }}>
+                        💾 {f.name || f.original_filename}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 9, color: BT.text.primary, fontWeight: 500, fontFamily: BT.font.mono }}>
+                        {f.name || f.original_filename}
+                      </span>
+                    )}
+                    {!isModelVersion && (
+                      <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{formatSize(f.size || f.file_size)}</span>
+                    )}
                     {getStatusBadge(f)}
+                    {isModelVersion && f.save_trigger && (
+                      <span style={{
+                        fontSize: 7, padding: '1px 4px',
+                        background: BT.text.blue + '22',
+                        color: BT.text.blue,
+                        fontFamily: BT.font.mono, letterSpacing: 0.5,
+                      }}>
+                        {f.save_trigger.replace('_', ' ').toUpperCase()}
+                      </span>
+                    )}
+                    {isModelVersion && f.override_divergences && f.override_divergences.length > 0 && (
+                      <span style={{
+                        fontSize: 8, color: BT.text.amber,
+                        fontFamily: BT.font.mono,
+                      }}>
+                        ⚠ {f.override_divergences.length} divergence{f.override_divergences.length > 1 ? 's' : ''}
+                      </span>
+                    )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>
-                    <span>{action} by {uploadedBy}</span>
+                    {isModelVersion ? (
+                      <span>saved by {uploadedBy}</span>
+                    ) : (
+                      <span>uploaded by {uploadedBy}</span>
+                    )}
                     <span>·</span>
                     <span>{new Date(f.created_at).toLocaleString()}</span>
-                    {f.version && f.version > 1 && (
-                      <>
-                        <span>·</span>
-                        <span style={{ color: BT.text.amber }}>v{f.version}</span>
-                      </>
-                    )}
-                    {extraction && (
+                    {!isModelVersion && extraction && (
                       <>
                         <span>·</span>
                         <span style={{ color: extraction === 'parsed' ? BT.text.green : BT.text.orange }}>
