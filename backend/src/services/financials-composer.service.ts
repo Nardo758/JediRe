@@ -63,15 +63,17 @@ export async function composeDealFinancials(
   // 1. Load deal row
   const dealRes = await pool.query(
     `SELECT id, name, deal_data, project_type, target_units,
-            asking_price, purchase_price, year_built, units,
-            city, state, zip
+            unit_count, city, state_code AS state
      FROM deals WHERE id = $1 AND user_id = $2`,
     [dealId, userId]
   );
   const deal = dealRes.rows[0];
+  if (!deal) {
+    throw new Error(`Deal ${dealId} not found or not accessible by user`);
+  }
   const dealData = typeof deal.deal_data === 'object' && deal.deal_data ? deal.deal_data : {};
-  const totalUnits = deal.target_units || deal.units || (dealData?.units) || 0;
-  const purchasePrice = deal.purchase_price || deal.asking_price || dealData?.purchase_price || dealData?.asking_price || null;
+  const totalUnits = deal.target_units || deal.unit_count || (dealData?.units) || 0;
+  const purchasePrice = dealData?.purchase_price || dealData?.asking_price || null;
 
   // 2. Load deal_assumptions (year1 proforma JSON)
   const assRes = await pool.query(

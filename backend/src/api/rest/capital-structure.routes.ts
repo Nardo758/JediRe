@@ -486,8 +486,7 @@ router.get('/:dealId', async (req: Request, res: Response) => {
     const pool = getPool();
 
     const result = await pool.query(
-      `SELECT purchase_price, loan_amount, loan_to_value, interest_rate, noi, deal_data
-       FROM deals WHERE id = $1`,
+      `SELECT deal_data FROM deals WHERE id = $1`,
       [dealId],
     );
 
@@ -498,11 +497,11 @@ router.get('/:dealId', async (req: Request, res: Response) => {
     const row = result.rows[0];
     const dealData = row.deal_data || {};
 
-    const purchasePrice: number = parseFloat(row.purchase_price) || 0;
-    const loanAmount: number = parseFloat(row.loan_amount) || 0;
-    const ltv: number = parseFloat(row.loan_to_value) || 0;
-    const interestRate: number = parseFloat(row.interest_rate) || 0;
-    const noi: number = parseFloat(row.noi) || 0;
+    const purchasePrice: number = parseFloat(dealData.purchase_price ?? dealData.asking_price) || 0;
+    const loanAmount: number = parseFloat(dealData.loan_amount) || 0;
+    const ltv: number = parseFloat(dealData.loan_to_value ?? dealData.ltv) || 0;
+    const interestRate: number = parseFloat(dealData.interest_rate) || 0;
+    const noi: number = parseFloat(dealData.noi) || 0;
     const equityAmount = Math.max(0, purchasePrice - loanAmount);
 
     const layers: any[] = [];

@@ -123,9 +123,10 @@ async function getDealContext(dealId: string): Promise<Record<string, unknown> |
   try {
     const result = await query(
       `SELECT 
-        d.id, d.name, d.address_line1, d.city, d.state_code,
-        d.property_type, d.units, d.asking_price, d.pipeline_stage,
-        d.acquisition_date, d.recommended_strategy,
+        d.id, d.name, d.address, d.city, d.state_code,
+        d.project_type AS property_type, d.unit_count AS units,
+        d.deal_data, d.pipeline_stage,
+        d.acquisition_date, d.strategy AS recommended_strategy,
         j.total_score as jedi_score, j.market_score, j.financial_score,
         j.location_score, j.risk_score
       FROM deals d
@@ -347,10 +348,10 @@ Data you have access to: ${config.dataAccess.join(', ')}
     prompt += `
 CURRENT DEAL CONTEXT:
 - Name: ${dealContext.name}
-- Address: ${dealContext.address_line1}, ${dealContext.city}, ${dealContext.state_code}
+- Address: ${dealContext.address}, ${dealContext.city}, ${dealContext.state_code}
 - Property Type: ${dealContext.property_type}
 - Units: ${dealContext.units}
-- Asking Price: $${Number(dealContext.asking_price).toLocaleString()}
+- Asking Price: $${Number((dealContext.deal_data as any)?.asking_price ?? (dealContext.deal_data as any)?.purchase_price ?? 0).toLocaleString()}
 - Pipeline Stage: ${dealContext.pipeline_stage}
 - JEDI Score: ${dealContext.jedi_score || 'Not calculated'}
 - Recommended Strategy: ${dealContext.recommended_strategy || 'Pending analysis'}

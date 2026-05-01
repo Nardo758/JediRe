@@ -48,15 +48,15 @@ export async function requireDealAccess(
 
   try {
     const pool = getPool();
-    const r = await pool.query<{ organization_id: string | null; created_by: string | null }>(
-      `SELECT organization_id, created_by FROM deals WHERE id = $1`,
+    const r = await pool.query<{ organization_id: string | null; user_id: string | null }>(
+      `SELECT organization_id, user_id FROM deals WHERE id = $1`,
       [dealId]
     );
     if (r.rowCount === 0) {
       res.status(404).json({ success: false, error: 'Deal not found' });
       return;
     }
-    const { organization_id, created_by } = r.rows[0];
+    const { organization_id, user_id: ownerUserId } = r.rows[0];
 
     if (organization_id) {
       const memberOrgs = await getUserOrganizationIds(userId);
@@ -66,9 +66,9 @@ export async function requireDealAccess(
       }
     } else {
       // Legacy/un-orged deal: only the creator may access. Fail closed if
-      // created_by is also NULL — orphan deals with no owner are NOT publicly
+      // user_id is also NULL — orphan deals with no owner are NOT publicly
       // writable; a tenant-bound owner must claim them before access works.
-      if (!created_by || created_by !== userId) {
+      if (!ownerUserId || ownerUserId !== userId) {
         res.status(403).json({ success: false, error: 'Forbidden: not the deal creator' });
         return;
       }
