@@ -747,9 +747,22 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
 
   const totalLtl = totalMarketGprAnnual - totalGprAnnual;
 
-  const weightedOcc = unitMix.length > 0
-    ? unitMix.reduce((s, u) => s + (u.occupancyPct ?? 0) * u.count, 0) / totalUnits
-    : (data?.rentRollSummary?.weightedOccupancyPct ?? null);
+  // Null-aware weighted occupancy. When NO row carries an occupancy figure
+  // (e.g. OM-only mixes that publish counts/rents but no occupancy %),
+  // surface `null` instead of falsely reporting 0% — the KPI card and
+  // physical-vacancy derivative both special-case null and render "—".
+  const weightedOcc = (() => {
+    if (unitMix.length === 0) return data?.rentRollSummary?.weightedOccupancyPct ?? null;
+    let weightedSum = 0;
+    let weightTotal = 0;
+    for (const u of unitMix) {
+      if (u.occupancyPct == null) continue;
+      weightedSum += u.occupancyPct * u.count;
+      weightTotal += u.count;
+    }
+    if (weightTotal === 0) return null;
+    return weightedSum / weightTotal;
+  })();
 
   const physicalVacancy = weightedOcc != null ? 1 - weightedOcc : null;
 
