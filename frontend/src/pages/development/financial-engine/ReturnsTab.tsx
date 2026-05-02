@@ -690,35 +690,35 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
                   <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                     <td style={{ padding: '3px 6px', color: BT.text.secondary }}>$/Unit</td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.primary, fontWeight: 600 }}>
-                      {ret.valuation.perUnit.goingIn != null ? `$${ret.valuation.perUnit.goingIn.toLocaleString()}` : '—'}
+                      {ret.valuation.perUnit?.goingIn != null ? `$${ret.valuation.perUnit?.goingIn.toLocaleString()}` : '—'}
                     </td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
-                      {ret.valuation.perUnit.stabilized != null ? `$${ret.valuation.perUnit.stabilized.toLocaleString()}` : '—'}
+                      {ret.valuation.perUnit?.stabilized != null ? `$${ret.valuation.perUnit?.stabilized.toLocaleString()}` : '—'}
                     </td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.amber }}>
-                      {ret.valuation.perUnit.atExit != null ? `$${ret.valuation.perUnit.atExit.toLocaleString()}` : '—'}
+                      {ret.valuation.perUnit?.atExit != null ? `$${ret.valuation.perUnit?.atExit.toLocaleString()}` : '—'}
                     </td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
-                      {ret.valuation.perUnit.submarketMedian != null ? `$${ret.valuation.perUnit.submarketMedian.toLocaleString()}` : '—'}
+                      {ret.valuation.perUnit?.submarketMedian != null ? `$${ret.valuation.perUnit?.submarketMedian.toLocaleString()}` : '—'}
                     </td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
-                      {ret.valuation.perUnit.percentile != null ? `${ret.valuation.perUnit.percentile}p` : '—'}
+                      {ret.valuation.perUnit?.percentile != null ? `${ret.valuation.perUnit?.percentile}p` : '—'}
                     </td>
                   </tr>
                   <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                     <td style={{ padding: '3px 6px', color: BT.text.secondary }}>$/NR SF</td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.primary, fontWeight: 600 }}>
-                      {ret.valuation.perSF.netRentable.goingIn != null ? `$${ret.valuation.perSF.netRentable.goingIn.toFixed(0)}` : '—'}
+                      {ret.valuation.perSF?.netRentable?.goingIn != null ? `$${ret.valuation.perSF?.netRentable?.goingIn.toFixed(0)}` : '—'}
                     </td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>—</td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.amber }}>
-                      {ret.valuation.perSF.netRentable.atExit != null ? `$${ret.valuation.perSF.netRentable.atExit.toFixed(0)}` : '—'}
+                      {ret.valuation.perSF?.netRentable?.atExit != null ? `$${ret.valuation.perSF?.netRentable?.atExit.toFixed(0)}` : '—'}
                     </td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
-                      {ret.valuation.perSF.netRentable.submarketMedian != null ? `$${ret.valuation.perSF.netRentable.submarketMedian.toFixed(0)}` : '—'}
+                      {ret.valuation.perSF?.netRentable?.submarketMedian != null ? `$${ret.valuation.perSF?.netRentable?.submarketMedian.toFixed(0)}` : '—'}
                     </td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
-                      {ret.valuation.perSF.netRentable.percentile != null ? `${ret.valuation.perSF.netRentable.percentile}p` : '—'}
+                      {ret.valuation.perSF?.netRentable?.percentile != null ? `${ret.valuation.perSF?.netRentable?.percentile}p` : '—'}
                     </td>
                   </tr>
                 </tbody>
@@ -729,14 +729,14 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>INCOME MULTIPLES</span>
               </div>
               {[
-                { label: 'GRM', val: ret.valuation.multiples.grm.goingIn, sub: ret.valuation.multiples.grm.submarketMedian, fmt: (n: number) => `${n.toFixed(1)}×`, note: ret.valuation.multiples.grm.goingIn != null && ret.valuation.multiples.grm.goingIn > 12 ? { text: '>12× — high', color: BT.text.red } : null },
-                { label: 'GIM', val: ret.valuation.multiples.gim.goingIn, sub: ret.valuation.multiples.gim.submarketMedian, fmt: (n: number) => `${n.toFixed(1)}×`, note: null },
-                { label: 'NIM', val: ret.valuation.multiples.nim, sub: null, fmt: (n: number) => `${n.toFixed(1)}×`, note: null },
-                { label: 'OER (Y1)', val: ret.valuation.multiples.opexRatio.y1, sub: null, fmt: (n: number) => `${(n * 100).toFixed(1)}%`, note: null },
-                { label: 'CoC (Y1)', val: ret.valuation.multiples.coc.y1, sub: null, fmt: (n: number) => `${(n * 100).toFixed(2)}%`, note: null },
-                { label: 'YoC (Untrended)', val: ret.valuation.multiples.yieldOnCost.untrended, sub: null, fmt: (n: number) => `${(n * 100).toFixed(2)}%`, note: null },
-                { label: 'YoC (Trended)', val: ret.valuation.multiples.yieldOnCost.trended, sub: null, fmt: (n: number) => `${(n * 100).toFixed(2)}%`, note: null },
-                { label: 'Dev Spread', val: ret.valuation.multiples.devSpread, sub: null, fmt: (n: number) => `${(n * 10000).toFixed(0)} bps`, note: null },
+                { label: 'GRM', val: ret.valuation.multiples?.grm?.goingIn, sub: ret.valuation.multiples?.grm?.submarketMedian, fmt: (n: number) => `${n.toFixed(1)}×`, note: ret.valuation.multiples?.grm?.goingIn != null && ret.valuation.multiples?.grm?.goingIn > 12 ? { text: '>12× — high', color: BT.text.red } : null },
+                { label: 'GIM', val: ret.valuation.multiples?.gim?.goingIn, sub: ret.valuation.multiples?.gim?.submarketMedian, fmt: (n: number) => `${n.toFixed(1)}×`, note: null },
+                { label: 'NIM', val: ret.valuation.multiples?.nim, sub: null, fmt: (n: number) => `${n.toFixed(1)}×`, note: null },
+                { label: 'OER (Y1)', val: ret.valuation.multiples?.opexRatio?.y1, sub: null, fmt: (n: number) => `${(n * 100).toFixed(1)}%`, note: null },
+                { label: 'CoC (Y1)', val: ret.valuation.multiples?.coc?.y1, sub: null, fmt: (n: number) => `${(n * 100).toFixed(2)}%`, note: null },
+                { label: 'YoC (Untrended)', val: ret.valuation.multiples?.yieldOnCost?.untrended, sub: null, fmt: (n: number) => `${(n * 100).toFixed(2)}%`, note: null },
+                { label: 'YoC (Trended)', val: ret.valuation.multiples?.yieldOnCost?.trended, sub: null, fmt: (n: number) => `${(n * 100).toFixed(2)}%`, note: null },
+                { label: 'Dev Spread', val: ret.valuation.multiples?.devSpread, sub: null, fmt: (n: number) => `${(n * 10000).toFixed(0)} bps`, note: null },
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
                   <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>{row.label}</span>
@@ -787,7 +787,12 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>POSITION MATRIX  (Price/SF vs Cap Rate)</span>
               </div>
               {(() => {
-                const pm = ret.valuation.positionMatrix;
+                const pm = ret.valuation.positionMatrix ?? null;
+                if (!pm) return (
+                  <div style={{ padding: '8px 10px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+                    Position matrix unavailable — requires purchase price and cap rate data.
+                  </div>
+                );
                 const qLabels: Record<string, { label: string; color: string; desc: string }> = {
                   value_buy:          { label: 'VALUE BUY', color: BT.text.green, desc: 'Low $/SF + High Cap — the sweet spot' },
                   suspicious:         { label: 'SUSPICIOUS', color: BT.text.amber, desc: 'Low $/SF + Low Cap — why is yield compressed?' },
