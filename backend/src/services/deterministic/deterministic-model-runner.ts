@@ -372,7 +372,15 @@ export interface ModelResults {
     collisionReport: CollisionEntry[];
   };
   evidence: EvidenceBlock;
-  meta: { modelVersion: string; runner: string; computedAt: string };
+  meta: {
+    modelVersion: string;
+    runner: string;
+    computedAt: string;
+    m11Converged?: boolean;
+    m11Iterations?: number;
+    m14Applied?: boolean;
+    m14CapRateAdjBps?: number;
+  };
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────

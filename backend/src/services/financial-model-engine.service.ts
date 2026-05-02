@@ -7,6 +7,7 @@ import { applyFullAnchorInterceptor, normalizeExpensesForInterceptor, rekeyExpen
 import OpenAI from 'openai';
 import { mapProFormaAssumptionsToModelAssumptions, crossCheckLLMVsDeterministic, buildEvidenceHintsFromSeed } from './deterministic/proforma-assumptions-bridge';
 import { runModel, runIntegrityChecks } from './deterministic/deterministic-model-runner';
+import { runM11Cycle, applyM14RiskAdjustments } from './module-wiring/capital-structure-adapter';
 import type { ProFormaYear1Seed } from './document-extraction/types';
 
 /**
@@ -206,6 +207,13 @@ export interface FinancialModelResult {
     status: 'pass' | 'warn' | 'error';
     message: string;
   }>;
+  /** M11/M14 feedback-cycle metadata injected by buildModel(). */
+  meta?: {
+    m11Converged: boolean;
+    m11Iterations: number;
+    m14Applied: boolean;
+    m14CapRateAdjBps: number;
+  };
   summary: {
     irr: number;
     equityMultiple: number;
@@ -572,6 +580,40 @@ export class FinancialModelEngineService {
           // into the persisted result so the full signal set is available to consumers.
           const existingChecks = Array.isArray(result.integrityChecks) ? result.integrityChecks : [];
           result.integrityChecks = [...existingChecks, ...deterministicResult.integrityChecks];
+
+          // ── M11 Debt Optimizer Cycle ──────────────────────────────────────
+          let m11Converged = false;
+          let m11Iterations = 0;
+          try {
+            const m11 = runM11Cycle(modelAssumptions);
+            m11Converged = m11.converged;
+            m11Iterations = m11.iterations;
+            if (!m11Converged) {
+              result.integrityChecks = [
+                ...(result.integrityChecks ?? []),
+                { id: 'capital_stack_unconverged', status: 'warn' as const, message: `M11 debt optimizer did not converge after ${m11Iterations} iterations` },
+              ];
+            }
+            logger.info(`[M11] Cycle done for ${dealId}: iterations=${m11Iterations} converged=${m11Converged}`);
+          } catch (m11Err: any) {
+            logger.warn(`[M11] Cycle skipped for ${dealId}: ${m11Err?.message}`);
+          }
+
+          // ── M14 Risk Dashboard Cycle ──────────────────────────────────────
+          let m14Applied = false;
+          let m14CapRateAdjBps = 0;
+          try {
+            const m14 = await applyM14RiskAdjustments(dealId, modelAssumptions);
+            m14Applied = m14.applied;
+            m14CapRateAdjBps = m14.capRateAdjBps;
+            if (m14Applied) {
+              logger.info(`[M14] Risk adjustments applied for ${dealId}: capRateAdjBps=${m14CapRateAdjBps}`);
+            }
+          } catch (m14Err: any) {
+            logger.warn(`[M14] Adjustment skipped for ${dealId}: ${m14Err?.message}`);
+          }
+
+          result.meta = { m11Converged, m11Iterations, m14Applied, m14CapRateAdjBps };
         }
       } catch (verifyErr: any) {
         // Fail-closed: if the bridge or runner itself throws, treat as a hard failure.

@@ -12,6 +12,7 @@ import { dataFlowRouter } from './data-flow-router';
 import { moduleEventBus, ModuleEventType } from './module-event-bus';
 import { executeFormula } from './formula-engine';
 import { logger } from '../../utils/logger';
+import type { ModelAssumptions } from '../deterministic/deterministic-model-runner';
 
 // Lazy-loaded service to avoid circular dependencies
 function getCapitalStructureService() {
@@ -456,6 +457,122 @@ export async function wireCapitalStructurePipeline(
     logger.error('[CapStructure Pipeline] Pipeline failed', { dealId, error: (error as Error).message });
     throw error;
   }
+}
+
+// ============================================================================
+// M11 Debt Optimizer — getRecommendedTerms / runM11Cycle
+// ============================================================================
+
+export interface RecommendedTerms {
+  recommendedLoanAmount: number;
+  loanTerms: { termMonths: number; amortMonths: number; ioPeriod: number };
+  debtService: number;
+  effectiveRate: number;
+}
+
+/**
+ * Derive loan terms that satisfy DSCR ≥ 1.25 given NOI and LTV cap.
+ * Uses a fixed 30yr amortizing structure. Pure function, no I/O.
+ */
+export function getRecommendedTerms(params: {
+  noiY1: number;
+  purchasePrice: number;
+  ltv: number;
+  rate?: number;
+}): RecommendedTerms {
+  const { noiY1, purchasePrice, ltv, rate = 0.065 } = params;
+  const maxByLtv = Math.round(purchasePrice * ltv);
+  const loanByDscr = rate > 0 ? Math.round(noiY1 / (1.25 * rate)) : maxByLtv;
+  const recommendedLoanAmount = Math.max(0, Math.min(maxByLtv, loanByDscr));
+  const debtService = recommendedLoanAmount * rate;
+  return {
+    recommendedLoanAmount,
+    loanTerms: { termMonths: 360, amortMonths: 360, ioPeriod: 0 },
+    debtService,
+    effectiveRate: rate,
+  };
+}
+
+export interface M11CycleResult {
+  assumptions: ModelAssumptions;
+  iterations: number;
+  converged: boolean;
+}
+
+/**
+ * Iteratively converge debt terms until DSCR change < 0.01 (max maxIter passes).
+ * Lazy-requires runModel to avoid a circular import with the deterministic runner.
+ */
+export function runM11Cycle(assumptions: ModelAssumptions, maxIter = 3): M11CycleResult {
+  const { runModel } = require('../deterministic/deterministic-model-runner') as typeof import('../deterministic/deterministic-model-runner');
+  let current: ModelAssumptions = { ...assumptions };
+  let prevDscr: number | null = null;
+  let iterations = 0;
+
+  for (let i = 0; i < maxIter; i++) {
+    iterations++;
+    const modelResult = runModel(current, { skipSensitivity: true });
+    const dscrY1 = modelResult.debtMetrics.coverage.dscrY1;
+
+    if (prevDscr !== null && dscrY1 !== null && Math.abs(dscrY1 - prevDscr) < 0.01) {
+      return { assumptions: current, iterations, converged: true };
+    }
+    prevDscr = dscrY1;
+
+    const noiY1 = modelResult.summary.noiYear1;
+    const terms = getRecommendedTerms({ noiY1, purchasePrice: current.purchasePrice, ltv: current.ltv, rate: current.rate });
+    current = {
+      ...current,
+      loanAmount: terms.recommendedLoanAmount,
+      rate: terms.effectiveRate,
+      term: terms.loanTerms.termMonths,
+      amort: terms.loanTerms.amortMonths,
+      ioPeriod: terms.loanTerms.ioPeriod,
+    };
+  }
+
+  return { assumptions: current, iterations, converged: false };
+}
+
+// ============================================================================
+// M14 Risk Dashboard — applyM14RiskAdjustments
+// ============================================================================
+
+export interface M14AdjustmentResult {
+  assumptions: ModelAssumptions;
+  applied: boolean;
+  capRateAdjBps: number;
+}
+
+/**
+ * Apply M14 risk-dashboard cap-rate and reserve overrides to model assumptions.
+ * Reads from the dataFlowRouter; returns originals unchanged on missing data.
+ */
+export async function applyM14RiskAdjustments(
+  dealId: string,
+  assumptions: ModelAssumptions,
+): Promise<M14AdjustmentResult> {
+  const m14Data = dataFlowRouter.getModuleData('M14', dealId)?.data;
+  if (!m14Data) {
+    return { assumptions, applied: false, capRateAdjBps: 0 };
+  }
+
+  const capRateAdjBps: number =
+    typeof m14Data.cap_rate_adjustment_bps === 'number' ? m14Data.cap_rate_adjustment_bps : 0;
+  const reserveOverrides: Record<string, number> = m14Data.reserve_overrides ?? {};
+
+  if (capRateAdjBps === 0 && reserveOverrides.replacementReserves == null) {
+    return { assumptions, applied: false, capRateAdjBps: 0 };
+  }
+
+  const updated: ModelAssumptions = { ...assumptions };
+  if (capRateAdjBps !== 0) {
+    updated.exitCap = assumptions.exitCap + capRateAdjBps / 10000;
+  }
+  if (reserveOverrides.replacementReserves != null) {
+    updated.replacementReserves = reserveOverrides.replacementReserves;
+  }
+  return { assumptions: updated, applied: true, capRateAdjBps };
 }
 
 // ============================================================================
