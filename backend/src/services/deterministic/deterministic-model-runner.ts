@@ -157,6 +157,30 @@ export interface IntegrityCheck {
   message: string;
 }
 
+export interface CollisionEntry {
+  field: string;
+  magnitude: 'material' | 'critical';
+  sourceA_value: number;
+  sourceB_value: number;
+  delta: number;
+  selectedSource: string;
+  reason: string;
+  narrative: string;
+}
+
+export interface EvidenceEntry {
+  field: string;
+  value: number | null;
+  source: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  reasoning: string;
+}
+
+export interface EvidenceBlock {
+  confidence_distribution: { high: number; medium: number; low: number };
+  fields: EvidenceEntry[];
+}
+
 export interface DebtMetrics {
   coverage: {
     dscrMin: number | null;
@@ -331,7 +355,12 @@ export interface ModelResults {
   };
   projections: { year: number; institutionalRow: Record<string, number> }[];
   integrityChecks: IntegrityCheck[];
-  reasoning: { derivationLog: string[] };
+  reasoning: {
+    derivationLog: string[];
+    walkthrough: string;
+    collisionReport: CollisionEntry[];
+  };
+  evidence: EvidenceBlock;
   meta: { modelVersion: string; runner: string; computedAt: string };
 }
 
@@ -1382,6 +1411,91 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
 
   const debtYieldByYear = annualRows.map(r => a.loanAmount > 0 ? r.noi / a.loanAmount : 0);
 
+  // ── Evidence block (spec §7.1) ────────────────────────────────────────────
+  const dscrY1Val = annualRows[0]?.dscr ?? null;
+  const evidenceFields: EvidenceEntry[] = [
+    {
+      field: 'NOI',
+      value: noiY1,
+      source: 'computed',
+      confidence: 'MEDIUM',
+      reasoning: `Year-1 NOI of $${Math.round(noiY1).toLocaleString()} derived from GPR × (1 − vacancy) − opex using ${a.dealType} assumptions.`,
+    },
+    {
+      field: 'IRR',
+      value: irr,
+      source: 'computed',
+      confidence: 'MEDIUM',
+      reasoning: `Levered IRR of ${irr !== null ? (irr * 100).toFixed(2) + '%' : 'n/a'} over ${a.holdYears}-year hold; sensitive to exit cap rate and rent growth.`,
+    },
+    {
+      field: 'EM',
+      value: em,
+      source: 'computed',
+      confidence: 'MEDIUM',
+      reasoning: `Equity multiple of ${em !== null ? em.toFixed(2) + 'x' : 'n/a'} derived from total distributions ÷ total equity invested.`,
+    },
+    {
+      field: 'DSCR',
+      value: dscrY1Val,
+      source: 'computed',
+      confidence: dscrY1Val !== null && dscrY1Val >= 1.20 ? 'HIGH' : 'MEDIUM',
+      reasoning: `Year-1 DSCR of ${dscrY1Val !== null ? dscrY1Val.toFixed(2) : 'n/a'} (NOI ÷ annual debt service of $${Math.round(annualRows[0]?.debtService ?? 0).toLocaleString()}).`,
+    },
+    {
+      field: 'exitCap',
+      value: a.exitCap,
+      source: 'platform',
+      confidence: 'LOW',
+      reasoning: `Exit cap rate of ${(a.exitCap * 100).toFixed(2)}% is an analyst assumption; no document source confirms terminal market cap rate.`,
+    },
+    {
+      field: 'goingInCap',
+      value: goingInCap,
+      source: 'computed',
+      confidence: goingInCap > 0 ? 'MEDIUM' : 'LOW',
+      reasoning: `Going-in cap of ${(goingInCap * 100).toFixed(2)}% = Year-1 NOI ÷ purchase price of $${Math.round(a.purchasePrice).toLocaleString()}.`,
+    },
+  ];
+
+  const lowCount = evidenceFields.filter(e => e.confidence === 'LOW').length;
+  const highCount = evidenceFields.filter(e => e.confidence === 'HIGH').length;
+  const medCount = evidenceFields.filter(e => e.confidence === 'MEDIUM').length;
+  const evidenceBlock: EvidenceBlock = {
+    confidence_distribution: { high: highCount, medium: medCount, low: lowCount },
+    fields: evidenceFields,
+  };
+
+  const pctLow = evidenceFields.length > 0 ? lowCount / evidenceFields.length : 0;
+
+  // ── Walkthrough narrative ─────────────────────────────────────────────────
+  const fmtPct = (v: number) => (v * 100).toFixed(2) + '%';
+  const fmtUSD = (v: number) => '$' + Math.round(v).toLocaleString();
+  const walkthroughText = [
+    `This ${a.dealType} deal underwrites ${a.units} units with a ${a.holdYears}-year hold. ` +
+    `The purchase price is ${fmtUSD(a.purchasePrice)} at a going-in cap rate of ${fmtPct(goingInCap)}. ` +
+    `Gross potential rent is derived from a weighted-average market rent of ${fmtUSD(a.marketRent)}/unit/month ` +
+    `with a ${fmtPct(a.lossToLease)} loss-to-lease adjustment.`,
+
+    `Year-1 NOI of ${fmtUSD(noiY1)} reflects a ${fmtPct(a.vacancyY1)} vacancy rate stabilizing to ` +
+    `${fmtPct(a.vacancyStab)} and a ${fmtPct(a.badDebt)} bad-debt assumption. ` +
+    `Operating expenses grow at ${fmtPct(a.expenseGrowth)} per year with management fee at ` +
+    `${fmtPct(a.managementFee)} of EGI. Rent growth is projected at ` +
+    `${fmtPct(a.rentGrowth[0])} in Year 1.`,
+
+    `Debt is structured at ${fmtUSD(a.loanAmount)} (${fmtPct(a.ltv)} LTV) with a ` +
+    `${(a.rate * 100).toFixed(2)}% interest rate over a ${Math.round(a.term / 12)}-year term. ` +
+    `Year-1 DSCR is ${dscrY1Val !== null ? dscrY1Val.toFixed(2) : 'n/a'}.`,
+
+    `Exit is underwritten at a ${fmtPct(a.exitCap)} cap rate in Year ${a.holdYears}, producing a ` +
+    `gross sale price of ${fmtUSD(grossSalePrice)} and equity proceeds of ${fmtUSD(equityProceeds)}. ` +
+    `The levered IRR is ${irr !== null ? fmtPct(irr) : 'n/a'} with an equity multiple of ` +
+    `${em !== null ? em.toFixed(2) + 'x' : 'n/a'}.`,
+
+    `Key risk call-outs: exit cap rate is an analyst assumption with no document corroboration (LOW confidence). ` +
+    `${pctLow >= 0.30 ? 'More than 30% of KPI fields are LOW confidence — treat model outputs as preliminary.' : 'Remaining KPI fields are MEDIUM or HIGH confidence based on available document sources.'}`,
+  ].join('\n\n');
+
   const modelResult: ModelResults = {
     summary: {
       purchasePrice: a.purchasePrice,
@@ -1541,7 +1655,8 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     },
     projections: [],
     integrityChecks: [],
-    reasoning: { derivationLog: log },
+    reasoning: { derivationLog: log, walkthrough: walkthroughText, collisionReport: [] },
+    evidence: evidenceBlock,
     meta: {
       modelVersion: '1.1',
       runner: 'deterministic-model-runner',
@@ -1550,6 +1665,14 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   };
 
   modelResult.integrityChecks = runIntegrityChecks(a, modelResult);
+
+  if (pctLow >= 0.30) {
+    modelResult.integrityChecks.push({
+      id: 'LOW_CONFIDENCE_MODEL',
+      status: 'warn',
+      message: `${(pctLow * 100).toFixed(0)}% of evidence KPI fields are LOW confidence (${lowCount}/${evidenceFields.length}) — treat outputs as preliminary`,
+    });
+  }
 
   // Fix S&U balanced flag
   modelResult.sourcesAndUses.delta = modelResult.sourcesAndUses.totalSources - modelResult.sourcesAndUses.totalUses;

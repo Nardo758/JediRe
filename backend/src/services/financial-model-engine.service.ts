@@ -501,10 +501,14 @@ export class FinancialModelEngineService {
             `[F9-Verifier] Hard invariant failures for ${dealId}: ${verificationDiagnostics}`
           );
         } else {
+          const cd = deterministicResult.evidence?.confidence_distribution;
+          const cdSummary = cd
+            ? `evidence confidence: H=${cd.high} M=${cd.medium} L=${cd.low}`
+            : 'evidence: n/a';
           logger.info(
             `[F9-Verifier] All invariants pass for ${dealId}` +
             ` (${checks.filter(c => c.status === 'warn').length} warnings,` +
-            ` ${materialDivergences.length} material LLM↔det divergences)`
+            ` ${materialDivergences.length} material LLM↔det divergences, ${cdSummary})`
           );
         }
       } catch (verifyErr: any) {
