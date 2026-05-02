@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, Component } from 'react';
 import { useParams } from 'react-router-dom';
 import { Brain, Send, ChevronUp, ChevronDown } from 'lucide-react';
 import {
@@ -327,6 +327,43 @@ import { EvidencePanel } from '../../components/underwriting/EvidencePanel';
 import { UnderwritingWalkthrough } from '../../components/f9/UnderwritingWalkthrough';
 
 const MONO = BT.font.mono;
+
+// ── Error boundary for individual tabs ─────────────────────────────
+// Prevents a single tab crash from unmounting the entire page.
+class TabErrorBoundary extends Component<
+  { children: React.ReactNode; tabName: string },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode; tabName: string }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error(`[TabErrorBoundary] ${this.props.tabName} crashed:`, error.message, '\nComponent stack:', info.componentStack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-3 p-8" style={{ background: BT.bg.terminal }}>
+          <span className="text-red-400 font-bold text-sm">⚠ TAB CRASHED: {this.props.tabName}</span>
+          <span className="text-slate-500 text-[10px] font-mono max-w-md text-center">
+            {this.state.error?.message ?? 'Unknown error'}
+          </span>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-3 py-1 text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-600 rounded hover:bg-slate-700"
+          >
+            RETRY
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Built-in tabs always come first; custom tabs are appended after.
 const BUILTIN_TAB_LABELS = [
@@ -1423,7 +1460,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 3  && (
             <BtTabWrapper><ProjectionsTab {...tabProps} integrityWarning={integrityBlocked} /></BtTabWrapper>
           )}
-          {activeTab === 4  && <BtTabWrapper><AssumptionsTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 4  && <BtTabWrapper><TabErrorBoundary tabName="Assumptions"><AssumptionsTab {...tabProps} /></TabErrorBoundary></BtTabWrapper>}
           {activeTab === 5  && <BtTabWrapper><TaxesTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 6  && <BtTabWrapper><SourcesUsesTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 7  && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
