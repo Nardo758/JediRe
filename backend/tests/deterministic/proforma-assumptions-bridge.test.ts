@@ -1257,9 +1257,11 @@ describe('irr_not_computable integrity check (task #491 SOFT-11)', () => {
 });
 
 describe('development deal goingInCap (task #491 §10.6)', () => {
-  it('goingInCap = Y1 NOI / totalProjectCost for dealType=development', () => {
+  it('goingInCap = stabilizedNOI / totalProjectCost for dealType=development', () => {
     // hardCostPerSF=0 → hardCosts = capexBudget=2_000_000; softCostPct=0.10 → softCosts=200_000
     // totalProjectCost = purchasePrice(10M) + 2M + 200K = 12_200_000
+    // constructionMonths=12 → 1yr construction; leaseUpMonths=12 → 1yr lease-up
+    // stabilized year = year 3 (index 2)
     const m = makeRunModelAssumptions({
       dealType: 'development',
       capexBudget: 2_000_000,
@@ -1270,9 +1272,9 @@ describe('development deal goingInCap (task #491 §10.6)', () => {
       gpEquity: 515_000,
     });
     const r = runModel(m, { skipSensitivity: true });
-    const noiY1 = r.annualCashFlow[0].noi;
+    const stabilizedNOI = r.annualCashFlow[2].noi; // Y3: first post-lease-up year
     const totalProjectCost = 10_000_000 + 2_000_000 + 200_000;
-    const expectedGoingInCap = noiY1 / totalProjectCost;
+    const expectedGoingInCap = stabilizedNOI / totalProjectCost;
     expect(r.summary.goingInCapRate).toBeCloseTo(expectedGoingInCap, 4);
   });
 

@@ -1008,7 +1008,9 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   }
 
   // INV-9: lossToLease$ + vacancy$ + concessions$ + badDebt$ < GPR every year
+  // Skip construction rows (GPR=0) — revenue invariant is inapplicable with no revenue
   for (const row of opRows) {
+    if (row.grossPotentialRent <= 0) continue;
     const losses = row.lossToLease + row.vacancy + row.concessions + row.badDebt;
     if (losses >= row.grossPotentialRent - 0.01) {
       checks.push({ id: 'INV-9', status: 'error', message: `INV-9 Losses Y${row.year} (${losses.toFixed(0)}) ≥ GPR (${row.grossPotentialRent.toFixed(0)})` });
@@ -1018,8 +1020,10 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
 
   // INV-10: occupancy(y) = 1 − vacancySchedule[y]
   // Uses buildVacancySchedule to stay consistent with runner (Y1=max, Y2=midpoint ramp, Y3+=stab)
+  // Skip construction rows (occupancy=0, GPR=0) — vacancy ramp does not apply during construction
   const expectedVacSched = buildVacancySchedule(hold, a.vacancyY1, a.vacancyStab);
   for (const row of opRows) {
+    if (row.grossPotentialRent <= 0 && row.occupancy === 0) continue;
     const expectedVacRate = expectedVacSched[row.year - 1] ?? a.vacancyStab;
     const expectedOcc = 1 - expectedVacRate;
     if (Math.abs(row.occupancy - expectedOcc) > 0.0001) {
@@ -1324,8 +1328,13 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   const avgCoC = calculateAvgCoC(totalEquity, annualRows.slice(0, hold).map(r => r.preTaxCashFlow));
   const noiY1 = annualRows[0]?.noi ?? 0;
   // Development deals: goingInCap = stabilizedNOI / totalProjectCost (spec §10.6)
+  // stabilizedNOI = NOI from first post-lease-up year (construction + lease-up years are non-operating)
+  const devStabYearIdx = devConstructionYears + devLeaseUpYears; // 0-based index
+  const devStabilizedNOI = isDevelopmentDeal
+    ? (annualRows[Math.min(devStabYearIdx, annualRows.length - 1)]?.noi ?? 0)
+    : 0;
   const goingInCap = isDevelopmentDeal
-    ? (devTotalProjectCost > 0 ? noiY1 / devTotalProjectCost : 0)
+    ? (devTotalProjectCost > 0 ? devStabilizedNOI / devTotalProjectCost : 0)
     : (a.purchasePrice > 0 ? noiY1 / a.purchasePrice : 0);
 
   // Unlevered IRR: cash flows ignoring debt service
