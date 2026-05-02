@@ -638,16 +638,33 @@ export function computeWaterfall(
   for (let pass = 0; pass <= holdYears; pass++) {
     const isExit = pass === holdYears;
 
-    // Operating years use annualRows[pass].cfads; exit uses equityProceeds
+    // Operating years use annualRows[pass].cfads; exit uses equityProceeds.
+    // Preserve the raw signed value — negative years (operating deficits or
+    // underwater exits) must flow into LP/GP aggregate CF history so that
+    // running IRR is not overstated and hurdle timing is correct.
     const yearCFADS = isExit
-      ? Math.max(0, equityProceeds)
-      : Math.max(0, annualRows[pass]?.cfads ?? 0);
+      ? (equityProceeds ?? 0)
+      : (annualRows[pass]?.cfads ?? 0);
+
+    const lpThisYear = new Array<number>(N_TIERS).fill(0);
+    const gpThisYear = new Array<number>(N_TIERS).fill(0);
+
+    // When CFADS ≤ 0 there is nothing to distribute through tiers.
+    // LP/GP still absorb their pro-rata share of the deficit in the
+    // aggregate CF vectors so running IRR reflects the loss correctly.
+    if (yearCFADS <= 1e-2) {
+      lpCFRunning.push(yearCFADS * lpPct);
+      gpCFRunning.push(yearCFADS * gpPct);
+      for (let t = 0; t < N_TIERS; t++) {
+        lpCFByTier[t].push(0);
+        gpCFByTier[t].push(0);
+      }
+      continue;
+    }
 
     let residual = yearCFADS;
     let lpAlreadyThisYear = 0;
     let gpAlreadyThisYear = 0;
-    const lpThisYear = new Array<number>(N_TIERS).fill(0);
-    const gpThisYear = new Array<number>(N_TIERS).fill(0);
 
     for (let t = 0; t < N_TIERS; t++) {
       if (residual < 1e-2) break;

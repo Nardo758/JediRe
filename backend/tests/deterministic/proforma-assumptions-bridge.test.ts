@@ -690,6 +690,58 @@ describe('computeWaterfall — zero-profit deal (equity proceeds = totalEquity o
   });
 });
 
+// ── Negative operating year — hurdle suppression ────────────────────────────
+describe('computeWaterfall — negative CFADS year lowers running LP IRR', () => {
+  // Deal A: 5-year hold, no losses.          Exit proceeds = $2M
+  // Deal B: identical but year-3 has -$200K deficit (capital call).
+  // Deal B LP IRR should be lower than Deal A LP IRR.
+  // Without the fix (if negatives were clamped to 0), both would be equal.
+  const lpEquity = 900_000;
+  const gpEquity = 100_000;
+  const totalEquity = 1_000_000;
+  const holdYears = 5;
+
+  const rowsNoLoss = Array.from({ length: holdYears }, (_, i) =>
+    ({ cfads: i === 2 ? 0 : 30_000 }),  // year 3 = 0, not loss
+  ) as any[];
+
+  const rowsWithLoss = Array.from({ length: holdYears }, (_, i) =>
+    ({ cfads: i === 2 ? -200_000 : 30_000 }),  // year 3 = -200K deficit
+  ) as any[];
+
+  const equityProceeds = 2_000_000;
+
+  it('LP IRR is lower when year-3 has a deficit than when it has zero', () => {
+    const resNoLoss   = computeWaterfall(rowsNoLoss,   lpEquity, gpEquity, totalEquity,
+      0.08, holdYears, [0.12, 0.15, 0.20], [0.20, 0.50, 0.80], equityProceeds);
+    const resWithLoss = computeWaterfall(rowsWithLoss, lpEquity, gpEquity, totalEquity,
+      0.08, holdYears, [0.12, 0.15, 0.20], [0.20, 0.50, 0.80], equityProceeds);
+
+    const lpIrrNoLoss   = calculateIRR(resNoLoss.lpCFAggregate);
+    const lpIrrWithLoss = calculateIRR(resWithLoss.lpCFAggregate);
+    expect(lpIrrNoLoss).not.toBeNull();
+    expect(lpIrrWithLoss).not.toBeNull();
+    expect(lpIrrWithLoss!).toBeLessThan(lpIrrNoLoss!);
+  });
+
+  it('LP aggregate CF vector has a negative entry in the deficit year', () => {
+    const res = computeWaterfall(rowsWithLoss, lpEquity, gpEquity, totalEquity,
+      0.08, holdYears, [0.12, 0.15, 0.20], [0.20, 0.50, 0.80], equityProceeds);
+    // lpCFAggregate[0] = outlay, [1..5] = operating years, [6] = exit
+    // year 3 is at index 3 (1-indexed = position 3 in 1-based = index 3 in array)
+    expect(res.lpCFAggregate[3]).toBeLessThan(0);
+  });
+
+  it('tier distributions conserve only available positive cash (deficit not double-counted)', () => {
+    const res = computeWaterfall(rowsWithLoss, lpEquity, gpEquity, totalEquity,
+      0.08, holdYears, [0.12, 0.15, 0.20], [0.20, 0.50, 0.80], equityProceeds);
+    const totalTierDist = res.tiers.reduce((s, t) => s + t.lpDistribution + t.gpDistribution, 0);
+    // Positive operating CFs: 4 years × 30K = 120K (year 3 skipped — deficit)
+    const positiveCFs = rowsWithLoss.reduce((s: number, r: any) => s + Math.max(0, r.cfads), 0);
+    expect(totalTierDist).toBeCloseTo(positiveCFs + equityProceeds, -2);
+  });
+});
+
 // ── Westshore Commons regression (spec §12) ───────────────────────────────────
 describe('Westshore Commons regression (spec §12)', () => {
   // Use spec cash flows directly to test waterfall mechanics.
