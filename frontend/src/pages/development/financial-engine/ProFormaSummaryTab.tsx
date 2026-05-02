@@ -1005,6 +1005,12 @@ function AncillaryExpansionPanel({ totalUnits, dealId }: { totalUnits: number; d
     setEditingKey(null);
   };
 
+    const EDIT_CELL_STYLE: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: 2, cursor: 'pointer', userSelect: 'none',
+    padding: '0 4px', borderRadius: 2,
+    border: '1px solid transparent',
+  };
+
   function EditCell({ lineKey, field, display, color }: { lineKey: string; field: 'qty' | 'price' | 'occ'; display: string; color?: string }) {
     const isEditing = editingKey?.key === lineKey && editingKey.field === field;
     if (isEditing) {
@@ -1024,9 +1030,9 @@ function AncillaryExpansionPanel({ totalUnits, dealId }: { totalUnits: number; d
     const rawVal = field === 'qty' ? String(line.qty) : field === 'price' ? String(line.price) : String((line.occupancy * 100).toFixed(0));
     return (
       <div onClick={() => setEditingKey({ key: lineKey, field, val: rawVal })}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, cursor: 'pointer', userSelect: 'none' }}>
+        style={{ ...EDIT_CELL_STYLE, borderColor: '#0891b2', background: '#062a3a' }}>
         <span style={{ color: color ?? '#e2e8f0' }}>{display}</span>
-        <span style={{ color: '#334155', fontSize: 8 }}>✎</span>
+        <span style={{ color: '#06b6d4', fontSize: 8, marginLeft: 2 }}>✎</span>
       </div>
     );
   }
@@ -1206,18 +1212,21 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
       <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtDisplay(row.platform)}</td>
 
       {/* RESOLVED — clickable to open EvidencePanel when evidence exists */}
+      {/* User-input cell: resolved value is editable via pencil icon — teal accent highlights editability */}
       <td
         onClick={evidenceResolved ? () => {
           window.dispatchEvent(new CustomEvent('fe-evidence-click', {
             detail: { path: evidenceResolved.path, label: row.label },
           }));
         } : undefined}
-        title={evidenceResolved ? 'Click to view evidence for this value' : undefined}
+        title={evidenceResolved ? 'Click to view evidence for this value' : 'Editable via pencil icon — overrides write back to server'}
         style={{
           padding: '4px 8px', textAlign: 'right',
           color: resolvedColor, fontWeight: isSubtotal ? 700 : 600,
           background: '#0d1f2d',
           cursor: evidenceResolved ? 'pointer' : undefined,
+          borderLeft: '1px solid #0891b2',
+          borderRight: '1px solid #0891b2',
         }}
       >
         {corr?.editing ? (
