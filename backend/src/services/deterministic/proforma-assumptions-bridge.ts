@@ -31,11 +31,34 @@ import type { ModelAssumptions } from './deterministic-model-runner';
  * time the engine service receives `ProFormaAssumptions`, values are already
  * resolved to numbers.)
  */
+/**
+ * Safely extract a numeric scalar from a value that may be a plain number OR
+ * a `LayeredValue<number>` wrapper (i.e. `{ resolved: number; ... }`).
+ *
+ * This protects the bridge from accidentally receiving un-resolved LayeredValue
+ * envelopes from upstream callers that forget to call resolve() first.
+ */
+function toNumber(v: unknown, fallback: number): number {
+  if (v === null || v === undefined) return fallback;
+  if (typeof v === 'number') return isFinite(v) ? v : fallback;
+  if (typeof v === 'object') {
+    const lv = v as Record<string, unknown>;
+    if (typeof lv['resolved'] === 'number' && isFinite(lv['resolved'] as number)) {
+      return lv['resolved'] as number;
+    }
+    if (typeof lv['override'] === 'number' && isFinite(lv['override'] as number)) {
+      return lv['override'] as number;
+    }
+  }
+  const n = Number(v);
+  return isFinite(n) ? n : fallback;
+}
+
 export function mapProFormaAssumptionsToModelAssumptions(
   a: ProFormaAssumptions
 ): ModelAssumptions {
-  const units = a.dealInfo.totalUnits || 1;
-  const totalSF = a.dealInfo.netRentableSF || 0;
+  const units = toNumber(a.dealInfo?.totalUnits, 1) || 1;
+  const totalSF = toNumber(a.dealInfo?.netRentableSF, 0);
   const avgUnitSf = units > 0 && totalSF > 0 ? totalSF / units : 800;
 
   // ── Market / in-place rent ────────────────────────────────────────────────
@@ -50,7 +73,7 @@ export function mapProFormaAssumptionsToModelAssumptions(
   if (inPlaceRent <= 0) inPlaceRent = marketRent;
 
   // ── Purchase / closing costs ─────────────────────────────────────────────
-  const purchasePrice = a.acquisition.purchasePrice || 0;
+  const purchasePrice = toNumber(a.acquisition?.purchasePrice, 0);
   const closingCostsTotal = a.acquisition.closingCosts
     ? Object.values(a.acquisition.closingCosts).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0)
     : 0;
@@ -139,23 +162,23 @@ export function mapProFormaAssumptionsToModelAssumptions(
     : 0.03;
 
   // ── Financing ─────────────────────────────────────────────────────────────
-  const loanAmount = a.financing.loanAmount || 0;
+  const loanAmount = toNumber(a.financing?.loanAmount, 0);
   const ltv = purchasePrice > 0 ? loanAmount / purchasePrice : 0;
   // financing.term and financing.amortization are in YEARS; runner expects MONTHS
-  const termMonths = (a.financing.term || 5) * 12;
-  const amortMonths = (a.financing.amortization || 30) * 12;
-  const ioPeriod = a.financing.ioPeriod || 0; // already in months
-  const rate = a.financing.interestRate || 0.065;
-  const originationFeePct = a.financing.originationFee || 0.01;
+  const termMonths = (toNumber(a.financing?.term, 5)) * 12;
+  const amortMonths = (toNumber(a.financing?.amortization, 30)) * 12;
+  const ioPeriod = toNumber(a.financing?.ioPeriod, 0); // already in months
+  const rate = toNumber(a.financing?.interestRate, 0.065) || 0.065;
+  const originationFeePct = toNumber(a.financing?.originationFee, 0.01) || 0.01;
 
   // ── Disposition ───────────────────────────────────────────────────────────
-  const exitCap = a.disposition.exitCapRate || 0.065;
-  const saleCosts = a.disposition.sellingCosts || 0.02;
+  const exitCap = toNumber(a.disposition?.exitCapRate, 0.065) || 0.065;
+  const saleCosts = toNumber(a.disposition?.sellingCosts, 0.02) || 0.02;
 
   // ── Waterfall ─────────────────────────────────────────────────────────────
-  const equity = a.waterfall.equityContribution || (purchasePrice - loanAmount);
-  const lpShare = a.waterfall.lpShare ?? 0.99;
-  const gpShare = a.waterfall.gpShare ?? 0.01;
+  const equity = toNumber(a.waterfall?.equityContribution, 0) || (purchasePrice - loanAmount);
+  const lpShare = toNumber(a.waterfall?.lpShare, 0.99) || 0.99;
+  const gpShare = toNumber(a.waterfall?.gpShare, 0.01) || 0.01;
   const lpEquity = equity * lpShare;
   const gpEquity = equity * gpShare;
 
@@ -219,6 +242,113 @@ export function mapProFormaAssumptionsToModelAssumptions(
     promoteSplits,
     dealType: a.modelType || 'existing',
   };
+}
+
+/**
+ * Coerce a `FinancialModelResult` (LLM output) into a partial `ModelResults`-
+ * shaped object. This is a literal field-to-field coercion: every scalar KPI
+ * field that exists in both interfaces is mapped directly; fields present only
+ * in `ModelResults` (e.g. detailed amortisation schedule, tax arrays, etc.)
+ * are stubbed with safe-zero / empty-array values so the returned object
+ * satisfies the `ModelResults` shape contract without crashing downstream code.
+ *
+ * PRIMARY USE CASE: pass the returned object to `runIntegrityChecks()` to
+ * validate the LLM's own arithmetic against the same invariant suite that the
+ * deterministic runner uses. This surfaces arithmetic errors in the LLM output
+ * independently of the deterministic runner numbers.
+ *
+ * NOTE: because `FinancialModelResult.annualCashFlow` uses different field
+ * names from `ModelResults.annualCashFlow` (e.g. `noi` vs `noi`, but
+ * `effectiveGrossRevenue` vs `effectiveGrossIncome`), the cash-flow rows are
+ * mapped on a best-effort basis.  Use the deterministic runner's own results
+ * for integrity checks when possible.
+ */
+export function coerceFinancialModelResultToModelResultsShape(
+  llm: import('../financial-model-engine.service').FinancialModelResult,
+): import('./deterministic-model-runner').ModelResults {
+  const annualCashFlow = (llm.annualCashFlow ?? []).map((row, i) => ({
+    year: row.year ?? i + 1,
+    grossPotentialRent: row.potentialRent ?? 0,
+    lossToLease: row.lossToLease ?? 0,
+    vacancy: row.vacancy ?? 0,
+    concessions: 0,
+    badDebt: row.collectionLoss ?? 0,
+    baseRevenue: row.netRentalIncome ?? 0,
+    otherIncome: row.otherIncome ?? 0,
+    effectiveGrossIncome: row.effectiveGrossRevenue ?? 0,
+    payroll: row.operatingExpenses?.payroll ?? 0,
+    maintenance: row.operatingExpenses?.repairs_maintenance ?? 0,
+    contractServices: row.operatingExpenses?.contract_services ?? 0,
+    marketing: row.operatingExpenses?.marketing ?? 0,
+    utilities: row.operatingExpenses?.utilities ?? 0,
+    admin: row.operatingExpenses?.g_and_a ?? 0,
+    insurance: row.operatingExpenses?.insurance ?? 0,
+    propertyTax: row.operatingExpenses?.real_estate_tax ?? 0,
+    managementFee: row.operatingExpenses?.management_fee ?? 0,
+    replacementReserves: row.replacementReserves ?? 0,
+    totalExpenses: row.totalExpenses ?? 0,
+    noi: row.noi ?? 0,
+    annualInterest: 0,
+    annualPrincipal: 0,
+    debtService: row.debtService ?? 0,
+    preTaxCashFlow: row.beforeTaxCashFlow ?? row.leveredCashFlow ?? 0,
+    dscr: llm.summary?.dscr?.[i] ?? null,
+    occupancy: 1 - (row.vacancy ?? 0) / Math.max(row.potentialRent ?? 1, 1),
+  }));
+
+  const dscrByYear = llm.summary?.dscr ?? [];
+  const noiByYear = (llm.annualCashFlow ?? []).map(r => r.noi ?? 0);
+  const cashOnCashByYear = llm.summary?.cashOnCash ?? [];
+
+  return {
+    summary: {
+      purchasePrice: 0,
+      loanAmount: llm.debtMetrics?.loanAmount ?? 0,
+      totalEquity: llm.summary?.totalEquity ?? 0,
+      noiYear1: llm.summary?.noiYear1 ?? 0,
+      goingInCapRate: llm.summary?.purchaseCapRate ?? 0,
+      exitCapRate: 0,
+      irr: llm.summary?.irr ?? null,
+      equityMultiple: llm.summary?.equityMultiple ?? null,
+      avgCoC: cashOnCashByYear.length > 0
+        ? cashOnCashByYear.reduce((a, b) => a + b, 0) / cashOnCashByYear.length
+        : null,
+      lpIrr: null,
+      gpIrr: null,
+      lpEquityMultiple: null,
+      gpEquityMultiple: null,
+      loanBalanceAtExit: 0,
+      cashOnCashByYear,
+      dscrByYear,
+      noiByYear,
+    },
+    annualCashFlow,
+    sourcesAndUses: {
+      sources: Object.entries(llm.sourcesAndUses?.sources ?? {}).map(([label, amount]) => ({ label, amount })),
+      uses: Object.entries(llm.sourcesAndUses?.uses ?? {}).map(([label, amount]) => ({ label, amount })),
+      totalSources: Object.values(llm.sourcesAndUses?.sources ?? {}).reduce((a, b) => a + b, 0),
+      totalUses: Object.values(llm.sourcesAndUses?.uses ?? {}).reduce((a, b) => a + b, 0),
+      delta: 0,
+      balanced: false,
+    },
+    disposition: {
+      stabilizedNOI: 0,
+      grossSalePrice: llm.summary?.exitValue ?? 0,
+      saleCosts: 0,
+      netSaleProceeds: llm.summary?.netProceeds ?? 0,
+      loanBalance: 0,
+      equityProceeds: 0,
+    },
+    sensitivityAnalysis: { matrix: { exitCapAxis: [], rentGrowthAxis: [], irrGrid: [], emGrid: [] } },
+    stressScenarios: [],
+    waterfallDistributions: [],
+    capital: { amortizationSchedule: [], loanBalanceByYear: [], debtServiceByYear: [], debtYieldByYear: [] },
+    taxes: { reTax: { perYear: [], assessedValues: [] }, transferTax: { acquisition: 0, disposition: 0, refi: 0 } },
+    projections: [],
+    integrityChecks: [],
+    reasoning: { derivationLog: [] },
+    meta: { modelVersion: 'llm-coerced', runner: 'coerceFinancialModelResultToModelResultsShape', computedAt: new Date().toISOString() },
+  } as import('./deterministic-model-runner').ModelResults;
 }
 
 /**
