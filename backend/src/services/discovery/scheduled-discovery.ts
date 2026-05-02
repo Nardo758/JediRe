@@ -245,6 +245,10 @@ export const creTradePressDiscovery = inngest.createFunction(
       });
 
       const counts = await step.run('persist-items', async () => {
+        // Refresh the active-deals cache once per run so newly-created deals
+        // get picked up for auto-tagging on the next ingest cycle.
+        discoveryEngine.invalidateActiveDealsCache();
+
         let inserted = 0;
         let duplicates = 0;
         let failed = 0;
@@ -272,6 +276,14 @@ export const creTradePressDiscovery = inngest.createFunction(
         }
         return { inserted, duplicates, failed };
       });
+
+      // Safety net: sweep recent rows in case items were ingested before
+      // this matcher existed, or before a deal that should have matched
+      // them was created. This catches tags the inline insert would miss.
+      const autoTagged = await step.run('backfill-auto-tags', async () => {
+        return await discoveryEngine.backfillRecentNewsAutoTags({ sinceHours: 72, limit: 500 });
+      });
+      logger.info(`cre-trade-press: backfill auto-tagged ${autoTagged} rows`);
 
       await step.run('complete-run', async () => {
         // If any inserts failed we mark the run as 'failed' so operators can

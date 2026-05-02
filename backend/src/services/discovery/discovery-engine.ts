@@ -50,8 +50,21 @@ export interface NewsDiscovery {
 // DISCOVERY ENGINE CLASS
 // ============================================================================
 
+/** A precomputed matching token derived from an active deal's city / MSA name. */
+interface ActiveDealMatchEntry {
+  id: string;
+  /** Lowercased market tokens used for hint/text matching (city, msa name, msa primary token). */
+  tokens: string[];
+}
+
 class DiscoveryEngine {
   private rateLimiters: Map<string, { count: number; resetAt: Date }> = new Map();
+
+  // Cache of active deals tokenized by city / MSA, used to auto-tag freshly
+  // ingested trade-press items so the per-deal news endpoint sees them
+  // immediately without waiting for the per-deal scan to be re-run.
+  private activeDealsCache: { entries: ActiveDealMatchEntry[]; expiresAt: number } | null = null;
+  private readonly ACTIVE_DEALS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   // ═══════════════════════════════════════════════════════════════════════════
   // FETCH FROM SPECIFIC SOURCE
@@ -468,12 +481,141 @@ class DiscoveryEngine {
   }
 
   /**
+   * Load active deals (status not in 'closed'/'dead') with their city / MSA
+   * tokens, used to auto-tag ingested news. Cached for a few minutes so a
+   * single ingest batch doesn't hammer the deals table.
+   */
+  private async getActiveDealsForMatching(): Promise<ActiveDealMatchEntry[]> {
+    const now = Date.now();
+    if (this.activeDealsCache && this.activeDealsCache.expiresAt > now) {
+      return this.activeDealsCache.entries;
+    }
+
+    try {
+      // Pull deal market identifiers from both `deals` (city/state_code) and
+      // the joined property/MSA so we work whether or not msa_id has been
+      // populated yet. Status filter mirrors `dailyDealNewsDiscovery`.
+      const result = await query(
+        `SELECT d.id,
+                COALESCE(NULLIF(p.city, ''), NULLIF(d.city, '')) AS city,
+                m.name AS msa_name
+           FROM deals d
+           LEFT JOIN properties p ON p.id = d.property_id
+           LEFT JOIN msas m ON m.id = p.msa_id
+          WHERE d.status NOT IN ('closed', 'dead')`
+      );
+
+      const entries: ActiveDealMatchEntry[] = result.rows.map((r: any) => {
+        const tokens = new Set<string>();
+        const city = (r.city ? String(r.city) : '').toLowerCase().trim();
+        if (city.length >= 3) tokens.add(city);
+
+        if (r.msa_name) {
+          const msaLower = String(r.msa_name).toLowerCase().trim();
+          if (msaLower.length >= 3) tokens.add(msaLower);
+          // MSA names look like "Atlanta-Sandy Springs-Roswell, GA". The first
+          // segment is the anchor city we want to match hints like "Atlanta"
+          // against, so add it as its own token.
+          const primary = msaLower.split(/[,\-]/)[0]?.trim();
+          if (primary && primary.length >= 3) tokens.add(primary);
+        }
+
+        return { id: String(r.id), tokens: Array.from(tokens) };
+      });
+
+      this.activeDealsCache = {
+        entries,
+        expiresAt: now + this.ACTIVE_DEALS_CACHE_TTL_MS,
+      };
+      return entries;
+    } catch (err) {
+      logger.warn('getActiveDealsForMatching failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Force the active-deals cache to refresh on next access. Exposed for tests
+   * and for callers (e.g. deal CRUD) that know the deal list just changed.
+   */
+  invalidateActiveDealsCache(): void {
+    this.activeDealsCache = null;
+  }
+
+  /**
+   * Find active deal IDs that match a news item by MSA / city. Uses the
+   * item's `relevantMsas` (which carries the feed `marketHint`) as the
+   * primary signal, and falls back to looking for the deal's tokens in the
+   * headline / summary text. Tokens shorter than 4 chars are skipped in the
+   * text fallback to avoid false positives like "tampa" matching "tampering".
+   */
+  async matchActiveDealsForNews(news: NewsDiscovery): Promise<string[]> {
+    const deals = await this.getActiveDealsForMatching();
+    if (deals.length === 0) return [];
+
+    const hints: string[] = [];
+    if (news.relevantMsas) {
+      for (const m of news.relevantMsas) {
+        if (m) {
+          const h = String(m).toLowerCase().trim();
+          if (h.length >= 3) hints.push(h);
+        }
+      }
+    }
+    const text = `${news.headline || ''} ${news.summary || ''}`.toLowerCase();
+
+    const matched = new Set<string>();
+    for (const deal of deals) {
+      if (deal.tokens.length === 0) continue;
+
+      // Hint match (high precision): a hint and a deal token overlap as
+      // substrings in either direction. e.g. hint="atlanta" matches token
+      // "atlanta-sandy springs-roswell, ga".
+      const hintHit = hints.some((h) =>
+        deal.tokens.some((t) => h === t || h.includes(t) || t.includes(h))
+      );
+      if (hintHit) {
+        matched.add(deal.id);
+        continue;
+      }
+
+      // Text fallback: word-boundary search for the deal's tokens in the
+      // article text. Skip very short tokens and reject pure-numeric ones.
+      for (const t of deal.tokens) {
+        if (t.length < 4) continue;
+        const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(`\\b${escaped}\\b`, 'i');
+        if (re.test(text)) {
+          matched.add(deal.id);
+          break;
+        }
+      }
+    }
+
+    return Array.from(matched);
+  }
+
+  /**
    * Outcome of an upsert into `news_discoveries`. Distinguishes a fresh
    * `'inserted'` row from a `'duplicate'` (id already existed and tags were
    * merged). DB-level failures are surfaced as thrown errors so callers can
    * decide whether to swallow, retry, or mark a batch run as partially failed.
    */
   async storeNewsDiscovery(news: NewsDiscovery): Promise<'inserted' | 'duplicate'> {
+    // Auto-tag against active deals by MSA / city so ingested trade-press
+    // items show up under the right deal without waiting for the per-deal
+    // discoverDealNews() job to refetch them. Failures here are non-fatal —
+    // we'd rather persist the article without auto-tags than drop it.
+    let autoTaggedDeals: string[] = [];
+    try {
+      autoTaggedDeals = await this.matchActiveDealsForNews(news);
+    } catch (err) {
+      logger.warn(`auto-tag matching failed for news id=${news.id}:`, err);
+    }
+
+    const mergedDeals = autoTaggedDeals.length > 0
+      ? Array.from(new Set([...(news.relevantDeals || []), ...autoTaggedDeals]))
+      : news.relevantDeals;
     // The `xmax = 0` trick distinguishes a true INSERT from an ON CONFLICT
     // DO UPDATE: PostgreSQL only sets `xmax` on rows that were updated.
     const res = await query(
@@ -504,7 +646,7 @@ class DiscoveryEngine {
         news.summary,
         news.category,
         news.relevantMsas ? JSON.stringify(news.relevantMsas) : null,
-        news.relevantDeals ? JSON.stringify(news.relevantDeals) : null,
+        mergedDeals && mergedDeals.length > 0 ? JSON.stringify(mergedDeals) : null,
       ]
     );
 
@@ -522,6 +664,73 @@ class DiscoveryEngine {
     }
 
     return inserted ? 'inserted' : 'duplicate';
+  }
+
+  /**
+   * Sweep recently-ingested `news_discoveries` rows and append auto-matched
+   * deal IDs to `relevant_deals`. Used as a safety net so items that landed
+   * before this matcher existed (or before a new deal was created) still
+   * surface under the right deal without a manual per-deal scan.
+   *
+   * Returns the number of rows that gained at least one new deal tag.
+   */
+  async backfillRecentNewsAutoTags(opts?: { sinceHours?: number; limit?: number }): Promise<number> {
+    const sinceHours = opts?.sinceHours ?? 72;
+    const limit = Math.min(Math.max(opts?.limit ?? 500, 1), 5000);
+
+    let updated = 0;
+    try {
+      const res = await query(
+        `SELECT id, headline, source, url, published_at, summary, category,
+                relevant_msas, relevant_deals
+           FROM news_discoveries
+          WHERE created_at > NOW() - ($1::int * INTERVAL '1 hour')
+          ORDER BY created_at DESC
+          LIMIT $2`,
+        [sinceHours, limit]
+      );
+
+      for (const row of res.rows) {
+        const item: NewsDiscovery = {
+          id: String(row.id),
+          headline: row.headline,
+          source: row.source,
+          url: row.url,
+          publishedAt: new Date(row.published_at),
+          summary: row.summary || undefined,
+          category: row.category,
+          relevantMsas: Array.isArray(row.relevant_msas) ? row.relevant_msas : undefined,
+          relevantDeals: Array.isArray(row.relevant_deals) ? row.relevant_deals : undefined,
+        };
+        const matched = await this.matchActiveDealsForNews(item);
+        if (matched.length === 0) continue;
+
+        const existing = new Set<string>(item.relevantDeals || []);
+        const additions = matched.filter((id) => !existing.has(id));
+        if (additions.length === 0) continue;
+
+        try {
+          await query(
+            `UPDATE news_discoveries
+                SET relevant_deals = (
+                  SELECT COALESCE(jsonb_agg(DISTINCT v), '[]'::jsonb)
+                  FROM jsonb_array_elements(
+                    COALESCE(relevant_deals, '[]'::jsonb) || $2::jsonb
+                  ) AS v
+                )
+              WHERE id = $1`,
+            [item.id, JSON.stringify(additions)]
+          );
+          updated += 1;
+        } catch (err) {
+          logger.warn(`backfillRecentNewsAutoTags update failed for id=${item.id}:`, err);
+        }
+      }
+    } catch (err) {
+      logger.warn('backfillRecentNewsAutoTags sweep failed:', err);
+    }
+
+    return updated;
   }
 
   /**
