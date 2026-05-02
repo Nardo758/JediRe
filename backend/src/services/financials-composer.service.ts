@@ -230,7 +230,7 @@ export async function composeDealFinancials(
   const year1Rows: OSRow[] = buildOSRows(year1Data, totalUnits, purchasePrice, rentRollRows, unitMixDerived, useUnitMixForGpr);
 
   // 6. Build integrity checks
-  const integrityChecks: IntegrityCheck[] = buildIntegrityChecks(year1Data, totalUnits, year1Rows);
+  const integrityChecks: IntegrityCheck[] = buildIntegrityChecks(year1Data, totalUnits, year1Rows, dealData);
 
   // 7. Build unit economics
   const unitEconomics = buildUnitEconomics(year1Rows, totalUnits);
@@ -613,15 +613,40 @@ function buildOSRows(
 
 // ── Helper: Integrity checks ─────────────────────────────────────────────────
 
-function buildIntegrityChecks(y1: any, _totalUnits: number, rows: OSRow[]): IntegrityCheck[] {
+function buildIntegrityChecks(
+  y1: any,
+  _totalUnits: number,
+  rows: OSRow[],
+  dealData?: Record<string, any> | null,
+): IntegrityCheck[] {
   const checks: IntegrityCheck[] = [];
 
   if (!y1) {
-    checks.push({
-      id: 'proforma_seeded',
-      status: 'warn',
-      message: 'No proforma data seeded — add deal assumptions or trigger auto-seed.',
-    });
+    // Check if extraction capsules exist — if none, this deal has never had
+    // documents parsed and will always be empty until ingestion happens.
+    const hasExtractionT12 = !!(dealData && dealData['extraction_t12']);
+    const hasExtractionRR  = !!(dealData && dealData['extraction_rent_roll']);
+    const hasExtractionTax = !!(dealData && dealData['extraction_tax_bill']);
+
+    if (!hasExtractionT12 && !hasExtractionRR && !hasExtractionTax) {
+      checks.push({
+        id: 'seed_failed',
+        status: 'error',
+        message: 'No T-12, rent roll, or tax bill found for this deal — upload documents to populate the financial model.',
+      });
+    } else if (!hasExtractionT12 && !hasExtractionTax) {
+      checks.push({
+        id: 'seed_partial',
+        status: 'warn',
+        message: 'Rent roll found but no T-12 or tax bill — revenue assumptions will be populated but expenses may be incomplete.',
+      });
+    } else {
+      checks.push({
+        id: 'proforma_seeded',
+        status: 'warn',
+        message: 'No proforma data seeded — add deal assumptions or trigger auto-seed.',
+      });
+    }
   }
 
   const noiRow = rows.find(r => r.field === 'noi');
