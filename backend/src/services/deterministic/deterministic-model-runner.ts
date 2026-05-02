@@ -57,6 +57,8 @@ export interface ModelAssumptions {
   dealType: string;
   // Optional: non-FL base property tax (for computing non-FL tax schedule)
   basePropertyTax?: number;
+  // Optional: apply bonus depreciation in Y1 (spec §11; defaults true when omitted)
+  useBonusDepreciation?: boolean;
 }
 
 export interface AnnualCashFlowRow {
@@ -1142,7 +1144,8 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     const dscr = debtService > 0.01 ? op.noi / debtService : null;
     const dyield = a.loanAmount > 0 ? op.noi / a.loanAmount : null;
 
-    const depreciation  = y === 1 ? incomeTaxBonusDepr : incomeTaxAnnualDepr;
+    const applyBonus    = a.useBonusDepreciation !== false; // default true
+    const depreciation  = (y === 1 && applyBonus) ? incomeTaxBonusDepr : incomeTaxAnnualDepr;
     const taxableIncome = op.noi - interest - depreciation;
     const taxPayable    = Math.max(0, taxableIncome * INCOME_TAX_MARGINAL);
     annualRows.push({
