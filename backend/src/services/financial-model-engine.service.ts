@@ -529,6 +529,18 @@ export class FinancialModelEngineService {
             ` (${checks.filter(c => c.status === 'warn').length} warnings,` +
             ` ${materialDivergences.length} material LLM↔det divergences, ${cdSummary})`
           );
+          // Inject deterministic evidence + reasoning into LLM result before persist.
+          // The LLM result is the primary persisted artifact; these fields come exclusively
+          // from the deterministic runner and cannot be hallucinated by the LLM.
+          (result as any).evidence = deterministicResult.evidence;
+          (result as any).reasoning = Object.assign(
+            {},
+            typeof (result as any).reasoning === 'object' ? (result as any).reasoning : {},
+            {
+              walkthrough: deterministicResult.reasoning.walkthrough,
+              collisionReport: deterministicResult.reasoning.collisionReport,
+            },
+          );
         }
       } catch (verifyErr: any) {
         // Fail-closed: if the bridge or runner itself throws, treat as a hard failure.

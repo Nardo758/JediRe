@@ -138,6 +138,39 @@ describe('buildModel() verification gate', () => {
     expect(errorCall).toBeUndefined();
   });
 
+  it('persisted result contains deterministic evidence.fields for all 6 KPI fields', async () => {
+    const service = (engineModule as any)._testService as InstanceType<typeof engineModule.FinancialModelEngineService>;
+    callLLMSpy.mockResolvedValue(makeLLMResult());
+
+    await service.buildModel('deal-evidence', BASE_ASSUMPTIONS as any);
+
+    const persistCall = poolSpy.calls.find(c =>
+      /UPDATE deal_financial_models.*SET results/i.test(c.sql)
+    );
+    expect(persistCall).toBeDefined();
+
+    const persisted = JSON.parse(persistCall!.params[0] as string);
+    const fields: Array<{ field: string }> = persisted?.evidence?.fields ?? [];
+    const fieldNames = fields.map((f) => f.field);
+
+    // All 6 KPI evidence fields must be present after deterministic injection
+    for (const kpi of ['NOI', 'IRR', 'EM', 'DSCR', 'exitCap', 'goingInCap']) {
+      expect(fieldNames).toContain(kpi);
+    }
+
+    // confidence_distribution must be populated
+    const dist = persisted?.evidence?.confidence_distribution;
+    expect(dist).toBeDefined();
+    expect(typeof dist.high).toBe('number');
+    expect(typeof dist.medium).toBe('number');
+    expect(typeof dist.low).toBe('number');
+
+    // reasoning must carry walkthrough string and collisionReport array
+    expect(typeof persisted?.reasoning?.walkthrough).toBe('string');
+    expect(persisted?.reasoning?.walkthrough.length).toBeGreaterThan(0);
+    expect(Array.isArray(persisted?.reasoning?.collisionReport)).toBe(true);
+  });
+
   it('writes status=error and halts when loanAmount > purchasePrice (INV-6)', async () => {
     const overAssumptions = {
       ...BASE_ASSUMPTIONS,
