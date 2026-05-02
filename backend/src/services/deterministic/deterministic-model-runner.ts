@@ -529,7 +529,7 @@ export function computeYearOperating(
   vacancySched: number[],
   taxYear: number,
   expenseGrowthCum: number,
-): Omit<AnnualCashFlowRow, 'year' | 'annualInterest' | 'annualPrincipal' | 'debtService' | 'preTaxCashFlow' | 'cfads' | 'dscr' | 'debtYield' | 'capRateOnCost' | 'isExitYear'> {
+): Omit<AnnualCashFlowRow, 'year' | 'annualInterest' | 'annualPrincipal' | 'debtService' | 'preTaxCashFlow' | 'cfads' | 'dscr' | 'debtYield' | 'capRateOnCost' | 'isExitYear' | 'depreciation' | 'taxableIncome' | 'taxPayable' | 'afterTaxCashFlow'> {
   const GPR = a.units * a.marketRent * 12 * cumGrowthVal;
   const loss = GPR * a.lossToLease;
   const vac = GPR * vacancySched[y - 1];
