@@ -3,3 +3,7 @@
 -- when the caller's current assumptions diverge from the stored ones.
 ALTER TABLE deal_financial_models
   ADD COLUMN IF NOT EXISTS assumptions_hash VARCHAR(64);
+
+-- Task #511: engine writes error_message on build failures; add if missing.
+ALTER TABLE deal_financial_models
+  ADD COLUMN IF NOT EXISTS error_message TEXT;
