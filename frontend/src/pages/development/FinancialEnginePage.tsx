@@ -184,6 +184,135 @@ function mergeModelIntoFinancials(
 
   return out;
 }
+
+/**
+ * normalizeBuildResponse
+ *
+ * Maps the DeepSeek model build response shape to the frontend ModelResults
+ * type so that all tabs (Assumptions, Sensitivity, Waterfall, etc.) receive
+ * consistent data.
+ *
+ * Key transformations:
+ *  - cashOnCashByYear[] → avg cashOnCash scalar
+ *  - noiByYear[] → summary.noi (Y1)
+ *  - annualCashFlow.grossPotentialRent → .gpr
+ *  - annualCashFlow.effectiveGrossIncome → .egr
+ *  - annualCashFlow.preTaxCashFlow → .cashFlow
+ *  - sourcesAndUses Record → {label,amount}[] arrays
+ *  - waterfallDistributions simplified row → tier-based objects
+ */
+function normalizeBuildResponse(raw: any): ModelResults {
+  if (!raw) return raw;
+
+  const s = raw.summary ?? {};
+  const af = raw.annualCashFlow ?? [];
+
+  // Derive scalar cashOnCash from first positive year or fallback to 0
+  const avgCoC = (() => {
+    const arr = s.cashOnCashByYear;
+    if (!Array.isArray(arr) || arr.length === 0) return 0;
+    const nonZero = arr.filter((v: number) => v > 0);
+    return nonZero.length > 0
+      ? nonZero.reduce((a: number, b: number) => a + b, 0) / nonZero.length
+      : 0;
+  })();
+
+  // Y1 NOI from noiByYear, else from first cashflow row
+  const noiY1 = (() => {
+    const arr = s.noiByYear;
+    if (Array.isArray(arr) && arr.length > 0) return arr[0];
+    return af[0]?.netOperatingIncome ?? 0;
+  })();
+
+  // Average DSCR from debtMetrics.dscrByYear or scalar
+  const avgDscr = (() => {
+    const dm = raw.debtMetrics ?? {};
+    if (Array.isArray(dm.dscrByYear) && dm.dscrByYear.length > 0) {
+      const arr = dm.dscrByYear as number[];
+      return arr.reduce((a: number, b: number) => a + b, 0) / arr.length;
+    }
+    return s.dscr ?? dm.dscr ?? 0;
+  })();
+
+  // Map annual cash flow
+  const annualCashFlow = af.map((r: any, i: number) => {
+    const equityCf = r.equityCashFlow ?? r.leveredCashFlow ?? r.preTaxCashFlow ?? 0;
+    // Total operating expenses from individual categories if available
+    const totalOpex = r.totalExpenses ?? r.operatingExpenses ?? 0;
+    // If operatingExpenses is a Record, sum it
+    const opexTotal = typeof totalOpex === 'object'
+      ? Object.values(totalOpex as Record<string, number>).reduce((a: number, b: number) => a + b, 0)
+      : Number(totalOpex);
+
+    return {
+      year: r.year ?? i + 1,
+      gpr: r.grossPotentialRent ?? r.potentialRent ?? 0,
+      vacancy: r.vacancyLoss ?? r.vacancy ?? 0,
+      egr: r.effectiveGrossRevenue ?? r.effectiveGrossIncome ?? r.netRentalIncome ?? 0,
+      otherIncome: r.otherIncome ?? 0,
+      totalRevenue: r.totalRevenue ?? 0,
+      opex: opexTotal,
+      noi: r.netOperatingIncome ?? r.noi ?? 0,
+      debtService: r.debtService ?? r.totalDebtService ?? 0,
+      cashFlow: equityCf,
+      lpDistribution: r.lpDistribution ?? r.leveredCashFlow,
+      gpDistribution: r.gpDistribution,
+    };
+  });
+
+  // Map sourcesAndUses: Record → [{label,amount}]
+  const su = raw.sourcesAndUses ?? {};
+  const sourcesArray = (() => {
+    const src = su.sources ?? {};
+    if (Array.isArray(src)) return src;
+    return Object.entries(src as Record<string, number>).map(([l, a]) => ({ label: l, amount: a }));
+  })();
+  const usesArray = (() => {
+    const u = su.uses ?? {};
+    if (Array.isArray(u)) return u;
+    return Object.entries(u as Record<string, number>).map(([l, a]) => ({ label: l, amount: a }));
+  })();
+
+  // Map waterfall: simplified row → tier-based objects
+  const wf = raw.waterfallDistributions ?? [];
+  const waterfallDistributions = (Array.isArray(wf) && wf.length > 0)
+    ? wf.map((r: any, i: number) => ({
+        tier: r.tier ?? `Tier ${i + 1}`,
+        hurdleRate: r.hurdleRate ?? 0.08,
+        lpAmount: r.lpDistribution ?? r.lpAmount ?? 0,
+        gpAmount: r.gpDistribution ?? r.gpAmount ?? 0,
+        lpSplit: r.lpSplit ?? 0.8,
+        gpSplit: r.gpSplit ?? 0.2,
+        promotePct: r.promotePct ?? 0.2,
+      }))
+    : [];
+
+  return {
+    summary: {
+      irr: s.irr ?? 0,
+      equityMultiple: s.equityMultiple ?? 0,
+      cashOnCash: avgCoC,
+      noi: noiY1,
+      dscr: avgDscr,
+      yieldOnCost: s.yieldOnCost ?? s.goingInCapRate,
+      exitValue: s.exitValue ?? 0,
+      totalProfit: raw.lpProfit ?? s.totalProfit,
+      lpIrr: s.lpIrr ?? s.irr,
+      lpEm: s.lpEm ?? s.equityMultiple,
+      lpCoC: avgCoC,
+      lpProfit: raw.lpProfit,
+    },
+    annualCashFlow,
+    sourcesAndUses: {
+      sources: sourcesArray,
+      uses: usesArray,
+    },
+    debtMetrics: raw.debtMetrics ?? null,
+    sensitivityAnalysis: raw.sensitivityAnalysis ?? null,
+    waterfallDistributions,
+  };
+}
+
 import { EvidencePanel } from '../../components/underwriting/EvidencePanel';
 import { UnderwritingWalkthrough } from '../../components/f9/UnderwritingWalkthrough';
 
@@ -426,9 +555,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         { dealId: resolvedDealId, assumptions },
         { timeout: 120_000 },
       );
+      // Response envelope: { success: true, data: { summary, annualCashFlow, ... } }
+      // or the API client may unwrap: { data: { summary, ... } }
+      // DeepSeek's `result` is the bare FinancialModelResult.
       const raw = (res as any)?.data ?? res;
       const result = raw?.data ?? raw;
-      if (result) setModelResults(normalizeModelResults(result));
+      if (result) {
+        const normalized = normalizeBuildResponse(result);
+        setModelResults(normalized);
+      }
     } catch (e) {
       console.error('Model build failed:', e);
     } finally {
