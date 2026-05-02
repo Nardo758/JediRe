@@ -100,11 +100,70 @@ function detectLayout(sheet: XLSX.WorkSheet): { layout: RentRollLayout; headerRo
 }
 
 /**
+ * Detect actual column indices for a Yardi RRwLC sheet by reading the
+ * two-row stacked header. Yardi exports vary between properties — some
+ * collapse Resident ID + Name into a single column, others split them
+ * into two; some omit Other Deposit; etc. Hardcoding indices made the
+ * parser silently shred any file whose column layout drifted from the
+ * "canonical" 13-column shape.
+ *
+ * Strategy: combine header-row + sub-header-row text per column into a
+ * single label, then locate each logical field by regex. Returns -1 for
+ * any field that cannot be matched; callers must guard.
+ */
+function detectYardiColumns(
+  sheet: XLSX.WorkSheet,
+  headerRow: number,
+  subHeaderRow: number,
+): { UNIT: number; TYPE: number; SQFT: number; RESIDENT: number; MARKET: number;
+     CHARGE: number; AMOUNT: number; SEC_DEP: number; OTHER_DEP: number;
+     MOVE_IN: number; LEASE_EXP: number; MOVE_OUT: number; BALANCE: number } {
+  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+  const labels: string[] = [];
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const top = sheet[XLSX.utils.encode_cell({ r: headerRow, c })]?.v;
+    const bot = sheet[XLSX.utils.encode_cell({ r: subHeaderRow, c })]?.v;
+    const t = top != null ? String(top).trim().toLowerCase() : '';
+    const b = bot != null ? String(bot).trim().toLowerCase() : '';
+    labels.push(`${t} ${b}`.trim());
+  }
+  // labels[i] corresponds to absolute sheet column (range.s.c + i). Callers
+  // pass absolute column indices to getVal/encode_cell, so we must offset
+  // any findIndex result by range.s.c (otherwise sheets whose !ref starts
+  // past column A would resolve to the wrong physical column).
+  const base = range.s.c;
+  const toAbs = (i: number): number => (i < 0 ? -1 : base + i);
+  const find = (rx: RegExp): number => toAbs(labels.findIndex(s => rx.test(s)));
+
+  // First "unit" column that isn't "unit type" — the unit number.
+  const UNIT = toAbs(labels.findIndex(s => /\bunit\b/.test(s) && !/unit\s*type/.test(s) && !/sq\s*ft|sqft/.test(s)));
+  const TYPE = find(/unit\s*type/);
+  const SQFT = find(/sq\s*ft|sqft|square\s*(feet|ft)/);
+  const MARKET = find(/market.*rent|mkt.*rent|asking/);
+  const CHARGE = find(/charge.*code/);
+  // "amount" must NOT match the leading "amount" inside charge-code descriptions
+  const AMOUNT = toAbs(labels.findIndex(s => /^amount\b|\bcharge\s*amount\b|^amt\b/.test(s)));
+  const SEC_DEP = find(/resident\s*deposit|security\s*deposit|sec\.?\s*dep/);
+  const OTHER_DEP = find(/other\s*deposit/);
+  const MOVE_IN = find(/move\s*[-/_ ]?\s*in/);
+  const LEASE_EXP = find(/lease.*(expir|end)|expir/);
+  const MOVE_OUT = find(/move\s*[-/_ ]?\s*out/);
+  const BALANCE = find(/balance/);
+  // Resident column: the column immediately to the LEFT of MARKET tends to
+  // be the resident name (or, for files that split ID + Name, the name).
+  // Falling back to col 3 preserves the canonical layout.
+  const RESIDENT = MARKET > base ? MARKET - 1 : base + 3;
+
+  return { UNIT, TYPE, SQFT, RESIDENT, MARKET, CHARGE, AMOUNT, SEC_DEP, OTHER_DEP, MOVE_IN, LEASE_EXP, MOVE_OUT, BALANCE };
+}
+
+/**
  * Parse Yardi RRwLC (stacked charge-code) layout.
  */
 function parseYardiRRwLC(
   sheet: XLSX.WorkSheet,
-  headerRow: number
+  headerRow: number,
+  subHeaderRow: number,
 ): { units: YardiUnit[]; warnings: string[]; asOfDate: string | null; sourceSystemId: string | null } {
   const warnings: string[] = [];
   const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
@@ -121,14 +180,25 @@ function parseYardiRRwLC(
     if (propIdMatch) sourceSystemId = propIdMatch[1];
   }
 
-  // Column indices (Yardi RRwLC standard layout):
-  // 0=Unit, 1=Unit Type, 2=Sq Ft, 3=Resident, 4=Market Rent,
-  // 5=Charge Code, 6=Amount, 7=Resident Deposit, 8=Other Deposit,
-  // 9=Move In, 10=Lease Expiration, 11=Move Out, 12=Balance
+  // Column indices — detect dynamically from header rows so files that split
+  // Resident into ID+Name columns (or otherwise drift from the canonical
+  // 13-column Yardi layout) still parse correctly. Falls back to the
+  // historical hardcoded layout for any field not detected.
+  const detected = detectYardiColumns(sheet, headerRow, subHeaderRow);
   const COL = {
-    UNIT: 0, TYPE: 1, SQFT: 2, RESIDENT: 3, MARKET: 4,
-    CHARGE: 5, AMOUNT: 6, SEC_DEP: 7, OTHER_DEP: 8,
-    MOVE_IN: 9, LEASE_EXP: 10, MOVE_OUT: 11, BALANCE: 12,
+    UNIT:      detected.UNIT      >= 0 ? detected.UNIT      : 0,
+    TYPE:      detected.TYPE      >= 0 ? detected.TYPE      : 1,
+    SQFT:      detected.SQFT      >= 0 ? detected.SQFT      : 2,
+    RESIDENT:  detected.RESIDENT  >= 0 ? detected.RESIDENT  : 3,
+    MARKET:    detected.MARKET    >= 0 ? detected.MARKET    : 4,
+    CHARGE:    detected.CHARGE    >= 0 ? detected.CHARGE    : 5,
+    AMOUNT:    detected.AMOUNT    >= 0 ? detected.AMOUNT    : 6,
+    SEC_DEP:   detected.SEC_DEP   >= 0 ? detected.SEC_DEP   : 7,
+    OTHER_DEP: detected.OTHER_DEP >= 0 ? detected.OTHER_DEP : 8,
+    MOVE_IN:   detected.MOVE_IN   >= 0 ? detected.MOVE_IN   : 9,
+    LEASE_EXP: detected.LEASE_EXP >= 0 ? detected.LEASE_EXP : 10,
+    MOVE_OUT:  detected.MOVE_OUT  >= 0 ? detected.MOVE_OUT  : 11,
+    BALANCE:   detected.BALANCE   >= 0 ? detected.BALANCE   : 12,
   };
 
   const dataStartRow = headerRow + 2;  // skip both header rows
@@ -275,7 +345,7 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     let sourceSystemId: string | null = null;
 
     if (layout === 'yardi_rrwlc') {
-      const result = parseYardiRRwLC(sheet, headerRow);
+      const result = parseYardiRRwLC(sheet, headerRow, secondHeaderRow ?? headerRow + 1);
       units = result.units;
       asOfDate = result.asOfDate;
       sourceSystemId = result.sourceSystemId;
