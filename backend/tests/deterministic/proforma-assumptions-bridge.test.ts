@@ -167,7 +167,7 @@ describe('mapProFormaAssumptionsToModelAssumptions', () => {
 function makeRunModelAssumptions(overrides: Partial<import('../../src/services/deterministic/deterministic-model-runner').ModelAssumptions> = {}) {
   return {
     purchasePrice: 10000000, units: 100, marketRent: 1500, loanAmount: 7000000,
-    rate: 0.065, holdYears: 5, lpEquity: 2700000, gpEquity: 300000,
+    rate: 0.065, holdYears: 5, lpEquity: 3285000, gpEquity: 365000,
     exitCap: 0.055, avgUnitSf: 850, ltv: 0.7, closingCostsPct: 0.01,
     isFlorida: false, docStampsPct: 0, intangibleTaxPct: 0, titleInsurancePct: 0,
     expenseGrowth: 0.03, managementFee: 0.04, replacementReserves: 250, saleCosts: 0.02,
@@ -265,7 +265,8 @@ describe('runModel() new output fields (task #486)', () => {
 
   it('summary.lpProfit + gpProfit === totalProfit', () => {
     const s = result.summary;
-    expect(s.totalProfit).toBeCloseTo(s.lpProfit + (s.gpTotalDistributions - 300000), 0);
+    // gpProfit = gpTotalDistributions − gpEquity (365000 = 10% of 3650000 default equity)
+    expect(s.totalProfit).toBeCloseTo(s.lpProfit + (s.gpTotalDistributions - 365000), 0);
   });
 
   it('summary.gpPromoteEarned is a defined non-negative number', () => {
@@ -935,6 +936,14 @@ describe('runIntegrityChecks — complete spec §6.1 + §6.2 coverage', () => {
     rPatched.disposition.grossSalePrice *= 1.05; // +5% wrong
     const checks = runIntegrityChecks(m, rPatched);
     expect(checks.find(c => c.id === 'INV-5')?.status).toBe('error');
+  });
+
+  it('INV-5 fires (fail-closed) when exitCap is 0', () => {
+    const m = makeRunModelAssumptions({ exitCap: 0 });
+    const r = runModel(m, { skipSensitivity: true });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'INV-5')?.status).toBe('error');
+    expect(checks.find(c => c.id === 'INV-5')?.message).toMatch(/cannot verify/i);
   });
 
   // ── INV-6: totalEquity = totalAcqCost − loanAmount ─────────────────────
