@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { financialModelEngine } from '../../services/financial-model-engine.service';
+import { financialModelEngine, hashAssumptions } from '../../services/financial-model-engine.service';
 import { excelExportService } from '../../services/excel-export.service';
 import { getPool } from '../../database/connection';
 import { dealVersionsService, type SaveTrigger } from '../../services/proforma/deal-versions.service';
@@ -9,8 +9,11 @@ import type { ProFormaAssumptions } from '../../services/financial-model-engine.
 
 const router = Router();
 
-// In-process idempotency cache: key = `${dealId}:${idempotencyKey}`, value = cached result + timestamp.
-const _idempotencyCache = new Map<string, { result: unknown; ts: number }>();
+// In-process idempotency cache.
+// Value is a live Promise while the build is running so concurrent requests
+// with the same key share a single LLM call rather than spawning duplicates.
+// On completion the Promise is replaced with { result, ts } for TTL-based replay.
+const _idempotencyCache = new Map<string, Promise<unknown> | { result: unknown; ts: number }>();
 const IDEMPOTENCY_TTL_MS = 10_000;
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -234,23 +237,44 @@ router.post('/build', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'dealId and assumptions are required' });
     }
 
-    // Idempotency-Key deduplication: within 10 s, return the cached result.
+    const normalized = normalizeToEngineFormat(assumptions);
+    // Pre-compute the hash from the normalized (pre-enhancement) input so the
+    // frontend can store it and detect cross-session staleness on future page loads.
+    const assumptionsHash = hashAssumptions(normalized as object);
+
     const idempKey = req.headers['idempotency-key'] as string | undefined;
     if (idempKey) {
       const cacheKey = `${dealId}:${idempKey}`;
-      const cached = _idempotencyCache.get(cacheKey);
-      if (cached && Date.now() - cached.ts < IDEMPOTENCY_TTL_MS) {
-        return res.json({ success: true, data: cached.result, idempotent: true });
+      const entry = _idempotencyCache.get(cacheKey);
+
+      if (entry) {
+        if (entry instanceof Promise) {
+          // A concurrent request is already building — await the shared promise.
+          const result = await entry;
+          return res.json({ success: true, data: result, assumptionsHash, idempotent: true });
+        }
+        if (Date.now() - (entry as { result: unknown; ts: number }).ts < IDEMPOTENCY_TTL_MS) {
+          return res.json({
+            success: true,
+            data: (entry as { result: unknown; ts: number }).result,
+            assumptionsHash,
+            idempotent: true,
+          });
+        }
       }
-      const normalized = normalizeToEngineFormat(assumptions);
-      const result = await financialModelEngine.buildModel(dealId, normalized);
-      _idempotencyCache.set(cacheKey, { result, ts: Date.now() });
-      return res.json({ success: true, data: result });
+
+      // Store the in-flight promise before awaiting so concurrent duplicates
+      // attach to it rather than spawning independent LLM calls.
+      const promise = financialModelEngine.buildModel(dealId, normalized)
+        .then(r => { _idempotencyCache.set(cacheKey, { result: r, ts: Date.now() }); return r; })
+        .catch(err => { _idempotencyCache.delete(cacheKey); throw err; });
+      _idempotencyCache.set(cacheKey, promise);
+      const result = await promise;
+      return res.json({ success: true, data: result, assumptionsHash });
     }
 
-    const normalized = normalizeToEngineFormat(assumptions);
     const result = await financialModelEngine.buildModel(dealId, normalized);
-    return res.json({ success: true, data: result });
+    return res.json({ success: true, data: result, assumptionsHash });
   } catch (error: any) {
     console.error('Financial model build error:', error.message);
     return res.status(500).json({ error: error.message || 'Failed to build financial model' });

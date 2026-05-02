@@ -430,21 +430,13 @@ function applyFillInToAssumptions(
   }
 }
 
-// Guard so the ALTER TABLE runs only once per process lifetime.
-let _hashColEnsured = false;
-
-/** Idempotently adds the assumptions_hash column to deal_financial_models. */
-async function ensureHashColumn(): Promise<void> {
-  if (_hashColEnsured) return;
-  const pool = getPool();
-  await pool.query(
-    `ALTER TABLE deal_financial_models ADD COLUMN IF NOT EXISTS assumptions_hash VARCHAR(64)`
-  );
-  _hashColEnsured = true;
-}
-
-/** Stable sha-256 of an assumptions envelope — sorts top-level keys for determinism. */
-function hashAssumptions(obj: object): string {
+/**
+ * Stable sha-256 of an assumptions envelope — sorts top-level keys so that
+ * two objects with identical values but different insertion orders produce the
+ * same hash. Exported so the routes layer can compute the same hash for the
+ * pre-enhancement assumptions and include it in the build response envelope.
+ */
+export function hashAssumptions(obj: object): string {
   const sorted = Object.fromEntries(
     Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
   );
@@ -515,9 +507,10 @@ export class FinancialModelEngineService {
     const enhancementSummary = m26m27ProFormaEnhancer.getEnhancementSummary(enhancedAssumptions);
     logger.info(`M26/M27ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢M09 Enhancement for deal ${dealId}:\n${enhancementSummary}`);
 
-    // Ensure the assumptions_hash column exists (idempotent ALTER TABLE).
-    await ensureHashColumn();
-    const assumptionsHash = hashAssumptions(enhancedAssumptions as object);
+    // Hash the pre-enhancement assumptions (the caller's input after normalization).
+    // The routes layer computes the same hash from the same value and echoes it in
+    // the build response so the frontend can detect cross-session staleness.
+    const assumptionsHash = hashAssumptions(assumptions as object);
 
     const insertResult = await pool.query(
       `INSERT INTO deal_financial_models (deal_id, model_type, assumptions, status, assumptions_hash)
@@ -704,10 +697,11 @@ export class FinancialModelEngineService {
     if (result.rows.length === 0) return null;
     const row = result.rows[0];
     const storedHash: string | null = row.assumptions_hash ?? null;
-    // Stale when caller provides a current hash that differs from what's stored.
+    // Return explicit boolean so the frontend always gets a defined signal when
+    // a currentHash is provided; undefined only when no comparison was requested.
     const stale = currentHash != null && storedHash != null
       ? currentHash !== storedHash
-      : undefined;
+      : currentHash != null ? true : undefined;
     return {
       assumptions: typeof row.assumptions === 'string' ? JSON.parse(row.assumptions) : row.assumptions,
       results: typeof row.results === 'string' ? JSON.parse(row.results) : row.results,

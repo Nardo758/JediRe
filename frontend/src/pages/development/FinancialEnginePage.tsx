@@ -411,6 +411,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   // F9 Cache (Task #493): true when local assumptions have drifted from the last build.
   const [staleModel, setStaleModel] = useState(false);
+  // Hash from the last known build — echoed by POST /build and GET /latest responses.
+  // Used as the assumptionsHash query param on subsequent GET /latest calls so the
+  // backend can detect cross-session staleness (another session built a newer model).
+  const [lastBuiltHash, setLastBuiltHash] = useState<string | null>(null);
   const [opusInput, setOpusInput] = useState('');
   const [opusSending, setOpusSending] = useState(false);
   const [opusMessages, setOpusMessages] = useState<Array<{ role: 'user' | 'opus'; text: string; ts: number }>>([]);
@@ -466,9 +470,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     let cancelled = false;
     setKpiLoading(true);
 
+    // Pass the last known assumptions hash so the backend can signal cross-session
+    // staleness (another session built with different assumptions since our last build).
+    const latestUrl = lastBuiltHash
+      ? `/api/v1/financial-model/${resolvedDealId}/latest?assumptionsHash=${lastBuiltHash}`
+      : `/api/v1/financial-model/${resolvedDealId}/latest`;
+
     Promise.allSettled([
       apiClient.get(`/api/v1/financial-dashboard/${resolvedDealId}/summary`),
-      apiClient.get(`/api/v1/financial-model/${resolvedDealId}/latest`),
+      apiClient.get(latestUrl),
     ]).then(([summaryRes, modelRes]) => {
       if (cancelled) return;
 
@@ -496,13 +506,24 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         if (model?.assumptions) {
           setAssumptions(model.assumptions);
         }
+        // Store the hash from this model so future fetches can detect staleness.
+        if (model?.assumptionsHash) {
+          setLastBuiltHash(model.assumptionsHash);
+        }
+        // API-driven stale signal: a newer build exists (different hash in DB).
+        if (model?.stale === true) {
+          setStaleModel(true);
+        }
       }
 
       setKpiLoading(false);
     }).catch(() => setKpiLoading(false));
 
     return () => { cancelled = true; };
-  }, [resolvedDealId]);
+  // Re-run when lastBuiltHash changes so a post-build fetch can detect
+  // whether a concurrent session has meanwhile stored a different model.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedDealId, lastBuiltHash]);
 
   // Version history (Spec §13). Backend returns DealVersionRow[]; map to local
   // ModelVersion shape so the existing picker UI keeps working unchanged.
@@ -614,6 +635,9 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         setModelResults(normalized);
         // Assumptions are now in sync with the persisted model.
         setStaleModel(false);
+        // Store the hash echoed by the build endpoint for future staleness checks.
+        const returnedHash = (res as any)?.data?.assumptionsHash as string | undefined;
+        if (returnedHash) setLastBuiltHash(returnedHash);
       }
     } catch (e) {
       console.error('Model build failed:', e);
