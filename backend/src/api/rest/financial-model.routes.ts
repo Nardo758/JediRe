@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { financialModelEngine, hashAssumptions } from '../../services/financial-model-engine.service';
+import { financialModelEngine } from '../../services/financial-model-engine.service';
 import { excelExportService } from '../../services/excel-export.service';
 import { getPool } from '../../database/connection';
 import { dealVersionsService, type SaveTrigger } from '../../services/proforma/deal-versions.service';
@@ -12,8 +12,10 @@ const router = Router();
 // In-process idempotency cache.
 // Value is a live Promise while the build is running so concurrent requests
 // with the same key share a single LLM call rather than spawning duplicates.
-// On completion the Promise is replaced with { result, ts } for TTL-based replay.
-const _idempotencyCache = new Map<string, Promise<unknown> | { result: unknown; ts: number }>();
+// On completion the entry is replaced with the full serialised response payload
+// so cache hits replay exactly the first response (including assumptionsHash).
+type IdempPayload = { data: unknown; assumptionsHash: string };
+const _idempotencyCache = new Map<string, Promise<IdempPayload> | { payload: IdempPayload; ts: number }>();
 const IDEMPOTENCY_TTL_MS = 10_000;
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -238,9 +240,6 @@ router.post('/build', async (req: Request, res: Response) => {
     }
 
     const normalized = normalizeToEngineFormat(assumptions);
-    // Pre-compute the hash from the normalized (pre-enhancement) input so the
-    // frontend can store it and detect cross-session staleness on future page loads.
-    const assumptionsHash = hashAssumptions(normalized as object);
 
     const idempKey = req.headers['idempotency-key'] as string | undefined;
     if (idempKey) {
@@ -249,31 +248,36 @@ router.post('/build', async (req: Request, res: Response) => {
 
       if (entry) {
         if (entry instanceof Promise) {
-          // A concurrent request is already building — await the shared promise.
-          const result = await entry;
-          return res.json({ success: true, data: result, assumptionsHash, idempotent: true });
+          // A concurrent request is already building — await the shared promise
+          // and replay its payload verbatim (same data AND same assumptionsHash).
+          const payload = await entry;
+          return res.json({ success: true, ...payload, idempotent: true });
         }
-        if (Date.now() - (entry as { result: unknown; ts: number }).ts < IDEMPOTENCY_TTL_MS) {
-          return res.json({
-            success: true,
-            data: (entry as { result: unknown; ts: number }).result,
-            assumptionsHash,
-            idempotent: true,
-          });
+        const completed = entry as { payload: IdempPayload; ts: number };
+        if (Date.now() - completed.ts < IDEMPOTENCY_TTL_MS) {
+          return res.json({ success: true, ...completed.payload, idempotent: true });
         }
       }
 
       // Store the in-flight promise before awaiting so concurrent duplicates
       // attach to it rather than spawning independent LLM calls.
-      const promise = financialModelEngine.buildModel(dealId, normalized)
-        .then(r => { _idempotencyCache.set(cacheKey, { result: r, ts: Date.now() }); return r; })
+      const promise: Promise<IdempPayload> = financialModelEngine.buildModel(dealId, normalized)
+        .then(r => {
+          const pl: IdempPayload = {
+            data: r,
+            assumptionsHash: (r as any)._assumptionsHash as string ?? '',
+          };
+          _idempotencyCache.set(cacheKey, { payload: pl, ts: Date.now() });
+          return pl;
+        })
         .catch(err => { _idempotencyCache.delete(cacheKey); throw err; });
       _idempotencyCache.set(cacheKey, promise);
-      const result = await promise;
-      return res.json({ success: true, data: result, assumptionsHash });
+      const payload = await promise;
+      return res.json({ success: true, ...payload });
     }
 
     const result = await financialModelEngine.buildModel(dealId, normalized);
+    const assumptionsHash = (result as any)._assumptionsHash as string ?? '';
     return res.json({ success: true, data: result, assumptionsHash });
   } catch (error: any) {
     console.error('Financial model build error:', error.message);

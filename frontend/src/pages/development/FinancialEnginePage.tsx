@@ -510,9 +510,9 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         if (model?.assumptionsHash) {
           setLastBuiltHash(model.assumptionsHash);
         }
-        // API-driven stale signal: a newer build exists (different hash in DB).
-        if (model?.stale === true) {
-          setStaleModel(true);
+        // Explicit boolean update — clears the badge on false, sets it on true.
+        if (typeof model?.stale === 'boolean') {
+          setStaleModel(model.stale);
         }
       }
 
