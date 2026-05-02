@@ -5,7 +5,7 @@ import { dataFlowRouter } from './module-wiring/data-flow-router';
 import { logger } from '../utils/logger';
 import { applyFullAnchorInterceptor, normalizeExpensesForInterceptor, rekeyExpensesFromInterceptor } from './sigma/anchor-interceptor.service';
 import OpenAI from 'openai';
-import { mapProFormaAssumptionsToModelAssumptions } from './deterministic/proforma-assumptions-bridge';
+import { mapProFormaAssumptionsToModelAssumptions, crossCheckLLMVsDeterministic } from './deterministic/proforma-assumptions-bridge';
 import { runModel, runIntegrityChecks } from './deterministic/deterministic-model-runner';
 
 /**
@@ -475,6 +475,21 @@ export class FinancialModelEngineService {
         const deterministicResult = runModel(modelAssumptions, { skipSensitivity: true });
         const checks = runIntegrityChecks(modelAssumptions, deterministicResult);
         const hardFailures = checks.filter(c => c.status === 'error');
+
+        // Cross-check LLM output KPIs against deterministic output for the same inputs
+        const divergences = crossCheckLLMVsDeterministic(result, deterministicResult);
+        const materialDivergences = divergences.filter(d => d.material);
+        if (materialDivergences.length > 0) {
+          logger.warn(
+            `[F9-Verifier] LLM↔deterministic KPI divergences for ${dealId} (${materialDivergences.length} material):` +
+            materialDivergences.map(d =>
+              ` ${d.field}: LLM=${d.llmValue?.toFixed ? d.llmValue.toFixed(4) : d.llmValue}` +
+              ` det=${d.deterministicValue?.toFixed ? d.deterministicValue.toFixed(4) : d.deterministicValue}` +
+              ` (${d.deltaPct !== null ? (d.deltaPct * 100).toFixed(1) + '%' : 'abs=' + d.deltaAbsolute.toFixed(0)})`
+            ).join(';')
+          );
+        }
+
         if (hardFailures.length > 0) {
           verificationPassed = false;
           verificationDiagnostics = hardFailures
@@ -486,12 +501,16 @@ export class FinancialModelEngineService {
         } else {
           logger.info(
             `[F9-Verifier] All invariants pass for ${dealId}` +
-            ` (${checks.filter(c => c.status === 'warn').length} warnings)`
+            ` (${checks.filter(c => c.status === 'warn').length} warnings,` +
+            ` ${materialDivergences.length} material LLM↔det divergences)`
           );
         }
       } catch (verifyErr: any) {
-        // Non-fatal: log and continue if bridge/runner itself throws (e.g. bad input shape)
-        logger.warn(`[F9-Verifier] Verification skipped for ${dealId}: ${verifyErr?.message}`);
+        // Fail-closed: if the bridge or runner itself throws, treat as a hard failure.
+        // We cannot confirm model integrity, so we must not persist as 'complete'.
+        verificationPassed = false;
+        verificationDiagnostics = `verifier_exception: ${verifyErr?.message ?? 'unknown'}`;
+        logger.error(`[F9-Verifier] Verification threw for ${dealId}: ${verifyErr?.message}`, verifyErr);
       }
 
       if (!verificationPassed) {

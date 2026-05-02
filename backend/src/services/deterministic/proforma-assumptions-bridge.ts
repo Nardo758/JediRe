@@ -94,14 +94,14 @@ export function mapProFormaAssumptionsToModelAssumptions(
 
   const getExpAmt = (key: string): number => {
     const e = exp[key];
-    if (!e || typeof e !== 'object') return 0;
-    return (e as any).amount ?? 0;
+    if (!e) return 0;
+    return e.amount ?? 0;
   };
 
   const getExpGrowth = (key: string): number => {
     const e = exp[key];
-    if (!e || typeof e !== 'object') return 0.03;
-    const gr = (e as any).growthRate ?? 0.03;
+    if (!e) return 0.03;
+    const gr = e.growthRate ?? 0.03;
     return gr > 1 ? gr / 100 : gr;
   };
 
@@ -220,3 +220,97 @@ export function mapProFormaAssumptionsToModelAssumptions(
     dealType: a.modelType || 'existing',
   };
 }
+
+/**
+ * Coerce a `FinancialModelResult` (LLM output) into a `ModelResults`-shaped
+ * object so the deterministic runner's integrity checks can be run against the
+ * LLM's own numbers.
+ *
+ * This is a best-effort mapping: fields that exist in `FinancialModelResult`
+ * are mapped directly; fields only available from the deterministic runner are
+ * stubbed with safe-zero values. The caller should run `runIntegrityChecks`
+ * on the result of `runModel()` (deterministic), not on this coerced object —
+ * this helper is for cross-checking key summary KPIs only.
+ *
+ * Named cross-check comparisons (returned alongside) highlight material
+ * divergence between what the LLM computed and what the deterministic runner
+ * computes for the same inputs.
+ */
+export interface LLMVsDeterministicDivergence {
+  field: string;
+  llmValue: number | null;
+  deterministicValue: number | null;
+  deltaAbsolute: number;
+  deltaPct: number | null;
+  material: boolean;
+}
+
+const MATERIAL_PCT_THRESHOLD = 0.10; // 10% relative divergence is flagged
+
+export function crossCheckLLMVsDeterministic(
+  llm: FinancialModelResultShape,
+  det: ModelResultsShape,
+): LLMVsDeterministicDivergence[] {
+  const divergences: LLMVsDeterministicDivergence[] = [];
+
+  const compare = (
+    field: string,
+    llmVal: number | null | undefined,
+    detVal: number | null | undefined,
+  ): void => {
+    const l = llmVal ?? null;
+    const d = detVal ?? null;
+    if (l === null && d === null) return;
+    const deltaAbs = Math.abs((l ?? 0) - (d ?? 0));
+    const base = Math.abs(d ?? l ?? 0);
+    const deltaPct = base > 0.001 ? deltaAbs / base : null;
+    divergences.push({
+      field,
+      llmValue: l,
+      deterministicValue: d,
+      deltaAbsolute: deltaAbs,
+      deltaPct,
+      material: deltaPct !== null ? deltaPct > MATERIAL_PCT_THRESHOLD : deltaAbs > 1000,
+    });
+  };
+
+  compare('summary.irr', llm.summary?.irr, det.summary?.irr);
+  compare('summary.equityMultiple', llm.summary?.equityMultiple, det.summary?.equityMultiple);
+  compare('summary.noiYear1', llm.summary?.noiYear1, det.summary?.noiYear1);
+  compare('summary.purchaseCapRate', llm.summary?.purchaseCapRate, det.summary?.goingInCapRate);
+  compare('summary.exitValue', llm.summary?.exitValue, det.disposition?.grossSalePrice);
+  compare('summary.netProceeds', llm.summary?.netProceeds, det.disposition?.netSaleProceeds);
+  compare('summary.totalEquity', llm.summary?.totalEquity, det.summary?.totalEquity);
+  compare('debtMetrics.dscr', llm.debtMetrics?.dscr, det.summary?.dscrByYear?.[0]);
+
+  return divergences;
+}
+
+// Minimal shape aliases to avoid deep circular imports
+type FinancialModelResultShape = {
+  summary?: {
+    irr?: number | null;
+    equityMultiple?: number | null;
+    noiYear1?: number | null;
+    purchaseCapRate?: number | null;
+    exitValue?: number | null;
+    netProceeds?: number | null;
+    totalEquity?: number | null;
+  };
+  debtMetrics?: { dscr?: number | null };
+};
+
+type ModelResultsShape = {
+  summary?: {
+    irr?: number | null;
+    equityMultiple?: number | null;
+    noiYear1?: number | null;
+    goingInCapRate?: number | null;
+    totalEquity?: number | null;
+    dscrByYear?: number[];
+  };
+  disposition?: {
+    grossSalePrice?: number | null;
+    netSaleProceeds?: number | null;
+  };
+};

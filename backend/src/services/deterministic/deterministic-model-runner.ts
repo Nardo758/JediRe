@@ -641,9 +641,9 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     checks.push({ id: 'INV-7', status: 'error', message: 'Total equity <= 0' });
   }
 
-  // INV-8: loan <= purchase
+  // INV-8: loan must not exceed purchase price (hard stop — 100%+ LTV is structurally invalid)
   if (a.loanAmount > a.purchasePrice) {
-    checks.push({ id: 'INV-8', status: 'warn', message: `Loan (${a.loanAmount}) > purchase price (${a.purchasePrice})` });
+    checks.push({ id: 'INV-8', status: 'error', message: `Loan (${a.loanAmount}) > purchase price (${a.purchasePrice}): LTV exceeds 100%` });
   }
 
   // INV-9: hold years
