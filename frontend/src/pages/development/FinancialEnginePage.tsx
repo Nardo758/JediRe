@@ -506,10 +506,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         if (model?.assumptions) {
           setAssumptions(model.assumptions);
         }
+        // Hydrate comparison hash from the server on first page load so
+        // cross-session staleness can be detected before any local build.
+        // Only update when stale is NOT true: updating during a stale response
+        // would change lastBuiltHash → re-trigger this effect with the server's
+        // own hash → stale flips back to false, clearing the badge.
+        if (model?.assumptionsHash && !lastBuiltHash && model?.stale !== true) {
+          setLastBuiltHash(model.assumptionsHash);
+        }
         // Explicit boolean update — clears the badge on false, sets it on true.
-        // lastBuiltHash is NOT updated here: only POST /build sets it.
-        // Updating it from GET /latest would re-trigger this effect with a
-        // matching hash, immediately clearing a just-detected stale signal.
         if (typeof model?.stale === 'boolean') {
           setStaleModel(model.stale);
         }

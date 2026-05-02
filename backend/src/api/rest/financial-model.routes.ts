@@ -257,6 +257,8 @@ router.post('/build', async (req: Request, res: Response) => {
         if (Date.now() - completed.ts < IDEMPOTENCY_TTL_MS) {
           return res.json({ success: true, ...completed.payload, idempotent: true });
         }
+        // Lazy prune: entry exists but TTL has elapsed — remove before rebuilding.
+        _idempotencyCache.delete(cacheKey);
       }
 
       // Store the in-flight promise before awaiting so concurrent duplicates
