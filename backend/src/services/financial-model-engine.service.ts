@@ -582,10 +582,12 @@ export class FinancialModelEngineService {
           result.integrityChecks = [...existingChecks, ...deterministicResult.integrityChecks];
 
           // ── M11 Debt Optimizer Cycle ──────────────────────────────────────
+          let adjustedAssumptions = modelAssumptions;
           let m11Converged = false;
           let m11Iterations = 0;
           try {
-            const m11 = runM11Cycle(modelAssumptions);
+            const m11 = runM11Cycle(adjustedAssumptions);
+            adjustedAssumptions = m11.assumptions;
             m11Converged = m11.converged;
             m11Iterations = m11.iterations;
             if (!m11Converged) {
@@ -603,7 +605,8 @@ export class FinancialModelEngineService {
           let m14Applied = false;
           let m14CapRateAdjBps = 0;
           try {
-            const m14 = await applyM14RiskAdjustments(dealId, modelAssumptions);
+            const m14 = await applyM14RiskAdjustments(dealId, adjustedAssumptions);
+            adjustedAssumptions = m14.assumptions;
             m14Applied = m14.applied;
             m14CapRateAdjBps = m14.capRateAdjBps;
             if (m14Applied) {
@@ -611,6 +614,19 @@ export class FinancialModelEngineService {
             }
           } catch (m14Err: any) {
             logger.warn(`[M14] Adjustment skipped for ${dealId}: ${m14Err?.message}`);
+          }
+
+          // Re-run deterministic model with M11/M14-adjusted assumptions and
+          // overwrite evidence + reasoning so persisted result reflects the cycle.
+          try {
+            const adjustedDet = runModel(adjustedAssumptions, { skipSensitivity: true });
+            result.evidence = adjustedDet.evidence;
+            result.reasoning = {
+              walkthrough: adjustedDet.reasoning.walkthrough,
+              collisionReport: adjustedDet.reasoning.collisionReport,
+            };
+          } catch (reRunErr: any) {
+            logger.warn(`[M11/M14] Post-cycle re-run skipped for ${dealId}: ${reRunErr?.message}`);
           }
 
           result.meta = { m11Converged, m11Iterations, m14Applied, m14CapRateAdjBps };
