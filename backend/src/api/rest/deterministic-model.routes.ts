@@ -1,5 +1,5 @@
 // ── Deterministic Model Route ──────────────────────────────────────────────
-// POST /api/v1/financial-model/deterministic-build
+// POST /api/v1/deterministic
 // Pure function model runner — no agent, no DB, no external API calls.
 // All math computed in TypeScript per spec docs/F9*.
 
@@ -9,11 +9,11 @@ import { runModel, ModelAssumptions } from '../../services/deterministic/determi
 const router = Router();
 
 /**
- * POST /api/v1/financial-model/deterministic-build
- * Body: { dealId: string, assumptions: ModelAssumptions }
+ * POST /api/v1/deterministic
+ * Body: { assumptions: ModelAssumptions }
  * Returns: { success: true, data: ModelResults, runner: 'deterministic' }
  */
-router.post('/financial-model/deterministic-build', (req: Request, res: Response) => {
+router.post('/', (req: Request, res: Response) => {
   try {
     const { assumptions } = req.body;
 
@@ -83,7 +83,7 @@ router.post('/financial-model/deterministic-build', (req: Request, res: Response
       runner: 'deterministic',
     });
   } catch (err: any) {
-    console.error('[deterministic-build] Error:', err.message);
+    console.error('[deterministic] Error:', err.message);
     return res.status(500).json({
       success: false,
       error: err.message || 'Internal error running deterministic model',

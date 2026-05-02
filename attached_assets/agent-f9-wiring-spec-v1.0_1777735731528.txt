@@ -1,0 +1,1627 @@
+================================================================================
+F9 FINANCIAL MODEL  —  WIRING SPECIFICATION
+================================================================================
+Document version: 1.0
+Last updated:     2026-05-02
+Code hash at authoring: master HEAD as of 2026-05-02
+Companion to:     agent-f9-financial-model-spec-v1.0.txt
+                  (the math spec — derivation rules, output schema)
+Audience:         The orchestrator that runs the F9 model. Secondary: the
+                  agent (knows about wiring upstream/downstream of itself).
+                  Tertiary: humans wiring in new modules.
+Status:           Authoritative for current-state wiring. Aspirational
+                  modules tracked separately in FEATURE_EXPANSION.md.
+
+
+================================================================================
+SECTION 0  —  WHAT THIS DOCUMENT IS
+================================================================================
+
+The math spec answers "how does the agent compute each field."
+This document answers "what flows to what, in what order, and what
+re-fires when something changes."
+
+These are independent contracts. Both must be right.
+
+This document covers:
+  1. The static dependency graph (producer → consumer edges)
+  2. The temporal execution order (phases, gates, parallelism)
+  3. The invalidation propagation rules (what re-fires on change)
+  4. The tab-level wiring (which engine outputs hydrate which UI surface)
+  5. The cross-module integration (M-prefixed module wiring)
+  6. The data store contracts (single source of truth, subscriptions)
+
+The orchestrator code reads this document as its operational instruction
+set. The agent reads this only for the phases that surround its own
+invocation (it doesn't need to know about UI rendering).
+
+CODE ANCHORS — this document is built on three existing pieces of code.
+If they change, this document goes stale:
+
+  1. backend/src/services/module-wiring/module-registry.ts
+     The canonical declarative wiring. Every module declares its outputs,
+     what it feeds, what it receives, with strength qualifiers.
+
+  2. backend/src/services/module-wiring/module-event-bus.ts
+     The runtime propagation layer. Modules emit DATA_UPDATED events;
+     downstream modules subscribe and re-fire.
+
+  3. backend/src/services/module-wiring/module-wiring-orchestrator.ts
+     The sequencer. Topologically orders modules per dependency graph.
+
+If you change any wiring, update both this document AND the registry.
+Drift between the two is a documentation bug.
+
+
+================================================================================
+SECTION 1  —  ARCHITECTURE OVERVIEW
+================================================================================
+
+WHERE THE WIRING LAYER SITS
+
+    Frontend (FinancialEnginePage)
+           ↓ POST /api/v1/financial-model/build  { dealId, assumptions }
+    Backend route handler
+           ↓
+    Module Wiring Orchestrator       ← reads MODULE_REGISTRY for dep graph
+           ↓                          ← uses event bus for propagation
+    Phase 1: Document extraction        (parallel)
+           ↓
+    Phase 2: Source resolution          (LayeredValue assembly)
+           ↓
+    Phase 3: F9 agent invocation        (Cashflow Agent runs derivations)
+           ↓
+    Phase 4: Cross-module enrichment    (M11 debt sizing loop, M14 risk)
+           ↓
+    Phase 5: Reconciliation             (math spec §6 invariants verified)
+           ↓
+    Persistence (financial_model_results table)
+           ↓
+    Response to frontend
+           ↓
+    mergeModelIntoFinancials()          ← folds into f9Financials
+           ↓
+    13 F9 tabs render from canonical state
+
+ROLES AND RESPONSIBILITIES
+
+  - The MODULE_REGISTRY declares the WHAT (which modules exist, what they
+    consume and produce).
+
+  - The orchestrator decides the WHEN (topological order, when each runs).
+
+  - The event bus handles the HOW (data updates propagate to subscribers
+    asynchronously).
+
+  - Each module service implements the COMPUTATION (the actual math in
+    the math spec).
+
+  - The agent (Cashflow Agent specifically) is invoked DURING phase 3
+    of the orchestration. It executes the math spec. It does NOT decide
+    what to call next — the orchestrator does that.
+
+  - The frontend (dealStore + tab components) is the CONSUMER. It reads
+    from canonical state and renders. It does NOT compute.
+
+
+================================================================================
+SECTION 2  —  STATIC DEPENDENCY GRAPH
+================================================================================
+
+This section maps every producer → consumer edge that touches F9.
+
+────────────────────────────────────────────────────────────────────────────────
+2.1  WITHIN-F9 DATA FLOWS  (the engine's internal wiring)
+────────────────────────────────────────────────────────────────────────────────
+
+Within F9 itself (M09 in the registry), data flows in this graph:
+
+  Document Extractions (T-12, Rent Roll, Tax Bill, OM)
+                ↓
+        Source Resolver (LayeredValue<T>)
+                ↓
+       ┌────────┼─────────┐
+       ↓        ↓         ↓
+    Y1 Pro    Y1 Unit    Y1 Tax
+     Forma     Mix       Schedule
+       ↓        ↓         ↓
+       └────────┼─────────┘
+                ↓
+       Multi-Year Projections (Y2..Y10)
+                ↓
+       ┌────────┼─────────┐
+       ↓        ↓         ↓
+    Returns  Waterfall  Sensitivity
+       ↓        ↓         ↓
+       └────────┼─────────┘
+                ↓
+            Decision Tab (synthesis + verdict)
+
+KEY EDGES INSIDE F9:
+
+  Document Extractions → Source Resolver:
+      T-12 → year1.{gpr, payroll, vacancy_loss, …}
+      Rent Roll → year1.{gpr (alt), unit_mix, vacancy_pct (current)}
+      Tax Bill → year1.real_estate_tax
+      OM → year1.* (Tier 4 fallback)
+      Per-field priority defined in math spec §4.2 (FIELD_PRIORITIES map
+      in proforma-seeder.service.ts)
+
+  Source Resolver → Year-1 Pro Forma:
+      Resolved values populate proforma.year1[*].resolved
+      Sources tagged in proforma.year1[*].source
+
+  Year-1 Pro Forma → Year-1 Unit Mix Tab:
+      gpr (when use_unit_mix_for_gpr flag is OFF)
+      OR Unit Mix → Year-1 GPR (when flag is ON, gprFromUnitMix overrides)
+      This is the only bidirectional flow inside F9; everything else is
+      strictly forward.
+
+  Year-1 Pro Forma → Multi-Year Projections:
+      Year-1 NOI is the baseline (Year 1 of projections == Year-1 of pro forma)
+      HARD INVARIANT: projections[1].noi == proforma.year1.noi
+      If they diverge, orchestrator halts.
+
+  User Assumptions → Multi-Year Projections:
+      rentGrowth[year] (drives revenue line growth)
+      expenseGrowth (drives expense line growth)
+      vacancySchedule[year] (drives vacancy assumption per year)
+      holdYears (sets cashflow vector length)
+
+  Year-1 Pro Forma + User Assumptions + M07 Traffic →
+                                        Multi-Year Projections:
+      M07.absorption_rate → vacancy schedule (lease-up mode only)
+      M07.predicted_leases_week → revenue ramp (lease-up only)
+      M07.rent_growth_adjustment → rentGrowth[year] modifier
+      In stabilized mode, M07 is optional. In development mode, required.
+
+  Multi-Year Projections → Returns:
+      Equity CF vector → Newton-Raphson IRR
+      Stabilized NOI (Year holdYears+1) / exitCap → grossSalePrice
+      All §3.8 calcs in math spec.
+
+  Multi-Year Projections → Waterfall:
+      cfads(y) → distribution to tiers per §3.12
+
+  Multi-Year Projections → Sensitivity:
+      Re-run projections at shocked rent growth × exit cap combinations
+      Per math spec §3.9
+
+  All output → Decision Tab:
+      Verdict + risk register + walkthrough narrative + integrity checks
+
+────────────────────────────────────────────────────────────────────────────────
+2.2  EXTERNAL → F9 DATA FLOWS  (what feeds into F9 from outside)
+────────────────────────────────────────────────────────────────────────────────
+
+Per MODULE_REGISTRY, F9 (M09) has these `receivesFrom` declarations:
+
+  M01 (Deal Overview)         → units, property_type, address
+                                  strength: REQUIRED
+                                  used in: every formula (units is foundational)
+
+  M02 (Zoning)                → zoning_code, far
+                                  strength: OPTIONAL
+                                  used in: development mode only
+
+  M03 (Buildable Envelope)    → max_units_by_right, envelope_dimensions
+                                  strength: OPTIONAL
+                                  used in: development mode only
+                                  KEYSTONE: drives M08 → M09 → M11 → M14 → M25
+
+  M04 (Supply Pressure)       → absorption_rate, months_of_supply,
+                                  supply_pressure_score
+                                  strength: REQUIRED
+                                  used in: rent growth fade, lease-up curve
+
+  M05 (Submarket Rent Trend)  → avg_rent_psf, vacancy_rate, rent_growth_pct,
+                                  submarket_rank
+                                  strength: REQUIRED
+                                  used in: marketRent, rentGrowth derivation
+                                  per math spec §3.3
+
+  M06 (Demand Score)          → demand_units_total, demand_units_phased,
+                                  demand_score
+                                  strength: OPTIONAL
+                                  used in: lease-up demand modeling
+
+  M07 (Traffic Intelligence)  → absorption_rate, capture_rate,
+                                  predicted_leases_week,
+                                  vacancy_assumption,
+                                  rent_growth_adjustment
+                                  strength: REQUIRED for development deals,
+                                            OPTIONAL for stabilized
+                                  used in: lease-up mode revenue + vacancy
+
+  M08 (Strategy Arbitrage)    → recommended_strategy, strategy_scores,
+                                  template, sections, horizon, periodicity
+                                  strength: REQUIRED
+                                  used in: which proforma template to load,
+                                           strategy-specific assumptions
+
+  M10 (Monte Carlo)           → probability_weighted_returns,
+                                  monte_carlo_distribution
+                                  strength: OPTIONAL
+                                  used in: probability-weighted IRR (when M14 is on)
+
+  M11 (Capital Structure)     → loan_terms, debt_service,
+                                  effective_interest_rate, capital_stack
+                                  strength: REQUIRED
+                                  used in: debt schedule, DSCR, returns
+                                  CYCLE: see §2.4
+
+  M14 (Risk Dashboard)        → composite_risk_score,
+                                  cap_rate_adjustment_bps, reserve_overrides
+                                  strength: OPTIONAL
+                                  used in: risk-adjusted exit cap, reserve sizing
+                                  CYCLE: see §2.4
+
+  M15 (Comp Library)          → rent_comp_data, competitive_positioning
+                                  strength: OPTIONAL
+                                  used in: marketRent corroboration
+
+  M18 (Document OCR)          → ocr_extracted_data, document_index
+                                  strength: OPTIONAL
+                                  used in: source documents for proforma seeding
+
+  M26 (Real Estate Tax Engine) → projected_total_tax, effective_tax_rate,
+                                   yearly_projections
+                                   strength: OPTIONAL
+                                   used in: §3.13 property tax schedule
+
+  M27 (Comp Valuation)        → median_implied_cap_rate,
+                                  median_price_per_unit, comp_count
+                                  strength: OPTIONAL
+                                  used in: exit cap rate corroboration
+
+  M29 (Unit Mix Intelligence) → unit_mix_program, total_units,
+                                  avg_unit_size_sf, rent_by_type
+                                  strength: OPTIONAL
+                                  used in: revenue build (per-type rent rolls)
+
+────────────────────────────────────────────────────────────────────────────────
+2.3  F9 → EXTERNAL DATA FLOWS  (what F9 publishes outward)
+────────────────────────────────────────────────────────────────────────────────
+
+Per MODULE_REGISTRY, F9 (M09) has these `feedsInto` declarations:
+
+  M09 → M01 (Deal Overview)      noi, irr — populates the deal card
+  M09 → M10 (Monte Carlo)        cash_flow_projections — for stochastic runs
+  M09 → M11 (Capital Structure)  noi, cash_flow_projections — debt sizing
+                                  CYCLE: §2.4
+  M09 → M12 (Disposition)         noi, cash_flow_projections — exit modeling
+  M09 → M14 (Risk Dashboard)      noi, irr — for risk threshold checks
+  M09 → M22 (Portfolio Manager)   noi, cash_flow_projections — actuals tracking
+                                  Target deal-level baseline for variance reporting
+
+  Note: M09 outputs are exposed via two paths:
+    1. Direct via `feedsInto` (event-driven push to dependent modules)
+    2. Indirect via mergedFinancials (frontend pull from canonical state)
+
+  Both paths must remain consistent. The merge function
+  (mergeModelIntoFinancials in FinancialEnginePage.tsx) is responsible
+  for this consistency.
+
+────────────────────────────────────────────────────────────────────────────────
+2.4  BIDIRECTIONAL CYCLES  (formal two-pass loops)
+────────────────────────────────────────────────────────────────────────────────
+
+Two cycles are declared in MODULE_REGISTRY. The orchestrator's
+data-flow router knows about these and does NOT treat them as errors.
+
+CYCLE 1: M09 ⇄ M11 (Pro Forma ⇄ Capital Structure)
+
+  Description: Debt sizing requires NOI; final NOI requires final debt service.
+  Pass 1: M09 emits stub NOI with placeholder debt service
+  Pass 2: M11 sizes debt against stub NOI (LTV / DSCR / debt yield constraints)
+  Pass 3: M11 returns final loan terms to M09
+  Pass 4: M09 finalises debt service and recomputes cash-on-cash & DSCR
+
+  Implementation: orchestrator runs M09 in "dry mode" first, hands NOI to M11,
+  then re-runs M09 with M11's debt output as input.
+
+  Worth noting: this is a stable cycle. It converges in one round-trip
+  because the dependence is one-way after the loop closes. If M11 wanted
+  to re-size debt based on M09's final DSCR, the loop would not
+  converge — but in practice M11 sizes once based on stub NOI, and
+  M09's final NOI is downstream-only.
+
+CYCLE 2: M09 ⇄ M14 (Pro Forma ⇄ Risk Dashboard)
+
+  Description: M14 wants to risk-adjust IRR; F9 wants risk-adjusted reserves.
+  Pass 1: M09 emits unweighted IRR
+  Pass 2: M14 computes composite_risk_score and reserve_overrides
+  Pass 3: M14 emits cap_rate_adjustment_bps
+  Pass 4: M09 re-runs with adjusted exit cap (only Returns recomputes)
+
+  This cycle is OPTIONAL — runs only when M14 is enabled and configured.
+  If skipped, F9 uses user-input exit cap directly.
+
+
+================================================================================
+SECTION 3  —  EXECUTION PHASES & SEQUENCING
+================================================================================
+
+The orchestrator runs F9 in 6 phases. Each phase has explicit gates;
+phase N+1 cannot start until phase N's gate passes.
+
+────────────────────────────────────────────────────────────────────────────────
+PHASE 1  —  DOCUMENT EXTRACTION  (parallel, async)
+────────────────────────────────────────────────────────────────────────────────
+
+INPUT:    Uploaded files in deal_data (T-12 PDF, Rent Roll Excel, Tax Bill PDF, OM PDF)
+
+EXECUTION:
+  parallel:
+    T-12 Parser           (Yardi-aware, fallback to generic)
+    Rent Roll Parser       (RRwLC, fallback to generic)
+    Tax Bill Parser
+    OM Parser              (Claude-extraction)
+
+  Each parser writes its output to deal_data.extraction_<type>.
+
+GATE:
+  At least one of {extraction_t12, extraction_rent_roll,
+  extraction_tax_bill} must exist. If none present:
+    - Surface integrity check 'extraction_data_missing' (status: error)
+    - Halt. Do not proceed.
+  (Per the patch in §13 GAP-1 of the math spec.)
+
+OUTPUT:   deal_data.extraction_* JSONB blobs
+
+TIME BUDGET: 15-60 seconds per parser; runs in parallel.
+PARALLELISM: high (each parser is independent)
+IDEMPOTENCY: idempotent (re-parsing same file produces same output;
+                          parsers ARE deterministic enough for caching)
+
+────────────────────────────────────────────────────────────────────────────────
+PHASE 2  —  SOURCE RESOLUTION  (LayeredValue assembly)
+────────────────────────────────────────────────────────────────────────────────
+
+INPUT:    All extraction capsules from Phase 1 + user overrides + assumptions
+
+EXECUTION:
+  for each canonical field in proforma.year1:
+    sources = collect from extractions per FIELD_PRIORITIES (math spec §4.2)
+    resolved = highest-priority non-null source
+    detect collisions (math spec §4.3)
+    write LayeredValue<T> with provenance
+
+  Source: backend/src/services/proforma-seeder.service.ts
+  Function: seedProFormaYear1()
+
+GATE:
+  - Every required field has either:
+      a) A non-null resolved value, OR
+      b) An explicit null with a reason in metadata
+  - No silent zeros. No silent missing fields.
+
+OUTPUT:   deal_assumptions.year1 (JSONB column)
+          One row per LayeredValue<T> field with source attribution
+
+TIME BUDGET: <2 seconds (pure data manipulation, no LLM)
+PARALLELISM: serial (resolution is not parallelizable; each field depends
+                     on the FIELD_PRIORITIES lookup)
+IDEMPOTENCY: idempotent given same extraction inputs
+
+────────────────────────────────────────────────────────────────────────────────
+PHASE 3  —  F9 AGENT INVOCATION  (Cashflow Agent runs the model)
+────────────────────────────────────────────────────────────────────────────────
+
+INPUT:    DealContext (Phase 2 output + assumptions + cache)
+          User overrides (per-field, per-year)
+          dealType (existing | development | redevelopment)
+          Math spec document
+
+EXECUTION:
+  1. Cache check: if DealContext key matches recent cache (< 24h),
+     start from cached state.
+  2. Mode dispatch: branch on dealType per math spec §3.14.
+  3. Year-1 build: §3.6 of math spec.
+  4. Multi-year projection: §3.6 forward.
+  5. Disposition: §3.7.
+  6. Returns: §3.8.
+  7. Reasoning + collision report + walkthrough: §7.
+
+  The agent runs the math spec end-to-end, then returns ModelResults.
+
+GATE:
+  - Math spec §6 hard invariants (INV-1 through INV-10) all hold.
+  - All required fields are populated (or explicitly null with reason).
+  - Reasoning metadata attached to every value.
+
+OUTPUT:   ModelResults JSON (per math spec §11)
+
+TIME BUDGET: 30-90 seconds (LLM-bound)
+PARALLELISM: serial (the agent is one process)
+IDEMPOTENCY: NOT idempotent — agent calls vary slightly run-to-run.
+              Cache layer mitigates this; cache hit is idempotent.
+
+────────────────────────────────────────────────────────────────────────────────
+PHASE 4  —  CROSS-MODULE ENRICHMENT  (cycle resolution)
+────────────────────────────────────────────────────────────────────────────────
+
+INPUT:    Phase 3 output (raw ModelResults)
+          Other modules' outputs available in DealContext
+
+EXECUTION (in order):
+
+  Step 4a. M11 cycle (debt sizing):
+    if (M11 enabled and assumptions.financing.constraint == 'dscr_min'):
+      Run M11 with stub NOI from Phase 3
+      Receive final loan terms
+      Re-run F9 §3.5 (debt schedule) and §3.6 (Y1 NOI) with new debt
+      ModelResults.debtMetrics updated
+
+  Step 4b. M14 cycle (risk-adjusted exit cap):
+    if (M14 enabled):
+      Run M14 with Phase 3 IRR + cash flows
+      Receive cap_rate_adjustment_bps
+      Adjust exitCap by adjustment
+      Re-run F9 §3.7 (disposition) and §3.8 (Returns) only
+      ModelResults.summary.irr/em/exitCap updated
+
+  Step 4c. M22 push (deal-level baseline):
+    Emit DATA_UPDATED event with NOI and cash_flow_projections.
+    M22 subscribes; updates deal_monthly_actuals baseline for variance
+    tracking. (Does not block F9 completion.)
+
+GATE:
+  - Both cycles converge in single round-trip.
+  - If cycle does not converge (which shouldn't happen but safeguard
+    is required), halt and report.
+
+OUTPUT:   Enriched ModelResults
+
+TIME BUDGET: 5-15 seconds (M11 is fast; M14 is fast)
+PARALLELISM: 4a and 4b can run in parallel after Phase 3.
+              4c is fire-and-forget (event emission only).
+IDEMPOTENCY: idempotent given same inputs
+
+────────────────────────────────────────────────────────────────────────────────
+PHASE 5  —  RECONCILIATION  (server-side belt-and-suspenders)
+────────────────────────────────────────────────────────────────────────────────
+
+INPUT:    Final ModelResults from Phase 4
+
+EXECUTION:
+  Re-verify math spec §6 hard invariants on the agent's output:
+    INV-1 through INV-10
+    All soft checks (SOFT-1 through SOFT-10)
+
+  This is duplicate to what the agent already did in Phase 3, but
+  belt-and-suspenders is correct. The agent could have a bug; the
+  server-side check catches it before persistence.
+
+GATE:
+  Hard invariant failure → halt, return 500 with diagnostic detail.
+  Soft check failure → flag in integrityChecks but proceed.
+
+OUTPUT:   Verified ModelResults + integrityChecks array
+
+TIME BUDGET: <1 second (pure arithmetic)
+PARALLELISM: not applicable
+IDEMPOTENCY: idempotent
+
+────────────────────────────────────────────────────────────────────────────────
+PHASE 6  —  PERSISTENCE & RESPONSE
+────────────────────────────────────────────────────────────────────────────────
+
+INPUT:    Verified ModelResults
+
+EXECUTION:
+  1. Write to financial_model_results table with version tag.
+  2. Update deal_assumptions row (assumptions_used).
+  3. Emit DATA_UPDATED event for downstream subscribers (M22, M14 if pull).
+  4. Cache result in DealContext cache with TTL = 24h.
+  5. Return ModelResults to frontend.
+
+GATE:    None.
+
+OUTPUT:  HTTP 200 response with ModelResults envelope
+
+TIME BUDGET: 1-2 seconds
+PARALLELISM: write and emit can be parallel
+IDEMPOTENCY: idempotent (same input → same persistence)
+
+
+================================================================================
+SECTION 4  —  INVALIDATION RULES
+================================================================================
+
+When something changes, only specific fields invalidate. The orchestrator
+identifies the dirty fields and re-runs the minimum subset of phases
+needed to refresh them.
+
+────────────────────────────────────────────────────────────────────────────────
+4.1  USER-DRIVEN INVALIDATION
+────────────────────────────────────────────────────────────────────────────────
+
+CHANGE: User uploads new T-12
+
+  INVALIDATES: All Phase 1 outputs (T-12 capsule)
+  RE-RUN: Phases 1-6 (full)
+  EXCEPTION: If new T-12 is identical to prior, cache short-circuits.
+
+CHANGE: User uploads new rent roll
+
+  Same as T-12.
+
+CHANGE: User uploads new tax bill
+
+  INVALIDATES: extraction_tax_bill capsule, real_estate_tax field,
+              taxes.* domain
+  RE-RUN: Phase 2 (re-resolve real_estate_tax),
+          Phase 3 (only §3.13 tax sub-derivation),
+          Phase 5, Phase 6.
+  Optimization: full agent re-run not necessary; only tax module re-fires.
+
+CHANGE: User edits purchasePrice in Assumptions tab
+
+  INVALIDATES: closingCosts, docStamps, intangibleTax, titleInsurance,
+               totalAcqCost, totalEquity,
+               LTV-derived loanAmount (if LTV is canonical),
+               propertyTax (reassessment base),
+               going-in cap, exit-implied prices, ALL returns metrics
+  RE-RUN: Phase 3 (most fields recompute), Phases 4-6.
+
+CHANGE: User edits marketRent
+
+  INVALIDATES: GPR(y) for all y, lossToLease$(y) for all y,
+               baseRevenue, EGR, mgmtFee, NOI, CF, DSCR, returns
+  RE-RUN: Phase 3, Phase 4, Phase 5, Phase 6.
+  PRESERVED: tax schedule, sources & uses, debt schedule (rate-driven, not
+             revenue-driven)
+
+CHANGE: User edits vacancy_y1 only (year 1 only)
+
+  INVALIDATES: vacancy$(1), baseRevenue(1), EGR(1), NOI(1), CF(1), DSCR(1),
+               Y1 returns; Y2+ unchanged.
+  RE-RUN: Phase 3 with cached Y2+ projections.
+  This is rare — most users don't override single years.
+
+CHANGE: User edits rentGrowth[Y1] only
+
+  INVALIDATES: cumulativeGrowth(y) for y >= 1, GPR(y) for y >= 1,
+               ALL operating fields y >= 1, returns
+  RE-RUN: Phase 3 (full multi-year), Phases 4-6.
+
+CHANGE: User edits rate (debt rate)
+
+  INVALIDATES: monthlyPmt, debtService(y) for y > ioPeriod,
+               principal(y) for y > ioPeriod, DSCR(y) for affected years,
+               Y2+ CF, returns
+  RE-RUN: M11 cycle if enabled (Phase 4a), then Phase 4b, 5, 6.
+  Note: rate change does NOT change NOI; only debt service.
+
+CHANGE: User edits exitCap only
+
+  INVALIDATES: grossSalePrice, dispositionDocStamps, equityProceeds,
+               exitYear cashflow, IRR, equityMultiple
+  RE-RUN: Math spec §3.7 (disposition) and §3.8 (Returns) only.
+          Operating model (Phase 3 §3.6) unchanged.
+  This is the cheapest re-run path; sensitivity matrix uses this.
+
+CHANGE: User edits holdYears
+
+  INVALIDATES: stabilizedNOI (different forward year),
+               cashflow vector length, IRR, EM, sensitivity matrix
+  RE-RUN: Phase 3 with extended/truncated projection horizon, then 4-6.
+
+CHANGE: User edits LP/GP equity split or promote tiers
+
+  INVALIDATES: waterfall distributions only
+  RE-RUN: Math spec §3.12 only. Leaves all other ModelResults intact.
+
+CHANGE: User edits dealType (existing → development)
+
+  INVALIDATES: EVERYTHING. Mode dispatch in §3.14 changes. Different
+               formulas apply. Different lease-up curves.
+  RE-RUN: Full Phases 3-6.
+
+────────────────────────────────────────────────────────────────────────────────
+4.2  EXTERNAL-MODULE-DRIVEN INVALIDATION
+────────────────────────────────────────────────────────────────────────────────
+
+CHANGE: M07 traffic engine recalibrates
+
+  TRIGGER: M07 emits DATA_UPDATED event
+  INVALIDATES: For development/lease-up deals only:
+                 vacancy schedule, lease-up curve, Y1-Y2 revenue
+               For stabilized deals:
+                 nothing (M07 is optional)
+  RE-RUN: Phase 3 (if dev/lease-up), Phases 4-6.
+  Frontend behavior: F9 shows "stale data" badge until re-run completes.
+
+CHANGE: M14 risk model updates (new event in M35 fires through M14)
+
+  TRIGGER: M14 emits DATA_UPDATED event
+  INVALIDATES: cap_rate_adjustment_bps, reserve_overrides
+  RE-RUN: Phase 4b only (M14 cycle re-fire), then 5, 6.
+  Operating model unchanged.
+
+CHANGE: M05 publishes new submarket rent trend
+
+  TRIGGER: M05 emits DATA_UPDATED event
+  INVALIDATES: marketRent (if Tier-3 derivation), rentGrowth[year]
+                derivation
+  RE-RUN: Phase 3 (all multi-year), Phases 4-6.
+  COST: full agent run. Should debounce — many M05 updates per day.
+
+CHANGE: M27 publishes new comp valuation data
+
+  TRIGGER: M27 emits DATA_UPDATED event
+  INVALIDATES: exit cap rate corroboration
+  RE-RUN: NOTHING automatically. M27 is a corroboration source, not a
+          driver. The user sees a "comp data updated" notification and
+          can choose to re-run.
+
+CHANGE: M11 changes available debt products
+
+  TRIGGER: M11 emits DATA_UPDATED event
+  INVALIDATES: only if user has selected "use M11 recommendation"
+  RE-RUN: M11 cycle re-fires (Phase 4a), then 5, 6.
+
+CHANGE: M26 (Real Estate Tax Engine) updates
+
+  TRIGGER: M26 emits DATA_UPDATED event
+  INVALIDATES: propertyTax(y) for all y
+  RE-RUN: Phase 3 §3.13 only, then 5, 6.
+
+────────────────────────────────────────────────────────────────────────────────
+4.3  CACHE INVALIDATION
+────────────────────────────────────────────────────────────────────────────────
+
+DealContext cache TTL: 24 hours.
+
+Cache key:    sha256(dealId + assumptionsHash + dealDataHash + specVersion)
+
+Cache hit conditions:
+  - Cache key exact match
+  - Spec version matches running spec
+  - No upstream module DATA_UPDATED event since cache write
+
+Cache invalidation triggers (all force a full Phase 1-6 re-run):
+  - Any of the user-driven invalidations in §4.1 above
+  - DATA_UPDATED event from any upstream module
+  - Math spec version bump
+  - Manual cache flush by admin
+
+The orchestrator never silently serves stale data. If cache integrity
+is uncertain, treat as miss.
+
+
+================================================================================
+SECTION 5  —  TAB-LEVEL WIRING
+================================================================================
+
+This section maps each F9 tab to the canonical state it consumes.
+
+GLOBAL CONVENTION: All tabs read from f9Financials (the canonical state
+shape returned by GET /api/v1/deals/:id/financials), augmented by
+ModelResults from Build via mergeModelIntoFinancials.
+
+Tabs do NOT compute. Tabs render.
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: OVERVIEW (after Move 1 trim)
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  f9Financials.summary.{irr, equityMultiple, avgCoC, noi, dscr, goingInCap}
+  f9Financials.dealName, dealAddress
+  f9Financials.proforma.integrityChecks (preview)
+  f9Financials.reasoning.walkthroughOneLiner
+
+DOES NOT READ:
+  detailed Y1 operating statement (lives in Pro Forma tab)
+  per-tier waterfall (lives in Cap & Waterfall tab)
+  detailed S&U (lives in S&U tab)
+
+NAVIGATION: Drill-down cards re-route to canonical tabs.
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: PRO FORMA SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  f9Financials.proforma.year1[*].{
+    field, label, broker, t12, platform, resolved, source, confidence,
+    benchmarkPosition, perUnit
+  }
+  f9Financials.proforma.integrityChecks
+  f9Financials.proforma.unitEconomics
+  f9Financials.proforma.valuationSnapshot
+  f9Financials.capitalStack (for header / NOI bridge)
+  f9Financials.rentRollSummary (for unit-mix-derived GPR toggle)
+
+WRITES (via PATCH /financials/override):
+  user-override values per field
+  use_unit_mix_for_gpr flag
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: PROJECTIONS (multi-year)
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  ModelResults.projections[*].{full institutional row}
+  ModelResults.summary.{noi, dscr, debt yield, capRatePct by year}
+
+DERIVED INVARIANT:
+  projections[1] must reconcile with proforma.year1.* numerically.
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: ASSUMPTIONS (Compact + Detailed mode, Move 5)
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  ModelAssumptions (the agent's input contract)
+  f9Financials.proforma.year1 (for source attribution)
+
+WRITES:
+  Updates ModelAssumptions; triggers Build re-fire if "Build" clicked.
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: UNIT MIX
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  f9Financials.rentRollSummary.unitMix[*]
+  f9Financials.rentRollSummary.gprFromUnitMix
+  f9Financials.rentRollSummary.useUnitMixForGpr
+
+WRITES:
+  Per-type rent overrides → flows to GPR derivation when flag is ON.
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: DEBT
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  ModelResults.debtMetrics.{coverage, structural, leverage, stress, refi}
+  ModelResults.summary.loanBalanceAtExit
+  M11 capital_stack (when M11 active)
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: TAXES (FL non-homestead schedule)
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  ModelResults.taxes.reTax.perYear[*]
+  ModelResults.taxes.transferTax (acquisition + disposition + refi)
+  ModelResults.taxes.tpp (tangible personal property)
+  ModelResults.taxes.incomeTax (depreciation)
+  M26 yearly_projections (when M26 active, corroborating)
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: SOURCES & USES
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  ModelResults.sourcesAndUses.{sources, uses, totalSources, totalUses,
+                                 delta, balanced, benchmarks}
+  M11 capital_stack (sources side)
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: CAPITAL & WATERFALL (single tab post-Move structure)
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  ModelResults.capital.tranches[*]
+  ModelResults.capital.schedule[*] (per-year per-tier)
+  ModelResults.capital.metrics
+  ModelResults.waterfallDistributions[*]
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: RETURNS
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  ModelResults.summary.{irr, lpIrr, gpIrr, em, lpEm, gpEm, ...}
+  ModelResults.summary.{goingInCapRate, stabilizedCapRate, yieldOnCost}
+  ModelResults.summary.{loanBalanceAtExit, totalProfit, gpPromoteEarned}
+  ModelResults.debtMetrics (deep nested)
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: SENSITIVITY
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  ModelResults.sensitivityAnalysis.matrix.{exitCapAxis, rentGrowthAxis,
+                                             irrGrid, emGrid}
+
+────────────────────────────────────────────────────────────────────────────────
+TAB: DECISION (merged with Walkthrough, Move 4)
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  ModelResults.summary.{irr, em, dscr} (verdict drivers)
+  ModelResults.integrityChecks (severe + material → risk register)
+  ModelResults.stressScenarios[*] (for stress table)
+  ModelResults.reasoning.walkthrough (long-form narrative)
+  ModelResults.reasoning.collisionReport[*]
+  M14 composite_risk_score (when active)
+
+────────────────────────────────────────────────────────────────────────────────
+COMPARE (in version dropdown, Move 3 — not a tab)
+────────────────────────────────────────────────────────────────────────────────
+
+READS:
+  Two ModelVersion records → ModelResults snapshots
+  Computes per-field diff in the modal
+
+
+================================================================================
+SECTION 6  —  CONCURRENCY RULES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+6.1  WHAT CAN RUN IN PARALLEL
+────────────────────────────────────────────────────────────────────────────────
+
+PARALLELIZABLE:
+  - Document parsers in Phase 1 (T-12, RR, Tax Bill, OM)
+  - Sensitivity matrix cells (each cell is independent rerun of §3.6-§3.8)
+  - Multiple deals being modeled simultaneously (cross-deal concurrency)
+  - Phase 4a (M11 cycle) and Phase 4b (M14 cycle) — independent
+
+NOT PARALLELIZABLE:
+  - Phase 1 → Phase 2 → Phase 3 sequence (data dependencies)
+  - Source resolution within a single deal
+  - Multi-year projection within a single deal (year N depends on year N-1
+    via cumulative growth + ending balances)
+  - Waterfall tier resolution within a single distribution year
+
+────────────────────────────────────────────────────────────────────────────────
+6.2  RACE CONDITIONS TO BE AWARE OF
+────────────────────────────────────────────────────────────────────────────────
+
+RACE: Two users edit the same deal's assumptions simultaneously.
+  RESOLUTION: Last-write-wins on the assumptions row. The orchestrator
+              uses the assumptions present at Build invocation. No
+              optimistic locking currently. (Acceptable risk; deal-team
+              size is small.)
+
+RACE: M07 republishes mid-Build.
+  RESOLUTION: Build uses M07 data snapshot at invocation time. Stale
+              data warning surfaces post-Build if M07 has updated since.
+
+RACE: User clicks Build twice rapidly.
+  RESOLUTION: Frontend disables Build button while building (state
+              `building` in FinancialEnginePage). Backend should also
+              dedupe via cache key.
+
+────────────────────────────────────────────────────────────────────────────────
+6.3  IDEMPOTENCY GUARANTEES
+────────────────────────────────────────────────────────────────────────────────
+
+  Phase 1 parsers:        Idempotent (same file → same extraction)
+  Phase 2 resolver:        Idempotent (same extractions → same resolution)
+  Phase 3 agent:           NOT idempotent (LLM stochasticity); cache mitigates
+  Phase 4a (M11 cycle):    Idempotent given same inputs
+  Phase 4b (M14 cycle):    Idempotent given same inputs
+  Phase 5 reconciliation:  Idempotent
+  Phase 6 persistence:     Idempotent (same input → same row written)
+
+
+================================================================================
+SECTION 7  —  FAILURE MODES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+7.1  FAILURE: NO EXTRACTION DATA  (Phase 1 produces nothing useful)
+────────────────────────────────────────────────────────────────────────────────
+
+SYMPTOM: All four extraction capsule keys absent on deal_data.
+
+DETECTION: Phase 1 gate fails.
+
+RESPONSE:
+  - Halt orchestration before Phase 2.
+  - Surface integrityChecks: 'extraction_data_missing' (status: error)
+  - Frontend displays a hard banner: "No T-12, rent roll, or tax bill
+    found for this deal. Upload documents to populate the model."
+  - Save what was attempted; allow user to retry after upload.
+
+────────────────────────────────────────────────────────────────────────────────
+7.2  FAILURE: PARTIAL EXTRACTION  (some capsules present, others absent)
+────────────────────────────────────────────────────────────────────────────────
+
+SYMPTOM: Some of {extraction_t12, extraction_rent_roll,
+                  extraction_tax_bill, extraction_om} present; others absent.
+
+DETECTION: Source resolver in Phase 2 finds null for some required fields.
+
+RESPONSE:
+  - Proceed with available data.
+  - Resolved value is null where source was absent.
+  - integrityCheck: 'partial_extraction' (status: warn) listing missing fields.
+  - Confidence on derived fields is reduced (math spec §5).
+  - Frontend displays partial state with caveats.
+
+────────────────────────────────────────────────────────────────────────────────
+7.3  FAILURE: INVARIANT VIOLATION  (Phase 5 reconciliation fails)
+────────────────────────────────────────────────────────────────────────────────
+
+SYMPTOM: Math spec INV-1 through INV-10 not all satisfied.
+
+DETECTION: Phase 5 server-side check.
+
+RESPONSE:
+  - Halt. Do not persist or return to frontend.
+  - Log full diagnostic: invariant ID, year, expected, actual.
+  - Return HTTP 500 with diagnostic detail.
+  - Alert on engineering channel.
+
+This is a hard failure indicating an agent bug. It should not happen
+in production; if it does, halt and investigate.
+
+────────────────────────────────────────────────────────────────────────────────
+7.4  FAILURE: AGENT TIMEOUT  (Phase 3 exceeds time budget)
+────────────────────────────────────────────────────────────────────────────────
+
+SYMPTOM: Cashflow Agent runs past 120-second timeout.
+
+DETECTION: Frontend's apiClient timeout fires.
+
+RESPONSE:
+  - Frontend shows "Build timed out" with retry button.
+  - Backend logs timeout for debugging.
+  - Cache may be partially written; cache key validation prevents serving.
+
+────────────────────────────────────────────────────────────────────────────────
+7.5  FAILURE: M11 CYCLE NON-CONVERGENCE  (Phase 4a)
+────────────────────────────────────────────────────────────────────────────────
+
+SYMPTOM: M11 wants more debt than DSCR allows; loop oscillates.
+
+DETECTION: After 3 round-trips, no convergence.
+
+RESPONSE:
+  - Halt cycle. Use M11's last computed loan terms.
+  - integrityCheck: 'capital_stack_unconverged' (status: warn)
+  - Frontend renders with warning badge.
+
+────────────────────────────────────────────────────────────────────────────────
+7.6  FAILURE: USER OVERRIDE INVALIDATES CACHE BUT NEW BUILD FAILS
+────────────────────────────────────────────────────────────────────────────────
+
+SYMPTOM: User edits a field, Build fires, fails. Old cached state still
+exists but assumptions don't match it anymore.
+
+DETECTION: Cache hit fails the assumptionsHash check.
+
+RESPONSE:
+  - Show user the prior valid model with a "stale" badge.
+  - Allow user to revert override or retry Build.
+  - Never silently roll back override.
+
+
+================================================================================
+SECTION 8  —  CROSS-MODULE INTEGRATION (CURRENT STATE)
+================================================================================
+
+This section describes how each currently-wired upstream module integrates
+with F9. Aspirational integrations (modules not yet plumbed in) live in
+FEATURE_EXPANSION.md.
+
+────────────────────────────────────────────────────────────────────────────────
+M05 (Submarket Rent Trend) → F9
+────────────────────────────────────────────────────────────────────────────────
+
+DATA: avg_rent_psf, vacancy_rate, rent_growth_pct, submarket_rank
+FREQUENCY: Updated nightly by M05 service.
+F9 USAGE:
+  - rent_growth_pct → rentGrowth[Y4+] terminal value (math spec §3.3)
+  - avg_rent_psf → marketRent fallback when owned-portfolio data missing
+  - vacancy_rate → vacancy_stab fallback when owned-portfolio data missing
+  - submarket_rank → confidence score modifier
+INVALIDATION: M05 update emits DATA_UPDATED. F9 subscribes for
+              development/redev deals; skips for stabilized.
+SERVICE FILE: backend/src/services/submarket-trend.service.ts
+              (or wherever M05 lives — check registry)
+
+────────────────────────────────────────────────────────────────────────────────
+M07 (Traffic Intelligence) → F9
+────────────────────────────────────────────────────────────────────────────────
+
+DATA: predicted_leases_week, traffic_to_lease_ratio, traffic_trend,
+      capture_rate, detected_patterns, traffic_trajectory
+FREQUENCY: Updated weekly when calibration ledger refreshes.
+F9 USAGE:
+  - For development/redev/lease-up deals (REQUIRED):
+      capture_rate × demand_pool → lease velocity → vacancy schedule
+      predicted_leases_week → Y1 absorption ramp
+      detected_patterns → strategy-specific adjustments (Lease-Up Playbook)
+  - For stabilized deals (OPTIONAL):
+      traffic_trajectory → strategy alert if signaling demand_surge or exhaustion
+      detected_patterns → contributing factor in M14 risk
+INVALIDATION: M07 publishes DATA_UPDATED. F9 invalidates lease-up curve
+              and Y1-Y2 revenue for affected deal types.
+SERVICE FILE: backend/src/services/trafficPredictionEngine.ts
+              backend/src/services/trafficToProFormaService.ts
+
+────────────────────────────────────────────────────────────────────────────────
+M08 (Strategy Arbitrage) → F9
+────────────────────────────────────────────────────────────────────────────────
+
+DATA: recommended_strategy, strategy_scores, template, sections, horizon, periodicity
+FREQUENCY: Per deal, deterministic given inputs.
+F9 USAGE:
+  - recommended_strategy → which proforma template loads (BTS, Flip,
+    Rental, STR — distinct templates, distinct revenue/expense profiles)
+  - strategy_scores → comparative metrics on Strategy tab
+  - template → form layout in Assumptions tab (Detailed mode)
+  - horizon → default holdYears
+  - periodicity → annual vs monthly projection cadence
+INVALIDATION: Strategy change → full F9 re-run with different template.
+SERVICE FILE: backend/src/services/module-wiring/strategy-arbitrage-engine.ts
+
+────────────────────────────────────────────────────────────────────────────────
+M09 ⇄ M11 (Pro Forma ⇄ Capital Structure) — CYCLE
+────────────────────────────────────────────────────────────────────────────────
+
+(Detailed in §2.4.)
+
+DATA from M09 to M11: noi, cash_flow_projections (stub Y1)
+DATA from M11 to M09: loan_terms, debt_service, effective_interest_rate,
+                      capital_stack
+INVALIDATION: Either side change triggers cycle re-fire (Phase 4a).
+SERVICE FILES:
+  M09: backend/src/services/financial-model-engine.service.ts
+  M11: backend/src/services/module-wiring/capital-structure-adapter.ts
+
+────────────────────────────────────────────────────────────────────────────────
+M14 (Risk Dashboard) ⇄ F9 — CYCLE (optional)
+────────────────────────────────────────────────────────────────────────────────
+
+DATA: composite_risk_score, cap_rate_adjustment_bps, reserve_overrides
+FREQUENCY: Recomputed when any of M04, M06, M02, M05, M07, M13 publishes update.
+F9 USAGE:
+  - cap_rate_adjustment_bps → adjusts exitCap if user opts in
+  - reserve_overrides → adjusts replacementReserves
+  - composite_risk_score → surfaces in Decision tab risk register
+INVALIDATION: M14 update → Phase 4b re-fires (Returns recompute only;
+              operating model unchanged).
+SERVICE FILE: backend/src/services/risk-scoring.service.ts
+
+────────────────────────────────────────────────────────────────────────────────
+M22 (Portfolio Manager) ← F9
+────────────────────────────────────────────────────────────────────────────────
+
+This is FORWARD only — F9 publishes; M22 subscribes. F9 doesn't read M22.
+
+DATA: F9 emits noi, cash_flow_projections at Phase 6.
+M22 USAGE:
+  - Stores F9 baseline as deal_monthly_actuals projected target
+  - Computes actual-vs-projected variance over time (post-close)
+  - Feeds M01 portfolio NOI rollup
+INVALIDATION: F9 re-build → M22 baseline updates. M22 does not feed F9.
+SERVICE FILE: backend/src/services/portfolio.service.ts (when M22 fully built)
+
+────────────────────────────────────────────────────────────────────────────────
+M26 (Real Estate Tax Engine) → F9 (optional, when active)
+────────────────────────────────────────────────────────────────────────────────
+
+DATA: projected_total_tax, effective_tax_rate, yearly_projections
+F9 USAGE:
+  - projected_total_tax → propertyTax(y) for affected years
+  - yearly_projections → propertyTax schedule (overrides math spec §3.13
+    when M26 has higher-fidelity county data)
+INVALIDATION: M26 update → propertyTax field invalidates.
+              Math spec §3.13 fallback is FL non-homestead 10% cap formula.
+
+────────────────────────────────────────────────────────────────────────────────
+M27 (Comp Valuation) → F9 (optional, corroboration only)
+────────────────────────────────────────────────────────────────────────────────
+
+DATA: median_implied_cap_rate, median_price_per_unit, comp_count
+F9 USAGE:
+  - median_implied_cap_rate → corroborates user's exit cap input;
+    surfaces collision warning if delta > 50bps
+  - median_price_per_unit → valuation snapshot (Pro Forma tab)
+  - comp_count → confidence score on cap rate
+INVALIDATION: NONE automatically. Corroboration source.
+
+────────────────────────────────────────────────────────────────────────────────
+M29 (Unit Mix Intelligence) → F9 (optional)
+────────────────────────────────────────────────────────────────────────────────
+
+DATA: unit_mix_program, total_units, avg_unit_size_sf, rent_by_type
+F9 USAGE:
+  - When use_unit_mix_for_gpr flag is ON:
+      Year-1 GPR = Σ(unit.count × in_place_rent × 12) from M29 unit mix
+  - When OFF: T-12 GPR is canonical.
+INVALIDATION: User toggle of flag triggers GPR re-derivation only.
+
+────────────────────────────────────────────────────────────────────────────────
+M35 (Event Impact Engine) — NOT YET WIRED
+────────────────────────────────────────────────────────────────────────────────
+
+PER PROJECT MEMORY: M35 specced, integrates with M07 via 4 mechanisms
+(baseline exclusion, anomaly attribution, T-07 trajectory signals,
+Lease-Up playbook adjustments). Not registered in MODULE_REGISTRY yet.
+
+ASPIRATIONAL FLOW (when wired):
+  M35 → M07 → F9 (no direct edge)
+  M35 events affect M07 traffic predictions; M07 propagates to F9
+  via existing wiring.
+
+  Direct M35 → F9 edge MAY be added later for event-specific
+  rent growth premium (per math spec §3.3).
+
+STATUS: not in §2 graph. Add when M35 is registered.
+
+
+================================================================================
+SECTION 9  —  DATA STORE CONTRACTS
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+9.1  CANONICAL STATE  (single source of truth)
+────────────────────────────────────────────────────────────────────────────────
+
+The frontend treats f9Financials (post-merge) as the single source of
+truth for all F9 tabs. No tab maintains a local copy of model results.
+
+Per project memory: dealStore.ts is the message bus — no direct imports
+between module components. All module-to-module communication routes
+through the store.
+
+f9Financials shape: F9DealFinancials (defined in
+frontend/src/pages/development/financial-engine/types.ts).
+
+This shape is augmented by mergeModelIntoFinancials() in
+FinancialEnginePage.tsx to fold ModelResults into f9Financials, producing
+mergedFinancials. All tabs receive mergedFinancials.
+
+────────────────────────────────────────────────────────────────────────────────
+9.2  STORE SUBSCRIPTIONS
+────────────────────────────────────────────────────────────────────────────────
+
+Per dealStore.ts, hooks expose specific slices:
+
+  useDealOverview()             → summary metrics
+  useUnitMixIntelligence()      → unit mix data (M29)
+  useDevCapacity()              → development envelope (M03)
+  useStrategyArbitrage()        → strategy data (M08)
+  useProForma()                 → proforma data
+  useDealBasics()               → core deal info
+  useDealType()                 → existing | development | redevelopment
+  useDealTypeConfig()           → type-specific config
+  useStrategyAvailability()     → which strategies apply
+  useAssumptions()              → user-editable assumptions
+
+Tabs MUST use these hooks rather than direct store reads. The hooks
+provide stable subscription patterns and prevent unnecessary re-renders.
+
+────────────────────────────────────────────────────────────────────────────────
+9.3  COMPONENT-LOCAL STATE
+────────────────────────────────────────────────────────────────────────────────
+
+Components may hold local state for:
+  - Edit mode toggles (Compact ↔ Detailed)
+  - Modal open/close state
+  - Form draft values before save
+  - Sort/filter state for tables
+  - Hover / focus state
+  - Active tab within a tab
+
+Components must NOT hold local state for:
+  - Model results
+  - Assumptions
+  - Source documents
+  - Deal context
+
+────────────────────────────────────────────────────────────────────────────────
+9.4  WRITE PATHS
+────────────────────────────────────────────────────────────────────────────────
+
+User edits flow through these endpoints:
+
+  PATCH /api/v1/deals/:dealId/financials/override
+    Per-field override on deal_assumptions.year1
+    Writes LayeredValue<T> with source='override'
+    Returns updated f9Financials
+
+  POST /api/v1/financial-model/build
+    Triggers full Build (Phases 1-6)
+    Returns ModelResults
+
+  POST /api/v1/deals/:dealId/proforma/seed
+    Manually triggers Phase 2 (re-resolve from extractions)
+    Useful when extraction capsules update without F9 invalidation
+
+  POST /api/v1/deals/:dealId/financials/reparse
+    Triggers Phase 1 (re-extract documents)
+
+  PATCH /api/v1/financial-model/:modelId
+    Saves named version
+    Enables version comparison (Move 3)
+
+
+================================================================================
+SECTION 10  —  WORKED TRACES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TRACE 1: User clicks Build (cold cache)
+────────────────────────────────────────────────────────────────────────────────
+
+t=0      User clicks Build button
+         Frontend calls POST /api/v1/financial-model/build
+         Body: { dealId, assumptions }
+
+t=0.1s   Backend orchestrator receives request.
+         Phase 0: cache check. Key not present. Miss → full run.
+
+t=0.1s   Phase 1: extraction parsers (parallel)
+         Already complete from prior upload; extraction capsules in deal_data.
+         (Parsers don't re-fire on Build; they fired on upload.)
+
+t=0.2s   Phase 2: source resolution
+         Reads extraction capsules from deal_data
+         Resolves all year-1 fields per FIELD_PRIORITIES
+         Detects 1 collision (broker vacancy 5% vs T-12 9%)
+         Resolves to T-12 (Tier 1 wins)
+         Writes deal_assumptions.year1 with LayeredValue tags
+
+t=0.3s   Phase 3a: dispatch on dealType
+         dealType = 'existing'
+         Mode: stabilized acquisition (occupancy 92% > 90% threshold)
+         Standard formulas dispatch
+
+t=0.3s   Phase 3b: agent invocation
+         Cashflow Agent loads math spec
+         Year-1 build per §3.6
+         Multi-year projection per §3.6 forward
+         Disposition per §3.7
+         Returns per §3.8 (Newton-Raphson IRR converges in 4 iterations)
+         Reasoning + collision report + walkthrough per §7
+
+t=45s    Agent returns ModelResults
+
+t=45s    Phase 4a: M11 cycle (debt sizing constraint = 'ltv', not 'dscr')
+         Skip cycle; user provided LTV directly. Loan amount canonical.
+
+t=45.1s  Phase 4b: M14 cycle (M14 enabled)
+         Run M14 with Phase 3 IRR
+         M14 emits cap_rate_adjustment_bps = +12bps
+         Adjust exitCap by +12bps
+         Re-run §3.7 (disposition) and §3.8 (Returns)
+         IRR drops from 24.3% → 23.1%
+
+t=46s    Phase 4c: M22 push (fire-and-forget)
+         Emit DATA_UPDATED event
+         M22 subscribes; updates baseline asynchronously
+
+t=46.1s  Phase 5: reconciliation
+         Re-verify §6 invariants
+         INV-1 through INV-10 all hold
+         5 SOFT checks fire (TIGHT_DSCR, AGGRESSIVE_RENT_GROWTH, ...)
+
+t=46.2s  Phase 6: persistence
+         Write to financial_model_results table
+         Update deal_assumptions
+         Cache result with TTL = 24h
+
+t=46.3s  Response to frontend
+         HTTP 200 with ModelResults envelope
+
+t=46.4s  Frontend mergeModelIntoFinancials runs
+         f9Financials updated → all tabs re-render
+
+t=46.5s  User sees updated tabs
+
+────────────────────────────────────────────────────────────────────────────────
+TRACE 2: User edits Y2 vacancy from 6.5% → 7.5%
+────────────────────────────────────────────────────────────────────────────────
+
+t=0      User edits cell in Projections tab Y2 vacancy column
+
+t=0.1s   Frontend calls PATCH /api/v1/deals/:dealId/financials/override
+         Body: { field: 'vacancy_pct', year: 2, value: 0.075 }
+
+t=0.2s   Backend writes override to deal_assumptions.year1[Y2]
+
+t=0.2s   Backend returns updated f9Financials
+
+t=0.3s   Frontend renders override:
+         Cell in Projections shows new value with override badge
+         vacancy_pct in Pro Forma year1 unaffected (Y1 only)
+
+t=0.3s   The Build button shows "STALE — Click to rebuild"
+         (because override changes assumption but no full rebuild fired)
+
+   USER DECISION POINT:
+   - Click Build → full §3-§6 run (~30s)
+   - Don't click Build → stale state persists; can be reverted
+
+t=N      User clicks Build (if chosen)
+         Phase 3 re-runs only Y2+ of multi-year projection
+         (Y1 unchanged because vacancy_y1 wasn't edited)
+         Returns recompute (because Y2+ CF affects IRR)
+         Phases 4-6 follow
+
+         Total time: faster than cold cache because Y1 work cached
+
+────────────────────────────────────────────────────────────────────────────────
+TRACE 3: M07 republishes traffic data for the deal's submarket
+────────────────────────────────────────────────────────────────────────────────
+
+t=0      M07 calibration job fires (cron, weekly)
+         New traffic data computed: capture_rate increased from 0.21 → 0.24
+
+t=0.1s   M07 emits DATA_UPDATED event:
+         { type: DATA_UPDATED, sourceModule: 'M07', dealId: '...',
+           data: { capture_rate: 0.24, ... } }
+
+t=0.1s   F9 orchestrator subscribes to M07 events
+         For dealType in ['development', 'redevelopment', 'lease-up']:
+           Mark f9Financials as STALE
+           Frontend will show stale badge on next load
+
+         For dealType == 'existing' AND occupancy >= 90%:
+           Ignore. M07 is optional for stabilized.
+
+t=0.2s   For affected deals: Frontend on next load sees stale badge.
+         User can click Build to refresh.
+
+t=N      User clicks Build
+         Phase 3 re-runs with new M07 capture rate
+         Lease-up curve recalibrates
+         Y1-Y2 vacancy schedule changes (faster lease-up)
+         Y1-Y2 revenue ramp adjusts upward
+         All downstream invalidates
+
+────────────────────────────────────────────────────────────────────────────────
+TRACE 4: User overrides resolved value in Pro Forma cell
+────────────────────────────────────────────────────────────────────────────────
+
+t=0      User clicks edit pencil on payroll line (resolved $890/u)
+         Enters $920/u
+
+t=0.1s   Frontend calls PATCH /api/v1/deals/:dealId/financials/override
+         Body: { field: 'payroll', year: null, value: 220.92 (annual: 220,920) }
+
+t=0.2s   Backend writes override on deal_assumptions.year1
+         Source tag becomes 'override'
+         Confidence becomes 'high' (user-asserted)
+
+t=0.3s   Backend returns updated f9Financials
+         Y1 payroll now $920/u; Y2+ unchanged in canonical state
+         (because override is Y1-only by default)
+
+t=0.3s   Frontend renders:
+         Payroll row shows $920 with override badge (purple "Override" pill)
+         Reset button (RotateCcw icon) appears
+         User can click reset to revert to ingested value
+
+t=N      If user clicks Build:
+         Phase 3 re-runs with override
+         Y1 NOI changes; downstream invalidates
+         Note: Y2+ payroll grows from new Y1 base via expenseGrowth
+         User has effectively shifted the entire payroll trajectory.
+
+
+================================================================================
+SECTION 11  —  KNOWN GAPS (WIRING-SPECIFIC)
+================================================================================
+
+These are wiring-layer gaps separate from the math spec gaps in §13 of
+that document.
+
+GAP-W1  M35 (Event Impact Engine) not registered in MODULE_REGISTRY
+  IMPACT: M35 cannot emit DATA_UPDATED events through the bus.
+  STATUS: M35 specced (Event_Impact_Engine_Spec.md) but not wired.
+  WORKAROUND: Manual invocation via admin tool.
+
+GAP-W2  Phase 1 parsers do not emit DATA_UPDATED on extraction completion
+  IMPACT: Other modules don't know when extractions update.
+          F9 must self-pull via reparse or seed endpoints.
+  STATUS: Schema supports it; parsers don't emit yet.
+
+GAP-W3  M22 baseline write happens on every Build
+  IMPACT: M22 receives many redundant baseline updates as users iterate.
+  STATUS: Should debounce or only emit on "save version" not every Build.
+
+GAP-W4  Cache invalidation does not yet listen to module-event-bus
+  IMPACT: When M05 or M07 updates, F9 cache stays warm until TTL expires.
+  STATUS: Cache key construction is in place; subscriber loop is not.
+          Patch: have orchestrator subscribe to upstream module events
+          and invalidate cache keys for affected deals.
+
+GAP-W5  No contract test validates that frontend hooks match store shape
+  IMPACT: Refactoring dealStore may silently break tabs.
+  STATUS: Should add type-level test: every hook's return type must
+          extend a known interface that types.ts re-exports.
+
+GAP-W6  ProFormaSummaryTab self-fetches instead of consuming f9Financials prop
+  IMPACT: Summary may show different data than other tabs (different
+          hold parameter, different cache state).
+  STATUS: Refactor pending (Move 4 follow-up). Tab should consume
+          props.f9Financials only.
+
+GAP-W7  mergeModelIntoFinancials has stub fallback paths
+  IMPACT: The patch fixed the 'src.valuation.purchasePrice' path bugs,
+          but other fallbacks (gpAllInMultiple = gpEm × 1.3) remain.
+  STATUS: Per math spec §13 GAP-1.
+
+GAP-W8  No idempotency token on POST /financial-model/build
+  IMPACT: Double-clicks could trigger duplicate runs (frontend disable
+          mitigates but isn't bulletproof).
+  STATUS: Should use idempotency-key header or hash assumptions for
+          dedupe within ~5-second window.
+
+
+================================================================================
+SECTION 12  —  VERSIONING & CHANGE MANAGEMENT
+================================================================================
+
+DOCUMENT VERSIONING
+  This document is versioned 1.0. Bump on:
+    - Adding/removing/changing module wiring edges
+    - Changing phase order or gates
+    - Changing cache TTL or invalidation logic
+    - Adding new failure modes
+
+CODE-DOC SYNC POINTS
+  Update this document when:
+    - MODULE_REGISTRY changes (any new edge or strength change)
+    - module-event-bus event types change
+    - module-wiring-orchestrator phase logic changes
+    - mergeModelIntoFinancials in FinancialEnginePage.tsx changes
+    - dealStore subscription patterns change
+    - F9DealFinancials type changes (also affects math spec §11)
+
+REVIEW CADENCE
+  Every 30 days, run a contract test:
+    - Diff MODULE_REGISTRY against §2 of this document
+    - Diff actual phases in orchestrator against §3
+    - Diff component subscriptions against §9.2
+
+  Drift becomes a documentation bug.
+
+CHANGE PROPAGATION
+  When wiring changes, the propagation order is:
+    1. Update MODULE_REGISTRY (declarative source of truth)
+    2. Update orchestrator code if execution order changes
+    3. Update event bus subscriptions if propagation changes
+    4. Update mergeModelIntoFinancials if shape changes
+    5. Update this document
+    6. Update math spec if the change affects derivation rules
+    7. Run regression tests
+    8. Bump document versions in lockstep
+
+
+================================================================================
+APPENDIX A  —  FILE LOCATIONS QUICK REFERENCE
+================================================================================
+
+CANONICAL MODULE WIRING:
+  backend/src/services/module-wiring/module-registry.ts
+  backend/src/services/module-wiring/module-event-bus.ts
+  backend/src/services/module-wiring/module-wiring-orchestrator.ts
+  backend/src/services/module-wiring/data-flow-router.ts
+  backend/src/services/module-wiring/formula-engine.ts
+
+ORCHESTRATION & ROUTING:
+  backend/src/api/rest/inline-deals.routes.ts
+    - GET  /:dealId/financials
+    - POST /:dealId/proforma/seed
+    - PATCH /:dealId/financials/override
+  backend/src/api/rest/deal-assumptions.routes.ts
+    - POST /:dealId/financials/reparse
+    - POST /financial-model/build (referenced from frontend)
+
+CORE F9 SERVICES:
+  backend/src/services/financials-composer.service.ts
+    - composeDealFinancials()
+    - buildIntegrityChecks()
+  backend/src/services/proforma-seeder.service.ts
+    - seedProFormaYear1()
+    - applyUserOverride()
+    - FIELD_PRIORITIES map (math spec §4.2)
+  backend/src/services/financial-model-engine.service.ts
+    - buildFinancialModel() — agent invocation
+  backend/src/services/financial-model-engine.m26-m27-enhancer.ts
+    - M26/M27 enrichment
+
+DOCUMENT EXTRACTION:
+  backend/src/services/document-extraction/data-router.ts
+    - Writes extraction capsules to deal_data.extraction_*
+
+FRONTEND ORCHESTRATION:
+  frontend/src/pages/development/FinancialEnginePage.tsx
+    - State management for entire F9 page
+    - mergeModelIntoFinancials()
+    - handleBuildModel() (Phase 3 invocation)
+  frontend/src/stores/dealStore.ts
+    - Single source of truth for all F9 state
+  frontend/src/services/financialModels.service.ts
+    - API client wrappers
+
+TYPES:
+  frontend/src/pages/development/financial-engine/types.ts
+    - F9DealFinancials shape (math spec §11 reference)
+    - FinancialEngineTabProps
+    - ModelAssumptions, ModelResults
+  backend/src/services/module-wiring/module-registry.ts
+    - ModuleId, ModuleDefinition, ModuleDependency types
+
+THE 13 F9 TABS:
+  frontend/src/pages/development/financial-engine/
+    OverviewTab.tsx         (Move 1: trimmed)
+    AssumptionsTab.tsx      (Move 5: Compact/Detailed)
+    UnitMixTab.tsx          (peer)
+    DebtTab.tsx
+    TaxesTab.tsx
+    SourcesUsesTab.tsx       (Move 1 destination)
+    ProFormaSummaryTab.tsx
+    ProjectionsTab.tsx
+    InteractiveProformaTab.tsx (subsumed by Move 5)
+    ReturnsTab.tsx
+    SensitivityTab.tsx
+    DecisionTab.tsx          (Move 4: merged with Walkthrough)
+    CompareTab.tsx           (Move 3: demoted to modal)
+
+
+================================================================================
+APPENDIX B  —  TERMINOLOGY GLOSSARY (WIRING-SPECIFIC)
+================================================================================
+
+  CANONICAL STATE     The single source of truth for F9 data.
+                       For frontend: f9Financials (post-merge).
+                       For backend: deal_assumptions.year1 + ModelResults.
+
+  CYCLE               A bidirectional flow between two modules requiring
+                       multi-pass resolution. Two declared: M09⇄M11, M09⇄M14.
+
+  DATA_UPDATED        Event type emitted when a module's output changes.
+                       Other modules subscribe to invalidate downstream state.
+
+  GATE                A phase-completion check. Phase N+1 cannot start
+                       until Phase N's gate passes.
+
+  IDEMPOTENT          Re-running with same inputs produces same output.
+                       Most phases are; agent invocation is not.
+
+  INVALIDATION        Marking a downstream field as stale because an
+                       upstream input changed. Triggers re-derivation
+                       of just that field plus its downstream chain.
+
+  LAYEREDVALUE        A typed wrapper around any value carrying source,
+                       confidence, and reasoning metadata. Defined in
+                       proforma-seeder.service.ts. Math spec §7.1.
+
+  MERGE FUNCTION      mergeModelIntoFinancials() in FinancialEnginePage.tsx.
+                       Folds ModelResults from Build into f9Financials.
+                       Critical wiring point; bug surface area.
+
+  MODULE_REGISTRY     The canonical declarative wiring map. Source of truth
+                       for who-feeds-whom. Math spec §4.2 references it
+                       indirectly via FIELD_PRIORITIES.
+
+  PHASE               A discrete sequenced step in the orchestrator
+                       (Phases 1-6 in §3).
+
+  PRODUCER            A module that emits data via outputs.
+
+  CONSUMER            A module that subscribes via receivesFrom.
+
+  STORE               dealStore.ts — the Zustand store + hook system that
+                       is the single source of truth for frontend state.
+                       "store as message bus" — no direct cross-component
+                       imports; everything routes through hooks.
+
+  STRENGTH            ModuleDependency.strength: 'required' or 'optional'.
+                       Required dependencies must resolve before consumer runs.
+                       Optional dependencies fall back to defaults.
+
+  SUBSCRIBE           A module registers a handler for an event type via
+                       moduleEventBus.subscribe(eventType, handler).
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================

@@ -1,0 +1,2336 @@
+================================================================================
+F9 FINANCIAL MODEL  —  AGENT SPECIFICATION
+================================================================================
+Document version: 1.0
+Last updated:     2026-05-02
+Code hash at authoring: master HEAD as of 2026-05-02
+Audience:         The agent that runs the F9 financial model (Cashflow Agent
+                  + AI Coordinator orchestration). Secondary: engineers
+                  reading what the agent does.
+Status:           Authoritative. Supersedes any prior F9 math reference.
+
+
+================================================================================
+SECTION 0  —  PREFACE
+================================================================================
+
+WHAT THIS DOCUMENT IS
+
+  This is an instruction set, not a math textbook. The agent reads this
+  document at every model run. It defines:
+    - The output the agent must return
+    - The rules the agent uses to derive each field
+    - The reasoning metadata that must accompany every value
+    - The reconciliation checks the agent runs on its own output
+    - When the agent re-fires and what it re-computes
+
+  Every section is operational. If a section says "the agent must X,"
+  X is enforceable behavior, not a guideline.
+
+WHAT THIS DOCUMENT IS NOT
+
+  - A user-facing math reference (LP memo content lives elsewhere).
+  - A frontend rendering spec (tabs render whatever the agent returns).
+  - A code reference (the code may drift; this document is canonical).
+
+HOW THE AGENT USES IT
+
+  1. On invocation, the agent loads this document into context.
+  2. It loads the deal-specific DealContext (assumptions, extractions,
+     prior-run cache).
+  3. It executes the derivation rules in §3 to produce the output schema
+     in §2.
+  4. Before returning, it runs the consistency checks in §6.
+  5. It attaches reasoning metadata per §7.
+  6. It returns the JSON payload defined in §11.
+
+  Every field the agent produces must trace back to a derivation rule
+  in this document. If the agent encounters a case not covered here,
+  it returns null for that field with a status flag, never a guess.
+
+VERSIONING
+
+  This document is versioned. The frontend, the agent invocation prompt,
+  and the F9DealFinancials TypeScript type must reference the same
+  version. Mismatches must produce a hard error, not silent drift.
+
+
+================================================================================
+SECTION 1  —  ARCHITECTURE OVERVIEW
+================================================================================
+
+WHERE THE AGENT SITS
+
+    User clicks "Build" in InteractiveProformaTab
+            |
+            v
+    Frontend POSTs to /api/v1/financial-model/build
+            |
+            v
+    Backend route handler invokes Cashflow Agent
+            |
+            v
+    Agent loads DealContext (assumptions, extractions, owned-portfolio
+                              actuals, market data, prior cache)
+            |
+            v
+    Agent reasons through derivation rules in this document
+            |
+            v
+    Agent returns ModelResults JSON
+            |
+            v
+    Backend merges into F9DealFinancials via mergeModelIntoFinancials()
+            |
+            v
+    Frontend FinancialEnginePage receives mergedFinancials
+            |
+            v
+    All 13 F9 tabs render from the same canonical state
+
+WHAT INVOKES THE AGENT
+
+  - User clicks Build (primary path)
+  - Cron rate-change watch (when 10Y treasury moves >25 bps)
+  - User edits an upstream assumption flagged for re-derivation
+  - Manual invocation via admin tool
+  - Re-evaluation after upstream module update (M07 traffic recal,
+    M35 event firing, M14 risk model update)
+
+CONTEXT AVAILABLE TO THE AGENT
+
+  At invocation the agent receives:
+
+    1. dealId
+    2. ModelAssumptions (user-provided + computed defaults)
+    3. f9Financials (the canonical state, partially populated)
+    4. dealType ('existing' | 'development' | 'redevelopment')
+    5. Owned-portfolio actuals (other deals you operate in same submarket)
+    6. Market data (M05 submarket, M07 traffic, M14 risk, M35 events)
+    7. Prior agent cache (DealContext, 24h fresh window)
+    8. Extraction capsules (T-12, rent roll, tax bill, OM)
+    9. User overrides (per-field, per-year)
+   10. This specification document
+
+CACHING & COST DISCIPLINE
+
+  DealContext caches for 24 hours. Within that window, the agent should
+  reuse prior derivations for fields whose inputs have not materially
+  changed (see §9 for invalidation rules). Cache-hit derivations are
+  free; full re-runs cost ~60-70% more credits than a hit.
+
+  The agent must not re-run end-to-end on every invocation. It identifies
+  which fields are dirty and re-derives only those plus their downstream
+  dependencies.
+
+
+================================================================================
+SECTION 2  —  OUTPUT SCHEMA CONTRACT
+================================================================================
+
+The agent returns ModelResults. The backend merges this into F9DealFinancials
+via mergeModelIntoFinancials(). The agent's output must be a strict superset
+of every field downstream consumers (the 13 F9 tabs) expect to render.
+
+This section defines the schema. §11 contains the formal TypeScript-compatible
+schema with every field. The summary below is a domain-grouped view.
+
+2.1  TOP-LEVEL OUTPUT
+
+  ModelResults {
+    summary:                ReturnsSummary           // §3.8 outputs
+    annualCashFlow:         AnnualCashFlowRow[]      // §3.6 per-year
+    sourcesAndUses:         SourcesUsesPayload       // §3.5
+    debtMetrics:            DebtMetrics              // §3.5 + §3.8
+    sensitivityAnalysis:    SensitivityPayload       // §3.9
+    stressScenarios:        StressScenario[]         // §3.10
+    waterfallDistributions: WaterfallTier[]          // §3.12
+    capital:                CapitalSchedule          // §3.11
+    valuation:              ValuationPayload         // §3.7
+    taxes:                  TaxesPayload             // §3.13
+    projections:            ProjectionRow[]          // §3.6 institutional
+    integrityChecks:        IntegrityCheck[]         // §6
+    reasoning:              ReasoningPayload         // §7
+    meta:                   ModelMeta                // version + cache
+  }
+
+2.2  REQUIRED VS OPTIONAL
+
+  Every field is non-optional in shape. Every numeric field is `number | null`.
+  Null means: the agent could not derive this value with sufficient confidence
+  AND no fallback was appropriate. Null is never silent — it is always
+  accompanied by a reason in reasoning metadata.
+
+  The agent does NOT use 0 to represent missing data. 0 is only used when
+  the value is genuinely zero (e.g., principal during IO period).
+
+2.3  UNITS CONVENTION
+
+  All percentages are stored as decimals: 0.05 means 5%.
+  All currency is in dollars (not thousands, not millions): 38500000 means $38.5M.
+  All time durations are in their specified unit (months for loan, years for hold).
+  Cap rates are decimals: 0.0575 means 5.75%.
+  Multiples are unitless: 2.84 means 2.84×.
+
+  The agent NEVER mixes units within a single field. The frontend handles
+  display formatting. Agents that store percentages as 5.0 instead of 0.05
+  produce silently-wrong numbers that propagate everywhere.
+
+
+================================================================================
+SECTION 3  —  DERIVATION RULES BY DOMAIN
+================================================================================
+
+This is the core of the document. For each output field, this section defines:
+
+  - INPUTS: what the agent reads
+  - PRIORITY: how the agent resolves multiple sources
+  - FORMULA: the computation
+  - EDGE CASES: what to do when inputs are missing or invalid
+  - CONFIDENCE: how to score the derivation
+
+────────────────────────────────────────────────────────────────────────────────
+3.1  PROPERTY FUNDAMENTALS
+────────────────────────────────────────────────────────────────────────────────
+
+FIELD: units (total unit count)
+
+  INPUTS:    rent_roll.total_units, deal.target_units, OM
+  PRIORITY:  rent_roll > deal.target_units > OM
+  FORMULA:   First non-null source.
+  EDGE CASE: If all three null, the agent halts with INSUFFICIENT_DATA error.
+             Cannot run a model without unit count.
+  CONFIDENCE: rent_roll → high; deal.target_units → high; OM → medium.
+
+FIELD: avgUnitSf
+
+  INPUTS:    rent_roll (per-unit sf, weighted average), OM
+  PRIORITY:  rent_roll weighted avg > OM
+  FORMULA:   Σ(unit.sf × unit.count) / Σ(unit.count)
+  EDGE CASE: If absent, agent uses 880 SF as multifamily default and flags
+             confidence: low.
+
+FIELD: yearBuilt, yearRenovated
+
+  INPUTS:    OM, public records (county appraiser via tax_bill capsule)
+  PRIORITY:  tax_bill > OM
+  EDGE CASE: If absent, set to null. Not load-bearing for math.
+
+────────────────────────────────────────────────────────────────────────────────
+3.2  ACQUISITION COSTS
+────────────────────────────────────────────────────────────────────────────────
+
+FIELD: purchasePrice
+
+  INPUTS:    user override, OM asking_price, deal.purchase_price
+  PRIORITY:  user override > OM > deal record
+  FORMULA:   First non-null. Always required.
+  EDGE CASE: If null, halt with INSUFFICIENT_DATA. Cannot model a purchase
+             without price.
+
+FIELD: closingCosts
+
+  FORMULA:   purchasePrice × 0.010
+  NOTE:      1% standard. User can override.
+
+FLORIDA-SPECIFIC TRANSACTION TAXES (apply ONLY to FL deals):
+
+FIELD: docStamps (FL deed documentary stamp tax)
+
+  FORMULA:   purchasePrice × 0.0070
+  NOTE:      0.70% for all FL counties EXCEPT Miami-Dade, which is 0.60%
+             on real property + 0.0045 surtax on non-residential. The agent
+             checks deal.county and applies the Miami-Dade rate when it
+             matches "Miami-Dade" or county FIPS 12086.
+
+FIELD: intangibleTax (FL non-recurring intangible tax on the mortgage)
+
+  FORMULA:   loanAmount × 0.0020
+  NOTE:      0.20% statewide. Applies to any new mortgage in FL.
+
+FIELD: titleInsurance
+
+  FORMULA:   purchasePrice × 0.0030 (FL promulgated rate, approx)
+  NOTE:      Actual title rates are tiered; 0.30% is a reasonable single-rate
+             approximation for institutional underwriting.
+
+NON-FLORIDA DEALS: Use jurisdiction-specific tax service (not implemented yet;
+flag as PLACEHOLDER and use 0.5% × purchasePrice as combined transaction tax
+estimate. See §13.)
+
+FIELD: capexBudget
+
+  INPUTS:    user-provided
+  EDGE CASE: If null, set to 0. A deal with no capex budget is valid (turnkey
+             stabilized acquisition). Do not invent a default.
+
+FIELD: totalAcquisitionCost (computed)
+
+  FORMULA:   purchasePrice + closingCosts + docStamps + intangibleTax
+             + titleInsurance + capexBudget
+
+────────────────────────────────────────────────────────────────────────────────
+3.3  REVENUE DERIVATION
+────────────────────────────────────────────────────────────────────────────────
+
+FIELD: marketRent (per unit per month)
+
+  INPUTS:    user override, owned-portfolio comps, OM rent comps,
+             rent_roll market rent, M05 submarket rent
+  PRIORITY:
+    1. User override
+    2. Weighted average of owned-portfolio comps in same submarket + class
+       + vintage band, IF n_comps >= 3
+    3. Weighted blend: 70% owned-portfolio (n_comps >= 1) + 30% submarket M05
+    4. OM rent comps (weight = OM confidence × 0.5)
+    5. M05 submarket median
+  FORMULA:   First applicable tier.
+  CONFIDENCE: Tier 2 → high; Tier 3 → medium-high; Tier 4 → medium; Tier 5 → low.
+
+FIELD: inPlaceRent (per unit per month)
+
+  INPUTS:    rent_roll, T-12 average, OM
+  PRIORITY:  rent_roll (current) > T-12 average > OM
+  EDGE CASE: If rent_roll and T-12 are both available and disagree by >5%,
+             flag as collision (see §4.3).
+
+FIELD: lossToLease (decimal)
+
+  INPUTS:    Computed: (marketRent - inPlaceRent) / marketRent
+  EDGE CASE: If marketRent <= inPlaceRent, set to 0 (cannot have negative LTL).
+             If marketRent < inPlaceRent by >2%, flag as collision; this is
+             unusual and warrants user review.
+  CAP:       LTL > 25% is unusual and triggers a warn integrity check. Likely
+             indicates marketRent is overstated or inPlaceRent is stale.
+
+FIELD: vacancy_y1 (Year 1 vacancy decimal)
+
+  INPUTS:    rent_roll (current physical), T-12 economic vacancy, M07 M07
+             projection
+  PRIORITY:  rent_roll > T-12 > M07
+  EDGE CASE: For lease-up deals, this is replaced by the lease-up curve;
+             see §3.14.
+
+FIELD: vacancy_stab (stabilized vacancy decimal)
+
+  INPUTS:    owned-portfolio actuals (same submarket + class), M07 equilibrium,
+             M05 submarket vacancy
+  PRIORITY:  owned-portfolio actuals (n>=2) > M07 > M05
+  FLOOR:     5.0% (no submarket sustains <5% structural vacancy long-term).
+             If derived value < 5%, raise to 5% and flag confidence: medium.
+
+FIELD: vacancySchedule[year]  (year-by-year vacancy)
+
+  RULE:      year 1: vacancy_y1
+             years 2+: vacancy_stab
+             For lease-up mode: see §3.14.
+
+FIELD: concessions (decimal of GPR)
+
+  INPUTS:    T-12, rent_roll
+  PRIORITY:  T-12 > rent_roll
+  EDGE CASE: Lease-up deals: M07 absorption-driven concession schedule.
+
+FIELD: badDebt (decimal of GPR)
+
+  INPUTS:    T-12
+  PRIORITY:  T-12 only (rent rolls don't capture this)
+  EDGE CASE: If T-12 absent, default 1.0% and flag confidence: medium.
+
+FIELD: otherIncomePerUnit (annual, $)
+
+  INPUTS:    T-12 detailed line items, rent_roll ancillary breakdown,
+             owned-portfolio comps
+  PRIORITY:  T-12 detail > owned-portfolio average > heuristic ($820/u/yr)
+  COMPONENTS: parking, RUBS, valet trash, internet, pet, application fees,
+              storage, late fees, etc. The agent must surface these
+              individually when T-12 detail is available (not as one
+              aggregated number).
+
+FIELD: rentGrowth[year] (decimal, per year over hold)
+
+  INPUTS:    owned-portfolio TTM, M05 submarket trend, M14 risk-adjusted,
+             M35 event-driven adjustments
+  PRIORITY (per CASHFLOW_AGENT_UNDERWRITING_SPEC.md):
+
+    if owned_portfolio_TTM has >= 3 comparable assets:
+      Y1 = 0.7 × owned_portfolio_TTM + 0.3 × submarket_M05
+    elif owned_portfolio_TTM has 1-2 assets:
+      Y1 = 0.5 × owned_portfolio_TTM + 0.5 × submarket_M05
+    else:
+      Y1 = 0.5 × submarket_M05 + 0.3 × archive_avg + 0.2 × wage_growth
+
+    Y2 = Y1 × (supply_pressure_adjustment)
+       supply_pressure_adjustment = 1.0 - (M04_pipeline_units / submarket_units × 0.05)
+       cap the adjustment at -50bps minimum
+
+    Y3+ = fade toward terminal:
+      terminal = max(submarket_M05_long_term, wage_growth_floor)
+      Y3 = 0.6 × Y2 + 0.4 × terminal
+      Y4 = 0.4 × Y2 + 0.6 × terminal
+      Y5+ = terminal
+
+  FLAGS:
+    - If projected rent-to-wage ratio at Y5 > 35%, cap rent growth at wage_growth_rate.
+    - If M35 predicts material demand event (new employer, transit), add premium per
+      that event's playbook (M35 calibration ledger).
+    - If M04 shows >500 new units delivering within 1mi within 12mo, reduce Y1-Y2
+      growth by 50-100 bps.
+
+FIELD: GPR(year)  [Gross Potential Rent, annual]
+
+  FORMULA:   GPR(year) = units × marketRent × 12 × cumulativeGrowth(year)
+             cumulativeGrowth(1) = 1.0
+             cumulativeGrowth(y) = cumulativeGrowth(y-1) × (1 + rentGrowth[y])
+
+FIELD: baseRevenue(year)
+
+  FORMULA:   baseRevenue(year) = GPR(year)
+                                - GPR(year) × lossToLease
+                                - GPR(year) × vacancySchedule[year]
+                                - GPR(year) × concessions
+                                - GPR(year) × badDebt
+
+  NOTE:      All loss/leakage items are expressed as fractions of GPR, signed
+             negative when displayed but applied as subtractions in formulas.
+
+FIELD: EGR(year)  [Effective Gross Revenue]
+
+  FORMULA:   EGR(year) = baseRevenue(year)
+                       + otherIncomePerUnit × units × (1 + expenseGrowth)^(year-1)
+
+  NOTE:      Other income grows at expenseGrowth, not rentGrowth, because
+             the underlying drivers (utilities, fees, parking) track inflation
+             rather than rent.
+
+────────────────────────────────────────────────────────────────────────────────
+3.4  EXPENSE DERIVATION
+────────────────────────────────────────────────────────────────────────────────
+
+OPERATING EXPENSES (per unit, annual)
+
+  Each line item has the same derivation pattern:
+
+  FIELD: payroll, maintenance, contractServices, marketing, utilities,
+         admin (per unit annual)
+
+  INPUTS:    T-12 detailed line items, owned-portfolio actuals, market avg
+  PRIORITY:
+    1. T-12 line item (if >= 12 months data)
+    2. Owned-portfolio actual for same class + submarket (cross-validates T-12)
+    3. Market average for class + submarket
+
+  CROSS-VALIDATION: If T-12 < 80% of owned-portfolio average for the same
+  category, flag as potentially-understated and surface in collision report.
+
+  GROWTH:    All operating expenses grow at expenseGrowth annually.
+             expenseGrowth default 3.0%; can be split into payroll-vs-non-payroll
+             if user provides.
+
+INSURANCE (per unit, annual)
+
+  INPUTS:    insurance quote (preferred), T-12 actual, market estimate
+  PRIORITY:  user-provided quote > T-12 > market estimate
+  FL POST-REFORM: For FL deals after the 2024 insurance reform, apply the
+                  cap-driven adjustment: market_estimate × (1 - 0.08) for the
+                  first three years. After three years, growth resumes at
+                  expenseGrowth.
+
+PROPERTY TAX  (see §3.13 for full FL non-homestead 10% cap mechanics)
+
+  INPUTS:    Computed via tax service per §3.13, NOT trusted from T-12.
+  REASON:    Pre-sale T-12 reflects predecessor's capped value; on a sale,
+             the property reassesses and tax base resets. Trusting T-12
+             materially understates Y1+ tax expense.
+
+  EXCEPTION: If user explicitly overrides with current owner's appealed
+             assessed value AND the deal closes without triggering reassessment
+             (unusual), use the override.
+
+MANAGEMENT FEE
+
+  FIELD:     managementFee (% of EGR)
+  INPUTS:    user-defined (shop convention) or 3.0-3.5% default for institutional
+  FORMULA:   mgmtFee(year) = EGR(year) × managementFee
+  NOTE:      Stored as percentage of EGR, not per-unit. Grows naturally with revenue.
+
+REPLACEMENT RESERVES
+
+  FIELD:     replacementReserves (per unit, annual)
+  INPUTS:    lender requirement (preferred), market default
+  DEFAULT:   $300/unit/year for stabilized institutional multifamily.
+             $250/unit/year for older Class C.
+             $400+/unit/year for properties with material capex deferrals.
+
+TOTAL OPEX
+
+  FORMULA:   totalOpex(year) = Σ all expense lines above
+
+NOI
+
+  FORMULA:   NOI(year) = EGR(year) - totalOpex(year)
+  RECONCILIATION: NOI must equal EGR - totalOpex. If displayed NOI differs
+                  from this calculation, the agent has a bug and must halt.
+
+────────────────────────────────────────────────────────────────────────────────
+3.5  CAPITAL STRUCTURE & DEBT
+────────────────────────────────────────────────────────────────────────────────
+
+LOAN SIZING
+
+  FIELD:     loanAmount
+  INPUTS:    user-provided OR derived from LTV
+  RELATIONSHIP: loanAmount = LTV × purchasePrice
+                The agent treats whichever the user provides as canonical
+                and derives the other. Both must reconcile.
+
+DSCR-CONSTRAINED SIZING
+
+  Some lenders size loans on DSCR rather than LTV. If the user specifies
+  minDSCR target, the agent checks:
+
+    impliedLoan = NOI(Y1) / (minDSCR × debtConstant)
+
+    where debtConstant = annualPMT / loanAmount
+
+  If impliedLoan < user-provided loanAmount, flag as DSCR_BREACH and either
+  reduce loan or accept user override (with warning).
+
+DEBT TERMS
+
+  FIELDS:    rate, term (years), amort (years), ioPeriod (years), originationFee
+  UNITS:     ALL TIME UNITS IN YEARS in the schema. Months only inside
+             amortization computation. Do not mix.
+
+PAYMENT CALCULATION
+
+  monthlyRate = rate / 12
+  amortMonths = amort × 12
+
+  IF amortMonths == 0:  // interest-only forever
+    monthlyPmt = loanAmount × monthlyRate
+  ELSE:
+    monthlyPmt = loanAmount × [monthlyRate × (1 + monthlyRate)^amortMonths]
+                            / [(1 + monthlyRate)^amortMonths - 1]
+
+  annualPmt = monthlyPmt × 12
+
+  EDGE CASE: rate == 0 → monthlyPmt = loanAmount / amortMonths
+
+YEAR-BY-YEAR DEBT SCHEDULE
+
+  for year y in 1..holdYears:
+
+    isIO = y <= ioPeriod
+
+    annualInterest(y) = beginningBalance(y) × rate
+    annualPrincipal(y) = isIO ? 0 : (annualPmt - annualInterest(y))
+    debtService(y) = isIO ? annualInterest(y) : annualPmt
+    endingBalance(y) = beginningBalance(y) - annualPrincipal(y)
+
+    where beginningBalance(1) = loanAmount
+          beginningBalance(y) = endingBalance(y-1)
+
+DSCR
+
+  FIELD:     DSCR(year)
+  FORMULA:   NOI(year) / debtService(year)
+  EDGE CASE: If debtService == 0 (all-equity deal), DSCR is undefined; return null.
+             Surface in integrity check.
+
+DEBT YIELD
+
+  FIELD:     debtYield(year)
+  FORMULA:   NOI(year) / loanAmount
+  USE:       Lender constraint check (typical min 8-10% for multifamily).
+
+LOAN BALANCE AT EXIT
+
+  FIELD:     loanBalanceAtExit
+  FORMULA:   endingBalance(holdYears)
+             (NOT a heuristic like 93% of original; use the actual schedule)
+
+────────────────────────────────────────────────────────────────────────────────
+3.6  OPERATING MODEL BUILD-UP
+────────────────────────────────────────────────────────────────────────────────
+
+For each year y in 1..holdYears + 1:
+
+  Compute in this order:
+
+    1. cumulativeGrowth(y) = product of (1 + rentGrowth[1..y])
+    2. GPR(y)              = units × marketRent × 12 × cumulativeGrowth(y)
+    3. lossToLease$(y)     = GPR(y) × lossToLease
+    4. vacancy$(y)         = GPR(y) × vacancySchedule[y]
+    5. concessions$(y)     = GPR(y) × concessions
+    6. badDebt$(y)         = GPR(y) × badDebt
+    7. baseRevenue(y)      = GPR(y) - lossToLease$(y) - vacancy$(y)
+                             - concessions$(y) - badDebt$(y)
+    8. otherIncome(y)      = otherIncomePerUnit × units × 12
+                             × (1 + expenseGrowth)^(y-1)
+    9. EGR(y)              = baseRevenue(y) + otherIncome(y)
+   10. each expense line   = perUnitAnnual × units × (1 + expenseGrowth)^(y-1)
+   11. propertyTax(y)      = per §3.13 schedule
+   12. mgmtFee(y)          = EGR(y) × managementFee
+   13. totalOpex(y)        = sum of expense lines + propertyTax(y) + mgmtFee(y)
+                             + replacementReserves × units × (1+expenseGrowth)^(y-1)
+   14. NOI(y)              = EGR(y) - totalOpex(y)
+   15. annualInterest(y)   = beginningBalance(y) × rate
+   16. annualPrincipal(y)  = (isIO(y)) ? 0 : annualPmt - annualInterest(y)
+   17. debtService(y)      = (isIO(y)) ? annualInterest(y) : annualPmt
+   18. CF(y)               = NOI(y) - debtService(y)
+   19. DSCR(y)             = NOI(y) / debtService(y)  (null if debtService == 0)
+   20. occupancy(y)        = 1 - vacancySchedule[y]
+
+Note: The agent computes through year holdYears + 1 because the disposition
+section needs forward NOI (stabilized exit-year NOI) to compute exit value.
+
+────────────────────────────────────────────────────────────────────────────────
+3.7  DISPOSITION / EXIT
+────────────────────────────────────────────────────────────────────────────────
+
+FIELD: stabilizedNOI (forward NOI used for exit valuation)
+
+  FORMULA:   NOI(holdYears + 1)
+  NOTE:      Exit value is based on the year following the hold, since a
+             buyer in year holdYears would underwrite forward NOI.
+
+FIELD: grossSalePrice
+
+  FORMULA:   stabilizedNOI / exitCap
+  EDGE CASE: If exitCap == 0 or null, halt. Cannot value without cap rate.
+
+FIELD: saleCosts
+
+  FORMULA:   grossSalePrice × saleCosts (default 2.0%)
+
+FIELD: dispositionDocStamps  (FL only)
+
+  FORMULA:   grossSalePrice × 0.0070 (FL deed stamps on sale, paid by seller)
+  NOTE:      Distinct from acquisition doc stamps. Seller pays at exit.
+
+FIELD: netSaleProceeds
+
+  FORMULA:   grossSalePrice - saleCosts - dispositionDocStamps
+
+FIELD: equityProceeds (cash to equity at exit)
+
+  FORMULA:   netSaleProceeds - loanBalanceAtExit
+  EDGE CASE: If equityProceeds < 0, the deal is underwater at exit and the
+             equity vector terminates with a loss. This is rare but valid.
+
+────────────────────────────────────────────────────────────────────────────────
+3.8  RETURNS CALCULATION
+────────────────────────────────────────────────────────────────────────────────
+
+EQUITY CASH FLOW VECTOR
+
+  Construct a vector of length holdYears + 1:
+
+    cashFlows[0]            = -totalEquity          // outlay at close
+    cashFlows[y] for y >= 1 = CF(y)                 // operating CF
+    cashFlows[holdYears]   += equityProceeds        // sale combines with year h
+
+  totalEquity = totalAcquisitionCost - loanAmount
+              + closingCosts + docStamps + intangibleTax + titleInsurance
+              + capexBudget
+
+  IMPORTANT: The sale proceeds combine with the year-h operating cash flow
+  in a SINGLE cell. Do not create a separate year-(h+1) entry. There are
+  exactly (holdYears + 1) elements in the vector: index 0 is outlay,
+  indices 1..h are annual returns, index h includes both operating CF and
+  sale proceeds.
+
+LEVERED IRR
+
+  FORMULA:   Newton-Raphson on cashFlows
+             initial guess = 0.12
+             iterations    = 30 max
+             convergence   = |r_n+1 - r_n| < 1e-10
+
+             f(r)  = Σ cashFlows[i] / (1+r)^i  for i in 0..n
+             f'(r) = Σ -i × cashFlows[i] / (1+r)^(i+1)  for i in 0..n
+             r_n+1 = r_n - f(r_n) / f'(r_n)
+
+  EDGE CASES:
+    - If iterations exhaust without convergence, return null. Do not return
+      a partially-converged value.
+    - If sum of cashFlows < 0, the deal lost money. IRR may exist but is
+      negative. Do not bound at 0.
+    - If holdYears == 1, the vector has 2 elements. IRR still defined but
+      reduces to (cashFlows[1] / -cashFlows[0]) - 1.
+
+UNLEVERED IRR
+
+  FORMULA:   Same Newton-Raphson but on UNLEVERED CF vector:
+             unleveredCF(y) = NOI(y) - capexInYearY (when phased)
+             Initial outlay = totalAcquisitionCost (no loan reduction)
+             Final year includes grossSalePrice - saleCosts - dispositionDocStamps
+             (no loan payoff)
+
+EQUITY MULTIPLE
+
+  FORMULA:   EM = Σ cashFlows[1..n] / |cashFlows[0]|
+
+  CRITICAL:  EM is total POSITIVE distributions divided by equity invested.
+             It does NOT include the negative initial outlay in the numerator.
+             Vector convention: cashFlows[0] is negative; sum from index 1
+             onward; divide by absolute value of index 0.
+
+  RECONCILIATION: For a deal that returns capital plus 100% profit, EM = 2.0.
+                  If your formula returns 1.0 in this case, you have made
+                  the bot's mistake of summing the entire vector including
+                  the negative.
+
+CASH-ON-CASH
+
+  FIELD:     avgCoC
+  FORMULA:   avgCoC = mean(cashFlows[1..h]) / |cashFlows[0]|
+
+  Per-year:  CoC(y) = CF(y) / |cashFlows[0]|
+
+GOING-IN CAP RATE
+
+  FORMULA:   NOI(1) / purchasePrice
+  NOTE:      Use Year-1 NOI (not stabilized). This is what the buyer pays.
+
+STABILIZED CAP RATE
+
+  FORMULA:   NOI(stabilizationYear) / purchasePrice
+             where stabilizationYear is when occupancy reaches stabilized
+             vacancy floor (typically Y2 or Y3 for value-add).
+  NOTE:      Do NOT use IRR-derived heuristics (e.g., "irr × 0.85"). If
+             stabilization year cannot be determined, return null.
+
+YIELD ON COST (untrended / trended)
+
+  untrendedYOC = stabilizedNOI / totalAcquisitionCost
+                 (using current-dollar NOI without rent growth)
+  trendedYOC   = stabilizedNOI(stabYear) / totalAcquisitionCost
+                 (using future NOI at stabilization)
+
+DEBT METRICS (per CASHFLOW_AGENT_UNDERWRITING_SPEC.md and types.ts)
+
+  COVERAGE:
+    dscrY1, dscrMin (with year), dscrAvg, dscrAtStabilization
+    debtYieldY1, debtYieldMin (with year), debtYieldAvg
+    interestCoverage = NOI(1) / annualInterest(1)
+    cashFlowCoverage = CF(1) / annualPmt
+    loanConstantBlended = annualPmt / loanAmount
+
+  STRUCTURAL:
+    LTV(year) = loanBalance(year) / propertyValue(year)
+                where propertyValue uses current-NOI / current-cap-rate
+    LTC = loanAmount / totalAcquisitionCost
+
+  LEVERAGE:
+    positiveLeverage = (goingInCap > rate) ? true : false
+    leverageSpreadBps = (goingInCap - rate) × 10000
+
+  STRESS:
+    breakevenOccupancy = (totalOpex + debtService) / GPR
+    breakevenRent      = (totalOpex + debtService) / (units × 12 × occupancy)
+    dscrAtMinus10pctNOI = (NOI × 0.9) / debtService
+    dscrAtPlus200bps    = NOI / debtServiceAtRatePlus200bps
+
+────────────────────────────────────────────────────────────────────────────────
+3.9  SENSITIVITY MATRIX
+────────────────────────────────────────────────────────────────────────────────
+
+FIELDS:    A grid of IRR values across (exitCap × rentGrowth) combinations.
+
+EXIT CAP AXIS:    [exitCap-100bps, exitCap-50bps, exitCap, exitCap+50bps, exitCap+100bps]
+RENT GROWTH AXIS: [Y1growth-100bps, -50bps, base, +50bps, +100bps, +150bps]
+
+  Rent growth shocks apply to the Y1 rate; subsequent years' growth fades
+  proportionally per §3.3 fade rule.
+
+CELL COMPUTATION:
+
+  For each (exitCap, rentGrowth) pair:
+    Re-run the operating model with shocked inputs
+    Compute IRR
+    Store in matrix[exitCap_idx][rentGrowth_idx]
+
+  CRITICAL: Each cell is a FULL MODEL RUN. Do not interpolate between cells
+  or use linear approximations. The model is non-linear; cap rate and rent
+  growth interact through compounding.
+
+ACCEPTABLE OPTIMIZATION: Cache the operating model build-up; only rent and
+exit-related fields change between cells. Expense build-up, debt schedule,
+and tax schedule do not change with rent-growth shocks (well, mgmtFee does
+because it's % of EGR, but the rest don't).
+
+ALSO PRODUCE: Same matrix for Equity Multiple (separate sheet).
+
+────────────────────────────────────────────────────────────────────────────────
+3.10  STRESS SCENARIOS
+────────────────────────────────────────────────────────────────────────────────
+
+The agent produces four scenarios. Numeric shocks are stated in absolute
+percentage points to avoid ambiguity (the bot's draft used relative percentages,
+which is unclear).
+
+  BASE:
+    All values = user input.
+
+  BEAR:
+    rentGrowth[y]   = baseRentGrowth[y] - 0.015   (subtract 1.5pp each year)
+    vacancy[y]      = baseVacancy[y]    + 0.02    (add 2pp each year)
+    exitCap         = baseExitCap       + 0.0075  (add 75bps to exit cap)
+    expenseGrowth   = baseExpenseGrowth + 0.01    (add 1pp to expense growth)
+
+  BULL:
+    rentGrowth[y]   = baseRentGrowth[y] + 0.0075  (add 75bps each year)
+    vacancy[y]      = baseVacancy[y]    - 0.005   (subtract 50bps; floor at 5%)
+    exitCap         = baseExitCap       - 0.005   (subtract 50bps from exit)
+    expenseGrowth   = baseExpenseGrowth - 0.005   (subtract 50bps)
+
+  BLACK SWAN:
+    rentGrowth[y]   = -0.005 (flat-to-declining)
+    vacancy[y]      = baseVacancy[y]    + 0.05    (add 5pp each year)
+    exitCap         = baseExitCap       + 0.015   (add 150bps to exit)
+    expenseGrowth   = baseExpenseGrowth + 0.025   (add 250bps; insurance reset)
+
+For each scenario produce:
+  irr, equityMultiple, noi(stabilizationYear), dscr_min, breakevenOccupancy
+
+────────────────────────────────────────────────────────────────────────────────
+3.11  CAPITAL STRUCTURE (TRANCHES)
+────────────────────────────────────────────────────────────────────────────────
+
+The agent models the capital stack as tranches above senior debt:
+
+  TRANCHES (per F9DealFinancials.capital):
+    senior_debt    (loanAmount)          - rate, IO, amort
+    mezzanine      (if applicable)        - higher rate, subordinate
+    pref_equity    (if applicable)        - cumulative pref, no promote
+    lp_class_a     (limited partners)     - 8% pref, promote tiers
+    lp_class_b     (additional LPs)       - if applicable
+    gp_co_invest   (general partner)      - aligned co-investment
+    deferred_fee   (acquisition fee)      - if structured as deferred
+
+For each tranche:
+  - id, label, role, percentageOfTotalEquity (or absolute amount)
+  - prefRate (decimal)
+  - compoundingPeriod ('annual' | 'monthly')
+  - cumulative (boolean)
+  - participatesInPromote (boolean)
+
+────────────────────────────────────────────────────────────────────────────────
+3.12  WATERFALL DISTRIBUTION
+────────────────────────────────────────────────────────────────────────────────
+
+The waterfall is IRR-hurdle-based, not dollar-amount-based. The bot's draft
+got this wrong.
+
+HURDLE STRUCTURE (typical institutional 5-tier):
+
+  TIER 1 — Return of Capital (ROC):
+    Distribute pro-rata until each capital class has received its invested
+    capital back. LP gets LP_equity. GP gets GP_equity. No promote.
+
+  TIER 2 — Preferred Return:
+    LP receives accrued preferred return (e.g., 8% compounded annually on LP_equity)
+    until LP IRR reaches 8%. GP receives 0 in this tier (unless GP holds pref-eligible
+    capital).
+
+  TIER 3 — First Promote (e.g., 80/20):
+    Distributions split 80% LP / 20% GP until LP IRR reaches second hurdle
+    (e.g., 12%). Promote to GP starts here.
+
+  TIER 4 — Second Promote (e.g., 70/30):
+    Distributions split 70/30 until LP IRR reaches third hurdle (e.g., 18%).
+
+  TIER 5 — Final Promote (e.g., 60/40):
+    All remaining proceeds distributed at 60/40 until exit.
+
+HURDLE CHECKS
+
+  At each tier, the agent computes "what would LP IRR be if this tier
+  distributes $X" and stops the tier when LP IRR == hurdleRate. Excess
+  flows to the next tier.
+
+  This requires solving for the marginal cash flow that brings IRR to hurdle:
+    Numerical search (bisection) on distribution amount until target IRR is hit.
+
+PRACTICAL IMPLEMENTATION
+
+  For each year y in 1..holdYears:
+    cfads(y) = NOI(y) - debtService(y) - reserves
+    Distribute cfads(y) through tiers in order until exhausted.
+
+  At year holdYears, add equityProceeds to cfads and distribute.
+
+OUTPUT PER TIER:
+
+  {
+    tier: number,
+    tierName: string,
+    hurdleRate: number,
+    lpDistribution: number (cumulative),
+    gpDistribution: number (cumulative),
+    lpSplit: number (this tier's split),
+    gpSplit: number,
+    promotePctEarned: number  (cumulative GP promote)
+  }
+
+NET RETURNS PER CLASS:
+
+  LP IRR: Newton-Raphson on LP-only cash flows (LP equity outlay → LP distributions)
+  GP IRR: Newton-Raphson on GP-only cash flows (GP co-invest + promote received)
+  LP EM:  Σ LP distributions / LP equity invested
+  GP EM:  (Σ GP distributions + promote) / GP equity invested
+
+────────────────────────────────────────────────────────────────────────────────
+3.13  TAX DETAIL — FLORIDA NON-HOMESTEAD
+────────────────────────────────────────────────────────────────────────────────
+
+REAL ESTATE TAX
+
+  Florida has TWO assessment caps:
+    SOH (Save Our Homes): 3% annual cap, HOMESTEAD properties only
+    Non-Homestead (Amendment 1): 10% annual cap, ALL non-homestead properties
+
+  Investment multifamily is non-homestead. The 10% cap applies.
+
+  REASSESSMENT ON SALE: When property changes hands, the just-value (assessed
+  value) RESETS to current market value (typically 85-95% of purchase price
+  per appraiser methodology), then the 10% cap re-engages from that new base.
+
+  TERMINOLOGY: This document uses "non-homestead 10% cap" or "10% NHCap."
+  The bot's draft called this "CNADR," which is not standard.
+
+  YEAR-BY-YEAR SCHEDULE:
+
+    reassessmentBase = purchasePrice × 0.85  (jurisdiction-dependent;
+                                              Hillsborough uses ~85%)
+
+    assessedValue(1) = reassessmentBase
+    assessedValue(y) = assessedValue(y-1) × 1.10  for y >= 2
+                       (NOT capped at min of linear vs exponential; the cap
+                        IS the 10% compound. The bot's min() was confused.)
+
+    millage(jurisdiction)  = county-specific (Hillsborough: ~0.0218,
+                                              Miami-Dade: ~0.0212,
+                                              Orange: ~0.0190)
+
+    propertyTax(y) = assessedValue(y) × millage(jurisdiction)
+
+  EDGE CASE: If purchase happens late in the year, year-1 tax is prorated.
+  Default assumption: full-year for simplicity unless user specifies close date.
+
+  PERIODIC RECONCILIATION: Every 5-7 years the cap can be "reset" if market
+  value declines below capped value. Agent does not model this; it's
+  forward-looking optimism that rarely matters in stress underwriting.
+
+TANGIBLE PERSONAL PROPERTY (TPP)
+
+  FIELD:     tppTax (annual)
+  FORMULA:   FF&E inventory value × millage  (typically minimal for multifamily)
+  DEFAULT:   $50-100 per unit per year, often de minimis.
+
+INCOME TAX & DEPRECIATION
+
+  FIELDS:    depreciableBase, annualDepreciation, bonusDepreciation,
+             costSegSavings, marginalTaxRate
+  FORMULA:
+    depreciableBase     = purchasePrice × (1 - landValuePct)
+                          where landValuePct ≈ 0.20 for multifamily (varies)
+    annualDepreciation  = depreciableBase / 27.5  (residential straight-line)
+    bonusDepreciation_Y1 = depreciableBase × 0.20  (current 20% in 2026 phase-out)
+    costSegSavings_Y1    = costSegEligiblePct × bonusDepreciation × marginalTaxRate
+                          where costSegEligiblePct ≈ 0.30 (typical study)
+  AFTER-TAX CF(y)  = CF(y) - taxableIncome(y) × marginalTaxRate
+                     where taxableIncome = NOI - interest - depreciation
+
+TRANSFER TAXES (acquisition + disposition)
+
+  Per §3.2 for acquisition. At disposition, doc stamps re-apply on the
+  sale price (paid by seller). Intangible tax is one-time at origination
+  and does not re-apply on resale (unless refinanced).
+
+────────────────────────────────────────────────────────────────────────────────
+3.14  MODE-SPECIFIC BRANCHING
+────────────────────────────────────────────────────────────────────────────────
+
+The agent branches on dealType. Each mode has different revenue, vacancy,
+and disposition treatment.
+
+MODE: STABILIZED ACQUISITION  (dealType = 'existing', occupancy >= 90% at close)
+
+  - Vacancy schedule per §3.3
+  - Operating model from year 1
+  - Hold-then-sell at exit
+
+MODE: LEASE-UP (dealType = 'existing', occupancy < 90% at close)
+
+  - M07 Traffic Engine provides absorption curve (24 months)
+  - Vacancy schedule = (1 - occupancyRamp[month]) for first 24 months,
+    then stabilizes at vacancy_stab
+  - GPR ramps with absorption
+  - Concessions are higher during lease-up (M07-driven)
+  - Renovation premium applies after unit completion
+  - Stabilization year: when occupancy >= (1 - vacancy_stab)
+
+MODE: DEVELOPMENT (dealType = 'development')
+
+  - Construction period: months 1..constructionMonths
+    - No revenue
+    - Capitalized interest, hard costs, soft costs accrue
+    - Construction loan separate from permanent debt
+  - Lease-up period: months constructionMonths+1 .. constructionMonths + leaseUpMonths
+    - Same as Lease-Up mode for revenue
+  - Permanent loan refinance at lease-up + 6 months (typical)
+  - Stabilization: post-lease-up
+
+  ADDITIONAL FIELDS:
+    landCost, hardCostPerSF, hardCostContingency, softCostPct, developerFee,
+    constructionPeriod, leaseUpVelocity, constructionLoanLTC,
+    constructionLoanRate
+
+MODE: REDEVELOPMENT (dealType = 'redevelopment')
+
+  - Hybrid: existing operations + phased renovation
+  - Existing units operate at current rents during reno
+  - Renovated units come online with rent premium
+  - Phased capex over 2-4 years
+  - Stabilization: when all units renovated + lease-up complete
+
+  The agent uses resolveProjectType() output and dispatches to the correct
+  variant of each formula.
+
+
+================================================================================
+SECTION 4  —  SOURCE RESOLUTION & COLLISION HANDLING
+================================================================================
+
+Multiple sources can provide the same input. The agent must resolve them
+deterministically.
+
+────────────────────────────────────────────────────────────────────────────────
+4.1  GENERAL SOURCE PRIORITY HIERARCHY
+────────────────────────────────────────────────────────────────────────────────
+
+When multiple sources exist for the same field:
+
+  1. USER OVERRIDE       (highest — user has explicitly set this value)
+  2. TIER 1 — Documents:
+     - T-12 (trailing 12 months operating)
+     - Rent roll (current snapshot)
+     - Tax bill (county assessor)
+  3. TIER 2 — Owned-portfolio actuals
+     (other deals you operate in same submarket + class + vintage)
+  4. TIER 3 — Platform / research datasets
+     (M05 submarket, M07 traffic, market comps, BLS)
+  5. TIER 4 — Broker / OM data (lowest authority)
+  6. ARCHIVE BENCHMARK (fallback for absent data)
+
+Within Tier 1, priority depends on the field — see §4.2.
+
+────────────────────────────────────────────────────────────────────────────────
+4.2  PER-FIELD PRIORITY MAP
+────────────────────────────────────────────────────────────────────────────────
+
+The seeder code (proforma-seeder.service.ts FIELD_PRIORITIES) defines per-field
+priority among Tier-1 sources:
+
+  gpr:                  T-12, rent_roll
+  loss_to_lease_pct:    T-12, rent_roll
+  vacancy_pct:          rent_roll, T-12      (rent roll wins here)
+  concessions_pct:      T-12, rent_roll
+  bad_debt_pct:         T-12 only
+  non_revenue_units_pct: T-12 only
+  other_income_total:   T-12, rent_roll
+  other_income_per_unit: T-12, rent_roll
+  real_estate_tax:      tax_bill, T-12       (tax bill wins; T-12 may show capped value)
+  management_fee_pct:   T-12 only
+  insurance:            T-12 only            (or user-provided quote)
+
+The agent uses this map. Do not invent alternative priorities for these fields.
+
+────────────────────────────────────────────────────────────────────────────────
+4.3  COLLISION DETECTION
+────────────────────────────────────────────────────────────────────────────────
+
+A collision exists when two or more sources for the same field disagree
+materially.
+
+  COLLISION THRESHOLDS:
+    Currency fields:       diff > max($10K, 5% of higher value)
+    Percentage fields:     diff > 100bps absolute (1 percentage point)
+    Per-unit fields:       diff > $50/unit/year
+    Cap rates:             diff > 25bps
+
+  COLLISION MAGNITUDE:
+    minor:    diff exceeds threshold but < 2× threshold
+    material: diff is 2-5× threshold
+    severe:   diff > 5× threshold OR affects deal-go/no-go output (IRR > 200bps)
+
+────────────────────────────────────────────────────────────────────────────────
+4.4  COLLISION RESOLUTION STRATEGY
+────────────────────────────────────────────────────────────────────────────────
+
+When a collision is detected:
+
+  1. Resolve to higher-priority source per §4.2.
+  2. Record the collision in collisionReport with:
+     - field
+     - magnitude
+     - source A value, source B value, delta
+     - selected source and reason
+     - plain-English narrative
+  3. Surface in F9DealFinancials.proforma.integrityChecks as 'warn' if material+
+     or 'error' if severe.
+  4. Do NOT silently average. Do NOT silently use the broker's number when
+     T-12 disagrees.
+
+EXAMPLE:
+  Broker OM says vacancy = 5%
+  T-12 says vacancy = 9%
+  Threshold for vacancy_pct: 100bps
+  Delta: 400bps → magnitude: severe
+  Resolution: Use T-12 (Tier 1 vs broker Tier 4)
+  Narrative: "Broker OM understates vacancy by 400bps vs T-12 actuals.
+              Y1 underwriting uses T-12 figure of 9.0%. Broker's 5%
+              would imply $XYK higher revenue than supported by historical
+              operating data."
+
+────────────────────────────────────────────────────────────────────────────────
+4.5  USER-OVERRIDE OVERRIDES EVERYTHING
+────────────────────────────────────────────────────────────────────────────────
+
+When the user has explicitly overridden a value, the agent uses that value
+without question. But the agent still:
+
+  - Records what the platform-derived value would have been
+  - Computes the override delta
+  - Surfaces if the override creates inconsistencies (e.g., user lowered
+    vacancy below stabilized floor)
+
+This data feeds the Evidence Panel's "User Override" tab.
+
+
+================================================================================
+SECTION 5  —  CONFIDENCE SCORING
+================================================================================
+
+Every value the agent produces carries a confidence score: HIGH | MEDIUM | LOW.
+
+────────────────────────────────────────────────────────────────────────────────
+5.1  PER-FIELD CONFIDENCE RULES
+────────────────────────────────────────────────────────────────────────────────
+
+CONFIDENCE: HIGH
+
+  - Field derived from Tier 1 document with >= 12 months data
+  - OR field derived from owned-portfolio with n >= 3 comparable assets
+  - OR field is a direct user input (not a computation)
+  - OR field is a Florida-specific transaction tax (formula-driven)
+  - Computation has no ambiguity
+
+CONFIDENCE: MEDIUM
+
+  - Field derived from Tier 1 with partial data (e.g., 6-11 months of T-12)
+  - OR derived from Tier 2 with n=1-2 comparable assets
+  - OR derived from Tier 3 (platform / market) with no document corroboration
+  - OR field requires interpolation across years (e.g., Y3+ rent growth)
+
+CONFIDENCE: LOW
+
+  - Field derived from Tier 4 (broker OM) only
+  - OR field derived from archive benchmark / market default
+  - OR computation hit an edge case requiring fallback
+  - OR data is partially-missing and was inferred
+
+────────────────────────────────────────────────────────────────────────────────
+5.2  AGGREGATE CONFIDENCE
+────────────────────────────────────────────────────────────────────────────────
+
+The agent computes overall model confidence:
+
+  confidence_distribution = {
+    high:   count of HIGH-confidence fields,
+    medium: count of MEDIUM-confidence fields,
+    low:    count of LOW-confidence fields
+  }
+
+  This populates F9DealFinancials.evidence.confidence_distribution.
+  The frontend's F9SummaryBar renders pills showing this distribution.
+
+────────────────────────────────────────────────────────────────────────────────
+5.3  CONFIDENCE-DRIVEN BEHAVIOR
+────────────────────────────────────────────────────────────────────────────────
+
+When >= 30% of fields are LOW confidence, the agent surfaces an integrity
+check warning the user that the model is built on weak data and may
+mislead. Do not run a deal-recommendation through low-confidence outputs
+without disclosure.
+
+
+================================================================================
+SECTION 6  —  CROSS-FIELD CONSISTENCY RULES
+================================================================================
+
+Before returning, the agent runs reconciliation checks. Failure halts
+or flags.
+
+────────────────────────────────────────────────────────────────────────────────
+6.1  HARD INVARIANTS (halt on failure)
+────────────────────────────────────────────────────────────────────────────────
+
+These MUST hold; failure indicates an agent bug.
+
+  INV-1: NOI(y) == EGR(y) - totalOpex(y)         for all y
+  INV-2: CF(y)  == NOI(y) - debtService(y)        for all y
+  INV-3: DSCR(y) == NOI(y) / debtService(y)       for all y where debtService > 0
+  INV-4: equityProceeds == netSaleProceeds - loanBalanceAtExit
+  INV-5: grossSalePrice == stabilizedNOI / exitCap
+  INV-6: totalEquity == totalAcquisitionCost - loanAmount
+  INV-7: cashFlows[0] < 0  (initial outlay must be negative)
+  INV-8: Σ tier_distributions == Σ cashFlows[1..n] + |cashFlows[0]|
+         (waterfall must distribute all available cash)
+  INV-9: For each year, lossToLease$ + vacancy$ + concessions$ + badDebt$
+         must be < GPR (cannot lose more than GPR)
+  INV-10: occupancy(y) == 1 - vacancySchedule[y]
+
+If any invariant fails, the agent halts and returns:
+  { error: "INVARIANT_VIOLATION", invariant: "INV-X", year: y, expected, actual }
+
+────────────────────────────────────────────────────────────────────────────────
+6.2  SOFT CHECKS (flag, do not halt)
+────────────────────────────────────────────────────────────────────────────────
+
+These warn the user without halting.
+
+  SOFT-1: DSCR(1) < 1.20         → flag "TIGHT_DSCR" warn
+  SOFT-2: DSCR(1) < 1.10         → flag "DSCR_BREACH" error
+  SOFT-3: stabilized vacancy < 5% → flag "AGGRESSIVE_VACANCY" warn
+  SOFT-4: rentGrowth Y1 > 6%      → flag "AGGRESSIVE_RENT_GROWTH" warn
+  SOFT-5: exitCap < goingInCap by > 50bps → flag "CAP_RATE_COMPRESSION" warn
+  SOFT-6: IRR < 12%               → flag "LOW_IRR" warn
+  SOFT-7: equityMultiple < 1.5    → flag "LOW_EM" warn
+  SOFT-8: rent-to-wage at Y5 > 35% → flag "AFFORDABILITY_CEILING" warn
+  SOFT-9: Y1 vacancy < structural floor → flag "VACANCY_BELOW_STRUCTURAL"
+  SOFT-10: capexBudget == 0 on B+ asset → flag "NO_CAPEX_BUDGET_FOR_VALUE_ADD" info
+
+These map to F9DealFinancials.proforma.integrityChecks output.
+
+
+================================================================================
+SECTION 7  —  UX CONTRACT — SHOWING THE WORK
+================================================================================
+
+The agent's output is not numbers alone. Every value carries metadata that
+populates the Evidence Panel and audit-trail UI. This is the single biggest
+gap in the bot's draft.
+
+────────────────────────────────────────────────────────────────────────────────
+7.1  PER-FIELD METADATA (LayeredValue<T> shape)
+────────────────────────────────────────────────────────────────────────────────
+
+For every derived field, the agent produces:
+
+  {
+    value:         number | string | null,
+    source:        'user_override' | 't12' | 'rent_roll' | 'tax_bill' |
+                   'om' | 'platform' | 'agent' | 'market_default',
+    confidence:    'high' | 'medium' | 'low',
+    derivedAt:     ISO timestamp,
+    agentName:     'cashflow' | 'research' | 'zoning' | 'supply',
+    runId:         UUID,
+    reasoning:     short paragraph explaining derivation,
+    evidence:      array of evidence points (see §7.2)
+  }
+
+This shape matches the existing LayeredValue<T> pattern in the codebase
+(types.ts and proforma-seeder.service.ts).
+
+────────────────────────────────────────────────────────────────────────────────
+7.2  REASONING NARRATIVE PER FIELD
+────────────────────────────────────────────────────────────────────────────────
+
+For each non-trivial derived field, the agent produces 2-4 sentences explaining:
+
+  1. Which sources were used
+  2. How they were weighted
+  3. What was rejected and why
+  4. Confidence rationale
+
+EXAMPLE (rentGrowth Y1):
+
+  "Year-1 rent growth of 4.5% derived from weighted blend of three
+  comparable owned assets (3.4%, 4.0%, 5.2% TTM) at 70% weight and
+  Westshore submarket M05 trend (3.8%) at 30% weight. Owned-portfolio
+  weight is high because n=3 meets the >= 3 threshold. Confidence: high.
+  Bear-case: if Greystar tower delivers ahead of schedule, Y2-3 may
+  fade to 2.5-3.0%."
+
+────────────────────────────────────────────────────────────────────────────────
+7.3  EVIDENCE POINTS
+────────────────────────────────────────────────────────────────────────────────
+
+For each field, the agent attaches evidence points used in derivation:
+
+  evidence: [
+    {
+      type:           'comparable_asset' | 'market_data' | 'document' | 'event',
+      sourceId:       string,
+      sourceName:     human-readable name,
+      value:          the value provided by this source,
+      asOfDate:       when the value was current,
+      weight:         contribution to derivation (0-1),
+      confidence:     'high' | 'medium' | 'low'
+    }
+  ]
+
+The Evidence Panel renders these as a table the user can drill into.
+
+────────────────────────────────────────────────────────────────────────────────
+7.4  WALKTHROUGH NARRATIVE (long-form)
+────────────────────────────────────────────────────────────────────────────────
+
+After completing all derivations, the agent invokes the Commentary Agent
+to produce a long-form narrative summary. Structure:
+
+  PARAGRAPH 1: Underwriting summary
+    Deal type, asset class, location, scale, asking price, primary thesis
+    in one paragraph.
+
+  PARAGRAPH 2: Critical assumptions
+    The 3-5 assumptions that most drive the IRR. Why they were chosen.
+    Where the data came from.
+
+  PARAGRAPH 3: Jurisdictional / strategic context
+    For FL: tax mechanics, insurance environment.
+    For redevelopment: phasing rationale.
+    For development: lease-up risk vs market timing.
+
+  PARAGRAPH 4: What could go wrong
+    Top 3-5 risks. Stress-test impact. Mitigations.
+
+  PARAGRAPH 5: Verdict
+    Recommendation (PROCEED | PASS | FURTHER REVIEW). Key conditions.
+    Key actions for next stage.
+
+This narrative populates the Walkthrough section of the Decision tab.
+
+────────────────────────────────────────────────────────────────────────────────
+7.5  COLLISION REPORT
+────────────────────────────────────────────────────────────────────────────────
+
+The agent produces collisionReport[] surfacing all detected collisions:
+
+  collisionReport: [
+    {
+      field:         string,
+      magnitude:     'minor' | 'material' | 'severe',
+      sources: [
+        { source: 'om',  value: number, confidence: string },
+        { source: 't12', value: number, confidence: string }
+      ],
+      delta:         number,
+      deltaPct:      number,
+      resolvedTo:    'om' | 't12' | 'platform',
+      resolvedValue: number,
+      narrative:     string
+    }
+  ]
+
+This populates F9DealFinancials.evidence.collision_summary and the
+collision pills in F9SummaryBar.
+
+────────────────────────────────────────────────────────────────────────────────
+7.6  ALTERNATIVES CONSIDERED
+────────────────────────────────────────────────────────────────────────────────
+
+For each material assumption, the agent records what it considered and rejected:
+
+  alternatives: [
+    {
+      field:        string,
+      considered:   number,
+      rejected:     true,
+      reason:       string,
+      wouldHaveImpacted: { irr_delta: number, em_delta: number }
+    }
+  ]
+
+This shows up in the Evidence Panel's "Alternatives" tab.
+
+
+================================================================================
+SECTION 8  —  TAB → FIELD HYDRATION MAP
+================================================================================
+
+This section maps every output field to the F9 tab(s) that render it.
+Used for debugging "Tab X is blank."
+
+OVERVIEW TAB
+  summary.irr, summary.equityMultiple, summary.cashOnCash, summary.noi,
+  summary.dscr, dealName, dealAddress, jediScore, integrityChecks (preview),
+  reasoningNarrative (one-liner)
+
+PRO FORMA TAB (Year-1 operating statement)
+  proforma.year1[*]: gpr, lossToLease, vacancy, concessions, badDebt,
+                     baseRevenue, otherIncome, egi, payroll, maintenance,
+                     contractServices, marketing, utilities, admin, insurance,
+                     propertyTax, mgmtFee, replacementReserves, totalOpex, noi
+  Each row carries: broker, t12, platform, resolved values + source badge
+
+PROJECTIONS TAB (multi-year, full operating statement)
+  projections[*] for years 1..holdYears (or 10):
+    All fields from Pro Forma + interest, principal, debtService, cfbt, cfads,
+    occupancy, dscr, debtYield, capRatePct, noiMarginPct
+
+ASSUMPTIONS TAB (compact + detailed modes)
+  All input fields from §3.1-§3.5 with source badges and edit affordances
+
+UNIT MIX TAB
+  rentRollSummary.unitMix[*]: type, count, avgSf, inPlaceRent, marketRent,
+                              occupancyPct, concessionPct
+  rentRollSummary aggregates: avgInPlaceRent, weightedOccupancyPct, gprFromUnitMix
+
+DEBT TAB
+  debt.loans[*]: id, name, loanType, rate, term, amort, ioPeriod, ltv, ltc,
+                 dscrY1, debtYieldY1, prepayType, ...
+  debt.aggregate: totalLoanAmount, blendedRate, combinedLtc, totalAnnualDS,
+                  aggregateDscr
+  Annual schedule: beginningBalance, interest, principal, debtService, ending
+
+TAXES TAB
+  taxes.reTax: t12AssessedValue, platformAssessedValue, isMiamiDade,
+               sohCapPct (10% for non-homestead), perYear[]
+  taxes.tpp: broker, platform amount
+  taxes.incomeTax: depreciableBase, annualDepreciation, bonusDepreciation,
+                   marginalTaxRate
+  taxes.transferTax: docStamps, intangibleTax, total at acquisition;
+                     dispositionDocStamps at exit
+
+SOURCES & USES TAB
+  sourcesUses.uses[*]: purchasePrice, closingCosts, transferTaxes, capex, ...
+  sourcesUses.sources[*]: senior_debt, mezz, lp_equity, gp_equity, ...
+  sourcesUses.benchmarks: totalCostPerUnit, capexPerUnit, debtPct, equityPct
+
+CAP & WATERFALL TAB
+  capital.tranches[*]: id, label, role, pct, prefRate, ...
+  capital.schedule[*]: per-year per-tier distributions
+  capital.metrics: lpIrr, lpEquityMultiple, gpIrr, gpEquityMultiple, totalLpDist
+  waterfallDistributions[*]: per-tier breakdown
+
+RETURNS TAB
+  returns.lpNetIrr, returns.lpEquityMultiple, returns.avgCashOnCash,
+  returns.gpPromoteEarned, returns.unleveragedIrr, returns.unleveragedEm,
+  returns.goingInCapRate, returns.stabilizedCapRate, returns.yocUntrended,
+  returns.yocTrended, returns.devSpread, returns.minDscr, returns.avgDscr,
+  returns.peakEquityDeployed, returns.equityRecoveryYear, returns.breakevenCfYear,
+  returns.lpTrancheReturns[*], returns.debtMetrics (full nested structure)
+
+SENSITIVITY TAB
+  sensitivityAnalysis.matrix: 2D array of IRR by (exitCap × rentGrowth)
+  sensitivityAnalysis.matrixEM: Same for Equity Multiple
+
+DECISION TAB (merged with Walkthrough per Move 4)
+  Top: integrityChecks (severe/material warnings + verdict)
+  Middle: stressScenarios[*]
+  Bottom: reasoningNarrative (long-form Walkthrough)
+  Risk register: derived from soft-checks + collision report
+
+COMPARE (in version dropdown — Move 3)
+  Compare table: per-field diff between two ModelVersion records
+  Each version has its own ModelResults snapshot
+
+
+================================================================================
+SECTION 9  —  RECONCILIATION & CACHE BEHAVIOR
+================================================================================
+
+The agent does not blindly re-run. It identifies which fields are dirty
+and re-derives only those plus their downstream dependents.
+
+────────────────────────────────────────────────────────────────────────────────
+9.1  WHEN THE AGENT RE-FIRES (FULL RUN)
+────────────────────────────────────────────────────────────────────────────────
+
+The agent runs end-to-end when:
+  - User explicitly clicks Build
+  - DealContext cache is older than 24 hours
+  - Major upstream module update (M07 traffic recal, M14 risk model update)
+  - dealType changes
+
+────────────────────────────────────────────────────────────────────────────────
+9.2  INPUT-CHANGE INVALIDATION RULES
+────────────────────────────────────────────────────────────────────────────────
+
+When a user edits a single input, only specific downstream fields invalidate.
+
+  CHANGE: purchasePrice
+    INVALIDATES: closingCosts, docStamps, titleInsurance, totalEquity,
+                 totalAcquisitionCost, propertyTax (reassessment base),
+                 LTV-derived loanAmount, going-in cap, exit-implied prices,
+                 ALL returns metrics
+
+  CHANGE: marketRent (one component)
+    INVALIDATES: GPR, lossToLease$, baseRevenue, EGR, mgmtFee, NOI, CF,
+                 DSCR, returns
+
+  CHANGE: vacancy_y1 only
+    INVALIDATES: vacancy$(1), baseRevenue(1), EGR(1), NOI(1), CF(1),
+                 DSCR(1), Y1 returns; Y2+ unchanged
+
+  CHANGE: rentGrowth[Y1] only
+    INVALIDATES: cumulativeGrowth(y) for y >= 1, GPR(y) for y >= 1,
+                 ALL operating fields y >= 1, returns
+
+  CHANGE: rate
+    INVALIDATES: monthlyPmt, debtService(y) for y > ioPeriod,
+                 debt schedule y > ioPeriod, DSCR(y) for affected years,
+                 returns
+
+  CHANGE: exitCap only
+    INVALIDATES: grossSalePrice, equityProceeds, exitYear cashflow,
+                 IRR, equityMultiple
+    Operating model unchanged.
+
+  CHANGE: holdYears
+    INVALIDATES: stabilizedNOI (different forward year), exit calculations,
+                 cashflow vector length, IRR, EM
+
+────────────────────────────────────────────────────────────────────────────────
+9.3  DEAL CONTEXT CACHE
+────────────────────────────────────────────────────────────────────────────────
+
+Cache TTL: 24 hours.
+Key: dealId + assumptionsHash + dealDataHash.
+
+Cache hit cuts agent invocation cost by ~60-70% (per project memory).
+Cache miss = full re-derivation.
+
+The agent must verify cache integrity on hit:
+  - Confirm assumptionsHash matches current
+  - Confirm no upstream module updated since cache write
+  - If either fails, treat as cache miss
+
+
+================================================================================
+SECTION 10  —  EDGE CASES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+10.1  holdYears == 1
+────────────────────────────────────────────────────────────────────────────────
+
+Cash flow vector has 2 elements: [-totalEquity, CF(1) + equityProceeds].
+IRR is well-defined: IRR = (CF(1) + equityProceeds) / totalEquity - 1.
+Newton-Raphson handles this; just ensure initial guess is sensible.
+
+────────────────────────────────────────────────────────────────────────────────
+10.2  loanAmount == 0  (all-equity deal)
+────────────────────────────────────────────────────────────────────────────────
+
+  - DSCR is undefined for every year. Set to null. Surface in integrity check.
+  - Debt schedule is empty.
+  - Levered IRR == unlevered IRR.
+  - LTV, LTC are 0 or null.
+  - Refinance proceeds are 0.
+  - debtService(y) = 0 for all y.
+
+────────────────────────────────────────────────────────────────────────────────
+10.3  No T-12 / no rent roll / no tax bill
+────────────────────────────────────────────────────────────────────────────────
+
+The seeder bails with "No extraction sources available" (per current code).
+The agent receives this signal via f9Financials.proforma.integrityChecks
+containing 'extraction_data_missing' (status: error).
+
+In this case the agent:
+  1. Does NOT proceed with full derivation
+  2. Returns a partial output with error flag
+  3. Populates only fields the user explicitly provided
+  4. Halts cleanly with a user-visible message
+
+If only OM is available (Bishop case), the agent attempts a partial run
+using OM-extracted fields with confidence: low across the board.
+
+────────────────────────────────────────────────────────────────────────────────
+10.4  Newton-Raphson divergence
+────────────────────────────────────────────────────────────────────────────────
+
+If IRR cannot converge in 30 iterations:
+  - Return IRR = null
+  - Set integrity check 'irr_not_computable' with status 'warn'
+  - Equity multiple still computable (no Newton-Raphson needed)
+
+Common causes: deal loses money throughout (sum of cashFlows < 0) — IRR
+is negative, but Newton-Raphson can still converge if initial guess
+is negative. Try guess = -0.10 as a fallback.
+
+────────────────────────────────────────────────────────────────────────────────
+10.5  Negative NOI
+────────────────────────────────────────────────────────────────────────────────
+
+In year 1 of a heavy renovation: NOI may be negative (revenue down,
+expenses constant, capex pulling). The agent allows this; it's a real
+operating reality. DSCR will be negative (also real — debt service
+covered by reserves or new equity). Surface in soft-check 'NEGATIVE_NOI'.
+
+────────────────────────────────────────────────────────────────────────────────
+10.6  Development with no purchase price
+────────────────────────────────────────────────────────────────────────────────
+
+For ground-up: replace purchasePrice with totalProjectCost = landCost +
+hardCosts × (1 + contingency) + softCosts + developerFee.
+Going-in cap rate is derived from stabilized NOI / totalProjectCost.
+Property tax assessment uses totalProjectCost as the reassessment base
+post-completion.
+
+────────────────────────────────────────────────────────────────────────────────
+10.7  Refinance during hold
+────────────────────────────────────────────────────────────────────────────────
+
+If user specifies refinance event:
+  - At refinance year: new loan replaces old
+  - Old loan paid off (loanBalance(refiYear-1))
+  - New loan proceeds = newLoanAmount
+  - Net refinance proceeds to equity = newLoanAmount - oldLoanBalance - refiCosts
+  - Add to cashFlows[refiYear] (positive distribution)
+  - From refiYear forward, debt schedule recomputes with new terms
+
+This affects FL intangible tax: refi triggers a new mortgage, so a
+new 0.20% intangible tax applies to the new loan.
+
+
+================================================================================
+SECTION 11  —  FORMAL OUTPUT JSON SCHEMA
+================================================================================
+
+The agent returns this exact shape. Field names, types, units must match.
+
+ModelResults: {
+
+  summary: {
+    purchasePrice:         number,
+    loanAmount:            number,
+    totalEquity:           number,
+    noiYear1:              number | null,
+    noiByYear:             number[],
+    egiByYear:             number[],
+    cashOnCashByYear:      number[],
+    debtServiceCoverageByYear: number[],
+    debtYieldByYear:       number[],
+    goingInCapRate:        number | null,    // decimal
+    stabilizedCapRate:     number | null,    // decimal — null if not derivable
+    exitCapRate:           number,
+    irr:                   number | null,    // decimal — null on divergence
+    unleveredIrr:          number | null,
+    equityMultiple:        number,           // CORRECTED — not summed-with-outlay
+    avgCashOnCash:         number,
+    yieldOnCost: {
+      untrended:           number | null,
+      trended:             number | null,
+      devSpread:           number | null      // for development
+    },
+    loanBalanceAtExit:     number,
+    totalProfit:           number,
+    lpIrr:                 number | null,
+    lpEquityMultiple:      number,
+    lpCoC:                 number,
+    lpTotalDistributions:  number,
+    lpProfit:              number,
+    gpIrr:                 number | null,
+    gpEquityMultiple:      number,
+    gpCoC:                 number,
+    gpTotalDistributions:  number,
+    gpPromoteEarned:       number
+  },
+
+  annualCashFlow: [
+    {
+      year:                number,
+      grossPotentialRent:  number,
+      lossToLease:         number,           // negative
+      vacancy:             number,           // negative
+      concessions:         number,           // negative
+      badDebt:             number,           // negative
+      baseRevenue:         number,
+      otherIncome:         number,
+      effectiveGrossIncome: number,
+      payroll:             number,           // negative
+      maintenance:         number,           // negative
+      contractServices:    number,
+      marketing:           number,
+      utilities:           number,
+      admin:               number,
+      insurance:           number,
+      propertyTax:         number,           // FL non-homestead schedule
+      managementFee:       number,
+      replacementReserves: number,
+      totalExpenses:       number,
+      noi:                 number,
+      annualInterest:      number,
+      annualPrincipal:     number,
+      debtService:         number,
+      preTaxCashFlow:      number,           // CFBT
+      cfads:               number,           // CF after debt service
+      depreciation:        number | null,
+      taxableIncome:       number | null,
+      taxPayable:          number | null,
+      afterTaxCashFlow:    number | null,
+      dscr:                number | null,
+      debtYield:           number | null,
+      occupancy:           number,
+      capRateOnCost:       number,           // NOI(y) / totalAcqCost
+      isExitYear:          boolean
+    }
+  ],
+
+  disposition: {
+    stabilizedNOI:           number,
+    grossSalePrice:          number,
+    saleCosts:               number,
+    dispositionDocStamps:    number,
+    netSaleProceeds:         number,
+    loanBalance:             number,
+    equityProceeds:          number,
+    exitYear:                number
+  },
+
+  sourcesAndUses: {
+    sources: [{ id, label, amount, pct, sub, source, confidence }],
+    uses:    [{ id, label, amount, pct, sub, source, confidence }],
+    totalSources: number,
+    totalUses:    number,
+    delta:        number,
+    balanced:     boolean,
+    benchmarks: {
+      totalCostPerUnit:   number,
+      totalCostPerSf:     number,
+      closingCostsPct:    number,
+      debtPct:            number,
+      equityPct:          number,
+      capexPerUnit:       number
+    }
+  },
+
+  debtMetrics: {                              // expand the F9 type's debt section
+    coverage: {
+      dscrY1:                  number | null,
+      dscrMin:                 { year: number, value: number } | null,
+      dscrAvg:                 number | null,
+      dscrAtStabilization:     number | null,
+      debtYieldY1:             number | null,
+      debtYieldMin:            { year: number, value: number } | null,
+      interestCoverage:        number | null,
+      cashFlowCoverage:        number | null,
+      loanConstantBlended:     number | null
+    },
+    structural: {
+      ltvAtClose:              number | null,
+      ltvAtStab:               number | null,
+      ltvAtMaturity:           number | null,
+      ltc:                     number | null,
+      refiOutProbability:      number | null,
+      maturityRiskScore:       number | null
+    },
+    leverage: {
+      positiveLeverage:        boolean | null,
+      leverageSpreadBps:       number | null,
+      leverageIrrLiftBps:      number | null,
+      cashOnCashSpread:        number | null
+    },
+    stress: {
+      breakevenOccupancy:      number | null,
+      breakevenRent:           number | null,
+      dscrAtMinus10PctNOI:     number | null,
+      dscrAtPlus200bps:        number | null,
+      cashTrapDistanceBps:     number | null,
+      defaultBufferMonths:     number | null
+    },
+    refi: {
+      events:                  [{ year, payoff, prepayPenalty, exitFee, netProceeds }],
+      defeasanceCostToday:     number | null,
+      ymCostToday:             number | null,
+      costToRefiNowBps:        number | null
+    }
+  },
+
+  sensitivityAnalysis: {
+    matrix: {
+      exitCapAxis:    [number],            // decimals
+      rentGrowthAxis: [number],            // decimals
+      irrGrid:        number[][],          // dim: exitCap × rentGrowth
+      emGrid:         number[][]           // same
+    }
+  },
+
+  stressScenarios: [
+    {
+      scenario:         'base' | 'bear' | 'bull' | 'black_swan',
+      irr:              number | null,
+      equityMultiple:   number,
+      noiAtStab:        number,
+      dscrMin:          number | null,
+      breakevenOccupancy: number
+    }
+  ],
+
+  waterfallDistributions: [
+    {
+      tier:             number,
+      tierName:         string,
+      hurdleRate:       number,
+      lpDistribution:   number,
+      gpDistribution:   number,
+      lpSplit:          number,
+      gpSplit:          number,
+      promotePct:       number
+    }
+  ],
+
+  capital: {
+    tranches: [
+      {
+        id:                    string,
+        label:                 string,
+        role:                  'senior_debt' | 'mezz' | 'pref_eq' | 'lp_a' | 'lp_b' | 'gp' | 'deferred_fee',
+        amount:                number,
+        pct:                   number,
+        prefRate:              number,
+        compounding:           'annual' | 'monthly',
+        cumulative:            boolean,
+        participatePromote:    boolean
+      }
+    ],
+    schedule: [
+      {
+        period:                string,
+        year:                  number,
+        cfads:                 number,
+        activeTier:            string,
+        lpDist:                number,
+        gpDist:                number,
+        gpPromote:             number,
+        gpFees:                number,
+        prefAccrued:           number,
+        prefPaid:              number,
+        lpIrrToDate:           number | null,
+        lpEmToDate:            number,
+        isExit:                boolean
+      }
+    ],
+    metrics: {
+      lpIrr:                   number | null,
+      lpEquityMultiple:        number,
+      gpEquityMultiple:        number,
+      totalLpDistributions:    number,
+      totalGpDistributions:    number,
+      totalGpPromote:          number,
+      totalGpFees:             number
+    }
+  },
+
+  valuation: {
+    perUnit:          { goingIn, stabilized, atExit, submarketMedian, percentile },
+    perSF:            { netRentable: { goingIn, atExit, ... }, gross: { ... } },
+    multiples:        { grm, gim, nim, opexRatio, coc, capRate, yieldOnCost, devSpread },
+    replacementCost:  { rcTotal, rcPerUnit, priceToRC, buildArbitrageFlag, insurableValue },
+    positionMatrix:   { priceSF, capRate, quadrant, comps[] }
+  },
+
+  taxes: {
+    reTax: {
+      t12AssessedValue:       number | null,
+      t12MillageRate:         number | null,
+      t12AnnualTax:           number | null,
+      platformAssessedValue:  number,
+      platformMillageRate:    number,
+      platformAnnualTax:      number,
+      isMiamiDade:            boolean,
+      sohCapPct:              number,                    // 0.10 for non-homestead
+      perYear: [{ year, assessedValue, millageRate, taxAmount, capBinding, reassessmentEvent }],
+      deltaVsT12Pct:          number | null
+    },
+    tpp: {
+      broker:                 number | null,
+      platform:               number | null
+    },
+    incomeTax: {
+      purchasePrice:          number | null,
+      landValuePct:           number,
+      depreciableBase:        number,
+      annualDepreciation:     number,
+      bonusDepreciationCurrentYearPct: number,
+      costSegAvailablePct:    number,
+      marginalTaxRate:        number
+    },
+    transferTax: {
+      purchasePrice:          number,
+      isMiamiDade:            boolean,
+      docStampAmount:         number,
+      intangibleTaxAmount:    number,
+      loanAmount:             number,
+      totalTransferTax:       number,
+      refi: {
+        enabled:              boolean,
+        triggerYear:          number,
+        refiLoanAmount:       number,
+        refiDocStampAmount:   number,
+        refiIntangibleTax:    number,
+        refiTotalTax:         number
+      } | null,
+      dispositionDocStamps:   number
+    }
+  },
+
+  projections: [                                          // institutional detail per year
+    {
+      year:                   number,
+      gpr:                    number,
+      vacancyLoss:            number,
+      lossToLease:            number,
+      concessions:            number,
+      badDebt:                number,
+      nru:                    number,
+      nri:                    number,
+      otherIncome:            number,
+      egi:                    number,
+      payroll:                number,
+      repairs:                number,
+      turnover:               number,
+      contractSvc:            number,
+      marketing:              number,
+      utilities:              number,
+      gAndA:                  number,
+      mgmtFee:                number,
+      insurance:              number,
+      reTaxes:                number,
+      reserves:               number,
+      totalOpex:              number,
+      noi:                    number,
+      opMargin:               number | null,
+      noiPerUnit:             number | null,
+      interest:               number,
+      principal:              number,
+      annualDS:               number,
+      outstandingBalance:     number,
+      cfbt:                   number,
+      cfads:                  number,
+      depreciation:           number | null,
+      taxableIncome:          number | null,
+      taxPayable:             number | null,
+      afterTaxCfads:          number | null,
+      effectiveTaxRate:       number | null,
+      coc:                    number | null,
+      dscr:                   number | null,
+      debtYield:              number | null,
+      occupancy:              number,
+      rentGrowthPct:          number,
+      opexRatioPct:           number | null,
+      noiMarginPct:           number | null,
+      capRatePct:             number | null,
+      cumulativeEM:           number | null,
+      exitNoi:                number | null,
+      exitCap:                number | null,
+      grossSaleValue:         number | null,
+      sellingCosts:           number | null,
+      dispositionDocStamps:   number | null,
+      dispositionTaxPayable:  number | null,
+      loanPayoff:             number | null,
+      netSaleProceeds:        number | null,
+      reTaxSource:            'taxes_tab' | 'proforma' | 'estimate',
+      debtSource:             'debt_tab' | 'capital_stack' | 'estimate'
+    }
+  ],
+
+  integrityChecks: [
+    {
+      id:                     string,                     // e.g. 'noi_positive'
+      status:                 'ok' | 'warn' | 'error',
+      message:                string,
+      detail:                 object | null
+    }
+  ],
+
+  reasoning: {
+    perField: {
+      [fieldName]: {
+        source:               string,
+        confidence:           string,
+        narrative:            string,
+        evidence:             [{ type, sourceId, sourceName, value, asOfDate, weight }],
+        alternatives:         [{ considered, rejected, reason, wouldHaveImpacted }]
+      }
+    },
+    walkthrough:              string,                     // long-form 5-paragraph
+    collisionReport:          [...]                       // see §7.5
+  },
+
+  meta: {
+    agentName:                'cashflow',
+    agentVersion:             string,
+    runId:                    UUID,
+    derivedAt:                ISO,
+    cacheStatus:              'hit' | 'miss' | 'partial',
+    cacheKey:                 string,
+    specVersion:              '1.0',
+    durationMs:               number
+  }
+}
+
+
+================================================================================
+SECTION 12  —  WORKED EXAMPLE — WESTSHORE COMMONS
+================================================================================
+
+INPUT:
+  Property:        Westshore Commons, Tampa FL (Westshore submarket)
+  Class:           B
+  Vintage:         1998 (renovated 2018)
+  Units:           248
+  Avg Unit SF:     880
+  Asking Price:    $38,500,000  ($155,242/unit)
+  CapEx Budget:    $2,480,000   ($10,000/unit value-add)
+  Loan:            $23,100,000 (60% LTV)
+  Rate:            6.35%
+  Term/Amort/IO:   10/30/3 years
+  Hold Period:     7 years
+  Exit Cap:        5.75%
+
+DERIVATION TRACE (abbreviated):
+
+Step 1: Acquisition costs
+  closingCosts      = 38,500,000 × 0.010   = 385,000
+  docStamps         = 38,500,000 × 0.0070  = 269,500
+  intangibleTax     = 23,100,000 × 0.0020  = 46,200
+  titleInsurance    = 38,500,000 × 0.0030  = 115,500
+  totalAcqCost      = 38,500,000 + 385,000 + 269,500 + 46,200 + 115,500
+                    + 2,480,000           = 41,796,200
+
+Step 2: Equity
+  totalEquity       = 41,796,200 - 23,100,000 = 18,696,200
+
+Step 3: Year-1 revenue
+  GPR(1)            = 248 × $1,950 × 12   = 5,802,720
+  lossToLease$      = 5,802,720 × 0.071    = 411,993
+  vacancy$(1)       = 5,802,720 × 0.078    = 452,612
+  concessions$      = 5,802,720 × 0.018    = 104,449
+  badDebt$          = 5,802,720 × 0.012    = 69,633
+  baseRevenue(1)    = 5,802,720 - 1,038,687 = 4,764,033
+  otherIncome(1)    = 248 × $820          = 203,360
+  EGR(1)            = 4,764,033 + 203,360  = 4,967,393
+
+Step 4: Year-1 expenses
+  payroll(1)        = 248 × $890           = 220,720
+  maintenance(1)    = 248 × $540           = 133,920
+  contractServices  = 248 × $180           = 44,640
+  marketing         = 248 × $135           = 33,480
+  utilities         = 248 × $310           = 76,880
+  admin             = 248 × $220           = 54,560
+  insurance         = 248 × $720           = 178,560
+  propertyTax(1)    = 38,500,000 × 0.85 × 0.0218
+                    = 32,725,000 × 0.0218  = 713,405
+  mgmtFee           = 4,967,393 × 0.030    = 149,022
+  reserves          = 248 × $300           = 74,400
+  totalOpex(1)                             = 1,679,587
+
+  NOI(1)            = 4,967,393 - 1,679,587 = 3,287,806
+
+Step 5: Year-1 debt service
+  monthlyRate       = 0.0635 / 12          = 0.00529
+  amortMonths       = 30 × 12              = 360
+  monthlyPmt        = 23,100,000 × [0.00529 × (1.00529)^360]
+                                          / [(1.00529)^360 - 1]
+                    = 143,540
+  annualPmt         = 1,722,480
+  Y1 is IO:
+    annualInterest(1) = 23,100,000 × 0.0635 = 1,466,850
+    debtService(1)   = 1,466,850
+    principal(1)     = 0
+    DSCR(1)          = 3,287,806 / 1,466,850 = 2.24
+
+  Y4 (post-IO):
+    debtService(4)   = 1,722,480
+    principal(4)     ≈ 234,000
+    DSCR(4)          = NOI(4) / 1,722,480 ≈ varies with NOI growth
+
+Step 6: Property tax schedule (FL 10% non-homestead cap)
+  Y1: 32,725,000 × 0.0218        = 713,405
+  Y2: 36,000,000 × 0.0218        = 784,800
+  Y3: 39,600,000 × 0.0218        = 863,280
+  Y4: 43,560,000 × 0.0218        = 949,608
+  Y5: 47,916,000 × 0.0218        = 1,044,569
+  Y6: 52,708,000 × 0.0218        = 1,149,028
+  Y7: 57,978,000 × 0.0218        = 1,263,920
+  Y8: 63,776,000 × 0.0218        = 1,390,317  (used for stabilized NOI)
+
+  Y8 vs Y1 ratio: 1,390,317 / 713,405 = 1.949
+  → Year-8 property tax is +94.9% above Year-1 (the FL 10% cap effect over 7 years)
+
+Step 7: Disposition (Year 7 exit, forward NOI from Year 8)
+  stabilizedNOI(Y8)  ≈ 4,750,000  (after 7 years of 2.8-4.5% rent growth, expenses)
+  grossSalePrice     = 4,750,000 / 0.0575     = 82,608,696
+  saleCosts          = 82,608,696 × 0.020      = 1,652,174
+  dispositionDocStamps = 82,608,696 × 0.0070  = 578,261
+  netSaleProceeds    = 82,608,696 - 1,652,174 - 578,261 = 80,378,261
+  loanBalanceAtExit  = ~21,500,000  (after 4 years of amortization)
+  equityProceeds     = 80,378,261 - 21,500,000 = 58,878,261
+
+Step 8: Cash flow vector
+  cashFlows[0] = -18,696,200
+  cashFlows[1] = CF(1) = 3,287,806 - 1,466,850 = 1,820,956
+  cashFlows[2] = ~2,100,000
+  cashFlows[3] = ~2,400,000
+  cashFlows[4] = ~1,800,000  (post-IO, principal eats CF)
+  cashFlows[5] = ~2,000,000
+  cashFlows[6] = ~2,200,000
+  cashFlows[7] = ~2,400,000 + 58,878,261 = 61,278,261
+
+Step 9: Returns
+  IRR (Newton-Raphson on cashFlows)        ≈ 24.3%
+  Equity Multiple                           = (Σ cashFlows[1..7]) / 18,696,200
+                                            = 73,478,261 / 18,696,200 = 3.93×
+
+  CORRECTED EM EXAMPLE: If we sum the entire vector (including the negative
+  outlay), we get 73,478,261 - 18,696,200 = 54,782,061. Dividing that by
+  totalEquity gives 2.93×. The bot's draft formula would produce 2.93×.
+  The correct EM is 3.93×, computed on positive distributions only.
+
+Step 10: Reasoning attached to each derived field
+  E.g., for marketRent:
+    "Y1 market rent of $1,950/u/mo derived from three comparable owned
+     Westshore Class B assets at 70% weight (avg $1,932) blended with M05
+     submarket median at 30% weight ($1,985). Confidence: high (n=3 >= 3).
+     Alternative considered: pure submarket benchmark $1,985 — rejected
+     because owned-portfolio is more directly comparable."
+
+Step 11: Walkthrough narrative produced
+  (5-paragraph long-form per §7.4)
+
+
+================================================================================
+SECTION 13  —  KNOWN GAPS & PLACEHOLDERS
+================================================================================
+
+These are gaps where current code uses heuristics instead of full derivation.
+Each is marked PLACEHOLDER and should become a punch-list item.
+
+GAP-1  GP All-In Multiple
+  CURRENT: out.returns.gpAllInMultiple = s.gpEm × 1.3  (heuristic)
+  CORRECT: Compute as (totalGpDistributions + gpPromote + gpFees) / gpEquity
+  STATUS:  PLACEHOLDER. Real formula depends on shop-specific fee structure.
+
+GAP-2  Stabilized cap rate fallback
+  CURRENT: s.irr × 0.85 if not derivable (FIXED in patch — now returns null)
+  CORRECT: stabilizationYear-NOI / purchasePrice
+  STATUS:  Patched; agent should compute properly.
+
+GAP-3  Non-FL transaction tax math
+  CURRENT: Florida-only logic implemented; no jurisdiction service
+  CORRECT: Pluggable per-state ruleset (TX, GA, NY, etc.)
+  STATUS:  PLACEHOLDER. Default to 0.5% × purchasePrice for non-FL.
+  REFERENCE: AGENT_TASK_INVENTORY.md Task 6.5
+
+GAP-4  Insurance jurisdiction service
+  CURRENT: FL-specific rate cap; no other states
+  CORRECT: State-specific rate regulations + zone-specific premiums
+  STATUS:  PLACEHOLDER.
+  REFERENCE: AGENT_TASK_INVENTORY.md Task 6.10
+
+GAP-5  Lease-up curve calibration
+  CURRENT: Uses M07 absorption curve when present; no fallback
+  CORRECT: Document fallback when M07 unavailable
+  STATUS:  PARTIAL. Agent should default to industry-standard curve.
+
+GAP-6  M14 risk-adjusted underwriting
+  CURRENT: Soft checks reference M14 thresholds but no Monte Carlo run
+  CORRECT: M14 computes prob-weighted IRR via 1000-run Monte Carlo
+  STATUS:  Specced (M14_Risk_Score), not yet running in production.
+  REFERENCE: AGENT_TASK_INVENTORY.md task 6.3
+
+GAP-7  Refinance handling
+  CURRENT: Schema supports refi; agent does not yet model
+  CORRECT: Per §10.7 trigger refi event, recompute downstream debt schedule
+  STATUS:  PLACEHOLDER. Schema in place; logic missing.
+
+GAP-8  Cost segregation study integration
+  CURRENT: costSegAvailablePct hardcoded 30%
+  CORRECT: Per-property-type cost seg yield (commercial vs residential)
+  STATUS:  PLACEHOLDER.
+
+GAP-9  Lease-up vs stabilized vacancy split for Year 1
+  CURRENT: vacancy_y1 from rent roll; lease-up curve overrides this
+  EDGE CASE: deal at 80% occupancy at close — neither mode applies cleanly
+  STATUS:  Document the threshold (e.g., < 90% occupancy → lease-up mode)
+
+GAP-10 Waterfall hurdle inputs
+  CURRENT: Hurdle rates not in §1.1 input list of bot's draft (now corrected
+            in this spec's §3.12)
+  CORRECT: User must specify pref hurdle, promote tier hurdles
+  STATUS:  Schema exists; agent must enforce as required inputs.
+
+
+================================================================================
+SECTION 14  —  VERSIONING & MAINTENANCE
+================================================================================
+
+DOCUMENT VERSIONING
+  This document is versioned 1.0. When formulas, schema, or rules change,
+  bump the version. The agent must check spec version against runtime
+  expectation; mismatch is a hard error.
+
+CODE-DOC SYNC
+  Before deploying changes to:
+    - F9DealFinancials type → update §11
+    - proforma-seeder.service.ts FIELD_PRIORITIES → update §4.2
+    - mergeModelIntoFinancials → update §3 derivation rules
+    - tax service → update §3.13
+    - waterfall logic → update §3.12
+
+REVIEW CADENCE
+  Re-review this document every 30 days against actual code behavior.
+  Any drift becomes a documentation bug.
+
+CONSISTENCY INVARIANTS THE AGENT VERIFIES IF DOC MAY BE STALE
+  At runtime, the agent verifies:
+    - F9DealFinancials TypeScript type matches §11 schema
+    - Seeder FIELD_PRIORITIES matches §4.2
+    - Florida tax rate constants (§3.13) unchanged
+  If any verify fails, the agent halts and surfaces SPEC_DRIFT error.
+
+
+================================================================================
+APPENDIX A  —  FLORIDA-SPECIFIC MECHANICS REFERENCE
+================================================================================
+
+PROPERTY TAX
+  Real property is appraised at "just value" by the county appraiser.
+  Just value approximates market value but typically lands at 85-95% of
+  recent sale price (varies by county; Hillsborough ~85%, Miami-Dade ~88%).
+  Once a property is reassessed (sale or major renovation), the assessed
+  value is "capped" — for non-homestead, the cap is 10% annual growth
+  (per Amendment 1, 2008). This is sometimes called "10% NHCap." For
+  homestead properties, the cap is 3% (Save Our Homes / SOH). Investment
+  multifamily is non-homestead and falls under the 10% cap.
+
+  When property changes hands, the cap RESETS to current market value.
+  The cap then re-engages at 10% from that new base.
+
+  The cap binds early in the hold (when market value grows >10%/yr) and
+  may un-bind in later years if market value plateaus.
+
+DOCUMENTARY STAMP TAX (DEED)
+  Statewide rate: 0.70% of sale consideration ($0.70 per $100).
+  Miami-Dade real property: 0.60% + 0.45% surtax on non-residential.
+  For multifamily (residential) in Miami-Dade: 0.60% only.
+
+INTANGIBLE TAX (MORTGAGE)
+  Non-recurring tax: 0.20% of mortgage amount, paid at recordation.
+  Applies to new mortgages and refinances above prior balance.
+
+INSURANCE POST-REFORM (2024+)
+  Florida passed insurance reform legislation creating an 8% rate cap
+  on annual increases for primary insurers. Carriers re-entering the
+  market are pricing at lower base premiums than peak 2022-2023.
+  Underwriting should target sub-$700/u/yr for stabilized institutional
+  multifamily in non-coastal counties; coastal exposure adds ~$200-400/u.
+
+
+================================================================================
+APPENDIX B  —  GLOSSARY
+================================================================================
+
+EGR / EGI   Effective Gross Revenue / Income — same thing. Revenue net of
+             vacancy, concessions, bad debt, before adding other income.
+             Some shops include other income in EGR; others separate.
+             This spec includes other income in EGR (per current code).
+
+NOI         Net Operating Income — EGR minus operating expenses (excludes
+             debt service and capex).
+
+CF / CFADS  Cash Flow / Cash Flow After Debt Service — NOI minus debt
+             service. May or may not include capex depending on convention.
+             This spec: CF excludes capex (capex is Y0 outlay, not annual).
+
+CFBT        Cash Flow Before Tax — same as CF in this spec.
+
+DSCR        Debt Service Coverage Ratio — NOI / debt service.
+             Min 1.20-1.25 typical for institutional multifamily.
+
+LTV / LTC   Loan-to-Value / Loan-to-Cost — debt as fraction of property
+             value or total cost. LTC includes capex; LTV is on stabilized
+             value.
+
+GPR         Gross Potential Rent — units × marketRent × 12, before any
+             losses or vacancy.
+
+LTL         Loss-to-Lease — gap between in-place rent and market rent,
+             expressed as fraction of GPR. Distinct from vacancy.
+
+GRM / GIM   Gross Rent Multiplier / Gross Income Multiplier — purchase
+             price / annual rent or income. Quick-look valuation metric.
+
+CoC         Cash-on-Cash return — annual cash flow / equity invested.
+             Different from IRR (which discounts time).
+
+YOC         Yield on Cost — stabilized NOI / total project cost. Used
+             to compare development to acquisition.
+
+IRR         Internal Rate of Return — discount rate that makes NPV zero.
+             Newton-Raphson solved.
+
+EM          Equity Multiple — total distributions / equity invested.
+             Does NOT include the negative outlay in numerator.
+
+SOH         Save Our Homes — FL homestead 3% annual assessment cap.
+
+NHCap       Non-Homestead Cap — FL 10% annual assessment cap for non-
+             homestead (investment) properties. The bot's draft called
+             this "CNADR" which is incorrect terminology.
+
+T-12        Trailing 12 months. Operating statement covering the most
+             recent 12 months of historical operating data.
+
+DealContext A canonical assembled JSON containing all platform data
+             relevant to a deal. Cached 24h.
+
+
+================================================================================
+APPENDIX C  —  PROMPT SCAFFOLDING FOR AGENT INVOCATION
+================================================================================
+
+When invoking the F9 agent, the orchestrator constructs a prompt in this
+shape:
+
+  SYSTEM:
+    You are the Cashflow Agent for JEDI RE. Read the F9 specification
+    document carefully. Execute the derivation rules in §3 to produce
+    the output schema in §11. Return JSON only.
+
+  USER:
+    [F9 Specification Document — full content of this file]
+
+  USER:
+    Deal Context:
+    [Full DealContext JSON]
+    Assumptions:
+    [Full ModelAssumptions JSON]
+    User overrides:
+    [Override dict]
+    Cache key:
+    [hash]
+    Prior cache:
+    [stale F9DealFinancials, may be partially used]
+
+  USER:
+    Produce the F9 model output. Adhere strictly to §11 schema.
+    Run §6 reconciliation before returning. Halt and report if any
+    INV-X invariant fails.
+
+The agent's response is parsed, reconciliation is re-verified server-side
+(belt-and-suspenders), and the result is merged into f9Financials via
+mergeModelIntoFinancials.
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================
