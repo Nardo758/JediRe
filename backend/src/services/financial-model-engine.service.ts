@@ -175,6 +175,37 @@ export interface ProFormaAssumptions {
 }
 
 export interface FinancialModelResult {
+  /** Deterministic evidence payload injected by buildModel() after verification. */
+  evidence?: {
+    confidence_distribution: { high: number; medium: number; low: number };
+    fields: Array<{
+      field: string;
+      value: number | null;
+      source: string;
+      confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+      reasoning: string;
+    }>;
+  };
+  /** Reasoning payload injected by buildModel() after verification. */
+  reasoning?: {
+    walkthrough: string;
+    collisionReport: Array<{
+      field: string;
+      magnitude: 'material' | 'critical';
+      sourceA_value: number;
+      sourceB_value: number;
+      delta: number;
+      selectedSource: string;
+      reason: string;
+      narrative: string;
+    }>;
+  };
+  /** Integrity checks merged from deterministic runner after verification. */
+  integrityChecks?: Array<{
+    id: string;
+    status: 'pass' | 'warn' | 'error';
+    message: string;
+  }>;
   summary: {
     irr: number;
     equityMultiple: number;
@@ -532,21 +563,15 @@ export class FinancialModelEngineService {
           // Inject deterministic evidence, reasoning, and integrity signals into LLM
           // result before persist. These fields come exclusively from the deterministic
           // runner and cannot be hallucinated by the LLM.
-          (result as any).evidence = deterministicResult.evidence;
-          (result as any).reasoning = Object.assign(
-            {},
-            typeof (result as any).reasoning === 'object' ? (result as any).reasoning : {},
-            {
-              walkthrough: deterministicResult.reasoning.walkthrough,
-              collisionReport: deterministicResult.reasoning.collisionReport,
-            },
-          );
+          result.evidence = deterministicResult.evidence;
+          result.reasoning = {
+            walkthrough: deterministicResult.reasoning.walkthrough,
+            collisionReport: deterministicResult.reasoning.collisionReport,
+          };
           // Merge deterministic integrity checks (including LOW_CONFIDENCE_MODEL warn)
           // into the persisted result so the full signal set is available to consumers.
-          const existingChecks: unknown[] = Array.isArray((result as any).integrityChecks)
-            ? (result as any).integrityChecks
-            : [];
-          (result as any).integrityChecks = [...existingChecks, ...deterministicResult.integrityChecks];
+          const existingChecks = Array.isArray(result.integrityChecks) ? result.integrityChecks : [];
+          result.integrityChecks = [...existingChecks, ...deterministicResult.integrityChecks];
         }
       } catch (verifyErr: any) {
         // Fail-closed: if the bridge or runner itself throws, treat as a hard failure.

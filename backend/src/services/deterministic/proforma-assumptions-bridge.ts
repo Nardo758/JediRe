@@ -133,12 +133,27 @@ export function buildEvidenceHintsFromSeed(seed: ProFormaYear1Seed): {
     collisions.push(...detectCollisionsForField(key, lv, source));
   };
 
+  // Revenue fields
   addHint('noi', seed.noi, `Year-1 NOI resolved from ${resolutionToSource(seed.noi.resolution)}.`);
   addHint('gpr', seed.gpr);
+  addHint('egi', seed.egi);
+  addHint('net_rental_income', seed.net_rental_income);
   addHint('vacancy_pct', seed.vacancy_pct);
+  addHint('loss_to_lease_pct', seed.loss_to_lease_pct);
+  addHint('concessions_pct', seed.concessions_pct);
+  addHint('bad_debt_pct', seed.bad_debt_pct);
+  addHint('other_income_per_unit', seed.other_income_per_unit);
+  // Expense fields
   addHint('real_estate_tax', seed.real_estate_tax);
   addHint('insurance', seed.insurance);
   addHint('management_fee_pct', seed.management_fee_pct);
+  addHint('payroll', seed.payroll);
+  addHint('repairs_maintenance', seed.repairs_maintenance);
+  addHint('utilities', seed.utilities);
+  addHint('contract_services', seed.contract_services);
+  addHint('turnover', seed.turnover);
+  addHint('g_and_a', seed.g_and_a);
+  addHint('total_opex', seed.total_opex);
 
   return { hints, collisions };
 }
