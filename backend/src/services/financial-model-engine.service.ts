@@ -5,6 +5,8 @@ import { dataFlowRouter } from './module-wiring/data-flow-router';
 import { logger } from '../utils/logger';
 import { applyFullAnchorInterceptor, normalizeExpensesForInterceptor, rekeyExpensesFromInterceptor } from './sigma/anchor-interceptor.service';
 import OpenAI from 'openai';
+import { mapProFormaAssumptionsToModelAssumptions } from './deterministic/proforma-assumptions-bridge';
+import { runModel, runIntegrityChecks } from './deterministic/deterministic-model-runner';
 
 /**
  * selectLLMClient — provider-selection strategy for the financial-model build path.
@@ -461,6 +463,45 @@ export class FinancialModelEngineService {
     try {
       const result = await this.callLLMForModel(enhancedAssumptions as any);
 
+      // ── Phase 5: Server-side integrity verification (F9 wiring spec W1/W2) ──
+      // Translate the ProFormaAssumptions envelope to the deterministic runner's
+      // flat ModelAssumptions struct, run the full deterministic model, then
+      // execute all hard invariant checks.  Any INV-X failure halts the build
+      // and writes status='error' before we touch the DB with 'complete'.
+      let verificationPassed = true;
+      let verificationDiagnostics = '';
+      try {
+        const modelAssumptions = mapProFormaAssumptionsToModelAssumptions(enhancedAssumptions as ProFormaAssumptions);
+        const deterministicResult = runModel(modelAssumptions, { skipSensitivity: true });
+        const checks = runIntegrityChecks(modelAssumptions, deterministicResult);
+        const hardFailures = checks.filter(c => c.status === 'error');
+        if (hardFailures.length > 0) {
+          verificationPassed = false;
+          verificationDiagnostics = hardFailures
+            .map(c => `${c.id}: ${c.message}`)
+            .join('; ');
+          logger.error(
+            `[F9-Verifier] Hard invariant failures for ${dealId}: ${verificationDiagnostics}`
+          );
+        } else {
+          logger.info(
+            `[F9-Verifier] All invariants pass for ${dealId}` +
+            ` (${checks.filter(c => c.status === 'warn').length} warnings)`
+          );
+        }
+      } catch (verifyErr: any) {
+        // Non-fatal: log and continue if bridge/runner itself throws (e.g. bad input shape)
+        logger.warn(`[F9-Verifier] Verification skipped for ${dealId}: ${verifyErr?.message}`);
+      }
+
+      if (!verificationPassed) {
+        await pool.query(
+          `UPDATE deal_financial_models SET status = 'error', error_message = $1, updated_at = NOW() WHERE id = $2`,
+          [`F9 integrity checks failed: ${verificationDiagnostics}`, modelId]
+        );
+        throw new Error(`F9 integrity checks failed: ${verificationDiagnostics}`);
+      }
+
       await pool.query(
         `UPDATE deal_financial_models SET results = $1, status = 'complete', updated_at = NOW() WHERE id = $2`,
         [JSON.stringify(result), modelId]
@@ -468,10 +509,13 @@ export class FinancialModelEngineService {
 
       return result;
     } catch (error: any) {
-      await pool.query(
-        `UPDATE deal_financial_models SET status = 'error', error_message = $1, updated_at = NOW() WHERE id = $2`,
-        [error.message, modelId]
-      );
+      // Only update status to error if we haven't already done so above
+      if (!error.message?.startsWith('F9 integrity checks failed')) {
+        await pool.query(
+          `UPDATE deal_financial_models SET status = 'error', error_message = $1, updated_at = NOW() WHERE id = $2`,
+          [error.message, modelId]
+        );
+      }
       throw error;
     }
   }

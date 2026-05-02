@@ -596,7 +596,7 @@ export function computeSensitivityMatrix(
         exitCap: exitCapAxis[ei],
         rentGrowth: base.rentGrowth.map(r => r * (isFinite(rcScale) ? rcScale : 1)),
       };
-      const result = runModel(adjusted);
+      const result = runModel(adjusted, { skipSensitivity: true });
       irrGrid[ei][ri] = result.summary.irr;
       emGrid[ei][ri] = result.summary.equityMultiple;
     }
@@ -691,7 +691,7 @@ function buildCashFlowVector(totalEquity: number, annualRows: AnnualCashFlowRow[
 
 // ── Main runner ────────────────────────────────────────────────────────────
 
-export function runModel(a: ModelAssumptions): ModelResults {
+export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean }): ModelResults {
   const log: string[] = [];
   const hold = a.holdYears;
   const nYears = hold + 1;
@@ -806,56 +806,44 @@ export function runModel(a: ModelAssumptions): ModelResults {
     a.preferredReturn, hold, a.promoteTiers, a.promoteSplits, equityProceeds,
   );
 
-  // Phase 9: Sensitivity
+  // Phase 9: Sensitivity (skipped in sub-runs to prevent recursion)
   log.push("Phase 9: Computing sensitivity matrix");
-  const sensitivity = computeSensitivityMatrix(a);
+  const sensitivity = opts?.skipSensitivity
+    ? { exitCapAxis: [], rentGrowthAxis: [], irrGrid: [], emGrid: [] }
+    : computeSensitivityMatrix(a);
 
-  // Phase 10: Stress scenarios
+  // Phase 10: Stress scenarios (skipped in sub-runs to prevent recursion)
   log.push("Phase 10: Computing stress scenarios");
   const stressScenarios: StressScenario[] = [
     { scenario: 'base', irr, equityMultiple: em, cashOnCash: avgCoC },
-    {
-      scenario: 'bear',
-      irr: null,
-      equityMultiple: null,
-      cashOnCash: null,
-    },
-    {
-      scenario: 'bull',
-      irr: null,
-      equityMultiple: null,
-      cashOnCash: null,
-    },
-    {
-      scenario: 'black_swan',
-      irr: null,
-      equityMultiple: null,
-      cashOnCash: null,
-    },
+    { scenario: 'bear', irr: null, equityMultiple: null, cashOnCash: null },
+    { scenario: 'bull', irr: null, equityMultiple: null, cashOnCash: null },
+    { scenario: 'black_swan', irr: null, equityMultiple: null, cashOnCash: null },
   ];
 
-  // Compute stress scenarios
-  const stressConfigs: { scenario: string; rgDelta: number; vacDelta: number; ecDelta: number; egDelta: number }[] = [
-    { scenario: 'bear', rgDelta: -0.015, vacDelta: 0.02, ecDelta: 0.0075, egDelta: 0.01 },
-    { scenario: 'bull', rgDelta: 0.0075, vacDelta: -0.005, ecDelta: -0.005, egDelta: -0.005 },
-    { scenario: 'black_swan', rgDelta: a.rentGrowth[0] > 0.005 ? -(a.rentGrowth[0] - 0.005) : -0.01, vacDelta: 0.05, ecDelta: 0.015, egDelta: 0.025 },
-  ];
+  if (!opts?.skipSensitivity) {
+    const stressConfigs: { scenario: string; rgDelta: number; vacDelta: number; ecDelta: number; egDelta: number }[] = [
+      { scenario: 'bear', rgDelta: -0.015, vacDelta: 0.02, ecDelta: 0.0075, egDelta: 0.01 },
+      { scenario: 'bull', rgDelta: 0.0075, vacDelta: -0.005, ecDelta: -0.005, egDelta: -0.005 },
+      { scenario: 'black_swan', rgDelta: a.rentGrowth[0] > 0.005 ? -(a.rentGrowth[0] - 0.005) : -0.01, vacDelta: 0.05, ecDelta: 0.015, egDelta: 0.025 },
+    ];
 
-  for (const sc of stressConfigs) {
-    const stressed: ModelAssumptions = {
-      ...a,
-      rentGrowth: a.rentGrowth.map(r => Math.max(0, r + sc.rgDelta)),
-      vacancyY1: Math.min(1, Math.max(0, a.vacancyY1 + sc.vacDelta)),
-      vacancyStab: Math.min(1, Math.max(0.05, a.vacancyStab + sc.vacDelta)),
-      exitCap: a.exitCap + sc.ecDelta,
-      expenseGrowth: Math.max(0, a.expenseGrowth + sc.egDelta),
-    };
-    const sr = runModel(stressed);
-    const s = stressScenarios.find(s => s.scenario === sc.scenario);
-    if (s) {
-      s.irr = sr.summary.irr;
-      s.equityMultiple = sr.summary.equityMultiple;
-      s.cashOnCash = sr.summary.avgCoC;
+    for (const sc of stressConfigs) {
+      const stressed: ModelAssumptions = {
+        ...a,
+        rentGrowth: a.rentGrowth.map(r => Math.max(0, r + sc.rgDelta)),
+        vacancyY1: Math.min(1, Math.max(0, a.vacancyY1 + sc.vacDelta)),
+        vacancyStab: Math.min(1, Math.max(0.05, a.vacancyStab + sc.vacDelta)),
+        exitCap: a.exitCap + sc.ecDelta,
+        expenseGrowth: Math.max(0, a.expenseGrowth + sc.egDelta),
+      };
+      const sr = runModel(stressed, { skipSensitivity: true });
+      const s = stressScenarios.find(s => s.scenario === sc.scenario);
+      if (s) {
+        s.irr = sr.summary.irr;
+        s.equityMultiple = sr.summary.equityMultiple;
+        s.cashOnCash = sr.summary.avgCoC;
+      }
     }
   }
 
