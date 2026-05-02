@@ -84,14 +84,21 @@ export interface AnnualCashFlowRow {
   annualInterest: number;
   annualPrincipal: number;
   debtService: number;
-  preTaxCashFlow: number;
+  preTaxCashFlow: number;  // kept for backward compatibility
+  cfads: number;           // Cash Flow After Debt Service — same value as preTaxCashFlow
   dscr: number | null;
   occupancy: number;
+  debtYield: number | null;       // NOI / loanAmount
+  capRateOnCost: number | null;   // NOI / totalAcquisitionCost
+  isExitYear: boolean;
 }
 
 export interface SourcesUsesItem {
+  id: string;
   label: string;
   amount: number;
+  pct: number;
+  source: string;
 }
 
 export interface SourcesUsesPayload {
@@ -101,6 +108,12 @@ export interface SourcesUsesPayload {
   totalUses: number;
   delta: number;
   balanced: boolean;
+  benchmarks: {
+    totalCostPerUnit: number;
+    debtPct: number;
+    equityPct: number;
+    capexPerUnit: number;
+  };
 }
 
 export interface WaterfallTier {
@@ -127,6 +140,55 @@ export interface IntegrityCheck {
   message: string;
 }
 
+export interface DebtMetrics {
+  coverage: {
+    dscrMin: number | null;
+    dscrAvg: number | null;
+    dscrY1: number | null;
+    dscrAtStabilization: number | null;
+    debtYieldMin: number | null;
+    debtYieldY1: number | null;
+    breakEvenOccupancy: number | null;
+    dscrStressedMinus10PctNOI: number | null;
+  };
+  structural: {
+    loanAmount: number;
+    rate: number;
+    termMonths: number;
+    amortMonths: number;
+    ioPeriodMonths: number;
+    originationFee: number;
+    loanType: string;
+  };
+  leverage: {
+    ltvAtClose: number;
+    ltvAtMaturity: number;
+    positiveLeverage: boolean;
+    spreadOverCapRateBps: number;
+  };
+  stress: {
+    dscrAt10PctNOIDecline: number | null;
+    breakEvenOccupancy: number | null;
+  };
+}
+
+export interface ValuationBlock {
+  perUnit: {
+    goingIn: number;
+    atExit: number;
+  };
+  perSF: {
+    netRentable: number;
+  };
+  multiples: {
+    grm: number | null;
+    nim: number | null;
+    opexRatio: number | null;
+    capRate: number;
+    yieldOnCost: number | null;
+  };
+}
+
 export interface ModelResults {
   summary: {
     purchasePrice: number;
@@ -146,6 +208,20 @@ export interface ModelResults {
     cashOnCashByYear: number[];
     dscrByYear: number[];
     noiByYear: number[];
+    // ── New fields added in task #486 ──
+    egiByYear: number[];
+    debtServiceCoverageByYear: number[];  // alias for dscrByYear for tab compat
+    debtYieldByYear: number[];
+    stabilizedCapRate: number | null;
+    unleveredIrr: number | null;
+    yieldOnCost: { untrended: number; trended: number };
+    totalProfit: number;
+    lpCoC: number | null;
+    gpCoC: number | null;
+    lpTotalDistributions: number;
+    lpProfit: number;
+    gpTotalDistributions: number;
+    gpPromoteEarned: number;
   };
   annualCashFlow: AnnualCashFlowRow[];
   sourcesAndUses: SourcesUsesPayload;
@@ -156,7 +232,11 @@ export interface ModelResults {
     netSaleProceeds: number;
     loanBalance: number;
     equityProceeds: number;
+    dispositionDocStamps: number;
+    exitYear: number;
   };
+  debtMetrics: DebtMetrics;
+  valuation: ValuationBlock;
   sensitivityAnalysis: {
     matrix: {
       exitCapAxis: number[];
@@ -172,6 +252,23 @@ export interface ModelResults {
     loanBalanceByYear: number[];
     debtServiceByYear: number[];
     debtYieldByYear: number[];
+    tranches: Array<{
+      id: string;
+      label: string;
+      amount: number;
+      rate: number;
+      termMonths: number;
+      amortMonths: number;
+      ltv: number;
+    }>;
+    metrics: {
+      totalCost: number;
+      totalEquity: number;
+      totalDebt: number;
+      equityPct: number;
+      debtPct: number;
+      capexPerUnit: number;
+    };
   };
   taxes: {
     reTax: { perYear: number[]; assessedValues: number[] };
@@ -379,7 +476,7 @@ export function computeYearOperating(
   vacancySched: number[],
   taxYear: number,
   expenseGrowthCum: number,
-): Omit<AnnualCashFlowRow, 'year' | 'annualInterest' | 'annualPrincipal' | 'debtService' | 'preTaxCashFlow' | 'dscr'> {
+): Omit<AnnualCashFlowRow, 'year' | 'annualInterest' | 'annualPrincipal' | 'debtService' | 'preTaxCashFlow' | 'cfads' | 'dscr' | 'debtYield' | 'capRateOnCost' | 'isExitYear'> {
   const GPR = a.units * a.marketRent * 12 * cumGrowthVal;
   const loss = GPR * a.lossToLease;
   const vac = GPR * vacancySched[y - 1];
@@ -760,6 +857,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     const debtService = amort.debtServiceByYear[y - 1] ?? interest;
     const cf = op.noi - debtService;
     const dscr = debtService > 0.01 ? op.noi / debtService : null;
+    const dyield = a.loanAmount > 0 ? op.noi / a.loanAmount : null;
 
     annualRows.push({
       year: y,
@@ -768,7 +866,11 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       annualPrincipal: principal,
       debtService,
       preTaxCashFlow: cf,
+      cfads: cf,
       dscr,
+      debtYield: dyield,
+      capRateOnCost: null,  // filled below after totalAcqCost is available
+      isExitYear: y === nYears,
     });
   }
 
@@ -785,19 +887,29 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   log.push(`Phase 6: Disposition — stabilized NOI=${stabilizedNOI}, exit cap=${(a.exitCap * 100).toFixed(1)}%, sale price=${grossSalePrice}`);
   log.push(`  Sale costs=${saleCostsValue}, loan bal=${loanBalance}, equity proceeds=${equityProceeds}`);
 
+  // Fill capRateOnCost now that totalAcqCost is known
+  for (const row of annualRows) {
+    row.capRateOnCost = totalAcqCost > 0 ? row.noi / totalAcqCost : null;
+  }
+
   // ── Phase 7: Returns ────────────────────────────────────────────────────
   const cashFlows = buildCashFlowVector(totalEquity, annualRows);
-  // EM: sum of positive distributions only
   const irr = calculateIRR(cashFlows);
   const em = calculateEM(cashFlows);
-
-  // Avg
-  // Phase 7: Returns (continued)
   const avgCoC = calculateAvgCoC(totalEquity, annualRows.slice(0, hold).map(r => r.preTaxCashFlow));
   const noiY1 = annualRows[0]?.noi ?? 0;
   const goingInCap = a.purchasePrice > 0 ? noiY1 / a.purchasePrice : 0;
 
-  log.push(`Phase 7: IRR=${irr !== null ? (irr * 100).toFixed(2) : "null"}%, EM=${em !== null ? em.toFixed(2) : "null"}, Avg CoC=${avgCoC !== null ? (avgCoC * 100).toFixed(2) : "null"}%`);
+  // Unlevered IRR: cash flows ignoring debt service
+  const unlevCF: number[] = [-totalAcqCost];
+  for (let y = 0; y < hold; y++) {
+    unlevCF.push(annualRows[y]?.noi ?? 0);
+  }
+  // Terminal: add gross sale proceeds (before selling costs and transfer taxes) at exit
+  unlevCF[unlevCF.length - 1] += grossSalePrice - saleCostsValue;
+  const unleveredIrr = calculateIRR(unlevCF);
+
+  log.push(`Phase 7: IRR=${irr !== null ? (irr * 100).toFixed(2) : "null"}%, EM=${em !== null ? em.toFixed(2) : "null"}, UnlevIRR=${unleveredIrr !== null ? (unleveredIrr * 100).toFixed(2) : "null"}%, Avg CoC=${avgCoC !== null ? (avgCoC * 100).toFixed(2) : "null"}%`);
 
   // Phase 8: Waterfall
   log.push("Phase 8: Computing waterfall");
@@ -805,6 +917,120 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     annualRows, a.lpEquity, a.gpEquity, totalEquity,
     a.preferredReturn, hold, a.promoteTiers, a.promoteSplits, equityProceeds,
   );
+
+  // ── Waterfall-derived summary metrics ────────────────────────────────────
+  const lpTotalDistributions = waterfall.reduce((s, t) => s + t.lpDistribution, 0);
+  const gpTotalDistributions = waterfall.reduce((s, t) => s + t.gpDistribution, 0);
+  const lpProfit = lpTotalDistributions - a.lpEquity;
+  const gpProfit = gpTotalDistributions - a.gpEquity;
+  // Promote earned = GP distributions from promote tiers (tiers 3-5, indices 2-4)
+  const gpPromoteEarned = waterfall.slice(2).reduce((s, t) => s + t.gpDistribution, 0);
+  const totalProfit = lpProfit + gpProfit;
+
+  // LP/GP cash-on-cash: avg annual operating dist / initial equity
+  const lpOpDists = annualRows.slice(0, hold).map(r => r.preTaxCashFlow * (a.lpEquity / totalEquity));
+  const gpOpDists = annualRows.slice(0, hold).map(r => r.preTaxCashFlow * (a.gpEquity / totalEquity));
+  const lpCoC = a.lpEquity > 0 && lpOpDists.length > 0
+    ? lpOpDists.reduce((s, v) => s + v, 0) / lpOpDists.length / a.lpEquity
+    : null;
+  const gpCoC = a.gpEquity > 0 && gpOpDists.length > 0
+    ? gpOpDists.reduce((s, v) => s + v, 0) / gpOpDists.length / a.gpEquity
+    : null;
+
+  // ── Yield-on-Cost ─────────────────────────────────────────────────────────
+  const yieldOnCostUntrended = totalAcqCost > 0 ? noiY1 / totalAcqCost : 0;
+  const yieldOnCostTrended = totalAcqCost > 0 ? stabilizedNOI / totalAcqCost : 0;
+
+  // ── Stabilized cap rate ───────────────────────────────────────────────────
+  const stabilizedCapRate = a.purchasePrice > 0 ? stabilizedNOI / a.purchasePrice : null;
+
+  // ── Debt metrics block ───────────────────────────────────────────────────
+  const opRows = annualRows.slice(0, hold);
+  const dscrValues = opRows.map(r => r.dscr).filter((d): d is number => d !== null);
+  const dscrMin = dscrValues.length > 0 ? Math.min(...dscrValues) : null;
+  const dscrAvg = dscrValues.length > 0 ? dscrValues.reduce((s, v) => s + v, 0) / dscrValues.length : null;
+  const dscrY1 = annualRows[0]?.dscr ?? null;
+  const dscrAtStabilization = annualRows[1]?.dscr ?? dscrY1;
+  const debtYieldValues = opRows.map(r => r.debtYield).filter((d): d is number => d !== null);
+  const debtYieldMin = debtYieldValues.length > 0 ? Math.min(...debtYieldValues) : null;
+  const debtYieldY1 = annualRows[0]?.debtYield ?? null;
+
+  // Break-even occupancy: occupancy at which NOI covers debt service for Y1
+  // NOI = GPR * occ * (1 - mgmtFee) - fixedExp (approx)
+  let breakEvenOccupancy: number | null = null;
+  if (annualRows[0]) {
+    const r0 = annualRows[0];
+    const gpr = r0.grossPotentialRent;
+    const ds0 = r0.debtService;
+    // Fixed expenses = total − management fee (which scales with EGI)
+    const fixedExp = r0.totalExpenses - r0.managementFee;
+    // NOI ≈ GPR * occ * (1 − mgmtFee) − fixedExp = DS  → occ = (DS + fixedExp) / (GPR * (1 − mgmtFee))
+    const mgmtFrac = r0.effectiveGrossIncome > 0 ? r0.managementFee / r0.effectiveGrossIncome : a.managementFee;
+    const denom = gpr * (1 - mgmtFrac);
+    breakEvenOccupancy = denom > 0 ? Math.min(1, (ds0 + fixedExp) / denom) : null;
+  }
+
+  // DSCR at −10% NOI stress
+  const dscrStressed = dscrY1 !== null && annualRows[0]
+    ? (annualRows[0].debtService > 0 ? (annualRows[0].noi * 0.9) / annualRows[0].debtService : null)
+    : null;
+
+  const positiveLeverage = goingInCap > a.rate;
+  const spreadBps = Math.round((goingInCap - a.rate) * 10000);
+  const ltvAtMaturity = grossSalePrice > 0 ? loanBalance / grossSalePrice : a.ltv;
+
+  const debtMetrics: DebtMetrics = {
+    coverage: {
+      dscrMin,
+      dscrAvg,
+      dscrY1,
+      dscrAtStabilization,
+      debtYieldMin,
+      debtYieldY1,
+      breakEvenOccupancy,
+      dscrStressedMinus10PctNOI: dscrStressed,
+    },
+    structural: {
+      loanAmount: a.loanAmount,
+      rate: a.rate,
+      termMonths: a.term,
+      amortMonths: a.amort,
+      ioPeriodMonths: a.ioPeriod,
+      originationFee: origFee,
+      loanType: a.term <= 84 ? 'bridge' : 'perm',  // ≤7yr term = bridge
+    },
+    leverage: {
+      ltvAtClose: a.ltv,
+      ltvAtMaturity,
+      positiveLeverage,
+      spreadOverCapRateBps: spreadBps,
+    },
+    stress: {
+      dscrAt10PctNOIDecline: dscrStressed,
+      breakEvenOccupancy,
+    },
+  };
+
+  // ── Valuation block ──────────────────────────────────────────────────────
+  const gprY1 = annualRows[0]?.grossPotentialRent ?? 0;
+  const valuation: ValuationBlock = {
+    perUnit: {
+      goingIn: a.units > 0 ? a.purchasePrice / a.units : 0,
+      atExit: a.units > 0 ? grossSalePrice / a.units : 0,
+    },
+    perSF: {
+      netRentable: (a.units > 0 && a.avgUnitSf > 0) ? a.purchasePrice / (a.units * a.avgUnitSf) : 0,
+    },
+    multiples: {
+      grm: gprY1 > 0 ? a.purchasePrice / gprY1 : null,
+      nim: noiY1 > 0 ? a.purchasePrice / noiY1 : null,
+      opexRatio: (annualRows[0]?.effectiveGrossIncome ?? 0) > 0
+        ? (annualRows[0]?.totalExpenses ?? 0) / (annualRows[0]?.effectiveGrossIncome ?? 1)
+        : null,
+      capRate: goingInCap,
+      yieldOnCost: totalAcqCost > 0 ? noiY1 / totalAcqCost : null,
+    },
+  };
 
   // Phase 9: Sensitivity (skipped in sub-runs to prevent recursion)
   log.push("Phase 9: Computing sensitivity matrix");
@@ -847,8 +1073,14 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     }
   }
 
-  // Phase 11: Integrity checks
+  // ── Phase 11: Assemble result ─────────────────────────────────────────────
   log.push("Phase 11: Running integrity checks");
+
+  const totalSources = a.lpEquity + a.gpEquity + a.loanAmount;
+  const totalUses = a.purchasePrice + closingCosts + docStamps + intangibleTax + titleInsurance + origFee + a.capexBudget;
+
+  const debtYieldByYear = annualRows.map(r => a.loanAmount > 0 ? r.noi / a.loanAmount : 0);
+
   const modelResult: ModelResults = {
     summary: {
       purchasePrice: a.purchasePrice,
@@ -868,27 +1100,46 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       cashOnCashByYear: annualRows.slice(0, hold).map(r => totalEquity > 0 ? r.preTaxCashFlow / totalEquity : 0),
       dscrByYear: annualRows.slice(0, hold).map(r => r.dscr ?? 0),
       noiByYear: annualRows.slice(0, hold).map(r => r.noi),
+      egiByYear: annualRows.slice(0, hold).map(r => r.effectiveGrossIncome),
+      debtServiceCoverageByYear: annualRows.slice(0, hold).map(r => r.dscr ?? 0),
+      debtYieldByYear: annualRows.slice(0, hold).map(r => r.debtYield ?? 0),
+      stabilizedCapRate,
+      unleveredIrr,
+      yieldOnCost: { untrended: yieldOnCostUntrended, trended: yieldOnCostTrended },
+      totalProfit,
+      lpCoC,
+      gpCoC,
+      lpTotalDistributions,
+      lpProfit,
+      gpTotalDistributions,
+      gpPromoteEarned,
     },
     annualCashFlow: annualRows,
     sourcesAndUses: {
       sources: [
-        { label: 'Equity (LP)', amount: a.lpEquity },
-        { label: 'Equity (GP)', amount: a.gpEquity },
-        { label: 'Senior Debt', amount: a.loanAmount },
+        { id: 'equity-lp', label: 'Equity (LP)', amount: a.lpEquity, pct: totalSources > 0 ? a.lpEquity / totalSources : 0, source: 'equity' },
+        { id: 'equity-gp', label: 'Equity (GP)', amount: a.gpEquity, pct: totalSources > 0 ? a.gpEquity / totalSources : 0, source: 'equity' },
+        { id: 'senior-debt', label: 'Senior Debt', amount: a.loanAmount, pct: totalSources > 0 ? a.loanAmount / totalSources : 0, source: 'debt' },
       ],
       uses: [
-        { label: 'Purchase Price', amount: a.purchasePrice },
-        { label: 'Closing Costs', amount: closingCosts },
-        { label: 'Doc Stamps', amount: docStamps },
-        { label: 'Intangible Tax', amount: intangibleTax },
-        { label: 'Title Insurance', amount: titleInsurance },
-        { label: 'Origination Fee', amount: origFee },
-        { label: 'Capex Budget', amount: a.capexBudget },
+        { id: 'purchase-price', label: 'Purchase Price', amount: a.purchasePrice, pct: totalUses > 0 ? a.purchasePrice / totalUses : 0, source: 'acquisition' },
+        { id: 'closing-costs', label: 'Closing Costs', amount: closingCosts, pct: totalUses > 0 ? closingCosts / totalUses : 0, source: 'acquisition' },
+        { id: 'doc-stamps', label: 'Doc Stamps', amount: docStamps, pct: totalUses > 0 ? docStamps / totalUses : 0, source: 'tax' },
+        { id: 'intangible-tax', label: 'Intangible Tax', amount: intangibleTax, pct: totalUses > 0 ? intangibleTax / totalUses : 0, source: 'tax' },
+        { id: 'title-insurance', label: 'Title Insurance', amount: titleInsurance, pct: totalUses > 0 ? titleInsurance / totalUses : 0, source: 'closing' },
+        { id: 'origination-fee', label: 'Origination Fee', amount: origFee, pct: totalUses > 0 ? origFee / totalUses : 0, source: 'financing' },
+        { id: 'capex-budget', label: 'Capex Budget', amount: a.capexBudget, pct: totalUses > 0 ? a.capexBudget / totalUses : 0, source: 'capex' },
       ],
-      totalSources: a.lpEquity + a.gpEquity + a.loanAmount,
-      totalUses: a.purchasePrice + closingCosts + docStamps + intangibleTax + titleInsurance + origFee + a.capexBudget,
+      totalSources,
+      totalUses,
       delta: 0,
       balanced: true,
+      benchmarks: {
+        totalCostPerUnit: a.units > 0 ? totalAcqCost / a.units : 0,
+        debtPct: totalSources > 0 ? a.loanAmount / totalSources : 0,
+        equityPct: totalSources > 0 ? totalEquity / totalSources : 0,
+        capexPerUnit: a.units > 0 ? a.capexBudget / a.units : 0,
+      },
     },
     disposition: {
       stabilizedNOI,
@@ -897,7 +1148,11 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       netSaleProceeds,
       loanBalance,
       equityProceeds,
+      dispositionDocStamps,
+      exitYear: hold,
     },
+    debtMetrics,
+    valuation,
     sensitivityAnalysis: { matrix: sensitivity },
     stressScenarios,
     waterfallDistributions: waterfall,
@@ -905,7 +1160,26 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       amortizationSchedule: [],
       loanBalanceByYear: amort.balanceByYear,
       debtServiceByYear: amort.debtServiceByYear,
-      debtYieldByYear: annualRows.map(r => a.loanAmount > 0 ? r.noi / a.loanAmount : 0),
+      debtYieldByYear,
+      tranches: [
+        {
+          id: 'senior-debt',
+          label: 'Senior Debt',
+          amount: a.loanAmount,
+          rate: a.rate,
+          termMonths: a.term,
+          amortMonths: a.amort,
+          ltv: a.ltv,
+        },
+      ],
+      metrics: {
+        totalCost: totalAcqCost,
+        totalEquity,
+        totalDebt: a.loanAmount,
+        equityPct: totalAcqCost > 0 ? totalEquity / totalAcqCost : 0,
+        debtPct: totalAcqCost > 0 ? a.loanAmount / totalAcqCost : 0,
+        capexPerUnit: a.units > 0 ? a.capexBudget / a.units : 0,
+      },
     },
     taxes: {
       reTax: taxSchedule,
@@ -919,7 +1193,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     integrityChecks: [],
     reasoning: { derivationLog: log },
     meta: {
-      modelVersion: '1.0',
+      modelVersion: '1.1',
       runner: 'deterministic-model-runner',
       computedAt: new Date().toISOString(),
     },
@@ -962,6 +1236,8 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
         cash_flow: row.preTaxCashFlow,
         dscr: row.dscr ?? 0,
         occupancy: row.occupancy,
+        debt_yield: row.debtYield ?? 0,
+        cap_rate_on_cost: row.capRateOnCost ?? 0,
       },
     });
   }
