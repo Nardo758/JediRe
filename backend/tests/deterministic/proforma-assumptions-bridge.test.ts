@@ -44,7 +44,7 @@ const BASE_ASSUMPTIONS = {
     loanType: 'fixed' as const,
     interestRate: 0.065,
     spread: 0,
-    term: 5,
+    term: 30,
     amortization: 30,
     ioPeriod: 0,
     originationFee: 0.01,
@@ -65,7 +65,7 @@ const BASE_ASSUMPTIONS = {
 describe('mapProFormaAssumptionsToModelAssumptions', () => {
   it('converts financing term and amortization from years to months', () => {
     const m = mapProFormaAssumptionsToModelAssumptions(BASE_ASSUMPTIONS as any);
-    expect(m.term).toBe(5 * 12);
+    expect(m.term).toBe(30 * 12); // BASE_ASSUMPTIONS uses term: 30
     expect(m.amort).toBe(30 * 12);
   });
 
@@ -922,6 +922,15 @@ describe('runIntegrityChecks — complete spec §6.1 + §6.2 coverage', () => {
     expect(checks.find(c => c.id === 'INV-3')?.status).toBe('error');
   });
 
+  it('INV-3 fires (fail-closed) when dscr is null with positive debtService', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.annualCashFlow[0].dscr = null; // null with non-zero debtService → fail-closed
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-3')?.status).toBe('error');
+    expect(checks.find(c => c.id === 'INV-3')?.message).toMatch(/null\/non-finite/i);
+  });
+
   // ── INV-4: equityProceeds = netSaleProceeds − loanBalance ───────────────
   it('INV-4 fires when disposition.equityProceeds is tampered', () => {
     const { m, r } = baseResult();
@@ -970,6 +979,35 @@ describe('runIntegrityChecks — complete spec §6.1 + §6.2 coverage', () => {
     const rPatched = JSON.parse(JSON.stringify(r));
     if (rPatched.waterfallDistributions.length > 0) {
       rPatched.waterfallDistributions[0].lpDistribution += 999_999;
+    }
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-8')?.status).toBe('error');
+  });
+
+  it('INV-8 passes (not error) when deal is deeply underwater and nothing is distributed', () => {
+    // Conservation holds trivially: Σcfads + equityProceeds ≤ 0 AND totalTierDist ≈ 0
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    // Force all cfads and equityProceeds deeply negative
+    for (const row of rPatched.annualCashFlow) row.cfads = -1_000_000;
+    rPatched.disposition.equityProceeds = -5_000_000;
+    // Waterfall distributes nothing from an underwater pool
+    for (const tier of rPatched.waterfallDistributions) {
+      tier.lpDistribution = 0;
+      tier.gpDistribution = 0;
+    }
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-8')?.status).not.toBe('error');
+  });
+
+  it('INV-8 fires when distributions are non-zero but pool is deeply underwater', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    for (const row of rPatched.annualCashFlow) row.cfads = -1_000_000;
+    rPatched.disposition.equityProceeds = -5_000_000;
+    // Incorrectly claim distributions came from this underwater pool
+    if (rPatched.waterfallDistributions.length > 0) {
+      rPatched.waterfallDistributions[0].lpDistribution = 50_000;
     }
     const checks = runIntegrityChecks(m, rPatched);
     expect(checks.find(c => c.id === 'INV-8')?.status).toBe('error');

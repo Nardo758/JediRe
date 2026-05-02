@@ -835,9 +835,14 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     }
   }
 
-  // INV-3: DSCR(y) = NOI(y) / debtService(y)  for rows where debtService > 0
+  // INV-3: DSCR(y) = NOI(y) / debtService(y)  for all rows where debtService > 0
+  // Fail-closed: null or non-finite DSCR with positive debt service is an INV-3 error.
   for (const row of opRows) {
-    if (row.debtService > 0.01 && row.dscr !== null) {
+    if (row.debtService > 0.01) {
+      if (row.dscr === null || !isFinite(row.dscr)) {
+        checks.push({ id: 'INV-3', status: 'error', message: `INV-3 DSCR is null/non-finite Y${row.year} with debtService ${row.debtService.toFixed(0)}` });
+        break;
+      }
       const expected = row.noi / row.debtService;
       if (Math.abs(row.dscr - expected) > 0.001) {
         checks.push({ id: 'INV-3', status: 'error', message: `INV-3 DSCR mismatch Y${row.year}: got ${row.dscr.toFixed(4)}, expected ${expected.toFixed(4)}` });
@@ -884,24 +889,33 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     checks.push({ id: 'INV-7', status: 'error', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0` });
   }
 
-  // INV-8: waterfall conservation — Σ tier distributions == Σ max(0, cfads) + max(0, equityProceeds)
+  // INV-8: waterfall conservation — Σ tier_distributions == Σ cashFlows[1..n] + |cashFlows[0]|
+  // Per spec §6.1: cashFlows[0] is the initial equity outlay (negative per INV-7);
+  // cashFlows[1..n] are the per-period levered cash flows (operating CFBT + exit).
   //
-  // The waterfall engine (line ~661) only distributes POSITIVE available cash:
+  // The waterfall engine (see computeWaterfall, line ~661) only distributes POSITIVE
+  // available cash each period:
   //   `if (yearCFADS <= 1e-2) continue;`
-  // Negative CFs (e.g. balloon payment at loan maturity, underwater exit) are absorbed
-  // in the running LP/GP aggregate vectors for IRR purposes but contribute 0 to tier
-  // distributions.  Using the algebraic sum would double-count balloon principal
-  // (already subtracted in cfads[exitYear]) and give false failures on valid deals.
-  // The correct conservation equation therefore clamps each period to max(0, ...).
+  // Negative-CFBT periods (balloon year, high-rate operating losses, underwater exit) are
+  // tracked in the running LP/GP IRR vector but contribute ZERO to tier distributions.
+  // Therefore the invariant conservation identity must clamp each period to max(0, ...):
+  //   totalTierDist == Σ max(0, cfads[y]) + max(0, equityProceeds)
+  // This is the EXACT algebraic expression of the waterfall's own distribution rule —
+  // using the raw algebraic sum would produce systematic false failures on valid deals
+  // with any negative-CFBT period (balloon loans, high-leverage deals, etc.).
   //
-  // Fail-closed: if total available cash ≤ 1 (all periods negative, deeply underwater),
-  // emit INV-8 error so no invariant is silently skipped.
+  // Always evaluated unconditionally; fail-closed path:
+  //   • availCash ≤ 0 AND totalTierDist ≈ 0 → conservation holds trivially (pass)
+  //   • availCash ≤ 0 AND totalTierDist > 0  → error (distributing from empty pool)
   {
     const totalTierDist = result.waterfallDistributions.reduce((s, t) => s + t.lpDistribution + t.gpDistribution, 0);
     const posOpCFs = opRows.reduce((s, r) => s + Math.max(0, r.cfads), 0);
     const availCash = posOpCFs + Math.max(0, disp.equityProceeds);
     if (availCash <= 1) {
-      checks.push({ id: 'INV-8', status: 'error', message: `INV-8 cannot verify waterfall: available cash (Σmax(0,cfads) + max(0,equityProceeds) = ${availCash.toFixed(0)}) ≤ 0 — deal is deeply underwater` });
+      // Pool is empty (all CFs negative): waterfall must also have distributed nothing.
+      if (totalTierDist > 1) {
+        checks.push({ id: 'INV-8', status: 'error', message: `INV-8 Waterfall distributed ${totalTierDist.toFixed(0)} from empty pool (Σmax(0,cfads)+max(0,equityProceeds) = ${availCash.toFixed(0)})` });
+      }
     } else {
       const relErr = Math.abs(totalTierDist - availCash) / availCash;
       if (relErr > 0.001) {

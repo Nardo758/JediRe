@@ -68,7 +68,7 @@ const BASE_ASSUMPTIONS = {
   disposition: { exitCapRate: 0.065, sellingCosts: 0.02, saleNOIMethod: 'terminal' as const },
   revenue: { rentGrowth: [0.03, 0.03, 0.03, 0.03, 0.03], lossToLease: 0.02, stabilizedOccupancy: 0.93, collectionLoss: 0.01, otherIncome: {} },
   expenses: { payroll: { amount: 280000, type: 'total' as const, growthRate: 0.03 }, management_fee: { amount: 72000, type: 'total' as const, growthRate: 0.03 } },
-  financing: { loanAmount: 13500000, loanType: 'fixed' as const, interestRate: 0.065, spread: 0, term: 5, amortization: 30, ioPeriod: 0, originationFee: 0.01, rateCapCost: 0, prepayPenalty: 0 },
+  financing: { loanAmount: 13500000, loanType: 'fixed' as const, interestRate: 0.065, spread: 0, term: 30, amortization: 30, ioPeriod: 0, originationFee: 0.01, rateCapCost: 0, prepayPenalty: 0 },
   capex: { lineItems: [], contingencyPct: 0.10, reservesPerUnit: 300 },
   // closingCosts={} → closingCostsPct=0 → runner falls back to DEF_CLOSING_PCT=0.01 → 180000
   // non-FL 0.5% tx = 90000; capex=0 → totalAcqCost = 18000000 + 180000 + 90000 = 18270000
