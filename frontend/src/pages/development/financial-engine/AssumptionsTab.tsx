@@ -1126,7 +1126,7 @@ function GprDecompRow({ years, financials }: { years: number[]; financials: Deal
   const [expanded, setExpanded] = useState(false);
   if (!financials) return null;
 
-  const gd = financials.assumptions.gprDecomposition;
+  const gd = financials.assumptions?.gprDecomposition;
   if (!gd && !y1(financials, 'gpr')) return null;
 
   const fmtM = (n: number) => n >= 1_000_000
@@ -1355,9 +1355,9 @@ function KeystonePanel({
   const fmtPct = (n: number|null|undefined) => n != null ? (n < 1 ? (n * 100).toFixed(2) : n.toFixed(2)) + '%' : '—';
   const fmtN = (n: number|null|undefined) => n != null ? n.toLocaleString() : '—';
 
-  const cs = financials.capitalStack;
+  const cs = financials.capitalStack ?? {} as typeof financials.capitalStack;
   const rr = financials.rentRollSummary;
-  const a  = financials.assumptions;
+  const a  = financials.assumptions ?? {} as typeof financials.assumptions;
 
   const dealName = (deal?.['name'] as string) ?? financials.dealName ?? assumptions?.dealInfo?.dealName ?? 'Deal';
   const city     = (deal?.['city'] as string) ?? assumptions?.dealInfo?.city ?? '';
@@ -1940,7 +1940,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       // platform has explicitly declined to make.
       return resolvePlatform(row, yr) ?? row.getBroker(financials, yr);
     };
-    const terminalYr = financials.assumptions.holdYears ?? holdYears;
+    const terminalYr = financials.assumptions?.holdYears ?? holdYears;
     // Gordon coupling lives at the terminal year — exit cap & terminal g pair.
     const exitCap = resolve('exitCapRate', terminalYr);
     const terminalRentGrowth = resolve('growthRentPct', terminalYr);
@@ -2228,8 +2228,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         </div>
         <div className="flex items-center gap-2 text-[9px]" style={{ fontFamily: MONO, color: '#334155' }}>
           <TrendingUp className="w-3 h-3" />
-          <span>F9 · {financials?.meta.seeded ? 'SEEDED' : 'NO SEED'}</span>
-          <span className={`w-2 h-2 rounded-full ${financials?.meta.seeded ? 'bg-green-500/30 border border-green-500/50' : 'bg-slate-700'}`} />
+          <span>F9 · {financials?.meta?.seeded ? 'SEEDED' : 'NO SEED'}</span>
+          <span className={`w-2 h-2 rounded-full ${financials?.meta?.seeded ? 'bg-green-500/30 border border-green-500/50' : 'bg-slate-700'}`} />
         </div>
       </div>
 

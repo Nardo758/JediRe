@@ -479,18 +479,18 @@ export class FinancialModelEngineService {
       }
 
       if (start === -1 || end === -1) {
-        throw new Error('Claude did not return valid JSON. Response starts with: ' + text.substring(0, 200));
+        throw new Error('LLM did not return valid JSON. Response starts with: ' + text.substring(0, 200));
       }
 
       try {
         parsed = JSON.parse(rawJson.substring(start, end));
       } catch (parseErr: any) {
-        throw new Error('Failed to parse Claude response as JSON: ' + parseErr.message);
+        throw new Error('Failed to parse LLM response as JSON: ' + parseErr.message);
       }
     }
 
     if (!parsed.summary || !parsed.annualCashFlow) {
-      throw new Error('Claude response missing required fields (summary, annualCashFlow)');
+      throw new Error('LLM response missing required fields (summary, annualCashFlow)');
     }
 
     return parsed;

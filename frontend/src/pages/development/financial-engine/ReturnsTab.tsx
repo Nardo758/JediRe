@@ -480,8 +480,8 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
               <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 6 }}>ANNUAL CASH FLOW BTCF</div>
               <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 52 }}>
                 {cfBars.map(bar => {
-                  const maxAbs = Math.max(...cfBars.map(b => Math.abs(b.cfbt)), 1);
-                  const barH = Math.max(3, (Math.abs(bar.cfbt) / maxAbs) * 44);
+                  const maxAbs = Math.max(...cfBars.map(b => Math.abs(b.cfbt ?? 0)), 1);
+                  const barH = Math.max(3, (Math.abs(bar.cfbt ?? 0) / maxAbs) * 44);
                   const col  = bar.isSale ? BT.text.amber : bar.cfbt >= 0 ? BT.met.financial : BT.text.red;
                   return (
                     <div key={bar.yr} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
