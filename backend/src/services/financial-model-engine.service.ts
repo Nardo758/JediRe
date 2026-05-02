@@ -34,13 +34,21 @@ function selectLLMClient(): { client: OpenAI; model: string; providerName: strin
   }
 
   if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    const customBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    // When a custom base URL is provided (e.g. a DeepSeek-compatible endpoint),
+    // honour the DEEPSEEK_MODEL env-var.  When no custom URL is set the key
+    // belongs to OpenAI's own endpoint, so use gpt-4o to avoid sending
+    // 'deepseek-chat' to a host that doesn't know that model name.
+    const model = customBase
+      ? (process.env.DEEPSEEK_MODEL || 'deepseek-chat')
+      : 'gpt-4o';
     return {
       client: new OpenAI({
         apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || 'https://api.openai.com/v1',
+        baseURL: customBase || 'https://api.openai.com/v1',
       }),
-      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
-      providerName: 'ai-integrations-openai',
+      model,
+      providerName: customBase ? 'ai-integrations-deepseek-compat' : 'ai-integrations-openai',
     };
   }
 
