@@ -6,11 +6,57 @@ import { logger } from '../utils/logger';
 import { applyFullAnchorInterceptor, normalizeExpensesForInterceptor, rekeyExpensesFromInterceptor } from './sigma/anchor-interceptor.service';
 import OpenAI from 'openai';
 
+/**
+ * selectLLMClient — provider-selection strategy for the financial-model build path.
+ *
+ * Priority order mirrors the project-wide getLLMProvider() convention in
+ * llm.service.ts, but explicitly prefers DeepSeek first because the financial
+ * model build prompt is an analytical JSON workload where DeepSeek performs
+ * well and is cost-efficient.
+ *
+ *  1. DeepSeek via DEEPSEEK_API_KEY
+ *  2. OpenAI-compatible integration via AI_INTEGRATIONS_OPENAI_API_KEY (Replit connector)
+ *  3. Plain OpenAI via OPENAI_API_KEY (fallback — uses gpt-4o)
+ *
+ * Returns { client, model, providerName } so callLLMForModel can log which
+ * provider was selected.
+ */
+function selectLLMClient(): { client: OpenAI; model: string; providerName: string } {
+  if (process.env.DEEPSEEK_API_KEY) {
+    return {
+      client: new OpenAI({
+        apiKey: process.env.DEEPSEEK_API_KEY,
+        baseURL: (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '') + '/v1',
+      }),
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+      providerName: 'deepseek',
+    };
+  }
 
-const DEEPSEEK_API_KEY = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
-const DEEPSEEK_BASE_URL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || 'https://api.deepseek.com/v1';
-const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-const llmClient = new OpenAI({ apiKey: DEEPSEEK_API_KEY, baseURL: DEEPSEEK_BASE_URL });
+  if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    return {
+      client: new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || 'https://api.openai.com/v1',
+      }),
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+      providerName: 'ai-integrations-openai',
+    };
+  }
+
+  if (process.env.OPENAI_API_KEY) {
+    return {
+      client: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
+      model: 'gpt-4o',
+      providerName: 'openai',
+    };
+  }
+
+  throw new Error(
+    'No LLM provider configured for financial-model build. ' +
+    'Set DEEPSEEK_API_KEY, AI_INTEGRATIONS_OPENAI_API_KEY, or OPENAI_API_KEY.'
+  );
+}
 
 /**
  * Authoritative list of OPEX line-item keys the financial-model engine and
@@ -439,15 +485,14 @@ export class FinancialModelEngineService {
   }
 
   private async callLLMForModel(assumptions: ProFormaAssumptions): Promise<FinancialModelResult> {
-    if (!DEEPSEEK_API_KEY) {
-      throw new Error('DeepSeek API key not configured');
-    }
+    const { client, model, providerName } = selectLLMClient();
+    logger.info(`[Financial-Model] Using provider=${providerName} model=${model} for deal build`);
 
     const systemPrompt = this.buildSystemPrompt(assumptions.modelType);
     const userPrompt = this.buildUserPrompt(assumptions);
 
-    const response = await llmClient.chat.completions.create({
-      model: DEEPSEEK_MODEL,
+    const response = await client.chat.completions.create({
+      model,
       max_tokens: 16000,
       temperature: 0.1,
       messages: [
