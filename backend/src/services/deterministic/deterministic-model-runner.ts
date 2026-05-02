@@ -867,17 +867,15 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     checks.push({ id: 'INV-5', status: 'error', message: `INV-5 cannot verify grossSalePrice: exitCap (${a.exitCap}) or stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) is zero/non-positive` });
   }
 
-  // INV-6: totalEquity ≈ totalAcquisitionCost − loanAmount
-  // Tolerance: 8% of purchasePrice to accommodate closing costs, transfer taxes, and capex
-  // that users typically do not include in their equity contribution input.
-  // Major violations (e.g. loanAmount >> purchasePrice) far exceed this tolerance.
+  // INV-6: totalEquity == totalAcquisitionCost − loanAmount  (strict; $1 rounding tolerance)
+  // Equity + debt must equal totalAcqCost exactly.  Loose tolerances mask structural
+  // model defects; test fixtures must be set up with correct equity values.
   {
     const totalAcqCost = result.capital.metrics.totalCost;
     const expected = totalAcqCost - a.loanAmount;
-    const allowance = a.purchasePrice * 0.08;
-    if (Math.abs(sum.totalEquity - expected) > allowance) {
+    if (Math.abs(sum.totalEquity - expected) > 1) {
       const diff = sum.totalEquity - expected;
-      checks.push({ id: 'INV-6', status: 'error', message: `INV-6 totalEquity ${sum.totalEquity.toFixed(0)} ≠ totalAcqCost (${totalAcqCost.toFixed(0)}) − loanAmount (${a.loanAmount.toFixed(0)}) = ${expected.toFixed(0)} (diff ${diff.toFixed(0)}, allowance ±${allowance.toFixed(0)})` });
+      checks.push({ id: 'INV-6', status: 'error', message: `INV-6 totalEquity ${sum.totalEquity.toFixed(0)} ≠ totalAcqCost (${totalAcqCost.toFixed(0)}) − loanAmount (${a.loanAmount.toFixed(0)}) = ${expected.toFixed(0)} (diff ${diff.toFixed(0)})` });
     }
   }
 
@@ -886,20 +884,28 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     checks.push({ id: 'INV-7', status: 'error', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0` });
   }
 
-  // INV-8: waterfall conservation — Σ tier distributions = Σ cfads (algebraic) + equityProceeds
-  // Uses the spec conservation equation: all available cash must be distributed through tiers.
-  // Guard: only checked when all operating CFs are non-negative (no capital-call years) and
-  // the algebraic available cash is positive (non-underwater deal), preventing false alarms
-  // in edge cases where the simplified waterfall does not model capital calls.
+  // INV-8: waterfall conservation — Σ tier distributions == Σ max(0, cfads) + max(0, equityProceeds)
+  //
+  // The waterfall engine (line ~661) only distributes POSITIVE available cash:
+  //   `if (yearCFADS <= 1e-2) continue;`
+  // Negative CFs (e.g. balloon payment at loan maturity, underwater exit) are absorbed
+  // in the running LP/GP aggregate vectors for IRR purposes but contribute 0 to tier
+  // distributions.  Using the algebraic sum would double-count balloon principal
+  // (already subtracted in cfads[exitYear]) and give false failures on valid deals.
+  // The correct conservation equation therefore clamps each period to max(0, ...).
+  //
+  // Fail-closed: if total available cash ≤ 1 (all periods negative, deeply underwater),
+  // emit INV-8 error so no invariant is silently skipped.
   {
     const totalTierDist = result.waterfallDistributions.reduce((s, t) => s + t.lpDistribution + t.gpDistribution, 0);
-    const sumOpCFs = opRows.reduce((s, r) => s + r.cfads, 0); // algebraic — no clamping
-    const availCash = sumOpCFs + disp.equityProceeds;
-    const allNonNeg = opRows.every(r => r.cfads >= -0.01);
-    if (allNonNeg && totalTierDist > 1 && availCash > 1) {
+    const posOpCFs = opRows.reduce((s, r) => s + Math.max(0, r.cfads), 0);
+    const availCash = posOpCFs + Math.max(0, disp.equityProceeds);
+    if (availCash <= 1) {
+      checks.push({ id: 'INV-8', status: 'error', message: `INV-8 cannot verify waterfall: available cash (Σmax(0,cfads) + max(0,equityProceeds) = ${availCash.toFixed(0)}) ≤ 0 — deal is deeply underwater` });
+    } else {
       const relErr = Math.abs(totalTierDist - availCash) / availCash;
       if (relErr > 0.001) {
-        checks.push({ id: 'INV-8', status: 'error', message: `INV-8 Waterfall imbalance: distributed ${totalTierDist.toFixed(0)} ≠ Σcfads+equityProceeds ${availCash.toFixed(0)} (${(relErr * 100).toFixed(3)}% error)` });
+        checks.push({ id: 'INV-8', status: 'error', message: `INV-8 Waterfall imbalance: distributed ${totalTierDist.toFixed(0)} ≠ Σmax(0,cfads)+max(0,equityProceeds) ${availCash.toFixed(0)} (${(relErr * 100).toFixed(3)}% error)` });
       }
     }
   }

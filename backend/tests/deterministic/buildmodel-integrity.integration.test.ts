@@ -70,7 +70,10 @@ const BASE_ASSUMPTIONS = {
   expenses: { payroll: { amount: 280000, type: 'total' as const, growthRate: 0.03 }, management_fee: { amount: 72000, type: 'total' as const, growthRate: 0.03 } },
   financing: { loanAmount: 13500000, loanType: 'fixed' as const, interestRate: 0.065, spread: 0, term: 5, amortization: 30, ioPeriod: 0, originationFee: 0.01, rateCapCost: 0, prepayPenalty: 0 },
   capex: { lineItems: [], contingencyPct: 0.10, reservesPerUnit: 300 },
-  waterfall: { lpShare: 0.90, gpShare: 0.10, hurdles: [{ hurdleRate: 0.08, promoteToGP: 0.20, lpSplit: 0.80 }], equityContribution: 4500000 },
+  // closingCosts={} → closingCostsPct=0 → runner falls back to DEF_CLOSING_PCT=0.01 → 180000
+  // non-FL 0.5% tx = 90000; capex=0 → totalAcqCost = 18000000 + 180000 + 90000 = 18270000
+  // strict INV-6: equity == totalAcqCost - loanAmount == 18270000 - 13500000 = 4770000
+  waterfall: { lpShare: 0.90, gpShare: 0.10, hurdles: [{ hurdleRate: 0.08, promoteToGP: 0.20, lpSplit: 0.80 }], equityContribution: 4770000 },
 };
 
 // ── Pool query spy – captures calls in order ───────────────────────────────

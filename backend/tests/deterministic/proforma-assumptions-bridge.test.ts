@@ -56,7 +56,9 @@ const BASE_ASSUMPTIONS = {
     lpShare: 0.90,
     gpShare: 0.10,
     hurdles: [{ hurdleRate: 0.08, promoteToGP: 0.20, lpSplit: 0.80 }],
-    equityContribution: 4500000,
+    // 18000000 + 50000 (legal closing) + 90000 (non-FL 0.5% tx) + 0 capex = 18140000 totalAcqCost
+    // strict INV-6 requires equity == totalAcqCost - loanAmount == 18140000 - 13500000 = 4640000
+    equityContribution: 4640000,
   },
 };
 
@@ -101,8 +103,8 @@ describe('mapProFormaAssumptionsToModelAssumptions', () => {
 
   it('splits waterfall equityContribution by lpShare/gpShare', () => {
     const m = mapProFormaAssumptionsToModelAssumptions(BASE_ASSUMPTIONS as any);
-    expect(m.lpEquity).toBeCloseTo(4500000 * 0.90, 0);
-    expect(m.gpEquity).toBeCloseTo(4500000 * 0.10, 0);
+    expect(m.lpEquity).toBeCloseTo(4640000 * 0.90, 0);
+    expect(m.gpEquity).toBeCloseTo(4640000 * 0.10, 0);
   });
 
   it('handles zero-unit edge case without throwing', () => {
