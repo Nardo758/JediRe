@@ -1,0 +1,5 @@
+-- F9 Cache (Task #493): deterministic hash of the enhanced assumptions snapshot.
+-- Stored on every completed model build so GET /latest can signal staleness
+-- when the caller's current assumptions diverge from the stored ones.
+ALTER TABLE deal_financial_models
+  ADD COLUMN IF NOT EXISTS assumptions_hash VARCHAR(64);

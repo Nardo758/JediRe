@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { createHash } from 'crypto';
 import { getPool } from '../database/connection';
 import { getFinancialInputsFromModules, FinancialModuleInputs } from './module-wiring/data-flow-router';
 import { dataFlowRouter } from './module-wiring/data-flow-router';
@@ -429,6 +430,27 @@ function applyFillInToAssumptions(
   }
 }
 
+// Guard so the ALTER TABLE runs only once per process lifetime.
+let _hashColEnsured = false;
+
+/** Idempotently adds the assumptions_hash column to deal_financial_models. */
+async function ensureHashColumn(): Promise<void> {
+  if (_hashColEnsured) return;
+  const pool = getPool();
+  await pool.query(
+    `ALTER TABLE deal_financial_models ADD COLUMN IF NOT EXISTS assumptions_hash VARCHAR(64)`
+  );
+  _hashColEnsured = true;
+}
+
+/** Stable sha-256 of an assumptions envelope — sorts top-level keys for determinism. */
+function hashAssumptions(obj: object): string {
+  const sorted = Object.fromEntries(
+    Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
+  );
+  return createHash('sha256').update(JSON.stringify(sorted)).digest('hex');
+}
+
 export class FinancialModelEngineService {
   async buildModel(dealId: string, assumptions: ProFormaAssumptions): Promise<FinancialModelResult> {
     const pool = getPool();
@@ -493,10 +515,14 @@ export class FinancialModelEngineService {
     const enhancementSummary = m26m27ProFormaEnhancer.getEnhancementSummary(enhancedAssumptions);
     logger.info(`M26/M27ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢M09 Enhancement for deal ${dealId}:\n${enhancementSummary}`);
 
+    // Ensure the assumptions_hash column exists (idempotent ALTER TABLE).
+    await ensureHashColumn();
+    const assumptionsHash = hashAssumptions(enhancedAssumptions as object);
+
     const insertResult = await pool.query(
-      `INSERT INTO deal_financial_models (deal_id, model_type, assumptions, status) 
-       VALUES ($1, $2, $3, 'building') RETURNING id`,
-      [dealId, assumptions.modelType, JSON.stringify(enhancedAssumptions)]
+      `INSERT INTO deal_financial_models (deal_id, model_type, assumptions, status, assumptions_hash)
+       VALUES ($1, $2, $3, 'building', $4) RETURNING id`,
+      [dealId, assumptions.modelType, JSON.stringify(enhancedAssumptions), assumptionsHash]
     );
     const modelId = insertResult.rows[0].id;
 
@@ -665,19 +691,29 @@ export class FinancialModelEngineService {
     }
   }
 
-  async getLatestModel(dealId: string): Promise<{ assumptions: ProFormaAssumptions; results: FinancialModelResult; createdAt: string } | null> {
+  async getLatestModel(
+    dealId: string,
+    currentHash?: string,
+  ): Promise<{ assumptions: ProFormaAssumptions; results: FinancialModelResult; createdAt: string; assumptionsHash?: string; stale?: boolean } | null> {
     const pool = getPool();
     const result = await pool.query(
-      `SELECT assumptions, results, created_at FROM deal_financial_models 
+      `SELECT assumptions, results, created_at, assumptions_hash FROM deal_financial_models
        WHERE deal_id = $1 AND status = 'complete' ORDER BY created_at DESC LIMIT 1`,
       [dealId]
     );
     if (result.rows.length === 0) return null;
     const row = result.rows[0];
+    const storedHash: string | null = row.assumptions_hash ?? null;
+    // Stale when caller provides a current hash that differs from what's stored.
+    const stale = currentHash != null && storedHash != null
+      ? currentHash !== storedHash
+      : undefined;
     return {
       assumptions: typeof row.assumptions === 'string' ? JSON.parse(row.assumptions) : row.assumptions,
       results: typeof row.results === 'string' ? JSON.parse(row.results) : row.results,
       createdAt: row.created_at,
+      assumptionsHash: storedHash ?? undefined,
+      stale,
     };
   }
 

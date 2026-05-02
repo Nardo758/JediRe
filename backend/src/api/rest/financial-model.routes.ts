@@ -9,6 +9,10 @@ import type { ProFormaAssumptions } from '../../services/financial-model-engine.
 
 const router = Router();
 
+// In-process idempotency cache: key = `${dealId}:${idempotencyKey}`, value = cached result + timestamp.
+const _idempotencyCache = new Map<string, { result: unknown; ts: number }>();
+const IDEMPOTENCY_TTL_MS = 10_000;
+
 // ──────────────────────────────────────────────────────────────────────────
 // Save-Driven Versioning (Spec §13)
 //
@@ -229,6 +233,21 @@ router.post('/build', async (req: Request, res: Response) => {
     if (!dealId || !assumptions) {
       return res.status(400).json({ error: 'dealId and assumptions are required' });
     }
+
+    // Idempotency-Key deduplication: within 10 s, return the cached result.
+    const idempKey = req.headers['idempotency-key'] as string | undefined;
+    if (idempKey) {
+      const cacheKey = `${dealId}:${idempKey}`;
+      const cached = _idempotencyCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < IDEMPOTENCY_TTL_MS) {
+        return res.json({ success: true, data: cached.result, idempotent: true });
+      }
+      const normalized = normalizeToEngineFormat(assumptions);
+      const result = await financialModelEngine.buildModel(dealId, normalized);
+      _idempotencyCache.set(cacheKey, { result, ts: Date.now() });
+      return res.json({ success: true, data: result });
+    }
+
     const normalized = normalizeToEngineFormat(assumptions);
     const result = await financialModelEngine.buildModel(dealId, normalized);
     return res.json({ success: true, data: result });
@@ -241,7 +260,11 @@ router.post('/build', async (req: Request, res: Response) => {
 router.get('/:dealId/latest', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
-    const model = await financialModelEngine.getLatestModel(dealId);
+    // Optional: caller passes ?assumptionsHash=<hex> to get a staleness signal.
+    const currentHash = typeof req.query.assumptionsHash === 'string'
+      ? req.query.assumptionsHash
+      : undefined;
+    const model = await financialModelEngine.getLatestModel(dealId, currentHash);
     if (!model) {
       return res.status(404).json({ error: 'No completed model found for this deal' });
     }

@@ -409,6 +409,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   // Spec §13: "saved at HH:MM" indicator (replaces unsaved marker on save).
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  // F9 Cache (Task #493): true when local assumptions have drifted from the last build.
+  const [staleModel, setStaleModel] = useState(false);
   const [opusInput, setOpusInput] = useState('');
   const [opusSending, setOpusSending] = useState(false);
   const [opusMessages, setOpusMessages] = useState<Array<{ role: 'user' | 'opus'; text: string; ts: number }>>([]);
@@ -610,6 +612,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       if (result) {
         const normalized = normalizeBuildResponse(result);
         setModelResults(normalized);
+        // Assumptions are now in sync with the persisted model.
+        setStaleModel(false);
       }
     } catch (e) {
       console.error('Model build failed:', e);
@@ -860,7 +864,9 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
 
   const handleAssumptionsChange = useCallback((partial: Partial<ModelAssumptions>) => {
     setAssumptions(prev => prev ? { ...prev, ...partial } : null);
-  }, []);
+    // Mark the model stale when the user edits assumptions after a build.
+    setStaleModel(prev => prev || modelResults !== null);
+  }, [modelResults]);
 
   useEffect(() => {
     if (opusScrollRef.current) {
@@ -1214,6 +1220,14 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
             fontFamily: MONO, fontSize: 9, padding: '2px 10px', cursor: building ? 'default' : 'pointer',
             borderRadius: 2, fontWeight: 700, opacity: !assumptions ? 0.4 : 1,
           }}>{building ? 'BUILDING...' : 'BUILD MODEL'}</button>
+
+          {staleModel && (
+            <span title="Assumptions have changed since the last build" style={{
+              fontFamily: MONO, fontSize: 8, color: BT.text.amber,
+              border: `1px solid ${BT.text.amber}`, borderRadius: 2,
+              padding: '1px 5px', letterSpacing: 0.5,
+            }}>MODEL OUTDATED</span>
+          )}
 
           <div style={{ width: 1, height: 14, background: BT.border.medium }} />
 
