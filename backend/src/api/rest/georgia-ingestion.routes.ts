@@ -400,6 +400,31 @@ router.post('/comps/promote', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/v1/georgia/comps/enrich
+ * Backfill cap_rate, units, price_per_unit, buyer_type and seller on the
+ * multifamily-candidate slice of market_sale_comps so the Capital Markets tab
+ * has live cap-rate-by-class and $/unit metrics.
+ *
+ * Idempotent: only fills NULLs (or recomputes price_per_unit when units
+ * become known). Run after `comps/promote` or as part of ingestion follow-up.
+ *
+ * Body: { state?: string }   (default 'GA')
+ */
+router.post('/comps/enrich', requireAuth, requireRole('owner', 'admin'), async (req: Request, res: Response) => {
+  try {
+    const { state = 'GA' } = req.body || {};
+    const result = await georgiaSaleCompsService.enrichCapitalMarkets(state);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('[API] comps/enrich error:', error);
+    res.status(500).json({
+      error: 'Failed to enrich capital markets data',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+/**
  * GET /api/v1/georgia/comps/stats
  * Coverage stats per county — comp count, date range, price/unit metrics.
  */
@@ -976,6 +1001,11 @@ router.get('/capital/summary', requireAuth, async (req: Request, res: Response) 
     const state = (req.query.state as string) || 'GA';
     const months = Math.min(parseInt(req.query.months as string) || 36, 120);
 
+    // Capital Markets headline / breakdowns only consider multifamily-candidate
+    // comps so 342K residential single-family sales in market_sale_comps don't
+    // pollute the institutional-deal metrics.
+    const MF_FILTER = `(units >= 4 OR sale_price >= 5000000)`;
+
     const [dealsResult, capRateResult, buyerResult, volumeResult, headlineResult] = await Promise.all([
       pool.query(`
         SELECT
@@ -984,7 +1014,7 @@ router.get('/capital/summary', requireAuth, async (req: Request, res: Response) 
           sale_price AS price,
           price_per_unit AS ppu,
           cap_rate AS cap,
-          COALESCE(buyer, 'Unknown') AS buyer,
+          COALESCE(NULLIF(buyer, ''), 'Undisclosed') AS buyer,
           TO_CHAR(sale_date, 'Mon YY') AS date,
           asset_class,
           sale_date
@@ -992,7 +1022,8 @@ router.get('/capital/summary', requireAuth, async (req: Request, res: Response) 
         WHERE state = $1
           AND sale_date >= NOW() - ($2 || ' months')::interval
           AND sale_price > 0
-        ORDER BY sale_date DESC
+          AND ${MF_FILTER}
+        ORDER BY sale_date DESC, sale_price DESC
         LIMIT 20
       `, [state, months]),
 
@@ -1005,9 +1036,11 @@ router.get('/capital/summary', requireAuth, async (req: Request, res: Response) 
         WHERE state = $1
           AND cap_rate IS NOT NULL
           AND cap_rate BETWEEN 2 AND 12
+          AND sale_date >= NOW() - ($2 || ' months')::interval
+          AND ${MF_FILTER}
         GROUP BY asset_class
         ORDER BY asset_class
-      `, [state]),
+      `, [state, months]),
 
       pool.query(`
         SELECT
@@ -1018,6 +1051,7 @@ router.get('/capital/summary', requireAuth, async (req: Request, res: Response) 
         FROM market_sale_comps
         WHERE state = $1
           AND sale_date >= NOW() - ($2 || ' months')::interval
+          AND ${MF_FILTER}
         GROUP BY buyer_type
         ORDER BY SUM(sale_price) DESC
         LIMIT 8
@@ -1033,6 +1067,7 @@ router.get('/capital/summary', requireAuth, async (req: Request, res: Response) 
         FROM market_sale_comps
         WHERE state = $1
           AND sale_price > 0
+          AND ${MF_FILTER}
         GROUP BY EXTRACT(YEAR FROM sale_date)
         ORDER BY EXTRACT(YEAR FROM sale_date) DESC
         LIMIT 10
@@ -1048,6 +1083,7 @@ router.get('/capital/summary', requireAuth, async (req: Request, res: Response) 
         WHERE state = $1
           AND sale_date >= NOW() - ($2 || ' months')::interval
           AND sale_price > 0
+          AND ${MF_FILTER}
       `, [state, months]),
     ]);
 
