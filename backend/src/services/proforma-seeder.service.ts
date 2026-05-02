@@ -782,9 +782,23 @@ export async function applyUserOverride(
     target = next as Record<string, unknown>;
   }
   const lastKey = parts[parts.length - 1];
-  const lv = target[lastKey];
+  let lv = target[lastKey];
   if (!lv || typeof lv !== 'object') {
-    throw new Error(`Field "${fieldPath}" is not a layered value`);
+    // Auto-wrap a bare scalar into a LayeredValue on first override.
+    // Prevents pre-existing fields seeded as a raw number from rejecting
+    // with a 400 when the user pencils an override in the Pro Forma tab.
+    target[lastKey] = {
+      broker: (typeof lv === 'number' ? lv : null),
+      t12: null,
+      rentRoll: null,
+      platform: null,
+      override: value,
+      resolved: value,
+      resolution: 'override',
+      updated_at: new Date().toISOString(),
+      updated_by: userId,
+    };
+    lv = target[lastKey];
   }
   const field = lv as LayeredValue<number>;
 
