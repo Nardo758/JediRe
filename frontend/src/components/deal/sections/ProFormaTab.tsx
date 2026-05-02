@@ -187,30 +187,6 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [plausibilityResult, setPlausibilityResult] = useState<PlausibilityResult | null>(null);
   const [plausibilityLoading, setPlausibilityLoading] = useState(false);
 
-  const handleScorePlausibility = useCallback(async () => {
-    setPlausibilityLoading(true);
-    try {
-      const result = await scorePlausibility({
-        assumptions: {
-          rent_growth: rentGrowth[0] ?? 0.03,
-          vacancy_rate: 1 - stabilizedOccupancy,
-          exit_cap_rate: exitCapRate,
-          expense_growth: 0.03,
-          entry_cap_rate: capRate,
-          debt_rate: interestRate / 100,
-          ltv: loanAmount > 0 && purchasePrice > 0 ? loanAmount / purchasePrice : 0.7,
-        },
-        regime: platformData?.regime ?? undefined,
-      });
-      setPlausibilityResult(result);
-    } catch (err) {
-      console.error('Plausibility scoring failed:', err);
-      setPlausibilityResult(null);
-    } finally {
-      setPlausibilityLoading(false);
-    }
-  }, [rentGrowth, stabilizedOccupancy, exitCapRate, capRate, interestRate, loanAmount, purchasePrice, platformData]);
-
   const [unitMix, setUnitMix] = useState<UnitMixRow[]>([
     { floorPlan: '1BR/1BA', unitSize: 0, beds: 1, units: 0, occupied: 0, vacant: 0, marketRent: 0, inPlaceRent: 0 },
     { floorPlan: '2BR/2BA', unitSize: 0, beds: 2, units: 0, occupied: 0, vacant: 0, marketRent: 0, inPlaceRent: 0 },
@@ -251,6 +227,30 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [rateCapCost, setRateCapCost] = useState(0);
   const [prepayPenalty, setPrepayPenalty] = useState(0.01);
   const [debtSource, setDebtSource] = useState<string | null>(null);
+
+  const handleScorePlausibility = useCallback(async () => {
+    setPlausibilityLoading(true);
+    try {
+      const result = await scorePlausibility({
+        assumptions: {
+          rent_growth: rentGrowth[0] ?? 0.03,
+          vacancy_rate: 1 - stabilizedOccupancy,
+          exit_cap_rate: exitCapRate,
+          expense_growth: 0.03,
+          entry_cap_rate: capRate,
+          debt_rate: interestRate / 100,
+          ltv: loanAmount > 0 && purchasePrice > 0 ? loanAmount / purchasePrice : 0.7,
+        },
+        regime: platformData?.regime ?? undefined,
+      });
+      setPlausibilityResult(result);
+    } catch (err) {
+      console.error('Plausibility scoring failed:', err);
+      setPlausibilityResult(null);
+    } finally {
+      setPlausibilityLoading(false);
+    }
+  }, [rentGrowth, stabilizedOccupancy, exitCapRate, capRate, interestRate, loanAmount, purchasePrice, platformData]);
 
   useEffect(() => {
     const dealUnits = deal?.units || deal?.targetUnits || deal?.target_units || deal?.deal_data?.units || 0;
