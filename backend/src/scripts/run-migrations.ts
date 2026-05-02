@@ -51,7 +51,7 @@ async function run() {
 
     const base = basename(file, '.sql');
     // Only run the two new migrations
-    if (base !== '132_macro_anchor_observations' && base !== '133_proforma_line_item_anchors' && base !== '140_supply_analyses' && base !== '141_cashflow_projections') continue;
+    if (base !== '132_macro_anchor_observations' && base !== '133_proforma_line_item_anchors' && base !== '140_supply_analyses' && base !== '141_cashflow_projections' && base !== '20260502_017_deal_financial_models_columns') continue;
 
     const sql = readFileSync(join(migrationDir, file), 'utf8');
     console.log(`[migrate] Running ${file}...`);
