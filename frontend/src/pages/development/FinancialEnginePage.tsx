@@ -506,11 +506,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         if (model?.assumptions) {
           setAssumptions(model.assumptions);
         }
-        // Store the hash from this model so future fetches can detect staleness.
-        if (model?.assumptionsHash) {
-          setLastBuiltHash(model.assumptionsHash);
-        }
         // Explicit boolean update — clears the badge on false, sets it on true.
+        // lastBuiltHash is NOT updated here: only POST /build sets it.
+        // Updating it from GET /latest would re-trigger this effect with a
+        // matching hash, immediately clearing a just-detected stale signal.
         if (typeof model?.stale === 'boolean') {
           setStaleModel(model.stale);
         }

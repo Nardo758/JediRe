@@ -437,14 +437,22 @@ function applyFillInToAssumptions(
  * pre-enhancement assumptions and include it in the build response envelope.
  */
 export function hashAssumptions(obj: object): string {
-  const sorted = Object.fromEntries(
-    Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
-  );
-  return createHash('sha256').update(JSON.stringify(sorted)).digest('hex');
+  const deepSort = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(deepSort);
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([k, v]) => [k, deepSort(v)])
+      );
+    }
+    return value;
+  };
+  return createHash('sha256').update(JSON.stringify(deepSort(obj))).digest('hex');
 }
 
 export class FinancialModelEngineService {
-  async buildModel(dealId: string, assumptions: ProFormaAssumptions): Promise<FinancialModelResult> {
+  async buildModel(dealId: string, assumptions: ProFormaAssumptions): Promise<{ result: FinancialModelResult; assumptionsHash: string }> {
     const pool = getPool();
 
     // Snapshot the hash BEFORE any mutation (fill-in pass, M26/M27 enhancement).
@@ -671,10 +679,7 @@ export class FinancialModelEngineService {
         [JSON.stringify(result), modelId]
       );
 
-      // Attach the pre-mutation hash so the routes layer can echo it in the
-      // response envelope without an extra DB call or independent recomputation.
-      (result as any)._assumptionsHash = assumptionsHash;
-      return result;
+      return { result, assumptionsHash };
     } catch (error: any) {
       // Only update status to error if we haven't already done so above
       if (!error.message?.startsWith('F9 integrity checks failed')) {

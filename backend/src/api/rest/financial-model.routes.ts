@@ -262,11 +262,8 @@ router.post('/build', async (req: Request, res: Response) => {
       // Store the in-flight promise before awaiting so concurrent duplicates
       // attach to it rather than spawning independent LLM calls.
       const promise: Promise<IdempPayload> = financialModelEngine.buildModel(dealId, normalized)
-        .then(r => {
-          const pl: IdempPayload = {
-            data: r,
-            assumptionsHash: (r as any)._assumptionsHash as string ?? '',
-          };
+        .then(({ result, assumptionsHash }) => {
+          const pl: IdempPayload = { data: result, assumptionsHash };
           _idempotencyCache.set(cacheKey, { payload: pl, ts: Date.now() });
           return pl;
         })
@@ -276,8 +273,7 @@ router.post('/build', async (req: Request, res: Response) => {
       return res.json({ success: true, ...payload });
     }
 
-    const result = await financialModelEngine.buildModel(dealId, normalized);
-    const assumptionsHash = (result as any)._assumptionsHash as string ?? '';
+    const { result, assumptionsHash } = await financialModelEngine.buildModel(dealId, normalized);
     return res.json({ success: true, data: result, assumptionsHash });
   } catch (error: any) {
     console.error('Financial model build error:', error.message);
