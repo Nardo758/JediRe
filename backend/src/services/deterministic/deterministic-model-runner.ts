@@ -63,6 +63,13 @@ export interface ModelAssumptions {
   _evidenceHints?: Record<string, { source: string; confidence: 'HIGH' | 'MEDIUM' | 'LOW'; reasoning?: string }>;
   // Optional: collision report pre-built by the seeder bridge
   _collisionReport?: CollisionEntry[];
+  // Optional development/ground-up fields (defaults: 18mo construction, 12mo lease-up, 60% LTC, 8% rate)
+  constructionMonths?: number;
+  leaseUpMonths?: number;
+  hardCostPerSF?: number;
+  softCostPct?: number;
+  constructionLoanRate?: number;
+  constructionLtc?: number;
 }
 
 export interface AnnualCashFlowRow {
@@ -391,8 +398,16 @@ function isMiamiDade(county?: string): boolean {
 
 export function buildVacancySchedule(holdYears: number, vacancyY1: number, vacancyStab: number): number[] {
   const s: number[] = [];
+  const y1Val = Math.max(vacancyY1, vacancyStab);
   for (let y = 1; y <= holdYears + 1; y++) {
-    s.push(y === 1 ? Math.max(vacancyY1, vacancyStab) : vacancyStab);
+    if (y === 1) {
+      s.push(y1Val);
+    } else if (y === 2 && y1Val > vacancyStab) {
+      // Linear midpoint: halfway between Y1 vacancy and stabilized vacancy
+      s.push((y1Val + vacancyStab) / 2);
+    } else {
+      s.push(vacancyStab);
+    }
   }
   return s;
 }
@@ -520,20 +535,27 @@ export function calculateIRR(
   guess: number = 0.12,
   tol: number = 1e-10
 ): number | null {
-  let r = guess;
-  for (let iter = 0; iter < maxIter; iter++) {
-    let f = 0;
-    let fPrime = 0;
-    for (let i = 0; i < cashFlows.length; i++) {
-      const denom = Math.pow(1 + r, i);
-      f += cashFlows[i] / denom;
-      fPrime += (-i * cashFlows[i]) / Math.pow(1 + r, i + 1);
+  const attempt = (r0: number): number | null => {
+    let r = r0;
+    for (let iter = 0; iter < maxIter; iter++) {
+      let f = 0;
+      let fPrime = 0;
+      for (let i = 0; i < cashFlows.length; i++) {
+        const denom = Math.pow(1 + r, i);
+        f += cashFlows[i] / denom;
+        fPrime += (-i * cashFlows[i]) / Math.pow(1 + r, i + 1);
+      }
+      if (Math.abs(fPrime) < 1e-15) return null;
+      const rNext = r - f / fPrime;
+      if (Math.abs(rNext - r) < tol) return rNext;
+      r = rNext;
     }
-    if (Math.abs(fPrime) < 1e-15) return null;
-    const rNext = r - f / fPrime;
-    if (Math.abs(rNext - r) < tol) return rNext;
-    r = rNext;
-  }
+    return null;
+  };
+  const first = attempt(guess);
+  if (first !== null) return first;
+  // Retry with negative initial guess for marginally-negative-return deals
+  if (guess >= 0) return attempt(-0.10);
   return null;
 }
 
@@ -995,9 +1017,10 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   }
 
   // INV-10: occupancy(y) = 1 − vacancySchedule[y]
-  // vacancySchedule[y]: Y1 = max(vacancyY1, vacancyStab), Y2+ = vacancyStab
+  // Uses buildVacancySchedule to stay consistent with runner (Y1=max, Y2=midpoint ramp, Y3+=stab)
+  const expectedVacSched = buildVacancySchedule(hold, a.vacancyY1, a.vacancyStab);
   for (const row of opRows) {
-    const expectedVacRate = row.year === 1 ? Math.max(a.vacancyY1, a.vacancyStab) : a.vacancyStab;
+    const expectedVacRate = expectedVacSched[row.year - 1] ?? a.vacancyStab;
     const expectedOcc = 1 - expectedVacRate;
     if (Math.abs(row.occupancy - expectedOcc) > 0.0001) {
       checks.push({ id: 'INV-10', status: 'error', message: `INV-10 Occupancy Y${row.year}: got ${row.occupancy.toFixed(4)}, expected ${expectedOcc.toFixed(4)}` });
@@ -1043,6 +1066,11 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   // SOFT-7: equityMultiple < 1.5 → LOW_EM warn
   if (sum.equityMultiple !== null && sum.equityMultiple < 1.5) {
     checks.push({ id: 'LOW_EM', status: 'warn', message: `Equity multiple ${sum.equityMultiple.toFixed(2)}× < 1.5× threshold` });
+  }
+
+  // SOFT-11: IRR could not be computed with either guess → irr_not_computable warn
+  if (sum.irr === null) {
+    checks.push({ id: 'irr_not_computable', status: 'warn', message: 'IRR could not be computed with either positive or negative initial guess — deal may have non-standard cash flow pattern' });
   }
 
   // SOFT-8: rent-to-wage proxy at Y5 > 35% → AFFORDABILITY_CEILING warn
@@ -1160,44 +1188,115 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   const origFee = a.originationFeePct > 0 ? a.loanAmount * a.originationFeePct : a.loanAmount * DEF_ORIGINATION_PCT;
   log.push(`Phase 4: Loan ${a.loanAmount} @ ${(a.rate * 100).toFixed(2)}%, ${a.amort}mo amort, ${a.ioPeriod}mo IO`);
 
+  // ── Development deal pre-computed variables (used in Phase 5 and Phase 7) ──
+  const isDevelopmentDeal = a.dealType === 'development' || a.dealType === 'ground_up';
+  const devConstructionYears = isDevelopmentDeal ? Math.ceil((a.constructionMonths ?? 18) / 12) : 0;
+  const devLeaseUpYears      = isDevelopmentDeal ? Math.ceil((a.leaseUpMonths ?? 12) / 12) : 0;
+  const devHardCosts = isDevelopmentDeal
+    ? ((a.hardCostPerSF ?? 0) > 0 ? (a.hardCostPerSF!) * a.avgUnitSf * a.units : a.capexBudget)
+    : 0;
+  const devSoftCosts        = devHardCosts * (a.softCostPct ?? 0);
+  const devTotalProjectCost = isDevelopmentDeal ? a.purchasePrice + devHardCosts + devSoftCosts : totalAcqCost;
+  const devCLoanAmt         = devTotalProjectCost * (a.constructionLtc ?? 0.60);
+  const devAnnualCapInt     = devCLoanAmt * (a.constructionLoanRate ?? 0.08);
+
   // ── Phase 5: Annual cash flows ──────────────────────────────────────────
   log.push(`Phase 5: Building ${nYears} years of cash flows`);
   const annualRows: AnnualCashFlowRow[] = [];
 
-  for (let y = 1; y <= nYears; y++) {
-    const expCum = Math.pow(1 + a.expenseGrowth, y - 1);
-    const taxYear = y <= taxSchedule.perYear.length ? taxSchedule.perYear[y - 1] : taxSchedule.perYear[taxSchedule.perYear.length - 1];
+  if (isDevelopmentDeal) {
+    log.push(`  Development path: ${devConstructionYears}yr construction + ${devLeaseUpYears}yr lease-up, projectCost=${devTotalProjectCost}`);
+    for (let y = 1; y <= nYears; y++) {
+      const taxYear = y <= taxSchedule.perYear.length
+        ? taxSchedule.perYear[y - 1]
+        : taxSchedule.perYear[taxSchedule.perYear.length - 1];
 
-    const op = computeYearOperating(y, a, cumGrowth[y - 1], vacancySched, taxYear, expCum);
+      if (y <= devConstructionYears) {
+        // Construction phase: no revenue, capitalized interest + property tax as expenses
+        annualRows.push({
+          year: y,
+          grossPotentialRent: 0, lossToLease: 0, vacancy: 0, concessions: 0, badDebt: 0,
+          baseRevenue: 0, otherIncome: 0, effectiveGrossIncome: 0,
+          payroll: 0, maintenance: 0, contractServices: 0, marketing: 0,
+          utilities: 0, admin: 0, insurance: 0,
+          propertyTax: taxYear, managementFee: 0, replacementReserves: 0,
+          totalExpenses: devAnnualCapInt + taxYear,
+          noi: -(devAnnualCapInt + taxYear),
+          annualInterest: devAnnualCapInt, annualPrincipal: 0, debtService: 0,
+          preTaxCashFlow: -(devAnnualCapInt + taxYear),
+          cfads: -(devAnnualCapInt + taxYear),
+          dscr: null, occupancy: 0, debtYield: null, capRateOnCost: null,
+          isExitYear: y === nYears,
+          depreciation: 0, taxableIncome: 0, taxPayable: 0,
+          afterTaxCashFlow: -(devAnnualCapInt + taxYear),
+        });
+      } else {
+        // Post-construction: lease-up linear absorption then stabilized operating
+        const phaseY = y - devConstructionYears;
+        const vacForYear = phaseY <= devLeaseUpYears
+          ? 1 - (phaseY / devLeaseUpYears) * (1 - a.vacancyStab)
+          : a.vacancyStab;
+        // Build flat vacancy schedule at this year's rate (computeYearOperating uses vacSched[y-1])
+        const devVacSched = new Array<number>(nYears + 2).fill(vacForYear);
+        const expCum = Math.pow(1 + a.expenseGrowth, y - 1);
+        const cumG = cumGrowth[Math.min(y - 1, cumGrowth.length - 1)];
+        const op = computeYearOperating(y, a, cumG, devVacSched, taxYear, expCum);
 
-    const interest = amort.interestByYear[y - 1] ?? (a.loanAmount * a.rate);
-    const principal = amort.principalByYear[y - 1] ?? 0;
-    const debtService = amort.debtServiceByYear[y - 1] ?? interest;
-    const cf = op.noi - debtService;
-    const dscr = debtService > 0.01 ? op.noi / debtService : null;
-    const dyield = a.loanAmount > 0 ? op.noi / a.loanAmount : null;
+        const interest    = amort.interestByYear[y - 1] ?? (a.loanAmount * a.rate);
+        const principal   = amort.principalByYear[y - 1] ?? 0;
+        const debtService = amort.debtServiceByYear[y - 1] ?? interest;
+        const cf          = op.noi - debtService;
+        const dscr        = debtService > 0.01 ? op.noi / debtService : null;
+        const dyield      = a.loanAmount > 0 ? op.noi / a.loanAmount : null;
+        const applyBonus  = a.useBonusDepreciation !== false;
+        const depreciation  = (y === 1 && applyBonus) ? incomeTaxBonusDepr : incomeTaxAnnualDepr;
+        const taxableIncome = op.noi - interest - depreciation;
+        const taxPayable    = Math.max(0, taxableIncome * INCOME_TAX_MARGINAL);
+        annualRows.push({
+          year: y, ...op,
+          annualInterest: interest, annualPrincipal: principal, debtService,
+          preTaxCashFlow: cf, cfads: cf, dscr, debtYield: dyield,
+          capRateOnCost: null, isExitYear: y === nYears,
+          depreciation, taxableIncome, taxPayable, afterTaxCashFlow: cf - taxPayable,
+        });
+      }
+    }
+  } else {
+    for (let y = 1; y <= nYears; y++) {
+      const expCum = Math.pow(1 + a.expenseGrowth, y - 1);
+      const taxYear = y <= taxSchedule.perYear.length ? taxSchedule.perYear[y - 1] : taxSchedule.perYear[taxSchedule.perYear.length - 1];
 
-    const applyBonus    = a.useBonusDepreciation !== false; // default true
-    const depreciation  = (y === 1 && applyBonus) ? incomeTaxBonusDepr : incomeTaxAnnualDepr;
-    const taxableIncome = op.noi - interest - depreciation;
-    const taxPayable    = Math.max(0, taxableIncome * INCOME_TAX_MARGINAL);
-    annualRows.push({
-      year: y,
-      ...op,
-      annualInterest: interest,
-      annualPrincipal: principal,
-      debtService,
-      preTaxCashFlow: cf,
-      cfads: cf,
-      dscr,
-      debtYield: dyield,
-      capRateOnCost: null,  // filled below after totalAcqCost is available
-      isExitYear: y === nYears,
-      depreciation,
-      taxableIncome,
-      taxPayable,
-      afterTaxCashFlow: cf - taxPayable,
-    });
+      const op = computeYearOperating(y, a, cumGrowth[y - 1], vacancySched, taxYear, expCum);
+
+      const interest = amort.interestByYear[y - 1] ?? (a.loanAmount * a.rate);
+      const principal = amort.principalByYear[y - 1] ?? 0;
+      const debtService = amort.debtServiceByYear[y - 1] ?? interest;
+      const cf = op.noi - debtService;
+      const dscr = debtService > 0.01 ? op.noi / debtService : null;
+      const dyield = a.loanAmount > 0 ? op.noi / a.loanAmount : null;
+
+      const applyBonus    = a.useBonusDepreciation !== false; // default true
+      const depreciation  = (y === 1 && applyBonus) ? incomeTaxBonusDepr : incomeTaxAnnualDepr;
+      const taxableIncome = op.noi - interest - depreciation;
+      const taxPayable    = Math.max(0, taxableIncome * INCOME_TAX_MARGINAL);
+      annualRows.push({
+        year: y,
+        ...op,
+        annualInterest: interest,
+        annualPrincipal: principal,
+        debtService,
+        preTaxCashFlow: cf,
+        cfads: cf,
+        dscr,
+        debtYield: dyield,
+        capRateOnCost: null,  // filled below after totalAcqCost is available
+        isExitYear: y === nYears,
+        depreciation,
+        taxableIncome,
+        taxPayable,
+        afterTaxCashFlow: cf - taxPayable,
+      });
+    }
   }
 
   // ── Phase 6: Disposition ────────────────────────────────────────────────
@@ -1224,7 +1323,10 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   const em = calculateEM(cashFlows);
   const avgCoC = calculateAvgCoC(totalEquity, annualRows.slice(0, hold).map(r => r.preTaxCashFlow));
   const noiY1 = annualRows[0]?.noi ?? 0;
-  const goingInCap = a.purchasePrice > 0 ? noiY1 / a.purchasePrice : 0;
+  // Development deals: goingInCap = stabilizedNOI / totalProjectCost (spec §10.6)
+  const goingInCap = isDevelopmentDeal
+    ? (devTotalProjectCost > 0 ? noiY1 / devTotalProjectCost : 0)
+    : (a.purchasePrice > 0 ? noiY1 / a.purchasePrice : 0);
 
   // Unlevered IRR: cash flows ignoring debt service
   const unlevCF: number[] = [-totalAcqCost];

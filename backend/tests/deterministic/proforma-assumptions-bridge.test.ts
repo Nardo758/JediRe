@@ -9,6 +9,7 @@ import {
   bisectDistribution,
   computeWaterfall,
   calculateIRR,
+  buildVacancySchedule,
 } from '../../src/services/deterministic/deterministic-model-runner';
 
 const BASE_ASSUMPTIONS = {
@@ -1181,5 +1182,121 @@ describe('runIntegrityChecks — complete spec §6.1 + §6.2 coverage', () => {
     expect(checks.find(c => c.id === 'DSCR_BREACH')?.status).toBe('error');
     // ALL_INVARIANTS still passes — it only gates on INV-* hard errors
     expect(checks.find(c => c.id === 'ALL_INVARIANTS')?.status).toBe('pass');
+  });
+});
+
+// ── Task #491 fidelity-fix tests ─────────────────────────────────────────────
+
+describe('buildVacancySchedule() linear midpoint ramp (task #491)', () => {
+  it('Y1=vacancyY1, Y2=midpoint, Y3+=vacancyStab when vacancyY1 > vacancyStab', () => {
+    const s = buildVacancySchedule(5, 0.10, 0.05);
+    expect(s).toHaveLength(6);
+    expect(s[0]).toBeCloseTo(0.10, 6);   // Y1: max(0.10, 0.05)
+    expect(s[1]).toBeCloseTo(0.075, 6);  // Y2: midpoint (0.10 + 0.05) / 2
+    expect(s[2]).toBeCloseTo(0.05, 6);   // Y3: vacancyStab
+    expect(s[3]).toBeCloseTo(0.05, 6);   // Y4
+    expect(s[4]).toBeCloseTo(0.05, 6);   // Y5
+    expect(s[5]).toBeCloseTo(0.05, 6);   // Y6 (exit forward year)
+  });
+
+  it('no ramp when vacancyY1 === vacancyStab', () => {
+    const s = buildVacancySchedule(3, 0.05, 0.05);
+    expect(s[0]).toBeCloseTo(0.05, 6);
+    expect(s[1]).toBeCloseTo(0.05, 6);
+    expect(s[2]).toBeCloseTo(0.05, 6);
+  });
+
+  it('no ramp when vacancyY1 < vacancyStab (stab floor applies)', () => {
+    const s = buildVacancySchedule(3, 0.02, 0.05);
+    expect(s[0]).toBeCloseTo(0.05, 6);
+    expect(s[1]).toBeCloseTo(0.05, 6);
+    expect(s[2]).toBeCloseTo(0.05, 6);
+  });
+});
+
+describe('calculateIRR() negative-guess retry (task #491)', () => {
+  it('returns a valid IRR for standard positive-return cash flows', () => {
+    const cfs = [-1_000_000, 60_000, 60_000, 60_000, 60_000, 1_100_000];
+    const irr = calculateIRR(cfs);
+    expect(irr).not.toBeNull();
+    expect(irr!).toBeGreaterThan(0);
+  });
+
+  it('returns non-null via negative-guess retry for near-zero-return cash flows', () => {
+    // Slight loss: sell at 97 cents on the dollar — standard +0.12 guess diverges
+    const cfs = [-1_000_000, 0, 0, 0, 0, 970_000];
+    const irr = calculateIRR(cfs);
+    expect(irr).not.toBeNull();
+    expect(irr!).toBeLessThan(0);
+  });
+
+  it('returns null when cash flows genuinely have no real IRR solution', () => {
+    // All-positive cash flows: NPV is always positive, no root exists
+    const cfs = [100, 200, 300];
+    const irr = calculateIRR(cfs);
+    expect(irr).toBeNull();
+  });
+});
+
+describe('irr_not_computable integrity check (task #491 SOFT-11)', () => {
+  it('irr_not_computable warn fires when summary.irr is null', () => {
+    const m = makeRunModelAssumptions();
+    const r = runModel(m, { skipSensitivity: true });
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.summary.irr = null;
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'irr_not_computable')?.status).toBe('warn');
+  });
+
+  it('irr_not_computable absent when summary.irr is a valid number', () => {
+    const m = makeRunModelAssumptions();
+    const r = runModel(m, { skipSensitivity: true });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'irr_not_computable')).toBeUndefined();
+  });
+});
+
+describe('development deal goingInCap (task #491 §10.6)', () => {
+  it('goingInCap = Y1 NOI / totalProjectCost for dealType=development', () => {
+    // hardCostPerSF=0 → hardCosts = capexBudget=2_000_000; softCostPct=0.10 → softCosts=200_000
+    // totalProjectCost = purchasePrice(10M) + 2M + 200K = 12_200_000
+    const m = makeRunModelAssumptions({
+      dealType: 'development',
+      capexBudget: 2_000_000,
+      softCostPct: 0.10,
+      constructionMonths: 12,
+      leaseUpMonths: 12,
+      lpEquity: 4_685_000,
+      gpEquity: 515_000,
+    });
+    const r = runModel(m, { skipSensitivity: true });
+    const noiY1 = r.annualCashFlow[0].noi;
+    const totalProjectCost = 10_000_000 + 2_000_000 + 200_000;
+    const expectedGoingInCap = noiY1 / totalProjectCost;
+    expect(r.summary.goingInCapRate).toBeCloseTo(expectedGoingInCap, 4);
+  });
+
+  it('goingInCap = Y1 NOI / purchasePrice for dealType=existing (unchanged)', () => {
+    const m = makeRunModelAssumptions({ dealType: 'existing' });
+    const r = runModel(m, { skipSensitivity: true });
+    const noiY1 = r.annualCashFlow[0].noi;
+    expect(r.summary.goingInCapRate).toBeCloseTo(noiY1 / 10_000_000, 4);
+  });
+
+  it('construction rows have zero occupancy and negative NOI for dev deal', () => {
+    const m = makeRunModelAssumptions({
+      dealType: 'development',
+      constructionMonths: 12,
+      leaseUpMonths: 12,
+      capexBudget: 2_000_000,
+      lpEquity: 4_685_000,
+      gpEquity: 515_000,
+    });
+    const r = runModel(m, { skipSensitivity: true });
+    // Y1 is the construction year (constructionMonths=12 → 1yr)
+    const y1 = r.annualCashFlow[0];
+    expect(y1.occupancy).toBe(0);
+    expect(y1.noi).toBeLessThan(0);
+    expect(y1.grossPotentialRent).toBe(0);
   });
 });
