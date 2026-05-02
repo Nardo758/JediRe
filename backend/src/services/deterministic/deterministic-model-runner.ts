@@ -91,6 +91,11 @@ export interface AnnualCashFlowRow {
   debtYield: number | null;       // NOI / loanAmount
   capRateOnCost: number | null;   // NOI / totalAcquisitionCost
   isExitYear: boolean;
+  // ── Income tax fields (spec §11) ──────────────────────────────────────────
+  depreciation: number;
+  taxableIncome: number;
+  taxPayable: number;
+  afterTaxCashFlow: number;
 }
 
 export interface SourcesUsesItem {
@@ -281,8 +286,46 @@ export interface ModelResults {
     };
   };
   taxes: {
-    reTax: { perYear: number[]; assessedValues: number[] };
-    transferTax: { acquisition: number; disposition: number; refi: number };
+    reTax: {
+      t12AssessedValue: number | null;
+      platformAssessedValue: number;
+      platformMillageRate: number;
+      platformAnnualTax: number | null;
+      isMiamiDade: boolean;
+      sohCapPct: number;
+      perYear: Array<{
+        year: number;
+        assessedValue: number;
+        millageRate: number;
+        taxAmount: number;
+        capBinding: boolean;
+        sohCapBinding: boolean;
+        reassessmentEvent: boolean;
+      }>;
+      deltaVsT12Pct: number | null;
+    };
+    incomeTax: {
+      purchasePrice: number;
+      landValuePct: number;
+      depreciableBase: number;
+      annualDepreciation: number;
+      bonusDepreciationCurrentYearPct: number;
+      costSegAvailablePct: number;
+      marginalTaxRate: number;
+    };
+    transferTax: {
+      purchasePrice: number;
+      loanAmount: number;
+      docStampAmount: number;
+      intangibleTaxAmount: number;
+      isMiamiDade: boolean;
+      miamiDadeRatePct: number;
+      statewideFlatRatePct: number;
+      appliedRatePct: number;
+      totalTransferTax: number;
+      dispositionDocStamps: number;
+      refi: null;
+    };
   };
   projections: { year: number; institutionalRow: Record<string, number> }[];
   integrityChecks: IntegrityCheck[];
@@ -1060,12 +1103,22 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   let taxSchedule: { perYear: number[]; assessedValues: number[] };
   if (a.isFlorida) {
     taxSchedule = computeFloridaTax(a.purchasePrice, hold);
-    log.push(`Phase 3: FL tax schedule (CNADR 10% cap, assessed base=${a.purchasePrice * DEF_REASSESS_PCT})`);
+    log.push(`Phase 3: FL tax schedule (FL non-homestead 10% NHCap, assessed base=${a.purchasePrice * DEF_REASSESS_PCT})`);
   } else {
     const baseTax = a.basePropertyTax ?? (a.purchasePrice * 0.012); // ~1.2% of purchase as default
     taxSchedule = computeNonFloridaTax(baseTax, a.expenseGrowth, hold);
     log.push(`Phase 3: Non-FL tax schedule, base=${baseTax}, growth=${(a.expenseGrowth * 100).toFixed(1)}%`);
   }
+
+  // ── Phase 3b: Income tax block (spec §11) ───────────────────────────────
+  const INCOME_TAX_LAND_PCT        = 0.20;
+  const INCOME_TAX_DEPR_YEARS      = 27.5;
+  const INCOME_TAX_BONUS_PCT       = 0.20;
+  const INCOME_TAX_COST_SEG_PCT    = 0.30;
+  const INCOME_TAX_MARGINAL        = 0.37;
+  const incomeTaxDepreciableBase   = a.purchasePrice * (1 - INCOME_TAX_LAND_PCT);
+  const incomeTaxAnnualDepr        = incomeTaxDepreciableBase / INCOME_TAX_DEPR_YEARS;
+  const incomeTaxBonusDepr         = incomeTaxDepreciableBase * INCOME_TAX_BONUS_PCT; // Y1 bonus
 
   // ── Phase 4: Amortization schedule ──────────────────────────────────────
   const amort = computeAmortization(a.loanAmount, a.rate, a.term, a.amort, a.ioPeriod, hold);
@@ -1089,6 +1142,9 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     const dscr = debtService > 0.01 ? op.noi / debtService : null;
     const dyield = a.loanAmount > 0 ? op.noi / a.loanAmount : null;
 
+    const depreciation  = y === 1 ? incomeTaxBonusDepr : incomeTaxAnnualDepr;
+    const taxableIncome = op.noi - interest - depreciation;
+    const taxPayable    = Math.max(0, taxableIncome * INCOME_TAX_MARGINAL);
     annualRows.push({
       year: y,
       ...op,
@@ -1101,6 +1157,10 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       debtYield: dyield,
       capRateOnCost: null,  // filled below after totalAcqCost is available
       isExitYear: y === nYears,
+      depreciation,
+      taxableIncome,
+      taxPayable,
+      afterTaxCashFlow: cf - taxPayable,
     });
   }
 
@@ -1420,12 +1480,61 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       },
     },
     taxes: {
-      reTax: taxSchedule,
-      transferTax: {
-        acquisition: docStamps + intangibleTax + titleInsurance,
-        disposition: dispositionDocStamps,
-        refi: 0,
+      reTax: (() => {
+        const miamiDade = isMiamiDade(a.county);
+        const millage   = DEF_MILLAGE;
+        const baseAV    = a.isFlorida ? a.purchasePrice * DEF_REASSESS_PCT : 0;
+        return {
+          t12AssessedValue:   null,
+          platformAssessedValue: baseAV,
+          platformMillageRate:   millage,
+          platformAnnualTax:  baseAV > 0 ? baseAV * millage : null,
+          isMiamiDade:        miamiDade,
+          sohCapPct:          0.10,
+          perYear: taxSchedule.assessedValues.map((av, idx) => {
+            const taxAmt    = taxSchedule.perYear[idx] ?? 0;
+            const capBound  = a.isFlorida && idx > 0;
+            return {
+              year:               idx + 1,
+              assessedValue:      Math.round(av),
+              millageRate:        millage,
+              taxAmount:          Math.round(taxAmt),
+              capBinding:         capBound,
+              sohCapBinding:      capBound,
+              reassessmentEvent:  idx === 0,
+            };
+          }),
+          deltaVsT12Pct: null,
+        };
+      })(),
+      incomeTax: {
+        purchasePrice:                a.purchasePrice,
+        landValuePct:                 INCOME_TAX_LAND_PCT,
+        depreciableBase:              incomeTaxDepreciableBase,
+        annualDepreciation:           incomeTaxAnnualDepr,
+        bonusDepreciationCurrentYearPct: INCOME_TAX_BONUS_PCT,
+        costSegAvailablePct:          INCOME_TAX_COST_SEG_PCT,
+        marginalTaxRate:              INCOME_TAX_MARGINAL,
       },
+      transferTax: (() => {
+        const miamiDade     = isMiamiDade(a.county);
+        const flatRate      = 0.007;
+        const miamiRate     = 0.0105;
+        const appliedRate   = miamiDade ? miamiRate : flatRate;
+        return {
+          purchasePrice:      a.purchasePrice,
+          loanAmount:         a.loanAmount,
+          docStampAmount:     docStamps,
+          intangibleTaxAmount: intangibleTax,
+          isMiamiDade:        miamiDade,
+          miamiDadeRatePct:   miamiRate,
+          statewideFlatRatePct: flatRate,
+          appliedRatePct:     appliedRate,
+          totalTransferTax:   docStamps + intangibleTax,
+          dispositionDocStamps,
+          refi:               null,
+        };
+      })(),
     },
     projections: [],
     integrityChecks: [],
