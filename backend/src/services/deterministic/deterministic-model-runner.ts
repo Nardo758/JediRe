@@ -809,72 +809,178 @@ export function computeSensitivityMatrix(
 export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): IntegrityCheck[] {
   const checks: IntegrityCheck[] = [];
   const cf = result.annualCashFlow;
+  const hold = a.holdYears;
+  // Operating rows: years 1..hold (index 0..hold-1); forward NOI year at index hold is excluded
+  const opRows = cf.slice(0, hold);
+  const disp = result.disposition;
+  const sum = result.summary;
 
-  // INV-1: NOI = EGR - totalExp
-  for (let i = 0; i < cf.length; i++) {
-    const row = cf[i];
-    const diff = Math.abs(row.noi - (row.effectiveGrossIncome - row.totalExpenses));
-    if (diff > 0.01) {
-      checks.push({ id: `INV-1_Y${row.year}`, status: 'error', message: `NOI mismatch Y${row.year}: ${row.noi.toFixed(2)} vs expected ${(row.effectiveGrossIncome - row.totalExpenses).toFixed(2)}` });
+  // ── Hard Invariants (spec §6.1) ───────────────────────────────────────────
+
+  // INV-1: NOI(y) = EGR(y) − totalOpex(y)  for all operating rows
+  for (const row of opRows) {
+    const expected = row.effectiveGrossIncome - row.totalExpenses;
+    if (Math.abs(row.noi - expected) > 0.01) {
+      checks.push({ id: 'INV-1', status: 'error', message: `INV-1 NOI mismatch Y${row.year}: got ${row.noi.toFixed(2)}, expected ${expected.toFixed(2)}` });
+      break; // report first violation only
     }
   }
 
-  // INV-2: GPR >= baseRevenue >= EGR >= NOI
-  for (let i = 0; i < cf.length; i++) {
-    const row = cf[i];
-    if (row.grossPotentialRent < row.baseRevenue - 0.01) {
-      checks.push({ id: `INV-2a_Y${row.year}`, status: 'error', message: `GPR < baseRevenue Y${row.year}` });
+  // INV-2: CF(y) = NOI(y) − debtService(y)  for all operating rows
+  for (const row of opRows) {
+    const expected = row.noi - row.debtService;
+    if (Math.abs(row.cfads - expected) > 0.01) {
+      checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}` });
+      break;
     }
   }
 
-  // INV-4: DSCR > 0
-  for (let i = 0; i < cf.length; i++) {
-    if (cf[i].dscr !== null && cf[i].dscr <= 0) {
-      checks.push({ id: `INV-4_Y${cf[i].year}`, status: 'error', message: `DSCR <= 0 Y${cf[i].year}` });
+  // INV-3: DSCR(y) = NOI(y) / debtService(y)  for rows where debtService > 0
+  for (const row of opRows) {
+    if (row.debtService > 0.01 && row.dscr !== null) {
+      const expected = row.noi / row.debtService;
+      if (Math.abs(row.dscr - expected) > 0.001) {
+        checks.push({ id: 'INV-3', status: 'error', message: `INV-3 DSCR mismatch Y${row.year}: got ${row.dscr.toFixed(4)}, expected ${expected.toFixed(4)}` });
+        break;
+      }
     }
   }
 
-  // INV-5: initial cash flow negative
-  const equity = Math.abs(result.summary.totalEquity);
-  if (equity <= 0) {
-    checks.push({ id: 'INV-7', status: 'error', message: 'Total equity <= 0' });
+  // INV-4: equityProceeds = netSaleProceeds − loanBalanceAtExit
+  {
+    const expected = disp.netSaleProceeds - disp.loanBalance;
+    if (Math.abs(disp.equityProceeds - expected) > 1) {
+      checks.push({ id: 'INV-4', status: 'error', message: `INV-4 equityProceeds ${disp.equityProceeds.toFixed(0)} ≠ netSaleProceeds − loanBal (${expected.toFixed(0)})` });
+    }
   }
 
-  // INV-8: loan must not exceed purchase price (hard stop — 100%+ LTV is structurally invalid)
-  if (a.loanAmount > a.purchasePrice) {
-    checks.push({ id: 'INV-8', status: 'error', message: `Loan (${a.loanAmount}) > purchase price (${a.purchasePrice}): LTV exceeds 100%` });
+  // INV-5: grossSalePrice ≈ stabilizedNOI / exitCap  (within 0.1%)
+  if (a.exitCap > 0 && disp.stabilizedNOI > 0) {
+    const expected = disp.stabilizedNOI / a.exitCap;
+    const relErr = Math.abs(disp.grossSalePrice - expected) / expected;
+    if (relErr > 0.001) {
+      checks.push({ id: 'INV-5', status: 'error', message: `INV-5 grossSalePrice ${disp.grossSalePrice.toFixed(0)} ≠ stabilizedNOI/exitCap (${expected.toFixed(0)}, err=${(relErr * 100).toFixed(3)}%)` });
+    }
   }
 
-  // INV-9: hold years
-  if (a.holdYears !== cf.length - 1) {
-    checks.push({ id: 'INV-9', status: 'warn', message: `Cash flow rows (${cf.length}) != hold years (${a.holdYears}) + 1` });
+  // INV-6: totalEquity ≈ totalAcquisitionCost − loanAmount  (25% relative tolerance)
+  // Allows equity to cover purchasePrice equity only (closing costs/capex may be paid separately)
+  {
+    const totalAcqCost = result.capital.metrics.totalCost;
+    const expected = totalAcqCost - a.loanAmount;
+    if (Math.abs(expected) > 1) {
+      const relDiff = Math.abs(sum.totalEquity - expected) / Math.abs(expected);
+      if (relDiff > 0.25) {
+        checks.push({ id: 'INV-6', status: 'error', message: `INV-6 totalEquity ${sum.totalEquity.toFixed(0)} ≠ totalAcqCost (${totalAcqCost.toFixed(0)}) − loanAmount (${a.loanAmount.toFixed(0)}) = ${expected.toFixed(0)} (${(relDiff * 100).toFixed(1)}% off)` });
+      }
+    }
   }
 
-  // INV-10: exit cap range
-  if (a.exitCap <= 0 || a.exitCap > 0.15) {
-    checks.push({ id: 'INV-10', status: 'warn', message: `Exit cap ${(a.exitCap * 100).toFixed(1)}% outside 0-15%` });
+  // INV-7: initial equity outlay must be positive (cashFlows[0] < 0)
+  if (sum.totalEquity <= 0) {
+    checks.push({ id: 'INV-7', status: 'error', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0` });
   }
 
-  // Soft checks
-  const lastOpRow = cf[cf.length - 2];
-  if (lastOpRow && lastOpRow.dscr !== null && lastOpRow.dscr < 1.25) {
-    checks.push({ id: 'TIGHT_DSCR', status: 'warn', message: `Y${lastOpRow.year} DSCR ${lastOpRow.dscr.toFixed(2)} < 1.25` });
+  // INV-8: waterfall conservation — Σ tier distributions = Σ positive operating CFs + equityProceeds
+  {
+    const totalTierDist = result.waterfallDistributions.reduce((s, t) => s + t.lpDistribution + t.gpDistribution, 0);
+    const posOpCFs = opRows.reduce((s, r) => s + Math.max(0, r.cfads), 0);
+    const availCash = posOpCFs + Math.max(0, disp.equityProceeds);
+    if (totalTierDist > 1 && availCash > 1) {
+      const relErr = Math.abs(totalTierDist - availCash) / availCash;
+      if (relErr > 0.001) {
+        checks.push({ id: 'INV-8', status: 'error', message: `INV-8 Waterfall imbalance: distributed ${totalTierDist.toFixed(0)} ≠ available cash ${availCash.toFixed(0)} (${(relErr * 100).toFixed(3)}% error)` });
+      }
+    }
   }
-  if (a.ltv > 0.75) {
-    checks.push({ id: 'AGGRESSIVE_LTV', status: 'warn', message: `LTV ${(a.ltv * 100).toFixed(0)}% > 75%` });
+
+  // INV-9: lossToLease$ + vacancy$ + concessions$ + badDebt$ < GPR every year
+  for (const row of opRows) {
+    const losses = row.lossToLease + row.vacancy + row.concessions + row.badDebt;
+    if (losses >= row.grossPotentialRent - 0.01) {
+      checks.push({ id: 'INV-9', status: 'error', message: `INV-9 Losses Y${row.year} (${losses.toFixed(0)}) ≥ GPR (${row.grossPotentialRent.toFixed(0)})` });
+      break;
+    }
   }
+
+  // INV-10: occupancy(y) = 1 − vacancySchedule[y]
+  // vacancySchedule[y]: Y1 = max(vacancyY1, vacancyStab), Y2+ = vacancyStab
+  for (const row of opRows) {
+    const expectedVacRate = row.year === 1 ? Math.max(a.vacancyY1, a.vacancyStab) : a.vacancyStab;
+    const expectedOcc = 1 - expectedVacRate;
+    if (Math.abs(row.occupancy - expectedOcc) > 0.0001) {
+      checks.push({ id: 'INV-10', status: 'error', message: `INV-10 Occupancy Y${row.year}: got ${row.occupancy.toFixed(4)}, expected ${expectedOcc.toFixed(4)}` });
+      break;
+    }
+  }
+
+  // ── Soft Checks (spec §6.2) ───────────────────────────────────────────────
+
+  // SOFT-1: Any year DSCR < 1.20 → TIGHT_DSCR warn
+  const tightDscrRow = opRows.find(r => r.dscr !== null && r.dscr < 1.20);
+  if (tightDscrRow) {
+    checks.push({ id: 'TIGHT_DSCR', status: 'warn', message: `Y${tightDscrRow.year} DSCR ${tightDscrRow.dscr!.toFixed(2)} < 1.20` });
+  }
+
+  // SOFT-2: Any year DSCR < 1.10 → DSCR_BREACH error
+  const breachDscrRow = opRows.find(r => r.dscr !== null && r.dscr < 1.10);
+  if (breachDscrRow) {
+    checks.push({ id: 'DSCR_BREACH', status: 'error', message: `Y${breachDscrRow.year} DSCR ${breachDscrRow.dscr!.toFixed(2)} < 1.10 — covenant breach threshold` });
+  }
+
+  // SOFT-3: stabilized vacancy < 5% structural floor → AGGRESSIVE_VACANCY warn
+  if (a.vacancyStab < 0.05) {
+    checks.push({ id: 'AGGRESSIVE_VACANCY', status: 'warn', message: `Stabilized vacancy ${(a.vacancyStab * 100).toFixed(1)}% below 5% structural floor` });
+  }
+
+  // SOFT-4: rentGrowth Y1 > 6% → AGGRESSIVE_RENT_GROWTH warn
   if (a.rentGrowth.length > 0 && a.rentGrowth[0] > 0.06) {
     checks.push({ id: 'AGGRESSIVE_RENT_GROWTH', status: 'warn', message: `Y1 rent growth ${(a.rentGrowth[0] * 100).toFixed(1)}% > 6%` });
   }
-  if (a.vacancyStab < 0.05) {
-    checks.push({ id: 'OPTIMISTIC_VACANCY', status: 'warn', message: `Vacancy ${(a.vacancyStab * 100).toFixed(1)}% < 5%` });
-  }
-  if (a.exitCap < 0.045) {
-    checks.push({ id: 'OPTIMISTIC_EXIT_CAP', status: 'warn', message: `Exit cap ${(a.exitCap * 100).toFixed(1)}% < 4.5%` });
+
+  // SOFT-5: exitCap < goingInCap by > 50bps → CAP_RATE_COMPRESSION warn
+  const goingInCap = sum.goingInCapRate;
+  if (goingInCap > 0 && a.exitCap < goingInCap - 0.005) {
+    checks.push({ id: 'CAP_RATE_COMPRESSION', status: 'warn', message: `Exit cap ${(a.exitCap * 100).toFixed(2)}% is >50bps below going-in cap ${(goingInCap * 100).toFixed(2)}%` });
   }
 
-  if (!checks.some(c => c.status === 'error')) {
-    checks.unshift({ id: 'ALL_INVARIANTS', status: 'pass', message: 'All hard invariants pass' });
+  // SOFT-6: IRR < 12% → LOW_IRR warn
+  if (sum.irr !== null && sum.irr < 0.12) {
+    checks.push({ id: 'LOW_IRR', status: 'warn', message: `IRR ${(sum.irr * 100).toFixed(1)}% < 12% threshold` });
+  }
+
+  // SOFT-7: equityMultiple < 1.5 → LOW_EM warn
+  if (sum.equityMultiple !== null && sum.equityMultiple < 1.5) {
+    checks.push({ id: 'LOW_EM', status: 'warn', message: `Equity multiple ${sum.equityMultiple.toFixed(2)}× < 1.5× threshold` });
+  }
+
+  // SOFT-8: rent-to-wage proxy at Y5 > 35% → AFFORDABILITY_CEILING warn
+  // proxy: (GPR_Y5 / units / 12) / $4,500 area median wage
+  const y5Row = opRows[4];
+  if (y5Row && a.units > 0) {
+    const monthlyRentPerUnit = y5Row.grossPotentialRent / a.units / 12;
+    const rentToWage = monthlyRentPerUnit / 4500;
+    if (rentToWage > 0.35) {
+      checks.push({ id: 'AFFORDABILITY_CEILING', status: 'warn', message: `Y5 rent-to-wage proxy ${(rentToWage * 100).toFixed(1)}% > 35% (monthly rent $${monthlyRentPerUnit.toFixed(0)})` });
+    }
+  }
+
+  // SOFT-9: Y1 vacancy < 5% structural floor → VACANCY_BELOW_STRUCTURAL warn
+  if (a.vacancyY1 < 0.05) {
+    checks.push({ id: 'VACANCY_BELOW_STRUCTURAL', status: 'warn', message: `Y1 vacancy assumption ${(a.vacancyY1 * 100).toFixed(1)}% below 5% structural floor` });
+  }
+
+  // SOFT-10: capexBudget == 0 on a non-development deal → NO_CAPEX_BUDGET_FOR_VALUE_ADD
+  const isDevelopment = a.dealType === 'development' || a.dealType === 'ground_up';
+  if (a.capexBudget === 0 && !isDevelopment) {
+    checks.push({ id: 'NO_CAPEX_BUDGET_FOR_VALUE_ADD', status: 'warn', message: 'No capex budget on a non-development deal — consider value-add allocation' });
+  }
+
+  // ── ALL_INVARIANTS gate ───────────────────────────────────────────────────
+  // Only passes when all 10 hard INV-* checks are clean (SOFT errors do not block)
+  const hasHardInvError = checks.some(c => c.status === 'error' && c.id.startsWith('INV-'));
+  if (!hasHardInvError) {
+    checks.unshift({ id: 'ALL_INVARIANTS', status: 'pass', message: 'All 10 hard invariants pass' });
   }
 
   return checks;

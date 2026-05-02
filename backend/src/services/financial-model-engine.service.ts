@@ -474,7 +474,9 @@ export class FinancialModelEngineService {
         const modelAssumptions = mapProFormaAssumptionsToModelAssumptions(enhancedAssumptions as ProFormaAssumptions);
         const deterministicResult = runModel(modelAssumptions, { skipSensitivity: true });
         const checks = runIntegrityChecks(modelAssumptions, deterministicResult);
-        const hardFailures = checks.filter(c => c.status === 'error');
+        // Only INV-* checks are hard invariants that halt the build.
+        // SOFT checks (e.g. DSCR_BREACH) may have status='error' but are advisory only.
+        const hardFailures = checks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
 
         // Cross-check LLM output KPIs against deterministic output for the same inputs
         const divergences = crossCheckLLMVsDeterministic(result, deterministicResult);

@@ -130,11 +130,12 @@ describe('mapProFormaAssumptionsToModelAssumptions', () => {
     const m = mapProFormaAssumptionsToModelAssumptions(BASE_ASSUMPTIONS as any);
     const r = runModel(m, { skipSensitivity: true });
     const checks = runIntegrityChecks(m, r);
-    const hardFailures = checks.filter(c => c.status === 'error');
+    const hardFailures = checks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
     expect(hardFailures).toHaveLength(0);
+    expect(checks.find(c => c.id === 'ALL_INVARIANTS')?.status).toBe('pass');
   });
 
-  it('loan > purchasePrice triggers INV-8 hard failure', () => {
+  it('loan > purchasePrice triggers INV-6 hard failure (totalEquity mismatch)', () => {
     const over = {
       ...BASE_ASSUMPTIONS,
       financing: { ...BASE_ASSUMPTIONS.financing, loanAmount: 20000000 },
@@ -142,9 +143,9 @@ describe('mapProFormaAssumptionsToModelAssumptions', () => {
     const m = mapProFormaAssumptionsToModelAssumptions(over as any);
     const r = runModel(m, { skipSensitivity: true });
     const checks = runIntegrityChecks(m, r);
-    const inv8 = checks.find(c => c.id === 'INV-8');
-    expect(inv8).toBeDefined();
-    expect(inv8?.status).toBe('error');
+    const inv6 = checks.find(c => c.id === 'INV-6');
+    expect(inv6).toBeDefined();
+    expect(inv6?.status).toBe('error');
   });
 
   it('zero equity triggers INV-7 hard failure', () => {
@@ -156,8 +157,9 @@ describe('mapProFormaAssumptionsToModelAssumptions', () => {
     const m = mapProFormaAssumptionsToModelAssumptions(noEquity as any);
     const r = runModel(m, { skipSensitivity: true });
     const checks = runIntegrityChecks(m, r);
-    const inv7or8 = checks.filter(c => c.status === 'error');
-    expect(inv7or8.length).toBeGreaterThan(0);
+    const inv7 = checks.find(c => c.id === 'INV-7');
+    expect(inv7).toBeDefined();
+    expect(inv7?.status).toBe('error');
   });
 });
 
@@ -868,5 +870,267 @@ describe('Westshore Commons regression (spec §12)', () => {
         expect(gpIrr).toBeGreaterThan(lpIrr);
       }
     });
+  });
+});
+
+// ── runIntegrityChecks — all 10 hard invariants + all 10 soft checks ─────────
+describe('runIntegrityChecks — complete spec §6.1 + §6.2 coverage', () => {
+  function base() {
+    return makeRunModelAssumptions();
+  }
+  function baseResult(overrides?: Partial<ReturnType<typeof makeRunModelAssumptions>>) {
+    const m = makeRunModelAssumptions(overrides);
+    return { m, r: runModel(m, { skipSensitivity: true }) };
+  }
+
+  // ── valid deal: ALL_INVARIANTS passes, no INV-* errors ──────────────────
+  it('ALL_INVARIANTS passes on a structurally valid deal', () => {
+    const { m, r } = baseResult();
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'ALL_INVARIANTS')?.status).toBe('pass');
+    const hardErrors = checks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
+    expect(hardErrors).toHaveLength(0);
+  });
+
+  // ── INV-1: NOI = EGR − totalExpenses ───────────────────────────────────
+  it('INV-1 fires when annualCashFlow NOI is tampered', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.annualCashFlow[0].noi += 99999;
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-1')?.status).toBe('error');
+  });
+
+  // ── INV-2: CF = NOI − debtService ──────────────────────────────────────
+  it('INV-2 fires when annualCashFlow cfads is tampered', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.annualCashFlow[0].cfads += 99999;
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-2')?.status).toBe('error');
+  });
+
+  // ── INV-3: DSCR = NOI / debtService ────────────────────────────────────
+  it('INV-3 fires when DSCR field is inconsistent with NOI/DS', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.annualCashFlow[0].dscr = 9.99; // obviously wrong
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-3')?.status).toBe('error');
+  });
+
+  // ── INV-4: equityProceeds = netSaleProceeds − loanBalance ───────────────
+  it('INV-4 fires when disposition.equityProceeds is tampered', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.disposition.equityProceeds += 500000;
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-4')?.status).toBe('error');
+  });
+
+  // ── INV-5: grossSalePrice ≈ stabilizedNOI / exitCap ────────────────────
+  it('INV-5 fires when grossSalePrice deviates > 0.1% from NOI/cap', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.disposition.grossSalePrice *= 1.05; // +5% wrong
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-5')?.status).toBe('error');
+  });
+
+  // ── INV-6: totalEquity = totalAcqCost − loanAmount ─────────────────────
+  it('INV-6 fires when loanAmount > purchasePrice (equity mismatch)', () => {
+    const { m, r } = baseResult({ loanAmount: 9_500_000 }); // > totalAcqCost - equity
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'INV-6')?.status).toBe('error');
+  });
+
+  // ── INV-7: totalEquity > 0 ──────────────────────────────────────────────
+  it('INV-7 fires when totalEquity is patched to 0', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.summary.totalEquity = 0;
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-7')?.status).toBe('error');
+  });
+
+  // ── INV-8: waterfall conservation ──────────────────────────────────────
+  it('INV-8 fires when waterfall tier distributions are tampered', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    if (rPatched.waterfallDistributions.length > 0) {
+      rPatched.waterfallDistributions[0].lpDistribution += 999_999;
+    }
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-8')?.status).toBe('error');
+  });
+
+  // ── INV-9: losses < GPR every year ─────────────────────────────────────
+  it('INV-9 fires when lossToLease exceeds GPR', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    // Set lossToLease to 110% of GPR to force violation
+    const gpr = rPatched.annualCashFlow[0].grossPotentialRent;
+    rPatched.annualCashFlow[0].lossToLease = gpr * 1.1;
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-9')?.status).toBe('error');
+  });
+
+  // ── INV-10: occupancy = 1 − vacancySchedule ────────────────────────────
+  it('INV-10 fires when occupancy field is inconsistent with vacancy', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.annualCashFlow[0].occupancy = 0.999; // doesn't match 1 - vacancyY1
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'INV-10')?.status).toBe('error');
+  });
+
+  // ── SOFT-1: TIGHT_DSCR any year < 1.20 ─────────────────────────────────
+  it('SOFT-1 TIGHT_DSCR fires when any year DSCR is between 1.10 and 1.20', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.annualCashFlow[0].dscr = 1.15;
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'TIGHT_DSCR')?.status).toBe('warn');
+  });
+
+  // ── SOFT-2: DSCR_BREACH any year < 1.10 ────────────────────────────────
+  it('SOFT-2 DSCR_BREACH fires when any year DSCR < 1.10', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.annualCashFlow[0].dscr = 1.05;
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'DSCR_BREACH')?.status).toBe('error');
+    expect(checks.find(c => c.id === 'TIGHT_DSCR')?.status).toBe('warn');
+  });
+
+  // ── SOFT-3: AGGRESSIVE_VACANCY vacancyStab < 5% ─────────────────────────
+  it('SOFT-3 AGGRESSIVE_VACANCY fires when vacancyStab < 5%', () => {
+    const { m, r } = baseResult({ vacancyStab: 0.03 });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'AGGRESSIVE_VACANCY')?.status).toBe('warn');
+  });
+
+  it('SOFT-3 AGGRESSIVE_VACANCY absent when vacancyStab >= 5%', () => {
+    const { m, r } = baseResult({ vacancyStab: 0.05 });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'AGGRESSIVE_VACANCY')).toBeUndefined();
+  });
+
+  // ── SOFT-4: AGGRESSIVE_RENT_GROWTH rentGrowth[0] > 6% ──────────────────
+  it('SOFT-4 AGGRESSIVE_RENT_GROWTH fires when Y1 rent growth > 6%', () => {
+    const { m, r } = baseResult({ rentGrowth: [0.08, 0.03, 0.03, 0.03, 0.03] });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'AGGRESSIVE_RENT_GROWTH')?.status).toBe('warn');
+  });
+
+  // ── SOFT-5: CAP_RATE_COMPRESSION exitCap < goingInCap − 50bps ───────────
+  it('SOFT-5 CAP_RATE_COMPRESSION fires when exit cap is >50bps below going-in', () => {
+    // purchasePrice = 10M, NOI Y1 ≈ some value → goingInCap = NOI/purchase
+    // Set exitCap well below goingInCap by > 0.005
+    const m = makeRunModelAssumptions({ exitCap: 0.03 }); // very low exit cap
+    const r = runModel(m, { skipSensitivity: true });
+    const checks = runIntegrityChecks(m, r);
+    // goingInCap from makeRunModelAssumptions is NOI/10M ≈ 0.07+
+    expect(checks.find(c => c.id === 'CAP_RATE_COMPRESSION')?.status).toBe('warn');
+  });
+
+  it('SOFT-5 CAP_RATE_COMPRESSION absent when exit cap within 50bps of going-in cap', () => {
+    // goingInCap ≈ 13.15% with makeRunModelAssumptions defaults; use exitCap = 13% (15bps below)
+    const m2 = makeRunModelAssumptions({ exitCap: 0.13 });
+    const r2 = runModel(m2, { skipSensitivity: true });
+    const checks = runIntegrityChecks(m2, r2);
+    expect(checks.find(c => c.id === 'CAP_RATE_COMPRESSION')).toBeUndefined();
+  });
+
+  // ── SOFT-6: LOW_IRR < 12% ───────────────────────────────────────────────
+  it('SOFT-6 LOW_IRR fires when IRR < 12%', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.summary.irr = 0.08; // below 12%
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'LOW_IRR')?.status).toBe('warn');
+  });
+
+  it('SOFT-6 LOW_IRR absent when IRR >= 12%', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.summary.irr = 0.15;
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'LOW_IRR')).toBeUndefined();
+  });
+
+  // ── SOFT-7: LOW_EM < 1.5 ────────────────────────────────────────────────
+  it('SOFT-7 LOW_EM fires when equity multiple < 1.5', () => {
+    const { m, r } = baseResult();
+    const rPatched = JSON.parse(JSON.stringify(r));
+    rPatched.summary.equityMultiple = 1.2;
+    const checks = runIntegrityChecks(m, rPatched);
+    expect(checks.find(c => c.id === 'LOW_EM')?.status).toBe('warn');
+  });
+
+  // ── SOFT-8: AFFORDABILITY_CEILING rent-to-wage > 35% at Y5 ─────────────
+  it('SOFT-8 AFFORDABILITY_CEILING fires when Y5 monthly rent > 35% of $4,500 wage', () => {
+    // monthlyRent > 4500 * 0.35 = 1575/unit
+    // GPR_Y5 / units / 12 > 1575 → marketRent must be very high
+    const m = makeRunModelAssumptions({ marketRent: 5000, rentGrowth: Array(5).fill(0.03) });
+    const r = runModel(m, { skipSensitivity: true });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'AFFORDABILITY_CEILING')?.status).toBe('warn');
+  });
+
+  it('SOFT-8 AFFORDABILITY_CEILING absent when rent-to-wage <= 35%', () => {
+    // marketRent = 800; Y5 monthly ≈ 800 * 1.03^4 ≈ $901 < $1575 threshold
+    const { m, r } = baseResult({ marketRent: 800 });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'AFFORDABILITY_CEILING')).toBeUndefined();
+  });
+
+  // ── SOFT-9: VACANCY_BELOW_STRUCTURAL vacancyY1 < 5% ────────────────────
+  it('SOFT-9 VACANCY_BELOW_STRUCTURAL fires when Y1 vacancy < 5%', () => {
+    const { m, r } = baseResult({ vacancyY1: 0.03, vacancyStab: 0.05 });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'VACANCY_BELOW_STRUCTURAL')?.status).toBe('warn');
+  });
+
+  it('SOFT-9 VACANCY_BELOW_STRUCTURAL absent when Y1 vacancy >= 5%', () => {
+    const { m, r } = baseResult({ vacancyY1: 0.10, vacancyStab: 0.05 });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'VACANCY_BELOW_STRUCTURAL')).toBeUndefined();
+  });
+
+  // ── SOFT-10: NO_CAPEX_BUDGET_FOR_VALUE_ADD capexBudget=0 ────────────────
+  it('SOFT-10 NO_CAPEX_BUDGET_FOR_VALUE_ADD fires on non-development deal with capex=0', () => {
+    const { m, r } = baseResult({ capexBudget: 0, dealType: 'existing' });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'NO_CAPEX_BUDGET_FOR_VALUE_ADD')?.status).toBe('warn');
+  });
+
+  it('SOFT-10 NO_CAPEX_BUDGET_FOR_VALUE_ADD absent on development deal with capex=0', () => {
+    const { m, r } = baseResult({ capexBudget: 0, dealType: 'development' });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'NO_CAPEX_BUDGET_FOR_VALUE_ADD')).toBeUndefined();
+  });
+
+  it('SOFT-10 NO_CAPEX_BUDGET_FOR_VALUE_ADD absent when capexBudget > 0', () => {
+    const { m, r } = baseResult({ capexBudget: 500000, dealType: 'existing' });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'NO_CAPEX_BUDGET_FOR_VALUE_ADD')).toBeUndefined();
+  });
+
+  // ── DSCR_BREACH blocks ALL_INVARIANTS (SOFT error does NOT block it) ─────
+  it('DSCR_BREACH (SOFT-2 error) does NOT suppress ALL_INVARIANTS', () => {
+    // Use a high-rate loan so DSCR < 1.10 occurs naturally (no field patching)
+    // totalEquity = 1650000 = totalAcqCost (10650000) - loanAmount (9000000) → INV-6 passes
+    const m = makeRunModelAssumptions({
+      loanAmount: 9_000_000,
+      rate: 0.15,
+      lpEquity: 1_485_000,
+      gpEquity: 165_000,
+    });
+    const r = runModel(m, { skipSensitivity: true });
+    const checks = runIntegrityChecks(m, r);
+    expect(checks.find(c => c.id === 'DSCR_BREACH')?.status).toBe('error');
+    // ALL_INVARIANTS still passes — it only gates on INV-* hard errors
+    expect(checks.find(c => c.id === 'ALL_INVARIANTS')?.status).toBe('pass');
   });
 });

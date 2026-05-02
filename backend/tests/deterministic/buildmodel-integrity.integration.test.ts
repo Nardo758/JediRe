@@ -135,7 +135,7 @@ describe('buildModel() verification gate', () => {
     expect(errorCall).toBeUndefined();
   });
 
-  it('writes status=error and halts when loanAmount > purchasePrice (INV-8)', async () => {
+  it('writes status=error and halts when loanAmount > purchasePrice (INV-6)', async () => {
     const overAssumptions = {
       ...BASE_ASSUMPTIONS,
       financing: { ...BASE_ASSUMPTIONS.financing, loanAmount: 20000000 },
@@ -149,7 +149,8 @@ describe('buildModel() verification gate', () => {
     const errorCall = poolSpy.calls.find(c => /UPDATE deal_financial_models.*status.*error/i.test(c.sql));
     expect(errorCall).toBeDefined();
     const diagnostics = String(errorCall?.params?.[0] ?? '');
-    expect(diagnostics).toContain('INV-8');
+    // loanAmount > purchasePrice → totalEquity ≠ totalAcqCost − loanAmount → INV-6 fires
+    expect(diagnostics).toContain('INV-6');
 
     const completeCall = poolSpy.calls.find(c => /UPDATE deal_financial_models.*status.*complete/i.test(c.sql));
     expect(completeCall).toBeUndefined();
