@@ -1262,13 +1262,15 @@ describe('development deal goingInCap (task #491 §10.6)', () => {
     // totalProjectCost = purchasePrice(10M) + 2M + 200K = 12_200_000
     // constructionMonths=12 → 1yr construction; leaseUpMonths=12 → 1yr lease-up
     // stabilized year = year 3 (index 2)
+    // totalAcqCost = 10M + 100K(closing@1%) + 50K(docStamps@0.5%) + 2M(capex) = 12_150_000
+    // requiredEquity = 12_150_000 - 7_000_000 = 5_150_000
     const m = makeRunModelAssumptions({
       dealType: 'development',
       capexBudget: 2_000_000,
       softCostPct: 0.10,
       constructionMonths: 12,
       leaseUpMonths: 12,
-      lpEquity: 4_685_000,
+      lpEquity: 4_635_000,
       gpEquity: 515_000,
     });
     const r = runModel(m, { skipSensitivity: true });
@@ -1286,12 +1288,13 @@ describe('development deal goingInCap (task #491 §10.6)', () => {
   });
 
   it('construction rows have zero occupancy and negative NOI for dev deal', () => {
+    // totalAcqCost = 10M + 100K + 50K + 2M = 12_150_000; equity = 12_150_000 - 7M = 5_150_000
     const m = makeRunModelAssumptions({
       dealType: 'development',
       constructionMonths: 12,
       leaseUpMonths: 12,
       capexBudget: 2_000_000,
-      lpEquity: 4_685_000,
+      lpEquity: 4_635_000,
       gpEquity: 515_000,
     });
     const r = runModel(m, { skipSensitivity: true });
@@ -1300,5 +1303,19 @@ describe('development deal goingInCap (task #491 §10.6)', () => {
     expect(y1.occupancy).toBe(0);
     expect(y1.noi).toBeLessThan(0);
     expect(y1.grossPotentialRent).toBe(0);
+  });
+
+  it('valid dev deal has no INV-* hard errors (INV-9 and INV-10 skip construction rows)', () => {
+    // Default equity is balanced: totalAcqCost=10_650_000, loanAmount=7M → equity=3_650_000
+    const m = makeRunModelAssumptions({
+      dealType: 'development',
+      constructionMonths: 12,
+      leaseUpMonths: 12,
+    });
+    const r = runModel(m, { skipSensitivity: true });
+    const checks = runIntegrityChecks(m, r);
+    const hardInvErrors = checks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
+    expect(hardInvErrors).toHaveLength(0);
+    expect(checks.find(c => c.id === 'ALL_INVARIANTS')?.status).toBe('pass');
   });
 });

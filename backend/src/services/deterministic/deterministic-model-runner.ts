@@ -1019,13 +1019,27 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   }
 
   // INV-10: occupancy(y) = 1 − vacancySchedule[y]
-  // Uses buildVacancySchedule to stay consistent with runner (Y1=max, Y2=midpoint ramp, Y3+=stab)
-  // Skip construction rows (occupancy=0, GPR=0) — vacancy ramp does not apply during construction
+  // Development deals use the lease-up absorption curve; acquisition deals use buildVacancySchedule
+  const inv10IsDev = a.dealType === 'development' || a.dealType === 'ground_up';
+  const inv10ConstrYrs = inv10IsDev ? Math.ceil((a.constructionMonths ?? 18) / 12) : 0;
+  const inv10LeaseUpYrs = inv10IsDev ? Math.ceil((a.leaseUpMonths ?? 12) / 12) : 0;
   const expectedVacSched = buildVacancySchedule(hold, a.vacancyY1, a.vacancyStab);
   for (const row of opRows) {
-    if (row.grossPotentialRent <= 0 && row.occupancy === 0) continue;
-    const expectedVacRate = expectedVacSched[row.year - 1] ?? a.vacancyStab;
-    const expectedOcc = 1 - expectedVacRate;
+    let expectedOcc: number;
+    if (inv10IsDev) {
+      if (row.year <= inv10ConstrYrs) continue; // construction: occupancy=0 by design, skip check
+      const phaseY = row.year - inv10ConstrYrs;
+      if (phaseY <= inv10LeaseUpYrs && inv10LeaseUpYrs > 0) {
+        const vacForYear = 1 - (phaseY / inv10LeaseUpYrs) * (1 - a.vacancyStab);
+        expectedOcc = 1 - vacForYear;
+      } else {
+        expectedOcc = 1 - a.vacancyStab;
+      }
+    } else {
+      if (row.grossPotentialRent <= 0 && row.occupancy === 0) continue;
+      const expectedVacRate = expectedVacSched[row.year - 1] ?? a.vacancyStab;
+      expectedOcc = 1 - expectedVacRate;
+    }
     if (Math.abs(row.occupancy - expectedOcc) > 0.0001) {
       checks.push({ id: 'INV-10', status: 'error', message: `INV-10 Occupancy Y${row.year}: got ${row.occupancy.toFixed(4)}, expected ${expectedOcc.toFixed(4)}` });
       break;
