@@ -134,7 +134,9 @@ export function buildEvidenceHintsFromSeed(seed: ProFormaYear1Seed): {
   };
 
   // Revenue fields
-  addHint('noi', seed.noi, `Year-1 NOI resolved from ${resolutionToSource(seed.noi.resolution)}.`);
+  addHint('noi', seed.noi, seed.noi?.resolution != null
+    ? `Year-1 NOI resolved from ${resolutionToSource(seed.noi.resolution)}.`
+    : undefined);
   addHint('gpr', seed.gpr);
   addHint('egi', seed.egi);
   addHint('net_rental_income', seed.net_rental_income);
