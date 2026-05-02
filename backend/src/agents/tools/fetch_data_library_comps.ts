@@ -109,7 +109,7 @@ export const fetchDataLibraryCompsTool: ToolDefinition<
           f.unit_count,
           f.year_built,
           f.source_type,
-          f.created_at,
+          a.created_at,
           a.asking_price_per_unit,
           a.cap_rate,
           a.gross_potential_rent,
@@ -129,7 +129,7 @@ export const fetchDataLibraryCompsTool: ToolDefinition<
             a.operating_expense_ratio IS NOT NULL OR
             a.asking_price_per_unit IS NOT NULL
           )
-        ORDER BY f.created_at DESC
+        ORDER BY a.created_at DESC
         LIMIT $2
       `, [fileIds, limit]);
 

@@ -63,17 +63,17 @@ export const fetchRentRollTool: ToolDefinition<
            COUNT(*)::int                                              AS total_units,
            COUNT(*) FILTER (WHERE status = 'occupied')::int          AS occupied_units,
            COUNT(*) FILTER (WHERE status = 'vacant')::int            AS vacant_units,
-           AVG(monthly_rent) FILTER (WHERE status = 'occupied')      AS avg_in_place_rent,
-           SUM(monthly_rent) FILTER (WHERE status = 'occupied')      AS total_monthly_income,
+           AVG(current_rent) FILTER (WHERE status = 'occupied')      AS avg_in_place_rent,
+           SUM(current_rent) FILTER (WHERE status = 'occupied')      AS total_monthly_income,
            COUNT(*) FILTER (
              WHERE lease_end BETWEEN NOW() AND NOW() + INTERVAL '90 days'
            )::int                                                     AS exp_90d,
            COUNT(*) FILTER (
              WHERE lease_end BETWEEN NOW() AND NOW() + INTERVAL '180 days'
            )::int                                                     AS exp_180d,
-           AVG(market_rent - monthly_rent) FILTER (WHERE status = 'occupied') AS market_spread
-         FROM deal_leases
-         WHERE deal_id = $1`,
+           AVG(market_rent - current_rent) FILTER (WHERE status = 'occupied') AS market_spread
+         FROM rent_roll_units
+         WHERE deal_id = $1::uuid`,
         [dealId]
       );
 

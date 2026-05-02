@@ -94,7 +94,7 @@ export const fetchAssumptionsTool: ToolDefinition<
            d.unit_count AS d_units,
            da.year1,
            da.ltv, da.interest_rate, da.loan_term_years, da.amortization_years,
-           da.vacancy_pct, da.vacancy_rate,
+           da.vacancy_pct,
            da.management_fee_pct AS mgmt_fee,
            da.rent_growth_yr1,
            da.exit_cap,
@@ -125,7 +125,7 @@ export const fetchAssumptionsTool: ToolDefinition<
       const n = (v: unknown) => v != null ? Number(v) : null;
 
       // Legacy vacancy_pct is stored as percent (5.00 = 5%); vacancy_rate is also percent
-      const vacancyLegacy = n(row.vacancy_pct ?? row.vacancy_rate);
+      const vacancyLegacy = n(row.vacancy_pct);
       const vacancyPct = vacancyY1 != null ? Math.round(vacancyY1 * 100 * 100) / 100 : vacancyLegacy;
 
       // management_fee_pct legacy is stored as percent (3.00 = 3%)

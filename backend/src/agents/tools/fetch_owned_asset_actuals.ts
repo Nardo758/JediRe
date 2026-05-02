@@ -82,12 +82,12 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
     // Get all properties with TTM data
     const propsResult = await query(
       `SELECT
-         p.id             AS property_id,
-         p.address        AS address,
-         p.submarket      AS submarket,
-         p.units          AS units,
-         p.year_built     AS year_built,
-         p.asset_class    AS asset_class
+         p.id              AS property_id,
+         p.address_line1   AS address,
+         NULL::text        AS submarket,
+         p.units           AS units,
+         p.year_built      AS year_built,
+         p.building_class  AS asset_class
        FROM properties p
        WHERE EXISTS (
          SELECT 1 FROM deal_monthly_actuals dma

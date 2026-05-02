@@ -167,10 +167,11 @@ export const fetchLineItemBenchmarksTool = {
           const conditions: string[] = ['(line_item = $1 OR $1 = ANY(line_item_aliases))'];
           let paramIdx = 1;
 
-          // Build dynamic WHERE clause
+          // Build dynamic WHERE clause. Only consume a positional param when
+          // we actually push a value, otherwise paramIdx drifts past params.length.
           const addCondition = (field: string, value: string | null | undefined) => {
-            paramIdx++;
             if (value) {
+              paramIdx++;
               conditions.push(`${field} = $${paramIdx}`);
               params.push(value);
             } else {
