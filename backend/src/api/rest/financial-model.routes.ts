@@ -5,6 +5,7 @@ import { getPool } from '../../database/connection';
 import { dealVersionsService, type SaveTrigger } from '../../services/proforma/deal-versions.service';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { requireDealAccess } from '../../middleware/deal-access';
+import type { ProFormaAssumptions } from '../../services/financial-model-engine.service';
 
 const router = Router();
 
@@ -86,13 +87,150 @@ router.get(
   }
 );
 
+/**
+ * Maps the F9 frontend proforma format to the engine's ProFormaAssumptions format.
+ * The frontend sends:
+ *   { dealInfo, acquisition, disposition, revenue, expenses, debt, sensitivityOverrides }
+ * The engine expects:
+ *   { dealInfo, acquisition, disposition, revenue, expenses, financing, capex, waterfall }
+ */
+function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
+  const d = raw.dealInfo ?? {};
+  const acq = raw.acquisition ?? {};
+  const dsp = raw.disposition ?? {};
+  const rev = raw.revenue ?? {};
+  const exp = raw.expenses ?? {};
+  const debt = raw.debt ?? {};
+  const um = raw.unitMix ?? [];
+
+  // Map unitMix from { unitType, units, rent, sf, assigns } to { floorPlan, unitSize, beds, ... }
+  const unitMix = um.length > 0
+    ? um.map((u: any) => ({
+        floorPlan: u.floorPlan || u.unitType || u.assigns || 'Unit',
+        unitSize: u.unitSize || u.sf || 0,
+        beds: u.beds ?? 1,
+        units: u.units || 1,
+        occupied: u.occupied ?? Math.round((u.units || 1) * ((rev.stabilizedOccupancy ?? 0.93))),
+        vacant: u.vacant ?? Math.round((u.units || 1) * (1 - (rev.stabilizedOccupancy ?? 0.93))),
+        marketRent: u.marketRent || u.rent || 1500,
+        inPlaceRent: u.inPlaceRent || u.rent || 1500,
+      }))
+    : [{
+        floorPlan: 'Default',
+        unitSize: d.netRentableSF ? Math.round(d.netRentableSF / (d.totalUnits || 1)) : 800,
+        beds: 1,
+        units: d.totalUnits || 1,
+        occupied: Math.round((d.totalUnits || 1) * 0.93),
+        vacant: Math.round((d.totalUnits || 1) * 0.07),
+        marketRent: 1500,
+        inPlaceRent: 1400,
+      }];
+
+  // Normalize otherIncome from frontend format if present
+  const otherIncome: Record<string, { perUnitMonth: number; penetration: number }> = {};
+  if (rev.otherIncome) {
+    for (const [k, v] of Object.entries(rev.otherIncome)) {
+      const oi = v as any;
+      if (typeof oi === 'number') {
+        otherIncome[k] = { perUnitMonth: oi, penetration: 1.0 };
+      } else if (oi && typeof oi === 'object') {
+        otherIncome[k] = {
+          perUnitMonth: oi.perUnitMonth ?? oi.perUnit ?? 0,
+          penetration: oi.penetration ?? 1.0,
+        };
+      }
+    }
+  }
+
+  // Build financing from the frontend debt object
+  const interestRate = (debt.interestRate ?? 6.5) / 100;
+  const term = debt.term ?? 60;
+  const amortization = debt.amortization ?? 30;
+  const loanAmount = debt.loanAmount ?? (acq.purchasePrice ? Math.round(acq.purchasePrice * 0.75) : 0);
+
+  return {
+    dealInfo: {
+      dealName: d.dealName ?? 'Deal',
+      totalUnits: d.totalUnits ?? 0,
+      netRentableSF: d.netRentableSF ?? 0,
+      vintage: d.vintage ?? 1980,
+      address: d.address ?? '',
+      city: d.city ?? '',
+      state: d.state ?? '',
+    },
+    modelType: raw.modelType ?? 'existing',
+    holdPeriod: raw.holdPeriod ?? 5,
+    unitMix,
+    acquisition: {
+      purchasePrice: acq.purchasePrice ?? 0,
+      capRate: (acq.capRate ?? 6) / 100,
+      closingCosts: acq.closingCosts ?? { legal: 50000, appraisal: 15000, inspection: 10000, title: 15000 },
+    },
+    disposition: {
+      exitCapRate: dsp.exitCapRate ?? 0.065,
+      sellingCosts: dsp.sellingCosts ?? 0.02,
+      saleNOIMethod: dsp.saleNOIMethod ?? 'terminal',
+    },
+    revenue: {
+      rentGrowth: Array.isArray(rev.rentGrowth)
+        ? rev.rentGrowth.map((r: number) => r / 100)
+        : [0.03, 0.03, 0.03, 0.03, 0.03],
+      lossToLease: (rev.lossToLease ?? 3) / 100,
+      stabilizedOccupancy: (rev.stabilizedOccupancy ?? 93) / 100,
+      collectionLoss: (rev.collectionLoss ?? 1.5) / 100,
+      otherIncome,
+    },
+    expenses: (() => {
+      const mapped: Record<string, { amount: number; type: string; growthRate: number }> = {};
+      for (const [k, v] of Object.entries(exp)) {
+        const e = v as any;
+        if (!e || typeof e !== 'object') continue;
+        // Normalize growthRate from percentage to decimal
+        const gr = e.growthRate ?? 3;
+        mapped[k] = {
+          amount: e.amount ?? 0,
+          type: e.type ?? 'sf',
+          growthRate: gr > 1 ? gr / 100 : gr,
+        };
+      }
+      return mapped;
+    })(),
+    financing: {
+      loanAmount,
+      loanType: debt.rateType ?? 'fixed',
+      interestRate,
+      spread: debt.spread ?? 0.025,
+      term,
+      amortization,
+      ioPeriod: debt.ioPeriod ?? 0,
+      originationFee: debt.originationFee ?? 0.01,
+      rateCapCost: debt.rateCapCost ?? 0,
+      prepayPenalty: debt.prepayPenalty ?? 0,
+    },
+    capex: {
+      lineItems: raw.capexLineItems ?? [],
+      contingencyPct: 0.10,
+      reservesPerUnit: 250,
+    },
+    waterfall: {
+      lpShare: 0.99,
+      gpShare: 0.01,
+      hurdles: [{ hurdleRate: 0.08, promoteToGP: 0.20, lpSplit: 0.80 }],
+      equityContribution: loanAmount > 0
+        ? (acq.purchasePrice ?? 0) - loanAmount
+        : Math.round((acq.purchasePrice ?? 0) * 0.25),
+    },
+  };
+}
+
 router.post('/build', async (req: Request, res: Response) => {
   try {
-    const { dealId, assumptions } = req.body;
+    const { dealId, assumptions, sensitivityOverrides } = req.body;
     if (!dealId || !assumptions) {
       return res.status(400).json({ error: 'dealId and assumptions are required' });
     }
-    const result = await financialModelEngine.buildModel(dealId, assumptions);
+    const normalized = normalizeToEngineFormat(assumptions);
+    const result = await financialModelEngine.buildModel(dealId, normalized);
     return res.json({ success: true, data: result });
   } catch (error: any) {
     console.error('Financial model build error:', error.message);

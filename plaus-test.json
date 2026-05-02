@@ -1,0 +1,1 @@
+{"assumptions":{"rent_growth":0.03,"vacancy_rate":0.07,"expense_growth":0.025,"exit_cap_rate":0.065,"entry_cap_rate":0.06,"debt_rate":0.065,"ltv":0.7},"variables":["rent_growth","vacancy_rate","expense_growth","exit_cap_rate","entry_cap_rate","debt_rate","ltv"]}

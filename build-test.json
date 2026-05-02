@@ -1,0 +1,64 @@
+{
+  "dealId": "3f32276f-aacd-4da3-b306-317c5109b403",
+  "assumptions": {
+    "dealInfo": {
+      "dealName": "464 Bishop",
+      "totalUnits": 232,
+      "netRentableSF": 200000,
+      "vintage": 1970,
+      "address": "464 Bishop Street NW",
+      "city": "Atlanta",
+      "state": "GA"
+    },
+    "modelType": "existing",
+    "holdPeriod": 5,
+    "unitMix": [
+      { "unitType": "1BR", "units": 120, "rent": 1800, "sf": 800, "assigns": "1BR" },
+      { "unitType": "2BR", "units": 80, "rent": 2200, "sf": 1100, "assigns": "2BR" },
+      { "unitType": "Studio", "units": 32, "rent": 1500, "sf": 600, "assigns": "Studio" }
+    ],
+    "acquisition": {
+      "purchasePrice": 35000000,
+      "capRate": 0.06,
+      "closingCosts": { "legal": 50000, "appraisal": 15000, "inspection": 10000, "title": 15000 }
+    },
+    "disposition": {
+      "exitCapRate": 0.065,
+      "sellingCosts": 0.02,
+      "saleNOIMethod": "terminal"
+    },
+    "revenue": {
+      "rentGrowth": [3, 3, 3, 3, 3],
+      "lossToLease": 3,
+      "stabilizedOccupancy": 93,
+      "collectionLoss": 1.5,
+      "otherIncome": {}
+    },
+    "expenses": {
+      "management_fee": { "amount": 3.5, "type": "pctEGR", "growthRate": 3 },
+      "real_estate_taxes": { "amount": 180000, "type": "sf", "growthRate": 2.5 },
+      "insurance": { "amount": 60000, "type": "sf", "growthRate": 7 },
+      "utilities": { "amount": 80000, "type": "sf", "growthRate": 3 },
+      "repairs_maintenance": { "amount": 90000, "type": "sf", "growthRate": 3 },
+      "contract_services": { "amount": 40000, "type": "sf", "growthRate": 3 },
+      "marketing": { "amount": 25000, "type": "sf", "growthRate": 2 },
+      "turnover": { "amount": 35000, "type": "sf", "growthRate": 2 },
+      "payroll": { "amount": 150000, "type": "sf", "growthRate": 3.5 },
+      "administrative": { "amount": 50000, "type": "sf", "growthRate": 2 },
+      "grounds_landscaping": { "amount": 30000, "type": "sf", "growthRate": 2 },
+      "reserves": { "amount": 30000, "type": "sf", "growthRate": 3 },
+      "security": { "amount": 20000, "type": "sf", "growthRate": 2 },
+      "legal_professional": { "amount": 15000, "type": "sf", "growthRate": 3 },
+      "telecom_cable": { "amount": 12000, "type": "sf", "growthRate": 2 }
+    },
+    "debt": {
+      "loanAmount": 26250000,
+      "interestRate": 6.5,
+      "rateType": "fixed",
+      "term": 60,
+      "amortization": 30,
+      "ltvRatio": 75
+    }
+  },
+  "sensitivityOverrides": {}
+}
