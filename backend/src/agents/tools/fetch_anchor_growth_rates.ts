@@ -176,7 +176,7 @@ Call this in Phase 6 after you've derived your per-line assumptions. Compare
 your growth rate vs. the anchor rate. If they diverge by >1%, flag it as a risk.`,
   inputSchema: InputSchema,
   outputSchema: AnchorGrowthOutputSchema,
-  handler: fetchAnchorGrowthRates,
+  execute: fetchAnchorGrowthRates,
 };
 
 export default fetchAnchorGrowthRatesTool;
