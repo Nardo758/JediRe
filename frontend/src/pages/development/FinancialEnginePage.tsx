@@ -69,8 +69,12 @@ function mergeModelIntoFinancials(
   out.returns.gpPromoteEarned   = s.gpPromoteEarned ?? null;
   out.returns.unleveragedIrr    = null;
   out.returns.unleveragedEm     = null;
-  out.returns.goingInCapRate    = src.proforma?.valuation?.capRate?.resolved ?? null;
-  out.returns.stabilizedCapRate = s.irr != null ? (s.irr * 0.85) : null; // fallback
+  // FIX: type has `proforma.valuationSnapshot.goingInCapT12`, not `proforma.valuation.capRate.resolved`.
+  // Previous path silently returned undefined → null on every deal.
+  out.returns.goingInCapRate    = src.proforma?.valuationSnapshot?.goingInCapT12 ?? null;
+  // FIX: stabilized cap rate is unrelated to IRR. Previous fallback (`s.irr * 0.85`)
+  // produced a confidently-wrong number. Return null rather than fabricate.
+  out.returns.stabilizedCapRate = null;
   out.returns.yocUntrended      = s.yieldOnCost ?? null;
   out.returns.totalLpDistributions = s.lpTotalDistributions ?? null;
   out.returns.totalGpFees       = null;
@@ -96,7 +100,9 @@ function mergeModelIntoFinancials(
     return acc;
   }, []);
   out.returns.valuation = {
-    perUnit: { goingIn: src.valuation?.perUnit ?? null, stabilized: null, atExit: null, submarketMedian: null, percentile: null },
+    // FIX: type has `proforma.valuationSnapshot.pricePerUnit`, not `valuation.perUnit`.
+    // Previous path silently returned undefined → null on every deal.
+    perUnit: { goingIn: src.proforma?.valuationSnapshot?.pricePerUnit ?? null, stabilized: null, atExit: null, submarketMedian: null, percentile: null },
     perSF: { netRentable: { goingIn: null, stabilized: null, atExit: null, submarketMedian: null, percentile: null } },
     multiples: { grm: { goingIn: null, submarketMedian: null }, gim: { goingIn: null, submarketMedian: null }, nim: null, opexRatio: { y1: null }, coc: { y1: null }, yieldOnCost: { untrended: null, trended: null }, devSpread: null },
     replacementCost: null,
@@ -144,7 +150,11 @@ function mergeModelIntoFinancials(
 
   // ── Capital stack (preserve existing, merge loan from model) ──
   if (!out.capitalStack) out.capitalStack = {};
-  out.capitalStack.purchasePrice = assumptions?.acquisition?.purchasePrice ?? src.valuation?.purchasePrice ?? 0;
+  // FIX: src.valuation.purchasePrice doesn't exist on F9DealFinancials.
+  // The canonical path is src.capitalStack.purchasePrice (already populated by the composer).
+  // Previous path silently returned undefined → 0 every time assumptions was missing,
+  // zeroing out PPU/equity/return calcs downstream.
+  out.capitalStack.purchasePrice = assumptions?.acquisition?.purchasePrice ?? src.capitalStack?.purchasePrice ?? 0;
   out.capitalStack.loanAmount = assumptions?.financing?.loanAmount ?? 0;
   out.capitalStack.interestRate = assumptions?.financing?.interestRate ?? 0.07;
   out.capitalStack.equityAtClose = Math.max((out.capitalStack.purchasePrice ?? 0) - (out.capitalStack.loanAmount ?? 0), 0);

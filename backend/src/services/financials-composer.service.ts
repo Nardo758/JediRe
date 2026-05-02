@@ -624,15 +624,25 @@ function buildIntegrityChecks(
   if (!y1) {
     // Check if extraction capsules exist — if none, this deal has never had
     // documents parsed and will always be empty until ingestion happens.
+    // Diagnostic: when proforma is empty AND no extraction capsules exist
+    // on the deal, surface a hard error so the UI can render an actionable
+    // banner instead of silently showing blank rows.
+    //
+    // Rationale: the seeder (`proforma-seeder.service.ts`) bails with
+    // `seeded: false, warnings: ['No extraction sources available']` when none
+    // of `extraction_t12`, `extraction_rent_roll`, `extraction_tax_bill` exist
+    // on `deals.deal_data`. The route handler swallows that as "non-critical",
+    // so without this check the frontend has no way to know why every tab is
+    // blank.
     const hasExtractionT12 = !!(dealData && dealData['extraction_t12']);
     const hasExtractionRR  = !!(dealData && dealData['extraction_rent_roll']);
     const hasExtractionTax = !!(dealData && dealData['extraction_tax_bill']);
 
     if (!hasExtractionT12 && !hasExtractionRR && !hasExtractionTax) {
       checks.push({
-        id: 'seed_failed',
+        id: 'extraction_data_missing',
         status: 'error',
-        message: 'No T-12, rent roll, or tax bill found for this deal — upload documents to populate the financial model.',
+        message: 'No T-12, rent roll, or tax bill found for this deal — upload and parse documents to populate the model.',
       });
     } else if (!hasExtractionT12 && !hasExtractionTax) {
       checks.push({
