@@ -3,7 +3,13 @@ import {
   mapProFormaAssumptionsToModelAssumptions,
   crossCheckLLMVsDeterministic,
 } from '../../src/services/deterministic/proforma-assumptions-bridge';
-import { runModel, runIntegrityChecks } from '../../src/services/deterministic/deterministic-model-runner';
+import {
+  runModel,
+  runIntegrityChecks,
+  bisectDistribution,
+  computeWaterfall,
+  calculateIRR,
+} from '../../src/services/deterministic/deterministic-model-runner';
 
 const BASE_ASSUMPTIONS = {
   dealInfo: {
@@ -472,5 +478,302 @@ describe('crossCheckLLMVsDeterministic', () => {
     const divergences = crossCheckLLMVsDeterministic(llm as any, det as any);
     const irrDiv = divergences.find(d => d.field === 'summary.irr');
     expect(irrDiv).toBeUndefined();
+  });
+});
+
+// ── bisectDistribution unit tests ────────────────────────────────────────────
+describe('bisectDistribution', () => {
+  it('returns maxLPAmount for Infinity hurdle (catch-all tier)', () => {
+    const alloc = bisectDistribution(Infinity, [-1_000_000], 0, 500_000);
+    expect(alloc).toBe(500_000);
+  });
+
+  it('returns 0 when maxLPAmount is 0', () => {
+    const alloc = bisectDistribution(0.08, [-1_000_000], 0, 0);
+    expect(alloc).toBe(0);
+  });
+
+  it('returns maxLPAmount when even full allocation does not bring LP to hurdle', () => {
+    // LP invested 1M, gets 200K after 1 year — IRR = -80%, well below 8%
+    const alloc = bisectDistribution(0.08, [-1_000_000], 0, 200_000);
+    expect(alloc).toBe(200_000);
+  });
+
+  it('returns 0 when LP running IRR already at or above hurdle', () => {
+    // LP invested 1M, year 1 gets 0, year 2 gets 1.2M → IRR >> 8%
+    // When testing for year 3, lpCFBase already shows high IRR
+    const lpCFBase = [-1_000_000, 0, 1_200_000];
+    const alloc = bisectDistribution(0.08, lpCFBase, 0, 500_000);
+    expect(alloc).toBe(0);
+  });
+
+  it('bisects to correct amount for 8% hurdle over 5 years', () => {
+    // LP invested 1000, zero distributions for 4 years.
+    // For 8% IRR over 5 years: X = 1000 × 1.08^5 ≈ 1469.33
+    const lpCFBase = [-1_000, 0, 0, 0, 0];
+    const alloc = bisectDistribution(0.08, lpCFBase, 0, 2_000);
+    // Newton-Raphson + bisection: 1000 × 1.08^5 = 1469.328
+    expect(alloc).toBeCloseTo(1469.33, 0);
+  });
+
+  it('accounts for lpAlreadyThisYear when bisecting', () => {
+    // Same as above but LP already got 200 from a prior tier this year
+    // IRR = 8% for year 5 when total year-5 dist = 1469.33
+    // So new tier alloc = 1469.33 - 200 = 1269.33
+    const lpCFBase = [-1_000, 0, 0, 0, 0];
+    const alloc = bisectDistribution(0.08, lpCFBase, 200, 1_500);
+    expect(alloc).toBeCloseTo(1469.33 - 200, 0);
+  });
+});
+
+// ── computeWaterfall structure tests ─────────────────────────────────────────
+describe('computeWaterfall — structure and tier fields', () => {
+  // Synthetic deal: $1M totalEquity, $900K LP / $100K GP, 5-year hold
+  // 8% pref, promote tiers at 12/15/20%, splits 20/50/80% to GP
+  // Healthy deal: equity proceeds = $3.5M → LP IRR well above 20%
+  const lpEquity = 900_000;
+  const gpEquity = 100_000;
+  const totalEquity = 1_000_000;
+  const preferredReturn = 0.08;
+  const holdYears = 5;
+  const promoteTiers: [number, number, number] = [0.12, 0.15, 0.20];
+  const promoteSplits: [number, number, number] = [0.20, 0.50, 0.80];
+
+  // Annual rows: modest operating CFs
+  const annualRows = Array.from({ length: holdYears }, (_, i) => ({
+    cfads: 40_000 + i * 5_000,
+  })) as any[];
+
+  // Large exit: equity proceeds = $3.5M
+  const equityProceeds = 3_500_000;
+
+  let result: ReturnType<typeof computeWaterfall>;
+  beforeAll(() => {
+    result = computeWaterfall(
+      annualRows, lpEquity, gpEquity, totalEquity,
+      preferredReturn, holdYears, promoteTiers, promoteSplits, equityProceeds,
+    );
+  });
+
+  it('returns exactly 5 tiers', () => {
+    expect(result.tiers).toHaveLength(5);
+  });
+
+  it('tier names are correct in order', () => {
+    expect(result.tiers[0].tierName).toBe('Return of Capital');
+    expect(result.tiers[1].tierName).toBe('Preferred Return');
+    expect(result.tiers[2].tierName).toBe('Promote Tier 1');
+    expect(result.tiers[3].tierName).toBe('Promote Tier 2');
+    expect(result.tiers[4].tierName).toBe('Promote Tier 3');
+  });
+
+  it('each tier has hurdleRate, lpSplit, gpSplit, promotePctEarned fields', () => {
+    for (const t of result.tiers) {
+      expect(typeof t.hurdleRate).toBe('number');
+      expect(typeof t.lpSplit).toBe('number');
+      expect(typeof t.gpSplit).toBe('number');
+      expect(typeof t.promotePctEarned).toBe('number');
+    }
+  });
+
+  it('T1 lpSplit + gpSplit ≈ 1 (pro-rata)', () => {
+    expect(result.tiers[0].lpSplit + result.tiers[0].gpSplit).toBeCloseTo(1, 6);
+  });
+
+  it('T2 lpSplit = 1.0 and gpSplit = 0.0 (LP gets all pref, GP gets none)', () => {
+    expect(result.tiers[1].lpSplit).toBe(1.0);
+    expect(result.tiers[1].gpSplit).toBe(0.0);
+  });
+
+  it('T1 promotePctEarned = 0 (no promote in ROC tier)', () => {
+    expect(result.tiers[0].promotePctEarned).toBe(0);
+  });
+
+  it('T2 promotePctEarned = 0 (no promote in pref tier)', () => {
+    expect(result.tiers[1].promotePctEarned).toBe(0);
+  });
+
+  it('T3 promotePctEarned ≈ promoteSplits[0] - gpEquity/totalEquity', () => {
+    const expected = Math.max(0, promoteSplits[0] - gpEquity / totalEquity);
+    expect(result.tiers[2].promotePctEarned).toBeCloseTo(expected, 6);
+  });
+
+  it('T2 gpDistribution = 0 (GP receives nothing in pref tier)', () => {
+    expect(result.tiers[1].gpDistribution).toBe(0);
+  });
+
+  it('T1 total distribution ≈ totalEquity (both LP and GP get ROC)', () => {
+    const t1Total = result.tiers[0].lpDistribution + result.tiers[0].gpDistribution;
+    expect(t1Total).toBeCloseTo(totalEquity, -1);  // within $10
+  });
+
+  it('T1 LP distribution ≈ lpEquity', () => {
+    expect(result.tiers[0].lpDistribution).toBeCloseTo(lpEquity, -1);
+  });
+
+  it('T1 GP distribution ≈ gpEquity', () => {
+    expect(result.tiers[0].gpDistribution).toBeCloseTo(gpEquity, -1);
+  });
+
+  it('promotes T3-T5 have positive GP distributions (promote earned on high-return deal)', () => {
+    const gpPromote = result.tiers.slice(2).reduce((s, t) => s + t.gpDistribution, 0);
+    expect(gpPromote).toBeGreaterThan(0);
+  });
+
+  it('total LP + GP distributions ≈ total available cash (conservation)', () => {
+    const totalDistributed = result.tiers.reduce(
+      (s, t) => s + t.lpDistribution + t.gpDistribution, 0,
+    );
+    const operatingCFs = annualRows.reduce((s: number, r: any) => s + r.cfads, 0);
+    const totalAvailable = operatingCFs + equityProceeds;
+    expect(totalDistributed).toBeCloseTo(totalAvailable, -2);  // within $100
+  });
+
+  it('aggregate LP CF vector starts with -lpEquity', () => {
+    expect(result.lpCFAggregate[0]).toBe(-lpEquity);
+  });
+
+  it('aggregate GP CF vector starts with -gpEquity', () => {
+    expect(result.gpCFAggregate[0]).toBe(-gpEquity);
+  });
+
+  it('aggregate LP CF vector has holdYears+2 entries (outlay + N operating + exit)', () => {
+    expect(result.lpCFAggregate).toHaveLength(holdYears + 2);
+  });
+
+  it('summary lpIrr and gpIrr are non-null for profitable deal', () => {
+    const lpIrr = calculateIRR(result.lpCFAggregate);
+    const gpIrr = calculateIRR(result.gpCFAggregate);
+    expect(lpIrr).not.toBeNull();
+    expect(gpIrr).not.toBeNull();
+    expect(lpIrr!).toBeGreaterThan(0);
+    expect(gpIrr!).toBeGreaterThan(0);
+  });
+
+  it('GP IRR > LP IRR on high-return deal (promote lifts GP returns)', () => {
+    const lpIrr = calculateIRR(result.lpCFAggregate);
+    const gpIrr = calculateIRR(result.gpCFAggregate);
+    if (lpIrr !== null && gpIrr !== null) {
+      expect(gpIrr).toBeGreaterThan(lpIrr);
+    }
+  });
+
+  it('pref hurdle: T2 hurdleRate equals preferredReturn', () => {
+    expect(result.tiers[1].hurdleRate).toBe(preferredReturn);
+  });
+
+  it('promote T3 hurdleRate equals promoteTiers[0]', () => {
+    expect(result.tiers[2].hurdleRate).toBe(promoteTiers[0]);
+  });
+});
+
+// ── Waterfall conservation: zero-profit deal ──────────────────────────────────
+describe('computeWaterfall — zero-profit deal (equity proceeds = totalEquity only)', () => {
+  const lpEquity = 900_000;
+  const gpEquity = 100_000;
+  const totalEquity = 1_000_000;
+  const annualRows = Array.from({ length: 3 }, () => ({ cfads: 0 })) as any[];
+  const equityProceeds = totalEquity;  // exactly break-even at exit
+
+  it('LP and GP each receive exactly their equity back (no pref, no promote)', () => {
+    const res = computeWaterfall(
+      annualRows, lpEquity, gpEquity, totalEquity,
+      0.08, 3, [0.12, 0.15, 0.20], [0.20, 0.50, 0.80], equityProceeds,
+    );
+    const lpTotal = res.tiers.reduce((s, t) => s + t.lpDistribution, 0);
+    const gpTotal = res.tiers.reduce((s, t) => s + t.gpDistribution, 0);
+    expect(lpTotal).toBeCloseTo(lpEquity, -1);
+    expect(gpTotal).toBeCloseTo(gpEquity, -1);
+    // T2-T5 should get nothing since LP IRR ≤ 0%
+    expect(res.tiers[1].lpDistribution).toBeCloseTo(0, -1);
+    expect(res.tiers.slice(2).reduce((s, t) => s + t.gpDistribution, 0)).toBeCloseTo(0, -1);
+  });
+});
+
+// ── Westshore Commons regression (spec §12) ───────────────────────────────────
+describe('Westshore Commons regression (spec §12)', () => {
+  // Use spec cash flows directly to test waterfall mechanics.
+  // Approximate CF vector from spec §12 Step 8:
+  //   [-18696200, 1820956, ~2100000, ~2400000, ~1800000, ~2000000, ~2200000, ~2400000+58878261]
+  // Total positive = 73,598,956; EM = 73,598,956 / 18,696,200 ≈ 3.935×  // Expected: IRR ≈ 24.3%, EM ≈ 3.93×
+
+  const lpEquity   = 16_826_580;
+  const gpEquity   =  1_869_620;
+  const totalEquity = 18_696_200;
+  const preferredReturn = 0.08;
+  const holdYears  = 7;
+  const promoteTiers:  [number, number, number] = [0.12, 0.15, 0.20];
+  const promoteSplits: [number, number, number] = [0.20, 0.50, 0.80];
+
+  // Spec §12 approximate annual CFADS (operating years 1–7)
+  const specCFADS = [1_820_956, 2_100_000, 2_400_000, 1_800_000, 2_000_000, 2_200_000, 2_400_000];
+  const equityProceeds = 58_878_261;
+
+  const annualRows = specCFADS.map(cfads => ({ cfads })) as any[];
+
+  // Deal-level IRR and EM on total equity cash flows
+  const totalCF = [-totalEquity, ...specCFADS.slice(0, -1), specCFADS[specCFADS.length - 1] + equityProceeds];
+
+  it('spec §12 total-equity IRR ≈ 24.3% (within 1%)', () => {
+    const irr = calculateIRR(totalCF);
+    expect(irr).not.toBeNull();
+    expect(Math.abs(irr! - 0.243)).toBeLessThan(0.01);
+  });
+
+  it('spec §12 total-equity EM ≈ 3.93× (within 2%)', () => {
+    const positiveCFs = totalCF.slice(1).filter(v => v > 0);
+    const em = positiveCFs.reduce((s, v) => s + v, 0) / totalEquity;
+    expect(Math.abs(em - 3.93)).toBeLessThan(0.08);  // within 2%
+  });
+
+  describe('waterfall mechanics on Westshore cash flows', () => {
+    let wf: ReturnType<typeof computeWaterfall>;
+    beforeAll(() => {
+      wf = computeWaterfall(
+        annualRows, lpEquity, gpEquity, totalEquity,
+        preferredReturn, holdYears, promoteTiers, promoteSplits, equityProceeds,
+      );
+    });
+
+    it('total distributed = total available cash (conservation)', () => {
+      const totalDist = wf.tiers.reduce((s, t) => s + t.lpDistribution + t.gpDistribution, 0);
+      const totalAvail = specCFADS.reduce((s, v) => s + v, 0) + equityProceeds;
+      expect(totalDist).toBeCloseTo(totalAvail, -2);
+    });
+
+    it('T1 LP distribution ≈ lpEquity (LP gets capital back)', () => {
+      expect(wf.tiers[0].lpDistribution).toBeCloseTo(lpEquity, -2);
+    });
+
+    it('T1 GP distribution ≈ gpEquity (GP gets capital back)', () => {
+      expect(wf.tiers[0].gpDistribution).toBeCloseTo(gpEquity, -2);
+    });
+
+    it('T2 GP distribution = 0 (GP earns no preferred return per spec)', () => {
+      expect(wf.tiers[1].gpDistribution).toBe(0);
+    });
+
+    it('T2 LP distribution > 0 (LP earns preferred return)', () => {
+      expect(wf.tiers[1].lpDistribution).toBeGreaterThan(0);
+    });
+
+    it('GP earns a promote (T3-T5 GP distributions > 0) on 24% IRR deal', () => {
+      const gpPromote = wf.tiers.slice(2).reduce((s, t) => s + t.gpDistribution, 0);
+      expect(gpPromote).toBeGreaterThan(0);
+    });
+
+    it('LP aggregate IRR > preferredReturn (LP exceeds 8% pref)', () => {
+      const lpIrr = calculateIRR(wf.lpCFAggregate);
+      expect(lpIrr).not.toBeNull();
+      expect(lpIrr!).toBeGreaterThan(preferredReturn);
+    });
+
+    it('GP aggregate IRR > LP aggregate IRR (promote lifts GP)', () => {
+      const lpIrr = calculateIRR(wf.lpCFAggregate);
+      const gpIrr = calculateIRR(wf.gpCFAggregate);
+      if (lpIrr !== null && gpIrr !== null) {
+        expect(gpIrr).toBeGreaterThan(lpIrr);
+      }
+    });
   });
 });

@@ -119,12 +119,22 @@ export interface SourcesUsesPayload {
 export interface WaterfallTier {
   tier: number;
   tierName: string;
+  hurdleRate: number;
+  lpSplit: number;
+  gpSplit: number;
   lpDistribution: number;
   gpDistribution: number;
+  promotePctEarned: number;
   lpIrr: number | null;
   gpIrr: number | null;
   lpEquityMultiple: number | null;
   gpEquityMultiple: number | null;
+}
+
+export interface WaterfallResult {
+  tiers: WaterfallTier[];
+  lpCFAggregate: number[];  // [-lpEquity, total_LP_dist_Y1, ..., total_LP_dist_Yexit]
+  gpCFAggregate: number[];  // [-gpEquity, total_GP_dist_Y1, ..., total_GP_dist_Yexit]
 }
 
 export interface StressScenario {
@@ -524,66 +534,69 @@ export function computeYearOperating(
   };
 }
 
-// ── Waterfall (IRR-hurdle-based) ──────────────────────────────────────────
+// ── Waterfall (IRR-hurdle-based) — per spec §3.12 ─────────────────────────
 
 /**
- * Distribute cfads for a single year through waterfall tiers.
- * Returns the updated tier distributions (cumulative).
- * Per spec: each tier distributes until LP IRR hits the hurdle rate,
- * then excess carries to the next tier.
+ * Binary-search for the LP cash flow increment that brings LP's running IRR
+ * to `hurdleRate`.
+ *
+ * @param hurdleRate  Target LP IRR (0 for ROC, preferredReturn for pref, etc.)
+ * @param lpCFBase    LP cash flow history up to (but not including) this year:
+ *                    [-lpEquity, dist_Y1, ..., dist_Y{y-1}]
+ * @param lpAlreadyThisYear  LP already allocated this year from earlier tiers
+ * @param maxLPAmount Maximum LP dollars available from this tier (residual × lpSplit)
+ * @param tol         Bisection tolerance (default 1e-4 = 0.01%)
+ * @returns           LP allocation from this tier in this year
  */
-function distributeYearThroughWaterfall(
-  cfads: number,
-  tiers: { tier: number; lpDist: number; gpDist: number }[],
-  lpCF: number[],
-  gpCF: number[],
-  lpEquity: number,
-  gpEquity: number,
-  preferredReturn: number,
-  holdYears: number,
-  promoteTiers: [number, number, number],
-  promoteSplits: [number, number, number],
-  isFinalYear: boolean,
-  equityProceeds: number,
-): void {
-  // Simple approach for operating years: distribute pro-rata LP/GP
-  if (!isFinalYear) {
-    tiers[0].lpDist += cfads * (lpEquity / (lpEquity + gpEquity));
-    tiers[0].gpDist += cfads * (gpEquity / (lpEquity + gpEquity));
-    return;
+export function bisectDistribution(
+  hurdleRate: number,
+  lpCFBase: number[],
+  lpAlreadyThisYear: number,
+  maxLPAmount: number,
+  tol: number = 1e-4,
+): number {
+  if (!isFinite(hurdleRate)) return maxLPAmount;  // catch-all tier: take everything
+  if (maxLPAmount <= 0) return 0;
+
+  const cfWith0 = [...lpCFBase, lpAlreadyThisYear];
+  const irrWith0 = calculateIRR(cfWith0);
+  // If running IRR is already at or above hurdle with 0 additional → this tier is exhausted
+  if (irrWith0 !== null && irrWith0 >= hurdleRate - tol * 0.1) return 0;
+
+  const cfWithMax = [...lpCFBase, lpAlreadyThisYear + maxLPAmount];
+  const irrWithMax = calculateIRR(cfWithMax);
+  // If even max LP allocation doesn't bring IRR to hurdle → take everything
+  if (irrWithMax === null || irrWithMax < hurdleRate - tol * 0.1) return maxLPAmount;
+
+  // Bisect: find X ∈ [0, maxLPAmount] s.t. IRR(lpCFBase + [lpAlreadyThisYear + X]) ≈ hurdleRate
+  let lo = 0;
+  let hi = maxLPAmount;
+  for (let iter = 0; iter < 64; iter++) {
+    if (hi - lo < tol) break;
+    const mid = (lo + hi) / 2;
+    const cfMid = [...lpCFBase, lpAlreadyThisYear + mid];
+    const irrMid = calculateIRR(cfMid);
+    if (irrMid === null || irrMid < hurdleRate) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
   }
-
-  // Final year: distribute equityProceeds through all tiers
-  let residual = equityProceeds;
-
-  // Tier 1: ROC
-  const rocLP = Math.min(residual, lpEquity);
-  tiers[0].lpDist += rocLP;
-  residual -= rocLP;
-  const rocGP = Math.min(residual, gpEquity);
-  tiers[0].gpDist += rocGP;
-  residual -= rocGP;
-
-  // Tier 2: Preferred Return
-  const prefAmt = preferredReturn * lpEquity * holdYears;
-  const prefLP = Math.min(residual, prefAmt);
-  tiers[1].lpDist += prefLP;
-  residual -= prefLP;
-
-  // Tier 3-5: Promotes — distribute remaining
-  const promoteAmt = residual;
-  const p3LP = promoteAmt * (1 - promoteSplits[0]);
-  const p3GP = promoteAmt * promoteSplits[0];
-  tiers[2].lpDist += p3LP;
-  tiers[2].gpDist += p3GP;
-  residual -= (p3LP + p3GP);
-  tiers[3].lpDist += residual * (1 - promoteSplits[1]);
-  tiers[3].gpDist += residual * promoteSplits[1];
-  residual -= residual; // simplified
-  tiers[4].lpDist += residual * (1 - promoteSplits[2]);
-  tiers[4].gpDist += residual * promoteSplits[2];
+  return (lo + hi) / 2;
 }
 
+/**
+ * IRR-hurdle waterfall per spec §3.12.
+ *
+ * Each year's cfads (and the exit equityProceeds) flows through 5 tiers in order:
+ *   T1 ROC           – pro-rata until LP and GP have each received their invested capital back
+ *   T2 Pref          – LP gets 100% until LP running IRR reaches preferredReturn (GP gets 0)
+ *   T3 Promote 1     – (1-promoteSplits[0])/promoteSplits[0] until LP IRR = promoteTiers[0]
+ *   T4 Promote 2     – (1-promoteSplits[1])/promoteSplits[1] until LP IRR = promoteTiers[1]
+ *   T5 Final Promote – remainder at (1-promoteSplits[2])/promoteSplits[2] (no upper bound)
+ *
+ * Returns tier breakdown + aggregate LP/GP CF vectors for summary IRR/EM calculation.
+ */
 export function computeWaterfall(
   annualRows: AnnualCashFlowRow[],
   lpEquity: number,
@@ -594,64 +607,130 @@ export function computeWaterfall(
   promoteTiers: [number, number, number],
   promoteSplits: [number, number, number],
   equityProceeds: number,
-): WaterfallTier[] {
-  const tiers = [
-    { tier: 1, tierName: 'Return of Capital', lpDist: 0, gpDist: 0 },
-    { tier: 2, tierName: 'Preferred Return', lpDist: 0, gpDist: 0 },
-    { tier: 3, tierName: 'Promote Tier 1', lpDist: 0, gpDist: 0 },
-    { tier: 4, tierName: 'Promote Tier 2', lpDist: 0, gpDist: 0 },
-    { tier: 5, tierName: 'Promote Tier 3', lpDist: 0, gpDist: 0 },
-  ];
+  opts?: { skipPerTierIRR?: boolean },
+): WaterfallResult {
+  const lpPct = totalEquity > 0 ? lpEquity / totalEquity : 0;
+  const gpPct = totalEquity > 0 ? gpEquity / totalEquity : 0;
 
-  // Build LP/GP cash flow vectors for IRR computation
-  const lpCF: number[] = [-lpEquity];
-  const gpCF: number[] = [-gpEquity];
+  // Tier definitions per spec §3.12
+  const tierDefs = [
+    { tierName: 'Return of Capital', hurdleRate: 0,              lpSplit: lpPct,                 gpSplit: gpPct              },
+    { tierName: 'Preferred Return',  hurdleRate: preferredReturn, lpSplit: 1.0,                   gpSplit: 0.0                },
+    { tierName: 'Promote Tier 1',    hurdleRate: promoteTiers[0], lpSplit: 1 - promoteSplits[0],  gpSplit: promoteSplits[0]   },
+    { tierName: 'Promote Tier 2',    hurdleRate: promoteTiers[1], lpSplit: 1 - promoteSplits[1],  gpSplit: promoteSplits[1]   },
+    { tierName: 'Promote Tier 3',    hurdleRate: Infinity,        lpSplit: 1 - promoteSplits[2],  gpSplit: promoteSplits[2]   },
+  ] as const;
+  const N_TIERS = tierDefs.length;
 
-  // Distribute operating years pro-rata
-  for (let y = 0; y < holdYears; y++) {
-    const cfads = annualRows[y]?.preTaxCashFlow ?? 0;
-    distributeYearThroughWaterfall(
-      cfads, tiers, lpCF, gpCF, lpEquity, gpEquity,
-      preferredReturn, holdYears, promoteTiers, promoteSplits,
-      false, 0,
-    );
-    lpCF.push(cfads * (lpEquity / totalEquity));
-    gpCF.push(cfads * (gpEquity / totalEquity));
+  // Cumulative distributions per tier
+  const lpDistByTier = new Array<number>(N_TIERS).fill(0);
+  const gpDistByTier = new Array<number>(N_TIERS).fill(0);
+
+  // Per-tier LP/GP CF vectors: [-equity, tier_dist_Y1, tier_dist_Y2, ...]
+  const lpCFByTier: number[][] = tierDefs.map(() => [-lpEquity]);
+  const gpCFByTier: number[][] = tierDefs.map(() => [-gpEquity]);
+
+  // Aggregate LP/GP CF running vectors (used for bisection and summary IRR)
+  const lpCFRunning: number[] = [-lpEquity];
+  const gpCFRunning: number[] = [-gpEquity];
+
+  // ── Process each operating year then the exit event ──────────────────────
+  for (let pass = 0; pass <= holdYears; pass++) {
+    const isExit = pass === holdYears;
+
+    // Operating years use annualRows[pass].cfads; exit uses equityProceeds
+    const yearCFADS = isExit
+      ? Math.max(0, equityProceeds)
+      : Math.max(0, annualRows[pass]?.cfads ?? 0);
+
+    let residual = yearCFADS;
+    let lpAlreadyThisYear = 0;
+    let gpAlreadyThisYear = 0;
+    const lpThisYear = new Array<number>(N_TIERS).fill(0);
+    const gpThisYear = new Array<number>(N_TIERS).fill(0);
+
+    for (let t = 0; t < N_TIERS; t++) {
+      if (residual < 1e-2) break;
+
+      const { hurdleRate, lpSplit, gpSplit } = tierDefs[t];
+
+      let lpAlloc: number;
+
+      if (t === 0) {
+        // ── T1 ROC: dollar-based (avoids IRR=0% numerical instability) ──────
+        const lpROCOwed = Math.max(0, lpEquity - lpDistByTier[0]);
+        const gpROCOwed = Math.max(0, gpEquity - gpDistByTier[0]);
+        const rocOwed = lpROCOwed + gpROCOwed;
+        if (rocOwed <= 1e-2) continue;  // ROC fully returned, skip tier
+        const t1Consumed = Math.min(residual, rocOwed);
+        // Distribute proportionally to what each class is still owed
+        lpAlloc  = t1Consumed * (rocOwed > 0 ? lpROCOwed / rocOwed : lpPct);
+        const gpAlloc = t1Consumed * (rocOwed > 0 ? gpROCOwed / rocOwed : gpPct);
+        lpThisYear[t]  = lpAlloc;
+        gpThisYear[t]  = gpAlloc;
+        lpDistByTier[t]  += lpAlloc;
+        gpDistByTier[t]  += gpAlloc;
+        lpAlreadyThisYear  += lpAlloc;
+        gpAlreadyThisYear  += gpAlloc;
+        residual -= t1Consumed;
+        continue;
+      }
+
+      // ── T2–T5: IRR-hurdle bisection ──────────────────────────────────────
+      if (lpSplit < 1e-10) {
+        // LP gets nothing in this tier (degenerate), give all to GP
+        lpAlloc = 0;
+      } else {
+        const maxLP = residual * lpSplit;
+        lpAlloc = bisectDistribution(hurdleRate, lpCFRunning, lpAlreadyThisYear, maxLP);
+      }
+
+      const totalConsumed = lpSplit > 1e-10 ? lpAlloc / lpSplit : residual;
+      const gpAlloc = totalConsumed * gpSplit;
+
+      lpThisYear[t]    = lpAlloc;
+      gpThisYear[t]    = gpAlloc;
+      lpDistByTier[t]  += lpAlloc;
+      gpDistByTier[t]  += gpAlloc;
+      lpAlreadyThisYear  += lpAlloc;
+      gpAlreadyThisYear  += gpAlloc;
+      residual -= totalConsumed;
+    }
+
+    // Append this year's totals to aggregate running vectors
+    lpCFRunning.push(lpAlreadyThisYear);
+    gpCFRunning.push(gpAlreadyThisYear);
+
+    // Append per-tier distributions
+    for (let t = 0; t < N_TIERS; t++) {
+      lpCFByTier[t].push(lpThisYear[t]);
+      gpCFByTier[t].push(gpThisYear[t]);
+    }
   }
 
-  // Final year: distribute equityProceeds through waterfall tiers
-  distributeYearThroughWaterfall(
-    0, tiers, lpCF, gpCF, lpEquity, gpEquity,
-    preferredReturn, holdYears, promoteTiers, promoteSplits,
-    true, equityProceeds,
-  );
+  // ── Build tier result objects ─────────────────────────────────────────────
+  const tiers: WaterfallTier[] = tierDefs.map((td, t) => {
+    const lpIrr = opts?.skipPerTierIRR ? null : calculateIRR(lpCFByTier[t]);
+    const gpIrr = opts?.skipPerTierIRR ? null : calculateIRR(gpCFByTier[t]);
+    const lpEquityMultiple = calculateEM(lpCFByTier[t]);
+    const gpEquityMultiple = calculateEM(gpCFByTier[t]);
+    return {
+      tier: t + 1,
+      tierName: td.tierName,
+      hurdleRate: isFinite(td.hurdleRate) ? td.hurdleRate : promoteTiers[2],
+      lpSplit: td.lpSplit,
+      gpSplit: td.gpSplit,
+      lpDistribution: lpDistByTier[t],
+      gpDistribution: gpDistByTier[t],
+      promotePctEarned: Math.max(0, td.gpSplit - gpPct),
+      lpIrr,
+      gpIrr,
+      lpEquityMultiple,
+      gpEquityMultiple,
+    };
+  });
 
-  // Build final LP/GP cash flow vectors incorporating distributions
-  const finalLP: number[] = [-lpEquity];
-  const finalGP: number[] = [-gpEquity];
-
-  for (let y = 0; y < holdYears; y++) {
-    const cfads = annualRows[y]?.preTaxCashFlow ?? 0;
-    finalLP.push(cfads * (lpEquity / totalEquity));
-    finalGP.push(cfads * (gpEquity / totalEquity));
-  }
-
-  // Add total waterfall distributions to final year
-  const totalLP = tiers.reduce((s, t) => s + t.lpDist, 0);
-  const totalGP = tiers.reduce((s, t) => s + t.gpDist, 0);
-  finalLP[finalLP.length - 1] += totalLP;
-  finalGP[finalGP.length - 1] += totalGP;
-
-  return tiers.map(t => ({
-    tier: t.tier,
-    tierName: t.tierName,
-    lpDistribution: t.lpDist,
-    gpDistribution: t.gpDist,
-    lpIrr: calculateIRR(finalLP),
-    gpIrr: calculateIRR(finalGP),
-    lpEquityMultiple: calculateEM(finalLP),
-    gpEquityMultiple: calculateEM(finalGP),
-  }));
+  return { tiers, lpCFAggregate: lpCFRunning, gpCFAggregate: gpCFRunning };
 }
 
 // ── Sensitivity Matrix ─────────────────────────────────────────────────────
@@ -913,10 +992,16 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
 
   // Phase 8: Waterfall
   log.push("Phase 8: Computing waterfall");
-  const waterfall = computeWaterfall(
+  const waterfallResult = computeWaterfall(
     annualRows, a.lpEquity, a.gpEquity, totalEquity,
     a.preferredReturn, hold, a.promoteTiers, a.promoteSplits, equityProceeds,
+    { skipPerTierIRR: opts?.skipSensitivity },
   );
+  const waterfall = waterfallResult.tiers;
+  const lpIrrAggregate = calculateIRR(waterfallResult.lpCFAggregate);
+  const gpIrrAggregate = calculateIRR(waterfallResult.gpCFAggregate);
+  const lpEMAggregate  = calculateEM(waterfallResult.lpCFAggregate);
+  const gpEMAggregate  = calculateEM(waterfallResult.gpCFAggregate);
 
   // ── Waterfall-derived summary metrics ────────────────────────────────────
   const lpTotalDistributions = waterfall.reduce((s, t) => s + t.lpDistribution, 0);
@@ -1094,10 +1179,10 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       irr,
       equityMultiple: em,
       avgCoC,
-      lpIrr: waterfall.length > 0 ? waterfall[waterfall.length - 1].lpIrr : null,
-      gpIrr: waterfall.length > 0 ? waterfall[waterfall.length - 1].gpIrr : null,
-      lpEquityMultiple: waterfall.length > 0 ? waterfall[waterfall.length - 1].lpEquityMultiple : null,
-      gpEquityMultiple: waterfall.length > 0 ? waterfall[waterfall.length - 1].gpEquityMultiple : null,
+      lpIrr: lpIrrAggregate,
+      gpIrr: gpIrrAggregate,
+      lpEquityMultiple: lpEMAggregate,
+      gpEquityMultiple: gpEMAggregate,
       loanBalanceAtExit: loanBalance,
       cashOnCashByYear: annualRows.slice(0, hold).map(r => totalEquity > 0 ? r.preTaxCashFlow / totalEquity : 0),
       dscrByYear: annualRows.slice(0, hold).map(r => r.dscr ?? 0),
