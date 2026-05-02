@@ -171,6 +171,50 @@ describe('buildModel() verification gate', () => {
     expect(Array.isArray(persisted?.reasoning?.collisionReport)).toBe(true);
   });
 
+  it('persisted integrityChecks contains LOW_CONFIDENCE_MODEL warn when >=30% fields are LOW', async () => {
+    // Override pool to return a platform_fallback year1 seed → NOI/goingInCap/exitCap = LOW
+    // = 3/6 = 50% LOW ≥ 30% threshold → LOW_CONFIDENCE_MODEL must fire
+    const service = (engineModule as any)._testService as InstanceType<typeof engineModule.FinancialModelEngineService>;
+    callLLMSpy.mockResolvedValue(makeLLMResult());
+
+    const fallbackLV = (v: number) => ({ resolved: v, resolution: 'platform_fallback', t12: null, rent_roll: null, tax_bill: null });
+    poolSpy.mock.mockImplementation((sql: string, params: unknown[]) => {
+      poolSpy.calls.push({ sql: sql.replace(/\s+/g, ' ').trim(), params: params ?? [] });
+      if (/INSERT INTO deal_financial_models/i.test(sql)) {
+        return Promise.resolve({ rows: [{ id: 'test-model-id' }] });
+      }
+      if (/SELECT year1 FROM deal_assumptions/i.test(sql)) {
+        return Promise.resolve({
+          rows: [{
+            year1: {
+              noi: fallbackLV(1200000),
+              gpr: fallbackLV(1800000),
+              vacancy_pct: fallbackLV(0.07),
+              real_estate_tax: fallbackLV(150000),
+              insurance: fallbackLV(50000),
+              management_fee_pct: fallbackLV(0.04),
+            },
+          }],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    await service.buildModel('deal-lowconf', BASE_ASSUMPTIONS as any);
+
+    const persistCall = poolSpy.calls.find(c =>
+      /UPDATE deal_financial_models.*SET results/i.test(c.sql)
+    );
+    expect(persistCall).toBeDefined();
+
+    const persisted = JSON.parse(persistCall!.params[0] as string);
+    const checks: Array<{ id: string; status: string }> = persisted?.integrityChecks ?? [];
+    const lowConfCheck = checks.find((c) => c.id === 'LOW_CONFIDENCE_MODEL');
+
+    expect(lowConfCheck).toBeDefined();
+    expect(lowConfCheck?.status).toBe('warn');
+  });
+
   it('writes status=error and halts when loanAmount > purchasePrice (INV-6)', async () => {
     const overAssumptions = {
       ...BASE_ASSUMPTIONS,
