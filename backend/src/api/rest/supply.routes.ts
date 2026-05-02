@@ -566,6 +566,297 @@ export const supplyExtraRouter = Router();
 supplyExtraRouter.get('/pipeline-timeline', supplyPipelineTimelineHandler);
 
 /**
+ * GET /api/v1/supply/historical-deliveries
+ *
+ * Backward-looking quarterly view used by the MSA Supply tab chart. Replaces
+ * the old hardcoded `deliveryData` placeholder. For each of the past N
+ * quarters returns:
+ *   - deliveries:          SUM(total_units) from apartment_supply_pipeline,
+ *                          bucketed by quarter of `available_date` (preferred)
+ *                          or `synced_at` as a fallback when `available_date`
+ *                          is NULL — most rows have NULL today.
+ *   - rentSignal:          AVG(avg_effective_rent) (or avg_asking_rent fallback)
+ *                          from market_rent_comps for the MSA's cities.
+ *   - vacancyPct:          100 - AVG(occupancy_pct) for that quarter.
+ *   - rentGrowthYoyPct:    YoY change in rentSignal vs. same quarter prior year
+ *                          (null when no prior-year row).
+ *   - source flags so the frontend can show provenance / fallback chips.
+ *
+ * `hasRealData` is true when at least one quarter has either deliveries OR a
+ * rent signal — the frontend uses this to decide between "real chart" and
+ * "placeholder" rendering.
+ */
+const histDateToQuarter = (d: Date): string => {
+  const y = d.getUTCFullYear();
+  const q = Math.floor(d.getUTCMonth() / 3) + 1;
+  return `${y}-Q${q}`;
+};
+
+const histAdvanceQuarter = (q: string, n: number): string => {
+  const [yStr, qStr] = q.split('-Q');
+  let qi = parseInt(qStr, 10) - 1 + n;
+  let y = parseInt(yStr, 10) + Math.floor(qi / 4);
+  qi = ((qi % 4) + 4) % 4;
+  return `${y}-Q${qi + 1}`;
+};
+
+const quarterStartDate = (q: string): Date => {
+  const [yStr, qStr] = q.split('-Q');
+  const y = parseInt(yStr, 10);
+  const qi = parseInt(qStr, 10) - 1;
+  return new Date(Date.UTC(y, qi * 3, 1));
+};
+
+export const supplyHistoricalDeliveriesHandler = async (
+  req: import('express').Request,
+  res: import('express').Response,
+) => {
+  try {
+    const msaId = (req.query.msaId as string) || '';
+    const quarters = Math.min(Math.max(parseInt(req.query.quarters as string) || 8, 2), 16);
+
+    if (!msaId) {
+      res.status(400).json({ success: false, error: 'msaId is required' });
+      return;
+    }
+
+    const { getClient } = require('../../database/connection');
+    const client = await getClient();
+
+    try {
+      const msa = await resolveMsa(client, msaId);
+      if (!msa) {
+        res.status(404).json({ success: false, error: `MSA not found for id "${msaId}"` });
+        return;
+      }
+
+      // Reuse the same MSA-bounded municipality logic as pipeline-timeline so
+      // both views agree on what cities count for "Atlanta MSA".
+      const cityRows = await client.query(
+        `SELECT DISTINCT ta.municipality
+           FROM trade_areas ta
+           JOIN msas m ON m.id = $1
+          WHERE ta.boundary IS NOT NULL
+            AND ta.municipality IS NOT NULL
+            AND ST_Intersects(ta.boundary, m.geometry)`,
+        [msa.id],
+      );
+      const canonicalCities = new Set<string>();
+      for (const r of cityRows.rows) {
+        if (r.municipality) canonicalCities.add(String(r.municipality));
+      }
+      if (canonicalCities.size === 0) canonicalCities.add(msa.primaryCity);
+      const cities = Array.from(canonicalCities);
+
+      // Build the backward-looking quarter window: the most recently CLOSED
+      // quarter and the (quarters - 1) preceding it. We exclude the in-progress
+      // quarter so deliveries figures don't visibly tick up mid-quarter.
+      const now = new Date();
+      const currentQ = histDateToQuarter(now);
+      const lastClosedQ = histAdvanceQuarter(currentQ, -1);
+      const windowQuarters: string[] = [];
+      for (let i = quarters - 1; i >= 0; i--) {
+        windowQuarters.push(histAdvanceQuarter(lastClosedQ, -i));
+      }
+      const windowStart = quarterStartDate(windowQuarters[0]);
+      const windowEnd = quarterStartDate(histAdvanceQuarter(windowQuarters[windowQuarters.length - 1], 1));
+
+      // ── Deliveries: prefer available_date, fall back to synced_at ──────────
+      // We track which source we used so the UI can disclose provenance
+      // (most apartment_supply_pipeline rows have available_date = NULL today).
+      const stateParams: (string | number)[] = [];
+      const stateClauses = msa.stateCodes.map(s => {
+        stateParams.push(s);
+        return `$${stateParams.length}`;
+      });
+      const stateWhere = stateClauses.length > 0
+        ? `state IN (${stateClauses.join(', ')})`
+        : 'TRUE';
+
+      const cityPlaceholders: string[] = [];
+      const cityParamsForDelivery = [...stateParams];
+      for (const c of cities) {
+        cityParamsForDelivery.push(c);
+        cityPlaceholders.push(`$${cityParamsForDelivery.length}`);
+      }
+      const cityWhereDelivery = `city IN (${cityPlaceholders.join(', ')})`;
+      cityParamsForDelivery.push(windowStart.toISOString());
+      const startIdx = cityParamsForDelivery.length;
+      cityParamsForDelivery.push(windowEnd.toISOString());
+      const endIdx = cityParamsForDelivery.length;
+
+      const deliveriesResult = await client.query(
+        `SELECT
+            CASE
+              WHEN available_date IS NOT NULL THEN
+                EXTRACT(YEAR FROM available_date)::int || '-Q' ||
+                ((EXTRACT(MONTH FROM available_date)::int - 1) / 3 + 1)::int
+              ELSE
+                EXTRACT(YEAR FROM synced_at)::int || '-Q' ||
+                ((EXTRACT(MONTH FROM synced_at)::int - 1) / 3 + 1)::int
+            END AS quarter,
+            CASE WHEN available_date IS NOT NULL THEN 'available_date'
+                 ELSE 'synced_at' END AS date_source,
+            COALESCE(SUM(total_units), 0)::int AS deliveries,
+            COUNT(*)::int AS project_count
+           FROM apartment_supply_pipeline
+          WHERE ${stateWhere}
+            AND ${cityWhereDelivery}
+            AND COALESCE(available_date, synced_at) >= $${startIdx}::timestamptz
+            AND COALESCE(available_date, synced_at) <  $${endIdx}::timestamptz
+          GROUP BY 1, 2`,
+        cityParamsForDelivery,
+      );
+
+      type DeliveryAgg = { deliveries: number; projectCount: number; sources: Set<string> };
+      const deliveriesByQuarter = new Map<string, DeliveryAgg>();
+      windowQuarters.forEach(q => deliveriesByQuarter.set(q, {
+        deliveries: 0, projectCount: 0, sources: new Set(),
+      }));
+      for (const r of deliveriesResult.rows) {
+        const q = String(r.quarter);
+        const bucket = deliveriesByQuarter.get(q);
+        if (!bucket) continue;
+        bucket.deliveries += Number(r.deliveries) || 0;
+        bucket.projectCount += Number(r.project_count) || 0;
+        if (r.date_source) bucket.sources.add(String(r.date_source));
+      }
+
+      // ── Rent / vacancy: aggregate market_rent_comps quarterly. We pull a
+      // wider window (4 extra quarters) so we can compute YoY rent growth for
+      // the earliest in-window quarter.
+      const yoyStart = quarterStartDate(histAdvanceQuarter(windowQuarters[0], -4));
+      const rentParams: (string | number)[] = [];
+      const rentStateClauses = msa.stateCodes.map(s => {
+        rentParams.push(s);
+        return `$${rentParams.length}`;
+      });
+      const rentStateWhere = rentStateClauses.length > 0
+        ? `state IN (${rentStateClauses.join(', ')})`
+        : 'TRUE';
+      const rentCityPlaceholders: string[] = [];
+      for (const c of cities) {
+        rentParams.push(c);
+        rentCityPlaceholders.push(`$${rentParams.length}`);
+      }
+      rentParams.push(yoyStart.toISOString());
+      const rentStartIdx = rentParams.length;
+      rentParams.push(windowEnd.toISOString());
+      const rentEndIdx = rentParams.length;
+
+      type RentRow = {
+        quarter: string;
+        avg_effective: string | null;
+        avg_asking: string | null;
+        avg_occupancy: string | null;
+        sample_size: string;
+      };
+      const rentByQuarter = new Map<string, {
+        avgEffective: number | null;
+        avgAsking: number | null;
+        avgOccupancy: number | null;
+        sampleSize: number;
+      }>();
+      try {
+        const rentResult: { rows: RentRow[] } = await client.query(
+          `SELECT
+              EXTRACT(YEAR FROM snapshot_date)::int || '-Q' ||
+              ((EXTRACT(MONTH FROM snapshot_date)::int - 1) / 3 + 1)::int AS quarter,
+              AVG(avg_effective_rent) AS avg_effective,
+              AVG(avg_asking_rent)    AS avg_asking,
+              AVG(occupancy_pct)      AS avg_occupancy,
+              COUNT(*)                AS sample_size
+             FROM market_rent_comps
+            WHERE ${rentStateWhere}
+              AND city IN (${rentCityPlaceholders.join(', ')})
+              AND snapshot_date >= $${rentStartIdx}::timestamptz
+              AND snapshot_date <  $${rentEndIdx}::timestamptz
+            GROUP BY 1`,
+          rentParams,
+        );
+        for (const r of rentResult.rows) {
+          rentByQuarter.set(String(r.quarter), {
+            avgEffective: r.avg_effective != null ? parseFloat(String(r.avg_effective)) : null,
+            avgAsking:    r.avg_asking    != null ? parseFloat(String(r.avg_asking))    : null,
+            avgOccupancy: r.avg_occupancy != null ? parseFloat(String(r.avg_occupancy)) : null,
+            sampleSize:   parseInt(String(r.sample_size), 10) || 0,
+          });
+        }
+      } catch (err) {
+        // market_rent_comps is allowed to be empty / not yet populated; we
+        // simply omit the rent overlay rather than failing the whole request.
+        logger.warn('historical-deliveries: market_rent_comps query failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      const byQuarter = windowQuarters.map(q => {
+        const d = deliveriesByQuarter.get(q)!;
+        const r = rentByQuarter.get(q) || null;
+        const yoy = rentByQuarter.get(histAdvanceQuarter(q, -4)) || null;
+
+        const rentSignal = r?.avgEffective ?? r?.avgAsking ?? null;
+        const rentSource: 'effective' | 'asking' | null =
+          r?.avgEffective != null ? 'effective' : r?.avgAsking != null ? 'asking' : null;
+        const yoyRent = yoy?.avgEffective ?? yoy?.avgAsking ?? null;
+        const rentGrowthYoyPct = (rentSignal != null && yoyRent != null && yoyRent > 0)
+          ? parseFloat((((rentSignal - yoyRent) / yoyRent) * 100).toFixed(2))
+          : null;
+
+        const vacancyPct = r?.avgOccupancy != null
+          ? parseFloat((100 - r.avgOccupancy).toFixed(2))
+          : null;
+
+        return {
+          quarter: q,
+          deliveries: d.deliveries,
+          projectCount: d.projectCount,
+          deliverySource: Array.from(d.sources).sort().join('+') || null,
+          rentSignal: rentSignal != null ? parseFloat(rentSignal.toFixed(2)) : null,
+          rentSource,
+          rentGrowthYoyPct,
+          vacancyPct,
+          rentSampleSize: r?.sampleSize ?? 0,
+        };
+      });
+
+      const totalDeliveries = byQuarter.reduce((s, q) => s + q.deliveries, 0);
+      const quartersWithRent = byQuarter.filter(q => q.rentSignal != null).length;
+      const hasRealData = totalDeliveries > 0 || quartersWithRent > 0;
+
+      res.json({
+        success: true,
+        resolved: {
+          scope: 'msa' as const,
+          msaId: msaId || null,
+          msaCanonicalId: msa.id,
+          msaName: msa.name,
+          stateCodes: msa.stateCodes,
+          cities,
+          windowQuarters,
+        },
+        totals: {
+          quarters: byQuarter.length,
+          totalDeliveries,
+          quartersWithRent,
+          quartersWithDeliveries: byQuarter.filter(q => q.deliveries > 0).length,
+        },
+        byQuarter,
+        hasRealData,
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Error getting historical supply deliveries', { error: msg });
+    res.status(500).json({ success: false, error: msg });
+  }
+};
+
+supplyExtraRouter.get('/historical-deliveries', supplyHistoricalDeliveriesHandler);
+
+/**
  * GET /api/v1/supply/market-dynamics/:tradeAreaId
  * Get combined demand-supply analysis for trade area
  */
