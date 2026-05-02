@@ -835,8 +835,7 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     }
   }
 
-  // INV-3: DSCR(y) = NOI(y) / debtService(y)  for all rows where debtService > 0
-  // Fail-closed: null or non-finite DSCR with positive debt service is an INV-3 error.
+  // INV-3: DSCR(y) == NOI(y) / debtService(y) for all y where debtService > 0; fail-closed on null/non-finite
   for (const row of opRows) {
     if (row.debtService > 0.01) {
       if (row.dscr === null || !isFinite(row.dscr)) {
@@ -889,32 +888,16 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     checks.push({ id: 'INV-7', status: 'error', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0` });
   }
 
-  // INV-8: waterfall conservation — Σ tier_distributions == Σ cashFlows[1..n] + |cashFlows[0]|
-  // Per spec §6.1: cashFlows[0] is the initial equity outlay (negative per INV-7);
-  // cashFlows[1..n] are the per-period levered cash flows (operating CFBT + exit).
-  //
-  // The waterfall engine (see computeWaterfall, line ~661) only distributes POSITIVE
-  // available cash each period:
-  //   `if (yearCFADS <= 1e-2) continue;`
-  // Negative-CFBT periods (balloon year, high-rate operating losses, underwater exit) are
-  // tracked in the running LP/GP IRR vector but contribute ZERO to tier distributions.
-  // Therefore the invariant conservation identity must clamp each period to max(0, ...):
-  //   totalTierDist == Σ max(0, cfads[y]) + max(0, equityProceeds)
-  // This is the EXACT algebraic expression of the waterfall's own distribution rule —
-  // using the raw algebraic sum would produce systematic false failures on valid deals
-  // with any negative-CFBT period (balloon loans, high-leverage deals, etc.).
-  //
-  // Always evaluated unconditionally; fail-closed path:
-  //   • availCash ≤ 0 AND totalTierDist ≈ 0 → conservation holds trivially (pass)
-  //   • availCash ≤ 0 AND totalTierDist > 0  → error (distributing from empty pool)
+  // INV-8: waterfall conservation — Σ tier_distributions == Σ max(0,cfads[y]) + max(0,equityProceeds)
+  // Waterfall engine skips negative-CFBT periods (line ~661: `if yearCFADS<=1e-2 continue`).
+  // Fail-closed: empty pool (availCash≤0) must also have zero distributions.
   {
     const totalTierDist = result.waterfallDistributions.reduce((s, t) => s + t.lpDistribution + t.gpDistribution, 0);
     const posOpCFs = opRows.reduce((s, r) => s + Math.max(0, r.cfads), 0);
     const availCash = posOpCFs + Math.max(0, disp.equityProceeds);
     if (availCash <= 1) {
-      // Pool is empty (all CFs negative): waterfall must also have distributed nothing.
       if (totalTierDist > 1) {
-        checks.push({ id: 'INV-8', status: 'error', message: `INV-8 Waterfall distributed ${totalTierDist.toFixed(0)} from empty pool (Σmax(0,cfads)+max(0,equityProceeds) = ${availCash.toFixed(0)})` });
+        checks.push({ id: 'INV-8', status: 'error', message: `INV-8 Waterfall distributed ${totalTierDist.toFixed(0)} from empty pool (availCash=${availCash.toFixed(0)})` });
       }
     } else {
       const relErr = Math.abs(totalTierDist - availCash) / availCash;
