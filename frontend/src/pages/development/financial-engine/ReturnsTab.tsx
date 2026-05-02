@@ -757,7 +757,7 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
               <div style={{ padding: '4px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}` }}>
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>REPLACEMENT COST</span>
               </div>
-              {ret.valuation.replacementCost.rcTotal != null ? (
+              {ret.valuation.replacementCost?.rcTotal != null ? (
                 <>
                   <KvRow label="RC Total" value={fmt$(ret.valuation.replacementCost.rcTotal)} bold />
                   <KvRow label="RC / Unit" value={ret.valuation.replacementCost.rcPerUnit != null ? fmt$(ret.valuation.replacementCost.rcPerUnit) : '—'} />
