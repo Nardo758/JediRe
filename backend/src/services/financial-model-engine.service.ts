@@ -5,8 +5,9 @@ import { dataFlowRouter } from './module-wiring/data-flow-router';
 import { logger } from '../utils/logger';
 import { applyFullAnchorInterceptor, normalizeExpensesForInterceptor, rekeyExpensesFromInterceptor } from './sigma/anchor-interceptor.service';
 import OpenAI from 'openai';
-import { mapProFormaAssumptionsToModelAssumptions, crossCheckLLMVsDeterministic } from './deterministic/proforma-assumptions-bridge';
+import { mapProFormaAssumptionsToModelAssumptions, crossCheckLLMVsDeterministic, buildEvidenceHintsFromSeed } from './deterministic/proforma-assumptions-bridge';
 import { runModel, runIntegrityChecks } from './deterministic/deterministic-model-runner';
+import type { ProFormaYear1Seed } from './document-extraction/types';
 
 /**
  * selectLLMClient — provider-selection strategy for the financial-model build path.
@@ -472,6 +473,24 @@ export class FinancialModelEngineService {
       let verificationDiagnostics = '';
       try {
         const modelAssumptions = mapProFormaAssumptionsToModelAssumptions(enhancedAssumptions as ProFormaAssumptions);
+
+        // Attach LayeredValue evidence hints from deal_assumptions.year1 if available
+        try {
+          const year1Row = await pool.query(
+            `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+            [dealId]
+          );
+          const year1Seed: ProFormaYear1Seed | null = year1Row.rows[0]?.year1 ?? null;
+          if (year1Seed) {
+            const { hints, collisions } = buildEvidenceHintsFromSeed(year1Seed);
+            modelAssumptions._evidenceHints = hints;
+            modelAssumptions._collisionReport = collisions;
+            logger.info(`[F9-Evidence] Attached ${Object.keys(hints).length} evidence hints, ${collisions.length} collisions for ${dealId}`);
+          }
+        } catch (hintErr: any) {
+          logger.warn(`[F9-Evidence] Could not load year1 seed for ${dealId}: ${hintErr?.message}`);
+        }
+
         const deterministicResult = runModel(modelAssumptions, { skipSensitivity: true });
         const checks = runIntegrityChecks(modelAssumptions, deterministicResult);
         // Only INV-* checks are hard invariants that halt the build.

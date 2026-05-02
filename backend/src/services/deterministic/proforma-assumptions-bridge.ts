@@ -20,7 +20,128 @@
  */
 
 import type { ProFormaAssumptions } from '../financial-model-engine.service';
-import type { ModelAssumptions } from './deterministic-model-runner';
+import type { CollisionEntry, ModelAssumptions } from './deterministic-model-runner';
+import type { ProFormaYear1Seed, LayeredValue } from '../document-extraction/types';
+
+// §4.3 thresholds for collision detection
+const COLLISION_MATERIAL_PCT = 0.10;
+const COLLISION_CRITICAL_PCT = 0.25;
+
+type EvidenceConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
+
+/** Map LayeredValue.resolution to a confidence level. */
+function resolutionToConfidence(resolution: LayeredValue<number>['resolution']): EvidenceConfidence {
+  switch (resolution) {
+    case 't12':
+    case 'rent_roll':
+    case 'tax_bill':
+    case 'override':
+      return 'HIGH';
+    case 'box_score':
+    case 'aged_ar':
+    case 'om':
+    case 'platform':
+      return 'MEDIUM';
+    case 'platform_fallback':
+    default:
+      return 'LOW';
+  }
+}
+
+/** Map LayeredValue.resolution to a human-readable source label. */
+function resolutionToSource(resolution: LayeredValue<number>['resolution']): string {
+  const map: Record<string, string> = {
+    t12: 'T12',
+    rent_roll: 'Rent Roll',
+    tax_bill: 'Tax Bill',
+    box_score: 'Box Score',
+    aged_ar: 'Aged AR',
+    om: 'Offering Memorandum',
+    override: 'Analyst Override',
+    platform: 'Platform Baseline',
+    platform_fallback: 'Platform Fallback',
+  };
+  return map[resolution] ?? resolution;
+}
+
+/** Detect source collisions for a single LayeredValue (spec §4.3). */
+function detectCollisionsForField(
+  fieldName: string,
+  lv: LayeredValue<number>,
+  selectedSource: string,
+): CollisionEntry[] {
+  const entries: CollisionEntry[] = [];
+  const sources: Array<{ key: keyof LayeredValue<number>; label: string }> = [
+    { key: 't12', label: 'T12' },
+    { key: 'rent_roll', label: 'Rent Roll' },
+    { key: 'tax_bill', label: 'Tax Bill' },
+  ];
+
+  const resolved = lv.resolved;
+  if (resolved == null) return entries;
+
+  for (let i = 0; i < sources.length; i++) {
+    for (let j = i + 1; j < sources.length; j++) {
+      const a = lv[sources[i].key as keyof LayeredValue<number>] as number | null | undefined;
+      const b = lv[sources[j].key as keyof LayeredValue<number>] as number | null | undefined;
+      if (a == null || b == null) continue;
+      const delta = Math.abs(a - b);
+      const base = Math.max(Math.abs(a), Math.abs(b), 1);
+      const pct = delta / base;
+      if (pct < COLLISION_MATERIAL_PCT) continue;
+      const magnitude: CollisionEntry['magnitude'] = pct >= COLLISION_CRITICAL_PCT ? 'critical' : 'material';
+      entries.push({
+        field: fieldName,
+        magnitude,
+        sourceA_value: a,
+        sourceB_value: b,
+        delta,
+        selectedSource,
+        reason: `${sources[i].label} reports ${a.toFixed(0)} vs ${sources[j].label} reports ${b.toFixed(0)} (${(pct * 100).toFixed(1)}% diff)`,
+        narrative: `${fieldName} ${magnitude} disagreement between ${sources[i].label} and ${sources[j].label}. ` +
+          `Model uses ${selectedSource} value. Investigate source discrepancy before finalising underwriting.`,
+      });
+    }
+  }
+  return entries;
+}
+
+/**
+ * Extract evidence hints and collision entries from a ProFormaYear1Seed.
+ * Called in buildModel() after fetching deal_assumptions.year1 from DB.
+ */
+export function buildEvidenceHintsFromSeed(seed: ProFormaYear1Seed): {
+  hints: NonNullable<ModelAssumptions['_evidenceHints']>;
+  collisions: CollisionEntry[];
+} {
+  const hints: NonNullable<ModelAssumptions['_evidenceHints']> = {};
+  const collisions: CollisionEntry[] = [];
+
+  const addHint = (
+    key: string,
+    lv: LayeredValue<number> | undefined,
+    extraReasoning?: string,
+  ): void => {
+    if (!lv || lv.resolved == null) return;
+    const source = resolutionToSource(lv.resolution);
+    const confidence = resolutionToConfidence(lv.resolution);
+    hints[key] = {
+      source,
+      confidence,
+      reasoning: extraReasoning ?? `Resolved from ${source} (resolution: ${lv.resolution}).`,
+    };
+    collisions.push(...detectCollisionsForField(key, lv, source));
+  };
+
+  addHint('noi', seed.noi, `Year-1 NOI resolved from ${resolutionToSource(seed.noi.resolution)}.`);
+  addHint('gpr', seed.gpr);
+  addHint('vacancy_pct', seed.vacancy_pct);
+  addHint('real_estate_tax', seed.real_estate_tax);
+  addHint('insurance', seed.insurance);
+  addHint('management_fee_pct', seed.management_fee_pct);
+
+  return { hints, collisions };
+}
 
 /**
  * Map a `ProFormaAssumptions` envelope to the flat `ModelAssumptions` struct.
@@ -386,7 +507,8 @@ export function coerceFinancialModelResultToModelResultsShape(
     taxes: { reTax: { perYear: [], assessedValues: [] }, transferTax: { acquisition: 0, disposition: 0, refi: 0 } },
     projections: [],
     integrityChecks: [],
-    reasoning: { derivationLog: [] },
+    reasoning: { derivationLog: [], walkthrough: '', collisionReport: [] },
+    evidence: { confidence_distribution: { high: 0, medium: 0, low: 0 }, fields: [] },
     meta: { modelVersion: 'llm-coerced', runner: 'coerceFinancialModelResultToModelResultsShape', computedAt: new Date().toISOString() },
   } as import('./deterministic-model-runner').ModelResults;
 }

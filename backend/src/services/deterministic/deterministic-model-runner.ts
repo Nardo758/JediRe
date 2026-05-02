@@ -59,6 +59,10 @@ export interface ModelAssumptions {
   basePropertyTax?: number;
   // Optional: apply bonus depreciation in Y1 (spec §11; defaults true when omitted)
   useBonusDepreciation?: boolean;
+  // Optional: per-field evidence hints from the seeder's LayeredValue metadata
+  _evidenceHints?: Record<string, { source: string; confidence: 'HIGH' | 'MEDIUM' | 'LOW'; reasoning?: string }>;
+  // Optional: collision report pre-built by the seeder bridge
+  _collisionReport?: CollisionEntry[];
 }
 
 export interface AnnualCashFlowRow {
@@ -1413,13 +1417,30 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
 
   // ── Evidence block (spec §7.1) ────────────────────────────────────────────
   const dscrY1Val = annualRows[0]?.dscr ?? null;
+  const hints = a._evidenceHints ?? {};
+
+  // Resolve source/confidence for NOI — the primary driver of all KPI fields.
+  // If the seeder passed LayeredValue metadata, use it; otherwise fall back to synthetic.
+  const noiHint = hints['noi'];
+  const noiSource = noiHint?.source ?? 'computed';
+  const noiConf: 'HIGH' | 'MEDIUM' | 'LOW' = noiHint?.confidence ?? 'MEDIUM';
+
+  // DSCR quality inherits from NOI quality (NOI is the numerator)
+  const dscrConf: 'HIGH' | 'MEDIUM' | 'LOW' = dscrY1Val !== null && dscrY1Val >= 1.20
+    ? (noiConf === 'HIGH' ? 'HIGH' : 'MEDIUM')
+    : 'MEDIUM';
+
+  // goingInCap = NOI / purchasePrice — confidence follows NOI
+  const goingInCapConf: 'HIGH' | 'MEDIUM' | 'LOW' = goingInCap > 0 ? noiConf : 'LOW';
+
   const evidenceFields: EvidenceEntry[] = [
     {
       field: 'NOI',
       value: noiY1,
-      source: 'computed',
-      confidence: 'MEDIUM',
-      reasoning: `Year-1 NOI of $${Math.round(noiY1).toLocaleString()} derived from GPR × (1 − vacancy) − opex using ${a.dealType} assumptions.`,
+      source: noiSource,
+      confidence: noiConf,
+      reasoning: noiHint?.reasoning ??
+        `Year-1 NOI of $${Math.round(noiY1).toLocaleString()} derived from GPR × (1 − vacancy) − opex using ${a.dealType} assumptions.`,
     },
     {
       field: 'IRR',
@@ -1439,22 +1460,23 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       field: 'DSCR',
       value: dscrY1Val,
       source: 'computed',
-      confidence: dscrY1Val !== null && dscrY1Val >= 1.20 ? 'HIGH' : 'MEDIUM',
+      confidence: dscrConf,
       reasoning: `Year-1 DSCR of ${dscrY1Val !== null ? dscrY1Val.toFixed(2) : 'n/a'} (NOI ÷ annual debt service of $${Math.round(annualRows[0]?.debtService ?? 0).toLocaleString()}).`,
     },
     {
       field: 'exitCap',
       value: a.exitCap,
-      source: 'platform',
-      confidence: 'LOW',
-      reasoning: `Exit cap rate of ${(a.exitCap * 100).toFixed(2)}% is an analyst assumption; no document source confirms terminal market cap rate.`,
+      source: hints['exitCap']?.source ?? 'platform',
+      confidence: hints['exitCap']?.confidence ?? 'LOW',
+      reasoning: hints['exitCap']?.reasoning ??
+        `Exit cap rate of ${(a.exitCap * 100).toFixed(2)}% is an analyst assumption; no document source confirms terminal market cap rate.`,
     },
     {
       field: 'goingInCap',
       value: goingInCap,
       source: 'computed',
-      confidence: goingInCap > 0 ? 'MEDIUM' : 'LOW',
-      reasoning: `Going-in cap of ${(goingInCap * 100).toFixed(2)}% = Year-1 NOI ÷ purchase price of $${Math.round(a.purchasePrice).toLocaleString()}.`,
+      confidence: goingInCapConf,
+      reasoning: `Going-in cap of ${(goingInCap * 100).toFixed(2)}% = Year-1 NOI (${noiSource}) ÷ purchase price of $${Math.round(a.purchasePrice).toLocaleString()}.`,
     },
   ];
 
@@ -1655,7 +1677,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     },
     projections: [],
     integrityChecks: [],
-    reasoning: { derivationLog: log, walkthrough: walkthroughText, collisionReport: [] },
+    reasoning: { derivationLog: log, walkthrough: walkthroughText, collisionReport: a._collisionReport ?? [] },
     evidence: evidenceBlock,
     meta: {
       modelVersion: '1.1',
