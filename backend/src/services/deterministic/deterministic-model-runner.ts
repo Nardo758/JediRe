@@ -950,7 +950,9 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   const dscrMin = dscrValues.length > 0 ? Math.min(...dscrValues) : null;
   const dscrAvg = dscrValues.length > 0 ? dscrValues.reduce((s, v) => s + v, 0) / dscrValues.length : null;
   const dscrY1 = annualRows[0]?.dscr ?? null;
-  const dscrAtStabilization = annualRows[1]?.dscr ?? dscrY1;
+  // Stabilization year = first year vacancy reaches vacancyStab (Y2 when Y1 is higher, else Y1)
+  const stabRowIdx = a.vacancyY1 > a.vacancyStab ? 1 : 0;
+  const dscrAtStabilization = annualRows[stabRowIdx]?.dscr ?? dscrY1;
   const debtYieldValues = opRows.map(r => r.debtYield).filter((d): d is number => d !== null);
   const debtYieldMin = debtYieldValues.length > 0 ? Math.min(...debtYieldValues) : null;
   const debtYieldY1 = annualRows[0]?.debtYield ?? null;

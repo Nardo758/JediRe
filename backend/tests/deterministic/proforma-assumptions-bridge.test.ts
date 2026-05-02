@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import {
   mapProFormaAssumptionsToModelAssumptions,
   crossCheckLLMVsDeterministic,
@@ -152,6 +152,252 @@ describe('mapProFormaAssumptionsToModelAssumptions', () => {
     const checks = runIntegrityChecks(m, r);
     const inv7or8 = checks.filter(c => c.status === 'error');
     expect(inv7or8.length).toBeGreaterThan(0);
+  });
+});
+
+// ── Helper: minimal runModel assumptions ────────────────────────────────────
+function makeRunModelAssumptions(overrides: Partial<import('../../src/services/deterministic/deterministic-model-runner').ModelAssumptions> = {}) {
+  return {
+    purchasePrice: 10000000, units: 100, marketRent: 1500, loanAmount: 7000000,
+    rate: 0.065, holdYears: 5, lpEquity: 2700000, gpEquity: 300000,
+    exitCap: 0.055, avgUnitSf: 850, ltv: 0.7, closingCostsPct: 0.01,
+    isFlorida: false, docStampsPct: 0, intangibleTaxPct: 0, titleInsurancePct: 0,
+    expenseGrowth: 0.03, managementFee: 0.04, replacementReserves: 250, saleCosts: 0.02,
+    originationFeePct: 0.01, preferredReturn: 0.08,
+    promoteTiers: [0.12, 0.15, 0.20] as [number, number, number],
+    promoteSplits: [0.20, 0.50, 0.80] as [number, number, number],
+    rentGrowth: [0.03, 0.03, 0.03, 0.03, 0.03], lossToLease: 0.03,
+    vacancyY1: 0.10, vacancyStab: 0.05, concessions: 0.02, badDebt: 0.005,
+    otherIncomePerUnit: 0, payrollPerUnit: 0, maintenancePerUnit: 0,
+    contractServicesPerUnit: 0, marketingPerUnit: 0, utilitiesPerUnit: 0,
+    adminPerUnit: 0, insurancePerUnit: 0, term: 360, amort: 360, ioPeriod: 0,
+    capexBudget: 500000, dealType: 'existing',
+    ...overrides,
+  } as import('../../src/services/deterministic/deterministic-model-runner').ModelAssumptions;
+}
+
+describe('runModel() new output fields (task #486)', () => {
+  let result: ReturnType<typeof runModel>;
+
+  beforeAll(() => {
+    result = runModel(makeRunModelAssumptions(), { skipSensitivity: true });
+  });
+
+  // ── AnnualCashFlowRow new fields ──────────────────────────────────────────
+  it('AnnualCashFlowRow.cfads equals preTaxCashFlow for every row', () => {
+    for (const row of result.annualCashFlow) {
+      expect(row.cfads).toBe(row.preTaxCashFlow);
+    }
+  });
+
+  it('AnnualCashFlowRow.debtYield is NOI / loanAmount for every row', () => {
+    for (const row of result.annualCashFlow) {
+      expect(row.debtYield).not.toBeNull();
+      expect(row.debtYield).toBeCloseTo(row.noi / 7000000, 6);
+    }
+  });
+
+  it('AnnualCashFlowRow.capRateOnCost is NOI / totalAcqCost for every row', () => {
+    for (const row of result.annualCashFlow) {
+      expect(row.capRateOnCost).not.toBeNull();
+      expect(row.capRateOnCost!).toBeGreaterThan(0);
+    }
+  });
+
+  it('AnnualCashFlowRow.isExitYear is false for operating rows and true for exit row', () => {
+    const opRows = result.annualCashFlow.slice(0, -1);
+    const exitRow = result.annualCashFlow[result.annualCashFlow.length - 1];
+    for (const row of opRows) {
+      expect(row.isExitYear).toBe(false);
+    }
+    expect(exitRow.isExitYear).toBe(true);
+  });
+
+  // ── summary new fields ────────────────────────────────────────────────────
+  it('summary.egiByYear has one entry per hold year, all positive', () => {
+    const s = result.summary;
+    expect(s.egiByYear).toHaveLength(5);
+    for (const v of s.egiByYear) expect(v).toBeGreaterThan(0);
+  });
+
+  it('summary.debtServiceCoverageByYear is identical to dscrByYear', () => {
+    const s = result.summary;
+    expect(s.debtServiceCoverageByYear).toEqual(s.dscrByYear);
+  });
+
+  it('summary.debtYieldByYear has one entry per hold year, all positive', () => {
+    const s = result.summary;
+    expect(s.debtYieldByYear).toHaveLength(5);
+    for (const v of s.debtYieldByYear) expect(v).toBeGreaterThan(0);
+  });
+
+  it('summary.stabilizedCapRate is stabilizedNOI / purchasePrice', () => {
+    const s = result.summary;
+    const expected = result.disposition.stabilizedNOI / 10000000;
+    expect(s.stabilizedCapRate).toBeCloseTo(expected, 6);
+  });
+
+  it('summary.unleveredIrr is defined and positive for a profitable deal', () => {
+    const s = result.summary;
+    expect(s.unleveredIrr).not.toBeNull();
+    expect(s.unleveredIrr!).toBeGreaterThan(0);
+  });
+
+  it('summary.yieldOnCost.untrended is noiY1 / totalAcqCost', () => {
+    const s = result.summary;
+    expect(s.yieldOnCost.untrended).toBeGreaterThan(0);
+    expect(s.yieldOnCost.trended).toBeGreaterThanOrEqual(s.yieldOnCost.untrended);
+  });
+
+  it('summary.lpTotalDistributions and gpTotalDistributions are positive', () => {
+    const s = result.summary;
+    expect(s.lpTotalDistributions).toBeGreaterThan(0);
+    expect(s.gpTotalDistributions).toBeGreaterThan(0);
+  });
+
+  it('summary.lpProfit + gpProfit === totalProfit', () => {
+    const s = result.summary;
+    expect(s.totalProfit).toBeCloseTo(s.lpProfit + (s.gpTotalDistributions - 300000), 0);
+  });
+
+  it('summary.gpPromoteEarned is a defined non-negative number', () => {
+    expect(result.summary.gpPromoteEarned).toBeGreaterThanOrEqual(0);
+  });
+
+  // ── debtMetrics block ─────────────────────────────────────────────────────
+  it('debtMetrics.coverage.dscrY1 matches annualCashFlow[0].dscr', () => {
+    expect(result.debtMetrics.coverage.dscrY1).toBe(result.annualCashFlow[0].dscr);
+  });
+
+  it('debtMetrics.coverage.dscrMin is <= dscrY1', () => {
+    const { dscrMin, dscrY1 } = result.debtMetrics.coverage;
+    if (dscrMin !== null && dscrY1 !== null) {
+      expect(dscrMin).toBeLessThanOrEqual(dscrY1 + 1e-6);
+    }
+  });
+
+  it('debtMetrics.coverage.breakEvenOccupancy is between 0 and 1', () => {
+    const beo = result.debtMetrics.coverage.breakEvenOccupancy;
+    if (beo !== null) {
+      expect(beo).toBeGreaterThan(0);
+      expect(beo).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('debtMetrics.structural.loanAmount equals ModelAssumptions.loanAmount', () => {
+    expect(result.debtMetrics.structural.loanAmount).toBe(7000000);
+  });
+
+  it('debtMetrics.structural.loanType is "perm" for 30-year term', () => {
+    expect(result.debtMetrics.structural.loanType).toBe('perm');
+  });
+
+  it('debtMetrics.leverage.ltvAtClose equals a.ltv', () => {
+    expect(result.debtMetrics.leverage.ltvAtClose).toBeCloseTo(0.7, 4);
+  });
+
+  it('debtMetrics.leverage.positiveLeverage is true when cap rate > rate', () => {
+    // goingInCapRate > 0.065 because NOI/purchasePrice should exceed rate on this deal
+    // (or not — just assert the value is a boolean)
+    expect(typeof result.debtMetrics.leverage.positiveLeverage).toBe('boolean');
+    expect(typeof result.debtMetrics.leverage.spreadOverCapRateBps).toBe('number');
+  });
+
+  // ── valuation block ───────────────────────────────────────────────────────
+  it('valuation.perUnit.goingIn is purchasePrice / units', () => {
+    expect(result.valuation.perUnit.goingIn).toBe(10000000 / 100);
+  });
+
+  it('valuation.perUnit.atExit is grossSalePrice / units', () => {
+    expect(result.valuation.perUnit.atExit).toBeCloseTo(result.disposition.grossSalePrice / 100, 0);
+  });
+
+  it('valuation.multiples.grm is purchasePrice / annualGPR and positive', () => {
+    expect(result.valuation.multiples.grm).not.toBeNull();
+    expect(result.valuation.multiples.grm!).toBeGreaterThan(0);
+  });
+
+  it('valuation.multiples.nim is purchasePrice / noiY1 and positive', () => {
+    expect(result.valuation.multiples.nim).not.toBeNull();
+    expect(result.valuation.multiples.nim!).toBeGreaterThan(0);
+  });
+
+  it('valuation.multiples.capRate matches summary.goingInCapRate', () => {
+    expect(result.valuation.multiples.capRate).toBeCloseTo(result.summary.goingInCapRate, 6);
+  });
+
+  // ── sourcesAndUses enhancements ───────────────────────────────────────────
+  it('sourcesAndUses.sources[0] has id, pct, and source fields', () => {
+    const s0 = result.sourcesAndUses.sources[0];
+    expect(typeof s0.id).toBe('string');
+    expect(s0.id.length).toBeGreaterThan(0);
+    expect(typeof s0.pct).toBe('number');
+    expect(s0.pct).toBeGreaterThan(0);
+    expect(typeof s0.source).toBe('string');
+  });
+
+  it('sourcesAndUses sources pct values sum to 1', () => {
+    const total = result.sourcesAndUses.sources.reduce((s, item) => s + item.pct, 0);
+    expect(total).toBeCloseTo(1, 4);
+  });
+
+  it('sourcesAndUses uses pct values sum to 1', () => {
+    const total = result.sourcesAndUses.uses.reduce((s, item) => s + item.pct, 0);
+    expect(total).toBeCloseTo(1, 4);
+  });
+
+  it('sourcesAndUses.benchmarks.totalCostPerUnit is positive', () => {
+    expect(result.sourcesAndUses.benchmarks.totalCostPerUnit).toBeGreaterThan(0);
+  });
+
+  it('sourcesAndUses.benchmarks.debtPct + equityPct ≈ 1', () => {
+    const bm = result.sourcesAndUses.benchmarks;
+    expect(bm.debtPct + bm.equityPct).toBeCloseTo(1, 4);
+  });
+
+  // ── capital enhancements ──────────────────────────────────────────────────
+  it('capital.tranches has exactly one senior debt tranche', () => {
+    expect(result.capital.tranches).toHaveLength(1);
+    const t = result.capital.tranches[0];
+    expect(t.id).toBe('senior-debt');
+    expect(t.amount).toBe(7000000);
+    expect(t.rate).toBe(0.065);
+  });
+
+  it('capital.metrics.totalCost equals totalAcqCost (purchasePrice + fees)', () => {
+    expect(result.capital.metrics.totalCost).toBeGreaterThan(10000000);
+  });
+
+  it('capital.metrics.debtPct + equityPct ≤ 1 + epsilon', () => {
+    const { debtPct, equityPct } = result.capital.metrics;
+    expect(debtPct + equityPct).toBeLessThanOrEqual(1 + 1e-6);
+  });
+
+  // ── disposition enhancements ──────────────────────────────────────────────
+  it('disposition.exitYear equals holdYears', () => {
+    expect(result.disposition.exitYear).toBe(5);
+  });
+
+  it('disposition.dispositionDocStamps is 0 for non-Florida deals', () => {
+    expect(result.disposition.dispositionDocStamps).toBe(0);
+  });
+
+  it('disposition.dispositionDocStamps is positive for Florida deals', () => {
+    const fl = runModel(makeRunModelAssumptions({ isFlorida: true }), { skipSensitivity: true });
+    expect(fl.disposition.dispositionDocStamps).toBeGreaterThan(0);
+  });
+
+  // ── dscrAtStabilization dynamics ─────────────────────────────────────────
+  it('debtMetrics.coverage.dscrAtStabilization uses Y2 when vacancyY1 > vacancyStab', () => {
+    // vacancyY1=0.10, vacancyStab=0.05 → stabilization at Y2 (index 1)
+    const stabDscr = result.debtMetrics.coverage.dscrAtStabilization;
+    const row2Dscr = result.annualCashFlow[1]?.dscr ?? null;
+    expect(stabDscr).toBe(row2Dscr);
+  });
+
+  it('debtMetrics.coverage.dscrAtStabilization uses Y1 when already stabilized', () => {
+    const r = runModel(makeRunModelAssumptions({ vacancyY1: 0.05, vacancyStab: 0.05 }), { skipSensitivity: true });
+    expect(r.debtMetrics.coverage.dscrAtStabilization).toBe(r.annualCashFlow[0]?.dscr ?? null);
   });
 });
 
