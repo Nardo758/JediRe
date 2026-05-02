@@ -214,6 +214,10 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [collectionLoss, setCollectionLoss] = useState(0.015);
   const [otherIncome, setOtherIncome] = useState<Record<string, OtherIncomeItem>>({ ...DEFAULT_OTHER_INCOME });
 
+  const [expenseGrowth, setExpenseGrowth] = useState(0.03);
+  const [managementFeePct, setManagementFeePct] = useState(0.04);
+  const [preferredReturnPct, setPreferredReturnPct] = useState(0.08);
+
   const [expenses, setExpenses] = useState<Record<string, ExpenseItem>>({ ...DEFAULT_EXPENSES });
 
   const [loanAmount, setLoanAmount] = useState(deal?.loanAmount || deal?.loan_amount || 0);
@@ -236,7 +240,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           rent_growth: rentGrowth[0] ?? 0.03,
           vacancy_rate: 1 - stabilizedOccupancy,
           exit_cap_rate: exitCapRate,
-          expense_growth: 0.03,
+          expense_growth: expenseGrowth,
           entry_cap_rate: capRate,
           debt_rate: interestRate / 100,
           ltv: loanAmount > 0 && purchasePrice > 0 ? loanAmount / purchasePrice : 0.7,
@@ -526,6 +530,9 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         collectionLoss,
         otherIncome,
       },
+      expenseGrowth,
+      managementFeePct,
+      preferredReturnPct,
       expenses: Object.fromEntries(
         Object.entries(expenses).map(([key, val]) => [
           key,
@@ -552,7 +559,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     unitMix, purchasePrice, capRate, closingCosts, exitCapRate, sellingCosts, saleNOIMethod,
     rentGrowth, lossToLease, stabilizedOccupancy, collectionLoss, otherIncome, expenses,
     loanAmount, loanType, interestRate, spread, loanTerm, amortization, ioPeriod,
-    originationFee, rateCapCost, prepayPenalty, capexItems, contingencyPct, reservesPerUnit,
+    originationFee, rateCapCost, prepayPenalty, expenseGrowth, managementFeePct, preferredReturnPct, capexItems, contingencyPct, reservesPerUnit,
     lpShare, gpShare, hurdles, equityContribution, landCost, hardCostPerSF, hardCostContingency,
     softCostPct, developerFee, constructionPeriod, leaseUpVelocity, constructionLoanLTC, constructionLoanRate,
   ]);
@@ -1064,7 +1071,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                                             type="number"
                                             value={row.mix}
                                             min={0} max={100}
-                                            className="text-[10px] text-right border border-stone-200 rounded px-1 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                            className="text-[10px] text-right border border-teal-400 rounded-lg px-2.5 py-1.5 px-1 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
                                             onChange={e => {
                                               const v = Math.max(0, Math.min(100, Number(e.target.value)));
                                               setProgramMixRows(prev => ({ ...prev, [pt.key]: { ...prev[pt.key], mix: v } }));
@@ -1075,7 +1082,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                                             type="number"
                                             value={row.sf}
                                             min={0}
-                                            className="text-[10px] text-right border border-stone-200 rounded px-1 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                            className="text-[10px] text-right border border-teal-400 rounded-lg px-2.5 py-1.5 px-1 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
                                             onChange={e => {
                                               const v = Math.max(0, Number(e.target.value));
                                               setProgramMixRows(prev => ({ ...prev, [pt.key]: { ...prev[pt.key], sf: v } }));
@@ -1088,7 +1095,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                                               type="number"
                                               value={row.rent}
                                               min={0}
-                                              className="text-[10px] text-right border border-stone-200 rounded px-1 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                              className="text-[10px] text-right border border-teal-400 rounded-lg px-2.5 py-1.5 px-1 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
                                               onChange={e => {
                                                 const v = Math.max(0, Number(e.target.value));
                                                 setProgramMixRows(prev => ({ ...prev, [pt.key]: { ...prev[pt.key], rent: v } }));
@@ -1153,6 +1160,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                       saleNOIMethod={saleNOIMethod} setSaleNOIMethod={setSaleNOIMethod}
                       holdPeriod={holdPeriod}
                       platformData={platformData}
+                      expenseGrowth={expenseGrowth} setExpenseGrowth={setExpenseGrowth}
+                      managementFeePct={managementFeePct} setManagementFeePct={setManagementFeePct}
                     />
                   )}
                   {section.id === 'revenue' && (
@@ -1162,6 +1171,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                       stabilizedOccupancy={stabilizedOccupancy} setStabilizedOccupancy={setStabilizedOccupancy}
                       collectionLoss={collectionLoss} setCollectionLoss={setCollectionLoss}
                       holdPeriod={holdPeriod}
+                      preferredReturnPct={preferredReturnPct} setPreferredReturnPct={setPreferredReturnPct}
                       platformData={platformData}
                     />
                   )}
@@ -1256,7 +1266,7 @@ const InputField: React.FC<{
         value={value}
         onChange={(e) => onChange(type === 'text' ? e.target.value : parseFloat(e.target.value) || 0)}
         step={step || (type === 'percent' ? 0.001 : type === 'currency' ? 1000 : 1)}
-        className="w-full text-xs font-mono border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none"
+        className="w-full text-xs font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none bg-[#f9fffa]"
       />
       {suffix && <span className="text-xs text-stone-400 ml-1">{suffix}</span>}
       {type === 'percent' && <span className="text-xs text-stone-400 ml-1">×100=%</span>}
@@ -1336,35 +1346,35 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
               <tr key={i} className="border-b border-stone-100 hover:bg-stone-50">
                 <td className="py-1.5 px-2">
                   <input type="text" value={row.floorPlan} onChange={(e) => updateRow(i, 'floorPlan', e.target.value)}
-                    className="w-24 text-xs font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-24 text-xs font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.unitSize} onChange={(e) => updateRow(i, 'unitSize', parseInt(e.target.value) || 0)}
-                    className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-16 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.beds} onChange={(e) => updateRow(i, 'beds', parseInt(e.target.value) || 0)}
-                    className="w-12 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-12 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.units} onChange={(e) => updateRow(i, 'units', parseInt(e.target.value) || 0)}
-                    className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-14 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.occupied} onChange={(e) => updateRow(i, 'occupied', parseInt(e.target.value) || 0)}
-                    className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-14 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
                 </td>
                 <td className="py-1.5 px-2 text-right font-mono text-stone-500">{row.vacant}</td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.marketRent} onChange={(e) => updateRow(i, 'marketRent', parseInt(e.target.value) || 0)}
-                    className="w-18 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" step={25} />
+                    className="w-18 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" step={25} />
                 </td>
                 <td className="py-1.5 px-2 text-right font-mono text-stone-500">
                   ${row.unitSize > 0 ? (row.marketRent / row.unitSize).toFixed(2) : '0.00'}
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.inPlaceRent} onChange={(e) => updateRow(i, 'inPlaceRent', parseInt(e.target.value) || 0)}
-                    className="w-18 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" step={25} />
+                    className="w-18 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" step={25} />
                 </td>
                 <td className="py-1.5 px-1">
                   <button onClick={() => removeRow(i)} className="text-stone-300 hover:text-red-500 p-0.5">
@@ -1418,7 +1428,7 @@ const AcquisitionSection: React.FC<any> = ({ purchasePrice, setPurchasePrice, ca
           <div key={key} className="flex items-center gap-2">
             <span className="text-[10px] text-stone-500 w-24 truncate">{key}</span>
             <input type="number" value={val} onChange={(e) => setClosingCosts({ ...closingCosts, [key]: parseInt(e.target.value) || 0 })}
-              className="flex-1 text-xs text-right font-mono border border-stone-200 rounded px-2 py-1 focus:border-blue-400 outline-none" step={5000} />
+              className="flex-1 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 px-2 py-1 focus:border-blue-400 outline-none" step={5000} />
           </div>
         ))}
       </div>
@@ -1461,15 +1471,17 @@ const DevelopmentCostsSection: React.FC<any> = ({
   );
 };
 
-const DispositionSection: React.FC<any> = ({ exitCapRate, setExitCapRate, sellingCosts, setSellingCosts, saleNOIMethod, setSaleNOIMethod, holdPeriod, platformData }) => (
+const DispositionSection: React.FC<any> = ({ exitCapRate, setExitCapRate, sellingCosts, setSellingCosts, saleNOIMethod, setSaleNOIMethod, holdPeriod, platformData, expenseGrowth, setExpenseGrowth, managementFeePct, setManagementFeePct }) => (
   <div className="mt-3 grid grid-cols-3 gap-4">
     <InputField label="Exit Cap Rate" value={exitCapRate} onChange={setExitCapRate} type="percent"
       platformValue={platformData?.exitCap} platformSource="Strategy Module" suffix="(decimal)" />
     <InputField label="Selling Costs" value={sellingCosts} onChange={setSellingCosts} type="percent" suffix="(decimal)" />
+    <InputField label="Expense Growth" value={expenseGrowth} onChange={setExpenseGrowth} type="percent" suffix="(decimal)" />
+    <InputField label="Mgmt Fee % of EGI" value={managementFeePct} onChange={setManagementFeePct} type="percent" suffix="(decimal)" />
     <div>
       <label className="text-[11px] font-medium text-stone-600 mb-1 block">Sale NOI Method</label>
       <select value={saleNOIMethod} onChange={(e) => setSaleNOIMethod(e.target.value)}
-        className="w-full text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none">
+        className="w-full text-xs border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none">
         <option>Forward 12mo</option>
         <option>T-12</option>
       </select>
@@ -1477,13 +1489,14 @@ const DispositionSection: React.FC<any> = ({ exitCapRate, setExitCapRate, sellin
   </div>
 );
 
-const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease, setLossToLease, stabilizedOccupancy, setStabilizedOccupancy, collectionLoss, setCollectionLoss, holdPeriod, platformData }) => (
+const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease, setLossToLease, stabilizedOccupancy, setStabilizedOccupancy, collectionLoss, setCollectionLoss, holdPeriod, platformData, preferredReturnPct, setPreferredReturnPct }) => (
   <div className="mt-3 space-y-4">
     <div className="grid grid-cols-3 gap-4">
       <InputField label="Loss-to-Lease" value={lossToLease} onChange={setLossToLease} type="percent" suffix="(decimal)" />
       <InputField label="Stabilized Occupancy" value={stabilizedOccupancy} onChange={setStabilizedOccupancy} type="percent"
         platformValue={platformData?.occupancy?.[0]} platformSource="Traffic Module" suffix="(decimal)" />
       <InputField label="Collection Loss" value={collectionLoss} onChange={setCollectionLoss} type="percent" suffix="(decimal)" />
+      <InputField label="Preferred Return (LP)" value={preferredReturnPct} onChange={setPreferredReturnPct} type="percent" suffix="(decimal)" />
     </div>
     <div>
       <label className="text-[11px] font-medium text-stone-600 mb-2 block">
@@ -1503,7 +1516,7 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
               updated[i] = parseFloat(e.target.value) || 0;
               setRentGrowth(updated);
             }}
-              className="w-16 text-xs text-center font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none"
+              className="w-16 text-xs text-center font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none"
               step={0.001} />
           </div>
         ))}
@@ -1533,12 +1546,12 @@ const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem
               <td className="py-1.5 px-2">
                 <input type="number" value={oi.perUnitMonth} step={5}
                   onChange={(e) => setOtherIncome({ ...otherIncome, [name]: { ...oi, perUnitMonth: parseFloat(e.target.value) || 0 } })}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={oi.penetration} step={0.05}
                   onChange={(e) => setOtherIncome({ ...otherIncome, [name]: { ...oi, penetration: parseFloat(e.target.value) || 0 } })}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
               </td>
               <td className="py-1.5 px-2 text-right font-mono text-stone-600">
                 {fmt$(Math.round(oi.perUnitMonth * totalUnits * 12 * oi.penetration))}
@@ -1591,12 +1604,12 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
                 <input type="number" value={exp.amount}
                   step={exp.type === 'pctEGR' ? 0.005 : 1000}
                   onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, amount: parseFloat(e.target.value) || 0 } })}
-                  className="w-20 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-20 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <select value={exp.type}
                   onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, type: e.target.value } })}
-                  className="text-[10px] border border-stone-200 rounded px-1 py-0.5 outline-none">
+                  className="text-[10px] border border-teal-400 rounded-lg px-2.5 py-1.5 px-1 py-0.5 outline-none">
                   <option value="total">Total</option>
                   <option value="perUnit">Per Unit</option>
                   <option value="pctEGR">% of EGR</option>
@@ -1605,7 +1618,7 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
               <td className="py-1.5 px-2">
                 <input type="number" value={exp.growthRate} step={0.005}
                   onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, growthRate: parseFloat(e.target.value) || 0 } })}
-                  className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-14 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
               </td>
               <td className="py-1.5 px-2 text-right font-mono text-stone-600">
                 {exp.type === 'pctEGR' ? fmtPct(exp.amount) : fmt$(exp.type === 'perUnit' ? exp.amount * totalUnits : exp.amount)}
@@ -1635,7 +1648,7 @@ const FinancingSection: React.FC<any> = ({
       <div>
         <label className="text-[11px] font-medium text-stone-600 mb-1 block">Loan Type</label>
         <select value={loanType} onChange={(e) => setLoanType(e.target.value)}
-          className="w-full text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none">
+          className="w-full text-xs border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none">
           <option>Fixed</option>
           <option>Floating</option>
         </select>
@@ -1682,7 +1695,7 @@ const CapexSection: React.FC<{
                   updated[i] = { ...item, description: e.target.value };
                   setCapexItems(updated);
                 }}
-                  className="w-full text-xs font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-full text-xs font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={item.amount} step={10000} onChange={(e) => {
@@ -1690,7 +1703,7 @@ const CapexSection: React.FC<{
                   updated[i] = { ...item, amount: parseInt(e.target.value) || 0 };
                   setCapexItems(updated);
                 }}
-                  className="w-28 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-28 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
               </td>
               <td className="py-1.5 px-1">
                 <button onClick={() => setCapexItems(capexItems.filter((_, idx) => idx !== i))} className="text-stone-300 hover:text-red-500">
@@ -1751,17 +1764,17 @@ const WaterfallSection: React.FC<{
               <td className="py-1.5 px-2">
                 <input type="number" value={h.hurdleRate} step={0.01}
                   onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, hurdleRate: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={h.promoteToGP} step={0.05}
                   onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, promoteToGP: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={h.lpSplit} step={0.05}
                   onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, lpSplit: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none" />
               </td>
               <td className="py-1.5 px-1">
                 <button onClick={() => setHurdles(hurdles.filter((_, idx) => idx !== i))} className="text-stone-300 hover:text-red-500">
