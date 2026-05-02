@@ -615,6 +615,12 @@ export function computeWaterfall(
   // Tier definitions per spec §3.12
   const tierDefs = [
     { tierName: 'Return of Capital', hurdleRate: 0,              lpSplit: lpPct,                 gpSplit: gpPct              },
+    // T2 Preferred Return: LP receives 100% of cash flow until running LP IRR
+    // reaches `preferredReturn`.  Pref compounding is represented implicitly:
+    // distributions in earlier years reduce LP's running IRR deficit, so later
+    // years require correspondingly more cash to push LP IRR to the hurdle.
+    // This is economically equivalent to an explicit accruing unpaid-pref ledger
+    // for standard (non-PIK) waterfalls.
     { tierName: 'Preferred Return',  hurdleRate: preferredReturn, lpSplit: 1.0,                   gpSplit: 0.0                },
     { tierName: 'Promote Tier 1',    hurdleRate: promoteTiers[0], lpSplit: 1 - promoteSplits[0],  gpSplit: promoteSplits[0]   },
     { tierName: 'Promote Tier 2',    hurdleRate: promoteTiers[1], lpSplit: 1 - promoteSplits[1],  gpSplit: promoteSplits[1]   },
@@ -874,11 +880,20 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   return checks;
 }
 
-function buildCashFlowVector(totalEquity: number, annualRows: AnnualCashFlowRow[]): number[] {
+function buildCashFlowVector(
+  totalEquity: number,
+  annualRows: AnnualCashFlowRow[],
+  hold: number,
+  equityProceeds: number,
+): number[] {
+  // Year 0: equity outlay (negative)
   const cf: number[] = [-totalEquity];
-  for (const row of annualRows) {
-    cf.push(row.preTaxCashFlow);
+  // Years 1..hold: levered operating cash flows only (exclude the forward-NOI year at annualRows[hold])
+  for (let i = 0; i < hold; i++) {
+    cf.push(annualRows[i]?.preTaxCashFlow ?? 0);
   }
+  // Exit: add equity proceeds to the final operating year (end of hold period)
+  cf[cf.length - 1] += equityProceeds;
   return cf;
 }
 
@@ -989,7 +1004,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   }
 
   // ── Phase 7: Returns ────────────────────────────────────────────────────
-  const cashFlows = buildCashFlowVector(totalEquity, annualRows);
+  const cashFlows = buildCashFlowVector(totalEquity, annualRows, hold, equityProceeds);
   const irr = calculateIRR(cashFlows);
   const em = calculateEM(cashFlows);
   const avgCoC = calculateAvgCoC(totalEquity, annualRows.slice(0, hold).map(r => r.preTaxCashFlow));
