@@ -496,7 +496,16 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
 
     // Lease expiration roll (deal-wide) — declared early so per-floor-plan
     // roll-ups can reuse the same bucketing logic.
-    const today = new Date();
+    // Anchor expiration bucketing to the rent roll's as-of date when available
+    // (Task #514, Step 8). Falling back to "now" produces misleading 100%-MTM
+    // results on historical rent rolls (e.g. 464 Bishop is dated 2018-08-15;
+    // bucketing against today=2026 marked all 186 leases as MTM/holdover when
+    // they were in fact in-term as of the snapshot). Prefer the parsed
+    // asOfDate; if absent, default to current date.
+    const parsedAsOf = asOfDate ? new Date(asOfDate) : null;
+    const today = parsedAsOf && !Number.isNaN(parsedAsOf.getTime())
+      ? parsedAsOf
+      : new Date();
     const monthsBetween = (a: Date, b: Date) =>
       (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
     // Bucketing semantics (Task #514):
