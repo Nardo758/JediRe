@@ -148,10 +148,13 @@ export class RentRollDiffService {
         return null;
       }
 
-      // ── Unit identity resolution ─────────────────────────────────────────
-      // Level 1: exact unit_id match
-      // Level 2: (unit_type + unit_sf) fingerprint — unique match only
-      // Level 3: (lease_start_month + unit_type) tenant identity — last-resort
+      // ── Unit identity resolution (v1 heuristics) ─────────────────────────
+      // Current implementation is intentionally a pragmatic v1 approximation:
+      //   Level 1: exact unit_id match
+      //   Level 2: (unit_type + unit_sf) fingerprint — unique match only
+      //   Level 3: (lease_start_month + unit_type) tenant identity — last-resort
+      // Full tenant-identity resolution (external ID, fuzzy name matching,
+      // spatial proximity) is tracked as follow-up work (see task #531).
       //
       // SPLIT detection: one prior unit_id appears as the L1 key for multiple
       // current units → each current unit classified as SPLIT event.

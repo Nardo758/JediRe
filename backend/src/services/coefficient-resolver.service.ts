@@ -122,14 +122,21 @@ export class CoefficientResolverService {
         //             stop_probability ← days_vacant_median,
         //             app_to_signed ← renewal_rate,
         //             apartment_seeker_pct ← concession_trend (fallback: loss_to_lease)
-        const COEFF_METRIC_MAP: Partial<Record<CoefficientName, string>> = {
-          walkin_to_tour:      'signing_velocity',
-          stop_probability:    'days_vacant_median',
-          app_to_signed:       'renewal_rate',
-          apartment_seeker_pct: 'concession_trend',
+        const COEFF_METRIC_MAP: Partial<Record<CoefficientName, string[]>> = {
+          walkin_to_tour:       ['signing_velocity'],
+          stop_probability:     ['days_vacant_median'],
+          app_to_signed:        ['renewal_rate'],
+          // apartment_seeker_pct is driven by concession data.
+          // S2 deals: prefer 'concession_trend'; S1-only deals: fall back to
+          // 'loss_to_lease' (a concession proxy available from a single snapshot).
+          apartment_seeker_pct: ['concession_trend', 'loss_to_lease'],
         };
-        const metricKey = COEFF_METRIC_MAP[name] ?? name;
-        const weightEntry = subjectHistory.confidence_weights[metricKey];
+        const metricCandidates = COEFF_METRIC_MAP[name] ?? [name];
+        const weightEntry = metricCandidates
+          .map(k => subjectHistory.confidence_weights[k])
+          .find(e => e != null && e.weight > 0) ?? metricCandidates
+          .map(k => subjectHistory.confidence_weights[k])
+          .find(e => e != null);
         // If no weight entry for the underlying metric, treat as w=0 (insufficient evidence).
         // Do NOT proxy with snapshot_count — that over-weights sparse per-metric data.
         const w = weightEntry ? weightEntry.weight : 0;
@@ -213,15 +220,11 @@ export class CoefficientResolverService {
       } as LayeredValue;
     }
 
-    // Persist updated peer collisions back to subject_traffic_history (fire-and-forget)
-    if (dealId && subjectHistory && peerCollisions.length > 0) {
-      this.pool.query(
-        `UPDATE subject_traffic_history
-            SET peer_collisions = $1, updated_at = NOW()
-          WHERE deal_id = $2`,
-        [JSON.stringify(peerCollisions), dealId],
-      ).catch(err => logger.debug('[CoefficientResolver] Peer collision persist failed', { err }));
-    }
+    // NOTE: Resolver is read-only for peer collisions.
+    // Peer collisions are computed and persisted deterministically in
+    // RentRollDiffService.computePeerCollisions() at S2 aggregation time.
+    // Resolver computes peerCollisions above only to expose them in the
+    // CalibrationMeta response payload — no DB write here.
 
     // Build confidence band
     const sampleCoeff = platformCoefficients?.['walkin_to_tour'];
