@@ -968,17 +968,27 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
 
   // INV-5: grossSalePrice ≈ stabilizedNOI / exitCap  (within 0.1%)
   // When both values are positive the math is checkable — any deviation > 0.1% is a hard error.
-  // When stabilizedNOI ≤ 0 the formula cannot be evaluated (typical for lease-up / early-hold
-  // deals where current-period NOI is negative).  Demote to warn so the verifier does not block
-  // the build for legitimate lease-up assumptions; the UI surfaces the warning to the analyst.
+  // When the formula cannot be evaluated we branch by mode:
+  //   • exitCap ≤ 0 (not configured): warn for any deal type — the exit hasn't been set up yet.
+  //   • exitCap > 0 but stabilizedNOI ≤ 0 on a development/ground-up deal: warn — negative NOI
+  //     during construction / lease-up is expected and the exit NOI will be different.
+  //   • exitCap > 0 but stabilizedNOI ≤ 0 on an existing/stabilized deal: hard error — a
+  //     stabilized acquisition should always produce positive exit-year NOI.
   if (a.exitCap > 0 && disp.stabilizedNOI > 0) {
     const expected = disp.stabilizedNOI / a.exitCap;
     const relErr = Math.abs(disp.grossSalePrice - expected) / expected;
     if (relErr > 0.001) {
       checks.push({ id: 'INV-5', status: 'error', message: `INV-5 grossSalePrice ${disp.grossSalePrice.toFixed(0)} ≠ stabilizedNOI/exitCap (${expected.toFixed(0)}, err=${(relErr * 100).toFixed(3)}%)` });
     }
+  } else if (a.exitCap <= 0) {
+    checks.push({ id: 'INV-5', status: 'warn', message: `INV-5 cannot verify grossSalePrice: exitCap not configured (${a.exitCap}) — seed exit cap to enable this check` });
   } else {
-    checks.push({ id: 'INV-5', status: 'warn', message: `INV-5 cannot verify grossSalePrice: exitCap (${a.exitCap}) or stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) is zero/non-positive — lease-up or capital stack not yet seeded` });
+    const inv5IsDevMode = a.dealType === 'development' || a.dealType === 'ground_up';
+    if (inv5IsDevMode) {
+      checks.push({ id: 'INV-5', status: 'warn', message: `INV-5 cannot verify grossSalePrice: stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) ≤ 0 for ${a.dealType} deal — expected during construction/lease-up phase` });
+    } else {
+      checks.push({ id: 'INV-5', status: 'error', message: `INV-5 stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) ≤ 0 for ${a.dealType} deal with exitCap=${(a.exitCap * 100).toFixed(2)}% — check NOI build-up; stabilized acquisitions must have positive exit-year NOI` });
+    }
   }
 
   // INV-6: totalEquity == totalAcquisitionCost − loanAmount  (strict; $1 rounding tolerance)
@@ -994,13 +1004,19 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   }
 
   // INV-7: initial equity outlay must be positive (cashFlows[0] < 0)
-  // Zero equity usually means the capital stack assumptions haven't been seeded yet (purchasePrice
-  // or loanAmount missing from the ProFormaAssumptions envelope).  Demote to warn so a deal with
-  // incomplete financing assumptions can still produce a model result — the analyst sees the
-  // warning and can supply the missing data.  A stabilized deal with a fully-populated stack that
-  // still shows zero equity is a genuine structural defect and remains a warning (not silenced).
+  // Two distinct failure modes with different severity:
+  //   • purchasePrice ≤ 0 (capital stack not seeded): warn for any deal type — the financing
+  //     assumptions haven't been populated yet; equity = purchasePrice − loanAmount = 0 is an
+  //     artifact of missing data, not a model defect.  Analyst must seed purchasePrice to enable
+  //     this check (Task #545).
+  //   • purchasePrice > 0 but totalEquity still ≤ 0: hard error for all deal types — the capital
+  //     stack IS seeded but the equity math is structurally wrong.
   if (sum.totalEquity <= 0) {
-    checks.push({ id: 'INV-7', status: 'warn', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0 [dealType=${a.dealType}] — capital stack may not be fully seeded` });
+    if (a.purchasePrice <= 0) {
+      checks.push({ id: 'INV-7', status: 'warn', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0 — capital stack not seeded (purchasePrice=${a.purchasePrice}); seed purchasePrice to enable this check` });
+    } else {
+      checks.push({ id: 'INV-7', status: 'error', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0 with purchasePrice=${a.purchasePrice.toFixed(0)} [dealType=${a.dealType}] — structural capital stack defect; check lpEquity + gpEquity vs purchase price` });
+    }
   }
 
   // INV-8: waterfall conservation — Σ tier_distributions == Σ max(0,cfads[y]) + max(0,equityProceeds)
