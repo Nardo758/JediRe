@@ -33,6 +33,8 @@ const COMPARE_FIELDS: CompareField[] = [
   { label: 'STABILIZED OCC', path: ['assumptions', 'revenue', 'stabilizedOccupancy'], format: (v: number) => fmtPct(v * 100), higherIsBetter: true },
   { label: 'LOAN AMOUNT', path: ['assumptions', 'financing', 'loanAmount'], format: fmt$ },
   { label: 'INTEREST RATE', path: ['assumptions', 'financing', 'interestRate'], format: (v: number) => fmtPct(v * 100) },
+  { label: 'OPEX GROWTH % / YR', path: ['assumptions', 'opexGrowthPct'], format: (v: number) => fmtPct(v * 100) },
+  { label: 'CONCESSION BURN-OFF %', path: ['assumptions', 'concessionBurnOffPct'], format: (v: number) => fmtPct(v * 100) },
   { label: '—', path: [], format: () => '—' },
   { label: 'IRR', path: ['results', 'summary', 'irr'], format: (v: number) => fmtPct(v), higherIsBetter: true },
   { label: 'EQUITY MULTIPLE', path: ['results', 'summary', 'equityMultiple'], format: fmtX, higherIsBetter: true },

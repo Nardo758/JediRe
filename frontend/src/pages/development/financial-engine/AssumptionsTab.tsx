@@ -576,7 +576,7 @@ const STATIC_ROWS: RowDef[] = [
   // ── Section 7: Capex & Reserves ────────────────────────────────────────────
   {
     key: 'capexPerUnit', label: 'CapEx Budget ($/unit total)', section: 7, unit: 'dollar',
-    format: fmtDlr,
+    format: fmtDlr, patchField: 'capexPerUnit',
     description: 'Total capital expenditure budget per unit over the hold period.',
     platformSource: 'JEDI — Value-add comp database', brokerSource: 'OM / CapEx Schedule',
     brokerPage: 'Capital Budget', brokerLine: 'Total CapEx Budget',
@@ -1956,10 +1956,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       return next;
     });
 
-  // Section A (Base Year): fields sourced from T12 / Rent Roll / Tax Bill / Platform.
-  // Editing these fields recomputes Pro Forma Y1 and cascades through all projection years.
-  // Section B (Trajectory): Y2+ growth rates, burn-off schedules, exit assumptions.
-  // Editing Section B fields leaves Pro Forma (Year 1) unchanged; only Y2+ moves.
   // Section A = base-year document-sourced inputs (T12 / Rent Roll / Tax Bill / OM).
   // Editing a Section A field cascades through Pro Forma Y1 AND all projection years.
   // Section B = trajectory inputs (Y2+ growth rates, vacancy ramp, CapEx schedule, exit).

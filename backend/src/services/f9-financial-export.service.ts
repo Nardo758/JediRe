@@ -84,10 +84,17 @@ export function buildProjectionsForExport(
   const equityAtClose = capitalStack.equityAtClose ?? 0;
   const years: ProjYearExport[] = [];
 
-  // Pre-compute total Y1 capex for the 40/35/25 fallback schedule.
-  // Falls back to 0 when no capex budget is set, leaving CFBT unchanged for
-  // existing deals that have never configured capex.
-  const capexTotalY1 = y1('capex') ?? 0;
+  // Total CapEx budget for the 40/35/25 fallback schedule.
+  // Priority: user-entered budget override (capexPerUnit $/unit → total $)
+  //   → OM/broker layer from year1['capex'] (if OM parser stored it)
+  //   → 0 (no draws — correct for deals with no capex budget at all).
+  // The fallback schedule only fires when a budget exists AND the user has not
+  // set explicit per-year draws (pv?.capexDraw). If the budget is 0, capexDraw
+  // is 0 for all years — preserving existing behavior for non-capex deals.
+  const capexPerUnitBudget = f.userOverrides['capexPerUnit']?.[1] ?? null;
+  const capexTotalY1 = capexPerUnitBudget != null
+    ? Math.round(capexPerUnitBudget * totalUnits)
+    : (y1('capex') ?? 0);
 
   // Concession burn-off: accumulator tracks how much of Y1 concession has been
   // phased out. Each year's rate is read per-year (stepped) or flat (year-1-only),
