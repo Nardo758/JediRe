@@ -83,8 +83,6 @@ const CompareMarketsPage: React.FC = () => {
       }
     };
     fetchMarketData();
-  // hook uses a complex expression in its dep array (e.g. .join() / .map() / spread) for an explicit invalidation key; lint cannot statically analyze it, but the expression evaluates to a stable primitive on each render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   // hook intentionally captures selectedMarkets via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMarkets.map(m => m.id).join(',')]);

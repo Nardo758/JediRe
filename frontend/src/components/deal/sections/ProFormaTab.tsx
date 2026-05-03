@@ -560,9 +560,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         },
       } : {}),
     };
-  // hook intentionally captures sensitivityOverrides via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
+  }, [ // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits sensitivityOverrides — closure reads it from enclosing scope; re-running on listed deps is the desired trigger
     dealName, totalUnits, netRentableSF, vintage, address, city, state, modelType, holdPeriod,
     unitMix, purchasePrice, capRate, closingCosts, exitCapRate, sellingCosts, saleNOIMethod,
     rentGrowth, lossToLease, stabilizedOccupancy, collectionLoss, otherIncome, expenses,

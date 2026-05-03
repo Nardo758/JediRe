@@ -247,8 +247,6 @@ export const StrategyBuilderPage: React.FC = () => {
       })
       .catch(() => setCorrelationData([]))
       .finally(() => setCorrelationLoading(false));
-  // hook uses a complex expression in its dep array (e.g. .join() / .map() / spread) for an explicit invalidation key; lint cannot statically analyze it, but the expression evaluates to a stable primitive on each render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   // hook intentionally captures conditions via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conditions.map(c => c.metricId).join(','), scope]);
@@ -269,8 +267,6 @@ export const StrategyBuilderPage: React.FC = () => {
       setLeadLagData(results);
     };
     fetchAll();
-  // hook uses a complex expression in its dep array (e.g. .join() / .map() / spread) for an explicit invalidation key; lint cannot statically analyze it, but the expression evaluates to a stable primitive on each render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   // hook intentionally captures conditions via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conditions.map(c => c.metricId).join(',')]);

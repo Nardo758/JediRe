@@ -144,9 +144,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
     } finally {
       setSaving(false);
     }
-  // hook intentionally captures annualDebtService, cashOnCashReturn, debtServiceCoverageRatio, monthlyPayment via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
+  }, [ // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits annualDebtService, cashOnCashReturn, debtServiceCoverageRatio, monthlyPayment — closure reads them from enclosing scope; re-running on listed deps is the desired trigger
     enhanced, deal.id, deal.name, modelId, activeComponents,
     purchasePrice, downPayment, interestRate, loanTerm,
     estimatedNOI, capRate, revenueAdjust, expenseAdjust, capRateAdjust

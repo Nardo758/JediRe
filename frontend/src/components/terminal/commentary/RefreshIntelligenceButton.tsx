@@ -52,9 +52,7 @@ export const RefreshIntelligenceButton: React.FC<RefreshIntelligenceButtonProps>
   // Cancel any in-flight polling loop on unmount or when entity changes —
   // otherwise the loop keeps running and stomps state on the next mount.
   useEffect(() => {
-    // hook reads from a mutable ref (.current) inside the closure — refs are explicitly excluded from dep arrays per React's reactive model.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    return () => { cancelRef.current.cancelled = true; };
+    return () => { cancelRef.current.cancelled = true; }; // eslint-disable-line react-hooks/exhaustive-deps -- intentionally captures cancelRef.current snapshot at effect setup; the cleanup uses the ref captured at mount time
   }, [entityType, entityId]);
 
   const pollTasks = async (taskIds: string[]): Promise<void> => {

@@ -226,8 +226,7 @@ export function useColumnCorrelations(
 ): { correlationMap: Record<string, ColumnCorrelationInfo>; staleCount: number; totalCount: number } {
   const batchQueries = useMemo(
     () => marketGeoIds.map(m => ({ geographyType: m.geoType, geographyId: m.geoId })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(marketGeoIds)]
+    [JSON.stringify(marketGeoIds)] // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits marketGeoIds — closure reads it from enclosing scope; re-running on listed deps is the desired trigger
   );
 
   const { results } = useBatchCorrelations(batchQueries);

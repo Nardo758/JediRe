@@ -359,9 +359,7 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
         onSelectFwd(absIdx - NOW_IDX);
       }
     },
-    // hook intentionally captures iW, pad.l via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onSelectFwd]
+    [onSelectFwd] // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits iW, pad.l — closure reads them from enclosing scope; re-running on listed deps is the desired trigger
   );
 
   // Build SVG paths
@@ -403,9 +401,7 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
       const idx = Math.round(((mx - pad.l) / iW) * (TOTAL_Q - 1));
       if (idx >= 0 && idx < TOTAL_Q) setHoverIdx(idx);
     },
-    // hook intentionally captures iW, pad.l via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [] // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits iW, pad.l — closure reads them from enclosing scope; re-running on listed deps is the desired trigger
   );
 
   return (
