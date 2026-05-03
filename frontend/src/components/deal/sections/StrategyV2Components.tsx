@@ -1571,11 +1571,40 @@ export function V2FullAnalysis({
       {/* Detection Banner — always shown */}
       <DetectionBanner detection={det} onConfirm={onConfirm} onAdjust={onAdjust} onOverride={onOverride} />
 
-      {/* GATE: only render scoring + evidence + plan after confirmation */}
+      {/* GATE: only render scoring + evidence + plan after confirmation.
+
+          Each top-level panel is individually wrapped in a BlockErrorBoundary
+          (Task #428) so a render failure in one panel — e.g. a malformed
+          plan action, a missing indicator, or bad correlation data — leaves
+          all sibling panels rendered and usable. Per-strategy evidence cards
+          have their own boundary (each card already isolates its inner
+          metric-stack / comp / math-trail / expected-return blocks). */}
       {!isGated && (
         <>
-          <SubStrategyComparison subStrategies={analysis.subStrategies} arbitrage={analysis.arbitrage} />
-          <SignalHeatmap subStrategies={analysis.subStrategies} signalScores={analysis.signalScores} />
+          <BlockErrorBoundary
+            label="SubStrategyComparisonPanel"
+            fallback={({ retry }) => (
+              <BlockErrorFallback
+                message="Couldn't render the sub-strategy comparison panel — other panels are unaffected."
+                onRetry={retry}
+              />
+            )}
+          >
+            <SubStrategyComparison subStrategies={analysis.subStrategies} arbitrage={analysis.arbitrage} />
+          </BlockErrorBoundary>
+
+          <BlockErrorBoundary
+            label="SignalHeatmapPanel"
+            fallback={({ retry }) => (
+              <BlockErrorFallback
+                message="Couldn't render the signal heatmap — other panels are unaffected."
+                onRetry={retry}
+              />
+            )}
+          >
+            <SignalHeatmap subStrategies={analysis.subStrategies} signalScores={analysis.signalScores} />
+          </BlockErrorBoundary>
+
           {(analysis.subStrategies ?? []).map(ss => (
             <BlockErrorBoundary
               key={ss.key}
@@ -1590,14 +1619,58 @@ export function V2FullAnalysis({
               <EvidenceReportBlock ss={ss} defaultExpanded={ss.isDetectedPrimary} />
             </BlockErrorBoundary>
           ))}
-          <CorrelationTimingPanel
-            goldenChain={analysis.goldenChain}
-            correlationAlerts={analysis.correlationAlerts}
-            indicators={analysis.indicators}
-          />
-          <PlanDocument plan={analysis.plan} dealId={dealId} />
-          <MonitoringDashboard monitoring={analysis.plan?.monitoring || []} />
-          <AICoordinatorNarrative narrative={analysis.coordinatorNarrative} />
+
+          <BlockErrorBoundary
+            label="CorrelationTimingPanel"
+            fallback={({ retry }) => (
+              <BlockErrorFallback
+                message="Couldn't render the correlation & timing panel — other panels are unaffected."
+                onRetry={retry}
+              />
+            )}
+          >
+            <CorrelationTimingPanel
+              goldenChain={analysis.goldenChain}
+              correlationAlerts={analysis.correlationAlerts}
+              indicators={analysis.indicators}
+            />
+          </BlockErrorBoundary>
+
+          <BlockErrorBoundary
+            label="PlanDocumentPanel"
+            fallback={({ retry }) => (
+              <BlockErrorFallback
+                message="Couldn't render the investment plan — other panels are unaffected."
+                onRetry={retry}
+              />
+            )}
+          >
+            <PlanDocument plan={analysis.plan} dealId={dealId} />
+          </BlockErrorBoundary>
+
+          <BlockErrorBoundary
+            label="MonitoringDashboardPanel"
+            fallback={({ retry }) => (
+              <BlockErrorFallback
+                message="Couldn't render the monitoring dashboard — other panels are unaffected."
+                onRetry={retry}
+              />
+            )}
+          >
+            <MonitoringDashboard monitoring={analysis.plan?.monitoring || []} />
+          </BlockErrorBoundary>
+
+          <BlockErrorBoundary
+            label="AICoordinatorNarrativePanel"
+            fallback={({ retry }) => (
+              <BlockErrorFallback
+                message="Couldn't render the AI coordinator narrative — other panels are unaffected."
+                onRetry={retry}
+              />
+            )}
+          >
+            <AICoordinatorNarrative narrative={analysis.coordinatorNarrative} />
+          </BlockErrorBoundary>
         </>
       )}
 
