@@ -130,3 +130,54 @@ Traffic Engine needs to consume from M35 Event Impact Engine to avoid three fail
 - Do not duplicate event attribution logic in M07 — M35 owns attribution; traffic consumes results
 
 **Spec addition needed:** `TRAFFIC_ENGINE_CALIBRATION_SPEC.md` Section 2.3 "Event-aware calibration" — to be drafted before M35 integration session is scoped.
+
+---
+
+## Pro Forma Schema-Change Rule (7-Ring Checklist)
+
+> **Rule:** Any add or delete of a Pro Forma or Projections line item is a cross-cutting change. It must update: (1) F9 tabs, (2) backend types + DealContext + dealStore, (3) parsers if document-sourced, (4) downstream module consumers via dealStore, (5) agent logic, (6) Excel export, (7) archive backfill plan. **Never ship a partial propagation.**
+
+A new field that appears in the UI but is absent from the projection engine, Excel export, AI commentary, or M36 covariance matrix is a silent correctness bug. The checklist exists to eliminate that class of error at the point of authorship, not post-review.
+
+### 7-Ring Table
+
+| Ring | Surface | What must be checked / updated |
+|------|---------|-------------------------------|
+| 0 | **Database schema** | Add/remove column or JSONB key. Write migration. Update seed data if field has a known default. |
+| 1 | **F9 Tabs (frontend)** | AssumptionsTab STATIC_ROWS (new row def, patchField, getBroker/getPlatform). SensitivityTab axis candidates. CompareTab COMPARE_FIELDS. ProjectionsTab display columns. |
+| 2 | **Backend types + DealContext + dealStore** | `DealFinancials` type, `DealContext` shape, `dealStore` selectors/transformers. All TS interfaces that carry the field across the wire. |
+| 3 | **Document parsers** *(Section A only)* | T12 parser, rent-roll parser, tax-bill parser, cross-validation service, ProForma seeder. Only required when the new field is document-sourced (Section A). Section B additions skip Ring 3 entirely. |
+| 4 | **Downstream module consumers** | Any module that reads the field from dealStore: underwriting engine, DSCR calculator, returns engine, sensitivity engine, risk-flag evaluators. Update each consumer or explicitly document the dependency as out-of-scope. |
+| 5 | **Agent logic** | CashFlow Agent prompt + tool schema. Commentary Agent context fragment. Any agent that references Pro Forma rows by name or field key must be updated so it neither hallucinates absent fields nor ignores newly added ones. |
+| 6 | **Excel export** | `buildProjectionsSheet` row map, Pro Forma sheet row index constants, CFBT formula, Assumptions sheet Section A/B blocks. Every field visible in the UI must appear in the exported workbook with matching formula references. |
+| 7 | **Archive backfill plan** | Determine whether historical deal records need a migration or default value for the new field. Document the decision (backfill / default-null / not-applicable) in the PR. M36 covariance matrix must be re-seeded if the field is a covariance driver. |
+
+### Three Change Shapes
+
+Different change shapes have different blast radii. Identify the shape before beginning work.
+
+| Shape | Description | Blast radius |
+|-------|-------------|--------------|
+| **Row add / delete** | A new line item appears in (or is removed from) the Pro Forma / Projections operating statement. | Largest. All 7 rings must be evaluated. A deleted row must be tombstoned in parsers, removed from agent prompts, and its Excel column zeroed or removed. |
+| **Column add / delete** | A new projection year is added or a hold-period column is removed (e.g., extending from 10yr to 12yr hold). | Medium. Primarily timeline plumbing: projection engine loop bounds, Excel column range formulas, frontend year-column rendering, and archive year-index assumptions. Rings 3 and 5 are usually unaffected. |
+| **Tier reclassification** | An existing field moves between Section A and Section B (or between operating / below-the-line). | Behavioral, not schema. The field's recalculation path changes — Y1 may start or stop being affected. Rings 0 and 3 are usually unaffected, but Rings 1, 2, 4, and 6 all need the new propagation path. |
+
+### Section A vs Section B Decision Point
+
+Every Pro Forma field must be explicitly assigned to Section A or Section B at the time it is added. The assignment determines which rings must be updated.
+
+**Section A — Base Year (document-sourced)**
+- Source: T12, rent roll, tax bill, OM, broker data.
+- Flows through: Pro Forma Y1 → Projections Y2+.
+- Editing a Section A field recomputes Pro Forma Y1 AND cascades through all projection years.
+- Requires Ring 3 (parser) updates.
+- UI placement: Section A block in AssumptionsTab.
+
+**Section B — Trajectory (platform / agent / user-entered)**
+- Source: JEDI platform model, CashFlow Agent output, analyst override.
+- Affects: Projections Y2+ only. Pro Forma (Year 1) is never modified by a Section B edit.
+- Editing a Section B field leaves Pro Forma Y1 unchanged; only Y2+ projections move.
+- Ring 3 (parser) updates are **not required** — these inputs are never parsed from documents.
+- UI placement: Section B block in AssumptionsTab, with "Y2+ ONLY" badge.
+
+**When in doubt:** if the value can appear on a T12, rent roll, or tax bill, it belongs in Section A. If it is a growth rate, a trajectory assumption, or an exit parameter, it belongs in Section B.
