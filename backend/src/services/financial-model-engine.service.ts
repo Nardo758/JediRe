@@ -107,6 +107,9 @@ export interface ProFormaAssumptions {
     state: string;
   };
   modelType: 'development' | 'existing';
+  // Optional: granular deal mode forwarded from the frontend deal context.
+  // Extends modelType with: 'redevelopment' | 'lease_up' | 'ground_up' | 'value_add'.
+  dealMode?: string;
   holdPeriod: number;
   unitMix: Array<{
     floorPlan: string;

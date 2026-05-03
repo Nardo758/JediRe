@@ -379,6 +379,7 @@ export function mapProFormaAssumptionsToModelAssumptions(
     promoteTiers,
     promoteSplits,
     dealType: a.modelType || 'existing',
+    dealMode: a.dealMode ?? a.modelType ?? 'existing',
   };
 }
 
