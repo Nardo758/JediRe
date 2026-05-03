@@ -51,6 +51,8 @@ type UnitEventType =
   | 'STABLE_OCCUPANCY'
   | 'HOLDOVER'            // occupied → occupied, no renewal flag, lease_end < snapshot_date
   | 'MOVE_OUT_NOTICE'     // occupied → notice (gave notice but not yet vacated)
+  | 'EVICTION'            // occupied → vacant, move_out is set and forced (no days_vacant lag)
+  | 'RENOVATION'          // unit status → 'down' (offline for renovation/capital work)
   | 'STRUCTURAL_VACANCY'  // unit absent from current snapshot entirely (never seen again)
   | 'SPLIT'               // one prior unit → multiple current units (e.g. unit subdivision)
   | 'MERGE'               // multiple prior units → one current unit (e.g. unit combination)
@@ -309,8 +311,15 @@ export class RentRollDiffService {
           eventType = 'MOVE_OUT_NOTICE';
         } else if (wasVacant && isOccupied) {
           eventType = 'NEW_LEASE_AFTER_VACANCY';
+        } else if (wasOccupied && (curr_unit.unit_status === 'down' || curr_unit.unit_status === 'model')) {
+          // Unit taken offline for renovation, capital work, or converted to model
+          eventType = 'RENOVATION';
         } else if (wasOccupied && isVacant) {
-          eventType = 'TURNOVER';
+          // Distinguish eviction from standard turnover:
+          // EVICTION heuristic — move_out_date is set on the current snapshot AND
+          // days_vacant is 0 or very small (tenant left abruptly, not a planned move-out)
+          const hasAbruptMoveOut = curr_unit.move_out_date != null && (curr_unit.days_vacant ?? 99) <= 7;
+          eventType = hasAbruptMoveOut ? 'EVICTION' : 'TURNOVER';
         } else {
           eventType = 'VACANCY_PERSISTS';
         }
@@ -596,21 +605,9 @@ export class RentRollDiffService {
         diffs.some(d => d.concession_trend) ? 'stable' : null,
       );
 
-    const dynamics: SubjectObservedDynamics = {
-      renewal_rate:            renewalRate,
-      turnover_rate:           turnoverRate,
-      new_lease_trade_out_pct: newLeaseTradeOutPct,
-      renewal_trade_out_pct:   renewalTradeOutPct,
-      signing_velocity:        signingVelocity,
-      days_vacant_median:      daysVacantMedian,
-      concession_trend:        concessionTrend,
-      loss_to_lease:           lossToLease,
-      diff_period_count:       diffCount,
-    };
-
-    // ── Build confidence_weights (n_obs from aggregated sample counts) ────────
+    // ── Build confidence_weights + determine nulled metrics ──────────────────
+    // Done BEFORE constructing dynamics so nulling is typed (no `any` escapes).
     const s2Weights: Record<string, SubjectWeightEntry> = {};
-
     const INSUFFICIENT_THRESHOLD = 0.5;  // null metric if n_obs < n_required × 0.5
 
     const coeffMap: Array<{ key: string; n_obs: number }> = [
@@ -624,20 +621,32 @@ export class RentRollDiffService {
       { key: 'concession_trend',        n_obs: diffCount      },
     ];
 
+    // Build nulled-key set before constructing dynamics — avoids `as any` cast.
+    const nulledKeys = new Set<string>();
     for (const { key, n_obs } of coeffMap) {
       const nRequired = SUBJECT_N_REQUIRED[key] ?? 6;
-      // Zero weight for insufficient samples — metric should not influence blend
       const insufficientSample = n_obs < nRequired * INSUFFICIENT_THRESHOLD;
       s2Weights[key] = {
         n_obs,
         n_required: nRequired,
         weight: insufficientSample ? 0 : Math.min(1, n_obs / nRequired),
       };
-      // Null out metric value when insufficient sample to avoid misleading data
-      if (insufficientSample) {
-        (dynamics as any)[key] = null;
-      }
+      if (insufficientSample) nulledKeys.add(key);
     }
+
+    // Typed dynamics construction — nulled metrics replaced with null per
+    // insufficient-sample rules without any `as any` escape.
+    const dynamics: SubjectObservedDynamics = {
+      renewal_rate:            nulledKeys.has('renewal_rate')            ? null : renewalRate,
+      turnover_rate:           nulledKeys.has('turnover_rate')           ? null : turnoverRate,
+      new_lease_trade_out_pct: nulledKeys.has('new_lease_trade_out_pct') ? null : newLeaseTradeOutPct,
+      renewal_trade_out_pct:   nulledKeys.has('renewal_trade_out_pct')   ? null : renewalTradeOutPct,
+      signing_velocity:        nulledKeys.has('signing_velocity')        ? null : signingVelocity,
+      days_vacant_median:      nulledKeys.has('days_vacant_median')      ? null : daysVacantMedian,
+      concession_trend:        nulledKeys.has('concession_trend')        ? null : concessionTrend,
+      loss_to_lease:           nulledKeys.has('loss_to_lease')           ? null : lossToLease,
+      diff_period_count:       diffCount,
+    };
 
     // Peer collisions remain empty here — populated by CoefficientResolverService
     // at /coefficients call time, using the platform posterior as the peer.

@@ -69,6 +69,20 @@ export interface CalibrationMeta {
   mode?: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
   /** Subject history tier, if available (S1/S2/S3/S4) */
   subject_history_tier?: string;
+  /**
+   * Full subject traffic history record — included in the /coefficients response
+   * so downstream consumers (UI, agents) can access observed_dynamics,
+   * confidence_weights, and peer_collisions without a separate fetch.
+   * Null when no rent roll has been uploaded for this deal.
+   */
+  subject_history?: {
+    tier: string;
+    snapshot_count: number;
+    coverage_months: number | null;
+    observed_dynamics: SubjectObservedDynamics | null;
+    confidence_weights: Record<string, SubjectWeightEntry>;
+    peer_collisions: SubjectPeerCollision[];
+  } | null;
 }
 
 // ============================================================================

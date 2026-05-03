@@ -131,12 +131,15 @@ export class CoefficientResolverService {
             }
           }
         } else {
-          // w_subject = 0 (insufficient sample) — subject data exists but is too sparse.
-          // Fall back to PLATFORM peer set → BASELINE.
-          // Critically: do NOT fall to DEAL here.  A single-snapshot deal proxy is
-          // less reliable than the platform posterior when subject evidence is thin,
-          // and the Bayesian subject-vs-peer blend contract requires peer = platform.
-          if (platformEntry !== null) {
+          // w_subject = 0 (insufficient sample) — subject evidence is too sparse to blend.
+          // Follow the standard deal → platform → baseline hierarchy; do NOT use subject
+          // as a proxy when its weight is zero (that would inject unreliable data).
+          if (dealVal !== null) {
+            resolved       = dealVal;
+            matchTier      = 'DEAL';
+            resolvedWindow = 'TTM';
+            resolvedN      = 0;
+          } else if (platformEntry !== null) {
             resolved       = platformEntry.value;
             matchTier      = 'PLATFORM';
             resolvedWindow = platformEntry.window;
@@ -211,6 +214,19 @@ export class CoefficientResolverService {
       confidence_band: confidenceBand,
       coefficients: family,
       subject_history_tier: subjectHistory?.tier ?? undefined,
+      // Full subject history record — allows the UI and agent tools to access
+      // observed_dynamics, confidence_weights, and peer_collisions via the
+      // /coefficients endpoint without a separate /subject-history fetch.
+      subject_history: subjectHistory
+        ? {
+            tier:               subjectHistory.tier,
+            snapshot_count:     subjectHistory.snapshot_count,
+            coverage_months:    subjectHistory.coverage_months ?? null,
+            observed_dynamics:  subjectHistory.observed_dynamics ?? null,
+            confidence_weights: subjectHistory.confidence_weights,
+            peer_collisions:    subjectHistory.peer_collisions ?? [],
+          }
+        : null,
     };
 
     return { family, meta };

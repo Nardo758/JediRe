@@ -486,6 +486,7 @@ function fmtSubj(val: number | null, fmt: SubjRow['fmt']): string {
 
 function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
   const [expanded, setExpanded] = useState(false);
+  const [drillKey, setDrillKey] = useState<string | null>(null);
 
   const cs  = history.current_state;
   const dyn = history.observed_dynamics;
@@ -516,12 +517,16 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
     return { peer, effective: subject };
   };
 
-  // Direction indicator: ▲ subject > peer, ▼ subject < peer, = within 1%
+  // Direction indicator: ▲ subject > peer, ▼ subject < peer, = within ±0.5σ
+  // σ ≈ 15% of the peer value (conservative prior consistent with resolver).
+  // ±0.5σ threshold means "not meaningfully different from platform posterior".
   const direction = (subject: number | null, peer: number | null): string => {
     if (subject == null || peer == null || peer === 0) return '';
-    const delta = (subject - peer) / Math.abs(peer);
-    if (Math.abs(delta) < 0.01) return '=';
-    return delta > 0 ? '▲' : '▼';
+    const peerSigma = Math.abs(peer) * 0.15;
+    const halfSigma = peerSigma * 0.5;
+    const diff = subject - peer;
+    if (Math.abs(diff) < halfSigma) return '=';
+    return diff > 0 ? '▲' : '▼';
   };
   const dirColor = (dir: string): string =>
     dir === '▲' ? SUBJ_TEAL : dir === '▼' ? '#f87171' : BT.text.muted;
@@ -703,42 +708,104 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
                   const collision = collisionByKey.get(row.key);
                   const dir = direction(row.subject, row.peer);
                   const isBlended = row.peer != null && row.weight != null && row.weight < 1 && row.weight > 0;
+                  const isDrilled = drillKey === row.key;
+                  const weightEntry = cw[row.key];
                   return (
-                    <tr key={row.key} style={{ borderBottom: `1px solid ${BT.border.subtle}20` }}>
-                      <td style={{ padding: '3px 10px', color: collision ? BT.text.amber : BT.text.secondary }}>
-                        {row.label}
-                        {collision && (
-                          <span style={{ marginLeft: 6, color: BT.text.amber, fontSize: 7 }}>
-                            {collision.sigma_deviation.toFixed(1)}σ
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.muted }}>
-                        {fmtSubj(row.peer, row.fmt)}
-                      </td>
-                      <td style={{ padding: '3px 10px', textAlign: 'right', color: SUBJ_TEAL, fontWeight: 600 }}>
-                        {dir && (
-                          <span style={{ marginRight: 4, color: dirColor(dir), fontSize: 7 }}>{dir}</span>
-                        )}
-                        {fmtSubj(row.subject, row.fmt)}
-                      </td>
-                      <td style={{ padding: '3px 10px', textAlign: 'right', color: isBlended ? BT.text.secondary : BT.text.muted, fontStyle: isBlended ? 'normal' : 'italic' }}>
-                        {fmtSubj(row.effective, row.fmt)}
-                        {isBlended && (
-                          <span style={{ marginLeft: 4, fontSize: 7, color: BT.text.muted }}>blended</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '3px 10px', textAlign: 'right' }}>
-                        {row.weight != null ? (
-                          <span style={{
-                            color: row.weight >= 0.8 ? SUBJ_TEAL : row.weight >= 0.5 ? BT.text.amber : BT.text.muted,
-                            fontWeight: row.weight >= 0.8 ? 600 : 400,
-                          }}>
-                            {(row.weight * 100).toFixed(0)}%
-                          </span>
-                        ) : '—'}
-                      </td>
-                    </tr>
+                    <React.Fragment key={row.key}>
+                      <tr
+                        onClick={() => setDrillKey(isDrilled ? null : row.key)}
+                        style={{
+                          borderBottom: isDrilled ? 'none' : `1px solid ${BT.border.subtle}20`,
+                          cursor: 'pointer',
+                          background: isDrilled ? `${SUBJ_TEAL}08` : 'transparent',
+                        }}
+                      >
+                        <td style={{ padding: '3px 10px', color: collision ? BT.text.amber : BT.text.secondary }}>
+                          {row.label}
+                          {collision && (
+                            <span style={{ marginLeft: 6, color: BT.text.amber, fontSize: 7 }}>
+                              {collision.sigma_deviation.toFixed(1)}σ
+                            </span>
+                          )}
+                          <span style={{ marginLeft: 5, color: BT.text.muted, fontSize: 7 }}>{isDrilled ? '▴' : '▾'}</span>
+                        </td>
+                        <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.muted }}>
+                          {fmtSubj(row.peer, row.fmt)}
+                        </td>
+                        <td style={{ padding: '3px 10px', textAlign: 'right', color: SUBJ_TEAL, fontWeight: 600 }}>
+                          {dir && (
+                            <span style={{ marginRight: 4, color: dirColor(dir), fontSize: 7 }}>{dir}</span>
+                          )}
+                          {fmtSubj(row.subject, row.fmt)}
+                        </td>
+                        <td style={{ padding: '3px 10px', textAlign: 'right', color: isBlended ? BT.text.secondary : BT.text.muted, fontStyle: isBlended ? 'normal' : 'italic' }}>
+                          {fmtSubj(row.effective, row.fmt)}
+                          {isBlended && (
+                            <span style={{ marginLeft: 4, fontSize: 7, color: BT.text.muted }}>blended</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '3px 10px', textAlign: 'right' }}>
+                          {row.weight != null ? (
+                            <span style={{
+                              color: row.weight >= 0.8 ? SUBJ_TEAL : row.weight >= 0.5 ? BT.text.amber : BT.text.muted,
+                              fontWeight: row.weight >= 0.8 ? 600 : 400,
+                            }}>
+                              {(row.weight * 100).toFixed(0)}%
+                            </span>
+                          ) : '—'}
+                        </td>
+                      </tr>
+                      {isDrilled && (
+                        <tr style={{ borderBottom: `1px solid ${BT.border.subtle}20` }}>
+                          <td colSpan={5} style={{ padding: '4px 14px 8px', background: `${SUBJ_TEAL}06` }}>
+                            {/* Blend formula detail */}
+                            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, lineHeight: 1.6 }}>
+                              {isBlended && row.subject != null && row.peer != null && row.weight != null ? (
+                                <>
+                                  <span style={{ color: BT.text.secondary }}>BLEND FORMULA</span>
+                                  {'  '}
+                                  <span style={{ color: SUBJ_TEAL }}>w={( row.weight * 100).toFixed(0)}%</span>
+                                  {' × '}
+                                  <span style={{ color: SUBJ_TEAL }}>subj={fmtSubj(row.subject, row.fmt)}</span>
+                                  {' + (1−w) × '}
+                                  <span style={{ color: BT.text.muted }}>peer={fmtSubj(row.peer, row.fmt)}</span>
+                                  {' = '}
+                                  <span style={{ color: BT.text.secondary, fontWeight: 600 }}>{fmtSubj(row.effective, row.fmt)}</span>
+                                  {weightEntry && (
+                                    <>
+                                      {'  ·  '}
+                                      <span style={{ color: BT.text.muted }}>n={weightEntry.n_obs}/{weightEntry.n_required} obs</span>
+                                    </>
+                                  )}
+                                </>
+                              ) : row.subject != null ? (
+                                <>
+                                  <span style={{ color: BT.text.secondary }}>SUBJECT</span>
+                                  {' = '}
+                                  <span style={{ color: SUBJ_TEAL }}>{fmtSubj(row.subject, row.fmt)}</span>
+                                  {row.peer == null && '  ·  no peer SET value available (platform not calibrated)'}
+                                  {row.weight === 1 && '  ·  w=100% (full confidence)'}
+                                  {row.weight === 0 && '  ·  w=0% (insufficient sample — subject bypassed)'}
+                                  {weightEntry && (
+                                    <>
+                                      {'  ·  '}
+                                      <span>n={weightEntry.n_obs}/{weightEntry.n_required} obs</span>
+                                    </>
+                                  )}
+                                </>
+                              ) : (
+                                <span>No subject observation available — using {row.peer != null ? 'platform peer SET' : 'baseline'}.</span>
+                              )}
+                              {collision && (
+                                <span style={{ marginLeft: 8, color: BT.text.amber }}>
+                                  ⚠ PEER COLLISION: {collision.sigma_deviation.toFixed(1)}σ from platform posterior
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
