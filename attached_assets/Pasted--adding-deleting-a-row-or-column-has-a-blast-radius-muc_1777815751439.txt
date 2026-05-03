@@ -1,0 +1,100 @@
+ adding/deleting a row or column has a blast radius much wider than the three F9 tabs. Here's the full propagation surface, ordered by concentric rings.
+
+First: distinguish what's actually changing
+Three different shapes of change with very different scopes:
+Change typeExampleBlast radiusRow add/delete (line item / category)New OpEx line "EV Charging Maint"Largest — touches schema, parsers, every consumerColumn add/delete (period)Extending Projections from 7yr to 10yrMedium — mostly timeline plumbingTier reclassificationMoving a field from Section A to Section BBehavioral — changes recalc path, not schema
+Most "additions" you'll do are row-level. The rest of this answer assumes that case.
+
+Ring 0 — F9 tab surface (what you already see)
+For any line-item add:
+
+Assumptions tab — add the input field in Section A (base year, document-sourced) OR Section B (trajectory, agent/platform). This is the first decision point and it's binary.
+Pro Forma tab — only if it's a Year 1 stabilized line. Trajectory-only additions (e.g., a new CapEx line that hits in Y3) skip this tab entirely.
+Projections tab — always. Both annual and monthly views. Confirm it slots into the right section (Revenue / Expense / NOI / Debt / CF / Metrics / Exit).
+
+Trap: If you add a row to Projections without adding the corresponding Assumption, you've hardcoded a value. That's exactly the irr=15 bug. The invariant is: every Projections row must trace to an Assumptions cell.
+
+Ring 1 — Other F9 tabs
+These are easy to forget because they're not in the obvious calc chain:
+
+Debt tab — if the line affects DSCR computation, the loan comparison matrix and amortization schedule need to recompute against new NOI.
+Sources & Uses / Capital tab — only if the line is acquisition-side (closing costs, reserves at close, etc.)
+Waterfall tab — recomputes automatically off CF, but verify if the new line changes pref accrual or promote calcs.
+Sensitivity tab — if the new variable is a driver (rent growth, exit cap, vacancy ramp), it deserves a place on the heat-map axes. If it's a derived line (a sub-category of OpEx), it doesn't.
+Compare tab — assumption diff logic must include the new field. Version-to-version comparisons will show it as [new field] in older versions.
+Decision tab — AI commentary template needs to know the field exists; otherwise Claude's synthesis silently ignores it.
+
+
+Ring 2 — Backend schema and types
+This is where most teams skip steps and ship inconsistencies:
+
+TypeScript interfaces — the ProForma and Projections types in backend/src/types/. Both must update.
+LayeredValue<T> field declaration — for the new input on Assumptions. Includes the source enum if you're introducing a new source type.
+DealContext JSON schema — the cached payload Research Agent assembles. If this changes, the 24h cache invalidates on first read against the new schema. Plan the deploy accordingly.
+dealStore (Zustand) shape — the message bus state. Forgetting this means downstream modules read undefined.
+Drizzle ORM schema + DB migration — if the field persists. Empty migration files are already a known blocker — don't add to that pile.
+API response shapes — /api/v1/proforma/:dealId payload. Frontend typed client in api.client.ts mirrors this.
+
+
+Ring 3 — Document ingestion
+Only relevant if the new line is Section A (base-year, document-sourced):
+
+Yardi T12 parser — mapping table for OpEx lines. New line means new mapping entry, plus fuzzy-match rule for variant names ("EV Charging Maint" vs "EV Maintenance" vs "Charger Service").
+RRwLC rent roll parser — only if revenue-side.
+Tax bill parser — only if tax/assessment-related.
+Cross-validation service — checks T12 ↔ rent roll ↔ tax bill consistency. New line needs a validation rule (or an explicit "no cross-check" flag).
+ProForma seeder service — initial population logic when documents arrive. Must populate the new field with appropriate LayeredValue<T> source.
+
+
+Ring 4 — Downstream module consumers
+Anything reading from dealStore or dealContext.proforma needs to know the new field exists:
+
+M11 Capital Structure — consumes NOI, DSCR, CF. If the new line changes any of those, capital stack scenarios re-run.
+M14 Risk Assessment — stress tests against cashflow lines. New line gets a stress parameter or is explicitly excluded.
+M25 JEDI Score — the Position and Risk sub-scores read proforma-derived metrics. Verify weights still sum correctly.
+M22 Post-Close Intelligence — actual-vs-projected variance tracking. The new line needs a corresponding deal_monthly_actuals column when that table lands.
+M36 Joint Distribution Engine — if the new field is a driver (Section B trajectory), the covariance matrix needs the variable added. Mahalanobis aggressiveness scoring breaks silently if Σ doesn't include it.
+M08 Strategies — only if the new line materially shifts how a strategy scores (e.g., a new revenue category that shifts a Value-Add vs Core-Plus classification).
+
+
+Ring 5 — Agents and AI Coordinator
+
+Cashflow Agent — its tier-resolution logic needs the new field. Tier 1 (Y1 base) reads from documents; Tier 2/3 (trajectory) reads from owned-asset history or platform benchmarks. Without this, the agent generates a proforma missing the field.
+Research Agent — DealContext assembly logic. New field gets pulled in.
+Investment Memo / Synthesis prompts — Claude's synthesis layer needs to know the field exists, otherwise it's invisible in narratives.
+Source badge rendering — SourceBadge component already handles this generically as long as the field is a LayeredValue<T>. Verify, don't assume.
+
+
+Ring 6 — Excel export
+
+Assumptions sheet — new row in the right block (Property / Acquisition / Revenue / Expense / Debt / Disposition / Waterfall) with blue text for inputs, source badge as comment.
+Pro Forma sheet — new row referencing the Assumption cell with proper formula (=Assumptions!$B$NN).
+Projections sheet — new row, Year 1 column = =ProForma!CN, Years 2+ build via trajectory formula.
+Number format — currency/percent/multiple — set per row.
+Color coding — blue input / black formula / green cross-sheet link / yellow background if it's a key assumption.
+Comparison sheet — multi-version export must include the new field row in diffs.
+
+
+Ring 7 — Archive, calibration, history
+
+Historical deal records — older deals don't have this field. Decide: backfill with null, backfill with a platform default, or leave undefined and handle in queries.
+Benchmark queries — any "show me the median X across owned portfolio" query for the new field returns empty until enough deals carry it. Build the empty-state handling.
+M07 Traffic Engine peer match / M15 Comp Engine — if the new line affects comparability scoring, comp-match logic needs to weight or ignore it.
+
+
+For COLUMN changes (period add/delete)
+Much smaller surface, mostly:
+
+Timeline selector logic (the 3/5/7/10 set in the framework)
+Exit year visual marker placement
+Sensitivity table axis ranges
+Excel sheet column count + header row
+DealContext payload holdYears field
+Validation: does refi/CapEx schedule have entries for the new years?
+
+
+Practical workflow rule
+Every line-item add or delete should ship as a change ticket with a 7-ring checklist attached. The migration is mechanical once you've done it twice; the failures come from skipping rings, not from any individual ring being hard.
+For your CLAUDE.md, the codified rule worth adding:
+
+Schema-change rule: Any add/delete of a Pro Forma or Projections line item is a cross-cutting change. It must update: (1) F9 tabs, (2) backend types + DealContext + dealStore, (3) parsers if document-sourced, (4) downstream module consumers via dealStore, (5) agent logic, (6) Excel export, (7) archive backfill plan. Never ship a partial propagation — partial propagation is how the irr=15 class of bugs is born.

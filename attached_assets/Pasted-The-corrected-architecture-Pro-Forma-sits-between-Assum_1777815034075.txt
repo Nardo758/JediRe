@@ -1,0 +1,74 @@
+The corrected architecture
+Pro Forma sits between Assumptions and Projections as the Year 1 anchor. Projections compounds forward from there.
+DOCUMENTS              ASSUMPTIONS                  PRO FORMA              PROJECTIONS
+─────────              ───────────                  ─────────              ───────────
+
+T12     ──┐
+Rent    ──┼──→ TIER A: Base-Year inputs ────→  Year 1 stabilized  ────→  Year 1 column
+Roll      │    (rent/unit, vacancy,            (single column,           (= Pro Forma,
+Tax Bill──┘     OpEx lines, taxes,              the screening              direct ref)
+                insurance, Y1 debt)             output)                     │
+                                                                            │ × trajectory
+                                                                            ▼
+               TIER B: Trajectory inputs ───────────────────────────→  Year 2 – N
+                (rent growth %, OpEx                                    (Y_n = Y_{n-1}
+                 growth %, vacancy curve,                                × trajectory rate
+                 CapEx schedule, refi,                                   from Tier B)
+                 exit cap, exit year)
+The key fix: Year 2 isn't computed independently from Assumptions. It's computed from Pro Forma Year 1 × Tier B trajectory rates.
+
+Two-section Assumptions tab
+Section A — Base Year (drives Pro Forma)
+Document-sourced. These compute the Year 1 Pro Forma. All LayeredValue<T> with sources t12 / rent_roll / tax_bill / agent:cashflow / override.
+
+Avg rent per unit, unit mix, count → from rent roll
+In-place vacancy → from rent roll
+OpEx by line item → from T12
+Annual taxes → from tax bill (Florida: with reassessment-on-sale + 10% non-homestead cap baked in)
+Insurance → T12 or platform benchmark
+Year 1 debt terms → from term sheet or platform comp
+
+Section B — Trajectory (drives Projections Y2+)
+Platform/agent/user-sourced. Growth rates and timing.
+
+Rent growth (flat % or per-year schedule: Y1=4%, Y2=3.5%, Y3+=3%)
+OpEx growth %
+Vacancy curve (ramp → stabilized, not flat)
+Concession burn-off schedule
+CapEx by year (lumpy, not percent — comes from the CapEx plan, not growth)
+Refi triggers (when, at what rate)
+Exit cap rate
+Exit year
+
+
+Computation flow
+Pro Forma (Year 1 only, from Section A):
+GPR_Y1     = avg_rent × units × 12
+Vacancy_Y1 = GPR_Y1 × in_place_vacancy_rate
+EGR_Y1     = GPR_Y1 − Vacancy − Concessions + Other Income
+OpEx_Y1    = Σ T12 line items
+NOI_Y1     = EGR_Y1 − OpEx_Y1 − Reserves
+DS_Y1      = f(debt_terms)
+CF_Y1      = NOI_Y1 − DS_Y1 − CapEx_Y1
+DSCR_Y1    = NOI_Y1 / DS_Y1
+Projections (Year 1 from Pro Forma; Years 2–N compounded):
+GPR_Yn     = GPR_Y1   × (1 + rent_growth)^(n−1)     — or schedule lookup
+Vacancy_Yn = GPR_Yn   × vacancy_curve[n]             — ramp, not flat
+OpEx_Yn    = OpEx_Y1  × (1 + opex_growth)^(n−1)
+CapEx_Yn   = capex_schedule[n]                       — lumpy, from plan
+DS_Yn      = f(debt_schedule[n])                     — IO vs amort
+NOI_Yn, CF_Yn, DSCR_Yn → downstream
+Exit: Sale Price = NOI_{exit+1} / exit_cap, less costs and payoff → equity proceeds to Waterfall.
+
+Implications this fixes
+
+Dependency chain is real: Documents → Section A → Pro Forma → Projections (with Section B). Pro Forma must compute first; Projections is strictly downstream.
+Edit propagation is asymmetric:
+
+Editing Section A (base year) → recomputes Pro Forma → ripples through every year of Projections.
+Editing Section B (trajectory) → Pro Forma unaffected; only Projections Y2+ moves.
+
+
+Excel export rule: In the Projections sheet, the Year 1 column should be a direct cell reference to the Pro Forma sheet (=ProForma!C5), not a duplicated formula. Years 2+ build off that cell.
+Audit story is cleaner: "Why is Y3 NOI $2.4M?" → traces to Y1 NOI on Pro Forma × OpEx growth × rent growth. Two clear sources, one compounding rule.
+Aggressiveness scoring (M36) lands cleanly: Mahalanobis distance applies to Section B (trajectory), where the question "is this aggressive?" actually lives. Section A is anchored by documents — it's not aggressive or conservative, it's just what the property is.
