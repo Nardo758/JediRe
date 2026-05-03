@@ -1007,12 +1007,20 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   // origination fees create a gap between cash equity and calculated residual.
   // 5% relative tolerance accommodates realistic acquisition cost structures
   // while flagging genuinely broken capital stacks (e.g. equity > 2x residual).
+  // All-zero special case: when purchasePrice, loanAmount, and equity are all
+  // zero the capital stack is simply unseeded — Math.max(1, 0-0) would produce
+  // a phantom residual of 1 and guarantee a 100% diff. Downgrade to warn so
+  // the build succeeds; Task #545 covers seeding purchasePrice/loanAmount.
   {
     const totalAcqCost = result.capital.metrics.totalCost;
-    const expectedResidual = Math.max(1, totalAcqCost - a.loanAmount);
-    const relDiff = Math.abs(sum.totalEquity - expectedResidual) / expectedResidual;
-    if (relDiff > 0.05) {
-      checks.push({ id: 'INV-6', status: 'error', message: `INV-6 totalEquity ${sum.totalEquity.toFixed(0)} ≠ totalAcqCost (${totalAcqCost.toFixed(0)}) − loanAmount (${a.loanAmount.toFixed(0)}) = ${expectedResidual.toFixed(0)} (diff ${(relDiff * 100).toFixed(1)}%)` });
+    if (totalAcqCost === 0 && a.loanAmount === 0 && sum.totalEquity === 0) {
+      checks.push({ id: 'INV-6', status: 'warn', message: `INV-6 capital stack not seeded (purchasePrice=0, loanAmount=0, equity=0) — seed values to enable this check` });
+    } else {
+      const expectedResidual = Math.max(1, totalAcqCost - a.loanAmount);
+      const relDiff = Math.abs(sum.totalEquity - expectedResidual) / expectedResidual;
+      if (relDiff > 0.05) {
+        checks.push({ id: 'INV-6', status: 'error', message: `INV-6 totalEquity ${sum.totalEquity.toFixed(0)} ≠ totalAcqCost (${totalAcqCost.toFixed(0)}) − loanAmount (${a.loanAmount.toFixed(0)}) = ${expectedResidual.toFixed(0)} (diff ${(relDiff * 100).toFixed(1)}%)` });
+      }
     }
   }
 
