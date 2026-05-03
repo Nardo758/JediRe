@@ -105,7 +105,7 @@ router.get('/bundles', async (req, res) => {
       doubleUpNote: b.doubleUpNote,
     }));
 
-    return res.json({ bundles });
+    return res.json({ success: true, data: bundles });
   } catch (err: any) {
     logger.error(`[sigma] bundles error: ${err.message}`);
     return res.status(500).json({ error: err.message });

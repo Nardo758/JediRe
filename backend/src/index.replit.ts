@@ -451,7 +451,7 @@ app.use('/api/v1/deals', requireAuth, dealValidationRoutes);
 // Phase 11: Unit Mix Propagation
 app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
-app.use('/api/v1/deals', requireAuth, proformaRouter);
+app.use('/api/v1/proforma', requireAuth, proformaRouter);
 app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/deals', financialDocumentsRoutes);
 

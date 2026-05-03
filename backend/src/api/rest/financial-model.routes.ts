@@ -152,10 +152,29 @@ function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
   }
 
   // Build financing from the frontend debt object
-  const interestRate = (debt.interestRate ?? 6.5) / 100;
+  const interestRate = debt.interestRate != null ? (debt.interestRate > 1 ? debt.interestRate / 100 : debt.interestRate) : 0.065;
   const term = debt.term ?? 60;
   const amortization = debt.amortization ?? 30;
   const loanAmount = debt.loanAmount ?? (acq.purchasePrice ? Math.round(acq.purchasePrice * 0.75) : 0);
+
+  // Support flat frontend keys (lpEquity, gpEquity, purchasePrice directly on raw)
+  // in addition to nested format.
+  const flatPurchasePrice = typeof raw.purchasePrice === 'number' ? raw.purchasePrice : 0;
+  const flatLoanAmount   = typeof raw.loanAmount === 'number' ? raw.loanAmount : 0;
+  const flatLpEquity     = typeof raw.lpEquity === 'number' ? raw.lpEquity : 0;
+  const flatGpEquity     = typeof raw.gpEquity === 'number' ? raw.gpEquity : 0;
+  const flatHoldYears    = typeof raw.holdYears === 'number' ? raw.holdYears : 5;
+
+  // Auto-detect decimal vs percentage format: > 1 means percentage, <= 1 means already decimal
+  const pct = (v: number | undefined, fallback: number): number => {
+    if (v == null) return fallback;
+    return v > 1 ? v / 100 : v;
+  };
+  const pctArray = (arr: number[] | undefined, fallback: number[]): number[] => {
+    if (!arr || !Array.isArray(arr) || arr.length === 0) return fallback;
+    return arr.map((v: number) => v > 1 ? v / 100 : v);
+  };
+  const revRentGrowth = pctArray(rev.rentGrowth, [0.03, 0.03, 0.03, 0.03, 0.03]);
 
   return {
     dealInfo: {
@@ -168,25 +187,23 @@ function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
       state: d.state ?? '',
     },
     modelType: raw.modelType ?? 'existing',
-    holdPeriod: raw.holdPeriod ?? 5,
+    holdPeriod: flatHoldYears ?? raw.holdPeriod ?? 5,
     unitMix,
     acquisition: {
-      purchasePrice: acq.purchasePrice ?? 0,
-      capRate: (acq.capRate ?? 6) / 100,
+      purchasePrice: flatPurchasePrice > 0 ? flatPurchasePrice : (acq.purchasePrice ?? 0),
+      capRate: pct(acq.capRate, 0.06),
       closingCosts: acq.closingCosts ?? { legal: 50000, appraisal: 15000, inspection: 10000, title: 15000 },
     },
     disposition: {
-      exitCapRate: dsp.exitCapRate ?? 0.065,
+      exitCapRate: pct(dsp.exitCapRate, 0.065),
       sellingCosts: dsp.sellingCosts ?? 0.02,
       saleNOIMethod: dsp.saleNOIMethod ?? 'terminal',
     },
     revenue: {
-      rentGrowth: Array.isArray(rev.rentGrowth)
-        ? rev.rentGrowth.map((r: number) => r / 100)
-        : [0.03, 0.03, 0.03, 0.03, 0.03],
-      lossToLease: (rev.lossToLease ?? 3) / 100,
-      stabilizedOccupancy: (rev.stabilizedOccupancy ?? 93) / 100,
-      collectionLoss: (rev.collectionLoss ?? 1.5) / 100,
+      rentGrowth: revRentGrowth,
+      lossToLease: pct(rev.lossToLease, 0.03),
+      stabilizedOccupancy: pct(rev.stabilizedOccupancy, 0.93),
+      collectionLoss: pct(rev.collectionLoss, 0.015),
       otherIncome,
     },
     expenses: (() => {
@@ -205,7 +222,7 @@ function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
       return mapped;
     })(),
     financing: {
-      loanAmount,
+      loanAmount: flatLoanAmount > 0 ? flatLoanAmount : loanAmount,
       loanType: debt.rateType ?? 'fixed',
       interestRate,
       spread: debt.spread ?? 0.025,
@@ -225,9 +242,13 @@ function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
       lpShare: 0.99,
       gpShare: 0.01,
       hurdles: [{ hurdleRate: 0.08, promoteToGP: 0.20, lpSplit: 0.80 }],
-      equityContribution: loanAmount > 0
-        ? (acq.purchasePrice ?? 0) - loanAmount
-        : Math.round((acq.purchasePrice ?? 0) * 0.25),
+      equityContribution: flatPurchasePrice > 0 && flatLoanAmount > 0
+        ? flatPurchasePrice - flatLoanAmount
+        : flatLpEquity + flatGpEquity > 0
+          ? flatLpEquity + flatGpEquity
+          : loanAmount > 0
+            ? (acq.purchasePrice ?? flatPurchasePrice ?? 0) - loanAmount
+            : Math.round((acq.purchasePrice ?? flatPurchasePrice ?? 50000000) * 0.25),
     },
   };
 }
