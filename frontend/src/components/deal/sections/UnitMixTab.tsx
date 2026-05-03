@@ -357,6 +357,166 @@ export function ExpirationBars({
 }
 
 /**
+ * Task #516 — Inline per-column extraction scorecard.
+ *
+ * Surfaces the rent-roll parser's `column_coverage` map at the top of the
+ * Unit Mix tab as 7 small pills (one per critical column). Renders whenever
+ * a coverage map is present — NOT gated on `human_review_needed` — so even
+ * healthy extractions show analysts which columns the parser actually
+ * mapped, catching silent fallbacks (header text drifted; column resolved
+ * by hardcoded position) before they affect underwriting.
+ *
+ * Visual encoding (5 statuses, 3 visual buckets per the task spec — ok /
+ * missing / all_null share a "data-quality dot" treatment, while fallback
+ * and not_supported use distinct visuals so they're not mistaken for
+ * either a clean extraction or a hard failure):
+ *
+ *   ok            → solid green dot               ("column resolved + populated")
+ *   missing       → solid red dot                 ("no header AND no data")
+ *   all_null      → hollow red ring               ("header found but every row empty")
+ *   fallback      → solid amber dot               ("DISTINCT — resolved by hardcoded
+ *                                                   position, not header text")
+ *   not_supported → dim grey, dashed pill border  ("DISTINCT — layout structurally
+ *                                                   cannot supply this column")
+ *
+ * Hovering each pill shows a plain-language tooltip explaining the status
+ * and (for non-ok statuses) what the operator should do.
+ */
+const SCORECARD_COLUMNS: Array<{ key: string; label: string }> = [
+  { key: 'unit_no',          label: 'UNIT #'    },
+  { key: 'unit_type',        label: 'UNIT TYPE' },
+  { key: 'sqft',             label: 'SQ FT'     },
+  { key: 'market_rent',      label: 'MKT RENT'  },
+  { key: 'charge_code',      label: 'CHG CODE'  },
+  { key: 'amount',           label: 'AMOUNT'    },
+  { key: 'lease_expiration', label: 'LEASE END' },
+];
+
+type ColumnCoverageStatus = 'ok' | 'fallback' | 'all_null' | 'missing' | 'not_supported';
+
+function statusTooltip(label: string, status: ColumnCoverageStatus | string): string {
+  switch (status) {
+    case 'ok':
+      return `${label}: column mapped from header and populated for ≥1 row.`;
+    case 'fallback':
+      return `${label}: header text didn't match — parser resolved this column by its hardcoded Yardi position. Values may be present but provenance is weak; verify before relying on these figures.`;
+    case 'all_null':
+      return `${label}: header found, but every occupied row was null/empty. Check the source export.`;
+    case 'missing':
+      return `${label}: parser could not locate this column AND no data was extracted. Re-export in the standard Yardi RRwLC layout.`;
+    case 'not_supported':
+      return `${label}: this layout structurally cannot supply per-row values for this column (e.g. generic flat exports omit lease dates and charge codes).`;
+    default:
+      return `${label}: status "${status}".`;
+  }
+}
+
+export function ColumnScorecard({ coverage }: { coverage: Record<string, string> }) {
+  return (
+    <div
+      style={{
+        background: C.panelAlt,
+        borderBottom: `1px solid ${C.border}`,
+        padding: '8px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        flexWrap: 'wrap',
+      }}
+    >
+      <span
+        style={{
+          fontFamily: LABEL,
+          fontSize: 9,
+          fontWeight: 700,
+          color: C.dim,
+          letterSpacing: '0.08em',
+          marginRight: 4,
+        }}
+        title="Per-column extraction status from the rent-roll parser. Hover each pill for details."
+      >
+        EXTRACTION SCORECARD
+      </span>
+      {SCORECARD_COLUMNS.map(({ key, label }) => {
+        const status = (coverage[key] ?? 'missing') as ColumnCoverageStatus;
+        // Visual tokens per status. Three distinct families so 'fallback'
+        // and 'not_supported' read differently from the ok/missing/all_null
+        // dot trio, per the Task #516 spec.
+        let dotColor = C.green;
+        let dotFill: string | undefined;
+        let pillBorder = `1px solid ${C.border}`;
+        let pillBg = '#0a1018';
+        let labelColor = C.muted;
+        if (status === 'ok') {
+          dotColor = C.green;
+          dotFill = C.green;
+        } else if (status === 'missing') {
+          dotColor = C.red;
+          dotFill = C.red;
+          pillBorder = `1px solid ${C.red}55`;
+          labelColor = C.red;
+        } else if (status === 'all_null') {
+          // Hollow red ring — distinct from solid 'missing' so analysts can
+          // tell "we found the column but it's empty" apart from "we never
+          // found the column".
+          dotColor = C.red;
+          dotFill = 'transparent';
+          pillBorder = `1px solid ${C.red}44`;
+          labelColor = C.red;
+        } else if (status === 'fallback') {
+          // Distinct amber treatment — values present but low-confidence.
+          dotColor = C.amber;
+          dotFill = C.amber;
+          pillBorder = `1px solid ${C.amber}66`;
+          pillBg = '#1a0d00';
+          labelColor = C.amber;
+        } else if (status === 'not_supported') {
+          // Distinct dimmed/dashed treatment — neither healthy nor a problem,
+          // it's a structural limit of the source layout.
+          dotColor = C.dim;
+          dotFill = C.dim;
+          pillBorder = `1px dashed ${C.dim}`;
+          labelColor = C.dim;
+        }
+        return (
+          <div
+            key={key}
+            title={statusTooltip(label, status)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 8px',
+              borderRadius: 10,
+              background: pillBg,
+              border: pillBorder,
+              fontFamily: LABEL,
+              fontSize: 9,
+              letterSpacing: '0.06em',
+              color: labelColor,
+            }}
+          >
+            <span
+              aria-label={`${label} status ${status}`}
+              style={{
+                display: 'inline-block',
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: dotFill ?? 'transparent',
+                border: `1.5px solid ${dotColor}`,
+                flexShrink: 0,
+              }}
+            />
+            {label}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * Per-unit detail panel scoped to one floor plan — rendered inline as an
  * expander row beneath the floor plan that the user clicked. Fields shown
  * include the full lease lifecycle (move-in / lease-start / lease-end /
@@ -947,6 +1107,17 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
           <RefreshCw size={11} /> REFRESH
         </button>
       </div>
+
+      {/* ── Per-column extraction scorecard (Task #516) ──
+          Renders whenever the parser produced a column_coverage map — NOT
+          gated on humanReviewNeeded — so analysts see at a glance which of
+          the 7 critical columns the parser mapped (and which fell back to
+          hardcoded positions, came back empty, or are unsupported by this
+          layout). Catches silent extraction fallbacks before they affect
+          underwriting. */}
+      {data?.rentRollSummary?.columnCoverage && Object.keys(data.rentRollSummary.columnCoverage).length > 0 && (
+        <ColumnScorecard coverage={data.rentRollSummary.columnCoverage} />
+      )}
 
       {/* ── No-rent-roll banner ──
           Gated on FEATURE AVAILABILITY, not just presence of an extraction
