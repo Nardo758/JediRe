@@ -497,17 +497,23 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
   const collisionByKey = new Map(collisions.map(c => [c.coefficient, c]));
 
   // Helper: compute blended effective value from subject + peer + weight.
-  // Returns subject when peer is unknown (no collision → no peer value available).
+  // Peer resolution order:
+  //   1. peer_set_values[key]  — platform posterior for this coefficient (always available
+  //      after M07 wiring when traffic_calibration_factors is populated)
+  //   2. collision.peer_value  — set only for coefficients that exceeded σ threshold
+  // When peer is resolved, effective = w * subject + (1-w) * peer.
+  // When peer is unknown, effective falls back to subject.
+  const peerSetValues = history.peer_set_values ?? {};
+
   const blendedEffective = (subject: number, key: string): { peer: number | null; effective: number } => {
-    const col = collisionByKey.get(key);
-    const w   = cw[key]?.weight ?? null;
-    if (col != null && w != null) {
-      return {
-        peer:      col.peer_value,
-        effective: w * subject + (1 - w) * col.peer_value,
-      };
+    const col  = collisionByKey.get(key);
+    const w    = cw[key]?.weight ?? null;
+    // Prefer platform peer-set posterior; fall back to collision.peer_value if absent
+    const peer: number | null = peerSetValues[key] ?? col?.peer_value ?? null;
+    if (peer != null && w != null && w > 0 && w < 1) {
+      return { peer, effective: w * subject + (1 - w) * peer };
     }
-    return { peer: col?.peer_value ?? null, effective: subject };
+    return { peer, effective: subject };
   };
 
   // Direction indicator: ▲ subject > peer, ▼ subject < peer, = within 1%

@@ -131,11 +131,12 @@ export class CoefficientResolverService {
             }
           }
         } else {
-          // Weight = 0 (insufficient sample) — fall through to deal → platform → baseline
-          if (dealVal !== null) {
-            resolved  = dealVal;
-            matchTier = 'DEAL';
-          } else if (platformEntry !== null) {
+          // w_subject = 0 (insufficient sample) — subject data exists but is too sparse.
+          // Fall back to PLATFORM peer set → BASELINE.
+          // Critically: do NOT fall to DEAL here.  A single-snapshot deal proxy is
+          // less reliable than the platform posterior when subject evidence is thin,
+          // and the Bayesian subject-vs-peer blend contract requires peer = platform.
+          if (platformEntry !== null) {
             resolved       = platformEntry.value;
             matchTier      = 'PLATFORM';
             resolvedWindow = platformEntry.window;
@@ -146,7 +147,7 @@ export class CoefficientResolverService {
           }
         }
       } else if (dealVal !== null) {
-        // No subject — deal layer takes priority over platform
+        // No subject history at all — deal layer takes priority over platform
         resolved       = dealVal;
         matchTier      = 'DEAL';
         resolvedWindow = 'TTM';

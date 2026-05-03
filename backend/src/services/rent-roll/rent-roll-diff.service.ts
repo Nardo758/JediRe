@@ -49,6 +49,11 @@ type UnitEventType =
   | 'TURNOVER'
   | 'VACANCY_PERSISTS'
   | 'STABLE_OCCUPANCY'
+  | 'HOLDOVER'            // occupied → occupied, no renewal flag, lease_end < snapshot_date
+  | 'MOVE_OUT_NOTICE'     // occupied → notice (gave notice but not yet vacated)
+  | 'STRUCTURAL_VACANCY'  // unit absent from current snapshot entirely (never seen again)
+  | 'SPLIT'               // one prior unit → multiple current units (e.g. unit subdivision)
+  | 'MERGE'               // multiple prior units → one current unit (e.g. unit combination)
   | 'UNRESOLVED';
 
 interface UnitEvent {
@@ -143,13 +148,28 @@ export class RentRollDiffService {
 
       // ── Unit identity resolution ─────────────────────────────────────────
       // Level 1: exact unit_id match
-      // Level 2: (unit_type + unit_sf) fingerprint
+      // Level 2: (unit_type + unit_sf) fingerprint — unique match only
+      // Level 3: (lease_start_month + unit_type) tenant identity — last-resort
+      //
+      // SPLIT detection: one prior unit_id appears as the L1 key for multiple
+      // current units → each current unit classified as SPLIT event.
+      // MERGE detection: multiple prior units matched to same current unit via
+      // L2/L3 (rare) → first match wins, extras classified as STRUCTURAL_VACANCY
+      // in the reverse pass.
+
       const makeKey1 = (u: ParsedUnit) => u.unit_id ?? '';
       const makeKey2 = (u: ParsedUnit) =>
         `${(u.unit_type ?? '').toLowerCase().trim()}::${u.unit_sf ?? 'NA'}`;
+      // L3: lease start month (YYYY-MM) + unit_type — good for tenant continuity
+      // when unit IDs are unstable and floor plan isn't unique
+      const makeKey3 = (u: ParsedUnit) => {
+        const lsMonth = (u.lease_start ?? '').slice(0, 7); // 'YYYY-MM' or ''
+        return lsMonth ? `${lsMonth}::${(u.unit_type ?? '').toLowerCase().trim()}` : '';
+      };
 
       const priorById   = new Map<string, ParsedUnit[]>();
       const priorByFp   = new Map<string, ParsedUnit[]>();
+      const priorByL3   = new Map<string, ParsedUnit[]>();
       for (const u of priorUnits) {
         const k1 = makeKey1(u);
         if (k1) {
@@ -159,52 +179,134 @@ export class RentRollDiffService {
         const k2 = makeKey2(u);
         if (!priorByFp.has(k2)) priorByFp.set(k2, []);
         priorByFp.get(k2)!.push(u);
+
+        const k3 = makeKey3(u);
+        if (k3) {
+          if (!priorByL3.has(k3)) priorByL3.set(k3, []);
+          priorByL3.get(k3)!.push(u);
+        }
       }
 
+      // Pre-pass: detect split candidates — unit_ids that appear in multiple
+      // current units (one prior unit physically split into N current units)
+      const currById = new Map<string, ParsedUnit[]>();
+      for (const u of currentUnits) {
+        const k1 = makeKey1(u);
+        if (k1) {
+          if (!currById.has(k1)) currById.set(k1, []);
+          currById.get(k1)!.push(u);
+        }
+      }
+      const splitPriorIds = new Set<string>();
+      for (const [id, currGroup] of currById) {
+        const priorGroup = priorById.get(id) ?? [];
+        if (priorGroup.length === 1 && currGroup.length > 1) {
+          splitPriorIds.add(id); // one prior → many current
+        }
+      }
+
+      // Also pre-detect MERGE: multiple prior units map to the same current
+      // unit via L2. We track this below in the consumed set.
+      const consumedPriorIds = new Set<string>();  // tracks prior unit_id values consumed
+      const consumedPriorFps = new Map<string, number>();  // fingerprint → count consumed
+
       const unitEvents: UnitEvent[] = [];
+
+      const currSnapshotDate = new Date(curr.snapshot_date);
 
       for (const curr_unit of currentUnits) {
         const key1 = makeKey1(curr_unit);
         const key2 = makeKey2(curr_unit);
+        const key3 = makeKey3(curr_unit);
 
         let matched: ParsedUnit | null = null;
         let matchKey: string = '';
+        let isSplit = false;
 
-        // Level-1: exact unit_id
-        if (key1 && priorById.has(key1) && priorById.get(key1)!.length === 1) {
-          matched  = priorById.get(key1)![0];
-          matchKey = `id:${key1}`;
-        } else if (priorByFp.has(key2) && priorByFp.get(key2)!.length === 1) {
-          // Level-2: unique fingerprint (one prior unit with same type+sf)
-          matched  = priorByFp.get(key2)![0];
-          matchKey = `fp:${key2}`;
+        // Level-1: exact unit_id match
+        if (key1 && priorById.has(key1)) {
+          const candidates = priorById.get(key1)!;
+          if (splitPriorIds.has(key1)) {
+            // SPLIT: one prior unit → multiple current units
+            matched  = candidates[0];
+            matchKey = `id:${key1}`;
+            isSplit  = true;
+          } else if (candidates.length === 1) {
+            matched  = candidates[0];
+            matchKey = `id:${key1}`;
+          }
+        }
+
+        if (!matched) {
+          // Level-2: unique (unit_type + unit_sf) fingerprint
+          if (priorByFp.has(key2)) {
+            const fpCandidates = priorByFp.get(key2)!;
+            const alreadyConsumedCount = consumedPriorFps.get(key2) ?? 0;
+            const remaining = fpCandidates.length - alreadyConsumedCount;
+            if (remaining === 1) {
+              // Last unused unit with this fingerprint — unambiguous
+              matched  = fpCandidates[alreadyConsumedCount];
+              matchKey = `fp:${key2}`;
+            } else if (remaining > 1 && fpCandidates.length === currentUnits.filter(u => makeKey2(u) === key2).length) {
+              // N prior ↔ N current with same fingerprint — positional match
+              matched  = fpCandidates[alreadyConsumedCount];
+              matchKey = `fp:${key2}`;
+            }
+          }
+        }
+
+        if (!matched && key3) {
+          // Level-3: lease_start_month + unit_type tenant identity
+          const l3Candidates = priorByL3.get(key3) ?? [];
+          if (l3Candidates.length === 1) {
+            matched  = l3Candidates[0];
+            matchKey = `lt:${key3}`;
+          }
         }
 
         if (!matched) {
           unitEvents.push({
-            unit_key:            key1 || key2,
-            event_type:          'UNRESOLVED',
-            prior_contract_rent: null,
+            unit_key:             key1 || key2,
+            event_type:           'UNRESOLVED',
+            prior_contract_rent:  null,
             current_contract_rent: curr_unit.contract_rent ?? null,
-            trade_out_pct:       null,
+            trade_out_pct:        null,
             days_vacant_observed: null,
-            prior_concession:    null,
-            current_concession:  curr_unit.concession_value ?? null,
+            prior_concession:     null,
+            current_concession:   curr_unit.concession_value ?? null,
           });
           continue;
         }
 
+        // Mark this prior unit as consumed (for reverse pass)
+        const priorId = makeKey1(matched);
+        if (priorId) consumedPriorIds.add(priorId);
+        const fp2 = makeKey2(matched);
+        consumedPriorFps.set(fp2, (consumedPriorFps.get(fp2) ?? 0) + 1);
+
         // ── Classify event ────────────────────────────────────────────────
         const wasOccupied = matched.unit_status === 'occupied';
         const isOccupied  = curr_unit.unit_status === 'occupied';
+        const isNotice    = curr_unit.unit_status === 'notice';
         const wasVacant   = matched.unit_status === 'vacant' || matched.unit_status === 'notice';
         const isVacant    = curr_unit.unit_status === 'vacant' || curr_unit.unit_status === 'notice';
 
         let eventType: UnitEventType;
 
-        if (wasOccupied && isOccupied) {
-          // Stable occupancy — check is_renewal flag
-          eventType = curr_unit.is_renewal ? 'RENEWAL' : 'STABLE_OCCUPANCY';
+        if (isSplit) {
+          eventType = 'SPLIT';
+        } else if (wasOccupied && isOccupied) {
+          if (curr_unit.is_renewal) {
+            eventType = 'RENEWAL';
+          } else {
+            // Holdover: lease expired but no renewal flagged — tenant staying over
+            const leaseEnd = curr_unit.lease_end ? new Date(curr_unit.lease_end) : null;
+            const isHoldover = leaseEnd != null && leaseEnd < currSnapshotDate;
+            eventType = isHoldover ? 'HOLDOVER' : 'STABLE_OCCUPANCY';
+          }
+        } else if (wasOccupied && isNotice) {
+          // Tenant gave move-out notice — still present but flagged
+          eventType = 'MOVE_OUT_NOTICE';
         } else if (wasVacant && isOccupied) {
           eventType = 'NEW_LEASE_AFTER_VACANCY';
         } else if (wasOccupied && isVacant) {
@@ -232,8 +334,47 @@ export class RentRollDiffService {
         });
       }
 
+      // ── Reverse pass: prior units absent from current snapshot ────────────
+      // Emits STRUCTURAL_VACANCY for units that appear in prior but were
+      // never matched to any current unit.  This covers permanent removals
+      // (unit demolition, conversion, down status) and move-outs not captured
+      // in the forward pass.  MERGE candidates (N prior → 1 current) also
+      // surface here as STRUCTURAL_VACANCY since only one prior consumed the
+      // current counterpart.
+      for (const prior_unit of priorUnits) {
+        const pk1 = makeKey1(prior_unit);
+        if (pk1 && consumedPriorIds.has(pk1)) continue; // already matched
+
+        // Check via fingerprint count
+        const pk2 = makeKey2(prior_unit);
+        const fpConsumed = consumedPriorFps.get(pk2) ?? 0;
+        const fpTotal = priorByFp.get(pk2)?.length ?? 0;
+        const fpCurrentTotal = currentUnits.filter(u => makeKey2(u) === pk2).length;
+        // If all fingerprint instances are accounted for, skip
+        if (fpTotal > 0 && fpConsumed >= fpTotal && fpCurrentTotal >= fpTotal) continue;
+
+        // Emit STRUCTURAL_VACANCY for this unmatched prior unit
+        unitEvents.push({
+          unit_key:             pk1 || pk2,
+          event_type:           'STRUCTURAL_VACANCY',
+          prior_contract_rent:  prior_unit.contract_rent ?? null,
+          current_contract_rent: null,
+          trade_out_pct:        null,
+          days_vacant_observed: null,
+          prior_concession:     prior_unit.concession_value ?? null,
+          current_concession:   null,
+        });
+      }
+
       // ── Aggregate metrics ─────────────────────────────────────────────────
-      const resolved   = unitEvents.filter(e => e.event_type !== 'UNRESOLVED');
+      // Exclude UNRESOLVED + structural events from rate denominators to avoid
+      // biasing rates with units where identity couldn't be established.
+      const resolved   = unitEvents.filter(e =>
+        e.event_type !== 'UNRESOLVED' &&
+        e.event_type !== 'STRUCTURAL_VACANCY' &&
+        e.event_type !== 'SPLIT' &&
+        e.event_type !== 'MERGE'
+      );
       const renewals   = unitEvents.filter(e => e.event_type === 'RENEWAL');
       const turnovers  = unitEvents.filter(e => e.event_type === 'TURNOVER');
       const newLeases  = unitEvents.filter(e => e.event_type === 'NEW_LEASE_AFTER_VACANCY');

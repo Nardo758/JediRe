@@ -7,6 +7,20 @@
  */
 import { Pool } from 'pg';
 
+// ── M07 Subject Traffic History record shape (mirrors frontend F9SubjectHistory) ───
+export interface SubjectHistoryRecord {
+  tier: 'S1' | 'S2' | 'S3' | 'S4';
+  snapshot_count: number;
+  coverage_months: number | null;
+  current_state: Record<string, unknown> | null;
+  observed_dynamics: Record<string, unknown> | null;
+  confidence_weights: Record<string, { n_obs: number; n_required: number; weight: number }>;
+  peer_collisions: Array<{ coefficient: string; subject_value: number; peer_value: number; sigma_deviation: number }>;
+  /** Platform peer-set posteriors for all resolved coefficients — for UI peer column. */
+  peer_set_values: Record<string, number>;
+  updated_at: string;
+}
+
 export interface OSRow {
   field: string;
   label: string;
@@ -70,6 +84,12 @@ export interface ComposedFinancials {
    * + `extraction_t12.other_income.total`. Task #519.
    */
   otherIncomeBreakdown: OtherIncomeBreakdownPayload | null;
+  /**
+   * Subject property traffic history — M07 §6.
+   * Null until the first rent roll has been uploaded and S1 aggregation run.
+   * Populated from subject_traffic_history via composeDealFinancials().
+   */
+  subjectHistory: SubjectHistoryRecord | null;
   /** User-added ancillary lines (custom labels). Task #519. */
   otherIncomeUserLines: Array<{
     id: string;
@@ -301,6 +321,63 @@ export async function composeDealFinancials(
   // 12. Build capital stack
   const capitalStack = buildCapitalStack(purchasePrice, year1Data);
 
+  // 13. Load M07 subject traffic history (non-fatal — null when no rent roll uploaded)
+  let subjectHistory: SubjectHistoryRecord | null = null;
+  try {
+    const sthRes = await pool.query<{
+      tier: string;
+      snapshot_count: number;
+      coverage_months: string | null;
+      current_state: Record<string, unknown> | null;
+      observed_dynamics: Record<string, unknown> | null;
+      confidence_weights: Record<string, unknown>;
+      peer_collisions: Array<Record<string, unknown>>;
+      updated_at: string;
+    }>(
+      `SELECT tier, snapshot_count, coverage_months, current_state, observed_dynamics,
+              confidence_weights, peer_collisions, updated_at
+       FROM subject_traffic_history WHERE deal_id = $1`,
+      [dealId],
+    );
+    if (sthRes.rows.length > 0) {
+      const row = sthRes.rows[0];
+      // Also load platform peer-set posteriors so the UI can show real peer column
+      // for all coefficients, not just collision rows.
+      let peerSetValues: Record<string, number> = {};
+      try {
+        const peerRes = await pool.query<{ coefficient_name: string; posterior_value: string }>(
+          `SELECT DISTINCT ON (coefficient_name) coefficient_name, posterior_value
+           FROM traffic_calibration_factors tcf
+           JOIN deals d ON d.id = $1
+           WHERE tcf.scope_level = 'platform'
+             AND tcf.coefficient_name != 'absorption_curve'
+             AND tcf.cal_window = 'TTM'
+           ORDER BY coefficient_name, n_peer_properties DESC`,
+          [dealId],
+        );
+        for (const r of peerRes.rows) {
+          peerSetValues[r.coefficient_name] = parseFloat(r.posterior_value);
+        }
+      } catch {
+        // Platform posteriors not available — peer column stays empty for non-collision rows
+      }
+      subjectHistory = {
+        tier:               row.tier as SubjectHistoryRecord['tier'],
+        snapshot_count:     row.snapshot_count,
+        coverage_months:    row.coverage_months != null ? parseFloat(row.coverage_months) : null,
+        current_state:      row.current_state ?? null,
+        observed_dynamics:  row.observed_dynamics ?? null,
+        confidence_weights: (row.confidence_weights ?? {}) as SubjectHistoryRecord['confidence_weights'],
+        peer_collisions:    (row.peer_collisions ?? []) as SubjectHistoryRecord['peer_collisions'],
+        peer_set_values:    peerSetValues,
+        updated_at:         row.updated_at,
+      };
+    }
+  } catch {
+    // subject_traffic_history table may not exist in older envs — graceful fallback
+    subjectHistory = null;
+  }
+
   return {
     success: true,
     data: {
@@ -330,6 +407,7 @@ export async function composeDealFinancials(
       projections: null,
       capital: null,
       extractionRentRoll,
+      subjectHistory,
       otherIncomeBreakdown: composeOtherIncomeBreakdown(dealData, year1Data),
       otherIncomeUserLines: Array.isArray(year1Data?.other_income_user_lines)
         ? year1Data.other_income_user_lines

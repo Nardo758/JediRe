@@ -454,6 +454,13 @@ export interface F9SubjectHistory {
   } | null;
   confidence_weights: Record<string, { n_obs: number; n_required: number; weight: number }>;
   peer_collisions: Array<{ coefficient: string; subject_value: number; peer_value: number; sigma_deviation: number }>;
+  /**
+   * Platform peer-set posterior for every resolved coefficient — populated by
+   * the financials-composer from the CoefficientResolver platform values.
+   * Allows the SubjectHistoryPanel to show a non-null PEER SET column for ALL
+   * coefficient rows, not just those that triggered a peer collision.
+   */
+  peer_set_values: Record<string, number>;
   updated_at: string;
 }
 
