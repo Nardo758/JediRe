@@ -157,7 +157,10 @@ export async function composeDealFinancials(
   const dealRes = await pool.query(
     `SELECT id, name, deal_data, project_type, target_units,
             unit_count, city, state_code AS state,
-            submarket_id, property_class, year_built, msa_id
+            deal_data->>'submarketId'   AS submarket_id,
+            deal_data->>'property_class' AS property_class,
+            (deal_data->>'year_built')::int AS year_built,
+            deal_data->>'msaId'         AS msa_id
      FROM deals WHERE id = $1 AND user_id = $2`,
     [dealId, userId]
   );
