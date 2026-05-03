@@ -955,7 +955,10 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
   seed.egi.updated_at = ts;
   // Re-sync per-unit display value from the breakdown sum so the input field
   // visible in the UI stays consistent with the per-category source of truth.
-  if (seed.other_income_per_unit && unitCount > 0) {
+  // Skip if the user has an explicit override on `other_income_per_unit` —
+  // their direct edit must remain sticky and not be silently overwritten.
+  if (seed.other_income_per_unit && unitCount > 0
+      && seed.other_income_per_unit.resolution !== 'override') {
     seed.other_income_per_unit.resolved = otherIncome / unitCount;
     seed.other_income_per_unit.updated_at = ts;
   }
