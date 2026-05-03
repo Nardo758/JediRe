@@ -378,6 +378,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       loadData();
     }
     prevStrategyRef.current = strategy.selectedStrategy;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [strategy?.selectedStrategy, loadData]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

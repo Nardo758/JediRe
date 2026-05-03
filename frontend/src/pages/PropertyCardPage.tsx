@@ -850,6 +850,7 @@ export default function PropertyDetailsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   const toggleTheme = useCallback(() => { const n = theme === "dark" ? "light" : "dark"; setTheme(n); localStorage.setItem("jedi-theme", n); }, [theme]);
   const [activeTab, setActiveTab] = useState("OVERVIEW");
   const [showCreateDeal, setShowCreateDeal] = useState(false);
@@ -922,11 +923,13 @@ export default function PropertyDetailsPage() {
     if (navState.submarketName && !merged.submarket) merged.submarket = navState.submarketName;
     if (navState.msaName) merged.market = navState.msaName;
     return merged;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [isUuidRoute, mappedReal, navState.propertyName, navState.submarketName, navState.msaName]);
 
   const td = TRAFFIC_DATA;
   const perf = PERFORMANCE_HISTORY;
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   const forecast = useMemo(() => generateForecast(perf, td.aadtProjected), []);
 
   const TABS = [
@@ -947,6 +950,7 @@ export default function PropertyDetailsPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   // Measure container for responsive charts
@@ -1359,6 +1363,7 @@ export default function PropertyDetailsPage() {
         const strength = absR >= 0.8 ? "VERY STRONG" : absR >= 0.6 ? "STRONG" : absR >= 0.4 ? "MODERATE" : "WEAK";
         return { metricA: pr.a, metricB: pr.b, r: parseFloat(r.toFixed(2)), strength, narrative: pr.narrative(r) };
       }).sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
     }, []);
 
     const fiveYearOutlook = useMemo(() => {
@@ -1390,6 +1395,7 @@ export default function PropertyDetailsPage() {
           signal: `Pop growth (${subNow.popGrowth.toFixed(1)}% → ${sub5.popGrowth.toFixed(1)}%) ${sub5.popGrowth > 1.5 ? "sustains demand" : "slowing — headwind"}`,
           narrative: `Rent growth accelerating from ${now.rentGrowth.toFixed(1)}% to ${yr3.rentGrowth.toFixed(1)}% by 2028, then moderating to ${yr5.rentGrowth.toFixed(1)}% by 2030. ${sub5.capRate < subNow.capRate ? `Cap rate compression (${subNow.capRate.toFixed(1)}% → ${sub5.capRate.toFixed(1)}%) signals investor confidence.` : `Cap rates stable — market equilibrium.`} Concessions forecast to ${yr5.concessions < now.concessions ? `decline to ${yr5.concessions.toFixed(1)}% — pricing power improving` : `hold at ${yr5.concessions.toFixed(1)}%`}.` },
       ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
     }, [correlations]);
 
     const topCorrelations = correlations.filter(c => Math.abs(c.r) >= 0.5).slice(0, 5);

@@ -231,10 +231,12 @@ export const OpusAISection: React.FC<OpusAISectionProps> = ({ deal }) => {
 
   useEffect(() => {
     loadLiveContext();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [deal.id]);
 
   useEffect(() => {
     analyzeWithRole(selectedRole);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [selectedRole, deal.id, liveContext]);
 
   const loadLiveContext = async () => {

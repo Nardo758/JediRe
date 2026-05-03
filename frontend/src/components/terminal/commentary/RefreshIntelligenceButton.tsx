@@ -52,6 +52,7 @@ export const RefreshIntelligenceButton: React.FC<RefreshIntelligenceButtonProps>
   // Cancel any in-flight polling loop on unmount or when entity changes —
   // otherwise the loop keeps running and stomps state on the next mount.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
     return () => { cancelRef.current.cancelled = true; };
   }, [entityType, entityId]);
 

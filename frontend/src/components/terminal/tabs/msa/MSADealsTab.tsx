@@ -105,9 +105,12 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
   const oppError = getOppError(city);
   const oppFetched = hasOppFetched(city);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { fetchOpportunities(city); }, [city]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   const opportunities = oppData?.opportunities || [];
   const marketSummary = oppData?.marketSummary;
 

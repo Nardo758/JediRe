@@ -383,6 +383,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       }
       return next;
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [f9Debt?.loans?.length]);
 
   const activeLoan = loans.find(l => l.id === activeLoanId) ?? loans[0];

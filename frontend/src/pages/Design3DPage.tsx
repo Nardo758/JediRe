@@ -131,6 +131,7 @@ export const Design3DPage: React.FC = () => {
     }, 5000); // Auto-save after 5 seconds of inactivity
     
     return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [design3D, hasUnsavedChanges, autoSaveEnabled]);
 
   // Warn on unsaved changes

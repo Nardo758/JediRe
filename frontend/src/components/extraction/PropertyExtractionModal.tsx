@@ -99,6 +99,7 @@ export const PropertyExtractionModal: React.FC<PropertyExtractionModalProps> = (
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [isOpen, currentIndex, hasNext, hasPrevious]);
 
   // Handlers

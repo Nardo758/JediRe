@@ -153,6 +153,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
     };
     fetchStack();
     fetchedTabs.current.add('stack');
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [deal.id]);
 
   useEffect(() => {
@@ -176,6 +177,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       };
       fetchDebt();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [activeTab, selectedStrategy]);
 
   useEffect(() => {
@@ -222,6 +224,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       };
       fetchRates();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [activeTab]);
 
   useEffect(() => {
@@ -250,6 +253,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       };
       fetchScenarios();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [activeTab]);
 
   useEffect(() => {
@@ -287,6 +291,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       };
       fetchTimeline();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [activeTab]);
 
   const isAnyLive = liveDataSources.size > 0;
@@ -312,6 +317,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         setLayers(strategyTemplates[incoming].defaultStack?.layers || defaultCapitalStack.layers);
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [lastEvent]);
 
   // ========================================================================
@@ -365,11 +371,13 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       type: 'capital-updated',
       payload: capitalPayload,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [layers, financial, selectedStrategy, template, stack, updateCapitalStructure, emitEvent]);
 
   // Fire capital-updated on mount and whenever layers/strategy change
   useEffect(() => {
     emitCapitalUpdate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [selectedStrategy, layers]);
 
   // Sources = Uses validation

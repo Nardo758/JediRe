@@ -94,6 +94,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
   const [sortKey, setSortKey] = useState<'rank' | 'pcsScore' | 'movement'>('rank');
   const [sortAsc, setSortAsc] = useState(true);

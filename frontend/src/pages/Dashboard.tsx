@@ -36,6 +36,7 @@ export const Dashboard: React.FC = () => {
       navigate('/deals/create');
       window.history.replaceState({}, document.title);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [location, navigate]);
 
   useEffect(() => {
@@ -84,6 +85,7 @@ export const Dashboard: React.FC = () => {
         map.current = null;
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   useEffect(() => {
@@ -128,6 +130,7 @@ export const Dashboard: React.FC = () => {
         removeLayer(layerId);
       }
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [layers]);
 
   const fetchAndRenderLayer = async (layerId: string) => {

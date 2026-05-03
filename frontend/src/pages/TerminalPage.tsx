@@ -1107,6 +1107,7 @@ export default function TerminalPage() {
       setWinStates(ps => { const ns = { ...ps, [id]: ps[id] ? { ...ps[id], minimized: false, zIndex: nz } : defaultWinPos(id, next.length - 1) }; persistWins(next, ns); return ns; });
       return next;
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [topZ]);
   const closeWindow = useCallback((id: string) => {
     setDashWindows(prev => { const next = prev.filter(w => w !== id); setWinStates(ps => { persistWins(next, ps); return ps; }); return next; });
@@ -1125,6 +1126,7 @@ export default function TerminalPage() {
     const nz = topZ + 1; setTopZ(nz);
     setFloatWidgets(prev => prev.includes(id) ? prev : [...prev, id]);
     setWinStates(prev => ({ ...prev, [id]: prev[id] ? { ...prev[id], minimized: false, zIndex: nz } : defaultWinPos(id, 0) }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [topZ]);
   const dockWidget = useCallback((id: string) => {
     setFloatWidgets(prev => prev.filter(w => w !== id));
@@ -1168,6 +1170,7 @@ export default function TerminalPage() {
   const totalPV = liveDeals.reduce((s,d)=>s+parseFloat(d.price.replace(/[$M,—]/g,"")||"0"),0);
   const activeCount = liveDeals.filter(d=>d.stage==="DD"||d.stage==="LOI").length;
   const hAlerts = liveAlerts.filter(a=>a.sev==="critical"||a.sev==="high").length;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   const stages:Record<string,number>={DD:0,LOI:0,PROSPECT:0,LEAD:0};
   liveDeals.forEach(d=>{if(stages[d.stage]!==undefined)stages[d.stage]++;});
   const gc = "30px 1.5fr 0.8fr 44px 40px 60px 52px 48px 56px 48px 46px 42px 42px";
@@ -1242,6 +1245,7 @@ export default function TerminalPage() {
         ):null;})()}
       </div>
     </div>
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   ), [T, fStage, fStrat, mapOpen, sorted, gc, sortBy, sortDir, dealsLoading, selDealId, flashes, navigate]);
 
   // ─── MAP SIDEBAR ───────────────────────────────────────────
@@ -2548,6 +2552,7 @@ export default function TerminalPage() {
     }).catch(() => {
       setCorpHealthLive(prev => ({...prev, loaded: true, loading: false}));
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [fkey, corpHealthLive.loaded, corpHealthLive.loading, fetchSubmarketHealth]);
 
   const ViewSettings = () => (

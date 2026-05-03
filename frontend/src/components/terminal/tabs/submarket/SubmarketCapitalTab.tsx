@@ -38,6 +38,7 @@ export const SubmarketCapitalTab: React.FC<SubmarketCapitalTabProps> = ({ submar
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
   const transactions: Transaction[] = useMemo(() => [
     { id: '1', property: 'The Metropolitan at Phipps', units: 320, salePrice: 85000000, pricePerUnit: 265625, capRate: 4.8, buyer: 'Blackstone', seller: 'AvalonBay', date: '2025-02' },

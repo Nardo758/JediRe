@@ -392,6 +392,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
       colPrefsMap[safeTab]?.saveColumnConfig(next);
       return next;
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [activeTab]);
 
   const allActiveColumns = useMemo(() => {
@@ -400,6 +401,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
       for (const c of prefs.columns) all.add(c);
     }
     return [...all];
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dashCols.columns, browseCols.columns, subCols.columns, propCols.columns, compCols.columns]);
 
   const dynamicMetricIds = useMemo(() =>
@@ -422,6 +424,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
         }
       }
     }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dynamicMetricIds.join(',')]);
 
   interface GridCellData {
@@ -534,6 +537,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
     api.get(`/columns/grid-data?metricIds=${dynamicMetricIds.join(',')}${geoParam}`).then(res => {
       if (res.data.success) setGridData(res.data.data);
     }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dynamicMetricIds.join(','), visibleGeoIds.join(',')]);
 
   const topMovers = useMemo(() => {

@@ -186,6 +186,7 @@ export default function PipelineMapViewWithDrawing({
         map.off('draw.selectionchange', handleDrawSelectionChange);
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [mapRef.current]);
 
   // Handle drawing mode changes

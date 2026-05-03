@@ -78,6 +78,7 @@ export function DocumentsSection({ dealId }: DocumentsSectionProps) {
 
   useEffect(() => {
     if (dealId) loadFiles();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

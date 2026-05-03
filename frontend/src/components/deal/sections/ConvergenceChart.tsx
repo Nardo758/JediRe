@@ -191,6 +191,7 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
     const mx = ((e.clientX - rect.left) / rect.width) * W;
     const absIdx = Math.round(((mx - pad.l) / iW) * (TOTAL_Q - 1));
     if (absIdx >= NOW_IDX && absIdx < TOTAL_Q) onSelectFwd(absIdx - NOW_IDX);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [onSelectFwd]);
 
   const handleMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -200,6 +201,7 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
     const mx = ((e.clientX - rect.left) / rect.width) * W;
     const idx = Math.round(((mx - pad.l) / iW) * (TOTAL_Q - 1));
     if (idx >= 0 && idx < TOTAL_Q) setHoverIdx(idx);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   return (

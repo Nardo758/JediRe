@@ -391,6 +391,7 @@ export function DealsPage() {
     };
     loadData();
     fetchMapDeals();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [fetchMapDeals]);
 
   const loadGridDeals = async (sort?: GridSort, intelData?: Map<string, any>) => {
@@ -463,6 +464,7 @@ export function DealsPage() {
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded() || !mapDeals.length) return;
     addDealsToMap(map.current, mapDeals);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [mapDeals]);
 
   const addDealsToMap = (m: mapboxgl.Map, deals: any[]) => {

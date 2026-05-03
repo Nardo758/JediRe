@@ -248,6 +248,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       });
       setUmProgram(optimal);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [umLoading, apiZoning, apiProgram]);
 
   useEffect(() => {
@@ -287,6 +288,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
   useEffect(() => {
     if (tabs.findIndex(t => t.id === activeTabId) === -1) setActiveTabId(tabs[0].id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealMode]);
 
   const hasZoningContext = !!(activeScenario && (activeScenario.maxUnits || activeScenario.maxGba));
@@ -299,6 +301,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     if (data) {
       pushToContext(data);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [lastEvent]);
 
   const pushToContext = (intelData: MarketIntelData) => {
@@ -361,6 +364,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { fetchData(); }, [dealId]);
 
   const narrative = useMemo(() => data ? generateNarrative(data) : null, [data]);

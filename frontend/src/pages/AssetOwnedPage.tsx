@@ -567,6 +567,7 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
         .catch(() => { setActuals([]); setActualsLoaded(true); })
         .finally(() => setLoading(false));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId, subTab]);
 
   const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
@@ -2652,6 +2653,7 @@ export default function PortfolioPropertyPage() {
     if (!trafficData.length) {
       apiClient.get(`/api/v1/portfolio/${dealId}/traffic`).then(r => setTrafficData(r.data?.data || []));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId, activeTab]);
 
   if (loading) {

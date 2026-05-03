@@ -41,6 +41,7 @@ export const ProFormaIntelligence: React.FC<ProFormaIntelligenceProps> = () => {
       dscr: capitalStructure.dscr,
       cashOnCash: parseFloat(coc.toFixed(1)),
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [capitalStructure, returnsSummary]);
 
   // M09 → M11+: Emit financial-updated when NOI changes so Capital Structure can recalc DSCR
@@ -58,6 +59,7 @@ export const ProFormaIntelligence: React.FC<ProFormaIntelligenceProps> = () => {
         },
       });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   return (

@@ -39,6 +39,7 @@ export const SubmarketCompareTab: React.FC<SubmarketCompareTabProps> = ({ submar
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
   const [sortBy, setSortBy] = useState<string>('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');

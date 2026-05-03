@@ -178,6 +178,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   // Load data
   useEffect(() => {
     loadPortfolioData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   // Reload performance data when timeframe changes
@@ -283,6 +284,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     } finally {
       setSubmittingActuals(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [actualsAssetId, actualsPeriod, actualsMode, actualsForm, actualsFile]);
 
   // ─── Neural network context awareness (top-level hook) ───────

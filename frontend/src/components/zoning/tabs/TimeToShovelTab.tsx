@@ -582,6 +582,7 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
     if (!development_path && dealId) {
       selectDevelopmentPath('by_right' as any, selected_envelope);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId]);
 
   const runSimulation = useCallback(async () => {

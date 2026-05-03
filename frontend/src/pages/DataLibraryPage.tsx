@@ -154,6 +154,7 @@ export const DataLibraryPage: React.FC = () => {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const visibilityPollListenerRef = useRef<(() => void) | null>(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { loadFiles(); }, [filters]);
 
   useEffect(() => {

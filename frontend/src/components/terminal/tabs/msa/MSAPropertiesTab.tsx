@@ -106,6 +106,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
   const [heatmapMode, setHeatmapMode] = useState('none');
   const [sortKey, setSortKey] = useState<string>('units');

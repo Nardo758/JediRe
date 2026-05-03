@@ -210,6 +210,7 @@ export default function MapDrawingTools({ mapRef, userId, onSave, onLoad }: MapD
         drawRef.current = null;
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [mapRef, currentStyle]);
 
   // Load user's saved drawings

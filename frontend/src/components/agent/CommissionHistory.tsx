@@ -14,10 +14,12 @@ export default function CommissionHistory() {
 
   useEffect(() => {
     loadCommissions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [yearFilter]);
 
   useEffect(() => {
     filterCommissions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [commissions, searchTerm, statusFilter]);
 
   const loadCommissions = async () => {

@@ -112,6 +112,7 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
   useEffect(() => {
     if (!id) { setLoading(false); return; }
     loadModel();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [id]);
 
   const loadModel = async () => {

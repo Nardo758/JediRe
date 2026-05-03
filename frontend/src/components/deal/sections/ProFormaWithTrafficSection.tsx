@@ -824,6 +824,7 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
     setData(null);
     setDataSource('none');
     setLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [deal?.id]);
 
   useEffect(() => {

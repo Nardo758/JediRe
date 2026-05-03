@@ -79,6 +79,7 @@ export default function TerminalMapView({
 }: TerminalMapViewProps) {
   const mapRef = useRef<MapRef>(null);
   const selectedPin = selectedPinId;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   const setSelectedPin = (id: string | null) => onSelectedPinChange?.(id);
   const [viewState, setViewState] = useState({
     longitude: ATLANTA_CENTER[0],

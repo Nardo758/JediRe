@@ -949,6 +949,7 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
       : '');
     setFormula(formulaExpr);
     setApplyAll(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [target?.row.key, target?.year]);
 
   if (!target) return null;
@@ -1529,8 +1530,10 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     } catch { /* non-fatal */ }
   }, [dealId]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { fetchFinancials(); }, [dealId]);
   useEffect(() => { loadNarrativeBlocks(); }, [loadNarrativeBlocks]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { if (holdTab) fetchFinancials(holdYears); }, [holdTab]);
 
   // F9 Tier-1: enqueuePatch can now ride a `rationale` along with the
@@ -1734,7 +1737,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     // We intentionally read validationFlags via getState() above instead of
     // putting it in deps — that would re-trigger this effect every time we
     // upsert/remove a flag and create a feedback loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overrides, financials, revRows, opexRows, classifyFieldOverride, upsertValidationFlag, removeValidationFlag]);
 
   // F9 Tier-1: handler invoked by F9ProtectorsPanel's FlagRow when the
@@ -1793,6 +1795,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     });
     // resolvePlatform in deps so refused-row formula evaluation re-runs
     // when refusal state changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [formulas, rowModes, overrides, financials, years, resolvePlatform]);
 
   const handleApply = useCallback((
@@ -1813,6 +1816,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       const patchVal = (rd.key === 'stabilizedOcc' && val != null) ? +(1 - val).toFixed(4) : val;
       for (const y of targetYears) enqueuePatch(rd.patchField, y, patchVal);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [years, rowModes, enqueuePatch]);
 
   // Formula mode: save expression AND persist computed results via PATCH
@@ -1896,6 +1900,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       formulaExpr: getFormula(rd.key),
     });
     // resolvePlatform in deps so the drawer payload reflects refusal.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [financials, overrides, formulas, lockedOverrides, resolvePlatform]);
 
   const a        = assumptions;
@@ -1966,6 +1971,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     };
     // resolvePlatform in deps so protector inputs (Gordon, NOI identity)
     // re-derive when refusal state changes for any of the underlying rows.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [financials, overrides, holdYears, resolvePlatform]);
 
   return (

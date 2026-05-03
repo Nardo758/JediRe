@@ -78,6 +78,7 @@ export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ 
 
   useEffect(() => {
     fetchLatestAnalysis();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId]);
 
   const fetchLatestAnalysis = async () => {

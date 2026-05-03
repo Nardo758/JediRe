@@ -53,6 +53,7 @@ export const MarketAnalysisPage: React.FC = () => {
         payload: { dealId, source: 'market-analysis' },
       });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [demandData?.recommendedMix, demographicData]);
   
   const handleExport = () => {

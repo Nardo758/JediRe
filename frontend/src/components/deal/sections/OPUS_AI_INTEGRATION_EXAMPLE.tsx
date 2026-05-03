@@ -270,6 +270,7 @@ const AIAgentQuickPreview: React.FC<{ deal: Deal }> = ({ deal }) => {
   useEffect(() => {
     // Quick analysis on mount
     analyzeQuick();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [deal.id]);
 
   const analyzeQuick = async () => {

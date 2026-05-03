@@ -668,6 +668,7 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
     if (dealId && scenarios?.base?.irr > 0) {
       fetchAnalysis();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId]);
 
   if (loading) {
@@ -1035,12 +1036,14 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
 
       return updated ? patch : prev;
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [ctxFinancial?.lastUpdated, ctxMarket?.lastUpdated, ctxCapital?.lastUpdated]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, load]);
 
   useEffect(() => {
     if (id) loadSummary();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [id]);
 
   const loadSummary = async () => {

@@ -49,6 +49,7 @@ export const FinancialModelDisplay: React.FC<FinancialModelDisplayProps> = ({
     return () => {
       unwatch();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [design3D.id, assumptions]);
 
   // Update sync state periodically

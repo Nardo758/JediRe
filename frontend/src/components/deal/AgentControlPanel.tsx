@@ -117,6 +117,7 @@ export function AgentControlPanel({ dealId, compact = false, onRunComplete }: Ag
   // Fetch recent runs on mount
   useEffect(() => {
     fetchRecentRuns();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId]);
 
   // Poll running agents
@@ -129,6 +130,7 @@ export function AgentControlPanel({ dealId, compact = false, onRunComplete }: Ag
     }, 2000);
 
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [runningAgents]);
 
   const fetchRecentRuns = async () => {

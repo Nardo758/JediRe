@@ -93,6 +93,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         }
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [parcelGeometry, dealId]);
   
   const scenarios = useDesign3DStore((s) => s.scenarios);
