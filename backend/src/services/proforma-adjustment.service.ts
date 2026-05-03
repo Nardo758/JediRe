@@ -1916,6 +1916,12 @@ export async function getDealFinancials(
     ? +parseFloat(proformaAssumRes.rows[0].opex_growth_current).toFixed(3)
     : 0.03;
 
+  // concessionBurnOffPct: read from per_year_overrides['concessionBurnOffPct:yr1'] (flat-mode
+  // user entry via PATCH /financials/override) so the Projections engine scalar fallback
+  // is populated from persisted DB state, not hardcoded null.
+  const allPyOverrides = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, { value: number | null }>;
+  const concessionBurnOffFromOverrides: number | null = allPyOverrides['concessionBurnOffPct:yr1']?.value ?? null;
+
   // Per-year assumptions grid: year1 uses M07 calibrated values; years 2+ blend toward
   // stabilized growth (platform findings from proforma_assumptions.rent_growth_current)
   const perYear = Array.from({ length: holdYears }, (_, i) => {
@@ -1990,7 +1996,7 @@ export async function getDealFinancials(
     rentGrowthStabilized: rentGrowthStab,
     perYear,
     opexGrowthPct: opexGrowthRate,
-    concessionBurnOffPct: null as number | null,
+    concessionBurnOffPct: concessionBurnOffFromOverrides,
     gprDecomposition: (gprBrokerAnnual ?? gprPlatAnnual ?? gprT12Annual ?? gprResolvedAnnual) != null
       ? gprDecomposition
       : null,

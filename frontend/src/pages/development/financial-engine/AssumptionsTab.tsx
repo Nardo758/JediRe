@@ -1960,13 +1960,30 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   // Editing these fields recomputes Pro Forma Y1 and cascades through all projection years.
   // Section B (Trajectory): Y2+ growth rates, burn-off schedules, exit assumptions.
   // Editing Section B fields leaves Pro Forma (Year 1) unchanged; only Y2+ moves.
-  const allSections: Array<{ sec: number; rows: RowDef[]; sectionGroup: 'A' | 'B' }> = [
-    { sec: 5, rows: [...revRows, ...STATIC_ROWS.filter(r => r.section === 5)], sectionGroup: 'A' },
-    { sec: 6, rows: opexRows,                                                  sectionGroup: 'A' },
-    { sec: 9, rows: STATIC_ROWS.filter(r => r.section === 9),                 sectionGroup: 'A' },
-    { sec: 7, rows: STATIC_ROWS.filter(r => r.section === 7),                 sectionGroup: 'B' },
-    { sec: 8, rows: STATIC_ROWS.filter(r => r.section === 8),                 sectionGroup: 'B' },
-    { sec: 10, rows: STATIC_ROWS.filter(r => r.section === 10),               sectionGroup: 'B' },
+  // Section A = base-year document-sourced inputs (T12 / Rent Roll / Tax Bill / OM).
+  // Editing a Section A field cascades through Pro Forma Y1 AND all projection years.
+  // Section B = trajectory inputs (Y2+ growth rates, vacancy ramp, CapEx schedule, exit).
+  // Editing a Section B field leaves Pro Forma (Year 1) unchanged; only Y2+ moves.
+  //
+  // Section 5 is SPLIT: revRows (base GPR/vacancy from rent roll) → A;
+  // STATIC_ROWS section 5 (M07 Traffic Intel: velocity, derived vacancy, lease-up curve,
+  // stabilized occupancy) → B because they drive the Y2+ vacancy ramp / trajectory.
+  const allSections: Array<{ id: string; sec: number; label: string; rows: RowDef[]; sectionGroup: 'A' | 'B' }> = [
+    { id: '5-base', sec: 5, label: '5  REVENUE  [proforma.year1 · Rent Roll]',
+      rows: revRows,                                                                    sectionGroup: 'A' },
+    { id: '6',      sec: 6, label: SEC[6],
+      rows: opexRows,                                                                   sectionGroup: 'A' },
+    { id: '9',      sec: 9, label: SEC[9],
+      rows: STATIC_ROWS.filter(r => r.section === 9),                                  sectionGroup: 'A' },
+    // ── Section B starts here ────────────────────────────────────────────────────
+    { id: '5-traf', sec: 5, label: '5  REVENUE › M07 TRAFFIC INTEL  [Vacancy Trajectory]',
+      rows: STATIC_ROWS.filter(r => r.section === 5),                                  sectionGroup: 'B' },
+    { id: '7',      sec: 7, label: SEC[7],
+      rows: STATIC_ROWS.filter(r => r.section === 7),                                  sectionGroup: 'B' },
+    { id: '8',      sec: 8, label: SEC[8],
+      rows: STATIC_ROWS.filter(r => r.section === 8),                                  sectionGroup: 'B' },
+    { id: '10',     sec: 10, label: SEC[10],
+      rows: STATIC_ROWS.filter(r => r.section === 10),                                 sectionGroup: 'B' },
   ];
 
   // ── F9 Protector inputs — terminal-year rent growth, exit cap, OPEX growth ─
@@ -2144,7 +2161,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                   onToggle={() => setRenoSectionCollapsed(c => !c)}
                 />
               )}
-              {allSections.map(({ sec, rows, sectionGroup }, idx) => {
+              {allSections.map(({ id, sec, label, rows, sectionGroup }, idx) => {
                 const isCollapsed = collapsedSections.has(sec);
                 const isFinancing = sec === 9;
                 const isSectionBStart =
@@ -2154,7 +2171,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                   ? 'SECTION A — BASE YEAR (Document Sources). Editing fields here recomputes Pro Forma Y1 and cascades through all projection years.'
                   : 'SECTION B — TRAJECTORY (Y2+ Inputs). Editing fields here affects Year 2+ only; Pro Forma (Year 1) is unchanged.';
                 return (
-                  <React.Fragment key={sec}>
+                  <React.Fragment key={id}>
                     {/* ── Section A header — only before the very first section (idx 0) */}
                     {idx === 0 && (
                       <tr>
@@ -2228,7 +2245,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                             ? <ChevronRight className="w-3 h-3 text-slate-500 shrink-0" />
                             : <ChevronDown className="w-3 h-3 text-slate-500 shrink-0" />
                           }
-                          {SEC[sec]}
+                          {label}
                           {isFinancing && (
                             <span className="ml-2 text-[8px] font-normal border rounded px-1" style={{ color: '#10b981', borderColor: '#065f46' }}>
                               READ-ONLY · → DEBT TAB

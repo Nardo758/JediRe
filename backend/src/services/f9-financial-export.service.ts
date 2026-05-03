@@ -742,6 +742,88 @@ function buildAssumptionsSheet(f: DealFinancials): XLSX.WorkSheet {
   return ws;
 }
 
+// ─── Projections sheet (separate tab: Year 1 cross-refs Pro Forma; Y2+ direct) ─
+
+function buildProjectionsSheet(
+  f: DealFinancials,
+  projs: ProjYearExport[],
+  holdYears: number,
+): XLSX.WorkSheet {
+  const N = holdYears;
+  const yearCols = Array.from({ length: N }, (_, i) => i + 1);
+  const totalRows = 55;
+  const aoa: (string | number | null)[][] = Array.from({ length: totalRows }, () => []);
+
+  // Use same row layout as Pro Forma so column letters align for cross-sheet refs.
+  // Year 1 key line items (GPR, EGI, NOI, TOPEX, CFBT) use ='Pro Forma'!B{row}
+  // cross-sheet references rather than duplicated formulas.
+  aoa[R.TITLE]    = [`Projections  |  ${f.dealName}  |  ${f.totalUnits} Units`];
+  aoa[R.SUBTITLE] = [`Hold Period: ${holdYears} Years  |  Generated: ${new Date().toLocaleDateString()}`];
+  aoa[R.HDRS]     = ['OPERATING STATEMENT', ...yearCols.map(y => `YR ${y}`)];
+
+  const mkRow = (label: string, key: keyof ProjYearExport): (string | number | null)[] =>
+    [label, ...projs.map(p => (p[key] as number | null) ?? null)];
+
+  aoa[R.GPR]     = mkRow('Gross Potential Rent', 'gpr');
+  aoa[R.VAC]     = mkRow('  (–) Vacancy Loss', 'vacancyLoss');
+  aoa[R.LTL]     = mkRow('  (–) Loss to Lease', 'lossToLease');
+  aoa[R.CONC]    = mkRow('  (–) Concessions', 'concessions');
+  aoa[R.BADDEBT] = mkRow('  (–) Bad Debt', 'badDebt');
+  aoa[R.NRU]     = mkRow('  (–) Non-Revenue Units', 'nru');
+  aoa[R.NRI]     = mkRow('Net Rental Income', 'nri');
+  aoa[R.OTH]     = mkRow('  Other Income', 'otherIncome');
+  aoa[R.EGI]     = mkRow('EFFECTIVE GROSS INCOME', 'egi');
+  aoa[14]        = [''];
+  aoa[14]        = ['EXPENSES'];
+  aoa[R.PAYROLL] = mkRow('  Payroll & Benefits', 'payroll');
+  aoa[R.REPAIRS] = mkRow('  R&M / Make-Ready', 'repairs');
+  aoa[R.TURNOVER]= mkRow('  Turnover / Make-Ready', 'turnover');
+  aoa[R.CONTRACT]= mkRow('  Contract Services', 'contractSvc');
+  aoa[R.MKTG]    = mkRow('  Marketing & Leasing', 'marketing');
+  aoa[R.UTIL]    = mkRow('  Utilities', 'utilities');
+  aoa[R.GANDA]   = mkRow('  G&A / Administrative', 'gAndA');
+  aoa[R.MGMT]    = mkRow('  Management Fee', 'mgmtFee');
+  aoa[R.INS]     = mkRow('  Insurance', 'insurance');
+  aoa[R.RETAX]   = mkRow('  Real Estate Taxes', 'reTaxes');
+  aoa[R.RESV]    = mkRow('  Replacement Reserves', 'reserves');
+  aoa[R.TOPEX]   = mkRow('TOTAL OPERATING EXPENSES', 'totalOpex');
+  aoa[R.NOI]     = mkRow('NET OPERATING INCOME', 'noi');
+  aoa[R.INTEREST]= mkRow('  Interest', 'interest');
+  aoa[R.PRINC]   = mkRow('  Principal Paydown', 'principal');
+  aoa[R.TOTALDS] = mkRow('TOTAL DEBT SERVICE', 'annualDS');
+  aoa[R.CAPEX]   = mkRow('  (–) CapEx Draw', 'capexDraw');
+  aoa[R.CFBT]    = mkRow('CASH FLOW BEFORE TAX', 'cfbt');
+  aoa[R.NETCF]   = mkRow('  Net Cash Flow', 'netCF');
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // ── Year 1 cross-sheet references for the 5 key line items ───────────────
+  // 'Pro Forma' column B (col index 1) = Year 1. Row index +1 = Excel row number.
+  const Y1_COL = 'B';
+  const crossRef = (rowIdx: number) => `='Pro Forma'!${Y1_COL}${rowIdx + 1}`;
+  for (const rowIdx of [R.GPR, R.EGI, R.NOI, R.TOPEX, R.CFBT]) {
+    ws[addr(rowIdx, 1)] = { t: 'n', f: crossRef(rowIdx), v: projs[0]?.[
+      ({ [R.GPR]: 'gpr', [R.EGI]: 'egi', [R.NOI]: 'noi', [R.TOPEX]: 'totalOpex', [R.CFBT]: 'cfbt' } as Record<number, keyof ProjYearExport>)[rowIdx]
+    ] as number ?? 0 };
+  }
+
+  // ── Y2-YN formula cells (same pattern as Pro Forma sheet) ────────────────
+  for (let y = 1; y < N; y++) {    // y=0 is Year 1, already handled above
+    const col = y + 1;
+    const C   = colLetter(col);
+    ws[addr(R.NRI,   col)] = { t: 'n', f: `=${C}${R.GPR+1}-${C}${R.VAC+1}-${C}${R.LTL+1}-${C}${R.CONC+1}-${C}${R.BADDEBT+1}-${C}${R.NRU+1}`, v: projs[y].nri };
+    ws[addr(R.EGI,   col)] = { t: 'n', f: `=${C}${R.NRI+1}+${C}${R.OTH+1}`, v: projs[y].egi };
+    ws[addr(R.TOPEX, col)] = { t: 'n', f: `=SUM(${C}${R.PAYROLL+1}:${C}${R.RESV+1})`, v: projs[y].totalOpex };
+    ws[addr(R.NOI,   col)] = { t: 'n', f: `=${C}${R.EGI+1}-${C}${R.TOPEX+1}`, v: projs[y].noi };
+    ws[addr(R.TOTALDS,col)]= { t: 'n', f: `=${C}${R.INTEREST+1}+${C}${R.PRINC+1}`, v: projs[y].annualDS };
+    ws[addr(R.CFBT,  col)] = { t: 'n', f: `=${C}${R.NOI+1}-${C}${R.TOTALDS+1}-${C}${R.CAPEX+1}`, v: projs[y].cfbt };
+  }
+
+  ws['!cols'] = [{ wch: 32 }, ...Array.from({ length: N }, () => ({ wch: 14 }))];
+  ws['!ref']  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalRows - 1, c: N } });
+  return ws;
+}
+
 // ─── Main workbook builder ────────────────────────────────────────────────────
 
 export function buildF9Workbook(f: DealFinancials, holdYears: number): XLSX.WorkBook {
@@ -749,6 +831,7 @@ export function buildF9Workbook(f: DealFinancials, holdYears: number): XLSX.Work
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, buildProFormaSheet(f, projs, holdYears), 'Pro Forma');
+  XLSX.utils.book_append_sheet(wb, buildProjectionsSheet(f, projs, holdYears), 'Projections');
   XLSX.utils.book_append_sheet(wb, buildTrafficSheet(f, holdYears), 'Traffic Projection');
   XLSX.utils.book_append_sheet(wb, buildAssumptionsSheet(f), 'Assumptions');
 
