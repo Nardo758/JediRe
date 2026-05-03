@@ -1,0 +1,14 @@
+The principle: the column should never render extraction failure as a value. Three explicit states, visually distinct.
+State 1 — OK (every occupied unit has a parsed expiration date). Render the existing 5-segment stacked bar. Callout text stays as designed: 19 MTM · 4 ≤3mo.
+State 2 — PARTIAL (some units have dates, some don't). Render the 5-segment bar normally for the units with valid dates, and append a sixth segment at the right end rendered as a hatched/striped grey fill — clearly not the same visual vocabulary as the colored buckets. Width is unknown_count / occupied_count. Callout text appends a question-marked count: 19 MTM · 4 ≤3mo · 12 ?. The hatched segment hovers as "12 units missing expiration date."
+State 3 — FAILED (every unit missing a date — your 464 Bishop case). Replace the bar entirely with an em-dash — left-aligned in the column, dimmed to your secondary text token. Suppress the count callout. Optionally a tiny warning glyph after the dash that hovers as "Expiration column not mapped from rent roll." The TOTALS row in this state should not show "186 MTM" — it should show — matching the rows above it.
+The dashed empty-bar treatment your agent mentioned for "OM-only deal" properties is the right pattern but the wrong reach. That treatment says "this deal type doesn't have rent roll data." A standard rent roll that was uploaded but failed extraction is a different signal — the user gave you the data, the parser dropped it, and they need to know that. Em-dash plus warning glyph reads as "we tried and missed" rather than "this isn't applicable."
+The fix that makes all three states work lives in the bucketer, not the renderer. Currently:
+if (date == null || m < 0) → MTM
+Change to:
+if (date == null) → UNKNOWN
+else if (m < 0) → MTM
+else if (m <= 3) → 0-3
+... etc
+And expose expiration_extraction_status on each floor_plan_mix entry: OK if unknown_count == 0, FAILED if unknown_count == occupied_count, PARTIAL otherwise. The renderer reads that flag and picks the state.
+Side benefit: the same UNKNOWN bucket gives you a property-level extraction-quality KPI you can surface at upload time — "Lease expiration mapped: 0 of 232 units. Re-upload recommended" — which catches this class of failure before it gets to the deal capsule at all.
