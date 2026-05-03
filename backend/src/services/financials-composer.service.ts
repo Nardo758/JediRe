@@ -1165,7 +1165,10 @@ function buildAssumptions(y1: any): any {
       rentGrowthPct: i === 0 ? (y1?.rentGrowthRate ?? null) : (y1?.rentGrowthStabilized ?? null),
       vacancyPct: y1?.vacancy ?? null,
       exitCapIfLastYear: i === holdYears - 1 ? (y1?.exitCap ?? null) : null,
+      capexDraw: null,
     })),
+    opexGrowthPct: null,
+    concessionBurnOffPct: null,
     gprDecomposition: y1?.gprDecomposition ?? null,
     narrative: y1?.narrative ?? null,
   };

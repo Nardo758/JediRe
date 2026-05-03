@@ -20,6 +20,8 @@ export interface ProjYearExport {
   totalOpex: number; noi: number;
   opMargin: number | null; noiPerUnit: number | null;
   interest: number; principal: number; annualDS: number;
+  /** CapEx draw this year (total $). Sourced from user capexPerYear override or 40/35/25 fallback. */
+  capexDraw: number;
   cfbt: number; netCF: number;
   coc: number | null; dscr: number | null; debtYield: number | null; occupancy: number | null;
   exitNoi: number | null; exitCap: number | null; grossSaleValue: number | null;
@@ -82,6 +84,20 @@ export function buildProjectionsForExport(
   const equityAtClose = capitalStack.equityAtClose ?? 0;
   const years: ProjYearExport[] = [];
 
+  // Pre-compute total Y1 capex for the 40/35/25 fallback schedule.
+  // Falls back to 0 when no capex budget is set, leaving CFBT unchanged for
+  // existing deals that have never configured capex.
+  const capexTotalY1 = y1('capex') ?? 0;
+
+  // Concession burn-off rate (Section B trajectory field).
+  // User override at year=1 (flat rate) → assumptions field → 0 (no burn-off).
+  // Default 0 preserves existing behavior for deals that haven't set this.
+  // TODO(agent): concessionBurnOffPct — agent integration out of scope here.
+  const concBurnOffRate =
+    f.userOverrides['concessionBurnOffPct']?.[1] ??
+    assumptions.concessionBurnOffPct ??
+    0;
+
   for (let yr = 1; yr <= holdYears; yr++) {
     const tv = tyr(yr);
     const pv = pyr(yr);
@@ -92,8 +108,20 @@ export function buildProjectionsForExport(
       const g = pyr(y)?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
       rentMult *= 1 + (g ?? 0.03);
     }
-    const opexMult = Math.pow(1.03, yr - 1);
-    const insMult  = Math.pow(1.035, yr - 1);
+
+    // Compound OpEx growth from user override (per-year or flat), falling back
+    // to the DB-seeded platform value (assumptions.opexGrowthPct), then to 3%.
+    // Replaces the former hardcoded Math.pow(1.03, yr-1) so that user inputs
+    // from the Assumptions tab Section B actually affect Y2+ projections.
+    // TODO(M36): opexGrowthPct is a Section B trajectory driver — add to covariance matrix when M36 integrates.
+    let opexMult = 1;
+    let insMult  = 1;
+    for (let y = 1; y < yr; y++) {
+      const opexG = f.userOverrides['growthOpexPct']?.[y] ?? assumptions.opexGrowthPct ?? 0.03;
+      const insG  = f.userOverrides['growthInsurancePct']?.[y] ?? 0.035;
+      opexMult *= 1 + opexG;
+      insMult  *= 1 + insG;
+    }
 
     // GPR = resolvedAnnual × compound rent growth (vacancy handled separately)
     const gpr = Math.round(gprY1 * rentMult);
@@ -102,7 +130,10 @@ export function buildProjectionsForExport(
     const vacPct      = tv?.vacancyPct ?? pv?.vacancyPct ?? y1('vacancy_pct') ?? 0.05;
     const vacancyLoss = Math.round(gpr * (vacPct ?? 0.05));
     const lossToLease = Math.round(gpr * lossToLeasePctY1);
-    const concessions = Math.round(gpr * concPctY1);
+    // Concession burn-off: ramp Y1 concession loss toward zero over the hold.
+    // concBurnOffRate = 0 → concessions fixed at Y1 (existing behavior).
+    // concBurnOffRate = 0.5 → concessions halved by Y3, zero by Y3.
+    const concessions = Math.round(gpr * concPctY1 * Math.max(0, 1 - concBurnOffRate * (yr - 1)));
     const badDebt     = Math.round(gpr * badDebtPctY1);
     const nru         = Math.round(gpr * nruPctY1);
     const nri         = gpr - vacancyLoss - lossToLease - concessions - badDebt - nru;
@@ -146,7 +177,19 @@ export function buildProjectionsForExport(
       }
     }
 
-    const cfbt  = noi - annualDS;
+    // Per-year CapEx draw: user override → 40/35/25 hardcoded fallback.
+    // Falls back to 0 when no capex budget is set (capexTotalY1 = 0), preserving
+    // existing behavior for deals without a configured capex budget.
+    const capexDraw = (() => {
+      const perYrOverride = f.userOverrides['capexPerYear']?.[yr];
+      if (perYrOverride != null) return Math.round(perYrOverride * totalUnits);
+      if (yr === 1) return Math.round(capexTotalY1 * 0.40);
+      if (yr === 2) return Math.round(capexTotalY1 * 0.35);
+      if (yr === 3) return Math.round(capexTotalY1 * 0.25);
+      return 0;
+    })();
+
+    const cfbt  = noi - annualDS - capexDraw;
     const netCF = cfbt;
     cumulativeCF += netCF;
 
@@ -186,6 +229,7 @@ export function buildProjectionsForExport(
       opMargin:   egi > 0 ? noi / egi : null,
       noiPerUnit: totalUnits > 0 ? noi / totalUnits : null,
       interest, principal, annualDS,
+      capexDraw,
       cfbt, netCF,
       coc, dscr, debtYield, occupancy,
       exitNoi, exitCap, grossSaleValue, sellingCosts, loanPayoff, netSaleProceeds,
@@ -667,19 +711,24 @@ function buildAssumptionsSheet(f: DealFinancials): XLSX.WorkSheet {
     ['Origination Fee %', cs.originationFeePct ?? null],
     ['Price Per Unit',    cs.pricePerUnit      ?? null],
     [],
-    ['KEY ASSUMPTIONS'],
+    ['SECTION A — BASE YEAR (Document Sources)'],
     ['Hold Period (yrs)',           ass.holdYears],
     ['Exit Cap Rate',               ass.exitCap         ?? null],
     ['Rent Growth Year 1',          ass.rentGrowthYr1   ?? null],
     ['Rent Growth Stabilized',      ass.rentGrowthStabilized ?? null],
     [],
+    ['SECTION B — TRAJECTORY (Y2+ Growth Rates)'],
+    ['OpEx Growth % / yr',          ass.opexGrowthPct        ?? null],
+    ['Concession Burn-Off % / yr',  ass.concessionBurnOffPct ?? null],
+    [],
     ['PER-YEAR ASSUMPTIONS'],
-    ['Year', 'Rent Growth %', 'Vacancy %', 'Exit Cap (if last yr)'],
+    ['Year', 'Rent Growth %', 'Vacancy %', 'Exit Cap (if last yr)', 'CapEx Draw ($/unit)'],
     ...ass.perYear.map(p => [
       p.year,
       p.rentGrowthPct     ?? null,
       p.vacancyPct        ?? null,
       p.exitCapIfLastYear ?? null,
+      p.capexDraw         ?? null,
     ]),
   ];
 

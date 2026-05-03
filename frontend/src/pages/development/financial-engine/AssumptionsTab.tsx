@@ -827,6 +827,25 @@ const STATIC_ROWS: RowDef[] = [
     getPlatform: (_f, _yr) => 0.02,
     getConfidence: _f => 75,
   },
+
+  // ── Section 10 continued: Concession burn-off (Section B trajectory) ────────
+  // This field drives the projection engine's concession ramp-to-zero logic.
+  // 0 = concessions fixed at Y1 throughout hold (existing behavior, default).
+  // TODO(M36): concessionBurnOffPct is a Section B trajectory driver — add to
+  //   covariance matrix when M36 integrates.
+  // TODO(agent): concessionBurnOffPct — agent integration out of scope here.
+  {
+    key: 'concessionBurnOffPct', label: 'Concession Burn-Off % / yr', section: 10, unit: 'pct',
+    format: fmtPct2, patchField: 'concessionBurnOffPct',
+    description: 'Annual rate at which Year-1 concession loss is phased out toward zero. ' +
+      '0 = concessions unchanged through hold; 0.5 = halved by Y3, zero by Y3; 1 = eliminated by Y2. ' +
+      'Editing this field affects Year 2+ only; Pro Forma (Year 1) is unchanged.',
+    platformSource: 'JEDI — Market lease-up stabilization curve',
+    brokerSource: 'OM / Pro Forma Assumptions',
+    getBroker:     (_f, _yr) => 0,
+    getPlatform:   (_f, _yr) => 0,
+    getConfidence: (_f) => 65,
+  },
 ];
 
 // ─── Divergence helpers ────────────────────────────────────────────────────────
@@ -1937,12 +1956,17 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       return next;
     });
 
-  const allSections: Array<{ sec: number; rows: RowDef[] }> = [
-    { sec: 5, rows: [...revRows, ...STATIC_ROWS.filter(r => r.section === 5)] },
-    { sec: 6, rows: opexRows },
-    { sec: 7, rows: STATIC_ROWS.filter(r => r.section === 7) },
-    { sec: 8, rows: STATIC_ROWS.filter(r => r.section === 8) },
-    { sec: 9, rows: STATIC_ROWS.filter(r => r.section === 9) },
+  // Section A (Base Year): fields sourced from T12 / Rent Roll / Tax Bill / Platform.
+  // Editing these fields recomputes Pro Forma Y1 and cascades through all projection years.
+  // Section B (Trajectory): Y2+ growth rates, burn-off schedules, exit assumptions.
+  // Editing Section B fields leaves Pro Forma (Year 1) unchanged; only Y2+ moves.
+  const allSections: Array<{ sec: number; rows: RowDef[]; sectionGroup: 'A' | 'B' }> = [
+    { sec: 5, rows: [...revRows, ...STATIC_ROWS.filter(r => r.section === 5)], sectionGroup: 'A' },
+    { sec: 6, rows: opexRows,                                                  sectionGroup: 'A' },
+    { sec: 7, rows: STATIC_ROWS.filter(r => r.section === 7),                 sectionGroup: 'A' },
+    { sec: 9, rows: STATIC_ROWS.filter(r => r.section === 9),                 sectionGroup: 'A' },
+    { sec: 8, rows: STATIC_ROWS.filter(r => r.section === 8),                 sectionGroup: 'B' },
+    { sec: 10, rows: STATIC_ROWS.filter(r => r.section === 10),               sectionGroup: 'B' },
   ];
 
   // ── F9 Protector inputs — terminal-year rent growth, exit cap, OPEX growth ─
@@ -2120,14 +2144,83 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                   onToggle={() => setRenoSectionCollapsed(c => !c)}
                 />
               )}
-              {allSections.map(({ sec, rows }) => {
+              {allSections.map(({ sec, rows, sectionGroup }, idx) => {
                 const isCollapsed = collapsedSections.has(sec);
                 const isFinancing = sec === 9;
+                const isSectionBStart =
+                  sectionGroup === 'B' &&
+                  (idx === 0 || allSections[idx - 1].sectionGroup === 'A');
+                const sectionTooltip = sectionGroup === 'A'
+                  ? 'SECTION A — BASE YEAR (Document Sources). Editing fields here recomputes Pro Forma Y1 and cascades through all projection years.'
+                  : 'SECTION B — TRAJECTORY (Y2+ Inputs). Editing fields here affects Year 2+ only; Pro Forma (Year 1) is unchanged.';
                 return (
                   <React.Fragment key={sec}>
+                    {/* ── Section A header — only before the very first section (idx 0) */}
+                    {idx === 0 && (
+                      <tr>
+                        <td
+                          colSpan={years.length + 2}
+                          style={{ padding: '6px 12px 2px', background: '#0a0a0a' }}
+                        >
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                          }}>
+                            <span style={{
+                              fontFamily: MONO,
+                              fontSize: 8,
+                              fontWeight: 700,
+                              color: '#22d3ee',
+                              letterSpacing: '0.1em',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              A — BASE YEAR · DOCUMENT SOURCES
+                            </span>
+                            <div style={{ flex: 1, borderTop: '1px dashed #22d3ee22' }} />
+                            <span style={{ fontFamily: MONO, fontSize: 7, color: '#0e7490', whiteSpace: 'nowrap' }}>
+                              edits here cascade through all projection years
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {/* ── Section B divider — visible boundary between Base Year and Trajectory panels */}
+                    {isSectionBStart && (
+                      <tr>
+                        <td
+                          colSpan={years.length + 2}
+                          style={{ padding: '10px 12px 4px', background: '#0a0a0a' }}
+                        >
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            borderTop: '1px solid #7c3aed44',
+                            paddingTop: 8,
+                          }}>
+                            <span style={{
+                              fontFamily: MONO,
+                              fontSize: 8,
+                              fontWeight: 700,
+                              color: '#7c3aed',
+                              letterSpacing: '0.1em',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              B — TRAJECTORY · Y2+ INPUTS
+                            </span>
+                            <div style={{ flex: 1, borderTop: '1px dashed #7c3aed33' }} />
+                            <span style={{ fontFamily: MONO, fontSize: 7, color: '#6d28d9', whiteSpace: 'nowrap' }}>
+                              edits here leave Pro Forma Y1 unchanged
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                     <tr
                       className="bg-[#181818] border-y border-[#1e1e1e] h-[22px] cursor-pointer hover:bg-[#1e1e1e] select-none"
                       onClick={() => toggleSection(sec)}
+                      title={sectionTooltip}
                     >
                       <td colSpan={years.length + 2} className="px-3 py-1 text-[11px] font-bold text-slate-300 sticky left-0 bg-[#181818]">
                         <span className="flex items-center gap-2">
@@ -2139,6 +2232,11 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                           {isFinancing && (
                             <span className="ml-2 text-[8px] font-normal border rounded px-1" style={{ color: '#10b981', borderColor: '#065f46' }}>
                               READ-ONLY · → DEBT TAB
+                            </span>
+                          )}
+                          {sectionGroup === 'B' && (
+                            <span className="ml-2 text-[7px] font-normal border rounded px-1" style={{ color: '#7c3aed', borderColor: '#7c3aed44' }}>
+                              Y2+ ONLY
                             </span>
                           )}
                           <span className="ml-auto text-[8px] font-normal text-slate-600">{rows.length} rows</span>

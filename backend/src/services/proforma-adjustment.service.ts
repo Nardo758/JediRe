@@ -1252,7 +1252,16 @@ export interface DealFinancials {
       rentGrowthPct: number | null;
       vacancyPct: number | null;
       exitCapIfLastYear: number | null;
+      /** Per-year CapEx draw ($/unit). Null = use hardcoded 40/35/25 fallback schedule. */
+      capexDraw: number | null;
     }>;
+    /** Platform / DB-seeded OpEx growth rate. User overrides stored in userOverrides['growthOpexPct'].
+     * TODO(M36): opexGrowthPct is a Section B trajectory driver — add to covariance matrix when M36 integrates. */
+    opexGrowthPct: number | null;
+    /** Annual rate at which Y1 concession loss is phased out. 0 = no burn-off; 1 = eliminated by Y2.
+     * User overrides stored in userOverrides['concessionBurnOffPct'].
+     * TODO(agent): concessionBurnOffPct — agent integration out of scope here. */
+    concessionBurnOffPct: number | null;
     gprDecomposition: {
       brokerAnnual: number | null;
       platformAnnual: number | null;
@@ -1933,6 +1942,7 @@ export async function getDealFinancials(
       rentGrowthPct: rentGrowthOverride?.value ?? rentGrowthPct,
       vacancyPct: vacOverride?.value ?? vacancyPct,
       exitCapIfLastYear: yr === holdYears ? exitCap : null,
+      capexDraw: null,
     };
   });
 
@@ -1976,6 +1986,8 @@ export async function getDealFinancials(
     rentGrowthYr1,
     rentGrowthStabilized: rentGrowthStab,
     perYear,
+    opexGrowthPct: opexGrowthRate,
+    concessionBurnOffPct: null as number | null,
     gprDecomposition: (gprBrokerAnnual ?? gprPlatAnnual ?? gprT12Annual ?? gprResolvedAnnual) != null
       ? gprDecomposition
       : null,
