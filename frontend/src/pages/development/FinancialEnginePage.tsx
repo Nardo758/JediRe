@@ -1280,8 +1280,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
             { label: 'CoC', value: kpi?.cashOnCash != null ? fmtPct(kpi.cashOnCash) : '—', color: BT.met.occupancy },
             { label: 'NOI', value: kpi?.noi != null ? fmt$(kpi.noi) : '—', color: BT.text.cyan },
             { label: 'DSCR', value: kpi?.dscr != null ? `${Number(kpi.dscr).toFixed(2)}×` : '—', color: BT.text.green },
-            { label: 'Go-In Cap', value: (kpi as any)?.goingInCapRate != null ? fmtPct((kpi as any).goingInCapRate) : '—', color: BT.text.muted },
-            { label: 'Exit Cap', value: (kpi as any)?.exitCapRate != null ? fmtPct((kpi as any).exitCapRate) : '—', color: BT.text.muted },
+            { label: 'GI Cap', value: (kpi as any)?.goingInCapRate != null ? fmtPct((kpi as any).goingInCapRate) : '—', color: BT.text.cyan },
+            { label: 'Ex Cap', value: (kpi as any)?.exitCapRate != null ? fmtPct((kpi as any).exitCapRate) : '—', color: BT.text.amber },
           ].map(m => (
             <div key={m.label} style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
               <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5 }}>{m.label}</span>
