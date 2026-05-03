@@ -104,6 +104,7 @@ interface BloombergOverviewSectionProps {
   deal: Record<string, unknown>;
   onTabChange?: (tabId: string) => void;
   geographicContext?: Record<string, unknown>;
+  onUpdate?: () => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -112,6 +113,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
   deal,
   onTabChange,
   geographicContext,
+  onUpdate,
 }) => {
   const {
     capitalStructure, financial, market,
@@ -729,7 +731,15 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
 
       {/* ── Row 5: Deal-Type Overview Router ── */}
       <div style={{ borderBottom: `1px solid ${BTV.border.subtle}`, flexShrink: 0 }}>
-        <OverviewRouter />
+        <OverviewRouter
+          dealId={typeof deal?.id === 'string' ? deal.id : null}
+          purchasePrice={
+            typeof deal?.purchasePrice === 'number' ? deal.purchasePrice :
+            typeof deal?.budget === 'number' ? deal.budget :
+            null
+          }
+          onSaved={onUpdate}
+        />
       </div>
 
       {/* ── Row 6: Key Financials | Deal Team | Recent Activity ── */}

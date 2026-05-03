@@ -3,6 +3,13 @@ import { BT, DataRow, SectionPanel, Bd } from './bloomberg-ui';
 import { AlertPip } from './AlertPip';
 import { useDealStore, useDealType } from '../../stores/dealStore';
 import type { LayeredValue, UnitMixRow, DealIdentity } from '../../stores/dealContext.types';
+import { apiClient } from '@/services/api.client';
+
+export interface OverviewRouterProps {
+  dealId?: string | null;
+  purchasePrice?: number | null;
+  onSaved?: () => void;
+}
 
 const MONO = BT.font.mono;
 const CAPITAL_INTENT_OPTIONS = ['core', 'core-plus', 'value-add', 'opportunistic', 'development'] as const;
@@ -158,7 +165,74 @@ function IdentityField({ label, fieldPath, value, onChange, options }: {
   );
 }
 
-function IdentityInputSection() {
+function PurchasePriceField({ dealId, value, onSaved }: {
+  dealId?: string | null;
+  value?: number | null;
+  onSaved?: () => void;
+}) {
+  const initial = value != null ? String(value) : '';
+  const [draft, setDraft] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => { setDraft(value != null ? String(value) : ''); }, [value]);
+
+  const isEmpty = draft === '' || draft == null;
+
+  const commit = useCallback(async () => {
+    if (!dealId) return;
+    const parsed = parseFloat(draft);
+    if (isNaN(parsed) || parsed === value) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}`, { budget: parsed });
+      onSaved?.();
+    } catch (e) {
+      setError('Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }, [dealId, draft, value, onSaved]);
+
+  return (
+    <div
+      data-field-path="deal.purchasePrice"
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '3px 8px',
+        borderBottom: `1px solid ${BT.border.subtle}`,
+        background: isEmpty ? `${BT.text.red}06` : 'transparent',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <AlertPip level={isEmpty ? 'block' : 'none'} />
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>PURCHASE PRICE</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>$</span>
+        <input
+          type="number"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          placeholder="Required"
+          disabled={!dealId || saving}
+          style={{
+            fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber,
+            background: BT.bg.input, border: `1px solid ${error ? BT.text.red : BT.border.medium}`,
+            padding: '1px 4px', outline: 'none', width: 140, textAlign: 'right',
+          }}
+        />
+        {saving && <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>SAVING…</span>}
+        {error && <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.red }}>{error}</span>}
+      </div>
+    </div>
+  );
+}
+
+function IdentityInputSection({ dealId, purchasePrice, onSaved }: OverviewRouterProps) {
   const identity = useDealStore(s => s.identity);
 
   const updateField = useCallback((field: keyof DealIdentity, value: string) => {
@@ -176,6 +250,7 @@ function IdentityInputSection() {
       <IdentityField label="ADDRESS" fieldPath="identity.address" value={identity.address} onChange={v => updateField('address', v)} />
       <IdentityField label="CITY" fieldPath="identity.city" value={identity.city} onChange={v => updateField('city', v)} />
       <IdentityField label="STATE" fieldPath="identity.state" value={identity.state} onChange={v => updateField('state', v)} />
+      <PurchasePriceField dealId={dealId} value={purchasePrice} onSaved={onSaved} />
       <IdentityField label="DEAL TYPE" fieldPath="identity.mode" value={identity.mode} onChange={v => updateField('mode', v)}
         options={['existing', 'development', 'redevelopment']} />
       <IdentityField label="SPONSOR" fieldPath="identity.sponsor" value={identity.sponsor} onChange={v => updateField('sponsor', v)} />
@@ -332,13 +407,13 @@ function ParkingConstraint() {
   );
 }
 
-export function ExistingOverview() {
+export function ExistingOverview(props: OverviewRouterProps = {}) {
   const resolvedUnitMix = useDealStore(s => s.resolvedUnitMix);
   const financial = useDealStore(s => s.financial);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <IdentityInputSection />
+      <IdentityInputSection {...props} />
       <UnitMixTable rows={resolvedUnitMix} readOnly={true} title="UNIT MIX — BROKER STATED" />
       <GapAnalysisPanel />
       <SectionPanel title="ASSUMPTIONS" subtitle="Override Only" borderColor={BT.met.financial}>
@@ -352,14 +427,14 @@ export function ExistingOverview() {
   );
 }
 
-export function DevelopmentOverview() {
+export function DevelopmentOverview(props: OverviewRouterProps = {}) {
   const resolvedUnitMix = useDealStore(s => s.resolvedUnitMix);
   const selectedPath = useDealStore(s => s.getSelectedPath());
   const financial = useDealStore(s => s.financial);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <IdentityInputSection />
+      <IdentityInputSection {...props} />
       {selectedPath && (
         <SectionPanel title="SELECTED PATH" borderColor={BT.text.green}>
           <DataRow label="BUILDING TYPE" value={selectedPath.buildingType.toUpperCase()} valueColor={BT.text.green} />
@@ -387,7 +462,7 @@ export function DevelopmentOverview() {
   );
 }
 
-export function RedevelopmentOverview() {
+export function RedevelopmentOverview(props: OverviewRouterProps = {}) {
   const resolvedUnitMix = useDealStore(s => s.resolvedUnitMix);
   const existingProperty = useDealStore(s => s.existingProperty);
   const redevelopment = useDealStore(s => s.redevelopment);
@@ -400,7 +475,7 @@ export function RedevelopmentOverview() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <IdentityInputSection />
+      <IdentityInputSection {...props} />
       <div style={{ display: 'flex', gap: 1 }}>
         <div style={{ flex: 1 }}>
           <SectionPanel title="AS-IS" borderColor={BT.text.amber}>
@@ -455,16 +530,16 @@ export function RedevelopmentOverview() {
   );
 }
 
-export function OverviewRouter() {
+export function OverviewRouter(props: OverviewRouterProps = {}) {
   const dealType = useDealType();
 
   switch (dealType) {
     case 'development':
-      return <DevelopmentOverview />;
+      return <DevelopmentOverview {...props} />;
     case 'redevelopment':
-      return <RedevelopmentOverview />;
+      return <RedevelopmentOverview {...props} />;
     case 'existing':
     default:
-      return <ExistingOverview />;
+      return <ExistingOverview {...props} />;
   }
 }

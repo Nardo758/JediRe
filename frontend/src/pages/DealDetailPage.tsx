@@ -141,6 +141,7 @@ const OverviewScreen = (props: ScreenProps) => {
           deal={props.deal}
           onTabChange={(tab) => props.onUpdate?.()}
           geographicContext={props.geographicContext as Record<string, unknown> | undefined}
+          onUpdate={props.onUpdate}
         />
       </div>
     </div>
