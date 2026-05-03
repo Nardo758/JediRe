@@ -1512,6 +1512,8 @@ export default function UnitMixIntelligence() {
       });
       setProgram(optimal);
     }
+  // hook intentionally captures comps, developmentEnvelope?.max_units via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, apiZoning, apiProgram]);
 
   useEffect(() => {

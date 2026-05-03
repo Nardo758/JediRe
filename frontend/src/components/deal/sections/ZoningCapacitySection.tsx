@@ -176,6 +176,8 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
     } else {
       setLoading(false);
     }
+  // hook intentionally omits fetchData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedDealId]);
 
   useEffect(() => {

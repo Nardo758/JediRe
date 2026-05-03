@@ -365,12 +365,16 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
       }
       map.remove();
     };
+  // hook intentionally omits geocodeDealAddress, handleDrawCreate, handleDrawUpdate, loadExistingBoundary — they're inline functions recreated each render; including them would cause an infinite re-fetch loop. The functions close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (boundary.boundaryGeoJSON && !zoningInfo && !zoningLoading && initialLoadDone.current) {
       lookupZoning();
     }
+  // hook intentionally omits lookupZoning — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boundary.boundaryGeoJSON]);
 
   // Load existing boundary from API

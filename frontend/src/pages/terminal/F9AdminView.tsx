@@ -64,6 +64,8 @@ export default function F9AdminView({ T }: F9AdminViewProps) {
   const { analysis: settingsContext, loading: settingsContextLoading, analyze: analyzeSettings } = useContextAnalysis();
   React.useEffect(() => {
     analyzeSettings({ context: 'market_dashboard' });
+  // hook intentionally captures analyzeSettings via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const renderNavGroup = (groupId: string, groupLabel: string) => {

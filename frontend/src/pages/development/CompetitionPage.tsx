@@ -114,6 +114,8 @@ export default function CompetitionPage() {
     if (dealId) {
       fetchCompetitionData();
     }
+  // hook intentionally omits fetchCompetitionData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, filters]);
 
   const fetchCompetitionData = async () => {

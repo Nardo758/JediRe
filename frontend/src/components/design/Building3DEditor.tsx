@@ -93,6 +93,8 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         }
       }
     }
+  // hook intentionally captures actions, state.parcelBoundary via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parcelGeometry, dealId]);
   
   const scenarios = useDesign3DStore((s) => s.scenarios);

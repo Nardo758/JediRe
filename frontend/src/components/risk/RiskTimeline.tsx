@@ -57,6 +57,8 @@ const RiskTimeline: React.FC<RiskTimelineProps> = ({ tradeAreaId, tradeAreaName 
 
   useEffect(() => {
     fetchHistory();
+  // hook intentionally omits fetchHistory — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tradeAreaId, selectedCategory]);
 
   const fetchHistory = async () => {

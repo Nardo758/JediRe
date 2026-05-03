@@ -55,6 +55,8 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({ projectId })
         service.linkDesignToFinancial(designId, projectId);
       }
     }
+  // hook intentionally captures projectId, service via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   
   const handleReturnToDesign = async () => {

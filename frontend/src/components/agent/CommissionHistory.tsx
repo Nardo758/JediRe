@@ -14,10 +14,14 @@ export default function CommissionHistory() {
 
   useEffect(() => {
     loadCommissions();
+  // hook intentionally omits loadCommissions — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yearFilter]);
 
   useEffect(() => {
     filterCommissions();
+  // hook intentionally omits filterCommissions — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commissions, searchTerm, statusFilter]);
 
   const loadCommissions = async () => {

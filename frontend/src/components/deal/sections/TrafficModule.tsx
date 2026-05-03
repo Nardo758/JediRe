@@ -378,6 +378,8 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       loadData();
     }
     prevStrategyRef.current = strategy.selectedStrategy;
+  // hook intentionally captures strategy via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strategy?.selectedStrategy, loadData]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

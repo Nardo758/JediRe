@@ -48,6 +48,8 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
 
   useEffect(() => {
     if (resolvedDealId) fetchSiteIntelligence();
+  // hook intentionally omits fetchSiteIntelligence — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedDealId]);
 
   const fetchSiteIntelligence = async () => {

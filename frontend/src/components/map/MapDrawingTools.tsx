@@ -194,11 +194,15 @@ export default function MapDrawingTools({
       map.off('draw.selectionchange', handleSelectionChange);
       map.removeControl(draw);
     };
+  // hook intentionally captures handleDrawCreate, handleDrawDelete, handleDrawUpdate, handleSelectionChange, selectedColor via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef]);
 
   // Load existing annotations
   useEffect(() => {
     loadAnnotations();
+  // hook intentionally omits loadAnnotations — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapType]);
 
   const loadAnnotations = async () => {

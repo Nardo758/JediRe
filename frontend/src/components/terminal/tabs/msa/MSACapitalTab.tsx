@@ -60,6 +60,8 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
 
   useEffect(() => {
     fetchCommentary('msa', msaId, msaName);
+  // hook intentionally captures fetchCommentary via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [msaId, msaName]);
 
   useEffect(() => {

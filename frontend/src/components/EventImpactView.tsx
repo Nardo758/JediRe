@@ -61,6 +61,8 @@ const EventImpactView: React.FC<EventImpactViewProps> = ({ eventId, onClose }) =
     if (eventId) {
       fetchEventImpact();
     }
+  // hook intentionally omits fetchEventImpact — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   const fetchEventImpact = async () => {

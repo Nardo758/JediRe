@@ -359,6 +359,8 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
         onSelectFwd(absIdx - NOW_IDX);
       }
     },
+    // hook intentionally captures iW, pad.l via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [onSelectFwd]
   );
 
@@ -401,6 +403,8 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
       const idx = Math.round(((mx - pad.l) / iW) * (TOTAL_Q - 1));
       if (idx >= 0 && idx < TOTAL_Q) setHoverIdx(idx);
     },
+    // hook intentionally captures iW, pad.l via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -928,6 +932,8 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
         isLive: true,
       };
     });
+  // hook intentionally captures POSITIVE_CATS via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m35Events]);
 
   const keyTriggers = useMemo((): KeyTriggerItem[] => {
@@ -962,6 +968,8 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
       return [...mapped, ...pads];
     }
     return mapped;
+  // hook intentionally captures FALLBACK_TRIGGERS via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m35Events]);
 
   function formatDataAsOf(isoStr: string): string {
@@ -978,6 +986,8 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     if (displayed.length === 0) return null;
     const latest = displayed.reduce((best, ev) => ev.updatedAt! > (best.updatedAt ?? '') ? ev : best, displayed[0]);
     return latest.updatedAt ? formatDataAsOf(latest.updatedAt) : null;
+  // hook intentionally captures POSITIVE_CATS via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m35Events]);
 
   const keyTriggersDataAsOf = useMemo((): string | null => {

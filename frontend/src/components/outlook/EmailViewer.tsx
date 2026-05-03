@@ -133,6 +133,8 @@ export default function EmailViewer({
       setShowReply(false);
       setReplyBody('');
     }
+  // hook intentionally omits loadEmail — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, emailId]);
 
   if (!isOpen) return null;

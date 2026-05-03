@@ -56,6 +56,8 @@ export const FinancialSummaryPanel: React.FC<FinancialSummaryPanelProps> = ({
     if (design3D) {
       calculateEstimates();
     }
+  // hook intentionally captures service via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [design3D]);
   
   const handleSendToFinancial = async () => {

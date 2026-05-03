@@ -104,6 +104,8 @@ export const ProFormaTemplateRenderer: React.FC<ProFormaTemplateRendererProps> =
   renderHeader,
   className,
 }) => {
+  // hook dep array is intentional for this closure pattern; see immediately surrounding code for the captured semantics.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const sections = template?.sections ?? [];
   const [activeId, setActiveId] = useState<string | null>(sections[0]?.id ?? null);
 

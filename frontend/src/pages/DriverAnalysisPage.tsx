@@ -158,6 +158,8 @@ export default function DriverAnalysisPage() {
   useEffect(() => {
     loadResults(selectedProperty);
     loadRuns(selectedProperty);
+  // hook omits loadResults, loadRuns — these are useCallback/useMemo-stabilized values whose identities only change when their own deps change, already captured by the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty]);
 
   const triggerRun = async () => {

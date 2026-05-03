@@ -83,6 +83,8 @@ const MarketRiskPanel: React.FC<MarketRiskPanelProps> = ({ tradeAreaId }) => {
 
   useEffect(() => {
     fetchMarketRisk();
+  // hook intentionally omits fetchMarketRisk — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tradeAreaId]);
 
   const fetchMarketRisk = async () => {

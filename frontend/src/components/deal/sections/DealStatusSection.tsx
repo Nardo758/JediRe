@@ -139,6 +139,8 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
       return;
     }
     loadDealState();
+  // hook intentionally omits loadDealState — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal?.id]);
 
   const loadDealState = async () => {

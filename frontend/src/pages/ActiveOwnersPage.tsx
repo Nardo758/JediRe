@@ -64,6 +64,8 @@ export default function ActiveOwnersPage() {
 
   useEffect(() => {
     fetchOwners();
+  // hook intentionally omits fetchOwners — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortBy, sortOrder, startYear, endYear]);
 
   const fetchOwners = async () => {

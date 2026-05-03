@@ -42,6 +42,8 @@ export const ActionItemDetector: React.FC<ActionItemDetectorProps> = ({
 
   useEffect(() => {
     detectActionItems();
+  // hook intentionally omits detectActionItems — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emailBody]);
 
   const detectActionItems = async () => {

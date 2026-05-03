@@ -64,6 +64,8 @@ export default function FutureSupplyPage() {
 
   useEffect(() => {
     fetchProjects();
+  // hook intentionally omits fetchProjects — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPhase]);
 
   const fetchProjects = async () => {

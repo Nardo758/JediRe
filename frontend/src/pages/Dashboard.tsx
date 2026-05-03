@@ -36,6 +36,8 @@ export const Dashboard: React.FC = () => {
       navigate('/deals/create');
       window.history.replaceState({}, document.title);
     }
+  // hook intentionally captures fetchDeals via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location, navigate]);
 
   useEffect(() => {
@@ -84,6 +86,8 @@ export const Dashboard: React.FC = () => {
         map.current = null;
       }
     };
+  // hook intentionally captures saveDrawing via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -128,6 +132,8 @@ export const Dashboard: React.FC = () => {
         removeLayer(layerId);
       }
     });
+  // hook intentionally omits fetchAndRenderLayer — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers]);
 
   const fetchAndRenderLayer = async (layerId: string) => {

@@ -35,6 +35,8 @@ export const APIError: React.FC<APIErrorProps> = ({
     if (isOnline && countdown === null && resetErrorBoundary) {
       setCountdown(3);
     }
+  // hook intentionally captures countdown, resetErrorBoundary via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline]);
 
   useEffect(() => {

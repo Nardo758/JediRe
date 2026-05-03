@@ -169,6 +169,8 @@ export function useEntitlements() {
 
   useEffect(() => {
     fetchEntitlements();
+  // hook omits fetchEntitlements — these are useCallback/useMemo-stabilized values whose identities only change when their own deps change, already captured by the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {

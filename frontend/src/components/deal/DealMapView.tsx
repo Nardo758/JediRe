@@ -54,6 +54,8 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
         map.current = null;
       }
     };
+  // hook intentionally omits fetchProperties — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.id]);
 
   const addBoundaryToMap = (m: mapboxgl.Map, boundary: any) => {

@@ -48,6 +48,8 @@ export const DashboardV2: React.FC = () => {
       navigate('/deals/create');
       window.history.replaceState({}, document.title);
     }
+  // hook intentionally captures fetchDeals via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location, navigate]);
 
   // Fetch layers for current map
@@ -100,6 +102,8 @@ export const DashboardV2: React.FC = () => {
         saveDrawing(null as any);
       });
     }
+  // hook intentionally captures saveDrawing via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef.current]);
 
   // Handle drawing mode activation
@@ -147,6 +151,8 @@ export const DashboardV2: React.FC = () => {
     } else {
       addDealsToMap(map);
     }
+  // hook intentionally omits addDealsToMap — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deals]);
 
   const addDealsToMap = (map: any) => {

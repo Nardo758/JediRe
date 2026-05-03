@@ -117,6 +117,8 @@ export function AgentControlPanel({ dealId, compact = false, onRunComplete }: Ag
   // Fetch recent runs on mount
   useEffect(() => {
     fetchRecentRuns();
+  // hook intentionally omits fetchRecentRuns — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   // Poll running agents
@@ -129,6 +131,8 @@ export function AgentControlPanel({ dealId, compact = false, onRunComplete }: Ag
     }, 2000);
 
     return () => clearInterval(interval);
+  // hook intentionally omits pollRunStatus — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runningAgents]);
 
   const fetchRecentRuns = async () => {

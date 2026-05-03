@@ -111,6 +111,8 @@ export const Pipeline3DProgress: React.FC<Pipeline3DProgressProps> = ({
   // Load mock data on mount
   useEffect(() => {
     loadMockConstructionData();
+  // hook intentionally omits loadMockConstructionData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   const loadMockConstructionData = () => {

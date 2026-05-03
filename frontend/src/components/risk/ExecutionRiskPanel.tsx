@@ -65,6 +65,8 @@ const ExecutionRiskPanel: React.FC<ExecutionRiskPanelProps> = ({ tradeAreaId }) 
 
   useEffect(() => {
     fetchExecutionRisk();
+  // hook intentionally omits fetchExecutionRisk — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tradeAreaId]);
 
   const fetchExecutionRisk = async () => {

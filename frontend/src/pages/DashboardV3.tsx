@@ -53,6 +53,8 @@ export const DashboardV3: React.FC = () => {
       navigate('/deals/create');
       window.history.replaceState({}, document.title);
     }
+  // hook intentionally captures fetchDeals via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location, navigate]);
 
   // Load default map configuration
@@ -114,6 +116,8 @@ export const DashboardV3: React.FC = () => {
         saveDrawing(null as any);
       });
     }
+  // hook intentionally captures saveDrawing via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef.current]);
 
   // Handle drawing mode

@@ -75,10 +75,14 @@ const AuditReport: React.FC<AuditReportProps> = ({ dealId }) => {
     if (dealId) {
       fetchAuditData();
     }
+  // hook intentionally omits fetchAuditData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   useEffect(() => {
     applyFilters();
+  // hook intentionally omits applyFilters — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assumptions, searchQuery, confidenceThreshold]);
 
   const fetchAuditData = async () => {

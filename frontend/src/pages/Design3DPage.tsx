@@ -131,6 +131,8 @@ export const Design3DPage: React.FC = () => {
     }, 5000); // Auto-save after 5 seconds of inactivity
     
     return () => clearTimeout(timer);
+  // hook intentionally omits handleSave — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [design3D, hasUnsavedChanges, autoSaveEnabled]);
 
   // Warn on unsaved changes

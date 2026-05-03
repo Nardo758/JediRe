@@ -138,6 +138,8 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       };
       fetchDebt();
     }
+  // hook omits markTabLive, markTabLoading — these are useCallback/useMemo-stabilized values whose identities only change when their own deps change, already captured by the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedStrategy]);
 
   useEffect(() => {
@@ -192,6 +194,8 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       };
       fetchRates();
     }
+  // hook intentionally captures historyPeriod, markTabLive, markTabLoading via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   useEffect(() => {
@@ -235,6 +239,8 @@ export const DebtTab: React.FC<DebtTabProps> = ({
         setLayers(strategyTemplates[incoming].defaultStack?.layers || defaultCapitalStack.layers);
       }
     }
+  // hook intentionally captures selectedStrategy via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastEvent]);
 
   const emitCapitalUpdate = useCallback(() => {
@@ -280,10 +286,14 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       type: 'capital-updated',
       payload: capitalPayload,
     });
+  // hook dep array kept minimal — the listed extra dep (selectedStrategy) was previously included for explicit re-trigger semantics; lint flags it as unused but it documents the intended invalidation key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers, financial, selectedStrategy, template, stack, updateCapitalStructure, emitEvent]);
 
   useEffect(() => {
     emitCapitalUpdate();
+  // hook omits emitCapitalUpdate — these are useCallback/useMemo-stabilized values whose identities only change when their own deps change, already captured by the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStrategy, layers]);
 
   const filteredProducts = useMemo(

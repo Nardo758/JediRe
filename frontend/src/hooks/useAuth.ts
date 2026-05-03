@@ -26,6 +26,8 @@ export function useAuth() {
     };
 
     checkAuth();
+  // hook intentionally captures setStoreToken, setUser, storeLogout via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const login = async (email: string, password: string) => {

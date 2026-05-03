@@ -112,6 +112,8 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
   useEffect(() => {
     if (!id) { setLoading(false); return; }
     loadModel();
+  // hook intentionally omits loadModel — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadModel = async () => {

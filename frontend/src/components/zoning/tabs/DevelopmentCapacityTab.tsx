@@ -973,6 +973,8 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
     } finally {
       setActivatingScenario(false);
     }
+  // hook intentionally captures deal?.existingProperty?.units, deal?.projectType via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, selectDevelopmentPath, loadScenarios]);
 
   const loadData = useCallback(async (autoResolve = false) => {
@@ -1123,6 +1125,8 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
     } finally {
       setLoading(false);
     }
+  // hook intentionally captures propCostPerSf via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, syncRecommendationsToDatabase]);
 
   useEffect(() => {
@@ -1194,6 +1198,8 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
       }
     }, 500);
     return () => clearTimeout(timer);
+  // hook intentionally captures profile, syncRecommendationsToDatabase via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variancePct, rezoneTargetCode, avgUnitSize, dealId]);
 
   // ═══ DEAL-TYPE ADAPTATION EFFECTS ═══

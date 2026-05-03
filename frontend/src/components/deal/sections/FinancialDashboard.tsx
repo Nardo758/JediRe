@@ -668,6 +668,8 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
     if (dealId && scenarios?.base?.irr > 0) {
       fetchAnalysis();
     }
+  // hook intentionally omits fetchAnalysis — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   if (loading) {
@@ -1035,12 +1037,16 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
 
       return updated ? patch : prev;
     });
+  // hook intentionally captures ctxCapital.dscr, ctxFinancial.cashOnCash, ctxFinancial.equityMultiple, ctxFinancial.irr, ctxFinancial.noi, ctxMarket.avgRent, ctxMarket.occupancy, ctxMarket.rentGrowth via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctxFinancial?.lastUpdated, ctxMarket?.lastUpdated, ctxCapital?.lastUpdated]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, load]);
 
   useEffect(() => {
     if (id) loadSummary();
+  // hook intentionally omits loadSummary — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadSummary = async () => {

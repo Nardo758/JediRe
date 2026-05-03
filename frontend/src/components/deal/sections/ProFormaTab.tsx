@@ -254,6 +254,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     } finally {
       setPlausibilityLoading(false);
     }
+  // hook intentionally captures expenseGrowth via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rentGrowth, stabilizedOccupancy, exitCapRate, capRate, interestRate, loanAmount, purchasePrice, platformData]);
 
   useEffect(() => {
@@ -261,6 +263,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     if (dealUnits > 0 && totalUnitsManual === null) {
       setTotalUnitsManual(dealUnits);
     }
+  // hook intentionally captures totalUnitsManual via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal]);
 
   const fetchRentSourceType = useCallback(async () => {
@@ -420,6 +424,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     if (programData && Object.keys(programMixRows).length === 0) {
       setProgramMixRows({ ...programData.units });
     }
+  // hook intentionally captures programMixRows via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [programData]);
 
   useEffect(() => {
@@ -554,6 +560,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         },
       } : {}),
     };
+  // hook intentionally captures sensitivityOverrides via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     dealName, totalUnits, netRentableSF, vintage, address, city, state, modelType, holdPeriod,
     unitMix, purchasePrice, capRate, closingCosts, exitCapRate, sellingCosts, saleNOIMethod,

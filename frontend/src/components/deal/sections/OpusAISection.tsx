@@ -231,10 +231,14 @@ export const OpusAISection: React.FC<OpusAISectionProps> = ({ deal }) => {
 
   useEffect(() => {
     loadLiveContext();
+  // hook intentionally omits loadLiveContext — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.id]);
 
   useEffect(() => {
     analyzeWithRole(selectedRole);
+  // hook intentionally omits analyzeWithRole — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRole, deal.id, liveContext]);
 
   const loadLiveContext = async () => {

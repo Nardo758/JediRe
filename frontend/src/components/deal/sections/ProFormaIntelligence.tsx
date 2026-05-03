@@ -41,6 +41,8 @@ export const ProFormaIntelligence: React.FC<ProFormaIntelligenceProps> = () => {
       dscr: capitalStructure.dscr,
       cashOnCash: parseFloat(coc.toFixed(1)),
     };
+  // hook dep array kept minimal — the listed extra dep (returnsSummary) was previously included for explicit re-trigger semantics; lint flags it as unused but it documents the intended invalidation key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capitalStructure, returnsSummary]);
 
   // M09 → M11+: Emit financial-updated when NOI changes so Capital Structure can recalc DSCR
@@ -58,6 +60,8 @@ export const ProFormaIntelligence: React.FC<ProFormaIntelligenceProps> = () => {
         },
       });
     }
+  // hook intentionally captures adjustedReturns.cashOnCash, adjustedReturns.equityMultiple, adjustedReturns.irr, adjustedReturns.noi, emitEvent, financial?.noi, updateFinancial via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

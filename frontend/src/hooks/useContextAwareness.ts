@@ -295,6 +295,8 @@ export function useAutoContextAnalysis(focus: UserFocus | null, enabled = true) 
     if (enabled && focus && focus.context) {
       analyze(focus);
     }
+  // hook intentionally captures analyze, focus via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, focus?.context, focus?.dealId, focus?.marketId, focus?.submarketId, focus?.focusedMetric]);
 
   return { analysis, loading };

@@ -66,6 +66,8 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
       console.log('[CreateDeal] Starting drawing mode');
       startDrawing('boundary', coordinates || undefined);
     }
+  // hook intentionally captures currentStep, startDrawing via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showBoundary, developmentType, coordinates]);
 
   // Sync drawn boundary from shared store

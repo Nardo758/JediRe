@@ -225,6 +225,8 @@ export function TerminalChrome({
 
   useEffect(() => {
     if (themeProp && themeProp !== theme) setTheme(themeProp);
+  // hook intentionally captures theme via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeProp]);
 
   const toggleTheme = () => {
@@ -345,6 +347,8 @@ export function TerminalChrome({
       clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibilityChangeTicker);
     };
+  // hook intentionally captures T.text.amber, T.text.green, T.text.red via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

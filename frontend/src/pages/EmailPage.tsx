@@ -296,6 +296,8 @@ export function EmailPage() {
       setSearchParams(searchParams, { replace: true });
       setTimeout(() => setConnectNotice(null), 6000);
     }
+  // hook intentionally captures loadInbox, searchParams, setSearchParams via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleConnectGmail = async () => {

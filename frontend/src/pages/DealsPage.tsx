@@ -391,6 +391,8 @@ export function DealsPage() {
     };
     loadData();
     fetchMapDeals();
+  // hook intentionally omits loadGridDeals — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchMapDeals]);
 
   const loadGridDeals = async (sort?: GridSort, intelData?: Map<string, any>) => {
@@ -463,6 +465,8 @@ export function DealsPage() {
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded() || !mapDeals.length) return;
     addDealsToMap(map.current, mapDeals);
+  // hook intentionally omits addDealsToMap — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapDeals]);
 
   const addDealsToMap = (m: mapboxgl.Map, deals: any[]) => {

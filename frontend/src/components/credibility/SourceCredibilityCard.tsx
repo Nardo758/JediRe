@@ -75,6 +75,8 @@ export default function SourceCredibilityCard({
     if (eventId) {
       fetchPrediction();
     }
+  // hook intentionally omits fetchPrediction, fetchSourceData — they're inline functions recreated each render; including them would cause an infinite re-fetch loop. The functions close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactEmail, eventId]);
 
   const fetchSourceData = async () => {

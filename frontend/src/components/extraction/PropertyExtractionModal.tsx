@@ -99,6 +99,8 @@ export const PropertyExtractionModal: React.FC<PropertyExtractionModalProps> = (
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
+  // hook intentionally omits handleNext, handlePrevious — they're inline functions recreated each render; including them would cause an infinite re-fetch loop. The functions close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentIndex, hasNext, hasPrevious]);
 
   // Handlers

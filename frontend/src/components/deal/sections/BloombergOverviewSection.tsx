@@ -271,6 +271,8 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     loadUwEvidenceSummary();
     (async () => { stopPolling = await loadStrategy(); })();
     return () => { stopPolling?.(); };
+  // hook omits loadActivity, loadCapitalStack, loadJediScore, loadStrategy, loadTeam, loadUwEvidenceSummary — these are useCallback/useMemo-stabilized values whose identities only change when their own deps change, already captured by the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal?.id]);
 
   // ─── Collision banner dismiss ────────────────────────────────────────────────

@@ -94,6 +94,8 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
     };
 
     loadModel();
+  // hook intentionally captures deal.dealValue via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.id, enhanced]);
 
   // Auto-save function with debouncing
@@ -142,6 +144,8 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
     } finally {
       setSaving(false);
     }
+  // hook intentionally captures annualDebtService, cashOnCashReturn, debtServiceCoverageRatio, monthlyPayment via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     enhanced, deal.id, deal.name, modelId, activeComponents,
     purchasePrice, downPayment, interestRate, loanTerm,

@@ -64,6 +64,8 @@ export const MarketTabContent: React.FC<MarketTabContentProps> = ({
 
   useEffect(() => {
     fetchMarketIntelligence();
+  // hook intentionally omits fetchMarketIntelligence — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   const fetchMarketIntelligence = async () => {

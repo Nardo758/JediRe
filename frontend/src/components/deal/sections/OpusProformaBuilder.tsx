@@ -35,6 +35,8 @@ export const OpusProformaBuilder: React.FC<OpusProformaBuilderProps> = ({ deal, 
   useEffect(() => {
     loadConversations();
     loadVersions();
+  // hook intentionally omits loadConversations, loadVersions — they're inline functions recreated each render; including them would cause an infinite re-fetch loop. The functions close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDealId]);
 
   useEffect(() => {
@@ -138,6 +140,8 @@ export const OpusProformaBuilder: React.FC<OpusProformaBuilderProps> = ({ deal, 
       setError(e.message || 'Failed to send message');
       setStreaming(false);
     }
+  // hook intentionally omits loadVersions — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input, streaming, conversationId, currentDealId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

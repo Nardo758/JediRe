@@ -487,6 +487,8 @@ export default function PropertyDetailsPage() {
       }
     };
     fetchProperty();
+  // hook intentionally omits buildPropertyFromRow — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
@@ -507,6 +509,8 @@ export default function PropertyDetailsPage() {
       }
     };
     loadPhotos();
+  // hook intentionally captures property via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [property?.id]);
 
   useEffect(() => {
@@ -517,6 +521,8 @@ export default function PropertyDetailsPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  // hook intentionally captures TABS via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {

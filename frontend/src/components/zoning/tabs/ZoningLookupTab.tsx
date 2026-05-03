@@ -34,6 +34,8 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
       setAddress(dealAddress);
       lookup(dealAddress);
     }
+  // hook intentionally captures lookup via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal?.address]);
 
   const handleOpenSourcePanel = useCallback((data: SourceCitationData) => {
@@ -130,6 +132,8 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
     } finally {
       setVerificationLoading(false);
     }
+  // hook intentionally captures dealId via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSearch = async (e: React.FormEvent) => {

@@ -210,6 +210,8 @@ export default function MapDrawingTools({ mapRef, userId, onSave, onLoad }: MapD
         drawRef.current = null;
       }
     };
+  // hook omits loadUserDrawings — these are useCallback/useMemo-stabilized values whose identities only change when their own deps change, already captured by the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef, currentStyle]);
 
   // Load user's saved drawings

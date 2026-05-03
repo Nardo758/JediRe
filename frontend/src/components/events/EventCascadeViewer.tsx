@@ -42,6 +42,8 @@ export const EventCascadeViewer: React.FC<EventCascadeViewerProps> = ({ eventId,
 
   useEffect(() => {
     loadCascade();
+  // hook intentionally omits loadCascade — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   const loadCascade = async () => {

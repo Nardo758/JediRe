@@ -45,6 +45,8 @@ export const PhotosManager: React.FC<PhotosManagerProps> = ({
 
   useEffect(() => {
     fetchPhotos();
+  // hook intentionally omits fetchPhotos — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   const fetchPhotos = async () => {

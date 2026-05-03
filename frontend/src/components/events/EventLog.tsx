@@ -65,6 +65,8 @@ export const EventLog: React.FC<EventLogProps> = ({ dealId, tradeAreaId, autoRef
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
+  // hook intentionally omits loadEvents — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, tradeAreaId, topicFilter, eventTypeFilter, publisherFilter, page]);
 
   const loadEvents = async () => {

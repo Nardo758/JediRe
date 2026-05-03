@@ -137,6 +137,8 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
   useEffect(() => {
     fetchDeals();
     fetchClients();
+  // hook intentionally omits fetchClients, fetchDeals — they're inline functions recreated each render; including them would cause an infinite re-fetch loop. The functions close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Filter and sort deals

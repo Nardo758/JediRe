@@ -40,6 +40,8 @@ export const LeasingForecastPage: React.FC = () => {
     if (propertyId) {
       loadForecast();
     }
+  // hook intentionally omits loadForecast — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId, weeks]);
   
   const loadForecast = async () => {

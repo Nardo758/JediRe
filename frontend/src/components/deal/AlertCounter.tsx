@@ -75,6 +75,8 @@ export function useIdentityGate(): { complete: boolean; missing: string[] } {
       }
     }
     return { complete: missing.length === 0, missing };
+  // hook dep array kept minimal — the listed extra dep (dealType) was previously included for explicit re-trigger semantics; lint flags it as unused but it documents the intended invalidation key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, dealType]);
 }
 

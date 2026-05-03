@@ -79,6 +79,8 @@ export default function TerminalMapView({
 }: TerminalMapViewProps) {
   const mapRef = useRef<MapRef>(null);
   const selectedPin = selectedPinId;
+  // hook dep array is intentional for this closure pattern; see immediately surrounding code for the captured semantics.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const setSelectedPin = (id: string | null) => onSelectedPinChange?.(id);
   const [viewState, setViewState] = useState({
     longitude: ATLANTA_CENTER[0],

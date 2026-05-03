@@ -112,11 +112,15 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     loadCapitalStack();
     loadEntitlementBenchmarks();
     return () => { stopPolling?.(); };
+  // hook intentionally omits loadCapitalStack, loadEntitlementBenchmarks, loadEntitlements, loadJediScore, startAnalysis — they're inline functions recreated each render; including them would cause an infinite re-fetch loop. The functions close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal?.id]);
 
   useEffect(() => {
     if (!deal?.id) return;
     loadMarketData();
+  // hook intentionally omits loadMarketData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal?.id, geographicContext]);
 
   const loadEntitlements = async () => {

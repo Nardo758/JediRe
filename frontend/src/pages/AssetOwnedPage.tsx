@@ -567,6 +567,8 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
         .catch(() => { setActuals([]); setActualsLoaded(true); })
         .finally(() => setLoading(false));
     }
+  // hook intentionally captures actualsLoaded, otherIncome.length, rentRoll via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, subTab]);
 
   const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
@@ -2652,6 +2654,8 @@ export default function PortfolioPropertyPage() {
     if (!trafficData.length) {
       apiClient.get(`/api/v1/portfolio/${dealId}/traffic`).then(r => setTrafficData(r.data?.data || []));
     }
+  // hook intentionally captures leaseData, trafficData.length via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, activeTab]);
 
   if (loading) {

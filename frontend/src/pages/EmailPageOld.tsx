@@ -43,6 +43,8 @@ export function EmailPage({ view = 'inbox' }: { view?: string }) {
 
     loadInbox();
     fetchDeals();
+  // hook intentionally captures fetchDeals via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Initialize map

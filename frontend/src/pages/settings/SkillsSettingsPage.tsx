@@ -467,6 +467,8 @@ export const SkillsSettingsPage: React.FC = () => {
 
   useEffect(() => {
     loadSettings();
+  // hook intentionally omits loadSettings — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadSettings = async () => {

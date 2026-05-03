@@ -96,6 +96,8 @@ const RegulatoryRiskPanel: React.FC<RegulatoryRiskPanelProps> = ({ tradeAreaId }
 
   useEffect(() => {
     fetchRegulatoryRisk();
+  // hook intentionally omits fetchRegulatoryRisk — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tradeAreaId]);
 
   const fetchRegulatoryRisk = async () => {

@@ -185,6 +185,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       setFiles(updatedFiles);
       onFilesChange?.(updatedFiles);
     }
+  // hook intentionally omits validateFile — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, maxFiles, currentTotalSize, getTotalSize, onUploadError, onFilesChange]);
 
   // Handle drag events

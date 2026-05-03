@@ -46,6 +46,8 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
     if (isOpen) {
       loadSuggestions();
     }
+  // hook intentionally omits loadSuggestions — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, dealType, dealStrategy, userBundle, userModules]);
 
   const loadSuggestions = () => {

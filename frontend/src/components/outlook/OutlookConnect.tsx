@@ -112,6 +112,8 @@ export default function OutlookConnect({
   // Check status on mount
   useEffect(() => {
     checkStatus();
+  // hook intentionally omits checkStatus — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Check for OAuth callback (when redirected back from Microsoft)
@@ -126,6 +128,8 @@ export default function OutlookConnect({
       setError(`Connection failed: ${params.get('microsoft_error')}`);
       window.history.replaceState({}, '', window.location.pathname);
     }
+  // hook intentionally omits checkStatus — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {

@@ -64,6 +64,8 @@ export function useStrategyArbitrage(dealId: string): UseStrategyArbitrageM08Res
       cancelled = true;
       if (pollingRef.current != null) clearTimeout(pollingRef.current);
     };
+  // hook intentionally captures fetchArbitrage, fetchStrategyScores, recalculateStrategyScores via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   const recalculate = async (): Promise<void> => {

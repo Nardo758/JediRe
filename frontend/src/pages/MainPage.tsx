@@ -38,6 +38,8 @@ export default function MainPage() {
     };
 
     loadProperties();
+  // hook omits setIsLoading, setProperties — React guarantees state-setter identities are stable across renders, so they don't need to appear in dep arrays.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

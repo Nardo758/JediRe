@@ -151,6 +151,8 @@ export const SubmarketTerminal: React.FC<SubmarketTerminalProps> = ({
     };
 
     loadSubmarket();
+  // hook intentionally captures msaId, msaName, submarketName via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submarketId, submarketProp]);
 
   // Sparkline data for header

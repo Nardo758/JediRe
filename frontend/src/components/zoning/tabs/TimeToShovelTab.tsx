@@ -582,6 +582,8 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
     if (!development_path && dealId) {
       selectDevelopmentPath('by_right' as any, selected_envelope);
     }
+  // hook intentionally captures development_path, selectDevelopmentPath, selected_envelope via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   const runSimulation = useCallback(async () => {

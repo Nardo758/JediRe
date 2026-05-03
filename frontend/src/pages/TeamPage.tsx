@@ -34,6 +34,8 @@ export function TeamPage() {
 
   useEffect(() => {
     filterContacts();
+  // hook intentionally omits filterContacts — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, selectedFilter, dateRange, customStartDate, customEndDate, contacts]);
 
   const loadContacts = async () => {

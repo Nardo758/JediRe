@@ -186,6 +186,8 @@ export default function PipelineMapViewWithDrawing({
         map.off('draw.selectionchange', handleDrawSelectionChange);
       }
     };
+  // hook omits handleDrawCreate, handleDrawDelete, handleDrawSelectionChange, handleDrawUpdate — these are useCallback/useMemo-stabilized values whose identities only change when their own deps change, already captured by the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef.current]);
 
   // Handle drawing mode changes

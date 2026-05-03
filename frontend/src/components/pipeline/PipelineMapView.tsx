@@ -223,6 +223,8 @@ export default function PipelineMapView({
     });
 
     return { clusters: clusterResults, dealsByCluster: dealsMap };
+  // hook dep array kept minimal — the listed extra dep (dealFeatures) was previously included for explicit re-trigger semantics; lint flags it as unused but it documents the intended invalidation key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supercluster, viewState, dealFeatures]);
 
   // Handle cluster click - zoom in

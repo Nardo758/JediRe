@@ -56,6 +56,8 @@ export function NewsIntelligencePage() {
 
   useEffect(() => {
     loadData();
+  // hook intentionally omits loadData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -66,6 +68,8 @@ export function NewsIntelligencePage() {
       prevDateRange.current = dateRange;
       loadEvents();
     }
+  // hook intentionally omits loadEvents — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange]);
 
   // Map a unified-feed article (newsletter or provider API) into the NewsEvent

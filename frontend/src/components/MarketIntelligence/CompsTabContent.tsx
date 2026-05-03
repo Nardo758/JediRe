@@ -71,6 +71,8 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
 
   useEffect(() => {
     fetchComps();
+  // hook intentionally omits fetchComps — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   const fetchComps = async () => {

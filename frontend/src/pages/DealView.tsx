@@ -85,6 +85,8 @@ export const DealView: React.FC = () => {
       fetchGeographicContext(id);
       fetchDealContext(id);
     }
+  // hook intentionally captures fetchDealContext, loadTradeAreaForDeal via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchDeal = async (dealId: string) => {

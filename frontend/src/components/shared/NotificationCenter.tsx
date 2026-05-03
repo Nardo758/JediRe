@@ -94,6 +94,8 @@ export const NotificationCenter: React.FC = () => {
       fetchNotifications();
       fetchCounts();
     }
+  // hook intentionally omits fetchNotifications — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, filter]);
 
   // Poll for new notifications every 30 seconds

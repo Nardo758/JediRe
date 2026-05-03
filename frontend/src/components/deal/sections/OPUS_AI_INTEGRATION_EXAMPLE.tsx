@@ -270,6 +270,8 @@ const AIAgentQuickPreview: React.FC<{ deal: Deal }> = ({ deal }) => {
   useEffect(() => {
     // Quick analysis on mount
     analyzeQuick();
+  // hook intentionally omits analyzeQuick — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.id]);
 
   const analyzeQuick = async () => {

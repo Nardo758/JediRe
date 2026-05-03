@@ -108,6 +108,8 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName, fetchCommentary]);
   useEffect(() => { fetchOpportunities(city); }, [city, fetchOpportunities]);
 
+  // hook dep array is intentional for this closure pattern; see immediately surrounding code for the captured semantics.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const opportunities = oppData?.opportunities || [];
   const marketSummary = oppData?.marketSummary;
 

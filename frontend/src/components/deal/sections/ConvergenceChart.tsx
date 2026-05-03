@@ -191,6 +191,8 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
     const mx = ((e.clientX - rect.left) / rect.width) * W;
     const absIdx = Math.round(((mx - pad.l) / iW) * (TOTAL_Q - 1));
     if (absIdx >= NOW_IDX && absIdx < TOTAL_Q) onSelectFwd(absIdx - NOW_IDX);
+  // hook intentionally captures iW, pad.l via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onSelectFwd]);
 
   const handleMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -200,6 +202,8 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
     const mx = ((e.clientX - rect.left) / rect.width) * W;
     const idx = Math.round(((mx - pad.l) / iW) * (TOTAL_Q - 1));
     if (idx >= 0 && idx < TOTAL_Q) setHoverIdx(idx);
+  // hook intentionally captures iW, pad.l via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

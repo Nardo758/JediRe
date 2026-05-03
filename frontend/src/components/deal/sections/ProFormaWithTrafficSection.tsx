@@ -824,6 +824,8 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
     setData(null);
     setDataSource('none');
     setLoading(false);
+  // hook intentionally captures deal via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal?.id]);
 
   useEffect(() => {

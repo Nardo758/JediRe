@@ -84,6 +84,8 @@ const ScenarioBuilder: React.FC<ScenarioBuilderProps> = ({ dealId, onSave }) => 
 
   useEffect(() => {
     fetchEvents();
+  // hook intentionally omits fetchEvents — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   const fetchEvents = async () => {

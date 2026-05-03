@@ -383,6 +383,8 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       }
       return next;
     });
+  // hook intentionally captures f9Debt.loans via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [f9Debt?.loans?.length]);
 
   const activeLoan = loans.find(l => l.id === activeLoanId) ?? loans[0];

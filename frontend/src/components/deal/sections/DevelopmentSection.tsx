@@ -117,6 +117,8 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
     if (enhanced && deal.id) {
       loadCapacityAnalysis();
     }
+  // hook intentionally omits loadCapacityAnalysis — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enhanced, deal.id]);
 
   const loadCapacityAnalysis = async () => {

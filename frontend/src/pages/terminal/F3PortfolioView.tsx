@@ -178,6 +178,8 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   // Load data
   useEffect(() => {
     loadPortfolioData();
+  // hook intentionally omits loadPortfolioData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reload performance data when timeframe changes
@@ -283,6 +285,8 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     } finally {
       setSubmittingActuals(false);
     }
+  // hook intentionally omits loadPortfolioData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actualsAssetId, actualsPeriod, actualsMode, actualsForm, actualsFile]);
 
   // ─── Neural network context awareness (top-level hook) ───────

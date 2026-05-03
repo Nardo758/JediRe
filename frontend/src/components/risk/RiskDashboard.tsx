@@ -89,6 +89,8 @@ const RiskDashboard: React.FC<RiskDashboardProps> = ({ dealId, tradeAreaIds }) =
 
   useEffect(() => {
     fetchRiskData();
+  // hook intentionally omits fetchRiskData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, tradeAreaIds]);
 
   const fetchRiskData = async () => {

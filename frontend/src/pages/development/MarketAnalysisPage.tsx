@@ -53,6 +53,8 @@ export const MarketAnalysisPage: React.FC = () => {
         payload: { dealId, source: 'market-analysis' },
       });
     }
+  // hook intentionally captures dealId, emitEvent, updateMarketIntelligence via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demandData?.recommendedMix, demographicData]);
   
   const handleExport = () => {

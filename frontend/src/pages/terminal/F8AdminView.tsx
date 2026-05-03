@@ -833,6 +833,8 @@ export default function F8AdminView({ T }: F8AdminViewProps) {
   const { analysis: adminContext, loading: adminContextLoading, analyze: analyzeAdmin } = useContextAnalysis();
   React.useEffect(() => {
     analyzeAdmin({ context: 'market_dashboard' });
+  // hook intentionally captures analyzeAdmin via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const renderNavGroup = (groupId: string) => {

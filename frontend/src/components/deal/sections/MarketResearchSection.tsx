@@ -41,6 +41,8 @@ export function MarketResearchSection({ deal }: MarketResearchSectionProps) {
     if (hasMarketResearch && deal.id) {
       loadMarketReport();
     }
+  // hook intentionally omits loadMarketReport — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMarketResearch, deal.id]);
 
   const loadMarketReport = async () => {

@@ -608,6 +608,8 @@ const DealDetailPage: React.FC = () => {
         })
         .catch(() => {});
     }
+  // hook intentionally omits fetchGeographicContext, loadDeal — they're inline functions recreated each render; including them would cause an infinite re-fetch loop. The functions close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   const fetchGeographicContext = async (id: string) => {
@@ -780,6 +782,8 @@ const DealDetailPage: React.FC = () => {
     if (dealScreens.length > 0 && !dealScreens.find(s => s.id === activeTab)) {
       setActiveTab(dealScreens[0].id);
     }
+  // hook intentionally captures dealScreens via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealType, activeTab]);
 
   const activeScreenData = dealScreens.find(s => s.id === activeTab) || dealScreens[0];

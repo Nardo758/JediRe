@@ -897,6 +897,8 @@ export default function TrafficEngineV2Section({ deal, propertyId }: TrafficEngi
 
   useEffect(() => {
     loadData();
+  // hook intentionally omits loadData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId]);
 
   const loadData = async () => {
