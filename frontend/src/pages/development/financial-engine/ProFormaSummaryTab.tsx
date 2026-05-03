@@ -635,11 +635,11 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
                   totalUnits={totalUnits} egiResolved={egiResolved}
                   onSaveCorrection={handleSaveCorrection}
                   onResetCorrection={handleResetCorrection}
-                  onToggleAncillary={r.field === 'other_income_per_unit' ? () => setShowAncillary(v => !v) : undefined}
-                  ancillaryOpen={r.field === 'other_income_per_unit' ? showAncillary : undefined}
+                  onToggleAncillary={r.field === 'other_income' ? () => setShowAncillary(v => !v) : undefined}
+                  ancillaryOpen={r.field === 'other_income' ? showAncillary : undefined}
                   evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                 />
-                {r.field === 'other_income_per_unit' && showAncillary && (
+                {r.field === 'other_income' && showAncillary && (
                   <tr>
                     <td colSpan={9} style={{ background: '#050d12', padding: 0, borderBottom: '1px solid #0e2030' }}>
                       <AncillaryExpansionPanel
