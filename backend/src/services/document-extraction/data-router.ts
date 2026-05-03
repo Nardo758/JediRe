@@ -1244,6 +1244,10 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
       'extraction_rent_roll', 'extraction_t12', 'extraction_aged_receivables',
       'extraction_box_score', 'extraction_concession_burnoff', 'extraction_lto',
       'extraction_tax_bill',
+      // Task #519: OM capsule now carries `other_income_monthly` (per-category
+      // ancillary recipe). Full-replace ensures stale category keys from an
+      // earlier OM parse don't leak into the 3-source resolver.
+      'extraction_om',
     ];
     const baseForMerge = { ...existingData };
     for (const key of REPLACE_CAPSULE_KEYS) {
