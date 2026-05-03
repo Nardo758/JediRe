@@ -563,38 +563,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           ))}
         </div>
 
-        {/* Model-computed KPIs (when available from build pipeline) */}
-        {modelData && (() => {
-          const s = modelData.summary;
-          if (!s) return null;
-          return (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '3px 10px',
-              borderLeft: '3px solid #0891b2',
-              background: '#062a3a',
-              borderRadius: 2,
-            }}>
-              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#0891b2', letterSpacing: 0.5 }}>
-                MODEL
-              </span>
-              {[
-                { l: 'IRR', v: s.irr != null ? `${(s.irr * 100).toFixed(2)}%` : '—' },
-                { l: 'EM', v: s.equityMultiple != null ? s.equityMultiple.toFixed(2) + 'x' : '—' },
-                { l: 'Avg CoC', v: s.avgCoC != null ? `${(s.avgCoC * 100).toFixed(2)}%` : '—' },
-                { l: 'DSCR Y1', v: s.dscrByYear?.[0] != null ? s.dscrByYear[0].toFixed(2) + 'x' : '—' },
-                { l: 'Exit Cap', v: s.exitCapRate != null ? `${(s.exitCapRate * 100).toFixed(2)}%` : '—' },
-                { l: 'Going-In Cap', v: s.goingInCapRate != null ? `${(s.goingInCapRate * 100).toFixed(2)}%` : '—' },
-                { l: 'NOI Y1', v: s.noiYear1 != null ? fmt$(s.noiYear1) : '—' },
-              ].map(k => (
-                <div key={k.l} style={{ display: 'flex', alignItems: 'baseline', gap: 4, padding: '2px 6px', borderRadius: 2, border: '1px solid #0e7490', background: '#0c2233' }}>
-                  <span style={{ fontFamily: LABEL, fontSize: 8, color: '#5eead4' }}>{k.l}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#e2e8f0' }}>{k.v}</span>
-                </div>
-              ))}
-            </div>
-          );
-        })()}
 
         {/* Integrity badges + reparse */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
