@@ -1082,11 +1082,19 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
             >
               {(() => {
                 const ur = ev?.ultimateReturn;
+                // Strict typeof + Number.isFinite — previously we used
+                // `Number.isFinite(Number(field))` which silently coerced
+                // `null` to 0 (finite) and would have rendered misleading
+                // zeros if the API ever sent per-field nulls. Per the
+                // contract, every field must be a real finite number for
+                // the tile to render; otherwise we show the placeholder.
+                const isFiniteNum = (v: unknown): v is number =>
+                  typeof v === 'number' && Number.isFinite(v);
                 const hasAllReturnFields = !!ur
-                  && Number.isFinite(Number(ur.irr))
-                  && Number.isFinite(Number(ur.equityMultiple))
-                  && Number.isFinite(Number(ur.holdMonths))
-                  && Number.isFinite(Number(ur.exitCapRate));
+                  && isFiniteNum(ur.irr)
+                  && isFiniteNum(ur.equityMultiple)
+                  && isFiniteNum(ur.holdMonths)
+                  && isFiniteNum(ur.exitCapRate);
                 if (!hasAllReturnFields) {
                   return (
                     <div style={{ margin: '0 8px 8px', background: `${BT.text.muted}08`, border: `1px dashed ${BT.text.muted}44`, padding: '8px 12px' }}>
