@@ -691,12 +691,15 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     // legitimate zero-rent edge cases (e.g. fully concession'd model unit
     // dataset) while still catching layouts where Market Rent and Effective
     // Rent both fell through every detection rule.
-    // 'missing' = no header AND no data; 'all_null' = header detected but
-    // every occupied row null. Both indicate the parser cannot supply usable
-    // values for that column, so both contribute to the hard-fail predicate.
-    // 'not_supported' is layout-structural (generic_flat has no per-row
-    // charge_code/amount split) and also unreadable from this column's view.
-    const isUnreadable = (s: ColStatus) => s === 'missing' || s === 'all_null' || s === 'not_supported';
+    // Policy (post-review): hard-fail is reserved for true MAPPING failure —
+    // 'missing' (no header AND no data) and 'not_supported' (layout-structural,
+    // e.g. generic_flat has no per-row charge_code/amount split). 'all_null'
+    // (header detected but every occupied row null) is downgraded to
+    // review-needed only — surfaced via the human_review_needed banner — so
+    // that anomalous-but-mapped exports still produce a viewable Unit Mix
+    // with explicit operator warnings, rather than a hard failure that
+    // blocks the rest of the deal.
+    const isUnreadable = (s: ColStatus) => s === 'missing' || s === 'not_supported';
     const marketUnreadable    = isUnreadable(columnCoverage.market_rent);
     const effectiveUnreadable = isUnreadable(columnCoverage.amount);
     if (occupiedUnits.length > 0 && marketUnreadable && effectiveUnreadable) {
@@ -720,7 +723,17 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     // doesn't auto-trigger the banner unless it co-occurs with the
     // 50%-null-coverage thresholds below. sqft is included per spec.
     const criticalFields: Array<keyof typeof columnCoverage> = ['unit_no', 'unit_type', 'sqft', 'market_rent', 'charge_code', 'amount'];
-    const anyMissing = criticalFields.some(f => columnCoverage[f] === 'missing');
+    // 'missing' is the primary trigger. For the rent columns specifically,
+    // also trigger on 'all_null' — those no longer hard-fail (per post-review
+    // policy narrowing), so the review banner is the only surface that warns
+    // operators their rent data is unusable. Other critical fields stick to
+    // 'missing' only to avoid noisy banners on legitimately-empty columns.
+    const anyMissing = criticalFields.some(f => {
+      const s = columnCoverage[f];
+      if (s === 'missing') return true;
+      if ((f === 'market_rent' || f === 'amount') && s === 'all_null') return true;
+      return false;
+    });
     const occCount = occupiedUnits.length;
     const leaseExpNulls = occupiedUnits.filter(u => !u.leaseExpiration).length;
     // Presence-based, NOT zero-based. A unit is counted as "effective rent
