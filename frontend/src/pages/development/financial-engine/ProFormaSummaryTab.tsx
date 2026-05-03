@@ -335,7 +335,7 @@ function applyEvidenceFilter(
   return rows;
 }
 
-export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh }: FinancialEngineTabProps) {
+export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh }: FinancialEngineTabProps) {
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -343,7 +343,15 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
   const [corrections, setCorrections] = useState<CorrectionState>({});
   const [showAncillary, setShowAncillary] = useState(false);
 
+  // Prefer model results from the build pipeline; fall back to composer fetch.
+  const modelData = modelResults ?? null;
+
   const load = useCallback(async () => {
+    // If model results are already available, skip the composer fetch.
+    if (modelResults) {
+      setLoading(false);
+      return;
+    }
     if (!dealId) return;
     setLoading(true);
     setError(null);
@@ -554,6 +562,39 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
             </div>
           ))}
         </div>
+
+        {/* Model-computed KPIs (when available from build pipeline) */}
+        {modelData && (() => {
+          const s = modelData.summary;
+          if (!s) return null;
+          return (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '3px 10px',
+              borderLeft: '3px solid #0891b2',
+              background: '#062a3a',
+              borderRadius: 2,
+            }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#0891b2', letterSpacing: 0.5 }}>
+                MODEL
+              </span>
+              {[
+                { l: 'IRR', v: s.irr != null ? `${(s.irr * 100).toFixed(2)}%` : '—' },
+                { l: 'EM', v: s.equityMultiple != null ? s.equityMultiple.toFixed(2) + 'x' : '—' },
+                { l: 'Avg CoC', v: s.avgCoC != null ? `${(s.avgCoC * 100).toFixed(2)}%` : '—' },
+                { l: 'DSCR Y1', v: s.dscrByYear?.[0] != null ? s.dscrByYear[0].toFixed(2) + 'x' : '—' },
+                { l: 'Exit Cap', v: s.exitCapRate != null ? `${(s.exitCapRate * 100).toFixed(2)}%` : '—' },
+                { l: 'Going-In Cap', v: s.goingInCapRate != null ? `${(s.goingInCapRate * 100).toFixed(2)}%` : '—' },
+                { l: 'NOI Y1', v: s.noiYear1 != null ? fmt$(s.noiYear1) : '—' },
+              ].map(k => (
+                <div key={k.l} style={{ display: 'flex', alignItems: 'baseline', gap: 4, padding: '2px 6px', borderRadius: 2, border: '1px solid #0e7490', background: '#0c2233' }}>
+                  <span style={{ fontFamily: LABEL, fontSize: 8, color: '#5eead4' }}>{k.l}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#e2e8f0' }}>{k.v}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Integrity badges + reparse */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
