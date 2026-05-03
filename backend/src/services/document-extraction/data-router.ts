@@ -1089,8 +1089,13 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
         security_deposits_held: extras.security_deposits_held ?? 0,
         pre_lease_ratio: extras.pre_lease_ratio ?? 0,
         expiration_curve: extras.expiration_curve ?? {
-          months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0,
+          months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0, unknown: 0,
         },
+        // Task #514 — surface extraction-quality flags through the capsule
+        // so the UI (and the upload toast) can render confidence states.
+        expiration_extraction_status: extras.expiration_extraction_status,
+        column_coverage: extras.column_coverage,
+        human_review_needed: extras.human_review_needed,
         warnings: result.warnings,
       };
       break;

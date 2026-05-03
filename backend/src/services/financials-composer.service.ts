@@ -71,6 +71,12 @@ export interface ExtractionRentRollPayload {
   sourceRef: string | null;
   otherIncomeMonthly: Record<string, number> | null;
   expirationCurve: Record<string, number> | null;
+  /** Deal-wide extraction status for the lease-expiration column. Task #514. */
+  expirationExtractionStatus: 'ok' | 'partial' | 'failed' | null;
+  /** Per-critical-column extraction scorecard. Task #514. */
+  columnCoverage: Record<string, string> | null;
+  /** True when the extraction needs human review. Task #514. */
+  humanReviewNeeded: boolean;
   floorPlanMix: Record<string, {
     count: number;
     avg_sqft: number;
@@ -78,6 +84,7 @@ export interface ExtractionRentRollPayload {
     avg_effective_rent: number;
     occupancy_pct: number;
     expiration_curve?: Record<string, number>;
+    expiration_extraction_status?: 'ok' | 'partial' | 'failed';
   }> | null;
   units: Array<Record<string, unknown>> | null;
 }
@@ -320,6 +327,7 @@ function extractionFloorPlanToRentRollRows(
       _inPlaceOverridden: ov.inPlace != null,
       _marketOverridden:  ov.market != null,
       _expirationCurve: fp.expiration_curve ?? null,
+      _expirationExtractionStatus: fp.expiration_extraction_status ?? null,
     };
   });
 }
@@ -888,6 +896,7 @@ function buildRentRollSummary(
       inPlaceRentOverridden: r._inPlaceOverridden === true,
       marketRentOverridden:  r._marketOverridden === true,
       expirationCurve: r._expirationCurve ?? null,
+      expirationExtractionStatus: r._expirationExtractionStatus ?? null,
       source: 'extraction_rent_roll',
     }));
     return {
@@ -900,6 +909,11 @@ function buildRentRollSummary(
       concessionsFromUnitMix: derived.concessionsFromUnitMix,
       useUnitMixForGpr,
       expirationCurve: extractionRentRoll?.expirationCurve ?? null,
+      // Task #514 — surface deal-wide extraction quality flags for the
+      // Unit Mix tab's TOTALS row tri-state + the review banner.
+      expirationExtractionStatus: extractionRentRoll?.expirationExtractionStatus ?? null,
+      columnCoverage: extractionRentRoll?.columnCoverage ?? null,
+      humanReviewNeeded: extractionRentRoll?.humanReviewNeeded === true,
       source: 'extraction_rent_roll',
     };
   }
@@ -1089,6 +1103,13 @@ export async function loadExtractionRentRoll(pool: Pool, dealId: string): Promis
       ? err.other_income_monthly : null,
     expirationCurve: (err.expiration_curve && typeof err.expiration_curve === 'object')
       ? err.expiration_curve : null,
+    expirationExtractionStatus: (err.expiration_extraction_status === 'ok'
+      || err.expiration_extraction_status === 'partial'
+      || err.expiration_extraction_status === 'failed')
+      ? err.expiration_extraction_status : null,
+    columnCoverage: (err.column_coverage && typeof err.column_coverage === 'object')
+      ? err.column_coverage : null,
+    humanReviewNeeded: err.human_review_needed === true,
     floorPlanMix: fpm,
     units,
   };

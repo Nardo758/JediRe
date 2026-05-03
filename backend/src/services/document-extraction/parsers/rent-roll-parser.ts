@@ -455,11 +455,17 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     const today = new Date();
     const monthsBetween = (a: Date, b: Date) =>
       (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    // Bucketing semantics (Task #514):
+    //   - leaseExpiration == null → `unknown` (parser couldn't read the date,
+    //     OR the field genuinely had no value — the curve no longer silently
+    //     collapses null into MTM).
+    //   - m < 0 (date in past) → `mtm` — true holdover.
+    //   - else 0-3 / 3-6 / 6-12 / 12+ months as before.
     const bucketExpiration = (
-      bucket: { months_0_3: number; months_3_6: number; months_6_12: number; months_12_plus: number; mtm: number },
+      bucket: { months_0_3: number; months_3_6: number; months_6_12: number; months_12_plus: number; mtm: number; unknown: number },
       leaseExpiration: Date | null,
     ) => {
-      if (!leaseExpiration) { bucket.mtm++; return; }
+      if (!leaseExpiration) { bucket.unknown++; return; }
       const m = monthsBetween(today, leaseExpiration);
       if (m < 0) bucket.mtm++;
       else if (m <= 3) bucket.months_0_3++;
@@ -468,11 +474,24 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       else bucket.months_12_plus++;
     };
 
+    // Compute per-floor-plan extraction status from the curve + occupied count.
+    type ExpStatus = 'ok' | 'partial' | 'failed';
+    const computeExpStatus = (
+      curve: { unknown: number },
+      occupiedCount: number,
+    ): ExpStatus => {
+      if (occupiedCount === 0) return 'ok';
+      if (curve.unknown === 0) return 'ok';
+      if (curve.unknown >= occupiedCount) return 'failed';
+      return 'partial';
+    };
+
     // Floor plan mix
     const floorPlanMix: Record<string, {
       count: number; avg_sqft: number; total_sqft: number;
       avg_market_rent: number; avg_effective_rent: number; occupancy_pct: number;
-      expiration_curve: { months_0_3: number; months_3_6: number; months_6_12: number; months_12_plus: number; mtm: number };
+      expiration_curve: { months_0_3: number; months_3_6: number; months_6_12: number; months_12_plus: number; mtm: number; unknown: number };
+      expiration_extraction_status: ExpStatus;
     }> = {};
     for (const u of currentUnits) {
       const fp = u.unitType || 'unknown';
@@ -480,7 +499,8 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
         floorPlanMix[fp] = {
           count: 0, avg_sqft: 0, total_sqft: 0,
           avg_market_rent: 0, avg_effective_rent: 0, occupancy_pct: 0,
-          expiration_curve: { months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0 },
+          expiration_curve: { months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0, unknown: 0 },
+          expiration_extraction_status: 'ok',
         };
       }
       floorPlanMix[fp].count++;
@@ -503,6 +523,10 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       for (const u of fpOccupied) {
         bucketExpiration(floorPlanMix[fp].expiration_curve, u.leaseExpiration);
       }
+      floorPlanMix[fp].expiration_extraction_status = computeExpStatus(
+        floorPlanMix[fp].expiration_curve,
+        fpOccupied.length,
+      );
     }
 
     // Bedroom rollup
@@ -521,10 +545,109 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     }
 
     // Lease expiration roll (deal-wide) — shares the same bucketing helper
-    // declared above.
-    const expirationCurve = { months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0 };
+    // declared above. Now includes `unknown` bucket for nulls.
+    const expirationCurve = { months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0, unknown: 0 };
     for (const u of occupiedUnits) {
       bucketExpiration(expirationCurve, u.leaseExpiration);
+    }
+    const expirationExtractionStatus = computeExpStatus(expirationCurve, occupiedUnits.length);
+
+    // ─── Per-column extraction scorecard (Task #514) ───
+    // Each critical logical field is rated by what we know about how it was
+    // resolved + whether the data ended up populated. Statuses:
+    //   - 'ok'            : column resolved AND data is present in some rows
+    //   - 'fallback'      : column not resolved by header detection — using
+    //                       hardcoded position; data may still be populated
+    //   - 'all_null'      : column resolved but 100% of occupied rows null/0
+    //   - 'missing'       : column not resolved AND no data extracted
+    //   - 'not_supported' : layout fundamentally cannot supply this column
+    //                       (e.g., generic_flat has no per-row lease dates)
+    type ColStatus = 'ok' | 'fallback' | 'all_null' | 'missing' | 'not_supported';
+    const columnCoverage: Record<string, ColStatus> = {
+      unit_no: 'ok',
+      unit_type: 'ok',
+      sqft: 'ok',
+      market_rent: 'ok',
+      charge_code: 'ok',
+      amount: 'ok',
+      lease_expiration: 'ok',
+    };
+
+    if (layout === 'yardi_rrwlc') {
+      // Resolved-by-header tracking from detectYardiColumns. `detected*Cols` is
+      // captured below in the parser's main path; here we re-read indirectly
+      // by inspecting whether data populated each field across occupied rows.
+      const occOrAll = occupiedUnits.length > 0 ? occupiedUnits : currentUnits;
+      const denom = occOrAll.length || 1;
+      const allNullOrZero = (predicate: (u: YardiUnit) => boolean) =>
+        occOrAll.every(predicate);
+      // unit_no/unit_type/sqft are required to even produce a unit row, so they
+      // are 'ok' by construction here. We focus on fields that could silently
+      // fall through to nulls.
+      if (allNullOrZero(u => u.sqft == null || u.sqft === 0)) columnCoverage.sqft = 'all_null';
+      if (allNullOrZero(u => u.marketRent == null || u.marketRent === 0)) columnCoverage.market_rent = 'all_null';
+      const totalChargeRows = occOrAll.reduce((s, u) => s + Object.keys(u.charges).length, 0);
+      if (totalChargeRows === 0) {
+        columnCoverage.charge_code = 'all_null';
+        columnCoverage.amount = 'all_null';
+      }
+      const leaseExpNullCount = occupiedUnits.filter(u => !u.leaseExpiration).length;
+      if (occupiedUnits.length > 0 && leaseExpNullCount === occupiedUnits.length) {
+        columnCoverage.lease_expiration = 'all_null';
+      }
+      void denom;
+    } else {
+      // generic_flat path doesn't supply per-row lease dates or charge codes.
+      columnCoverage.lease_expiration = 'not_supported';
+      columnCoverage.charge_code = 'not_supported';
+      columnCoverage.amount = 'not_supported';
+    }
+
+    // ─── Hard-fail policy (Task #514, Step 5) ───
+    // If the parser couldn't read EITHER market_rent OR effective_rent across
+    // 100% of occupied rows, the partial result is misleading — fail loudly.
+    // (Distinguished from "fully vacant" by requiring occupied_units > 0.)
+    const allMarketNull = occupiedUnits.length > 0 && occupiedUnits.every(u => u.marketRent == null || u.marketRent === 0);
+    const allEffectiveNull = occupiedUnits.length > 0 && occupiedUnits.every(u => u.totalCharges === 0 && (u.charges['rent'] ?? 0) === 0);
+    if (allMarketNull && allEffectiveNull) {
+      return {
+        documentType: 'RENT_ROLL',
+        success: false,
+        error: `Rent roll extraction failed: parser could not read Market Rent or Effective Rent for any of ${occupiedUnits.length} occupied units. Column mapping likely failed for this layout. Please re-export the rent roll in a standard format or contact support.`,
+        data: null,
+        summary: {},
+        warnings,
+        layout,
+        capsuleExtras: { column_coverage: columnCoverage, human_review_needed: true },
+      };
+    }
+
+    // ─── Human review needed ───
+    // True when ≥1 critical field is 'missing' OR ≥50% of occupied rows have
+    // null lease_expiration OR null effective_rent.
+    const criticalFields: Array<keyof typeof columnCoverage> = ['unit_no', 'unit_type', 'market_rent', 'charge_code', 'amount'];
+    const anyMissing = criticalFields.some(f => columnCoverage[f] === 'missing' || columnCoverage[f] === 'all_null');
+    const occCount = occupiedUnits.length;
+    const leaseExpNulls = occupiedUnits.filter(u => !u.leaseExpiration).length;
+    const effectiveRentNulls = occupiedUnits.filter(u => u.totalCharges === 0 && (u.charges['rent'] ?? 0) === 0).length;
+    const lowLeaseExpCoverage = occCount > 0 && (leaseExpNulls / occCount) >= 0.5 && columnCoverage.lease_expiration !== 'not_supported';
+    const lowEffRentCoverage = occCount > 0 && (effectiveRentNulls / occCount) >= 0.5;
+    const humanReviewNeeded = anyMissing || lowLeaseExpCoverage || lowEffRentCoverage;
+
+    // Upload-time KPI summary (Task #514) — pushed into warnings so the
+    // existing alerts pipeline surfaces it on the upload completion path
+    // (`pipelineResult.alerts`). Lets the user see "we mapped 232/232 rents
+    // but 0/232 lease expirations — review recommended" without having to
+    // open the Unit Mix tab.
+    if (occCount > 0) {
+      const leaseExpMapped = occCount - leaseExpNulls;
+      const effRentMapped = occCount - effectiveRentNulls;
+      warnings.push(
+        `Rent roll extraction quality: ${occCount} occupied units detected. ` +
+        `Lease expiration mapped: ${leaseExpMapped} of ${occCount}. ` +
+        `Effective rent mapped: ${effRentMapped} of ${occCount}. ` +
+        (humanReviewNeeded ? 'Review recommended.' : 'Coverage OK.')
+      );
     }
 
     // Risk metrics
@@ -609,6 +732,9 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       security_deposits_held: securityDepositsHeld,
       pre_lease_ratio: preLeaseRatio,
       expiration_curve: expirationCurve,
+      expiration_extraction_status: expirationExtractionStatus,
+      column_coverage: columnCoverage,
+      human_review_needed: humanReviewNeeded,
     };
 
     return {

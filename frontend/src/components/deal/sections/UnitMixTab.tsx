@@ -37,7 +37,13 @@ interface ExpirationCurve {
   months_6_12: number;
   months_12_plus: number;
   mtm: number;
+  /** Task #514 — units whose lease_expiration could not be parsed. Optional
+   *  for backward compat with legacy capsules; treat missing as 0. */
+  unknown?: number;
 }
+
+/** Task #514 — tri-state extraction quality for the lease-expiration column. */
+type ExpirationExtractionStatus = 'ok' | 'partial' | 'failed';
 
 interface RentRollUnitType {
   type: string;
@@ -54,6 +60,8 @@ interface RentRollUnitType {
   marketRentOverridden?: boolean;
   /** Per-floor-plan expiration roll-up (only present when source = extraction_rent_roll) */
   expirationCurve?: ExpirationCurve | null;
+  /** Per-floor-plan extraction quality flag — drives ExpirationBars tri-state. */
+  expirationExtractionStatus?: ExpirationExtractionStatus | null;
   source?: string;
 }
 
@@ -107,6 +115,12 @@ interface DealFinancials {
     gprFromUnitMix: number | null;
     useUnitMixForGpr: boolean;
     expirationCurve?: ExpirationCurve | null;
+    /** Task #514 — deal-wide tri-state for TOTALS row. */
+    expirationExtractionStatus?: ExpirationExtractionStatus | null;
+    /** Task #514 — per-critical-column scorecard for the review banner. */
+    columnCoverage?: Record<string, string> | null;
+    /** Task #514 — gates the tab-level review banner. */
+    humanReviewNeeded?: boolean;
     source?: string;
   } | null;
   trafficProjection: TrafficProjection | null;
@@ -182,12 +196,49 @@ function TrafficSignal({ label, value, unit, linked }: { label: string; value: s
  * reveals exact unit counts. Falls back to "—" when no curve is available
  * (OM-only deals, or capsule rows that pre-date this field).
  */
-function ExpirationBars({ curve, totalUnits }: { curve: ExpirationCurve | null; totalUnits: number }) {
+/**
+ * Tri-state lease-expiration column (Task #514).
+ *
+ *   - status `'failed'` (or curve omitted but status flagged failed): the
+ *     parser couldn't read the lease-expiration column at all. Render an
+ *     em-dash + warning glyph, NOT a bar full of zeros.
+ *   - status `'partial'`: 5 colored buckets render normally PLUS a sixth
+ *     hatched/striped grey segment at the right showing how many units are
+ *     missing a date. Callout appends "· N ?".
+ *   - status `'ok'` (or omitted, treated as ok for legacy capsules): the
+ *     existing 5-segment bar.
+ *   - curve null + no status: "no rent roll" empty placeholder (unchanged).
+ *
+ * The hatched UNKNOWN segment uses a CSS repeating-linear-gradient — distinct
+ * from both the colored buckets AND the dashed-border OM-only state.
+ */
+function ExpirationBars({
+  curve,
+  totalUnits,
+  status,
+}: {
+  curve: ExpirationCurve | null;
+  totalUnits: number;
+  status?: ExpirationExtractionStatus | null;
+}) {
+  // FAILED state — the parser couldn't read the column. Suppresses the count
+  // callout entirely; we'd rather show nothing than fake confidence.
+  if (status === 'failed') {
+    return (
+      <div
+        title="Expiration column not mapped from rent roll — re-upload recommended"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 4px' }}
+      >
+        <span style={{ fontFamily: MONO, fontSize: 12, color: C.dim, lineHeight: 1 }}>—</span>
+        <AlertTriangle size={11} color={C.amber} />
+      </div>
+    );
+  }
+
   if (!curve || totalUnits <= 0) {
-    // Empty/dimmed state per spec: NO expiration data is available (typically
-    // OM-only deals or floor plans without leases). Render a faint dimmed
-    // placeholder bar — visually quieter than "—", which the spec calls out
-    // as overly emphatic.
+    // Empty/dimmed state: NO expiration data is available — typically OM-only
+    // deals or floor plans without leases. Distinct from FAILED because here
+    // we never had a curve (vs FAILED = we had data but parser dropped it).
     return (
       <div
         title="No lease expiration data available (no rent roll uploaded)"
@@ -195,6 +246,8 @@ function ExpirationBars({ curve, totalUnits }: { curve: ExpirationCurve | null; 
       />
     );
   }
+
+  const unknown = curve.unknown ?? 0;
   const segments: Array<{ key: string; label: string; count: number; color: string }> = [
     { key: 'mtm',     label: 'MTM',       count: curve.mtm,           color: C.red },
     { key: '0_3',     label: '0-3 mo',    count: curve.months_0_3,    color: C.amber },
@@ -202,13 +255,12 @@ function ExpirationBars({ curve, totalUnits }: { curve: ExpirationCurve | null; 
     { key: '6_12',    label: '6-12 mo',   count: curve.months_6_12,   color: C.cyan },
     { key: '12_plus', label: '12+ mo',    count: curve.months_12_plus, color: C.green },
   ];
-  const sum = segments.reduce((s, x) => s + x.count, 0);
-  if (sum === 0) {
-    // Explicit zero state: the curve was extracted but every bucket is zero
-    // (typical for a fully vacant floor plan). Render a flat grey bar with a
-    // "0/0/0/0/0" readout instead of "—" so the user can see "the data is
-    // here, the buckets are just empty" — distinct from an OM-only deal where
-    // we never had a curve at all.
+  const coloredSum = segments.reduce((s, x) => s + x.count, 0);
+  const totalSum = coloredSum + unknown;
+
+  if (totalSum === 0) {
+    // Explicit zero state — curve extracted but all buckets zero (fully vacant
+    // floor plan). Distinct from "no data" via the readout.
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px' }}>
         <div
@@ -221,14 +273,18 @@ function ExpirationBars({ curve, totalUnits }: { curve: ExpirationCurve | null; 
       </div>
     );
   }
-  // Bias near-term percentages so a single MTM unit in a 100-unit floorplan
-  // is still visible (min 3px width when count>0).
+
+  // Hatched fill for the UNKNOWN segment — diagonal grey stripes, visually
+  // unmistakable from any of the 5 bucket colors and from the dashed-border
+  // empty state.
+  const hatchBg = `repeating-linear-gradient(45deg, ${C.dim} 0px, ${C.dim} 2px, ${C.muted}33 2px, ${C.muted}33 5px)`;
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px' }}>
       <div style={{ display: 'flex', height: 10, width: 110, background: '#0a0e15', borderRadius: 2, overflow: 'hidden', border: `1px solid ${C.border}` }}>
         {segments.map(s => {
           if (s.count === 0) return null;
-          const pct = (s.count / sum) * 100;
+          const pct = (s.count / totalSum) * 100;
           return (
             <div
               key={s.key}
@@ -237,11 +293,24 @@ function ExpirationBars({ curve, totalUnits }: { curve: ExpirationCurve | null; 
             />
           );
         })}
+        {unknown > 0 && (
+          <div
+            title={`${unknown} unit${unknown === 1 ? '' : 's'} missing expiration date — column partially extracted`}
+            style={{
+              width: `${Math.max((unknown / totalSum) * 100, 3)}%`,
+              minWidth: 3,
+              background: hatchBg,
+              borderLeft: coloredSum > 0 ? `1px solid ${C.bg}` : 'none',
+            }}
+          />
+        )}
       </div>
       <span style={{ fontFamily: MONO, fontSize: 9, color: C.muted, whiteSpace: 'nowrap' }}>
         {curve.mtm > 0 && <span style={{ color: C.red }}>{curve.mtm} MTM</span>}
         {curve.mtm > 0 && curve.months_0_3 > 0 && <span style={{ color: C.dim }}> · </span>}
         {curve.months_0_3 > 0 && <span style={{ color: C.amber }}>{curve.months_0_3} ≤3mo</span>}
+        {unknown > 0 && (curve.mtm > 0 || curve.months_0_3 > 0) && <span style={{ color: C.dim }}> · </span>}
+        {unknown > 0 && <span style={{ color: C.dim }}>{unknown} ?</span>}
       </span>
     </div>
   );
@@ -883,6 +952,34 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
         );
       })()}
 
+      {/* ── Extraction-quality review banner (Task #514) ──
+          Surfaces when the rent-roll parser flagged the extraction as needing
+          human review (≥1 critical column missing OR ≥50% rows missing lease
+          expiration / effective rent). Lists the offending columns by name
+          so the user can decide whether to re-export and re-upload. */}
+      {data?.rentRollSummary?.humanReviewNeeded && (() => {
+        const cov = data?.rentRollSummary?.columnCoverage ?? {};
+        const flagged = Object.entries(cov)
+          .filter(([, s]) => s === 'missing' || s === 'all_null')
+          .map(([k]) => k.replace(/_/g, ' '));
+        return (
+          <div style={{ background: '#1a0d00', borderBottom: `1px solid ${C.amber}66`, padding: '10px 20px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <AlertTriangle size={14} color={C.amber} style={{ marginTop: 1, flexShrink: 0 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span style={{ fontFamily: LABEL, fontSize: 10, fontWeight: 700, color: C.amber, letterSpacing: '0.06em' }}>
+                RENT ROLL REVIEW RECOMMENDED
+              </span>
+              <span style={{ fontFamily: LABEL, fontSize: 9, color: C.amber }}>
+                {flagged.length > 0
+                  ? <>The parser could not reliably extract: <strong>{flagged.join(', ')}</strong>. </>
+                  : <>The parser flagged ≥50% of occupied units missing lease expiration or effective rent. </>}
+                Re-export the rent roll in a standard layout (Yardi RRwLC, RealPage, AppFolio) or verify the affected columns before relying on these figures for underwriting.
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Unit count reconciliation banner ── */}
       {unitCountMismatch && (
         <div style={{ background: '#1a0d00', borderBottom: `1px solid ${C.amber}44`, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1123,7 +1220,11 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                             {fmtPct(occ)}
                           </td>
                           <td style={td(false)}>
-                            <ExpirationBars curve={u.expirationCurve ?? null} totalUnits={u.count} />
+                            <ExpirationBars
+                              curve={u.expirationCurve ?? null}
+                              totalUnits={u.count}
+                              status={u.expirationExtractionStatus ?? null}
+                            />
                           </td>
                           <td style={td(true, false, C.green)}>{fmt$(gpr)}</td>
                         </tr>
@@ -1160,7 +1261,11 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                         {fmtPct(weightedOcc)}
                       </td>
                       <td style={td(false)}>
-                        <ExpirationBars curve={data?.rentRollSummary?.expirationCurve ?? null} totalUnits={totalUnits} />
+                        <ExpirationBars
+                          curve={data?.rentRollSummary?.expirationCurve ?? null}
+                          totalUnits={totalUnits}
+                          status={data?.rentRollSummary?.expirationExtractionStatus ?? null}
+                        />
                       </td>
                       <td style={{ ...td(true), fontWeight: 700, color: C.green }}>{fmt$(totalGprAnnual)}</td>
                     </tr>

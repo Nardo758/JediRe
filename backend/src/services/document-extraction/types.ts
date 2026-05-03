@@ -476,6 +476,13 @@ export interface ExtractionRentRollCapsule {
     avg_market_rent: number;
     avg_effective_rent: number;
     occupancy_pct: number;
+    /** Per-floor-plan expiration roll-up. Optional for backward compat. */
+    expiration_curve?: {
+      months_0_3: number; months_3_6: number; months_6_12: number;
+      months_12_plus: number; mtm: number; unknown?: number;
+    };
+    /** Per-floor-plan extraction quality flag (Task #514). Optional for legacy. */
+    expiration_extraction_status?: 'ok' | 'partial' | 'failed';
   }>;
   bedroom_mix: Record<string, { count: number; pct: number; avg_rent: number }>;
   outstanding_balance_total: number;
@@ -488,7 +495,17 @@ export interface ExtractionRentRollCapsule {
     months_6_12: number;
     months_12_plus: number;
     mtm: number;
+    /** Units whose lease_expiration could not be parsed. Added in Task #514;
+     *  legacy capsules omit this field — readers should default to 0. */
+    unknown?: number;
   };
+  /** Deal-wide extraction status for the lease-expiration column. Task #514. */
+  expiration_extraction_status?: 'ok' | 'partial' | 'failed';
+  /** Per-critical-column extraction scorecard. Task #514. */
+  column_coverage?: Record<string, 'ok' | 'fallback' | 'all_null' | 'missing' | 'not_supported'>;
+  /** True when the extraction needs human review (missing critical columns or
+   *  ≥50% rows missing lease_expiration / effective_rent). Task #514. */
+  human_review_needed?: boolean;
   warnings: string[];
 }
 
