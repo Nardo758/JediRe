@@ -1,4 +1,4 @@
-/**
+﻿/**
  * financials-composer.service.ts
  *
  * Composes the full F9DealFinancials shape for the /api/v1/deals/:dealId/financials endpoint.
@@ -8,7 +8,7 @@
 import { Pool } from 'pg';
 import { seedProFormaYear1 } from './proforma-seeder.service';
 
-// ── M07 Subject Traffic History record shape (mirrors frontend F9SubjectHistory) ───
+// â”€â”€ M07 Subject Traffic History record shape (mirrors frontend F9SubjectHistory) â”€â”€â”€
 export interface SubjectHistoryRecord {
   tier: 'S1' | 'S2' | 'S3' | 'S4';
   snapshot_count: number;
@@ -17,7 +17,7 @@ export interface SubjectHistoryRecord {
   observed_dynamics: Record<string, unknown> | null;
   confidence_weights: Record<string, { n_obs: number; n_required: number; weight: number }>;
   peer_collisions: Array<{ coefficient: string; subject_value: number; peer_value: number; sigma_deviation: number }>;
-  /** Platform peer-set posteriors for all resolved coefficients — for UI peer column. */
+  /** Platform peer-set posteriors for all resolved coefficients â€” for UI peer column. */
   peer_set_values: Record<string, number>;
   updated_at: string;
 }
@@ -78,7 +78,7 @@ export interface ComposedFinancials {
   extractionRentRoll: ExtractionRentRollPayload | null;
   /**
    * Per-category ancillary income reconciliation: rent-roll, T-12 (aggregate
-   * only — `t12` only set on the synthetic 'total' row), and OM broker
+   * only â€” `t12` only set on the synthetic 'total' row), and OM broker
    * pro-forma side-by-side with the seeder's resolved value, source, and
    * conflict flag (>15% spread between any two non-null sources). Surfaces
    * `extraction_om.other_income_monthly` + `extraction_rent_roll.other_income_monthly`
@@ -86,7 +86,7 @@ export interface ComposedFinancials {
    */
   otherIncomeBreakdown: OtherIncomeBreakdownPayload | null;
   /**
-   * Subject property traffic history — M07 §6.
+   * Subject property traffic history â€” M07 Â§6.
    * Null until the first rent roll has been uploaded and S1 aggregation run.
    * Populated from subject_traffic_history via composeDealFinancials().
    */
@@ -207,20 +207,20 @@ export async function composeDealFinancials(
     );
     rentRollRows = rrRes.rows;
   } catch {
-    // rent_roll table may not exist yet — graceful fallback
+    // rent_roll table may not exist yet â€” graceful fallback
     rentRollRows = [];
   }
 
   // 3a. ALWAYS load `extraction_rent_roll` capsule when present, regardless
   // of whether SQL rent-roll rows exist. The UI consumes this payload
   // independently for ancillary income (other_income_monthly), per-unit
-  // drill-down (units array), and expiration curves — even when SQL rows
+  // drill-down (units array), and expiration curves â€” even when SQL rows
   // win the unit-mix derivation tier. Without this decoupling, a deal that
   // has both legacy SQL rent_roll AND a fresh extraction would lose
   // ancillary/per-unit features in the UI.
   const extractionRentRoll = await loadExtractionRentRoll(pool, dealId);
   // Also load capsule aggregates when an extraction is present but its
-  // `floor_plan_mix` is empty/malformed — in that case the extraction can
+  // `floor_plan_mix` is empty/malformed â€” in that case the extraction can
   // still hand us aggregates (otherIncomeMonthly, expirationCurve, totals)
   // but we need OM-level fallbacks to render the Default row. Without this,
   // an extraction with units:[] and {} floor_plan_mix would leave
@@ -233,7 +233,7 @@ export async function composeDealFinancials(
   // Tier 3: OM-extracted per-floorplan unit mix. The OM parser writes a
   // multi-row table to `deals.deal_data.extraction_om.unit_mix` whenever the
   // broker published one. We use it ONLY when no rent-roll source upstream
-  // produced floor plan rows — otherwise it would silently override real
+  // produced floor plan rows â€” otherwise it would silently override real
   // rent-roll truth with broker marketing.
   const omUnitMix = (rentRollRows.length === 0 && !extractionHasFloorPlanMix)
     ? await loadOmUnitMix(pool, dealId)
@@ -341,7 +341,7 @@ export async function composeDealFinancials(
   // 12. Build capital stack
   const capitalStack = buildCapitalStack(purchasePrice, year1Data);
 
-  // 13. Load M07 subject traffic history (non-fatal — null when no rent roll uploaded)
+  // 13. Load M07 subject traffic history (non-fatal â€” null when no rent roll uploaded)
   let subjectHistory: SubjectHistoryRecord | null = null;
   try {
     const sthRes = await pool.query<{
@@ -369,7 +369,7 @@ export async function composeDealFinancials(
       try {
         peerSetValues = await loadDealScopedPeerPosteriors(pool, deal);
       } catch {
-        // Platform posteriors not available — peer column stays empty for non-collision rows
+        // Platform posteriors not available â€” peer column stays empty for non-collision rows
       }
       subjectHistory = {
         tier:               row.tier as SubjectHistoryRecord['tier'],
@@ -384,7 +384,7 @@ export async function composeDealFinancials(
       };
     }
   } catch {
-    // subject_traffic_history table may not exist in older envs — graceful fallback
+    // subject_traffic_history table may not exist in older envs â€” graceful fallback
     subjectHistory = null;
   }
 
@@ -414,7 +414,7 @@ export async function composeDealFinancials(
       debt: null,
       sourcesUses: null,
       waterfall: null,
-      projections: null,
+      projections: buildProjections(year1Rows, totalUnits, year1Data, purchasePrice, null),
       capital: null,
       extractionRentRoll,
       subjectHistory,
@@ -428,9 +428,9 @@ export async function composeDealFinancials(
 
 /**
  * Build per-category ancillary reconciliation payload for the UI.
- * - rent_roll: monthly $ × 12 from `extraction_rent_roll.other_income_monthly`
- * - om:        monthly $ × 12 from `extraction_om.other_income_monthly`
- * - t12:       only the aggregate (T-12 has no per-category breakdown) — set
+ * - rent_roll: monthly $ Ã— 12 from `extraction_rent_roll.other_income_monthly`
+ * - om:        monthly $ Ã— 12 from `extraction_om.other_income_monthly`
+ * - t12:       only the aggregate (T-12 has no per-category breakdown) â€” set
  *              on the synthetic total row, NOT on per-category rows
  * - resolved + resolution: pulled from the seed's `other_income_breakdown.<cat>`
  *                          LayeredValue computed by proforma-seeder.
@@ -526,7 +526,7 @@ function composeOtherIncomeBreakdown(
 
   if (!rrOI && !omOI && !seedBreakdown && t12Total == null) return null;
 
-  // Map UI category → (rrKey, omKey). Rent-roll uses `pet_rent`; OM uses `pet`.
+  // Map UI category â†’ (rrKey, omKey). Rent-roll uses `pet_rent`; OM uses `pet`.
   const CATS: Array<{ cat: string; rr: string; om: string }> = [
     { cat: 'parking', rr: 'parking', om: 'parking' },
     { cat: 'pet', rr: 'pet_rent', om: 'pet' },
@@ -543,7 +543,7 @@ function composeOtherIncomeBreakdown(
     return typeof v === 'number' && Number.isFinite(v) ? v * 12 : null;
   };
   // Rent-roll per-category lines are positive-by-design ancillary buckets.
-  // The seeder treats RR ≤ 0 as "no data" (PM doesn't track this line, or a
+  // The seeder treats RR â‰¤ 0 as "no data" (PM doesn't track this line, or a
   // write-off is leaking in) and falls through to OM. Mirror that here so
   // the displayed RR column and conflict badge stay consistent with the
   // resolver's actual precedence behavior. Task #519 (composer/seeder parity).
@@ -555,7 +555,7 @@ function composeOtherIncomeBreakdown(
   const isConflict = (a: number | null, b: number | null): boolean => {
     if (a == null || b == null) return false;
     const denom = Math.max(Math.abs(a), Math.abs(b));
-    if (denom < 1) return false; // both ≈ 0 — no meaningful spread
+    if (denom < 1) return false; // both â‰ˆ 0 â€” no meaningful spread
     return Math.abs(a - b) / denom > 0.15;
   };
 
@@ -670,7 +670,7 @@ function omUnitMixToRentRollRows(
   });
 }
 
-// ── Helper: Build operating statement rows ───────────────────────────────────
+// â”€â”€ Helper: Build operating statement rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildOSRows(
   y1: any,
@@ -745,7 +745,7 @@ function buildOSRows(
     return rows;
   }
 
-  // ─── LayeredValue extraction ────────────────────────────────────────────────
+  // â”€â”€â”€ LayeredValue extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // year1 stores each field as { resolved, t12, om, rent_roll, tax_bill, platform, override, resolution }.
   // Helpers: lv() returns the LayeredValue object (or empty); res() the resolved number.
   type LV = {
@@ -764,7 +764,7 @@ function buildOSRows(
     return v.resolved ?? v.platform ?? null;
   }
 
-  // ─── Revenue ────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Revenue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Mirrors Projections REVENUE block. When useUnitMixForGpr is on AND the unit
   // mix has the relevant data, we resolve from unit mix; otherwise fall back to
   // year1 platform values.
@@ -812,7 +812,7 @@ function buildOSRows(
     ? badDebtLV.resolution
     : 'platform';
 
-  // Net Rental Income = GPR − Vacancy Loss − L2L − Concessions − Bad Debt − NRU
+  // Net Rental Income = GPR âˆ’ Vacancy Loss âˆ’ L2L âˆ’ Concessions âˆ’ Bad Debt âˆ’ NRU
   const nri = (() => {
     if (gprPick.resolved == null) return null;
     return gprPick.resolved
@@ -841,7 +841,7 @@ function buildOSRows(
   addRow('other_income',       'Other Income',               otherPick.resolved,  { source: otherPick.source, platform: platformOtherIncome });
   addRow('egi',                'Effective Gross Income',     egi,                  { isSubtotal: true });
 
-  // ─── Expenses (mirrors Projections EXPENSES section) ───────────────────────
+  // â”€â”€â”€ Expenses (mirrors Projections EXPENSES section) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Helper: emit an expense row pulling resolved + source columns from the LayeredValue.
   function addExpenseRow(field: string, label: string, key: string) {
     const v = lv(key);
@@ -877,7 +877,7 @@ function buildOSRows(
   addExpenseRow('real_estate_taxes',    'Real Estate Taxes',   'real_estate_tax');
   addExpenseRow('replacement_reserves', 'Replacement Reserves','replacement_reserves');
 
-  // Total OpEx — prefer stored value, otherwise sum the rows we just added
+  // Total OpEx â€” prefer stored value, otherwise sum the rows we just added
   // plus any custom_opex_* GL line items the seeder may have surfaced.
   const storedTotalOpex = res('total_opex');
   const summedOpex = (() => {
@@ -911,14 +911,14 @@ function buildOSRows(
   const computedNoi = (egi != null && totalOpForNoi != null) ? egi - totalOpForNoi : null;
   addRow('noi', 'Net Operating Income', noiY1 ?? computedNoi, { isSubtotal: true });
 
-  // Debt (composer doesn't surface debt yet — leave nullable rows)
+  // Debt (composer doesn't surface debt yet â€” leave nullable rows)
   addRow('debt_service',      'Debt Service',      null);
   addRow('pre_tax_cash_flow', 'Pre-Tax Cash Flow', null, { isSubtotal: true });
 
   return rows;
 }
 
-// ── Helper: Integrity checks ─────────────────────────────────────────────────
+// â”€â”€ Helper: Integrity checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildIntegrityChecks(
   y1: any,
@@ -929,7 +929,7 @@ function buildIntegrityChecks(
   const checks: IntegrityCheck[] = [];
 
   if (!y1) {
-    // Check if extraction capsules exist — if none, this deal has never had
+    // Check if extraction capsules exist â€” if none, this deal has never had
     // documents parsed and will always be empty until ingestion happens.
     // Diagnostic: when proforma is empty AND no extraction capsules exist
     // on the deal, surface a hard error so the UI can render an actionable
@@ -949,19 +949,19 @@ function buildIntegrityChecks(
       checks.push({
         id: 'extraction_data_missing',
         status: 'error',
-        message: 'No T-12, rent roll, or tax bill found for this deal — upload and parse documents to populate the model.',
+        message: 'No T-12, rent roll, or tax bill found for this deal â€” upload and parse documents to populate the model.',
       });
     } else if (!hasExtractionT12 && !hasExtractionTax) {
       checks.push({
         id: 'seed_partial',
         status: 'warn',
-        message: 'Rent roll found but no T-12 or tax bill — revenue assumptions will be populated but expenses may be incomplete.',
+        message: 'Rent roll found but no T-12 or tax bill â€” revenue assumptions will be populated but expenses may be incomplete.',
       });
     } else {
       checks.push({
         id: 'proforma_seeded',
         status: 'warn',
-        message: 'No proforma data seeded — add deal assumptions or trigger auto-seed.',
+        message: 'No proforma data seeded â€” add deal assumptions or trigger auto-seed.',
       });
     }
   }
@@ -973,14 +973,14 @@ function buildIntegrityChecks(
       status: noiRow.resolved > 0 ? 'ok' : 'warn',
       message: noiRow.resolved > 0
         ? 'NOI positive'
-        : 'NOI is zero or negative — review revenue and expense assumptions.',
+        : 'NOI is zero or negative â€” review revenue and expense assumptions.',
     });
   }
 
   return checks;
 }
 
-// ── Helper: Unit economics ───────────────────────────────────────────────────
+// â”€â”€ Helper: Unit economics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildUnitEconomics(rows: OSRow[], totalUnits: number): Record<string, number | null> {
   const gprRow = rows.find(r => r.field === 'gpr');
@@ -1002,7 +1002,7 @@ function buildUnitEconomics(rows: OSRow[], totalUnits: number): Record<string, n
   };
 }
 
-// ── Helper: Valuation snapshot ───────────────────────────────────────────────
+// â”€â”€ Helper: Valuation snapshot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildValuationSnapshot(
   purchasePrice: number | null,
@@ -1039,9 +1039,9 @@ function buildValuationSnapshot(
   };
 }
 
-// ── Helper: Rent roll summary ────────────────────────────────────────────────
+// â”€â”€ Helper: Rent roll summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// ── Helper: Unit-mix derived revenue items (shared across composer paths) ────
+// â”€â”€ Helper: Unit-mix derived revenue items (shared across composer paths) â”€â”€â”€â”€
 
 interface UnitMixDerived {
   unitMix: Array<{
@@ -1052,10 +1052,10 @@ interface UnitMixDerived {
   totalUnitsInMix: number;
   avgInPlaceRent: number | null;
   weightedOccupancyPct: number | null;
-  gprFromUnitMix: number | null;        // Σ marketRent × count × 12  (potential gross — Projections semantics)
-  vacancyLossFromUnitMix: number | null; // gpr × (1 − weightedOccupancy)
-  lossToLeaseFromUnitMix: number | null; // Σ max(0, marketRent − inPlaceRent) × count × 12
-  concessionsFromUnitMix: number | null; // Σ marketRent × count × 12 × concessionPct
+  gprFromUnitMix: number | null;        // Î£ marketRent Ã— count Ã— 12  (potential gross â€” Projections semantics)
+  vacancyLossFromUnitMix: number | null; // gpr Ã— (1 âˆ’ weightedOccupancy)
+  lossToLeaseFromUnitMix: number | null; // Î£ max(0, marketRent âˆ’ inPlaceRent) Ã— count Ã— 12
+  concessionsFromUnitMix: number | null; // Î£ marketRent Ã— count Ã— 12 Ã— concessionPct
 }
 
 function computeUnitMixDerived(rentRollRows: any[]): UnitMixDerived {
@@ -1085,7 +1085,7 @@ function computeUnitMixDerived(rentRollRows: any[]): UnitMixDerived {
   // null as 0 here would silently propagate "100% vacant" through GPR
   // vacancy loss math, badly distorting Pro Forma. Skip null rows entirely
   // (excluded from both numerator and denominator); return null when no row
-  // contributes — downstream `vacancyLossFromUnitMix` already null-checks.
+  // contributes â€” downstream `vacancyLossFromUnitMix` already null-checks.
   const weightedOcc = (() => {
     let weightedSum = 0;
     let weightTotal = 0;
@@ -1149,7 +1149,7 @@ function buildRentRollSummary(
   // they need on the frontend.
   // Tier 3: OM-published per-floorplan unit mix (extraction_om.unit_mix).
   // Used when no rent-roll source produced rows. Same column shape as the
-  // rent-roll tier so the F9 Unit Mix tab renders identically — only the
+  // rent-roll tier so the F9 Unit Mix tab renders identically â€” only the
   // source badge changes.
   if (omDerivationRows && omDerivationRows.length > 0) {
     const unitMix = omDerivationRows.map(r => ({
@@ -1208,7 +1208,7 @@ function buildRentRollSummary(
       concessionsFromUnitMix: derived.concessionsFromUnitMix,
       useUnitMixForGpr,
       expirationCurve: extractionRentRoll?.expirationCurve ?? null,
-      // Task #514 — surface deal-wide extraction quality flags for the
+      // Task #514 â€” surface deal-wide extraction quality flags for the
       // Unit Mix tab's TOTALS row tri-state + the review banner.
       expirationExtractionStatus: extractionRentRoll?.expirationExtractionStatus ?? null,
       columnCoverage: extractionRentRoll?.columnCoverage ?? null,
@@ -1221,8 +1221,8 @@ function buildRentRollSummary(
     const synthesizedCount = totalUnits > 0 ? totalUnits : (capsuleAggregates?.units ?? 0);
     if (synthesizedCount > 0) {
       // Synthesize a default unit mix row so the UnitMixTab renders with an editable row.
-      // Layered values for the DISPLAYED row: user override (per_year_overrides) →
-      // capsule aggregate → null. Both columns share the same fallback chain so the
+      // Layered values for the DISPLAYED row: user override (per_year_overrides) â†’
+      // capsule aggregate â†’ null. Both columns share the same fallback chain so the
       // Unit Mix tab and the OS derivation pipeline agree on what the row "is".
       const ovInPlace = synthesizedOverrides?.inPlaceRent ?? null;
       const ovMarket  = synthesizedOverrides?.marketRent  ?? null;
@@ -1249,7 +1249,7 @@ function buildRentRollSummary(
         // Provenance: capsule when capsule had data, synthesized otherwise.
         source: capsuleAggregates ? 'capsule' : 'synthesized',
       }];
-      // Use the SAME derivation outputs that buildOSRows consumes — derivationRows
+      // Use the SAME derivation outputs that buildOSRows consumes â€” derivationRows
       // was synthesized from the same overrides + capsule, so this guarantees the
       // Unit Mix tab metrics (gpr/vacancy/loss-to-lease) cannot drift from the
       // Pro Forma Operating Statement values. Falls back to single-row math only
@@ -1271,7 +1271,7 @@ function buildRentRollSummary(
     }
     return null;
   }
-  // Tier 1: legacy SQL `rent_roll` table — explicit source so downstream
+  // Tier 1: legacy SQL `rent_roll` table â€” explicit source so downstream
   // provenance handling is uniform across all tiers.
   return {
     unitMix: derived.unitMix,
@@ -1286,7 +1286,7 @@ function buildRentRollSummary(
   };
 }
 
-// ── Helper: Traffic projection (placeholder) ─────────────────────────────────
+// â”€â”€ Helper: Traffic projection (placeholder) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildTrafficProjection(): any {
   return {
@@ -1302,7 +1302,7 @@ function buildTrafficProjection(): any {
   };
 }
 
-// ── Helper: Assumptions ──────────────────────────────────────────────────────
+// â”€â”€ Helper: Assumptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildAssumptions(y1: any): any {
   const holdYears = y1?.holdYears ?? 10;
@@ -1325,7 +1325,7 @@ function buildAssumptions(y1: any): any {
   };
 }
 
-// ── Helper: Capsule aggregates fallback ──────────────────────────────────────
+// â”€â”€ Helper: Capsule aggregates fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // When no rent_roll rows exist, pull aggregates from deal_capsules.deal_data
 // (sourced from OM extraction) so the synthesized Default unit-mix row carries
 // real units / avg rent / occupancy / avg SF instead of all-null cells.
@@ -1338,11 +1338,11 @@ export interface CapsuleAggregates {
 }
 
 /** Coerce occupancy that may arrive as a fraction (0.95) or a percent (95).
- *  Preserves a real 0 (fully vacant) — only `null`/`undefined`/non-finite/negative are dropped. */
+ *  Preserves a real 0 (fully vacant) â€” only `null`/`undefined`/non-finite/negative are dropped. */
 function normalizeOccupancy(raw: unknown): number | null {
   const n = typeof raw === 'number' ? raw : (raw != null ? Number(raw) : NaN);
   if (!Number.isFinite(n) || n < 0) return null;
-  // Percentages > 1.5 are treated as percent; values ≤ 1.5 stay as fractions.
+  // Percentages > 1.5 are treated as percent; values â‰¤ 1.5 stay as fractions.
   const norm = n > 1.5 ? n / 100 : n;
   return Math.min(Math.max(norm, 0), 1);
 }
@@ -1365,7 +1365,7 @@ function numOrNull(raw: unknown): number | null {
  * Load the `extraction_rent_roll` capsule payload (parsed rent-roll output).
  * This is the real per-floorplan mix + per-unit detail produced by the rent-
  * roll parser. Returns `null` when no rent roll has been processed for the
- * deal yet — callers should then fall back to capsule aggregates / OM data.
+ * deal yet â€” callers should then fall back to capsule aggregates / OM data.
  */
 export async function loadExtractionRentRoll(pool: Pool, dealId: string): Promise<ExtractionRentRollPayload | null> {
   // The rent-roll parser writes its output to `deals.deal_data.extraction_rent_roll`
@@ -1451,7 +1451,7 @@ export async function loadOmUnitMix(pool: Pool, dealId: string): Promise<Array<{
   const arr = Array.isArray(om.unit_mix) ? om.unit_mix : null;
   if (!arr || arr.length === 0) return null;
   // Filter rows with at least a floor plan label and SOMETHING quantitative
-  // — empty rows from a noisy parse would otherwise show up as all-null UI rows.
+  // â€” empty rows from a noisy parse would otherwise show up as all-null UI rows.
   const cleaned = arr
     .map((r: Record<string, unknown>) => ({
       floorplan: typeof r.floorplan === 'string' ? r.floorplan.trim() : '',
@@ -1466,9 +1466,9 @@ export async function loadOmUnitMix(pool: Pool, dealId: string): Promise<Array<{
 
 export async function loadCapsuleAggregates(pool: Pool, dealId: string): Promise<CapsuleAggregates | null> {
   // Capsules are stored two ways in the wild:
-  //   • shared-UUID: deal_capsules.id === deals.id (legacy / pre-bridge)
-  //   • bridge:      deal_capsules.deal_data->>'deal_id' = deals.id (auto-created)
-  // Try both so we work for either. id is uuid → cast to text for the param compare.
+  //   â€¢ shared-UUID: deal_capsules.id === deals.id (legacy / pre-bridge)
+  //   â€¢ bridge:      deal_capsules.deal_data->>'deal_id' = deals.id (auto-created)
+  // Try both so we work for either. id is uuid â†’ cast to text for the param compare.
   let capRes;
   try {
     capRes = await pool.query(
@@ -1488,9 +1488,9 @@ export async function loadCapsuleAggregates(pool: Pool, dealId: string): Promise
   const dd = capRes.rows[0]?.deal_data;
   if (!dd || typeof dd !== 'object') return null;
 
-  // OM extraction shape (from `pdf-extractor → broker_claims`):
-  //   deal_data.broker_claims.property  → { units, avgUnitSF, netRentableSF, ... }
-  //   deal_data.broker_claims.proforma  → { stabilizedVacancy, lossToLease, ... }
+  // OM extraction shape (from `pdf-extractor â†’ broker_claims`):
+  //   deal_data.broker_claims.property  â†’ { units, avgUnitSF, netRentableSF, ... }
+  //   deal_data.broker_claims.proforma  â†’ { stabilizedVacancy, lossToLease, ... }
   // Older capsules sometimes also stash a flatter copy under `extraction_om.{property,proforma}`.
   const claims = (dd.broker_claims && typeof dd.broker_claims === 'object') ? dd.broker_claims : {};
   const om = (dd.extraction_om && typeof dd.extraction_om === 'object') ? dd.extraction_om : {};
@@ -1508,7 +1508,7 @@ export async function loadCapsuleAggregates(pool: Pool, dealId: string): Promise
   const occRaw = dd.occupancy ?? claims.occupancy ?? dd.broker_occupancy ?? null;
   let occupancyPct = normalizeOccupancy(occRaw);
   if (occupancyPct == null) {
-    // Derive from stabilizedVacancy when present (e.g. 0.05 → 0.95)
+    // Derive from stabilizedVacancy when present (e.g. 0.05 â†’ 0.95)
     const vac = normalizeOccupancy(proforma.stabilizedVacancy);
     if (vac != null) occupancyPct = Math.max(0, 1 - vac);
   }
@@ -1522,7 +1522,7 @@ export async function loadCapsuleAggregates(pool: Pool, dealId: string): Promise
   return { units, avgRent, occupancyPct, avgSf };
 }
 
-// ── Helper: Capital stack ────────────────────────────────────────────────────
+// â”€â”€ Helper: Capital stack â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildCapitalStack(purchasePrice: number | null, y1: any): any {
   return {
@@ -1538,3 +1538,247 @@ function buildCapitalStack(purchasePrice: number | null, y1: any): any {
     pricePerUnit: purchasePrice != null && purchasePrice > 0 ? purchasePrice : null,
   };
 }
+
+// â”€â”€ Projections builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Generates the projections array that ProjectionsTab expects. Each year is an
+// object with flat keys matching the tab's RowDef definitions. Year 1 reads
+// from the year1Rows resolved values; subsequent years apply rent growth to
+// revenue items and expense growth to expense items.
+
+interface ProjYear {
+  year: number;
+  // Revenue
+  gpr: number | null; vacancyLoss: number | null; lossToLease: number | null;
+  concessions: number | null; badDebt: number | null; nru: number | null;
+  nri: number | null; otherIncome: number | null; egi: number | null;
+  // Expenses (camelCase keys matching ProjectionsTab RowDef)
+  payroll: number | null; repairs: number | null; turnover: number | null;
+  contractSvc: number | null; marketing: number | null; utilities: number | null;
+  gAndA: number | null; mgmtFee: number | null; insurance: number | null;
+  reTaxes: number | null; reserves: number | null; totalOpex: number | null;
+  // NOI
+  noi: number | null; opMargin: number | null; noiPerUnit: number | null;
+  // Debt Service
+  interest: number | null; principal: number | null; annualDS: number | null;
+  // Cash Flow
+  cfbt: number | null; cfads: number | null;
+  // After-Tax
+  depreciation: number | null; taxableIncome: number | null;
+  taxPayable: number | null; afterTaxCfads: number | null;
+  // Exit/Disposition
+  exitNoi: number | null; exitCap: number | null; grossSaleValue: number | null;
+  sellingCosts: number | null; dispositionDocStamps: number | null;
+  loanPayoff: number | null; dispositionTaxPayable: number | null;
+  netSaleProceeds: number | null;
+  // Metrics strip
+  occupancy: number | null; dscr: number | null; debtYield: number | null;
+  coc: number | null; cumulativeEM: number | null; capRatePct: number | null;
+  noiMarginPct: number | null; opexRatioPct: number | null;
+  rentGrowthPct: number | null;
+}
+
+function buildProjections(
+  rows: OSRow[],
+  totalUnits: number,
+  y1: any,
+  purchasePrice: number | null,
+  totalOpexY1: number | null,
+): ProjYear[] {
+  // Extract year 1 resolved values from OSRow[]
+  const r = (field: string): number | null => {
+    const row = rows.find(rr => rr.field === field);
+    return row?.resolved ?? row?.platform ?? null;
+  };
+  // Alias for expense rows (same extraction)
+  const expense = r;
+
+  const gprY1          = r('gpr');
+  const vacancyLossY1  = r('vacancy_loss');
+  const lossToLeaseY1  = r('loss_to_lease');
+  const concessionsY1  = r('concessions');
+  const badDebtY1      = r('bad_debt');
+  const nruY1          = r('non_revenue_units');
+  const nriY1          = r('net_rental_income');
+  const otherIncY1     = r('other_income');
+  const egiY1          = r('egi');
+
+  const payrollY1     = expense('payroll');
+  const repairsY1     = expense('repairs_maintenance');
+  const turnoverY1    = expense('turnover');
+  const contractSvcY1 = expense('contract_services');
+  const marketingY1   = expense('marketing');
+  const utilitiesY1   = expense('utilities');
+  const gAndAY1       = expense('g_and_a');
+  const mgmtFeeY1     = expense('management_fee');
+  const insuranceY1   = expense('insurance');
+  const reTaxesY1     = expense('real_estate_taxes');
+  const reservesY1    = expense('replacement_reserves');
+  const noiY1         = r('noi');
+
+  // Growth rates from y1 seed
+  const rentGrowth = ((): number => {
+    const v = y1?.rent_growth;
+    if (typeof v === 'number') return v;
+    if (v && typeof v === 'object' && v.resolved != null) return v.resolved;
+    return 0.03;
+  })();
+  const expenseGrowth = ((): number => {
+    const v = y1?.expense_growth;
+    if (typeof v === 'number') return v;
+    if (v && typeof v === 'object' && v.resolved != null) return v.resolved;
+    return 0.03;
+  })();
+
+  // Capital stack
+  const loanAmount    = y1?.loanAmount ?? null;
+  const interestRate = ((): number => {
+    const v = y1?.interestRate;
+    if (typeof v === 'number') return v;
+    return 0.065;
+  })();
+  const holdYears = ((): number => {
+    const v = y1?.holdYears;
+    if (typeof v === 'number') return v;
+    return 5;
+  })();
+  const exitCap = ((): number => {
+    const v = y1?.exitCap;
+    if (typeof v === 'number') return v;
+    return 0.0625;
+  })();
+  const sellingCostsPct = ((): number => {
+    const v = y1?.sellingCosts;
+    if (typeof v === 'number') return v;
+    return 0.02;
+  })();
+
+  // Compute constant-payment debt service
+  const monthlyRate = interestRate / 12;
+  const numPayments = 360; // 30-year amort
+  let monthlyPayment = 0;
+  if (loanAmount && loanAmount > 0 && monthlyRate > 0) {
+    monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) /
+      (Math.pow(1 + monthlyRate, numPayments) - 1);
+  }
+  const annualDS = monthlyPayment * 12;
+
+  // Build 10 years
+  const years: ProjYear[] = [];
+  for (let yi = 0; yi < 10; yi++) {
+    const yearNum = yi + 1;
+    const rg = Math.pow(1 + rentGrowth, yi);
+    const eg = Math.pow(1 + expenseGrowth, yi);
+
+    const scale = (val: number | null): number | null =>
+      val != null ? val * rg : null;
+    const expenseScale = (val: number | null): number | null =>
+      val != null ? val * eg : null;
+
+    const gpr         = scale(gprY1);
+    const vacancyLoss = scale(vacancyLossY1);
+    const lossToLease = scale(lossToLeaseY1);
+    const concessions = scale(concessionsY1);
+    const badDebt     = scale(badDebtY1);
+    const nru         = scale(nruY1);
+    const nri         = scale(nriY1);
+    const otherIncome = scale(otherIncY1);
+    const egi         = scale(egiY1);
+
+    const payroll     = expenseScale(payrollY1);
+    const repairs     = expenseScale(repairsY1);
+    const turnover    = expenseScale(turnoverY1);
+    const contractSvc = expenseScale(contractSvcY1);
+    const marketing   = expenseScale(marketingY1);
+    const utilities   = expenseScale(utilitiesY1);
+    const gAndA       = expenseScale(gAndAY1);
+    const mgmtFee     = expenseScale(mgmtFeeY1);
+    const insurance   = expenseScale(insuranceY1);
+    const reTaxes     = expenseScale(reTaxesY1);
+    const reserves    = expenseScale(reservesY1);
+    const totalOpex   = expenseScale(totalOpexY1);
+
+    // If totalOpex is null, sum individual items
+    const totalOpexCalc = totalOpex ?? (
+      (payroll != null || repairs != null)
+        ? ((payroll ?? 0) + (repairs ?? 0) + (turnover ?? 0) + (contractSvc ?? 0) +
+           (marketing ?? 0) + (utilities ?? 0) + (gAndA ?? 0) + (mgmtFee ?? 0) +
+           (insurance ?? 0) + (reTaxes ?? 0) + (reserves ?? 0))
+        : null
+    );
+
+    const noi = scale(noiY1) ?? (
+      (egi != null && totalOpexCalc != null) ? egi - totalOpexCalc : null
+    );
+    const opMargin       = noi != null && egi != null && egi > 0 ? noi / egi : null;
+    const noiPerUnit     = totalUnits > 0 && noi != null ? noi / totalUnits : null;
+
+    // Debt service (constant payment)
+    const annualDSVal = loanAmount != null ? annualDS : null;
+    const interest = loanAmount != null ? loanAmount * interestRate : null;
+    const principal = annualDSVal != null && interest != null ? annualDSVal - interest : null;
+    const cfbt = noi != null && annualDSVal != null ? noi - annualDSVal : null;
+    const cfads = cfbt;
+
+    // Sale year disposition (only on holdYears)
+    let exitNoiVal: number | null = null;
+    let grossSaleValue: number | null = null;
+    let sellingCostsVal: number | null = null;
+    let netSaleProceedsVal: number | null = null;
+    const isSaleYear = yearNum === holdYears;
+    if (isSaleYear && noi != null) {
+      exitNoiVal = noi;
+      grossSaleValue = exitCap > 0 ? noi / exitCap : null;
+      sellingCostsVal = grossSaleValue != null ? grossSaleValue * sellingCostsPct : null;
+      const loanBalance = loanAmount != null
+        ? Math.max(0, loanAmount - (principal ?? 0) * yi)
+        : null;
+      netSaleProceedsVal = grossSaleValue != null && sellingCostsVal != null && loanBalance != null
+        ? grossSaleValue - sellingCostsVal - loanBalance
+        : null;
+    }
+
+    // Metrics strip
+    const occupancy = gpr != null && gpr > 0 && vacancyLoss != null
+      ? (gpr - vacancyLoss) / gpr : null;
+    const dscr = annualDSVal != null && annualDSVal > 0 && noi != null
+      ? noi / annualDSVal : null;
+    const debtYield = loanAmount != null && loanAmount > 0 && noi != null
+      ? noi / loanAmount : null;
+    const coc = cfbt != null && loanAmount != null && loanAmount > 0
+      ? cfbt / (loanAmount * 0.01) : null;
+    const cumEM = null;
+    const capRatePct = purchasePrice != null && purchasePrice > 0 && noi != null
+      ? noi / purchasePrice : null;
+    const noiMarginPct = opMargin;
+    const opexRatioPct = totalOpexCalc != null && egi != null && egi > 0
+      ? totalOpexCalc / egi : null;
+    const rentGrowthPct = yi === 0 ? rentGrowth : null;
+
+    years.push({
+      year: yearNum,
+      gpr, vacancyLoss, lossToLease, concessions, badDebt, nru, nri, otherIncome, egi,
+      payroll, repairs, turnover, contractSvc, marketing, utilities, gAndA,
+      mgmtFee, insurance, reTaxes, reserves,
+      totalOpex: totalOpexCalc,
+      noi, opMargin, noiPerUnit,
+      interest, principal, annualDS: annualDSVal,
+      cfbt, cfads,
+      depreciation: null, taxableIncome: null, taxPayable: null, afterTaxCfads: null,
+      exitNoi: exitNoiVal,
+      exitCap: isSaleYear ? exitCap : null,
+      grossSaleValue,
+      sellingCosts: sellingCostsVal,
+      dispositionDocStamps: null,
+      loanPayoff: isSaleYear ? loanAmount : null,
+      dispositionTaxPayable: null,
+      netSaleProceeds: netSaleProceedsVal,
+      occupancy, dscr, debtYield, coc, cumulativeEM: cumEM, capRatePct,
+      noiMarginPct, opexRatioPct, rentGrowthPct,
+    });
+  }
+  return years;
+}
+
+
+
+
