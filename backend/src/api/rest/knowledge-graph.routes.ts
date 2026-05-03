@@ -544,14 +544,38 @@ export function createKnowledgeGraphRoutes(pool: Pool): Router {
    * GET /api/v1/knowledge-graph/admin/embeddings-status
    * Quick observability endpoint for the embeddings layer.
    */
-  router.get('/admin/embeddings-status', async (_req: Request, res: Response) => {
+  router.get('/admin/embeddings-status', async (req: Request, res: Response) => {
     try {
       const counts = await embeddings.countEmbedded();
+
+      const rawSweepLimit = parseInt((req.query.sweepLimit as string) || '50', 10);
+      const sweepLimit = Number.isFinite(rawSweepLimit)
+        ? Math.min(Math.max(rawSweepLimit, 1), 200)
+        : 50;
+
+      // Window stats are computed directly in SQL so totals are correct
+      // regardless of how many `recent` rows the caller asked for.
+      const [recentSweeps, windowStats] = await Promise.all([
+        embeddings.getRecentSweeps(sweepLimit),
+        embeddings.getSweepWindowStats(24),
+      ]);
+
+      const lastSweep = recentSweeps[0] ?? null;
+      const lastSuccessfulSweep = recentSweeps.find(s => !s.errorMessage) ?? null;
+      const lastFailedSweep = recentSweeps.find(s => !!s.errorMessage) ?? null;
+
       res.json({
         success: true,
         hasKey: embeddings.hasKey(),
         model: embeddings.modelInfo(),
         ...counts,
+        sweeps: {
+          last: lastSweep,
+          lastSuccessful: lastSuccessfulSweep,
+          lastFailed: lastFailedSweep,
+          last24h: windowStats,
+          recent: recentSweeps,
+        },
       });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error?.message || 'Status failed' });

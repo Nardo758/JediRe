@@ -1123,6 +1123,7 @@ async function startServer() {
       const { getPool } = await import('./database/connection');
       const { getEmbeddingsService } = await import('./services/neural-network/embeddings.service');
       const svc = getEmbeddingsService(getPool());
+      await svc.ensureSweepHistoryTable();
       await svc.startupBackfillIfNeeded();
       await svc.healthCheck();
 
@@ -1161,8 +1162,9 @@ async function startServer() {
           return;
         }
         sweepInFlight = true;
+        const startedAt = new Date();
+        const t0 = Date.now();
         try {
-          const t0 = Date.now();
           const stats = await svc.reembedStale(
             maxPerRun ? { max: maxPerRun } : {}
           );
@@ -1172,8 +1174,20 @@ async function startServer() {
             `scanned=${stats.scanned} refreshed=${stats.refreshed} ` +
             `missing=${stats.missing} skipped=${stats.skipped} errors=${stats.errors}`
           );
+          await svc.recordSweepRun({
+            startedAt,
+            durationMs: ms,
+            stats,
+          });
         } catch (err: any) {
-          console.warn('[Embeddings] staleness sweep failed:', err?.message || err);
+          const ms = Date.now() - t0;
+          const message = err?.message || String(err);
+          console.warn('[Embeddings] staleness sweep failed:', message);
+          await svc.recordSweepRun({
+            startedAt,
+            durationMs: ms,
+            errorMessage: message,
+          });
         } finally {
           sweepInFlight = false;
         }

@@ -593,6 +593,178 @@ export class EmbeddingsService {
   }
 
   /**
+   * Idempotent setup for the sweep-history table. Safe to call on every
+   * boot — the table + index use IF NOT EXISTS. Backs Task #410 so the
+   * scheduler can record per-run history even when the SQL migration
+   * hasn't been applied through some other channel yet.
+   */
+  async ensureSweepHistoryTable(): Promise<void> {
+    try {
+      await this.pool.query(`
+        CREATE TABLE IF NOT EXISTS knowledge_graph_embedding_sweeps (
+          id            BIGSERIAL    PRIMARY KEY,
+          started_at    TIMESTAMPTZ  NOT NULL,
+          finished_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          duration_ms   INTEGER      NOT NULL DEFAULT 0,
+          scanned       INTEGER      NOT NULL DEFAULT 0,
+          refreshed     INTEGER      NOT NULL DEFAULT 0,
+          missing       INTEGER      NOT NULL DEFAULT 0,
+          skipped       INTEGER      NOT NULL DEFAULT 0,
+          errors        INTEGER      NOT NULL DEFAULT 0,
+          error_message TEXT         NULL,
+          created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+      `);
+      await this.pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_kg_embedding_sweeps_started
+          ON knowledge_graph_embedding_sweeps (started_at DESC)
+      `);
+    } catch (err: any) {
+      console.warn(`[Embeddings] ensureSweepHistoryTable failed: ${err?.message || err}`);
+    }
+  }
+
+  /**
+   * Persist one sweep run. Errors are swallowed (logged) so a recording
+   * failure can never break the sweep loop itself.
+   */
+  async recordSweepRun(run: {
+    startedAt: Date;
+    finishedAt?: Date;
+    durationMs: number;
+    stats?: Partial<RefreshStaleStats>;
+    errorMessage?: string | null;
+  }): Promise<void> {
+    const finishedAt = run.finishedAt ?? new Date();
+    const s = run.stats ?? {};
+    try {
+      await this.pool.query(
+        `INSERT INTO knowledge_graph_embedding_sweeps
+           (started_at, finished_at, duration_ms,
+            scanned, refreshed, missing, skipped, errors, error_message)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          run.startedAt,
+          finishedAt,
+          Math.max(0, Math.round(run.durationMs)),
+          s.scanned ?? 0,
+          s.refreshed ?? 0,
+          s.missing ?? 0,
+          s.skipped ?? 0,
+          s.errors ?? 0,
+          run.errorMessage ?? null,
+        ]
+      );
+    } catch (err: any) {
+      console.warn(`[Embeddings] recordSweepRun failed: ${err?.message || err}`);
+    }
+  }
+
+  /**
+   * Aggregate sweep stats over the trailing window. Computed directly
+   * in SQL so the totals are correct regardless of how many recent
+   * rows the caller asked for. Returns zeros if the table doesn't
+   * exist yet or the query fails.
+   */
+  async getSweepWindowStats(hours = 24): Promise<{
+    windowHours: number;
+    count: number;
+    scanned: number;
+    refreshed: number;
+    missing: number;
+    skipped: number;
+    errors: number;
+    failedRuns: number;
+  }> {
+    const safeHours = Math.min(Math.max(hours, 1), 24 * 30);
+    try {
+      const res = await this.pool.query<{
+        count: string;
+        scanned: string;
+        refreshed: string;
+        missing: string;
+        skipped: string;
+        errors: string;
+        failed_runs: string;
+      }>(
+        `SELECT
+           COUNT(*)::text                                              AS count,
+           COALESCE(SUM(scanned), 0)::text                             AS scanned,
+           COALESCE(SUM(refreshed), 0)::text                           AS refreshed,
+           COALESCE(SUM(missing), 0)::text                             AS missing,
+           COALESCE(SUM(skipped), 0)::text                             AS skipped,
+           COALESCE(SUM(errors), 0)::text                              AS errors,
+           COUNT(*) FILTER (WHERE error_message IS NOT NULL)::text     AS failed_runs
+         FROM knowledge_graph_embedding_sweeps
+         WHERE started_at >= NOW() - ($1 || ' hours')::INTERVAL`,
+        [String(safeHours)]
+      );
+      const r = res.rows[0];
+      return {
+        windowHours: safeHours,
+        count: parseInt(r?.count || '0', 10),
+        scanned: parseInt(r?.scanned || '0', 10),
+        refreshed: parseInt(r?.refreshed || '0', 10),
+        missing: parseInt(r?.missing || '0', 10),
+        skipped: parseInt(r?.skipped || '0', 10),
+        errors: parseInt(r?.errors || '0', 10),
+        failedRuns: parseInt(r?.failed_runs || '0', 10),
+      };
+    } catch (err: any) {
+      console.warn(`[Embeddings] getSweepWindowStats failed: ${err?.message || err}`);
+      return {
+        windowHours: safeHours,
+        count: 0, scanned: 0, refreshed: 0, missing: 0,
+        skipped: 0, errors: 0, failedRuns: 0,
+      };
+    }
+  }
+
+  /**
+   * Read the most recent sweep runs, newest first. Used by the admin
+   * status endpoint. Returns [] if the history table doesn't exist yet.
+   */
+  async getRecentSweeps(limit = 20): Promise<Array<{
+    id: number;
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    scanned: number;
+    refreshed: number;
+    missing: number;
+    skipped: number;
+    errors: number;
+    errorMessage: string | null;
+  }>> {
+    const safeLimit = Math.min(Math.max(limit, 1), 200);
+    try {
+      const res = await this.pool.query(
+        `SELECT id, started_at, finished_at, duration_ms,
+                scanned, refreshed, missing, skipped, errors, error_message
+           FROM knowledge_graph_embedding_sweeps
+          ORDER BY started_at DESC
+          LIMIT $1`,
+        [safeLimit]
+      );
+      return res.rows.map(r => ({
+        id: Number(r.id),
+        startedAt: r.started_at instanceof Date ? r.started_at.toISOString() : String(r.started_at),
+        finishedAt: r.finished_at instanceof Date ? r.finished_at.toISOString() : String(r.finished_at),
+        durationMs: Number(r.duration_ms) || 0,
+        scanned: Number(r.scanned) || 0,
+        refreshed: Number(r.refreshed) || 0,
+        missing: Number(r.missing) || 0,
+        skipped: Number(r.skipped) || 0,
+        errors: Number(r.errors) || 0,
+        errorMessage: r.error_message ?? null,
+      }));
+    } catch (err: any) {
+      console.warn(`[Embeddings] getRecentSweeps failed: ${err?.message || err}`);
+      return [];
+    }
+  }
+
+  /**
    * Best-effort startup backfill so the system reaches a usable state
    * without requiring a manual admin call. Never throws.
    */
