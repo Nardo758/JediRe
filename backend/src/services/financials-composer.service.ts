@@ -386,13 +386,20 @@ function composeOtherIncomeBreakdown(
     { cat: 'insurance_admin', rr: 'insurance_admin', om: 'insurance_admin' },
     { cat: 'other', rr: 'other', om: 'other' },
   ];
-  // Treat 0 / negative values as present (RR explicitly reports $0 for absent
-  // categories and "other" can carry negative write-offs). Only filter
-  // missing/non-finite. The seed resolution layer carries the same semantics
-  // so the displayed source values stay consistent with `resolved`.
-  const annual = (m: Record<string, unknown> | null, k: string): number | null => {
+  // OM is positive-by-design: any finite value (including 0) is meaningful.
+  const annualOM = (m: Record<string, unknown> | null, k: string): number | null => {
     const v = m?.[k];
     return typeof v === 'number' && Number.isFinite(v) ? v * 12 : null;
+  };
+  // Rent-roll per-category lines are positive-by-design ancillary buckets.
+  // The seeder treats RR ≤ 0 as "no data" (PM doesn't track this line, or a
+  // write-off is leaking in) and falls through to OM. Mirror that here so
+  // the displayed RR column and conflict badge stay consistent with the
+  // resolver's actual precedence behavior. Task #519 (composer/seeder parity).
+  const annualRR = (m: Record<string, unknown> | null, k: string): number | null => {
+    const v = m?.[k];
+    if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return null;
+    return v * 12;
   };
   const isConflict = (a: number | null, b: number | null): boolean => {
     if (a == null || b == null) return false;
@@ -402,8 +409,8 @@ function composeOtherIncomeBreakdown(
   };
 
   const rows: OtherIncomeBreakdownRow[] = CATS.map(({ cat, rr, om }) => {
-    const rrV = annual(rrOI, rr);
-    const omV = annual(omOI, om);
+    const rrV = annualRR(rrOI, rr);
+    const omV = annualOM(omOI, om);
     const seed = seedBreakdown?.[cat];
     const resolved = typeof seed?.resolved === 'number' ? seed.resolved : null;
     const resolution = typeof seed?.resolution === 'string' ? seed.resolution : 'unseeded';
