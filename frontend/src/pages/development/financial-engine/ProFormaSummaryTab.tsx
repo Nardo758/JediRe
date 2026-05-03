@@ -92,6 +92,27 @@ interface DealFinancials {
     perYear: Array<{ year: number; vacancyPct: number | null; rentGrowthPct: number | null; exitCapIfLastYear: number | null }>;
   };
   meta: { seeded: boolean; updatedAt: string | null };
+  /** Per-category ancillary income reconciliation (RR / T-12 / OM). Task #519. */
+  otherIncomeBreakdown?: {
+    rows: Array<{
+      category: string;
+      rent_roll: number | null;
+      t12: number | null;
+      om: number | null;
+      resolved: number | null;
+      resolution: string;
+      conflict: boolean;
+    }>;
+    total: { rent_roll: number | null; t12: number | null; om: number | null; resolved: number };
+  } | null;
+  /** User-added ancillary lines (e.g. "Solar revenue"). Task #519. */
+  otherIncomeUserLines?: Array<{
+    id: string;
+    label: string;
+    monthly: number;
+    note?: string;
+    created_at: string;
+  }>;
 }
 
 // ─── Sections layout ──────────────────────────────────────────────────────────
@@ -169,23 +190,6 @@ function SourceBadge({ source }: { source: string | null }) {
       color: meta.color, background: meta.bg,
     }}>{meta.label}</span>
   );
-}
-
-// ─── Ancillary income breakdown (mirrors F13 UnitMixTab model) ───────────────
-interface AncillaryLine { key: string; label: string; qty: number; price: number; occupancy: number; note: string }
-function makeDefaultAncillary(u: number): AncillaryLine[] {
-  return [
-    { key: 'pet',      label: 'Pet Rent',                   qty: u,                     price: 27.50,  occupancy: 0.30, note: 'Est. 30% of units' },
-    { key: 'garage',   label: 'Garage / Parking',           qty: Math.round(u * 0.111), price: 142.50, occupancy: 1.00, note: '~1 garage per 9 units' },
-    { key: 'storage',  label: 'Storage',                    qty: Math.round(u * 0.083), price: 50.00,  occupancy: 1.00, note: '~1 storage per 12 units' },
-    { key: 'rubs',     label: 'RUBS / Utilities',           qty: u,                     price: 65.00,  occupancy: 1.00, note: 'All units' },
-    { key: 'revshare', label: 'Revenue Sharing (Internet)', qty: u,                     price: 85.00,  occupancy: 0.95, note: '95% of units' },
-    { key: 'valet',    label: 'Valet Trash',                qty: u,                     price: 30.00,  occupancy: 0.95, note: '95% of units' },
-    { key: 'admin',    label: 'Admin / App Fees',           qty: u,                     price: 27.00,  occupancy: 0.65, note: 'Est. 65% of units' },
-    { key: 'late',     label: 'Late / NSF / Termination',  qty: u,                     price: 5.00,   occupancy: 1.00, note: 'All units' },
-    { key: 'damages',  label: 'Damages',                    qty: u,                     price: 2.44,   occupancy: 1.00, note: 'All units' },
-    { key: 'other',    label: 'Other Income',               qty: u,                     price: 7.00,   occupancy: 1.00, note: 'All units' },
-  ];
 }
 
 // ─── Correction state ─────────────────────────────────────────────────────────
@@ -633,7 +637,13 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
                 {r.field === 'other_income_per_unit' && showAncillary && (
                   <tr>
                     <td colSpan={9} style={{ background: '#050d12', padding: 0, borderBottom: '1px solid #0e2030' }}>
-                      <AncillaryExpansionPanel totalUnits={totalUnits} dealId={dealId} />
+                      <AncillaryExpansionPanel
+                        totalUnits={totalUnits}
+                        dealId={dealId}
+                        breakdown={data?.otherIncomeBreakdown ?? null}
+                        userLines={data?.otherIncomeUserLines ?? []}
+                        onChange={load}
+                      />
                     </td>
                   </tr>
                 )}
@@ -984,58 +994,92 @@ function SubtotalRow({ label, row, color, textColor, egiResolved }: {
   );
 }
 
-// ─── Ancillary expansion panel (self-contained, editable) ────────────────────
-function AncillaryExpansionPanel({ totalUnits, dealId }: { totalUnits: number; dealId: string }) {
-  const [lines, setLines] = useState<AncillaryLine[]>(() => makeDefaultAncillary(totalUnits));
-  const [editingKey, setEditingKey] = useState<{ key: string; field: 'qty' | 'price' | 'occ'; val: string } | null>(null);
+// ─── Ancillary expansion panel ────────────────────────────────────────────────
+// Task #519 rewrite: three-source reconciliation (Rent Roll / T-12 / OM) with
+// per-row override + user-added custom lines. Reads `otherIncomeBreakdown` and
+// `otherIncomeUserLines` straight from the financials response (no extra
+// network round-trip). All persistence routes through the existing override
+// endpoint and the new user-lines CRUD endpoints; on every successful save we
+// call `onChange` to re-pull the resolved values + EGI/NOI.
+const CAT_LABELS: Record<string, string> = {
+  parking: 'Parking', pet: 'Pet Rent', storage: 'Storage', laundry: 'Laundry',
+  rubs: 'RUBS / Utility Reimb', fees: 'Application / Admin / Late Fees',
+  insurance_admin: 'Renters Insurance', other: 'Other Ancillary',
+};
+const SRC_BADGE: Record<string, { label: string; color: string }> = {
+  rent_roll: { label: 'RR', color: '#22d3ee' },
+  t12: { label: 'T-12', color: '#94a3b8' },
+  om: { label: 'OM', color: '#f59e0b' },
+  override: { label: 'Override', color: '#c084fc' },
+  platform_fallback: { label: '—', color: '#475569' },
+  unseeded: { label: '—', color: '#475569' },
+};
 
-  const totalMonthly = lines.reduce((s, l) => s + l.qty * l.price * l.occupancy, 0);
-  const totalAnnual  = totalMonthly * 12;
+function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onChange }: {
+  totalUnits: number;
+  dealId: string;
+  breakdown: DealFinancials['otherIncomeBreakdown'];
+  userLines: NonNullable<DealFinancials['otherIncomeUserLines']>;
+  onChange: () => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState<{ kind: 'cat'; cat: string; val: string } | { kind: 'user'; id: string; field: 'label' | 'monthly'; val: string } | null>(null);
+  const [adding, setAdding] = useState<{ label: string; monthly: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const commit = () => {
-    if (!editingKey) return;
-    const num = parseFloat(editingKey.val);
-    if (isNaN(num)) { setEditingKey(null); return; }
-    setLines(prev => prev.map(l => {
-      if (l.key !== editingKey.key) return l;
-      if (editingKey.field === 'qty')   return { ...l, qty: Math.max(0, Math.round(num)) };
-      if (editingKey.field === 'price') return { ...l, price: Math.max(0, num) };
-      return { ...l, occupancy: Math.min(1, Math.max(0, num / 100)) };
-    }));
-    setEditingKey(null);
+  const rows = breakdown?.rows ?? [];
+  const total = breakdown?.total ?? { rent_roll: null, t12: null, om: null, resolved: 0 };
+  const userLinesAnnual = userLines.reduce((s, l) => s + (l.monthly * 12), 0);
+  const grandTotal = (total.resolved ?? 0) + userLinesAnnual;
+
+  const cell = (v: number | null, color = '#94a3b8'): React.ReactNode =>
+    <span style={{ color: v == null ? '#334155' : color }}>{v == null ? '—' : fmt$(v)}</span>;
+
+  const saveCategoryOverride = async (cat: string, raw: string) => {
+    setBusy(true);
+    try {
+      const num = raw.trim() === '' ? null : parseFloat(raw);
+      if (num != null && (!Number.isFinite(num) || num < 0)) { setEditing(null); return; }
+      // applyFinancialsOverride already handles dotted layered paths via FIELD_MAP fallthrough.
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
+        field: `other_income_breakdown.${cat}`, year: null, value: num,
+      });
+      await onChange();
+    } catch (e) { console.error('Override save failed:', e); }
+    finally { setBusy(false); setEditing(null); }
   };
 
-    const EDIT_CELL_STYLE: React.CSSProperties = {
-    display: 'inline-flex', alignItems: 'center', gap: 2, cursor: 'pointer', userSelect: 'none',
-    padding: '0 4px', borderRadius: 2,
-    border: '1px solid transparent',
+  const addLine = async () => {
+    if (!adding || !adding.label.trim()) return;
+    const monthly = parseFloat(adding.monthly);
+    if (!Number.isFinite(monthly) || monthly < 0) return;
+    setBusy(true);
+    try {
+      await apiClient.post(`/api/v1/deals/${dealId}/financials/other-income/user-lines`, {
+        label: adding.label.trim(), monthly,
+      });
+      await onChange();
+      setAdding(null);
+    } catch (e) { console.error('Add line failed:', e); }
+    finally { setBusy(false); }
   };
 
-  function EditCell({ lineKey, field, display, color }: { lineKey: string; field: 'qty' | 'price' | 'occ'; display: string; color?: string }) {
-    const isEditing = editingKey?.key === lineKey && editingKey.field === field;
-    if (isEditing) {
-      return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-          <input autoFocus type="number" value={editingKey.val}
-            onChange={e => setEditingKey({ ...editingKey, val: e.target.value })}
-            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditingKey(null); }}
-            style={{ width: field === 'qty' ? 56 : field === 'occ' ? 48 : 64, background: '#0f172a', border: '1px solid #06b6d4', color: '#06b6d4', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
-          />
-          <button onClick={commit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', padding: 0, fontSize: 9 }}>✓</button>
-          <button onClick={() => setEditingKey(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 0, fontSize: 9 }}>✕</button>
-        </div>
-      );
-    }
-    const line = lines.find(l => l.key === lineKey)!;
-    const rawVal = field === 'qty' ? String(line.qty) : field === 'price' ? String(line.price) : String((line.occupancy * 100).toFixed(0));
-    return (
-      <div onClick={() => setEditingKey({ key: lineKey, field, val: rawVal })}
-        style={{ ...EDIT_CELL_STYLE, borderColor: '#0891b2', background: '#062a3a' }}>
-        <span style={{ color: color ?? '#e2e8f0' }}>{display}</span>
-        <span style={{ color: '#06b6d4', fontSize: 8, marginLeft: 2 }}>✎</span>
-      </div>
-    );
-  }
+  const updateLine = async (id: string, patch: { label?: string; monthly?: number }) => {
+    setBusy(true);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/other-income/user-lines/${id}`, patch);
+      await onChange();
+    } catch (e) { console.error('Update line failed:', e); }
+    finally { setBusy(false); setEditing(null); }
+  };
+
+  const deleteLine = async (id: string) => {
+    setBusy(true);
+    try {
+      await apiClient.delete(`/api/v1/deals/${dealId}/financials/other-income/user-lines/${id}`);
+      await onChange();
+    } catch (e) { console.error('Delete line failed:', e); }
+    finally { setBusy(false); }
+  };
 
   const TH = ({ label, right }: { label: string; right?: boolean }) => (
     <th style={{ padding: '3px 8px', textAlign: right ? 'right' : 'left', color: '#475569', fontWeight: 600, letterSpacing: '0.05em', borderBottom: '1px solid #1e2d3d', fontSize: 9 }}>{label}</th>
@@ -1046,63 +1090,168 @@ function AncillaryExpansionPanel({ totalUnits, dealId }: { totalUnits: number; d
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div>
           <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: '#06b6d4', letterSpacing: '0.08em' }}>
-            ANCILLARY INCOME BREAKDOWN · 10 LINE ITEMS
+            ANCILLARY RECONCILIATION · RENT-ROLL · T-12 · OM
           </span>
-          <span style={{ fontFamily: LABEL, fontSize: 8, color: '#334155', marginLeft: 8 }}>click QTY · $/MO · OCC% to edit</span>
+          <span style={{ fontFamily: LABEL, fontSize: 8, color: '#334155', marginLeft: 8 }}>
+            click RESOLVED to override · annual $ figures
+          </span>
         </div>
-        <span
-          title="Open the Unit Mix tab in this Financial Engine to edit per-unit-type rents and counts."
-          style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: LABEL, fontSize: 8, color: '#475569' }}>
-          See Unit Mix tab to edit unit-level rents
-        </span>
+        <button onClick={() => setAdding({ label: '', monthly: '' })} disabled={busy || !!adding}
+          style={{ fontFamily: LABEL, fontSize: 9, color: '#06b6d4', background: '#062a3a', border: '1px solid #0891b2', padding: '3px 10px', borderRadius: 2, cursor: 'pointer' }}>
+          + Add Line
+        </button>
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
-        <thead>
-          <tr style={{ background: '#0a1520' }}>
-            <TH label="INCOME TYPE" />
-            <TH label="QTY" right />
-            <TH label="$/MO" right />
-            <TH label="OCC %" right />
-            <TH label="TOTAL/MO" right />
-            <TH label="TOTAL/YR" right />
-            <TH label="NOTE" />
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((l, li) => {
-            const mo = l.qty * l.price * l.occupancy;
-            const yr = mo * 12;
-            return (
-              <tr key={l.key} style={{ background: li % 2 === 0 ? '#060e16' : '#080f18' }}>
-                <td style={{ padding: '3px 8px', color: '#94a3b8' }}>{l.label}</td>
-                <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                  <EditCell lineKey={l.key} field="qty" display={String(l.qty)} color="#e2e8f0" />
+      {!breakdown && (
+        <div style={{ fontFamily: LABEL, fontSize: 9, color: '#475569', padding: '6px 0' }}>
+          No ancillary income data extracted yet. Upload an OM, Rent Roll, or T-12 to populate this table.
+        </div>
+      )}
+      {breakdown && (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+          <thead>
+            <tr style={{ background: '#0a1520' }}>
+              <TH label="CATEGORY" />
+              <TH label="RENT ROLL" right />
+              <TH label="T-12" right />
+              <TH label="OM" right />
+              <TH label="RESOLVED" right />
+              <TH label="SOURCE" />
+              <TH label="" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const meta = SRC_BADGE[r.resolution] ?? SRC_BADGE.unseeded;
+              const isEditing = editing?.kind === 'cat' && editing.cat === r.category;
+              return (
+                <tr key={r.category} style={{ background: i % 2 === 0 ? '#060e16' : '#080f18' }}>
+                  <td style={{ padding: '3px 8px', color: '#94a3b8' }}>{CAT_LABELS[r.category] ?? r.category}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>{cell(r.rent_roll, '#22d3ee')}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>{cell(r.t12)}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>{cell(r.om, '#f59e0b')}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                    {isEditing ? (
+                      <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
+                        <input autoFocus type="number" value={editing.val}
+                          onChange={e => setEditing({ ...editing, val: e.target.value })}
+                          onKeyDown={e => { if (e.key === 'Enter') saveCategoryOverride(r.category, editing.val); if (e.key === 'Escape') setEditing(null); }}
+                          style={{ width: 80, background: '#0f172a', border: '1px solid #06b6d4', color: '#06b6d4', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                        />
+                        <button onClick={() => saveCategoryOverride(r.category, editing.val)} disabled={busy} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', padding: 0, fontSize: 10 }}>✓</button>
+                        <button onClick={() => setEditing(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 0, fontSize: 10 }}>✕</button>
+                      </span>
+                    ) : (
+                      <span onClick={() => setEditing({ kind: 'cat', cat: r.category, val: r.resolved != null ? String(Math.round(r.resolved)) : '' })}
+                        style={{ cursor: 'pointer', color: r.resolved != null ? '#e2e8f0' : '#475569', borderBottom: '1px dotted #0891b2', padding: '0 4px' }}>
+                        {r.resolved != null ? fmt$(r.resolved) : '—'}
+                      </span>
+                    )}
+                    {r.conflict && (
+                      <span title="Sources disagree by more than 15%" style={{ color: '#ef4444', marginLeft: 4 }}>⚠</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '3px 8px' }}>
+                    <span style={{ color: meta.color, fontFamily: LABEL, fontSize: 8, fontWeight: 700 }}>{meta.label}</span>
+                  </td>
+                  <td />
+                </tr>
+              );
+            })}
+            {/* User-added lines */}
+            {userLines.map((l, i) => {
+              const isEditingLabel = editing?.kind === 'user' && editing.id === l.id && editing.field === 'label';
+              const isEditingAmt = editing?.kind === 'user' && editing.id === l.id && editing.field === 'monthly';
+              return (
+                <tr key={l.id} style={{ background: (rows.length + i) % 2 === 0 ? '#060e16' : '#080f18', borderTop: i === 0 ? '1px solid #1e2d3d' : undefined }}>
+                  <td style={{ padding: '3px 8px', color: '#c084fc' }}>
+                    {isEditingLabel ? (
+                      <input autoFocus value={editing.val}
+                        onChange={e => setEditing({ ...editing, val: e.target.value })}
+                        onBlur={() => updateLine(l.id, { label: editing.val })}
+                        onKeyDown={e => { if (e.key === 'Enter') updateLine(l.id, { label: editing.val }); if (e.key === 'Escape') setEditing(null); }}
+                        style={{ background: '#0f172a', border: '1px solid #c084fc', color: '#c084fc', fontFamily: MONO, fontSize: 9, padding: '2px 4px', borderRadius: 2 }}
+                      />
+                    ) : (
+                      <span onClick={() => setEditing({ kind: 'user', id: l.id, field: 'label', val: l.label })}
+                        style={{ cursor: 'pointer', borderBottom: '1px dotted #c084fc' }}>{l.label}</span>
+                    )}
+                  </td>
+                  <td colSpan={3} style={{ padding: '3px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic' }}>user-added</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                    {isEditingAmt ? (
+                      <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
+                        <input autoFocus type="number" value={editing.val}
+                          onChange={e => setEditing({ ...editing, val: e.target.value })}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              const m = parseFloat(editing.val);
+                              if (Number.isFinite(m) && m >= 0) updateLine(l.id, { monthly: m });
+                            }
+                            if (e.key === 'Escape') setEditing(null);
+                          }}
+                          style={{ width: 80, background: '#0f172a', border: '1px solid #c084fc', color: '#c084fc', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                        />
+                        <span style={{ color: '#475569', fontSize: 8 }}>/mo</span>
+                      </span>
+                    ) : (
+                      <span onClick={() => setEditing({ kind: 'user', id: l.id, field: 'monthly', val: String(l.monthly) })}
+                        style={{ cursor: 'pointer', color: '#e2e8f0', borderBottom: '1px dotted #c084fc' }}>
+                        {fmt$(l.monthly * 12)} <span style={{ color: '#475569', fontSize: 8 }}>(${l.monthly}/mo)</span>
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: '3px 8px' }}>
+                    <span style={{ color: '#c084fc', fontFamily: LABEL, fontSize: 8, fontWeight: 700 }}>USER</span>
+                  </td>
+                  <td style={{ padding: '3px 8px' }}>
+                    <button onClick={() => deleteLine(l.id)} disabled={busy} title="Delete line"
+                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 11 }}>×</button>
+                  </td>
+                </tr>
+              );
+            })}
+            {/* Add-line input row */}
+            {adding && (
+              <tr style={{ background: '#0a1a26' }}>
+                <td style={{ padding: '4px 8px' }}>
+                  <input autoFocus value={adding.label} placeholder="e.g. Solar revenue"
+                    onChange={e => setAdding({ ...adding, label: e.target.value })}
+                    style={{ width: '100%', background: '#0f172a', border: '1px solid #06b6d4', color: '#e2e8f0', fontFamily: MONO, fontSize: 9, padding: '2px 4px', borderRadius: 2 }}
+                  />
                 </td>
-                <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                  <EditCell lineKey={l.key} field="price" display={`$${l.price.toFixed(2)}`} color="#e2e8f0" />
+                <td colSpan={3} style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic' }}>new line</td>
+                <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                  <input type="number" value={adding.monthly} placeholder="$/mo"
+                    onChange={e => setAdding({ ...adding, monthly: e.target.value })}
+                    onKeyDown={e => { if (e.key === 'Enter') addLine(); if (e.key === 'Escape') setAdding(null); }}
+                    style={{ width: 80, background: '#0f172a', border: '1px solid #06b6d4', color: '#06b6d4', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                  />
                 </td>
-                <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                  <EditCell lineKey={l.key} field="occ" display={`${(l.occupancy * 100).toFixed(0)}%`} color="#64748b" />
+                <td colSpan={2} style={{ padding: '4px 8px' }}>
+                  <button onClick={addLine} disabled={busy || !adding.label.trim() || !adding.monthly} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', fontSize: 11, marginRight: 4 }}>✓ Save</button>
+                  <button onClick={() => setAdding(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 11 }}>✕</button>
                 </td>
-                <td style={{ padding: '3px 8px', textAlign: 'right', color: '#e2e8f0' }}>{fmt$(mo)}</td>
-                <td style={{ padding: '3px 8px', textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>{fmt$(yr)}</td>
-                <td style={{ padding: '3px 8px', color: '#334155', fontSize: 8 }}>{l.note}</td>
               </tr>
-            );
-          })}
-          <tr style={{ background: '#0a1a26', borderTop: '1px solid #1e3a5f' }}>
-            <td style={{ padding: '4px 8px', color: '#06b6d4', fontWeight: 700 }}>TOTAL</td>
-            <td /><td /><td />
-            <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontWeight: 700 }}>{fmt$(totalMonthly)}/mo</td>
-            <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22c55e', fontWeight: 700 }}>{fmt$(totalAnnual)}/yr</td>
-            <td style={{ padding: '4px 8px', color: '#334155', fontSize: 8 }}>
-              {totalUnits > 0 ? `$${(totalAnnual / totalUnits).toFixed(0)}/unit/yr` : ''}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            )}
+            {/* Totals row */}
+            <tr style={{ background: '#0a1a26', borderTop: '1px solid #1e3a5f' }}>
+              <td style={{ padding: '4px 8px', color: '#06b6d4', fontWeight: 700 }}>TOTAL</td>
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22d3ee', fontWeight: 600 }}>{cell(total.rent_roll, '#22d3ee')}</td>
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#94a3b8' }}>{cell(total.t12)}</td>
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#f59e0b' }}>{cell(total.om, '#f59e0b')}</td>
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22c55e', fontWeight: 700 }}>{fmt$(grandTotal)}</td>
+              <td style={{ padding: '4px 8px', color: '#334155', fontSize: 8 }}>
+                {totalUnits > 0 ? `$${(grandTotal / totalUnits).toFixed(0)}/unit/yr` : ''}
+              </td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      )}
       <div style={{ marginTop: 6, fontFamily: LABEL, fontSize: 8, color: '#334155' }}>
-        * Defaults seeded from unit count. Navigate to F13 Unit Mix to persist edits across sessions.
+        Resolution priority per category: <span style={{ color: '#22d3ee' }}>Rent Roll</span> →{' '}
+        <span style={{ color: '#f59e0b' }}>OM</span>. T-12 only publishes an aggregate (no per-category breakdown).
+        Override + custom lines persist to deal_assumptions and flow into EGI / NOI.
       </div>
     </div>
   );

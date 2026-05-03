@@ -68,8 +68,8 @@ const FIELD_PRIORITIES: Record<string, Resolution[]> = {
   concessions_pct: ['t12', 'rent_roll'],
   bad_debt_pct: ['t12'],
   non_revenue_units_pct: ['t12'],
-  other_income_total: ['t12', 'rent_roll'],
-  other_income_per_unit: ['t12', 'rent_roll'],
+  other_income_total: ['rent_roll', 't12', 'om'],
+  other_income_per_unit: ['rent_roll', 't12', 'om'],
   real_estate_tax: ['tax_bill', 't12'],
   management_fee_pct: ['t12'],
   insurance: ['t12'],
@@ -122,7 +122,7 @@ export function reResolveClearedLayeredValue(
 }
 
 // Exposed for tests. Module-internal callers continue to use the names directly.
-export { FIELD_PRIORITIES, SKIP_ZERO_FIELDS, resolve as resolveForTest };
+export { FIELD_PRIORITIES, SKIP_ZERO_FIELDS, resolve as resolveForTest, recomputeDerived };
 
 /**
  * Resolve a layered value following priority rules. Honors existing user override.
@@ -205,6 +205,7 @@ function buildSeed(
   t12Capsule: Capsule | null,
   rrCapsule: Capsule | null,
   taxBillCapsule: Capsule | null,
+  omCapsule: Capsule | null,
   existingSeed: ExistingSeed | null
 ): ProFormaYear1Seed {
   const ex = existingSeed || {} as ExistingSeed;
@@ -292,16 +293,31 @@ function buildSeed(
         .filter((v): v is number => typeof v === 'number' && v > 0)
         .reduce((s, v) => s + v, 0) * months
     : null;
+  // OM: per-category MONTHLY $ from broker proforma. Sum to deal-wide annual
+  // for the rollup; per-category values feed the breakdown resolver below.
+  const omOI = obj(omCapsule, 'other_income_monthly');
+  const omAnnual = (key: string): number | null => {
+    const v = num(omOI, key);
+    return v != null ? v * months : null;
+  };
+  const other_om = omOI
+    ? Object.values(omOI)
+        .filter((v): v is number => typeof v === 'number' && v > 0)
+        .reduce((s, v) => s + v, 0) * months
+    : null;
   const otherIncomeTotal = resolve('other_income_total', null, {
-    t12: other_t12, rent_roll: other_rr,
+    t12: other_t12, rent_roll: other_rr, om: other_om,
     existingOverride: getOverride('other_income_total'),
+    priority: ['rent_roll', 't12', 'om'],
   });
 
   // Per-unit other income
   const otherIncomePerUnit = resolve('other_income_per_unit', null, {
     t12: other_t12 != null && totalUnits > 0 ? other_t12 / totalUnits : null,
     rent_roll: other_rr != null && totalUnits > 0 ? other_rr / totalUnits : null,
+    om: other_om != null && totalUnits > 0 ? other_om / totalUnits : null,
     existingOverride: getOverride('other_income_per_unit'),
+    priority: ['rent_roll', 't12', 'om'],
   });
 
   const oi = rrOIMObj;
@@ -309,47 +325,58 @@ function buildSeed(
     const v = num(oi, key);
     return v != null ? v * months : null;
   };
+  // Per-category priority: prefer rent-roll truth, fall back to OM broker
+  // pro-forma (T-12 has no per-category breakdown — only an aggregate).
+  const CAT_PRIORITY: Resolution[] = ['rent_roll', 'om'];
   const otherIncomeBreakdown = {
     parking: resolve('other_income_breakdown.parking', null, {
-      rent_roll: oiAnnual('parking'),
+      rent_roll: oiAnnual('parking'), om: omAnnual('parking'),
       existingOverride: getOverride('other_income_breakdown.parking'),
-      priority: ['rent_roll'],
+      priority: CAT_PRIORITY,
     }),
     pet: resolve('other_income_breakdown.pet', null, {
-      rent_roll: oiAnnual('pet_rent'),
+      rent_roll: oiAnnual('pet_rent'), om: omAnnual('pet'),
       existingOverride: getOverride('other_income_breakdown.pet'),
-      priority: ['rent_roll'],
+      priority: CAT_PRIORITY,
     }),
     storage: resolve('other_income_breakdown.storage', null, {
-      rent_roll: oiAnnual('storage'),
+      rent_roll: oiAnnual('storage'), om: omAnnual('storage'),
       existingOverride: getOverride('other_income_breakdown.storage'),
-      priority: ['rent_roll'],
+      priority: CAT_PRIORITY,
     }),
     laundry: resolve('other_income_breakdown.laundry', null, {
+      om: omAnnual('laundry'),
       existingOverride: getOverride('other_income_breakdown.laundry'),
-      priority: [],
+      priority: ['om'],
     }),
     rubs: resolve('other_income_breakdown.rubs', null, {
-      rent_roll: oiAnnual('rubs'),
+      rent_roll: oiAnnual('rubs'), om: omAnnual('rubs'),
       existingOverride: getOverride('other_income_breakdown.rubs'),
-      priority: ['rent_roll'],
+      priority: CAT_PRIORITY,
     }),
     fees: resolve('other_income_breakdown.fees', null, {
-      rent_roll: oiAnnual('fees'),
+      rent_roll: oiAnnual('fees'), om: omAnnual('fees'),
       existingOverride: getOverride('other_income_breakdown.fees'),
-      priority: ['rent_roll'],
+      priority: CAT_PRIORITY,
     }),
     insurance_admin: resolve('other_income_breakdown.insurance_admin', null, {
-      rent_roll: oiAnnual('insurance_admin'),
+      rent_roll: oiAnnual('insurance_admin'), om: omAnnual('insurance_admin'),
       existingOverride: getOverride('other_income_breakdown.insurance_admin'),
-      priority: ['rent_roll'],
+      priority: CAT_PRIORITY,
     }),
     other: resolve('other_income_breakdown.other', null, {
-      rent_roll: oiAnnual('other'),
+      rent_roll: oiAnnual('other'), om: omAnnual('other'),
       existingOverride: getOverride('other_income_breakdown.other'),
-      priority: ['rent_roll'],
+      priority: CAT_PRIORITY,
     }),
   };
+
+  // Preserve user-added ancillary lines verbatim across re-seeds. These are
+  // managed via dedicated CRUD endpoints, NOT extraction — buildSeed only
+  // copies them through. Task #519.
+  const userLines = Array.isArray(ex.other_income_user_lines)
+    ? (ex.other_income_user_lines as ProFormaYear1Seed['other_income_user_lines'])
+    : undefined;
 
   // ───────── OPEX (T12 primary; platform fallback) ─────────
   const t12Opex = obj(t12Capsule, 'opex');
@@ -511,7 +538,16 @@ function buildSeed(
     updated_at: now(),
   };
 
-  const egi_resolved = nri_resolved + (otherIncomeTotal.resolved ?? 0);
+  // EGI uses the SUM of per-category breakdown + user-added lines, NOT the
+  // aggregate `otherIncomeTotal` LayeredValue. Per-category resolution may
+  // mix RR + OM and produce a different total than any single source's
+  // headline figure — using the sum preserves provenance fidelity. Task #519.
+  const breakdownSum = Object.values(otherIncomeBreakdown)
+    .reduce((s, lv) => s + (lv.resolved ?? 0), 0);
+  const userLinesAnnual = (userLines ?? [])
+    .reduce((s, l) => s + (Number.isFinite(l.monthly) ? l.monthly * 12 : 0), 0);
+  const otherIncomeForEgi = breakdownSum + userLinesAnnual;
+  const egi_resolved = nri_resolved + otherIncomeForEgi;
   const egi_after_bad_debt = egi_resolved * (1 - (badDebtPct.resolved ?? 0));
 
   const egi: LayeredValue<number> = {
@@ -557,6 +593,7 @@ function buildSeed(
     net_rental_income: netRentalIncome,
     other_income_per_unit: otherIncomePerUnit,
     other_income_breakdown: otherIncomeBreakdown,
+    other_income_user_lines: userLines,
     egi,
     payroll,
     repairs_maintenance: repairsMaintenance,
@@ -584,6 +621,7 @@ function buildSeed(
       t12_doc_id: (t12Capsule?.document_id as string) ?? undefined,
       rent_roll_doc_id: (rrCapsule?.document_id as string) ?? undefined,
       tax_bill_doc_id: (taxBillCapsule?.document_id as string) ?? undefined,
+      om_doc_id: (omCapsule?.document_id as string) ?? undefined,
     },
     _unit_count: totalUnits,
     last_seeded_at: now(),
@@ -617,8 +655,9 @@ export async function seedProFormaYear1(
     const t12Capsule = obj(capsule, 'extraction_t12');
     const rrCapsule = obj(capsule, 'extraction_rent_roll');
     const taxBillCapsule = obj(capsule, 'extraction_tax_bill');
+    const omCapsule = obj(capsule, 'extraction_om');
 
-    if (!t12Capsule && !rrCapsule && !taxBillCapsule) {
+    if (!t12Capsule && !rrCapsule && !taxBillCapsule && !omCapsule) {
       return { seeded: false, fields_seeded: 0, warnings: ['No extraction sources available'], resolved_noi: null };
     }
 
@@ -649,7 +688,7 @@ export async function seedProFormaYear1(
           : existing.rows[0].year1)
       : null;
 
-    const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, existingSeed);
+    const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed);
 
     // Surface warnings from any layered value
     for (const [k, v] of Object.entries(seed)) {
@@ -839,15 +878,36 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
   const nru = r(seed.non_revenue_units_pct);
   const bd = r(seed.bad_debt_pct);
   const unitCount = seed._unit_count ?? 1;
-  const otherIncome = seed.other_income_per_unit?.resolved != null
-    ? seed.other_income_per_unit.resolved * unitCount
+
+  // Other income for EGI = sum of per-category breakdown resolved values
+  // + sum of user-added monthly lines (×12). This replaces the old
+  // `other_income_per_unit × units` shortcut so per-category overrides and
+  // user lines flow into NOI without needing to re-derive per-unit. The
+  // per-unit LayeredValue is then re-synced as a derived display value.
+  // Task #519.
+  const breakdownSum = seed.other_income_breakdown
+    ? Object.values(seed.other_income_breakdown).reduce((s, lv) => s + (lv?.resolved ?? 0), 0)
     : 0;
+  const userLinesAnnual = (seed.other_income_user_lines ?? [])
+    .reduce((s, l) => s + (Number.isFinite(l.monthly) ? l.monthly * 12 : 0), 0);
+  const otherIncome = breakdownSum + userLinesAnnual;
 
   const nri = gpr - gpr * ltl - gpr * vac - gpr * conc - gpr * nru;
   const egi_pre_bd = nri + otherIncome;
   const egi = egi_pre_bd * (1 - bd);
   const mgmtPct = r(seed.management_fee_pct);
   const mgmtDollar = egi * mgmtPct;
+
+  // Sum dynamic custom_opex_* lines (added by buildSeed for non-canonical
+  // T-12 expense rows) so user-line CRUD doesn't drift NOI by silently
+  // dropping them from the opex total. Mirrors `total_opex_resolved` in
+  // buildSeed.
+  let customOpex = 0;
+  for (const [k, v] of Object.entries(seed as Record<string, any>)) {
+    if (k.startsWith('custom_opex_') && v && typeof v === 'object' && typeof v.resolved === 'number') {
+      customOpex += v.resolved;
+    }
+  }
 
   const opex =
     r(seed.payroll) + r(seed.repairs_maintenance) +
@@ -856,17 +916,32 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
     r(seed.office) + r(seed.g_and_a) +
     r(seed.hoa_dues) + r(seed.utilities) +
     mgmtDollar + r(seed.real_estate_tax) +
-    r(seed.personal_property_tax) + r(seed.insurance);
+    r(seed.personal_property_tax) + r(seed.insurance) +
+    customOpex;
 
   const ts = new Date().toISOString();
   seed.net_rental_income.resolved = nri;
   seed.net_rental_income.updated_at = ts;
   seed.egi.resolved = egi;
   seed.egi.updated_at = ts;
+  // Re-sync per-unit display value from the breakdown sum so the input field
+  // visible in the UI stays consistent with the per-category source of truth.
+  if (seed.other_income_per_unit && unitCount > 0) {
+    seed.other_income_per_unit.resolved = otherIncome / unitCount;
+    seed.other_income_per_unit.updated_at = ts;
+  }
   seed.total_opex.resolved = opex;
   seed.total_opex.updated_at = ts;
-  seed.noi.resolved = egi - opex;
+  const noi = egi - opex;
+  seed.noi.resolved = noi;
   seed.noi.updated_at = ts;
+  // Re-sync derived per-unit NOI so the F11 panel + downstream consumers
+  // stay consistent after user-line CRUD or any other layered override that
+  // shifts the EGI / opex total.
+  if ((seed as any).noi_per_unit && unitCount > 0) {
+    (seed as any).noi_per_unit.resolved = noi / unitCount;
+    (seed as any).noi_per_unit.updated_at = ts;
+  }
 }
 
 
@@ -895,9 +970,14 @@ export function buildAssumptionsFromYear1Seed(year1: ProFormaYear1Seed, deal: De
       concessions: rv(year1.concessions_pct),
       badDebt: rv(year1.bad_debt_pct),
       nonRevenueUnits: rv(year1.non_revenue_units_pct),
-      otherIncome: rv(year1.other_income_per_unit) != null
-        ? (rv(year1.other_income_per_unit) ?? 0) * (deal?.target_units ?? 0)
-        : null,
+      otherIncome: (() => {
+        const breakdownSum = year1.other_income_breakdown
+          ? Object.values(year1.other_income_breakdown).reduce((s, lv) => s + (lv?.resolved ?? 0), 0)
+          : 0;
+        const userLinesAnnual = (year1.other_income_user_lines ?? [])
+          .reduce((s, l) => s + (Number.isFinite(l.monthly) ? l.monthly * 12 : 0), 0);
+        return breakdownSum + userLinesAnnual;
+      })(),
       egi: rv(year1.egi),
     },
     opex: {

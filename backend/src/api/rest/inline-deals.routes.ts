@@ -1874,11 +1874,24 @@ router.get('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedRe
  *     the same numbers.
  * After write, recalculates the deal's GPR from the updated unit mix.
  */
-router.patch('/:dealId/financials/override', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.patch('/:dealId/financials/override', requireAuth, async (req: AuthenticatedRequest, res, next) => {
   try {
     const { dealId } = req.params;
     const userId = req.user!.userId;
     const { field, value } = req.body;
+
+    if (!field || typeof field !== 'string') {
+      return res.status(400).json({ success: false, error: 'field is required' });
+    }
+
+    // This handler is unit-mix specific. Other override field paths (e.g.
+    // `other_income_breakdown.<cat>` from the F11 ancillary panel — Task #519)
+    // are owned by the downstream `deal-assumptions.routes` handler that
+    // delegates to `applyFinancialsOverride`. Pass through so Express keeps
+    // matching subsequent routes mounted at the same path.
+    if (!field.startsWith('unit_mix:')) {
+      return next();
+    }
 
     // Validate ownership
     const ownerCheck = await pool.query(
@@ -1887,10 +1900,6 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     );
     if (ownerCheck.rows.length === 0) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
-    }
-
-    if (!field || typeof field !== 'string') {
-      return res.status(400).json({ success: false, error: 'field is required' });
     }
 
     // Parse the field path: unit_mix:<rowIdx>:<field>

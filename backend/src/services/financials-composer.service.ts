@@ -61,6 +61,45 @@ export interface ComposedFinancials {
    * Ancillary panel and the Per-Unit drill-down without re-fetching.
    */
   extractionRentRoll: ExtractionRentRollPayload | null;
+  /**
+   * Per-category ancillary income reconciliation: rent-roll, T-12 (aggregate
+   * only — `t12` only set on the synthetic 'total' row), and OM broker
+   * pro-forma side-by-side with the seeder's resolved value, source, and
+   * conflict flag (>15% spread between any two non-null sources). Surfaces
+   * `extraction_om.other_income_monthly` + `extraction_rent_roll.other_income_monthly`
+   * + `extraction_t12.other_income.total`. Task #519.
+   */
+  otherIncomeBreakdown: OtherIncomeBreakdownPayload | null;
+  /** User-added ancillary lines (custom labels). Task #519. */
+  otherIncomeUserLines: Array<{
+    id: string;
+    label: string;
+    monthly: number;
+    note?: string;
+    created_by?: string;
+    created_at: string;
+    updated_at?: string;
+  }>;
+}
+
+export interface OtherIncomeBreakdownRow {
+  category: string;
+  rent_roll: number | null;
+  t12: number | null;
+  om: number | null;
+  resolved: number | null;
+  resolution: string;
+  conflict: boolean;
+}
+
+export interface OtherIncomeBreakdownPayload {
+  rows: OtherIncomeBreakdownRow[];
+  total: {
+    rent_roll: number | null;
+    t12: number | null;
+    om: number | null;
+    resolved: number;
+  };
 }
 
 export interface ExtractionRentRollPayload {
@@ -291,8 +330,101 @@ export async function composeDealFinancials(
       projections: null,
       capital: null,
       extractionRentRoll,
+      otherIncomeBreakdown: composeOtherIncomeBreakdown(dealData, year1Data),
+      otherIncomeUserLines: Array.isArray(year1Data?.other_income_user_lines)
+        ? year1Data.other_income_user_lines
+        : [],
     },
   };
+}
+
+/**
+ * Build per-category ancillary reconciliation payload for the UI.
+ * - rent_roll: monthly $ × 12 from `extraction_rent_roll.other_income_monthly`
+ * - om:        monthly $ × 12 from `extraction_om.other_income_monthly`
+ * - t12:       only the aggregate (T-12 has no per-category breakdown) — set
+ *              on the synthetic total row, NOT on per-category rows
+ * - resolved + resolution: pulled from the seed's `other_income_breakdown.<cat>`
+ *                          LayeredValue computed by proforma-seeder.
+ * - conflict: true when two non-null sources differ by >15%.
+ * Task #519.
+ */
+function composeOtherIncomeBreakdown(
+  dealData: Record<string, any>,
+  year1Data: Record<string, any> | null
+): OtherIncomeBreakdownPayload | null {
+  const rrOI = (dealData?.extraction_rent_roll?.other_income_monthly &&
+    typeof dealData.extraction_rent_roll.other_income_monthly === 'object')
+    ? dealData.extraction_rent_roll.other_income_monthly as Record<string, unknown>
+    : null;
+  const omOI = (dealData?.extraction_om?.other_income_monthly &&
+    typeof dealData.extraction_om.other_income_monthly === 'object')
+    ? dealData.extraction_om.other_income_monthly as Record<string, unknown>
+    : null;
+  const t12Total = (typeof dealData?.extraction_t12?.other_income?.total === 'number')
+    ? dealData.extraction_t12.other_income.total as number
+    : null;
+  const seedBreakdown = (year1Data?.other_income_breakdown &&
+    typeof year1Data.other_income_breakdown === 'object')
+    ? year1Data.other_income_breakdown as Record<string, { resolved?: number | null; resolution?: string }>
+    : null;
+
+  if (!rrOI && !omOI && !seedBreakdown && t12Total == null) return null;
+
+  // Map UI category → (rrKey, omKey). Rent-roll uses `pet_rent`; OM uses `pet`.
+  const CATS: Array<{ cat: string; rr: string; om: string }> = [
+    { cat: 'parking', rr: 'parking', om: 'parking' },
+    { cat: 'pet', rr: 'pet_rent', om: 'pet' },
+    { cat: 'storage', rr: 'storage', om: 'storage' },
+    { cat: 'laundry', rr: 'laundry', om: 'laundry' },
+    { cat: 'rubs', rr: 'rubs', om: 'rubs' },
+    { cat: 'fees', rr: 'fees', om: 'fees' },
+    { cat: 'insurance_admin', rr: 'insurance_admin', om: 'insurance_admin' },
+    { cat: 'other', rr: 'other', om: 'other' },
+  ];
+  // Treat 0 / negative values as present (RR explicitly reports $0 for absent
+  // categories and "other" can carry negative write-offs). Only filter
+  // missing/non-finite. The seed resolution layer carries the same semantics
+  // so the displayed source values stay consistent with `resolved`.
+  const annual = (m: Record<string, unknown> | null, k: string): number | null => {
+    const v = m?.[k];
+    return typeof v === 'number' && Number.isFinite(v) ? v * 12 : null;
+  };
+  const isConflict = (a: number | null, b: number | null): boolean => {
+    if (a == null || b == null) return false;
+    const denom = Math.max(Math.abs(a), Math.abs(b));
+    if (denom < 1) return false; // both ≈ 0 — no meaningful spread
+    return Math.abs(a - b) / denom > 0.15;
+  };
+
+  const rows: OtherIncomeBreakdownRow[] = CATS.map(({ cat, rr, om }) => {
+    const rrV = annual(rrOI, rr);
+    const omV = annual(omOI, om);
+    const seed = seedBreakdown?.[cat];
+    const resolved = typeof seed?.resolved === 'number' ? seed.resolved : null;
+    const resolution = typeof seed?.resolution === 'string' ? seed.resolution : 'unseeded';
+    return {
+      category: cat,
+      rent_roll: rrV,
+      t12: null,
+      om: omV,
+      resolved,
+      resolution,
+      conflict: isConflict(rrV, omV),
+    };
+  });
+
+  const sumNonNull = (vals: Array<number | null>): number | null => {
+    const present = vals.filter((v): v is number => v != null);
+    return present.length ? present.reduce((s, v) => s + v, 0) : null;
+  };
+  const total = {
+    rent_roll: sumNonNull(rows.map(r => r.rent_roll)),
+    t12: t12Total,
+    om: sumNonNull(rows.map(r => r.om)),
+    resolved: rows.reduce((s, r) => s + (r.resolved ?? 0), 0),
+  };
+  return { rows, total };
 }
 
 /**

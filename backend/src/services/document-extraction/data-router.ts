@@ -652,6 +652,11 @@ async function routeOM(
         source_ref: sourceRef,
         source_date: sourceDate,
         unit_mix: data.unitMix ?? [],
+        // Per-category ancillary income (monthly $) from broker pro-forma.
+        // Consumed by proforma-seeder as the third source (alongside RR + T-12)
+        // for the per-category reconciliation in `other_income_breakdown`.
+        // Task #519.
+        other_income_monthly: data.otherIncome ?? null,
         ...data.metadata,
       },
     })]

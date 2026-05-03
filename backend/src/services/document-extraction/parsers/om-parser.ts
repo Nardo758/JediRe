@@ -214,6 +214,26 @@ export interface OMUnitMixEntry {
   inPlaceRent: number | null;
 }
 
+/**
+ * Per-category ancillary income recipe published in the OM (broker pro-forma /
+ * stabilized assumptions). All amounts are MONTHLY dollars, deal-wide.
+ *
+ * Categories mirror the rent-roll parser's `other_income_monthly` keys so the
+ * 3-source reconciler in `proforma-seeder` can align them 1:1 with the rent
+ * roll truth column. T-12 only ever publishes an aggregate (no per-category
+ * breakdown), so the OM is the only second source for many of these lines.
+ */
+export interface OMOtherIncome {
+  parking: number | null;
+  pet: number | null;
+  storage: number | null;
+  laundry: number | null;
+  rubs: number | null;
+  fees: number | null;
+  insurance_admin: number | null;
+  other: number | null;
+}
+
 export interface OMExtraction {
   property: OMPropertyData;
   replacementCost: OMReplacementCost;
@@ -222,6 +242,7 @@ export interface OMExtraction {
   debtAssumptions: OMDebtAssumptions;
   marketComps: OMMarketComps;
   unitMix: OMUnitMixEntry[];
+  otherIncome: OMOtherIncome;
   riskFactors: OMRiskFactors;
   keyEvents: OMKeyEvents;
   investmentHighlights: string[];
@@ -355,6 +376,17 @@ Return ONLY valid JSON matching this schema:
       "inPlaceRent": "current in-place rent in $/month, or null"
     }
   ],
+  "otherIncome": {
+    "_comment": "Per-category ANCILLARY income from broker pro-forma (stabilized year). Deal-wide MONTHLY dollars. Look in the proforma/stabilized income statement, NOT trailing actuals. Only fill in what the OM publishes — leave others null.",
+    "parking": "monthly parking income $ (covered/garage/reserved), or null",
+    "pet": "monthly pet rent / pet fees $, or null",
+    "storage": "monthly storage rental $, or null",
+    "laundry": "monthly laundry/vending $, or null",
+    "rubs": "monthly RUBS / utility reimbursement $ (water/sewer/trash/electric chargeback), or null",
+    "fees": "monthly application/admin/late/NSF/lease-break fees $, or null",
+    "insurance_admin": "monthly renters-insurance program income or insurance admin $, or null",
+    "other": "monthly OTHER ancillary income $ that doesn't fit above (cable/internet, valet trash, amenity fees, misc), or null"
+  },
   "riskFactors": {
     "leaseExpirationConcentration": "string description or null",
     "tenantConcentration": "string or null",
@@ -642,6 +674,23 @@ function normalizeExtraction(raw: any, textLength: number): OMExtraction {
         inPlaceRent: typeof m.inPlaceRent === 'number' && Number.isFinite(m.inPlaceRent) ? m.inPlaceRent : null,
       }))
       .filter(m => m.floorplan && m.floorplan !== 'unknown'),
+    otherIncome: ((): OMOtherIncome => {
+      const oi = (raw.otherIncome ?? {}) as Record<string, unknown>;
+      const num = (k: string): number | null => {
+        const v = oi[k];
+        return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+      };
+      return {
+        parking: num('parking'),
+        pet: num('pet'),
+        storage: num('storage'),
+        laundry: num('laundry'),
+        rubs: num('rubs'),
+        fees: num('fees'),
+        insurance_admin: num('insurance_admin'),
+        other: num('other'),
+      };
+    })(),
     riskFactors: {
       leaseExpirationConcentration: raw.riskFactors?.leaseExpirationConcentration ?? null,
       tenantConcentration: raw.riskFactors?.tenantConcentration ?? null,
@@ -822,11 +871,16 @@ export async function parseOM(
     return {
       documentType: 'OM',
       success: true,
+      // OMExtraction is not part of the legacy ExtractionData union (which only
+      // covers per-document parsers like T-12 / rent-roll). The OM parser
+      // intentionally publishes a richer payload — `OMParseResult` already
+      // overrides `data` to `OMExtraction | null`. Cast bypasses the
+      // intersection inference between the two `data` field declarations.
       data: extraction,
       summary,
       warnings,
       meta: { usedOcr, ocrError },
-    };
+    } as unknown as OMParseResult;
   } catch (err) {
     logger.error('[OM Parser] Error:', err);
     return {

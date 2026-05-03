@@ -20,6 +20,7 @@ import * as XLSX from 'xlsx';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
 import { getDealFinancials, applyFinancialsOverride } from '../../services/proforma-adjustment.service';
 import { buildF9Workbook, buildProjectionsForExport } from '../../services/f9-financial-export.service';
+import { randomUUID } from 'crypto';
 
 // ─── IRR bisection helper ─────────────────────────────────────────────────────
 /**
@@ -555,6 +556,19 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     };
     const userId = req.user?.userId ?? 'unknown';
 
+    // IDOR guard: applyFinancialsOverride uses userId only for audit metadata
+    // and does not verify deal ownership, so we must enforce it here. This
+    // path now also serves Task #519's `other_income_breakdown.<cat>` paths
+    // delegated from the inline-deals router (which only checked ownership
+    // on its unit_mix branch).
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
     if (!field || typeof field !== 'string') {
       return res.status(400).json({ error: 'field is required (camelCase field name, e.g. "vacancyPct")' });
     }
@@ -589,6 +603,142 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
       : error.message?.includes('not a layered value') || error.message?.includes('Field path invalid') ? 400
       : error.message?.includes('not found') ? 404 : 500;
     res.status(status).json({ error: error.message });
+  }
+});
+
+/**
+ * ─── User-added ancillary income lines (Task #519) ──────────────────────────
+ * Custom rows that don't fit the canonical other_income_breakdown categories
+ * (e.g. "Solar revenue", "Cell tower lease", "Vending"). Each line carries a
+ * monthly $ amount and contributes to EGI via recomputeDerived(). All three
+ * routes load year1, mutate `other_income_user_lines`, recompute derived
+ * fields (NRI/EGI/NOI/per-unit), and persist.
+ */
+type MutateResult =
+  | { ok: true; user_lines: any[]; year1: any }
+  | { ok: false; status: 403 | 404; error: string };
+
+async function mutateUserLines(
+  dealId: string,
+  userId: string,
+  mutator: (lines: any[]) => any[]
+): Promise<MutateResult> {
+  const { recomputeDerived } = await import('../../services/proforma-seeder.service');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Ownership check (IDOR guard) — must match deals.user_id.
+    const own = await client.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { ok: false, status: 403, error: 'Not authorized for this deal' };
+    }
+    // Row-lock the assumptions row to serialize concurrent CRUD on user_lines.
+    const res = await client.query(
+      `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 FOR UPDATE`,
+      [dealId]
+    );
+    if (res.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { ok: false, status: 404, error: 'deal_assumptions not seeded for this deal yet' };
+    }
+    const year1 = typeof res.rows[0].year1 === 'string'
+      ? JSON.parse(res.rows[0].year1)
+      : res.rows[0].year1;
+    if (!year1) {
+      await client.query('ROLLBACK');
+      return { ok: false, status: 404, error: 'deal_assumptions.year1 is empty' };
+    }
+    const current = Array.isArray(year1.other_income_user_lines) ? year1.other_income_user_lines : [];
+    const next = mutator(current);
+    year1.other_income_user_lines = next;
+    recomputeDerived(year1);
+    await client.query(
+      `UPDATE deal_assumptions SET year1 = $1::jsonb, updated_at = NOW() WHERE deal_id = $2`,
+      [JSON.stringify(year1), dealId]
+    );
+    await client.query('COMMIT');
+    return { ok: true, user_lines: next, year1 };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { label, monthly, note } = req.body as { label: string; monthly: number; note?: string };
+    if (!label || typeof label !== 'string' || !label.trim()) {
+      return res.status(400).json({ error: 'label is required' });
+    }
+    if (typeof monthly !== 'number' || !Number.isFinite(monthly) || monthly < 0) {
+      return res.status(400).json({ error: 'monthly must be a non-negative number' });
+    }
+    const userId = req.user?.userId ?? 'unknown';
+    const result = await mutateUserLines(dealId, userId, (lines) => [
+      ...lines,
+      {
+        id: randomUUID(),
+        label: label.trim(),
+        monthly,
+        note: note?.trim() || undefined,
+        created_by: userId,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    if (result.ok === false) return res.status(result.status).json({ error: result.error });
+    res.json({ success: true, data: { dealId, userLines: result.user_lines } });
+  } catch (error: any) {
+    logger.error('Error adding ancillary user line:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch('/:dealId/financials/other-income/user-lines/:lineId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId, lineId } = req.params;
+    const { label, monthly, note } = req.body as { label?: string; monthly?: number; note?: string };
+    if (label != null && typeof label !== 'string') return res.status(400).json({ error: 'label must be a string' });
+    if (monthly != null && (typeof monthly !== 'number' || !Number.isFinite(monthly) || monthly < 0)) {
+      return res.status(400).json({ error: 'monthly must be a non-negative number' });
+    }
+    const userId = req.user?.userId ?? 'unknown';
+    const result = await mutateUserLines(dealId, userId, (lines) => {
+      const idx = lines.findIndex((l: any) => l.id === lineId);
+      if (idx < 0) return lines;
+      lines[idx] = {
+        ...lines[idx],
+        ...(label != null ? { label: label.trim() } : {}),
+        ...(monthly != null ? { monthly } : {}),
+        ...(note !== undefined ? { note: note?.trim() || undefined } : {}),
+        updated_at: new Date().toISOString(),
+      };
+      return lines;
+    });
+    if (result.ok === false) return res.status(result.status).json({ error: result.error });
+    res.json({ success: true, data: { dealId, userLines: result.user_lines } });
+  } catch (error: any) {
+    logger.error('Error updating ancillary user line:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:dealId/financials/other-income/user-lines/:lineId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId, lineId } = req.params;
+    const userId = req.user?.userId ?? 'unknown';
+    const result = await mutateUserLines(dealId, userId, (lines) => lines.filter((l: any) => l.id !== lineId));
+    if (result.ok === false) return res.status(result.status).json({ error: result.error });
+    res.json({ success: true, data: { dealId, userLines: result.user_lines } });
+  } catch (error: any) {
+    logger.error('Error deleting ancillary user line:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

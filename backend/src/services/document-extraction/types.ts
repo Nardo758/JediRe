@@ -356,6 +356,22 @@ export interface ProFormaYear1Seed {
     insurance_admin: LayeredValue<number>;
     other: LayeredValue<number>;
   };
+  /**
+   * User-added ancillary income lines that don't fit the canonical categories
+   * (e.g. "Solar revenue", "Cell tower lease"). Each line carries its own
+   * monthly $ amount and contributes to EGI alongside the per-category
+   * breakdown. Survives re-seed because `buildSeed` copies it verbatim from
+   * `existingSeed`. Task #519.
+   */
+  other_income_user_lines?: Array<{
+    id: string;
+    label: string;
+    monthly: number;
+    note?: string;
+    created_by?: string;
+    created_at: string;
+    updated_at?: string;
+  }>;
   egi: LayeredValue<number>;
   payroll: LayeredValue<number>;
   repairs_maintenance: LayeredValue<number>;
