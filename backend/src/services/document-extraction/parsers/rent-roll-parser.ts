@@ -669,8 +669,14 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     // legitimate zero-rent edge cases (e.g. fully concession'd model unit
     // dataset) while still catching layouts where Market Rent and Effective
     // Rent both fell through every detection rule.
-    const marketUnreadable    = columnCoverage.market_rent === 'missing';
-    const effectiveUnreadable = columnCoverage.amount === 'missing' || columnCoverage.amount === 'not_supported';
+    // 'missing' = no header AND no data; 'all_null' = header detected but
+    // every occupied row null. Both indicate the parser cannot supply usable
+    // values for that column, so both contribute to the hard-fail predicate.
+    // 'not_supported' is layout-structural (generic_flat has no per-row
+    // charge_code/amount split) and also unreadable from this column's view.
+    const isUnreadable = (s: ColStatus) => s === 'missing' || s === 'all_null' || s === 'not_supported';
+    const marketUnreadable    = isUnreadable(columnCoverage.market_rent);
+    const effectiveUnreadable = isUnreadable(columnCoverage.amount);
     if (occupiedUnits.length > 0 && marketUnreadable && effectiveUnreadable) {
       return {
         documentType: 'RENT_ROLL',
@@ -687,8 +693,12 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     // ─── Human review needed ───
     // True when ≥1 critical field is 'missing' OR ≥50% of occupied rows have
     // null lease_expiration OR null effective_rent.
-    const criticalFields: Array<keyof typeof columnCoverage> = ['unit_no', 'unit_type', 'market_rent', 'charge_code', 'amount'];
-    const anyMissing = criticalFields.some(f => columnCoverage[f] === 'missing' || columnCoverage[f] === 'all_null');
+    // Per task spec: trigger on critical-field 'missing' (no header detected
+    // AND no data). 'all_null' is advisory — surfaced in the scorecard but
+    // doesn't auto-trigger the banner unless it co-occurs with the
+    // 50%-null-coverage thresholds below. sqft is included per spec.
+    const criticalFields: Array<keyof typeof columnCoverage> = ['unit_no', 'unit_type', 'sqft', 'market_rent', 'charge_code', 'amount'];
+    const anyMissing = criticalFields.some(f => columnCoverage[f] === 'missing');
     const occCount = occupiedUnits.length;
     const leaseExpNulls = occupiedUnits.filter(u => !u.leaseExpiration).length;
     const effectiveRentNulls = occupiedUnits.filter(u => u.totalCharges === 0 && (u.charges['rent'] ?? 0) === 0).length;
