@@ -15,6 +15,10 @@ interface AssumptionRowProps {
   onRevert: (fieldId: string) => void;
   onOpenDrilldown: (fieldId: string) => void;
   editRefSetter?: (fieldId: string, ref: EditableValueCellRef | null) => void;
+  /** Moves focus to the next EFFECTIVE cell in the block (Tab) */
+  onTabNext?: () => void;
+  /** Moves focus to the previous EFFECTIVE cell in the block (Shift+Tab) */
+  onTabPrev?: () => void;
 }
 
 function AssumptionRowInner({
@@ -24,6 +28,8 @@ function AssumptionRowInner({
   onRevert,
   onOpenDrilldown,
   editRefSetter,
+  onTabNext,
+  onTabPrev,
 }: AssumptionRowProps) {
   const cellRef = useRef<EditableValueCellRef>(null);
 
@@ -129,6 +135,8 @@ function AssumptionRowInner({
           fieldLabel={field.label}
           onCommit={val => onOverride(field.fieldId, val)}
           onRevert={() => onRevert(field.fieldId)}
+          onTabNext={onTabNext}
+          onTabPrev={onTabPrev}
         />
       </td>
 
@@ -140,7 +148,7 @@ function AssumptionRowInner({
   );
 }
 
-// Custom equality: only re-render when value, source, or drift inputs change
+// Custom equality: re-render when value, source, drift inputs, or tab nav change
 function areEqual(prev: AssumptionRowProps, next: AssumptionRowProps) {
   const pf = prev.field;
   const nf = next.field;
@@ -151,7 +159,9 @@ function areEqual(prev: AssumptionRowProps, next: AssumptionRowProps) {
     pf.subjectValue   === nf.subjectValue   &&
     pf.peerValue      === nf.peerValue      &&
     pf.confidence     === nf.confidence     &&
-    prev.hasSubjectHistory === next.hasSubjectHistory
+    prev.hasSubjectHistory === next.hasSubjectHistory &&
+    prev.onTabNext    === next.onTabNext    &&
+    prev.onTabPrev    === next.onTabPrev
   );
 }
 

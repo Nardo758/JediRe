@@ -13,7 +13,7 @@ export const T = {
     negative: BT.text.red,           // #FF4757  ▼ drift down
     agent:    BT.accent.agent,        // #00E5A0  agent-sourced
     user:     BT.accent.user,         // #F5A623  user override
-    subject:  '#2DD4BF',             // teal — subject-history tier
+    subject:  BT.text.teal,           // #00E5A0 — subject-history tier (BT.text.teal)
   },
   text: {
     primary:   BT.text.primary,       // #E8ECF1

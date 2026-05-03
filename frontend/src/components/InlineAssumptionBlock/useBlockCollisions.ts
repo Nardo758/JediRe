@@ -24,29 +24,39 @@ const SEVERE_SIGMA = 2.5;
  */
 const PEER_SIGMA_PCT = 0.20;
 
+/**
+ * selectBlockCollisions — pure selector (no hooks, no store coupling).
+ *
+ * Derives CollisionEntry[] from AssumptionFieldDef[].
+ * Exported as a named selector so callers can use it outside of React
+ * (e.g. in store selectors, tests, or memoized callbacks) without a hook.
+ */
+export function selectBlockCollisions(fields: AssumptionFieldDef[]): CollisionEntry[] {
+  const collisions: CollisionEntry[] = [];
+  for (const field of fields) {
+    if (field.subjectValue == null || field.peerValue == null || field.peerValue === 0) {
+      continue;
+    }
+    const peerSigma = Math.abs(field.peerValue) * PEER_SIGMA_PCT;
+    if (peerSigma === 0) continue;
+    const deltaSigma = Math.abs(field.subjectValue - field.peerValue) / peerSigma;
+    if (deltaSigma >= MATERIAL_SIGMA) {
+      collisions.push({
+        fieldId: field.fieldId,
+        deltaSigma,
+        subjectValue: field.subjectValue,
+        peerValue: field.peerValue,
+        narrative: field.narrative ?? null,
+        severity: deltaSigma >= SEVERE_SIGMA ? 'severe' : 'material',
+      });
+    }
+  }
+  return collisions.sort((a, b) => b.deltaSigma - a.deltaSigma);
+}
+
+/** Hook wrapper — memoizes selectBlockCollisions over fields reference. */
 export function useBlockCollisions(
   fields: AssumptionFieldDef[],
 ): CollisionEntry[] {
-  return useMemo(() => {
-    const collisions: CollisionEntry[] = [];
-    for (const field of fields) {
-      if (field.subjectValue == null || field.peerValue == null || field.peerValue === 0) {
-        continue;
-      }
-      const peerSigma = Math.abs(field.peerValue) * PEER_SIGMA_PCT;
-      if (peerSigma === 0) continue;
-      const deltaSigma = Math.abs(field.subjectValue - field.peerValue) / peerSigma;
-      if (deltaSigma >= MATERIAL_SIGMA) {
-        collisions.push({
-          fieldId: field.fieldId,
-          deltaSigma,
-          subjectValue: field.subjectValue,
-          peerValue: field.peerValue,
-          narrative: field.narrative ?? null,
-          severity: deltaSigma >= SEVERE_SIGMA ? 'severe' : 'material',
-        });
-      }
-    }
-    return collisions.sort((a, b) => b.deltaSigma - a.deltaSigma);
-  }, [fields]);
+  return useMemo(() => selectBlockCollisions(fields), [fields]);
 }

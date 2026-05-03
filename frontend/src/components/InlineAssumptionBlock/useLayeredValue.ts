@@ -83,26 +83,39 @@ export function useLayeredValue(
   );
 }
 
-// ─── useFieldDriftAnalysis ────────────────────────────────────────────────
+// ─── selectFieldDriftAnalysis ─────────────────────────────────────────────
 /**
- * Computes drift sigma from subject and peer values.
+ * Pure selector — computes drift sigma from subject and peer values.
  * drift_sigma = (subject − peer) / (peer × 0.20)
  *
- * PEER_SIGMA_PCT = 0.20 matches useBlockCollisions so collision badges
+ * PEER_SIGMA_PCT = 0.20 matches selectBlockCollisions so collision badges
  * and drift arrows are consistent across the component family.
  *
  * ±0.5σ threshold → neutral; above → up; below → down.
+ *
+ * Exported as a named selector so callers can use it outside of React
+ * (e.g. in store selectors, tests, or memoized comparisons) without a hook.
  */
+export function selectFieldDriftAnalysis(
+  subjectValue: number | null,
+  peerValue: number | null,
+): { sigma: number; direction: 'up' | 'down' | 'neutral' } {
+  if (subjectValue == null || peerValue == null || peerValue === 0) {
+    return { sigma: 0, direction: 'neutral' };
+  }
+  const sigma = (subjectValue - peerValue) / (Math.abs(peerValue) * 0.20);
+  const direction = Math.abs(sigma) < 0.5 ? 'neutral' : sigma > 0 ? 'up' : 'down';
+  return { sigma, direction };
+}
+
+// ─── useFieldDriftAnalysis ────────────────────────────────────────────────
+/** Hook wrapper — memoizes selectFieldDriftAnalysis. */
 export function useFieldDriftAnalysis(
   subjectValue: number | null,
   peerValue: number | null,
 ): { sigma: number; direction: 'up' | 'down' | 'neutral' } {
-  return useMemo(() => {
-    if (subjectValue == null || peerValue == null || peerValue === 0) {
-      return { sigma: 0, direction: 'neutral' };
-    }
-    const sigma = (subjectValue - peerValue) / (Math.abs(peerValue) * 0.20);
-    const direction = Math.abs(sigma) < 0.5 ? 'neutral' : sigma > 0 ? 'up' : 'down';
-    return { sigma, direction };
-  }, [subjectValue, peerValue]);
+  return useMemo(
+    () => selectFieldDriftAnalysis(subjectValue, peerValue),
+    [subjectValue, peerValue],
+  );
 }

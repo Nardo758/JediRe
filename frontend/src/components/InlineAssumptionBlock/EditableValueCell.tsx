@@ -44,11 +44,15 @@ interface EditableValueCellProps {
   fieldLabel: string;
   onCommit: (value: number) => void;
   onRevert: () => void;
+  /** Called after commit when Tab is pressed — moves focus to next EFFECTIVE cell */
+  onTabNext?: () => void;
+  /** Called after commit when Shift+Tab is pressed — moves focus to prev EFFECTIVE cell */
+  onTabPrev?: () => void;
 }
 
 export const EditableValueCell = forwardRef<EditableValueCellRef, EditableValueCellProps>(
   function EditableValueCell(
-    { value, format, precision, min, max, hasOverride, fieldId, fieldLabel, onCommit, onRevert },
+    { value, format, precision, min, max, hasOverride, fieldId, fieldLabel, onCommit, onRevert, onTabNext, onTabPrev },
     ref,
   ) {
     const [editing, setEditing] = useState(false);
@@ -84,7 +88,15 @@ export const EditableValueCell = forwardRef<EditableValueCellRef, EditableValueC
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') { commitDraft(); return; }
       if (e.key === 'Escape') { setEditing(false); return; }
-      if (e.key === 'Tab') { commitDraft(); return; }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        commitDraft();
+        // Move focus to next (Tab) or previous (Shift+Tab) EFFECTIVE cell —
+        // read-only columns (PEER SET, SUBJECT, CONF) are skipped by design.
+        if (e.shiftKey) onTabPrev?.();
+        else            onTabNext?.();
+        return;
+      }
 
       const step = e.shiftKey ? precision * 10 : precision;
       if (e.key === 'ArrowUp') {

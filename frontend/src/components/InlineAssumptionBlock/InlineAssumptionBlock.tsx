@@ -53,6 +53,25 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
       },
     }), []);
 
+    // Tab/Shift+Tab navigation — moves focus between EFFECTIVE cells only,
+    // skipping all read-only columns (PEER SET, SUBJECT, CONF).
+    const makeTabHandlers = useCallback(
+      (fieldId: string): { onTabNext: () => void; onTabPrev: () => void } => {
+        const idx = fields.findIndex(f => f.fieldId === fieldId);
+        return {
+          onTabNext: () => {
+            const next = fields[idx + 1];
+            if (next) editRefs.current.get(next.fieldId)?.focusEdit();
+          },
+          onTabPrev: () => {
+            const prev = fields[idx - 1];
+            if (prev) editRefs.current.get(prev.fieldId)?.focusEdit();
+          },
+        };
+      },
+      [fields],
+    );
+
     const openDrilldown = useCallback((fieldId: string) => {
       setDrilldownFieldId(fieldId);
     }, []);
@@ -214,17 +233,22 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
                 </thead>
 
                 <tbody>
-                  {fields.map(field => (
-                    <AssumptionRow
-                      key={field.fieldId}
-                      field={field}
-                      hasSubjectHistory={hasSubjectHistory}
-                      onOverride={onOverride ?? (() => {})}
-                      onRevert={onRevert ?? (() => {})}
-                      onOpenDrilldown={openDrilldown}
-                      editRefSetter={editRefSetter}
-                    />
-                  ))}
+                  {fields.map(field => {
+                    const { onTabNext, onTabPrev } = makeTabHandlers(field.fieldId);
+                    return (
+                      <AssumptionRow
+                        key={field.fieldId}
+                        field={field}
+                        hasSubjectHistory={hasSubjectHistory}
+                        onOverride={onOverride ?? (() => {})}
+                        onRevert={onRevert ?? (() => {})}
+                        onOpenDrilldown={openDrilldown}
+                        editRefSetter={editRefSetter}
+                        onTabNext={onTabNext}
+                        onTabPrev={onTabPrev}
+                      />
+                    );
+                  })}
                 </tbody>
               </table>
 

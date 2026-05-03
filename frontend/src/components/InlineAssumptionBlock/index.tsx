@@ -6,8 +6,8 @@ export { DriftIndicator } from './DriftIndicator';
 export { ConfidenceBadge } from './ConfidenceBadge';
 export { CollisionPanel } from './CollisionPanel';
 export { DrilldownModal } from './DrilldownModal';
-export { useLayeredValue, useFieldDriftAnalysis } from './useLayeredValue';
-export { useBlockCollisions } from './useBlockCollisions';
+export { useLayeredValue, useFieldDriftAnalysis, selectLayeredValueAtPath, selectFieldDriftAnalysis } from './useLayeredValue';
+export { useBlockCollisions, selectBlockCollisions } from './useBlockCollisions';
 export type {
   AssumptionFieldDef,
   CollisionEntry,
