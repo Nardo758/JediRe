@@ -135,7 +135,7 @@ Traffic Engine needs to consume from M35 Event Impact Engine to avoid three fail
 
 ## Pro Forma Schema-Change Rule (7-Ring Checklist)
 
-> **Rule:** Any add or delete of a Pro Forma or Projections line item is a cross-cutting change. It must update: (1) F9 tabs, (2) backend types + DealContext + dealStore, (3) parsers if document-sourced, (4) downstream module consumers via dealStore, (5) agent logic, (6) Excel export, (7) archive backfill plan. **Never ship a partial propagation.**
+Any add/delete of a Pro Forma or Projections line item is a cross-cutting change. It must update: (1) F9 tabs, (2) backend types + DealContext + dealStore, (3) parsers if document-sourced, (4) downstream module consumers via dealStore, (5) agent logic, (6) Excel export, (7) archive backfill plan. Never ship a partial propagation.
 
 A new field that appears in the UI but is absent from the projection engine, Excel export, AI commentary, or M36 covariance matrix is a silent correctness bug. The checklist exists to eliminate that class of error at the point of authorship, not post-review.
 
