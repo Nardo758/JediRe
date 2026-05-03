@@ -31,6 +31,34 @@ import type { ExtractionResult } from '../../types';
 type Cell = string | number | null;
 
 /**
+ * Narrow shape of the rent-roll capsuleExtras fields exercised by these
+ * tests. Keeps the assertions strongly typed without pulling in the full
+ * production capsule type (which has 30+ unrelated fields).
+ */
+interface RentRollCapsuleExtrasForTest {
+  expiration_curve: {
+    months_0_3: number;
+    months_3_6: number;
+    months_6_12: number;
+    months_12_plus: number;
+    mtm: number;
+    unknown: number;
+  };
+  expiration_extraction_status: 'ok' | 'partial' | 'failed';
+  occupied_units: number;
+  floor_plan_mix: Record<string, {
+    expiration_extraction_status: 'ok' | 'partial' | 'failed';
+    expiration_curve: RentRollCapsuleExtrasForTest['expiration_curve'];
+  }>;
+}
+
+type RentRollResult = ExtractionResult & { capsuleExtras?: RentRollCapsuleExtrasForTest };
+
+function runParse(buf: Buffer): RentRollResult {
+  return parseRentRoll(buf, 'fixture.xlsx') as RentRollResult;
+}
+
+/**
  * Build a Yardi RRwLC sheet with a fixed As-Of date so bucket math is
  * deterministic regardless of when the test runs. The As-Of header at row 0
  * drives the parser's `today` clock for bucketing.
@@ -66,7 +94,7 @@ describe('Task #515 — expiration bucket classification', () => {
   // adjacent buckets due to monthsBetween rounding).
   it('null leaseExpiration → unknown bucket (does NOT silently fall to MTM)', () => {
     const buf = buildYardiSheet([occupiedRow('101', null)]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     expect(out.success).toBe(true);
     const c = out.capsuleExtras!.expiration_curve;
     expect(c.unknown).toBe(1);
@@ -77,7 +105,7 @@ describe('Task #515 — expiration bucket classification', () => {
   it('past lease end → mtm bucket', () => {
     // As-of 2025-01-15, lease ended 2024-06-30 → ~7mo in the past
     const buf = buildYardiSheet([occupiedRow('102', '2024-06-30')]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     expect(out.success).toBe(true);
     const c = out.capsuleExtras!.expiration_curve;
     expect(c.mtm).toBe(1);
@@ -87,7 +115,7 @@ describe('Task #515 — expiration bucket classification', () => {
   it('+2 months → months_0_3 bucket', () => {
     // As-of 2025-01-15, lease ends 2025-03-20 → ~2 months forward
     const buf = buildYardiSheet([occupiedRow('103', '2025-03-20')]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     const c = out.capsuleExtras!.expiration_curve;
     expect(c.months_0_3).toBe(1);
     expect(c.months_3_6).toBe(0);
@@ -98,7 +126,7 @@ describe('Task #515 — expiration bucket classification', () => {
   it('+5 months → months_3_6 bucket', () => {
     // As-of 2025-01-15, lease ends 2025-06-20 → ~5 months forward
     const buf = buildYardiSheet([occupiedRow('104', '2025-06-20')]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     const c = out.capsuleExtras!.expiration_curve;
     expect(c.months_3_6).toBe(1);
     expect(c.months_0_3).toBe(0);
@@ -109,7 +137,7 @@ describe('Task #515 — expiration bucket classification', () => {
   it('+9 months → months_6_12 bucket', () => {
     // As-of 2025-01-15, lease ends 2025-10-20 → ~9 months forward
     const buf = buildYardiSheet([occupiedRow('105', '2025-10-20')]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     const c = out.capsuleExtras!.expiration_curve;
     expect(c.months_6_12).toBe(1);
     expect(c.months_3_6).toBe(0);
@@ -119,7 +147,7 @@ describe('Task #515 — expiration bucket classification', () => {
   it('+18 months → months_12_plus bucket', () => {
     // As-of 2025-01-15, lease ends 2026-07-20 → ~18 months forward
     const buf = buildYardiSheet([occupiedRow('106', '2026-07-20')]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     const c = out.capsuleExtras!.expiration_curve;
     expect(c.months_12_plus).toBe(1);
     expect(c.months_6_12).toBe(0);
@@ -134,7 +162,7 @@ describe('Task #515 — expiration bucket classification', () => {
       occupiedRow('205', '2025-10-20'), // 6-12
       occupiedRow('206', '2026-07-20'), // 12+
     ]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     const c = out.capsuleExtras!.expiration_curve;
     expect(c).toMatchObject({
       unknown: 1, mtm: 1, months_0_3: 1, months_3_6: 1, months_6_12: 1, months_12_plus: 1,
@@ -149,7 +177,7 @@ describe('Task #515 — expiration_extraction_status transitions', () => {
       occupiedRow('302', '2025-10-20'),
       occupiedRow('303', '2026-07-20'),
     ]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     expect(out.capsuleExtras!.expiration_curve.unknown).toBe(0);
     expect(out.capsuleExtras!.expiration_extraction_status).toBe('ok');
   });
@@ -160,7 +188,7 @@ describe('Task #515 — expiration_extraction_status transitions', () => {
       occupiedRow('402', '2025-10-20'), // parsed
       occupiedRow('403', null),         // unknown
     ]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     const cap = out.capsuleExtras!;
     expect(cap.expiration_curve.unknown).toBe(1);
     expect(cap.occupied_units).toBe(3);
@@ -172,7 +200,7 @@ describe('Task #515 — expiration_extraction_status transitions', () => {
       occupiedRow('501', null),
       occupiedRow('502', null),
     ]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     const cap = out.capsuleExtras!;
     expect(cap.expiration_curve.unknown).toBe(2);
     expect(cap.occupied_units).toBe(2);
@@ -187,7 +215,7 @@ describe('Task #515 — expiration_extraction_status transitions', () => {
       ['603', 'B1', 950, 'T B1-1', 1800, 'rent', 1750, null, null, '2024-06-01', null, null, 0],
       ['604', 'B1', 950, 'T B1-2', 1800, 'rent', 1750, null, null, '2024-06-01', null, null, 0],
     ]);
-    const out = parseRentRoll(buf, 'fixture.xlsx') as ExtractionResult & { capsuleExtras?: any };
+    const out = runParse(buf);
     const fpm = out.capsuleExtras!.floor_plan_mix;
     expect(fpm.A1.expiration_extraction_status).toBe('ok');
     expect(fpm.B1.expiration_extraction_status).toBe('failed');
