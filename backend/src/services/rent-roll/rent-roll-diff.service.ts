@@ -648,9 +648,10 @@ export class RentRollDiffService {
       diff_period_count:       diffCount,
     };
 
-    // Peer collisions remain empty here — populated by CoefficientResolverService
-    // at /coefficients call time, using the platform posterior as the peer.
-    const peerCollisions: SubjectPeerCollision[] = [];
+    // ── Peer-collision computation at S2 time ────────────────────────────────
+    // Spec: collisions must be persisted as part of S2 aggregation semantics,
+    // not deferred to /coefficients endpoint call time (which is non-deterministic).
+    const peerCollisions: SubjectPeerCollision[] = await this.computePeerCollisions(dealId, dynamics);
 
     await this.pool.query(`
       INSERT INTO subject_traffic_history
@@ -678,5 +679,108 @@ export class RentRollDiffService {
       dealId, diffCount, snapshotCount, coverageMonths: coverageMonths.toFixed(1),
       totalRenewalN, totalTurnoverN,
     });
+  }
+
+  // ============================================================================
+  // Private: Compute peer collisions against deal-scoped platform posteriors
+  // Must run at S2 aggregation time (deterministic lifecycle, not on /coefficients
+  // call). Uses the same scope-degradation cascade as CoefficientResolverService.
+  // ============================================================================
+
+  private async computePeerCollisions(
+    dealId: string,
+    dynamics: SubjectObservedDynamics,
+  ): Promise<SubjectPeerCollision[]> {
+    try {
+      // Load deal context for scope degradation
+      const dealRes = await this.pool.query<{
+        submarket_id: string | null;
+        property_class: string | null;
+        year_built: number | null;
+        msa_id: string | null;
+      }>(
+        `SELECT submarket_id, property_class, year_built, msa_id FROM deals WHERE id = $1`,
+        [dealId],
+      );
+      if (dealRes.rows.length === 0) return [];
+      const d = dealRes.rows[0];
+
+      // Derive vintage band identically to CoefficientResolverService.getVintageBand()
+      const yb = d.year_built;
+      const vintageBand = yb == null ? null
+        : yb < 1980 ? 'pre_1980'
+        : yb < 2000 ? '1980_2000'
+        : yb < 2015 ? '2000_2015'
+        : 'post_2015';
+
+      // Scope-degradation cascade — same order as resolver
+      const scopeAttempts = [
+        { scope_level: 'submarket', submarket_id: d.submarket_id, property_class: d.property_class, vintage_band: vintageBand, msa_id: null },
+        { scope_level: 'submarket', submarket_id: d.submarket_id, property_class: d.property_class, vintage_band: null,        msa_id: null },
+        { scope_level: 'submarket', submarket_id: d.submarket_id, property_class: null,             vintage_band: null,        msa_id: null },
+        { scope_level: 'msa',       submarket_id: null,           property_class: d.property_class, vintage_band: null,        msa_id: d.msa_id },
+        { scope_level: 'class',     submarket_id: null,           property_class: d.property_class, vintage_band: null,        msa_id: null },
+        { scope_level: 'vintage',   submarket_id: null,           property_class: null,             vintage_band: vintageBand, msa_id: null },
+        { scope_level: 'platform',  submarket_id: null,           property_class: null,             vintage_band: null,        msa_id: null },
+      ];
+
+      let posteriors: Record<string, number> = {};
+      for (const attempt of scopeAttempts) {
+        const res = await this.pool.query<{ coefficient_name: string; posterior_value: string }>(
+          `SELECT coefficient_name, posterior_value
+           FROM traffic_calibration_factors
+           WHERE scope_level = $1
+             AND (submarket_id = $2 OR ($2 IS NULL AND submarket_id IS NULL))
+             AND (property_class = $3 OR ($3 IS NULL AND property_class IS NULL))
+             AND (vintage_band = $4 OR ($4 IS NULL AND vintage_band IS NULL))
+             AND (msa_id = $5 OR ($5 IS NULL AND msa_id IS NULL))
+             AND coefficient_name != 'absorption_curve'
+             AND cal_window = 'TTM'
+           ORDER BY n_peer_properties DESC`,
+          [attempt.scope_level, attempt.submarket_id, attempt.property_class, attempt.vintage_band, attempt.msa_id],
+        );
+        if (res.rows.length > 0) {
+          for (const row of res.rows) {
+            posteriors[row.coefficient_name] = parseFloat(row.posterior_value);
+          }
+          break;
+        }
+      }
+      if (Object.keys(posteriors).length === 0) return [];
+
+      // Collision threshold: |subject - peer| > 1.5σ, where σ = |peer| × 0.15
+      const collisions: SubjectPeerCollision[] = [];
+      const dynamicsEntries: Array<[string, number | null]> = [
+        ['renewal_rate',            dynamics.renewal_rate],
+        ['turnover_rate',           dynamics.turnover_rate],
+        ['new_lease_trade_out_pct', dynamics.new_lease_trade_out_pct],
+        ['renewal_trade_out_pct',   dynamics.renewal_trade_out_pct],
+        ['signing_velocity',        dynamics.signing_velocity],
+        ['days_vacant_median',      dynamics.days_vacant_median],
+        ['loss_to_lease',           dynamics.loss_to_lease],
+      ];
+      for (const [key, subjectValue] of dynamicsEntries) {
+        if (subjectValue == null) continue;
+        const peerValue = posteriors[key];
+        if (peerValue == null) continue;
+        const sigma = Math.abs(peerValue) * 0.15;
+        if (sigma === 0) continue;
+        const deviation = Math.abs(subjectValue - peerValue) / sigma;
+        if (deviation > 1.5) {
+          collisions.push({
+            coefficient:     key,
+            subject_value:   subjectValue,
+            peer_value:      peerValue,
+            sigma_deviation: deviation,
+          });
+        }
+      }
+      return collisions;
+    } catch (err: unknown) {
+      logger.warn('[RentRollDiff] computePeerCollisions failed — storing empty collisions', {
+        dealId, error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }
   }
 }

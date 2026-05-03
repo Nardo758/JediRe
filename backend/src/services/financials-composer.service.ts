@@ -156,7 +156,8 @@ export async function composeDealFinancials(
   // 1. Load deal row
   const dealRes = await pool.query(
     `SELECT id, name, deal_data, project_type, target_units,
-            unit_count, city, state_code AS state
+            unit_count, city, state_code AS state,
+            submarket_id, property_class, year_built, msa_id
      FROM deals WHERE id = $1 AND user_id = $2`,
     [dealId, userId]
   );
@@ -341,23 +342,13 @@ export async function composeDealFinancials(
     );
     if (sthRes.rows.length > 0) {
       const row = sthRes.rows[0];
-      // Also load platform peer-set posteriors so the UI can show real peer column
-      // for all coefficients, not just collision rows.
+      // Load deal-scoped platform peer-set posteriors using scope degradation
+      // identical to CoefficientResolverService.loadPlatformCoefficients().
+      // This ensures the Peer SET column in the UI reflects the same peer
+      // context the resolver used when computing the blended effective value.
       let peerSetValues: Record<string, number> = {};
       try {
-        const peerRes = await pool.query<{ coefficient_name: string; posterior_value: string }>(
-          `SELECT DISTINCT ON (coefficient_name) coefficient_name, posterior_value
-           FROM traffic_calibration_factors tcf
-           JOIN deals d ON d.id = $1
-           WHERE tcf.scope_level = 'platform'
-             AND tcf.coefficient_name != 'absorption_curve'
-             AND tcf.cal_window = 'TTM'
-           ORDER BY coefficient_name, n_peer_properties DESC`,
-          [dealId],
-        );
-        for (const r of peerRes.rows) {
-          peerSetValues[r.coefficient_name] = parseFloat(r.posterior_value);
-        }
+        peerSetValues = await loadDealScopedPeerPosteriors(pool, deal);
       } catch {
         // Platform posteriors not available — peer column stays empty for non-collision rows
       }
@@ -427,6 +418,69 @@ export async function composeDealFinancials(
  * - conflict: true when two non-null sources differ by >15%.
  * Task #519.
  */
+/**
+ * Loads platform peer-set posterior values for a deal using the same
+ * scope-degradation cascade as CoefficientResolverService.loadPlatformCoefficients().
+ * Ensures the Peer SET column in SubjectHistoryPanel matches the peer context
+ * actually used by the resolver when computing blended effective values.
+ */
+async function loadDealScopedPeerPosteriors(
+  pool: Pool,
+  deal: { submarket_id: string | null; property_class: string | null; year_built: number | null; msa_id: string | null },
+): Promise<Record<string, number>> {
+  // Derive vintage band identically to CoefficientResolverService.getVintageBand()
+  const yb = deal.year_built;
+  const vintageBand = yb == null ? null
+    : yb < 1980 ? 'pre_1980'
+    : yb < 2000 ? '1980_2000'
+    : yb < 2015 ? '2000_2015'
+    : 'post_2015';
+
+  const submarketId = deal.submarket_id ?? null;
+  const propertyClass = deal.property_class ?? null;
+  const msaId = deal.msa_id ?? null;
+
+  const scopeAttempts: Array<{
+    scope_level: string;
+    submarket_id: string | null;
+    property_class: string | null;
+    vintage_band: string | null;
+    msa_id: string | null;
+  }> = [
+    { scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass, vintage_band: vintageBand, msa_id: null },
+    { scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass, vintage_band: null,        msa_id: null },
+    { scope_level: 'submarket', submarket_id: submarketId, property_class: null,          vintage_band: null,        msa_id: null },
+    { scope_level: 'msa',       submarket_id: null,        property_class: propertyClass, vintage_band: null,        msa_id: msaId },
+    { scope_level: 'class',     submarket_id: null,        property_class: propertyClass, vintage_band: null,        msa_id: null },
+    { scope_level: 'vintage',   submarket_id: null,        property_class: null,          vintage_band: vintageBand, msa_id: null },
+    { scope_level: 'platform',  submarket_id: null,        property_class: null,          vintage_band: null,        msa_id: null },
+  ];
+
+  for (const attempt of scopeAttempts) {
+    const res = await pool.query<{ coefficient_name: string; posterior_value: string }>(
+      `SELECT coefficient_name, posterior_value
+       FROM traffic_calibration_factors
+       WHERE scope_level = $1
+         AND (submarket_id = $2 OR ($2 IS NULL AND submarket_id IS NULL))
+         AND (property_class = $3 OR ($3 IS NULL AND property_class IS NULL))
+         AND (vintage_band = $4 OR ($4 IS NULL AND vintage_band IS NULL))
+         AND (msa_id = $5 OR ($5 IS NULL AND msa_id IS NULL))
+         AND coefficient_name != 'absorption_curve'
+         AND cal_window = 'TTM'
+       ORDER BY n_peer_properties DESC`,
+      [attempt.scope_level, attempt.submarket_id, attempt.property_class, attempt.vintage_band, attempt.msa_id],
+    );
+    if (res.rows.length > 0) {
+      const result: Record<string, number> = {};
+      for (const row of res.rows) {
+        result[row.coefficient_name] = parseFloat(row.posterior_value);
+      }
+      return result;
+    }
+  }
+  return {};
+}
+
 function composeOtherIncomeBreakdown(
   dealData: Record<string, any>,
   year1Data: Record<string, any> | null
