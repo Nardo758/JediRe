@@ -1064,26 +1064,44 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
     finally { setBusy(false); setEditing(null); }
   };
 
+  const [addError, setAddError] = useState<string | null>(null);
+
   const addLine = async () => {
     if (!adding || !adding.label.trim()) return;
     let body: Record<string, unknown> | null = null;
     if (adding.mode === 'flat') {
       const monthly = parseFloat(adding.monthly);
-      if (!Number.isFinite(monthly) || monthly < 0) return;
+      if (!Number.isFinite(monthly) || monthly < 0) {
+        setAddError('Monthly must be a non-negative number');
+        return;
+      }
       body = { label: adding.label.trim(), monthly };
     } else {
       const qty = parseFloat(adding.qty);
       const rate = parseFloat(adding.rate);
-      if (!Number.isFinite(qty) || qty < 0 || !Number.isFinite(rate) || rate < 0) return;
+      if (!Number.isFinite(qty) || qty < 0 || !Number.isFinite(rate) || rate < 0) {
+        setAddError('Qty and rate must both be non-negative numbers');
+        return;
+      }
       // Server derives `monthly = qty * rate` and persists all three fields.
       body = { label: adding.label.trim(), qty, rate, frequency: 'monthly' };
     }
     setBusy(true);
+    setAddError(null);
     try {
       await apiClient.post(`/api/v1/deals/${dealId}/financials/other-income/user-lines`, body);
       await onChange();
       setAdding(null);
-    } catch (e) { console.error('Add line failed:', e); }
+    } catch (e: unknown) {
+      // Surface the server's reason instead of silently swallowing — users
+      // saw the form go quiet and assumed the page crashed. Server returns
+      // { error: "<reason>" } for 400/403/404/422.
+      const ax = e as { response?: { status?: number; data?: { error?: string } }; message?: string };
+      const status = ax?.response?.status;
+      const reason = ax?.response?.data?.error ?? ax?.message ?? 'Unknown error';
+      console.error('Add line failed:', status, reason, e);
+      setAddError(`Save failed (${status ?? '?'}): ${reason}`);
+    }
     finally { setBusy(false); }
   };
 
@@ -1136,6 +1154,16 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
           </button>
         </div>
       </div>
+      {addError && (
+        <div style={{
+          fontFamily: LABEL, fontSize: 9, color: '#fecaca', background: '#450a0a',
+          border: '1px solid #b91c1c', padding: '4px 8px', borderRadius: 2, margin: '4px 0',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+        }}>
+          <span>{addError}</span>
+          <button onClick={() => setAddError(null)} style={{ background: 'none', border: 'none', color: '#fecaca', cursor: 'pointer', fontSize: 11 }}>✕</button>
+        </div>
+      )}
       {!breakdown && (
         <div style={{ fontFamily: LABEL, fontSize: 9, color: '#475569', padding: '6px 0' }}>
           No ancillary income data extracted yet. Upload an OM, Rent Roll, or T-12 to populate this table.

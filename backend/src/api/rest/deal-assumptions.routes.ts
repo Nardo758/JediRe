@@ -714,10 +714,14 @@ router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (r
       label: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string;
     };
     if (!label || typeof label !== 'string' || !label.trim()) {
+      logger.warn('User-line POST rejected: missing label', { dealId, body: req.body });
       return res.status(400).json({ error: 'label is required' });
     }
     const derived = deriveMonthly({ monthly, qty, rate, frequency });
-    if (derived.ok === false) return res.status(400).json({ error: derived.error });
+    if (derived.ok === false) {
+      logger.warn('User-line POST rejected by deriveMonthly', { dealId, body: req.body, reason: derived.error });
+      return res.status(400).json({ error: derived.error });
+    }
     const userId = req.user?.userId ?? 'unknown';
     const result = await mutateUserLines(dealId, userId, (lines) => [
       ...lines,
