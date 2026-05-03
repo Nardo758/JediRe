@@ -1,14 +1,17 @@
 /**
  * Concession Environment Engine — Test Fixtures (Task #525)
  *
- * Seven scenarios covering:
- *   F1 — Class × mode × subject tier matrix (class A/B/C × STABILIZED)
- *   F2 — Supply pressure sensitivity (monotonic response)
- *   F3 — Collision detection (3σ subject divergence)
- *   F4 — Lease-up decay curve over 24 months (year 1 vs year 2 vs year 3+)
- *   F5 — Mode transition at month 18/25 (LEASE_UP → STABILIZED floor clamp)
- *   F6 — Mode-mismatch enforcement (lease-up tagged subject not applied to stabilized)
- *   F7 — Bad-input defensibility (NaN suppression, explicit reason returned)
+ * Ten scenarios covering:
+ *   F1  — Class × mode × subject tier matrix (class A/B/C × STABILIZED)
+ *   F2  — Supply pressure sensitivity (monotonic response)
+ *   F3  — Collision detection (3σ subject divergence)
+ *   F4  — Lease-up decay curve over 24 months (year 1 vs year 2 vs year 3+)
+ *   F5a — Mode transition: STABILIZED downside reaches class_default × modifier (no floor)
+ *   F5b — Pure STABILIZED deal: M04 downside at modifier=0.5 not clamped to stab floor
+ *   F6  — Mode-mismatch enforcement (lease-up tagged subject not applied to stabilized)
+ *   F7  — Bad-input defensibility (NaN suppression, explicit reason returned)
+ *   F8a — Explicit month-18 transition: Y2 is 50% LU + 50% STAB blend
+ *   F8b — Explicit month-25 transition with LEASE_UP subject: per-segment mismatch guard
  *
  * Usage:
  *   import { runFixtures } from './concession-environment-engine.fixtures';
@@ -556,6 +559,141 @@ export async function runFixtures(pool?: Pool): Promise<FixtureResult[]> {
       assertions.push({ label: 'no exception', passed: false, detail: e.message });
     }
     results.push({ name: 'F7 — Bad-input defensibility (NaN suppression)', passed, assertions });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // F8a — Explicit month-18 transition (50% LU / 50% STAB mid-Y2)
+  //       deal_data.capex_schedule.transition_month = 18
+  //       Y1: fully LEASE_UP (month 18 > yearEnd 12)
+  //       Y2: blended — 6 LU months + 6 STAB months → blend ≈ 0.5·LU + 0.5·STAB
+  //       Y3: fully STABILIZED (month 18 < yearStart 25)
+  // ──────────────────────────────────────────────────────────────────────────
+  {
+    const assertions: FixtureResult['assertions'] = [];
+    let passed = true;
+    try {
+      const engine = new ConcessionEnvironmentEngine(buildMockPool({
+        deal: {
+          deal_mode:  'LEASE_UP',
+          property_class: 'B',
+          submarket_id: 'sm8a',
+          deal_data: { capex_schedule: { transition_month: 18 } },
+        },
+        calibration: null,
+        supplyRiskScore: null,   // no M04 modifier (modifier = 1.0)
+        subjectHistory: null,
+      }));
+      const out = await engine.computeForDeal('deal-f8a', 4);
+      const months = out.per_year.map(y => y.free_months);
+
+      // Y1 is fully LEASE_UP — must be larger than Y3 (fully STABILIZED)
+      assertions.push(assertTrue('Y1 (full LU) > Y3 (full STAB)',
+        months[0] > months[2],
+        `Y1=${months[0].toFixed(3)}, Y3=${months[2].toFixed(3)}`));
+
+      // Y2 is a 50/50 blend — must be strictly between STAB base (0.75) and LU Y2
+      assertions.push(assertTrue('Y2 blend is between STAB floor and LU Y2',
+        months[1] > 0.75 && months[1] < months[0],
+        `Y2=${months[1].toFixed(3)}, Y1(LU ref)=${months[0].toFixed(3)}, STAB floor=0.75`));
+
+      // Y3 is fully STABILIZED with no modifier → should equal class B stab base (0.75)
+      assertions.push(assertTrue('Y3 (full STAB, no modifier) ≈ 0.75',
+        Math.abs(months[2] - 0.75) < 0.01,
+        `Y3=${months[2].toFixed(4)}`));
+
+      // Sanity: Y2 is intermediate between Y1 and Y3
+      assertions.push(assertTrue('Y3 < Y2 < Y1 (monotone transition)',
+        months[2] < months[1] && months[1] < months[0],
+        `Y1=${months[0].toFixed(3)} Y2=${months[1].toFixed(3)} Y3=${months[2].toFixed(3)}`));
+
+      passed = assertions.every(a => a.passed);
+    } catch (e: any) {
+      passed = false;
+      assertions.push({ label: 'no exception', passed: false, detail: e.message });
+    }
+    results.push({ name: 'F8a — Explicit month-18 transition (50% LU / 50% STAB mid-Y2)', passed, assertions });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // F8b — Explicit month-25 transition WITH LEASE_UP subject present
+  //       transition_month = 25 → Y3 is 1/12 LU + 11/12 STAB
+  //       subject is tagged mode='LEASE_UP' — must NOT influence the STAB segment
+  //       of the Y3 blend (per-segment mode-mismatch guard).
+  // ──────────────────────────────────────────────────────────────────────────
+  {
+    const assertions: FixtureResult['assertions'] = [];
+    let passed = true;
+    try {
+      // With LEASE_UP subject present
+      const engineWithSubject = new ConcessionEnvironmentEngine(buildMockPool({
+        deal: {
+          deal_mode:  'LEASE_UP',
+          property_class: 'B',
+          submarket_id: 'sm8b',
+          deal_data: { capex_schedule: { transition_month: 25 } },
+        },
+        calibration: null,
+        supplyRiskScore: null,
+        subjectHistory: {
+          tier: 'S2',
+          current_state: { avg_concession_value: 2000, avg_contract_rent: 1800 },
+          observed_dynamics: {},
+          confidence_weights: { walkin_to_tour: { weight: 0.8, n_obs: 5, n_required: 6 } },
+          deal_mode: 'LEASE_UP',  // subject was collected when deal was LEASE_UP
+        },
+      }));
+
+      // Baseline: same deal, no subject (to verify subject doesn't bleed into STAB segment)
+      const engineNoSubject = new ConcessionEnvironmentEngine(buildMockPool({
+        deal: {
+          deal_mode:  'LEASE_UP',
+          property_class: 'B',
+          submarket_id: 'sm8b',
+          deal_data: { capex_schedule: { transition_month: 25 } },
+        },
+        calibration: null,
+        supplyRiskScore: null,
+        subjectHistory: null,
+      }));
+
+      const [withOut, noOut] = await Promise.all([
+        engineWithSubject.computeForDeal('deal-f8b-with', 4),
+        engineNoSubject.computeForDeal('deal-f8b-no', 4),
+      ]);
+
+      const withMonths = withOut.per_year.map(y => y.free_months);
+      const noMonths   = noOut.per_year.map(y => y.free_months);
+
+      // Y3 is 1/12 LU + 11/12 STAB (transitionMonth=25, yearStart=25)
+      // STAB segment must NOT receive subject influence since subject.mode=LEASE_UP
+      // → Y3 with-subject should equal Y3 without-subject (within floating point)
+      assertions.push(assertTrue(
+        'Y3 STAB segment: LEASE_UP subject not applied (per-segment mismatch guard)',
+        Math.abs(withMonths[2] - noMonths[2]) < 0.001,
+        `withSubj=${withMonths[2].toFixed(4)}, noSubj=${noMonths[2].toFixed(4)}`,
+      ));
+
+      // Y1 with subject CAN be influenced (subject mode matches LEASE_UP deal mode)
+      // The subject data changes Y1 — verify subject_s2_available = true
+      assertions.push(assertTrue(
+        'subject_s2_available = true when LEASE_UP subject present',
+        withOut.subject_s2_available === true,
+        `subject_s2_available=${withOut.subject_s2_available}`,
+      ));
+
+      // Y3 should be mostly STABILIZED: ≈ (1/12)·luY3 + (11/12)·stabBase = close to stabBase 0.75
+      // With no modifier and no M05, STAB segment = 0.75; LU segment ≈ 1.275 (curve year≥3 = stab floor)
+      // blend ≈ 1/12·1.275 + 11/12·0.75 = 0.106 + 0.688 = 0.794
+      assertions.push(assertTrue('Y3 ≈ mostly-STAB blend (within 0.1 of 0.75)',
+        Math.abs(noMonths[2] - 0.75) < 0.1,
+        `Y3=${noMonths[2].toFixed(4)}`));
+
+      passed = assertions.every(a => a.passed);
+    } catch (e: any) {
+      passed = false;
+      assertions.push({ label: 'no exception', passed: false, detail: e.message });
+    }
+    results.push({ name: 'F8b — Month-25 transition + per-segment LEASE_UP subject mismatch guard', passed, assertions });
   }
 
   return results;

@@ -120,13 +120,17 @@ router.get('/trade-area/:id/risk', async (req, res) => {
       const { ConcessionEnvironmentEngine } = require('../../services/concession-environment-engine');
       const _pool = _getPool();
       const engine = new ConcessionEnvironmentEngine(_pool);
+      // RECOMPUTE_BATCH_LIMIT_M04 — max deals recomputed per supply-risk update event.
+      // Set to 200 to bound latency on the synchronous hot-path (POST /supply-risk).
+      // Increase or move to async queue if population exceeds this.
+      const RECOMPUTE_BATCH_LIMIT_M04 = 200;
       const affectedDeals = await _pool.query(
         `SELECT d.id,
                 COALESCE((d.deal_data->>'hold_years')::int, 5) AS hold_years
            FROM deals d
           WHERE d.trade_area_id = $1
             AND d.archived_at IS NULL
-          LIMIT 200`,
+          LIMIT ${RECOMPUTE_BATCH_LIMIT_M04}`,
         [tradeAreaId],
       );
       await Promise.allSettled(

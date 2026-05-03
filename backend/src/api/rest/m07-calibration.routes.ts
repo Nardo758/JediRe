@@ -333,13 +333,17 @@ router.post('/job/run', async (req, res) => {
     // Non-fatal: job result is returned even if batch recompute partially fails.
     let batchRecompute: { attempted: number; succeeded: number; failed: number } = { attempted: 0, succeeded: 0, failed: 0 };
     try {
+      // RECOMPUTE_BATCH_LIMIT_M07 — max deals recomputed in full-population calibration batch.
+      // Set to 500 to bound tail latency on the async M07 calibration job.
+      // Increase or add cursor-based pagination if active deal count exceeds this.
+      const RECOMPUTE_BATCH_LIMIT_M07 = 500;
       const activeDeals = await pool.query<{ id: string; hold_years: number }>(
         `SELECT d.id,
                 COALESCE((d.deal_data->>'hold_years')::int, 5) AS hold_years
            FROM deals d
           WHERE d.archived_at IS NULL
             AND d.deal_data IS NOT NULL
-          LIMIT 500`,
+          LIMIT ${RECOMPUTE_BATCH_LIMIT_M07}`,
       );
       batchRecompute.attempted = activeDeals.rows.length;
       await Promise.allSettled(

@@ -265,18 +265,25 @@ export class ConcessionEnvironmentEngine {
         // Entire year is post-transition → treat as STABILIZED.
         // Override classEntry so the base free_months comes from the stabilized defaults,
         // not the LEASE_UP free_months which is higher.
+        //
+        // Per-segment mode-mismatch guard: subject data tagged as LEASE_UP must not
+        // influence post-transition STABILIZED years (same rule as deal-level mismatch).
         const stabClassEntry = { ...classEntry, free_months: classEntry.stab_free_months, concession_pct: classEntry.stab_concession_pct };
-        return this.resolveYearCore({ ...ctx, mode: 'STABILIZED', classEntry: stabClassEntry });
+        const stabSubject    = (subject?.mode === 'LEASE_UP') ? null : subject;
+        return this.resolveYearCore({ ...ctx, mode: 'STABILIZED', classEntry: stabClassEntry, subject: stabSubject });
       } else {
         // Transition falls within this year — blend proportionally.
-        const leaseUpMonths  = transitionMonth - yearStartMonth + 1;  // months before transition
-        const stabilizedMonths = yearEndMonth - transitionMonth;       // months after transition
-        const leaseUpFrac    = leaseUpMonths  / 12;
-        const stabilizedFrac = stabilizedMonths / 12;
+        const leaseUpMonths    = transitionMonth - yearStartMonth + 1;  // months before transition
+        const stabilizedMonths = yearEndMonth - transitionMonth;        // months after transition
+        const leaseUpFrac      = leaseUpMonths    / 12;
+        const stabilizedFrac   = stabilizedMonths / 12;
 
         const stabClassEntry = { ...classEntry, free_months: classEntry.stab_free_months, concession_pct: classEntry.stab_concession_pct };
-        const luResult   = this.resolveYearCore({ ...ctx, mode: 'LEASE_UP'    });
-        const stabResult = this.resolveYearCore({ ...ctx, mode: 'STABILIZED', classEntry: stabClassEntry });
+        // Per-segment mode-mismatch guard: LEASE_UP-tagged subject must not influence
+        // the STABILIZED segment of the transition-year blend.
+        const stabSubject = (subject?.mode === 'LEASE_UP') ? null : subject;
+        const luResult    = this.resolveYearCore({ ...ctx, mode: 'LEASE_UP' });
+        const stabResult  = this.resolveYearCore({ ...ctx, mode: 'STABILIZED', classEntry: stabClassEntry, subject: stabSubject });
 
         return {
           year,
