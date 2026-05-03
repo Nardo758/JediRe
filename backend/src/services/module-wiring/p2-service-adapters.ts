@@ -1083,15 +1083,16 @@ export function setupP2Subscriptions(): void {
   // only mark M09 as needing recalculation so the router knows to re-fetch.
 
   // 1. Subject history updated (S1/S2 aggregation completed after rent-roll upload)
+  //    Producer trigger name: 'traffic.subject_history.updated'
   moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
-    if (event.sourceModule === 'M07' && event.data?.trigger === 'subject_history_updated') {
+    if (event.sourceModule === 'M07' && event.data?.trigger === 'traffic.subject_history.updated') {
       moduleEventBus.emitDebounced(
         {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M09',
           dealId: event.dealId,
           data: {
-            trigger: 'subject_history_updated',
+            trigger: 'traffic.subject_history.updated',
             tier: event.data?.tier,
             snapshot_count: event.data?.snapshot_count,
           },
@@ -1103,17 +1104,18 @@ export function setupP2Subscriptions(): void {
   });
 
   // 2. Assumption override set (user edits a single cell in the projections table)
-  //    Emits a cheap-path signal so the route handler can call wireM07ToM09Override
-  //    instead of a full block rebuild.
+  //    Producer trigger name: 'assumption.override.set'
+  //    Carries cheap_path: true so the route handler calls wireM07ToM09Override
+  //    instead of triggering a full block rebuild.
   moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
-    if (event.sourceModule === 'M09' && event.data?.trigger === 'assumption_override') {
+    if (event.sourceModule === 'M09' && event.data?.trigger === 'assumption.override.set') {
       moduleEventBus.emitDebounced(
         {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M09',
           dealId: event.dealId,
           data: {
-            trigger: 'assumption_override',
+            trigger: 'assumption.override.set',
             override_key: event.data?.override_key,
             override_value: event.data?.override_value,
             cheap_path: true,
@@ -1126,14 +1128,15 @@ export function setupP2Subscriptions(): void {
   });
 
   // 3. CapEx schedule updated (M22 phasing or renovation timeline changed)
+  //    Producer trigger name: 'capex_schedule.updated'
   moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
-    if (event.sourceModule === 'M22' && event.data?.trigger === 'capex_schedule_updated') {
+    if (event.sourceModule === 'M22' && event.data?.trigger === 'capex_schedule.updated') {
       moduleEventBus.emitDebounced(
         {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M09',
           dealId: event.dealId,
-          data: { trigger: 'capex_schedule_updated', transition_month: event.data?.transition_month },
+          data: { trigger: 'capex_schedule.updated', transition_month: event.data?.transition_month },
           timestamp: new Date(),
         },
         `projections-recalc-capex:${event.dealId}`,
@@ -1142,14 +1145,15 @@ export function setupP2Subscriptions(): void {
   });
 
   // 4. Concession environment updated (ConcessionEnvironmentEngine recomputed)
+  //    Producer trigger name: 'concession_env.updated'
   moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
-    if (event.sourceModule === 'M07' && event.data?.trigger === 'concession_env_updated') {
+    if (event.sourceModule === 'M07' && event.data?.trigger === 'concession_env.updated') {
       moduleEventBus.emitDebounced(
         {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M09',
           dealId: event.dealId,
-          data: { trigger: 'concession_env_updated', concessions_only: true },
+          data: { trigger: 'concession_env.updated', concessions_only: true },
           timestamp: new Date(),
         },
         `projections-recalc-conc:${event.dealId}`,
@@ -1158,14 +1162,15 @@ export function setupP2Subscriptions(): void {
   });
 
   // 5. Deal mode changed (STABILIZED / LEASE_UP / REDEVELOPMENT toggle)
+  //    Producer trigger name: 'mode.changed'
   moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
-    if (event.sourceModule === 'M09' && event.data?.trigger === 'mode_changed') {
+    if (event.sourceModule === 'M09' && event.data?.trigger === 'mode.changed') {
       moduleEventBus.emitDebounced(
         {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M09',
           dealId: event.dealId,
-          data: { trigger: 'mode_changed', new_mode: event.data?.new_mode },
+          data: { trigger: 'mode.changed', new_mode: event.data?.new_mode },
           timestamp: new Date(),
         },
         `projections-recalc-mode:${event.dealId}`,
@@ -1174,14 +1179,15 @@ export function setupP2Subscriptions(): void {
   });
 
   // 6. Hold-period / timeline years changed
+  //    Producer trigger name: 'timeline_years.changed'
   moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
-    if (event.sourceModule === 'M09' && event.data?.trigger === 'timeline_years_changed') {
+    if (event.sourceModule === 'M09' && event.data?.trigger === 'timeline_years.changed') {
       moduleEventBus.emitDebounced(
         {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M09',
           dealId: event.dealId,
-          data: { trigger: 'timeline_years_changed', hold_years: event.data?.hold_years },
+          data: { trigger: 'timeline_years.changed', hold_years: event.data?.hold_years },
           timestamp: new Date(),
         },
         `projections-recalc-timeline:${event.dealId}`,
