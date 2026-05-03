@@ -411,4 +411,11 @@ export interface ConcessionEnvironmentOutput {
   supply_pressure_score: number | null;
   submarket_sample_size: number | null;
   subject_s2_available: boolean;
+  /**
+   * Machine-readable reason code for degraded or empty outputs.
+   * Null when the output is fully computed without data-quality issues.
+   * Examples: 'MISSING_DEAL', 'INVALID_INPUT', 'COMPUTATION_ERROR',
+   *           'NO_M05_DATA', 'BAD_POOL_DATA'
+   */
+  degraded_reason: string | null;
 }

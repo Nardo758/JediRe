@@ -326,7 +326,39 @@ router.post('/job/run', async (req, res) => {
     logger.info('[M07] Manual calibration job triggered', { lookbackHours });
     const result = await calibrationJob.run(lookbackHours);
 
-    return res.json({ success: true, result });
+    // ── m05.submarket_concession.updated + m04.supply_pressure.updated ────────
+    // After the calibration job refreshes traffic_calibration_factors and
+    // supply_risk_scores, recompute the concession environment for every active
+    // deal so they pick up the new submarket and supply signals immediately.
+    // Non-fatal: job result is returned even if batch recompute partially fails.
+    let batchRecompute: { attempted: number; succeeded: number; failed: number } = { attempted: 0, succeeded: 0, failed: 0 };
+    try {
+      const activeDeals = await pool.query<{ id: string; hold_years: number }>(
+        `SELECT d.id,
+                COALESCE((d.deal_data->>'hold_years')::int, 5) AS hold_years
+           FROM deals d
+          WHERE d.archived_at IS NULL
+            AND d.deal_data IS NOT NULL
+          LIMIT 500`,
+      );
+      batchRecompute.attempted = activeDeals.rows.length;
+      await Promise.allSettled(
+        activeDeals.rows.map(async (row) => {
+          try {
+            await concessionEnvEngine.computeForDeal(row.id, row.hold_years);
+            batchRecompute.succeeded++;
+          } catch (err: any) {
+            batchRecompute.failed++;
+            logger.warn('[M07] Batch concession recompute failed for deal', { dealId: row.id, error: err.message });
+          }
+        }),
+      );
+      logger.info('[M07] Batch concession recompute after calibration job', batchRecompute);
+    } catch (batchErr: any) {
+      logger.warn('[M07] Batch concession recompute query failed (non-fatal)', { error: batchErr.message });
+    }
+
+    return res.json({ success: true, result, concession_recompute: batchRecompute });
   } catch (error: unknown) {
     logger.error('[M07] Calibration job failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ error: 'Calibration job failed', message: error instanceof Error ? error.message : String(error) });

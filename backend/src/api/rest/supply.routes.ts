@@ -110,7 +110,39 @@ router.get('/trade-area/:id/risk', async (req, res) => {
     }
     
     const riskScore = await supplySignalService.calculateSupplyRisk(tradeAreaId, quarter, demandUnits);
-    
+
+    // ── m04.supply_pressure.updated trigger ───────────────────────────────────
+    // After supply_risk_scores is refreshed for a trade area, recompute the
+    // concession environment for every deal whose trade area matches so the
+    // M04 supply modifier propagates immediately. Non-fatal.
+    try {
+      const { getPool: _getPool } = require('../../database/connection');
+      const { ConcessionEnvironmentEngine } = require('../../services/concession-environment-engine');
+      const _pool = _getPool();
+      const engine = new ConcessionEnvironmentEngine(_pool);
+      const affectedDeals = await _pool.query(
+        `SELECT d.id,
+                COALESCE((d.deal_data->>'hold_years')::int, 5) AS hold_years
+           FROM deals d
+          WHERE d.trade_area_id = $1
+            AND d.archived_at IS NULL
+          LIMIT 200`,
+        [tradeAreaId],
+      );
+      await Promise.allSettled(
+        affectedDeals.rows.map((row: { id: string; hold_years: number }) =>
+          engine.computeForDeal(row.id, row.hold_years).catch((e: Error) =>
+            logger.warn('Concession recompute failed for deal after supply risk update (non-fatal)',
+              { dealId: row.id, error: e.message }),
+          ),
+        ),
+      );
+      logger.info('Concession env batch recompute after M04 supply risk update',
+        { tradeAreaId, dealsRecomputed: affectedDeals.rows.length });
+    } catch (triggerErr: any) {
+      logger.warn('M04 concession recompute trigger failed (non-fatal)', { error: triggerErr.message });
+    }
+
     res.json({
       success: true,
       data: riskScore

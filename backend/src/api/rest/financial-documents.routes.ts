@@ -135,6 +135,20 @@ router.post('/:dealId/capex-items', requireAuth, async (req: AuthenticatedReques
       body.status || 'planned', body.invoiceRef,
       body.sourceType || 'manual', body.sourceRef, body.sourceDate, body.notes,
     ]);
+    // ── capex_schedule.updated trigger ────────────────────────────────────────
+    // Capex changes affect the deal's financial profile which flows into the
+    // concession environment (e.g. renovation tier classification). Recompute
+    // non-fatally so the caller always gets their capex item back.
+    (async () => {
+      try {
+        const { ConcessionEnvironmentEngine } = require('../../services/concession-environment-engine');
+        const engine = new ConcessionEnvironmentEngine(pool);
+        await engine.computeForDeal(dealId);
+        logger.info('Concession env recomputed after capex item create', { dealId });
+      } catch (e: any) {
+        logger.warn('Concession recompute failed after capex item create (non-fatal)', { dealId, error: e.message });
+      }
+    })();
     res.json({ success: true, data: result.rows[0] });
   } catch (error: any) {
     logger.error('Error creating capex item:', error);
@@ -162,6 +176,17 @@ router.put('/:dealId/capex-items/:itemId', requireAuth, async (req: Authenticate
       body.completionPct, body.status, body.sourceType, body.sourceRef, dealId,
     ]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    // ── capex_schedule.updated trigger ────────────────────────────────────────
+    (async () => {
+      try {
+        const { ConcessionEnvironmentEngine } = require('../../services/concession-environment-engine');
+        const engine = new ConcessionEnvironmentEngine(pool);
+        await engine.computeForDeal(dealId);
+        logger.info('Concession env recomputed after capex item update', { dealId, itemId });
+      } catch (e: any) {
+        logger.warn('Concession recompute failed after capex item update (non-fatal)', { dealId, error: e.message });
+      }
+    })();
     res.json({ success: true, data: result.rows[0] });
   } catch (error: any) {
     logger.error('Error updating capex item:', error);

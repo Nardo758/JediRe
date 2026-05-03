@@ -461,6 +461,9 @@ export async function runFixtures(pool?: Pool): Promise<FixtureResult[]> {
       assertions.push(assertTrue('bad pool: per_year is empty array', badOut.per_year.length === 0,
         `${badOut.per_year.length}`));
       assertions.push(assertTrue('bad pool: no crash (deal_id returned)', badOut.deal_id === 'deal-f7-bad', ''));
+      assertions.push(assertTrue('bad pool: degraded_reason is non-null string',
+        typeof badOut.degraded_reason === 'string' && badOut.degraded_reason.length > 0,
+        String(badOut.degraded_reason)));
 
       // Scenario B: NaN supply risk score → treated as null (modifier = 1.0)
       const nanEngine = new ConcessionEnvironmentEngine(buildMockPool({

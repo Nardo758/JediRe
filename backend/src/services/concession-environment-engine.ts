@@ -133,11 +133,26 @@ export class ConcessionEnvironmentEngine {
 
     logger.info('[ConcessionEnv] Computing environment', { dealId, holdYears });
 
+    try {
+      return await this.computeForDealInner(dealId, holdYears);
+    } catch (err: any) {
+      logger.error('[ConcessionEnv] Unhandled error — returning empty output', {
+        dealId, error: err?.message ?? String(err),
+      });
+      return this.emptyOutput(dealId, holdYears, 'COMPUTATION_ERROR');
+    }
+  }
+
+  private async computeForDealInner(
+    dealId: string,
+    holdYears: number,
+  ): Promise<ConcessionEnvironmentOutput> {
+
     // ── Load deal metadata ────────────────────────────────────────────────────
     const dealRow = await this.loadDealMeta(dealId);
     if (!dealRow) {
       logger.warn('[ConcessionEnv] Deal not found — returning empty output', { dealId });
-      return this.emptyOutput(dealId, holdYears);
+      return this.emptyOutput(dealId, holdYears, 'MISSING_DEAL');
     }
 
     const { propertyClass, mode, submarketId, msaId } = dealRow;
@@ -188,6 +203,7 @@ export class ConcessionEnvironmentEngine {
       supply_pressure_score: m04,
       submarket_sample_size: m05?.sample_size ?? null,
       subject_s2_available:  subject !== null,
+      degraded_reason:       null,
     };
 
     logger.info('[ConcessionEnv] Computed', {
@@ -776,7 +792,11 @@ export class ConcessionEnvironmentEngine {
     return 'STABILIZED';
   }
 
-  private emptyOutput(dealId: string, holdYears: number): ConcessionEnvironmentOutput {
+  private emptyOutput(
+    dealId: string,
+    holdYears: number,
+    degraded_reason: string = 'MISSING_DEAL',
+  ): ConcessionEnvironmentOutput {
     return {
       deal_id:               dealId,
       mode:                  'STABILIZED',
@@ -788,6 +808,7 @@ export class ConcessionEnvironmentEngine {
       supply_pressure_score: null,
       submarket_sample_size: null,
       subject_s2_available:  false,
+      degraded_reason,
     };
   }
 }
