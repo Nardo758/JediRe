@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../utils/swallowedError';
 /**
  * Settings Page - User Preferences & Configuration
  * 
@@ -132,7 +133,7 @@ function ProfileSection() {
             phone: '',
             tier: user.tier || 'scout',
           });
-        } catch {}
+        } catch (err) { logSwallowedError('pages/SettingsPage', err); }
       }
     } finally {
       setLoading(false);
@@ -156,7 +157,7 @@ function ProfileSection() {
           const user = JSON.parse(storedUser);
           user.name = `${profileData.firstName} ${profileData.lastName}`.trim();
           localStorage.setItem('jedi_user', JSON.stringify(user));
-        } catch {}
+        } catch (err) { logSwallowedError('pages/SettingsPage', err); }
       }
       
       setMessage({ type: 'success', text: 'Profile saved successfully' });

@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../utils/swallowedError';
 /**
  * PlaybookLibraryPage — /playbooks
  * Master list of all M35 event subtypes with playbook statistics.
@@ -184,7 +185,7 @@ const PlaybookLibraryPage: React.FC = () => {
     try {
       const res = await fetch('/api/v1/m35/playbooks/subtypes');
       if (res.ok) { setSubtypes(await res.json()); setLoading(false); return; }
-    } catch {}
+    } catch (err) { logSwallowedError('pages/m35/PlaybookLibraryPage', err); }
     setSubtypes(DEMO_SUBTYPES);
     setLoading(false);
   }, []);

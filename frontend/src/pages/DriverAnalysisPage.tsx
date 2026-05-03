@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { logSwallowedError } from '../utils/swallowedError';
 
 interface DriverResult {
   id: number;
@@ -152,7 +153,7 @@ export default function DriverAnalysisPage() {
       if (!resp.ok) return;
       const data = await resp.json();
       if (data.success) setRuns(data.data || []);
-    } catch {}
+    } catch (err) { logSwallowedError('pages/DriverAnalysisPage', err); }
   }, []);
 
   useEffect(() => {

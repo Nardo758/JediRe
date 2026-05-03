@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../utils/swallowedError';
 /**
  * ForecastTracker — Actual-vs-forecast cone chart for fired events.
  * Three lines: forecast high/median/low (dotted). Actual data points (solid).
@@ -128,7 +129,7 @@ export const ForecastTracker: React.FC<ForecastTrackerProps> = ({
         setStatus(computeStatus(d));
         return;
       }
-    } catch {}
+    } catch (err) { logSwallowedError('components/m35/ForecastTracker', err); }
     const fired = Math.floor(Math.random() * 12) + 3;
     const bv = 3.5 + Math.random() * 1.5;
     setFiredMonthsAgo(fired);

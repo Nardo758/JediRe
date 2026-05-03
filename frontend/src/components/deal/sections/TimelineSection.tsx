@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../../utils/swallowedError';
 /**
  * Timeline Section - Dual-Mode (Acquisition & Performance)
  * Comprehensive timeline and milestone tracking with Gantt-style visualization
@@ -108,8 +109,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
       });
       setLiveData(timelinePayload);
       setIsLive(true);
-    } catch {
-    } finally {
+    } catch (err) { logSwallowedError('components/deal/sections/TimelineSection', err); } finally {
       setIsSaving(false);
     }
   }, [deal.id, isPipeline, liveData]);

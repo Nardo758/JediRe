@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../../../utils/swallowedError';
 /**
  * MSASupplyTab - Metro-wide supply pipeline, construction tracker, lease-up
  */
@@ -180,7 +181,7 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa, onProper
         onTriggerResearch={async (gaps) => {
           try {
             await apiClient.post('/context/trigger-research', { gaps, priority: 'immediate' });
-          } catch (e) {}
+          } catch (e) { logSwallowedError('components/terminal/tabs/msa/MSASupplyTab', e); }
         }}
         onRefresh={() => analyzeContext({ context: 'supply_pipeline', marketId: msaId })}
       />
@@ -483,7 +484,7 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa, onProper
           onTriggerResearch={async (gaps) => {
             try {
               await apiClient.post('/context/trigger-research', { gaps, priority: 'immediate' });
-            } catch (e) {}
+            } catch (e) { logSwallowedError('components/terminal/tabs/msa/MSASupplyTab', e); }
           }}
         />
       )}

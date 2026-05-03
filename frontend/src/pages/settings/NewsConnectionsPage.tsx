@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { BT } from '@/components/deal/bloomberg-ui';
+import { logSwallowedError } from '../../utils/swallowedError';
 
 interface Connection {
   id: string;
@@ -52,7 +53,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     try {
       const body = await res.json();
       if (body?.error) msg = body.error;
-    } catch {}
+    } catch (err) { logSwallowedError('pages/settings/NewsConnectionsPage', err); }
     throw new Error(msg);
   }
   return (await res.json()) as T;

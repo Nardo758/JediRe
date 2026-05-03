@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../../utils/swallowedError';
 /**
  * JEDI RE — ProForma Engine (M09) with Traffic Engine (M07) Integration
  * Deal Capsule → ProForma Tab (Enhanced)
@@ -818,8 +819,7 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
         setLoading(false);
         return;
       }
-    } catch {
-    }
+    } catch (err) { logSwallowedError('components/deal/sections/ProFormaWithTrafficSection', err); }
 
     setData(null);
     setDataSource('none');
@@ -840,8 +840,7 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
         strategy: selectedStrategy,
       });
       await fetchData();
-    } catch {
-    }
+    } catch (err) { logSwallowedError('components/deal/sections/ProFormaWithTrafficSection', err); }
     setInitializing(false);
   };
 
@@ -862,8 +861,7 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
       if (response.data?.success) {
         await fetchData();
       }
-    } catch {
-    }
+    } catch (err) { logSwallowedError('components/deal/sections/ProFormaWithTrafficSection', err); }
     setRefreshing(false);
   };
 

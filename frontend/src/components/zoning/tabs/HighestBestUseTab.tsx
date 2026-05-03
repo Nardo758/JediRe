@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../../services/api.client';
+import { logSwallowedError } from '../../../utils/swallowedError';
 
 interface HBUResult {
   propertyType: string;
@@ -172,8 +173,7 @@ export default function HighestBestUseTab({ dealId, deal }: HighestBestUseTabPro
       if (opportunities.length > 0) {
         setRezoneOpportunity(opportunities[0]);
       }
-    } catch {
-    } finally {
+    } catch (err) { logSwallowedError('components/zoning/tabs/HighestBestUseTab', err); } finally {
       setLoadingRezone(false);
     }
   }, [dealId]);

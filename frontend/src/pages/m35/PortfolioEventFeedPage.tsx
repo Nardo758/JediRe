@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../utils/swallowedError';
 /**
  * PortfolioEventFeedPage — /portfolio/events
  * Shows M35 events affecting the user's owned portfolio assets.
@@ -147,7 +148,7 @@ const PortfolioEventFeedPage: React.FC = () => {
     try {
       const res = await fetch('/api/v1/m35/portfolio/events');
       if (res.ok) { setRows(await res.json()); setLoading(false); return; }
-    } catch {}
+    } catch (err) { logSwallowedError('pages/m35/PortfolioEventFeedPage', err); }
     setRows(DEMO_ROWS);
     setLoading(false);
   }, []);

@@ -1,4 +1,5 @@
 import api from './api';
+import { logSwallowedError } from '../utils/swallowedError';
 
 export type DataSource = 'api' | 'apartment' | 'mock';
 
@@ -309,7 +310,7 @@ class CompetitionService {
         if (submarkets.length > 0) {
           return { data: this.mapSubmarketsToCompetitors(submarkets, filters), source: 'apartment' };
         }
-      } catch {}
+      } catch (err) { logSwallowedError('services/competition.service', err); }
       return { data: this.getMockCompetitors(filters), source: 'mock' };
     }
   }
@@ -324,7 +325,7 @@ class CompetitionService {
         if (submarkets.length > 0) {
           return { data: this.mapSubmarketsToAdvantageMatrix(submarkets), source: 'apartment' };
         }
-      } catch {}
+      } catch (err) { logSwallowedError('services/competition.service', err); }
       return { data: this.getMockAdvantageMatrix(), source: 'mock' };
     }
   }
@@ -345,7 +346,7 @@ class CompetitionService {
         if (mapped.length > 0) {
           return { data: mapped, source: 'apartment' };
         }
-      } catch {}
+      } catch (err) { logSwallowedError('services/competition.service', err); }
       return { data: this.getMockWaitlistProperties(), source: 'mock' };
     }
   }
@@ -366,7 +367,7 @@ class CompetitionService {
         if (mapped.length > 0) {
           return { data: mapped, source: 'apartment' };
         }
-      } catch {}
+      } catch (err) { logSwallowedError('services/competition.service', err); }
       return { data: this.getMockAgingCompetitors(), source: 'mock' };
     }
   }
@@ -385,7 +386,7 @@ class CompetitionService {
           const insights = `📊 Based on ${submarkets.length} Atlanta submarkets:\n\n• Average market rent: $${Math.round(avgRent).toLocaleString()}/mo across all submarkets\n• Average vacancy rate: ${avgVacancy.toFixed(1)}% — ${avgVacancy < 5 ? 'tight market conditions' : 'moderate availability'}\n• Top submarket: ${topSubmarket.submarket_name || topSubmarket.name || 'N/A'} at $${Math.round(topSubmarket.avg_rent || 0).toLocaleString()}/mo\n• Rent growth trend: ${(submarkets.reduce((s, sm) => s + (sm.rent_growth_30d || 0), 0) / submarkets.length).toFixed(1)}% (30-day)\n\nPosition your development to capture demand in high-pressure submarkets with below-average vacancy rates.`;
           return { data: insights, source: 'apartment' };
         }
-      } catch {}
+      } catch (err) { logSwallowedError('services/competition.service', err); }
       return { data: this.getMockAIInsights(), source: 'mock' };
     }
   }

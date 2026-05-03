@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { logSwallowedError } from '../../utils/swallowedError';
 import {
   BT, BT_CSS,
   PanelHeader, SubTabBar, SectionPanel, DataRow, Spark, Bd, BtTabWrapper,
@@ -264,7 +265,7 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
             } else if (evt.type === 'error') {
               setNarrativeError(evt.message);
             }
-          } catch (_e) {}
+          } catch (_e) { logSwallowedError('pages/development/RiskDDPage', _e); }
         }
       }
     } catch (err: any) {

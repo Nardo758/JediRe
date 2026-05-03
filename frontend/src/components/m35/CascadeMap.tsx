@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../utils/swallowedError';
 /**
  * CascadeMap — Mapbox heat overlay for MSA events cascading to submarkets.
  * Heat gradient (6-stop cool→warm) based on proximity-decayed impact magnitude.
@@ -228,7 +229,7 @@ export const CascadeMap: React.FC<CascadeMapProps> = ({
         setProperties(json.properties ?? DEMO_PROPERTIES);
         return;
       }
-    } catch {}
+    } catch (err) { logSwallowedError('components/m35/CascadeMap', err); }
     setSubmarkets(DEMO_SUBMARKETS);
     setProperties(DEMO_PROPERTIES);
   }, [msaId, eventId, propSubmarkets, propProperties]);

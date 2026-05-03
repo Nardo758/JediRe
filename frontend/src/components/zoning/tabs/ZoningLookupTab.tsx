@@ -8,6 +8,7 @@ import SourceSidePanel from '../SourceSidePanel';
 import CalculationBreakdown, { type CalculationSection } from '../CalculationBreakdown';
 import type { ZoningLookupResult, PermittedUse, StrategyAlignment } from '../../../types/zoning.types';
 import apiClient from '../../../services/api.client';
+import { logSwallowedError } from '../../../utils/swallowedError';
 
 interface ZoningLookupTabProps {
   dealId?: string;
@@ -107,7 +108,7 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
             },
           });
           if (municodeRes.data?.url) fallbackMunicodeUrl = municodeRes.data.url;
-        } catch {}
+        } catch (err) { logSwallowedError('components/zoning/tabs/ZoningLookupTab', err); }
       }
       if (!fallbackMunicodeUrl && municipality && stateCode) {
         fallbackWebSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(`${municipality} ${stateCode} zoning ordinance ${distCode || ''}`)}`;
@@ -153,14 +154,14 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
   const handleConfirm = async (verificationId: string) => {
     try {
       await apiClient.post(`/api/v1/zoning-verification/verify/${verificationId}/confirm`);
-    } catch {}
+    } catch (err) { logSwallowedError('components/zoning/tabs/ZoningLookupTab', err); }
     setTrustGatePassed(true);
   };
 
   const handleFlag = async (verificationId: string) => {
     try {
       await apiClient.post(`/api/v1/zoning-verification/verify/${verificationId}/flag`);
-    } catch {}
+    } catch (err) { logSwallowedError('components/zoning/tabs/ZoningLookupTab', err); }
   };
 
   const handleCorrect = async (verificationId: string, correctionDetail: string, newDesignation?: string) => {
@@ -169,7 +170,7 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
         correctionDetail,
         newDesignation,
       });
-    } catch {}
+    } catch (err) { logSwallowedError('components/zoning/tabs/ZoningLookupTab', err); }
     setTrustGatePassed(true);
   };
 

@@ -26,8 +26,10 @@ module.exports = {
     'react-hooks/exhaustive-deps': 'error',
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-    // Empty `catch {}` blocks are an intentional pattern across this codebase
-    // for swallowing non-critical errors; keep flagging other empty blocks.
-    'no-empty': ['error', { allowEmptyCatch: true }],
+    // Empty `catch {}` blocks silently swallow failures — Task #426
+    // converted every existing empty catch to a `logSwallowedError`
+    // call so failures leave a console trace for debugging. New empty
+    // catches now block the build.
+    'no-empty': 'error',
   },
 }

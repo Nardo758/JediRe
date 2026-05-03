@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../services/api";
+import { logSwallowedError } from '../utils/swallowedError';
 
 export interface GridTemplate {
   id: string;
@@ -23,8 +24,7 @@ export function useGridTemplates(viewId: string) {
       if (res.data.success) {
         setTemplates(res.data.templates);
       }
-    } catch {
-    } finally {
+    } catch (err) { logSwallowedError('hooks/useGridTemplates', err); } finally {
       setLoading(false);
     }
   }, [viewId]);

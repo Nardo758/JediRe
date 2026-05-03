@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../utils/swallowedError';
 /**
  * AttributionWaterfall — Horizontal stacked bar showing attribution breakdown.
  * Rows: baseline trend + each event contribution + unexplained = observed total.
@@ -112,7 +113,7 @@ export const AttributionWaterfall: React.FC<AttributionWaterfallProps> = ({
         setTotal(json.total);
         return;
       }
-    } catch {}
+    } catch (err) { logSwallowedError('components/m35/AttributionWaterfall', err); }
     const demo = seedDemoRows(id, metric);
     setRows(demo);
     setTotal(demo.reduce((s, r) => s + r.value, 0));

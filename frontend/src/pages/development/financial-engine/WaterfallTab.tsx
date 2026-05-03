@@ -4,6 +4,7 @@ import { SectionPanel, DataRow, Bd, KpiTile } from '../../../components/deal/blo
 import type { FinancialEngineTabProps } from './types';
 import { fmt$, fmtPct, fmtX } from './types';
 import { apiClient } from '../../../services/api.client';
+import { logSwallowedError } from '../../../utils/swallowedError';
 
 const MONO = BT.font.mono;
 
@@ -384,7 +385,7 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
   // ── Investor roster (per-tranche, localStorage-persisted) ─────────────────
   const investorKey = `jedire_investors_${dealId}`;
   const [investors, setInvestors] = useState<InvestorRecord[]>(() => {
-    try { const s = localStorage.getItem(investorKey); if (s) return JSON.parse(s); } catch {}
+    try { const s = localStorage.getItem(investorKey); if (s) return JSON.parse(s); } catch (err) { logSwallowedError('pages/development/financial-engine/WaterfallTab', err); }
     return [];
   });
   const [expandedTranches, setExpandedTranches] = useState<Record<string, boolean>>({});

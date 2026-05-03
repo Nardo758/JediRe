@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import axios from 'axios';
 import apiClient from '../services/api.client';
 import type { ZoningLookupResult, ZoningDistrict, DevelopmentParameters, PermittedUse, StrategyAlignment } from '../types/zoning.types';
+import { logSwallowedError } from '../utils/swallowedError';
 
 interface UseZoningLookupReturn {
   result: ZoningLookupResult | null;
@@ -54,10 +55,10 @@ export function useZoningLookup(): UseZoningLookupReturn {
                 stateName = revData.state || stateName;
                 municipalityId = revData.municipality?.id || '';
               }
-            } catch {}
+            } catch (err) { logSwallowedError('hooks/useZoningLookup', err); }
           }
         }
-      } catch {}
+      } catch (err) { logSwallowedError('hooks/useZoningLookup', err); }
 
       if (!cityName) {
         setError('Could not determine city from address. Try entering the city name.');
@@ -91,7 +92,7 @@ export function useZoningLookup(): UseZoningLookupReturn {
         if (detailRes.data?.found) {
           detailDistrict = detailRes.data.district;
         }
-      } catch {}
+      } catch (err) { logSwallowedError('hooks/useZoningLookup', err); }
 
       const d = detailDistrict || rawDistrict;
 

@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../../utils/swallowedError';
 /**
  * Capital Structure Section — M11+ Engine
  *
@@ -139,8 +140,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
           if (res.data.stack.layers) setLayers(res.data.stack.layers);
           markTabLive('stack');
         }
-      } catch {
-      } finally {
+      } catch (err) { logSwallowedError('components/deal/sections/CapitalStructureSection', err); } finally {
         markTabLoading('stack', false);
       }
 
@@ -151,8 +151,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         if (insRes.data?.insights) {
           setLiveInsights(insRes.data.insights);
         }
-      } catch {
-      }
+      } catch (err) { logSwallowedError('components/deal/sections/CapitalStructureSection', err); }
     };
     fetchStack();
     fetchedTabs.current.add('stack');
@@ -178,8 +177,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             setLiveDebtProducts(res.data);
             markTabLive('debt');
           }
-        } catch {
-        } finally {
+        } catch (err) { logSwallowedError('components/deal/sections/CapitalStructureSection', err); } finally {
           markTabLoading('debt', false);
         }
       };
@@ -224,8 +222,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             setLiveRateData(rateData);
             markTabLive('rates');
           }
-        } catch {
-        } finally {
+        } catch (err) { logSwallowedError('components/deal/sections/CapitalStructureSection', err); } finally {
           markTabLoading('rates', false);
         }
       };
@@ -252,8 +249,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             setLiveScenarios(res.data.comparison);
             markTabLive('scenarios');
           }
-        } catch {
-        } finally {
+        } catch (err) { logSwallowedError('components/deal/sections/CapitalStructureSection', err); } finally {
           markTabLoading('scenarios', false);
         }
       };
@@ -293,8 +289,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             setLiveTimeline(timelineData);
             markTabLive('timeline');
           }
-        } catch {
-        } finally {
+        } catch (err) { logSwallowedError('components/deal/sections/CapitalStructureSection', err); } finally {
           markTabLoading('timeline', false);
         }
       };

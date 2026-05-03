@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { F9DealFinancials } from '../../../pages/development/financial-engine/types';
+import { logSwallowedError } from '../../../utils/swallowedError';
 
 const MONO = "'JetBrains Mono', monospace";
 
@@ -418,7 +419,7 @@ export function CostSheetTab({ dealId, deal, assumptions, f9Financials }: CostSh
         // Migrate old saves that predate sourceKey/stableId so sync can update in-place
         return migrateLegacyItems(JSON.parse(saved));
       }
-    } catch {}
+    } catch (err) { logSwallowedError('components/deal/sections/CostSheetTab', err); }
     return buildDefaults(totalBasis, loanAmt);
   });
 

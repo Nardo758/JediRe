@@ -6,6 +6,7 @@ import { useDealStore } from '../../../stores/dealStore';
 import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
 import { MunicodeLink } from '../SourceCitation';
 import RegulatoryMarketResearch from './RegulatoryMarketResearch';
+import { logSwallowedError } from '../../../utils/swallowedError';
 
 // ═══ DEAL-TYPE ADAPTATION IMPORTS ═══
 // Utilities for conformance checks and scenario generation
@@ -990,8 +991,7 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
           await apiClient.post(`/api/v1/deals/${dealId}/zoning-profile/resolve`);
           profileRes = await apiClient.get(`/api/v1/deals/${dealId}/zoning-profile`);
           profileData = profileRes.data;
-        } catch {
-        }
+        } catch (err) { logSwallowedError('components/zoning/tabs/DevelopmentCapacityTab', err); }
       }
 
       if (!profileData.exists) {
@@ -1045,7 +1045,7 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
             const municipalityId = `${(profileData.profile.municipality as string).toLowerCase().replace(/\s+/g, '-')}-${(profileData.profile.state || 'ga').toLowerCase()}`;
             const municodeRes = await apiClient.get(`/api/v1/municode/district/${municipalityId}/${encodeURIComponent(profileData.profile.base_district_code)}`);
             if (municodeRes.data?.municodeUrl) setMunicodeUrl(municodeRes.data.municodeUrl);
-          } catch {}
+          } catch (err) { logSwallowedError('components/zoning/tabs/DevelopmentCapacityTab', err); }
         }
       }
 
@@ -1088,11 +1088,11 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
         // Fetch density benchmarks for use in Entitlement Comparison section
         try {
           await apiClient.get(`/api/v1/deals/${dealId}/density-benchmarks`);
-        } catch {}
+        } catch (err) { logSwallowedError('components/zoning/tabs/DevelopmentCapacityTab', err); }
 
         try {
           await apiClient.get(`/api/v1/deals/${dealId}/rezone-analysis`);
-        } catch {}
+        } catch (err) { logSwallowedError('components/zoning/tabs/DevelopmentCapacityTab', err); }
 
         // Fetch nearby entitlements for regulatory market research
         try {

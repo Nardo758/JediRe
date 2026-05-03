@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { inboxService, Email, EmailDetail, InboxStats, InboxFilters, ConnectedAccount, EmailIntel } from '../services/inbox.service';
+import { logSwallowedError } from '../utils/swallowedError';
 
 interface DealDetails {
   id: string;
@@ -439,31 +440,31 @@ export function EmailPage() {
       try {
         await inboxService.updateEmail(email.id, { is_read: true });
         setEmails(prev => prev.map(e => e.id === email.id ? { ...e, is_read: true } : e));
-      } catch {}
+      } catch (err) { logSwallowedError('pages/EmailPage', err); }
     }
     try {
       const res = await inboxService.getEmail(email.id);
       if (res.success) setSelectedDetail(res.data);
-    } catch {}
+    } catch (err) { logSwallowedError('pages/EmailPage', err); }
     setIntelLoading(true);
     try {
       const intelRes = await inboxService.getEmailIntel(email.id);
       if (intelRes.success) setEmailIntel(intelRes.data);
-    } catch {}
+    } catch (err) { logSwallowedError('pages/EmailPage', err); }
     setIntelLoading(false);
     if (email.deal_id) {
       try {
         const dealRes = await inboxService.getDealDetails(email.deal_id);
         if (dealRes.success) setDealDetails(dealRes.data);
-      } catch {}
+      } catch (err) { logSwallowedError('pages/EmailPage', err); }
       try {
         const members = await inboxService.getDealTeamMembers(email.deal_id);
         if (Array.isArray(members)) setTeamMembers(members);
-      } catch {}
+      } catch (err) { logSwallowedError('pages/EmailPage', err); }
       try {
         const activity = await inboxService.getDealTeamActivity(email.deal_id);
         if (Array.isArray(activity)) setTeamActivity(activity.slice(0, 5));
-      } catch {}
+      } catch (err) { logSwallowedError('pages/EmailPage', err); }
     }
   };
 
@@ -473,7 +474,7 @@ export function EmailPage() {
       try {
         const res = await inboxService.getDeals();
         if (res.success) setDealsList(res.data || []);
-      } catch {}
+      } catch (err) { logSwallowedError('pages/EmailPage', err); }
       setDealsLoading(false);
     }
     setDealLinkOpen(true);
@@ -486,7 +487,7 @@ export function EmailPage() {
       setEmails(prev => prev.map(e => e.id === selectedEmailId ? { ...e, deal_id: dealId } : e));
       setDealLinkOpen(false);
       loadInbox();
-    } catch {}
+    } catch (err) { logSwallowedError('pages/EmailPage', err); }
   };
 
   const handleExecuteAction = async (actionItem?: { suggestedTask: string; priority: string; text?: string }) => {
@@ -507,7 +508,7 @@ export function EmailPage() {
       const intelRes = await inboxService.getEmailIntel(selectedEmail.id);
       if (intelRes.success) setEmailIntel(intelRes.data);
       setIntelLoading(false);
-    } catch {}
+    } catch (err) { logSwallowedError('pages/EmailPage', err); }
   };
 
   const handleDismissAction = (actionText: string) => {
@@ -518,7 +519,7 @@ export function EmailPage() {
     try {
       await inboxService.updateEmail(emailId, { is_flagged: !currentFlag });
       setEmails(prev => prev.map(e => e.id === emailId ? { ...e, is_flagged: !currentFlag } : e));
-    } catch {}
+    } catch (err) { logSwallowedError('pages/EmailPage', err); }
   };
 
   const filteredEmails = useMemo(() => {
@@ -876,7 +877,7 @@ export function EmailPage() {
                 <textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} placeholder="Write your message..." style={{ flex: 1, background: "transparent", border: "none", color: T.text.primary, fontSize: 13, fontFamily: FONTS.sans, outline: "none", resize: "none" as const, minHeight: 300, lineHeight: 1.6 }} autoFocus />
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                   <button onClick={() => { setComposeMode(null); setReplyBody(''); setReplyTo(''); setReplyCc(''); }} style={{ padding: "8px 16px", background: T.bg.tertiary, border: `1px solid ${T.border.subtle}`, borderRadius: 6, color: T.text.secondary, fontSize: 12, fontFamily: FONTS.sans, cursor: "pointer" }}>Discard</button>
-                  <button disabled={!replyBody.trim() || !replyTo.trim() || replySending} onClick={async () => { setReplySending(true); try { await new Promise(r => setTimeout(r, 800)); setComposeMode(null); setReplyBody(''); setReplyTo(''); setReplyCc(''); } catch {} finally { setReplySending(false); } }} style={{ padding: "8px 20px", background: replyBody.trim() && replyTo.trim() ? T.accent.green : T.bg.tertiary, border: "none", borderRadius: 6, color: replyBody.trim() && replyTo.trim() ? "#fff" : T.text.tertiary, fontSize: 12, fontFamily: FONTS.sans, fontWeight: 600, cursor: replyBody.trim() && replyTo.trim() ? "pointer" : "not-allowed" }}>
+                  <button disabled={!replyBody.trim() || !replyTo.trim() || replySending} onClick={async () => { setReplySending(true); try { await new Promise(r => setTimeout(r, 800)); setComposeMode(null); setReplyBody(''); setReplyTo(''); setReplyCc(''); } catch (err) { logSwallowedError('pages/EmailPage', err); } finally { setReplySending(false); } }} style={{ padding: "8px 20px", background: replyBody.trim() && replyTo.trim() ? T.accent.green : T.bg.tertiary, border: "none", borderRadius: 6, color: replyBody.trim() && replyTo.trim() ? "#fff" : T.text.tertiary, fontSize: 12, fontFamily: FONTS.sans, fontWeight: 600, cursor: replyBody.trim() && replyTo.trim() ? "pointer" : "not-allowed" }}>
                     {replySending ? 'Sending...' : 'Send'}
                   </button>
                 </div>
@@ -1404,14 +1405,14 @@ export function EmailPage() {
                     { label: "Extract Data", icon: "\uD83D\uDCCA", color: T.accent.purple, action: async () => {
                       if (!selectedEmail) return;
                       setIntelLoading(true);
-                      try { const r = await inboxService.getEmailIntel(selectedEmail.id); if (r.success) setEmailIntel(r.data); } catch {}
+                      try { const r = await inboxService.getEmailIntel(selectedEmail.id); if (r.success) setEmailIntel(r.data); } catch (err) { logSwallowedError('pages/EmailPage', err); }
                       setIntelLoading(false);
                       setSidePanel('actions');
                     }},
                     { label: "AI Summary", icon: "\u2728", color: T.accent.amber, action: async () => {
                       if (!selectedEmail) return;
                       setIntelLoading(true);
-                      try { const r = await inboxService.getEmailIntel(selectedEmail.id); if (r.success) setEmailIntel(r.data); } catch {}
+                      try { const r = await inboxService.getEmailIntel(selectedEmail.id); if (r.success) setEmailIntel(r.data); } catch (err) { logSwallowedError('pages/EmailPage', err); }
                       setIntelLoading(false);
                       setSidePanel('tasks');
                     }},
@@ -1426,7 +1427,7 @@ export function EmailPage() {
                     { label: "Log Activity", icon: "\uD83D\uDCDD", color: T.accent.cyan, action: async () => {
                       if (!selectedEmail) return;
                       const emailBody = selectedDetail?.body_text || selectedDetail?.body_preview || '';
-                      try { await inboxService.quickTaskFromEmail(selectedEmail.id, emailBody, selectedEmail.deal_id || undefined, 'Log activity from email communication', 'normal'); } catch {}
+                      try { await inboxService.quickTaskFromEmail(selectedEmail.id, emailBody, selectedEmail.deal_id || undefined, 'Log activity from email communication', 'normal'); } catch (err) { logSwallowedError('pages/EmailPage', err); }
                     }},
                   ].map((act, i) => (
                     <button key={i} onClick={act.action} style={{

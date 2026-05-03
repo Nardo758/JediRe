@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../utils/swallowedError';
 /**
  * ═══════════════════════════════════════════════════════════════════
  * DEV CAPACITY → UNIT MIX CASCADE FLOW
@@ -1061,7 +1062,7 @@ const DealDetailPage: React.FC = () => {
                                       priority: 'background',
                                     });
                                     setGapsDropdownOpen(false);
-                                  } catch (e) {}
+                                  } catch (e) { logSwallowedError('pages/DealDetailPage', e); }
                                 }}
                                 style={{
                                   width: '100%',

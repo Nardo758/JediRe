@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lightbulb, TrendingUp, Building2, DollarSign, Clock, CheckCircle, X, ChevronRight, Zap, AlertTriangle, Loader2, Radio } from 'lucide-react';
 import apiClient from '@/services/api.client';
+import { logSwallowedError } from '../../../utils/swallowedError';
 
 interface AIRecommendationsSectionProps {
   deal?: any;
@@ -132,7 +133,7 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
             return;
           }
         }
-      } catch {}
+      } catch (err) { logSwallowedError('components/deal/sections/AIRecommendationsSection', err); }
 
       try {
         const jediRes = await apiClient.get(`/api/v1/jedi/score/${dealId}`);
@@ -145,7 +146,7 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
             return;
           }
         }
-      } catch {}
+      } catch (err) { logSwallowedError('components/deal/sections/AIRecommendationsSection', err); }
 
       if (!cancelled) {
         setRecommendations(mockRecommendations);

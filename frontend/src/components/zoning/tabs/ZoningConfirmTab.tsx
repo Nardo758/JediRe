@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { logSwallowedError } from '../../../utils/swallowedError';
 import {
   MapPin,
   Building2,
@@ -116,7 +117,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         if (parcelRes.data?.found) {
           parcelZoning = parcelRes.data;
         }
-      } catch (_) {}
+      } catch (_) { logSwallowedError('components/zoning/tabs/ZoningConfirmTab', _); }
 
       const reverseGeoRes = await apiClient.get('/api/v1/reverse-geocode', {
         params: { lat, lng },
@@ -239,8 +240,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
       try {
         const analysisRes = await apiClient.post('/api/v1/zoning-intelligence/analyze', analysisPayload);
         analysisData = analysisRes.data;
-      } catch {
-      }
+      } catch (err) { logSwallowedError('components/zoning/tabs/ZoningConfirmTab', err); }
 
       const enrichedZoning = {
         ...detectedZoning,

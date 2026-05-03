@@ -1,4 +1,5 @@
 import { apiClient } from './api.client';
+import { logSwallowedError } from '../utils/swallowedError';
 
 const BASE = '/api/v1/opus';
 
@@ -150,7 +151,7 @@ export const opusProformaService = {
               onError?.(parsed.error);
               return;
             }
-          } catch (e) {}
+          } catch (e) { logSwallowedError('services/opusProforma.service', e); }
         }
       }
     }
@@ -274,7 +275,7 @@ export const opusProformaService = {
     const re = /```customtab\n([\s\S]*?)```/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
-      try { out.push(JSON.parse(m[1])); } catch {}
+      try { out.push(JSON.parse(m[1])); } catch (err) { logSwallowedError('services/opusProforma.service', err); }
     }
     return out;
   },

@@ -18,6 +18,7 @@ import api from "../../services/api";
 import { DemandTab } from "../../components/terminal/tabs/DemandTab";
 import { F4DealsView } from "../../components/terminal/tabs/F4DealsView";
 import { SupplyCell } from "../../components/terminal/cells/SupplyCell";
+import { logSwallowedError } from '../../utils/swallowedError';
 
 /**
  * F4 Markets View - Refactored
@@ -839,7 +840,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
               }
             }
           }
-        } catch {}
+        } catch (err) { logSwallowedError('pages/terminal/F4MarketsView', err); }
       }
       const templateConfig = template.column_config && typeof template.column_config === 'object'
         ? template.column_config as Record<string, ColumnConfig>

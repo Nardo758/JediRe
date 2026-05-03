@@ -3,6 +3,7 @@ import { dataLibraryService, type DataLibraryFile, type DataLibrarySearchParams 
 import { pstUploadService, type PstJobStatus, type PstEntity } from '@/services/pstUpload.service';
 import { ContextIndicator } from '../components/intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
+import { logSwallowedError } from '../utils/swallowedError';
 import {
   OM_RETRYABLE_STAGES,
   OM_TERMINAL_FAILURE_STAGES,
@@ -264,7 +265,7 @@ export const DataLibraryPage: React.FC = () => {
             try {
               const { entities } = await pstUploadService.getEntities(jobId, { limit: 50 });
               setPstEntities(entities);
-            } catch {}
+            } catch (err) { logSwallowedError('pages/DataLibraryPage', err); }
           }
         }
       } catch {

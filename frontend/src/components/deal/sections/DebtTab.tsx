@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { logSwallowedError } from '../../../utils/swallowedError';
 import type {
   StrategyType,
   CapitalLayer,
@@ -131,8 +132,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
             setLiveDebtProducts(res.data);
             markTabLive('debt');
           }
-        } catch {
-        } finally {
+        } catch (err) { logSwallowedError('components/deal/sections/DebtTab', err); } finally {
           markTabLoading('debt', false);
         }
       };
@@ -187,8 +187,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
           if (historyRes.status === 'fulfilled' && historyRes.value.data) {
             setRateHistory(historyRes.value.data);
           }
-        } catch {
-        } finally {
+        } catch (err) { logSwallowedError('components/deal/sections/DebtTab', err); } finally {
           markTabLoading('rates', false);
         }
       };
@@ -204,7 +203,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
         try {
           const res = await apiClient.get(`${API_BASE}/rates/history`, { params: { period: historyPeriod } });
           if (res.data) setRateHistory(res.data);
-        } catch {}
+        } catch (err) { logSwallowedError('components/deal/sections/DebtTab', err); }
       };
       fetchHistory();
     }
@@ -215,7 +214,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       try {
         const res = await apiClient.get(`${API_BASE}/rate-sheet/${deal.id}/latest`);
         if (res.data) setRateSheetParsed(res.data);
-      } catch {}
+      } catch (err) { logSwallowedError('components/deal/sections/DebtTab', err); }
     };
     fetchLatestRateSheet();
   }, [deal.id]);
@@ -321,7 +320,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       if (res.data) setRateSheetParsed(res.data);
-    } catch {} finally {
+    } catch (err) { logSwallowedError('components/deal/sections/DebtTab', err); } finally {
       setRateSheetLoading(false);
     }
   }, [rateSheetFile, deal.id]);
@@ -342,7 +341,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
         loanAmount: totalDebt,
       });
       if (res.data) setAiStrategy(res.data);
-    } catch {} finally {
+    } catch (err) { logSwallowedError('components/deal/sections/DebtTab', err); } finally {
       setAiStrategyLoading(false);
     }
   }, [layers, deal, financial, template, selectedStrategy]);

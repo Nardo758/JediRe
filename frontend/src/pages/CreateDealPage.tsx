@@ -11,6 +11,7 @@ import { apiClient } from '../services/api.client';
 import { DealType } from '../shared/config/deal-type-visibility';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+import { logSwallowedError } from '../utils/swallowedError';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
@@ -156,7 +157,7 @@ export const CreateDealPage: React.FC = () => {
         drawHandlerRef.current = null;
       }
       map.current.removeControl(drawRef.current as any);
-    } catch (e) {}
+    } catch (e) { logSwallowedError('pages/CreateDealPage', e); }
     drawRef.current = null;
   }, []);
 

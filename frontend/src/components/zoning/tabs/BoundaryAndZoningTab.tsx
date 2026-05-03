@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../../utils/swallowedError';
 /**
  * Boundary & Zoning Tab — Combined Step 1
  *
@@ -110,7 +111,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
       if (res.data?.found !== false) {
         setDistrictDetails(res.data);
       }
-    } catch {}
+    } catch (err) { logSwallowedError('components/zoning/tabs/BoundaryAndZoningTab', err); }
   }, []);
 
   // When boundary is completed, auto-expand zoning section and fetch data
@@ -246,7 +247,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         if (parcelRes.data?.found) {
           parcelZoning = parcelRes.data;
         }
-      } catch {}
+      } catch (err) { logSwallowedError('components/zoning/tabs/BoundaryAndZoningTab', err); }
 
       const reverseGeoRes = await apiClient.get('/api/v1/reverse-geocode', {
         params: { lat, lng },
@@ -326,7 +327,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
             params: { municipality: municipalityId, section: parcelZoning.zoningCode },
           });
           municodeUrl = res.data?.url || undefined;
-        } catch {}
+        } catch (err) { logSwallowedError('components/zoning/tabs/BoundaryAndZoningTab', err); }
         setDetectedZoning({
           code: parcelZoning.zoningCode,
           name: parcelZoning.zoningName || parcelZoning.zoningCode,
@@ -388,7 +389,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
           boundaryId: boundary.id,
           setbacks: boundary.setbacks,
         });
-      } catch {}
+      } catch (err) { logSwallowedError('components/zoning/tabs/BoundaryAndZoningTab', err); }
 
       // Save confirmation
       await apiClient.post(`/api/v1/deals/${dealId}/zoning-confirmation`, {
@@ -402,7 +403,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
 
       try {
         await apiClient.post(`/api/v1/deals/${dealId}/zoning-profile/resolve`);
-      } catch {}
+      } catch (err) { logSwallowedError('components/zoning/tabs/BoundaryAndZoningTab', err); }
 
       if (onComplete) {
         onComplete({
@@ -437,7 +438,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
           boundaryId: boundary.id,
           setbacks: boundary.setbacks,
         });
-      } catch {}
+      } catch (err) { logSwallowedError('components/zoning/tabs/BoundaryAndZoningTab', err); }
       await apiClient.post(`/api/v1/deals/${dealId}/zoning-confirmation`, {
         zoning_code: zoningDiscrepancy.liveCode,
         municipality,

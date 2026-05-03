@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.tsx';
 import './index.css';
+import { logSwallowedError } from './utils/swallowedError';
 
 async function bootstrap() {
   // In DEV we always re-run dev-login on bootstrap. If we only ran it when
@@ -21,7 +22,7 @@ async function bootstrap() {
           localStorage.setItem('jedi_user', JSON.stringify(data.user));
         }
       }
-    } catch {}
+    } catch (err) { logSwallowedError('main', err); }
   }
 
   if (!localStorage.getItem('auth_token')) {

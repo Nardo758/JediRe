@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../utils/swallowedError';
 /**
  * EventDensityStrip — Horizontal tick-mark strip.
  * Each tick = one event. Height = magnitude category (4 levels).
@@ -98,7 +99,7 @@ export const EventDensityStrip: React.FC<EventDensityStripProps> = ({
         : `/api/v1/m35/msa/${msaId}/events-density`;
       const res = await fetch(endpoint);
       if (res.ok) { setEvents(await res.json()); return; }
-    } catch {}
+    } catch (err) { logSwallowedError('components/m35/EventDensityStrip', err); }
     setEvents(seedDemoEvents(scopeId));
   }, [msaId, submarketId, propEvents]);
 

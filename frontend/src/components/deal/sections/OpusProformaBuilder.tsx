@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { opusProformaService, type ProformaData, type ProformaVersion } from '@/services/opusProforma.service';
+import { logSwallowedError } from '../../../utils/swallowedError';
 
 interface OpusProformaBuilderProps {
   deal?: any;
@@ -57,7 +58,7 @@ export const OpusProformaBuilder: React.FC<OpusProformaBuilderProps> = ({ deal, 
           })));
         }
       }
-    } catch (e) {}
+    } catch (e) { logSwallowedError('components/deal/sections/OpusProformaBuilder', e); }
   };
 
   const loadVersions = async () => {
@@ -67,7 +68,7 @@ export const OpusProformaBuilder: React.FC<OpusProformaBuilderProps> = ({ deal, 
       if (versions.length > 0 && !selectedProforma) {
         setSelectedProforma(versions[0].proforma_data);
       }
-    } catch (e) {}
+    } catch (e) { logSwallowedError('components/deal/sections/OpusProformaBuilder', e); }
   };
 
   const startNewSession = async () => {

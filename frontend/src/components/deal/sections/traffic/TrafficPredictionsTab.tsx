@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { logSwallowedError } from '../../../../utils/swallowedError';
 import {
   TrendingUp, ArrowUpRight, ArrowDownRight, Minus, Clock,
   AlertCircle, BarChart3, Gauge, Layers, Zap,
@@ -265,7 +266,7 @@ export default function TrafficPredictionsTab({ dealId, propertyId }: TrafficPre
         if (patRes.data?.patterns?.length) {
           setPatterns(patRes.data.patterns);
         }
-      } catch {}
+      } catch (err) { logSwallowedError('components/deal/sections/traffic/TrafficPredictionsTab', err); }
 
       setLoading(false);
     };

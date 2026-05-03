@@ -1,3 +1,4 @@
+import { logSwallowedError } from '../../utils/swallowedError';
 /**
  * MultiMetricPanel — 2×3 grid (or 2×2) of synchronized mini EventTimelineChart instances.
  * All synchronized on same X-axis. Each panel labeled with metric name + status badge.
@@ -66,7 +67,7 @@ export const MultiMetricPanel: React.FC<MultiMetricPanelProps> = ({
         setMetrics(json.metrics ?? DEFAULT_METRICS);
         return;
       }
-    } catch {}
+    } catch (err) { logSwallowedError('components/m35/MultiMetricPanel', err); }
     setMetrics(DEFAULT_METRICS);
   }, [eventId, propMetrics]);
 

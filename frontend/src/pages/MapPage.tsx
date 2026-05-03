@@ -7,6 +7,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import * as turf from '@turf/turf';
 import { apiClient } from '../services/api.client';
 import { useMapLayers } from '../contexts/MapLayersContext';
+import { logSwallowedError } from '../utils/swallowedError';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const DARK_STYLE = 'mapbox://styles/mapbox/dark-v11';
@@ -125,7 +126,7 @@ export function MapPage() {
       setDeals(mapped);
     }).catch(() => {});
     const saved = localStorage.getItem('jedire-map-notes');
-    if (saved) { try { setNotes(JSON.parse(saved)); } catch {} }
+    if (saved) { try { setNotes(JSON.parse(saved)); } catch (err) { logSwallowedError('pages/MapPage', err); } }
   }, []);
 
   useEffect(() => {
@@ -296,7 +297,7 @@ export function MapPage() {
     };
     
     if (navigator.share) {
-      try { await navigator.share(shareData); } catch {}
+      try { await navigator.share(shareData); } catch (err) { logSwallowedError('pages/MapPage', err); }
     } else {
       await navigator.clipboard.writeText(shareUrl);
       alert('Map link copied to clipboard!');
@@ -346,7 +347,7 @@ export function MapPage() {
           timestamp: 'Shared',
         }));
         setNotes(prev => [...prev, ...importedNotes]);
-      } catch {}
+      } catch (err) { logSwallowedError('pages/MapPage', err); }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
