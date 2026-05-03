@@ -1,0 +1,642 @@
+================================================================================
+JEDI RE — M07 TRAFFIC ENGINE → M09 PROJECTIONS INTEGRATION SPEC
+================================================================================
+
+Status:        Draft v1.0
+Owner:         M07 Traffic Engine ↔ M09 ProForma/Projections
+Depends on:    M07_SUBJECT_HISTORY_AND_DIFF_EXTRACTOR_SPEC (must ship first)
+               LayeredValue<T> system, dealStore, DealContext caching
+Unblocks:      M09 Occupancy/Leasing/Concessions blocks rendering live data
+               M22 actual-vs-projected variance tracking
+               M14 Risk Year-1 trajectory stress tests
+
+Scope: This spec wires M07's output (subject_traffic_history + peer_set
+calibration + Bayesian-blended coefficients) into the row-level outputs of
+the M09 Projections tab. Defines the adapter service, the row-by-row source
+mapping, mode-aware behavior, year-over-year trajectory rules, and
+the recalc cascade through dealStore.
+
+
+--------------------------------------------------------------------------------
+1. THE INTEGRATION GAP TODAY
+--------------------------------------------------------------------------------
+
+Current state:
+    • M07 routes mounted but in isolation
+    • M09 Projections renders Occupancy/Leasing rows from rent-roll snapshot
+      (Year 1 only) with flat propagation — Y2+ inherits Y1 with no time
+      dynamics
+    • Concessions block renders from broker OM or hardcoded zero
+    • No M07 → M09 adapter exists in the codebase
+    • dealContext.traffic exists in spec but is not consumed by the
+      ProForma/Projections engine
+
+What this spec resolves:
+    • Defines m07-projections-adapter.ts as the single integration point
+    • Maps every row in the Occupancy/Leasing/Concessions blocks to its
+      M07 source field
+    • Defines the trajectory roll-forward rules (how Year N is computed
+      from Year N-1 + traffic coefficients)
+    • Specifies mode-aware behavior (STABILIZED vs LEASE_UP vs REDEVELOPMENT)
+    • Defines the recalc cascade so that subject_history updates propagate
+      to Projections without manual refresh
+
+
+--------------------------------------------------------------------------------
+2. ADAPTER ARCHITECTURE
+--------------------------------------------------------------------------------
+
+File: backend/src/services/module-wiring/m07-projections-adapter.ts
+
+Responsibility: Transform dealContext.traffic + dealContext.proforma.assumptions
+into the row arrays that M09 Projections renders.
+
+API:
+
+    interface M07ProjectionsAdapter {
+      // Build the Occupancy & Leasing block for all years
+      buildOccupancyLeasingBlock(
+        dealContext: DealContext,
+        timelineYears: number              // 3, 5, 7, or 10
+      ): OccupancyLeasingBlock;
+
+      // Build the Concessions block for all years
+      buildConcessionsBlock(
+        dealContext: DealContext,
+        timelineYears: number
+      ): ConcessionsBlock;
+
+      // Build the Effective Rent row (top of operating section)
+      buildEffectiveRentRow(
+        dealContext: DealContext,
+        timelineYears: number
+      ): EffectiveRentRow;
+
+      // Single-row recompute on assumption override (cheap path)
+      recomputeRowOnOverride(
+        rowId: string,
+        dealContext: DealContext,
+        override: LayeredValueOverride
+      ): RowRecomputeResult;
+    }
+
+The adapter is a pure function over dealContext. It does not mutate state.
+It does not call M07 services directly — it consumes the cached
+dealContext.traffic payload that the Research Agent / M07 service already
+assembled. This keeps the credit-efficiency property: the 24h cache means
+adapter calls are essentially free.
+
+Mounted in: module-wiring-orchestrator.ts as the M07 → M09 link in the
+P1 priority chain (Market → ProForma data flow).
+
+
+--------------------------------------------------------------------------------
+3. ROW-BY-ROW SOURCE MAPPING
+--------------------------------------------------------------------------------
+
+This is the canonical table. Every row in the Occupancy/Leasing/Concessions
+blocks must trace back to a documented source. New rows added to the
+Projections schema MUST add an entry here before merge.
+
+3.1 EFFECTIVE RENT ROW (top of operating section)
+
+    Row                              | Source                           | Formula
+    ---------------------------------|----------------------------------|------------------------------------------
+    Effective Rent (per unit/month)  | derived                          | (GPR_Yn × (1 − vacancy_loss) − concessions_Yn)
+                                                                          / (units_leased_Yn × 12)
+                                     |                                  |
+    The Effective Rent is the residual after vacancy and concessions.
+    Year 1 anchors to in-place data; Y2+ rolls forward via Blended Rent
+    Growth × Concession Decay.
+
+3.2 ASSUMPTIONS SUB-BLOCK (inline, drives the rows below)
+
+    Row                              | Source                           | Resolution
+    ---------------------------------|----------------------------------|------------------------------------------
+    Blended Rent Growth              | LayeredValue<number[]>           | subject_history.rent_growth_realized_yoy
+                                     |                                  | blended w/ peer_set:m07.rent_growth
+                                     |                                  | per Bayesian rule (M07 spec §3)
+                                     |                                  |
+    Expected Turnover Rate           | LayeredValue<number>             | subject_history.actual_turnover_rate
+                                     |                                  | blended w/ peer_set:m07.turnover_rate
+
+    Both fields render in the Inline Assumption Block (see
+    INLINE_ASSUMPTION_BLOCK_COMPONENT_SPEC). User can override per-year
+    or as a single trajectory rate.
+
+3.3 OCCUPANCY & LEASING — MARKET RATE UNITS BLOCK
+
+    Row                                       | Source        | Formula / Engine field
+    ------------------------------------------|---------------|------------------------------------------
+    Physical Occ. before Dilution from Reno   | M07 derived   | Y1: subject_history.current_state
+                                              |               |    .units_occupied / total_units
+                                              |               | Yn: Y(n-1).physical_occ × renewal_retention
+                                              |               |    + new_lease_fill_rate × (1 - prior_occ)
+                                              |               |    [bounded by stabilized_occ ceiling
+                                              |               |     from peer_set]
+                                              |               |
+    Vacancy Loss Attributable to Dilution     | M22 + mode    | STABILIZED: 0
+       from Renovation                        |               | LEASE_UP: 0 (fresh delivery, no dilution)
+                                              |               | REDEVELOPMENT: M22.capex_schedule[n].units_down
+                                              |               |    × renovation_dwell_days[n] / 365
+                                              |               |    / total_units
+                                              |               |
+    Physical Occupancy                        | derived       | (Physical Occ before Dilution)
+                                              |               |   − (Vacancy Loss from Reno)
+                                              |               |
+    Total Units Leased                        | derived       | total_units × Physical Occupancy
+                                              |               | rounded down (whole units)
+                                              |               |
+    Total Units Vacant                        | derived       | total_units − Total Units Leased
+                                              |               |
+    Expected Lease Expirations                | M07 direct    | dealContext.traffic.subject_history
+                                              |               |   .current_state.expiration_waterfall[n]
+                                              |               | Y1 from snapshot directly.
+                                              |               | Y2+ rolls forward via avg_lease_term
+                                              |               | (each Y(n-1) signing expires in
+                                              |               | Y(n-1) + avg_lease_term/12)
+                                              |               |
+    Expected Turnover Rate                    | LayeredValue  | (1 - renewal_rate) — flows from
+                                              |               | Assumptions sub-block above
+                                              |               |
+    Expected Total Replacement Leases         | derived       | Expirations × Turnover Rate
+                                              |               |
+    Expected Renewals                         | derived       | Expirations × Renewal Rate
+                                              |               | (= Expirations − Replacement Leases)
+                                              |               |
+    Expected New Leases / Move-Ins            | derived       | STABILIZED: Replacement Leases
+                                              |               | LEASE_UP: Replacement + absorption_curve[n]
+                                              |               | REDEVELOPMENT: Replacement
+                                              |               |   + post_reno_lease_up[n]
+
+3.4 CONCESSIONS BLOCK
+
+    All four concession lines source from CONCESSION_ENVIRONMENT_SUB_ENGINE
+    output (see separate spec). The adapter consumes that engine's
+    per-period output:
+
+    Row                                       | Source            | Formula
+    ------------------------------------------|-------------------|------------------------------------------
+    Expected New Lease — Onetime              | concession_env    | New Leases (count) ×
+       Concessions                            |                   |   new_lease_onetime_per_unit[n]
+                                              |                   |
+    Expected New Lease — On-Going             | concession_env    | New Leases (count) ×
+       Concessions                            |                   |   new_lease_ongoing_monthly[n] × 12
+                                              |                   |
+    Renewal — Onetime Concessions             | concession_env    | Renewals (count) ×
+                                              |                   |   renewal_onetime_per_unit[n]
+                                              |                   |
+    Renewal — On-Going Concessions            | concession_env    | Renewals (count) ×
+                                              |                   |   renewal_ongoing_monthly[n] × 12
+                                              |                   |
+    TOTAL CONCESSIONS                         | derived           | Sum of above four
+                                              |                   |
+    Average Concession per unit               | derived           | TOTAL CONCESSIONS / total_units
+                                              |                   |
+    Current Year Concessions                  | derived           | TOTAL CONCESSIONS for current calendar
+                                              |                   | year (used in Y1 effective rent calc)
+
+3.5 ROWS NOT IN THE SCREENSHOT BUT DRIVEN BY M07
+
+    These exist in the full Projections schema and also need adapter
+    handling:
+
+    Row                                       | Source            | Formula
+    ------------------------------------------|-------------------|------------------------------------------
+    Vacancy Loss (market vacancy)             | derived           | GPR_n × (1 − Physical Occupancy_n)
+                                              |                   |
+    Bad Debt                                  | LayeredValue      | subject_history-derived if available;
+                                              |                   | else peer_set:m07.bad_debt_pct
+                                              |                   | (typically 0.5–1.5% of GPR)
+                                              |                   |
+    Loss to Lease                             | M07 direct        | subject_history.current_state
+                                              |                   |   .loss_to_lease_pct (Y1 only;
+                                              |                   | trends to 0 over 24-36mo as
+                                              |                   | leases roll to market)
+                                              |                   |
+    Days Vacant (median)                      | M07 direct        | subject_history.observed_dynamics
+                                              |                   |   .days_vacant_median
+
+
+--------------------------------------------------------------------------------
+4. MODE-AWARE BEHAVIOR
+--------------------------------------------------------------------------------
+
+The mode field on dealContext.traffic governs adapter behavior. Three
+modes, each with distinct trajectory mechanics.
+
+4.1 STABILIZED MODE
+
+    Definition: Property at or near stabilized occupancy (typically >=92%)
+    with no major CapEx-driven disruption planned.
+
+    Trajectory rules:
+        • Physical occupancy converges to stabilized_occ ceiling from
+          peer_set:m07 (typically 94–96% for institutional MF)
+        • Renovation dilution = 0
+        • Concessions follow concession_env baseline trend (decay or
+          stable based on supply pressure)
+        • Rent growth applies uniformly to all units
+
+    Y1 anchor:
+        • Physical Occ Y1 = current_state.units_occupied / total_units
+          (from rent roll snapshot)
+        • If Y1 occ < stabilized_occ ceiling, gradual ramp toward ceiling
+          over 12-24 months at signing_velocity-implied rate
+
+4.2 LEASE_UP MODE
+
+    Definition: New construction or recent delivery in lease-up phase,
+    not yet stabilized. Requires absorption curve.
+
+    Trajectory rules:
+        • Physical occupancy ramps via absorption_curve[24]
+          (24-month forward absorption schedule from M07 traffic spec
+          §4.2 dealContext.traffic.coefficients.absorption_curve)
+        • Renovation dilution = 0 (units are fresh)
+        • Concessions front-loaded:
+            - Y1: heavy onetime concessions (often 1-2 months free)
+            - Y2: tapering as occupancy rises
+            - Y3+: stabilized concession environment
+        • Rent growth: peer_set:m07 only (subject has no S2+ history yet)
+        • Bad debt elevated in Y1 (0.5-1.0% extra reserve)
+
+    Y1 anchor:
+        • Physical Occ Y1 = absorption_curve[12] / total_units
+          (cumulative absorption through month 12)
+        • Subject history coefficients with mode:LEASE_UP tag are valid
+          for lease-up year projection only; mode-mismatch rule (M07 spec
+          §10.6) prevents lease-up signing velocity from projecting into
+          stabilized years
+
+4.3 REDEVELOPMENT MODE
+
+    Definition: Existing property undergoing phased renovation/repositioning.
+    Hybrid of stabilized + lease-up mechanics.
+
+    Trajectory rules:
+        • Physical occupancy: starts at current state, dips during
+          renovation phases (dilution), then climbs to post-renovation
+          stabilized ceiling
+        • Renovation dilution: ACTIVE row, sourced from M22 CapEx schedule
+            - Each year n: dilution = (units_down_during_reno × dwell_days)
+              / (total_units × 365)
+        • Concessions: complex multi-phase model
+            - Pre-renovation tenant retention concessions (renewal_onetime
+              elevated to retain pending displacement)
+            - Post-renovation lease-up concessions on renovated units
+            - Standard stabilized concessions on un-touched portion
+        • Rent growth: bifurcated
+            - Renovated units: post-reno market rent (peer_set:m07.class_
+              uplift_post_reno or user override)
+            - Untouched units: standard rent growth
+
+    Y1 anchor:
+        • Physical Occ Y1 = current_state minus first-year renovation
+          dilution from M22 schedule
+
+4.4 MODE TRANSITION HANDLING
+
+    A deal can transition modes during the hold period:
+        LEASE_UP → STABILIZED at month 18-24 (absorption complete)
+        REDEVELOPMENT → STABILIZED at end of CapEx schedule
+
+    The adapter must produce different per-year behavior across the
+    transition. Implementation:
+
+        for year in 1..timelineYears:
+          mode_for_year = resolveMode(dealContext, year)
+          if mode_for_year == STABILIZED:
+            row = computeStabilizedRow(...)
+          elif mode_for_year == LEASE_UP:
+            row = computeLeaseUpRow(...)
+          elif mode_for_year == REDEVELOPMENT:
+            row = computeRedevelopmentRow(...)
+
+    resolveMode logic:
+        if year <= leaseUpDuration: LEASE_UP
+        elif M22.capex_schedule[year] indicates active renovation: REDEVELOPMENT
+        else: STABILIZED
+
+    The transition year's row should be flagged with a small badge in the
+    UI ("LU→S" or "R→S") so the user sees where the mode shift happened.
+
+
+--------------------------------------------------------------------------------
+5. YEAR-OVER-YEAR TRAJECTORY RULES
+--------------------------------------------------------------------------------
+
+The Pro Forma → Projections relationship (per the F9 spec):
+    Year 1 = anchored from subject_history.current_state + Section A inputs
+    Year 2..N = compounded from Year 1 + Section B trajectory inputs
+
+5.1 Year 1 anchoring
+
+    Every row's Y1 value derives from subject_history.current_state OR
+    peer_set:m07 (when subject data absent). Specific mappings in §3.
+
+5.2 Year 2..N propagation
+
+    Each row uses one of three propagation methods:
+
+    PROP_DIRECT_REFERENCE
+        Row N value = direct lookup from a coefficient indexed by year
+        Examples: expiration_waterfall[n], absorption_curve[n],
+                  capex_schedule[n].dilution
+
+    PROP_COMPOUND_GROWTH
+        Row N value = Row (N-1) value × (1 + growth_rate_n)
+        Examples: GPR (rent growth), OpEx (expense growth),
+                  market_rent (pricing velocity)
+
+    PROP_DERIVED_RECOMPUTE
+        Row N value = function(other Row N values)
+        Examples: NOI = EGR − OpEx, DSCR = NOI / DS, CF = NOI − DS − CapEx
+
+    PROP_TRAJECTORY_FORMULA
+        Row N value = custom formula combining inputs from multiple
+        sources and prior years
+        Examples: Physical Occupancy (renewal retention + new lease fill),
+                  Loss to Lease (decays toward 0 as leases roll)
+
+5.3 Trajectory formulas — the four critical ones
+
+    PHYSICAL OCCUPANCY trajectory (STABILIZED mode):
+        occ_n = min(
+          stabilized_ceiling,
+          occ_(n-1) × renewal_retention
+            + (1 − occ_(n-1)) × new_lease_fill_rate
+            + small_drift_correction
+        )
+
+        where:
+          renewal_retention = renewal_rate (LayeredValue)
+          new_lease_fill_rate = signing_velocity × period / vacant_units
+          stabilized_ceiling = peer_set:m07.stabilized_occ (94-96% typical)
+
+    LOSS TO LEASE trajectory:
+        ltl_n = max(0, ltl_(n-1) × (1 − lease_rollover_pct_n))
+
+        where:
+          lease_rollover_pct_n = (Expirations_n + new_leases_n) / total_units
+        At full annual rollover (~45% turnover), ltl decays ~half per year
+        and converges to 0 at ~24-36 months. Subject's current loss-to-lease
+        is a transient signal, not a perpetual one — modeling it as constant
+        across hold years overstates revenue capture.
+
+    RENT GROWTH application:
+        market_rent_n = market_rent_(n-1) × (1 + blended_rent_growth_n)
+        in_place_rent_n = rolling weighted average:
+          rolled_units carry market_rent_n
+          remaining units carry in_place_rent_(n-1) × (1 + lease_step_pct)
+        gpr_n = sum across all units
+
+    CONCESSION DECAY (LEASE_UP mode only):
+        concession_n = concession_baseline × decay_curve[n]
+        where decay_curve[1] = 1.0, decay_curve[12] = ~0.4, decay_curve[24] = ~0.1
+        See concession_env spec for decay shape.
+
+
+--------------------------------------------------------------------------------
+6. THE RECALC CASCADE
+--------------------------------------------------------------------------------
+
+When does the adapter rebuild Projections rows?
+
+6.1 Trigger events (via dealStore subscriptions)
+
+    Event                                      | Adapter response
+    -------------------------------------------|------------------------------------------
+    'traffic.subject_history.updated'          | Full rebuild: all rows, all years
+    'assumption.override.set' (Section A)      | Full rebuild (Y1 anchors changed)
+    'assumption.override.set' (Section B)      | Y2+ rebuild only (Y1 unchanged)
+    'capex_schedule.updated' (M22)             | Rebuild renovation dilution rows
+                                                  + downstream occupancy
+    'concession_env.updated'                   | Rebuild concession block only
+    'mode.changed'                             | Full rebuild (different formulas apply)
+    'timeline_years.changed' (3→5, 5→7, etc)   | Append/truncate years; no recalc of
+                                                  existing years
+
+6.2 Recalc scope optimization
+
+    The adapter exposes recomputeRowOnOverride for cheap-path overrides.
+    When the user types a new value into a single cell:
+
+        function recomputeRowOnOverride(rowId, dealContext, override):
+          // Apply override to dealContext (in-memory clone)
+          // Determine downstream rows that depend on rowId
+          // Recompute only those rows
+          // Return diff: { rowId: newValues, dependentRowIds: newValues, ... }
+
+    Dependency map (statically declared in the adapter):
+
+        physical_occupancy → total_units_leased, total_units_vacant,
+                             gpr, vacancy_loss, effective_rent
+        renewal_rate → expected_renewals, expected_new_leases,
+                       turnover_rate (its complement),
+                       concessions_block (rebuild)
+        rent_growth → gpr, market_rent, effective_rent (via concession ratio)
+        ... etc
+
+    Full dependency graph maintained in:
+        backend/src/services/module-wiring/projections-dependency-graph.ts
+
+6.3 dealStore interaction
+
+    The adapter does NOT write to dealStore. It returns row arrays that
+    the M09 ProForma component renders. dealStore is the message bus for
+    triggers; the adapter is a pure transformer.
+
+    Frontend flow:
+        dealStore.subscribe('proforma.recompute', (dealContext) => {
+          const occLeasing = adapter.buildOccupancyLeasingBlock(
+            dealContext, timelineYears
+          );
+          const concessions = adapter.buildConcessionsBlock(
+            dealContext, timelineYears
+          );
+          setProjectionsState({ occLeasing, concessions, ... });
+        });
+
+
+--------------------------------------------------------------------------------
+7. ERROR HANDLING & DEGRADED MODE
+--------------------------------------------------------------------------------
+
+The adapter must produce valid output even when subject_traffic_history is
+sparse, mode is ambiguous, or M22 data is missing. Define fallback paths.
+
+7.1 No subject history at all (deal pre-document-upload)
+
+    Behavior:
+        • All rows source from peer_set:m07 only
+        • Inline Assumption Block shows two columns (PEER SET | EFFECTIVE)
+          instead of three; SUBJECT column hidden with placeholder
+          "Upload rent roll to populate"
+        • Confidence on every coefficient: MEDIUM (peer-set best estimate)
+        • No collision panel rendered
+
+7.2 S1 only (single rent roll uploaded)
+
+    Behavior:
+        • State metrics (current occupancy, expiration waterfall,
+          loss-to-lease) from subject S1
+        • Dynamics (renewal rate, turnover, trade-out) from peer_set:m07
+        • Inline Assumption Block shows three columns; SUBJECT column shows
+          "—" for fields not yet observable at S1
+        • Tooltip on "—" cells: "Requires 2+ rent roll snapshots to observe"
+
+7.3 Mode unresolved
+
+    Behavior:
+        • Default to STABILIZED unless explicit signal indicates otherwise:
+          - LEASE_UP if dealContext.deal.year_built within last 24 months
+            AND current occupancy < 80%
+          - REDEVELOPMENT if M22.capex_schedule has active renovation in
+            any forward year
+        • Mode badge in UI shows resolved mode + a confidence indicator
+        • User can override mode in deal settings
+
+7.4 M22 capex_schedule missing in REDEVELOPMENT mode
+
+    Behavior:
+        • Renovation dilution row defaults to 0 with warning badge
+          "Awaiting CapEx schedule from M22"
+        • Physical occupancy rolls forward as if STABILIZED until M22 lands
+        • Console warning logged for debugging
+
+7.5 Negative or impossible values
+
+    Behavior:
+        • Physical occupancy clamped to [0, stabilized_ceiling]
+        • Days vacant floored at 0
+        • Concessions floored at 0
+        • Trade-out can be negative (rent compression in declining markets) —
+          allowed
+        • Rent growth can be negative — allowed but flagged "negative growth"
+          in confidence panel
+
+
+--------------------------------------------------------------------------------
+8. INVARIANTS THE ADAPTER MUST UPHOLD
+--------------------------------------------------------------------------------
+
+These are runtime assertions worth wiring as defensive checks. Failures
+indicate engine bugs that should fail loud, not silent.
+
+INV-1: Pro Forma Year 1 = Projections Year 1 column
+    Per F9 spec: NOI_Y1 on Pro Forma must equal NOI Year 1 on Projections.
+    Same for every shared row. Diff > 1 cent = engine bug.
+
+INV-2: Sum identity for unit counts
+    Total Units Leased + Total Units Vacant = total_units, every year.
+    No drift allowed.
+
+INV-3: Renewals + New Leases = Expirations + Lease-Up Absorption
+    In STABILIZED mode: Renewals + New Leases (excluding lease-up) =
+    Expirations exactly.
+    In LEASE_UP mode: Renewals + New Leases = Expirations + lease_up_signings.
+
+INV-4: Effective Rent never exceeds Market Rent
+    Effective rent must be <= market rent for the unit type, every year.
+    If effective > market, concession or rent calc has a sign error.
+
+INV-5: Mode coefficients are mode-tagged
+    Subject history coefficients tagged mode:LEASE_UP cannot drive
+    STABILIZED-year projections (per M07 spec §10.6). The blend resolver
+    enforces this — adapter validates that every coefficient consumed in
+    a given year's computation has a mode tag matching the year's mode.
+
+
+--------------------------------------------------------------------------------
+9. TESTING STRATEGY
+--------------------------------------------------------------------------------
+
+Test fixtures should cover:
+
+9.1 Stabilized property, S1 only (no observed dynamics)
+    Verify rows populate from peer_set with appropriate confidence flags.
+    Verify Inline Assumption Block renders 2-column mode.
+
+9.2 Stabilized property, S3 (full subject history)
+    Verify rows populate from blended subject + peer.
+    Verify collision panel surfaces if subject diverges from peer.
+
+9.3 Lease-up property, year 1 in absorption
+    Verify absorption_curve drives Physical Occupancy ramp.
+    Verify mode-tagged coefficients reject stabilized-year propagation.
+    Verify concessions front-load.
+
+9.4 Redevelopment property with M22 schedule
+    Verify dilution row populates from M22.
+    Verify post-renovation rent uplift applies correctly.
+    Verify mode transitions year (last reno year → first stabilized year)
+    are flagged in UI.
+
+9.5 Override propagation
+    User overrides Renewal Rate from 55% to 65%.
+    Verify dependent rows (Expected Renewals, New Leases, Turnover, all
+    Concession lines) recompute.
+    Verify Y1 unchanged (override is Section B / trajectory).
+
+9.6 Invariant violations
+    Inject malformed dealContext (units leased > total units) and verify
+    INV-2 fails loud rather than silently rendering 105% occupancy.
+
+
+--------------------------------------------------------------------------------
+10. BUILD ORDER
+--------------------------------------------------------------------------------
+
+1. Define the adapter interface and dependency graph
+   (m07-projections-adapter.ts skeleton + projections-dependency-graph.ts)
+
+2. Wire the trigger subscriptions in module-event-bus
+   (existing infrastructure — just add new event types)
+
+3. Implement STABILIZED mode rows first (covers ~80% of deals)
+   - Y1 anchoring
+   - Trajectory formulas (occupancy, loss-to-lease, rent)
+   - Concession block integration
+
+4. Implement LEASE_UP mode (requires absorption_curve from M07)
+
+5. Implement REDEVELOPMENT mode (requires M22 capex_schedule wiring)
+
+6. Mode transition handling
+
+7. Cheap-path recomputeRowOnOverride
+
+8. Invariant assertions (defensive layer)
+
+9. Test fixtures across all three modes
+
+
+--------------------------------------------------------------------------------
+11. ARCHITECTURAL RULE (codify in CLAUDE.md)
+--------------------------------------------------------------------------------
+
+ADAPTER PURITY
+
+The M07 → M09 adapter is a pure function over dealContext. It does not
+mutate state, does not call M07 services directly, does not perform I/O.
+It transforms cached dealContext into Projections row arrays.
+
+ROW SOURCE TRACEABILITY
+
+Every row in the Projections schema must trace back to a documented source
+in this spec's §3 mapping. New rows added to Projections require an entry
+in §3 before merge. Rows without documented sources are forbidden — they
+are how silent hardcoding (the irr=15 class of bug) gets reintroduced.
+
+MODE-TAG ENFORCEMENT
+
+Subject history coefficients carry a mode tag. The adapter validates that
+coefficients consumed in a given year's computation have a mode tag
+matching that year's resolved mode. Lease-up signing velocity may not
+project into stabilized years.
+
+
+================================================================================
+END OF SPEC
+================================================================================

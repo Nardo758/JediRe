@@ -1,0 +1,827 @@
+================================================================================
+JEDI RE — INLINE ASSUMPTION BLOCK COMPONENT SPEC
+================================================================================
+
+Status:        Draft v1.0
+Owner:         M09 ProForma/Projections frontend
+Depends on:    LayeredValue<T> system, dealStore, T-token design system
+Consumed by:   F9 Projections (Occupancy/Leasing/Concessions/Revenue blocks)
+               F9 Pro Forma (block-level assumption headers)
+               Future: F5 Compete, F3 Market deep-dive pages
+
+Scope: Reusable React component that renders the inline assumption
+sub-block above each Projections operating section. Three-column display
+(Peer / Subject / Effective) with confidence indicator, collision panel,
+drilldown modal, and override-capable cells. Bloomberg Terminal aesthetic
+using strict T-token system.
+
+
+--------------------------------------------------------------------------------
+1. THE PROBLEM THIS COMPONENT SOLVES
+--------------------------------------------------------------------------------
+
+Today the Projections tab shows operating rows (occupancy, expirations,
+renewals, etc.) without surfacing the assumptions driving them. The user
+sees a 94.0% physical occupancy across 9 years and has no in-context way to
+see WHAT IS DRIVING IT, WHERE IT CAME FROM, or HOW TO CHANGE IT WITHOUT
+LEAVING THE BLOCK.
+
+The Inline Assumption Block solves this by rendering above each operating
+section a compact table showing the small set of assumptions that drive
+that block, with three columns:
+
+    PEER SET    — what M07 peer calibration says
+    SUBJECT     — what subject_traffic_history says (when available)
+    EFFECTIVE   — the resolved value (Bayesian blend or override)
+
+Plus a CONFIDENCE indicator and a COLLISION panel that surfaces material
+divergence between subject and peer.
+
+
+--------------------------------------------------------------------------------
+2. VISUAL SPECIFICATION
+--------------------------------------------------------------------------------
+
+Bloomberg Terminal aesthetic. T-token system. JetBrains Mono primary.
+IBM Plex Sans secondary. 9px minimum font size. Max 2px border radius.
+No shadows, no gradients.
+
+2.1 Block-level layout
+
+    ┌──────────────────────────────────────────────────────────────────────────┐
+    │ ▾ ASSUMPTIONS — driving this block                              [3 SUBJ] │  ← header bar
+    │ ────────────────────────────────────────────────────────────────────────│
+    │                                                                          │
+    │  FIELD                       PEER SET    SUBJECT      EFFECTIVE   CONF  │  ← column headers
+    │  ────────────────────────────────────────────────────────────────────  │
+    │  Blended Rent Growth          3.1%        3.4% ▲       3.4%       HIGH  │
+    │  Expected Turnover Rate        45%         38% ▲        38%       HIGH  │
+    │  Renewal Rate                  55%         62% ▲        62%       HIGH  │
+    │  Days Vacant (median)           32          24 ▲         24       MED   │
+    │                                                                          │
+    │  ┌──────────────────────────────────────────────────────────────────┐  │
+    │  │ ⚠ COLLISION — Subject diverges from submarket on 4 of 4 metrics │  │  ← collision panel
+    │  │                                                                  │  │     (renders only when
+    │  │ Subject outperforms peer set materially. Possible drivers:      │  │      magnitude >= material)
+    │  │   • Above-average leasing team                                   │  │
+    │  │   • Superior curb appeal                                         │  │
+    │  │   • Pricing position below market                                │  │
+    │  │                                                                  │  │
+    │  │ 18mo subject history (3 snapshots).      [Review →]              │  │
+    │  └──────────────────────────────────────────────────────────────────┘  │
+    └──────────────────────────────────────────────────────────────────────────┘
+
+2.2 T-token mapping (using existing token system)
+
+    Element                    | Token reference
+    ---------------------------|----------------------------------------------------
+    Block background           | T.bg.layer1
+    Block border               | 1px solid T.border.subtle, 2px radius
+    Header bar background      | T.bg.layer2 (slight elevation)
+    Header text                | T.text.label (uppercase, JetBrains Mono 9px,
+                                  letter-spacing 0.05em)
+    Column header text         | T.text.muted (10px JetBrains Mono uppercase)
+    Field label                | T.text.primary (10px IBM Plex Sans regular)
+    Numeric values             | T.text.primary (11px JetBrains Mono tabular-nums)
+    Drift indicators (▲▼–)     | ▲ T.accent.positive (green tint) when subject above
+                                  ▼ T.accent.negative (red tint) when subject below
+                                  – T.text.muted when within 0.5σ
+    EFFECTIVE column highlight | T.bg.layer3 background (subtle elevation)
+    Confidence HIGH            | T.accent.positive
+    Confidence MED             | T.accent.warning (amber)
+    Confidence LOW             | T.accent.negative (muted red)
+    Collision panel border     | 2px left border T.accent.warning
+    Collision panel background | T.bg.warning_subtle (very low alpha amber)
+    Override badge             | T.accent.user (distinct from agent color)
+
+    NOTE: All color tokens must already exist in the platform's T system.
+    No new tokens introduced by this component. If T.bg.warning_subtle
+    doesn't exist, fallback to T.bg.layer2 with a 1px T.accent.warning border.
+
+2.3 Spacing & sizing
+
+    Block outer padding:           12px
+    Header bar height:             28px
+    Row height:                    24px
+    Column gutters:                16px
+    Collision panel inset:         8px from block edges
+    Collision panel padding:       12px
+    Field count target:            3-6 fields per block (more = visual clutter)
+
+2.4 Drift indicator rendering
+
+    Compute drift_sigma = (subject - peer) / peer_std_dev_estimate
+    where peer_std_dev_estimate = peer_value × 0.20 (default) OR from M07
+    peer set if available.
+
+    if |drift_sigma| < 0.5:    " – "   (T.text.muted, no symbol emphasis)
+    elif drift_sigma >= 0.5:   " ▲ "   (T.accent.positive, subject above)
+    elif drift_sigma <= −0.5:  " ▼ "   (T.accent.negative, subject below)
+
+    Symbol placed immediately after the SUBJECT value with single space.
+
+2.5 Confidence column rendering
+
+    HIGH       (rendered as text "HIGH" in T.accent.positive)
+    MED        (rendered as text "MED" in T.accent.warning)
+    LOW        (rendered as text "LOW" in T.accent.negative)
+    n/a        (rendered as " — " in T.text.muted when subject column empty)
+
+
+--------------------------------------------------------------------------------
+3. COMPONENT API
+--------------------------------------------------------------------------------
+
+3.1 Props
+
+    interface InlineAssumptionBlockProps {
+      // Identification
+      blockId: string;
+        // e.g., "occupancy_leasing_market_rate" — used for dealStore
+        // selector keying and drilldown modal context
+
+      blockTitle?: string;
+        // Optional display title in header bar. Defaults to "Assumptions"
+
+      // Field definitions
+      fields: AssumptionFieldRef[];
+        // Array of fields to render. See §3.2 for shape.
+
+      // Data binding
+      dealId: string;
+        // Deal context to read from dealStore
+
+      // Behavior toggles
+      collapsible?: boolean;
+        // Default true. Header has expand/collapse caret.
+
+      defaultCollapsed?: boolean;
+        // Default false. Set true for less-relevant blocks.
+
+      hideSubjectColumn?: boolean;
+        // Default false. When subject_history is absent for the deal,
+        // hide the column entirely rather than showing empty.
+        // Computed by component if not specified.
+
+      hidePeerColumn?: boolean;
+        // Default false. Reserved for cases where only subject is relevant.
+
+      // Customization
+      onFieldEdit?: (fieldId: string, newValue: number, source: 'override') => void;
+        // Optional callback on user override. Default behavior writes to
+        // dealStore directly via setLayeredValueOverride action.
+
+      onCollisionReviewClick?: (collision: ConcessionCollision) => void;
+        // Optional callback when user clicks "Review →" on collision panel.
+        // Default opens drilldown modal scoped to that field.
+    }
+
+3.2 AssumptionFieldRef shape
+
+    interface AssumptionFieldRef {
+      id: string;
+        // Path into dealContext, e.g.:
+        //   "traffic.coefficients.renewal_rate"
+        //   "traffic.subject_history.observed_dynamics.actual_turnover_rate"
+        //   "concession_environment.by_year[0].new_lease_onetime_per_unit"
+
+      label: string;
+        // Display label, e.g., "Renewal Rate"
+
+      format: 'pct' | 'num' | 'currency' | 'months' | 'days' | 'ratio';
+        // Determines value rendering
+
+      precision?: number;
+        // Decimal places. Defaults: pct=1, num=0, currency=0, months=1,
+        // days=0, ratio=2
+
+      year?: number;
+        // For per-year fields: which year to display. Default: 1.
+        // Component can render multiple years inline if requested via
+        // years: number[] instead.
+
+      tooltip?: string;
+        // Optional hover tooltip explaining what the field drives
+    }
+
+3.3 Default behaviors
+
+    On mount:
+      → Subscribe to dealStore for this deal's dealContext
+      → For each field, resolve LayeredValue via selector helpers
+      → Compute drift indicators
+      → Render
+
+    On dealStore update:
+      → Re-resolve fields, re-render (memoized; only changed fields update)
+
+    On user override (cell click → edit → commit):
+      → Dispatch dealStore action setLayeredValueOverride({
+          fieldPath, value, source: 'override', set_at: now
+        })
+      → dealStore emits 'assumption.override.set' event
+      → Recalc cascade triggers via M07 → M09 adapter
+      → Component re-renders with new EFFECTIVE value + override badge
+
+    On collision panel "Review →" click:
+      → Open drilldown modal scoped to the field with highest collision sigma
+
+
+--------------------------------------------------------------------------------
+4. CELL EDITING & DRILLDOWN
+--------------------------------------------------------------------------------
+
+4.1 Cell editing flow
+
+    User clicks any value in the EFFECTIVE column (only that column is
+    editable).
+
+    Step 1: Click → cell enters edit mode
+        Background changes to T.bg.layer4
+        Cell shows native number input with current value
+        Adjacent rows dim slightly to focus attention
+
+    Step 2: User types → input updates
+        Format mask applies in real-time per field.format
+        Validation: numeric, within reasonable bounds (set per field)
+
+    Step 3: Commit
+        Enter or blur → commit
+        Esc → cancel, revert to prior value
+        Tab → commit + advance to next editable cell
+
+    Step 4: Post-commit
+        Override badge appears next to the value: small "EDIT" pill in
+        T.accent.user. Tooltip: "Overridden — click to revert to {auto-resolved value}"
+        EFFECTIVE column now sources from override layer (always wins).
+        Collision panel may update if user override resolves the collision.
+
+4.2 Drilldown modal
+
+    Triggered by:
+      • Click on field label
+      • Click on PEER SET or SUBJECT cell
+      • Click on "Review →" in collision panel
+
+    Modal content (T-token styled, no shadows):
+
+      ┌─ FIELD: Renewal Rate ──────────────────────────────────────────┐
+      │                                                                 │
+      │ THREE-LAYER SOURCE BREAKDOWN                                    │
+      │                                                                 │
+      │ ┌─────────────┬───────────┬──────────────┬──────────────────┐ │
+      │ │ LAYER       │ VALUE     │ SOURCE       │ DETAIL           │ │
+      │ ├─────────────┼───────────┼──────────────┼──────────────────┤ │
+      │ │ Platform    │ 50%       │ default      │ National MF avg  │ │
+      │ │ Peer Set    │ 55%       │ M07 calib    │ MSA: Tampa       │ │
+      │ │             │           │              │ Submarket: West- │ │
+      │ │             │           │              │ shore. Class B.  │ │
+      │ │             │           │              │ n_peers: 12      │ │
+      │ │ Subject     │ 62%       │ S2 (2 snaps) │ 18mo observation │ │
+      │ │             │           │              │ 87 expirations   │ │
+      │ │             │           │              │ 54 renewals      │ │
+      │ │ Override    │ —         │ —            │ Not set          │ │
+      │ ├─────────────┼───────────┼──────────────┼──────────────────┤ │
+      │ │ EFFECTIVE   │ 62%       │ subject:s2   │ w_subject=0.85   │ │
+      │ │             │           │              │ Bayesian blend   │ │
+      │ └─────────────┴───────────┴──────────────┴──────────────────┘ │
+      │                                                                 │
+      │ COLLISION CHECK                                                 │
+      │ ────────────────────────────────────────────────────────────── │
+      │ Subject (62%) vs Peer Set (55%) — delta_sigma = 1.8 (material) │
+      │                                                                 │
+      │ Subject outperforms peer set on renewal retention. Possible    │
+      │ drivers: above-average leasing team, superior curb appeal,     │
+      │ pricing below market.                                           │
+      │                                                                 │
+      │ TRAJECTORY TREATMENT                                            │
+      │ ────────────────────────────────────────────────────────────── │
+      │ Y1 carries subject signal at full weight (w=0.85).             │
+      │ Y2 weight decays to 0.51.                                       │
+      │ Y3+ reverts to peer set baseline (subject signal ages out).    │
+      │                                                                 │
+      │                                          [ Override ]  [ Close ]│
+      └─────────────────────────────────────────────────────────────────┘
+
+    Modal width: 600-720px depending on field. Fixed height with scrolling
+    if detail content overflows. ESC closes. Click outside closes.
+
+4.3 Override action from drilldown
+
+    Click "Override" button in modal:
+      → Inline edit on the EFFECTIVE cell (focus moves to cell, modal closes)
+      → User edits → commit → same flow as direct cell edit
+
+
+--------------------------------------------------------------------------------
+5. COLLISION PANEL BEHAVIOR
+--------------------------------------------------------------------------------
+
+5.1 When it renders
+
+    Collision panel renders within the block when ANY field has
+    collision_magnitude >= 'material' (delta_sigma >= 1.5).
+
+    If multiple fields have collisions: panel summarizes the most severe
+    one prominently and lists others compactly.
+
+    If no fields have material collisions: panel does not render (block
+    height collapses).
+
+5.2 Panel content structure
+
+    Header:
+      "⚠ COLLISION — Subject {direction} from submarket on N of M metrics"
+      (direction = "outperforms" | "underperforms" | "diverges")
+
+    Body:
+      First sentence: composite assessment
+      Bullet list (3 max): probable drivers from narrative templates
+      Footer:
+        Subject sample size summary
+        [Review →] button (opens drilldown to most severe collision field)
+
+5.3 Narrative source
+
+    The narrative bullets come from the ConcessionCollision.narrative
+    field (or the equivalent for non-concession fields). Generated by:
+      • M07 collision detector (for traffic coefficients)
+      • Concession Environment Sub-Engine (for concession fields)
+      • Future: a generic collision-narrative service for any LayeredValue<T>
+
+    Component does NOT generate narratives — it only renders them.
+
+5.4 Severity styling
+
+    Material (1.5 ≤ |sigma| < 2.5):
+      Border-left: T.accent.warning (amber)
+      Header icon: ⚠ in T.accent.warning
+
+    Severe (|sigma| >= 2.5):
+      Border-left: T.accent.negative (red, 3px wide instead of 2px)
+      Header icon: ⛔ in T.accent.negative
+      Header text bold
+
+
+--------------------------------------------------------------------------------
+6. STATE MANAGEMENT — dealStore INTEGRATION
+--------------------------------------------------------------------------------
+
+The component is "dumb" with respect to data fetching. All state lives
+in dealStore. Component uses selectors to read; uses actions to write.
+
+6.1 Selectors used (from dealStore)
+
+    selectDealContext(dealId)
+      → returns the cached DealContext
+
+    selectLayeredValueAtPath(dealId, fieldPath)
+      → returns LayeredValue<T> resolved at that path
+      → returns { value, source, confidence, all_layers, ... }
+
+    selectFieldDriftAnalysis(dealId, fieldPath)
+      → returns drift_sigma, magnitude, narrative if material
+      → null if no subject data or insufficient sample
+
+    selectBlockCollisions(dealId, blockId, fieldRefs)
+      → returns array of collisions for the rendered fields
+      → used to drive collision panel rendering
+
+6.2 Actions dispatched (to dealStore)
+
+    setLayeredValueOverride({
+      dealId, fieldPath, value, source: 'override', set_at: ISO_NOW
+    })
+      → Updates the LayeredValue at fieldPath with new override layer
+      → Emits 'assumption.override.set' event
+      → dealStore subscribers (M07 → M09 adapter, Pro Forma engine,
+        JEDI Score, etc.) recompute downstream
+
+    revertOverride({ dealId, fieldPath })
+      → Removes override layer
+      → EFFECTIVE re-resolves to next-highest layer (subject/peer/etc.)
+      → Same recalc cascade triggers
+
+6.3 What the component does NOT do
+
+    • Does not call any backend API directly. Reads from dealContext only.
+    • Does not compute drift or collisions itself. Reads pre-computed
+      values from selectors. (M07 / Concession Engine / etc. produce
+      these values; component only renders.)
+    • Does not maintain its own copy of the assumption values. Single
+      source of truth is dealStore.
+    • Does not write to dealStore outside of the override actions above.
+
+
+--------------------------------------------------------------------------------
+7. ACCESSIBILITY & KEYBOARD NAVIGATION
+--------------------------------------------------------------------------------
+
+Critical for the Bloomberg power-user pattern. The component is
+keyboard-first.
+
+7.1 Tab order
+
+    Header bar (caret) → first editable cell → next editable cell → ...
+      → "Review →" button if collision panel present → next focusable element
+
+    Tab moves forward, Shift+Tab moves backward. Cells skipped if
+    cell is read-only (PEER SET, SUBJECT columns are read-only).
+
+7.2 Within an editing cell
+
+    Enter         — commit
+    Esc           — cancel
+    Tab           — commit + advance to next cell
+    Shift+Tab     — commit + retreat to prior cell
+    Up/Down       — increment/decrement by precision unit
+    Shift+Up/Down — increment by 10× precision
+
+7.3 Outside editing cell, when block has focus
+
+    Enter on field label  — open drilldown modal for that field
+    Spacebar              — toggle block collapsed/expanded (when caret focused)
+
+7.4 F-key registration (optional, set by parent)
+
+    The block can register itself as the F-key target for the parent page.
+    For example, F9 page might bind F8 to "focus assumption block of
+    currently visible operating section". The component does not register
+    F-keys itself — the parent does so explicitly via ref.
+
+7.5 ARIA
+
+    Block is role="group" with aria-label = "Assumptions for {blockTitle}"
+    Each row is role="row"
+    Editable cells are role="textbox" with aria-label = "{fieldLabel} effective value, currently {value}"
+    Collision panel is role="alert" so screen readers announce it on render
+    Confidence badges have aria-label = "{level} confidence"
+
+
+--------------------------------------------------------------------------------
+8. CODE STRUCTURE
+--------------------------------------------------------------------------------
+
+8.1 File layout
+
+    frontend/src/components/InlineAssumptionBlock/
+      index.tsx                          // main component export
+      InlineAssumptionBlock.tsx          // root component
+      AssumptionRow.tsx                  // single row renderer
+      EditableValueCell.tsx              // editable cell w/ format mask
+      DriftIndicator.tsx                 // ▲ ▼ – symbol
+      ConfidenceBadge.tsx                // HIGH / MED / LOW pill
+      CollisionPanel.tsx                 // collision warning bar
+      DrilldownModal.tsx                 // three-layer source modal
+      hooks/
+        useLayeredValue.ts               // selector hook for one field
+        useBlockCollisions.ts            // selector hook for collision array
+      types.ts                           // local types
+      tokens.ts                          // T-token references
+
+8.2 Root component skeleton
+
+    export const InlineAssumptionBlock: React.FC<InlineAssumptionBlockProps> =
+      (props) => {
+        const { dealId, fields, blockId, blockTitle = 'Assumptions',
+                collapsible = true, defaultCollapsed = false } = props;
+
+        const [collapsed, setCollapsed] = useState(defaultCollapsed);
+        const dealContext = useDealContext(dealId);
+        const collisions = useBlockCollisions(dealId, blockId, fields);
+        const hasSubject = dealContext?.traffic?.subject_history?.tier !== undefined;
+
+        if (!dealContext) return <BlockSkeleton />;
+
+        return (
+          <div className="iab-block" role="group" aria-label={`Assumptions for ${blockTitle}`}>
+            <BlockHeader
+              title={blockTitle}
+              hasSubject={hasSubject}
+              snapshotCount={dealContext.traffic?.subject_history?.snapshot_count}
+              collapsed={collapsed}
+              onToggle={() => collapsible && setCollapsed(!collapsed)}
+            />
+            {!collapsed && (
+              <>
+                <ColumnHeaders hideSubject={!hasSubject} />
+                <div className="iab-rows">
+                  {fields.map(field => (
+                    <AssumptionRow
+                      key={field.id}
+                      dealId={dealId}
+                      field={field}
+                      hideSubject={!hasSubject}
+                    />
+                  ))}
+                </div>
+                {collisions.length > 0 && (
+                  <CollisionPanel
+                    collisions={collisions}
+                    dealId={dealId}
+                    onReviewClick={props.onCollisionReviewClick}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        );
+      };
+
+8.3 AssumptionRow skeleton
+
+    export const AssumptionRow: React.FC<AssumptionRowProps> = ({
+      dealId, field, hideSubject
+    }) => {
+      const layered = useLayeredValue(dealId, field.id);
+      const drift = useFieldDriftAnalysis(dealId, field.id);
+
+      if (!layered) return <RowSkeleton />;
+
+      const peerVal = layered.layers.peer_set || layered.layers.platform;
+      const subjectVal = layered.layers.subject_history;
+      const effectiveVal = layered.value;
+      const isOverridden = layered.source === 'override';
+
+      return (
+        <div className="iab-row" role="row">
+          <span className="iab-label" onClick={() => openDrilldown(field.id)}>
+            {field.label}
+          </span>
+          <span className="iab-peer">
+            {formatValue(peerVal, field.format, field.precision)}
+          </span>
+          {!hideSubject && (
+            <span className="iab-subject">
+              {subjectVal !== undefined
+                ? <>
+                    {formatValue(subjectVal, field.format, field.precision)}
+                    <DriftIndicator drift={drift} />
+                  </>
+                : <span className="iab-empty">—</span>
+              }
+            </span>
+          )}
+          <EditableValueCell
+            value={effectiveVal}
+            format={field.format}
+            precision={field.precision}
+            isOverridden={isOverridden}
+            onCommit={(newValue) => commitOverride(dealId, field.id, newValue)}
+          />
+          <ConfidenceBadge level={layered.confidence} />
+        </div>
+      );
+    };
+
+8.4 Memoization
+
+    AssumptionRow wrapped in React.memo with custom equality:
+      Re-render only when layered.value, layered.source, or drift changes
+      for this specific field. dealStore selector changes for unrelated
+      fields do not cause this row to re-render.
+
+    This is essential for performance — Projections may have 5-8 inline
+    assumption blocks rendering simultaneously, each with 3-6 fields.
+    Without memoization, every dealStore update re-renders all of them.
+
+
+--------------------------------------------------------------------------------
+9. EDGE CASES
+--------------------------------------------------------------------------------
+
+9.1 Subject column data not yet available
+    hasSubject = false → component renders 2-column mode (PEER | EFFECTIVE).
+    Empty space where SUBJECT column was. Header shows
+    "Upload rent roll for subject calibration" tooltip on the missing column.
+
+9.2 Field has no peer set data
+    Render PEER cell as " — " with tooltip "No peer set calibration available".
+    Drift indicator does not render.
+
+9.3 Field has subject S1 only (no observed_dynamics)
+    For fields requiring S2+ (renewal rate, trade-out): SUBJECT cell
+    renders " — " with tooltip "Requires 2+ rent roll snapshots to observe".
+
+9.4 User overrides then reverts via revert button
+    Override removed. EFFECTIVE re-resolves to subject (or peer if no subject).
+    Override badge disappears.
+
+9.5 Block collapsed when collision detected
+    Header bar shows a small ⚠ badge indicating collision exists in
+    collapsed content. Clicking expands the block; collision panel renders.
+
+9.6 Field value out of plausible range (user attempts override to 200% rate)
+    Validation rejects on commit. Cell flashes T.accent.negative. Tooltip
+    appears: "Renewal rate must be between 0% and 100%". Reverts to prior.
+
+9.7 Multiple blocks editing same field
+    Edge case: two Inline Assumption Blocks both reference renewal_rate.
+    User overrides in one. dealStore updates. Both blocks re-render with
+    new override value. Both show override badge. (This is correct behavior —
+    LayeredValue<T> is global to the deal, not block-scoped.)
+
+
+--------------------------------------------------------------------------------
+10. EXAMPLE INSTANTIATIONS
+--------------------------------------------------------------------------------
+
+10.1 Occupancy & Leasing block on Projections (Multifamily)
+
+    <InlineAssumptionBlock
+      blockId="occupancy_leasing_market_rate"
+      blockTitle="Occupancy & Leasing — Market Rate Units"
+      dealId={dealId}
+      fields={[
+        {
+          id: "traffic.coefficients.blended_rent_growth",
+          label: "Blended Rent Growth",
+          format: "pct",
+          precision: 1,
+          tooltip: "Drives effective rent growth across all unit types"
+        },
+        {
+          id: "traffic.coefficients.turnover_rate",
+          label: "Expected Turnover Rate",
+          format: "pct",
+          precision: 0
+        },
+        {
+          id: "traffic.coefficients.renewal_rate",
+          label: "Renewal Rate",
+          format: "pct",
+          precision: 0
+        },
+        {
+          id: "traffic.observed_dynamics.days_vacant_median",
+          label: "Days Vacant (median)",
+          format: "days",
+          precision: 0
+        }
+      ]}
+    />
+
+10.2 Concessions block on Projections
+
+    <InlineAssumptionBlock
+      blockId="concessions"
+      blockTitle="Concession Environment"
+      dealId={dealId}
+      fields={[
+        {
+          id: "concession_environment.by_year[0].new_lease_onetime_per_unit",
+          label: "New Lease — Onetime ($/unit)",
+          format: "currency",
+          precision: 0,
+          year: 1
+        },
+        {
+          id: "concession_environment.by_year[0].new_lease_ongoing_monthly",
+          label: "New Lease — On-Going ($/mo)",
+          format: "currency",
+          precision: 0,
+          year: 1
+        },
+        {
+          id: "concession_environment.by_year[0].renewal_onetime_per_unit",
+          label: "Renewal — Onetime ($/unit)",
+          format: "currency",
+          precision: 0,
+          year: 1
+        },
+        {
+          id: "concession_environment.by_year[0].expected_pct_of_new_leases_receiving",
+          label: "% of New Leases w/ Concession",
+          format: "pct",
+          precision: 0,
+          year: 1
+        }
+      ]}
+    />
+
+10.3 Pro Forma Operating Expenses block
+
+    <InlineAssumptionBlock
+      blockId="opex_assumptions"
+      blockTitle="Operating Expense Assumptions"
+      dealId={dealId}
+      fields={[
+        {
+          id: "proforma.opex_growth_rate",
+          label: "OpEx Growth Rate",
+          format: "pct",
+          precision: 1
+        },
+        {
+          id: "proforma.payroll_per_unit",
+          label: "Payroll per Unit",
+          format: "currency",
+          precision: 0
+        },
+        {
+          id: "proforma.r_and_m_per_unit",
+          label: "R&M per Unit",
+          format: "currency",
+          precision: 0
+        }
+      ]}
+    />
+
+
+--------------------------------------------------------------------------------
+11. TESTING STRATEGY
+--------------------------------------------------------------------------------
+
+11.1 Visual regression
+     Storybook stories for each block configuration:
+       • All three modes (with/without subject, with/without collision)
+       • Edge cases (empty peer, S1 subject, severe collision)
+       • Collapsed/expanded states
+     Captured screenshots compared against baseline on every PR.
+
+11.2 Interaction
+     Click cell → editing → commit → override badge appears
+     Click field label → drilldown modal opens
+     Esc in cell → cancels edit
+     Tab navigation across cells works correctly
+     Drilldown modal Override button → focus returns to cell in edit mode
+
+11.3 dealStore integration
+     Override commit → action dispatched with correct payload
+     dealStore update for unrelated field → block does NOT re-render
+       (memoization assertion)
+     Revert action → override layer removed, value falls back
+
+11.4 Accessibility
+     axe-core run on each Storybook story: zero violations
+     Manual screen reader pass (VoiceOver + NVDA): all values announced
+     Keyboard-only navigation: every action achievable without mouse
+
+11.5 Performance
+     8 blocks × 5 fields = 40 cells rendered simultaneously.
+     dealStore update (subject_history.updated) → measure re-render time.
+     Target: <16ms per block, <120ms total. (60fps budget.)
+
+
+--------------------------------------------------------------------------------
+12. INTEGRATION CHECKLIST FOR M09 CONSUMERS
+--------------------------------------------------------------------------------
+
+When wiring this component into a Projections block:
+
+   [ ] Identify the 3-6 driving assumptions for the block
+   [ ] Confirm each is a LayeredValue<T> in dealContext
+       (if not, file an upstream task — do not bypass)
+   [ ] Define the AssumptionFieldRef array
+   [ ] Render <InlineAssumptionBlock /> immediately above the operating
+       rows table within the block container
+   [ ] Verify CSS doesn't introduce shadows or radius > 2px
+   [ ] Verify the operating rows below recompute correctly when an
+       override is committed (M07 → M09 adapter is wired)
+   [ ] Add a Storybook story for the new block
+   [ ] Document the block in CLAUDE.md under M09 section
+
+
+--------------------------------------------------------------------------------
+13. OUT OF SCOPE (FUTURE ENHANCEMENTS)
+--------------------------------------------------------------------------------
+
+The following are explicitly NOT part of this component spec. Each is a
+separate future spec:
+
+   • Multi-year inline editing (edit Y1 / Y2 / Y3 trajectories in one row)
+   • Scenario comparison (toggle between Base / Stress / Upside in one block)
+   • Bulk override (apply override across multiple blocks at once)
+   • Saved override templates ("Apply institutional underwriting profile")
+   • Inline-block analytics (sparkline showing how this assumption has
+     evolved across deal versions in version history)
+   • Voice/chat-driven override ("Set renewal rate to 60%" via chat surface)
+
+
+--------------------------------------------------------------------------------
+14. ARCHITECTURAL RULE (codify in CLAUDE.md under M09 / Component Patterns)
+--------------------------------------------------------------------------------
+
+INLINE-ASSUMPTION-BLOCK PATTERN
+
+Every Projections operating block surfaces its driving assumptions as a
+sub-header sub-block above the calculated rows. The inline assumptions
+are not a duplicate of the Global Assumptions tab — they are filtered
+references to the same LayeredValue<T> cells. Edits flow through dealStore
+identically from either surface. This pattern serves two needs simul-
+taneously: (a) the user editing in context, (b) the user auditing globally.
+
+The component is pure-render. It reads from dealStore via selectors and
+writes via actions. It does NOT compute drift, collisions, or value
+resolution itself — those are computed upstream by M07, the Concession
+Engine, and other engines that produce LayeredValue<T> outputs.
+
+The component is the single canonical UI for surfacing source provenance
+and override capability for any LayeredValue<T> field in the platform.
+Future deep-dive pages (F5 Compete, F3 Market) reuse this same component
+for consistent UX.
+
+
+================================================================================
+END OF SPEC
+================================================================================

@@ -1,0 +1,580 @@
+================================================================================
+JEDI RE — CONCESSION ENVIRONMENT SUB-ENGINE SPEC
+================================================================================
+
+Status:        Draft v1.0
+Owner:         M07 Traffic Engine (sub-engine)
+Depends on:    M04 Supply Pipeline, M05 Market Intelligence, M07 mode classification
+Consumed by:   M07 → M09 Projections adapter (Concessions block)
+               Cashflow Agent (concession assumption tier)
+               Investment Memo synthesis
+
+Scope: This spec defines a new sub-engine that produces forward-looking
+concession assumptions per period. Concessions are a function of supply
+pressure, submarket norms, mode (stabilized/lease-up/redev), and asset class.
+Subject history is the strongest input when available; this engine handles
+the cases where it is absent, sparse, or projecting beyond the observed
+window.
+
+
+--------------------------------------------------------------------------------
+1. WHY THIS ENGINE EXISTS
+--------------------------------------------------------------------------------
+
+Concessions are the most underwritten line item in commercial real estate
+underwriting and the most common source of model error. The reasons:
+
+    • Highly local: concession environment varies by submarket, by class,
+      by quarter — generic regional benchmarks miss material variance
+    • Time-sensitive: concession environments swing rapidly with supply
+      delivery cycles (a single 300-unit lease-up across the street
+      changes the concession game for everyone in the trade area)
+    • Manager-discretionary: same submarket, two operators — one runs
+      6 weeks free, the other holds at 2 weeks. Strategy varies.
+    • Documentation-poor: rent rolls inconsistently track concessions;
+      T12 captures concession expense net of GPR, often without breakdown
+    • Forward-uncertain: even with perfect subject history, projecting
+      concessions 3-7 years forward requires a supply/demand model
+
+Today's gap (per the screenshot): the Projections Concessions block
+shows hardcoded values or broker-OM imputed values. There is no engine
+producing them.
+
+This engine fills that gap. It produces concession assumptions for every
+year of the hold period, sourced from the best available combination of
+subject history (M07), supply pressure (M04), submarket pricing dynamics
+(M05), and class/mode-aware defaults.
+
+
+--------------------------------------------------------------------------------
+2. INPUTS
+--------------------------------------------------------------------------------
+
+The engine reads from dealContext (cached) and produces a per-year
+concession environment payload. Required inputs:
+
+2.1 From M07 (subject + peer)
+    • subject_history.observed_dynamics.concession_trend (S2+)
+    • subject_history.current_state.concession_book_remaining (S1+)
+    • peer_set:m07.concession_environment_baseline (always)
+    • mode (STABILIZED | LEASE_UP | REDEVELOPMENT)
+    • absorption_curve[24] (LEASE_UP mode only)
+    • capex_schedule reference (REDEVELOPMENT mode only)
+
+2.2 From M05 (submarket pricing)
+    • submarket_concession_environment {
+        new_lease_onetime_weeks: number,        // typical "weeks free" offered
+        new_lease_ongoing_pct: number,           // typical ongoing abatement
+        renewal_concession_pct: number,          // % of renewals receiving incentives
+        observation_window: '3mo'|'6mo'|'12mo',
+        sample_size: number,
+        confidence: 'high'|'medium'|'low'
+      }
+    • submarket_class_avg_rent (anchors per-week dollar value)
+    • rent_growth_yoy_submarket (concessions inversely correlate)
+
+2.3 From M04 (supply pressure)
+    • supply_pressure_score[60mo]              // 0-1 forward, higher = more pressure
+    • new_deliveries_in_trade_area[60mo]       // unit count per month
+    • lease_up_competition_count                // active competing lease-ups
+    • supply_absorption_ratio_forecast         // deliveries / projected absorption
+
+2.4 From deal context
+    • property_class (A | B | C)
+    • year_built (proxy for class refinement)
+    • unit_count
+    • avg_unit_market_rent (for converting weeks-free to dollars)
+
+
+--------------------------------------------------------------------------------
+3. OUTPUT PAYLOAD
+--------------------------------------------------------------------------------
+
+dealContext.traffic.concession_environment = {
+    // Per-year output for hold period + 3 buffer years
+    by_year: PerYearConcessionEnv[],
+
+    // Source attribution (used by Inline Assumption Block)
+    primary_source: 'subject:s3' | 'subject:s2' | 'submarket' | 'class_default',
+    confidence: 'high' | 'medium' | 'low',
+
+    // The collision check (subject vs peer for current period)
+    collision: ConcessionCollision | null,
+
+    // Decay model parameters (lease-up only)
+    decay_curve: number[24] | null,
+
+    // Diagnostic
+    derivation_notes: string                // human-readable trace
+};
+
+interface PerYearConcessionEnv {
+    year: number,                           // 1-indexed hold year
+    new_lease_onetime_per_unit: LayeredValue<number>,
+    new_lease_ongoing_monthly: LayeredValue<number>,
+    renewal_onetime_per_unit: LayeredValue<number>,
+    renewal_ongoing_monthly: LayeredValue<number>,
+    expected_pct_of_new_leases_receiving: number,    // not all units get concessions
+    expected_pct_of_renewals_receiving: number,
+    confidence: 'high' | 'medium' | 'low',
+    source_blend: {
+        subject_weight: number,             // 0-1
+        submarket_weight: number,
+        class_default_weight: number
+    }
+}
+
+interface ConcessionCollision {
+    field: 'new_lease_onetime' | 'renewal_onetime' | ...,
+    subject_value: number,
+    submarket_value: number,
+    delta_pct: number,                       // % difference
+    direction: 'subject_above' | 'subject_below',
+    magnitude: 'minor' | 'material' | 'severe',
+    narrative: string
+}
+
+
+--------------------------------------------------------------------------------
+4. THE CONCESSION FORMULA STACK
+--------------------------------------------------------------------------------
+
+The engine builds each per-year concession value through a four-step stack.
+Each step refines or overrides the prior. Earlier steps are defaults;
+later steps are higher-authority signals when they apply.
+
+4.1 Step 1: Class default baseline (always present)
+
+    A floor lookup table indexed by (asset_class, mode). This is the
+    "we know nothing about this market" fallback.
+
+    Class A — STABILIZED:
+        new_lease_onetime_weeks_free: 0.0
+        new_lease_ongoing_pct: 0%
+        renewal_concession_pct_of_units: 5%
+        renewal_avg_concession_per_unit: $200
+
+    Class A — LEASE_UP (Y1 of lease-up):
+        new_lease_onetime_weeks_free: 4-8
+        new_lease_ongoing_pct: 0%
+        renewal_concession: n/a (no renewals yet)
+
+    Class B — STABILIZED:
+        new_lease_onetime_weeks_free: 0.5
+        new_lease_ongoing_pct: 0%
+        renewal_concession_pct_of_units: 10%
+        renewal_avg_concession_per_unit: $150
+
+    Class B — LEASE_UP:
+        new_lease_onetime_weeks_free: 2-4
+
+    Class C — STABILIZED:
+        new_lease_onetime_weeks_free: 0.0
+        renewal_concession_pct_of_units: 5%
+        renewal_avg_concession_per_unit: $100
+
+    These defaults convert to dollars via:
+        new_lease_onetime_per_unit = avg_market_rent × (weeks_free / 4.33)
+
+    Floor table maintained in:
+        backend/src/data/concession_class_defaults.json
+    Reviewed quarterly via admin panel.
+
+4.2 Step 2: Submarket adjustment (M05 input, when available)
+
+    If M05 has submarket-level concession data (sample_size >= 30, recent
+    window):
+
+        new_lease_onetime_per_unit_step2 = avg_unit_market_rent
+          × (M05.submarket_concession_environment.new_lease_onetime_weeks / 4.33)
+
+        renewal_onetime_per_unit_step2 = M05.submarket_concession_environment
+          .renewal_concession_avg_dollars (if directly observed)
+
+    Replaces the class default. Confidence raises from "low" to "medium".
+
+4.3 Step 3: Supply pressure modifier (M04 input)
+
+    Concessions correlate strongly with supply pressure. The modifier
+    scales submarket baseline:
+
+        supply_pressure_modifier_year_n = 1 + 1.5 × (supply_pressure_score[n] − 0.5)
+
+        Bounded at [0.5, 2.5]:
+        • supply_pressure_score = 0.5 (neutral) → modifier = 1.0 (no change)
+        • supply_pressure_score = 0.8 (high pressure) → modifier = 1.45
+        • supply_pressure_score = 0.2 (tight market) → modifier = 0.55
+        • supply_pressure_score = 1.0 (maximum, multiple lease-ups) → modifier = 2.5
+
+        new_lease_onetime_per_unit_step3 = step2 × supply_pressure_modifier
+
+    The 1.5 coefficient is calibrated against the platform's M07 archive
+    intelligence — properties experiencing supply pressure +30% above
+    submarket baseline historically saw concessions ~45% above baseline.
+    Calibration is admin-tunable in the M07 weight retraining job.
+
+    Renewal concessions respond less to supply pressure (~0.5x of new lease
+    response):
+        renewal_modifier = 1 + 0.5 × 1.5 × (supply_pressure_score − 0.5)
+
+4.4 Step 4: Subject history override (M07 subject input, when available)
+
+    If subject_traffic_history has S2+ data with sufficient sample,
+    subject's observed concession environment dominates for the current
+    period. Bayesian blend (per M07 spec §3) applies for years 1-2;
+    submarket signal reasserts for years 3+ as subject's observation
+    window ages out.
+
+        if subject_history.tier in ['S2', 'S3', 'S4']:
+            subject_concession = subject_history.observed_dynamics
+                                   .concession_environment
+
+            if collision_check_passes:  // delta < 1.5σ
+                w_subject_y1 = min(1, subject.sample_size / threshold)
+                effective_y1 = w_subject_y1 × subject + (1 − w_subject_y1) × step3
+
+            else:  // collision — flag for review, don't auto-blend
+                effective_y1 = step3   // use submarket as default
+                collision_record.populated = true
+
+            // Subject signal weight decays for forward years
+            w_subject_y2 = w_subject_y1 × 0.6
+            w_subject_y3plus = 0   // submarket dominates by Y3
+
+    Y1 with full subject confidence: source = subject:s2/s3/s4
+    Y2 with decayed subject: source = blended (subject + submarket)
+    Y3+: source = submarket + supply pressure
+
+4.5 Step 5: Mode-specific overlays
+
+    Final pass applies mode-specific behaviors that can't be captured in
+    earlier steps.
+
+    STABILIZED mode: no overlay. Output stands.
+
+    LEASE_UP mode: apply decay curve.
+
+        decay_curve[24] = [
+          1.00, 0.95, 0.90, 0.85, 0.80, 0.75,    // Y1 — full lease-up concessions
+          0.65, 0.55, 0.45, 0.40, 0.35, 0.30,    // Y2 — burn off as occupancy rises
+          0.25, 0.20, 0.18, 0.15, 0.13, 0.12,    // Y3 — approaching stabilization
+          0.10, 0.10, 0.08, 0.08, 0.05, 0.05     // Y4+ — stabilized residual
+        ]
+
+        Bounded by stabilized concession floor — once decay × baseline drops
+        below the stabilized class default, switch to stabilized concession
+        environment.
+
+    REDEVELOPMENT mode: bifurcated calculation.
+
+        Renovated units (per M22 capex_schedule):
+          Behave like Class+1 LEASE_UP for the unit's first lease post-reno.
+          (A Class B asset renovated to Class B+ uses Class A concession
+          curve for those units' lease-up.)
+
+        Untouched units:
+          Use stabilized concession environment.
+
+        Additional: pre-renovation tenant retention concession
+          For units scheduled for renovation in a forward year, the engine
+          adds a "retention concession" on the prior year's renewals to
+          model the cost of holding tenants who could be displaced. Bumps
+          renewal_onetime by 15-25% above baseline for those units.
+
+
+--------------------------------------------------------------------------------
+5. CONFIDENCE & SOURCE ATTRIBUTION
+--------------------------------------------------------------------------------
+
+Every per-year output carries confidence and source_blend metadata. This
+flows into the Inline Assumption Block for user-facing transparency.
+
+Confidence ladder:
+    HIGH    — subject S3+ AND collision passes AND submarket sample >= 30
+    MEDIUM  — submarket-driven (M05 sample sufficient) OR subject S2 only
+    LOW     — class default only, no submarket data, no subject data
+
+Source blend for a typical Y1 output with S2 subject + good submarket:
+    {
+      subject_weight: 0.65,
+      submarket_weight: 0.35,
+      class_default_weight: 0.0
+    }
+
+Source blend for Y3 (subject decayed):
+    {
+      subject_weight: 0,
+      submarket_weight: 0.85,
+      class_default_weight: 0.15      // residual fallback
+    }
+
+Source blend for a deal with no subject + thin M05 data:
+    {
+      subject_weight: 0,
+      submarket_weight: 0.40,
+      class_default_weight: 0.60
+    }
+
+
+--------------------------------------------------------------------------------
+6. COLLISION DETECTION
+--------------------------------------------------------------------------------
+
+When subject and submarket diverge materially, surface for user review.
+The collision check runs whenever subject S2+ data exists.
+
+For each concession field:
+    delta_pct = |subject - submarket| / submarket
+    sigma_estimate = M05.submarket_concession_environment.std_dev
+                     OR (submarket_value × 0.20) as fallback
+    delta_sigma = (subject - submarket) / sigma_estimate
+
+Magnitudes:
+    |delta_sigma| < 1.0:    no collision recorded
+    1.0 <= |delta_sigma| < 1.5: minor (logged but not surfaced)
+    1.5 <= |delta_sigma| < 2.5: material (surfaced in collision panel)
+    |delta_sigma| >= 2.5:    severe (surfaced prominently with red flag)
+
+Narrative generation (templated):
+    Subject above submarket, material divergence:
+      "Subject offers ~{X}% above-market concessions on {field}. This may
+       indicate aggressive pricing-down to compensate for asset weakness,
+       or above-average leasing-side concession deployment. Review whether
+       this concession level should project forward or revert toward
+       submarket norm."
+
+    Subject below submarket, material divergence:
+      "Subject offers ~{X}% below-market concessions on {field}. This may
+       indicate strong demand for the asset (premium positioning), tight
+       management of concession spend, or stale data. Review whether
+       below-market concession discipline can be maintained."
+
+    Severe collisions: append "Recommend: explicit user input on whether
+    subject's pattern persists into projection years."
+
+
+--------------------------------------------------------------------------------
+7. WORKED EXAMPLES
+--------------------------------------------------------------------------------
+
+7.1 Class B stabilized in tight Tampa Westshore submarket, no subject
+
+    Inputs:
+      class: B
+      mode: STABILIZED
+      M05.submarket_concession_env: { new_lease_weeks_free: 0.5, sample: 45 }
+      M04.supply_pressure_score[1..5]: [0.30, 0.32, 0.35, 0.40, 0.42]
+      avg_market_rent: $1,925
+      No subject_history.observed_dynamics
+
+    Step 1 (class default Class B Stabilized):
+      new_lease_onetime_weeks: 0.5 → $1,925 × (0.5 / 4.33) = $222
+
+    Step 2 (M05 confirms 0.5 weeks → no change):
+      new_lease_onetime_per_unit: $222
+      Confidence raised: low → medium
+
+    Step 3 (supply pressure modifier Y1 = 1 + 1.5 × (0.30 − 0.5) = 0.70):
+      new_lease_onetime_per_unit_Y1: $222 × 0.70 = $155
+      Y2 modifier: 1 + 1.5 × (0.32 − 0.5) = 0.73 → $162
+      ...etc
+
+    Step 4: skipped (no subject)
+    Step 5: STABILIZED — no overlay
+
+    Final Y1: new_lease_onetime_per_unit = $155 (medium confidence)
+    Source blend: { subject: 0, submarket: 0.85, class_default: 0.15 }
+
+7.2 Class A lease-up, Y1 of absorption, heavy supply pressure
+
+    Inputs:
+      class: A
+      mode: LEASE_UP
+      M05.submarket_concession_env: { new_lease_weeks_free: 6.0, sample: 12 }
+      M04.supply_pressure_score[1]: 0.85 (multiple lease-ups in trade area)
+      avg_market_rent: $2,800
+
+    Step 1: new_lease_onetime_weeks: 6 → $2,800 × (6 / 4.33) = $3,879
+    Step 2: M05 confirms 6 weeks → $3,879 (medium confidence)
+    Step 3: supply pressure modifier Y1 = 1 + 1.5 × (0.85 − 0.5) = 1.525
+            $3,879 × 1.525 = $5,915
+    Step 4: skipped
+    Step 5: LEASE_UP overlay applies decay_curve[1] = 1.00 → no change Y1
+            Y2 month 12: decay_curve[12] = 0.30 → $5,915 × 0.30 = $1,775
+
+    Year 1 effective: $5,915 (~13 weeks free) — aggressive but matches
+    a high-supply-pressure A lease-up. Concession Decay applies through Y2.
+
+7.3 Class B with strong subject history — collision detected
+
+    Inputs:
+      class: B
+      mode: STABILIZED
+      M05.submarket_concession_env: { new_lease_weeks_free: 0.5 }
+      M04.supply_pressure_score: 0.35 (mild pressure)
+      subject_history.tier: S3
+      subject_history.observed_dynamics.concession_environment.new_lease:
+        observed at $0 for last 18 months
+      avg_market_rent: $1,925
+
+    Step 1-3: produces $155/unit submarket-blended baseline
+    Step 4: subject = $0
+            collision: delta_sigma ≈ ($0 - $155) / ($155 × 0.20) ≈ −5.0
+            SEVERE collision → do not auto-blend
+            Y1 effective: $155 (submarket dominant)
+            Collision record populated:
+              "Subject offers $0 concessions vs $155 submarket baseline.
+               This may indicate strong demand for the asset, tight
+               concession discipline, or stale data..."
+
+    The user sees the collision panel and decides:
+      (a) Use subject signal (override Y1 to $0) → strong asset
+      (b) Use submarket (no override) → conservative
+      (c) Blend manually
+
+
+--------------------------------------------------------------------------------
+8. EDGE CASES
+--------------------------------------------------------------------------------
+
+8.1 No M05 submarket data
+    Skip Step 2. Confidence stays at "low". Mark in derivation_notes.
+
+8.2 No M04 supply data
+    Skip Step 3. Apply modifier = 1.0. Note in derivation_notes.
+
+8.3 Submarket sample very small (M05.sample_size < 30)
+    Use M05 value but with reduced authority — apply weighted blend with
+    class default in Step 2:
+      step2_value = M05_value × 0.6 + class_default × 0.4
+
+8.4 Subject in lease-up tagged but deal mode is now STABILIZED
+    Per M07 spec §10.6 mode-mismatch rule, lease-up tagged subject
+    coefficients do NOT apply to stabilized projections. Skip Step 4 for
+    stabilized years; apply only to lease-up years.
+
+8.5 Negative supply pressure (very tight market)
+    supply_pressure_modifier can drop to 0.5 floor. Concessions don't
+    go below floor — class defaults set the absolute minimum. If the
+    formula produces below-floor value, clamp to class default × 0.5.
+
+8.6 Concession trend conflicts with supply pressure projection
+    Subject shows concessions rising over last 12 months but M04 projects
+    supply pressure declining. Resolve by trusting subject's near-term
+    signal (Y1) and converging toward M04-implied trajectory by Y3.
+    Note tension in derivation_notes.
+
+8.7 Renewal concession on a property with no historical renewals
+    Lease-up property in Y1 has no renewals. Use class default for the
+    eventual renewal cohort. When LEASE_UP transitions to STABILIZED in
+    Y2-3, renewal concessions activate at submarket levels.
+
+
+--------------------------------------------------------------------------------
+9. INTEGRATION POINTS
+--------------------------------------------------------------------------------
+
+9.1 Triggered by (Kafka events from existing event bus)
+    • 'traffic.subject_history.updated' → recompute Y1-Y3 (subject relevance)
+    • 'm04.supply_pressure.updated' → recompute all years
+    • 'm05.submarket_concession.updated' → recompute all years
+    • 'mode.changed' → recompute (different formula stack)
+    • 'capex_schedule.updated' (REDEVELOPMENT only) → recompute renovated
+      cohort
+
+9.2 Outputs consumed by
+    • M07 → M09 Projections adapter (concessions block rows §3.4 of that spec)
+    • Cashflow Agent (when proposing assumption set)
+    • Investment Memo synthesis (concession environment narrative)
+    • Sensitivity tab (concession assumption is a heat map axis option)
+
+9.3 Cached in
+    dealContext.traffic.concession_environment, expires with the rest of
+    dealContext (24h or until invalidating event).
+
+
+--------------------------------------------------------------------------------
+10. TESTING STRATEGY
+--------------------------------------------------------------------------------
+
+Test fixtures cover the matrix:
+
+10.1 Class × Mode × Subject Tier
+     12 base combinations (A/B/C × Stabilized/LeaseUp/Redev × NoSubject/S1/S2/S3+)
+     Each produces an expected output range; runtime within range = pass.
+
+10.2 Supply pressure curve sensitivity
+     Hold class+mode+subject constant; vary M04 supply_pressure across
+     [0.0, 0.2, 0.5, 0.8, 1.0]. Verify monotonic increase in concessions.
+
+10.3 Collision detection
+     Synthetic subject value 3σ above submarket → severe collision logged
+     with proper narrative.
+
+10.4 Decay curve in lease-up
+     Verify decay over 24 months from Y1 baseline to ~Y3 stabilized floor.
+
+10.5 Mode transition
+     Lease-up year 18, transitioning to stabilized year 25. Verify
+     concession output drops to stabilized class default.
+
+10.6 Mode-mismatch rule (M07 spec §10.6 enforcement)
+     Subject tagged mode:LEASE_UP, current dealContext.mode = STABILIZED.
+     Verify subject signal is excluded from Y2+ stabilized years.
+
+10.7 Defensible against bad inputs
+     Negative rent, missing avg_market_rent, supply_pressure of 1.5
+     (out-of-range) — engine produces null output with explicit reason
+     rather than NaN or implausible value.
+
+
+--------------------------------------------------------------------------------
+11. CALIBRATION & ADMIN
+--------------------------------------------------------------------------------
+
+The engine has tunable parameters. Maintain in admin panel:
+
+    • Class default table (per class, per mode, per concession line)
+    • Supply pressure modifier coefficient (default 1.5)
+    • Renewal concession damping factor (default 0.5)
+    • Decay curve shape (24-month curve for lease-up)
+    • Subject Y1/Y2/Y3 weight schedule
+    • Collision sigma thresholds (default 1.5/2.5)
+    • Stabilized concession floor (per class)
+
+Quarterly retraining:
+    Compare engine output for completed deals (now in M22 actual data)
+    against actual concession spend. Compute residuals; if systematic
+    bias exists (engine over- or under-estimating concessions in
+    specific class/mode combinations), recalibrate the modifier
+    coefficient. Store retraining run in concession_engine_calibration_log.
+
+
+--------------------------------------------------------------------------------
+12. ARCHITECTURAL RULE (codify in CLAUDE.md)
+--------------------------------------------------------------------------------
+
+CONCESSIONS ARE COMPUTED, NOT IMPUTED
+
+The Concession Environment Sub-Engine is the canonical source of forward
+concession assumptions. Concessions are not imputed from broker OM, are
+not hardcoded, and are not flat-extrapolated from Year 1. The engine
+produces per-year values via the four-step formula stack:
+class default → submarket → supply pressure → subject blend → mode overlay.
+
+When subject history is absent, the engine still produces high-confidence
+output for stabilized class B/C deals in well-covered submarkets.
+
+When subject history is present, it dominates for Y1 with decay through
+Y3 — subject's observation is a transient signal, not perpetual truth.
+
+CONCESSION DATA PRESENCE != ZERO CONCESSIONS
+
+The engine never imputes zero. When data is absent, output reflects the
+class default, with explicit "low confidence" flag. Imputing zero asserts
+a market truth not in evidence.
+
+
+================================================================================
+END OF SPEC
+================================================================================
