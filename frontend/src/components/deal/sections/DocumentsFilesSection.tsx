@@ -317,7 +317,7 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
       const msg = err?.response?.data?.message ?? err?.message ?? 'unknown error';
       setReprocessMsg(
         status === 409
-          ? `Re-extract failed: extraction is already running for this file.`
+          ? `Re-extract failed: extraction is already in progress for this file.`
           : `Re-extract failed: ${msg}`
       );
     }
