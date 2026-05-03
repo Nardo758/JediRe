@@ -300,6 +300,12 @@ export function mapProFormaAssumptionsToModelAssumptions(
     : 0.03;
 
   // ── Financing ─────────────────────────────────────────────────────────────
+  // Source of truth: a.financing.loanAmount populated by the LLM from deal_data
+  // or by the analyst directly.  When unseeded (loanAmount === 0) the engine's
+  // buildModel() attempts a deal_data JSONB fallback before calling runModel/
+  // runIntegrityChecks.  INV-7 mode-gating handles the zero-equity case for
+  // pre-stabilisation deals (lease_up / development) until Task #545 seeds
+  // purchasePrice + loanAmount from extraction data.
   const loanAmount = toNumber(a.financing?.loanAmount, 0);
   const ltv = purchasePrice > 0 ? loanAmount / purchasePrice : 0;
   // financing.term and financing.amortization are in YEARS; runner expects MONTHS

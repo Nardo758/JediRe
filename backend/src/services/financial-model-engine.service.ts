@@ -543,9 +543,42 @@ export class FinancialModelEngineService {
       try {
         const modelAssumptions = mapProFormaAssumptionsToModelAssumptions(enhancedAssumptions as ProFormaAssumptions);
 
-        // Enrich dealMode from rent-roll occupancy when no explicit mode was provided.
-        // An existing-type deal with current occupancy < 90% is in lease-up / absorption
-        // phase; the verifier should use relaxed semantics for INV-5 and INV-7.
+        // ── Hydrate loanAmount from deal_data when bridge received zero ─────────
+        // The bridge sources loanAmount from a.financing?.loanAmount (default 0).
+        // For deals where the analyst has not yet populated financing assumptions,
+        // fall back to any loan amount recorded in deal_data.  This is a defensive
+        // read — it is always a no-op when the LLM/analyst has already provided a
+        // value; it only fires when the bridge computed loanAmount === 0.
+        // Primary seeding path for purchasePrice/loanAmount is Task #545.
+        if (modelAssumptions.loanAmount === 0) {
+          try {
+            const laRow = await pool.query(
+              `SELECT COALESCE(
+                 (deal_data->>'loanAmount')::float,
+                 (deal_data->'financing'->>'loanAmount')::float,
+                 (deal_data->>'debtAmount')::float,
+                 (deal_data->>'loan_amount')::float
+               ) AS loan_amount
+               FROM deals WHERE id = $1`,
+              [dealId]
+            );
+            const fallbackLoan: number | null = laRow.rows[0]?.loan_amount ?? null;
+            if (fallbackLoan !== null && fallbackLoan > 0) {
+              modelAssumptions.loanAmount = fallbackLoan;
+              logger.info(
+                `[F9-Verifier] Hydrated loanAmount=${fallbackLoan.toFixed(0)} from deal_data for ${dealId}`
+              );
+            }
+          } catch (_laErr) {
+            // non-fatal: verifier proceeds with loanAmount=0
+          }
+        }
+
+        // ── Enrich dealMode from rent-roll occupancy when not explicitly provided ─
+        // An existing-type deal with current occupancy < 90% is in lease-up /
+        // absorption phase; the verifier should use relaxed semantics for INV-5/INV-7.
+        // This inference is intentional for deals like 464 Bishop where deal_data
+        // carries no type fields but the rent roll shows sub-90% occupancy.
         if (!enhancedAssumptions.dealMode && enhancedAssumptions.modelType !== 'development') {
           try {
             const rrRow = await pool.query(
