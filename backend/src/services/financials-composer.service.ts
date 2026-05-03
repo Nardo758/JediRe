@@ -6,6 +6,7 @@
  * traffic projection, assumptions, capital stack, and other fields the frontend expects.
  */
 import { Pool } from 'pg';
+import { seedProFormaYear1 } from './proforma-seeder.service';
 
 // ── M07 Subject Traffic History record shape (mirrors frontend F9SubjectHistory) ───
 export interface SubjectHistoryRecord {
@@ -178,7 +179,22 @@ export async function composeDealFinancials(
     [dealId]
   );
   const year1Row = assRes.rows[0] ?? null;
-  const year1Data = year1Row?.year1 ?? null;
+  let year1Data = year1Row?.year1 ?? null;
+
+  // Lazy seed: if no year1 data exists, seed from extraction capsules.
+  if (!year1Data && totalUnits > 0) {
+    try {
+      await seedProFormaYear1(pool, dealId);
+      // Re-read after seeding
+      const retry = await pool.query(
+        `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+        [dealId]
+      );
+      year1Data = retry.rows[0]?.year1 ?? null;
+    } catch (seedErr: any) {
+      console.warn('[composer] Lazy seed failed (non-fatal):', seedErr?.message ?? seedErr);
+    }
+  }
 
   // 3. Load rent_roll rows (table may not exist)
   let rentRollRows: any[] = [];

@@ -19,6 +19,7 @@
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
+import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -408,6 +409,13 @@ export function createDealCapsuleBridge(pool: Pool): Router {
 
       // 3. Initialize proforma
       const proforma = await getOrInitProForma(dealId, userId);
+
+      // 3.5 Seed year1 from extraction capsules (populates deal_assumptions for the composer)
+      try {
+        await seedProFormaYear1(pool, dealId);
+      } catch (seedErr: any) {
+        console.warn('[capsule] seedProFormaYear1 failed (non-fatal):', seedErr?.message ?? seedErr);
+      }
 
       // 4. Update capsule status
       await pool.query(
