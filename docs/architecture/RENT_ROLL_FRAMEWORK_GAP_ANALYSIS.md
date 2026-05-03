@@ -6,6 +6,8 @@
 > - **EXISTS** — code in main implements the spec section as written. Pointer lists what implements it.
 > - **PARTIAL** — code covers part of the spec or covers it in a degraded form. Pointer lists what's there + a one-line note on what's missing.
 > - **MISSING** — no implementation. Pointer lists where it would naturally land.
+>
+> Each MISSING row carries a trailing `[Effort: S/M/L → Task X]` tag where Task X refers to the slicing in the appendix at the end of this document. **S** ≈ ≤½ day, **M** ≈ 1–2 days, **L** ≈ 3+ days for one engineer including tests.
 > - File pointers use `path:line-range` per repo conventions. `~` prefix means "approximately".
 >
 > Last updated: 2026-05-03 (Task #518). Tasks #514 (rent-roll quality scorecard + UNKNOWN bucket) and #517 (per-file re-extract action) are the most recent merges that landed in Layers 2 and 5 — cited inline below.
@@ -20,13 +22,13 @@
 |---|---|---|
 | Step 1: Source PMS detection (Yardi / RealPage / Entrata / AppFolio / ResMan / Generic / Unknown) | **PARTIAL** | `backend/src/services/rent-roll/format-detector.service.ts:22-92` only distinguishes Yardi vs Generic via `YARDI_FINGERPRINTS`; the other four PMS classes are unimplemented and the format enum (`yardi_csv \| yardi_xlsx \| generic_csv \| generic_xlsx`) has no slot for them. |
 | Step 2: Variant detection (STANDARD / RRWLC / OCCUPANCY_ONLY / WIDE) | **PARTIAL** | `backend/src/services/document-extraction/parsers/rent-roll-parser.ts:64-100` (`detectLayout`) discriminates **`yardi_rrwlc`** vs **`generic_flat`** only. OCCUPANCY_ONLY and WIDE are not modeled; STANDARD is collapsed into `generic_flat`. |
-| Confidence < 0.85 surfaces to user before commit | **MISSING** | Format detector returns `confidence` (`format-detector.service.ts:18,61,78`) but no upload-time gating consumes it. There is no dry-run / preview step. |
+| Confidence < 0.85 surfaces to user before commit | **MISSING** | Format detector returns `confidence` (`format-detector.service.ts:18,61,78`) but no upload-time gating consumes it. There is no dry-run / preview step. `[Effort: M → Task B]` |
 | Yardi STANDARD parser (`rent-roll-parser.ts`) | **EXISTS** | `backend/src/services/document-extraction/parsers/rent-roll-parser.ts` (875 lines, dual-mode). |
 | Yardi RRWLC parser (`rrwlc-parser.ts`) | **EXISTS (inlined)** | RRwLC logic is inlined into `rent-roll-parser.ts:163-338` (`parseYardiRRwLC`) including dynamic header detection (`detectYardiColumns:114-158`). The spec's separate `rrwlc-parser.ts` file does not exist; this is structurally fine but worth noting. |
-| Yardi OCCUPANCY_ONLY graceful degradation | **MISSING** | No path. A Yardi export with no rent column today falls into `generic_flat` and silently produces $0 rents. |
-| RealPage / Entrata / AppFolio / ResMan parsers | **MISSING** | None. |
+| Yardi OCCUPANCY_ONLY graceful degradation | **MISSING** | No path. A Yardi export with no rent column today falls into `generic_flat` and silently produces $0 rents. `[Effort: S → Task A]` |
+| RealPage / Entrata / AppFolio / ResMan parsers | **MISSING** | None. `[Effort: L → Task B]` |
 | Generic CSV parser via `field_mapper` with synonyms | **PARTIAL** | `backend/src/services/rent-roll/field-mapper.service.ts:32-67` ships Yardi + generic alias tables and the `parseAndStore` pipeline (`rent-roll-parser.service.ts:40-159`) wires detector → mapper → validator → DB. **Gap:** this pipeline is reachable only via `POST /api/v1/calibration/rent-roll/upload` (`backend/src/api/rest/m07-calibration.routes.ts:129`); the standard upload path (`auto-extract-on-upload.ts` → `processDocument` → `parseRentRoll`) ignores it entirely. So today there are effectively two disconnected rent-roll pipelines. |
-| Manual column-mapping UI for low-confidence | **MISSING** | No frontend route, no API, no persisted user-mapping override. |
+| Manual column-mapping UI for low-confidence | **MISSING** | No frontend route, no API, no persisted user-mapping override. `[Effort: L → Task B]` |
 
 ### 2.3 — Normalized output schema
 
@@ -34,19 +36,19 @@
 |---|---|---|
 | `rent_roll_snapshots` | **PARTIAL** | Created at runtime (no numbered SQL migration ships it; `rg "CREATE TABLE.*rent_roll_snapshots"` returns no SQL hits — written by application init code). Columns present per `rent-roll-parser.service.ts:90-104`: `deal_id, original_filename, file_path, file_format, row_count, extraction_confidence, snapshot_date, status, derived_metrics`. **Missing:** `property_id`, `uploaded_by`, `source_s3_key`, `detected_pms`, `detected_variant`, `detection_confidence`, `parser_version`, `unit_count_expected`, `quality_verdict`, `notes`. The framework's enum types (`pms_enum`, `variant_enum`, `quality_verdict_enum`) do not exist. |
 | `lease_events` | **PARTIAL** | Two tables coexist: `leasing_events` (engine join target, `rent-roll-parser.service.ts:138`) and `lease_events` (normalized log, line 139). Column set per `colList` (lines 111-114) covers identity + dates + status + rent + concessions + `row_confidence`. **Missing:** `field_status` JSONB (the §2.4 contract), `extraction_method`, `human_review_needed`, `original_row_ref`. |
-| `charge_lines` | **MISSING** | No table. RRwLC charge codes are aggregated into capsule JSON (`rent-roll-parser.ts:477-495`, `data-router.ts:1083`) and lost as per-unit per-charge rows. This is the single biggest storage gap — every Layer 3 ancillary metric (parking_attach_rate, pet_attach_rate, ancillary_pct_of_revenue) loses unit-level resolution. |
-| `rent_roll_quality` (denormalized field-status cache) | **MISSING** | No table. Per-snapshot column-coverage scorecard exists in capsule JSON only (`rent-roll-parser.ts:618-649` `column_coverage`) — not persisted as a queryable row, so consumers can't filter by quality verdict. |
+| `charge_lines` | **MISSING** | No table. RRwLC charge codes are aggregated into capsule JSON (`rent-roll-parser.ts:477-495`, `data-router.ts:1083`) and lost as per-unit per-charge rows. This is the single biggest storage gap — every Layer 3 ancillary metric (parking_attach_rate, pet_attach_rate, ancillary_pct_of_revenue) loses unit-level resolution. `[Effort: L → Task A]` |
+| `rent_roll_quality` (denormalized field-status cache) | **MISSING** | No table. Per-snapshot column-coverage scorecard exists in capsule JSON only (`rent-roll-parser.ts:618-649` `column_coverage`) — not persisted as a queryable row, so consumers can't filter by quality verdict. `[Effort: M → Task A]` |
 | `rent_roll_derived` (Layer 3 metrics cache) | **PARTIAL** | Cached as `rent_roll_snapshots.derived_metrics` JSONB (`rent-roll-derivations.service.ts:65-72`). **Gap:** denormalized into a single column rather than the per-dimension table the spec calls for; cannot index or join per metric. |
-| `rent_roll_diffs` (Layer 4 cache) | **MISSING** | No table, no service. |
+| `rent_roll_diffs` (Layer 4 cache) | **MISSING** | No table, no service. `[Effort: L → Task D]` |
 
 ### 2.4 — Per-row extraction confidence
 
 | Field | Status | Pointer / note |
 |---|---|---|
 | `extraction_confidence` per row | **EXISTS** | `rent-roll-validator.service.ts:25-85` writes `row_confidence` to every event; pipeline aggregates to snapshot via `computeSnapshotConfidence` (`:87-93`) and persists in `extraction_confidence` column (`rent-roll-parser.service.ts:102`). |
-| `extraction_method` ("structured" / "ocr" / "fuzzy") | **MISSING** | Not modeled. |
+| `extraction_method` ("structured" / "ocr" / "fuzzy") | **MISSING** | Not modeled. `[Effort: S → Task A]` |
 | `human_review_needed` | **PARTIAL** | Surfaced in capsule extras (`rent-roll-parser.ts:714` `human_review_needed: true`) only when columns are unreadable. Not stored per row. |
-| `original_row_ref` | **MISSING** | No back-pointer. |
+| `original_row_ref` | **MISSING** | No back-pointer. `[Effort: S → Task A]` |
 | `field_status` JSONB per row | **PARTIAL** | Per-snapshot `column_coverage` scorecard is computed (`rent-roll-parser.ts:618-707`, **Task #514**) with statuses `ok / fallback / all_null / missing / not_supported`. **Gap:** scorecard is per-snapshot, not per-row. The spec wants both. |
 
 ---
@@ -59,17 +61,17 @@
 |---|---|---|
 | Class A (identity hard-fail) | **PARTIAL** | `rent-roll-validator.service.ts:30-42` deducts confidence for missing identity fields but never marks the snapshot FAILED. There is no enum / no versioned config table per the spec's "Session 2 — define field criticality in a versioned config table." |
 | Class B (>10% missing → FAILED) | **PARTIAL** | `rent-roll-parser.ts:716-748` (Task #514 hard-fail gate) hard-fails when `market_rent` or `amount` columns are `'missing'` or `'all_null'`. Threshold is binary on the column-coverage status, not "% of occupied rows missing." |
-| Class C (>20% missing → PARTIAL) | **MISSING** | No PARTIAL verdict logic. The capsule today has only OK / hard-fail. |
-| Class C-X (cross-doc reconcilable) | **MISSING** | Concessions are not classified as C-X; the cross-document concession reconciliation rule (§3.5) is not implemented. |
+| Class C (>20% missing → PARTIAL) | **MISSING** | No PARTIAL verdict logic. The capsule today has only OK / hard-fail. `[Effort: M → Task A]` |
+| Class C-X (cross-doc reconcilable) | **MISSING** | Concessions are not classified as C-X; the cross-document concession reconciliation rule (§3.5) is not implemented. `[Effort: M → Task C]` |
 | Class D (graceful degradation) | **PARTIAL** | Fields not asserted by validator effectively degrade gracefully, but this is by omission, not by explicit policy. |
 
 ### 3.2 — `assessQuality()` function returning OK / PARTIAL / FAILED verdict
 
-**MISSING.** No function with this contract exists. The closest analog is the per-column scorecard + hard-fail boolean inside `parseRentRoll` (`rent-roll-parser.ts:716-748`). It returns either a successful capsule or `success:false`; there is no three-valued snapshot verdict consumers can branch on.
+**MISSING.** No function with this contract exists. The closest analog is the per-column scorecard + hard-fail boolean inside `parseRentRoll` (`rent-roll-parser.ts:716-748`). It returns either a successful capsule or `success:false`; there is no three-valued snapshot verdict consumers can branch on. `[Effort: M → Task A]`
 
 ### 3.3 — Upload-time quality preview UI
 
-**MISSING.** Today's flow auto-commits on upload: `auto-extract-on-upload.ts:92-145` writes status `running → done/failed` into `deal_files.extraction_status` and rows into `deal_data` / `deal_capsules` with no user gate between parse and commit. There is no modal with the four CTAs (Re-parse as RRwLC / Manual mapping / Re-export with charge details / Cancel).
+**MISSING.** Today's flow auto-commits on upload: `auto-extract-on-upload.ts:92-145` writes status `running → done/failed` into `deal_files.extraction_status` and rows into `deal_data` / `deal_capsules` with no user gate between parse and commit. There is no modal with the four CTAs (Re-parse as RRwLC / Manual mapping / Re-export with charge details / Cancel). `[Effort: L → Task B]`
 
 The closest existing surface area:
 - **Task #517** added a per-file Re-extract action (`frontend/src/components/deal/sections/DocumentsFilesSection.tsx`) — this is the structural place a "Re-parse with different variant" button would attach to.
@@ -88,10 +90,10 @@ N/A — design rationale, not code.
 | RR-level concession extraction (RRwLC `CONCESSION` charge code) | **PARTIAL** | `rent-roll-parser.ts:36` maps `empdisc/otconc/renew/patrol → concessions`; aggregated into capsule `extraction_concession_detail` (`data-router.ts:421`). **Gap:** no per-unit `charge_lines` row; RR-level value collapses to a property-level monthly sum. |
 | RR standalone `concession_amount` column | **PARTIAL** | Mapped via `field-mapper.service.ts:38,57` to canonical `concession_value` / `concession_months`; persisted in `lease_events`. |
 | T12 concession line item | **EXISTS** | T12 parser detects `concessions` line and `data-router.ts:439-448` enriches lease events from T12 concession data. |
-| T12-implied (NRI − GPR fallback) | **MISSING** | No residual-derivation path. |
-| Reconciliation rule with `CONCESSION_MISMATCH` flag at >20% delta | **MISSING** | `multi-doc-cross-validation.service.ts` cross-validates several fields but does not run the §3.5 priority cascade or emit the `concession_source_flag` (`RR / T12 / RECONCILED / RR_T12_MISMATCH / IMPLIED`). |
-| `requires_t12: bool` flag on concession-dependent metrics | **MISSING** | Not modeled. |
-| Generalization to bad debt / other income / vacancy loss / NRI cross-checks | **MISSING** | The §3.5 closing table (5 reconciliation rules) is unimplemented. |
+| T12-implied (NRI − GPR fallback) | **MISSING** | No residual-derivation path. `[Effort: S → Task C]` |
+| Reconciliation rule with `CONCESSION_MISMATCH` flag at >20% delta | **MISSING** | `multi-doc-cross-validation.service.ts` cross-validates several fields but does not run the §3.5 priority cascade or emit the `concession_source_flag` (`RR / T12 / RECONCILED / RR_T12_MISMATCH / IMPLIED`). `[Effort: M → Task C]` |
+| `requires_t12: bool` flag on concession-dependent metrics | **MISSING** | Not modeled. `[Effort: S → Task C]` |
+| Generalization to bad debt / other income / vacancy loss / NRI cross-checks | **MISSING** | The §3.5 closing table (5 reconciliation rules) is unimplemented. `[Effort: M → Task C]` |
 
 ---
 
@@ -108,9 +110,9 @@ N/A — design rationale, not code.
 | `concession_intensity_pct` with `LayeredValue` (multi-source) | **PARTIAL** | Single value computed; no `LayeredValue` wrapper; no `concession_source_flag`. |
 | GPR / in-place rent / ancillary breakdown / EGI estimate | **PARTIAL** | `data-router.ts:1083` writes `extraction_other_income_monthly` with the eight income categories; GPR and EGI estimate are not separately surfaced as snapshot fields. |
 | `expiration_waterfall: number[24]` | **EXISTS** | `rent-roll-derivations.service.ts:151-170` (`computeExpirationWaterfall`) returns a true 24-element array of `{ months_out, expiring_units, expiring_pct }` anchored to `snapshotDate`, persisted to `rent_roll_snapshots.derived_metrics` (line 65-72). The parser additionally exposes a coarser 5+1 bucket curve per floor plan (`rent-roll-parser.ts:530-555`) for capsule-level rendering. **Gap vs spec:** stored shape is `{months_out, expiring_units, expiring_pct}[]` rather than the spec's bare `number[24]` — semantically equivalent. |
-| `expiration_concentration_index` (Herfindahl) | **MISSING** | Not computed. |
+| `expiration_concentration_index` (Herfindahl) | **MISSING** | Not computed. `[Effort: S → Task E]` |
 | `mtm_count` distinguishing true MTM from extraction-failed nulls | **EXISTS (post Task #514)** | `rent-roll-parser.ts:514-521` `bucketExpiration` separates `unknown` (null/unparseable) from `mtm` (real holdover). This is the structural fix the spec §11 calls out. |
-| `vacancy_aging_p50`, `vacancy_aging_p90` | **MISSING** | No service computes these. |
+| `vacancy_aging_p50`, `vacancy_aging_p90` | **MISSING** | No service computes these. `[Effort: S → Task C]` |
 | `signings_ttm`, `signings_per_month_ttm`, `signings_yoy_change_pct` | **PARTIAL** | `rent-roll-derivations.service.ts:91-115` computes a 24-month signing-velocity histogram with survivor-bias weighting (per spec §1.3). Per-month TTM / pYTM / YoY-change scalars are not separately stored. `traffic-analytics.service.ts:1-12` defines a `SigningVelocity` interface with trailing-3/6/12 buckets — that path consumes from `leasing_events` ad-hoc, not from `rent_roll_derived`. |
 | `avg_tenure_months`, `lease_term_mix`, `renewal_share_in_place` | **PARTIAL** | `rent-roll-derivations.service.ts:118` (`computeRenewalRateProxy`) implements the spec §5.8 single-snapshot proxy. Tenure and term mix are not computed. |
 
@@ -120,47 +122,47 @@ N/A — design rationale, not code.
 |---|---|---|
 | Per-FP unit counts (total / occupied / vacant_ready / vacant_not_ready / notice) | **PARTIAL** | `rent-roll-parser.ts:550-580` (`floorPlanMix`) tracks count, occupied count, market-rent, effective-rent, occupancy_pct. Vacant_ready vs vacant_not_ready and notice are not split. |
 | `avg_sqft`, `avg_market_rent`, `avg_effective_rent`, `avg_market_rent_psf`, `loss_to_lease_pct` | **EXISTS** | Same block. |
-| `premium_vs_lowest_fp_pct` | **MISSING** | No computation. |
+| `premium_vs_lowest_fp_pct` | **MISSING** | No computation. `[Effort: S → Task C]` |
 | Per-FP `expiration_curve` with 5 buckets + `unknown` + `extraction_status` | **EXISTS (post Task #514)** | `rent-roll-parser.ts:546-555` (`expiration_curve` with `unknown` bucket and `expiration_extraction_status: 'ok' \| 'partial' \| 'failed'`). This is the §6.2 UNKNOWN-bucket pattern applied at floor-plan grain. |
 | `signing_velocity_ttm` per FP | **EXISTS** | `rent-roll-derivations.service.ts:184-188` (`computeUnitTypeBreakdown` → `signing_velocity` = recent-12mo leases / 12) anchored to `snapshotDate`. Stored in `derived_metrics.unit_type_breakdown[]`. |
 | `days_vacant_median` per FP | **PARTIAL** | `rent-roll-derivations.service.ts:191-194` computes `days_vacant_avg` (mean), not median. Spec wants median; arithmetic-mean approximation only. |
 | `concession_intensity_pct` per FP | **PARTIAL** | `rent-roll-derivations.service.ts:197-200` computes `concession_intensity` as average free months across rows with non-null `concession_months`. **Gap:** not the spec's `pct of GPR` formulation, and no FAILED state when concessions are T12-only (no §3.5 reconciliation). |
 | `renewal_rate` per FP | **EXISTS** | `rent-roll-derivations.service.ts:203-206` computes per-type renewal rate from rows with non-null `is_renewal` in the recent-12mo window; defaults to 0.5 when no data. (Spec calls this `retention_rate` and labels it Layer 4 — the single-snapshot proxy is what's implemented.) |
-| `rent_growth_yoy_pct` per FP (Layer 4) | **MISSING** | Diff layer doesn't exist. |
+| `rent_growth_yoy_pct` per FP (Layer 4) | **MISSING** | Diff layer doesn't exist. `[Effort: M → Task D]` |
 
 ### 4.6 — Floor / building metrics
 
-**MISSING.** No floor-number extraction, no `FloorMetrics` derivation, no auto-detect-when-floor-data-is-rich heuristic, no floor-premium-curve sparkline.
+**MISSING.** No floor-number extraction, no `FloorMetrics` derivation, no auto-detect-when-floor-data-is-rich heuristic, no floor-premium-curve sparkline. `[Effort: M → Task E]`
 
 ### 4.7 — Tenant cohort metrics
 
-**MISSING.** No cohort grouping (`0-6mo / 6-12mo / 12-24mo / 24mo+`) and no `expiration_concentration` per cohort.
+**MISSING.** No cohort grouping (`0-6mo / 6-12mo / 12-24mo / 24mo+`) and no `expiration_concentration` per cohort. `[Effort: M → Task E]`
 
 ### 4.8 — Risk metrics
 
 | Field | Status |
 |---|---|
-| `expiration_concentration_index` (Herfindahl over 24 buckets) | **MISSING** |
-| `largest_monthly_expiration_pct` | **MISSING** |
+| `expiration_concentration_index` (Herfindahl over 24 buckets) | **MISSING** — `[Effort: S → Task E]` |
+| `largest_monthly_expiration_pct` | **MISSING** — `[Effort: S → Task E]` |
 | `expiring_next_quarter_pct`, `expiring_next_6mo_pct` | **PARTIAL** — derivable from existing 6-bucket curve but not stored as named scalars. |
-| `vacancy_aging` 4-bucket histogram | **MISSING** |
-| `notice_concentration_pct` | **MISSING** |
-| Tenant concentration (commercial only) | **MISSING** — out of scope for current multifamily focus. |
+| `vacancy_aging` 4-bucket histogram | **MISSING** — `[Effort: S → Task E]` |
+| `notice_concentration_pct` | **MISSING** — `[Effort: S → Task E]` |
+| Tenant concentration (commercial only) | **MISSING** — out of scope for current multifamily focus. `[Effort: — / deferred]` |
 
 ### 4.9 — Pricing metrics
 
 | Field | Status |
 |---|---|
-| `rent_dispersion_within_fp` (p25/50/75/90) and `fp_with_widest_dispersion` | **MISSING** |
+| `rent_dispersion_within_fp` (p25/50/75/90) and `fp_with_widest_dispersion` | **MISSING** — `[Effort: M → Task E]` |
 | Concession economics block (units count, avg term, avg value, share-of-GPR) | **PARTIAL** — total monthly concession is in capsule extras; per-unit term/value distribution is not. |
-| Ancillary attach rates (parking / pet / RUBS) and `ancillary_pct_of_revenue` | **MISSING** — blocked by absence of `charge_lines` table. The aggregation in `rent-roll-parser.ts:477-495` loses unit-level attribution. |
-| `loss_to_lease_decomp` (concessions vs below-market-renewals vs legacy long leases) | **MISSING** |
+| Ancillary attach rates (parking / pet / RUBS) and `ancillary_pct_of_revenue` | **MISSING** — blocked by absence of `charge_lines` table. The aggregation in `rent-roll-parser.ts:477-495` loses unit-level attribution. `[Effort: M → Task E (after charge_lines lands in Task A)]` |
+| `loss_to_lease_decomp` (concessions vs below-market-renewals vs legacy long leases) | **MISSING** — `[Effort: M → Task E]` |
 
 ---
 
 ## Layer 4 — Diff Extractor Analytics (§5)
 
-**MISSING in entirety.** Every metric in this layer requires two snapshots ≥30 days apart for the same property. Current state:
+**MISSING in entirety.** Every metric in this layer requires two snapshots ≥30 days apart for the same property. **Aggregate effort `[L → Task D]`.** Current state:
 
 - No `rent_roll_diffs` table.
 - No service module for pairwise diff computation.
@@ -193,11 +195,11 @@ N/A — design rationale, not code.
 
 ### 6.3 — Field-level source tracing UI (hover-to-source)
 
-**MISSING.** No hover-to-source UI on numerical cells. The data needed to back this hover (filename, source column, mapping confidence) is captured in `column_coverage` + extraction provenance, but no React component reads it back into a tooltip.
+**MISSING.** No hover-to-source UI on numerical cells. The data needed to back this hover (filename, source column, mapping confidence) is captured in `column_coverage` + extraction provenance, but no React component reads it back into a tooltip. `[Effort: M → Task D]`
 
 ### 6.4 — Upload-time preview (recap)
 
-See §3.3 above — **MISSING**.
+See §3.3 above — **MISSING**. `[Effort: L → Task B]`
 
 ---
 
@@ -206,20 +208,20 @@ See §3.3 above — **MISSING**.
 | Spec metric | Consumed by spec | Status today |
 |---|---|---|
 | `physical_occupancy` | M09, M25, M22 | **PARTIAL** — capsule reads it; M09 ProForma seeder uses it (`proforma-seeder.service.ts`); M25 JEDI Score component path exists; M22 post-close variance consumes capsule. |
-| `economic_occupancy` | M09, M25 | **MISSING** — not separately surfaced. |
+| `economic_occupancy` | M09, M25 | **MISSING** — not separately surfaced. `[Effort: S → Task C]` |
 | `loss_to_lease_pct` | M09, M25, M08 | **PARTIAL** — value exists in capsule; M08 Value-Add detector does not yet read it. |
 | `concession_intensity_pct` | M09, M07, M25 | **PARTIAL** — single-source value only; missing T12 reconciliation. |
 | `expiration_waterfall` | M07, M09, M14 Risk | **PARTIAL** — true 24-month curve exists in `rent_roll_snapshots.derived_metrics` (`rent-roll-derivations.service.ts:151-170`); M07 calibration consumes via `derived_metrics`; M09 ProForma seeder reads coarser per-FP curve from capsule; M14 Risk wiring not present. |
 | `signing_velocity_ttm`, `signings_yoy_change_pct` | M07, M22 | **PARTIAL** — histogram exists; YoY scalar is not stored. |
-| `renewal_rate_true` (diff) | M09, M07, M22 | **MISSING** — only the single-snapshot proxy exists. |
-| `trade_out_pct` (diff) | M09, M25 | **MISSING** — diff layer absent. |
-| `actual_downtime_days` (diff) | M07, M09 | **MISSING**. |
-| `floor_plan.rent_growth_yoy_pct` | M09, M03 | **MISSING**. |
-| `expiration_concentration_index` | M14, M25 | **MISSING**. |
-| `vacancy_aging_p90` | M25, M14 | **MISSING**. |
-| `tenant_cohort.expiration_concentration` | M14 | **MISSING**. |
+| `renewal_rate_true` (diff) | M09, M07, M22 | **MISSING** — only the single-snapshot proxy exists. `[Effort: M → Task D]` |
+| `trade_out_pct` (diff) | M09, M25 | **MISSING** — diff layer absent. `[Effort: M → Task D]` |
+| `actual_downtime_days` (diff) | M07, M09 | **MISSING**. `[Effort: M → Task D]` |
+| `floor_plan.rent_growth_yoy_pct` | M09, M03 | **MISSING**. `[Effort: M → Task D]` |
+| `expiration_concentration_index` | M14, M25 | **MISSING**. `[Effort: S → Task E]` |
+| `vacancy_aging_p90` | M25, M14 | **MISSING**. `[Effort: S → Task C]` |
+| `tenant_cohort.expiration_concentration` | M14 | **MISSING**. `[Effort: M → Task E]` |
 | `ancillary_pct_of_revenue` | M09, M15 | **PARTIAL** — aggregate `extraction_other_income_monthly` exists; not split as PCT of revenue and not per-tenant attributable without `charge_lines`. |
-| `parking_attach_rate` | M09, M15 | **MISSING** — blocked by `charge_lines`. |
+| `parking_attach_rate` | M09, M15 | **MISSING** — blocked by `charge_lines`. `[Effort: S → Task E (after Task A)]` |
 
 **Net:** M09 (ProForma) and M25 (JEDI Score) consume what they can from current capsule extras; the spec's full consumption map requires Layer 3 + Layer 4 buildout.
 
@@ -231,16 +233,16 @@ See §3.3 above — **MISSING**.
 |---|---|---|
 | `rent_roll_snapshots` | **PARTIAL** | Runtime-created; missing 9 columns (see §2.3 row above). **Action:** add a numbered SQL migration and add the missing columns. |
 | `lease_events` | **PARTIAL** | Two parallel tables (`leasing_events` engine target + `lease_events` log), both missing `field_status`. |
-| `charge_lines` | **MISSING** | Top-priority storage gap. |
-| `rent_roll_quality` | **MISSING** | Per-snapshot field-status denormalization for fast lookup. |
+| `charge_lines` | **MISSING** | Top-priority storage gap. `[Effort: L → Task A]` |
+| `rent_roll_quality` | **MISSING** | Per-snapshot field-status denormalization for fast lookup. `[Effort: M → Task A]` |
 | `rent_roll_derived` (cache) | **PARTIAL** | Lives in JSONB column rather than a queryable table. |
-| `rent_roll_diffs` (cache) | **MISSING** | Layer 4 doesn't exist. |
+| `rent_roll_diffs` (cache) | **MISSING** | Layer 4 doesn't exist. `[Effort: L → Task D]` |
 
 ---
 
 ## §9 — Event Flow
 
-**MISSING — current trigger chain is synchronous.** `auto-extract-on-upload.ts:198-220` calls `processDocument()`, then on success directly invokes `eventDispatcher.onDocumentUploaded(...)` in-process. The spec's Kafka fan-out (`rent_roll_derivation_worker / rent_roll_diff_worker / traffic_calibration_worker / proforma_seeder_worker / jedi_score_recalc_worker / m22_post_close_worker / deal_store_invalidator`) is not implemented.
+**MISSING — current trigger chain is synchronous.** `auto-extract-on-upload.ts:198-220` calls `processDocument()`, then on success directly invokes `eventDispatcher.onDocumentUploaded(...)` in-process. The spec's Kafka fan-out (`rent_roll_derivation_worker / rent_roll_diff_worker / traffic_calibration_worker / proforma_seeder_worker / jedi_score_recalc_worker / m22_post_close_worker / deal_store_invalidator`) is not implemented. `[Effort: L → Task E]`
 
 What does exist:
 - Inngest workflows (the Inngest Dev Server is a configured workflow). Inngest functions in `backend/src/agents/cashflow.inngest.ts` and elsewhere are the natural substrate for the spec's worker fan-out — they're an Inngest-not-Kafka substitution but functionally equivalent.
@@ -253,7 +255,7 @@ What does exist:
 
 | Guard | Status post Tasks #514 / #517 |
 |---|---|
-| 1. Variant detection flags confidence < 0.85 | **MISSING** — confidence is computed but not gated on. |
+| 1. Variant detection flags confidence < 0.85 | **MISSING** — confidence is computed but not gated on. `[Effort: M → Task B]` |
 | 2. Quality gating catches `market_rent missing on 100% of occupied units` | **PARTIAL** — Task #514 added a hard-fail when `market_rent` column is `'missing'` or `'all_null'` (`rent-roll-parser.ts:716-748`) — this catches the 464 Bishop class structurally. |
 | 3. User in cognitive context to fix it | **PARTIAL** — Task #517 added a per-file Re-extract trigger; full re-parse-with-different-variant prompt is not built. |
 | 4. UNKNOWN bucket prevents 100% MTM bar | **EXISTS** — Task #514 (`rent-roll-parser.ts:514-521`). |
@@ -265,7 +267,7 @@ What does exist:
 
 ## §12 — Open Questions
 
-Lease-charge audit trail, multi-property portfolio sharding, schema-drift detection, and tenant-ledger uploads are all **MISSING** and remain open per the spec.
+Lease-charge audit trail, multi-property portfolio sharding, schema-drift detection, and tenant-ledger uploads are all **MISSING** and remain open per the spec. `[Effort: aggregate L — out of scope for Tasks A–E; defer to a future planning round]`
 
 ---
 
