@@ -105,29 +105,9 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
   const oppError = getOppError(city);
   const oppFetched = hasOppFetched(city);
 
-  // Task #425: useEffect intentionally omits `fetchCommentary` — the omitted
-  // value(s) are either (a) stable references from context/store hooks whose
-  // identity is guaranteed by the producer, (b) values captured at first-fire
-  // on purpose to prevent re-fetch loops, or (c) inline closures over
-  // already-tracked state. Adding them would change observable behavior
-  // (extra fetches / lost user input / loops). See task #425 triage notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
-  // Task #425: useEffect intentionally omits `fetchOpportunities` — the
-  // omitted value(s) are either (a) stable references from context/store
-  // hooks whose identity is guaranteed by the producer, (b) values captured
-  // at first-fire on purpose to prevent re-fetch loops, or (c) inline
-  // closures over already-tracked state. Adding them would change observable
-  // behavior (extra fetches / lost user input / loops). See task #425 triage
-  // notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchOpportunities(city); }, [city]);
 
-  // Task #425: the flagged value is recreated on each render but its identity
-  // drift is benign here — the downstream useMemo guards effectful work with
-  // internal equality / ref checks, so wrapping with another useMemo would
-  // add noise without changing behavior.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const opportunities = oppData?.opportunities || [];
   const marketSummary = oppData?.marketSummary;
 

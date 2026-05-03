@@ -359,14 +359,6 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
         onSelectFwd(absIdx - NOW_IDX);
       }
     },
-    // Task #425: useCallback intentionally omits `iW` and `pad — the omitted
-    // value(s) are either (a) stable references from context/store hooks
-    // whose identity is guaranteed by the producer, (b) values captured at
-    // first-fire on purpose to prevent re-fetch loops, or (c) inline closures
-    // over already-tracked state. Adding them would change observable
-    // behavior (extra fetches / lost user input / loops). See task #425
-    // triage notes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [onSelectFwd]
   );
 
@@ -409,14 +401,6 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
       const idx = Math.round(((mx - pad.l) / iW) * (TOTAL_Q - 1));
       if (idx >= 0 && idx < TOTAL_Q) setHoverIdx(idx);
     },
-    // Task #425: useCallback intentionally omits `iW` and `pad — the omitted
-    // value(s) are either (a) stable references from context/store hooks
-    // whose identity is guaranteed by the producer, (b) values captured at
-    // first-fire on purpose to prevent re-fetch loops, or (c) inline closures
-    // over already-tracked state. Adding them would change observable
-    // behavior (extra fetches / lost user input / loops). See task #425
-    // triage notes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -944,13 +928,6 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
         isLive: true,
       };
     });
-  // Task #425: useMemo intentionally omits `POSITIVE_CATS` — the omitted
-  // value(s) are either (a) stable references from context/store hooks whose
-  // identity is guaranteed by the producer, (b) values captured at first-fire
-  // on purpose to prevent re-fetch loops, or (c) inline closures over
-  // already-tracked state. Adding them would change observable behavior
-  // (extra fetches / lost user input / loops). See task #425 triage notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m35Events]);
 
   const keyTriggers = useMemo((): KeyTriggerItem[] => {
@@ -985,13 +962,6 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
       return [...mapped, ...pads];
     }
     return mapped;
-  // Task #425: useMemo intentionally omits `FALLBACK_TRIGGERS` — the omitted
-  // value(s) are either (a) stable references from context/store hooks whose
-  // identity is guaranteed by the producer, (b) values captured at first-fire
-  // on purpose to prevent re-fetch loops, or (c) inline closures over
-  // already-tracked state. Adding them would change observable behavior
-  // (extra fetches / lost user input / loops). See task #425 triage notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m35Events]);
 
   function formatDataAsOf(isoStr: string): string {
@@ -1008,13 +978,6 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     if (displayed.length === 0) return null;
     const latest = displayed.reduce((best, ev) => ev.updatedAt! > (best.updatedAt ?? '') ? ev : best, displayed[0]);
     return latest.updatedAt ? formatDataAsOf(latest.updatedAt) : null;
-  // Task #425: useMemo intentionally omits `POSITIVE_CATS` — the omitted
-  // value(s) are either (a) stable references from context/store hooks whose
-  // identity is guaranteed by the producer, (b) values captured at first-fire
-  // on purpose to prevent re-fetch loops, or (c) inline closures over
-  // already-tracked state. Adding them would change observable behavior
-  // (extra fetches / lost user input / loops). See task #425 triage notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m35Events]);
 
   const keyTriggersDataAsOf = useMemo((): string | null => {

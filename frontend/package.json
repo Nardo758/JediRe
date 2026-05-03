@@ -9,7 +9,6 @@
     "build:prod": "NODE_ENV=production vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives",
-    "lint:hooks": "eslint . --ext ts,tsx --rule '{\"react-hooks/exhaustive-deps\":\"error\",\"react-hooks/rules-of-hooks\":\"error\"}' --no-eslintrc --parser @typescript-eslint/parser --plugin react-hooks --max-warnings 0",
     "deploy:check": "npm run lint && npm run build"
   },
   "overrides": {

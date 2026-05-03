@@ -608,14 +608,6 @@ const DealDetailPage: React.FC = () => {
         })
         .catch(() => {});
     }
-  // Task #425: useEffect intentionally omits `fetchGeographicContext` and
-  // `loadDeal` — the omitted value(s) are either (a) stable references from
-  // context/store hooks whose identity is guaranteed by the producer, (b)
-  // values captured at first-fire on purpose to prevent re-fetch loops, or
-  // (c) inline closures over already-tracked state. Adding them would change
-  // observable behavior (extra fetches / lost user input / loops). See task
-  // #425 triage notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   const fetchGeographicContext = async (id: string) => {
@@ -788,13 +780,6 @@ const DealDetailPage: React.FC = () => {
     if (dealScreens.length > 0 && !dealScreens.find(s => s.id === activeTab)) {
       setActiveTab(dealScreens[0].id);
     }
-  // Task #425: useEffect intentionally omits `dealScreens` — the omitted
-  // value(s) are either (a) stable references from context/store hooks whose
-  // identity is guaranteed by the producer, (b) values captured at first-fire
-  // on purpose to prevent re-fetch loops, or (c) inline closures over
-  // already-tracked state. Adding them would change observable behavior
-  // (extra fetches / lost user input / loops). See task #425 triage notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealType, activeTab]);
 
   const activeScreenData = dealScreens.find(s => s.id === activeTab) || dealScreens[0];

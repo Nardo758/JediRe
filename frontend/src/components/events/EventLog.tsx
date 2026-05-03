@@ -65,14 +65,6 @@ export const EventLog: React.FC<EventLogProps> = ({ dealId, tradeAreaId, autoRef
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  // Task #425: useEffect intentionally omits `autoRefresh` and `loadEvents` —
-  // the omitted value(s) are either (a) stable references from context/store
-  // hooks whose identity is guaranteed by the producer, (b) values captured
-  // at first-fire on purpose to prevent re-fetch loops, or (c) inline
-  // closures over already-tracked state. Adding them would change observable
-  // behavior (extra fetches / lost user input / loops). See task #425 triage
-  // notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, tradeAreaId, topicFilter, eventTypeFilter, publisherFilter, page]);
 
   const loadEvents = async () => {

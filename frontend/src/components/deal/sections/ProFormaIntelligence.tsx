@@ -41,11 +41,6 @@ export const ProFormaIntelligence: React.FC<ProFormaIntelligenceProps> = () => {
       dscr: capitalStructure.dscr,
       cashOnCash: parseFloat(coc.toFixed(1)),
     };
-  // Task #425: useMemo dep 'returnsSummary' flagged unnecessary by lint, but
-  // is kept here intentionally — it documents the conceptual input the body
-  // relies on (read indirectly via a derived value) so future readers don't
-  // accidentally narrow the dep set.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capitalStructure, returnsSummary]);
 
   // M09 → M11+: Emit financial-updated when NOI changes so Capital Structure can recalc DSCR
@@ -63,13 +58,6 @@ export const ProFormaIntelligence: React.FC<ProFormaIntelligenceProps> = () => {
         },
       });
     }
-  // Task #425: useEffect intentionally omits `adjustedReturns — the omitted
-  // value(s) are either (a) stable references from context/store hooks whose
-  // identity is guaranteed by the producer, (b) values captured at first-fire
-  // on purpose to prevent re-fetch loops, or (c) inline closures over
-  // already-tracked state. Adding them would change observable behavior
-  // (extra fetches / lost user input / loops). See task #425 triage notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

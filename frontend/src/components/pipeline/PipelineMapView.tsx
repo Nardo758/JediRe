@@ -223,11 +223,6 @@ export default function PipelineMapView({
     });
 
     return { clusters: clusterResults, dealsByCluster: dealsMap };
-  // Task #425: useMemo dep 'dealFeatures' flagged unnecessary by lint, but is
-  // kept here intentionally — it documents the conceptual input the body
-  // relies on (read indirectly via a derived value) so future readers don't
-  // accidentally narrow the dep set.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supercluster, viewState, dealFeatures]);
 
   // Handle cluster click - zoom in

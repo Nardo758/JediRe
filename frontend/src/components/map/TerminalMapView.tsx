@@ -79,11 +79,6 @@ export default function TerminalMapView({
 }: TerminalMapViewProps) {
   const mapRef = useRef<MapRef>(null);
   const selectedPin = selectedPinId;
-  // Task #425: the flagged value is recreated on each render but its identity
-  // drift is benign here — the downstream useCallback guards effectful work
-  // with internal equality / ref checks, so wrapping with another useMemo
-  // would add noise without changing behavior.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const setSelectedPin = (id: string | null) => onSelectedPinChange?.(id);
   const [viewState, setViewState] = useState({
     longitude: ATLANTA_CENTER[0],

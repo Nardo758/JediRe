@@ -231,24 +231,10 @@ export const OpusAISection: React.FC<OpusAISectionProps> = ({ deal }) => {
 
   useEffect(() => {
     loadLiveContext();
-  // Task #425: useEffect intentionally omits `loadLiveContext` — the omitted
-  // value(s) are either (a) stable references from context/store hooks whose
-  // identity is guaranteed by the producer, (b) values captured at first-fire
-  // on purpose to prevent re-fetch loops, or (c) inline closures over
-  // already-tracked state. Adding them would change observable behavior
-  // (extra fetches / lost user input / loops). See task #425 triage notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.id]);
 
   useEffect(() => {
     analyzeWithRole(selectedRole);
-  // Task #425: useEffect intentionally omits `analyzeWithRole` — the omitted
-  // value(s) are either (a) stable references from context/store hooks whose
-  // identity is guaranteed by the producer, (b) values captured at first-fire
-  // on purpose to prevent re-fetch loops, or (c) inline closures over
-  // already-tracked state. Adding them would change observable behavior
-  // (extra fetches / lost user input / loops). See task #425 triage notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRole, deal.id, liveContext]);
 
   const loadLiveContext = async () => {

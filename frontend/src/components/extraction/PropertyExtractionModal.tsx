@@ -99,14 +99,6 @@ export const PropertyExtractionModal: React.FC<PropertyExtractionModalProps> = (
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  // Task #425: useEffect intentionally omits `handleNext`, `handlePrevious`,
-  // and `onClose` — the omitted value(s) are either (a) stable references
-  // from context/store hooks whose identity is guaranteed by the producer,
-  // (b) values captured at first-fire on purpose to prevent re-fetch loops,
-  // or (c) inline closures over already-tracked state. Adding them would
-  // change observable behavior (extra fetches / lost user input / loops). See
-  // task #425 triage notes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentIndex, hasNext, hasPrevious]);
 
   // Handlers
