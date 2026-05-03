@@ -978,15 +978,16 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   const isNonStabilizedMode = ['development', 'ground_up', 'redevelopment', 'lease_up', 'value_add'].includes(resolvedMode);
 
   // INV-5: grossSalePrice ≈ stabilizedNOI / exitCap  (within 0.1%)
-  // When both values are positive the math is checkable — any deviation > 0.1% is a hard error
-  // for all deal modes.
-  // When the formula cannot be evaluated we branch by situation:
-  //   • exitCap ≤ 0 (not configured yet): warn regardless of mode — exit cap not set up.
-  //   • exitCap > 0 but stabilizedNOI ≤ 0, NON-STABILIZED mode (development / ground_up /
+  // When both values are positive the math is fully checkable — any deviation > 0.1% is a
+  // hard error for all deal modes.
+  // When the formula cannot be evaluated we branch on two conditions independently:
+  //   • exitCap ≤ 0: hard error for all modes (bridge always defaults exitCap to 6.5%, so this
+  //     path indicates a model defect, not a missing-data situation).
+  //   • exitCap > 0 but stabilizedNOI ≤ 0 in a NON-STABILIZED mode (development / ground_up /
   //     redevelopment / lease_up / value_add): warn — negative current-period NOI is expected
-  //     during construction or lease-up; exit NOI will differ from current-period NOI.
-  //   • exitCap > 0 but stabilizedNOI ≤ 0, STABILIZED mode (existing / acquisition): hard error
-  //     — a stabilized acquisition must produce positive exit-year NOI.
+  //     during construction or lease-up; exit-year NOI will differ once the deal stabilises.
+  //   • exitCap > 0 but stabilizedNOI ≤ 0 in a STABILIZED mode (existing / acquisition):
+  //     hard error — stabilised deals must produce positive exit-year NOI.
   if (a.exitCap > 0 && disp.stabilizedNOI > 0) {
     const expected = disp.stabilizedNOI / a.exitCap;
     const relErr = Math.abs(disp.grossSalePrice - expected) / expected;
@@ -994,11 +995,11 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
       checks.push({ id: 'INV-5', status: 'error', message: `INV-5 grossSalePrice ${disp.grossSalePrice.toFixed(0)} ≠ stabilizedNOI/exitCap (${expected.toFixed(0)}, err=${(relErr * 100).toFixed(3)}%)` });
     }
   } else if (a.exitCap <= 0) {
-    checks.push({ id: 'INV-5', status: 'warn', message: `INV-5 cannot verify grossSalePrice: exitCap not configured (${a.exitCap}) [mode=${resolvedMode}] — seed exit cap to enable this check` });
+    checks.push({ id: 'INV-5', status: 'error', message: `INV-5 exitCap (${a.exitCap}) ≤ 0 [mode=${resolvedMode}] — bridge always provides a default; this indicates a model defect` });
   } else if (isNonStabilizedMode) {
-    checks.push({ id: 'INV-5', status: 'warn', message: `INV-5 cannot verify grossSalePrice: stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) ≤ 0 [mode=${resolvedMode}] — expected during construction/lease-up; check will pass once deal reaches stabilization` });
+    checks.push({ id: 'INV-5', status: 'warn', message: `INV-5 cannot verify grossSalePrice: stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) ≤ 0 [mode=${resolvedMode}] — expected during construction/lease-up; will resolve once deal reaches stabilisation` });
   } else {
-    checks.push({ id: 'INV-5', status: 'error', message: `INV-5 stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) ≤ 0 for stabilized deal [mode=${resolvedMode}] with exitCap=${(a.exitCap * 100).toFixed(2)}% — check NOI build-up; stabilized acquisitions must have positive exit-year NOI` });
+    checks.push({ id: 'INV-5', status: 'error', message: `INV-5 stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) ≤ 0 [mode=${resolvedMode}] with exitCap=${(a.exitCap * 100).toFixed(2)}% — stabilised acquisitions must produce positive exit-year NOI` });
   }
 
   // INV-6: totalEquity == totalAcquisitionCost − loanAmount  (strict; $1 rounding tolerance)
@@ -1014,24 +1015,18 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   }
 
   // INV-7: initial equity outlay must be positive (totalEquity > 0)
-  // Two axes determine severity:
-  //   MODE axis — NON-STABILIZED (development / redevelopment / lease_up / value_add): warn
-  //     because zero or negative equity often means the capital stack hasn't been fully seeded
-  //     for a deal that is still in its pre-stabilization phase.
-  //   MODE axis — STABILIZED (existing / acquisition): hard error when capital stack is seeded
-  //     (purchasePrice > 0) but equity is still ≤ 0 — structural defect.
-  //   DATA axis — purchasePrice ≤ 0 (unseeded): warn for any mode — equity = purchasePrice −
-  //     loanAmount = 0 is an artifact of missing input data, not a model defect.  Will be
-  //     graduated to hard check once Task #545 seeds purchasePrice from deal_data.
+  // Severity is gated strictly on deal mode:
+  //   NON-STABILIZED (development / ground_up / redevelopment / lease_up / value_add): warn —
+  //     zero equity is expected when the capital stack has not yet been committed in a pre-
+  //     stabilisation deal; the analyst is expected to seed purchasePrice/loanAmount before
+  //     the deal advances to a stabilised underwriting (see Task #545).
+  //   STABILIZED (existing / acquisition): hard error — a stabilised deal with a fully-
+  //     populated capital stack must have positive equity.
   if (sum.totalEquity <= 0) {
-    const capitalStackUnseeded = a.purchasePrice <= 0;
-    if (isNonStabilizedMode || capitalStackUnseeded) {
-      const reason = capitalStackUnseeded
-        ? `capital stack not seeded (purchasePrice=${a.purchasePrice})`
-        : `pre-stabilization phase — capital stack may not be fully committed`;
-      checks.push({ id: 'INV-7', status: 'warn', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0 [mode=${resolvedMode}] — ${reason}` });
+    if (isNonStabilizedMode) {
+      checks.push({ id: 'INV-7', status: 'warn', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0 [mode=${resolvedMode}] — capital stack not yet seeded; seed purchasePrice/loanAmount to enable this check` });
     } else {
-      checks.push({ id: 'INV-7', status: 'error', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0 [mode=${resolvedMode}] with purchasePrice=${a.purchasePrice.toFixed(0)} — structural capital stack defect; check lpEquity + gpEquity vs purchase price` });
+      checks.push({ id: 'INV-7', status: 'error', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0 [mode=${resolvedMode}] — structural capital stack defect; check lpEquity + gpEquity vs purchase price` });
     }
   }
 

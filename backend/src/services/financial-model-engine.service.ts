@@ -543,6 +543,31 @@ export class FinancialModelEngineService {
       try {
         const modelAssumptions = mapProFormaAssumptionsToModelAssumptions(enhancedAssumptions as ProFormaAssumptions);
 
+        // Enrich dealMode from rent-roll occupancy when no explicit mode was provided.
+        // An existing-type deal with current occupancy < 90% is in lease-up / absorption
+        // phase; the verifier should use relaxed semantics for INV-5 and INV-7.
+        if (!enhancedAssumptions.dealMode && enhancedAssumptions.modelType !== 'development') {
+          try {
+            const rrRow = await pool.query(
+              `SELECT (deal_data->'extraction_rent_roll'->>'occupied_units')::float /
+                      NULLIF((deal_data->'extraction_rent_roll'->>'total_units')::float, 0)
+                      AS occ_rate
+               FROM deals WHERE id = $1`,
+              [dealId]
+            );
+            const occRate: number | null = rrRow.rows[0]?.occ_rate ?? null;
+            if (occRate !== null && occRate < 0.90) {
+              modelAssumptions.dealMode = 'lease_up';
+              logger.info(
+                `[F9-Verifier] Inferred dealMode=lease_up from rent-roll occupancy ` +
+                `(${(occRate * 100).toFixed(1)}%) for ${dealId}`
+              );
+            }
+          } catch (_rrErr) {
+            // non-fatal: verifier falls back to modelType-derived mode
+          }
+        }
+
         // Attach LayeredValue evidence hints from deal_assumptions.year1 if available
         try {
           const year1Row = await pool.query(

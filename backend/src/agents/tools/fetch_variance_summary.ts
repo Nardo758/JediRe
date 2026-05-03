@@ -237,8 +237,10 @@ export async function fetchVarianceSummary(
   const recommendations = (recsResult.rows as Record<string, unknown>[]).map(row => ({
     category: String(row.category),
     action: String(row.title),
-    estimatedImpact: Number(row.estimated_monthly_impact ?? (row.estimated_annual_impact ? row.estimated_annual_impact / 12 : 0) ?? 0),
-    urgency: mapPriority(row.priority) as 'high' | 'medium' | 'low',
+    estimatedImpact: row['estimated_monthly_impact'] != null
+      ? Number(row['estimated_monthly_impact'])
+      : (row['estimated_annual_impact'] != null ? Number(row['estimated_annual_impact']) / 12 : 0),
+    urgency: mapPriority(String(row['priority'] ?? '')) as 'high' | 'medium' | 'low',
   }));
 
   // Generate overall assessment

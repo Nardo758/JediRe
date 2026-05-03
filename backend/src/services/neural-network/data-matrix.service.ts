@@ -37,8 +37,10 @@
 import { Pool } from 'pg';
 
 // Import all data source services
-import { getProximityService, ProximityScores } from '../proximity/proximity.service';
-import { getMarketEventsService, MarketEvent } from '../proximity/events.service';
+import { getProximityService } from '../proximity/proximity.service';
+import type { ProximityScores } from '../proximity/types';
+import { getMarketEventsService } from '../proximity/events.service';
+import type { MarketEvent } from '../proximity/types';
 import { getBacktestService } from '../proximity/backtest.service';
 
 export interface DataLibraryDeal {
@@ -183,6 +185,7 @@ export interface DataMatrixContext {
     avgExpenseRatio: number;
     avgRentGrowthYear1: number;
     avgHoldPeriod: number;
+    avgIrr?: number;
     source: string;
   };
   
