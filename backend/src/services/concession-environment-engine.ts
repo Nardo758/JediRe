@@ -385,7 +385,20 @@ export class ConcessionEnvironmentEngine {
     }
 
     // ── LEASE_UP overlay ──────────────────────────────────────────────────────
+    // The curve values are absolute annual free-months for each year.
+    // The floor is the UNADJUSTED STABILIZED class default — even in a very
+    // tight supply environment, lease-up properties must offer at least the
+    // stabilized floor concession to attract tenants during the absorption phase.
+    // The supply-pressure modifier adjusts the curve shape but cannot push
+    // LEASE_UP concessions below the STABILIZED floor.
+    //
+    // Note: this floor applies ONLY to LEASE_UP years.  STABILIZED years (and
+    // post-transition STABILIZED years of a transitioning deal) are NOT subject
+    // to this floor — supply pressure can reduce their output to as low as
+    // class_default × SUPPLY_PRESSURE_BOUNDS[0] (i.e. free_months × 0.5).
     if (mode === 'LEASE_UP') {
+      const stabFloor    = classEntry.stab_free_months;
+      const stabPctFloor = classEntry.stab_concession_pct;
       const leaseUpDecayCurve: number[] = classEntry.monthly_decay_curve ?? [];
       if (leaseUpDecayCurve.length === 24) {
         const curveBase     = leaseUpCurveYearValue(leaseUpDecayCurve, year, classEntry.stab_free_months);
@@ -397,16 +410,10 @@ export class ConcessionEnvironmentEngine {
         finalMonths = finalMonths * mult;
         finalPct    = finalPct    * mult;
       }
+      // Clamp to stabilized floor — LEASE_UP only
+      finalMonths = Math.max(stabFloor,    finalMonths);
+      finalPct    = Math.max(stabPctFloor, finalPct);
     }
-
-    // ── Stabilized floor clamp ────────────────────────────────────────────────
-    // Applied universally: the stabilized class default is the hard floor for
-    // concession values regardless of mode.  This prevents M04 supply-pressure
-    // (or any other modifier) from pushing the output below the minimum floor.
-    // For LEASE_UP the curve shape is bounded here; for post-transition
-    // STABILIZED years the floor prevents excessively tight-market suppression.
-    finalMonths = Math.max(classEntry.stab_free_months, finalMonths);
-    finalPct    = Math.max(classEntry.stab_concession_pct, finalPct);
 
     // ── Clamp negatives (NaN suppression) ────────────────────────────────────
     finalMonths = isFinite(finalMonths) ? Math.max(0, finalMonths) : classEntry.stab_free_months;

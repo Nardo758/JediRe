@@ -333,14 +333,16 @@ export async function runFixtures(pool?: Pool): Promise<FixtureResult[]> {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // F5 — Mode transition at month 18/25 (LEASE_UP → stabilized floor clamp)
-  //      When supply_pressure_modifier pushes Y3 below stabilized floor, clamp applies
+  // F5a — Mode transition: LEASE_UP Y1/Y2 > post-transition STABILIZED Y3
+  //       supply_risk_score=0 → modifier=0.5 → STABILIZED years go to
+  //       class_default × 0.5 (NOT clamped to stab floor — that's LEASE_UP only)
   // ──────────────────────────────────────────────────────────────────────────
   {
     const assertions: FixtureResult['assertions'] = [];
     let passed = true;
     try {
-      // score=0 → modifier clamped to 0.5 → tries to reduce concessions below floor
+      // score=0 → modifier clamped to 0.5 → LEASE_UP Y1/Y2 follow curve (≥ stab floor);
+      // post-transition STABILIZED Y3+ = class B stab base × 0.5 modifier = 0.375
       const engine = new ConcessionEnvironmentEngine(buildMockPool({
         deal: { deal_mode: 'LEASE_UP', property_class: 'B', submarket_id: 'sm5' },
         calibration: null,
@@ -350,15 +352,17 @@ export async function runFixtures(pool?: Pool): Promise<FixtureResult[]> {
       const out = await engine.computeForDeal('deal-f5', 4);
       const months = out.per_year.map(y => y.free_months);
 
-      // Y1 and Y2 should still respect the lease-up curve (higher than Y3+)
-      assertions.push(assertTrue('Y1 > Y3', months[0] > months[2],
+      // Y1 (lease-up curve, bounded ≥ stab floor) > Y3 (post-transition STABILIZED × 0.5)
+      assertions.push(assertTrue('Y1 > Y3',
+        months[0] > months[2],
         `Y1=${months[0].toFixed(3)}, Y3=${months[2].toFixed(3)}`));
 
-      // Y3+ should be at the clamped stabilized floor (class B STAB × 0.5 modifier = 0.375, clamped to 0.75 stab)
-      // Actually the floor is classEntry.free_months × spModifier where floor is stabilized floor
-      // The spec says "bounded by stabilized floor" meaning Y3 free_months >= class stab free_months × modifier
-      // With modifier=0.5: stab_base=0.75, floor = max(stab_base×modifier, stab_base) = 0.75
-      assertions.push(assertGte('Y3 ≥ stabilized floor (clamped)', months[2], 0.74));
+      // Y3 = stab_base × spModifier = 0.75 × 0.5 = 0.375 (no STABILIZED floor clamp)
+      // Allow ±0.05 tolerance for floating point
+      const expectedY3 = 0.375;
+      assertions.push(assertTrue('Y3 ≈ stab_base × spModifier (0.375)',
+        Math.abs(months[2] - expectedY3) < 0.05,
+        `actual=${months[2].toFixed(4)}, expected≈${expectedY3}`));
 
       assertions.push(assertTrue('supply_pressure_modifier ≈ 0.5',
         Math.abs(out.per_year[0].supply_pressure_modifier - 0.5) < 0.01,
@@ -369,7 +373,47 @@ export async function runFixtures(pool?: Pool): Promise<FixtureResult[]> {
       passed = false;
       assertions.push({ label: 'no exception', passed: false, detail: e.message });
     }
-    results.push({ name: 'F5 — Mode transition / stabilized floor clamp', passed, assertions });
+    results.push({ name: 'F5a — Mode transition / STABILIZED downside at modifier×0.5', passed, assertions });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // F5b — STABILIZED deal: supply pressure can reduce concessions to
+  //        class_default × 0.5 (no LEASE_UP floor protection)
+  // ──────────────────────────────────────────────────────────────────────────
+  {
+    const assertions: FixtureResult['assertions'] = [];
+    let passed = true;
+    try {
+      // Pure STABILIZED deal, class B, score=0 → modifier=0.5 → Y1 = 0.75 × 0.5 = 0.375
+      const engine = new ConcessionEnvironmentEngine(buildMockPool({
+        deal: { deal_mode: 'STABILIZED', property_class: 'B', submarket_id: 'sm5b' },
+        calibration: null,
+        supplyRiskScore: 0,
+        subjectHistory: null,
+      }));
+      const out = await engine.computeForDeal('deal-f5b', 3);
+      const months = out.per_year.map(y => y.free_months);
+
+      // All years should reflect modifier=0.5 suppression — not clamped to 0.75
+      const expectedMonths = 0.375;   // class B stab free_months (0.75) × modifier (0.5)
+      assertions.push(assertTrue('Y1 ≈ class_default × 0.5',
+        Math.abs(months[0] - expectedMonths) < 0.05,
+        `actual=${months[0].toFixed(4)}, expected≈${expectedMonths}`));
+
+      assertions.push(assertTrue('Y1 < class B stab floor (0.75) — no floor clamp for STABILIZED',
+        months[0] < 0.74,
+        `Y1=${months[0].toFixed(4)} should be < 0.74`));
+
+      assertions.push(assertTrue('supply_pressure_modifier ≈ 0.5',
+        Math.abs(out.per_year[0].supply_pressure_modifier - 0.5) < 0.01,
+        out.per_year[0].supply_pressure_modifier.toFixed(4)));
+
+      passed = assertions.every(a => a.passed);
+    } catch (e: any) {
+      passed = false;
+      assertions.push({ label: 'no exception', passed: false, detail: e.message });
+    }
+    results.push({ name: 'F5b — STABILIZED deal: M04 downside reaches class_default × 0.5', passed, assertions });
   }
 
   // ──────────────────────────────────────────────────────────────────────────
