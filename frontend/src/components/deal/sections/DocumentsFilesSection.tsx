@@ -129,7 +129,6 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
 
   useEffect(() => {
     loadData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [deal.id, selectedCategory, selectedStatus, searchQuery, currentFolder]);
 
   // Poll for live extraction progress while any file is queued/running (Task #320)

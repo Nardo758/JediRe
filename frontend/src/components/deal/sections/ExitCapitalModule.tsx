@@ -359,7 +359,6 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
         onSelectFwd(absIdx - NOW_IDX);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
     [onSelectFwd]
   );
 
@@ -402,7 +401,6 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
       const idx = Math.round(((mx - pad.l) / iW) * (TOTAL_Q - 1));
       if (idx >= 0 && idx < TOTAL_Q) setHoverIdx(idx);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
     []
   );
 
@@ -930,7 +928,6 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
         isLive: true,
       };
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [m35Events]);
 
   const keyTriggers = useMemo((): KeyTriggerItem[] => {
@@ -965,7 +962,6 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
       return [...mapped, ...pads];
     }
     return mapped;
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [m35Events]);
 
   function formatDataAsOf(isoStr: string): string {
@@ -982,7 +978,6 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     if (displayed.length === 0) return null;
     const latest = displayed.reduce((best, ev) => ev.updatedAt! > (best.updatedAt ?? '') ? ev : best, displayed[0]);
     return latest.updatedAt ? formatDataAsOf(latest.updatedAt) : null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [m35Events]);
 
   const keyTriggersDataAsOf = useMemo((): string | null => {

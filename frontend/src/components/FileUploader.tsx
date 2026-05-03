@@ -185,7 +185,6 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       setFiles(updatedFiles);
       onFilesChange?.(updatedFiles);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [files, maxFiles, currentTotalSize, getTotalSize, onUploadError, onFilesChange]);
 
   // Handle drag events

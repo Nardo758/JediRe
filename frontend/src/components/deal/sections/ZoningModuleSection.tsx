@@ -64,7 +64,6 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
   // Check completion status on mount
   useEffect(() => {
     checkCompletionStatus();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [resolvedDealId]);
 
   const checkCompletionStatus = async () => {

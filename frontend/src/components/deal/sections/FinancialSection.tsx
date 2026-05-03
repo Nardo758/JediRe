@@ -55,7 +55,6 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({ projectId })
         service.linkDesignToFinancial(designId, projectId);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [searchParams]);
   
   const handleReturnToDesign = async () => {

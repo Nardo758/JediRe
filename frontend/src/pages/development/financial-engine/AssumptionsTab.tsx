@@ -949,7 +949,11 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
       : '');
     setFormula(formulaExpr);
     setApplyAll(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
+    // Intentionally only re-init draft when the user opens a different
+    // (row, year) cell. Re-running on every `target` object identity change
+    // would clobber the user's in-progress draft input each time the parent
+    // re-renders and recreates the target reference.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target?.row.key, target?.year]);
 
   if (!target) return null;
@@ -1530,10 +1534,18 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     } catch { /* non-fatal */ }
   }, [dealId]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
+  // Initial-load fetch: keyed strictly on dealId. We deliberately exclude
+  // `fetchFinancials` from deps because that callback closes over
+  // `holdYears` — including it would cause a fetch every time holdYears
+  // changes via inputs, duplicating the holdTab-toggle effect below and
+  // racing with debounced PATCH writes from enqueuePatch.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchFinancials(); }, [dealId]);
   useEffect(() => { loadNarrativeBlocks(); }, [loadNarrativeBlocks]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
+  // Hold-tab toggle: explicitly passes the new holdYears so this is the
+  // only call site that should refire on tab change. Excluded from deps
+  // for the same reason as above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (holdTab) fetchFinancials(holdYears); }, [holdTab]);
 
   // F9 Tier-1: enqueuePatch can now ride a `rationale` along with the
@@ -1794,8 +1806,10 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       yearVals,
     });
     // resolvePlatform in deps so refused-row formula evaluation re-runs
-    // when refusal state changes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
+    // when refusal state changes. getFormula/getMode/getUser are inline
+    // closures over (formulas, rowModes, overrides) which are already
+    // tracked, so they're effectively covered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formulas, rowModes, overrides, financials, years, resolvePlatform]);
 
   const handleApply = useCallback((
@@ -1816,7 +1830,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       const patchVal = (rd.key === 'stabilizedOcc' && val != null) ? +(1 - val).toFixed(4) : val;
       for (const y of targetYears) enqueuePatch(rd.patchField, y, patchVal);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
+    // getMode is an inline closure over rowModes (already in deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [years, rowModes, enqueuePatch]);
 
   // Formula mode: save expression AND persist computed results via PATCH
@@ -1900,7 +1915,9 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       formulaExpr: getFormula(rd.key),
     });
     // resolvePlatform in deps so the drawer payload reflects refusal.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
+    // getUser/getFormula are inline closures over (overrides, formulas)
+    // which are already tracked above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [financials, overrides, formulas, lockedOverrides, resolvePlatform]);
 
   const a        = assumptions;
@@ -1971,7 +1988,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     };
     // resolvePlatform in deps so protector inputs (Gordon, NOI identity)
     // re-derive when refusal state changes for any of the underlying rows.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
+    // getUser is an inline closure over `overrides` which is already tracked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [financials, overrides, holdYears, resolvePlatform]);
 
   return (

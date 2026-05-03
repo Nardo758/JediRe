@@ -94,7 +94,6 @@ export const NotificationCenter: React.FC = () => {
       fetchNotifications();
       fetchCounts();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [isOpen, filter]);
 
   // Poll for new notifications every 30 seconds

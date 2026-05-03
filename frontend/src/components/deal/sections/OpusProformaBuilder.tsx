@@ -35,7 +35,6 @@ export const OpusProformaBuilder: React.FC<OpusProformaBuilderProps> = ({ deal, 
   useEffect(() => {
     loadConversations();
     loadVersions();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [currentDealId]);
 
   useEffect(() => {
@@ -139,7 +138,6 @@ export const OpusProformaBuilder: React.FC<OpusProformaBuilderProps> = ({ deal, 
       setError(e.message || 'Failed to send message');
       setStreaming(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [input, streaming, conversationId, currentDealId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

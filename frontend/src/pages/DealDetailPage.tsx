@@ -608,7 +608,6 @@ const DealDetailPage: React.FC = () => {
         })
         .catch(() => {});
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId]);
 
   const fetchGeographicContext = async (id: string) => {
@@ -781,7 +780,6 @@ const DealDetailPage: React.FC = () => {
     if (dealScreens.length > 0 && !dealScreens.find(s => s.id === activeTab)) {
       setActiveTab(dealScreens[0].id);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealType, activeTab]);
 
   const activeScreenData = dealScreens.find(s => s.id === activeTab) || dealScreens[0];

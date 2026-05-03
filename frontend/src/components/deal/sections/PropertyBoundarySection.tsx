@@ -365,14 +365,12 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
       }
       map.remove();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   useEffect(() => {
     if (boundary.boundaryGeoJSON && !zoningInfo && !zoningLoading && initialLoadDone.current) {
       lookupZoning();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [boundary.boundaryGeoJSON]);
 
   // Load existing boundary from API

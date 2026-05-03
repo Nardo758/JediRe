@@ -65,7 +65,6 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
     if (!definitionMethod) {
       setDefinitionMethod('radius');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   useEffect(() => {
@@ -75,14 +74,12 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
     } else {
       lastMethodRef.current = definitionMethod;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [definitionMethod]);
 
   useEffect(() => {
     if (definitionMethod === 'custom_draw' && onCustomDraw) {
       onCustomDraw();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [definitionMethod]);
 
   useEffect(() => {

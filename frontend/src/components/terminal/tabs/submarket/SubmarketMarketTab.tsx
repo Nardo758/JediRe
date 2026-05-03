@@ -32,7 +32,6 @@ export const SubmarketMarketTab: React.FC<SubmarketMarketTabProps> = ({ submarke
 
   useEffect(() => {
     fetchCommentary('submarket', submarketId, submarket.name);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [submarketId, submarket.name]);
 
   return (

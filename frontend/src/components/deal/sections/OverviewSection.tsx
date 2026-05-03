@@ -112,13 +112,11 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     loadCapitalStack();
     loadEntitlementBenchmarks();
     return () => { stopPolling?.(); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [deal?.id]);
 
   useEffect(() => {
     if (!deal?.id) return;
     loadMarketData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [deal?.id, geographicContext]);
 
   const loadEntitlements = async () => {

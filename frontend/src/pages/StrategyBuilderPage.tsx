@@ -205,7 +205,6 @@ export const StrategyBuilderPage: React.FC = () => {
     } finally {
       setPreviewLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [conditions, scope, selectedAssetClasses]);
 
   useEffect(() => {
@@ -246,7 +245,6 @@ export const StrategyBuilderPage: React.FC = () => {
       })
       .catch(() => setCorrelationData([]))
       .finally(() => setCorrelationLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [conditions.map(c => c.metricId).join(','), scope]);
 
   useEffect(() => {
@@ -265,7 +263,6 @@ export const StrategyBuilderPage: React.FC = () => {
       setLeadLagData(results);
     };
     fetchAll();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [conditions.map(c => c.metricId).join(',')]);
 
   const addCondition = (metricId: string) => {

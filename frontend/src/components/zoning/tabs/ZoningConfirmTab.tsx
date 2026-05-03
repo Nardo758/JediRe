@@ -54,7 +54,6 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
 
   useEffect(() => {
     fetchZoningFromBoundary();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId]);
 
   const fetchZoningFromBoundary = async () => {

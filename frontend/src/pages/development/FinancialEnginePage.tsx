@@ -1132,7 +1132,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     severeCollisionFields: evidenceSummary?.collision_summary?.severe_collision_fields ?? null,
     materialCollisionFields: evidenceSummary?.collision_summary?.material_collision_fields ?? null,
     minorCollisionFields: evidenceSummary?.collision_summary?.minor_collision_fields ?? null,
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary]);
 
   return (

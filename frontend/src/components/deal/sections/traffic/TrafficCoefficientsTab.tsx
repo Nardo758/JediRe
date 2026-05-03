@@ -88,7 +88,6 @@ export default function TrafficCoefficientsTab({ dealId }: TrafficCoefficientsTa
     }
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   useEffect(() => { load(); }, [dealId]);
 
   const rows: CoefficientRow[] = Object.entries(BASELINE_DEFAULTS).map(([key, def]) => {

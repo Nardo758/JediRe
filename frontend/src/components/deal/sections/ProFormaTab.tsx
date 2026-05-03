@@ -254,7 +254,6 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     } finally {
       setPlausibilityLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [rentGrowth, stabilizedOccupancy, exitCapRate, capRate, interestRate, loanAmount, purchasePrice, platformData]);
 
   useEffect(() => {
@@ -262,7 +261,6 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     if (dealUnits > 0 && totalUnitsManual === null) {
       setTotalUnitsManual(dealUnits);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [deal]);
 
   const fetchRentSourceType = useCallback(async () => {
@@ -422,7 +420,6 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     if (programData && Object.keys(programMixRows).length === 0) {
       setProgramMixRows({ ...programData.units });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [programData]);
 
   useEffect(() => {
@@ -557,7 +554,6 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         },
       } : {}),
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [
     dealName, totalUnits, netRentableSF, vintage, address, city, state, modelType, holdPeriod,
     unitMix, purchasePrice, capRate, closingCosts, exitCapRate, sellingCosts, saleNOIMethod,

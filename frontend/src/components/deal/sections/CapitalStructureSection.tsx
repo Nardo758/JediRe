@@ -46,7 +46,10 @@ interface CapitalStructureSectionProps {
   dealStatus?: 'pipeline' | 'owned';
 }
 
-type TabId = 'debt' | 'rates' | 'scenarios' | 'timeline' | 'integration';
+// Note: 'stack' isn't a user-selectable tab (TABS below omits it) but is
+// used as a sentinel key for the on-mount stack fetch effect — included
+// here so loading/live-source tracking stays in the typed key space.
+type TabId = 'stack' | 'debt' | 'rates' | 'scenarios' | 'timeline' | 'integration';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'debt', label: 'Debt Selector', icon: '◇' },
@@ -93,7 +96,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const [liveInsights, setLiveInsights] = useState<any>(null);
 
   const [tabLoading, setTabLoading] = useState<Record<TabId, boolean>>({
-    debt: false, rates: false,
+    stack: false, debt: false, rates: false,
     scenarios: false, timeline: false, integration: false,
   });
   const [liveDataSources, setLiveDataSources] = useState<Set<TabId>>(new Set());
@@ -153,8 +156,13 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
     };
     fetchStack();
     fetchedTabs.current.add('stack');
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [deal.id]);
+    // Tab-fetch effects (this and the per-tab effects below) are guarded by
+    // `fetchedTabs.current.has(tab)` so each tab fetches at most once per
+    // deal-load. We intentionally capture the current `selectedStrategy`
+    // and `financial?.noi` snapshots at load time rather than re-firing
+    // the network call every time those values change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deal.id, markTabLive, markTabLoading]);
 
   useEffect(() => {
     if (activeTab === 'debt' && !fetchedTabs.current.has('debt')) {
@@ -177,8 +185,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       };
       fetchDebt();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [activeTab, selectedStrategy]);
+  }, [activeTab, selectedStrategy, markTabLive, markTabLoading]);
 
   useEffect(() => {
     if (activeTab === 'rates' && !fetchedTabs.current.has('rates')) {
@@ -224,8 +231,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       };
       fetchRates();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [activeTab]);
+  }, [activeTab, markTabLive, markTabLoading]);
 
   useEffect(() => {
     if (activeTab === 'scenarios' && !fetchedTabs.current.has('scenarios')) {
@@ -253,8 +259,11 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       };
       fetchScenarios();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [activeTab]);
+    // `financial?.noi` is intentionally captured at first scenarios-tab open;
+    // we don't re-fetch when NOI changes because the ref guard above gates
+    // this effect to a single fire per deal session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, markTabLive, markTabLoading]);
 
   useEffect(() => {
     if (activeTab === 'timeline' && !fetchedTabs.current.has('timeline')) {
@@ -291,8 +300,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       };
       fetchTimeline();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [activeTab]);
+  }, [activeTab, markTabLive, markTabLoading]);
 
   const isAnyLive = liveDataSources.size > 0;
 
@@ -317,8 +325,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         setLayers(strategyTemplates[incoming].defaultStack?.layers || defaultCapitalStack.layers);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [lastEvent]);
+  }, [lastEvent, selectedStrategy]);
 
   // ========================================================================
   // Cross-Module Wiring: M11+ → M09, M14, M12 (Capital → consumers)
@@ -371,14 +378,17 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       type: 'capital-updated',
       payload: capitalPayload,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [layers, financial, selectedStrategy, template, stack, updateCapitalStructure, emitEvent]);
+    // `selectedStrategy` is not directly read inside this callback (only
+    // `template` is, which is derived from it via the parent closure), so
+    // it would be flagged as an unnecessary dep — keep it out.
+  }, [layers, financial, template, stack, updateCapitalStructure, emitEvent]);
 
-  // Fire capital-updated on mount and whenever layers/strategy change
+  // Fire capital-updated on mount and whenever layers/strategy change.
+  // `emitCapitalUpdate` is itself a useCallback whose identity changes
+  // when its inputs change, so depending on it propagates updates correctly.
   useEffect(() => {
     emitCapitalUpdate();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [selectedStrategy, layers]);
+  }, [selectedStrategy, layers, emitCapitalUpdate]);
 
   // Sources = Uses validation
   const totalSources = useMemo(() => layers.reduce((s, l) => s + l.amount, 0), [layers]);

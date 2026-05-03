@@ -112,7 +112,6 @@ export default function OutlookConnect({
   // Check status on mount
   useEffect(() => {
     checkStatus();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   // Check for OAuth callback (when redirected back from Microsoft)
@@ -127,7 +126,6 @@ export default function OutlookConnect({
       setError(`Connection failed: ${params.get('microsoft_error')}`);
       window.history.replaceState({}, '', window.location.pathname);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   if (loading) {

@@ -119,7 +119,6 @@ export const SmartMetricCell: React.FC<SmartMetricCellProps> = ({
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [metricType, marketId, submarketId, dealId, value, onClick, expandable]);
 
   // Trigger research for gaps

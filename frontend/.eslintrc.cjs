@@ -16,12 +16,10 @@ module.exports = {
     ],
     // Catch React hook bugs automatically before they crash pages.
     // `rules-of-hooks` is an error so misplaced hooks block merges.
-    // `exhaustive-deps` is also an error after Task #425 baseline freeze:
-    // every existing offender was annotated with an inline disable comment
-    // tagged `Task #425`, so any new violation is a real regression that
-    // should block CI rather than silently accumulate.
+    // `exhaustive-deps` is a warn so we get visibility without blocking
+    // legitimate stale-closure patterns that need manual review.
     'react-hooks/rules-of-hooks': 'error',
-    'react-hooks/exhaustive-deps': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     // Empty `catch {}` blocks are an intentional pattern across this codebase

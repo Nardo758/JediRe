@@ -973,7 +973,6 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
     } finally {
       setActivatingScenario(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId, selectDevelopmentPath, loadScenarios]);
 
   const loadData = useCallback(async (autoResolve = false) => {
@@ -1124,7 +1123,6 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [dealId, syncRecommendationsToDatabase]);
 
   useEffect(() => {
@@ -1196,7 +1194,6 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
       }
     }, 500);
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [variancePct, rezoneTargetCode, avgUnitSize, dealId]);
 
   // ═══ DEAL-TYPE ADAPTATION EFFECTS ═══

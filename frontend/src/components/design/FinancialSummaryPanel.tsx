@@ -56,7 +56,6 @@ export const FinancialSummaryPanel: React.FC<FinancialSummaryPanelProps> = ({
     if (design3D) {
       calculateEstimates();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [design3D]);
   
   const handleSendToFinancial = async () => {

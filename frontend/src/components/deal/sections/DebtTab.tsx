@@ -138,7 +138,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       };
       fetchDebt();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [activeTab, selectedStrategy]);
 
   useEffect(() => {
@@ -193,7 +192,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       };
       fetchRates();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [activeTab]);
 
   useEffect(() => {
@@ -237,7 +235,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
         setLayers(strategyTemplates[incoming].defaultStack?.layers || defaultCapitalStack.layers);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [lastEvent]);
 
   const emitCapitalUpdate = useCallback(() => {
@@ -283,12 +280,10 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       type: 'capital-updated',
       payload: capitalPayload,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [layers, financial, selectedStrategy, template, stack, updateCapitalStructure, emitEvent]);
 
   useEffect(() => {
     emitCapitalUpdate();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [selectedStrategy, layers]);
 
   const filteredProducts = useMemo(

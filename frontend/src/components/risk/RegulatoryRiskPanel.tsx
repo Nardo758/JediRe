@@ -96,7 +96,6 @@ const RegulatoryRiskPanel: React.FC<RegulatoryRiskPanelProps> = ({ tradeAreaId }
 
   useEffect(() => {
     fetchRegulatoryRisk();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [tradeAreaId]);
 
   const fetchRegulatoryRisk = async () => {

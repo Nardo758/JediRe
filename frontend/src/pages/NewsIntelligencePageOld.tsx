@@ -48,12 +48,10 @@ export function NewsIntelligencePage({ view = 'feed' }: NewsIntelligencePageProp
   useEffect(() => {
     fetchDeals();
     loadData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   useEffect(() => {
     loadEvents();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [selectedCategory]);
 
   const loadData = async () => {

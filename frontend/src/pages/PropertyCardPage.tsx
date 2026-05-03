@@ -842,6 +842,23 @@ const PatternBadge = ({ pattern }) => {
 };
 
 
+// Module-level constants — hoisted out of the component so they have a
+// stable identity across renders and don't need to appear in hook deps.
+const IDENTITY_FIELDS = [
+  "id", "parcelId", "name", "address", "city", "state", "zip", "county",
+  "submarket", "market", "lat", "lng", "owner",
+] as const;
+
+const TABS = [
+  { key: "OVERVIEW", label: "OVERVIEW", hotkey: "F1" },
+  { key: "FINANCIALS", label: "FINANCIALS", hotkey: "F2" },
+  { key: "COMPS", label: "COMPS", hotkey: "F3" },
+  { key: "TAX", label: "TAX & TITLE", hotkey: "F4" },
+  { key: "ZONING", label: "ZONING", hotkey: "F5" },
+  { key: "MARKET_PERF", label: "MARKET & PERFORMANCE", hotkey: "F6" },
+  { key: "TRAFFIC", label: "TRAFFIC", hotkey: "F7" },
+];
+
 // ═════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═════════════════════════════════════════════════════════════
@@ -850,8 +867,7 @@ export default function PropertyDetailsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  const toggleTheme = useCallback(() => { const n = theme === "dark" ? "light" : "dark"; setTheme(n); localStorage.setItem("jedi-theme", n); }, [theme]);
+  const toggleTheme = useCallback(() => { const n = theme === "dark" ? "light" : "dark"; setTheme(n); localStorage.setItem("jedi-theme", n); }, [theme, setTheme]);
   const [activeTab, setActiveTab] = useState("OVERVIEW");
   const [showCreateDeal, setShowCreateDeal] = useState(false);
   const [chartWidth, setChartWidth] = useState(460);
@@ -905,10 +921,6 @@ export default function PropertyDetailsPage() {
   // don't claim a Tampa address for a Georgia parcel.
   // For UUID routes (whether fetched successfully OR fetch failed), identity is always blanked
   // so a 404 never silently displays the Westshore Commons mock.
-  const IDENTITY_FIELDS = [
-    "id", "parcelId", "name", "address", "city", "state", "zip", "county",
-    "submarket", "market", "lat", "lng", "owner",
-  ] as const;
   const isUuidRoute = !!(id && UUID_RE.test(id));
   const p = useMemo(() => {
     if (!isUuidRoute) return PROPERTY;
@@ -923,24 +935,14 @@ export default function PropertyDetailsPage() {
     if (navState.submarketName && !merged.submarket) merged.submarket = navState.submarketName;
     if (navState.msaName) merged.market = navState.msaName;
     return merged;
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [isUuidRoute, mappedReal, navState.propertyName, navState.submarketName, navState.msaName]);
 
   const td = TRAFFIC_DATA;
   const perf = PERFORMANCE_HISTORY;
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  const forecast = useMemo(() => generateForecast(perf, td.aadtProjected), []);
-
-  const TABS = [
-    { key: "OVERVIEW", label: "OVERVIEW", hotkey: "F1" },
-    { key: "FINANCIALS", label: "FINANCIALS", hotkey: "F2" },
-    { key: "COMPS", label: "COMPS", hotkey: "F3" },
-    { key: "TAX", label: "TAX & TITLE", hotkey: "F4" },
-    { key: "ZONING", label: "ZONING", hotkey: "F5" },
-    { key: "MARKET_PERF", label: "MARKET & PERFORMANCE", hotkey: "F6" },
-    { key: "TRAFFIC", label: "TRAFFIC", hotkey: "F7" },
-  ];
+  // perf/td.aadtProjected are module-level constants but the linter can't
+  // know that — including them is safe (will not cause re-runs).
+  const forecast = useMemo(() => generateForecast(perf, td.aadtProjected), [perf, td.aadtProjected]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -950,7 +952,6 @@ export default function PropertyDetailsPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, []);
 
   // Measure container for responsive charts
@@ -1363,7 +1364,11 @@ export default function PropertyDetailsPage() {
         const strength = absR >= 0.8 ? "VERY STRONG" : absR >= 0.6 ? "STRONG" : absR >= 0.4 ? "MODERATE" : "WEAK";
         return { metricA: pr.a, metricB: pr.b, r: parseFloat(r.toFixed(2)), strength, narrative: pr.narrative(r) };
       }).sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
+      // propAll is locally derived from module-level constants (perf,
+      // forecast, td) plus the deal's static perf history; recomputing
+      // correlations on every parent render would be wasteful and the
+      // values can never change after mount.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const fiveYearOutlook = useMemo(() => {
@@ -1395,7 +1400,9 @@ export default function PropertyDetailsPage() {
           signal: `Pop growth (${subNow.popGrowth.toFixed(1)}% → ${sub5.popGrowth.toFixed(1)}%) ${sub5.popGrowth > 1.5 ? "sustains demand" : "slowing — headwind"}`,
           narrative: `Rent growth accelerating from ${now.rentGrowth.toFixed(1)}% to ${yr3.rentGrowth.toFixed(1)}% by 2028, then moderating to ${yr5.rentGrowth.toFixed(1)}% by 2030. ${sub5.capRate < subNow.capRate ? `Cap rate compression (${subNow.capRate.toFixed(1)}% → ${sub5.capRate.toFixed(1)}%) signals investor confidence.` : `Cap rates stable — market equilibrium.`} Concessions forecast to ${yr5.concessions < now.concessions ? `decline to ${yr5.concessions.toFixed(1)}% — pricing power improving` : `hold at ${yr5.concessions.toFixed(1)}%`}.` },
       ];
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
+      // propAll/subByYear are derived from static module-level data; the
+      // outlook only varies with `correlations` once it's been computed.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [correlations]);
 
     const topCorrelations = correlations.filter(c => Math.abs(c.r) >= 0.5).slice(0, 5);

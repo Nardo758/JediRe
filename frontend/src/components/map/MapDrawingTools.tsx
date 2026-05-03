@@ -194,13 +194,11 @@ export default function MapDrawingTools({
       map.off('draw.selectionchange', handleSelectionChange);
       map.removeControl(draw);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [mapRef]);
 
   // Load existing annotations
   useEffect(() => {
     loadAnnotations();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
   }, [mapType]);
 
   const loadAnnotations = async () => {

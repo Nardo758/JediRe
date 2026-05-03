@@ -346,13 +346,15 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   const propCols = useColumnPreferences("f4_properties");
   const compCols = useColumnPreferences("f4_compare");
 
-  const colPrefsMap: Record<string, ReturnType<typeof useColumnPreferences>> = {
+  // Memoized so consumers (setColumnConfig, allActiveColumns) get a
+  // stable reference and don't recompute on every render.
+  const colPrefsMap = useMemo<Record<string, ReturnType<typeof useColumnPreferences>>>(() => ({
     dashboard: dashCols,
     browse: browseCols,
     submarkets: subCols,
     properties: propCols,
     compare: compCols,
-  };
+  }), [dashCols, browseCols, subCols, propCols, compCols]);
 
   const viewIdMap: Record<string, ViewId> = {
     dashboard: "f4_dashboard",
@@ -392,8 +394,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
       colPrefsMap[safeTab]?.saveColumnConfig(next);
       return next;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [activeTab]);
+  }, [colPrefsMap, safeTab]);
 
   const allActiveColumns = useMemo(() => {
     const all = new Set<string>();
@@ -401,7 +402,11 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
       for (const c of prefs.columns) all.add(c);
     }
     return [...all];
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
+    // The explicit per-tab `.columns` deps are more granular than depending
+    // on `colPrefsMap` itself — we re-derive only when one of those arrays
+    // actually changes, instead of on every parent re-render that produces
+    // a new `colPrefsMap` object identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashCols.columns, browseCols.columns, subCols.columns, propCols.columns, compCols.columns]);
 
   const dynamicMetricIds = useMemo(() =>
@@ -409,6 +414,10 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
     [allActiveColumns]
   );
 
+  // Extract complex deps to a stable string key so ESLint can statically
+  // verify dependencies (avoids the "complex expression in the dep array"
+  // warning) while preserving the original join-based change detection.
+  const dynamicMetricIdsKey = dynamicMetricIds.join(',');
   useEffect(() => {
     api.get('/columns/catalog').then(res => {
       if (res.data.success) {
@@ -424,8 +433,11 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
         }
       }
     }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [dynamicMetricIds.join(',')]);
+    // We re-fetch the catalog when the set of active dynamic metric IDs
+    // changes; `dynamicMetricIds`, `getColumnById`, and `buildDynamicColumn`
+    // are all derived from that key in practice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dynamicMetricIdsKey]);
 
   interface GridCellData {
     value: number | null;
@@ -531,14 +543,17 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
     return [...geos].slice(0, 500);
   }, [filteredMarkets]);
 
+  const visibleGeoIdsKey = visibleGeoIds.join(',');
   useEffect(() => {
     if (dynamicMetricIds.length === 0) return;
     const geoParam = visibleGeoIds.length > 0 ? `&geoIds=${visibleGeoIds.join(',')}` : '';
     api.get(`/columns/grid-data?metricIds=${dynamicMetricIds.join(',')}${geoParam}`).then(res => {
       if (res.data.success) setGridData(res.data.data);
     }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Task #425: legacy hook deps frozen during bulk triage; revisit when touching this hook.
-  }, [dynamicMetricIds.join(','), visibleGeoIds.join(',')]);
+    // Re-fetch grid data only when the metric/geo identity set actually
+    // changes (string-keyed), not on every render that recreates the arrays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dynamicMetricIdsKey, visibleGeoIdsKey]);
 
   const topMovers = useMemo(() => {
     return [...ALL_MARKETS_RESOLVED].sort((a, b) => Math.abs(b.d30) - Math.abs(a.d30)).slice(0, 6);
