@@ -119,3 +119,48 @@ backend/
 - **Prompt rollback** is safe at any time. Deactivating all versions causes AgentRuntime to fall back to a built-in generic prompt — it does not hard-fail.
 - **`MetricRecommendationService`** in `src/services/` is a retrieval + ranking service, not an agent. It has no tool-calling loop and no `agent_prompt_versions` row.
 - **`INTENT_DISPATCH`** and **`TASK_TYPE_RUNTIME_MAP`** in `coordinator/dispatch.ts` are the single source of truth for routing. Duplicate maps elsewhere should be removed.
+
+---
+
+## M07 — Subject-History Calibration Engine
+
+### SUBJECT-FIRST CALIBRATION RULE
+
+**The subject property's own rent roll data always takes precedence over the platform peer set when a subject_traffic_history record exists at tier S1 or higher.**
+
+This is the single most important invariant in the M07 engine. Every code path that resolves a coefficient must follow this priority order:
+
+```
+SUBJECT (S1/S2/S3/S4)  →  PLATFORM peer posterior  →  BASELINE constant
+```
+
+**Enforcement rules:**
+1. `CoefficientResolverService.resolve()` checks `subject_traffic_history` before any other source. If a row exists and `tier IN ('S1','S2','S3','S4')`, subject data is loaded and Bayesian-blended with the platform peer.
+2. The blend weight is `w_subject = min(1, n_obs / n_required)` where `n_required` is defined in `SUBJECT_N_REQUIRED` (see `traffic-calibration.types.ts`). **Never hardcode n_required — always read from `SUBJECT_N_REQUIRED`.**
+3. When `w_subject >= 0.5`, `match_tier` is set to `SUBJECT`. When `0 < w < 0.5`, the tier remains `PLATFORM` (subject evidence insufficient to dominate).
+4. Mode-mismatch must be enforced: if `subject_traffic_history.deal_mode` differs from the current deal's `deal_mode` (e.g. S1 data collected during LEASE_UP, but deal is now STABILIZED), the subject row **must be rejected** and the resolver falls back to PLATFORM. Check the `deal_mode` column before applying any subject weight.
+5. The `ConcessionEnvironmentEngine` has an analogous check for its S2 subject data — same rejection rule applies (see `resolveYear` in `concession-environment-engine.ts`).
+
+### Service Map
+
+| Service | File | Role |
+|---------|------|------|
+| Parser normalizer | `services/rent-roll/rent-roll-parser.service.ts` | Stores `parsed_payload`, `unit_count`, `occupied_count`, `parser_source` on every snapshot |
+| S1 aggregator | `services/rent-roll/subject-history-s1.service.ts` | Computes `current_state` from a single snapshot; upserts tier S1 |
+| Diff extractor / S2 | `services/rent-roll/rent-roll-diff.service.ts` | Unit identity resolution, event classification, aggregate dynamics; promotes S1 → S2 |
+| Coefficient resolver | `services/coefficient-resolver.service.ts` | Bayesian blend of subject + platform; sets `match_tier` and `subject_weight` |
+| Route wiring | `api/rest/m07-calibration.routes.ts` | Calls S1 after every upload; calls S2 when `snapshot_count ≥ 2` and `period_days ≥ 60` |
+
+### Database Tables
+
+| Table | Key columns | Notes |
+|-------|-------------|-------|
+| `rent_roll_snapshots` | `parsed_payload jsonb`, `unit_count int`, `occupied_count int`, `parser_source text` | Added by migration 018 |
+| `rent_roll_diffs` | `from_snapshot_id`, `to_snapshot_id`, aggregate metrics | One row per consecutive snapshot pair; UNIQUE `(from_snapshot_id, to_snapshot_id)` |
+| `subject_traffic_history` | `deal_id` (UNIQUE), `tier`, `current_state jsonb`, `observed_dynamics jsonb`, `confidence_weights jsonb`, `deal_mode text` | Promoted in-place: S1 → S2; never demoted |
+
+### Frontend Surface
+
+- `SourceBadge` in `components/primitives/SourceBadge.tsx` renders `SUBJ·S1 / SUBJ·S2 / SUBJ·S3 / SUBJ·S4` badges in teal (`#2DD4BF` → `#0F766E` by tier).
+- `SubjectHistoryPanel` in `pages/development/financial-engine/ProjectionsTab.tsx` renders the inline assumption block when `f9Financials.subjectHistory` is non-null.
+- `F9SubjectHistory` in `pages/development/financial-engine/types.ts` is the canonical frontend type for the panel data.

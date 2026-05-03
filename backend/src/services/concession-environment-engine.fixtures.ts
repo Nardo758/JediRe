@@ -67,6 +67,7 @@ function buildMockPool(overrides: {
     property_class: string;
     submarket_id: string | null;
     msa_id: string | null;
+    trade_area_id: string | null;
     deal_data: any;
   }>;
   calibration?: {
@@ -87,6 +88,10 @@ function buildMockPool(overrides: {
     property_class: overrides.deal?.property_class ?? 'B',
     submarket_id:   overrides.deal?.submarket_id   ?? 'submarket_test',
     msa_id:         overrides.deal?.msa_id         ?? null,
+    // trade_area_id is required for M04 lookup (supply_risk_scores keyed by trade_area_id).
+    // Fixtures that specify supplyRiskScore must also set trade_area_id for M04 to fire;
+    // here we default to a sentinel that the mock recognises when supplyScore is non-null.
+    trade_area_id:  overrides.deal?.trade_area_id  ?? (overrides.supplyRiskScore != null ? 'trade-area-mock' : null),
     deal_data:      overrides.deal?.deal_data      ?? {},
   };
 
@@ -95,8 +100,8 @@ function buildMockPool(overrides: {
   const subjectRow = overrides.subjectHistory;
 
   return {
-    query: async (sql: string, params: any[] = []) => {
-      // Deal meta
+    query: async (sql: string, _params: any[] = []) => {
+      // Deal meta — includes trade_area_id (required for M04 lookup)
       if (sql.includes('FROM deals') && !sql.includes('JOIN')) {
         return { rows: [dealRow], rowCount: 1 };
       }
@@ -105,9 +110,15 @@ function buildMockPool(overrides: {
         if (calRow === undefined || calRow === null) return { rows: [], rowCount: 0 };
         return { rows: [{ curve_data: calRow.curve_data, n_peer_properties: calRow.n_peer_properties, n_evidence: calRow.n_peer_properties }], rowCount: 1 };
       }
-      // Supply risk score (M04)
+      // Supply risk score (M04) — keyed by trade_area_id, ordered by calculated_at DESC
       if (sql.includes('supply_risk_scores')) {
-        if (supplyScore === undefined || supplyScore === null) return { rows: [], rowCount: 0 };
+        if (supplyScore === undefined || supplyScore === null || !isFinite(supplyScore as number)) {
+          if (supplyScore !== null && supplyScore !== undefined && !isFinite(supplyScore as number)) {
+            // NaN/Infinity passed deliberately — return it so NaN-suppression path is exercised
+            return { rows: [{ supply_risk_score: String(supplyScore) }], rowCount: 1 };
+          }
+          return { rows: [], rowCount: 0 };
+        }
         return { rows: [{ supply_risk_score: String(supplyScore) }], rowCount: 1 };
       }
       // Subject history (M07 S2+)

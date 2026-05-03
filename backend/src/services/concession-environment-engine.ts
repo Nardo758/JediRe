@@ -164,7 +164,7 @@ export class ConcessionEnvironmentEngine {
     const m05 = await this.loadSubmarketConcession(submarketId, msaId, propertyClass);
 
     // ── Step 3: M04 supply pressure ──────────────────────────────────────────
-    const m04 = await this.loadSupplyPressure(submarketId);
+    const m04 = await this.loadSupplyPressure(dealRow.tradeAreaId);
     const spModifier = m04 !== null ? supplyPressureModifier(m04) : 1.0;
 
     // ── Step 4: Subject history S2+ ──────────────────────────────────────────
@@ -188,6 +188,7 @@ export class ConcessionEnvironmentEngine {
         submarketSample: m05?.sample_size ?? null,
         supplyScore: m04,
         collisions,
+        transitionMonth: dealRow.transitionMonth,
       });
       perYear.push(result);
     }
@@ -236,14 +237,80 @@ export class ConcessionEnvironmentEngine {
     submarketSample: number | null;
     supplyScore: number | null;
     collisions: ConcessionCollision[];
+    transitionMonth: number;
   }): PerYearConcessionEnv {
 
-    const { year, classEntry, m05, spModifier, subject, mode, submarketSample, supplyScore, collisions } = ctx;
+    const { year, classEntry, m05, spModifier, subject, mode, submarketSample, supplyScore, collisions, transitionMonth } = ctx;
 
     // ── REDEVELOPMENT: bifurcated cohort path ─────────────────────────────────
     if (mode === 'REDEVELOPMENT') {
       return this.resolveRedevelopmentYear(ctx);
     }
+
+    // ── LEASE_UP month-level transition ───────────────────────────────────────
+    // When the transition month falls within this year (not at a year boundary),
+    // compute a weighted blend of the LEASE_UP output (before transition) and the
+    // STABILIZED output (after transition).
+    //
+    // Year N spans months (N-1)*12+1 … N*12.
+    // transitionMonth=18 → transition mid-Y2: Y2 is 6/12 LEASE_UP + 6/12 STABILIZED.
+    // transitionMonth=25 → transition early-Y3: Y3 is 1/12 LEASE_UP + 11/12 STABILIZED.
+    if (mode === 'LEASE_UP') {
+      const yearStartMonth = (year - 1) * 12 + 1;
+      const yearEndMonth   = year * 12;
+
+      if (transitionMonth >= yearEndMonth) {
+        // Entire year is LEASE_UP — fall through to normal LEASE_UP path below.
+      } else if (transitionMonth < yearStartMonth) {
+        // Entire year is post-transition → treat as STABILIZED.
+        // Override classEntry so the base free_months comes from the stabilized defaults,
+        // not the LEASE_UP free_months which is higher.
+        const stabClassEntry = { ...classEntry, free_months: classEntry.stab_free_months, concession_pct: classEntry.stab_concession_pct };
+        return this.resolveYearCore({ ...ctx, mode: 'STABILIZED', classEntry: stabClassEntry });
+      } else {
+        // Transition falls within this year — blend proportionally.
+        const leaseUpMonths  = transitionMonth - yearStartMonth + 1;  // months before transition
+        const stabilizedMonths = yearEndMonth - transitionMonth;       // months after transition
+        const leaseUpFrac    = leaseUpMonths  / 12;
+        const stabilizedFrac = stabilizedMonths / 12;
+
+        const stabClassEntry = { ...classEntry, free_months: classEntry.stab_free_months, concession_pct: classEntry.stab_concession_pct };
+        const luResult   = this.resolveYearCore({ ...ctx, mode: 'LEASE_UP'    });
+        const stabResult = this.resolveYearCore({ ...ctx, mode: 'STABILIZED', classEntry: stabClassEntry });
+
+        return {
+          year,
+          free_months:              parseFloat((leaseUpFrac * luResult.free_months   + stabilizedFrac * stabResult.free_months).toFixed(4)),
+          concession_pct:           parseFloat((leaseUpFrac * luResult.concession_pct + stabilizedFrac * stabResult.concession_pct).toFixed(4)),
+          supply_pressure_modifier: luResult.supply_pressure_modifier,
+          confidence:               luResult.confidence,
+          source_blend:             luResult.source_blend,
+        };
+      }
+    }
+
+    return this.resolveYearCore(ctx);
+  }
+
+  /**
+   * Core per-year computation — four-step stack applied for a single year
+   * with a fixed mode (STABILIZED or LEASE_UP).  Called directly by
+   * resolveYear for the simple case, and called twice (once per mode) by the
+   * LEASE_UP month-level transition blending logic.
+   */
+  private resolveYearCore(ctx: {
+    year: number;
+    classEntry: ClassDefaultEntry;
+    m05: M05Entry | null;
+    spModifier: number;
+    subject: SubjectS2Data | null;
+    mode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
+    submarketSample: number | null;
+    supplyScore: number | null;
+    collisions: ConcessionCollision[];
+    transitionMonth: number;
+  }): PerYearConcessionEnv {
+    const { year, classEntry, m05, spModifier, subject, mode, submarketSample, supplyScore, collisions } = ctx;
 
     // ── Base value from class default ─────────────────────────────────────────
     let baseMonths = classEntry.free_months;
@@ -257,14 +324,12 @@ export class ConcessionEnvironmentEngine {
     if (m05 !== null) {
       submarketMonths = m05.free_months;
       if (m05.sample_size >= THIN_SUBMARKET_THRESHOLD) {
-        // Full submarket authority
         const blend = 0.6;
         baseMonths      = blend * m05.free_months + (1 - blend) * classEntry.free_months;
         basePct         = blend * m05.concession_pct + (1 - blend) * classEntry.concession_pct;
         submarketWeight = blend;
         classWeight     = 1 - blend;
       } else {
-        // Thin sample: partial blend proportional to sample_size
         const thinBlend = Math.min(0.6, m05.sample_size / THIN_SUBMARKET_THRESHOLD * 0.6);
         baseMonths      = thinBlend * m05.free_months + (1 - thinBlend) * classEntry.free_months;
         basePct         = thinBlend * m05.concession_pct + (1 - thinBlend) * classEntry.concession_pct;
@@ -294,21 +359,13 @@ export class ConcessionEnvironmentEngine {
         submarketWeight = submarketWeight * (1 - yearWeight);
       }
 
-      // ── Collision detection — runs for ALL years whenever S2+ subject data is
-      // present AND M05 submarket baseline is available.
-      // This includes Y3+ where subject is not applied: we still want to surface
-      // divergence so the analyst is aware that observed subject dynamics differ
-      // from the submarket baseline even in later hold years.
-      // Only one collision entry per year is emitted (deduplicated by year below).
       if (submarketMonths !== null && m05 !== null) {
         const stdDev = Math.abs(m05.free_months) * (m05.std_dev_fraction ?? FALLBACK_STD_DEV_FRACTION);
         if (stdDev > 0) {
           const deltaSigma = Math.abs(subjectMonths - m05.free_months) / stdDev;
-
           if (deltaSigma >= COLLISION_SIGMA_THRESHOLDS.minor) {
             const severity: ConcessionSeverity =
               deltaSigma >= COLLISION_SIGMA_THRESHOLDS.material ? 'SEVERE' : 'MATERIAL';
-
             collisions.push({
               year,
               subject_value_months:   subjectMonths,
@@ -328,41 +385,28 @@ export class ConcessionEnvironmentEngine {
     }
 
     // ── LEASE_UP overlay ──────────────────────────────────────────────────────
-    // The curve values are absolute annual free-months for each year.
-    // Y3+ converges to the stabilized floor (no additional overlay needed).
-    // The floor is the UNADJUSTED STABILIZED class default — even in a very
-    // tight supply environment, lease-up properties must offer at least the
-    // stabilized floor concession to attract tenants during the absorption phase.
-    // The supply-pressure modifier adjusts the curve shape but cannot push
-    // concessions below the STABILIZED floor.
     if (mode === 'LEASE_UP') {
-      const stabFloor    = classEntry.stab_free_months;
-      const stabPctFloor = classEntry.stab_concession_pct;
-
       const leaseUpDecayCurve: number[] = classEntry.monthly_decay_curve ?? [];
       if (leaseUpDecayCurve.length === 24) {
-        // Curve gives absolute free-months per year; apply M04 modifier and clamp to stab floor
-        const curveBase = leaseUpCurveYearValue(leaseUpDecayCurve, year, classEntry.stab_free_months);
-        // Blend curve base with steps 2-4 result:
-        //   - If subject or submarket data is available, finalMonths already reflects their influence.
-        //   - We blend: curve provides the Y-specific "shape" while steps 2-4 adjust the level.
-        //   - When no external data (subject/M05 == null), finalMonths == curve base × spModifier
-        //     (from step 1 class default). Re-anchor to the curve.
+        const curveBase     = leaseUpCurveYearValue(leaseUpDecayCurve, year, classEntry.stab_free_months);
         const curveAdjusted = curveBase * spModifier;
-        // Weight curve shape at 0.7 vs steps-2-4 result at 0.3 (curve is the primary shape signal)
         finalMonths = 0.7 * curveAdjusted + 0.3 * finalMonths;
         finalPct    = finalMonths / 12;
       } else {
-        // Fallback: apply simple multipliers (no decay curve in defaults)
         const mult  = year === 1 ? 1.5 : year === 2 ? 1.2 : 1.0;
         finalMonths = finalMonths * mult;
         finalPct    = finalPct    * mult;
       }
-
-      // Clamp to stabilized floor
-      finalMonths = Math.max(stabFloor,    finalMonths);
-      finalPct    = Math.max(stabPctFloor, finalPct);
     }
+
+    // ── Stabilized floor clamp ────────────────────────────────────────────────
+    // Applied universally: the stabilized class default is the hard floor for
+    // concession values regardless of mode.  This prevents M04 supply-pressure
+    // (or any other modifier) from pushing the output below the minimum floor.
+    // For LEASE_UP the curve shape is bounded here; for post-transition
+    // STABILIZED years the floor prevents excessively tight-market suppression.
+    finalMonths = Math.max(classEntry.stab_free_months, finalMonths);
+    finalPct    = Math.max(classEntry.stab_concession_pct, finalPct);
 
     // ── Clamp negatives (NaN suppression) ────────────────────────────────────
     finalMonths = isFinite(finalMonths) ? Math.max(0, finalMonths) : classEntry.stab_free_months;
@@ -499,9 +543,10 @@ export class ConcessionEnvironmentEngine {
         property_class: string | null;
         submarket_id: string | null;
         msa_id: string | null;
+        trade_area_id: string | null;
         deal_data: any;
       }>(`
-        SELECT deal_mode, property_class, submarket_id, msa_id, deal_data
+        SELECT deal_mode, property_class, submarket_id, msa_id, trade_area_id, deal_data
         FROM deals
         WHERE id = $1
       `, [dealId]);
@@ -517,11 +562,20 @@ export class ConcessionEnvironmentEngine {
         ?? row.deal_data?.market_intelligence?.data?.demographics?.submarket?.id
         ?? null;
 
+      // transition_month: month at which LEASE_UP → STABILIZED behaviour.
+      // Authoritative source: deal_data.capex_schedule.transition_month.
+      // Common values: 18 (fast lease-up, light capex), 24 (standard), 25 (heavy reno).
+      const rawTm = row.deal_data?.capex_schedule?.transition_month;
+      const transitionMonth: number =
+        typeof rawTm === 'number' && rawTm > 0 ? Math.round(rawTm) : 24;
+
       return {
         propertyClass: this.normalizeClass(row.property_class),
         mode,
         submarketId,
         msaId: row.msa_id ?? null,
+        tradeAreaId: row.trade_area_id ?? null,
+        transitionMonth,
       };
     } catch (err) {
       logger.error('[ConcessionEnv] Failed to load deal meta', {
@@ -605,27 +659,33 @@ export class ConcessionEnvironmentEngine {
     }
   }
 
-  /** Load M04 supply pressure score (normalized to [0,1]). */
-  private async loadSupplyPressure(submarketId: string | null): Promise<number | null> {
-    if (!submarketId) return null;
+  /**
+   * Load M04 supply pressure score (normalized to [0,1]).
+   *
+   * Keyed by trade_area_id (the write path in SupplySignalService uses
+   * trade_area_id as the primary key — NOT submarket_id).  Most recent row
+   * per trade area is selected via calculated_at DESC.
+   */
+  private async loadSupplyPressure(tradeAreaId: string | null): Promise<number | null> {
+    if (!tradeAreaId) return null;
     try {
       const result = await this.pool.query<{ supply_risk_score: string }>(`
         SELECT supply_risk_score
         FROM supply_risk_scores
-        WHERE submarket_id = $1
-        ORDER BY updated_at DESC
+        WHERE trade_area_id = $1
+        ORDER BY calculated_at DESC
         LIMIT 1
-      `, [submarketId]);
+      `, [tradeAreaId]);
 
       if (result.rows.length === 0) return null;
-      // supply_risk_score is 0-100+ (pipeline units / existing units × 100)
-      // normalize to [0, 1], clamp to avoid extreme outliers
+      // supply_risk_score is 0-100 (normalized score from SupplySignalService).
+      // normalize to [0, 1], clamp to avoid extreme outliers.
       const raw = parseFloat(result.rows[0].supply_risk_score);
       if (!isFinite(raw)) return null;
       return Math.max(0, Math.min(1, raw / 100));
     } catch (err) {
       logger.debug('[ConcessionEnv] M04 supply pressure load failed (non-fatal)', {
-        submarketId, error: err instanceof Error ? err.message : String(err),
+        tradeAreaId, error: err instanceof Error ? err.message : String(err),
       });
       return null;
     }
@@ -822,6 +882,14 @@ interface DealMeta {
   mode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
   submarketId: string | null;
   msaId: string | null;
+  tradeAreaId: string | null;
+  /**
+   * Month at which a LEASE_UP property transitions to STABILIZED behaviour.
+   * Sourced from deal_data.capex_schedule.transition_month; defaults to 24
+   * (end of Y2 / start of Y3) when not provided.
+   * Valid values: any positive integer. Common values: 18, 24, 25.
+   */
+  transitionMonth: number;
 }
 
 interface ClassDefaultEntry {
