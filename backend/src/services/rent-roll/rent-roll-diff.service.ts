@@ -227,7 +227,7 @@ export class RentRollDiffService {
           current_contract_rent: currentRent,
           trade_out_pct:        tradeOutPct,
           days_vacant_observed: curr_unit.days_vacant ?? null,
-          prior_concession:     matched.contract_rent    ?? null,
+          prior_concession:     matched.concession_value ?? null,
           current_concession:   curr_unit.concession_value ?? null,
         });
       }
@@ -340,24 +340,8 @@ export class RentRollDiffService {
 
       const diffId = diffResult.rows[0]?.id ?? null;
 
-      // ── Promote to S2 in subject_traffic_history ──────────────────────────
-      await this.promoteToS2(dealId, {
-        renewal_rate:            renewalRate,
-        turnover_rate:           turnoverRate,
-        new_lease_trade_out_pct: newLeaseTradeOutPct,
-        renewal_trade_out_pct:   renewalTradeOutPct,
-        signing_velocity:        signingVelocity,
-        days_vacant_median:      daysVacantMedian,
-        concession_trend:        concessionTrend,
-        loss_to_lease:           lossToLease,
-        diff_period_count:       1,
-      }, {
-        renewal_n: renewalN,
-        turnover_n: turnoverN,
-        trade_out_n: tradeOutN,
-        days_vacant_n: daysVacantN,
-        signing_velocity_n: renewalN + newLeases.length,
-      });
+      // ── Promote to S2: aggregate ALL qualifying diffs for the deal ────────
+      await this.promoteToS2(dealId);
 
       logger.info('[RentRollDiff] Diff extraction complete', {
         dealId, diffId, periodDays, renewalRate, turnoverRate,
@@ -375,58 +359,174 @@ export class RentRollDiffService {
   }
 
   // ── Private: promote subject_traffic_history to S2 ────────────────────────
+  //
+  // Aggregates ALL qualifying diffs for the deal (period_days >= S2_MIN_PERIOD_DAYS)
+  // using weighted averages (weight = renewal_n or relevant count).
+  // This is the authoritative S2 rollup — runs after every new diff is written.
 
-  private async promoteToS2(
-    dealId: string,
-    dynamics: SubjectObservedDynamics,
-    sampleSizes: Record<string, number>,
-  ): Promise<void> {
-    // Build confidence_weights for S2 coefficients
-    const s2Weights: Record<string, SubjectWeightEntry> = {};
+  private async promoteToS2(dealId: string): Promise<void> {
+    // Load all qualifying diffs for this deal from DB
+    const diffsResult = await this.pool.query<{
+      renewal_rate:            string | null;
+      turnover_rate:           string | null;
+      new_lease_trade_out_pct: string | null;
+      renewal_trade_out_pct:   string | null;
+      signing_velocity:        string | null;
+      days_vacant_median:      string | null;
+      concession_trend:        string | null;
+      loss_to_lease:           string | null;
+      renewal_n:               number;
+      turnover_n:              number;
+      trade_out_n:             number;
+      days_vacant_n:           number;
+      period_days:             number;
+      from_snapshot_id:        number;
+      to_snapshot_id:          number;
+    }>(`
+      SELECT renewal_rate, turnover_rate, new_lease_trade_out_pct, renewal_trade_out_pct,
+             signing_velocity, days_vacant_median, concession_trend, loss_to_lease,
+             renewal_n, turnover_n, trade_out_n, days_vacant_n,
+             period_days, from_snapshot_id, to_snapshot_id
+      FROM rent_roll_diffs
+      WHERE deal_id = $1 AND period_days >= $2
+      ORDER BY to_snapshot_id ASC
+    `, [dealId, S2_MIN_PERIOD_DAYS]);
 
-    const coeffMap: Array<{ key: string; sample_key: string }> = [
-      { key: 'renewal_rate',           sample_key: 'renewal_n' },
-      { key: 'turnover_rate',          sample_key: 'turnover_n' },
-      { key: 'new_lease_trade_out_pct', sample_key: 'trade_out_n' },
-      { key: 'renewal_trade_out_pct',   sample_key: 'trade_out_n' },
-      { key: 'days_vacant_median',      sample_key: 'days_vacant_n' },
-      { key: 'signing_velocity',        sample_key: 'signing_velocity_n' },
-    ];
-
-    for (const { key, sample_key } of coeffMap) {
-      const nObs      = sampleSizes[sample_key] ?? 0;
-      const nRequired = SUBJECT_N_REQUIRED[key] ?? 6;
-      s2Weights[key]  = {
-        n_obs:      nObs,
-        n_required: nRequired,
-        weight:     Math.min(1, nObs / nRequired),
-      };
+    const diffs = diffsResult.rows;
+    if (diffs.length === 0) {
+      logger.debug('[RentRollDiff] No qualifying diffs found for S2 promotion', { dealId });
+      return;
     }
 
-    // Detect peer collisions — requires subject_traffic_history to already have
-    // confidence_weights populated; peer_value comparison will be done by the
-    // CoefficientResolverService at query time.  We store an empty array here
-    // and let the resolver populate it on the next /coefficients call.
+    // ── Weighted-average aggregation across all diffs ───────────────────────
+    // Weights are the sample sizes for each metric.
+    const safeNum = (v: string | null) => (v != null ? parseFloat(v) : null);
+
+    const wagg = (vals: Array<{ v: number | null; w: number }>) => {
+      const valid = vals.filter(x => x.v != null && x.w > 0) as Array<{ v: number; w: number }>;
+      if (valid.length === 0) return null;
+      const totalW = valid.reduce((a, x) => a + x.w, 0);
+      return totalW > 0 ? valid.reduce((a, x) => a + x.v * x.w, 0) / totalW : null;
+    };
+
+    // Aggregate sample counts (sum across diffs)
+    const totalRenewalN  = diffs.reduce((a, d) => a + (d.renewal_n  ?? 0), 0);
+    const totalTurnoverN = diffs.reduce((a, d) => a + (d.turnover_n ?? 0), 0);
+    const totalTradeOutN = diffs.reduce((a, d) => a + (d.trade_out_n ?? 0), 0);
+    const totalDaysVacN  = diffs.reduce((a, d) => a + (d.days_vacant_n ?? 0), 0);
+    const totalSvN       = diffs.reduce((a, d) => a + ((d.renewal_n ?? 0) + (d.turnover_n ?? 0)), 0);
+    const diffCount      = diffs.length;
+
+    // Compute total snapshot span (first to last)
+    const snapshotResult = await this.pool.query<{ snap_count: string; min_date: string; max_date: string }>(`
+      SELECT COUNT(DISTINCT id)       AS snap_count,
+             MIN(snapshot_date::text) AS min_date,
+             MAX(snapshot_date::text) AS max_date
+      FROM rent_roll_snapshots
+      WHERE deal_id = $1 AND status IN ('derived','calibrated','parsed')
+    `, [dealId]);
+    const snapshotCount = parseInt(snapshotResult.rows[0]?.snap_count ?? '1', 10);
+    const minDate = snapshotResult.rows[0]?.min_date ? new Date(snapshotResult.rows[0].min_date) : new Date();
+    const maxDate = snapshotResult.rows[0]?.max_date ? new Date(snapshotResult.rows[0].max_date) : new Date();
+    const coverageMonths = (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+
+    // Weighted averages
+    const renewalRate = wagg(diffs.map(d => ({ v: safeNum(d.renewal_rate),  w: d.renewal_n  ?? 0 })));
+    const turnoverRate = wagg(diffs.map(d => ({ v: safeNum(d.turnover_rate), w: d.turnover_n ?? 0 })));
+    const newLeaseTradeOutPct = wagg(diffs.map(d => ({ v: safeNum(d.new_lease_trade_out_pct), w: d.trade_out_n ?? 0 })));
+    const renewalTradeOutPct  = wagg(diffs.map(d => ({ v: safeNum(d.renewal_trade_out_pct),   w: d.trade_out_n ?? 0 })));
+    const signingVelocity     = wagg(diffs.map(d => ({ v: safeNum(d.signing_velocity),         w: (d.renewal_n ?? 0) + (d.turnover_n ?? 0) })));
+    const daysVacantMedian    = wagg(diffs.map(d => ({ v: safeNum(d.days_vacant_median),        w: d.days_vacant_n ?? 0 })));
+
+    // Loss-to-lease: simple average across diffs (each diff has its own snapshot)
+    const ltlVals = diffs.map(d => safeNum(d.loss_to_lease)).filter((v): v is number => v != null);
+    const lossToLease = ltlVals.length > 0 ? ltlVals.reduce((a, b) => a + b, 0) / ltlVals.length : null;
+
+    // Concession trend: majority vote
+    const trendCounts: Record<string, number> = { increasing: 0, stable: 0, decreasing: 0 };
+    for (const d of diffs) {
+      if (d.concession_trend && trendCounts[d.concession_trend] !== undefined) {
+        trendCounts[d.concession_trend]++;
+      }
+    }
+    const concessionTrend = (['increasing', 'stable', 'decreasing'] as const)
+      .reduce<'increasing' | 'stable' | 'decreasing' | null>(
+        (best, k) => trendCounts[k] > (trendCounts[best ?? 'stable'] ?? 0) ? k : best,
+        diffs.some(d => d.concession_trend) ? 'stable' : null,
+      );
+
+    const dynamics: SubjectObservedDynamics = {
+      renewal_rate:            renewalRate,
+      turnover_rate:           turnoverRate,
+      new_lease_trade_out_pct: newLeaseTradeOutPct,
+      renewal_trade_out_pct:   renewalTradeOutPct,
+      signing_velocity:        signingVelocity,
+      days_vacant_median:      daysVacantMedian,
+      concession_trend:        concessionTrend,
+      loss_to_lease:           lossToLease,
+      diff_period_count:       diffCount,
+    };
+
+    // ── Build confidence_weights (n_obs from aggregated sample counts) ────────
+    const s2Weights: Record<string, SubjectWeightEntry> = {};
+
+    const INSUFFICIENT_THRESHOLD = 0.5;  // null metric if n_obs < n_required × 0.5
+
+    const coeffMap: Array<{ key: string; n_obs: number }> = [
+      { key: 'renewal_rate',            n_obs: totalRenewalN  },
+      { key: 'turnover_rate',           n_obs: totalTurnoverN },
+      { key: 'new_lease_trade_out_pct', n_obs: totalTradeOutN },
+      { key: 'renewal_trade_out_pct',   n_obs: totalTradeOutN },
+      { key: 'days_vacant_median',      n_obs: totalDaysVacN  },
+      { key: 'signing_velocity',        n_obs: totalSvN       },
+      { key: 'loss_to_lease',           n_obs: ltlVals.length },
+      { key: 'concession_trend',        n_obs: diffCount      },
+    ];
+
+    for (const { key, n_obs } of coeffMap) {
+      const nRequired = SUBJECT_N_REQUIRED[key] ?? 6;
+      // Zero weight for insufficient samples — metric should not influence blend
+      const insufficientSample = n_obs < nRequired * INSUFFICIENT_THRESHOLD;
+      s2Weights[key] = {
+        n_obs,
+        n_required: nRequired,
+        weight: insufficientSample ? 0 : Math.min(1, n_obs / nRequired),
+      };
+      // Null out metric value when insufficient sample to avoid misleading data
+      if (insufficientSample) {
+        (dynamics as any)[key] = null;
+      }
+    }
+
+    // Peer collisions remain empty here — populated by CoefficientResolverService
+    // at /coefficients call time, using the platform posterior as the peer.
     const peerCollisions: SubjectPeerCollision[] = [];
 
     await this.pool.query(`
       INSERT INTO subject_traffic_history
         (deal_id, tier, snapshot_count, coverage_months,
          observed_dynamics, confidence_weights, peer_collisions, updated_at)
-      VALUES ($1, 'S2', 1, NULL, $2, $3, '[]', NOW())
+      VALUES ($1, 'S2', $2, $3, $4, $5, '[]', NOW())
       ON CONFLICT (deal_id) DO UPDATE SET
         tier               = 'S2',
+        snapshot_count     = EXCLUDED.snapshot_count,
+        coverage_months    = EXCLUDED.coverage_months,
         observed_dynamics  = EXCLUDED.observed_dynamics,
         confidence_weights = subject_traffic_history.confidence_weights || EXCLUDED.confidence_weights,
-        peer_collisions    = $4,
+        peer_collisions    = $6,
         updated_at         = NOW()
     `, [
       dealId,
+      snapshotCount,
+      coverageMonths.toFixed(2),
       JSON.stringify(dynamics),
       JSON.stringify(s2Weights),
       JSON.stringify(peerCollisions),
     ]);
 
-    logger.info('[RentRollDiff] S2 promotion complete', { dealId });
+    logger.info('[RentRollDiff] S2 promotion complete (aggregated)', {
+      dealId, diffCount, snapshotCount, coverageMonths: coverageMonths.toFixed(1),
+      totalRenewalN, totalTurnoverN,
+    });
   }
 }

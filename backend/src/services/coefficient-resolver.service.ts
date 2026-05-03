@@ -81,29 +81,21 @@ export class CoefficientResolverService {
     const peerCollisions: Array<{ coefficient: string; subject_value: number; peer_value: number; sigma_deviation: number }> = [];
 
     for (const name of ALL_COEFFICIENTS) {
-      const baseline    = BASELINE_COEFFICIENTS[name];
-      const dealVal     = dealCoefficients?.[name]    ?? null;
+      const baseline      = BASELINE_COEFFICIENTS[name];
+      const dealVal       = dealCoefficients?.[name]    ?? null;
       const platformEntry = platformCoefficients?.[name] ?? null;
-      const subjectVal  = subjectCoefficients?.[name] ?? null;
+      const subjectVal    = subjectCoefficients?.[name]  ?? null;
 
-      // Determine peer value (deal > platform > baseline)
-      let peerValue: number;
-      let peerTier: MatchTier;
-      let resolvedWindow: CalibrationWindow = 'TTM';
-      let resolvedN = 0;
+      // ── Platform peer value — always the peer SET posterior for collision/blend ──
+      // Subject always blends against the platform posterior (peer set), NOT the
+      // deal's own single-snapshot proxies.  Deal-derived values sit below subject
+      // in the hierarchy but above platform for non-subject resolution paths.
+      const platformPeerValue: number = platformEntry?.value ?? baseline;
+      const platformWindow: CalibrationWindow = platformEntry?.window ?? 'TTM';
+      const platformN: number = platformEntry?.n_peer_properties ?? 0;
 
-      if (dealVal !== null) {
-        peerValue = dealVal;
-        peerTier  = 'DEAL';
-      } else if (platformEntry !== null) {
-        peerValue = platformEntry.value;
-        peerTier  = 'PLATFORM';
-        resolvedWindow = platformEntry.window;
-        resolvedN = platformEntry.n_peer_properties;
-      } else {
-        peerValue = baseline;
-        peerTier  = 'BASELINE';
-      }
+      let resolvedWindow: CalibrationWindow = platformWindow;
+      let resolvedN = platformN;
 
       // Apply Bayesian blend if subject history available
       let resolved: number;
@@ -111,37 +103,62 @@ export class CoefficientResolverService {
       let subjectWeight: number | null = null;
 
       if (subjectVal !== null && subjectHistory !== null) {
+        // Blend: w × subject + (1-w) × platform_peer_posterior
         const weightEntry = subjectHistory.confidence_weights[name];
         const w = weightEntry
           ? weightEntry.weight
-          : Math.min(1, (subjectHistory.snapshot_count) / (SUBJECT_N_REQUIRED[name] ?? 6));
+          : Math.min(1, subjectHistory.snapshot_count / (SUBJECT_N_REQUIRED[name] ?? 6));
 
         if (w > 0) {
-          resolved     = w * subjectVal + (1 - w) * peerValue;
-          matchTier    = 'SUBJECT';
+          resolved      = w * subjectVal + (1 - w) * platformPeerValue;
+          matchTier     = 'SUBJECT';
           subjectWeight = w;
           overallMatchTier = 'SUBJECT';
 
-          // Detect peer collision (|subject − peer| > 1.5σ heuristic — peer σ ≈ 15% of peerValue)
-          const peerSigma = Math.abs(peerValue) * 0.15;
+          // Peer collision: compare subject vs PLATFORM PEER SET posterior (not deal proxy).
+          // σ ≈ 15% of the platform peer value — conservative prior; replaced with
+          // true platform σ when distribution output ships.
+          const peerSigma = Math.abs(platformPeerValue) * 0.15;
           if (peerSigma > 0) {
-            const sigmaDeviation = Math.abs(subjectVal - peerValue) / peerSigma;
+            const sigmaDeviation = Math.abs(subjectVal - platformPeerValue) / peerSigma;
             if (sigmaDeviation > 1.5) {
               peerCollisions.push({
                 coefficient:     name,
                 subject_value:   subjectVal,
-                peer_value:      peerValue,
+                peer_value:      platformPeerValue,  // always peer SET, never deal proxy
                 sigma_deviation: parseFloat(sigmaDeviation.toFixed(2)),
               });
             }
           }
         } else {
-          resolved  = peerValue;
-          matchTier = peerTier;
+          // Weight = 0 (insufficient sample) — fall through to deal → platform → baseline
+          if (dealVal !== null) {
+            resolved  = dealVal;
+            matchTier = 'DEAL';
+          } else if (platformEntry !== null) {
+            resolved       = platformEntry.value;
+            matchTier      = 'PLATFORM';
+            resolvedWindow = platformEntry.window;
+            resolvedN      = platformEntry.n_peer_properties;
+          } else {
+            resolved  = baseline;
+            matchTier = 'BASELINE';
+          }
         }
+      } else if (dealVal !== null) {
+        // No subject — deal layer takes priority over platform
+        resolved       = dealVal;
+        matchTier      = 'DEAL';
+        resolvedWindow = 'TTM';
+        resolvedN      = 0;
+      } else if (platformEntry !== null) {
+        resolved       = platformEntry.value;
+        matchTier      = 'PLATFORM';
+        resolvedWindow = platformEntry.window;
+        resolvedN      = platformEntry.n_peer_properties;
       } else {
-        resolved  = peerValue;
-        matchTier = peerTier;
+        resolved  = baseline;
+        matchTier = 'BASELINE';
       }
 
       // Track overall tier and meta (prefer most specific peer context for display)

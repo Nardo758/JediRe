@@ -490,8 +490,37 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
   const cs  = history.current_state;
   const dyn = history.observed_dynamics;
   const cw  = history.confidence_weights;
+  const collisions = history.peer_collisions ?? [];
 
-  // Build rows from available data
+  // Build collision lookup — peer_value from collision data is the platform posterior.
+  // This is the only source of peer-set values available to the frontend.
+  const collisionByKey = new Map(collisions.map(c => [c.coefficient, c]));
+
+  // Helper: compute blended effective value from subject + peer + weight.
+  // Returns subject when peer is unknown (no collision → no peer value available).
+  const blendedEffective = (subject: number, key: string): { peer: number | null; effective: number } => {
+    const col = collisionByKey.get(key);
+    const w   = cw[key]?.weight ?? null;
+    if (col != null && w != null) {
+      return {
+        peer:      col.peer_value,
+        effective: w * subject + (1 - w) * col.peer_value,
+      };
+    }
+    return { peer: col?.peer_value ?? null, effective: subject };
+  };
+
+  // Direction indicator: ▲ subject > peer, ▼ subject < peer, = within 1%
+  const direction = (subject: number | null, peer: number | null): string => {
+    if (subject == null || peer == null || peer === 0) return '';
+    const delta = (subject - peer) / Math.abs(peer);
+    if (Math.abs(delta) < 0.01) return '=';
+    return delta > 0 ? '▲' : '▼';
+  };
+  const dirColor = (dir: string): string =>
+    dir === '▲' ? SUBJ_TEAL : dir === '▼' ? '#f87171' : BT.text.muted;
+
+  // Build rows from available data — populate peer + effective from collision map
   const rows: SubjRow[] = [];
 
   if (cs) {
@@ -503,10 +532,11 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
     });
     if (cs.loss_to_lease != null) {
       const w = cw['loss_to_lease']?.weight ?? null;
+      const be = blendedEffective(cs.loss_to_lease, 'loss_to_lease');
       rows.push({
         label: 'Loss-to-Lease', key: 'loss_to_lease',
-        peer: null, subject: cs.loss_to_lease,
-        effective: cs.loss_to_lease,
+        peer: be.peer, subject: cs.loss_to_lease,
+        effective: be.effective,
         weight: w, fmt: 'pct',
       });
     }
@@ -528,10 +558,11 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
     }
     if (cs.signing_velocity != null) {
       const w = cw['signing_velocity']?.weight ?? null;
+      const be = blendedEffective(cs.signing_velocity, 'signing_velocity');
       rows.push({
         label: 'Signing Velocity (mo)', key: 'signing_velocity',
-        peer: null, subject: cs.signing_velocity,
-        effective: cs.signing_velocity,
+        peer: be.peer, subject: cs.signing_velocity,
+        effective: be.effective,
         weight: w, fmt: 'num',
       });
     }
@@ -540,53 +571,57 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
   if (dyn) {
     if (dyn.renewal_rate != null) {
       const w = cw['renewal_rate']?.weight ?? null;
+      const be = blendedEffective(dyn.renewal_rate, 'renewal_rate');
       rows.push({
         label: 'Renewal Rate', key: 'renewal_rate',
-        peer: null, subject: dyn.renewal_rate,
-        effective: dyn.renewal_rate,
+        peer: be.peer, subject: dyn.renewal_rate,
+        effective: be.effective,
         weight: w, fmt: 'pct',
       });
     }
     if (dyn.turnover_rate != null) {
       const w = cw['turnover_rate']?.weight ?? null;
+      const be = blendedEffective(dyn.turnover_rate, 'turnover_rate');
       rows.push({
         label: 'Turnover Rate', key: 'turnover_rate',
-        peer: null, subject: dyn.turnover_rate,
-        effective: dyn.turnover_rate,
+        peer: be.peer, subject: dyn.turnover_rate,
+        effective: be.effective,
         weight: w, fmt: 'pct',
       });
     }
     if (dyn.new_lease_trade_out_pct != null) {
       const w = cw['new_lease_trade_out_pct']?.weight ?? null;
+      const be = blendedEffective(dyn.new_lease_trade_out_pct, 'new_lease_trade_out_pct');
       rows.push({
         label: 'New Lease Trade-Out', key: 'new_lease_trade_out_pct',
-        peer: null, subject: dyn.new_lease_trade_out_pct,
-        effective: dyn.new_lease_trade_out_pct,
+        peer: be.peer, subject: dyn.new_lease_trade_out_pct,
+        effective: be.effective,
         weight: w, fmt: 'pct',
       });
     }
     if (dyn.renewal_trade_out_pct != null) {
       const w = cw['renewal_trade_out_pct']?.weight ?? null;
+      const be = blendedEffective(dyn.renewal_trade_out_pct, 'renewal_trade_out_pct');
       rows.push({
         label: 'Renewal Trade-Out', key: 'renewal_trade_out_pct',
-        peer: null, subject: dyn.renewal_trade_out_pct,
-        effective: dyn.renewal_trade_out_pct,
+        peer: be.peer, subject: dyn.renewal_trade_out_pct,
+        effective: be.effective,
         weight: w, fmt: 'pct',
       });
     }
     if (dyn.days_vacant_median != null) {
       const w = cw['days_vacant_median']?.weight ?? null;
+      const be = blendedEffective(dyn.days_vacant_median, 'days_vacant_median');
       rows.push({
         label: 'Days Vacant (median)', key: 'days_vacant_median',
-        peer: null, subject: dyn.days_vacant_median,
-        effective: dyn.days_vacant_median,
+        peer: be.peer, subject: dyn.days_vacant_median,
+        effective: be.effective,
         weight: w, fmt: 'num',
       });
     }
   }
 
   const tierColor = history.tier === 'S2' ? SUBJ_TEAL2 : SUBJ_TEAL;
-  const collisions = history.peer_collisions ?? [];
 
   return (
     <div style={{
@@ -659,7 +694,9 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
               </thead>
               <tbody>
                 {rows.map(row => {
-                  const collision = collisions.find(c => c.coefficient === row.key);
+                  const collision = collisionByKey.get(row.key);
+                  const dir = direction(row.subject, row.peer);
+                  const isBlended = row.peer != null && row.weight != null && row.weight < 1 && row.weight > 0;
                   return (
                     <tr key={row.key} style={{ borderBottom: `1px solid ${BT.border.subtle}20` }}>
                       <td style={{ padding: '3px 10px', color: collision ? BT.text.amber : BT.text.secondary }}>
@@ -674,10 +711,16 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
                         {fmtSubj(row.peer, row.fmt)}
                       </td>
                       <td style={{ padding: '3px 10px', textAlign: 'right', color: SUBJ_TEAL, fontWeight: 600 }}>
+                        {dir && (
+                          <span style={{ marginRight: 4, color: dirColor(dir), fontSize: 7 }}>{dir}</span>
+                        )}
                         {fmtSubj(row.subject, row.fmt)}
                       </td>
-                      <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.secondary }}>
+                      <td style={{ padding: '3px 10px', textAlign: 'right', color: isBlended ? BT.text.secondary : BT.text.muted, fontStyle: isBlended ? 'normal' : 'italic' }}>
                         {fmtSubj(row.effective, row.fmt)}
+                        {isBlended && (
+                          <span style={{ marginLeft: 4, fontSize: 7, color: BT.text.muted }}>blended</span>
+                        )}
                       </td>
                       <td style={{ padding: '3px 10px', textAlign: 'right' }}>
                         {row.weight != null ? (
