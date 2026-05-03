@@ -209,6 +209,19 @@ router.post('/rent-roll/upload', rentRollMiddleware, async (req, res) => {
       });
     }
 
+    // ── Trigger: traffic.subject_history.updated ──────────────────────────
+    // Recompute concession environment after S1/S2 because the subject signal
+    // (Step 4 of the four-step stack) has changed. Non-fatal.
+    let concessionEnvResult: { recomputed: boolean; error?: string } = { recomputed: false };
+    try {
+      await concessionEnvEngine.computeForDeal(dealId);
+      concessionEnvResult = { recomputed: true };
+    } catch (concErr) {
+      const msg = concErr instanceof Error ? concErr.message : String(concErr);
+      concessionEnvResult = { recomputed: false, error: msg };
+      logger.warn('[M07] Concession environment recompute failed after upload (non-fatal)', { dealId, error: msg });
+    }
+
     return res.json({
       success: true,
       snapshot_id: parseResult.snapshot_id,
@@ -227,6 +240,7 @@ router.post('/rent-roll/upload', rentRollMiddleware, async (req, res) => {
         s1: s1Result,
         s2: s2Result,
       },
+      concession_environment: concessionEnvResult,
       message: `Rent roll parsed and derived. ${parseResult.lease_events_stored} lease events stored.`,
     });
   } catch (error: unknown) {
@@ -454,10 +468,26 @@ router.put('/deal/:dealId/mode', async (req, res) => {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
+    // ── Trigger: mode.changed ─────────────────────────────────────────────
+    // Recompute concession environment because the mode overlay (LEASE_UP decay
+    // curve, REDEVELOPMENT bifurcation, or STABILIZED baseline) has changed.
+    // Also re-evaluates mode-mismatch rejection on any existing subject history.
+    // Non-fatal: mode update always succeeds even if recompute fails.
+    let concessionEnvResult: { recomputed: boolean; error?: string } = { recomputed: false };
+    try {
+      await concessionEnvEngine.computeForDeal(dealId);
+      concessionEnvResult = { recomputed: true };
+    } catch (concErr) {
+      const msg = concErr instanceof Error ? concErr.message : String(concErr);
+      concessionEnvResult = { recomputed: false, error: msg };
+      logger.warn('[M07] Concession environment recompute failed after mode change (non-fatal)', { dealId, error: msg });
+    }
+
     return res.json({
       success: true,
       deal_id: dealId,
       deal_mode: result.rows[0].deal_mode,
+      concession_environment: concessionEnvResult,
     });
   } catch (error: unknown) {
     logger.error('[M07] Deal mode update failed', { error: error instanceof Error ? error.message : String(error) });

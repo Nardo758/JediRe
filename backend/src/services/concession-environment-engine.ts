@@ -268,39 +268,44 @@ export class ConcessionEnvironmentEngine {
     if (subject !== null) {
       const baseSubjectWeight = subject.concession_weight;
       const yearWeight        = subjectWeightForYear(year, baseSubjectWeight);
+      const subjectMonths     = subject.free_months;
 
       if (yearWeight > 0) {
-        const subjectMonths = subject.free_months;
-        finalMonths         = yearWeight * subjectMonths + (1 - yearWeight) * baseMonths;
-        finalPct            = yearWeight * subject.concession_pct + (1 - yearWeight) * basePct;
-        subjectWeight       = yearWeight;
-        classWeight         = classWeight * (1 - yearWeight);
-        submarketWeight     = submarketWeight * (1 - yearWeight);
+        finalMonths     = yearWeight * subjectMonths + (1 - yearWeight) * baseMonths;
+        finalPct        = yearWeight * subject.concession_pct + (1 - yearWeight) * basePct;
+        subjectWeight   = yearWeight;
+        classWeight     = classWeight * (1 - yearWeight);
+        submarketWeight = submarketWeight * (1 - yearWeight);
+      }
 
-        // ── Collision detection (only when M05 available) ─────────────────────
-        if (submarketMonths !== null && m05 !== null) {
-          const stdDev     = Math.abs(m05.free_months) * (m05.std_dev_fraction ?? FALLBACK_STD_DEV_FRACTION);
-          if (stdDev > 0) {
-            const deltaSigma = Math.abs(subjectMonths - m05.free_months) / stdDev;
+      // ── Collision detection — runs for ALL years whenever S2+ subject data is
+      // present AND M05 submarket baseline is available.
+      // This includes Y3+ where subject is not applied: we still want to surface
+      // divergence so the analyst is aware that observed subject dynamics differ
+      // from the submarket baseline even in later hold years.
+      // Only one collision entry per year is emitted (deduplicated by year below).
+      if (submarketMonths !== null && m05 !== null) {
+        const stdDev = Math.abs(m05.free_months) * (m05.std_dev_fraction ?? FALLBACK_STD_DEV_FRACTION);
+        if (stdDev > 0) {
+          const deltaSigma = Math.abs(subjectMonths - m05.free_months) / stdDev;
 
-            if (deltaSigma >= COLLISION_SIGMA_THRESHOLDS.minor) {
-              const severity: ConcessionSeverity =
-                deltaSigma >= COLLISION_SIGMA_THRESHOLDS.material ? 'SEVERE' : 'MATERIAL';
+          if (deltaSigma >= COLLISION_SIGMA_THRESHOLDS.minor) {
+            const severity: ConcessionSeverity =
+              deltaSigma >= COLLISION_SIGMA_THRESHOLDS.material ? 'SEVERE' : 'MATERIAL';
 
-              collisions.push({
-                year,
-                subject_value_months:   subjectMonths,
-                submarket_value_months: m05.free_months,
-                std_dev:               parseFloat(stdDev.toFixed(4)),
-                delta_sigma:           parseFloat(deltaSigma.toFixed(2)),
-                severity,
-                narrative: collisionNarrative(severity, year, subjectMonths, m05.free_months, deltaSigma),
-              });
-            } else {
-              logger.debug('[ConcessionEnv] Minor collision (logged only)', {
-                year, deltaSigma: deltaSigma.toFixed(2),
-              });
-            }
+            collisions.push({
+              year,
+              subject_value_months:   subjectMonths,
+              submarket_value_months: m05.free_months,
+              std_dev:               parseFloat(stdDev.toFixed(4)),
+              delta_sigma:           parseFloat(deltaSigma.toFixed(2)),
+              severity,
+              narrative: collisionNarrative(severity, year, subjectMonths, m05.free_months, deltaSigma),
+            });
+          } else {
+            logger.debug('[ConcessionEnv] Minor collision (logged only)', {
+              year, deltaSigma: deltaSigma.toFixed(2),
+            });
           }
         }
       }
@@ -665,13 +670,16 @@ export class ConcessionEnvironmentEngine {
       const concWeight = cw['concession_trend']?.weight ?? cw['loss_to_lease']?.weight ?? 0;
       if (concWeight <= 0) return null;
 
-      // Derive free_months from subject data:
-      // avg_concession_value / avg_contract_rent × 12 months
+      // Derive free_months from subject data.
+      // avg_concession_value is the average dollar value of the concession per unit
+      // (total dollar amount, not a rate), while avg_contract_rent is $/month.
+      // Division gives the number of months of free rent — no further scaling needed.
+      //   e.g. avg_concession_value=$3000, avg_contract_rent=$1000/mo → 3 months free
       let freeMonths = 0;
       if (cs?.avg_concession_value && cs?.avg_contract_rent && cs.avg_contract_rent > 0) {
-        freeMonths = (cs.avg_concession_value / cs.avg_contract_rent) * 12;
+        freeMonths = cs.avg_concession_value / cs.avg_contract_rent;
       } else if (cs?.avg_concession_value && cs?.avg_market_rent && cs.avg_market_rent > 0) {
-        freeMonths = (cs.avg_concession_value / cs.avg_market_rent) * 12;
+        freeMonths = cs.avg_concession_value / cs.avg_market_rent;
       }
 
       const subjectMode = (row.deal_mode as 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT' | null) ?? null;

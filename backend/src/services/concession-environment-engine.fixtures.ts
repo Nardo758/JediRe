@@ -265,6 +265,16 @@ export async function runFixtures(pool?: Pool): Promise<FixtureResult[]> {
       assertions.push(assertGte('collision delta_sigma ≥ 2.5', out.collisions[0]?.delta_sigma ?? 0, 2.5));
       assertions.push(assertTrue('subject_s2_available = true', out.subject_s2_available, ''));
 
+      // Deterministic formula validation:
+      // avg_concession_value=3000 (dollars), avg_contract_rent=1000 ($/mo) → 3000/1000 = 3 months free.
+      // If the engine incorrectly applied × 12, subject_value_months would be 36, not 3.
+      assertions.push(assertApprox(
+        'subject_value_months ≈ 3.0 (formula: value/rent, no × 12)',
+        out.collisions[0]?.subject_value_months ?? -1,
+        3.0,
+        0.05,
+      ));
+
       passed = assertions.every(a => a.passed);
     } catch (e: any) {
       passed = false;
