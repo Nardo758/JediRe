@@ -835,6 +835,26 @@ const DEFAULT_SOURCE_BLEND = {
 
 export const m07ProjectionsAdapter = new M07ProjectionsAdapter();
 
+// ── Typed context cache ───────────────────────────────────────────────────────
+//
+// Stores the last ProjectionsDealContext used for each deal so the RECALCULATE
+// event handler in setupP2Subscriptions() can rebuild projections reactively
+// without requiring a full round-trip from the client.
+//
+// Not stored in DataFlowRouter to avoid casting ModuleId to a non-union value.
+
+const _projCtxCache = new Map<string, ProjectionsDealContext>();
+
+/** Return the last context used to build projections for this deal, or undefined. */
+export function getProjectionsCtx(dealId: string): ProjectionsDealContext | undefined {
+  return _projCtxCache.get(dealId);
+}
+
+/** Store/replace the context for a deal (called by wireM07ToM09Projections). */
+export function setProjectionsCtx(dealId: string, ctx: ProjectionsDealContext): void {
+  _projCtxCache.set(dealId, ctx);
+}
+
 // ── Wire functions ────────────────────────────────────────────────────────────
 
 export async function wireM07ToM09Projections(
@@ -852,10 +872,9 @@ export async function wireM07ToM09Projections(
         projections:             output,
         projections_computed_at: output.computed_at,
       });
-      // Cache the ProjectionsDealContext so RECALCULATE event handlers can retrieve
-      // it for reactive rebuilds without requiring a full round-trip from the client.
-      // Cast: 'M09_CTX' is an internal cache key outside the public ModuleId enum.
-      (dataFlowRouter as any).publishModuleData('M09_CTX', dealId, ctx);
+      // Cache the ProjectionsDealContext so the RECALCULATE event handler can
+      // rebuild projections reactively without a full client round-trip.
+      setProjectionsCtx(dealId, ctx);
     } catch (routerErr: unknown) {
       logger.debug('[M07→M09] DataFlowRouter publish skipped', {
         error: routerErr instanceof Error ? routerErr.message : String(routerErr),

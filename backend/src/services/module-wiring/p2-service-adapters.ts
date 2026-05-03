@@ -1084,6 +1084,8 @@ export function setupP2Subscriptions(): void {
 
   // 1. Subject history updated (S1/S2 aggregation completed after rent-roll upload)
   //    Producer trigger name: 'traffic.subject_history.updated'
+  //    Carries the full subject_history payload so the RECALCULATE consumer can
+  //    patch updatedCtx.traffic.subject_history before rebuilding.
   moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
     if (event.sourceModule === 'M07' && event.data?.trigger === 'traffic.subject_history.updated') {
       moduleEventBus.emitDebounced(
@@ -1095,6 +1097,8 @@ export function setupP2Subscriptions(): void {
             trigger: 'traffic.subject_history.updated',
             tier: event.data?.tier,
             snapshot_count: event.data?.snapshot_count,
+            // Full subject_history so the consumer can patch ctx before rebuild
+            subject_history: event.data?.subject_history ?? null,
           },
           timestamp: new Date(),
         },
@@ -1129,6 +1133,8 @@ export function setupP2Subscriptions(): void {
 
   // 3. CapEx schedule updated (M22 phasing or renovation timeline changed)
   //    Producer trigger name: 'capex_schedule.updated'
+  //    Carries the full capex_schedule (and transition_month shorthand) so the
+  //    RECALCULATE consumer can patch ctx.capex_schedule before rebuilding.
   moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
     if (event.sourceModule === 'M22' && event.data?.trigger === 'capex_schedule.updated') {
       moduleEventBus.emitDebounced(
@@ -1136,7 +1142,15 @@ export function setupP2Subscriptions(): void {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M09',
           dealId: event.dealId,
-          data: { trigger: 'capex_schedule.updated', transition_month: event.data?.transition_month },
+          data: {
+            trigger: 'capex_schedule.updated',
+            // Carry full capex_schedule object when present; fall back to transition_month shim
+            capex_schedule: event.data?.capex_schedule ?? (
+              event.data?.transition_month != null
+                ? { transition_month: event.data.transition_month as number }
+                : null
+            ),
+          },
           timestamp: new Date(),
         },
         `projections-recalc-capex:${event.dealId}`,
@@ -1146,6 +1160,8 @@ export function setupP2Subscriptions(): void {
 
   // 4. Concession environment updated (ConcessionEnvironmentEngine recomputed)
   //    Producer trigger name: 'concession_env.updated'
+  //    Carries the full concession_environment payload so the consumer can
+  //    patch ctx.traffic.concession_environment before rebuilding.
   moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
     if (event.sourceModule === 'M07' && event.data?.trigger === 'concession_env.updated') {
       moduleEventBus.emitDebounced(
@@ -1153,7 +1169,11 @@ export function setupP2Subscriptions(): void {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M09',
           dealId: event.dealId,
-          data: { trigger: 'concession_env.updated', concessions_only: true },
+          data: {
+            trigger: 'concession_env.updated',
+            // Full concession_environment so consumer can patch before rebuild
+            concession_environment: event.data?.concession_environment ?? null,
+          },
           timestamp: new Date(),
         },
         `projections-recalc-conc:${event.dealId}`,
@@ -1200,13 +1220,13 @@ export function setupP2Subscriptions(): void {
   // This handler is the bridge between the six RECALCULATE emitters above and
   // the adapter itself.  For cheap-path overrides (assumption.override.set)
   // it calls wireM07ToM09Override; for all other triggers it calls the full
-  // wireM07ToM09Projections rebuild using the context previously cached in
-  // DataFlowRouter under the 'M09_CTX' key.
+  // wireM07ToM09Projections rebuild, patching the cached ctx with whatever
+  // updated slice the triggering event carries.
   //
-  // The ctx cache is populated by wireM07ToM09Projections on every successful
-  // build (either triggered via POST /wire/projections/:dealId or by a prior
-  // RECALCULATE event).  If no cache exists yet, the event is logged and
-  // dropped — the caller must do a full build via the REST route first.
+  // Context is retrieved from the typed _projCtxCache via getProjectionsCtx()
+  // (no DataFlowRouter cast needed).  The cache is populated on every
+  // successful build — via POST /wire/projections/:dealId or a prior rebuild.
+  // If no cache exists yet, the event is dropped with a warning.
   moduleEventBus.on(ModuleEventType.RECALCULATE, async (event) => {
     if (event.sourceModule !== 'M09') return;
 
@@ -1214,26 +1234,23 @@ export function setupP2Subscriptions(): void {
       const {
         wireM07ToM09Projections,
         wireM07ToM09Override,
+        getProjectionsCtx,
       } = require('./m07-projections-adapter') as typeof import('./m07-projections-adapter');
-
-      const trigger   = event.data?.trigger as string | undefined;
-      const dealId    = event.dealId;
-
-      // Retrieve the cached ProjectionsDealContext
-      // Cast: 'M09_CTX' is an internal cache key outside the public ModuleId enum.
-      const ctxEntry  = (dataFlowRouter as any).getModuleData('M09_CTX', dealId) as
-        { data: unknown } | undefined;
-      if (!ctxEntry?.data) {
-        logger.warn('[P2] M09 RECALCULATE: no cached ctx — client must call POST /wire/projections first', {
-          dealId, trigger,
-        });
-        return;
-      }
 
       type Ctx = import('./m07-projections-adapter').ProjectionsDealContext;
       type Out = import('./m07-projections-adapter').ProjectionsOutput;
 
-      const baseCtx = ctxEntry.data as unknown as Ctx;
+      const trigger = event.data?.trigger as string | undefined;
+      const dealId  = event.dealId;
+
+      // Retrieve the typed cached ProjectionsDealContext
+      const baseCtx = getProjectionsCtx(dealId);
+      if (!baseCtx) {
+        logger.warn('[P2] M09 RECALCULATE: no cached ctx — client must POST /wire/projections first', {
+          dealId, trigger,
+        });
+        return;
+      }
 
       if (trigger === 'assumption.override.set' && event.data?.cheap_path) {
         // Cheap path: single-cell override recompute — no full block rebuild
@@ -1253,26 +1270,47 @@ export function setupP2Subscriptions(): void {
           projections:             updated,
           projections_computed_at: updated.computed_at,
         });
-        logger.debug('[P2] M09 override RECALCULATE applied', { dealId, overrideKey: event.data.override_key });
+        logger.debug('[P2] M09 override RECALCULATE applied', {
+          dealId, overrideKey: event.data.override_key,
+        });
         return;
       }
 
-      // Full rebuild: apply context mutations carried in the event payload
+      // Full rebuild — patch the cached ctx with the updated slice from the event.
+      // Each trigger carries its relevant payload so the rebuild uses fresh inputs.
       let updatedCtx: Ctx = { ...baseCtx };
+
       if (trigger === 'mode.changed' && event.data?.new_mode) {
-        updatedCtx = {
-          ...updatedCtx,
-          deal_mode: event.data.new_mode as Ctx['deal_mode'],
-        };
+        updatedCtx = { ...updatedCtx, deal_mode: event.data.new_mode as Ctx['deal_mode'] };
+
       } else if (trigger === 'timeline_years.changed' && event.data?.hold_years) {
-        updatedCtx = {
-          ...updatedCtx,
-          hold_years: event.data.hold_years as number,
-        };
+        updatedCtx = { ...updatedCtx, hold_years: event.data.hold_years as number };
+
       } else if (trigger === 'capex_schedule.updated' && event.data?.capex_schedule) {
+        // Emitter always carries capex_schedule (full object or {transition_month} shim)
         updatedCtx = {
           ...updatedCtx,
           capex_schedule: event.data.capex_schedule as Ctx['capex_schedule'],
+        };
+
+      } else if (trigger === 'concession_env.updated' && event.data?.concession_environment) {
+        // Patch traffic.concession_environment with the freshly computed ConcessionEnv
+        updatedCtx = {
+          ...updatedCtx,
+          traffic: {
+            ...updatedCtx.traffic,
+            concession_environment: event.data.concession_environment as Ctx['traffic']['concession_environment'],
+          },
+        };
+
+      } else if (trigger === 'traffic.subject_history.updated' && event.data?.subject_history) {
+        // Patch traffic.subject_history with the newly aggregated S1/S2 tier
+        updatedCtx = {
+          ...updatedCtx,
+          traffic: {
+            ...updatedCtx.traffic,
+            subject_history: event.data.subject_history as Ctx['traffic']['subject_history'],
+          },
         };
       }
 

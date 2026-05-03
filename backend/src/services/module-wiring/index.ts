@@ -148,6 +148,8 @@ export {
   wireM07ToM09Projections,
   wireM07ToM09Override,
   M07ProjectionsAdapter,
+  getProjectionsCtx,
+  setProjectionsCtx,
 } from './m07-projections-adapter';
 
 export type {

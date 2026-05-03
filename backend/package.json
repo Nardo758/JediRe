@@ -15,7 +15,8 @@
     "seed-presets": "ts-node src/scripts/seed-preset-strategies.ts",
     "seed-florida": "ts-node src/scripts/seed-florida-geographies.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "validate:projections": "ts-node --transpile-only src/scripts/validate-projections-adapter.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
