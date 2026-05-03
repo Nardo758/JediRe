@@ -247,7 +247,15 @@ function ExpirationBars({
     );
   }
 
-  const unknown = curve.unknown ?? 0;
+  // Status-driven branching (Task #514): the parser computes `status`
+  // authoritatively from the curve + occupied count, so when present we honor
+  // it as the source of truth for partial vs ok presentation rather than
+  // re-deriving from `unknown > 0`. Keeps the renderer aligned with the spec
+  // ("state driven by status flag") and avoids divergence if the bucketing
+  // rules change. Falls back to curve-derived inference for legacy capsules
+  // that pre-date the status field.
+  const isPartial = status === 'partial' || (status == null && (curve.unknown ?? 0) > 0);
+  const unknown = isPartial ? (curve.unknown ?? 0) : 0;
   const segments: Array<{ key: string; label: string; count: number; color: string }> = [
     { key: 'mtm',     label: 'MTM',       count: curve.mtm,           color: C.red },
     { key: '0_3',     label: '0-3 mo',    count: curve.months_0_3,    color: C.amber },
