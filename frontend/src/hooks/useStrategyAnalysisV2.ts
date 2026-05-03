@@ -109,12 +109,20 @@ export interface EvidenceReport {
     benchmarkLine?: number;
   };
   mathTrail: MathTrailStep[];
+  /**
+   * Projected returns for the EXPECTED RETURN tile. May be `null` when the
+   * backend has no projection for this sub-strategy (e.g. detection
+   * incomplete, strategy excluded). The UI renders a "Not yet computed"
+   * placeholder in that case rather than relying on the error boundary —
+   * the boundary is reserved for unexpected render bugs (Task #427).
+   */
   ultimateReturn: {
     irr: number;
     equityMultiple: number;
     holdMonths: number;
     exitCapRate: number;
-  };
+    rationale?: string;
+  } | null;
 }
 
 export interface SubStrategyScore {

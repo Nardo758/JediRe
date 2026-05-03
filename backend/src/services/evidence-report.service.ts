@@ -62,11 +62,32 @@ export interface MathTrailStep {
   subtotal?: number;
 }
 
+/**
+ * Per-strategy projected returns surfaced in the EXPECTED RETURN tile of the
+ * Strategy view. Every numeric field is required (frontend renders all four
+ * tiles). When a sub-strategy genuinely has no return projection (e.g.
+ * detection failed or the strategy is excluded), the parent service returns
+ * `ultimateReturn: null` instead of partial fields — the frontend then shows
+ * a "Not yet computed" placeholder. See Task #427.
+ */
 export interface UltimateReturn {
+  irr: number;             // annualized IRR, percent (e.g. 19.3 = 19.3%)
+  equityMultiple: number;  // multiple of invested equity (e.g. 1.85)
+  holdMonths: number;      // expected hold period, months
+  exitCapRate: number;     // exit cap rate as decimal (e.g. 0.054 = 5.4%)
+  rationale: string;       // one-line driver explanation for the tile tooltip
+}
+
+/**
+ * Minimal subset of FinancialPreview that buildEvidenceReport needs to fill
+ * the UltimateReturn block. Kept structural (not imported) to avoid a
+ * circular dependency with `m08-strategies.service`.
+ */
+export interface UltimateReturnInputs {
   irr: number;
-  em: number;
-  coc: number;
-  rationale: string;
+  equityMultiple: number;
+  holdMonths: number;
+  exitCapRate: number;
 }
 
 export interface ThesisPrompt {
@@ -715,7 +736,19 @@ export interface DealContext {
 
 // ─── Main builder ─────────────────────────────────────────────────────────────
 
-export function buildEvidenceReport(subStrategyKey: string, detection: DetectionResult, ctx: DealContext): EvidenceReport {
+export function buildEvidenceReport(
+  subStrategyKey: string,
+  detection: DetectionResult,
+  ctx: DealContext,
+  /**
+   * Projected returns for THIS sub-strategy from the financial-preview matrix.
+   * Required (Task #427): the frontend EXPECTED RETURN tile relies on every
+   * field being present and numeric. Callers that have no projection should
+   * synthesize a sentinel from `ctx` (target IRR + ctx.exitCapRate) rather
+   * than passing partial data.
+   */
+  ultimateReturnInputs?: UltimateReturnInputs,
+): EvidenceReport {
   const thesis = generateThesis(subStrategyKey, ctx);
   const thesisPrompt = generateThesisPrompt(subStrategyKey, ctx);
 
@@ -729,9 +762,33 @@ export function buildEvidenceReport(subStrategyKey: string, detection: Detection
   const compEvidence = buildCompEvidence(subStrategyKey, ctx);
   const mathTrail = buildMathTrail(subStrategyKey, ctx);
 
-  const targetIrr = ctx.targetIrr > 0 ? ctx.targetIrr : 0.183;
-  const em = 1.85;
-  const coc = 0.082;
+  // Build the EXPECTED RETURN tile values. Prefer the per-strategy projection
+  // from the financial-preview matrix (passed in by the m08 service) because
+  // those numbers come from the same table the rest of the page reads from.
+  // Fall back to deal-level targets + sensible defaults so EVERY field is
+  // always a finite number — the frontend tile assumes that and previously
+  // crashed when fields were missing (Task #427).
+  const fallbackIrrPct = ctx.targetIrr > 0
+    ? parseFloat((ctx.targetIrr * 100).toFixed(1))
+    : 18.3;
+  const fallbackExitCap = ctx.exitCapRate || ctx.capRate || 0.054;
+
+  // Normalize to a finite number; nullish, NaN, and Infinity all fall through
+  // to the supplied fallback. This honors the "every field is always a finite
+  // number" contract documented on UltimateReturn even if a caller hands us
+  // garbage in `ultimateReturnInputs`.
+  const finiteOr = (value: number | undefined, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+  const ultimateReturn: UltimateReturn = {
+    irr: finiteOr(ultimateReturnInputs?.irr, fallbackIrrPct),
+    equityMultiple: finiteOr(ultimateReturnInputs?.equityMultiple, 1.85),
+    holdMonths: finiteOr(ultimateReturnInputs?.holdMonths, 60),
+    exitCapRate: finiteOr(ultimateReturnInputs?.exitCapRate, fallbackExitCap),
+    rationale: mathTrail.length > 0
+      ? `Step ${mathTrail.length - 1} (${mathTrail[mathTrail.length - 2]?.stepName || 'exit valuation'}) is the primary return driver — NOI improvement from rent capture and ops margin expansion translates directly into exit value via cap-rate compression.`
+      : 'See math trail for return driver analysis.',
+  };
 
   return {
     subStrategyKey,
@@ -740,13 +797,6 @@ export function buildEvidenceReport(subStrategyKey: string, detection: Detection
     metricStack,
     compEvidence,
     mathTrail,
-    ultimateReturn: {
-      irr: parseFloat((targetIrr * 100).toFixed(1)),
-      em,
-      coc: parseFloat((coc * 100).toFixed(1)),
-      rationale: mathTrail.length > 0
-        ? `Step ${mathTrail.length - 1} (${mathTrail[mathTrail.length - 2]?.stepName || 'exit valuation'}) is the primary return driver — NOI improvement from rent capture and ops margin expansion translates directly into exit value via cap-rate compression.`
-        : 'See math trail for return driver analysis.',
-    },
+    ultimateReturn,
   };
 }

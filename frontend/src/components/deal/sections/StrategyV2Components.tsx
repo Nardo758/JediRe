@@ -1062,38 +1062,61 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
               </BlockErrorBoundary>
             )}
 
-            {/* Ultimate Return */}
-            {ev?.ultimateReturn && (
-              <BlockErrorBoundary
-                label={`EvidenceReportBlock:${ss.key}:ultimateReturn`}
-                fallback={({ retry }) => (
-                  <div style={{ margin: '0 8px 8px' }}>
-                    <BlockErrorFallback
-                      variant="inline"
-                      message="Couldn't render the expected return — the rest of this evidence block is unaffected."
-                      onRetry={retry}
-                    />
-                  </div>
-                )}
-              >
-                <div style={{ margin: '0 8px 8px', background: `${BT.text.green}08`, border: `1px solid ${BT.text.green}22`, padding: '8px 12px' }}>
-                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, letterSpacing: 0.5, marginBottom: 6 }}>EXPECTED RETURN</div>
-                  <div style={{ display: 'flex', gap: 20 }}>
-                    {[
-                      { l: 'IRR', v: `${fmtSafe(ev.ultimateReturn.irr, 1)}%`, c: BT.text.green },
-                      { l: 'EM', v: `${fmtSafe(ev.ultimateReturn.equityMultiple, 2)}x`, c: BT.text.amber },
-                      { l: 'HOLD', v: `${fmtSafe(ev.ultimateReturn.holdMonths, 0)}mo`, c: BT.text.purple },
-                      { l: 'EXIT CAP', v: `${fmtSafe(ev.ultimateReturn.exitCapRate, 2, 100)}%`, c: BT.text.cyan },
-                    ].map(item => (
-                      <div key={item.l}>
-                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{item.l}</div>
-                        <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: item.c }}>{item.v}</div>
-                      </div>
-                    ))}
-                  </div>
+            {/* Ultimate Return tile.
+                Task #427: render an explicit "Not yet computed" placeholder
+                when the backend returned null for `ultimateReturn`, OR when
+                any of the four required numeric fields is missing/non-finite.
+                The error boundary below is reserved for unexpected render
+                bugs (it should NOT fire just because data is absent). */}
+            <BlockErrorBoundary
+              label={`EvidenceReportBlock:${ss.key}:ultimateReturn`}
+              fallback={({ retry }) => (
+                <div style={{ margin: '0 8px 8px' }}>
+                  <BlockErrorFallback
+                    variant="inline"
+                    message="Couldn't render the expected return — the rest of this evidence block is unaffected."
+                    onRetry={retry}
+                  />
                 </div>
-              </BlockErrorBoundary>
-            )}
+              )}
+            >
+              {(() => {
+                const ur = ev?.ultimateReturn;
+                const hasAllReturnFields = !!ur
+                  && Number.isFinite(Number(ur.irr))
+                  && Number.isFinite(Number(ur.equityMultiple))
+                  && Number.isFinite(Number(ur.holdMonths))
+                  && Number.isFinite(Number(ur.exitCapRate));
+                if (!hasAllReturnFields) {
+                  return (
+                    <div style={{ margin: '0 8px 8px', background: `${BT.text.muted}08`, border: `1px dashed ${BT.text.muted}44`, padding: '8px 12px' }}>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 6 }}>EXPECTED RETURN</div>
+                      <div style={{ fontFamily: MONO, fontSize: 11, color: BT.text.secondary }}>
+                        Not yet computed — return projection unavailable for this sub-strategy.
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div style={{ margin: '0 8px 8px', background: `${BT.text.green}08`, border: `1px solid ${BT.text.green}22`, padding: '8px 12px' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, letterSpacing: 0.5, marginBottom: 6 }}>EXPECTED RETURN</div>
+                    <div style={{ display: 'flex', gap: 20 }}>
+                      {[
+                        { l: 'IRR', v: `${fmtSafe(ur!.irr, 1)}%`, c: BT.text.green },
+                        { l: 'EM', v: `${fmtSafe(ur!.equityMultiple, 2)}x`, c: BT.text.amber },
+                        { l: 'HOLD', v: `${fmtSafe(ur!.holdMonths, 0)}mo`, c: BT.text.purple },
+                        { l: 'EXIT CAP', v: `${fmtSafe(ur!.exitCapRate, 2, 100)}%`, c: BT.text.cyan },
+                      ].map(item => (
+                        <div key={item.l}>
+                          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{item.l}</div>
+                          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: item.c }}>{item.v}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </BlockErrorBoundary>
           </div>
         )}
       </SectionPanel>

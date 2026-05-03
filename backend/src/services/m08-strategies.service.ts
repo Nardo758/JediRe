@@ -811,7 +811,17 @@ export async function getStrategiesForDeal(pool: Pool, dealId: string): Promise<
     const disqualified = false;                       // always false here (disqualified were filtered above)
     const isPrimary = key === detection.detectedSubStrategy;
     const preview = financialPreview(key);
-    const evReport = buildEvidenceReport(key, detection, dealCtx);
+    // Pass the per-strategy financial preview so buildEvidenceReport can
+    // populate the EXPECTED RETURN tile from the same numeric source as the
+    // rest of the page. Previously the evidence builder hard-coded a partial
+    // shape that omitted holdMonths / exitCapRate and crashed the Strategy
+    // view (Task #427).
+    const evReport = buildEvidenceReport(key, detection, dealCtx, {
+      irr: preview.irr,
+      equityMultiple: preview.equityMultiple,
+      holdMonths: preview.holdMonths,
+      exitCapRate: preview.exitCapRate,
+    });
 
     return {
       key,
