@@ -535,11 +535,16 @@ async function main() {
   try {
     if (isBaseline) {
       await baselineMigrations(pool);
+      // Baseline still uses the warn-only check: the operator is explicitly
+      // saying "trust the current DB state", so drift here is informational.
       await verifyCriticalSchema(pool);
       return;
     }
     const res = await runPendingMigrations(pool);
-    await verifyCriticalSchema(pool);
+    // Strict in CLI mode: exit non-zero if any migration failed OR if a
+    // critical column is still missing afterwards. Lets CI use this as
+    // a hard gate before deploying.
+    await assertCriticalSchema(pool);
     if (res.failed.length > 0) process.exit(1);
   } finally {
     await pool.end().catch(() => { /* ignore */ });
