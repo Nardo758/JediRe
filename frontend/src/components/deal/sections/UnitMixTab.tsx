@@ -244,7 +244,7 @@ function TrafficSignal({ label, value, unit, linked }: { label: string; value: s
  * The hatched UNKNOWN segment uses a CSS repeating-linear-gradient — distinct
  * from both the colored buckets AND the dashed-border OM-only state.
  */
-function ExpirationBars({
+export function ExpirationBars({
   curve,
   totalUnits,
   status,
