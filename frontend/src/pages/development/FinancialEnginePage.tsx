@@ -624,9 +624,98 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   // ── Merge model results into f9Financials so tabs that read
   // ── f9Financials.returns / .waterfall / .projections get populated.
   // ── This runs after every successful model build or version load.
+  // ── Recompute projections from current assumptions (no model build needed) ──
+  // When the user edits Assumptions, we need ProjectionsTab to reflect those changes
+  // immediately without waiting for a full model build. This function maps the current
+  // assumptions' rent_growth, expense growth rates, vacancy, and financing terms onto
+  // the seeded year1 baseline, so projections update live with every assumption change.
   const mergedFinancials = useMemo(() => {
     if (!f9Financials) return null;
-    if (!modelResults) return cloneFinancialsForSync(f9Financials);
+    if (!modelResults) {
+      const cloned = cloneFinancialsForSync(f9Financials);
+      // Rebuild projections from assumptions if present
+      if (assumptions && cloned.projections) {
+        const holdYears = assumptions.holdPeriod ?? 5;
+        const rentGrowth = assumptions.revenue?.rentGrowth?.[0] ?? 0.03;
+        const expenseGrowth = assumptions.expenses
+          ? Object.values(assumptions.expenses)[0]?.growthRate ?? 0.03
+          : 0.03;
+        const vacancyPct = 1 - (assumptions.revenue?.stabilizedOccupancy ?? 0.93);
+        const purchasePrice = assumptions.acquisition?.purchasePrice ?? cloned.capitalStack?.purchasePrice ?? 0;
+        const loanAmount = assumptions.financing?.loanAmount ?? cloned.capitalStack?.loanAmount ?? 0;
+        const interestRate = assumptions.financing?.interestRate ?? 0.065;
+        // Project 10 years
+        const proj = cloned.projections.map((p: any, i: number) => {
+          const yearNum = i + 1;
+          if (p.year !== yearNum) { p = { ...p, year: yearNum }; }
+          const rg = Math.pow(1 + rentGrowth, i);
+          const eg = Math.pow(1 + expenseGrowth, i);
+          // Scale revenue by rent growth, expenses by expense growth
+          const scaleRv = (v: number | null | undefined) => v != null ? v * rg : null;
+          const scaleEx = (v: number | null | undefined) => v != null ? v * eg : null;
+          p.gpr =            scaleRv(cloned.projections[0]?.gpr ?? 0);
+          p.egr =            scaleRv(cloned.projections[0]?.egr ?? 0);
+          p.otherIncome =    scaleRv(cloned.projections[0]?.otherIncome ?? 0);
+          p.noi =            scaleRv(cloned.projections[0]?.noi ?? 0);
+          p.vacancyLoss =    scaleRv(cloned.projections[0]?.vacancyLoss ?? 0);
+          p.lossToLease =    scaleRv(cloned.projections[0]?.lossToLease ?? 0);
+          p.concessions =    scaleRv(cloned.projections[0]?.concessions ?? 0);
+          p.badDebt =        scaleRv(cloned.projections[0]?.badDebt ?? 0);
+          p.occupancy =      cloned.projections[0]?.occupancy != null
+            ? Math.min(1, 1 - vacancyPct + (vacancyPct * (1 - 1 / (i + 1))))
+            : 1 - vacancyPct;
+          // Expenses
+          p.payroll =        scaleEx(cloned.projections[0]?.payroll ?? 0);
+          p.repairs =        scaleEx(cloned.projections[0]?.repairs ?? 0);
+          p.turnover =       scaleEx(cloned.projections[0]?.turnover ?? 0);
+          p.contractSvc =    scaleEx(cloned.projections[0]?.contractSvc ?? 0);
+          p.marketing =      scaleEx(cloned.projections[0]?.marketing ?? 0);
+          p.utilities =      scaleEx(cloned.projections[0]?.utilities ?? 0);
+          p.gAndA =          scaleEx(cloned.projections[0]?.gAndA ?? 0);
+          p.mgmtFee =        scaleEx(cloned.projections[0]?.mgmtFee ?? 0);
+          p.insurance =      scaleEx(cloned.projections[0]?.insurance ?? 0);
+          p.reTaxes =        scaleEx(cloned.projections[0]?.reTaxes ?? 0);
+          p.reserves =       scaleEx(cloned.projections[0]?.reserves ?? 0);
+          p.totalOpex =      scaleEx(cloned.projections[0]?.totalOpex ?? 0);
+          // Debt service (constant payment)
+          const monthlyRate = interestRate / 12;
+          const amortMonths = (assumptions.financing?.amortization ?? 30) * 12;
+          let monthlyPmt = 0;
+          if (loanAmount > 0 && monthlyRate > 0) {
+            monthlyPmt = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, amortMonths)) /
+              (Math.pow(1 + monthlyRate, amortMonths) - 1);
+          }
+          p.annualDS = monthlyPmt * 12;
+          p.interest = loanAmount > 0 ? loanAmount * interestRate : 0;
+          p.principal = p.annualDS > 0 && p.interest != null ? p.annualDS - p.interest : 0;
+          p.dscr = p.annualDS > 0 ? (p.noi ?? 0) / p.annualDS : null;
+          p.cfbt = p.noi != null && p.annualDS != null ? p.noi - p.annualDS : null;
+          p.cfads = p.cfbt;
+          // Exit disposition
+          const exitCap = assumptions.disposition?.exitCapRate ?? 0.0625;
+          const isSaleYear = yearNum === holdYears || yearNum === 10;
+          p.exitNoi = isSaleYear ? p.noi : null;
+          p.exitCap = isSaleYear ? exitCap : null;
+          p.grossSaleValue = isSaleYear && exitCap > 0 && p.noi != null ? p.noi / exitCap : null;
+          p.sellingCosts = p.grossSaleValue != null ? p.grossSaleValue * (assumptions.disposition?.sellingCosts ?? 0.02) : null;
+          const loanBalance = loanAmount > 0 ? Math.max(0, loanAmount - (p.principal ?? 0) * i) : 0;
+          p.loanPayoff = isSaleYear ? loanBalance : null;
+          p.netSaleProceeds = p.grossSaleValue != null && p.sellingCosts != null
+            ? p.grossSaleValue - p.sellingCosts - loanBalance
+            : null;
+          // Metrics
+          p.capRatePct = purchasePrice > 0 && p.noi != null ? p.noi / purchasePrice : null;
+          p.noiMarginPct = p.egr != null && p.egr > 0 && p.noi != null ? p.noi / p.egr : null;
+          p.opexRatioPct = p.totalOpex != null && p.egr != null && p.egr > 0 ? p.totalOpex / p.egr : null;
+          p.debtYield = loanAmount > 0 && p.noi != null ? p.noi / loanAmount : null;
+          p.coc = loanAmount > 0 && p.cfbt != null ? p.cfbt / loanAmount : null;
+          p.rentGrowthPct = i === 0 ? rentGrowth : null;
+          return p;
+        });
+        cloned.projections = proj;
+      }
+      return cloned;
+    }
     return mergeModelIntoFinancials(f9Financials, modelResults, assumptions);
   }, [f9Financials, modelResults, assumptions]);
 
