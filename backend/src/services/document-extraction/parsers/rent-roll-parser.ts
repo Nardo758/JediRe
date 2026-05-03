@@ -164,7 +164,16 @@ function parseYardiRRwLC(
   sheet: XLSX.WorkSheet,
   headerRow: number,
   subHeaderRow: number,
-): { units: YardiUnit[]; warnings: string[]; asOfDate: string | null; sourceSystemId: string | null } {
+): {
+  units: YardiUnit[];
+  warnings: string[];
+  asOfDate: string | null;
+  sourceSystemId: string | null;
+  /** Task #514 — which logical fields were resolved by header text vs fell
+   *  back to the hardcoded canonical Yardi column index. Used by column_coverage
+   *  to distinguish 'ok' (detected) from 'fallback' / 'missing'. */
+  headerDetected: Record<'unit_no' | 'unit_type' | 'sqft' | 'market_rent' | 'charge_code' | 'amount' | 'lease_expiration', boolean>;
+} {
   const warnings: string[] = [];
   const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
 
@@ -311,7 +320,21 @@ function parseYardiRRwLC(
     warnings.push('No unit records detected in Yardi RRwLC layout');
   }
 
-  return { units, warnings, asOfDate, sourceSystemId };
+  return {
+    units,
+    warnings,
+    asOfDate,
+    sourceSystemId,
+    headerDetected: {
+      unit_no:          detected.UNIT      >= 0,
+      unit_type:        detected.TYPE      >= 0,
+      sqft:             detected.SQFT      >= 0,
+      market_rent:      detected.MARKET    >= 0,
+      charge_code:      detected.CHARGE    >= 0,
+      amount:           detected.AMOUNT    >= 0,
+      lease_expiration: detected.LEASE_EXP >= 0,
+    },
+  };
 }
 
 /**
@@ -343,12 +366,20 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     let units: YardiUnit[] = [];
     let asOfDate: string | null = null;
     let sourceSystemId: string | null = null;
+    // Task #514 — provenance for column_coverage. For Yardi we capture which
+    // logical fields were resolved by header text; for generic_flat we set it
+    // from the per-column findIndex results below.
+    let headerDetected: Record<string, boolean> = {
+      unit_no: false, unit_type: false, sqft: false, market_rent: false,
+      charge_code: false, amount: false, lease_expiration: false,
+    };
 
     if (layout === 'yardi_rrwlc') {
       const result = parseYardiRRwLC(sheet, headerRow, secondHeaderRow ?? headerRow + 1);
       units = result.units;
       asOfDate = result.asOfDate;
       sourceSystemId = result.sourceSystemId;
+      headerDetected = result.headerDetected;
       warnings.push(...result.warnings);
     } else {
       // Fallback to generic single-row layout (legacy parser logic)
@@ -360,6 +391,19 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       const marketColIdx = headers.findIndex(h => /market[\s_-]*rent|asking|mkt[\s_-]*rent/i.test(h));
       const rentColIdx = headers.findIndex(h => /lease[\s_-]*(rent|charge)|monthly[\s_-]*rent|current[\s_-]*rent|rent$|charge[\s_-]*total/i.test(h));
       const statusColIdx = headers.findIndex(h => /status|resident|tenant|occupant/i.test(h));
+      // Task #514 — record header-detection provenance for the generic_flat
+      // path so column_coverage can distinguish 'ok' (header found) from
+      // 'missing' (no header AND no data). lease_expiration / charge_code /
+      // amount stay false because this layout doesn't model them.
+      headerDetected = {
+        unit_no:          unitColIdx   >= 0,
+        unit_type:        typeColIdx   >= 0,
+        sqft:             sqftColIdx   >= 0,
+        market_rent:      marketColIdx >= 0,
+        charge_code:      false,
+        amount:           rentColIdx   >= 0, // generic_flat conflates rent into a single col
+        lease_expiration: false,
+      };
 
       if (unitColIdx === -1) {
         return {
@@ -573,43 +617,61 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       lease_expiration: 'ok',
     };
 
+    // Helper — compute one column's status from the (a) header-detection
+    // provenance captured in `headerDetected` and (b) whether any data
+    // ultimately populated. This is the source of truth for the scorecard
+    // and for the hard-fail gate below.
+    //
+    //   headerDetected=true,  hasData=true   → 'ok'
+    //   headerDetected=false, hasData=true   → 'fallback' (hardcoded index salvaged data)
+    //   headerDetected=true,  hasData=false  → 'all_null' (header found but every row empty)
+    //   headerDetected=false, hasData=false  → 'missing'  (no header, no data)
+    const colStatus = (field: keyof typeof headerDetected, hasData: boolean): ColStatus => {
+      const detected = headerDetected[field];
+      if (detected && hasData) return 'ok';
+      if (detected && !hasData) return 'all_null';
+      if (!detected && hasData) return 'fallback';
+      return 'missing';
+    };
+
     if (layout === 'yardi_rrwlc') {
-      // Resolved-by-header tracking from detectYardiColumns. `detected*Cols` is
-      // captured below in the parser's main path; here we re-read indirectly
-      // by inspecting whether data populated each field across occupied rows.
       const occOrAll = occupiedUnits.length > 0 ? occupiedUnits : currentUnits;
-      const denom = occOrAll.length || 1;
-      const allNullOrZero = (predicate: (u: YardiUnit) => boolean) =>
-        occOrAll.every(predicate);
-      // unit_no/unit_type/sqft are required to even produce a unit row, so they
-      // are 'ok' by construction here. We focus on fields that could silently
-      // fall through to nulls.
-      if (allNullOrZero(u => u.sqft == null || u.sqft === 0)) columnCoverage.sqft = 'all_null';
-      if (allNullOrZero(u => u.marketRent == null || u.marketRent === 0)) columnCoverage.market_rent = 'all_null';
-      const totalChargeRows = occOrAll.reduce((s, u) => s + Object.keys(u.charges).length, 0);
-      if (totalChargeRows === 0) {
-        columnCoverage.charge_code = 'all_null';
-        columnCoverage.amount = 'all_null';
-      }
-      const leaseExpNullCount = occupiedUnits.filter(u => !u.leaseExpiration).length;
-      if (occupiedUnits.length > 0 && leaseExpNullCount === occupiedUnits.length) {
-        columnCoverage.lease_expiration = 'all_null';
-      }
-      void denom;
+      const anyHas = (predicate: (u: YardiUnit) => boolean) => occOrAll.some(predicate);
+      // unit_no / unit_type are required to even produce a unit row, so by
+      // construction they always have data — status reduces to ok|fallback.
+      columnCoverage.unit_no   = colStatus('unit_no',   true);
+      columnCoverage.unit_type = colStatus('unit_type', true);
+      columnCoverage.sqft        = colStatus('sqft',        anyHas(u => u.sqft != null && u.sqft > 0));
+      columnCoverage.market_rent = colStatus('market_rent', anyHas(u => u.marketRent != null && u.marketRent > 0));
+      const anyCharges = occOrAll.some(u => Object.keys(u.charges).length > 0);
+      columnCoverage.charge_code = colStatus('charge_code', anyCharges);
+      columnCoverage.amount      = colStatus('amount',      anyCharges);
+      columnCoverage.lease_expiration = colStatus(
+        'lease_expiration',
+        occupiedUnits.some(u => u.leaseExpiration != null),
+      );
     } else {
-      // generic_flat path doesn't supply per-row lease dates or charge codes.
+      // generic_flat path: lease_expiration & charge_code are structurally
+      // unsupported by this layout. Other fields use header-detection provenance.
+      columnCoverage.unit_no     = colStatus('unit_no',     true);
+      columnCoverage.unit_type   = colStatus('unit_type',   currentUnits.some(u => u.unitType));
+      columnCoverage.sqft        = colStatus('sqft',        currentUnits.some(u => u.sqft != null && u.sqft > 0));
+      columnCoverage.market_rent = colStatus('market_rent', currentUnits.some(u => u.marketRent != null && u.marketRent > 0));
+      columnCoverage.amount      = colStatus('amount',      occupiedUnits.some(u => (u.charges['rent'] ?? 0) > 0));
       columnCoverage.lease_expiration = 'not_supported';
-      columnCoverage.charge_code = 'not_supported';
-      columnCoverage.amount = 'not_supported';
+      columnCoverage.charge_code      = 'not_supported';
     }
 
     // ─── Hard-fail policy (Task #514, Step 5) ───
-    // If the parser couldn't read EITHER market_rent OR effective_rent across
-    // 100% of occupied rows, the partial result is misleading — fail loudly.
-    // (Distinguished from "fully vacant" by requiring occupied_units > 0.)
-    const allMarketNull = occupiedUnits.length > 0 && occupiedUnits.every(u => u.marketRent == null || u.marketRent === 0);
-    const allEffectiveNull = occupiedUnits.length > 0 && occupiedUnits.every(u => u.totalCharges === 0 && (u.charges['rent'] ?? 0) === 0);
-    if (allMarketNull && allEffectiveNull) {
+    // Fail loudly only when the parser could not READ (i.e. could not map)
+    // both rent columns — distinguished by `column_coverage` of 'missing'
+    // (no header AND no data), NOT merely by zero values. This preserves
+    // legitimate zero-rent edge cases (e.g. fully concession'd model unit
+    // dataset) while still catching layouts where Market Rent and Effective
+    // Rent both fell through every detection rule.
+    const marketUnreadable    = columnCoverage.market_rent === 'missing';
+    const effectiveUnreadable = columnCoverage.amount === 'missing' || columnCoverage.amount === 'not_supported';
+    if (occupiedUnits.length > 0 && marketUnreadable && effectiveUnreadable) {
       return {
         documentType: 'RENT_ROLL',
         success: false,

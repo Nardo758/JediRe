@@ -729,6 +729,10 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Task #514 — session-scoped dismiss state for the rent-roll review banner.
+  // Resets on tab unmount; the next re-extraction with humanReviewNeeded=true
+  // re-shows it.
+  const [reviewBannerDismissed, setReviewBannerDismissed] = useState(false);
   const [editingRent, setEditingRent] = useState<{ idx: number; field: 'inPlace' | 'market'; val: string } | null>(null);
   const [rentOverrides, setRentOverrides] = useState<Record<string, { inPlace?: number; market?: number }>>({});
   const [savingCell, setSavingCell] = useState<{ idx: number; field: 'inPlace' | 'market' } | null>(null);
@@ -957,7 +961,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
           human review (≥1 critical column missing OR ≥50% rows missing lease
           expiration / effective rent). Lists the offending columns by name
           so the user can decide whether to re-export and re-upload. */}
-      {data?.rentRollSummary?.humanReviewNeeded && (() => {
+      {data?.rentRollSummary?.humanReviewNeeded && !reviewBannerDismissed && (() => {
         const cov = data?.rentRollSummary?.columnCoverage ?? {};
         const flagged = Object.entries(cov)
           .filter(([, s]) => s === 'missing' || s === 'all_null')
@@ -965,7 +969,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
         return (
           <div style={{ background: '#1a0d00', borderBottom: `1px solid ${C.amber}66`, padding: '10px 20px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <AlertTriangle size={14} color={C.amber} style={{ marginTop: 1, flexShrink: 0 }} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
               <span style={{ fontFamily: LABEL, fontSize: 10, fontWeight: 700, color: C.amber, letterSpacing: '0.06em' }}>
                 RENT ROLL REVIEW RECOMMENDED
               </span>
@@ -973,9 +977,29 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                 {flagged.length > 0
                   ? <>The parser could not reliably extract: <strong>{flagged.join(', ')}</strong>. </>
                   : <>The parser flagged ≥50% of occupied units missing lease expiration or effective rent. </>}
-                Re-export the rent roll in a standard layout (Yardi RRwLC, RealPage, AppFolio) or verify the affected columns before relying on these figures for underwriting.
+                Re-export the rent roll in the standard Yardi RRwLC layout (the only currently supported export format) or verify the affected columns before relying on these figures for underwriting.
               </span>
             </div>
+            {/* Task #514 — banner is session-dismissable. Re-renders on the next
+                successful re-extraction (humanReviewNeeded toggles back true). */}
+            <button
+              onClick={() => setReviewBannerDismissed(true)}
+              title="Dismiss this warning for the current session"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: C.amber,
+                cursor: 'pointer',
+                padding: 2,
+                marginTop: 1,
+                flexShrink: 0,
+                opacity: 0.7,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7'; }}
+            >
+              <X size={14} />
+            </button>
           </div>
         );
       })()}
