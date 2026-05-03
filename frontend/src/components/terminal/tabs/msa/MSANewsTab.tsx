@@ -154,7 +154,7 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
-  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName, fetchCommentary]);
 
   useEffect(() => {
     apiClient.get('/georgia/news?limit=25')

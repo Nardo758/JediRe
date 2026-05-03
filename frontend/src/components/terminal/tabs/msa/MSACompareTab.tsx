@@ -153,7 +153,7 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
-  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName, fetchCommentary]);
 
   const selectedMarkets = markets.filter(m => m.selected);
 

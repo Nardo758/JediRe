@@ -38,7 +38,7 @@ export const SubmarketCapitalTab: React.FC<SubmarketCapitalTabProps> = ({ submar
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
-  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name, fetchCommentary]);
   const transactions: Transaction[] = useMemo(() => [
     { id: '1', property: 'The Metropolitan at Phipps', units: 320, salePrice: 85000000, pricePerUnit: 265625, capRate: 4.8, buyer: 'Blackstone', seller: 'AvalonBay', date: '2025-02' },
     { id: '2', property: 'Alexan Buckhead', units: 290, salePrice: 62000000, pricePerUnit: 213793, capRate: 5.5, buyer: 'Greystar', seller: 'Trammell Crow', date: '2024-11' },

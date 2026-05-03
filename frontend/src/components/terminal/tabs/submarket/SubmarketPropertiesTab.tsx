@@ -79,7 +79,7 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
-  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name, fetchCommentary]);
 
   // Neural-network context analysis. Hook lives inside the component body
   // (not at module scope) so it sees submarketId on every render.

@@ -392,7 +392,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   // Resolved values
   const effLoanAmt  = activeLoan.userLoanAmount ?? f9ThisLoan?.loanAmount.platform ?? baseLoanAmt;
   const effRate     = activeLoan.rateType === 'Floating'
-    ? ((activeLoan.userSofr ?? f9ThisLoan?.sofr.platform ?? activeLoan.sofrCurve[0]) + (activeLoan.userSpread ?? f9ThisLoan?.spread.platform ?? preset.spread))
+    ? ((activeLoan.userSofr ?? f9ThisLoan?.sofr.platform ?? activeLoan.sofrCurve[0, f9Debt.loans]) + (activeLoan.userSpread ?? f9ThisLoan?.spread.platform ?? preset.spread))
     : (activeLoan.userRate ?? f9ThisLoan?.interestRate.platform ?? preset.rate);
   const effTerm     = activeLoan.userTerm    ?? f9ThisLoan?.termYears.platform    ?? preset.term;
   const effAmort    = activeLoan.userAmort   ?? f9ThisLoan?.amortYears.platform   ?? preset.amort;

@@ -361,7 +361,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     }
   };
 
-  useEffect(() => { fetchData(); }, [dealId]);
+  useEffect(() => { fetchData(); }, [dealId, fetchData]);
 
   const narrative = useMemo(() => data ? generateNarrative(data) : null, [data]);
   const riskSignals = useMemo(() => data ? detectRiskSignals(data) : [], [data]);

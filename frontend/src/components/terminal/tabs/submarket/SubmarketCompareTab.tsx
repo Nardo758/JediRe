@@ -39,7 +39,7 @@ export const SubmarketCompareTab: React.FC<SubmarketCompareTabProps> = ({ submar
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
-  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name, fetchCommentary]);
   const [sortBy, setSortBy] = useState<string>('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 

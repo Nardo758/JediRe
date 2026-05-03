@@ -88,7 +88,7 @@ export default function TrafficCoefficientsTab({ dealId }: TrafficCoefficientsTa
     }
   };
 
-  useEffect(() => { load(); }, [dealId]);
+  useEffect(() => { load(); }, [dealId, load]);
 
   const rows: CoefficientRow[] = Object.entries(BASELINE_DEFAULTS).map(([key, def]) => {
     const comp = calibration?.comparisons?.[key] ?? calibration?.comparisons?.[def.label] ?? null;

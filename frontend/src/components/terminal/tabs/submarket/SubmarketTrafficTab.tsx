@@ -100,7 +100,7 @@ export const SubmarketTrafficTab: React.FC<SubmarketTrafficTabProps> = ({ submar
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
-  useEffect(() => { fetchCommentary('submarket', submarketId, submarketName); }, [submarketId, submarketName]);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarketName); }, [submarketId, submarketName, fetchCommentary]);
   const [walkInView, setWalkInView] = useState<'hourly' | 'daily'>('daily');
 
   const walkInData = walkInView === 'hourly' 

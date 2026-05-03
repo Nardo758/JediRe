@@ -94,7 +94,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
-  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName, fetchCommentary]);
   const [sortKey, setSortKey] = useState<'rank' | 'pcsScore' | 'movement'>('rank');
   const [sortAsc, setSortAsc] = useState(true);
 

@@ -124,7 +124,7 @@ export const MSACapitalOwnersTab: React.FC<Props> = ({ msaId, msa, onSelectPrope
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
-  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName, fetchCommentary]);
 
   useEffect(() => {
     apiClient.get<LiveCapitalData>('/georgia/owners?state=GA')

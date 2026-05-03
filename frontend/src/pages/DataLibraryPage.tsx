@@ -154,7 +154,7 @@ export const DataLibraryPage: React.FC = () => {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const visibilityPollListenerRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => { loadFiles(); }, [filters]);
+  useEffect(() => { loadFiles(); }, [filters, loadFiles]);
 
   useEffect(() => {
     return () => {

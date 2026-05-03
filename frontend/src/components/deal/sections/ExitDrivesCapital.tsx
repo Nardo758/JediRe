@@ -192,7 +192,7 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
     );
   };
 
-  const gaugeScore = useMemo(() => EXIT_SCORES[sel.qIdx], [sel.qIdx]);
+  const gaugeScore = useMemo(() => EXIT_SCORES[sel.qIdx], [sel.qIdx, EXIT_SCORES]);
 
   return (
     <div className="space-y-6">

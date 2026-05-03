@@ -27,7 +27,7 @@ export const SubmarketFinancialsTab: React.FC<SubmarketFinancialsTabProps> = ({ 
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
-  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name, fetchCommentary]);
   // Rent by class data
   const rentByClass = useMemo(() => [
     { class: 'A', avgRent: 2180, rentPSF: 2.52, growth: 5.2, occupancy: 94.8 },

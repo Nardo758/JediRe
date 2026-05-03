@@ -105,8 +105,8 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
   const oppError = getOppError(city);
   const oppFetched = hasOppFetched(city);
 
-  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
-  useEffect(() => { fetchOpportunities(city); }, [city]);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName, fetchCommentary]);
+  useEffect(() => { fetchOpportunities(city); }, [city, fetchOpportunities]);
 
   const opportunities = oppData?.opportunities || [];
   const marketSummary = oppData?.marketSummary;

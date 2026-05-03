@@ -122,8 +122,8 @@ const SupplyPipelinePage: React.FC = () => {
       .catch(() => {});
   }, [dealId]);
 
-  useEffect(() => { fetchSupplyData(); }, [dealId, timeHorizon]);
-  useEffect(() => { if (dealCity) fetchSupplyData(dealCity); }, [dealCity]);
+  useEffect(() => { fetchSupplyData(); }, [dealId, timeHorizon, fetchSupplyData]);
+  useEffect(() => { if (dealCity) fetchSupplyData(dealCity); }, [dealCity, fetchSupplyData]);
 
   const fetchSupplyData = async (cityOverride?: string) => {
     setLoading(true);
