@@ -608,7 +608,6 @@ export class RentRollDiffService {
     // ── Build confidence_weights + determine nulled metrics ──────────────────
     // Done BEFORE constructing dynamics so nulling is typed (no `any` escapes).
     const s2Weights: Record<string, SubjectWeightEntry> = {};
-    const INSUFFICIENT_THRESHOLD = 0.5;  // null metric if n_obs < n_required × 0.5
 
     const coeffMap: Array<{ key: string; n_obs: number }> = [
       { key: 'renewal_rate',            n_obs: totalRenewalN  },
@@ -622,10 +621,11 @@ export class RentRollDiffService {
     ];
 
     // Build nulled-key set before constructing dynamics — avoids `as any` cast.
+    // Spec: null metric when n_obs < n_required (strict threshold, no 0.5 multiplier).
     const nulledKeys = new Set<string>();
     for (const { key, n_obs } of coeffMap) {
       const nRequired = SUBJECT_N_REQUIRED[key] ?? 6;
-      const insufficientSample = n_obs < nRequired * INSUFFICIENT_THRESHOLD;
+      const insufficientSample = n_obs < nRequired;
       s2Weights[key] = {
         n_obs,
         n_required: nRequired,

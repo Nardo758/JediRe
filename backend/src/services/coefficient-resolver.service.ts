@@ -113,11 +113,25 @@ export class CoefficientResolverService {
 
       if (subjectVal !== null && subjectHistory !== null) {
         // Blend: w × subject + (1-w) × platform_peer_posterior
-        // w_subject must come from the per-coefficient observation count stored in
-        // confidence_weights.  If absent (metric not yet observed for this coefficient),
-        // treat as w=0 — insufficient evidence; do NOT fall back to snapshot_count,
-        // which would over-weight sparse subject data.
-        const weightEntry = subjectHistory.confidence_weights[name];
+        //
+        // Weight lookup uses the UNDERLYING METRIC key, not the traffic coefficient
+        // name, because S1/S2 store confidence_weights under metric keys
+        // (e.g. 'signing_velocity', 'renewal_rate') while resolver coefficient
+        // names differ (e.g. 'walkin_to_tour', 'app_to_signed').
+        // Mapping is: walkin_to_tour ← signing_velocity,
+        //             stop_probability ← days_vacant_median,
+        //             app_to_signed ← renewal_rate,
+        //             apartment_seeker_pct ← concession_trend (fallback: loss_to_lease)
+        const COEFF_METRIC_MAP: Partial<Record<CoefficientName, string>> = {
+          walkin_to_tour:      'signing_velocity',
+          stop_probability:    'days_vacant_median',
+          app_to_signed:       'renewal_rate',
+          apartment_seeker_pct: 'concession_trend',
+        };
+        const metricKey = COEFF_METRIC_MAP[name] ?? name;
+        const weightEntry = subjectHistory.confidence_weights[metricKey];
+        // If no weight entry for the underlying metric, treat as w=0 (insufficient evidence).
+        // Do NOT proxy with snapshot_count — that over-weights sparse per-metric data.
         const w = weightEntry ? weightEntry.weight : 0;
 
         if (w > 0) {
@@ -346,52 +360,6 @@ export class CoefficientResolverService {
     }
 
     return Object.keys(proxies).length > 0 ? proxies : null;
-  }
-
-  // ============================================================================
-  // Private: Deal coefficients (from most recent derived snapshot)
-  // ============================================================================
-
-  private async loadDealCoefficients(
-    dealId: string | null,
-  ): Promise<Partial<Record<CoefficientName, number>> | null> {
-    if (!dealId) return null;
-    try {
-      const result = await this.pool.query<any>(`
-        SELECT derived_metrics
-        FROM rent_roll_snapshots
-        WHERE deal_id = $1 AND status IN ('derived', 'calibrated')
-        ORDER BY snapshot_date DESC
-        LIMIT 1
-      `, [dealId]);
-
-      if (result.rows.length === 0) return null;
-
-      const derived = result.rows[0].derived_metrics;
-      if (!derived || !derived.unit_type_breakdown?.length) return null;
-
-      const allUnitTypes = derived.unit_type_breakdown;
-      const avgSigningVelocity = this.mean(allUnitTypes.map((u: any) => u.signing_velocity));
-      const avgDaysVacant = this.mean(allUnitTypes.map((u: any) => u.days_vacant_avg).filter((d: number) => d > 0));
-      const avgConcession = this.mean(allUnitTypes.map((u: any) => u.concession_intensity));
-      const renewalRate = derived.renewal_rate_proxy ?? 0.5;
-
-      if (avgSigningVelocity <= 0) return null;
-
-      return {
-        walkin_to_tour: Math.min(0.9, Math.max(0.1, avgSigningVelocity / 10)),
-        stop_probability: avgDaysVacant > 0
-          ? Math.min(0.5, Math.max(0.05, 0.15 * (30 / avgDaysVacant)))
-          : BASELINE_COEFFICIENTS.stop_probability,
-        app_to_signed: Math.min(0.95, Math.max(0.3, 0.5 + renewalRate * 0.3)),
-        apartment_seeker_pct: avgConcession > 4 ? 0.015 : avgConcession < 1 ? 0.025 : BASELINE_COEFFICIENTS.apartment_seeker_pct,
-      };
-    } catch (err: unknown) {
-      logger.debug('[CoefficientResolver] Could not load deal coefficients', {
-        dealId, error: err instanceof Error ? err.message : String(err),
-      });
-      return null;
-    }
   }
 
   // ============================================================================
