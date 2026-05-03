@@ -2,10 +2,10 @@
  * Storybook stories for InlineAssumptionBlock
  *
  * Three stories:
- *  1. WithSubjectHistory — full 3-col mode with S2 tier, material collision
- *  2. WithoutSubjectHistory — 2-col mode, no rent roll
- *  3. EdgeCases — empty peer, S1-only, severe collision, collapsed-with-badge,
- *                 out-of-range override rejection
+ *  1. WithSubjectHistory  — full 3-col mode (S2 tier, material + severe collision)
+ *  2. WithoutSubjectHistory — true 2-col mode (no rent roll uploaded)
+ *  3. EdgeCases — null peer, S1-only dynamics, severe collision, active user override,
+ *                 range-guard rejection, and collapsed-with-⚠-badge
  */
 import type { Meta, StoryObj } from '@storybook/react';
 import React from 'react';
@@ -86,35 +86,6 @@ const OCCUPANCY_FIELDS_WITH_SUBJECT: AssumptionFieldDef[] = [
   },
 ];
 
-const CONCESSION_FIELDS_WITH_SUBJECT: AssumptionFieldDef[] = [
-  {
-    fieldId: 'free_months_y1',
-    label: 'Concession Free Months Y1',
-    format: 'months',
-    precision: 0.25,
-    min: 0, max: 6,
-    peerValue: 1.2,
-    subjectValue: 1.8,
-    effectiveValue: 1.52,
-    blendWeight: 0.6,
-    source: 'subject_history:s2',
-    confidence: 'MED',
-  },
-  {
-    fieldId: 'concession_pct',
-    label: 'Concession % of Rent',
-    format: 'pct',
-    precision: 0.1,
-    min: 0, max: 0.5,
-    peerValue: 0.095,
-    subjectValue: 0.118,
-    effectiveValue: 0.109,
-    blendWeight: 0.55,
-    source: 'subject_history:s2',
-    confidence: 'MED',
-  },
-];
-
 const OCCUPANCY_FIELDS_NO_SUBJECT: AssumptionFieldDef[] = OCCUPANCY_FIELDS_WITH_SUBJECT.map(f => ({
   ...f,
   subjectValue: null,
@@ -163,7 +134,7 @@ export const WithSubjectHistory: Story = {
   },
 };
 
-// ─── Story 2: Without subject history (2-col mode) ───────────────────────────
+// ─── Story 2: Without subject history (true 2-col mode) ──────────────────────
 
 export const WithoutSubjectHistory: Story = {
   name: 'Without Subject History — 2-col mode',
@@ -179,7 +150,9 @@ export const WithoutSubjectHistory: Story = {
   },
 };
 
-// ─── Story 3: Edge cases ─────────────────────────────────────────────────────
+// ─── Story 3: Edge cases ──────────────────────────────────────────────────────
+// Covers: null peer, S1-only, severe collision, active override, range-guard,
+//         and collapsed-with-⚠-badge (defaultExpanded: false).
 
 const EDGE_FIELDS: AssumptionFieldDef[] = [
   {
@@ -238,7 +211,7 @@ const EDGE_FIELDS: AssumptionFieldDef[] = [
   },
   {
     fieldId: 'range_guard',
-    label: 'Occupancy (range guard)',
+    label: 'Occupancy (range guard — try entering >1.0)',
     format: 'pct',
     precision: 0.5,
     min: 0, max: 1,
@@ -249,10 +222,23 @@ const EDGE_FIELDS: AssumptionFieldDef[] = [
     source: 'subject_history:s2',
     confidence: 'HIGH',
   },
+  {
+    fieldId: 'concession_pct',
+    label: 'Concession % of Rent',
+    format: 'pct',
+    precision: 0.1,
+    min: 0, max: 0.5,
+    peerValue: 0.095,
+    subjectValue: 0.118,
+    effectiveValue: 0.109,
+    blendWeight: 0.55,
+    source: 'subject_history:s2',
+    confidence: 'MED',
+  },
 ];
 
 export const EdgeCases: Story = {
-  name: 'Edge Cases — empty peer, S1, severe, override, range-guard',
+  name: 'Edge Cases — null peer, S1, severe, override, range-guard, collapsed ⚠',
   args: {
     blockId: 'edge_cases',
     blockLabel: 'Edge Case Demo',
@@ -261,43 +247,7 @@ export const EdgeCases: Story = {
     hasSubjectHistory: true,
     subjectTier: 'S1',
     subjectSnapshotCount: 1,
-    defaultExpanded: true,
-    onOverride: (fieldId, value) => console.log('OVERRIDE', fieldId, value),
-    onRevert: (fieldId) => console.log('REVERT', fieldId),
-  },
-};
-
-// ─── Story 4: Concessions block ───────────────────────────────────────────────
-
-export const ConcessionsBlock: Story = {
-  name: 'Concessions Block (spec §10.2)',
-  args: {
-    blockId: 'concessions',
-    blockLabel: 'Concessions',
-    dealId: 'deal-demo',
-    fields: CONCESSION_FIELDS_WITH_SUBJECT,
-    hasSubjectHistory: true,
-    subjectTier: 'S2',
-    subjectSnapshotCount: 2,
-    defaultExpanded: true,
-    onOverride: (fieldId, value) => console.log('OVERRIDE', fieldId, value),
-    onRevert: (fieldId) => console.log('REVERT', fieldId),
-  },
-};
-
-// ─── Story 5: Collapsed with collision badge ──────────────────────────────────
-
-export const CollapsedWithCollisionBadge: Story = {
-  name: 'Collapsed with ⚠ badge',
-  args: {
-    blockId: 'collapsed_badge',
-    blockLabel: 'Occupancy & Leasing',
-    dealId: 'deal-demo',
-    fields: OCCUPANCY_FIELDS_WITH_SUBJECT,
-    hasSubjectHistory: true,
-    subjectTier: 'S2',
-    subjectSnapshotCount: 3,
-    defaultExpanded: false, // collapsed — ⚠ badge visible in header
+    defaultExpanded: false, // collapsed → ⚠ badge visible in header
     onOverride: (fieldId, value) => console.log('OVERRIDE', fieldId, value),
     onRevert: (fieldId) => console.log('REVERT', fieldId),
   },

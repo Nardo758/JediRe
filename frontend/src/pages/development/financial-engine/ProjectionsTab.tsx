@@ -9,6 +9,7 @@ import { fmt$, fmtPct } from './types';
 import { apiClient } from '../../../services/api.client';
 import { InlineAssumptionBlock } from '../../../components/InlineAssumptionBlock';
 import type { AssumptionFieldDef } from '../../../components/InlineAssumptionBlock';
+import { useDealStore } from '../../../stores/dealStore';
 
 const MONO = BT.font.mono;
 type TimelineOption = 3 | 5 | 7 | 10;
@@ -1070,6 +1071,41 @@ export function ProjectionsTab({
   const [error,            setError]           = useState<string | null>(null);
   const [drilldown, setDrilldown] = useState<DrilldownInfo | null>(null);
 
+  // ── Inline Assumption Block — override state + store wiring ──────────────
+  // Local state mirrors user overrides so EFFECTIVE cells reflect edits
+  // immediately; updateAssumption persists them to the deal store (LayeredValue).
+  const [iabOverrides, setIabOverrides] = useState<Record<string, number>>({});
+  const updateAssumption = useDealStore(s => s.updateAssumption);
+  const revertAssumption = useDealStore(s => s.revertAssumption);
+
+  // Maps IAB fieldId → deal-store assumption path under the traffic namespace.
+  const iabFieldPath = useCallback((fieldId: string): string => {
+    const FIELD_PATH: Record<string, string> = {
+      physical_occupancy:      'traffic.physical_occupancy',
+      loss_to_lease:           'traffic.loss_to_lease',
+      signing_velocity:        'traffic.signing_velocity',
+      renewal_rate:            'traffic.renewal_rate',
+      days_vacant:             'traffic.days_vacant_median',
+      concession_pct:          'traffic.concession_pct',
+      concession_trend_score:  'traffic.concession_trend_score',
+    };
+    return FIELD_PATH[fieldId] ?? `traffic.${fieldId}`;
+  }, []);
+
+  const handleIabOverride = useCallback((fieldId: string, value: number) => {
+    setIabOverrides(prev => ({ ...prev, [fieldId]: value }));
+    updateAssumption(iabFieldPath(fieldId), value);
+  }, [updateAssumption, iabFieldPath]);
+
+  const handleIabRevert = useCallback((fieldId: string) => {
+    setIabOverrides(prev => {
+      const next = { ...prev };
+      delete next[fieldId];
+      return next;
+    });
+    revertAssumption(iabFieldPath(fieldId));
+  }, [revertAssumption, iabFieldPath]);
+
   // Narrative load — non-critical, fires once
   const loadNarrative = useCallback(async () => {
     if (!dealId) return;
@@ -1273,8 +1309,18 @@ export function ProjectionsTab({
         {financials?.subjectHistory && (() => {
           const history = financials.subjectHistory!;
           const hasSubjectHistory = true;
-          const occFields = buildOccupancyFields(history);
-          const concFields = buildConcessionFields(history);
+
+          // Merge local override tracking into field definitions so EFFECTIVE
+          // cell shows user-committed value immediately, before next F9 recompute.
+          const applyOverrides = (fields: AssumptionFieldDef[]): AssumptionFieldDef[] =>
+            fields.map(f => iabOverrides[f.fieldId] != null
+              ? { ...f, overrideValue: iabOverrides[f.fieldId] }
+              : f,
+            );
+
+          const occFields = applyOverrides(buildOccupancyFields(history));
+          const concFields = applyOverrides(buildConcessionFields(history));
+
           return (
             <>
               {occFields.length > 0 && (
@@ -1287,8 +1333,8 @@ export function ProjectionsTab({
                   subjectTier={history.tier}
                   subjectSnapshotCount={history.snapshot_count}
                   defaultExpanded={showSubjectHistory}
-                  onOverride={(_fieldId, _value) => {}}
-                  onRevert={(_fieldId) => {}}
+                  onOverride={handleIabOverride}
+                  onRevert={handleIabRevert}
                 />
               )}
               {concFields.length > 0 && (
@@ -1301,8 +1347,8 @@ export function ProjectionsTab({
                   subjectTier={history.tier}
                   subjectSnapshotCount={history.snapshot_count}
                   defaultExpanded={false}
-                  onOverride={(_fieldId, _value) => {}}
-                  onRevert={(_fieldId) => {}}
+                  onOverride={handleIabOverride}
+                  onRevert={handleIabRevert}
                 />
               )}
             </>

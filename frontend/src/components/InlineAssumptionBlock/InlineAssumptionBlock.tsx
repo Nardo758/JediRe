@@ -71,7 +71,8 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
       ? (fields.find(f => f.fieldId === drilldownFieldId) ?? null)
       : null;
 
-    const colCount = hasSubjectHistory ? 5 : 4; // label + peer + [subject] + effective + conf
+    // label + peer + [subject?] + effective + conf
+    const colCount = hasSubjectHistory ? 5 : 4;
 
     return (
       <>
@@ -186,25 +187,13 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
                     }}>
                       PEER SET
                     </th>
-                    {hasSubjectHistory ? (
+                    {hasSubjectHistory && (
                       <th style={{
                         padding: '2px 8px', textAlign: 'right',
                         fontFamily: T.font.mono, fontSize: T.fontSize.badge,
                         color: T.accent.subject, fontWeight: 600, minWidth: 80,
                       }}>
                         SUBJECT
-                      </th>
-                    ) : (
-                      <th
-                        title="Upload rent roll for subject calibration"
-                        style={{
-                          padding: '2px 8px', textAlign: 'right',
-                          fontFamily: T.font.mono, fontSize: T.fontSize.badge,
-                          color: `${T.text.muted}60`, fontWeight: 500, minWidth: 80,
-                          cursor: 'help',
-                        }}
-                      >
-                        SUBJECT ⓘ
                       </th>
                     )}
                     <th style={{
@@ -253,7 +242,7 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
                 </div>
               )}
 
-              {/* No-subject-history tooltip row */}
+              {/* No-subject-history note */}
               {!hasSubjectHistory && (
                 <div style={{
                   padding: '3px 8px',
@@ -261,7 +250,7 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
                   color: T.text.muted,
                   borderTop: `1px solid ${T.border.subtle}30`,
                 }}>
-                  ⓘ Upload a rent roll to enable SUBJECT column calibration
+                  ⓘ Upload a rent roll to enable 3-col subject calibration
                 </div>
               )}
             </div>
