@@ -131,7 +131,18 @@ router.get('/:dealId', authMiddleware.requireAuth, async (req: Request, res: Res
   try {
     const { dealId } = req.params;
     
-    const proforma = await proformaAdjustmentService.getProFormaComputed(dealId);
+    let proforma = await proformaAdjustmentService.getProFormaComputed(dealId);
+    
+    if (!proforma) {
+      // Auto-initialize on first access: no proforma_assumptions row exists yet.
+      // Default to rental strategy so the proforma surfaces render instead of blank.
+      try {
+        await proformaAdjustmentService.initializeProForma(dealId, 'rental');
+        proforma = await proformaAdjustmentService.getProFormaComputed(dealId);
+      } catch (initErr: any) {
+        logger.error('Auto-initialize failed:', initErr?.message ?? initErr);
+      }
+    }
     
     if (!proforma) {
       return res.status(404).json({
