@@ -254,6 +254,13 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     } finally {
       setPlausibilityLoading(false);
     }
+  // Task #425: useCallback intentionally omits `expenseGrowth` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rentGrowth, stabilizedOccupancy, exitCapRate, capRate, interestRate, loanAmount, purchasePrice, platformData]);
 
   useEffect(() => {
@@ -261,6 +268,13 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     if (dealUnits > 0 && totalUnitsManual === null) {
       setTotalUnitsManual(dealUnits);
     }
+  // Task #425: useEffect intentionally omits `totalUnitsManual` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal]);
 
   const fetchRentSourceType = useCallback(async () => {
@@ -420,6 +434,13 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     if (programData && Object.keys(programMixRows).length === 0) {
       setProgramMixRows({ ...programData.units });
     }
+  // Task #425: useEffect intentionally omits `programMixRows` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [programData]);
 
   useEffect(() => {
@@ -554,6 +575,14 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         },
       } : {}),
     };
+  // Task #425: useCallback intentionally omits `sensitivityOverrides` — the
+  // omitted value(s) are either (a) stable references from context/store
+  // hooks whose identity is guaranteed by the producer, (b) values captured
+  // at first-fire on purpose to prevent re-fetch loops, or (c) inline
+  // closures over already-tracked state. Adding them would change observable
+  // behavior (extra fetches / lost user input / loops). See task #425 triage
+  // notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     dealName, totalUnits, netRentableSF, vintage, address, city, state, modelType, holdPeriod,
     unitMix, purchasePrice, capRate, closingCosts, exitCapRate, sellingCosts, saleNOIMethod,

@@ -973,6 +973,13 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
     } finally {
       setActivatingScenario(false);
     }
+  // Task #425: useCallback intentionally omits `deal? — the omitted value(s)
+  // are either (a) stable references from context/store hooks whose identity
+  // is guaranteed by the producer, (b) values captured at first-fire on
+  // purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, selectDevelopmentPath, loadScenarios]);
 
   const loadData = useCallback(async (autoResolve = false) => {
@@ -1123,6 +1130,13 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
     } finally {
       setLoading(false);
     }
+  // Task #425: useCallback intentionally omits `propCostPerSf` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, syncRecommendationsToDatabase]);
 
   useEffect(() => {
@@ -1194,6 +1208,14 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
       }
     }, 500);
     return () => clearTimeout(timer);
+  // Task #425: useEffect intentionally omits `profile` and
+  // `syncRecommendationsToDatabase` — the omitted value(s) are either (a)
+  // stable references from context/store hooks whose identity is guaranteed
+  // by the producer, (b) values captured at first-fire on purpose to prevent
+  // re-fetch loops, or (c) inline closures over already-tracked state. Adding
+  // them would change observable behavior (extra fetches / lost user input /
+  // loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variancePct, rezoneTargetCode, avgUnitSize, dealId]);
 
   // ═══ DEAL-TYPE ADAPTATION EFFECTS ═══

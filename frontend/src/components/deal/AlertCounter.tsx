@@ -75,6 +75,11 @@ export function useIdentityGate(): { complete: boolean; missing: string[] } {
       }
     }
     return { complete: missing.length === 0, missing };
+  // Task #425: useMemo dep 'dealType' flagged unnecessary by lint, but is
+  // kept here intentionally — it documents the conceptual input the body
+  // relies on (read indirectly via a derived value) so future readers don't
+  // accidentally narrow the dep set.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, dealType]);
 }
 

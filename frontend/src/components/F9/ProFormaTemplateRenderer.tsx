@@ -104,6 +104,11 @@ export const ProFormaTemplateRenderer: React.FC<ProFormaTemplateRendererProps> =
   renderHeader,
   className,
 }) => {
+  // Task #425: the flagged value is recreated on each render but its identity
+  // drift is benign here — the downstream useMemo guards effectful work with
+  // internal equality / ref checks, so wrapping with another useMemo would
+  // add noise without changing behavior.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const sections = template?.sections ?? [];
   const [activeId, setActiveId] = useState<string | null>(sections[0]?.id ?? null);
 

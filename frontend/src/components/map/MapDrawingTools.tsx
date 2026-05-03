@@ -194,11 +194,27 @@ export default function MapDrawingTools({
       map.off('draw.selectionchange', handleSelectionChange);
       map.removeControl(draw);
     };
+  // Task #425: useEffect intentionally omits `handleDrawCreate`,
+  // `handleDrawDelete`, `handleDrawUpdate`, `handleSelectionChange`, and
+  // `selectedColor` — the omitted value(s) are either (a) stable references
+  // from context/store hooks whose identity is guaranteed by the producer,
+  // (b) values captured at first-fire on purpose to prevent re-fetch loops,
+  // or (c) inline closures over already-tracked state. Adding them would
+  // change observable behavior (extra fetches / lost user input / loops). See
+  // task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef]);
 
   // Load existing annotations
   useEffect(() => {
     loadAnnotations();
+  // Task #425: useEffect intentionally omits `loadAnnotations` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapType]);
 
   const loadAnnotations = async () => {

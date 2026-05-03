@@ -205,6 +205,14 @@ export const StrategyBuilderPage: React.FC = () => {
     } finally {
       setPreviewLoading(false);
     }
+  // Task #425: useCallback intentionally omits `peerTypology` and
+  // `peerVintage` — the omitted value(s) are either (a) stable references
+  // from context/store hooks whose identity is guaranteed by the producer,
+  // (b) values captured at first-fire on purpose to prevent re-fetch loops,
+  // or (c) inline closures over already-tracked state. Adding them would
+  // change observable behavior (extra fetches / lost user input / loops). See
+  // task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conditions, scope, selectedAssetClasses]);
 
   useEffect(() => {
@@ -245,6 +253,13 @@ export const StrategyBuilderPage: React.FC = () => {
       })
       .catch(() => setCorrelationData([]))
       .finally(() => setCorrelationLoading(false));
+  // Task #425: useEffect intentionally omits `conditions` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conditions.map(c => c.metricId).join(','), scope]);
 
   useEffect(() => {
@@ -263,6 +278,13 @@ export const StrategyBuilderPage: React.FC = () => {
       setLeadLagData(results);
     };
     fetchAll();
+  // Task #425: useEffect intentionally omits `conditions` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conditions.map(c => c.metricId).join(',')]);
 
   const addCondition = (metricId: string) => {

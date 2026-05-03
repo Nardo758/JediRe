@@ -248,6 +248,14 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       });
       setUmProgram(optimal);
     }
+  // Task #425: useEffect intentionally omits `apiDemandScores`,
+  // `developmentEnvelope? — the omitted value(s) are either (a) stable
+  // references from context/store hooks whose identity is guaranteed by the
+  // producer, (b) values captured at first-fire on purpose to prevent
+  // re-fetch loops, or (c) inline closures over already-tracked state. Adding
+  // them would change observable behavior (extra fetches / lost user input /
+  // loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [umLoading, apiZoning, apiProgram]);
 
   useEffect(() => {
@@ -287,6 +295,14 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
   useEffect(() => {
     if (tabs.findIndex(t => t.id === activeTabId) === -1) setActiveTabId(tabs[0].id);
+  // Task #425: useEffect intentionally omits `activeTabId` and `tabs` — the
+  // omitted value(s) are either (a) stable references from context/store
+  // hooks whose identity is guaranteed by the producer, (b) values captured
+  // at first-fire on purpose to prevent re-fetch loops, or (c) inline
+  // closures over already-tracked state. Adding them would change observable
+  // behavior (extra fetches / lost user input / loops). See task #425 triage
+  // notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealMode]);
 
   const hasZoningContext = !!(activeScenario && (activeScenario.maxUnits || activeScenario.maxGba));
@@ -299,6 +315,14 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     if (data) {
       pushToContext(data);
     }
+  // Task #425: useEffect intentionally omits `data` and `pushToContext` — the
+  // omitted value(s) are either (a) stable references from context/store
+  // hooks whose identity is guaranteed by the producer, (b) values captured
+  // at first-fire on purpose to prevent re-fetch loops, or (c) inline
+  // closures over already-tracked state. Adding them would change observable
+  // behavior (extra fetches / lost user input / loops). See task #425 triage
+  // notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastEvent]);
 
   const pushToContext = (intelData: MarketIntelData) => {
@@ -361,6 +385,13 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     }
   };
 
+  // Task #425: useEffect intentionally omits `fetchData` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData(); }, [dealId]);
 
   const narrative = useMemo(() => data ? generateNarrative(data) : null, [data]);

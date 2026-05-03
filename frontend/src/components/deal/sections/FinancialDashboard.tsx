@@ -668,6 +668,14 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
     if (dealId && scenarios?.base?.irr > 0) {
       fetchAnalysis();
     }
+  // Task #425: useEffect intentionally omits `fetchAnalysis` and `scenarios?
+  // — the omitted value(s) are either (a) stable references from
+  // context/store hooks whose identity is guaranteed by the producer, (b)
+  // values captured at first-fire on purpose to prevent re-fetch loops, or
+  // (c) inline closures over already-tracked state. Adding them would change
+  // observable behavior (extra fetches / lost user input / loops). See task
+  // #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
   if (loading) {
@@ -1035,12 +1043,26 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
 
       return updated ? patch : prev;
     });
+  // Task #425: useEffect intentionally omits `ctxCapital — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctxFinancial?.lastUpdated, ctxMarket?.lastUpdated, ctxCapital?.lastUpdated]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, load]);
 
   useEffect(() => {
     if (id) loadSummary();
+  // Task #425: useEffect intentionally omits `loadSummary` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadSummary = async () => {

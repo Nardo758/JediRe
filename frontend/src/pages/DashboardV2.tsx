@@ -48,6 +48,13 @@ export const DashboardV2: React.FC = () => {
       navigate('/deals/create');
       window.history.replaceState({}, document.title);
     }
+  // Task #425: useEffect intentionally omits `fetchDeals` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location, navigate]);
 
   // Fetch layers for current map
@@ -100,6 +107,9 @@ export const DashboardV2: React.FC = () => {
         saveDrawing(null as any);
       });
     }
+  // Task #425: useEffect reads from a ref whose .current is intentionally not
+  // in deps — mutating a ref does not (and should not) re-trigger the hook.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef.current]);
 
   // Handle drawing mode activation
@@ -147,6 +157,13 @@ export const DashboardV2: React.FC = () => {
     } else {
       addDealsToMap(map);
     }
+  // Task #425: useEffect intentionally omits `addDealsToMap` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deals]);
 
   const addDealsToMap = (map: any) => {

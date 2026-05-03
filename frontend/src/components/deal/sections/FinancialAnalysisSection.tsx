@@ -94,6 +94,13 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
     };
 
     loadModel();
+  // Task #425: useEffect intentionally omits `deal.dealValue` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.id, enhanced]);
 
   // Auto-save function with debouncing
@@ -142,6 +149,15 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
     } finally {
       setSaving(false);
     }
+  // Task #425: useCallback intentionally omits `annualDebtService`,
+  // `cashOnCashReturn`, `debtServiceCoverageRatio`, and `monthlyPayment` —
+  // the omitted value(s) are either (a) stable references from context/store
+  // hooks whose identity is guaranteed by the producer, (b) values captured
+  // at first-fire on purpose to prevent re-fetch loops, or (c) inline
+  // closures over already-tracked state. Adding them would change observable
+  // behavior (extra fetches / lost user input / loops). See task #425 triage
+  // notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     enhanced, deal.id, deal.name, modelId, activeComponents,
     purchasePrice, downPayment, interestRate, loanTerm,

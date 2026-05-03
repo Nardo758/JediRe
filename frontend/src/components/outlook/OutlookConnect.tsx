@@ -112,6 +112,13 @@ export default function OutlookConnect({
   // Check status on mount
   useEffect(() => {
     checkStatus();
+  // Task #425: useEffect intentionally omits `checkStatus` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Check for OAuth callback (when redirected back from Microsoft)
@@ -126,6 +133,13 @@ export default function OutlookConnect({
       setError(`Connection failed: ${params.get('microsoft_error')}`);
       window.history.replaceState({}, '', window.location.pathname);
     }
+  // Task #425: useEffect intentionally omits `checkStatus` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {

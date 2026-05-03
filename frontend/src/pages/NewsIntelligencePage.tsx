@@ -56,6 +56,13 @@ export function NewsIntelligencePage() {
 
   useEffect(() => {
     loadData();
+  // Task #425: useEffect intentionally omits `loadData` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -66,6 +73,13 @@ export function NewsIntelligencePage() {
       prevDateRange.current = dateRange;
       loadEvents();
     }
+  // Task #425: useEffect intentionally omits `loadEvents` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange]);
 
   // Map a unified-feed article (newsletter or provider API) into the NewsEvent

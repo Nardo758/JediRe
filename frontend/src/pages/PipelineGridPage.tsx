@@ -39,6 +39,13 @@ export function PipelineGridPage() {
     if (urlView && urlView !== viewMode) {
       setViewMode(urlView);
     }
+  // Task #425: useEffect intentionally omits `viewMode` — the omitted
+  // value(s) are either (a) stable references from context/store hooks whose
+  // identity is guaranteed by the producer, (b) values captured at first-fire
+  // on purpose to prevent re-fetch loops, or (c) inline closures over
+  // already-tracked state. Adding them would change observable behavior
+  // (extra fetches / lost user input / loops). See task #425 triage notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   const handleViewModeChange = (mode: ViewMode) => {

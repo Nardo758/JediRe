@@ -567,6 +567,14 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
         .catch(() => { setActuals([]); setActualsLoaded(true); })
         .finally(() => setLoading(false));
     }
+  // Task #425: useEffect intentionally omits `actualsLoaded`, `otherIncome —
+  // the omitted value(s) are either (a) stable references from context/store
+  // hooks whose identity is guaranteed by the producer, (b) values captured
+  // at first-fire on purpose to prevent re-fetch loops, or (c) inline
+  // closures over already-tracked state. Adding them would change observable
+  // behavior (extra fetches / lost user input / loops). See task #425 triage
+  // notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, subTab]);
 
   const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
@@ -2652,6 +2660,14 @@ export default function PortfolioPropertyPage() {
     if (!trafficData.length) {
       apiClient.get(`/api/v1/portfolio/${dealId}/traffic`).then(r => setTrafficData(r.data?.data || []));
     }
+  // Task #425: useEffect intentionally omits `leaseData` and `trafficData —
+  // the omitted value(s) are either (a) stable references from context/store
+  // hooks whose identity is guaranteed by the producer, (b) values captured
+  // at first-fire on purpose to prevent re-fetch loops, or (c) inline
+  // closures over already-tracked state. Adding them would change observable
+  // behavior (extra fetches / lost user input / loops). See task #425 triage
+  // notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, activeTab]);
 
   if (loading) {

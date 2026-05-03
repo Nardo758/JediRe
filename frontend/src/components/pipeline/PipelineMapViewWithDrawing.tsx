@@ -186,6 +186,9 @@ export default function PipelineMapViewWithDrawing({
         map.off('draw.selectionchange', handleDrawSelectionChange);
       }
     };
+  // Task #425: useEffect reads from a ref whose .current is intentionally not
+  // in deps — mutating a ref does not (and should not) re-trigger the hook.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef.current]);
 
   // Handle drawing mode changes

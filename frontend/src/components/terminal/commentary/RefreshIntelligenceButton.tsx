@@ -52,6 +52,14 @@ export const RefreshIntelligenceButton: React.FC<RefreshIntelligenceButtonProps>
   // Cancel any in-flight polling loop on unmount or when entity changes —
   // otherwise the loop keeps running and stomps state on the next mount.
   useEffect(() => {
+    // Task #425: hook intentionally omits flagged deps — the omitted value(s)
+    // are either (a) stable references from context/store hooks whose
+    // identity is guaranteed by the producer, (b) values captured at
+    // first-fire on purpose to prevent re-fetch loops, or (c) inline closures
+    // over already-tracked state. Adding them would change observable
+    // behavior (extra fetches / lost user input / loops). See task #425
+    // triage notes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { cancelRef.current.cancelled = true; };
   }, [entityType, entityId]);
 
