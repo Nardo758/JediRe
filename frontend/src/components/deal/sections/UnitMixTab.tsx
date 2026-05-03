@@ -984,9 +984,18 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
           so the user can decide whether to re-export and re-upload. */}
       {data?.rentRollSummary?.humanReviewNeeded && !reviewBannerDismissed && (() => {
         const cov = data?.rentRollSummary?.columnCoverage ?? {};
-        const flagged = Object.entries(cov)
+        // 'missing' / 'all_null' = parser couldn't read the column at all.
+        // 'fallback' = parser had to use hardcoded column indices (header
+        // text didn't match), so values may be present but provenance is
+        // weak — surface these too as a low-confidence signal so operators
+        // can decide whether to re-export with the canonical headers.
+        const failed = Object.entries(cov)
           .filter(([, s]) => s === 'missing' || s === 'all_null')
           .map(([k]) => k.replace(/_/g, ' '));
+        const fallback = Object.entries(cov)
+          .filter(([, s]) => s === 'fallback')
+          .map(([k]) => k.replace(/_/g, ' '));
+        const flagged = failed;
         return (
           <div style={{ background: '#1a0d00', borderBottom: `1px solid ${C.amber}66`, padding: '10px 20px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <AlertTriangle size={14} color={C.amber} style={{ marginTop: 1, flexShrink: 0 }} />
@@ -998,6 +1007,9 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                 {flagged.length > 0
                   ? <>The parser could not reliably extract: <strong>{flagged.join(', ')}</strong>. </>
                   : <>The parser flagged ≥50% of occupied units missing lease expiration or effective rent. </>}
+                {fallback.length > 0 && (
+                  <>Low-confidence columns (resolved by position rather than header match): <strong>{fallback.join(', ')}</strong>. </>
+                )}
                 Re-export the rent roll in the standard Yardi RRwLC layout (the only currently supported export format) or verify the affected columns before relying on these figures for underwriting.
               </span>
             </div>
