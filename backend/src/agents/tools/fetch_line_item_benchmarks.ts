@@ -187,8 +187,10 @@ export const fetchLineItemBenchmarksTool = {
           addCondition('vintage_band', bucket.filters.vintage_band);
           addCondition('unit_count_band', bucket.filters.unit_count_band);
 
-          const result = await query(
-            `SELECT 
+          // Cast $1 to text so the OR comparison with the line_item_aliases
+          // text[] column doesn't trigger an "operator does not exist" /
+          // type-inference error when pg sees an untyped text literal.
+          const sql = `SELECT 
               line_item, category,
               per_unit_p10, per_unit_p25, per_unit_p50, per_unit_p75, per_unit_p90, per_unit_mean,
               pct_egi_p10, pct_egi_p25, pct_egi_p50, pct_egi_p75, pct_egi_p90,
@@ -196,12 +198,11 @@ export const fetchLineItemBenchmarksTool = {
               n_samples, n_deals, as_of,
               state, msa, submarket, asset_class, deal_type, vintage_band, unit_count_band
             FROM line_item_benchmarks
-            WHERE ${conditions.join(' AND ')}
+            WHERE ${conditions.join(' AND ').replace('$1 = ANY(line_item_aliases)', '$1::text = ANY(line_item_aliases)')}
               AND n_samples >= 3
             ORDER BY n_samples DESC, as_of DESC
-            LIMIT 1`,
-            params
-          );
+            LIMIT 1`;
+          const result = await query(sql, params);
 
           if (result.rows.length > 0) {
             const row = result.rows[0] as Record<string, unknown>;
@@ -261,8 +262,8 @@ export const fetchLineItemBenchmarksTool = {
         const defaultsResult = await query(
           `SELECT line_item, category, display_name, typical_range_low, typical_range_high
            FROM standard_line_items
-           WHERE line_item = ANY($1) OR EXISTS (
-             SELECT 1 FROM unnest(aliases) AS alias WHERE alias = ANY($1)
+           WHERE line_item = ANY($1::text[]) OR EXISTS (
+             SELECT 1 FROM unnest(aliases) AS alias WHERE alias = ANY($1::text[])
            )`,
           [missingItems]
         );
@@ -304,6 +305,9 @@ export const fetchLineItemBenchmarksTool = {
       
       if (input.building_profile_fingerprint) {
         try {
+          // Cast $2 to text[] explicitly so a NULL value (when no line items
+          // were normalised) doesn't trigger a "could not determine data type
+          // of parameter" error from the planner.
           const result = await query(
             `SELECT line_item,
                     p10_per_unit, p25_per_unit, p50_per_unit, p75_per_unit, p90_per_unit,
@@ -312,7 +316,7 @@ export const fetchLineItemBenchmarksTool = {
              FROM building_profile_opex_benchmarks
              WHERE profile_fingerprint = $1
                AND region = 'national'
-               AND (line_item = ANY($2) OR $2 IS NULL)
+               AND ($2::text[] IS NULL OR line_item = ANY($2::text[]))
              ORDER BY line_item`,
             [input.building_profile_fingerprint, normalizedItems.length > 0 ? normalizedItems : null]
           );

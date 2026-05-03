@@ -1,0 +1,1134 @@
+================================================================================
+JEDI RE — M07 SUBJECT HISTORY ENGINE & DIFF EXTRACTOR
+Combined Implementation Specification
+================================================================================
+
+Status:        Draft v1.0
+Owner:         M07 Traffic Engine
+Depends on:    LayeredValue<T> system, dealStore, document parser pipeline
+Unblocks:      M09 Projections (Occupancy/Leasing/Concessions blocks),
+               M22 Post-Close Intelligence (forward feedback loop),
+               M25 JEDI Score (Position sub-score subject calibration),
+               M14 Risk (subject-vs-peer divergence as risk signal)
+
+This file contains two specifications:
+  PART I  — M07 Subject History Engine (the system)
+  PART II — Diff Extractor Algorithm (the core sub-component)
+
+Read sequentially. Part II implements the data layer that Part I depends on.
+
+
+================================================================================
+PART I — M07 SUBJECT HISTORY ENGINE SPEC
+================================================================================
+
+--------------------------------------------------------------------------------
+1. PURPOSE & PRINCIPLE
+--------------------------------------------------------------------------------
+
+The subject property's own historical rent roll data is the highest-authority
+non-override source on the platform. It captures the actual property under
+the actual management in the actual submarket — no peer comp comes closer
+than the asset itself.
+
+Today the platform resolves traffic coefficients via a three-layer model:
+    Baseline (M07 default) → Platform Peer Set (M07 calibrated) → User Override
+
+This is incomplete. It treats peer-set output as the strongest non-override
+signal even when subject historical data exists. The corrected hierarchy:
+
+    Tier 4: Platform Default       (weakest)
+    Tier 3: Peer Set (M07 calibrated to MSA/submarket/class/vintage)
+    Tier 1: Subject Historical     (strongest non-override)
+    Tier 0: User Override          (always wins)
+
+Note: there is no Tier 2 in M07's resolution because, unlike Cashflow Agent's
+underwriting tiers, M07 does not consume "owned other assets" data — that's
+a Cashflow Agent feature. M07's subject signal is THIS deal's history only.
+
+--------------------------------------------------------------------------------
+2. SUBJECT HISTORY TIER SYSTEM (S1–S4)
+--------------------------------------------------------------------------------
+
+Subject authority unlocks in stages as snapshot count grows. Each tier adds
+new coefficients that were not computable at the prior tier.
+
+S1 — Single snapshot (immediately on first upload)
+    Every active lease's lease_start_date is a signing event. A single rent
+    roll with 290 leases is effectively a 24-month signing history embedded
+    in one document.
+
+    Coefficients unlocked:
+      • expiration_waterfall[24]            (from lease_end_date distribution)
+      • current_state                       (occ, vacant, on-notice counts)
+      • loss_to_lease_pct                   ((market − in_place) / market)
+      • lease_term_distribution             (lease_end − lease_start histogram)
+      • avg_lease_term
+      • seasonality_observed_partial        (if 60+ leases give 12mo coverage)
+      • signing_velocity_implied            (leases/month from start_date hist)
+      • current_concessions_on_book
+      • unit_type_breakdown_current
+
+    Confidence: medium-high for state metrics, medium for seasonality if
+    sample sufficient, low for forward-dynamics inference.
+
+S2 — Two snapshots (diff extractor activates)
+    The diff between snapshots reveals what *actually* happened in the gap.
+    Implied dynamics become observed dynamics.
+
+    Coefficients unlocked (via the diff extractor — see Part II):
+      • actual_signing_velocity
+      • actual_renewal_rate
+      • actual_turnover_rate                (1 − renewal_rate)
+      • trade_out_new                       (new lease vs prior tenant)
+      • trade_out_renewal                   (renewal vs prior rent same tenant)
+      • days_vacant_median
+      • actual_seasonality_2pt              (begins to validate S1 implied curve)
+      • concession_trend
+      • rent_growth_realized
+
+    Confidence scales with period_length × unit_count. Two snapshots six
+    months apart on a 290-unit asset → ~65 signing/renewal events, which is
+    statistically meaningful at the property level.
+
+S3 — Four-plus snapshots (annual cycle coverage)
+    Coefficients unlocked:
+      • actual_seasonality[12]              (full validated curve)
+      • concession_environment_trend        (quarterly dynamics)
+      • pricing_velocity                    (rate of market-rent push)
+      • eviction_skip_patterns              (unit-level identity tracking)
+      • vacancy_persistence                 (specific units that sit)
+      • unit_type_velocity_diff             (which floor plans lease faster)
+
+S4 — Twelve-plus monthly snapshots
+    Subject is self-calibrating. Peer set used only for:
+      (a) Collision check (subject vs market divergence as signal)
+      (b) Coefficients with insufficient subject sample (e.g., a new floor
+          plan added mid-history)
+
+--------------------------------------------------------------------------------
+3. AUTHORITY HIERARCHY & BAYESIAN BLEND
+--------------------------------------------------------------------------------
+
+Do not binary-switch from peer to subject when subject crosses a threshold.
+Blend by sample weight, then check for collision.
+
+    effective_value = w_subject × subject_value
+                    + (1 − w_subject) × peer_value
+
+    where:
+      w_subject = min(1, n_subject_observations / n_required_for_full_confidence)
+
+Per-coefficient n_required thresholds (codified table):
+
+    Coefficient              | n_required full weight | Lower bound (peer floor)
+    -------------------------|------------------------|--------------------------
+    seasonality              | 24mo × 30 leases/mo    | 6mo gives w=0.25
+    renewal_rate             | 60 expirations         | 20 gives w=0.33
+    trade_out_new            | 30 new leases          | 10 gives w=0.33
+    trade_out_renewal        | 30 renewals            | 10 gives w=0.33
+    signing_velocity         | 12mo continuous        | 6mo gives w=0.50
+    concession_environment   | 12mo observed          | 3mo gives w=0.25
+    days_vacant_median       | 20 vacancy events      | 8 gives w=0.40
+    loss_to_lease_pct        | 50 leases (S1)         | 20 gives w=0.40
+    expiration_waterfall     | 1 snapshot suffices    | n/a (always w=1.0)
+
+COLLISION RULE
+    If |subject_value − peer_value| > 1.5 σ_peer, do NOT auto-blend silently.
+    Surface in collision panel for user review. Material divergence between
+    subject and peer is itself a SIGNAL — it indicates management quality,
+    asset positioning, or segment difference. The user must decide whether
+    that operational alpha persists into projection years.
+
+--------------------------------------------------------------------------------
+4. DATA MODEL
+--------------------------------------------------------------------------------
+
+Three new tables.
+
+CREATE TABLE rent_roll_snapshots (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    deal_id         UUID NOT NULL REFERENCES deals(id),
+    snapshot_date   DATE NOT NULL,            -- effective date OF the rent roll
+    uploaded_at     TIMESTAMPTZ DEFAULT NOW(),
+    parser_source   TEXT NOT NULL,            -- 'yardi'|'realpage'|'onesite'|'entrata'|'manual'
+    raw_document_id UUID REFERENCES documents(id),
+    parsed_payload  JSONB NOT NULL,           -- normalized unit-level array (see §4.1)
+    unit_count      INT NOT NULL,
+    occupied_count  INT NOT NULL,
+    UNIQUE(deal_id, snapshot_date)
+);
+CREATE INDEX idx_rr_deal_date ON rent_roll_snapshots(deal_id, snapshot_date DESC);
+
+CREATE TABLE rent_roll_diffs (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    deal_id         UUID NOT NULL,
+    snapshot_a_id   UUID NOT NULL REFERENCES rent_roll_snapshots(id),  -- earlier
+    snapshot_b_id   UUID NOT NULL REFERENCES rent_roll_snapshots(id),  -- later
+    period_days     INT NOT NULL,
+    events          JSONB NOT NULL,           -- per-unit transition events (see Part II §3)
+    derived_metrics JSONB NOT NULL,           -- aggregated coefficients
+    quality_flags   JSONB NOT NULL,           -- unresolved units, anomalies
+    computed_at     TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(snapshot_a_id, snapshot_b_id)
+);
+
+CREATE TABLE subject_traffic_history (
+    deal_id                   UUID PRIMARY KEY REFERENCES deals(id),
+    snapshot_count            INT NOT NULL,
+    earliest_snapshot         DATE,
+    latest_snapshot           DATE,
+    coverage_months           NUMERIC,
+    tier                      TEXT NOT NULL CHECK (tier IN ('S1','S2','S3','S4')),
+    coefficients              JSONB NOT NULL,        -- resolved coefficient set
+    confidence_per_coefficient JSONB NOT NULL,       -- 0–1 scalar per field
+    peer_collisions           JSONB,                 -- material divergences
+    last_rebuilt_at           TIMESTAMPTZ DEFAULT NOW()
+);
+
+4.1 Normalized parsed_payload schema (parser output target)
+    {
+      "snapshot_date": "2025-06-01",
+      "units": [
+        {
+          "unit_id": "01-101",          // canonical unit number
+          "building": "01",
+          "floor": 1,
+          "sqft": 875,
+          "bedrooms": 2,
+          "bathrooms": 1.5,
+          "unit_type": "B1",            // floor plan code
+          "status": "OCCUPIED",         // OCCUPIED|VACANT_READY|VACANT_DOWN|NOTICE|MODEL|EMPLOYEE
+          "renovation_flag": false,     // critical for filtering market signal
+          "tenant": {
+            "tenant_id_external": "T44182",  // if available
+            "name_normalized": "SMITH JOHN"  // uppercase, punctuation stripped
+          },
+          "lease": {
+            "lease_id_external": "L9911",    // if available
+            "start_date": "2024-01-15",
+            "end_date": "2025-01-14",
+            "lease_term_months": 12,
+            "current_rent": 1875,
+            "market_rent": 1925,
+            "concessions": {
+              "onetime_remaining": 0,
+              "ongoing_monthly": 0,
+              "burn_off_months_remaining": 0
+            }
+          }
+        }
+        // ... per unit
+      ]
+    }
+
+--------------------------------------------------------------------------------
+5. LayeredValue<T> SOURCE ENUM EXTENSION
+--------------------------------------------------------------------------------
+
+type LayeredValueSource =
+    | 'platform'
+    | 'peer_set:m07'
+    | 'subject_history:s1'      // NEW
+    | 'subject_history:s2'      // NEW
+    | 'subject_history:s3'      // NEW
+    | 'subject_history:s4'      // NEW
+    | 'agent:cashflow'
+    | 'agent:research'
+    | 'agent:zoning'
+    | 'agent:supply'
+    | 't12'
+    | 'rent_roll'
+    | 'tax_bill'
+    | 'override';
+
+Merge order (lowest to highest priority):
+    1. platform
+    2. peer_set:m07
+    3. subject_history:s1
+    4. subject_history:s2
+    5. subject_history:s3
+    6. subject_history:s4
+    7. agent:cashflow / t12 / rent_roll / tax_bill (point-in-time documents)
+    8. override (always wins)
+
+The :sN suffix carries confidence implicitly — the resolver knows S3 beats
+S2 beats S1. The Bayesian blend (§3) operates between subject_history:sN
+and peer_set:m07 when both exist; the result carries the subject_history
+tag if w_subject ≥ 0.5, peer_set:m07 otherwise, with blend_weight stored
+in the LayeredValue's metadata.
+
+--------------------------------------------------------------------------------
+6. DealContext PAYLOAD EXTENSION
+--------------------------------------------------------------------------------
+
+dealContext.traffic.subject_history = {
+    snapshot_count: number,
+    coverage_months: number,
+    tier: 'S1' | 'S2' | 'S3' | 'S4',
+
+    current_state: {                          // S1+
+      units_occupied: number,
+      units_vacant: number,
+      units_on_notice: number,
+      units_renovation_down: number,          // excluded from market signal
+      avg_in_place_rent: number,
+      avg_market_rent: number,
+      loss_to_lease_pct: number,
+      concession_book_remaining: number,
+      expiration_waterfall_24mo: number[]
+    },
+
+    signing_history: {                        // S1+
+      months_observed: number,
+      signings_by_month: number[],
+      seasonality_observed: number[] | null,  // null if sample insufficient
+      avg_lease_term: number,
+      lease_term_distribution: { [term_months: string]: number }
+    },
+
+    observed_dynamics: {                      // S2+
+      actual_signing_velocity: number | null,
+      actual_renewal_rate: number | null,
+      actual_turnover_rate: number | null,
+      trade_out_new: number | null,
+      trade_out_renewal: number | null,
+      days_vacant_median: number | null,
+      concession_trend: { direction, magnitude } | null,
+      rent_growth_realized_yoy: number | null
+    },
+
+    validated_curves: {                       // S3+
+      seasonality_full: number[] | null,
+      pricing_velocity: number | null,
+      vacancy_persistence: number | null
+    },
+
+    confidence_weights: { [coefficient_name: string]: number },  // 0–1
+    peer_collisions: Collision[]                                  // material divergences
+};
+
+interface Collision {
+    coefficient: string;
+    subject_value: number;
+    peer_value: number;
+    delta_sigma: number;            // how many σ_peer apart
+    direction: 'subject_above' | 'subject_below';
+    magnitude: 'minor' | 'material' | 'severe';   // <1.5σ, 1.5–2.5σ, >2.5σ
+    narrative: string;              // human-readable explanation
+}
+
+--------------------------------------------------------------------------------
+7. PIPELINE EVENTS (Kafka, per existing correlation-engine pattern)
+--------------------------------------------------------------------------------
+
+rent_roll_uploaded
+    → parser_service (yardi/realpage/onesite/entrata/manual → normalized §4.1)
+    → rent_roll_snapshots INSERT
+    → S1 aggregator runs (always)
+        → subject_traffic_history UPSERT with S1 coefficients
+
+    → IF prior_snapshot_exists FOR deal AND period_days >= 60:
+        → diff_extractor (Part II)
+        → rent_roll_diffs INSERT
+        → S2/S3/S4 aggregator runs (selects tier based on snapshot_count
+          and coverage_months)
+        → subject_traffic_history UPSERT with full coefficient set
+
+    → dealStore emit: 'traffic.subject_history.updated'
+        → Triggers downstream recalcs:
+            • M07 effective coefficient resolution (Bayesian blend §3)
+            • M09 ProForma + Projections recalc
+            • M25 JEDI Score recalc
+            • M14 Risk re-evaluation (collision-driven risk signals)
+            • M22 Post-Close: actuals integrated as additional snapshots
+
+--------------------------------------------------------------------------------
+8. INLINE ASSUMPTION BLOCK UI (M09 PROJECTIONS INTEGRATION)
+--------------------------------------------------------------------------------
+
+The Inline Assumption Block on each Projections operating section renders
+a three-column comparison when subject_history exists:
+
+    ┌─ OCCUPANCY & LEASING — MARKET RATE UNITS ───────────────────────────────┐
+    │ ASSUMPTIONS (driving this block)                                         │
+    │                              PEER SET    SUBJECT     EFFECTIVE   CONF    │
+    │  Blended Rent Growth          3.1%        3.4% ▲      3.4%       HIGH    │
+    │  Expected Turnover Rate       45%         38%  ▲      38%        HIGH    │
+    │  Renewal Rate                 55%         62%  ▲      62%        HIGH    │
+    │  Days Vacant (median)         32          24   ▲      24         MED     │
+    │                                                                          │
+    │  ⚠ Subject outperforms submarket on 4 of 4 leasing metrics.            │
+    │     Possible drivers: leasing team, curb appeal, pricing position.      │
+    │     18mo subject history (3 snapshots).                                  │
+    │ ────────────────────────────────────────────────────────────────────    │
+    │  Physical Occupancy          94.0% │ 94.0% │ 94.5% │ 94.5% │ 94.5% │... │
+    │  Total Units Leased            290 │   290 │   292 │   292 │   292 │... │
+    │  ...                                                                     │
+    └──────────────────────────────────────────────────────────────────────────┘
+
+    ▲ = subject above peer; ▼ = subject below peer; – = within 0.5σ
+    Click any field to drill into source: shows n_observations, period, w_subject,
+    raw subject value, raw peer value, blend formula, override option.
+
+The collision warning bar is the highest-value surface in the system — it
+turns silent calibration into an explicit underwriting decision.
+
+--------------------------------------------------------------------------------
+9. CONCESSIONS BLOCK — WHERE SUBJECT HISTORY DOMINATES MOST
+--------------------------------------------------------------------------------
+
+Concessions are the area where peer benchmarks are weakest (highly local,
+time-sensitive, manager-discretionary). Subject history dominates here even
+at S1.
+
+    Concession line                | S1 source                          | S2+ source
+    -------------------------------|------------------------------------|------------------------------------
+    New Lease — Onetime            | concessions on leases signed L90D  | actual concessions on new-lease events
+    New Lease — On-Going           | active rent abatements             | trended forward via concession_trend
+    Renewal — Onetime              | rare in S1                         | renewal events with concessions
+    Renewal — On-Going             | ongoing abatements active          | trended forward
+    Average Concession per unit    | total / unit count active          | per-event average
+
+Per-period values in the Projections grid (the $19K, $13K, $22K... numbers
+in the screenshot reference) should be subject-derived if data exists, not
+peer-imputed. Imputed concessions are a frequent source of model error.
+
+--------------------------------------------------------------------------------
+10. EDGE CASES (codified handling required upfront)
+--------------------------------------------------------------------------------
+
+10.1 Unit renumbering across snapshots
+     Yardi reorderings, combined units (2× 600sf → 1× 1200sf), split units.
+     Identity-track via (sqft, position_id, original_unit_number_history),
+     not just unit_number. The unit-identity resolver in Part II §2 handles
+     this — combined and split units are classified as STRUCTURAL_CHANGE
+     and excluded from market signal aggregates.
+
+10.2 Renovation vacancy vs market vacancy
+     Units intentionally held for renovation are not market signal. Need a
+     flag from CapEx schedule (M22) or user tag. Renovation-down units are
+     excluded from days_vacant_median, vacancy_persistence, and signing
+     velocity numerators.
+
+10.3 Tenant identity for renewal detection
+     Tenant names unreliable across snapshots (truncation, formatting,
+     "JOHN SMITH" vs "SMITH, JOHN" vs "Smith John Jr"). Use:
+       • Primary: (unit_id, prior_lease_end_proximity_to_new_lease_start)
+         Same unit, new lease starting within 30 days of prior end = renewal
+         candidate
+       • Corroborating: tenant name fuzzy match (Levenshtein < 3 OR token-set
+         ratio > 0.85 on uppercased + punctuation-stripped names)
+       • External tenant_id if available — overrides everything
+
+10.4 Snapshot date proximity
+     Two snapshots 14 days apart give little signal. min_period_days = 60.
+     Below threshold, snapshots store but do NOT trigger diff extraction.
+     Below 90 days, S3+ coefficients are not yet eligible for promotion.
+
+10.5 Different parsers across snapshots
+     Yardi snapshot followed by RealPage snapshot. Normalize to unified
+     schema (§4.1) in parser_service before storage. Diff extractor operates
+     on normalized payload only — never on raw parser output.
+
+10.6 Lease-up assets
+     Subject history early in lease-up is NOT representative of stabilized
+     dynamics. The mode field in M07 (STABILIZED | LEASE_UP | REDEVELOPMENT)
+     governs which subject coefficients are valid for trajectory projection.
+     Lease-up signing velocity does NOT project forward into stabilized
+     years — that's a category error. The aggregator must:
+       • Tag coefficients with the mode they were observed under
+       • The blend resolver excludes mode-mismatched subject coefficients
+       • Trajectory projection uses peer or override only when subject is
+         mode-mismatched
+
+10.7 Concession field heterogeneity
+     Some rent rolls track concessions inline, some in a separate sheet
+     (Yardi often), some not at all. Parser must handle three cases.
+     Aggregator must skip silently when concession data is absent — DO NOT
+     impute zero. Imputing zero misleads downstream by suggesting "no
+     concessions in market" when reality is "we don't have data".
+
+10.8 Holdover tenants
+     Tenant remains past lease_end_date on month-to-month. Both snapshots
+     show same lease (unchanged start/end dates) but status updated to
+     "MTM" or holdover flag. Classify as HOLDOVER — contributes to
+     occupancy state but NOT to renewal_rate (no new lease was signed).
+
+10.9 Eviction / skip
+     Lease end date in B is earlier than lease end date in A for same
+     tenant on same unit — premature termination. Classify as
+     EVICTION_DETECTED. Days vacant calculated from premature_end_date
+     forward. Eviction events do count toward turnover_rate (with category
+     flag) but NOT toward standard renewal/new-lease arithmetic.
+
+10.10 First-time upload with very small property
+     20-unit property: even S2 may not give statistically meaningful
+     renewal_rate. The n_required thresholds apply — when n_observations
+     is below the lower bound, the coefficient stays at peer set with
+     w_subject = 0 and is flagged in confidence_per_coefficient as 'low'.
+
+--------------------------------------------------------------------------------
+11. BUILD ORDER
+--------------------------------------------------------------------------------
+
+1.  LayeredValueSource enum extension (§5)
+       Smallest change, biggest dependency for everything else.
+       Update merge order, update SourceBadge component to render :sN tags.
+
+2.  rent_roll_snapshots table + parser normalizer
+       Store every uploaded rent roll in normalized form. Enables S1
+       immediately. This is also the foundation Cashflow Agent's Tier 2
+       (owned-portfolio) ultimately reads from.
+
+3.  S1 aggregator
+       Runs on every snapshot. Populates subject_traffic_history with
+       single-snapshot coefficients (current state, expiration waterfall,
+       loss-to-lease, signing implied from lease_start histogram).
+       Inline Assumption block can now show subject column for S1 metrics.
+
+4.  Diff extractor (Part II)
+       Activates when snapshot_count ≥ 2 AND period_days ≥ 60.
+       Produces rent_roll_diffs records. Unlocks S2 coefficients.
+
+5.  S2/S3/S4 aggregator
+       Reads all diffs for a deal. Computes observed dynamics.
+       Promotes tier based on snapshot_count and coverage_months.
+
+6.  Bayesian blend resolver
+       Replaces current "subject if exists else peer" logic with
+       weighted blend per n_required thresholds (§3).
+
+7.  Collision panel UI
+       Surfaces material divergences in the Inline Assumption block.
+       Shows the warning bar with named drivers.
+
+8.  M22 wiring (when deal_monthly_actuals lands)
+       Actuals from post-close feed forward as additional snapshots.
+       Subject history becomes a permanent learning loop, not just an
+       underwriting input. This is the long-term defensibility play.
+
+--------------------------------------------------------------------------------
+12. ARCHITECTURAL RULE (codify in CLAUDE.md under M07 section)
+--------------------------------------------------------------------------------
+
+SUBJECT-FIRST CALIBRATION
+
+When subject property has historical observation, subject signals take
+precedence over platform peer signals via subject_history source tier
+(above peer_set:m07 in resolution order). Authority scales with snapshot
+count and observation depth via per-coefficient sample thresholds. Peer
+set serves as collision check, not primary signal, once subject sample
+is sufficient.
+
+Hierarchy: platform → peer_set:m07 → subject_history:sN → override
+
+Tier ladder:
+    S1 — single snapshot: state metrics + signing-history-derived coefficients
+    S2 — two+ snapshots: observed dynamics (renewal, turnover, trade-out)
+    S3 — four+ snapshots: validated annual cycles (full seasonality)
+    S4 — twelve+ snapshots: subject is self-calibrating
+
+Blend rule:
+    effective = w_subject × subject + (1 − w_subject) × peer
+    where w_subject = min(1, n_observations / n_required)
+
+Collision rule:
+    If |subject − peer| > 1.5σ_peer, surface for user review. Do not
+    auto-blend silently. Material divergence is a SIGNAL.
+
+
+================================================================================
+PART II — DIFF EXTRACTOR ALGORITHM SPEC
+================================================================================
+
+--------------------------------------------------------------------------------
+1. PURPOSE & I/O
+--------------------------------------------------------------------------------
+
+The diff extractor compares two normalized rent roll snapshots (A earlier,
+B later) and produces a structured event log + aggregated metrics. This
+algorithm is the core engine that transforms two snapshots into S2 dynamics.
+
+Input:
+    snapshot_a: NormalizedRentRoll  (effective date T_a)
+    snapshot_b: NormalizedRentRoll  (effective date T_b, where T_b > T_a)
+    deal_meta:  { mode, total_units, building_count, unit_type_set }
+
+Output:
+    DiffResult {
+      period_days: number,
+      events: PerUnitEvent[],
+      derived_metrics: AggregatedMetrics,
+      quality_flags: QualityFlags
+    }
+
+Pre-conditions:
+    • period_days ≥ 60 (else algorithm returns NO_DIFF result)
+    • Both snapshots normalized to schema in Part I §4.1
+    • Both snapshots from same deal_id
+
+--------------------------------------------------------------------------------
+2. UNIT IDENTITY RESOLUTION
+--------------------------------------------------------------------------------
+
+Match every unit in B back to a unit (or set of units) in A.
+
+Resolution order, per unit in B:
+
+Step 1: Exact unit_id match
+    If snapshot_a.units contains a unit with same unit_id, confirm via:
+        |sqft_a − sqft_b| / sqft_a ≤ 0.02     (2% tolerance)
+        bedrooms_a == bedrooms_b
+        bathrooms_a == bathrooms_b
+    If confirmed → identity = MATCHED (1:1)
+    If sqft/bed/bath mismatch → identity = AMBIGUOUS, fall through to Step 2
+
+Step 2: Fingerprint match (handles unit renumbering)
+    If exact unit_id not in A, search snapshot_a.units for:
+        same building
+        same floor (within ±1 floor)
+        |sqft_a − sqft_b| / sqft_a ≤ 0.02
+        bedrooms match
+        bathrooms match
+    If exactly one candidate → identity = MATCHED_RENUMBERED (1:1)
+    If multiple candidates → identity = AMBIGUOUS_FINGERPRINT
+    If zero candidates → fall through to Step 3
+
+Step 3: Combined unit detection
+    Search snapshot_a.units for two units satisfying:
+        same building
+        adjacent unit_ids OR adjacent positions
+        sqft_a1 + sqft_a2 ≈ sqft_b (±2%)
+        combined bedrooms ≈ b.bedrooms (one of A's units may have been
+        kitchen/utility space converted)
+    If found → identity = STRUCTURAL_CHANGE_COMBINED (2:1)
+        Both source units flagged. New unit excluded from market signals
+        for this period (the unit didn't exist in this form in A).
+
+Step 4: New unit (lease-up addition or new construction phase delivery)
+    If A's snapshot is from a lease-up phase and B has units not in A:
+        Cross-reference against M22 CapEx / construction completion schedule.
+        Classify as identity = NEW_DELIVERY.
+        Excluded from renewal/turnover arithmetic but included in
+        absorption tracking.
+
+Step 5: Unresolved
+    identity = UNRESOLVED with reason logged (sqft_outlier,
+    multiple_fingerprint_matches, no_match_no_capex_record, etc.)
+    Excluded from all aggregates. Counted in quality_flags.unresolved_count.
+
+REVERSE PASS (units in A not in B):
+    Run the same logic in reverse for any A unit with no B match. This
+    catches:
+        • Split units (1:2 — flagged STRUCTURAL_CHANGE_SPLIT)
+        • Demolished units (rare, flagged UNIT_REMOVED)
+        • Parser inconsistencies (flagged UNRESOLVED)
+
+OUTPUT of identity resolution: a unit_pairs array of:
+    { unit_b: UnitRecord, unit_a: UnitRecord | UnitRecord[] | null,
+      identity: IdentityClass }
+
+--------------------------------------------------------------------------------
+3. PER-UNIT EVENT CLASSIFICATION
+--------------------------------------------------------------------------------
+
+For each MATCHED or MATCHED_RENUMBERED unit pair, classify the event type
+based on lease state in A vs B.
+
+Let:
+    A.lease = unit's lease in snapshot A (may be null if vacant)
+    B.lease = unit's lease in snapshot B (may be null if vacant)
+    T_a, T_b = snapshot effective dates
+
+Event taxonomy:
+
+EVT_NO_CHANGE
+    Conditions:  A.lease and B.lease exist
+                 A.lease.start_date == B.lease.start_date
+                 A.tenant_normalized == B.tenant_normalized (or fuzzy match)
+    Meaning:     Same lease throughout the period. Passive observation.
+    Contributes: occupancy_persistence, in_place_rent at both endpoints
+
+EVT_RENEWAL
+    Conditions:  A.lease and B.lease exist
+                 B.lease.start_date > A.lease.start_date
+                 B.lease.start_date <= A.lease.end_date + 30 days
+                 (tenant identity confirmed via §4 below)
+    Meaning:     Same tenant signed a new lease at expiration.
+    Contributes: renewal_rate numerator, trade_out_renewal,
+                 lease_term_distribution
+
+EVT_NEW_LEASE_AFTER_VACANCY
+    Conditions:  B.lease exists; either A.lease is null OR
+                 (A.lease exists with different tenant AND
+                  A.lease.end_date < B.lease.start_date − 1 day)
+    Meaning:     Unit went vacant, then leased to new tenant.
+    Contributes: new_lease_count, days_vacant_median, trade_out_new (if
+                 prior rent observable in A)
+
+EVT_TURNED_OVER_NO_GAP
+    Conditions:  A.lease and B.lease exist
+                 different tenant
+                 B.lease.start_date <= A.lease.end_date + 30 days
+                 B.lease.start_date >= A.lease.end_date − 7 days
+    Meaning:     Back-to-back turnover (tenant change with minimal vacancy)
+    Contributes: turnover_rate, new_lease_count, trade_out_new
+
+EVT_MOVED_OUT_VACANT
+    Conditions:  A.lease exists, B.lease is null, B.status == VACANT_READY
+    Meaning:     Tenant moved out, unit not yet re-leased as of T_b
+    Contributes: turnover_rate (without renewal_rate offset),
+                 days_vacant_running (lower bound)
+
+EVT_MOVED_OUT_ON_NOTICE
+    Conditions:  A.status == OCCUPIED, B.status == NOTICE
+    Meaning:     Lease end approaching, tenant has given notice
+    Contributes: forward turnover signal (12mo forward)
+
+EVT_HOLDOVER
+    Conditions:  A.lease and B.lease have identical start_date and end_date
+                 B.status indicates month-to-month or holdover flag
+                 T_b > A.lease.end_date
+    Meaning:     Lease expired but tenant remains on MTM
+    Contributes: occupancy_state only — NOT renewal_rate (no new lease)
+
+EVT_EVICTION_DETECTED
+    Conditions:  A.lease.end_date in A < lease_end_date implied by B
+                 OR explicit early termination flag
+                 (often: B shows tenant turnover before A.lease.end_date)
+    Meaning:     Premature lease termination
+    Contributes: eviction_rate, turnover_rate (with category flag)
+
+EVT_RENOVATION_DOWN
+    Conditions:  B.status == VACANT_DOWN AND B.renovation_flag == true
+    Meaning:     Unit intentionally held for renovation
+    Contributes: NOTHING to market signals. Tracked separately for CapEx
+                 cross-validation against M22.
+
+EVT_NEW_DELIVERY
+    Conditions:  identity == NEW_DELIVERY (from §2 Step 4)
+    Meaning:     Unit didn't exist in A; first appears in B
+    Contributes: lease_up_absorption[period] only
+
+EVT_STRUCTURAL_CHANGE
+    Conditions:  identity == STRUCTURAL_CHANGE_COMBINED or _SPLIT
+    Contributes: NOTHING to market signals. Logged in quality_flags.
+
+--------------------------------------------------------------------------------
+4. TENANT IDENTITY RESOLUTION (for EVT_RENEWAL classification)
+--------------------------------------------------------------------------------
+
+The renewal classifier requires confirming the same tenant signed both
+leases. Tenant names in rent rolls are unreliable across systems and time.
+
+Resolution order:
+
+Layer 1: External tenant_id (if available)
+    If both A.lease.tenant.tenant_id_external and B.lease.tenant.tenant_id_external
+    exist and match → CONFIRMED
+    If they mismatch → DENIED (definitively different tenants)
+
+Layer 2: Fuzzy name match
+    Normalize both names:
+        • Uppercase
+        • Strip punctuation
+        • Strip suffixes (JR, SR, II, III)
+        • Standardize whitespace
+    Compute:
+        • Levenshtein distance
+        • Token-set ratio (handles "SMITH JOHN" vs "JOHN SMITH")
+    Match if:
+        Levenshtein <= 2 OR token_set_ratio >= 0.85
+    → CONFIRMED if match, AMBIGUOUS otherwise
+
+Layer 3: Co-incidence proximity (when name resolution is ambiguous)
+    If new lease starts within 7 days of prior lease end on the same unit,
+    treat as CONFIRMED renewal even with name ambiguity. This handles
+    formatting differences ("JOHN R SMITH" → "SMITH, JOHN") that fuzzy
+    match may miss.
+
+Layer 4: Default to NEW_LEASE
+    If Layer 1 denies OR Layer 2 fails AND Layer 3 doesn't apply,
+    classify as EVT_NEW_LEASE_AFTER_VACANCY or EVT_TURNED_OVER_NO_GAP
+    (depending on gap size).
+
+Conservative bias: When in doubt, classify as new lease, not renewal.
+Inflated renewal_rate is a worse model error than understated renewal_rate
+because it leads to underestimating turnover costs and re-leasing risk.
+
+--------------------------------------------------------------------------------
+5. PER-EVENT METRIC CALCULATIONS
+--------------------------------------------------------------------------------
+
+5.1 Trade-out (rent change on lease event)
+
+    For EVT_RENEWAL:
+        prior_rent = A.lease.current_rent
+        new_rent   = B.lease.current_rent
+        trade_out_renewal_pct = (new_rent − prior_rent) / prior_rent
+        trade_out_renewal_dollars = new_rent − prior_rent
+
+    For EVT_NEW_LEASE_AFTER_VACANCY or EVT_TURNED_OVER_NO_GAP:
+        prior_rent = A.lease.current_rent  (the prior tenant's rent)
+        new_rent   = B.lease.current_rent
+        trade_out_new_pct = (new_rent − prior_rent) / prior_rent
+        trade_out_new_dollars = new_rent − prior_rent
+
+    Special case: EVT_NEW_LEASE_AFTER_VACANCY where A.lease is null
+    (unit was already vacant in A): no trade-out computable. Skip from
+    aggregate but track unit's market_rent_a vs current_rent_b for
+    pricing_velocity signal.
+
+5.2 Days vacant
+
+    For EVT_NEW_LEASE_AFTER_VACANCY:
+        prior_end = A.lease.end_date if A.lease exists else T_a
+        new_start = B.lease.start_date
+        days_vacant = (new_start − prior_end).days
+        Floor at 0 (negative means lease overlap, treat as TURNED_OVER_NO_GAP).
+
+    For EVT_MOVED_OUT_VACANT:
+        prior_end = A.lease.end_date
+        days_vacant_running = (T_b − prior_end).days
+        // This is a LOWER BOUND — unit may still be vacant past T_b.
+        // Tracked separately as "vacant_running" not "days_vacant_completed"
+
+5.3 Lease term observed
+
+    For EVT_RENEWAL or EVT_NEW_LEASE_AFTER_VACANCY or EVT_TURNED_OVER_NO_GAP:
+        lease_term_months = (B.lease.end_date − B.lease.start_date).days / 30.44
+        Round to nearest standard term (3, 6, 9, 12, 13, 14, 15, 18, 24).
+
+5.4 Concession value
+
+    From B.lease.concessions:
+        onetime_value = onetime_remaining   (note: REMAINING, not ORIGINAL —
+                                              if lease started 2 months before
+                                              T_b and burn-off was 6 months,
+                                              remaining = original × 4/6)
+        ongoing_monthly = ongoing_monthly
+        Total concession on lease (annualized):
+            onetime + (ongoing_monthly × 12)
+
+    Per-event new-lease concession aggregate excludes EVT_RENEWAL events
+    (renewal concessions tracked separately).
+
+5.5 Pricing velocity (S3+ only, requires 4+ snapshots)
+
+    For each unit_type, fit linear regression of:
+        market_rent observed over snapshot dates
+    Slope (annualized) = pricing_velocity for that unit_type.
+    Property-level pricing_velocity = unit-weighted average.
+
+--------------------------------------------------------------------------------
+6. AGGREGATION RULES (per-period derived_metrics)
+--------------------------------------------------------------------------------
+
+After event classification, aggregate across all events in the period.
+
+6.1 Renewal & turnover rates
+
+    expirations_in_period = count where A.lease.end_date in [T_a, T_b]
+                            AND identity == MATCHED or MATCHED_RENUMBERED
+                            AND NOT renovation_flag
+
+    renewals = count(EVT_RENEWAL)
+    new_leases_post_vacancy = count(EVT_NEW_LEASE_AFTER_VACANCY)
+    turned_over_no_gap = count(EVT_TURNED_OVER_NO_GAP)
+    moved_out_no_relet = count(EVT_MOVED_OUT_VACANT) where the moveout
+                        is due to expiration in period
+
+    actual_renewal_rate = renewals / expirations_in_period
+    actual_turnover_rate = 1 − actual_renewal_rate
+        (= (new_leases_post_vacancy + turned_over_no_gap + moved_out_no_relet)
+           / expirations_in_period)
+
+    Sample threshold: expirations_in_period >= 20 for any reportable rate.
+    Below 20: report as null with confidence='insufficient_sample'.
+
+6.2 Signing velocity
+
+    total_signings = renewals + new_leases_post_vacancy + turned_over_no_gap
+                     + new_deliveries
+    actual_signing_velocity = total_signings / period_months
+    period_months = period_days / 30.44
+
+6.3 Trade-out aggregates
+
+    Filter: exclude renovation_flag units, exclude null prior_rent.
+    new_lease_trade_out_pct_mean = mean of trade_out_new_pct across new-lease events
+    renewal_trade_out_pct_mean = mean of trade_out_renewal_pct
+    Also compute medians and IQRs to support distribution-aware downstream use.
+
+    Sample thresholds: >= 10 events for the metric to be reportable.
+
+6.4 Days vacant
+
+    Use only EVT_NEW_LEASE_AFTER_VACANCY events with COMPLETED days_vacant
+    (where A.lease existed — i.e., we know when the prior tenant moved out).
+
+    days_vacant_median = median of completed days_vacant values
+    days_vacant_p75 = 75th percentile (for lender-style stress assumptions)
+
+    Sample threshold: >= 8 events.
+
+6.5 Concession aggregates
+
+    new_lease_onetime_concession_mean = mean concession on EVT_NEW_LEASE_*
+                                         and EVT_TURNED_OVER_NO_GAP events
+    renewal_onetime_concession_mean = mean concession on EVT_RENEWAL events
+    new_lease_ongoing_monthly_mean = mean of ongoing_monthly on new leases
+    renewal_ongoing_monthly_mean = mean of ongoing_monthly on renewals
+
+    Concession trend (S3+ only): compare current period mean against prior
+    period mean. Direction = increasing | decreasing | stable.
+    Magnitude = % change.
+
+6.6 Seasonality (signings by month, requires sufficient coverage)
+
+    Bucket all signing events by signing month (1–12).
+    seasonality[m] = signings_in_month_m / mean_signings_per_month
+
+    S2 partial seasonality: requires 12 months of period coverage AND
+        >= 10 signings per month average.
+    S3 full seasonality: requires 24+ months coverage across all snapshots.
+
+6.7 Loss to lease
+
+    For each occupied unit at T_b:
+        ltl = (market_rent − current_rent) / market_rent  (clamped at 0 floor)
+    loss_to_lease_pct = unit-weighted mean across occupied units.
+    Excludes units with concessions actively burning off (those are
+    naturally below market by design and skew the metric).
+
+--------------------------------------------------------------------------------
+7. QUALITY FLAGS & CONFIDENCE OUTPUT
+--------------------------------------------------------------------------------
+
+quality_flags JSONB structure:
+
+{
+    "unresolved_units_count": number,
+    "unresolved_unit_ids": string[],         // sample, capped at 50
+    "structural_changes_count": number,
+    "renovation_units_excluded": number,
+    "ambiguous_renewal_count": number,       // resolved via Layer 3
+    "denied_renewal_count": number,          // tenant_id mismatch
+    "concession_data_present": boolean,
+    "concession_completeness_pct": number,    // % of leases with concession data
+    "min_period_satisfied": boolean,          // period_days >= 60
+    "period_days": number,
+    "events_total": number,
+    "events_by_type": { [event_type]: count },
+    "sample_sufficiency": {
+        "renewal_rate": "sufficient"|"insufficient",
+        "trade_out_new": "sufficient"|"insufficient",
+        "trade_out_renewal": "sufficient"|"insufficient",
+        "days_vacant_median": "sufficient"|"insufficient",
+        "concession_metrics": "sufficient"|"insufficient"|"absent"
+    }
+}
+
+The aggregator (S2/S3/S4 step in pipeline) consumes quality_flags to
+decide which coefficients are eligible for promotion vs which fall back
+to peer set.
+
+--------------------------------------------------------------------------------
+8. PSEUDOCODE — TOP LEVEL
+--------------------------------------------------------------------------------
+
+function diff_extract(snapshot_a, snapshot_b, deal_meta):
+    period_days = (snapshot_b.snapshot_date − snapshot_a.snapshot_date).days
+    if period_days < 60:
+        return DiffResult(period_days, [], {}, { min_period_satisfied: false })
+
+    // Step 1: Identity resolution
+    unit_pairs = []
+    for unit_b in snapshot_b.units:
+        match = resolve_identity(unit_b, snapshot_a, deal_meta)
+        unit_pairs.append({ unit_b, unit_a: match.unit_a, identity: match.identity })
+
+    // Reverse pass for A units not paired
+    a_paired_ids = set of unit_a IDs already paired
+    for unit_a in snapshot_a.units where unit_a.id not in a_paired_ids:
+        reverse_match = resolve_reverse_identity(unit_a, snapshot_b, deal_meta)
+        unit_pairs.append({ unit_b: null, unit_a: unit_a,
+                            identity: reverse_match.identity })
+
+    // Step 2: Event classification
+    events = []
+    for pair in unit_pairs:
+        if pair.identity in [MATCHED, MATCHED_RENUMBERED]:
+            event = classify_event(pair.unit_a, pair.unit_b, period_days)
+        elif pair.identity == STRUCTURAL_CHANGE_COMBINED:
+            event = EVT_STRUCTURAL_CHANGE
+        elif pair.identity == NEW_DELIVERY:
+            event = EVT_NEW_DELIVERY
+        elif pair.identity == UNRESOLVED:
+            event = null  // logged in quality_flags
+        // ... other identity classes
+        if event:
+            events.append({ unit_id: pair.unit_b.id, type: event,
+                            metrics: per_event_metrics(pair, event) })
+
+    // Step 3: Aggregation
+    derived_metrics = aggregate(events, period_days, deal_meta)
+
+    // Step 4: Quality flags
+    quality_flags = compute_quality_flags(unit_pairs, events, period_days)
+
+    return DiffResult(period_days, events, derived_metrics, quality_flags)
+
+--------------------------------------------------------------------------------
+9. WORKED EXAMPLES (edge cases that get this right)
+--------------------------------------------------------------------------------
+
+Example 1 — Standard renewal
+    A (2024-06-01): Unit 101, tenant SMITH JOHN, lease 2023-07-01 to 2024-06-30,
+                    rent 1850
+    B (2025-01-01): Unit 101, tenant SMITH JOHN, lease 2024-07-15 to 2025-07-14,
+                    rent 1925
+    Identity:   MATCHED (exact unit_id)
+    Tenant:     CONFIRMED via Layer 2 (exact name match)
+    Event:      EVT_RENEWAL (new start within 30 days of prior end)
+    Metrics:    trade_out_renewal_pct = (1925 − 1850) / 1850 = 4.05%
+                lease_term_observed = 12 months
+                days_vacant = 0 (renewal, no vacancy by definition)
+    Note:       The 15-day gap between expiration (6/30) and new lease start
+                (7/15) is normal renewal lag — does NOT count as vacancy.
+
+Example 2 — Renewal with name formatting differences
+    A: Unit 204, tenant "JOHN R SMITH JR"
+    B: Unit 204, tenant "SMITH, JOHN"
+    Layer 1: no external tenant_id
+    Layer 2: token-set ratio after normalization (strip JR, punctuation,
+             standardize) ≈ 0.86 → CONFIRMED
+    Event:      EVT_RENEWAL
+    Note:       Without normalization, raw Levenshtein distance fails. The
+                tokenization-based comparison handles this correctly.
+
+Example 3 — Turnover with vacancy
+    A (2024-06-01): Unit 305, tenant DOE JANE, lease 2023-04-01 to 2024-03-31
+                    [holdover MTM; A also shows a notice flag]
+    B (2025-01-01): Unit 305, tenant LEE MICHAEL, lease 2024-09-15 to 2025-09-14,
+                    rent 1975
+    Identity:   MATCHED
+    Tenant:     DOE vs LEE — Layer 2 match fails (Levenshtein > 2,
+                token_set_ratio ≈ 0.0)
+    Event:      EVT_NEW_LEASE_AFTER_VACANCY
+    Days vacant: A.lease.end_date was 2024-03-31, but A's snapshot also showed
+                 holdover. Use A.lease.end_date as conservative prior_end.
+                 days_vacant = (2024-09-15 − 2024-03-31) = 167 days
+                 Caveat: 167 includes holdover period. The metric becomes
+                 noisy if holdover is common. Recommended refinement: use
+                 actual vacate_date if rent roll provides it (Yardi often
+                 has a "moved_out_date" field separate from lease_end_date).
+
+Example 4 — Combined unit
+    A (2024-06-01): Unit 401 (sqft 600) and Unit 402 (sqft 600), both
+                    occupied, two separate tenants
+    B (2025-01-01): Unit 401A (sqft 1180), single occupied tenant
+    Identity:   STRUCTURAL_CHANGE_COMBINED (sqft 401 + 402 = 1200, B sqft
+                1180 within 2% tolerance)
+    Event:      EVT_STRUCTURAL_CHANGE
+    Treatment:  Excluded from rent_growth_realized, trade_out, days_vacant
+                Cross-reference M22 CapEx schedule for combination project
+                Reported in quality_flags.structural_changes_count
+
+Example 5 — Renumbered unit (Yardi reorder)
+    A (2024-06-01): Unit "B-101", building B, floor 1, sqft 875, 2/1.5
+    B (2025-01-01): Unit "B101" (no hyphen), building B, floor 1, sqft 875, 2/1.5
+                    (No exact unit_id match because of hyphen change)
+    Step 1:     fails (id "B-101" not in B)
+    Step 2:     fingerprint match on (building, floor, sqft, bed, bath)
+                → exactly one candidate "B101"
+    Identity:   MATCHED_RENUMBERED (1:1)
+    Event:      classified normally based on lease state
+
+Example 6 — Mid-period eviction
+    A (2024-06-01): Unit 502, tenant ROBERTS, lease 2023-10-01 to 2024-09-30,
+                    rent 2100
+    B (2025-01-01): Unit 502, tenant CHEN, lease 2024-08-01 to 2025-07-31,
+                    rent 2100
+    Identity:   MATCHED
+    Tenant:     ROBERTS vs CHEN — different
+    Lease end in A: 2024-09-30; new lease start in B: 2024-08-01
+                — new tenant started BEFORE prior tenant's scheduled end
+                → Premature termination of ROBERTS' lease
+    Event:      EVT_EVICTION_DETECTED (with subsequent re-lease to CHEN)
+    Metrics:    Categorized as turnover (EVT_TURNED_OVER_NO_GAP semantics)
+                with eviction flag. Counted in eviction_rate aggregate
+                separately. Trade-out computed: (2100 − 2100) / 2100 = 0%
+                (no rent change in this case — but might be different
+                in real eviction scenarios)
+
+Example 7 — Renovation unit excluded
+    A (2024-06-01): Unit 110, status VACANT_DOWN, renovation_flag = true
+    B (2025-01-01): Unit 110, tenant NGUYEN, lease 2024-11-15 to 2025-11-14,
+                    rent 2300, renovation_flag = false
+    Identity:   MATCHED
+    Treatment:  EVT_NEW_LEASE_AFTER_VACANCY but FLAGGED as
+                post-renovation lease. Days vacant calculated from a
+                renovation-aware baseline (renovation completion date from
+                M22 CapEx) NOT from when unit went down. If M22 data
+                unavailable, exclude from days_vacant_median entirely.
+                Trade-out = null (no comparable prior rent on a
+                renovated unit).
+                The new market_rent established here DOES feed
+                pricing_velocity for the renovated cohort.
+
+--------------------------------------------------------------------------------
+10. PERFORMANCE NOTES
+--------------------------------------------------------------------------------
+
+• A 300-unit property × 10 snapshots = 9 pairwise diffs (consecutive only).
+  Do not compute all 45 unordered pairs — only consecutive in time order.
+  Older diffs are not invalidated when newer snapshots arrive.
+
+• Identity resolution is the hot path. Build an in-memory hash:
+      key = (building, floor, sqft_bucketed_to_25sf, bedrooms, bathrooms)
+      value = list of unit records
+  Fingerprint lookup becomes O(1) per unit. Full resolution for 300 units
+  runs in <50ms.
+
+• Diff records are append-only. Once computed, never recomputed unless
+  parser_source for a snapshot changes (re-parse). Diff records carry a
+  parser_version field for invalidation tracking.
+
+• Aggregation step over events for a single deal's full history (S3+):
+  scan all events across all diffs for that deal. Cap at 50 snapshots per
+  deal — beyond that, sliding window of most recent 24 months for forward
+  signals, full history retained for archive.
+
+--------------------------------------------------------------------------------
+11. TESTING STRATEGY
+--------------------------------------------------------------------------------
+
+• Unit identity resolution: synthetic test set covering all 5 identity
+  classes plus the 4 reverse-pass cases. Required pass rate: 100% on the
+  test set.
+• Event classification: matrix of (A.lease state, B.lease state, gap_days,
+  tenant_match) with expected event type for every combination.
+• Tenant fuzzy match: held-out set of 500 known-renewal cases and 500
+  known-turnover cases from production data. Required: precision >= 0.95
+  on renewal classification (low false positive rate is critical —
+  inflated renewal_rate is the worst failure mode).
+• Aggregation: regression tests against a fixture set of known-output
+  diffs. Any change to thresholds or classification logic must produce
+  diff against the fixture set, surfaced for review.
+• End-to-end: parse a known Yardi rent roll set (3+ snapshots), verify
+  S2 coefficients land in subject_traffic_history with expected values
+  ±0.5%.
+
+================================================================================
+END OF SPEC
+
+Next docs in the pipeline (referenced but not yet drafted):
+  • M07_PROJECTIONS_INTEGRATION_SPEC.md — wires subject_traffic_history
+    output into M09 Projections rows (Occupancy/Leasing/Concessions blocks)
+  • CONCESSION_ENVIRONMENT_SUB_ENGINE_SPEC.md — supply/demand-aware
+    concession projection for years where subject data does not yet exist
+  • INLINE_ASSUMPTION_BLOCK_COMPONENT_SPEC.md — reusable React component
+    for the three-column Peer/Subject/Effective table with collision panel
+================================================================================
