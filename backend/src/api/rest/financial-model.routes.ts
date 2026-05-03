@@ -109,7 +109,7 @@ function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
   const dsp = raw.disposition ?? {};
   const rev = raw.revenue ?? {};
   const exp = raw.expenses ?? {};
-  const debt = raw.debt ?? {};
+  const debt = raw.financing ?? raw.debt ?? {};
   const um = raw.unitMix ?? [];
 
   // Map unitMix from { unitType, units, rent, sf, assigns } to { floorPlan, unitSize, beds, ... }
