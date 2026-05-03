@@ -1103,6 +1103,49 @@ async function startServer() {
     console.warn('[Startup] Could not seed rockeman user (may already exist):', err.message);
   }
 
+  // ── Schema migrations (Task #512) ────────────────────────────────────────
+  // Apply any unapplied .sql files in backend/src/{db,database}/migrations/
+  // before accepting traffic. Without this, columns added in code (e.g.
+  // assumptions_hash, error_message) silently miss the database and the
+  // first request that touches them returns a 500. After migrations, run
+  // a sanity check on a curated list of critical columns.
+  //
+  // Set SKIP_AUTO_MIGRATIONS=1 to bypass (e.g. when debugging a bad
+  // migration interactively).
+  if (process.env.SKIP_AUTO_MIGRATIONS === '1') {
+    console.warn('[Startup] SKIP_AUTO_MIGRATIONS=1 — schema migrations skipped.');
+  } else {
+    try {
+      const { runPendingMigrations, verifyCriticalSchema, assertCriticalSchema } =
+        await import('./scripts/run-migrations');
+      const res = await runPendingMigrations(pool);
+      if (res.failed.length > 0) {
+        console.warn(
+          `[Startup] ${res.failed.length} migration(s) failed — server will still start, ` +
+          `but the schema may be in a partial state. See [migrate] log lines above.`,
+        );
+      }
+      // STRICT_SCHEMA_CHECK=1 (recommended in production) aborts startup
+      // when a critical column is missing instead of just warning. The
+      // default is warn-only so dev workflows tolerate intentional drift.
+      if (process.env.STRICT_SCHEMA_CHECK === '1') {
+        await assertCriticalSchema(pool);
+      } else {
+        await verifyCriticalSchema(pool);
+      }
+    } catch (err: any) {
+      if (process.env.STRICT_SCHEMA_CHECK === '1') {
+        console.error('[FATAL] Schema drift in strict mode — aborting startup:', err.message);
+        process.exit(1);
+        return;
+      }
+      // Default behaviour: a partial schema is preferable to a fully-down
+      // service. The drift warning from verifyCriticalSchema (and the
+      // failed migration log lines) makes the operator aware.
+      console.error('[Startup] Migration runner crashed:', err.message);
+    }
+  }
+
   httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   console.log('='.repeat(60));
   console.log('🚀 JediRe Backend (Replit Edition)');
