@@ -1235,6 +1235,7 @@ export function setupP2Subscriptions(): void {
         wireM07ToM09Projections,
         wireM07ToM09Override,
         getProjectionsCtx,
+        setProjectionsCtx,
       } = require('./m07-projections-adapter') as typeof import('./m07-projections-adapter');
 
       type Ctx = import('./m07-projections-adapter').ProjectionsDealContext;
@@ -1260,18 +1261,27 @@ export function setupP2Subscriptions(): void {
           logger.warn('[P2] M09 override RECALCULATE: no cached projections', { dealId });
           return;
         }
-        const updated = wireM07ToM09Override(
-          current,
-          event.data.override_key as string,
-          event.data.override_value as number,
-          baseCtx,
-        );
+        const overrideKey   = event.data.override_key as string;
+        const overrideValue = event.data.override_value as number;
+
+        const updated = wireM07ToM09Override(current, overrideKey, overrideValue, baseCtx);
         dataFlowRouter.publishModuleData('M09', dealId, {
           projections:             updated,
           projections_computed_at: updated.computed_at,
         });
-        logger.debug('[P2] M09 override RECALCULATE applied', {
-          dealId, overrideKey: event.data.override_key,
+
+        // Persist override into cached context so subsequent full rebuilds
+        // (triggered by mode.changed, timeline_years.changed, etc.) replay it.
+        setProjectionsCtx(dealId, {
+          ...baseCtx,
+          user_overrides: {
+            ...(baseCtx.user_overrides ?? {}),
+            [overrideKey]: overrideValue,
+          },
+        });
+
+        logger.debug('[P2] M09 override RECALCULATE applied + ctx updated', {
+          dealId, overrideKey, overrideValue,
         });
         return;
       }
