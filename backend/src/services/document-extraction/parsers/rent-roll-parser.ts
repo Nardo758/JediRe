@@ -20,7 +20,8 @@ const KNOWN_CHARGE_CODES = new Set([
   'rent', 'parking', 'trash', 'pestctrl', 'storage', 'utilreb', 'petrent',
   'mtmfee', 'cable', 'water', 'sewer', 'electric', 'gas', 'internet',
   'amenity', 'garage', 'liabins', 'misc', 'renew', 'empdisc', 'patrol',
-  'otconc', 'termfee', 'concierge', 'pet', 'admin', 'app',
+  'otconc', 'othconc', 'termfee', 'concierge', 'pet', 'admin', 'app',
+  'crtsyoff', 'courtesy', 'employee', 'upfrtcon', 'upfront',
 ]);
 
 // Income-category mapping for charge codes (lands in capsule.other_income_monthly)
@@ -33,7 +34,14 @@ const CHARGE_CODE_CATEGORY: Record<string, 'rent' | 'parking' | 'pet_rent' | 'st
   water: 'rubs', sewer: 'rubs', electric: 'rubs', gas: 'rubs', cable: 'rubs', internet: 'rubs',
   mtmfee: 'fees', termfee: 'fees', misc: 'fees', admin: 'fees', app: 'fees',
   liabins: 'insurance_admin',
-  empdisc: 'concessions', otconc: 'concessions', renew: 'concessions', patrol: 'concessions',
+  // Concessions / employee discounts. Yardi exports vary the spelling
+  // (`otconc` vs `othconc`, `empdisc` vs `employee`, `crtsyoff` for "courtesy off",
+  // `upfrtcon` for "upfront concession"). All land in concessions_other so
+  // they don't pollute the `other` ancillary bucket as large negatives.
+  empdisc: 'concessions', otconc: 'concessions', othconc: 'concessions',
+  employee: 'concessions', crtsyoff: 'concessions', courtesy: 'concessions',
+  upfrtcon: 'concessions', upfront: 'concessions',
+  renew: 'concessions', patrol: 'concessions',
   amenity: 'fees', concierge: 'fees',
 };
 
