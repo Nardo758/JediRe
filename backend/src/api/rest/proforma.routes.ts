@@ -131,7 +131,7 @@ router.get('/:dealId', authMiddleware.requireAuth, async (req: Request, res: Res
   try {
     const { dealId } = req.params;
     
-    const proforma = await proformaAdjustmentService.getProForma(dealId);
+    const proforma = await proformaAdjustmentService.getProFormaComputed(dealId);
     
     if (!proforma) {
       return res.status(404).json({

@@ -120,6 +120,27 @@ async function handleSupplyUpdate(message: SupplySignalMessage): Promise<void> {
 }
 
 /**
+ * Handle debt service updates from capital structure engine (M09->M11 loop closure).
+ * Calls proformaAdjustmentService.finalize() to update debt terms and re-run model.
+ */
+async function handleDebtServiceUpdate(message: any): Promise<void> {
+  const { dealId, debtService, exitCap } = message;
+
+  logger.info('Debt service update received', { dealId });
+
+  try {
+    const { proformaAdjustmentService } = require('../proforma-adjustment.service');
+    const result = await proformaAdjustmentService.finalize(dealId, { exitCap });
+    logger.info('Debt service update applied', { dealId, irr: result?.computed?.irr });
+  } catch (err: any) {
+    logger.error('Failed to finalize pro forma after debt service update', {
+      dealId,
+      error: err.message,
+    });
+  }
+}
+
+/**
  * Send notification to deal owner
  */
 async function sendNotification(dealId: string, notification: any): Promise<void> {
@@ -219,7 +240,11 @@ export async function startProFormaConsumer(): Promise<void> {
             case 'signals.supply.updated':
               await handleSupplyUpdate(parsedMessage);
               break;
-            
+
+            case 'capital_structure.debt_service.updated':
+              await handleDebtServiceUpdate(parsedMessage);
+              break;
+
             default:
               logger.warn('Unknown topic', { topic });
           }
