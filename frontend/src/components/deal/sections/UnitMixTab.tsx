@@ -148,7 +148,12 @@ interface DealFinancials {
   otherIncomeUserLines?: Array<{
     id: string;
     label: string;
+    /** Authoritative $/month (server-derived from qty*rate when present). */
     monthly: number;
+    /** Optional per-unit billing model: e.g. 200 units @ $30/mo cable. */
+    qty?: number;
+    rate?: number;
+    frequency?: 'monthly' | 'annual';
     note?: string;
     created_at: string;
   }>;
@@ -617,9 +622,13 @@ function AncillaryPanel({
                       borderTop: i === 0 ? `1px solid ${C.border}` : undefined,
                     }}>
                       <td style={{ ...td(), color: C.purple, fontWeight: 700 }}>{l.label}</td>
-                      <td colSpan={3} style={{ ...td(true), color: C.dim, fontStyle: 'italic', fontSize: 9 }}>user-added</td>
+                      <td colSpan={3} style={{ ...td(true), color: C.dim, fontStyle: 'italic', fontSize: 9 }}>
+                        {l.qty != null && l.rate != null
+                          ? `${l.qty.toLocaleString()} × $${l.rate}/${l.frequency === 'annual' ? 'yr' : 'mo'}`
+                          : 'user-added'}
+                      </td>
                       <td style={td(true, true, C.text)}>
-                        {fmt$(annual)} <span style={{ color: C.dim, fontSize: 8 }}>(${l.monthly}/mo)</span>
+                        {fmt$(annual)} <span style={{ color: C.dim, fontSize: 8 }}>(${Math.round(l.monthly).toLocaleString()}/mo)</span>
                       </td>
                       <td style={{ ...td() }}>
                         <span style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.purple, letterSpacing: '0.06em' }}>USER</span>

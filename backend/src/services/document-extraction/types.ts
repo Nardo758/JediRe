@@ -366,7 +366,20 @@ export interface ProFormaYear1Seed {
   other_income_user_lines?: Array<{
     id: string;
     label: string;
+    /**
+     * Resolved total $/month for this line. ALWAYS authoritative — the
+     * EGI/NOI math reads `monthly` directly. When `qty` and `rate` are also
+     * supplied, the API derives `monthly = qty * rate` server-side so the
+     * three fields stay in lock-step (no client-side drift). Legacy lines
+     * created before per-unit pricing only carry `monthly`.
+     */
     monthly: number;
+    /** Optional per-unit billing model (e.g. "200 of 232 units billed cable @ $30/mo"). */
+    qty?: number;
+    /** Per-unit $ at the chosen frequency. */
+    rate?: number;
+    /** Whether `rate` is per-unit/month (default) or per-unit/year. */
+    frequency?: 'monthly' | 'annual';
     note?: string;
     created_by?: string;
     created_at: string;

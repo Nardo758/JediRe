@@ -109,7 +109,12 @@ interface DealFinancials {
   otherIncomeUserLines?: Array<{
     id: string;
     label: string;
+    /** Authoritative $/month (server-derived from qty*rate when present). */
     monthly: number;
+    /** Optional per-unit billing model: e.g. 200 units @ $30/mo cable. */
+    qty?: number;
+    rate?: number;
+    frequency?: 'monthly' | 'annual';
     note?: string;
     created_at: string;
   }>;
@@ -1022,8 +1027,19 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
   userLines: NonNullable<DealFinancials['otherIncomeUserLines']>;
   onChange: () => Promise<void> | void;
 }) {
-  const [editing, setEditing] = useState<{ kind: 'cat'; cat: string; val: string } | { kind: 'user'; id: string; field: 'label' | 'monthly'; val: string } | null>(null);
-  const [adding, setAdding] = useState<{ label: string; monthly: string } | null>(null);
+  const [editing, setEditing] = useState<
+    | { kind: 'cat'; cat: string; val: string }
+    | { kind: 'user'; id: string; field: 'label' | 'monthly' | 'qty' | 'rate'; val: string }
+    | null
+  >(null);
+  // `mode: 'flat'` collects a single $/mo total (legacy). `mode: 'per_unit'`
+  // collects qty + $/unit/mo and the server derives `monthly` (e.g. cable
+  // billed to 200 of 232 units @ $30/mo → 6,000/mo).
+  const [adding, setAdding] = useState<
+    | { mode: 'flat'; label: string; monthly: string }
+    | { mode: 'per_unit'; label: string; qty: string; rate: string }
+    | null
+  >(null);
   const [busy, setBusy] = useState(false);
 
   const rows = breakdown?.rows ?? [];
@@ -1050,20 +1066,31 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
 
   const addLine = async () => {
     if (!adding || !adding.label.trim()) return;
-    const monthly = parseFloat(adding.monthly);
-    if (!Number.isFinite(monthly) || monthly < 0) return;
+    let body: Record<string, unknown> | null = null;
+    if (adding.mode === 'flat') {
+      const monthly = parseFloat(adding.monthly);
+      if (!Number.isFinite(monthly) || monthly < 0) return;
+      body = { label: adding.label.trim(), monthly };
+    } else {
+      const qty = parseFloat(adding.qty);
+      const rate = parseFloat(adding.rate);
+      if (!Number.isFinite(qty) || qty < 0 || !Number.isFinite(rate) || rate < 0) return;
+      // Server derives `monthly = qty * rate` and persists all three fields.
+      body = { label: adding.label.trim(), qty, rate, frequency: 'monthly' };
+    }
     setBusy(true);
     try {
-      await apiClient.post(`/api/v1/deals/${dealId}/financials/other-income/user-lines`, {
-        label: adding.label.trim(), monthly,
-      });
+      await apiClient.post(`/api/v1/deals/${dealId}/financials/other-income/user-lines`, body);
       await onChange();
       setAdding(null);
     } catch (e) { console.error('Add line failed:', e); }
     finally { setBusy(false); }
   };
 
-  const updateLine = async (id: string, patch: { label?: string; monthly?: number }) => {
+  const updateLine = async (
+    id: string,
+    patch: { label?: string; monthly?: number; qty?: number; rate?: number; frequency?: 'monthly' | 'annual' }
+  ) => {
     setBusy(true);
     try {
       await apiClient.patch(`/api/v1/deals/${dealId}/financials/other-income/user-lines/${id}`, patch);
@@ -1096,10 +1123,18 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
             click RESOLVED to override · annual $ figures
           </span>
         </div>
-        <button onClick={() => setAdding({ label: '', monthly: '' })} disabled={busy || !!adding}
-          style={{ fontFamily: LABEL, fontSize: 9, color: '#06b6d4', background: '#062a3a', border: '1px solid #0891b2', padding: '3px 10px', borderRadius: 2, cursor: 'pointer' }}>
-          + Add Line
-        </button>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button onClick={() => setAdding({ mode: 'flat', label: '', monthly: '' })} disabled={busy || !!adding}
+            title="Add a line as a single $/month total"
+            style={{ fontFamily: LABEL, fontSize: 9, color: '#06b6d4', background: '#062a3a', border: '1px solid #0891b2', padding: '3px 10px', borderRadius: 2, cursor: 'pointer' }}>
+            + Flat $/mo
+          </button>
+          <button onClick={() => setAdding({ mode: 'per_unit', label: '', qty: '', rate: '' })} disabled={busy || !!adding}
+            title="Add a line as qty × $/unit/mo (e.g. 200 units billed cable @ $30/mo)"
+            style={{ fontFamily: LABEL, fontSize: 9, color: '#22d3ee', background: '#062a3a', border: '1px solid #0891b2', padding: '3px 10px', borderRadius: 2, cursor: 'pointer' }}>
+            + Per-Unit Line
+          </button>
+        </div>
       </div>
       {!breakdown && (
         <div style={{ fontFamily: LABEL, fontSize: 9, color: '#475569', padding: '6px 0' }}>
@@ -1176,7 +1211,56 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
                         style={{ cursor: 'pointer', borderBottom: '1px dotted #c084fc' }}>{l.label}</span>
                     )}
                   </td>
-                  <td colSpan={3} style={{ padding: '3px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic' }}>user-added</td>
+                  {/* QTY · RATE columns (per-unit pricing model) — clicking
+                      either opens an inline edit; saving recomputes monthly
+                      server-side. For flat lines (no qty/rate) cells are
+                      blank and only the RESOLVED $/mo column is editable. */}
+                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                    {editing?.kind === 'user' && editing.id === l.id && editing.field === 'qty' ? (
+                      <input autoFocus type="number" value={editing.val}
+                        onChange={e => setEditing({ ...editing, val: e.target.value })}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            const q = parseFloat(editing.val);
+                            if (Number.isFinite(q) && q >= 0) updateLine(l.id, { qty: q, rate: l.rate ?? 0, frequency: l.frequency ?? 'monthly' });
+                          }
+                          if (e.key === 'Escape') setEditing(null);
+                        }}
+                        style={{ width: 60, background: '#0f172a', border: '1px solid #c084fc', color: '#c084fc', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                      />
+                    ) : l.qty != null ? (
+                      <span onClick={() => setEditing({ kind: 'user', id: l.id, field: 'qty', val: String(l.qty) })}
+                        style={{ cursor: 'pointer', color: '#94a3b8', borderBottom: '1px dotted #c084fc' }}>
+                        {l.qty.toLocaleString()}
+                      </span>
+                    ) : <span style={{ color: '#1e293b' }}>—</span>}
+                  </td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                    {editing?.kind === 'user' && editing.id === l.id && editing.field === 'rate' ? (
+                      <input autoFocus type="number" value={editing.val}
+                        onChange={e => setEditing({ ...editing, val: e.target.value })}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            const r = parseFloat(editing.val);
+                            if (Number.isFinite(r) && r >= 0) updateLine(l.id, { qty: l.qty ?? 0, rate: r, frequency: l.frequency ?? 'monthly' });
+                          }
+                          if (e.key === 'Escape') setEditing(null);
+                        }}
+                        style={{ width: 70, background: '#0f172a', border: '1px solid #c084fc', color: '#c084fc', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                      />
+                    ) : l.rate != null ? (
+                      <span onClick={() => setEditing({ kind: 'user', id: l.id, field: 'rate', val: String(l.rate) })}
+                        style={{ cursor: 'pointer', color: '#94a3b8', borderBottom: '1px dotted #c084fc' }}
+                        title={`$${l.rate}/unit/${l.frequency === 'annual' ? 'yr' : 'mo'}`}>
+                        ${l.rate}
+                      </span>
+                    ) : <span style={{ color: '#1e293b' }}>—</span>}
+                  </td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic', fontSize: 8 }}>
+                    {l.qty != null && l.rate != null
+                      ? `${l.qty} × $${l.rate}/${l.frequency === 'annual' ? 'yr' : 'mo'}`
+                      : 'user-added'}
+                  </td>
                   <td style={{ padding: '3px 8px', textAlign: 'right' }}>
                     {isEditingAmt ? (
                       <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
@@ -1194,10 +1278,20 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
                         <span style={{ color: '#475569', fontSize: 8 }}>/mo</span>
                       </span>
                     ) : (
-                      <span onClick={() => setEditing({ kind: 'user', id: l.id, field: 'monthly', val: String(l.monthly) })}
-                        style={{ cursor: 'pointer', color: '#e2e8f0', borderBottom: '1px dotted #c084fc' }}>
-                        {fmt$(l.monthly * 12)} <span style={{ color: '#475569', fontSize: 8 }}>(${l.monthly}/mo)</span>
-                      </span>
+                      // Flat lines: clicking edits monthly directly. Per-unit
+                      // lines: monthly is derived (display-only) — direct it
+                      // back to qty/rate edits to avoid the three-field
+                      // conflict where a manual monthly contradicts qty*rate.
+                      l.qty != null && l.rate != null ? (
+                        <span style={{ color: '#e2e8f0' }} title="Computed from qty × rate — edit those cells to change">
+                          {fmt$(l.monthly * 12)} <span style={{ color: '#475569', fontSize: 8 }}>(${Math.round(l.monthly).toLocaleString()}/mo)</span>
+                        </span>
+                      ) : (
+                        <span onClick={() => setEditing({ kind: 'user', id: l.id, field: 'monthly', val: String(l.monthly) })}
+                          style={{ cursor: 'pointer', color: '#e2e8f0', borderBottom: '1px dotted #c084fc' }}>
+                          {fmt$(l.monthly * 12)} <span style={{ color: '#475569', fontSize: 8 }}>(${l.monthly}/mo)</span>
+                        </span>
+                      )
                     )}
                   </td>
                   <td style={{ padding: '3px 8px' }}>
@@ -1210,8 +1304,11 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
                 </tr>
               );
             })}
-            {/* Add-line input row */}
-            {adding && (
+            {/* Add-line input row — two layouts depending on `adding.mode`.
+                Flat: single $/mo total. Per-Unit: qty × rate (server derives
+                monthly). Save button is gated on the relevant fields being
+                non-empty so users can't post a half-filled per-unit line. */}
+            {adding && adding.mode === 'flat' && (
               <tr style={{ background: '#0a1a26' }}>
                 <td style={{ padding: '4px 8px' }}>
                   <input autoFocus value={adding.label} placeholder="e.g. Solar revenue"
@@ -1219,7 +1316,7 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
                     style={{ width: '100%', background: '#0f172a', border: '1px solid #06b6d4', color: '#e2e8f0', fontFamily: MONO, fontSize: 9, padding: '2px 4px', borderRadius: 2 }}
                   />
                 </td>
-                <td colSpan={3} style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic' }}>new line</td>
+                <td colSpan={3} style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic' }}>flat $/mo line</td>
                 <td style={{ padding: '4px 8px', textAlign: 'right' }}>
                   <input type="number" value={adding.monthly} placeholder="$/mo"
                     onChange={e => setAdding({ ...adding, monthly: e.target.value })}
@@ -1233,6 +1330,45 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
                 </td>
               </tr>
             )}
+            {adding && adding.mode === 'per_unit' && (() => {
+              const qN = parseFloat(adding.qty);
+              const rN = parseFloat(adding.rate);
+              const preview = Number.isFinite(qN) && Number.isFinite(rN) ? qN * rN : null;
+              return (
+                <tr style={{ background: '#0a1a26' }}>
+                  <td style={{ padding: '4px 8px' }}>
+                    <input autoFocus value={adding.label} placeholder="e.g. Cable (200 units)"
+                      onChange={e => setAdding({ ...adding, label: e.target.value })}
+                      style={{ width: '100%', background: '#0f172a', border: '1px solid #22d3ee', color: '#e2e8f0', fontFamily: MONO, fontSize: 9, padding: '2px 4px', borderRadius: 2 }}
+                    />
+                  </td>
+                  <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                    <input type="number" value={adding.qty} placeholder="qty"
+                      onChange={e => setAdding({ ...adding, qty: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') addLine(); if (e.key === 'Escape') setAdding(null); }}
+                      style={{ width: 60, background: '#0f172a', border: '1px solid #22d3ee', color: '#22d3ee', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                    />
+                  </td>
+                  <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                    <input type="number" value={adding.rate} placeholder="$/unit/mo"
+                      onChange={e => setAdding({ ...adding, rate: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') addLine(); if (e.key === 'Escape') setAdding(null); }}
+                      style={{ width: 70, background: '#0f172a', border: '1px solid #22d3ee', color: '#22d3ee', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                    />
+                  </td>
+                  <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic', fontSize: 8 }}>
+                    {preview != null ? `= $${preview.toLocaleString()}/mo` : 'qty × rate'}
+                  </td>
+                  <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22c55e', fontWeight: 700 }}>
+                    {preview != null ? fmt$(preview * 12) : '—'}
+                  </td>
+                  <td colSpan={2} style={{ padding: '4px 8px' }}>
+                    <button onClick={addLine} disabled={busy || !adding.label.trim() || !adding.qty || !adding.rate} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', fontSize: 11, marginRight: 4 }}>✓ Save</button>
+                    <button onClick={() => setAdding(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 11 }}>✕</button>
+                  </td>
+                </tr>
+              );
+            })()}
             {/* Totals row */}
             <tr style={{ background: '#0a1a26', borderTop: '1px solid #1e3a5f' }}>
               <td style={{ padding: '4px 8px', color: '#06b6d4', fontWeight: 700 }}>TOTAL</td>
@@ -1338,15 +1474,23 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
         }}
       >
         {onToggleAncillary ? (
+          // Brighter chevron + inline hint so users can discover the
+          // expansion (where + Add Line / + Per-Unit Line live). Previously
+          // the chevron was the same color as the row text and easy to miss.
           <button
             onClick={e => { e.stopPropagation(); onToggleAncillary(); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#94a3b8', fontFamily: 'Inter, sans-serif', fontSize: 9 }}
-            title="Expand ancillary income breakdown"
+            style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#06b6d4', fontFamily: 'Inter, sans-serif', fontSize: 9, fontWeight: 600 }}
+            title="Click to expand — view per-source breakdown and add custom lines (Cable, Solar, etc.)"
           >
             {ancillaryOpen
-              ? <ChevronDown size={10} color="#06b6d4" />
-              : <ChevronRight size={10} color="#475569" />}
+              ? <ChevronDown size={11} color="#06b6d4" />
+              : <ChevronRight size={11} color="#06b6d4" />}
             {row.label}
+            {!ancillaryOpen && (
+              <span style={{ marginLeft: 4, color: '#475569', fontSize: 8, fontWeight: 400, fontStyle: 'italic' }}>
+                · click to add lines
+              </span>
+            )}
           </button>
         ) : row.label}
       </td>

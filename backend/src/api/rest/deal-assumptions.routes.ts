@@ -670,23 +670,64 @@ async function mutateUserLines(
   }
 }
 
+/**
+ * Resolve `monthly` from optional per-unit pricing fields. Server is the
+ * single source of truth — when qty + rate are supplied we ALWAYS recompute
+ * monthly so the three fields stay in lock-step regardless of what the
+ * client posts. Returns null when inputs are invalid (caller responds 400).
+ */
+function deriveMonthly(input: {
+  monthly?: number; qty?: number; rate?: number; frequency?: string;
+}): { ok: true; monthly: number; qty?: number; rate?: number; frequency?: 'monthly' | 'annual' }
+  | { ok: false; error: string } {
+  const { qty, rate } = input;
+  // Strict frequency validation — silently coercing "weekly" / typos to
+  // monthly would mutate user data without an error and is a correctness
+  // hazard. Accept only the documented enum values; null/undefined falls
+  // through to the per-unit default of 'monthly' below.
+  let freq: 'monthly' | 'annual' | undefined;
+  if (input.frequency === undefined || input.frequency === null) {
+    freq = undefined;
+  } else if (input.frequency === 'monthly' || input.frequency === 'annual') {
+    freq = input.frequency;
+  } else {
+    return { ok: false, error: "frequency must be 'monthly' or 'annual'" };
+  }
+  if (qty != null || rate != null) {
+    if (typeof qty !== 'number' || !Number.isFinite(qty) || qty < 0) return { ok: false, error: 'qty must be a non-negative number when provided' };
+    if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0) return { ok: false, error: 'rate must be a non-negative number when provided' };
+    const effectiveFreq = freq ?? 'monthly';
+    const monthly = effectiveFreq === 'annual' ? (qty * rate) / 12 : qty * rate;
+    return { ok: true, monthly, qty, rate, frequency: effectiveFreq };
+  }
+  // No per-unit pricing — fall back to caller-supplied flat monthly.
+  if (typeof input.monthly !== 'number' || !Number.isFinite(input.monthly) || input.monthly < 0) {
+    return { ok: false, error: 'monthly must be a non-negative number' };
+  }
+  return { ok: true, monthly: input.monthly };
+}
+
 router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { label, monthly, note } = req.body as { label: string; monthly: number; note?: string };
+    const { label, monthly, qty, rate, frequency, note } = req.body as {
+      label: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string;
+    };
     if (!label || typeof label !== 'string' || !label.trim()) {
       return res.status(400).json({ error: 'label is required' });
     }
-    if (typeof monthly !== 'number' || !Number.isFinite(monthly) || monthly < 0) {
-      return res.status(400).json({ error: 'monthly must be a non-negative number' });
-    }
+    const derived = deriveMonthly({ monthly, qty, rate, frequency });
+    if (derived.ok === false) return res.status(400).json({ error: derived.error });
     const userId = req.user?.userId ?? 'unknown';
     const result = await mutateUserLines(dealId, userId, (lines) => [
       ...lines,
       {
         id: randomUUID(),
         label: label.trim(),
-        monthly,
+        monthly: derived.monthly,
+        ...(derived.qty != null ? { qty: derived.qty } : {}),
+        ...(derived.rate != null ? { rate: derived.rate } : {}),
+        ...(derived.frequency ? { frequency: derived.frequency } : {}),
         note: note?.trim() || undefined,
         created_by: userId,
         created_at: new Date().toISOString(),
@@ -700,30 +741,82 @@ router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (r
   }
 });
 
+/** Tagged error so the outer route can map mutator-side validation to 400. */
+class UserLineValidationError extends Error {
+  constructor(message: string) { super(message); this.name = 'UserLineValidationError'; }
+}
+
 router.patch('/:dealId/financials/other-income/user-lines/:lineId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId, lineId } = req.params;
-    const { label, monthly, note } = req.body as { label?: string; monthly?: number; note?: string };
+    const { label, monthly, qty, rate, frequency, note } = req.body as {
+      label?: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string;
+    };
     if (label != null && typeof label !== 'string') return res.status(400).json({ error: 'label must be a string' });
-    if (monthly != null && (typeof monthly !== 'number' || !Number.isFinite(monthly) || monthly < 0)) {
-      return res.status(400).json({ error: 'monthly must be a non-negative number' });
-    }
     const userId = req.user?.userId ?? 'unknown';
+    // Determine the user's INTENT from which fields were posted:
+    //   • any of {qty, rate, frequency} present → per-unit mode (merge with
+    //     stored values; recompute monthly = qty × rate)
+    //   • only `monthly` present (no qty/rate)  → flat mode (clear stored
+    //     qty/rate so the line genuinely switches from calculated to flat)
+    //   • nothing relevant → label/note-only edit (preserve current shape)
+    const wantsPerUnit = qty !== undefined || rate !== undefined || frequency !== undefined;
+    const wantsFlatMonthly = !wantsPerUnit && monthly !== undefined;
     const result = await mutateUserLines(dealId, userId, (lines) => {
       const idx = lines.findIndex((l: any) => l.id === lineId);
       if (idx < 0) return lines;
-      lines[idx] = {
-        ...lines[idx],
+      const cur = lines[idx];
+
+      let nextMonthly: number = cur.monthly;
+      let nextQty: number | undefined = cur.qty;
+      let nextRate: number | undefined = cur.rate;
+      let nextFreq: 'monthly' | 'annual' | undefined = cur.frequency;
+
+      if (wantsPerUnit) {
+        const merged = {
+          qty:       qty       !== undefined ? qty       : cur.qty,
+          rate:      rate      !== undefined ? rate      : cur.rate,
+          frequency: frequency !== undefined ? frequency : cur.frequency,
+        };
+        const derived = deriveMonthly(merged);
+        if (derived.ok === false) throw new UserLineValidationError(derived.error);
+        nextMonthly = derived.monthly;
+        nextQty = derived.qty;
+        nextRate = derived.rate;
+        nextFreq = derived.frequency;
+      } else if (wantsFlatMonthly) {
+        // Switch-to-flat: clear stored per-unit fields so subsequent reads
+        // don't re-derive monthly from qty × rate.
+        const derived = deriveMonthly({ monthly });
+        if (derived.ok === false) throw new UserLineValidationError(derived.error);
+        nextMonthly = derived.monthly;
+        nextQty = undefined;
+        nextRate = undefined;
+        nextFreq = undefined;
+      }
+      // else: label/note-only edit — keep monthly/qty/rate/frequency as-is.
+
+      const updated: any = {
+        ...cur,
         ...(label != null ? { label: label.trim() } : {}),
-        ...(monthly != null ? { monthly } : {}),
+        monthly: nextMonthly,
         ...(note !== undefined ? { note: note?.trim() || undefined } : {}),
         updated_at: new Date().toISOString(),
       };
+      // Apply per-unit fields explicitly: present → set, absent → drop the
+      // key entirely so the persisted JSON doesn't carry stale qty/rate.
+      if (nextQty  != null) updated.qty       = nextQty;       else delete updated.qty;
+      if (nextRate != null) updated.rate      = nextRate;      else delete updated.rate;
+      if (nextFreq != null) updated.frequency = nextFreq;      else delete updated.frequency;
+      lines[idx] = updated;
       return lines;
     });
     if (result.ok === false) return res.status(result.status).json({ error: result.error });
     res.json({ success: true, data: { dealId, userLines: result.user_lines } });
   } catch (error: any) {
+    if (error instanceof UserLineValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
     logger.error('Error updating ancillary user line:', error);
     res.status(500).json({ error: error.message });
   }
