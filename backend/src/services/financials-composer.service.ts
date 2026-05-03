@@ -400,13 +400,18 @@ function composeOtherIncomeBreakdown(
   const rows: OtherIncomeBreakdownRow[] = CATS.map(({ cat, rr, om }) => {
     const rrV = annual(rrOI, rr);
     const omV = annual(omOI, om);
-    const seed = seedBreakdown?.[cat];
+    const seed = seedBreakdown?.[cat] as any;
     const resolved = typeof seed?.resolved === 'number' ? seed.resolved : null;
     const resolution = typeof seed?.resolution === 'string' ? seed.resolution : 'unseeded';
+    // T-12 has no per-category data in the source extraction. The seeder
+    // routes the T-12 aggregate into the `other` bucket as a fallback when
+    // RR/OM are empty (Task #519 post-review fix), so surface seed.t12 when
+    // it's populated.
+    const t12V = typeof seed?.t12 === 'number' && Number.isFinite(seed.t12) ? seed.t12 : null;
     return {
       category: cat,
       rent_roll: rrV,
-      t12: null,
+      t12: t12V,
       om: omV,
       resolved,
       resolution,

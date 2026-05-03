@@ -371,6 +371,26 @@ function buildSeed(
     }),
   };
 
+  // T-12 fallback: T-12 publishes only an aggregate "other income" — no
+  // per-category breakdown. When neither RR nor OM produced any per-category
+  // data (every bucket resolved to null/0) but T-12 carries a positive total,
+  // route that aggregate into the `other` bucket so EGI/NOI preserve T-12
+  // truth instead of silently dropping ancillary income from the proforma.
+  // Task #519 (post-review #2 fix).
+  const t12AnnualTotal = other_t12 != null ? other_t12 * (months / 12) : null;
+  const breakdownHasAnyData = Object.values(otherIncomeBreakdown)
+    .some(lv => lv.resolved != null && lv.resolved !== 0);
+  if (!breakdownHasAnyData && t12AnnualTotal != null && t12AnnualTotal !== 0
+      && otherIncomeBreakdown.other.resolution !== 'override') {
+    otherIncomeBreakdown.other = {
+      ...otherIncomeBreakdown.other,
+      t12: t12AnnualTotal,
+      resolved: t12AnnualTotal,
+      resolution: 't12',
+      updated_at: now(),
+    } as any;
+  }
+
   // Preserve user-added ancillary lines verbatim across re-seeds. These are
   // managed via dedicated CRUD endpoints, NOT extraction — buildSeed only
   // copies them through. Task #519.
