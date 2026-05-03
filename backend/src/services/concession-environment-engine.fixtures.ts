@@ -353,13 +353,16 @@ export async function runFixtures(pool?: Pool): Promise<FixtureResult[]> {
 
   // ──────────────────────────────────────────────────────────────────────────
   // F6 — Mode-mismatch enforcement
-  //      Subject history tagged with LEASE_UP mode should NOT influence a STABILIZED deal
+  //      Subject history tagged with LEASE_UP mode must NOT influence a STABILIZED deal.
+  //      The engine reads sth.deal_mode (subject's recorded mode) and rejects the
+  //      signal entirely when it differs from the current deal mode, preventing
+  //      absorption-phase concession coefficients from inflating stabilized projections.
   // ──────────────────────────────────────────────────────────────────────────
   {
     const assertions: FixtureResult['assertions'] = [];
     let passed = true;
     try {
-      // Baseline STABILIZED deal with no subject data
+      // Baseline: STABILIZED deal with no subject data at all
       const baseEngine = new ConcessionEnvironmentEngine(buildMockPool({
         deal: { deal_mode: 'STABILIZED', property_class: 'B', submarket_id: null },
         calibration: null,
@@ -368,58 +371,65 @@ export async function runFixtures(pool?: Pool): Promise<FixtureResult[]> {
       }));
       const baseOut = await baseEngine.computeForDeal('deal-f6b', 2);
 
-      // STABILIZED deal WITH lease-up tagged subject (should be rejected)
+      // Mismatch: STABILIZED deal with LEASE_UP-tagged subject (extreme concession)
+      // The subject records avg_concession_value = 5 months rent — if applied, Y1 would
+      // shift far above the class-B STABILIZED default of 0.75 months.
       const mismatchEngine = new ConcessionEnvironmentEngine(buildMockPool({
         deal: { deal_mode: 'STABILIZED', property_class: 'B', submarket_id: null },
         calibration: null,
         supplyRiskScore: null,
         subjectHistory: {
           tier: 'S2',
-          current_state: { avg_concession_value: 5000, avg_contract_rent: 1000 }, // extreme high
+          current_state: { avg_concession_value: 5000, avg_contract_rent: 1000 }, // 5× avg rent
           observed_dynamics: {},
           confidence_weights: { concession_trend: { weight: 0.9 } },
-          deal_mode: 'LEASE_UP', // ← mismatch tag
+          deal_mode: 'LEASE_UP', // ← mismatch tag — subject was recorded during lease-up
         },
       }));
       const mismatchOut = await mismatchEngine.computeForDeal('deal-f6m', 2);
 
-      // Mismatch: subject tagged LEASE_UP applied to STABILIZED years — engine should ignore it
-      // because resolveRedevelopmentYear only guards REDEVELOPMENT mode. The STABILIZED path
-      // still applies subject. The mode-mismatch guard specifically prevents lease-up coefficients
-      // on stabilized years in REDEVELOPMENT mode. For STABILIZED mode, subject IS applied
-      // (subject free_months=5000/1000×12=60→clamped to some large value, but the test should check
-      // that result is finite and not absurd).
+      // Spec requirement: LEASE_UP-tagged subject must be REJECTED for a STABILIZED deal.
+      // loadSubjectS2 reads sth.deal_mode; if it differs from currentMode, returns null.
+      assertions.push(assertTrue(
+        'subject_s2_available = false (mismatch rejected)',
+        mismatchOut.subject_s2_available === false,
+        `subject_s2_available=${mismatchOut.subject_s2_available}`,
+      ));
 
-      // Key assertion: output should be finite and the subject_s2_available flag shows data was found
-      assertions.push(assertTrue('mismatch output: all years finite',
-        mismatchOut.per_year.every(y => isFinite(y.free_months) && y.free_months >= 0),
-        mismatchOut.per_year.map(y => y.free_months.toFixed(3)).join(',')));
+      // All source_blend.subject_weight must be zero (no subject influence whatsoever)
+      assertions.push(assertTrue(
+        'all years have subject_weight = 0',
+        mismatchOut.per_year.every(y => y.source_blend.subject_weight === 0),
+        mismatchOut.per_year.map(y => y.source_blend.subject_weight.toFixed(4)).join(','),
+      ));
 
-      // Per mode-mismatch rule in spec: lease-up tagged subject data should NOT influence stabilized years.
-      // Engine behavior: subject data with deal_mode=LEASE_UP loaded for a STABILIZED deal
-      // — in loadSubjectS2, the deal_mode is from deals table (STABILIZED), not the subject's tag.
-      // The subject history join pulls deal_mode from deals.deal_mode, so it will be STABILIZED.
-      // Result: subject IS applied (no mismatch in this test). The test validates that.
-      assertions.push(assertTrue('subject_s2_available = true', mismatchOut.subject_s2_available, ''));
+      // Mismatch output must equal the no-subject baseline (within floating-point tolerance)
+      assertions.push(assertTrue(
+        'Y1 free_months equals baseline (subject ignored)',
+        Math.abs(mismatchOut.per_year[0].free_months - baseOut.per_year[0].free_months) < 0.001,
+        `mismatch=${mismatchOut.per_year[0].free_months.toFixed(4)}, base=${baseOut.per_year[0].free_months.toFixed(4)}`,
+      ));
+      assertions.push(assertTrue(
+        'Y2 free_months equals baseline (subject ignored)',
+        Math.abs(mismatchOut.per_year[1].free_months - baseOut.per_year[1].free_months) < 0.001,
+        `mismatch=${mismatchOut.per_year[1].free_months.toFixed(4)}, base=${baseOut.per_year[1].free_months.toFixed(4)}`,
+      ));
 
-      // Y1 subject_weight should be > 0 (subject applied even when source has high concession)
-      assertions.push(assertTrue('Y1 source_blend has subject_weight > 0',
-        mismatchOut.per_year[0].source_blend.subject_weight > 0,
-        mismatchOut.per_year[0].source_blend.subject_weight.toFixed(4)));
-
-      // Y3 should have subject_weight = 0 (Y3+ weight decay to 0)
-      if (mismatchOut.per_year.length >= 3) {
-        assertions.push(assertTrue('Y3 source_blend subject_weight = 0 (decay)',
-          mismatchOut.per_year[2].source_blend.subject_weight === 0,
-          mismatchOut.per_year[2].source_blend.subject_weight.toFixed(4)));
-      }
+      // Sanity: the extreme subject concession (5 months) would have created a
+      // massive divergence if applied — verify it did NOT inflate the output
+      const classB_stab = 0.75;
+      assertions.push(assertLte(
+        'Y1 free_months not inflated by lease-up subject (must be ≤ 1.5× class default)',
+        mismatchOut.per_year[0].free_months,
+        classB_stab * 1.5,
+      ));
 
       passed = assertions.every(a => a.passed);
     } catch (e: any) {
       passed = false;
       assertions.push({ label: 'no exception', passed: false, detail: e.message });
     }
-    results.push({ name: 'F6 — Mode-mismatch enforcement / weight decay', passed, assertions });
+    results.push({ name: 'F6 — Mode-mismatch enforcement (LEASE_UP subject rejected for STABILIZED deal)', passed, assertions });
   }
 
   // ──────────────────────────────────────────────────────────────────────────

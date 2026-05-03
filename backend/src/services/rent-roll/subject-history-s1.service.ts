@@ -203,12 +203,22 @@ export class SubjectHistoryS1Service {
       const maxDate  = countRow.rows[0]?.max_date ? new Date(countRow.rows[0].max_date) : new Date();
       const coverageMonths = (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
 
+      // ── Load current deal mode for provenance tagging ─────────────────────
+      // deal_mode is recorded on the subject_traffic_history row so that
+      // ConcessionEnvironmentEngine can enforce mode-mismatch rejection:
+      // LEASE_UP-tagged subject coefficients must not influence STABILIZED projections.
+      const dealModeRow = await this.pool.query<{ deal_mode: string | null }>(
+        `SELECT deal_mode FROM deals WHERE id = $1`,
+        [dealId],
+      );
+      const dealMode: string | null = dealModeRow.rows[0]?.deal_mode ?? null;
+
       // ── Upsert subject_traffic_history ────────────────────────────────────
       await this.pool.query(`
         INSERT INTO subject_traffic_history
           (deal_id, tier, snapshot_count, coverage_months, current_state,
-           confidence_weights, peer_collisions, updated_at)
-        VALUES ($1, 'S1', $2, $3, $4, $5, '[]', NOW())
+           confidence_weights, peer_collisions, deal_mode, updated_at)
+        VALUES ($1, 'S1', $2, $3, $4, $5, '[]', $6, NOW())
         ON CONFLICT (deal_id) DO UPDATE SET
           tier               = CASE
                                  WHEN subject_traffic_history.tier IN ('S2','S3','S4')
@@ -219,6 +229,7 @@ export class SubjectHistoryS1Service {
           coverage_months    = EXCLUDED.coverage_months,
           current_state      = EXCLUDED.current_state,
           confidence_weights = subject_traffic_history.confidence_weights || EXCLUDED.confidence_weights,
+          deal_mode          = EXCLUDED.deal_mode,
           updated_at         = NOW()
       `, [
         dealId,
@@ -226,6 +237,7 @@ export class SubjectHistoryS1Service {
         coverageMonths.toFixed(2),
         JSON.stringify(currentState),
         JSON.stringify(confidenceWeights),
+        dealMode,
       ]);
 
       logger.info('[SubjectHistoryS1] S1 aggregation complete', {

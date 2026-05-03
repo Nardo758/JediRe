@@ -153,7 +153,10 @@ export class ConcessionEnvironmentEngine {
     const spModifier = m04 !== null ? supplyPressureModifier(m04) : 1.0;
 
     // ── Step 4: Subject history S2+ ──────────────────────────────────────────
-    const subject = await this.loadSubjectS2(dealId);
+    // Mode is passed so loadSubjectS2 can enforce the mismatch rule:
+    // subject data tagged with a different operating mode is rejected rather than
+    // silently blended (e.g. LEASE_UP-tagged coefficients must not shift STABILIZED years).
+    const subject = await this.loadSubjectS2(dealId, mode);
 
     // ── Build per-year outputs ────────────────────────────────────────────────
     const perYear: PerYearConcessionEnv[] = [];
@@ -195,6 +198,10 @@ export class ConcessionEnvironmentEngine {
       collisionCount: collisions.length,
       subjectS2: subject !== null,
     });
+
+    // ── Persist to dealContext ────────────────────────────────────────────────
+    // Non-fatal: write failure must never prevent the caller from receiving output.
+    await this.persistToDealContext(dealId, output);
 
     return output;
   }
@@ -603,8 +610,21 @@ export class ConcessionEnvironmentEngine {
     }
   }
 
-  /** Load subject S2+ concession signal from subject_traffic_history. */
-  private async loadSubjectS2(dealId: string): Promise<SubjectS2Data | null> {
+  /**
+   * Load subject S2+ concession signal from subject_traffic_history.
+   *
+   * Mode-mismatch enforcement: if the subject history row was recorded when the
+   * deal was in a DIFFERENT operating mode than currentMode, the signal is
+   * rejected entirely (returns null).  Concretely, LEASE_UP-tagged subject
+   * coefficients (higher concessions, absorption-phase dynamics) must never
+   * shift projections for a deal that is now STABILIZED, and vice-versa.
+   *
+   * Pre-v2 rows where deal_mode IS NULL are assumed to match (no rejection).
+   */
+  private async loadSubjectS2(
+    dealId: string,
+    currentMode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT',
+  ): Promise<SubjectS2Data | null> {
     try {
       const result = await this.pool.query<{
         tier: string;
@@ -614,20 +634,30 @@ export class ConcessionEnvironmentEngine {
         deal_mode: string | null;
       }>(`
         SELECT sth.tier, sth.current_state, sth.observed_dynamics, sth.confidence_weights,
-               d.deal_mode
+               sth.deal_mode
         FROM subject_traffic_history sth
-        JOIN deals d ON d.id = sth.deal_id
         WHERE sth.deal_id = $1
       `, [dealId]);
 
       if (result.rows.length === 0) return null;
       const row = result.rows[0];
 
+      // ── Mode-mismatch guard ───────────────────────────────────────────────────
+      // Reject subject data tagged with a different operating mode.
+      // NULL deal_mode means pre-v2 row; pass through without rejection.
+      if (row.deal_mode !== null && row.deal_mode !== currentMode) {
+        logger.info('[ConcessionEnv] Subject S2 rejected — mode mismatch', {
+          dealId,
+          subjectMode: row.deal_mode,
+          currentMode,
+        });
+        return null;
+      }
+
       // Subject concession signal requires at least S2 (observed_dynamics)
       if (!row.observed_dynamics) return null;
       if (!['S2', 'S3', 'S4'].includes(row.tier)) return null;
 
-      const dyn = row.observed_dynamics as any;
       const cs  = row.current_state   as any;
       const cw  = row.confidence_weights as Record<string, { weight: number }> ?? {};
 
@@ -644,20 +674,54 @@ export class ConcessionEnvironmentEngine {
         freeMonths = (cs.avg_concession_value / cs.avg_market_rent) * 12;
       }
 
-      // Mode-mismatch guard: tag the source mode so callers can enforce
       const subjectMode = (row.deal_mode as 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT' | null) ?? null;
 
       return {
-        free_months:      parseFloat(freeMonths.toFixed(4)),
-        concession_pct:   parseFloat((freeMonths / 12).toFixed(4)),
+        free_months:       parseFloat(freeMonths.toFixed(4)),
+        concession_pct:    parseFloat((freeMonths / 12).toFixed(4)),
         concession_weight: concWeight,
-        mode:             subjectMode,
+        mode:              subjectMode,
       };
     } catch (err) {
       logger.debug('[ConcessionEnv] Subject S2 load failed (non-fatal)', {
         dealId, error: err instanceof Error ? err.message : String(err),
       });
       return null;
+    }
+  }
+
+  /**
+   * Persist the computed output to dealContext.traffic.concession_environment.
+   *
+   * Non-fatal: a write failure must never prevent the caller from receiving the
+   * output object.  Triggers that should re-invoke computeForDeal():
+   *   traffic.subject_history.updated | m04.supply_pressure.updated |
+   *   m05.submarket_concession.updated | mode.changed | capex_schedule.updated
+   */
+  private async persistToDealContext(
+    dealId: string,
+    output: ConcessionEnvironmentOutput,
+  ): Promise<void> {
+    try {
+      await this.pool.query(`
+        UPDATE deals
+        SET deal_data = jsonb_set(
+          jsonb_set(
+            COALESCE(deal_data, '{}'::jsonb),
+            '{module_outputs}',
+            COALESCE(deal_data->'module_outputs', '{}'::jsonb)
+          ),
+          '{module_outputs,traffic,concession_environment}',
+          $1::jsonb
+        )
+        WHERE id = $2
+      `, [JSON.stringify(output), dealId]);
+
+      logger.debug('[ConcessionEnv] Persisted to dealContext', { dealId });
+    } catch (err) {
+      logger.warn('[ConcessionEnv] dealContext persist failed (non-fatal)', {
+        dealId, error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
