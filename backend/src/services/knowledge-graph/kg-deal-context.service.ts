@@ -358,11 +358,7 @@ export class KGDealContextService {
    * Semantic search across all KG nodes (deal summaries, zoning profiles, markets).
    */
   async semanticSearch(query: string, limit = 10): Promise<any[]> {
-    return this.kg.hybridSearch({
-      query,
-      limit,
-      includeEdges: false,
-    });
+    return this.kg.hybridSearch(query, undefined, undefined, limit);
   }
 }
 
