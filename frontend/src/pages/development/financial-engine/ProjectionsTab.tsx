@@ -7,6 +7,8 @@ import type {
 } from './types';
 import { fmt$, fmtPct } from './types';
 import { apiClient } from '../../../services/api.client';
+import { InlineAssumptionBlock } from '../../../components/InlineAssumptionBlock';
+import type { AssumptionFieldDef } from '../../../components/InlineAssumptionBlock';
 
 const MONO = BT.font.mono;
 type TimelineOption = 3 | 5 | 7 | 10;
@@ -456,6 +458,190 @@ function buildSubCols(holdYears: number, mode: 'quarterly' | 'monthly'): SubColH
     }
   }
   return cols;
+}
+
+// ─── InlineAssumptionBlock helpers ───────────────────────────────────────
+// Build AssumptionFieldDef[] for Occupancy & Leasing and Concessions blocks
+// from F9SubjectHistory + peer_set_values.
+
+function confidenceFromWeight(w: number | null): 'HIGH' | 'MED' | 'LOW' {
+  if (w == null) return 'LOW';
+  if (w >= 0.8) return 'HIGH';
+  if (w >= 0.5) return 'MED';
+  return 'LOW';
+}
+
+function buildOccupancyFields(history: F9SubjectHistory): AssumptionFieldDef[] {
+  const cs  = history.current_state;
+  const dyn = history.observed_dynamics;
+  const cw  = history.confidence_weights;
+  const peerVals = history.peer_set_values ?? {};
+
+  const fields: AssumptionFieldDef[] = [];
+
+  if (cs) {
+    fields.push({
+      fieldId: 'physical_occupancy',
+      label: 'Physical Occupancy',
+      format: 'pct',
+      precision: 0.5,
+      min: 0, max: 1,
+      peerValue: peerVals['physical_occupancy'] ?? null,
+      subjectValue: cs.occupancy_rate,
+      effectiveValue: cs.occupancy_rate,
+      blendWeight: cw['physical_occupancy']?.weight ?? null,
+      source: 'subject_history:s1',
+      confidence: 'HIGH',
+    });
+
+    if (cs.loss_to_lease != null) {
+      const w = cw['loss_to_lease']?.weight ?? null;
+      const peer = peerVals['loss_to_lease'] ?? null;
+      const eff  = (peer != null && w != null && w > 0 && w < 1)
+        ? w * cs.loss_to_lease + (1 - w) * peer
+        : cs.loss_to_lease;
+      fields.push({
+        fieldId: 'loss_to_lease',
+        label: 'Loss-to-Lease',
+        format: 'pct',
+        precision: 0.1,
+        min: 0, max: 0.5,
+        peerValue: peer,
+        subjectValue: cs.loss_to_lease,
+        effectiveValue: eff,
+        blendWeight: w,
+        source: `subject_history:${history.tier.toLowerCase()}` as AssumptionFieldDef['source'],
+        confidence: confidenceFromWeight(w),
+      });
+    }
+
+    if (cs.signing_velocity != null) {
+      const sv = dyn?.signing_velocity ?? cs.signing_velocity;
+      const w  = cw['signing_velocity']?.weight ?? null;
+      const peer = peerVals['signing_velocity'] ?? null;
+      const eff  = (peer != null && w != null && w > 0 && w < 1)
+        ? w * sv + (1 - w) * peer
+        : sv;
+      fields.push({
+        fieldId: 'signing_velocity',
+        label: 'Signing Velocity (mo)',
+        format: 'num',
+        precision: 0.1,
+        min: 0,
+        peerValue: peer,
+        subjectValue: sv,
+        effectiveValue: eff,
+        blendWeight: w,
+        source: `subject_history:${history.tier.toLowerCase()}` as AssumptionFieldDef['source'],
+        confidence: confidenceFromWeight(w),
+      });
+    }
+  }
+
+  if (dyn) {
+    if (dyn.renewal_rate != null) {
+      const w = cw['renewal_rate']?.weight ?? null;
+      const peer = peerVals['renewal_rate'] ?? null;
+      const eff  = (peer != null && w != null && w > 0 && w < 1)
+        ? w * dyn.renewal_rate + (1 - w) * peer
+        : dyn.renewal_rate;
+      fields.push({
+        fieldId: 'renewal_rate',
+        label: 'Renewal Rate',
+        format: 'pct',
+        precision: 0.5,
+        min: 0, max: 1,
+        peerValue: peer,
+        subjectValue: dyn.renewal_rate,
+        effectiveValue: eff,
+        blendWeight: w,
+        source: 'subject_history:s2',
+        confidence: confidenceFromWeight(w),
+      });
+    }
+
+    if (dyn.days_vacant_median != null) {
+      const w = cw['days_vacant_median']?.weight ?? null;
+      const peer = peerVals['days_vacant_median'] ?? null;
+      const eff  = (peer != null && w != null && w > 0 && w < 1)
+        ? w * dyn.days_vacant_median + (1 - w) * peer
+        : dyn.days_vacant_median;
+      fields.push({
+        fieldId: 'days_vacant',
+        label: 'Days Vacant (median)',
+        format: 'days',
+        precision: 1,
+        min: 0,
+        peerValue: peer,
+        subjectValue: dyn.days_vacant_median,
+        effectiveValue: eff,
+        blendWeight: w,
+        source: 'subject_history:s2',
+        confidence: confidenceFromWeight(w),
+      });
+    }
+  }
+
+  return fields;
+}
+
+function buildConcessionFields(history: F9SubjectHistory): AssumptionFieldDef[] {
+  const cs  = history.current_state;
+  const dyn = history.observed_dynamics;
+  const cw  = history.confidence_weights;
+  const peerVals = history.peer_set_values ?? {};
+
+  const fields: AssumptionFieldDef[] = [];
+
+  if (cs?.avg_concession_value != null && cs.avg_contract_rent != null) {
+    const concPct = cs.avg_concession_value / Math.max(1, cs.avg_contract_rent);
+    const w = cw['concession_trend']?.weight ?? cw['loss_to_lease']?.weight ?? null;
+    const peer = peerVals['concession_pct'] ?? null;
+    const eff  = (peer != null && w != null && w > 0 && w < 1)
+      ? w * concPct + (1 - w) * peer
+      : concPct;
+    fields.push({
+      fieldId: 'concession_pct',
+      label: 'Concession % of Rent',
+      format: 'pct',
+      precision: 0.1,
+      min: 0, max: 0.5,
+      peerValue: peer,
+      subjectValue: concPct,
+      effectiveValue: eff,
+      blendWeight: w,
+      source: `subject_history:${history.tier.toLowerCase()}` as AssumptionFieldDef['source'],
+      confidence: confidenceFromWeight(w),
+      narrative: dyn?.concession_trend
+        ? `Subject concession trend: ${dyn.concession_trend}`
+        : undefined,
+    });
+  }
+
+  if (dyn) {
+    const trend = dyn.concession_trend;
+    if (trend != null) {
+      const trendNum = trend === 'increasing' ? 1 : trend === 'decreasing' ? -1 : 0;
+      const peer = peerVals['concession_intensity'] ?? null;
+      const w = cw['concession_trend']?.weight ?? null;
+      fields.push({
+        fieldId: 'concession_trend_score',
+        label: 'Concession Trend',
+        format: 'ratio',
+        precision: 0.1,
+        min: -1, max: 1,
+        peerValue: peer,
+        subjectValue: trendNum,
+        effectiveValue: trendNum,
+        blendWeight: w,
+        source: 'subject_history:s2',
+        confidence: confidenceFromWeight(w),
+        narrative: `Concession trend observed across ${dyn.diff_period_count} diff period(s)`,
+      });
+    }
+  }
+
+  return fields;
 }
 
 // ─── Subject History Inline Assumption Block ──────────────────────────────
@@ -1082,6 +1268,46 @@ export function ProjectionsTab({
         {showSubjectHistory && financials?.subjectHistory && (
           <SubjectHistoryPanel history={financials.subjectHistory} />
         )}
+
+        {/* ── Inline Assumption Blocks (spec §10.1 Occupancy & §10.2 Concessions) ── */}
+        {financials?.subjectHistory && (() => {
+          const history = financials.subjectHistory!;
+          const hasSubjectHistory = true;
+          const occFields = buildOccupancyFields(history);
+          const concFields = buildConcessionFields(history);
+          return (
+            <>
+              {occFields.length > 0 && (
+                <InlineAssumptionBlock
+                  blockId="occupancy_leasing"
+                  blockLabel="Occupancy & Leasing"
+                  dealId={dealId}
+                  fields={occFields}
+                  hasSubjectHistory={hasSubjectHistory}
+                  subjectTier={history.tier}
+                  subjectSnapshotCount={history.snapshot_count}
+                  defaultExpanded={showSubjectHistory}
+                  onOverride={(_fieldId, _value) => {}}
+                  onRevert={(_fieldId) => {}}
+                />
+              )}
+              {concFields.length > 0 && (
+                <InlineAssumptionBlock
+                  blockId="concessions"
+                  blockLabel="Concessions"
+                  dealId={dealId}
+                  fields={concFields}
+                  hasSubjectHistory={hasSubjectHistory}
+                  subjectTier={history.tier}
+                  subjectSnapshotCount={history.snapshot_count}
+                  defaultExpanded={false}
+                  onOverride={(_fieldId, _value) => {}}
+                  onRevert={(_fieldId) => {}}
+                />
+              )}
+            </>
+          );
+        })()}
 
         {/* ── GPR Decomposition ──────────────────────────────────────────── */}
         {showGprDecomp && hasGprDecomp && (
