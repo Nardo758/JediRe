@@ -347,11 +347,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const modelData = modelResults ?? null;
 
   const load = useCallback(async () => {
-    // If model results are already available, skip the composer fetch.
-    if (modelResults) {
-      setLoading(false);
-      return;
-    }
+    // Always fetch the composer financials — this populates data.proforma.year1
+    // (the T12 operating statement) which is the primary render source for this
+    // tab. modelResults is used separately for KPI overlays and must NOT gate
+    // this fetch; skipping it left data=null and rendered a blank screen when a
+    // saved model was already loaded on mount (from /financial-model/:id/latest).
     if (!dealId) return;
     setLoading(true);
     setError(null);
