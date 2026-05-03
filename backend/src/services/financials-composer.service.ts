@@ -366,7 +366,11 @@ function composeOtherIncomeBreakdown(
     : null;
   const seedBreakdown = (year1Data?.other_income_breakdown &&
     typeof year1Data.other_income_breakdown === 'object')
-    ? year1Data.other_income_breakdown as Record<string, { resolved?: number | null; resolution?: string }>
+    ? year1Data.other_income_breakdown as Record<string, {
+        resolved?: number | null;
+        resolution?: string;
+        t12?: number | null;
+      }>
     : null;
 
   if (!rrOI && !omOI && !seedBreakdown && t12Total == null) return null;
@@ -400,7 +404,7 @@ function composeOtherIncomeBreakdown(
   const rows: OtherIncomeBreakdownRow[] = CATS.map(({ cat, rr, om }) => {
     const rrV = annual(rrOI, rr);
     const omV = annual(omOI, om);
-    const seed = seedBreakdown?.[cat] as any;
+    const seed = seedBreakdown?.[cat];
     const resolved = typeof seed?.resolved === 'number' ? seed.resolved : null;
     const resolution = typeof seed?.resolution === 'string' ? seed.resolution : 'unseeded';
     // T-12 has no per-category data in the source extraction. The seeder

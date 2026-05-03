@@ -382,13 +382,14 @@ function buildSeed(
     .some(lv => lv.resolved != null && lv.resolved !== 0);
   if (!breakdownHasAnyData && t12AnnualTotal != null && t12AnnualTotal !== 0
       && otherIncomeBreakdown.other.resolution !== 'override') {
-    otherIncomeBreakdown.other = {
+    const merged: LayeredValue<number> = {
       ...otherIncomeBreakdown.other,
       t12: t12AnnualTotal,
       resolved: t12AnnualTotal,
       resolution: 't12',
       updated_at: now(),
-    } as any;
+    };
+    otherIncomeBreakdown.other = merged;
   }
 
   // Preserve user-added ancillary lines verbatim across re-seeds. These are
