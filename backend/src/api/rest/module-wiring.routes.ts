@@ -50,8 +50,15 @@ import {
   wireRateAnalysis,
   wireCapitalStructurePipeline,
   setupCapitalStructureSubscriptions,
+  wireM07ToM09Projections,
+  wireM07ToM09Override,
 } from '../../services/module-wiring';
-import type { ModuleId, FormulaId } from '../../services/module-wiring';
+import type {
+  ModuleId,
+  FormulaId,
+  ProjectionsDealContext,
+  ProjectionsOutput,
+} from '../../services/module-wiring';
 
 const router = Router();
 
@@ -597,6 +604,68 @@ router.post('/wire/portfolio', async (req: Request, res: Response) => {
     await wirePortfolioPerformance(assets);
     const portfolioData = dataFlowRouter.getModuleData('M22', 'PORTFOLIO');
     res.json(portfolioData?.data);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/**
+ * POST /wire/projections/:dealId
+ *
+ * Full M07→M09 projections rebuild for a deal.
+ * Accepts a ProjectionsDealContext body, runs the adapter, and publishes
+ * the ProjectionsOutput to the DataFlowRouter under M09.
+ *
+ * This is the primary mounted call site for wireM07ToM09Projections.
+ * The P2 RECALCULATE event handler also calls this internally when
+ * a subject_history.updated / mode.changed / timeline_years.changed
+ * event fires (using the cached context).
+ */
+router.post('/wire/projections/:dealId', async (req: Request, res: Response) => {
+  try {
+    const ctx = req.body as ProjectionsDealContext;
+    if (!ctx || !ctx.hold_years) {
+      return res.status(400).json({ error: 'ProjectionsDealContext body required (hold_years, traffic)' });
+    }
+    const output = await wireM07ToM09Projections(req.params.dealId, {
+      ...ctx,
+      deal_id: req.params.dealId,
+    });
+    if (!output) {
+      return res.status(500).json({ error: 'Projections build failed — check server logs' });
+    }
+    res.json({ dealId: req.params.dealId, ...output });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/**
+ * POST /wire/projections/:dealId/override
+ *
+ * Cheap-path single-cell override recompute (does not rebuild the full block).
+ * Body must include { override_key, override_value, current_projections, ctx }.
+ */
+router.post('/wire/projections/:dealId/override', (req: Request, res: Response) => {
+  try {
+    const { override_key, override_value, current_projections, ctx } = req.body as {
+      override_key: string;
+      override_value: number;
+      current_projections: ProjectionsOutput;
+      ctx: ProjectionsDealContext;
+    };
+    if (!override_key || override_value == null || !current_projections || !ctx) {
+      return res.status(400).json({
+        error: 'Body must include override_key, override_value, current_projections, ctx',
+      });
+    }
+    const updated = wireM07ToM09Override(
+      current_projections,
+      override_key,
+      override_value,
+      { ...ctx, deal_id: req.params.dealId },
+    );
+    res.json({ dealId: req.params.dealId, ...updated });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }

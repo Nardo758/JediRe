@@ -432,14 +432,16 @@ export class M07ProjectionsAdapter {
       const tm = ctx.capex_schedule?.transition_month ?? 24;
       const ys = (year - 1) * 12 + 1;
       const ye = year * 12;
-      if (tm >= ys && tm < ye) return 'LU→S';
+      // Use <= ye so a transition exactly at month 24 (year-2 boundary) emits the badge
+      if (tm >= ys && tm <= ye) return 'LU→S';
     }
 
     if (dm === 'REDEVELOPMENT') {
       const last = this.lastRedevStabMonth(ctx);
       const ys   = (year - 1) * 12 + 1;
       const ye   = year * 12;
-      if (last >= ys && last < ye) return 'R→S';
+      // Use <= ye so a transition exactly at month 36 (year-3 boundary) emits the badge
+      if (last >= ys && last <= ye) return 'R→S';
     }
 
     return undefined;
@@ -620,9 +622,12 @@ export class M07ProjectionsAdapter {
     const subject = ctx.traffic.subject_history;
 
     // Y1 anchor: subject S1 LTL → observed_dynamics S2+ LTL → baseline
+    // (spec §3 priority: current_state → observed_dynamics → fallback constant)
     const y1LTL: number = (() => {
       const sLTL = subject?.current_state?.loss_to_lease;
       if (typeof sLTL === 'number') return sLTL;
+      const oDyn = subject?.observed_dynamics?.loss_to_lease;
+      if (typeof oDyn === 'number') return Math.max(0, oDyn);
       return BASELINE_LOSS_TO_LEASE;
     })();
 
@@ -847,6 +852,10 @@ export async function wireM07ToM09Projections(
         projections:             output,
         projections_computed_at: output.computed_at,
       });
+      // Cache the ProjectionsDealContext so RECALCULATE event handlers can retrieve
+      // it for reactive rebuilds without requiring a full round-trip from the client.
+      // Cast: 'M09_CTX' is an internal cache key outside the public ModuleId enum.
+      (dataFlowRouter as any).publishModuleData('M09_CTX', dealId, ctx);
     } catch (routerErr: unknown) {
       logger.debug('[M07→M09] DataFlowRouter publish skipped', {
         error: routerErr instanceof Error ? routerErr.message : String(routerErr),

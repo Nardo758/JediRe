@@ -1195,5 +1195,98 @@ export function setupP2Subscriptions(): void {
     }
   });
 
+  // ── RECALCULATE consumer: actually call the adapter ──────────────────────
+  //
+  // This handler is the bridge between the six RECALCULATE emitters above and
+  // the adapter itself.  For cheap-path overrides (assumption.override.set)
+  // it calls wireM07ToM09Override; for all other triggers it calls the full
+  // wireM07ToM09Projections rebuild using the context previously cached in
+  // DataFlowRouter under the 'M09_CTX' key.
+  //
+  // The ctx cache is populated by wireM07ToM09Projections on every successful
+  // build (either triggered via POST /wire/projections/:dealId or by a prior
+  // RECALCULATE event).  If no cache exists yet, the event is logged and
+  // dropped — the caller must do a full build via the REST route first.
+  moduleEventBus.on(ModuleEventType.RECALCULATE, async (event) => {
+    if (event.sourceModule !== 'M09') return;
+
+    try {
+      const {
+        wireM07ToM09Projections,
+        wireM07ToM09Override,
+      } = require('./m07-projections-adapter') as typeof import('./m07-projections-adapter');
+
+      const trigger   = event.data?.trigger as string | undefined;
+      const dealId    = event.dealId;
+
+      // Retrieve the cached ProjectionsDealContext
+      // Cast: 'M09_CTX' is an internal cache key outside the public ModuleId enum.
+      const ctxEntry  = (dataFlowRouter as any).getModuleData('M09_CTX', dealId) as
+        { data: unknown } | undefined;
+      if (!ctxEntry?.data) {
+        logger.warn('[P2] M09 RECALCULATE: no cached ctx — client must call POST /wire/projections first', {
+          dealId, trigger,
+        });
+        return;
+      }
+
+      type Ctx = import('./m07-projections-adapter').ProjectionsDealContext;
+      type Out = import('./m07-projections-adapter').ProjectionsOutput;
+
+      const baseCtx = ctxEntry.data as unknown as Ctx;
+
+      if (trigger === 'assumption.override.set' && event.data?.cheap_path) {
+        // Cheap path: single-cell override recompute — no full block rebuild
+        const projEntry = dataFlowRouter.getModuleData('M09', dealId);
+        const current   = projEntry?.data?.projections as Out | undefined;
+        if (!current) {
+          logger.warn('[P2] M09 override RECALCULATE: no cached projections', { dealId });
+          return;
+        }
+        const updated = wireM07ToM09Override(
+          current,
+          event.data.override_key as string,
+          event.data.override_value as number,
+          baseCtx,
+        );
+        dataFlowRouter.publishModuleData('M09', dealId, {
+          projections:             updated,
+          projections_computed_at: updated.computed_at,
+        });
+        logger.debug('[P2] M09 override RECALCULATE applied', { dealId, overrideKey: event.data.override_key });
+        return;
+      }
+
+      // Full rebuild: apply context mutations carried in the event payload
+      let updatedCtx: Ctx = { ...baseCtx };
+      if (trigger === 'mode.changed' && event.data?.new_mode) {
+        updatedCtx = {
+          ...updatedCtx,
+          deal_mode: event.data.new_mode as Ctx['deal_mode'],
+        };
+      } else if (trigger === 'timeline_years.changed' && event.data?.hold_years) {
+        updatedCtx = {
+          ...updatedCtx,
+          hold_years: event.data.hold_years as number,
+        };
+      } else if (trigger === 'capex_schedule.updated' && event.data?.capex_schedule) {
+        updatedCtx = {
+          ...updatedCtx,
+          capex_schedule: event.data.capex_schedule as Ctx['capex_schedule'],
+        };
+      }
+
+      await wireM07ToM09Projections(dealId, updatedCtx);
+      logger.info('[P2] M09 RECALCULATE rebuild complete', { dealId, trigger });
+
+    } catch (err) {
+      logger.error('[P2] M09 RECALCULATE handler error', {
+        dealId: event.dealId,
+        trigger: event.data?.trigger,
+        error: (err as Error).message,
+      });
+    }
+  });
+
   logger.info('P2 auto-cascade subscriptions initialized');
 }
