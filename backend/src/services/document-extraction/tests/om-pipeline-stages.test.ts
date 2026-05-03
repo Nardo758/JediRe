@@ -42,4 +42,18 @@ describe('OM_TERMINAL_FAILURE_STAGES', () => {
       ['distribute_failed', 'ocr_failed', 'parse_failed', 'sentiment_failed'].sort(),
     );
   });
+
+  it('every terminal failure stage has a frontend OM_FAILURE_STAGE_LABELS entry', () => {
+    const frontendPath = path.resolve(
+      __dirname,
+      '../../../../../frontend/src/constants/omPipelineStages.ts',
+    );
+    const text = fs.readFileSync(frontendPath, 'utf8');
+    const block = text.match(
+      /OM_FAILURE_STAGE_LABELS:\s*Record<OmTerminalFailureStage,\s*string>\s*=\s*\{([\s\S]*?)\}/,
+    );
+    expect(block).not.toBeNull();
+    const labelKeys = [...block![1].matchAll(/(\w+):\s*'/g)].map((m) => m[1]).sort();
+    expect(labelKeys).toEqual([...OM_TERMINAL_FAILURE_STAGES].sort());
+  });
 });

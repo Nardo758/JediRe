@@ -3,7 +3,12 @@ import { dataLibraryService, type DataLibraryFile, type DataLibrarySearchParams 
 import { pstUploadService, type PstJobStatus, type PstEntity } from '@/services/pstUpload.service';
 import { ContextIndicator } from '../components/intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
-import { OM_RETRYABLE_STAGES } from '@/constants/omPipelineStages';
+import {
+  OM_RETRYABLE_STAGES,
+  OM_TERMINAL_FAILURE_STAGES,
+  OM_FAILURE_STAGE_COLOR,
+  OM_FAILURE_STAGE_LABELS,
+} from '@/constants/omPipelineStages';
 
 const fmtSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -26,7 +31,10 @@ const statusColors: Record<string, string> = {
 };
 
 // Maps the granular OM-pipeline stages persisted in `parsing_stage` to a
-// human-readable label + color for the row's status badge.
+// human-readable label + color for the row's status badge. Terminal failure
+// entries are derived from the shared OM_TERMINAL_FAILURE_STAGES constant
+// (see frontend/src/constants/omPipelineStages.ts) so adding a new failure
+// stage automatically populates this map.
 const stageColors: Record<string, string> = {
   pending: '#8892b0',
   parsing: '#f59e0b',
@@ -36,11 +44,10 @@ const stageColors: Record<string, string> = {
   distributing: '#60a5fa',
   routed: '#4ade80',
   complete: '#4ade80',
-  parse_failed: '#e06c75',
-  ocr_failed: '#e06c75',
-  distribute_failed: '#e06c75',
-  sentiment_failed: '#e06c75',
-  error: '#e06c75',
+  error: OM_FAILURE_STAGE_COLOR,
+  ...Object.fromEntries(
+    OM_TERMINAL_FAILURE_STAGES.map((s) => [s, OM_FAILURE_STAGE_COLOR]),
+  ),
 };
 const stageLabels: Record<string, string> = {
   pending: 'Pending',
@@ -51,11 +58,8 @@ const stageLabels: Record<string, string> = {
   distributing: 'Routing',
   routed: 'Routed',
   complete: 'Complete',
-  parse_failed: 'Parse failed',
-  ocr_failed: 'OCR failed',
-  distribute_failed: 'Routing failed',
-  sentiment_failed: 'Sentiment failed',
   error: 'Error',
+  ...OM_FAILURE_STAGE_LABELS,
 };
 
 const isRetryableStage = (stage: string | null | undefined, status: string): boolean => {

@@ -36,3 +36,29 @@ export const OM_RETRYABLE_STAGES: ReadonlySet<string> = new Set<string>([
   'error',
   ...OM_TERMINAL_FAILURE_STAGES,
 ]);
+
+/**
+ * Shared failure-badge color. Every terminal failure stage renders with the
+ * same red so the operator gets a consistent visual signal.
+ */
+export const OM_FAILURE_STAGE_COLOR = '#e06c75';
+
+/**
+ * Human-readable label for each terminal failure stage. Keep keys in sync
+ * with OM_TERMINAL_FAILURE_STAGES — the drift-guard test in
+ * `backend/.../tests/om-pipeline-stages.test.ts` (and the assertion below)
+ * will fail loudly if a stage is added without a label.
+ */
+export const OM_FAILURE_STAGE_LABELS: Record<OmTerminalFailureStage, string> = {
+  parse_failed: 'Parse failed',
+  ocr_failed: 'OCR failed',
+  distribute_failed: 'Routing failed',
+  sentiment_failed: 'Sentiment failed',
+};
+
+// Compile-time check: ensure every terminal failure stage has a label.
+// (TypeScript will error here if a new stage is added to
+// OM_TERMINAL_FAILURE_STAGES without a corresponding label entry.)
+const _failureLabelsExhaustive: Record<OmTerminalFailureStage, string> =
+  OM_FAILURE_STAGE_LABELS;
+void _failureLabelsExhaustive;
