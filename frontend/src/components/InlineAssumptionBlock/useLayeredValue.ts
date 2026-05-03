@@ -1,45 +1,96 @@
 /**
  * useLayeredValue — selector hook
  *
- * Reads a layered value for a specific field from dealStore.
- * The component is "dumb" w.r.t. data fetching; this hook bridges
- * the store and the component props contract.
+ * Reads a layered value for a specific field from dealStore by path.
+ * Path is dot-notation (e.g. "traffic.physical_occupancy").
  *
- * If the upstream selector `selectLayeredValueAtPath` does not exist on the
- * store yet, the hook returns null (typed stub). The parent is responsible
- * for passing field data directly as props in that case.
+ * `selectLayeredValueAtPath` traverses the live store state identically to
+ * how updateAssumption/revertAssumption write — so reads and writes are
+ * always consistent.
+ *
+ * The return type is kept narrow: only the fields IAB needs (peerValue,
+ * effectiveValue, hasUserOverride). The parent remains responsible for
+ * assembling AssumptionFieldDef and passing all other display data as props.
  */
 import { useMemo } from 'react';
-import type { AssumptionFieldDef } from './types';
+import { useDealStore } from '../../stores/dealStore';
 
-/**
- * Selector contract — implemented by dealStore when the IAB integration
- * is wired end-to-end. Stub returns null until then.
- */
-export type LayeredValueSelector = (
-  dealId: string,
-  fieldPath: string,
-) => AssumptionFieldDef | null;
+// ─── LayeredValue duck-type guard ─────────────────────────────────────────
+// Avoids importing the full LayeredValue type from dealContext.types so the
+// component family stays loosely coupled to the store.
+function isLayeredValue(v: unknown): v is {
+  value: number;
+  resolvedFrom: string;
+  layers?: {
+    platform?: { value: number };
+    broker?: { value: number };
+    user?: { value: number };
+  };
+} {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    'value' in v &&
+    'resolvedFrom' in v
+  );
+}
 
+// ─── selectLayeredValueAtPath ─────────────────────────────────────────────
 /**
- * useLayeredValue
+ * Traverses the store state using a dot-notation path, returning the
+ * LayeredValue<number> at that location or null if absent / not a LV.
  *
- * Currently returns null (stub). When dealStore exposes
- * `selectLayeredValueAtPath`, replace the body with:
- *   return useDealStore(s => s.selectLayeredValueAtPath(dealId, fieldPath));
+ * This is the read-path counterpart to updateAssumption's write-path.
+ */
+export function selectLayeredValueAtPath(
+  state: Record<string, unknown>,
+  fieldPath: string,
+): { peerValue: number | null; effectiveValue: number; hasUserOverride: boolean } | null {
+  const parts = fieldPath.split('.');
+  let current: unknown = state;
+  for (const part of parts) {
+    if (current == null || typeof current !== 'object') return null;
+    current = (current as Record<string, unknown>)[part];
+  }
+  if (!isLayeredValue(current)) return null;
+
+  const peerValue =
+    current.layers?.platform?.value ??
+    current.layers?.broker?.value ??
+    null;
+  const effectiveValue = current.value;
+  const hasUserOverride = current.layers?.user != null;
+
+  return { peerValue, effectiveValue, hasUserOverride };
+}
+
+// ─── useLayeredValue ─────────────────────────────────────────────────────
+/**
+ * Hook wrapper around selectLayeredValueAtPath.
+ *
+ * Returns { peerValue, effectiveValue, hasUserOverride } when the store
+ * has a LayeredValue at the given path, or null if not yet hydrated.
+ *
+ * The hook is stable: only re-renders the subscriber when peerValue,
+ * effectiveValue, or hasUserOverride changes.
  */
 export function useLayeredValue(
   _dealId: string | undefined,
-  _fieldPath: string,
-): AssumptionFieldDef | null {
-  return null;
+  fieldPath: string,
+): { peerValue: number | null; effectiveValue: number; hasUserOverride: boolean } | null {
+  return useDealStore(s =>
+    selectLayeredValueAtPath(s as unknown as Record<string, unknown>, fieldPath),
+  );
 }
 
+// ─── useFieldDriftAnalysis ────────────────────────────────────────────────
 /**
- * useFieldDriftAnalysis
- *
- * Computes drift sigma inline from subject and peer values.
+ * Computes drift sigma from subject and peer values.
  * drift_sigma = (subject − peer) / (peer × 0.20)
+ *
+ * PEER_SIGMA_PCT = 0.20 matches useBlockCollisions so collision badges
+ * and drift arrows are consistent across the component family.
+ *
  * ±0.5σ threshold → neutral; above → up; below → down.
  */
 export function useFieldDriftAnalysis(

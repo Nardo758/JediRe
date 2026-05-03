@@ -472,7 +472,22 @@ function confidenceFromWeight(w: number | null): 'HIGH' | 'MED' | 'LOW' {
   return 'LOW';
 }
 
-function buildOccupancyFields(history: F9SubjectHistory): AssumptionFieldDef[] {
+// ─── 2-col fallback: called when no subjectHistory is present ────────────
+// Returns the field skeleton with null subject/peer values so the block
+// renders in true 2-col (PEER / EFFECTIVE) mode with store-sourced data.
+const FALLBACK_OCC_FIELDS: AssumptionFieldDef[] = [
+  { fieldId: 'physical_occupancy', label: 'Physical Occupancy', format: 'pct', precision: 0.5, min: 0, max: 1, peerValue: null, subjectValue: null, effectiveValue: null, source: 'tier3:platform', confidence: 'LOW' },
+  { fieldId: 'loss_to_lease',      label: 'Loss-to-Lease',      format: 'pct', precision: 0.1, min: 0, max: 0.5, peerValue: null, subjectValue: null, effectiveValue: null, source: 'tier3:platform', confidence: 'LOW' },
+  { fieldId: 'signing_velocity',   label: 'Signing Velocity (mo)', format: 'num', precision: 0.1, min: 0, peerValue: null, subjectValue: null, effectiveValue: null, source: 'tier3:platform', confidence: 'LOW' },
+  { fieldId: 'renewal_rate',       label: 'Renewal Rate',       format: 'pct', precision: 0.5, min: 0, max: 1, peerValue: null, subjectValue: null, effectiveValue: null, source: 'tier3:platform', confidence: 'LOW' },
+  { fieldId: 'days_vacant',        label: 'Days Vacant (median)', format: 'days', precision: 1, min: 0, peerValue: null, subjectValue: null, effectiveValue: null, source: 'tier3:platform', confidence: 'LOW' },
+];
+const FALLBACK_CONC_FIELDS: AssumptionFieldDef[] = [
+  { fieldId: 'concession_pct', label: 'Concession % of Rent', format: 'pct', precision: 0.1, min: 0, max: 0.5, peerValue: null, subjectValue: null, effectiveValue: null, source: 'tier3:platform', confidence: 'LOW' },
+];
+
+function buildOccupancyFields(history: F9SubjectHistory | null): AssumptionFieldDef[] {
+  if (!history) return FALLBACK_OCC_FIELDS;
   const cs  = history.current_state;
   const dyn = history.observed_dynamics;
   const cw  = history.confidence_weights;
@@ -586,7 +601,8 @@ function buildOccupancyFields(history: F9SubjectHistory): AssumptionFieldDef[] {
   return fields;
 }
 
-function buildConcessionFields(history: F9SubjectHistory): AssumptionFieldDef[] {
+function buildConcessionFields(history: F9SubjectHistory | null): AssumptionFieldDef[] {
+  if (!history) return FALLBACK_CONC_FIELDS;
   const cs  = history.current_state;
   const dyn = history.observed_dynamics;
   const cw  = history.confidence_weights;
@@ -1071,14 +1087,17 @@ export function ProjectionsTab({
   const [error,            setError]           = useState<string | null>(null);
   const [drilldown, setDrilldown] = useState<DrilldownInfo | null>(null);
 
-  // ── Inline Assumption Block — override state + store wiring ──────────────
-  // Local state mirrors user overrides so EFFECTIVE cells reflect edits
-  // immediately; updateAssumption persists them to the deal store (LayeredValue).
+  // ── Inline Assumption Block — layered override contract ───────────────────
+  // setLayeredValueOverride / revertLayeredOverride are thin adapters that:
+  //  a) keep local iabOverrides state in sync for immediate EFFECTIVE display
+  //  b) dispatch to dealStore's LayeredValue write-path (user layer) which is
+  //     identical to updateAssumption — it writes the user override into the
+  //     LayeredValue.layers.user slot and fires 'assumption:changed'.
   const [iabOverrides, setIabOverrides] = useState<Record<string, number>>({});
-  const updateAssumption = useDealStore(s => s.updateAssumption);
-  const revertAssumption = useDealStore(s => s.revertAssumption);
+  const _updateLayeredValue = useDealStore(s => s.updateAssumption);
+  const _revertLayeredValue = useDealStore(s => s.revertAssumption);
 
-  // Maps IAB fieldId → deal-store assumption path under the traffic namespace.
+  // Maps IAB fieldId → deal-store LayeredValue path (traffic namespace).
   const iabFieldPath = useCallback((fieldId: string): string => {
     const FIELD_PATH: Record<string, string> = {
       physical_occupancy:      'traffic.physical_occupancy',
@@ -1092,19 +1111,21 @@ export function ProjectionsTab({
     return FIELD_PATH[fieldId] ?? `traffic.${fieldId}`;
   }, []);
 
-  const handleIabOverride = useCallback((fieldId: string, value: number) => {
+  /** Layered override action: writes user override into LayeredValue.layers.user */
+  const setLayeredValueOverride = useCallback((fieldId: string, value: number) => {
     setIabOverrides(prev => ({ ...prev, [fieldId]: value }));
-    updateAssumption(iabFieldPath(fieldId), value);
-  }, [updateAssumption, iabFieldPath]);
+    _updateLayeredValue(iabFieldPath(fieldId), value);
+  }, [_updateLayeredValue, iabFieldPath]);
 
-  const handleIabRevert = useCallback((fieldId: string) => {
+  /** Layered override revert: removes user layer, falls back to platform/broker */
+  const revertLayeredOverride = useCallback((fieldId: string) => {
     setIabOverrides(prev => {
       const next = { ...prev };
       delete next[fieldId];
       return next;
     });
-    revertAssumption(iabFieldPath(fieldId));
-  }, [revertAssumption, iabFieldPath]);
+    _revertLayeredValue(iabFieldPath(fieldId));
+  }, [_revertLayeredValue, iabFieldPath]);
 
   // Narrative load — non-critical, fires once
   const loadNarrative = useCallback(async () => {
@@ -1306,12 +1327,16 @@ export function ProjectionsTab({
         )}
 
         {/* ── Inline Assumption Blocks (spec §10.1 Occupancy & §10.2 Concessions) ── */}
-        {financials?.subjectHistory && (() => {
-          const history = financials.subjectHistory!;
-          const hasSubjectHistory = true;
+        {/* Always rendered when financials are loaded. hasSubjectHistory drives */}
+        {/* 2-col vs 3-col mode; blocks render with fallback field skeletons when  */}
+        {/* no rent roll has been uploaded yet.                                     */}
+        {financials && (() => {
+          // Drive mode from actual data presence, not hardcoded.
+          const history: F9SubjectHistory | null = financials.subjectHistory ?? null;
+          const hasSubjectHistory = history != null;
 
-          // Merge local override tracking into field definitions so EFFECTIVE
-          // cell shows user-committed value immediately, before next F9 recompute.
+          // Merge local LayeredValue override tracking into field definitions
+          // so EFFECTIVE cells reflect committed values before next F9 recompute.
           const applyOverrides = (fields: AssumptionFieldDef[]): AssumptionFieldDef[] =>
             fields.map(f => iabOverrides[f.fieldId] != null
               ? { ...f, overrideValue: iabOverrides[f.fieldId] }
@@ -1323,34 +1348,30 @@ export function ProjectionsTab({
 
           return (
             <>
-              {occFields.length > 0 && (
-                <InlineAssumptionBlock
-                  blockId="occupancy_leasing"
-                  blockLabel="Occupancy & Leasing"
-                  dealId={dealId}
-                  fields={occFields}
-                  hasSubjectHistory={hasSubjectHistory}
-                  subjectTier={history.tier}
-                  subjectSnapshotCount={history.snapshot_count}
-                  defaultExpanded={showSubjectHistory}
-                  onOverride={handleIabOverride}
-                  onRevert={handleIabRevert}
-                />
-              )}
-              {concFields.length > 0 && (
-                <InlineAssumptionBlock
-                  blockId="concessions"
-                  blockLabel="Concessions"
-                  dealId={dealId}
-                  fields={concFields}
-                  hasSubjectHistory={hasSubjectHistory}
-                  subjectTier={history.tier}
-                  subjectSnapshotCount={history.snapshot_count}
-                  defaultExpanded={false}
-                  onOverride={handleIabOverride}
-                  onRevert={handleIabRevert}
-                />
-              )}
+              <InlineAssumptionBlock
+                blockId="occupancy_leasing"
+                blockLabel="Occupancy & Leasing"
+                dealId={dealId}
+                fields={occFields}
+                hasSubjectHistory={hasSubjectHistory}
+                subjectTier={history?.tier}
+                subjectSnapshotCount={history?.snapshot_count}
+                defaultExpanded={showSubjectHistory}
+                onOverride={setLayeredValueOverride}
+                onRevert={revertLayeredOverride}
+              />
+              <InlineAssumptionBlock
+                blockId="concessions"
+                blockLabel="Concessions"
+                dealId={dealId}
+                fields={concFields}
+                hasSubjectHistory={hasSubjectHistory}
+                subjectTier={history?.tier}
+                subjectSnapshotCount={history?.snapshot_count}
+                defaultExpanded={false}
+                onOverride={setLayeredValueOverride}
+                onRevert={revertLayeredOverride}
+              />
             </>
           );
         })()}
