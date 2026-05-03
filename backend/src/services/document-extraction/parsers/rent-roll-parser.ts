@@ -634,6 +634,15 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       return 'missing';
     };
 
+    // CRITICAL: "has data" means the parser SUCCESSFULLY READ a value (i.e.
+    // non-null / non-undefined / non-NaN), NOT that the value is non-zero.
+    // A legitimate $0 market rent or $0 effective rent (e.g. employee unit,
+    // model unit, fully concession'd lease) is still extraction-success and
+    // must NOT be treated as 'all_null' / unreadable. The hard-fail gate
+    // depends on this distinction — see Step 5 in the task spec.
+    const isPresent = (v: number | null | undefined) =>
+      v !== null && v !== undefined && !Number.isNaN(v);
+
     if (layout === 'yardi_rrwlc') {
       const occOrAll = occupiedUnits.length > 0 ? occupiedUnits : currentUnits;
       const anyHas = (predicate: (u: YardiUnit) => boolean) => occOrAll.some(predicate);
@@ -641,8 +650,8 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       // construction they always have data — status reduces to ok|fallback.
       columnCoverage.unit_no   = colStatus('unit_no',   true);
       columnCoverage.unit_type = colStatus('unit_type', true);
-      columnCoverage.sqft        = colStatus('sqft',        anyHas(u => u.sqft != null && u.sqft > 0));
-      columnCoverage.market_rent = colStatus('market_rent', anyHas(u => u.marketRent != null && u.marketRent > 0));
+      columnCoverage.sqft        = colStatus('sqft',        anyHas(u => isPresent(u.sqft)));
+      columnCoverage.market_rent = colStatus('market_rent', anyHas(u => isPresent(u.marketRent)));
       const anyCharges = occOrAll.some(u => Object.keys(u.charges).length > 0);
       columnCoverage.charge_code = colStatus('charge_code', anyCharges);
       columnCoverage.amount      = colStatus('amount',      anyCharges);
@@ -655,9 +664,13 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       // unsupported by this layout. Other fields use header-detection provenance.
       columnCoverage.unit_no     = colStatus('unit_no',     true);
       columnCoverage.unit_type   = colStatus('unit_type',   currentUnits.some(u => u.unitType));
-      columnCoverage.sqft        = colStatus('sqft',        currentUnits.some(u => u.sqft != null && u.sqft > 0));
-      columnCoverage.market_rent = colStatus('market_rent', currentUnits.some(u => u.marketRent != null && u.marketRent > 0));
-      columnCoverage.amount      = colStatus('amount',      occupiedUnits.some(u => (u.charges['rent'] ?? 0) > 0));
+      columnCoverage.sqft        = colStatus('sqft',        currentUnits.some(u => isPresent(u.sqft)));
+      columnCoverage.market_rent = colStatus('market_rent', currentUnits.some(u => isPresent(u.marketRent)));
+      // 'rent' presence is recorded by the generic_flat parser as a key in
+      // u.charges only when the source row supplied a non-null value (see
+      // line ~395). So key-presence on 'rent' is the right extraction-success
+      // signal here, regardless of whether the parsed amount is $0.
+      columnCoverage.amount      = colStatus('amount',      occupiedUnits.some(u => 'rent' in u.charges));
       columnCoverage.lease_expiration = 'not_supported';
       columnCoverage.charge_code      = 'not_supported';
     }
@@ -701,7 +714,15 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     const anyMissing = criticalFields.some(f => columnCoverage[f] === 'missing');
     const occCount = occupiedUnits.length;
     const leaseExpNulls = occupiedUnits.filter(u => !u.leaseExpiration).length;
-    const effectiveRentNulls = occupiedUnits.filter(u => u.totalCharges === 0 && (u.charges['rent'] ?? 0) === 0).length;
+    // Presence-based, NOT zero-based. A unit is counted as "effective rent
+    // unparsed" only when neither the totalCharges sum nor the 'rent' charge
+    // key was successfully populated by the parser. A legitimate $0
+    // effective rent (model unit, fully concession'd lease) — represented
+    // as totalCharges === 0 BUT with a 'rent' key present in u.charges —
+    // counts as a successful read and does NOT inflate the null count.
+    const effectiveRentNulls = occupiedUnits.filter(
+      u => u.totalCharges === 0 && !('rent' in u.charges)
+    ).length;
     const lowLeaseExpCoverage = occCount > 0 && (leaseExpNulls / occCount) >= 0.5 && columnCoverage.lease_expiration !== 'not_supported';
     const lowEffRentCoverage = occCount > 0 && (effectiveRentNulls / occCount) >= 0.5;
     const humanReviewNeeded = anyMissing || lowLeaseExpCoverage || lowEffRentCoverage;
