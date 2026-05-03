@@ -511,9 +511,16 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
     const w    = cw[key]?.weight ?? null;
     // Prefer platform peer-set posterior; fall back to collision.peer_value if absent
     const peer: number | null = peerSetValues[key] ?? col?.peer_value ?? null;
-    if (peer != null && w != null && w > 0 && w < 1) {
-      return { peer, effective: w * subject + (1 - w) * peer };
+    if (peer != null && w != null) {
+      if (w === 0) {
+        // Insufficient subject evidence — effective is peer-only (matches resolver w=0 path)
+        return { peer, effective: peer };
+      }
+      if (w < 1) {
+        return { peer, effective: w * subject + (1 - w) * peer };
+      }
     }
+    // w===1 (full confidence) or no peer available — effective equals subject
     return { peer, effective: subject };
   };
 

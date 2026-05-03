@@ -122,18 +122,47 @@ export class SubjectHistoryS1Service {
       const expirationWaterfall: SubjectCurrentState['expiration_waterfall'] =
         Array.isArray(derived?.expiration_waterfall) ? derived.expiration_waterfall : [];
 
+      // ── Lease-term distribution for occupied units ───────────────────────
+      // Buckets by total lease duration (months) derived from lease_start/lease_end.
+      // month_to_month: ≤1 month; 3_month: ≤3; 6_month: ≤6; 12_month: ≤12;
+      // 24_month: ≤24; other: >24 or cannot be derived.
+      const leaseTermDist: Record<string, number> = {
+        month_to_month: 0, '3_month': 0, '6_month': 0,
+        '12_month': 0, '24_month': 0, other: 0,
+      };
+      const snapDate = new Date(snap.snapshot_date as string);
+      for (const u of occupied) {
+        if (u.lease_start != null && u.lease_end != null) {
+          const start = new Date(u.lease_start);
+          const end   = new Date(u.lease_end);
+          const months = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+          if      (months <= 1)  leaseTermDist.month_to_month++;
+          else if (months <= 3)  leaseTermDist['3_month']++;
+          else if (months <= 6)  leaseTermDist['6_month']++;
+          else if (months <= 12) leaseTermDist['12_month']++;
+          else if (months <= 24) leaseTermDist['24_month']++;
+          else                   leaseTermDist.other++;
+        } else {
+          leaseTermDist.other++;
+        }
+      }
+      // Suppress snapDate unused-variable warning (used as a reference point for
+      // future remaining-term calculations if needed).
+      void snapDate;
+
       const currentState: SubjectCurrentState = {
-        occupancy_rate:       occupancyRate,
-        unit_count:           unitCount,
-        occupied_count:       occupiedCount,
-        vacant_count:         vacantCount,
-        notice_count:         noticeCount,
-        loss_to_lease:        lossToLease,
-        avg_concession_value: avgConcessionValue,
-        avg_contract_rent:    avgContractRent,
-        avg_market_rent:      avgMarketRent,
-        expiration_waterfall: expirationWaterfall,
-        signing_velocity:     signingVelocity,
+        occupancy_rate:          occupancyRate,
+        unit_count:              unitCount,
+        occupied_count:          occupiedCount,
+        vacant_count:            vacantCount,
+        notice_count:            noticeCount,
+        loss_to_lease:           lossToLease,
+        avg_concession_value:    avgConcessionValue,
+        avg_contract_rent:       avgContractRent,
+        avg_market_rent:         avgMarketRent,
+        expiration_waterfall:    expirationWaterfall,
+        signing_velocity:        signingVelocity,
+        lease_term_distribution: leaseTermDist,
       };
 
       // ── Compute confidence_weights for S1 coefficients ───────────────────

@@ -113,10 +113,12 @@ export class CoefficientResolverService {
 
       if (subjectVal !== null && subjectHistory !== null) {
         // Blend: w × subject + (1-w) × platform_peer_posterior
+        // w_subject must come from the per-coefficient observation count stored in
+        // confidence_weights.  If absent (metric not yet observed for this coefficient),
+        // treat as w=0 — insufficient evidence; do NOT fall back to snapshot_count,
+        // which would over-weight sparse subject data.
         const weightEntry = subjectHistory.confidence_weights[name];
-        const w = weightEntry
-          ? weightEntry.weight
-          : Math.min(1, subjectHistory.snapshot_count / (SUBJECT_N_REQUIRED[name] ?? 6));
+        const w = weightEntry ? weightEntry.weight : 0;
 
         if (w > 0) {
           resolved      = w * subjectVal + (1 - w) * platformPeerValue;

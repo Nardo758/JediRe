@@ -302,6 +302,12 @@ export interface SubjectCurrentState {
   }>;
   /** Signing velocity from derivations (leases/month) */
   signing_velocity: number | null;
+  /**
+   * Distribution of occupied-unit lease terms bucketed by months remaining or total duration.
+   * Keys are term-length buckets (e.g. 'month_to_month', '3_month', '6_month', '12_month', '24_month', 'other').
+   * Values are the count of occupied units in that bucket.
+   */
+  lease_term_distribution: Record<string, number>;
 }
 
 /** S2 observed-dynamics payload — computed from ≥2 snapshots ≥60 days apart */
