@@ -30,6 +30,11 @@ export type LayeredValueSource =
   | 'agent:supply'
   | 'agent:cashflow'
   | 'agent:commentary'
+  /** M07 Subject History tiers: single snapshot (S1) through longitudinal history (S4) */
+  | 'subject_history:s1'
+  | 'subject_history:s2'
+  | 'subject_history:s3'
+  | 'subject_history:s4'
   | 't12'
   | 'rent_roll'
   | 'tax_bill'

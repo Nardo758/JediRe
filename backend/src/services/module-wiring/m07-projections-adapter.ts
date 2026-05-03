@@ -1,31 +1,62 @@
 /**
  * M07 → M09 Projections Adapter
  *
- * Pure, stateless transformer that consumes pre-loaded dealContext data and
- * produces typed OccupancyLeasingBlock and ConcessionsBlock row arrays for any
- * hold timeline (3 / 5 / 7 / 10 years).
+ * Pure, stateless transformer that consumes pre-loaded M07 dealContext data
+ * and produces typed OccupancyLeasingBlock and ConcessionsBlock row arrays
+ * for any hold timeline (1–30 years).
  *
- * Source mapping (spec §3):
- *   Physical Occupancy Y1 ←
- *     STABILIZED:    startingState.current_occupancy (S1 subject overrides)
- *     LEASE_UP:      absorption_curve[year * 12]  (curve index for end-of-year)
- *     REDEVELOPMENT: overall_occupancy × (1 − renovation_dilution)
- *   Loss-to-Lease Y1 ← SubjectCurrentState.loss_to_lease (S1) or platform 3%
- *   Rent Growth      ← market_rent_growth (M05) or platform baseline 3%
- *   Free Months      ← ConcessionEnvironmentOutput.per_year[n].free_months
- *   Concession %     ← per_year[n].concession_pct (engine output) or free_months/12
+ * ── M07-calibrated source mapping (spec §3) ──────────────────────────────────
  *
- * Mode transitions (LEASE_UP → STABILIZED, REDEVELOPMENT → STABILIZED):
- *   Resolved per-year; produces UI badges "LU→S" / "R→S" in transition year.
+ *  Physical Occupancy Y1
+ *    STABILIZED: subject_history.current_state.occupancy_rate (S1)
+ *                → starting_state.current_occupancy (platform)
+ *    LEASE_UP:   starting_state.absorption_curve[year * 12]  (spec §3 anchor)
+ *                → target_occupancy when past curve end
+ *    RDEV:       phase-weighted blended occ from M22 capex_schedule phases
+ *                (pre-CO = 0, in-lease-up = linear ramp, stabilized = target)
  *
- * REDEVELOPMENT + missing M22 capex_schedule:
- *   renovation_dilution = 0 (conservative floor); degraded_reason set.
+ *  Loss-to-Lease Y1
+ *    subject_history.current_state.loss_to_lease (S1)
+ *    → subject_history.observed_dynamics.loss_to_lease (S2+)
+ *    → BASELINE_LOSS_TO_LEASE (3%)
+ *
+ *  Stabilized LTL attractor
+ *    subject_history.observed_dynamics.loss_to_lease (S2+ longitudinal)
+ *    → BASELINE_LOSS_TO_LEASE
+ *
+ *  Stabilized target occupancy
+ *    starting_state (LeaseUp).target_occupancy
+ *    → observed_dynamics.renewal_rate proxy
+ *    → STABILIZED_TARGET_OCC (0.95)
+ *
+ *  Rent Growth
+ *    traffic.market_rent_growth (M05 submarket posterior)
+ *    → subject_history.observed_dynamics.new_lease_trade_out_pct (M07 S2+)
+ *    → BASELINE_RENT_GROWTH (3%)
+ *
+ *  Base Market Rent per unit
+ *    subject_history.current_state.avg_market_rent (M07 S1 observed)
+ *    → traffic.market_rent_per_unit (deal context)
+ *    → BASELINE_MARKET_RENT
+ *
+ *  Concessions
+ *    ConcessionEnvironmentOutput.per_year[n]   (M07 Concession Engine)
+ *    RDEV: untouched_free_months for pre-reno retention concessions
+ *    → mode-based defaults
+ *
+ * ── Mode transitions ──────────────────────────────────────────────────────────
+ *  Resolved per-year; UI badges "LU→S" / "R→S" emitted in the transition year.
+ *  Unresolved deal_mode (null/undefined) auto-resolved from starting_state.mode
+ *  with mode_auto_resolved field set for UI badging.
+ *
+ * ── REDEVELOPMENT without M22 capex_schedule ─────────────────────────────────
+ *  renovation_pct = 0 (conservative); degraded_reason = 'M22_MISSING_CAPEX_SCHEDULE'.
+ *  Rows are still produced — no silent fallback to STABILIZED behavior.
  */
 
 import { logger } from '../../utils/logger';
 import type {
   StartingState,
-  StabilizedState,
   LeaseUpState,
   RedevelopmentState,
   RedevelopmentPhase,
@@ -38,7 +69,7 @@ import {
   assertProjectionsInvariants,
 } from './projections-dependency-graph';
 
-// ── Re-export core types for consumers ──────────────────────────────────────
+// ── Re-export core types ──────────────────────────────────────────────────────
 export type {
   OccupancyLeasingRow,
   ConcessionsRow,
@@ -51,20 +82,25 @@ import type {
   ProjectionsOutput,
 } from './projections-dependency-graph';
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// ── Constants (fallbacks when M07 data absent) ────────────────────────────────
 
-const BASELINE_RENT_GROWTH    = 0.03;
-const BASELINE_LOSS_TO_LEASE  = 0.03;
-const STABILIZED_TARGET_OCC   = 0.95;
-const OCC_REVERSION_SPEED     = 0.20;
-const BASELINE_MARKET_RENT    = 1_800;
-const LTL_COMPRESSION         = 0.30;
-const LTL_STABILIZED_FLOOR    = 0.025;
+/** Used only when no M05/M07 market rent growth data is available */
+const BASELINE_RENT_GROWTH      = 0.03;
+/** Used only when no subject S1 loss_to_lease is available */
+const BASELINE_LOSS_TO_LEASE    = 0.03;
+/** Used only when no LeaseUpState.target_occupancy or observed_dynamics available */
+const STABILIZED_TARGET_OCC     = 0.95;
+/** Speed of mean-reversion toward target occ per year (STABILIZED mode) */
+const OCC_REVERSION_SPEED       = 0.20;
+/** Used only when no subject current_state.avg_market_rent or context value */
+const BASELINE_MARKET_RENT      = 1_800;
+/** Fraction of gap closed per year during LTL compression (STABILIZED mode) */
+const LTL_COMPRESSION           = 0.30;
 
-// ── Input types ─────────────────────────────────────────────────────────────
+// ── Input types ───────────────────────────────────────────────────────────────
 
 export interface CapexSchedule {
-  /** Month number at which LEASE_UP transitions to STABILIZED (default 24) */
+  /** Month at which LEASE_UP transitions to STABILIZED (default 24) */
   transition_month?: number;
   phases?: Array<{
     units?: number;
@@ -72,9 +108,9 @@ export interface CapexSchedule {
     lease_up_months?: number;
     rent_uplift_pct?: number;
   }>;
-  /** Fraction of units under renovation at deal start (REDEVELOPMENT only) */
+  /** Fraction of total units under renovation at deal start */
   renovation_pct?: number;
-  /** Expected rent uplift post-renovation, e.g. 0.12 = +12% (REDEVELOPMENT) */
+  /** Rent uplift post-renovation (fraction, e.g. 0.12 = +12%) */
   post_reno_rent_uplift?: number;
 }
 
@@ -82,45 +118,51 @@ export interface DealContextTraffic {
   starting_state?: StartingState | null;
   concession_environment?: ConcessionEnvironmentOutput | null;
   subject_history?: SubjectTrafficHistory | null;
-  /** Platform rent growth rate from M05 (fraction, e.g. 0.03) */
+  /** M05 submarket posterior rent growth (fraction, e.g. 0.03) */
   market_rent_growth?: number | null;
-  /** Current market rent per unit from M05 or deal data */
+  /** Deal-context market rent per unit; overridden by subject S1 avg_market_rent */
   market_rent_per_unit?: number | null;
 }
 
 export interface ProjectionsDealContext {
   deal_id: string;
-  deal_mode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
+  /** Null/undefined triggers auto-resolution from starting_state.mode */
+  deal_mode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT' | null | undefined;
   hold_years: number;
   traffic: DealContextTraffic;
   capex_schedule?: CapexSchedule | null;
-  /** Cell-level user overrides: key = "<block>.<field>.<year>", value = override */
+  /** Cell-level user overrides: "<block>.<field>.<year>" → override value */
   user_overrides?: Record<string, number>;
   total_units?: number;
 }
 
-// ── Adapter ──────────────────────────────────────────────────────────────────
+// ── Adapter ───────────────────────────────────────────────────────────────────
 
 export class M07ProjectionsAdapter {
 
-  // ── Public: Full build ───────────────────────────────────────────────────
+  // ── Public interface ────────────────────────────────────────────────────
 
   build(ctx: ProjectionsDealContext): ProjectionsOutput {
-    const holdYears = Math.max(1, Math.min(30, ctx.hold_years));
-    const degradedReason = this.detectDegradation(ctx);
-    const occRows  = this.buildOccupancyLeasingBlock(ctx, holdYears);
-    const concRows = this.buildConcessionsBlock(ctx, holdYears);
+    const holdYears     = Math.max(1, Math.min(30, ctx.hold_years));
+    const resolvedMode  = this.normalizeMode(ctx);
+    const modeAutoResolved = this.modeAutoResolvedFrom(ctx);
+
+    const normalizedCtx: ProjectionsDealContext = { ...ctx, deal_mode: resolvedMode };
+
+    const occRows  = this.buildOccupancyLeasingBlock(normalizedCtx, holdYears);
+    const concRows = this.buildConcessionsBlock(normalizedCtx, holdYears);
 
     const output: ProjectionsOutput = {
-      deal_id:           ctx.deal_id,
-      computed_at:       new Date().toISOString(),
-      hold_years:        holdYears,
-      deal_mode:         ctx.deal_mode,
-      occupancy_leasing: occRows,
-      concessions:       concRows,
-      anchor_source:     this.resolveAnchorSource(ctx),
-      subject_used:      ctx.traffic.subject_history != null,
-      degraded_reason:   degradedReason,
+      deal_id:            ctx.deal_id,
+      computed_at:        new Date().toISOString(),
+      hold_years:         holdYears,
+      deal_mode:          resolvedMode,
+      occupancy_leasing:  occRows,
+      concessions:        concRows,
+      anchor_source:      this.anchorSource(ctx),
+      subject_used:       ctx.traffic.subject_history != null,
+      degraded_reason:    this.detectDegradation(ctx, resolvedMode),
+      mode_auto_resolved: modeAutoResolved,
     };
 
     assertProjectionsInvariants(output);
@@ -128,39 +170,42 @@ export class M07ProjectionsAdapter {
   }
 
   buildOccupancyLeasingBlock(ctx: ProjectionsDealContext, holdYears: number): OccupancyLeasingRow[] {
-    const marketRentBase = ctx.traffic.market_rent_per_unit ?? BASELINE_MARKET_RENT;
-    const rentGrowth     = ctx.traffic.market_rent_growth   ?? BASELINE_RENT_GROWTH;
-    const overrides      = ctx.user_overrides ?? {};
+    const overrides  = ctx.user_overrides ?? {};
+    const rentGrowth = this.resolveRentGrowth(ctx);
+    const baseRent   = this.resolveBaseMarketRent(ctx);
     const rows: OccupancyLeasingRow[] = [];
 
     for (let year = 1; year <= holdYears; year++) {
-      const resolvedMode    = this.resolveMode(ctx, year);
-      const transitionBadge = this.transitionBadge(ctx, year);
-      const marketRent      = marketRentBase * Math.pow(1 + rentGrowth, year - 1);
+      const mode   = this.resolveMode(ctx, year);
+      const badge  = this.transitionBadge(ctx, year);
 
       const physOcc = this.getOverride(overrides, 'occ.physical_occupancy', year)
-                   ?? this.computePhysOcc(ctx, year, resolvedMode);
+                   ?? this.computePhysOcc(ctx, year, mode);
+
       const ltl     = this.getOverride(overrides, 'occ.loss_to_lease', year)
-                   ?? this.computeLTL(ctx, year, resolvedMode);
+                   ?? this.computeLTL(ctx, year, mode, physOcc);
+
       const rg      = this.getOverride(overrides, 'occ.rent_growth', year)
                    ?? rentGrowth;
-      const effRent = this.getOverride(overrides, 'occ.effective_rent', year)
-                   ?? roundTo2(marketRent * (1 - ltl));
+
+      const marketRent = this.computeMarketRent(ctx, year, mode, baseRent, rg);
+      const effRent    = this.getOverride(overrides, 'occ.effective_rent', year)
+                      ?? r2(marketRent * (1 - ltl));
+
+      const degraded = (ctx.deal_mode === 'REDEVELOPMENT' && ctx.capex_schedule == null);
 
       rows.push({
         year,
-        physical_occupancy: roundTo4(Math.min(1, Math.max(0, physOcc))),
-        loss_to_lease:      roundTo4(Math.min(0.30, Math.max(0, ltl))),
-        rent_growth:        roundTo4(rg),
+        physical_occupancy: r4(clamp01(physOcc)),
+        loss_to_lease:      r4(clampLTL(ltl)),
+        rent_growth:        r4(rg),
         effective_rent:     effRent,
-        market_rent:        roundTo2(marketRent),
-        mode:               resolvedMode,
-        transition_badge:   transitionBadge,
-        source:             this.resolveAnchorSource(ctx),
-        degraded:           ctx.deal_mode === 'REDEVELOPMENT' && ctx.capex_schedule == null,
-        degraded_reason:    ctx.deal_mode === 'REDEVELOPMENT' && ctx.capex_schedule == null
-                              ? 'M22_MISSING_CAPEX_SCHEDULE'
-                              : null,
+        market_rent:        r2(marketRent),
+        mode,
+        transition_badge:   badge,
+        source:             this.anchorSource(ctx),
+        degraded,
+        degraded_reason:    degraded ? 'M22_MISSING_CAPEX_SCHEDULE' : null,
       });
     }
 
@@ -173,35 +218,39 @@ export class M07ProjectionsAdapter {
     const rows: ConcessionsRow[] = [];
 
     for (let year = 1; year <= holdYears; year++) {
-      const resolvedMode    = this.resolveMode(ctx, year);
-      const transitionBadge = this.transitionBadge(ctx, year);
+      const mode  = this.resolveMode(ctx, year);
+      const badge = this.transitionBadge(ctx, year);
 
       const envRow: PerYearConcessionEnv | undefined =
         concEnv?.per_year?.find(r => r.year === year);
 
-      const freeMonths  = this.getOverride(overrides, 'conc.free_months', year)
-                       ?? envRow?.free_months
-                       ?? this.defaultFreeMonths(resolvedMode);
-      const concPct     = this.getOverride(overrides, 'conc.concession_pct', year)
-                       ?? envRow?.concession_pct
-                       ?? roundTo4(freeMonths / 12);
-      const spModifier  = envRow?.supply_pressure_modifier ?? 1.0;
-      const confidence  = envRow?.confidence ?? 'LOW';
-      const sourceBlend = envRow?.source_blend ?? {
-        class_default_weight: 1.0,
-        submarket_weight: 0.0,
-        subject_weight: 0.0,
-      };
+      // REDEVELOPMENT: prefer untouched_free_months for pre-reno retention concession
+      const freeMonths = (() => {
+        const ov = this.getOverride(overrides, 'conc.free_months', year);
+        if (ov !== null) return ov;
+        if (envRow) {
+          // Use renovation-specific fields when available
+          if (mode === 'REDEVELOPMENT') {
+            return envRow.untouched_free_months ?? envRow.free_months;
+          }
+          return envRow.free_months;
+        }
+        return this.defaultFreeMonths(mode);
+      })();
+
+      const concPct   = this.getOverride(overrides, 'conc.concession_pct', year)
+                     ?? envRow?.concession_pct
+                     ?? r4(freeMonths / 12);
 
       rows.push({
         year,
-        free_months:              roundTo4(Math.max(0, freeMonths)),
-        concession_pct:           roundTo4(Math.max(0, concPct)),
-        supply_pressure_modifier: roundTo4(spModifier),
-        confidence,
-        source_blend:             sourceBlend,
-        mode:                     resolvedMode,
-        transition_badge:         transitionBadge,
+        free_months:              r4(Math.max(0, freeMonths)),
+        concession_pct:           r4(Math.max(0, concPct)),
+        supply_pressure_modifier: r4(envRow?.supply_pressure_modifier ?? 1.0),
+        confidence:               envRow?.confidence ?? 'LOW',
+        source_blend:             envRow?.source_blend ?? DEFAULT_SOURCE_BLEND,
+        mode,
+        transition_badge: badge,
       });
     }
 
@@ -213,25 +262,30 @@ export class M07ProjectionsAdapter {
     year: number,
     marketRentOverride?: number,
   ): { year: number; market_rent: number; effective_rent: number; loss_to_lease: number } {
-    const rentGrowth = ctx.traffic.market_rent_growth ?? BASELINE_RENT_GROWTH;
-    const baseRent   = marketRentOverride ?? ctx.traffic.market_rent_per_unit ?? BASELINE_MARKET_RENT;
-    const mr         = baseRent * Math.pow(1 + rentGrowth, year - 1);
-    const mode       = this.resolveMode(ctx, year);
-    const ltl        = this.computeLTL(ctx, year, mode);
+    const mode    = this.resolveMode(ctx, year);
+    const base    = marketRentOverride ?? this.resolveBaseMarketRent(ctx);
+    const rg      = this.resolveRentGrowth(ctx);
+    const mr      = this.computeMarketRent(ctx, year, mode, base, rg);
+    const physOcc = this.computePhysOcc(ctx, year, mode);
+    const ltl     = this.computeLTL(ctx, year, mode, physOcc);
     return {
       year,
-      market_rent:    roundTo2(mr),
-      effective_rent: roundTo2(mr * (1 - ltl)),
-      loss_to_lease:  roundTo4(ltl),
+      market_rent:    r2(mr),
+      effective_rent: r2(mr * (1 - ltl)),
+      loss_to_lease:  r4(ltl),
     };
   }
 
   /**
-   * Cheap-path override: selectively recompute only the downstream-dependent
-   * fields for the overridden year, driven by PROJECTIONS_DEPENDENCY_GRAPH.
+   * Dependency-graph-driven cheap-path override.
    *
-   * Does NOT rebuild the entire block — only the overridden cell and its
-   * direct graph descendants in the same year are updated.
+   * Applies the override to exactly one cell, then walks OVERRIDE_DOWNSTREAM
+   * to recompute only the affected downstream fields in the same year.
+   * Does NOT rebuild the full block — all other years are untouched.
+   *
+   * LTL recompute for LEASE_UP mode uses the overridden physOcc value so
+   * the declared dependency occ.physical_occupancy → occ.loss_to_lease is
+   * faithfully honored.
    */
   recomputeRowOnOverride(
     current: ProjectionsOutput,
@@ -248,99 +302,120 @@ export class M07ProjectionsAdapter {
     const [block, field, yearStr] = parts;
     const year = parseInt(yearStr, 10);
     if (isNaN(year) || year < 1 || year > current.hold_years) {
-      logger.warn('[M07→M09] recomputeRowOnOverride: invalid year', { overrideKey });
+      logger.warn('[M07→M09] recomputeRowOnOverride: invalid year', { overrideKey, year });
       return current;
     }
 
     const blockField = `${block}.${field}`;
     const downstream = OVERRIDE_DOWNSTREAM[blockField] ?? [];
 
-    // Work on shallow clones of the row arrays — only the target year row is mutated
     const occRows  = [...current.occupancy_leasing];
     const concRows = [...current.concessions];
 
     if (block === 'occ') {
-      const base = { ...occRows[year - 1] };
+      const row = { ...occRows[year - 1] };
 
-      // Apply override
+      // 1. Apply override to the target field
       if (field === 'physical_occupancy') {
-        base.physical_occupancy = roundTo4(Math.min(1, Math.max(0, overrideValue)));
+        row.physical_occupancy = r4(clamp01(overrideValue));
       } else if (field === 'loss_to_lease') {
-        base.loss_to_lease = roundTo4(Math.min(0.30, Math.max(0, overrideValue)));
+        row.loss_to_lease = r4(clampLTL(overrideValue));
       } else if (field === 'rent_growth') {
-        base.rent_growth = roundTo4(overrideValue);
-        // Recompute market_rent for this year from growth chain
-        const baseRent   = ctx.traffic.market_rent_per_unit ?? BASELINE_MARKET_RENT;
-        base.market_rent = roundTo2(baseRent * Math.pow(1 + overrideValue, year - 1));
+        row.rent_growth = r4(overrideValue);
+        // Recompute market_rent for this year from the new growth rate
+        const base = this.resolveBaseMarketRent(ctx);
+        row.market_rent = r2(this.computeMarketRent(ctx, year, row.mode, base, overrideValue));
       } else if (field === 'effective_rent') {
-        base.effective_rent = roundTo2(overrideValue);
+        row.effective_rent = r2(overrideValue);
       }
 
-      // Recompute downstream fields from the dependency graph
-      for (const downstreamKey of downstream) {
-        const [, dField] = downstreamKey.split('.');
-        if (dField === 'loss_to_lease') {
-          // Re-derive LTL from the new physical_occupancy using STABILIZED formula
-          base.loss_to_lease = roundTo4(this.computeLTL(ctx, year, base.mode));
-        } else if (dField === 'effective_rent') {
-          if (base.market_rent != null) {
-            base.effective_rent = roundTo2(base.market_rent * (1 - base.loss_to_lease));
-          }
-        }
+      // 2. Recompute downstream fields declared in the graph
+      //    occ.physical_occupancy → occ.loss_to_lease: honor physOcc-aware LTL
+      if (downstream.includes('occ.loss_to_lease')) {
+        // Pass the (possibly overridden) physOcc so LEASE_UP LTL interpolation is correct
+        row.loss_to_lease = r4(clampLTL(
+          this.computeLTL(ctx, year, row.mode, row.physical_occupancy),
+        ));
       }
 
-      occRows[year - 1] = base;
+      //    occ.loss_to_lease → occ.effective_rent (or occ.rent_growth → effective_rent)
+      if (downstream.includes('occ.effective_rent') && row.market_rent != null) {
+        row.effective_rent = r2(row.market_rent * (1 - row.loss_to_lease));
+      }
+
+      occRows[year - 1] = row;
 
     } else if (block === 'conc') {
-      const base = { ...concRows[year - 1] };
+      const row = { ...concRows[year - 1] };
 
       if (field === 'free_months') {
-        base.free_months = roundTo4(Math.max(0, overrideValue));
+        row.free_months = r4(Math.max(0, overrideValue));
       } else if (field === 'concession_pct') {
-        base.concession_pct = roundTo4(Math.max(0, overrideValue));
+        row.concession_pct = r4(Math.max(0, overrideValue));
       }
 
-      // Downstream: free_months → concession_pct
+      // conc.free_months → conc.concession_pct
       if (downstream.includes('conc.concession_pct') && field !== 'concession_pct') {
-        base.concession_pct = roundTo4(Math.max(0, base.free_months / 12));
+        row.concession_pct = r4(Math.max(0, row.free_months / 12));
       }
 
-      concRows[year - 1] = base;
+      concRows[year - 1] = row;
     }
 
-    const updated: ProjectionsOutput = {
-      ...current,
-      occupancy_leasing: occRows,
-      concessions:       concRows,
-    };
-
+    const updated: ProjectionsOutput = { ...current, occupancy_leasing: occRows, concessions: concRows };
     assertProjectionsInvariants(updated);
 
-    logger.debug('[M07→M09] recomputeRowOnOverride', {
+    logger.debug('[M07→M09] recomputeRowOnOverride applied', {
       dealId: ctx.deal_id, overrideKey, overrideValue, downstream,
     });
 
     return updated;
   }
 
-  // ── Mode resolution ──────────────────────────────────────────────────────
+  // ── Mode resolution ─────────────────────────────────────────────────────
 
+  /**
+   * Normalize deal_mode from context.  Handles null/undefined by auto-resolving
+   * from starting_state.mode.  Unrecognized strings default to STABILIZED.
+   */
+  normalizeMode(ctx: ProjectionsDealContext): 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT' {
+    const dm = ctx.deal_mode;
+    if (dm === 'STABILIZED' || dm === 'LEASE_UP' || dm === 'REDEVELOPMENT') return dm;
+    // Auto-resolve from starting_state when deal_mode is absent or unrecognized
+    const ssMode = ctx.traffic.starting_state?.mode;
+    if (ssMode === 'STABILIZED' || ssMode === 'LEASE_UP' || ssMode === 'REDEVELOPMENT') return ssMode;
+    return 'STABILIZED';
+  }
+
+  private modeAutoResolvedFrom(ctx: ProjectionsDealContext): string | null {
+    const dm = ctx.deal_mode;
+    if (dm === 'STABILIZED' || dm === 'LEASE_UP' || dm === 'REDEVELOPMENT') return null;
+    const resolved = this.normalizeMode(ctx);
+    return `auto:${resolved}(from_starting_state)`;
+  }
+
+  /**
+   * Per-year effective mode: handles LEASE_UP → STABILIZED and
+   * REDEVELOPMENT → STABILIZED transitions.
+   * Assumes ctx.deal_mode is already normalized.
+   */
   resolveMode(
     ctx: ProjectionsDealContext,
     year: number,
   ): 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT' {
-    if (ctx.deal_mode === 'STABILIZED') return 'STABILIZED';
+    const dm = ctx.deal_mode as 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
 
-    if (ctx.deal_mode === 'LEASE_UP') {
+    if (dm === 'STABILIZED') return 'STABILIZED';
+
+    if (dm === 'LEASE_UP') {
       const transitionMonth = ctx.capex_schedule?.transition_month ?? 24;
-      // Year N is fully STABILIZED when the transition falls before it starts
       if (transitionMonth < (year - 1) * 12 + 1) return 'STABILIZED';
       return 'LEASE_UP';
     }
 
-    if (ctx.deal_mode === 'REDEVELOPMENT') {
-      const lastStabMonth = this.lastRedevStabilizationMonth(ctx);
-      if ((year - 1) * 12 + 1 > lastStabMonth) return 'STABILIZED';
+    if (dm === 'REDEVELOPMENT') {
+      const lastMonth = this.lastRedevStabMonth(ctx);
+      if ((year - 1) * 12 + 1 > lastMonth) return 'STABILIZED';
       return 'REDEVELOPMENT';
     }
 
@@ -351,68 +426,71 @@ export class M07ProjectionsAdapter {
     ctx: ProjectionsDealContext,
     year: number,
   ): 'LU→S' | 'R→S' | undefined {
-    if (ctx.deal_mode === 'LEASE_UP') {
+    const dm = ctx.deal_mode as 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT' | null | undefined;
+
+    if (dm === 'LEASE_UP') {
       const tm = ctx.capex_schedule?.transition_month ?? 24;
       const ys = (year - 1) * 12 + 1;
       const ye = year * 12;
       if (tm >= ys && tm < ye) return 'LU→S';
     }
-    if (ctx.deal_mode === 'REDEVELOPMENT') {
-      const last = this.lastRedevStabilizationMonth(ctx);
+
+    if (dm === 'REDEVELOPMENT') {
+      const last = this.lastRedevStabMonth(ctx);
       const ys   = (year - 1) * 12 + 1;
       const ye   = year * 12;
       if (last >= ys && last < ye) return 'R→S';
     }
+
     return undefined;
   }
 
-  /** Last month at which REDEVELOPMENT fully stabilizes (last phase CO + lease-up). */
-  private lastRedevStabilizationMonth(ctx: ProjectionsDealContext): number {
+  /** Last month at which all REDEVELOPMENT phases are fully stabilized. */
+  private lastRedevStabMonth(ctx: ProjectionsDealContext): number {
+    // capex_schedule phases take precedence over starting_state phases
     const capexPhases = ctx.capex_schedule?.phases ?? [];
     const ssPhases: RedevelopmentPhase[] = (() => {
       const ss = ctx.traffic.starting_state;
-      if (ss?.mode === 'REDEVELOPMENT') return ss.phases;
-      return [];
+      return ss?.mode === 'REDEVELOPMENT' ? ss.phases : [];
     })();
 
-    // Prefer capex_schedule phases; fall back to starting_state phases
     const phases = capexPhases.length > 0 ? capexPhases : ssPhases;
-
-    if (phases.length === 0) return 36; // conservative default
+    if (phases.length === 0) return 36;
 
     return Math.max(
       ...phases.map(p => {
-        const co   = (p as { co_months_out?: number; co_date_months_out?: number }).co_months_out
-                  ?? (p as { co_date_months_out?: number }).co_date_months_out
-                  ?? 12;
-        const lu   = (p as { lease_up_months?: number; mini_lease_up_months?: number }).lease_up_months
-                  ?? (p as { mini_lease_up_months?: number }).mini_lease_up_months
-                  ?? 18;
+        const co = (p as { co_months_out?: number; co_date_months_out?: number }).co_months_out
+                ?? (p as { co_date_months_out?: number }).co_date_months_out
+                ?? 12;
+        const lu = (p as { lease_up_months?: number; mini_lease_up_months?: number }).lease_up_months
+                ?? (p as { mini_lease_up_months?: number }).mini_lease_up_months
+                ?? 18;
         return co + lu;
       }),
     );
   }
 
-  // ── Physical occupancy ───────────────────────────────────────────────────
+  // ── Physical occupancy ──────────────────────────────────────────────────
 
-  private computePhysOcc(
+  computePhysOcc(
     ctx: ProjectionsDealContext,
     year: number,
     mode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT',
   ): number {
-    if (mode === 'STABILIZED') return this.physOccStabilized(ctx, year);
-    if (mode === 'LEASE_UP')   return this.physOccLeaseUp(ctx, year);
+    if (mode === 'STABILIZED')    return this.physOccStabilized(ctx, year);
+    if (mode === 'LEASE_UP')      return this.physOccLeaseUp(ctx, year);
     return this.physOccRedevelopment(ctx, year);
   }
 
   private physOccStabilized(ctx: ProjectionsDealContext, year: number): number {
     const ss      = ctx.traffic.starting_state;
     const subject = ctx.traffic.subject_history;
+    const target  = this.resolveStabilizedTargetOcc(ctx);
 
-    // Y1 anchor: subject S1 > startingState.current_occupancy > default
+    // Y1 anchor: subject S1 occ_rate → starting_state → default
     const y1: number = (() => {
-      const subjectOcc = subject?.current_state?.occupancy_rate;
-      if (typeof subjectOcc === 'number') return subjectOcc;
+      const sOcc = subject?.current_state?.occupancy_rate;
+      if (typeof sOcc === 'number') return sOcc;
       if (ss?.mode === 'STABILIZED') return ss.current_occupancy;
       if (ss?.mode === 'REDEVELOPMENT') return ss.overall_occupancy;
       return 0.92;
@@ -420,108 +498,286 @@ export class M07ProjectionsAdapter {
 
     if (year === 1) return y1;
 
-    // YN: mean-revert toward STABILIZED_TARGET_OCC
+    // YN: mean-reversion toward calibrated target
     let occ = y1;
     for (let y = 2; y <= year; y++) {
-      occ = occ + (STABILIZED_TARGET_OCC - occ) * OCC_REVERSION_SPEED;
+      occ = occ + (target - occ) * OCC_REVERSION_SPEED;
     }
     return occ;
   }
 
   /**
-   * LEASE_UP occupancy: Y1 = absorption_curve[year*12], YN = absorption_curve[year*12].
-   * Spec §3 anchors each year-end at curve[year * 12].  When the index falls beyond
-   * the curve length the year is treated as fully stabilized (target_occupancy).
+   * LEASE_UP occupancy via spec §3 absorption_curve anchor:
+   *   Y(n) = absorption_curve[n * 12]   (0-indexed)
+   *   Past curve end → target_occupancy (fully stabilized)
    */
   private physOccLeaseUp(ctx: ProjectionsDealContext, year: number): number {
     const ss = ctx.traffic.starting_state;
     if (ss?.mode !== 'LEASE_UP') {
-      // Degraded path: no LEASE_UP starting state — fall back to STABILIZED model
+      // Degraded: no LeaseUpState — fall back to stabilized model
       return this.physOccStabilized(ctx, year);
     }
 
-    const curve       = ss.absorption_curve;
-    const targetOcc   = ss.target_occupancy;
-    const curveIndex  = year * 12;   // spec §3: Y1 = curve[12], Y2 = curve[24], …
+    const curve      = ss.absorption_curve;
+    const target     = ss.target_occupancy;
+    const curveIndex = year * 12;  // spec §3: Y1 = curve[12], Y2 = curve[24], …
 
-    if (curveIndex >= curve.length) {
-      // Past the end of the curve → fully stabilized
-      return targetOcc;
-    }
+    if (curveIndex >= curve.length) return target;
 
-    return Math.min(targetOcc, Math.max(ss.start_occupancy, curve[curveIndex]));
+    return Math.min(target, Math.max(ss.start_occupancy, curve[curveIndex]));
   }
 
   /**
-   * REDEVELOPMENT occupancy: occupied fraction diluted by renovation offline units.
-   * When M22 capex_schedule is absent: dilution = 0 (conservative; degraded_reason set).
+   * REDEVELOPMENT occupancy: true phase-aware blending.
+   *
+   * For each phase from M22 capex_schedule (or starting_state.phases):
+   *   pre-CO:     offline  → occ = 0
+   *   in lease-up: linear ramp from phase.start_occupancy → phase.target_occupancy
+   *   stabilized: phase.target_occupancy
+   *
+   * When M22 capex_schedule is absent: conservative occ = overall_occupancy
+   * (no dilution applied) + degraded flag set on output.
    */
   private physOccRedevelopment(ctx: ProjectionsDealContext, year: number): number {
     const ss = ctx.traffic.starting_state;
 
-    const overallOcc: number = (() => {
+    if (ctx.capex_schedule == null) {
+      // No M22 — conservative: use overall_occupancy without dilution
+      logger.warn('[M07→M09] REDEVELOPMENT without capex_schedule — degraded path', {
+        dealId: ctx.deal_id,
+      });
       if (ss?.mode === 'REDEVELOPMENT') return ss.overall_occupancy;
       if (ss?.mode === 'STABILIZED')    return ss.current_occupancy;
       return 0.90;
-    })();
-
-    // Without M22 capex_schedule: no dilution applied (degraded, conservative)
-    if (ctx.capex_schedule == null) {
-      logger.warn('[M07→M09] REDEVELOPMENT without capex_schedule — no dilution applied', {
-        dealId: ctx.deal_id,
-      });
-      return overallOcc;
     }
 
-    const renovPct = ctx.capex_schedule.renovation_pct ?? 0;
-    // Dilution fraction decreases linearly as phases complete
-    const dilution = Math.max(0, renovPct * (1 - (year - 1) / 4));
-    return Math.min(1, Math.max(0, overallOcc * (1 - dilution)));
+    // Prefer M22 capex_schedule phases; fall back to starting_state phases
+    const capexPhases = ctx.capex_schedule.phases ?? [];
+    const ssPhases: RedevelopmentPhase[] = ss?.mode === 'REDEVELOPMENT' ? ss.phases : [];
+    const phases = capexPhases.length > 0 ? capexPhases : ssPhases;
+
+    if (phases.length === 0) {
+      // No phase data: use simple dilution model
+      const overallOcc = ss?.mode === 'REDEVELOPMENT' ? ss.overall_occupancy : 0.90;
+      const renovPct   = ctx.capex_schedule.renovation_pct ?? 0;
+      const dilution   = Math.max(0, renovPct * (1 - (year - 1) / 4));
+      return clamp01(overallOcc * (1 - dilution));
+    }
+
+    // Phase-weighted blended occupancy
+    const yearEndMonth = year * 12;
+    let weightedOcc = 0;
+    let totalUnits  = 0;
+
+    for (const phase of phases) {
+      const units   = (phase as { units_count?: number; units?: number }).units_count
+                   ?? (phase as { units?: number }).units
+                   ?? 0;
+      const coMonth = (phase as { co_date_months_out?: number; co_months_out?: number }).co_date_months_out
+                   ?? (phase as { co_months_out?: number }).co_months_out
+                   ?? 12;
+      const luMonths = (phase as { mini_lease_up_months?: number; lease_up_months?: number }).mini_lease_up_months
+                    ?? (phase as { lease_up_months?: number }).lease_up_months
+                    ?? 18;
+      const startOcc  = (phase as { start_occupancy?: number }).start_occupancy ?? 0;
+      const targetOcc = (phase as { target_occupancy?: number }).target_occupancy ?? 0.93;
+
+      let phaseOcc: number;
+      if (yearEndMonth < coMonth) {
+        phaseOcc = 0;  // still under renovation
+      } else if (yearEndMonth < coMonth + luMonths) {
+        const monthsIntoLU = yearEndMonth - coMonth;
+        const fraction     = Math.min(1, monthsIntoLU / luMonths);
+        phaseOcc = startOcc + fraction * (targetOcc - startOcc);
+      } else {
+        phaseOcc = targetOcc;  // fully stabilized
+      }
+
+      weightedOcc += phaseOcc * units;
+      totalUnits  += units;
+    }
+
+    return totalUnits > 0 ? clamp01(weightedOcc / totalUnits) : 0;
   }
 
-  // ── Loss-to-Lease ────────────────────────────────────────────────────────
+  // ── Loss-to-Lease ───────────────────────────────────────────────────────
 
-  private computeLTL(
+  /**
+   * Compute LTL for a given year and mode.
+   *
+   * @param physOccOverride  When physOcc was overridden, pass the new value so
+   *                         LEASE_UP mode can interpolate LTL correctly along
+   *                         the occupancy-progress axis.  This ensures the
+   *                         declared dependency occ.physical_occupancy →
+   *                         occ.loss_to_lease is faithfully honored.
+   */
+  computeLTL(
     ctx: ProjectionsDealContext,
     year: number,
     mode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT',
+    physOccOverride?: number,
   ): number {
     const subject = ctx.traffic.subject_history;
 
-    // Y1 anchor: prefer subject S1, then platform default
+    // Y1 anchor: subject S1 LTL → observed_dynamics S2+ LTL → baseline
     const y1LTL: number = (() => {
       const sLTL = subject?.current_state?.loss_to_lease;
-      return typeof sLTL === 'number' ? sLTL : BASELINE_LOSS_TO_LEASE;
+      if (typeof sLTL === 'number') return sLTL;
+      return BASELINE_LOSS_TO_LEASE;
+    })();
+
+    // Longitudinal LTL floor from S2+ observed dynamics
+    const ltlFloor: number = (() => {
+      const oDyn = subject?.observed_dynamics?.loss_to_lease;
+      if (typeof oDyn === 'number') return Math.max(0, oDyn);
+      return BASELINE_LOSS_TO_LEASE;
     })();
 
     if (mode === 'STABILIZED') {
-      if (year === 1) return Math.min(0.30, Math.max(0, y1LTL));
-      // Compress toward stabilized floor
+      if (year === 1) return clampLTL(y1LTL);
       let ltl = y1LTL;
       for (let y = 2; y <= year; y++) {
-        ltl = ltl + (LTL_STABILIZED_FLOOR - ltl) * LTL_COMPRESSION;
+        ltl = ltl + (ltlFloor - ltl) * LTL_COMPRESSION;
       }
-      return Math.min(0.30, Math.max(0, ltl));
+      return clampLTL(ltl);
     }
 
     if (mode === 'LEASE_UP') {
-      // Front-loaded: peak LTL decays by 20% per year as occupancy ramps
-      const decayed = y1LTL * Math.pow(0.80, year - 1);
-      return Math.min(0.30, Math.max(0, decayed));
+      const ss = ctx.traffic.starting_state;
+      const luSS: LeaseUpState | null = ss?.mode === 'LEASE_UP' ? ss : null;
+
+      const startOcc  = luSS?.start_occupancy  ?? 0;
+      const targetOcc = luSS?.target_occupancy  ?? 0.93;
+
+      // Use physOccOverride if provided (honors the physOcc → LTL dependency)
+      const currentOcc = physOccOverride ?? this.computePhysOcc(ctx, year, mode);
+
+      // LTL interpolates from y1LTL at start_occupancy down to ltlFloor at target_occupancy
+      // as occupancy ramps up — physOcc-aware model
+      const occupancyRange    = Math.max(0.01, targetOcc - startOcc);
+      const occupancyProgress = Math.min(1, Math.max(0, (currentOcc - startOcc) / occupancyRange));
+      return clampLTL(y1LTL + (ltlFloor - y1LTL) * occupancyProgress);
     }
 
     if (mode === 'REDEVELOPMENT') {
+      // Bifurcated: unrenovated cohort = y1LTL; renovated cohort = y1LTL − uplift
       const renovPct = ctx.capex_schedule?.renovation_pct ?? 0;
       const uplift   = ctx.capex_schedule?.post_reno_rent_uplift ?? 0;
-      // Blended: unrenovated = y1LTL; renovated = max(0, y1LTL − uplift)
-      const blended  = y1LTL * (1 - renovPct) + Math.max(0, y1LTL - uplift) * renovPct;
-      return Math.min(0.30, Math.max(0, blended));
+      const renovLTL = Math.max(0, y1LTL - uplift);
+      return clampLTL(y1LTL * (1 - renovPct) + renovLTL * renovPct);
     }
 
     return BASELINE_LOSS_TO_LEASE;
   }
 
-  // ── Concession defaults ──────────────────────────────────────────────────
+  // ── Market rent ─────────────────────────────────────────────────────────
+
+  /**
+   * Compute annual market_rent for a given year.
+   *
+   * REDEVELOPMENT: applies bifurcated rent growth — renovated cohort carries
+   * post_reno_rent_uplift on top of compound growth; blended by unit weight.
+   */
+  private computeMarketRent(
+    ctx: ProjectionsDealContext,
+    year: number,
+    mode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT',
+    baseRent: number,
+    rentGrowth: number,
+  ): number {
+    const growthMult = Math.pow(1 + rentGrowth, year - 1);
+
+    if (mode !== 'REDEVELOPMENT' || ctx.capex_schedule == null) {
+      return baseRent * growthMult;
+    }
+
+    // Bifurcated rent growth for REDEVELOPMENT
+    const uplift      = ctx.capex_schedule.post_reno_rent_uplift ?? 0;
+    const yearEndMonth = year * 12;
+    const capexPhases  = ctx.capex_schedule.phases ?? [];
+    const ssPhases: RedevelopmentPhase[] = (() => {
+      const ss = ctx.traffic.starting_state;
+      return ss?.mode === 'REDEVELOPMENT' ? ss.phases : [];
+    })();
+    const phases = capexPhases.length > 0 ? capexPhases : ssPhases;
+
+    if (phases.length === 0) {
+      // No phase detail — simple uplift on fraction of units
+      const renovPct = ctx.capex_schedule.renovation_pct ?? 0;
+      const renovRent = baseRent * (1 + uplift) * growthMult;
+      const unrenRent = baseRent * growthMult;
+      return renovPct * renovRent + (1 - renovPct) * unrenRent;
+    }
+
+    let renovatedUnits = 0;
+    let unrenovatedUnits = 0;
+    for (const phase of phases) {
+      const units   = (phase as { units_count?: number; units?: number }).units_count
+                   ?? (phase as { units?: number }).units ?? 0;
+      const coMonth = (phase as { co_date_months_out?: number; co_months_out?: number }).co_date_months_out
+                   ?? (phase as { co_months_out?: number }).co_months_out ?? 12;
+      if (yearEndMonth >= coMonth) {
+        renovatedUnits    += units;
+      } else {
+        unrenovatedUnits  += units;
+      }
+    }
+    const totalUnits = renovatedUnits + unrenovatedUnits;
+    if (totalUnits === 0) return baseRent * growthMult;
+
+    const renovRent = baseRent * (1 + uplift) * growthMult;
+    const unrenRent = baseRent * growthMult;
+    return (renovatedUnits * renovRent + unrenovatedUnits * unrenRent) / totalUnits;
+  }
+
+  // ── M07-calibrated value resolution ────────────────────────────────────
+
+  /**
+   * Market rent base per unit.
+   *   Priority: subject_history.current_state.avg_market_rent (M07 S1 observed)
+   *           → traffic.market_rent_per_unit (deal context)
+   *           → BASELINE_MARKET_RENT
+   */
+  private resolveBaseMarketRent(ctx: ProjectionsDealContext): number {
+    const subjectRent = ctx.traffic.subject_history?.current_state?.avg_market_rent;
+    if (typeof subjectRent === 'number' && subjectRent > 0) return subjectRent;
+    if (typeof ctx.traffic.market_rent_per_unit === 'number' && ctx.traffic.market_rent_per_unit > 0) {
+      return ctx.traffic.market_rent_per_unit;
+    }
+    return BASELINE_MARKET_RENT;
+  }
+
+  /**
+   * Annual rent growth rate.
+   *   Priority: traffic.market_rent_growth (M05 submarket posterior)
+   *           → observed_dynamics.new_lease_trade_out_pct (M07 S2+ longitudinal)
+   *           → BASELINE_RENT_GROWTH
+   */
+  private resolveRentGrowth(ctx: ProjectionsDealContext): number {
+    if (typeof ctx.traffic.market_rent_growth === 'number') return ctx.traffic.market_rent_growth;
+    const tradeOut = ctx.traffic.subject_history?.observed_dynamics?.new_lease_trade_out_pct;
+    if (typeof tradeOut === 'number') return Math.max(0, tradeOut);
+    return BASELINE_RENT_GROWTH;
+  }
+
+  /**
+   * Stabilized target occupancy.
+   *   Priority: LeaseUpState.target_occupancy (already calibrated by platform)
+   *           → observed_dynamics.renewal_rate proxy
+   *             (high renewal → high stabilized occ; model: 0.90 + rate × 0.07, cap 0.97)
+   *           → STABILIZED_TARGET_OCC (0.95)
+   */
+  private resolveStabilizedTargetOcc(ctx: ProjectionsDealContext): number {
+    const ss = ctx.traffic.starting_state;
+    if (ss?.mode === 'LEASE_UP') return ss.target_occupancy;
+    const renewalRate = ctx.traffic.subject_history?.observed_dynamics?.renewal_rate;
+    if (typeof renewalRate === 'number') {
+      return Math.min(0.97, 0.90 + renewalRate * 0.07);
+    }
+    return STABILIZED_TARGET_OCC;
+  }
+
+  // ── Concession defaults ─────────────────────────────────────────────────
 
   private defaultFreeMonths(mode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT'): number {
     switch (mode) {
@@ -531,35 +787,44 @@ export class M07ProjectionsAdapter {
     }
   }
 
-  // ── Override helper ──────────────────────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────────────────────
 
   private getOverride(overrides: Record<string, number>, blockField: string, year: number): number | null {
     const val = overrides[`${blockField}.${year}`];
     return typeof val === 'number' && isFinite(val) ? val : null;
   }
 
-  // ── Metadata ─────────────────────────────────────────────────────────────
-
-  private resolveAnchorSource(ctx: ProjectionsDealContext): string {
+  private anchorSource(ctx: ProjectionsDealContext): string {
     const tier = ctx.traffic.subject_history?.tier;
     if (tier) return `subject_history:${tier.toLowerCase()}`;
     if (ctx.traffic.starting_state) return 'platform';
     return 'baseline';
   }
 
-  private detectDegradation(ctx: ProjectionsDealContext): string | null {
+  private detectDegradation(
+    ctx: ProjectionsDealContext,
+    mode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT',
+  ): string | null {
     if (!ctx.traffic.starting_state) return 'NO_STARTING_STATE';
-    if (ctx.deal_mode === 'REDEVELOPMENT' && ctx.capex_schedule == null) {
+    if (mode === 'REDEVELOPMENT' && ctx.capex_schedule == null) {
       return 'M22_MISSING_CAPEX_SCHEDULE';
     }
     return null;
   }
 }
 
-// ── Utilities ────────────────────────────────────────────────────────────────
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
-function roundTo4(n: number): number { return Math.round(n * 10000) / 10000; }
-function roundTo2(n: number): number { return Math.round(n * 100) / 100; }
+function r4(n: number): number { return Math.round(n * 10000) / 10000; }
+function r2(n: number): number { return Math.round(n * 100) / 100; }
+function clamp01(n: number): number { return Math.min(1, Math.max(0, n)); }
+function clampLTL(n: number): number { return Math.min(0.30, Math.max(0, n)); }
+
+const DEFAULT_SOURCE_BLEND = {
+  class_default_weight: 1.0,
+  submarket_weight:     0.0,
+  subject_weight:       0.0,
+};
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
 
@@ -576,11 +841,11 @@ export async function wireM07ToM09Projections(
 
     try {
       const { dataFlowRouter } = require('./data-flow-router') as {
-        dataFlowRouter: { publishModuleData: (mod: string, id: string, data: Record<string, unknown>) => void };
+        dataFlowRouter: { publishModuleData: (m: string, id: string, d: Record<string, unknown>) => void };
       };
       dataFlowRouter.publishModuleData('M09', dealId, {
-        projections:              output,
-        projections_computed_at:  output.computed_at,
+        projections:             output,
+        projections_computed_at: output.computed_at,
       });
     } catch (routerErr: unknown) {
       logger.debug('[M07→M09] DataFlowRouter publish skipped', {
@@ -590,15 +855,16 @@ export async function wireM07ToM09Projections(
 
     logger.info('[M07→M09] Projections built', {
       dealId,
-      holdYears:    output.hold_years,
-      dealMode:     output.deal_mode,
-      anchorSource: output.anchor_source,
-      degraded:     output.degraded_reason,
+      holdYears:        output.hold_years,
+      dealMode:         output.deal_mode,
+      anchorSource:     output.anchor_source,
+      degradedReason:   output.degraded_reason,
+      modeAutoResolved: output.mode_auto_resolved,
     });
 
     return output;
   } catch (err: unknown) {
-    logger.error('[M07→M09] Projections build failed', {
+    logger.error('[M07→M09] Build failed', {
       dealId,
       error: err instanceof Error ? err.message : String(err),
     });

@@ -206,6 +206,26 @@ export const WIRING_PIPELINES: WiringPipeline[] = [
     effort: 'Medium',
     impact: 'Medium',
   },
+  {
+    id: 'P2-4',
+    name: 'M07 → M09 Projections Adapter',
+    priority: 'P2',
+    modules: ['M07', 'M09'],
+    formulas: ['F28', 'F29'],
+    description:
+      'Transforms M07 subject-history calibration outputs into M09 Occupancy/Leasing and ' +
+      'Concessions projection row arrays. ' +
+      'Three mode branches: STABILIZED (subject S1 anchor + reversion), ' +
+      'LEASE_UP (absorption_curve[year*12] spec §3 anchor + front-loaded concessions), ' +
+      'REDEVELOPMENT (phase-aware M22 dilution + bifurcated rent growth + retention concessions). ' +
+      'Triggered by six dealStore events: traffic.subject_history.updated, ' +
+      'assumption.override.set (cheap-path), capex_schedule.updated, ' +
+      'concession_env.updated, mode.changed, timeline_years.changed. ' +
+      'INV-1..INV-5 invariants enforced; degraded gracefully when M22 capex_schedule absent.',
+    blockedBy: '',
+    effort: 'High',
+    impact: 'High',
+  },
 ];
 
 // ============================================================================

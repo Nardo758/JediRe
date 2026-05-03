@@ -33,7 +33,12 @@ export type LayeredValueSource =
   | 'tax_bill'          // from uploaded Tax Bill
   | 'override'          // user edit
   | 'user'              // user-entered value
-  | 'computed';         // derived value
+  | 'computed'          // derived value
+  // M07 Subject History tiers (single snapshot → longitudinal)
+  | 'subject_history:s1'
+  | 'subject_history:s2'
+  | 'subject_history:s3'
+  | 'subject_history:s4';
 
 export type AlertLevel = 'none' | 'info' | 'warn' | 'block';
 export type InputClass = 'identity' | 'override' | 'scope';
