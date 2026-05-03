@@ -142,6 +142,36 @@ export {
   setupP2Subscriptions,
 } from './p2-service-adapters';
 
+// M07 → M09 Projections Adapter
+export {
+  m07ProjectionsAdapter,
+  wireM07ToM09Projections,
+  wireM07ToM09Override,
+  M07ProjectionsAdapter,
+} from './m07-projections-adapter';
+
+export type {
+  OccupancyLeasingRow,
+  ConcessionsRow,
+  ProjectionsOutput,
+  ProjectionsDealContext,
+  DealContextTraffic,
+  CapexSchedule,
+} from './m07-projections-adapter';
+
+export {
+  PROJECTIONS_DEPENDENCY_GRAPH,
+  OVERRIDE_DOWNSTREAM,
+  PROJECTIONS_INVARIANTS,
+  assertProjectionsInvariants,
+} from './projections-dependency-graph';
+
+export type {
+  PropagationRule,
+  RowDependency,
+  InvariantDefinition,
+} from './projections-dependency-graph';
+
 // Capital Structure Engine Adapter (M11+)
 export {
   wireCapitalStack,

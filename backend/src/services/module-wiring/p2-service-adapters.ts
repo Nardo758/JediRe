@@ -1075,5 +1075,119 @@ export function setupP2Subscriptions(): void {
     }
   });
 
+  // ── M07 → M09 Projections Adapter subscriptions ──────────────────────────
+  //
+  // Six trigger paths that cause M09 projections to be invalidated and queued
+  // for rebuild.  Actual reconstruction (wireM07ToM09Projections) is performed
+  // by the route handler that owns the full dealContext; these subscriptions
+  // only mark M09 as needing recalculation so the router knows to re-fetch.
+
+  // 1. Subject history updated (S1/S2 aggregation completed after rent-roll upload)
+  moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
+    if (event.sourceModule === 'M07' && event.data?.trigger === 'subject_history_updated') {
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M09',
+          dealId: event.dealId,
+          data: {
+            trigger: 'subject_history_updated',
+            tier: event.data?.tier,
+            snapshot_count: event.data?.snapshot_count,
+          },
+          timestamp: new Date(),
+        },
+        `projections-recalc-history:${event.dealId}`,
+      );
+    }
+  });
+
+  // 2. Assumption override set (user edits a single cell in the projections table)
+  //    Emits a cheap-path signal so the route handler can call wireM07ToM09Override
+  //    instead of a full block rebuild.
+  moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
+    if (event.sourceModule === 'M09' && event.data?.trigger === 'assumption_override') {
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M09',
+          dealId: event.dealId,
+          data: {
+            trigger: 'assumption_override',
+            override_key: event.data?.override_key,
+            override_value: event.data?.override_value,
+            cheap_path: true,
+          },
+          timestamp: new Date(),
+        },
+        `projections-override:${event.dealId}:${event.data?.override_key}`,
+      );
+    }
+  });
+
+  // 3. CapEx schedule updated (M22 phasing or renovation timeline changed)
+  moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
+    if (event.sourceModule === 'M22' && event.data?.trigger === 'capex_schedule_updated') {
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M09',
+          dealId: event.dealId,
+          data: { trigger: 'capex_schedule_updated', transition_month: event.data?.transition_month },
+          timestamp: new Date(),
+        },
+        `projections-recalc-capex:${event.dealId}`,
+      );
+    }
+  });
+
+  // 4. Concession environment updated (ConcessionEnvironmentEngine recomputed)
+  moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
+    if (event.sourceModule === 'M07' && event.data?.trigger === 'concession_env_updated') {
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M09',
+          dealId: event.dealId,
+          data: { trigger: 'concession_env_updated', concessions_only: true },
+          timestamp: new Date(),
+        },
+        `projections-recalc-conc:${event.dealId}`,
+      );
+    }
+  });
+
+  // 5. Deal mode changed (STABILIZED / LEASE_UP / REDEVELOPMENT toggle)
+  moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
+    if (event.sourceModule === 'M09' && event.data?.trigger === 'mode_changed') {
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M09',
+          dealId: event.dealId,
+          data: { trigger: 'mode_changed', new_mode: event.data?.new_mode },
+          timestamp: new Date(),
+        },
+        `projections-recalc-mode:${event.dealId}`,
+      );
+    }
+  });
+
+  // 6. Hold-period / timeline years changed
+  moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
+    if (event.sourceModule === 'M09' && event.data?.trigger === 'timeline_years_changed') {
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M09',
+          dealId: event.dealId,
+          data: { trigger: 'timeline_years_changed', hold_years: event.data?.hold_years },
+          timestamp: new Date(),
+        },
+        `projections-recalc-timeline:${event.dealId}`,
+      );
+    }
+  });
+
   logger.info('P2 auto-cascade subscriptions initialized');
 }
