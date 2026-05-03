@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { T } from './tokens';
-import { formatValue } from './EditableValueCell';
+import { formatValue } from './formatHelpers';
 import type { AssumptionFieldDef, DrilldownLayer } from './types';
 
 interface DrilldownModalProps {
@@ -217,6 +217,82 @@ export function DrilldownModal({ field, onClose, onOpenEdit }: DrilldownModalPro
               </div>
             )}
           </div>
+
+          {/* ── Collision check ───────────────────────────────────────────── */}
+          {(() => {
+            if (field.subjectValue == null || field.peerValue == null || field.peerValue === 0) {
+              return (
+                <div style={{
+                  margin: '0 12px 10px',
+                  padding: '6px 10px',
+                  background: T.bg.panelAlt,
+                  border: `1px solid ${T.border.subtle}`,
+                  borderRadius: 2,
+                }}>
+                  <div style={{ fontFamily: T.font.mono, fontSize: T.fontSize.badge, color: T.text.muted, letterSpacing: 0.5 }}>
+                    COLLISION CHECK
+                  </div>
+                  <div style={{ fontFamily: T.font.mono, fontSize: T.fontSize.detail, color: T.text.muted, marginTop: 4 }}>
+                    Not applicable — subject data required for deviation analysis.
+                  </div>
+                </div>
+              );
+            }
+            const peerSigma = Math.abs(field.peerValue) * 0.20;
+            const deltaSigma = Math.abs(field.subjectValue - field.peerValue) / peerSigma;
+            const severity: 'none' | 'material' | 'severe' =
+              deltaSigma >= 2.5 ? 'severe' :
+              deltaSigma >= 1.5 ? 'material' :
+              'none';
+            const severityColor =
+              severity === 'severe' ? T.text.red :
+              severity === 'material' ? T.text.amber :
+              T.text.green;
+            const severityLabel =
+              severity === 'severe' ? `SEVERE (${deltaSigma.toFixed(2)}σ)` :
+              severity === 'material' ? `MATERIAL (${deltaSigma.toFixed(2)}σ)` :
+              `NONE (${deltaSigma.toFixed(2)}σ — within normal range)`;
+            return (
+              <div style={{
+                margin: '0 12px 10px',
+                padding: '6px 10px',
+                background: severity !== 'none' ? `${severityColor}08` : T.bg.panelAlt,
+                border: `1px solid ${severity !== 'none' ? `${severityColor}40` : T.border.subtle}`,
+                borderRadius: 2,
+              }}>
+                <div style={{
+                  fontFamily: T.font.mono, fontSize: T.fontSize.badge,
+                  color: T.text.muted, letterSpacing: 0.5, marginBottom: 4,
+                }}>
+                  COLLISION CHECK
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    fontFamily: T.font.mono, fontSize: T.fontSize.badge,
+                    color: severityColor, background: `${severityColor}18`,
+                    border: `1px solid ${severityColor}40`, borderRadius: 2,
+                    padding: '1px 6px', lineHeight: '14px',
+                    fontWeight: 700, letterSpacing: 0.5,
+                  }}>
+                    {severity.toUpperCase()}
+                  </span>
+                  <span style={{ fontFamily: T.font.mono, fontSize: T.fontSize.detail, color: T.text.secondary }}>
+                    {severityLabel}
+                  </span>
+                </div>
+                <div style={{ fontFamily: T.font.mono, fontSize: T.fontSize.detail, color: T.text.muted, marginTop: 4, lineHeight: 1.5 }}>
+                  {`|subject − peer| / (peer × 20%) = |${formatValue(field.subjectValue, field.format)} − ${formatValue(field.peerValue, field.format)}| / ${formatValue(Math.abs(field.peerValue) * 0.20, field.format)} = ${deltaSigma.toFixed(2)}σ`}
+                  {severity !== 'none' && (
+                    <span style={{ display: 'block', marginTop: 2, color: severityColor }}>
+                      {severity === 'severe'
+                        ? '≥2.5σ: severe deviation — flagged for analyst review'
+                        : '≥1.5σ: material deviation — consider reviewing subject data quality'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer actions */}

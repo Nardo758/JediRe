@@ -1,6 +1,7 @@
 export { InlineAssumptionBlock } from './InlineAssumptionBlock';
 export { AssumptionRow } from './AssumptionRow';
-export { EditableValueCell, formatValue } from './EditableValueCell';
+export { EditableValueCell } from './EditableValueCell';
+export { formatValue } from './formatHelpers';
 export { DriftIndicator } from './DriftIndicator';
 export { ConfidenceBadge } from './ConfidenceBadge';
 export { CollisionPanel } from './CollisionPanel';

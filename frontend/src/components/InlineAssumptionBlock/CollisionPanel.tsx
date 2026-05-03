@@ -1,6 +1,6 @@
 import React from 'react';
 import { T } from './tokens';
-import { formatValue } from './EditableValueCell';
+import { formatValue } from './formatHelpers';
 import type { CollisionEntry, AssumptionFieldDef } from './types';
 
 interface CollisionPanelProps {

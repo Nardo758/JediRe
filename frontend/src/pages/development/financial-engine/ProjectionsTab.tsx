@@ -1087,6 +1087,36 @@ export function ProjectionsTab({
   const [error,            setError]           = useState<string | null>(null);
   const [drilldown, setDrilldown] = useState<DrilldownInfo | null>(null);
 
+  // ── Inline Assumption Block — store-driven LayeredValue reads (2-col mode) ─
+  // When no subjectHistory is present, fallback fields get effectiveValue and
+  // peerValue from the store's traffic.* LayeredValues (written by M09 adapter).
+  // This ensures 2-col mode reflects canonical store resolution, not null stubs.
+  const iabTrafficStore = useDealStore(s => {
+    function readPath(path: string): { effectiveValue: number; peerValue: number | null } | null {
+      const parts = path.split('.');
+      let current: unknown = s;
+      for (const part of parts) {
+        if (current == null || typeof current !== 'object') return null;
+        current = (current as Record<string, unknown>)[part];
+      }
+      if (current == null || typeof current !== 'object' || !('value' in current)) return null;
+      const lv = current as { value: number; layers?: { platform?: { value: number }; broker?: { value: number } } };
+      return {
+        effectiveValue: lv.value,
+        peerValue: lv.layers?.platform?.value ?? lv.layers?.broker?.value ?? null,
+      };
+    }
+    return {
+      physical_occupancy:     readPath('traffic.physical_occupancy'),
+      loss_to_lease:          readPath('traffic.loss_to_lease'),
+      signing_velocity:       readPath('traffic.signing_velocity'),
+      renewal_rate:           readPath('traffic.renewal_rate'),
+      days_vacant:            readPath('traffic.days_vacant_median'),
+      concession_pct:         readPath('traffic.concession_pct'),
+      concession_trend_score: readPath('traffic.concession_trend_score'),
+    };
+  });
+
   // ── Inline Assumption Block — layered override contract ───────────────────
   // setLayeredValueOverride / revertLayeredOverride are thin adapters that:
   //  a) keep local iabOverrides state in sync for immediate EFFECTIVE display
@@ -1343,8 +1373,23 @@ export function ProjectionsTab({
               : f,
             );
 
-          const occFields = applyOverrides(buildOccupancyFields(history));
-          const concFields = applyOverrides(buildConcessionFields(history));
+          // When no subjectHistory, enrich fallback fields with store-sourced
+          // effectiveValue and peerValue from traffic.* LayeredValues (2-col mode).
+          const enrichFallback = (fields: AssumptionFieldDef[]): AssumptionFieldDef[] => {
+            if (hasSubjectHistory) return fields;
+            return fields.map(f => {
+              const stored = iabTrafficStore[f.fieldId as keyof typeof iabTrafficStore];
+              if (!stored) return f;
+              return {
+                ...f,
+                effectiveValue: stored.effectiveValue,
+                peerValue: stored.peerValue,
+              };
+            });
+          };
+
+          const occFields = applyOverrides(enrichFallback(buildOccupancyFields(history)));
+          const concFields = applyOverrides(enrichFallback(buildConcessionFields(history)));
 
           return (
             <>

@@ -3,21 +3,9 @@ import React, {
 } from 'react';
 import { T } from './tokens';
 import type { FieldFormat } from './types';
+import { formatValue } from './formatHelpers';
 
 // ─── Formatting helpers ────────────────────────────────────────────────────
-
-export function formatValue(value: number | null, format: FieldFormat): string {
-  if (value == null || isNaN(value)) return '—';
-  switch (format) {
-    case 'pct':      return `${(value * 100).toFixed(2)}%`;
-    case 'currency': return `$${Math.round(value).toLocaleString()}`;
-    case 'months':   return `${value.toFixed(1)}mo`;
-    case 'days':     return `${value.toFixed(1)}d`;
-    case 'ratio':    return `${value.toFixed(2)}x`;
-    case 'num':
-    default:         return value.toFixed(2);
-  }
-}
 
 function parseRaw(raw: string, format: FieldFormat): number | null {
   const cleaned = raw.replace(/[%$,\s]/g, '');
@@ -69,11 +57,13 @@ export const EditableValueCell = forwardRef<EditableValueCellRef, EditableValueC
     const inputRef = useRef<HTMLInputElement>(null);
 
     const startEdit = useCallback(() => {
-      if (value == null) return;
-      setDraft(draftOf(value, format));
+      // Allow editing even when value is null (2-col mode, no effective yet).
+      // Initialize draft from current value, or fall back to min, then 0.
+      const startValue = value ?? (min ?? 0);
+      setDraft(draftOf(startValue, format));
       setEditing(true);
       setTimeout(() => inputRef.current?.select(), 0);
-    }, [value, format]);
+    }, [value, format, min]);
 
     useImperativeHandle(ref, () => ({ focusEdit: startEdit }), [startEdit]);
 
