@@ -657,7 +657,7 @@ export class RentRollDiffService {
       INSERT INTO subject_traffic_history
         (deal_id, tier, snapshot_count, coverage_months,
          observed_dynamics, confidence_weights, peer_collisions, updated_at)
-      VALUES ($1, 'S2', $2, $3, $4, $5, '[]', NOW())
+      VALUES ($1, 'S2', $2, $3, $4, $5, $6, NOW())
       ON CONFLICT (deal_id) DO UPDATE SET
         tier               = 'S2',
         snapshot_count     = EXCLUDED.snapshot_count,

@@ -1,8 +1,14 @@
 /**
  * M07: Bayesian Coefficient Resolver
  *
- * Resolves traffic conversion coefficients via the four-layer hierarchy:
- *   SUBJECT (subject_traffic_history ≥S1) → DEAL (deal rent roll) → PLATFORM → BASELINE
+ * Resolves traffic conversion coefficients via the M07 subject-first hierarchy:
+ *   SUBJECT (w >= 0.5): blend = w × subject + (1−w) × platform_peer  → tier SUBJECT
+ *   SUBJECT (0 < w < 0.5): blend computed but tier is PLATFORM (low confidence)
+ *   No subject, or w = 0: PLATFORM → BASELINE
+ *
+ * The DEAL layer (single-snapshot rent roll proxy) is intentionally excluded
+ * from this path — M07 replaces binary deal-first lookup with Bayesian
+ * subject-vs-peer blending against the platform posterior.
  *
  * Subject layer uses a Bayesian blend:
  *   w_subject = min(1, n_observations / n_required)
@@ -40,11 +46,17 @@ export class CoefficientResolverService {
   /**
    * Resolve all coefficients for a deal + submarket context.
    *
-   * Lookup order (highest to lowest authority):
-   *   1. Subject history (S1/S2) — Bayesian blend with peer value
-   *   2. Deal-specific derived coefficients (from latest rent roll snapshot)
-   *   3. Platform bucket: most specific → MSA → platform
-   *   4. Baseline hard-coded constants
+   * M07 lookup order (highest to lowest authority):
+   *   1. Subject history (S1/S2): Bayesian blend with platform peer posterior
+   *      - w >= 0.5 → tier SUBJECT (subject dominates)
+   *      - 0 < w < 0.5 → tier PLATFORM (peer dominates; blend still applied)
+   *      - w = 0 → bypass subject, fall to PLATFORM/BASELINE
+   *   2. Platform bucket: submarket+class+vintage → ... → platform
+   *   3. Baseline hard-coded constants
+   *
+   * Note: The DEAL proxy layer (single-snapshot derived coefficients) is
+   * intentionally excluded from M07 resolution — subject-history blending
+   * supersedes the pre-M07 binary deal-first approach.
    */
   async resolveForDeal(
     dealId: string | null,
@@ -56,18 +68,16 @@ export class CoefficientResolverService {
 
     const vintageBand = this.getVintageBand(yearBuilt);
 
-    // Layer 1: Subject history (highest priority — subject's own property data)
+    // Layer 1: Subject history (S1/S2) — Bayesian blend with platform peer posterior
     const subjectHistory = await this.loadSubjectHistory(dealId);
 
-    // Layer 2: Deal-level derived coefficients from most recent snapshot
-    const dealCoefficients = await this.loadDealCoefficients(dealId);
-
-    // Layer 3: Platform-level coefficients
+    // Layer 2: Platform-level coefficients (scope-degraded: submarket → msa → class → vintage → platform)
+    // DEAL proxy is intentionally excluded from the M07 calibration path.
     const platformCoefficients = await this.loadPlatformCoefficients(
       submarketId, propertyClass, vintageBand, msaId
     );
 
-    // Derive coefficient proxies from subject history (same formula as deal coefficients)
+    // Derive numeric coefficient proxies from subject history dynamics
     const subjectCoefficients = this.deriveSubjectCoefficients(subjectHistory);
 
     // Build the family
@@ -82,7 +92,6 @@ export class CoefficientResolverService {
 
     for (const name of ALL_COEFFICIENTS) {
       const baseline      = BASELINE_COEFFICIENTS[name];
-      const dealVal       = dealCoefficients?.[name]    ?? null;
       const platformEntry = platformCoefficients?.[name] ?? null;
       const subjectVal    = subjectCoefficients?.[name]  ?? null;
 
@@ -111,9 +120,18 @@ export class CoefficientResolverService {
 
         if (w > 0) {
           resolved      = w * subjectVal + (1 - w) * platformPeerValue;
-          matchTier     = 'SUBJECT';
           subjectWeight = w;
-          overallMatchTier = 'SUBJECT';
+
+          // tier SUBJECT only when subject dominates (w >= 0.5).
+          // For low-confidence blends (0 < w < 0.5) the peer posterior dominates,
+          // so we report PLATFORM to avoid misleading upstream badging logic.
+          if (w >= 0.5) {
+            matchTier        = 'SUBJECT';
+            overallMatchTier = 'SUBJECT';
+          } else {
+            matchTier = 'PLATFORM';
+            if (overallMatchTier === 'BASELINE') overallMatchTier = 'PLATFORM';
+          }
 
           // Peer collision: compare subject vs PLATFORM PEER SET posterior (not deal proxy).
           // σ ≈ 15% of the platform peer value — conservative prior; replaced with
@@ -131,15 +149,9 @@ export class CoefficientResolverService {
             }
           }
         } else {
-          // w_subject = 0 (insufficient sample) — subject evidence is too sparse to blend.
-          // Follow the standard deal → platform → baseline hierarchy; do NOT use subject
-          // as a proxy when its weight is zero (that would inject unreliable data).
-          if (dealVal !== null) {
-            resolved       = dealVal;
-            matchTier      = 'DEAL';
-            resolvedWindow = 'TTM';
-            resolvedN      = 0;
-          } else if (platformEntry !== null) {
+          // w_subject = 0 (insufficient sample) — subject evidence too sparse to blend.
+          // M07 spec: no DEAL proxy fallback; go directly to PLATFORM → BASELINE.
+          if (platformEntry !== null) {
             resolved       = platformEntry.value;
             matchTier      = 'PLATFORM';
             resolvedWindow = platformEntry.window;
@@ -149,26 +161,22 @@ export class CoefficientResolverService {
             matchTier = 'BASELINE';
           }
         }
-      } else if (dealVal !== null) {
-        // No subject history at all — deal layer takes priority over platform
-        resolved       = dealVal;
-        matchTier      = 'DEAL';
-        resolvedWindow = 'TTM';
-        resolvedN      = 0;
-      } else if (platformEntry !== null) {
-        resolved       = platformEntry.value;
-        matchTier      = 'PLATFORM';
-        resolvedWindow = platformEntry.window;
-        resolvedN      = platformEntry.n_peer_properties;
       } else {
-        resolved  = baseline;
-        matchTier = 'BASELINE';
+        // No subject history — M07 path: PLATFORM → BASELINE (no DEAL layer).
+        if (platformEntry !== null) {
+          resolved       = platformEntry.value;
+          matchTier      = 'PLATFORM';
+          resolvedWindow = platformEntry.window;
+          resolvedN      = platformEntry.n_peer_properties;
+        } else {
+          resolved  = baseline;
+          matchTier = 'BASELINE';
+        }
       }
 
       // Track overall tier and meta (prefer most specific peer context for display)
       if (overallMatchTier !== 'SUBJECT') {
-        if (matchTier === 'DEAL')     overallMatchTier = 'DEAL';
-        else if (matchTier === 'PLATFORM' && overallMatchTier === 'BASELINE') overallMatchTier = 'PLATFORM';
+        if (matchTier === 'PLATFORM' && overallMatchTier === 'BASELINE') overallMatchTier = 'PLATFORM';
       }
       if (resolvedN > nPeerProperties) {
         nPeerProperties = resolvedN;
@@ -178,14 +186,14 @@ export class CoefficientResolverService {
 
       (family as any)[name] = {
         baseline,
-        platform:       platformEntry?.value ?? null,
-        deal:           dealVal,
-        subject:        subjectVal,
+        platform:          platformEntry?.value ?? null,
+        deal:              null,   // DEAL proxy excluded from M07 calibration path
+        subject:           subjectVal,
         resolved,
-        match_tier:     matchTier,
-        window:         resolvedWindow,
+        match_tier:        matchTier,
+        window:            resolvedWindow,
         n_peer_properties: resolvedN,
-        subject_weight: subjectWeight,
+        subject_weight:    subjectWeight,
       } as LayeredValue;
     }
 
