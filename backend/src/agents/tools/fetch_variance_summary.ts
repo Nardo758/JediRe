@@ -156,7 +156,7 @@ export async function fetchVarianceSummary(
         `SELECT category, title, estimated_monthly_impact, priority
          FROM operations_recommendations
          WHERE deal_id = $1 AND status = 'open'
-         ORDER BY estimated_noi_impact DESC
+         ORDER BY estimated_monthly_impact DESC
          LIMIT 10`,
         [input.deal_id]
       )

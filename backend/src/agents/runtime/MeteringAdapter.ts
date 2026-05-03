@@ -437,7 +437,7 @@ export class MeteringAdapter {
          ) VALUES ($1,$2,$3,$4,'agent',$5,$6,$7,$8,0)
          ON CONFLICT DO NOTHING`,
         [
-          metadata.user_id ?? null,
+          metadata.user_id ?? '00000000-0000-0000-0000-000000000000',
           metadata.deal_id ?? null,
           metadata.actor_id,
           `agent_run:${metadata.agent_run_id ?? 'unknown'}`,
