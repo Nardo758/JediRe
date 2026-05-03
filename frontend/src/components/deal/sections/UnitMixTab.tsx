@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   RefreshCw, Loader2, Activity, TrendingUp, TrendingDown, Minus,
   Info, Zap, Edit3, Check, X, AlertTriangle, ChevronDown, ChevronRight,
@@ -730,9 +730,30 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Task #514 — session-scoped dismiss state for the rent-roll review banner.
-  // Resets on tab unmount; the next re-extraction with humanReviewNeeded=true
-  // re-shows it.
+  // Resets on tab unmount AND whenever a fresh extraction payload arrives
+  // (detected via signature change on column_coverage + status fields), so a
+  // re-upload that surfaces new review-worthy issues re-shows the banner even
+  // if the user had dismissed the previous one within the same mount.
   const [reviewBannerDismissed, setReviewBannerDismissed] = useState(false);
+  const lastBannerSigRef = useRef<string | null>(null);
+  // Watch the extraction signature; on change, clear the dismiss flag so a
+  // fresh re-upload re-shows the banner if the new payload still warrants
+  // review. Signature includes the fields that drive banner content.
+  useEffect(() => {
+    const sig = JSON.stringify({
+      c: data?.rentRollSummary?.columnCoverage ?? null,
+      s: data?.rentRollSummary?.expirationExtractionStatus ?? null,
+      h: data?.rentRollSummary?.humanReviewNeeded ?? null,
+    });
+    if (lastBannerSigRef.current !== null && lastBannerSigRef.current !== sig) {
+      setReviewBannerDismissed(false);
+    }
+    lastBannerSigRef.current = sig;
+  }, [
+    data?.rentRollSummary?.columnCoverage,
+    data?.rentRollSummary?.expirationExtractionStatus,
+    data?.rentRollSummary?.humanReviewNeeded,
+  ]);
   const [editingRent, setEditingRent] = useState<{ idx: number; field: 'inPlace' | 'market'; val: string } | null>(null);
   const [rentOverrides, setRentOverrides] = useState<Record<string, { inPlace?: number; market?: number }>>({});
   const [savingCell, setSavingCell] = useState<{ idx: number; field: 'inPlace' | 'market' } | null>(null);
