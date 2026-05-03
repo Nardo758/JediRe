@@ -125,6 +125,33 @@ interface DealFinancials {
   } | null;
   trafficProjection: TrafficProjection | null;
   extractionRentRoll: ExtractionRentRollPayload | null;
+  /**
+   * Per-category ancillary income reconciliation (RR / T-12 / OM) produced by
+   * the financials composer (Task #519). The Ancillary panel below renders
+   * this multi-source view directly so the Unit Mix tab and the Pro Forma tab
+   * agree on every category, the resolved value, and conflict flags. Without
+   * this the panel was rent-roll-only and silently dropped OM/T-12 figures.
+   */
+  otherIncomeBreakdown?: {
+    rows: Array<{
+      category: string;
+      rent_roll: number | null;
+      t12: number | null;
+      om: number | null;
+      resolved: number | null;
+      resolution: string;
+      conflict: boolean;
+    }>;
+    total: { rent_roll: number | null; t12: number | null; om: number | null; resolved: number };
+  } | null;
+  /** User-added custom ancillary lines persisted in deal_assumptions (Task #519). */
+  otherIncomeUserLines?: Array<{
+    id: string;
+    label: string;
+    monthly: number;
+    note?: string;
+    created_at: string;
+  }>;
 }
 
 const fmt$ = (v: number | null | undefined) =>
@@ -434,137 +461,78 @@ function FloorPlanUnitDetail({ floorplan, units }: {
   );
 }
 
-interface AncillaryLine {
-  key: string;
-  label: string;
-  qty: number;
-  price: number;
-  occupancy: number;
-  note: string;
-}
-
-/**
- * Default ancillary template — used as a last-resort fallback ONLY when no
- * rent-roll extraction is available. When `otherIncomeMonthly` is present,
- * `realAncillaryFromExtraction` is preferred so the user sees their actual
- * pet / parking / RUBS / fee dollars instead of synthetic estimates.
- */
-function makeDefaultAncillary(u: number): AncillaryLine[] {
-  return [
-    { key: 'pet',      label: 'Pet Rent',                    qty: u,                       price: 27.50,  occupancy: 0.30, note: 'Est. 30% of units' },
-    { key: 'garage',   label: 'Garage / Parking',            qty: Math.round(u * 0.111),   price: 142.50, occupancy: 1.00, note: '~1 garage per 9 units' },
-    { key: 'storage',  label: 'Storage',                     qty: Math.round(u * 0.083),   price: 50.00,  occupancy: 1.00, note: '~1 storage per 12 units' },
-    { key: 'rubs',     label: 'RUBS / Utilities',            qty: u,                       price: 65.00,  occupancy: 1.00, note: 'All units' },
-    { key: 'revshare', label: 'Revenue Sharing (Internet)',  qty: u,                       price: 85.00,  occupancy: 0.95, note: '95% of units' },
-    { key: 'valet',    label: 'Valet Trash',                 qty: u,                       price: 30.00,  occupancy: 0.95, note: '95% of units' },
-    { key: 'admin',    label: 'Admin / App Fees',            qty: u,                       price: 27.00,  occupancy: 0.65, note: 'Est. 65% of units' },
-    { key: 'late',     label: 'Late / NSF / Termination',   qty: u,                       price: 5.00,   occupancy: 1.00, note: 'All units' },
-    { key: 'damages',  label: 'Damages',                     qty: u,                       price: 2.44,   occupancy: 1.00, note: 'All units' },
-    { key: 'other',    label: 'Other Income',                qty: u,                       price: 7.00,   occupancy: 1.00, note: 'All units' },
-  ];
-}
-
-/** Pretty labels for the parser's `other_income_monthly` keys. */
+/** Pretty labels for the seeder's per-category ancillary keys (Task #519). */
 const ANCILLARY_LABELS: Record<string, string> = {
   parking: 'Parking',
-  pet_rent: 'Pet Rent',
+  pet: 'Pet Rent',
   storage: 'Storage',
-  rubs: 'RUBS / Utilities',
-  fees: 'Admin / App Fees',
-  insurance_admin: 'Insurance Admin',
-  concessions_other: 'Concessions / Other',
-  other: 'Other Income',
+  laundry: 'Laundry',
+  rubs: 'RUBS / Utility Reimb',
+  fees: 'Admin / App / Late Fees',
+  insurance_admin: 'Renters Insurance',
+  other: 'Other Ancillary',
 };
 
-/**
- * Convert `extraction_rent_roll.other_income_monthly` (real $/month figures
- * the parser pulled from rent-roll charge codes) into the AncillaryLine row
- * shape. The total-monthly is preserved exactly: qty=1, occ=1, price=monthly.
- * EVERY parser-defined line is emitted — including explicit $0 — so the user
- * can distinguish "the rent roll has a Pet Rent column with zero charges
- * this period" from "Pet Rent was never tracked." Missing fields aren't here
- * to begin with; zero means the data was present and was zero.
- */
-function realAncillaryFromExtraction(otherIncomeMonthly: Record<string, number>): AncillaryLine[] {
-  return Object.entries(otherIncomeMonthly).map(([key, amt]) => ({
-    key,
-    label: ANCILLARY_LABELS[key] ?? key.replace(/_/g, ' '),
-    qty: 1,
-    price: amt,
-    occupancy: 1,
-    note: amt === 0 ? 'Zero — present in rent roll but no charges' : 'Per rent-roll charge codes',
-  }));
-}
+/** Source-badge colors mirroring ProFormaSummaryTab so the two views agree. */
+const SRC_BADGE: Record<string, { label: string; color: string }> = {
+  rent_roll: { label: 'RR',       color: C.cyan },
+  t12:       { label: 'T-12',     color: C.muted },
+  om:        { label: 'OM',       color: C.amber },
+  override:  { label: 'OVR',      color: C.purple },
+  platform_fallback: { label: '—', color: C.dim },
+  unseeded:  { label: '—',        color: C.dim },
+};
+
+type OtherIncomeBreakdown = NonNullable<DealFinancials['otherIncomeBreakdown']>;
+type OtherIncomeUserLine  = NonNullable<DealFinancials['otherIncomeUserLines']>[number];
 
 /**
- * Renders the ancillary income breakdown.
+ * Renders the multi-source ancillary income breakdown (Task #519).
  *
- * Visibility contract: the panel is rendered ONLY when an
- * extraction_rent_roll capsule is available (i.e. the user has uploaded and
- * processed a rent roll). When `otherIncomeMonthly` is null the parent
- * suppresses this component entirely — we never fall back to synthetic
- * estimates, because broker-published OM ancillary is too unreliable to
- * silently feed into EGI.
+ * Reads the seeder-reconciled `otherIncomeBreakdown` payload from the
+ * financials endpoint instead of the raw rent-roll charge codes. This is
+ * what powers the same panel in the Pro Forma tab; previously the Unit Mix
+ * tab read `extraction_rent_roll.other_income_monthly` directly, which:
+ *   - silently dropped OM-only deals (panel hidden entirely),
+ *   - silently dropped categories the rent roll didn't break out (showed $0
+ *     even when the OM/T-12 had real numbers),
+ *   - never showed conflict warnings or user-added custom lines,
+ *   - drove a different EGI ancillary number than the Pro Forma tab.
+ *
+ * Visibility contract: render whenever ANY source has data (RR, OM, T-12,
+ * or user-added). Hidden only when all four are empty.
  */
 function AncillaryPanel({
   totalUnits,
-  otherIncomeMonthly,
+  breakdown,
+  userLines,
 }: {
   totalUnits: number;
-  otherIncomeMonthly: Record<string, number>;
+  breakdown: OtherIncomeBreakdown;
+  userLines: OtherIncomeUserLine[];
 }) {
-  const [lines, setLines] = useState<AncillaryLine[]>(() => realAncillaryFromExtraction(otherIncomeMonthly));
-
-  // Refresh lines when the underlying data source updates (e.g. user re-uploads
-  // a rent roll mid-session). Without this the rows would stay frozen.
-  useEffect(() => {
-    setLines(realAncillaryFromExtraction(otherIncomeMonthly));
-  }, [otherIncomeMonthly]);
-
-  const [editingKey, setEditingKey] = useState<{ key: string; field: 'qty' | 'price' | 'occ'; val: string } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
 
-  const totalMonthly = lines.reduce((s, l) => s + l.qty * l.price * l.occupancy, 0);
-  const totalAnnual  = totalMonthly * 12;
+  const rows = breakdown.rows;
+  const total = breakdown.total;
+  const userLinesAnnual = userLines.reduce((s, l) => s + l.monthly * 12, 0);
+  const grandTotal = (total.resolved ?? 0) + userLinesAnnual;
 
-  const commit = () => {
-    if (!editingKey) return;
-    const num = parseFloat(editingKey.val);
-    if (isNaN(num)) { setEditingKey(null); return; }
-    setLines(prev => prev.map(l => {
-      if (l.key !== editingKey.key) return l;
-      if (editingKey.field === 'qty')   return { ...l, qty: Math.max(0, Math.round(num)) };
-      if (editingKey.field === 'price') return { ...l, price: Math.max(0, num) };
-      return { ...l, occupancy: Math.min(1, Math.max(0, num / 100)) };
-    }));
-    setEditingKey(null);
-  };
+  // Pick the dominant source for the header pill — purely cosmetic.
+  const headerSource = (total.rent_roll ?? 0) > 0
+    ? 'RENT ROLL'
+    : (total.t12 ?? 0) > 0
+      ? 'T-12'
+      : (total.om ?? 0) > 0
+        ? 'OM'
+        : userLinesAnnual > 0 ? 'USER' : 'RECONCILED';
+  const headerColor = headerSource === 'RENT ROLL' ? C.cyan
+    : headerSource === 'OM' ? C.amber
+    : headerSource === 'USER' ? C.purple
+    : C.muted;
 
-  function EditCell({ lineKey, field, display, color }: { lineKey: string; field: 'qty' | 'price' | 'occ'; display: string; color?: string }) {
-    const isEditing = editingKey?.key === lineKey && editingKey.field === field;
-    if (isEditing) {
-      return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-          <input autoFocus type="number" value={editingKey.val}
-            onChange={e => setEditingKey({ ...editingKey, val: e.target.value })}
-            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditingKey(null); }}
-            style={{ width: field === 'qty' ? 56 : field === 'occ' ? 48 : 64, background: C.panelAlt, border: `1px solid ${C.cyan}`, borderRadius: 3, color: C.cyan, fontFamily: MONO, fontSize: 10, padding: '2px 4px', textAlign: 'right' }}
-          />
-          <button onClick={commit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.green, padding: 0 }}><Check size={10} /></button>
-          <button onClick={() => setEditingKey(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, padding: 0 }}><X size={10} /></button>
-        </div>
-      );
-    }
-    const line = lines.find(l => l.key === lineKey)!;
-    const rawVal = field === 'qty' ? String(line.qty) : field === 'price' ? String(line.price) : String((line.occupancy * 100).toFixed(0));
-    return (
-      <div onClick={() => setEditingKey({ key: lineKey, field, val: rawVal })}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, cursor: 'pointer' }}>
-        <span style={{ color: color ?? C.text }}>{display}</span>
-        <Edit3 size={8} color={C.dim} />
-      </div>
-    );
-  }
+  const cell = (v: number | null, color = C.muted): React.ReactNode =>
+    <span style={{ color: v == null ? C.dim : color }}>{v == null ? '—' : fmt$(v)}</span>;
 
   return (
     <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', marginTop: 12 }}>
@@ -573,21 +541,25 @@ function AncillaryPanel({
         style={{ padding: '8px 12px', borderBottom: collapsed ? undefined : `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
       >
         {collapsed ? <ChevronRight size={12} color={C.muted} /> : <ChevronDown size={12} color={C.muted} />}
-        <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.text, letterSpacing: '0.06em' }}>ANCILLARY INCOME BREAKDOWN</span>
-        <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginLeft: 4 }}>click cells to edit qty · price · occupancy</span>
+        <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.text, letterSpacing: '0.06em' }}>
+          ANCILLARY INCOME · RENT-ROLL · T-12 · OM
+        </span>
+        <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginLeft: 4 }}>
+          edits available in Pro Forma tab · resolved values flow into F9 EGI
+        </span>
         <span
           style={{
             fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.06em',
             padding: '2px 6px', borderRadius: 3,
-            background: `${C.green}22`,
-            color: C.green,
-            border: `1px solid ${C.green}55`,
+            background: `${headerColor}22`,
+            color: headerColor,
+            border: `1px solid ${headerColor}55`,
           }}
-          title="Sourced from rent-roll charge codes"
+          title={`Dominant source for resolved totals: ${headerSource}`}
         >
-          RENT ROLL
+          {headerSource}
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 10, color: C.amber, marginLeft: 'auto' }}>{fmt$(totalAnnual)}/yr</span>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.amber, marginLeft: 'auto' }}>{fmt$(grandTotal)}/yr</span>
       </div>
 
       {!collapsed && (
@@ -596,39 +568,65 @@ function AncillaryPanel({
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: C.panelAlt }}>
-                  <th style={th()}>INCOME TYPE</th>
-                  <th style={th(true)}>QTY</th>
-                  <th style={th(true)}>$/MO</th>
-                  <th style={th(true)}>OCC %</th>
-                  <th style={th(true)}>TOTAL/MO</th>
-                  <th style={th(true)}>TOTAL/YR</th>
-                  <th style={th()}>NOTE</th>
+                  <th style={th()}>CATEGORY</th>
+                  <th style={th(true)}>RENT ROLL</th>
+                  <th style={th(true)}>T-12</th>
+                  <th style={th(true)}>OM</th>
+                  <th style={th(true)}>RESOLVED</th>
+                  <th style={th()}>SOURCE</th>
+                  <th style={th(true)}>$/UNIT/YR</th>
                 </tr>
               </thead>
               <tbody>
-                {lines.map((l, idx) => {
-                  const monthlyTotal = l.qty * l.price * l.occupancy;
-                  const annualTotal  = monthlyTotal * 12;
-
+                {rows.map((r, idx) => {
+                  const meta = SRC_BADGE[r.resolution] ?? SRC_BADGE.unseeded;
+                  const perUnit = totalUnits > 0 && r.resolved != null
+                    ? Math.round(r.resolved / totalUnits)
+                    : null;
                   return (
-                    <tr key={l.key} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
-                      <td style={{ ...td(), color: C.cyan, fontWeight: 700 }}>{l.label}</td>
-
-                      <td style={{ ...td(true), position: 'relative' }}>
-                        <EditCell lineKey={l.key} field="qty" display={String(l.qty)} color={C.text} />
+                    <tr key={r.category} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
+                      <td style={{ ...td(), color: C.cyan, fontWeight: 700 }}>
+                        {ANCILLARY_LABELS[r.category] ?? r.category}
                       </td>
-
-                      <td style={{ ...td(true), position: 'relative' }}>
-                        <EditCell lineKey={l.key} field="price" display={`$${l.price.toFixed(2)}`} color={C.text} />
+                      <td style={td(true)}>{cell(r.rent_roll, C.cyan)}</td>
+                      <td style={td(true)}>{cell(r.t12, C.muted)}</td>
+                      <td style={td(true)}>{cell(r.om, C.amber)}</td>
+                      <td style={td(true, true, r.resolved != null ? C.text : C.dim)}>
+                        {r.resolved != null ? fmt$(r.resolved) : '—'}
+                        {r.conflict && (
+                          <span title="Sources disagree by more than 15%" style={{ color: C.red, marginLeft: 4 }}>⚠</span>
+                        )}
                       </td>
-
-                      <td style={{ ...td(true), position: 'relative' }}>
-                        <EditCell lineKey={l.key} field="occ" display={`${(l.occupancy * 100).toFixed(0)}%`} color={C.muted} />
+                      <td style={{ ...td() }}>
+                        <span style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: meta.color, letterSpacing: '0.06em' }}>
+                          {meta.label}
+                        </span>
                       </td>
-
-                      <td style={td(true, false, C.text)}>{fmt$(monthlyTotal)}</td>
-                      <td style={td(true, false, C.amber)}>{fmt$(annualTotal)}</td>
-                      <td style={{ ...td(), color: C.dim, fontSize: 8 }}>{l.note}</td>
+                      <td style={{ ...td(true), color: C.dim, fontSize: 9 }}>
+                        {perUnit != null ? `$${perUnit.toLocaleString()}` : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {userLines.map((l, i) => {
+                  const annual = l.monthly * 12;
+                  const perUnit = totalUnits > 0 ? Math.round(annual / totalUnits) : null;
+                  return (
+                    <tr key={l.id} style={{
+                      background: (rows.length + i) % 2 === 0 ? C.panel : C.panelAlt,
+                      borderTop: i === 0 ? `1px solid ${C.border}` : undefined,
+                    }}>
+                      <td style={{ ...td(), color: C.purple, fontWeight: 700 }}>{l.label}</td>
+                      <td colSpan={3} style={{ ...td(true), color: C.dim, fontStyle: 'italic', fontSize: 9 }}>user-added</td>
+                      <td style={td(true, true, C.text)}>
+                        {fmt$(annual)} <span style={{ color: C.dim, fontSize: 8 }}>(${l.monthly}/mo)</span>
+                      </td>
+                      <td style={{ ...td() }}>
+                        <span style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.purple, letterSpacing: '0.06em' }}>USER</span>
+                      </td>
+                      <td style={{ ...td(true), color: C.dim, fontSize: 9 }}>
+                        {perUnit != null ? `$${perUnit.toLocaleString()}` : '—'}
+                      </td>
                     </tr>
                   );
                 })}
@@ -636,10 +634,14 @@ function AncillaryPanel({
               <tfoot>
                 <tr style={{ background: '#050a0f', borderTop: `2px solid ${C.borderHi}` }}>
                   <td style={{ ...td(), fontWeight: 700, color: C.text }}>TOTAL ANCILLARY</td>
-                  <td colSpan={3} />
-                  <td style={{ ...td(true), fontWeight: 700, color: C.amber }}>{fmt$(totalMonthly)}/mo</td>
-                  <td style={{ ...td(true), fontWeight: 700, color: C.amber }}>{fmt$(totalAnnual)}/yr</td>
-                  <td style={{ ...td(), color: C.dim, fontSize: 8 }}>{((totalAnnual / Math.max(totalUnits * 12, 1))).toFixed(0)}/unit/yr</td>
+                  <td style={td(true, true, C.cyan)}>{cell(total.rent_roll, C.cyan)}</td>
+                  <td style={td(true, true, C.muted)}>{cell(total.t12, C.muted)}</td>
+                  <td style={td(true, true, C.amber)}>{cell(total.om, C.amber)}</td>
+                  <td style={td(true, true, C.green)}>{fmt$(grandTotal)}</td>
+                  <td style={{ ...td(), color: C.dim, fontSize: 8 }}>resolved + user</td>
+                  <td style={{ ...td(true), color: C.dim, fontSize: 8 }}>
+                    {totalUnits > 0 ? `$${Math.round(grandTotal / totalUnits).toLocaleString()}/yr` : '—'}
+                  </td>
                 </tr>
               </tfoot>
             </table>
@@ -650,7 +652,7 @@ function AncillaryPanel({
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.amber }} />
               <span style={{ fontFamily: LABEL, fontSize: 9, color: C.amber }}>ANCILLARY INCOME → FINANCIAL ENGINE (F9 EGI)</span>
             </div>
-            <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: C.amber }}>{fmt$(totalAnnual)}</span>
+            <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: C.amber }}>{fmt$(grandTotal)}</span>
           </div>
         </>
       )}
@@ -1349,17 +1351,35 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
             </div>
           )}
 
-          {/* ── Ancillary Income Breakdown ──
-              Hidden entirely without a rent-roll extraction. We deliberately
-              do NOT show synthetic per-unit estimates here; ancillary income
-              published by the broker (OM) is too unreliable to silently feed
-              into EGI. */}
-          {data?.extractionRentRoll?.otherIncomeMonthly && (
-            <AncillaryPanel
-              totalUnits={totalUnits}
-              otherIncomeMonthly={data.extractionRentRoll.otherIncomeMonthly}
-            />
-          )}
+          {/* ── Ancillary Income Breakdown (multi-source — Task #519) ──
+              Renders the seeder-reconciled view (RR / T-12 / OM / RESOLVED)
+              so this tab agrees with the Pro Forma tab. Hidden only when
+              every source is empty AND no user-added line exists. */}
+          {(() => {
+            const breakdown = data?.otherIncomeBreakdown ?? null;
+            const userLines = data?.otherIncomeUserLines ?? [];
+            // Presence-based visibility: render whenever ANY source supplied
+            // data — even a legitimate $0 (e.g. PM tracks Pet Rent but no
+            // pets this period). Only hide when every source is null AND no
+            // user lines exist. Positivity checks would re-hide deals where
+            // the rent roll explicitly reports zeros.
+            const hasAnySource = !!breakdown && (
+              breakdown.total.rent_roll != null ||
+              breakdown.total.t12 != null ||
+              breakdown.total.om != null ||
+              breakdown.rows.some(r =>
+                r.rent_roll != null || r.t12 != null || r.om != null || r.resolved != null
+              )
+            );
+            if (!breakdown || (!hasAnySource && userLines.length === 0)) return null;
+            return (
+              <AncillaryPanel
+                totalUnits={totalUnits}
+                breakdown={breakdown}
+                userLines={userLines}
+              />
+            );
+          })()}
 
           {/* ── Value-Add Renovation Upside ── */}
           {isValueAdd && unitMix.length > 0 && (
@@ -1451,16 +1471,29 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                 const badDebtLoss    = gri != null ? gri * badDebtPct : null;
                 const concessionPct  = unitMix.reduce((s, u) => s + (u.concessionPct ?? 0) * u.count, 0) / Math.max(totalUnits, 1);
                 const concessionLoss = totalMarketGprAnnual > 0 ? concessionPct * totalMarketGprAnnual : null;
-                // Ancillary feeds EGI only when sourced from a real rent-roll
-                // extraction. We do NOT pad EGI with synthetic per-unit
-                // benchmarks — broker/OM-only deals get $0 here so the user
-                // sees an honest "ancillary unknown" instead of a fabricated
-                // line item. Mirrors AncillaryPanel's visibility contract.
-                const realAncMonthly = data?.extractionRentRoll?.otherIncomeMonthly ?? null;
-                const ancillaryTotal = realAncMonthly
-                  ? Object.values(realAncMonthly).reduce((s, v) => s + (v > 0 ? v : 0), 0) * 12
-                  : 0;
-                const hasRealAnc = realAncMonthly != null;
+                // Ancillary feeds EGI from the multi-source seeder
+                // reconciliation (Task #519): RESOLVED per-category totals
+                // (RR-preferred, OM-fallback, T-12 aggregate when both
+                // empty) plus any user-added custom lines. This matches the
+                // Pro Forma tab's EGI exactly; the previous rent-roll-only
+                // read undercounted EGI on OM- or T-12-backed deals.
+                const breakdown = data?.otherIncomeBreakdown ?? null;
+                const userLinesAnnual = (data?.otherIncomeUserLines ?? [])
+                  .reduce((s, l) => s + l.monthly * 12, 0);
+                const ancillaryTotal = (breakdown?.total.resolved ?? 0) + userLinesAnnual;
+                // Presence-based: a source is "real" when the seeder
+                // returned a non-null figure for it, even if that figure is
+                // $0. Mirrors the panel's visibility gate so the EGI label
+                // ("no rent roll") stays consistent with what the user sees.
+                const hasRealAnc = breakdown != null && (
+                  breakdown.total.rent_roll != null ||
+                  breakdown.total.t12 != null ||
+                  breakdown.total.om != null ||
+                  breakdown.rows.some(r =>
+                    r.rent_roll != null || r.t12 != null || r.om != null || r.resolved != null
+                  ) ||
+                  (data?.otherIncomeUserLines ?? []).length > 0
+                );
                 const egi = gri != null && badDebtLoss != null
                   ? gri - (concessionLoss ?? 0) - badDebtLoss + ancillaryTotal
                   : null;
