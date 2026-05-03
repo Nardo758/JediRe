@@ -253,7 +253,7 @@ const MarkdownBlockView: React.FC<{
   // Split text on `{{ ref }}` placeholders and render values inline.
   const segments = useMemo(() => {
     const parts: Array<{ kind: 'text' | 'ref'; value: string }> = [];
-    const re = /\{\{\s*([a-zA-Z0-9_.\[\]\*]+)\s*\}\}/g;
+    const re = /\{\{\s*([a-zA-Z0-9_.[\]*]+)\s*\}\}/g;
     let last = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(block.text)) !== null) {

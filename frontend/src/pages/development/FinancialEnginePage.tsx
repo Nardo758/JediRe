@@ -851,7 +851,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       // Re-open the dialog so the user can retry; restore the name they typed.
       setSaveVersionName(name);
       setShowSaveDialog(true);
-      // eslint-disable-next-line no-alert
       window.alert(`Save version failed: ${e?.message ?? 'unknown error'}. Please retry.`);
     }
   }, [resolvedDealId, assumptions, modelResults, saveVersionName, versions.length, resolvedDealType]);
