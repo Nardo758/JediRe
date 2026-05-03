@@ -175,21 +175,13 @@ function mergeModelIntoFinancials(
   out.capitalStack.equityAtClose = Math.max((out.capitalStack.purchasePrice ?? 0) - (out.capitalStack.loanAmount ?? 0), 0);
   out.capitalStack.ltc = out.capitalStack.purchasePrice ? (out.capitalStack.loanAmount ?? 0) / out.capitalStack.purchasePrice : null;
 
-  // ── Projections (time series for the projections grid) ──
-  out.projections = toArr<any>(model.annualCashFlow).map(r => ({
-    year: r.year,
-    gpr: r.gpr,
-    vacancy: r.vacancy,
-    egr: r.egr ?? r.totalRevenue ?? 0,
-    otherIncome: r.otherIncome ?? 0,
-    totalRevenue: r.totalRevenue ?? 0,
-    opex: r.opex ?? 0,
-    noi: r.noi ?? 0,
-    debtService: r.debtService ?? 0,
-    cashFlow: r.cashFlow ?? 0,
-    lpDistribution: r.lpDistribution ?? 0,
-    gpDistribution: r.gpDistribution ?? 0,
-  }));
+  // ── Projections: preserve the composer's ProjYear[] shape ──
+  // The composer's buildProjections() produces the full keyed shape that
+  // ProjectionsTab expects (vacancyLoss, lossToLease, payroll, repairs, …).
+  // model.annualCashFlow uses different key names (vacancy, egr, opex…) so
+  // overwriting here broke every revenue-deduction and expense row in the tab.
+  // The model's annualCashFlow is already consumed for returns/waterfall/capital
+  // below — we don't need it here.
 
   // ── Capital from model sourcesAndUses ──
   out.capital = {
