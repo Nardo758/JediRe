@@ -54,8 +54,23 @@ export function selectBlockCollisions(fields: AssumptionFieldDef[]): CollisionEn
   return collisions.sort((a, b) => b.deltaSigma - a.deltaSigma);
 }
 
-/** Hook wrapper — memoizes selectBlockCollisions over fields reference. */
+/**
+ * useBlockCollisions — hook wrapper around selectBlockCollisions.
+ *
+ * Intended selector API: useBlockCollisions(dealId, blockId, fields)
+ *   - dealId:  Reserved for future store-connected implementation. When a
+ *              backend `selectBlockCollisions` selector exists that derives
+ *              collisions from canonicalized store state rather than prop data,
+ *              this will be used to read from the store by deal + block key.
+ *   - blockId: Reserved — identifies which assumption block within the deal.
+ *   - fields:  Current implementation derives collisions locally from the
+ *              pre-computed AssumptionFieldDef props (pure, no store coupling).
+ *              This is a temporary stub; align with store selector when M09+
+ *              canonical collision state is available.
+ */
 export function useBlockCollisions(
+  _dealId: string | undefined,
+  _blockId: string,
   fields: AssumptionFieldDef[],
 ): CollisionEntry[] {
   return useMemo(() => selectBlockCollisions(fields), [fields]);

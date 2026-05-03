@@ -148,7 +148,11 @@ function AssumptionRowInner({
   );
 }
 
-// Custom equality: re-render when value, source, drift inputs, or tab nav change
+// Custom equality: re-render ONLY when layered value/source/drift inputs change.
+// Tab navigation callbacks (onTabNext/onTabPrev) are intentionally excluded:
+// they are stabilized by the parent's tabHandlerMap (useMemo keyed on field IDs)
+// and must NOT drive row re-renders — their identity changes only when the field
+// set itself changes, at which point React's key-based reconciliation handles it.
 function areEqual(prev: AssumptionRowProps, next: AssumptionRowProps) {
   const pf = prev.field;
   const nf = next.field;
@@ -159,9 +163,7 @@ function areEqual(prev: AssumptionRowProps, next: AssumptionRowProps) {
     pf.subjectValue   === nf.subjectValue   &&
     pf.peerValue      === nf.peerValue      &&
     pf.confidence     === nf.confidence     &&
-    prev.hasSubjectHistory === next.hasSubjectHistory &&
-    prev.onTabNext    === next.onTabNext    &&
-    prev.onTabPrev    === next.onTabPrev
+    prev.hasSubjectHistory === next.hasSubjectHistory
   );
 }
 

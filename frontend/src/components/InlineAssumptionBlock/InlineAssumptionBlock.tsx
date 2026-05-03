@@ -1,5 +1,5 @@
 import React, {
-  useState, useRef, useCallback, useImperativeHandle, forwardRef,
+  useState, useRef, useCallback, useMemo, useImperativeHandle, forwardRef,
 } from 'react';
 import { T } from './tokens';
 import { AssumptionRow } from './AssumptionRow';
@@ -33,7 +33,7 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
     const [drilldownFieldId, setDrilldownFieldId] = useState<string | null>(null);
 
     // Derived collisions (from field data, unless caller provides them)
-    const derivedCollisions = useBlockCollisions(fields);
+    const derivedCollisions = useBlockCollisions(undefined, blockId, fields);
     const collisions = externalCollisions ?? derivedCollisions;
     const hasCollisions = collisions.length > 0;
 
@@ -55,22 +55,34 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
 
     // Tab/Shift+Tab navigation — moves focus between EFFECTIVE cells only,
     // skipping all read-only columns (PEER SET, SUBJECT, CONF).
-    const makeTabHandlers = useCallback(
-      (fieldId: string): { onTabNext: () => void; onTabPrev: () => void } => {
-        const idx = fields.findIndex(f => f.fieldId === fieldId);
-        return {
+    //
+    // Stability contract: handlers are computed once per unique field-ID set and
+    // stored in a stable Map. Rows receive the same function references across
+    // re-renders caused by value/drift changes, so memo equality is preserved.
+    // fieldsRef keeps field order current without widening the useMemo deps.
+    const fieldsRef = useRef(fields);
+    fieldsRef.current = fields;
+
+    const fieldIdKey = fields.map(f => f.fieldId).join('\0');
+    const tabHandlerMap = useMemo(() => {
+      const map = new Map<string, { onTabNext: () => void; onTabPrev: () => void }>();
+      fieldsRef.current.forEach((field, idx) => {
+        map.set(field.fieldId, {
           onTabNext: () => {
-            const next = fields[idx + 1];
+            const next = fieldsRef.current[idx + 1];
             if (next) editRefs.current.get(next.fieldId)?.focusEdit();
           },
           onTabPrev: () => {
-            const prev = fields[idx - 1];
+            const prev = fieldsRef.current[idx - 1];
             if (prev) editRefs.current.get(prev.fieldId)?.focusEdit();
           },
-        };
-      },
-      [fields],
-    );
+        });
+      });
+      return map;
+    // Handlers only need to be recreated when field identity (IDs/order) changes.
+    // Value/drift changes do NOT change fieldIdKey, so handlers remain stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fieldIdKey]);
 
     const openDrilldown = useCallback((fieldId: string) => {
       setDrilldownFieldId(fieldId);
@@ -234,7 +246,7 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
 
                 <tbody>
                   {fields.map(field => {
-                    const { onTabNext, onTabPrev } = makeTabHandlers(field.fieldId);
+                    const tabHandlers = tabHandlerMap.get(field.fieldId);
                     return (
                       <AssumptionRow
                         key={field.fieldId}
@@ -244,8 +256,8 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
                         onRevert={onRevert ?? (() => {})}
                         onOpenDrilldown={openDrilldown}
                         editRefSetter={editRefSetter}
-                        onTabNext={onTabNext}
-                        onTabPrev={onTabPrev}
+                        onTabNext={tabHandlers?.onTabNext}
+                        onTabPrev={tabHandlers?.onTabPrev}
                       />
                     );
                   })}
