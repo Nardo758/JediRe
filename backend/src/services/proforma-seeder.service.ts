@@ -577,6 +577,18 @@ function buildSeed(
     .reduce((s, l) => s + (Number.isFinite(l.monthly) ? l.monthly * 12 : 0), 0);
   const otherIncomeForEgi = breakdownSum + userLinesAnnual;
   const egi_resolved = nri_resolved + otherIncomeForEgi;
+
+  // Sync the per-unit aggregate from the breakdown so the F11 main "Other
+  // Income" row (which the composer renders as `other_income_per_unit ×
+  // units × 12`) matches the per-category resolution shown in the expansion
+  // panel. Without this, the main row picks the raw RR/OM/T-12 aggregate
+  // (e.g. RR's partial sum across only the lines that have data) and
+  // diverges from the actual breakdown total. Preserve a user override.
+  // Task #519 (composer/seeder parity for F11 main row).
+  if (totalUnits > 0 && otherIncomePerUnit.resolution !== 'override') {
+    otherIncomePerUnit.resolved = otherIncomeForEgi / totalUnits / months;
+    otherIncomePerUnit.updated_at = now();
+  }
   const egi_after_bad_debt = egi_resolved * (1 - (badDebtPct.resolved ?? 0));
 
   const egi: LayeredValue<number> = {
