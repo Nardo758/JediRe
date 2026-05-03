@@ -1942,7 +1942,10 @@ export async function getDealFinancials(
       rentGrowthPct: rentGrowthOverride?.value ?? rentGrowthPct,
       vacancyPct: vacOverride?.value ?? vacancyPct,
       exitCapIfLastYear: yr === holdYears ? exitCap : null,
-      capexDraw: null,
+      // CapEx draw: populated from per-year override so projection engine can
+      // read it from assumptions.perYear instead of raw userOverrides.
+      // Value is $/unit (engine multiplies by totalUnits to get total $).
+      capexDraw: pyOverrides[`capexPerYear:yr${yr}`]?.value ?? null,
     };
   });
 

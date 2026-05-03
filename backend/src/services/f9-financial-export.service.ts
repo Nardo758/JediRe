@@ -89,14 +89,12 @@ export function buildProjectionsForExport(
   // existing deals that have never configured capex.
   const capexTotalY1 = y1('capex') ?? 0;
 
-  // Concession burn-off rate (Section B trajectory field).
-  // User override at year=1 (flat rate) → assumptions field → 0 (no burn-off).
-  // Default 0 preserves existing behavior for deals that haven't set this.
+  // Concession burn-off: accumulator tracks how much of Y1 concession has been
+  // phased out. Each year's rate is read per-year (stepped) or flat (year-1-only),
+  // falling back to assumptions.concessionBurnOffPct → 0.
+  // This makes concession burn-off truly trajectory-sensitive (Section B).
   // TODO(agent): concessionBurnOffPct — agent integration out of scope here.
-  const concBurnOffRate =
-    f.userOverrides['concessionBurnOffPct']?.[1] ??
-    assumptions.concessionBurnOffPct ??
-    0;
+  let accumulatedBurnOff = 0; // grows each year; concessions = Y1 × max(0, 1 - accumulated)
 
   for (let yr = 1; yr <= holdYears; yr++) {
     const tv = tyr(yr);
@@ -130,10 +128,16 @@ export function buildProjectionsForExport(
     const vacPct      = tv?.vacancyPct ?? pv?.vacancyPct ?? y1('vacancy_pct') ?? 0.05;
     const vacancyLoss = Math.round(gpr * (vacPct ?? 0.05));
     const lossToLease = Math.round(gpr * lossToLeasePctY1);
-    // Concession burn-off: ramp Y1 concession loss toward zero over the hold.
-    // concBurnOffRate = 0 → concessions fixed at Y1 (existing behavior).
-    // concBurnOffRate = 0.5 → concessions halved by Y3, zero by Y3.
-    const concessions = Math.round(gpr * concPctY1 * Math.max(0, 1 - concBurnOffRate * (yr - 1)));
+    // Concession burn-off: Y1 concessions × (1 - accumulatedBurnOff).
+    // accumulatedBurnOff = 0 in Y1 → full Y1 concession (existing behavior preserved).
+    // Each year's rate is read per-year (stepped UI) or flat (falls back to Y1 override
+    // → assumptions field → 0), making this genuinely year-sensitive / Section B.
+    const concessions = Math.round(gpr * concPctY1 * Math.max(0, 1 - accumulatedBurnOff));
+    // Accumulate this year's burn-off rate so next year's concession is further reduced.
+    const burnOffThisYr = f.userOverrides['concessionBurnOffPct']?.[yr]
+      ?? assumptions.concessionBurnOffPct
+      ?? 0;
+    accumulatedBurnOff = Math.min(1, accumulatedBurnOff + burnOffThisYr);
     const badDebt     = Math.round(gpr * badDebtPctY1);
     const nru         = Math.round(gpr * nruPctY1);
     const nri         = gpr - vacancyLoss - lossToLease - concessions - badDebt - nru;
@@ -177,12 +181,12 @@ export function buildProjectionsForExport(
       }
     }
 
-    // Per-year CapEx draw: user override → 40/35/25 hardcoded fallback.
-    // Falls back to 0 when no capex budget is set (capexTotalY1 = 0), preserving
-    // existing behavior for deals without a configured capex budget.
+    // Per-year CapEx draw: read from assumptions.perYear[yr].capexDraw (populated by the
+    // financials assembly from per_year_overrides['capexPerYear:yr{n}'], $/unit) → then
+    // fall back to the 40/35/25 front-loaded schedule derived from Y1 total capex.
+    // Falls back to 0 when no capex budget is set, preserving existing behavior.
     const capexDraw = (() => {
-      const perYrOverride = f.userOverrides['capexPerYear']?.[yr];
-      if (perYrOverride != null) return Math.round(perYrOverride * totalUnits);
+      if (pv?.capexDraw != null) return Math.round(pv.capexDraw * totalUnits);
       if (yr === 1) return Math.round(capexTotalY1 * 0.40);
       if (yr === 2) return Math.round(capexTotalY1 * 0.35);
       if (yr === 3) return Math.round(capexTotalY1 * 0.25);
@@ -355,7 +359,7 @@ const R = {
   INTEREST: 33,
   PRINC:    34,
   TOTALDS:  35,
-  // Row 36: empty
+  CAPEX:    36,
   CFBT:     37,
   NETCF:    38,
   // Row 39: empty
@@ -443,6 +447,7 @@ function buildProFormaSheet(
   aoa[R.INTEREST]= mkRow('  Interest', 'interest');
   aoa[R.PRINC]   = mkRow('  Principal Paydown', 'principal');
   aoa[R.TOTALDS] = mkRow('TOTAL DEBT SERVICE', 'annualDS');
+  aoa[R.CAPEX]   = mkRow('  (–) CapEx Draw', 'capexDraw');
   aoa[R.CFBT]    = mkRow('CASH FLOW BEFORE TAX', 'cfbt');
   aoa[R.NETCF]   = mkRow('  Net Cash Flow', 'netCF');
   aoa[R.COC]     = ['  Cash-on-Cash Return', ...projs.map(p => p.coc ?? 0)];
@@ -509,10 +514,10 @@ function buildProFormaSheet(
       f: `=${C}${R.INTEREST+1}+${C}${R.PRINC+1}`,
       v: projs[y].annualDS,
     };
-    // CFBT = NOI - DS
+    // CFBT = NOI - DS - CapEx Draw (formula now consistent with TS engine computation)
     ws[addr(R.CFBT, col)] = {
       t: 'n',
-      f: `=${C}${R.NOI+1}-${C}${R.TOTALDS+1}`,
+      f: `=${C}${R.NOI+1}-${C}${R.TOTALDS+1}-${C}${R.CAPEX+1}`,
       v: projs[y].cfbt,
     };
     // Net Sale Proceeds = GrossSale - Selling - LoanPayoff

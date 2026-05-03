@@ -779,7 +779,7 @@ const STATIC_ROWS: RowDef[] = [
   },
   {
     key: 'growthOpexPct', label: 'Operating Expense Growth % / yr', section: 10, unit: 'pct',
-    format: fmtPct2,
+    format: fmtPct2, patchField: 'growthOpexPct',
     description: 'Annual growth rate applied to variable operating expenses (payroll, R&M, marketing, contract services, G&A, turnover). Excel model: 2%/yr.',
     platformSource: 'JEDI — CPI + labor market trends', brokerSource: 'OM / Growth Rate Assumptions',
     brokerPage: 'Growth Rate Assumptions', brokerLine: 'OpEx Growth',
@@ -1963,8 +1963,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const allSections: Array<{ sec: number; rows: RowDef[]; sectionGroup: 'A' | 'B' }> = [
     { sec: 5, rows: [...revRows, ...STATIC_ROWS.filter(r => r.section === 5)], sectionGroup: 'A' },
     { sec: 6, rows: opexRows,                                                  sectionGroup: 'A' },
-    { sec: 7, rows: STATIC_ROWS.filter(r => r.section === 7),                 sectionGroup: 'A' },
     { sec: 9, rows: STATIC_ROWS.filter(r => r.section === 9),                 sectionGroup: 'A' },
+    { sec: 7, rows: STATIC_ROWS.filter(r => r.section === 7),                 sectionGroup: 'B' },
     { sec: 8, rows: STATIC_ROWS.filter(r => r.section === 8),                 sectionGroup: 'B' },
     { sec: 10, rows: STATIC_ROWS.filter(r => r.section === 10),               sectionGroup: 'B' },
   ];
