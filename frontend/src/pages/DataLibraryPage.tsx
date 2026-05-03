@@ -3,6 +3,7 @@ import { dataLibraryService, type DataLibraryFile, type DataLibrarySearchParams 
 import { pstUploadService, type PstJobStatus, type PstEntity } from '@/services/pstUpload.service';
 import { ContextIndicator } from '../components/intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
+import { OM_RETRYABLE_STAGES } from '@/constants/omPipelineStages';
 
 const fmtSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -57,14 +58,10 @@ const stageLabels: Record<string, string> = {
   error: 'Error',
 };
 
-const RETRYABLE_STAGES = new Set([
-  'error', 'parse_failed', 'ocr_failed', 'distribute_failed', 'sentiment_failed',
-]);
-
 const isRetryableStage = (stage: string | null | undefined, status: string): boolean => {
   if (status === 'error' || status === 'failed') return true;
   if (!stage) return false;
-  return RETRYABLE_STAGES.has(stage);
+  return OM_RETRYABLE_STAGES.has(stage);
 };
 
 // ─── Extracted Summary ────────────────────────────────────────────────────────

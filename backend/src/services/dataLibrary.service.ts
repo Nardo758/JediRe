@@ -6,6 +6,7 @@ import { parseOM } from './document-extraction/parsers/om-parser';
 import { tagOmWithMarket } from './document-extraction/om-geo';
 import { distributeOmExtraction } from './document-extraction/om-distribution.service';
 import { scoreBrokerSentiment } from './document-extraction/broker-sentiment.service';
+import { isOmTerminalFailureStage } from './document-extraction/om-pipeline-stages';
 
 export interface DataLibraryFile {
   id: number;
@@ -178,17 +179,16 @@ export class DataLibraryService {
       );
     } catch (err: any) {
       // Preserve any specific terminal stage already written by runOmPipeline
-      // (parse_failed / ocr_failed / distribute_failed / sentiment_failed) so
-      // the operator sees WHERE the pipeline broke, not just a generic 'error'.
+      // so the operator sees WHERE the pipeline broke, not just a generic
+      // 'error'. The set of preserved stages is the shared
+      // OM_TERMINAL_FAILURE_STAGES constant — keep it as the single source
+      // of truth across backend + frontend.
       const cur = await this.pool.query<{ parsing_stage: string | null }>(
         `SELECT parsing_stage FROM data_library_files WHERE id=$1`,
         [fileId],
       );
       const existing = cur.rows[0]?.parsing_stage ?? null;
-      const PRESERVED = new Set([
-        'parse_failed', 'ocr_failed', 'distribute_failed', 'sentiment_failed',
-      ]);
-      if (existing && PRESERVED.has(existing)) {
+      if (isOmTerminalFailureStage(existing)) {
         // Stage + parsing_errors are already set by the inner handler.
         return;
       }
