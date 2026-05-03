@@ -279,6 +279,25 @@ async function runPendingMigrationsLocked(
   const shape       = await resolveTableShape(pool);
   const applied     = await loadAppliedSet(pool, shape);
   const all         = discoverMigrations();
+  // Fail loudly if two migration files share the same basename across the
+  // two migration directories. Tracking is by basename for interop with the
+  // historical schema_migrations rows, so a collision would silently skip
+  // one of the two — a real risk now that future migrations could land in
+  // either folder. Better to refuse to start than to apply an ambiguous set.
+  const seen = new Map<string, string>();
+  const collisions: string[] = [];
+  for (const m of all) {
+    const prior = seen.get(m.trackingKey);
+    if (prior) collisions.push(`${prior}  vs  ${m.relPath}`);
+    else seen.set(m.trackingKey, m.relPath);
+  }
+  if (collisions.length > 0) {
+    throw new Error(
+      `Migration filename collisions detected (basename used in both dirs):\n  ` +
+      collisions.join('\n  ') +
+      `\nRename one of each pair so basenames are globally unique.`,
+    );
+  }
   const allocateNum = await makeNumberAllocator(pool, shape);
 
   const result: MigrationResult = { applied: [], skipped: 0, failed: [] };

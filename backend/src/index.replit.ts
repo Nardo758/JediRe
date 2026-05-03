@@ -1112,37 +1112,43 @@ async function startServer() {
   //
   // Set SKIP_AUTO_MIGRATIONS=1 to bypass (e.g. when debugging a bad
   // migration interactively).
+  // Fail-closed by default per Task #512: "verify schema is current before
+  // server accepts requests". Operators who need to start with a partial
+  // schema (e.g. mid-debugging) can opt out via SKIP_AUTO_MIGRATIONS=1
+  // (skip everything) or LENIENT_SCHEMA_CHECK=1 (run migrations but do not
+  // abort startup on per-file failures or missing critical columns).
   if (process.env.SKIP_AUTO_MIGRATIONS === '1') {
-    console.warn('[Startup] SKIP_AUTO_MIGRATIONS=1 — schema migrations skipped.');
+    console.warn('[Startup] SKIP_AUTO_MIGRATIONS=1 — schema migrations and verification skipped.');
   } else {
+    const lenient = process.env.LENIENT_SCHEMA_CHECK === '1';
     try {
       const { runPendingMigrations, verifyCriticalSchema, assertCriticalSchema } =
         await import('./scripts/run-migrations');
       const res = await runPendingMigrations(pool);
       if (res.failed.length > 0) {
-        console.warn(
-          `[Startup] ${res.failed.length} migration(s) failed — server will still start, ` +
-          `but the schema may be in a partial state. See [migrate] log lines above.`,
-        );
+        const msg =
+          `${res.failed.length} migration(s) failed — schema may be in a partial state. ` +
+          `See [migrate] log lines above.`;
+        if (lenient) {
+          console.warn('[Startup] ' + msg + ' Continuing because LENIENT_SCHEMA_CHECK=1.');
+        } else {
+          throw new Error(msg);
+        }
       }
-      // STRICT_SCHEMA_CHECK=1 (recommended in production) aborts startup
-      // when a critical column is missing instead of just warning. The
-      // default is warn-only so dev workflows tolerate intentional drift.
-      if (process.env.STRICT_SCHEMA_CHECK === '1') {
-        await assertCriticalSchema(pool);
-      } else {
+      if (lenient) {
         await verifyCriticalSchema(pool);
+      } else {
+        await assertCriticalSchema(pool);
       }
     } catch (err: any) {
-      if (process.env.STRICT_SCHEMA_CHECK === '1') {
-        console.error('[FATAL] Schema drift in strict mode — aborting startup:', err.message);
+      if (lenient) {
+        console.error('[Startup] Migration/verify error (lenient mode, continuing):', err.message);
+      } else {
+        console.error('[FATAL] Schema not current — aborting startup before listen():', err.message);
+        console.error('[FATAL] Set LENIENT_SCHEMA_CHECK=1 to start anyway, or SKIP_AUTO_MIGRATIONS=1 to bypass entirely.');
         process.exit(1);
         return;
       }
-      // Default behaviour: a partial schema is preferable to a fully-down
-      // service. The drift warning from verifyCriticalSchema (and the
-      // failed migration log lines) makes the operator aware.
-      console.error('[Startup] Migration runner crashed:', err.message);
     }
   }
 
