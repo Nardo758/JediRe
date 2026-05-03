@@ -131,6 +131,47 @@ Traffic Engine needs to consume from M35 Event Impact Engine to avoid three fail
 
 **Spec addition needed:** `TRAFFIC_ENGINE_CALIBRATION_SPEC.md` Section 2.3 "Event-aware calibration" — to be drafted before M35 integration session is scoped.
 
+### M07 Subject-First Calibration Rule
+
+**Every deal's own rent roll history is promoted above the peer set in the coefficient resolution hierarchy.**  The four-layer stack in `CoefficientResolverService.resolveForDeal()` is now:
+
+```
+SUBJECT (subject_traffic_history ≥S1)
+  → DEAL (derived_metrics on latest rent_roll_snapshots row)
+    → PLATFORM (traffic_calibration_factors submarket/class/vintage bucket)
+      → BASELINE (hard-coded constants in trafficCalibrationJob.ts)
+```
+
+**Bayesian blend formula (SUBJECT layer):**
+
+```
+w_subject = min(1.0,  n_observations / n_required)
+effective  = w_subject × subject_value + (1 − w_subject) × peer_value
+```
+
+`n_required` thresholds are defined in `SUBJECT_N_REQUIRED` in `traffic-calibration.types.ts`.  A coefficient starts at weight 0.0 (peer-only) and asymptotically reaches 1.0 (full subject authority) as observations accumulate.  The blend is linear between those extremes.
+
+**Tier promotion rules:**
+
+| Tier | Trigger | Data available |
+|------|---------|---------------|
+| S1 | First rent roll uploaded | current_state (occ, L2L, signing velocity, expiration waterfall) |
+| S2 | ≥2 snapshots ≥60 days apart | S1 + observed_dynamics (renewal rate, turnover, trade-outs, days vacant, concession trend) |
+| S3/S4 | Future (data model in place; aggregation logic deferred) | — |
+
+**Peer collision detection:**  When `|subject_value − peer_value| > 1.5σ` (using σ ≈ 15 % of peer value as a conservative prior), the pair is logged in `subject_traffic_history.peer_collisions` and surfaced on the Coefficients tab.  Do not suppress collisions — they are signals, not errors.
+
+**Implementation files:**
+- DB: `20260503_018_m07_subject_history.sql` — `rent_roll_snapshots` extension + `rent_roll_diffs` + `subject_traffic_history`
+- Types: `traffic-calibration.types.ts` — `MatchTier` 'SUBJECT', `SubjectTrafficHistory`, `SUBJECT_N_REQUIRED`
+- S1 aggregator: `services/rent-roll/subject-history-s1.service.ts`
+- Diff extractor + S2: `services/rent-roll/rent-roll-diff.service.ts`
+- Resolver: `services/coefficient-resolver.service.ts` — Bayesian blend loop
+- Routes: `api/rest/m07-calibration.routes.ts` — wires S1/S2 after every upload
+- Frontend: `SourceBadge` (`subject_history:s1/s2/s3/s4` entries), `ProjectionsTab` (`SubjectHistoryPanel`)
+
+**Rule:** Never merge a change that moves subject coefficients below the peer set in the resolver loop, degrades tier (S2 → S1), or removes peer collision logging.  The subject layer is the highest-fidelity signal available; silencing it defeats the M07 calibration contract.
+
 ---
 
 ## Pro Forma Schema-Change Rule (7-Ring Checklist)

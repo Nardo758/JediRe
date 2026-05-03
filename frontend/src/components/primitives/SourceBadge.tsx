@@ -34,6 +34,10 @@ export type LayeredValueSource =
   | 'tier3:market_comp'
   | 'tier3:jurisdiction'
   | 'tier4:broker'
+  | 'subject_history:s1'
+  | 'subject_history:s2'
+  | 'subject_history:s3'
+  | 'subject_history:s4'
   | 't12'
   | 'rent_roll'
   | 'tax_bill'
@@ -70,6 +74,11 @@ const BADGE_CONFIG: Partial<Record<LayeredValueSource | string, BadgeConfig>> = 
   'tier3:platform':   { label: 'MARKET', color: BT.text.purple,  tooltip: 'Tier 3 · Platform market intelligence' },
   'tier3:market_comp':{ label: 'MARKET', color: BT.text.purple,  tooltip: 'Tier 3 · Market comp data' },
   'tier3:jurisdiction':{ label: 'MARKET',color: BT.text.purple,  tooltip: 'Tier 3 · Jurisdiction forecast' },
+  // Subject History — deal's own historical rent roll data (promoted above peer set)
+  'subject_history:s1': { label: 'SUBJ·S1', color: '#2DD4BF', tooltip: 'Subject History S1 · Current-state from single rent roll snapshot' },
+  'subject_history:s2': { label: 'SUBJ·S2', color: '#14B8A6', tooltip: 'Subject History S2 · Observed dynamics from ≥2 snapshots (≥60 days)' },
+  'subject_history:s3': { label: 'SUBJ·S3', color: '#0D9488', tooltip: 'Subject History S3 · Extended multi-period analysis' },
+  'subject_history:s4': { label: 'SUBJ·S4', color: '#0F766E', tooltip: 'Subject History S4 · Full longitudinal history' },
   // Tier 4 — broker OM (low authority)
   'tier4:broker':     { label: 'BROKER', color: BT.text.orange,  tooltip: 'Tier 4 · Broker OM (unverified)' },
   'broker':           { label: 'BROKER', color: BT.text.orange,  tooltip: 'Broker OM value (unverified)' },

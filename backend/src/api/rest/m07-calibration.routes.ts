@@ -4,7 +4,7 @@
  * Exposes the M07 self-calibrating backend over REST:
  *
  *   POST /api/v1/calibration/rent-roll/upload
- *     → Full pipeline: detect → map → parse → store → derive
+ *     → Full pipeline: detect → map → parse → store → derive → S1 → S2 (if eligible)
  *
  *   POST /api/v1/calibration/rent-roll/:snapshotId/derive
  *     → Re-run derivations for an existing snapshot
@@ -16,7 +16,7 @@
  *     → Trigger the nightly calibration job on-demand (admin only)
  *
  *   GET  /api/v1/calibration/coefficients/:dealId
- *     → Get resolved coefficients for a deal (Deal → Platform → Baseline hierarchy)
+ *     → Get resolved coefficients for a deal (Subject → Deal → Platform → Baseline)
  *
  *   GET  /api/v1/calibration/starting-state/:dealId
  *     → Resolve starting state for a deal (STABILIZED / LEASE_UP / REDEVELOPMENT)
@@ -26,6 +26,9 @@
  *
  *   PUT  /api/v1/calibration/deal/:dealId/mode
  *     → Update deal_mode (STABILIZED / LEASE_UP / REDEVELOPMENT)
+ *
+ *   GET  /api/v1/calibration/subject-history/:dealId
+ *     → Get subject_traffic_history for a deal (S1/S2/S3/S4 tier)
  */
 
 import { Router, Request, Response } from 'express';
@@ -40,16 +43,20 @@ import { RentRollDerivationsService } from '../../services/rent-roll-derivations
 import { StartingStateService } from '../../services/starting-state.service';
 import { CoefficientResolverService } from '../../services/coefficient-resolver.service';
 import { TrafficCalibrationJob } from '../../jobs/trafficCalibrationJob';
+import { SubjectHistoryS1Service } from '../../services/rent-roll/subject-history-s1.service';
+import { RentRollDiffService, S2_MIN_PERIOD_DAYS } from '../../services/rent-roll/rent-roll-diff.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
 
 // Services
-const rentRollParser = new RentRollParserService(pool);
-const derivationsService = new RentRollDerivationsService(pool);
+const rentRollParser       = new RentRollParserService(pool);
+const derivationsService   = new RentRollDerivationsService(pool);
 const startingStateService = new StartingStateService(pool);
-const coefficientResolver = new CoefficientResolverService(pool);
-const calibrationJob = new TrafficCalibrationJob(pool);
+const coefficientResolver  = new CoefficientResolverService(pool);
+const calibrationJob       = new TrafficCalibrationJob(pool);
+const subjectHistoryS1     = new SubjectHistoryS1Service(pool);
+const rentRollDiff         = new RentRollDiffService(pool);
 
 // Multer for rent roll uploads.
 // Uses diskStorage with explicit filename so the original extension is preserved —
@@ -91,7 +98,6 @@ const rentRollMiddleware: RequestHandler = rentRollUpload.single('file');
 // Returns the deal row on success, or responds with 403/404 and returns null.
 // ============================================================================
 async function assertDealOwnership(req: Request, res: Response, dealId: string): Promise<boolean> {
-  // req.user is set by requireAuth middleware; cast to the augmented interface.
   const userId = (req as AuthenticatedRequest).user?.userId;
   if (!userId) {
     res.status(401).json({ error: 'Authentication required' });
@@ -104,7 +110,6 @@ async function assertDealOwnership(req: Request, res: Response, dealId: string):
   );
 
   if (result.rows.length === 0) {
-    // Return 404 to avoid leaking deal existence to unauthorised callers
     res.status(404).json({ error: 'Deal not found' });
     return false;
   }
@@ -124,11 +129,12 @@ function assertAdminRole(req: Request, res: Response): boolean {
 
 // ============================================================================
 // POST /rent-roll/upload
-// Full pipeline: detect → map → parse → store → derive
+// Full pipeline: detect → map → parse → store → derive → S1 aggregation →
+//                S2 diff extraction (if ≥2 snapshots ≥60 days apart)
 // ============================================================================
 router.post('/rent-roll/upload', rentRollMiddleware, async (req, res) => {
   try {
-    const file = req.file;
+    const file   = req.file;
     const dealId = req.body['dealId'];
 
     if (!file) {
@@ -138,11 +144,10 @@ router.post('/rent-roll/upload', rentRollMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'dealId is required' });
     }
 
-    // Verify the caller owns this deal before touching its data
     const authorized = await assertDealOwnership(req, res, dealId);
     if (!authorized) return;
 
-    // Step 1: Parse and store
+    // Step 1: Parse and store (writes parsed_payload, unit_count, occupied_count)
     const parseResult = await rentRollParser.parseAndStore(file.path, dealId);
 
     // Step 2: Run derivations immediately
@@ -153,6 +158,54 @@ router.post('/rent-roll/upload', rentRollMiddleware, async (req, res) => {
       `UPDATE rent_roll_snapshots SET status = 'derived' WHERE id = $1`,
       [parseResult.snapshot_id],
     );
+
+    // Step 3: S1 subject history aggregation (non-fatal — runs after primary response payload
+    // is assembled so any error here doesn't block the upload)
+    let s1Result: { ran: boolean; tier?: string } = { ran: false };
+    let s2Result: { ran: boolean; diff_id?: number | null; period_days?: number } = { ran: false };
+
+    try {
+      await subjectHistoryS1.aggregateS1(parseResult.snapshot_id, dealId);
+      s1Result = { ran: true, tier: 'S1' };
+    } catch (s1Err) {
+      logger.warn('[M07] S1 aggregation failed (non-fatal)', {
+        dealId,
+        error: s1Err instanceof Error ? s1Err.message : String(s1Err),
+      });
+    }
+
+    // Step 4: S2 diff extraction — only if there are prior snapshots ≥ 60 days apart
+    try {
+      const priorRow = await pool.query<{ snapshot_date: string }>(`
+        SELECT snapshot_date::text
+        FROM rent_roll_snapshots
+        WHERE deal_id = $1
+          AND id != $2
+          AND status IN ('derived','calibrated','parsed')
+        ORDER BY snapshot_date DESC, id DESC
+        LIMIT 1
+      `, [dealId, parseResult.snapshot_id]);
+
+      if (priorRow.rows.length > 0) {
+        const priorDate   = new Date(priorRow.rows[0].snapshot_date);
+        const currentDate = parseResult.snapshot_date;
+        const periodDays  = Math.round(
+          (currentDate.getTime() - priorDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        if (periodDays >= S2_MIN_PERIOD_DAYS) {
+          const diffId = await rentRollDiff.extractAndStore(dealId, parseResult.snapshot_id);
+          s2Result = { ran: true, diff_id: diffId, period_days: periodDays };
+        } else {
+          s2Result = { ran: false, period_days: periodDays };
+        }
+      }
+    } catch (s2Err) {
+      logger.warn('[M07] S2 diff extraction failed (non-fatal)', {
+        dealId,
+        error: s2Err instanceof Error ? s2Err.message : String(s2Err),
+      });
+    }
 
     return res.json({
       success: true,
@@ -167,6 +220,10 @@ router.post('/rent-roll/upload', rentRollMiddleware, async (req, res) => {
         renewal_rate_proxy: derived.renewal_rate_proxy,
         unit_types_found: derived.unit_type_breakdown.length,
         signing_velocity_total: derived.signing_velocity_24m.reduce((a, b) => a + b, 0),
+      },
+      subject_history: {
+        s1: s1Result,
+        s2: s2Result,
       },
       message: `Rent roll parsed and derived. ${parseResult.lease_events_stored} lease events stored.`,
     });
@@ -187,7 +244,6 @@ router.post('/rent-roll/:snapshotId/derive', async (req, res) => {
       return res.status(400).json({ error: 'Invalid snapshotId' });
     }
 
-    // Resolve the deal that owns this snapshot and verify access
     const snapshotRow = await pool.query<{ deal_id: string }>(
       'SELECT deal_id FROM rent_roll_snapshots WHERE id = $1',
       [snapshotId],
@@ -224,7 +280,8 @@ router.get('/rent-roll/:dealId/snapshots', async (req, res) => {
 
     const result = await pool.query<any>(`
       SELECT id, upload_id, original_filename, file_format, row_count,
-             extraction_confidence, snapshot_date, status, error_message, created_at
+             extraction_confidence, snapshot_date, status, error_message,
+             unit_count, occupied_count, parser_source, created_at
       FROM rent_roll_snapshots
       WHERE deal_id = $1
       ORDER BY snapshot_date DESC, created_at DESC
@@ -249,15 +306,11 @@ router.post('/job/run', async (req, res) => {
   try {
     if (!assertAdminRole(req, res)) return;
 
-    const lookbackHours = parseInt(req.body['lookbackHours'] || '720');  // default: 30 days
-
+    const lookbackHours = parseInt(req.body['lookbackHours'] || '720');
     logger.info('[M07] Manual calibration job triggered', { lookbackHours });
     const result = await calibrationJob.run(lookbackHours);
 
-    return res.json({
-      success: true,
-      result,
-    });
+    return res.json({ success: true, result });
   } catch (error: unknown) {
     logger.error('[M07] Calibration job failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ error: 'Calibration job failed', message: error instanceof Error ? error.message : String(error) });
@@ -266,7 +319,7 @@ router.post('/job/run', async (req, res) => {
 
 // ============================================================================
 // GET /coefficients/:dealId
-// Get resolved coefficients for a deal (Deal → Platform → Baseline)
+// Get resolved coefficients for a deal (Subject → Deal → Platform → Baseline)
 // ============================================================================
 router.get('/coefficients/:dealId', async (req, res) => {
   try {
@@ -275,7 +328,6 @@ router.get('/coefficients/:dealId', async (req, res) => {
     const authorized = await assertDealOwnership(req, res, dealId);
     if (!authorized) return;
 
-    // Load deal context from JSONB fields (deals has no properties FK)
     const dealResult = await pool.query<any>(`
       SELECT
         (d.deal_data->'market_intelligence'->'data'->'demographics'->'submarket'->>'id') AS submarket_id,
@@ -285,7 +337,6 @@ router.get('/coefficients/:dealId', async (req, res) => {
       WHERE d.id = $1
     `, [dealId]);
 
-    // Ownership was confirmed above; if 0 rows here it's a race condition
     if (dealResult.rows.length === 0) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -322,10 +373,7 @@ router.get('/starting-state/:dealId', async (req, res) => {
 
     const state = await startingStateService.resolveStartingState(dealId);
 
-    return res.json({
-      deal_id: dealId,
-      starting_state: state,
-    });
+    return res.json({ deal_id: dealId, starting_state: state });
   } catch (error: unknown) {
     logger.error('[M07] Starting state resolution failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ error: 'Failed to resolve starting state', message: error instanceof Error ? error.message : String(error) });
@@ -334,17 +382,12 @@ router.get('/starting-state/:dealId', async (req, res) => {
 
 // ============================================================================
 // GET /absorption-benchmark/:submarketId
-// Get platform absorption benchmark for a submarket (no deal ownership needed —
-// submarket benchmarks are aggregated platform-level data, not deal-specific)
 // ============================================================================
 router.get('/absorption-benchmark/:submarketId', async (req, res) => {
   try {
     const submarketId = req.params['submarketId'];
     const { property_class, size_band } = req.query;
 
-    // size_band is stored in vintage_band as "size:<band>" (e.g. "size:medium").
-    // Filter deterministically by (submarket, class, size_band) so callers always
-    // get the same row for the same tuple rather than relying on ORDER BY recency.
     const vintageFilter = size_band ? `size:${size_band}` : null;
 
     const result = await pool.query<any>(`
@@ -383,7 +426,6 @@ router.get('/absorption-benchmark/:submarketId', async (req, res) => {
 
 // ============================================================================
 // PUT /deal/:dealId/mode
-// Update deal_mode (STABILIZED / LEASE_UP / REDEVELOPMENT)
 // ============================================================================
 router.put('/deal/:dealId/mode', async (req, res) => {
   try {
@@ -418,6 +460,41 @@ router.put('/deal/:dealId/mode', async (req, res) => {
   } catch (error: unknown) {
     logger.error('[M07] Deal mode update failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ error: 'Failed to update deal mode', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// ============================================================================
+// GET /subject-history/:dealId
+// Get subject_traffic_history for a deal
+// ============================================================================
+router.get('/subject-history/:dealId', async (req, res) => {
+  try {
+    const dealId = req.params['dealId'];
+
+    const authorized = await assertDealOwnership(req, res, dealId);
+    if (!authorized) return;
+
+    const result = await pool.query<any>(
+      `SELECT id, deal_id, tier, snapshot_count, coverage_months,
+              current_state, observed_dynamics, confidence_weights, peer_collisions,
+              created_at, updated_at
+         FROM subject_traffic_history
+        WHERE deal_id = $1`,
+      [dealId],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        deal_id: dealId,
+        tier: null,
+        message: 'No subject history found. Upload a rent roll to generate S1 data.',
+      });
+    }
+
+    return res.json({ deal_id: dealId, ...result.rows[0] });
+  } catch (error: unknown) {
+    logger.error('[M07] Subject history fetch failed', { error: error instanceof Error ? error.message : String(error) });
+    return res.status(500).json({ error: 'Failed to fetch subject history', message: error instanceof Error ? error.message : String(error) });
   }
 });
 

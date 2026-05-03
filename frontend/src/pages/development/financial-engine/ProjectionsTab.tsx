@@ -3,6 +3,7 @@ import { BT, Bd } from '../../../components/deal/bloomberg-ui';
 import type {
   FinancialEngineTabProps, F9NarrativeBlock,
   F9DealFinancials, F9TrafficYear, F9GprDecomposition, F9ProFormaRow, F9IntegrityCheck,
+  F9SubjectHistory,
 } from './types';
 import { fmt$, fmtPct } from './types';
 import { apiClient } from '../../../services/api.client';
@@ -457,6 +458,280 @@ function buildSubCols(holdYears: number, mode: 'quarterly' | 'monthly'): SubColH
   return cols;
 }
 
+// ─── Subject History Inline Assumption Block ──────────────────────────────
+// Renders when f9Financials.subjectHistory is present (≥S1 tier).
+// Shows a four-column comparison: Peer Set | Subject | Effective | Confidence.
+
+const SUBJ_TEAL  = '#2DD4BF';
+const SUBJ_TEAL2 = '#14B8A6';
+
+interface SubjRow {
+  label: string;
+  key: string;
+  peer: number | null;
+  subject: number | null;
+  effective: number | null;
+  weight: number | null;
+  fmt: 'pct' | 'dollar' | 'num';
+}
+
+function fmtSubj(val: number | null, fmt: SubjRow['fmt']): string {
+  if (val == null || isNaN(val)) return '—';
+  switch (fmt) {
+    case 'pct':    return `${(val * 100).toFixed(1)}%`;
+    case 'dollar': return fmt$(val);
+    case 'num':    return val.toFixed(1);
+  }
+}
+
+function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const cs  = history.current_state;
+  const dyn = history.observed_dynamics;
+  const cw  = history.confidence_weights;
+
+  // Build rows from available data
+  const rows: SubjRow[] = [];
+
+  if (cs) {
+    rows.push({
+      label: 'Occupancy Rate', key: 'occupancy_rate',
+      peer: null, subject: cs.occupancy_rate,
+      effective: cs.occupancy_rate,
+      weight: 1, fmt: 'pct',
+    });
+    if (cs.loss_to_lease != null) {
+      const w = cw['loss_to_lease']?.weight ?? null;
+      rows.push({
+        label: 'Loss-to-Lease', key: 'loss_to_lease',
+        peer: null, subject: cs.loss_to_lease,
+        effective: cs.loss_to_lease,
+        weight: w, fmt: 'pct',
+      });
+    }
+    if (cs.avg_contract_rent != null) {
+      rows.push({
+        label: 'Avg Contract Rent', key: 'avg_contract_rent',
+        peer: null, subject: cs.avg_contract_rent,
+        effective: cs.avg_contract_rent,
+        weight: 1, fmt: 'dollar',
+      });
+    }
+    if (cs.avg_market_rent != null) {
+      rows.push({
+        label: 'Avg Market Rent', key: 'avg_market_rent',
+        peer: null, subject: cs.avg_market_rent,
+        effective: cs.avg_market_rent,
+        weight: 1, fmt: 'dollar',
+      });
+    }
+    if (cs.signing_velocity != null) {
+      const w = cw['signing_velocity']?.weight ?? null;
+      rows.push({
+        label: 'Signing Velocity (mo)', key: 'signing_velocity',
+        peer: null, subject: cs.signing_velocity,
+        effective: cs.signing_velocity,
+        weight: w, fmt: 'num',
+      });
+    }
+  }
+
+  if (dyn) {
+    if (dyn.renewal_rate != null) {
+      const w = cw['renewal_rate']?.weight ?? null;
+      rows.push({
+        label: 'Renewal Rate', key: 'renewal_rate',
+        peer: null, subject: dyn.renewal_rate,
+        effective: dyn.renewal_rate,
+        weight: w, fmt: 'pct',
+      });
+    }
+    if (dyn.turnover_rate != null) {
+      const w = cw['turnover_rate']?.weight ?? null;
+      rows.push({
+        label: 'Turnover Rate', key: 'turnover_rate',
+        peer: null, subject: dyn.turnover_rate,
+        effective: dyn.turnover_rate,
+        weight: w, fmt: 'pct',
+      });
+    }
+    if (dyn.new_lease_trade_out_pct != null) {
+      const w = cw['new_lease_trade_out_pct']?.weight ?? null;
+      rows.push({
+        label: 'New Lease Trade-Out', key: 'new_lease_trade_out_pct',
+        peer: null, subject: dyn.new_lease_trade_out_pct,
+        effective: dyn.new_lease_trade_out_pct,
+        weight: w, fmt: 'pct',
+      });
+    }
+    if (dyn.renewal_trade_out_pct != null) {
+      const w = cw['renewal_trade_out_pct']?.weight ?? null;
+      rows.push({
+        label: 'Renewal Trade-Out', key: 'renewal_trade_out_pct',
+        peer: null, subject: dyn.renewal_trade_out_pct,
+        effective: dyn.renewal_trade_out_pct,
+        weight: w, fmt: 'pct',
+      });
+    }
+    if (dyn.days_vacant_median != null) {
+      const w = cw['days_vacant_median']?.weight ?? null;
+      rows.push({
+        label: 'Days Vacant (median)', key: 'days_vacant_median',
+        peer: null, subject: dyn.days_vacant_median,
+        effective: dyn.days_vacant_median,
+        weight: w, fmt: 'num',
+      });
+    }
+  }
+
+  const tierColor = history.tier === 'S2' ? SUBJ_TEAL2 : SUBJ_TEAL;
+  const collisions = history.peer_collisions ?? [];
+
+  return (
+    <div style={{
+      flexShrink: 0,
+      borderBottom: `1px solid ${SUBJ_TEAL}30`,
+      background: `${SUBJ_TEAL}08`,
+    }}>
+      {/* Header row */}
+      <div
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '4px 10px', cursor: 'pointer',
+          borderBottom: expanded ? `1px solid ${SUBJ_TEAL}20` : 'none',
+        }}
+      >
+        <span style={{
+          fontFamily: MONO, fontSize: 8, fontWeight: 700,
+          color: tierColor, letterSpacing: 1,
+          background: `${tierColor}18`, border: `1px solid ${tierColor}40`,
+          padding: '1px 5px', borderRadius: 2,
+        }}>
+          SUBJ·{history.tier}
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: SUBJ_TEAL, fontWeight: 600 }}>
+          SUBJECT HISTORY
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+          {history.snapshot_count} snapshot{history.snapshot_count !== 1 ? 's' : ''}
+          {history.coverage_months != null ? ` · ${history.coverage_months.toFixed(1)} mo coverage` : ''}
+        </span>
+        {cs && (
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>
+            {cs.unit_count}u · {(cs.occupancy_rate * 100).toFixed(1)}% occ
+          </span>
+        )}
+        {collisions.length > 0 && (
+          <span style={{
+            fontFamily: MONO, fontSize: 8, color: BT.text.amber,
+            background: `${BT.text.amber}15`, border: `1px solid ${BT.text.amber}40`,
+            padding: '1px 5px', borderRadius: 2, marginLeft: 4,
+          }}>
+            {collisions.length} PEER COLLISION{collisions.length > 1 ? 'S' : ''}
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        {dyn && (
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+            {dyn.diff_period_count} diff period{dyn.diff_period_count !== 1 ? 's' : ''}
+          </span>
+        )}
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+          {expanded ? '▲' : '▼'}
+        </span>
+      </div>
+
+      {/* Expanded: comparison table */}
+      {expanded && (
+        <div style={{ padding: '0 0 6px 0' }}>
+          {rows.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 8 }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <th style={{ padding: '3px 10px', textAlign: 'left',  color: BT.text.muted, fontWeight: 500, minWidth: 200 }}>COEFFICIENT</th>
+                  <th style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.muted, fontWeight: 500 }}>PEER SET</th>
+                  <th style={{ padding: '3px 10px', textAlign: 'right', color: SUBJ_TEAL,     fontWeight: 600 }}>SUBJECT</th>
+                  <th style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.secondary, fontWeight: 500 }}>EFFECTIVE</th>
+                  <th style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.muted, fontWeight: 500, minWidth: 80 }}>CONF</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(row => {
+                  const collision = collisions.find(c => c.coefficient === row.key);
+                  return (
+                    <tr key={row.key} style={{ borderBottom: `1px solid ${BT.border.subtle}20` }}>
+                      <td style={{ padding: '3px 10px', color: collision ? BT.text.amber : BT.text.secondary }}>
+                        {row.label}
+                        {collision && (
+                          <span style={{ marginLeft: 6, color: BT.text.amber, fontSize: 7 }}>
+                            {collision.sigma_deviation.toFixed(1)}σ
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.muted }}>
+                        {fmtSubj(row.peer, row.fmt)}
+                      </td>
+                      <td style={{ padding: '3px 10px', textAlign: 'right', color: SUBJ_TEAL, fontWeight: 600 }}>
+                        {fmtSubj(row.subject, row.fmt)}
+                      </td>
+                      <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.secondary }}>
+                        {fmtSubj(row.effective, row.fmt)}
+                      </td>
+                      <td style={{ padding: '3px 10px', textAlign: 'right' }}>
+                        {row.weight != null ? (
+                          <span style={{
+                            color: row.weight >= 0.8 ? SUBJ_TEAL : row.weight >= 0.5 ? BT.text.amber : BT.text.muted,
+                            fontWeight: row.weight >= 0.8 ? 600 : 400,
+                          }}>
+                            {(row.weight * 100).toFixed(0)}%
+                          </span>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+
+          {/* Peer collision detail */}
+          {collisions.length > 0 && (
+            <div style={{ padding: '6px 10px 2px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {collisions.map(c => (
+                <span key={c.coefficient} style={{
+                  fontFamily: MONO, fontSize: 7,
+                  color: BT.text.amber,
+                  background: `${BT.text.amber}10`,
+                  border: `1px solid ${BT.text.amber}30`,
+                  padding: '2px 6px', borderRadius: 2,
+                }}>
+                  {c.coefficient.toUpperCase()}: subject {fmtSubj(c.subject_value, 'pct')} vs peer {fmtSubj(c.peer_value, 'pct')} ({c.sigma_deviation.toFixed(1)}σ)
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* S2 concession trend */}
+          {dyn?.concession_trend && (
+            <div style={{ padding: '4px 10px', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+              CONCESSION TREND:&nbsp;
+              <span style={{ color: dyn.concession_trend === 'increasing' ? BT.text.red : dyn.concession_trend === 'decreasing' ? SUBJ_TEAL : BT.text.secondary, fontWeight: 600 }}>
+                {dyn.concession_trend.toUpperCase()}
+              </span>
+            </div>
+          )}
+
+          <div style={{ padding: '2px 10px', fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+            Updated {new Date(history.updated_at).toLocaleDateString()} · M07 §6 subject-first calibration
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────
 export function ProjectionsTab({
   dealId,
@@ -476,8 +751,9 @@ export function ProjectionsTab({
     new Set(SECTIONS.map(s => s.key)),
   );
   const [showAfterTax, setShowAfterTax] = useState(false);
-  const [showGprDecomp, setShowGprDecomp] = useState(true);
-  const [showFindings,  setShowFindings]  = useState(true);
+  const [showGprDecomp,      setShowGprDecomp]      = useState(true);
+  const [showFindings,       setShowFindings]        = useState(true);
+  const [showSubjectHistory, setShowSubjectHistory]  = useState(true);
   const [narrative,        setNarrative]       = useState<string | null>(null);
   const [narrativeBlocks,  setNarrativeBlocks] = useState<F9NarrativeBlock[]>([]);
   const [narrativeLoading, setNarrativeLoading]= useState(false);
@@ -633,6 +909,14 @@ export function ProjectionsTab({
               padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
             }}>FINDINGS</button>
           )}
+          {financials?.subjectHistory && (
+            <button onClick={() => setShowSubjectHistory(v => !v)} style={{
+              background: showSubjectHistory ? `${SUBJ_TEAL}18` : 'transparent',
+              color:      showSubjectHistory ? SUBJ_TEAL : BT.text.muted,
+              border: `1px solid ${showSubjectHistory ? SUBJ_TEAL : BT.border.subtle}`,
+              padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
+            }}>SUBJ·{financials.subjectHistory.tier}</button>
+          )}
 
           <div style={{ flex: 1 }} />
 
@@ -669,6 +953,11 @@ export function ProjectionsTab({
         {/* ── AI Findings ────────────────────────────────────────────────── */}
         {showFindings && (narrativeLoading || hasNarrative) && (
           <FindingsPanel narrative={narrative} blocks={narrativeBlocks} loading={narrativeLoading} />
+        )}
+
+        {/* ── Subject History (M07 §6) ────────────────────────────────────── */}
+        {showSubjectHistory && financials?.subjectHistory && (
+          <SubjectHistoryPanel history={financials.subjectHistory} />
         )}
 
         {/* ── GPR Decomposition ──────────────────────────────────────────── */}

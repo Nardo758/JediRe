@@ -6,14 +6,15 @@
  */
 
 // ============================================================================
-// Layered Value — Deal → Platform → Baseline
+// Layered Value — Subject → Deal → Platform → Baseline
 // ============================================================================
 
-export type MatchTier = 'DEAL' | 'PLATFORM' | 'BASELINE';
+export type MatchTier = 'SUBJECT' | 'DEAL' | 'PLATFORM' | 'BASELINE';
 export type CalibrationWindow = 'TTM' | 'PYTM' | 'TTM_24';
 
 /**
- * A coefficient resolved from the three-layer Bayesian hierarchy.
+ * A coefficient resolved from the four-layer Bayesian hierarchy.
+ * `subject` is populated when subject_traffic_history ≥ S1 exists.
  * `deal` is populated only when the deal has uploaded rent rolls.
  * `platform` is the submarket/class/vintage-bucketed posterior.
  * `baseline` is the hard-coded constant from the original engine.
@@ -26,10 +27,13 @@ export interface LayeredValue<T = number> {
   baseline: T;
   platform: T | null;    // null = no platform data for this scope
   deal: T | null;        // null = no rent roll data for this deal
+  subject: T | null;     // null = no subject history at ≥S1 tier
   resolved: T;
   match_tier: MatchTier;
   window: CalibrationWindow;
   n_peer_properties: number;
+  /** Bayesian blend weight applied to subject value (0–1); null when tier is not SUBJECT */
+  subject_weight: number | null;
 }
 
 // ============================================================================
@@ -63,6 +67,8 @@ export interface CalibrationMeta {
   /** Starting-state mode resolved for this prediction (§4.2 output contract).
    *  Populated by the engine after starting-state resolution; absent if no deal context. */
   mode?: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
+  /** Subject history tier, if available (S1/S2/S3/S4) */
+  subject_history_tier?: string;
 }
 
 // ============================================================================
@@ -232,4 +238,96 @@ export interface TrafficPredictionCalibrated {
     expiring_units: number;
     expiring_pct: number;
   }>;
+}
+
+// ============================================================================
+// Subject Traffic History — per-deal historical data (M07 §6)
+// ============================================================================
+
+/**
+ * N_REQUIRED thresholds — minimum observations needed before a subject value
+ * receives full weight (w_subject = 1.0) in the Bayesian blend.
+ * Below this count: w_subject = n_obs / n_required (linear interpolation).
+ */
+export const SUBJECT_N_REQUIRED: Record<string, number> = {
+  walkin_to_tour:          6,
+  stop_probability:        6,
+  app_to_signed:           6,
+  apartment_seeker_pct:    6,
+  tour_to_app:             6,
+  visibility_capture_rate: 6,
+  renewal_rate:           12,   // S2: requires at least 12 observed renewals
+  turnover_rate:          12,
+  signing_velocity:        8,
+  days_vacant_median:      8,
+  loss_to_lease:           4,   // S1: only 4 obs needed (direct rent measurement)
+  concession_trend:        3,   // S2: need 3 diff periods
+};
+
+/** S1 current-state payload — computed from a single snapshot's parsed_payload */
+export interface SubjectCurrentState {
+  /** 0.0–1.0 occupancy fraction at snapshot date */
+  occupancy_rate: number;
+  unit_count: number;
+  occupied_count: number;
+  vacant_count: number;
+  notice_count: number;
+  /** (market_rent − contract_rent) / market_rent; null when market_rent absent */
+  loss_to_lease: number | null;
+  /** Avg concession_value across occupied units; null when absent */
+  avg_concession_value: number | null;
+  /** Avg contract_rent across occupied units; null when absent */
+  avg_contract_rent: number | null;
+  /** Avg market_rent across all units; null when absent */
+  avg_market_rent: number | null;
+  /** Forward 24-month lease expiration waterfall (inherited from derivations) */
+  expiration_waterfall: Array<{
+    months_out: number;
+    expiring_units: number;
+    expiring_pct: number;
+  }>;
+  /** Signing velocity from derivations (leases/month) */
+  signing_velocity: number | null;
+}
+
+/** S2 observed-dynamics payload — computed from ≥2 snapshots ≥60 days apart */
+export interface SubjectObservedDynamics {
+  renewal_rate: number | null;
+  turnover_rate: number | null;
+  new_lease_trade_out_pct: number | null;
+  renewal_trade_out_pct: number | null;
+  signing_velocity: number | null;
+  days_vacant_median: number | null;
+  concession_trend: 'increasing' | 'stable' | 'decreasing' | null;
+  loss_to_lease: number | null;
+  /** Number of diff periods aggregated into S2 */
+  diff_period_count: number;
+}
+
+export interface SubjectWeightEntry {
+  n_obs: number;
+  n_required: number;
+  weight: number;     // min(1, n_obs / n_required)
+}
+
+export interface SubjectPeerCollision {
+  coefficient: string;
+  subject_value: number;
+  peer_value: number;
+  sigma_deviation: number;
+}
+
+/** Full subject_traffic_history record shape (mirrors DB row) */
+export interface SubjectTrafficHistory {
+  id: number;
+  deal_id: string;
+  tier: 'S1' | 'S2' | 'S3' | 'S4';
+  snapshot_count: number;
+  coverage_months: number | null;
+  current_state: SubjectCurrentState | null;
+  observed_dynamics: SubjectObservedDynamics | null;
+  confidence_weights: Record<string, SubjectWeightEntry>;
+  peer_collisions: SubjectPeerCollision[];
+  created_at: Date;
+  updated_at: Date;
 }

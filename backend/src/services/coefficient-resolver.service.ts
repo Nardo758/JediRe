@@ -1,13 +1,15 @@
 /**
  * M07: Bayesian Coefficient Resolver
  *
- * Resolves traffic conversion coefficients via the three-layer hierarchy:
- *   DEAL (deal-specific rent roll) → PLATFORM (submarket/class/vintage bucket) → BASELINE (hard-coded)
+ * Resolves traffic conversion coefficients via the four-layer hierarchy:
+ *   SUBJECT (subject_traffic_history ≥S1) → DEAL (deal rent roll) → PLATFORM → BASELINE
+ *
+ * Subject layer uses a Bayesian blend:
+ *   w_subject = min(1, n_observations / n_required)
+ *   effective = w_subject × subject_value + (1 − w_subject) × peer_value
  *
  * Returns a TrafficCoefficientFamily where each coefficient includes its
- * resolved value, match_tier, and confidence_band.
- *
- * This is the engine's integration point for the Bayesian calibration stack.
+ * resolved value, match_tier, subject_weight, and confidence metadata.
  */
 
 import type { Pool } from 'pg';
@@ -17,7 +19,9 @@ import type {
   CalibrationMeta,
   MatchTier,
   CalibrationWindow,
+  SubjectTrafficHistory,
 } from '../types/traffic-calibration.types';
+import { SUBJECT_N_REQUIRED } from '../types/traffic-calibration.types';
 import { BASELINE_COEFFICIENTS } from '../jobs/trafficCalibrationJob';
 import { logger } from '../utils/logger';
 
@@ -36,10 +40,11 @@ export class CoefficientResolverService {
   /**
    * Resolve all coefficients for a deal + submarket context.
    *
-   * Lookup order:
-   *   1. Deal-specific derived coefficients (from latest rent roll snapshot)
-   *   2. Platform bucket: most specific (submarket + class + vintage) → MSA → platform
-   *   3. Baseline hard-coded constants
+   * Lookup order (highest to lowest authority):
+   *   1. Subject history (S1/S2) — Bayesian blend with peer value
+   *   2. Deal-specific derived coefficients (from latest rent roll snapshot)
+   *   3. Platform bucket: most specific → MSA → platform
+   *   4. Baseline hard-coded constants
    */
   async resolveForDeal(
     dealId: string | null,
@@ -51,13 +56,19 @@ export class CoefficientResolverService {
 
     const vintageBand = this.getVintageBand(yearBuilt);
 
-    // Try Deal-level first (from most recent derived snapshot)
+    // Layer 1: Subject history (highest priority — subject's own property data)
+    const subjectHistory = await this.loadSubjectHistory(dealId);
+
+    // Layer 2: Deal-level derived coefficients from most recent snapshot
     const dealCoefficients = await this.loadDealCoefficients(dealId);
 
-    // Try Platform-level (buckets: submarket→msa→platform)
+    // Layer 3: Platform-level coefficients
     const platformCoefficients = await this.loadPlatformCoefficients(
       submarketId, propertyClass, vintageBand, msaId
     );
+
+    // Derive coefficient proxies from subject history (same formula as deal coefficients)
+    const subjectCoefficients = this.deriveSubjectCoefficients(subjectHistory);
 
     // Build the family
     const family = {} as TrafficCoefficientFamily;
@@ -66,48 +77,108 @@ export class CoefficientResolverService {
     let window: CalibrationWindow = 'TTM';
     let calibrationSource = 'baseline';
 
-    for (const name of ALL_COEFFICIENTS) {
-      const baseline = BASELINE_COEFFICIENTS[name];
-      const dealVal = dealCoefficients?.[name] ?? null;
-      const platformEntry = platformCoefficients?.[name] ?? null;
+    // Accumulate peer collisions for this resolution pass
+    const peerCollisions: Array<{ coefficient: string; subject_value: number; peer_value: number; sigma_deviation: number }> = [];
 
-      let resolved: number;
-      let matchTier: MatchTier;
+    for (const name of ALL_COEFFICIENTS) {
+      const baseline    = BASELINE_COEFFICIENTS[name];
+      const dealVal     = dealCoefficients?.[name]    ?? null;
+      const platformEntry = platformCoefficients?.[name] ?? null;
+      const subjectVal  = subjectCoefficients?.[name] ?? null;
+
+      // Determine peer value (deal > platform > baseline)
+      let peerValue: number;
+      let peerTier: MatchTier;
       let resolvedWindow: CalibrationWindow = 'TTM';
       let resolvedN = 0;
 
       if (dealVal !== null) {
-        resolved = dealVal;
-        matchTier = 'DEAL';
-        overallMatchTier = 'DEAL';
+        peerValue = dealVal;
+        peerTier  = 'DEAL';
       } else if (platformEntry !== null) {
-        resolved = platformEntry.value;
-        matchTier = 'PLATFORM';
+        peerValue = platformEntry.value;
+        peerTier  = 'PLATFORM';
         resolvedWindow = platformEntry.window;
         resolvedN = platformEntry.n_peer_properties;
-        if (overallMatchTier === 'BASELINE') overallMatchTier = 'PLATFORM';
-        if (resolvedN > nPeerProperties) {
-          nPeerProperties = resolvedN;
-          window = resolvedWindow;
-          calibrationSource = platformEntry.source;
+      } else {
+        peerValue = baseline;
+        peerTier  = 'BASELINE';
+      }
+
+      // Apply Bayesian blend if subject history available
+      let resolved: number;
+      let matchTier: MatchTier;
+      let subjectWeight: number | null = null;
+
+      if (subjectVal !== null && subjectHistory !== null) {
+        const weightEntry = subjectHistory.confidence_weights[name];
+        const w = weightEntry
+          ? weightEntry.weight
+          : Math.min(1, (subjectHistory.snapshot_count) / (SUBJECT_N_REQUIRED[name] ?? 6));
+
+        if (w > 0) {
+          resolved     = w * subjectVal + (1 - w) * peerValue;
+          matchTier    = 'SUBJECT';
+          subjectWeight = w;
+          overallMatchTier = 'SUBJECT';
+
+          // Detect peer collision (|subject − peer| > 1.5σ heuristic — peer σ ≈ 15% of peerValue)
+          const peerSigma = Math.abs(peerValue) * 0.15;
+          if (peerSigma > 0) {
+            const sigmaDeviation = Math.abs(subjectVal - peerValue) / peerSigma;
+            if (sigmaDeviation > 1.5) {
+              peerCollisions.push({
+                coefficient:     name,
+                subject_value:   subjectVal,
+                peer_value:      peerValue,
+                sigma_deviation: parseFloat(sigmaDeviation.toFixed(2)),
+              });
+            }
+          }
+        } else {
+          resolved  = peerValue;
+          matchTier = peerTier;
         }
       } else {
-        resolved = baseline;
-        matchTier = 'BASELINE';
+        resolved  = peerValue;
+        matchTier = peerTier;
+      }
+
+      // Track overall tier and meta (prefer most specific peer context for display)
+      if (overallMatchTier !== 'SUBJECT') {
+        if (matchTier === 'DEAL')     overallMatchTier = 'DEAL';
+        else if (matchTier === 'PLATFORM' && overallMatchTier === 'BASELINE') overallMatchTier = 'PLATFORM';
+      }
+      if (resolvedN > nPeerProperties) {
+        nPeerProperties = resolvedN;
+        window = resolvedWindow;
+        calibrationSource = platformEntry?.source ?? calibrationSource;
       }
 
       (family as any)[name] = {
         baseline,
-        platform: platformEntry?.value ?? null,
-        deal: dealVal,
+        platform:       platformEntry?.value ?? null,
+        deal:           dealVal,
+        subject:        subjectVal,
         resolved,
-        match_tier: matchTier,
-        window: resolvedWindow,
+        match_tier:     matchTier,
+        window:         resolvedWindow,
         n_peer_properties: resolvedN,
+        subject_weight: subjectWeight,
       } as LayeredValue;
     }
 
-    // Build confidence band from the platform entry (or baseline defaults)
+    // Persist updated peer collisions back to subject_traffic_history (fire-and-forget)
+    if (dealId && subjectHistory && peerCollisions.length > 0) {
+      this.pool.query(
+        `UPDATE subject_traffic_history
+            SET peer_collisions = $1, updated_at = NOW()
+          WHERE deal_id = $2`,
+        [JSON.stringify(peerCollisions), dealId],
+      ).catch(err => logger.debug('[CoefficientResolver] Peer collision persist failed', { err }));
+    }
+
+    // Build confidence band
     const sampleCoeff = platformCoefficients?.['walkin_to_tour'];
     const mid = (family.walkin_to_tour as LayeredValue).resolved;
     const confidenceBand = sampleCoeff
@@ -121,15 +192,122 @@ export class CoefficientResolverService {
       n_peer_properties: nPeerProperties,
       confidence_band: confidenceBand,
       coefficients: family,
+      subject_history_tier: subjectHistory?.tier ?? undefined,
     };
 
     return { family, meta };
   }
 
+  // ============================================================================
+  // Private: Subject History loader
+  // ============================================================================
+
   /**
-   * Extract deal-level coefficient overrides from the most recent derived rent roll snapshot.
-   * Returns null if no rent roll has been uploaded for this deal.
+   * Load subject_traffic_history for a deal.  Returns null if no history exists
+   * or if the tier is below S1 (which should not happen, but is defensive).
    */
+  private async loadSubjectHistory(
+    dealId: string | null,
+  ): Promise<SubjectTrafficHistory | null> {
+    if (!dealId) return null;
+    try {
+      const result = await this.pool.query<{
+        id: number;
+        deal_id: string;
+        tier: string;
+        snapshot_count: number;
+        coverage_months: string | null;
+        current_state: any;
+        observed_dynamics: any;
+        confidence_weights: any;
+        peer_collisions: any;
+        created_at: Date;
+        updated_at: Date;
+      }>(
+        `SELECT id, deal_id, tier, snapshot_count, coverage_months,
+                current_state, observed_dynamics, confidence_weights, peer_collisions,
+                created_at, updated_at
+           FROM subject_traffic_history
+          WHERE deal_id = $1`,
+        [dealId],
+      );
+
+      if (result.rows.length === 0) return null;
+      const row = result.rows[0];
+
+      return {
+        id:                row.id,
+        deal_id:           row.deal_id,
+        tier:              row.tier as 'S1' | 'S2' | 'S3' | 'S4',
+        snapshot_count:    row.snapshot_count,
+        coverage_months:   row.coverage_months ? parseFloat(row.coverage_months) : null,
+        current_state:     row.current_state    ?? null,
+        observed_dynamics: row.observed_dynamics ?? null,
+        confidence_weights: row.confidence_weights ?? {},
+        peer_collisions:   row.peer_collisions   ?? [],
+        created_at:        row.created_at,
+        updated_at:        row.updated_at,
+      };
+    } catch (err: unknown) {
+      logger.debug('[CoefficientResolver] Could not load subject history', {
+        dealId, error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Derive coefficient proxies from subject_traffic_history using the same
+   * formula as loadDealCoefficients(), but sourcing data from subject history
+   * current_state (S1+) and observed_dynamics (S2+).
+   */
+  private deriveSubjectCoefficients(
+    history: SubjectTrafficHistory | null,
+  ): Partial<Record<CoefficientName, number>> | null {
+    if (!history) return null;
+
+    const cs  = history.current_state;
+    const dyn = history.observed_dynamics;
+
+    if (!cs) return null;
+
+    const proxies: Partial<Record<CoefficientName, number>> = {};
+
+    // walkin_to_tour ← signing_velocity (S1+ or S2)
+    const sv = dyn?.signing_velocity ?? cs.signing_velocity;
+    if (sv != null && sv > 0) {
+      proxies.walkin_to_tour = Math.min(0.9, Math.max(0.1, sv / 10));
+    }
+
+    // stop_probability ← days_vacant_median (S2) or inferred from occupancy (S1)
+    if (dyn?.days_vacant_median != null && dyn.days_vacant_median > 0) {
+      proxies.stop_probability = Math.min(0.5, Math.max(0.05,
+        0.15 * (30 / dyn.days_vacant_median)));
+    }
+
+    // app_to_signed ← renewal_rate (S2)
+    if (dyn?.renewal_rate != null) {
+      proxies.app_to_signed = Math.min(0.95, Math.max(0.3,
+        0.5 + dyn.renewal_rate * 0.3));
+    }
+
+    // apartment_seeker_pct ← concession signal (S1 avg_concession_value or S2 concession_trend)
+    if (cs.avg_concession_value != null) {
+      const concFreeWeeks = cs.avg_concession_value / Math.max(1, cs.avg_contract_rent ?? 1) * 52;
+      proxies.apartment_seeker_pct = concFreeWeeks > 4
+        ? 0.015
+        : concFreeWeeks < 1
+          ? 0.025
+          : BASELINE_COEFFICIENTS.apartment_seeker_pct;
+    }
+
+    return Object.keys(proxies).length > 0 ? proxies : null;
+  }
+
+  // ============================================================================
+  // Private: Deal coefficients (from most recent derived snapshot)
+  // ============================================================================
+
   private async loadDealCoefficients(
     dealId: string | null,
   ): Promise<Partial<Record<CoefficientName, number>> | null> {
@@ -148,7 +326,6 @@ export class CoefficientResolverService {
       const derived = result.rows[0].derived_metrics;
       if (!derived || !derived.unit_type_breakdown?.length) return null;
 
-      // Derive proxies from derived metrics (same logic as calibration job)
       const allUnitTypes = derived.unit_type_breakdown;
       const avgSigningVelocity = this.mean(allUnitTypes.map((u: any) => u.signing_velocity));
       const avgDaysVacant = this.mean(allUnitTypes.map((u: any) => u.days_vacant_avg).filter((d: number) => d > 0));
@@ -166,29 +343,24 @@ export class CoefficientResolverService {
         apartment_seeker_pct: avgConcession > 4 ? 0.015 : avgConcession < 1 ? 0.025 : BASELINE_COEFFICIENTS.apartment_seeker_pct,
       };
     } catch (err: unknown) {
-      logger.debug('[CoefficientResolver] Could not load deal coefficients', { dealId, error: err instanceof Error ? err.message : String(err) });
+      logger.debug('[CoefficientResolver] Could not load deal coefficients', {
+        dealId, error: err instanceof Error ? err.message : String(err),
+      });
       return null;
     }
   }
 
-  /**
-   * Load platform-level coefficients from traffic_calibration_factors,
-   * falling back from most specific scope to most general.
-   */
+  // ============================================================================
+  // Private: Platform coefficients
+  // ============================================================================
+
   private async loadPlatformCoefficients(
     submarketId: string | null,
     propertyClass: string | null,
     vintageBand: string | null,
     msaId: string | null = null,
   ): Promise<Record<CoefficientName, PlatformEntry> | null> {
-    // Note: no early-return when both geo IDs are null.
-    // The submarket/msa-scoped attempts will simply return 0 rows in that case,
-    // and execution continues through to class / vintage / platform tiers —
-    // which are geo-independent and must remain reachable for this fallback to work.
     try {
-      // Degradation hierarchy per spec:
-      //   submarket+class+vintage → submarket+class → submarket
-      //   → MSA+class → class (first-class) → vintage (first-class) → platform
       const scopeAttempts: Array<{
         scope_level: string;
         submarket_id: string | null;
@@ -196,23 +368,15 @@ export class CoefficientResolverService {
         vintage_band: string | null;
         msa_id: string | null;
       }> = [
-        // Most specific: submarket + class + vintage
         { scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass, vintage_band: vintageBand, msa_id: null },
-        // Submarket + class only
         { scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass, vintage_band: null, msa_id: null },
-        // Submarket only (drop class)
         { scope_level: 'submarket', submarket_id: submarketId, property_class: null, vintage_band: null, msa_id: null },
-        // MSA + class
         { scope_level: 'msa', submarket_id: null, property_class: propertyClass, vintage_band: null, msa_id: msaId },
-        // Class scope — cross-MSA platform data sliced by property class
         { scope_level: 'class', submarket_id: null, property_class: propertyClass, vintage_band: null, msa_id: null },
-        // Vintage scope — cross-MSA platform data sliced by vintage band
         { scope_level: 'vintage', submarket_id: null, property_class: null, vintage_band: vintageBand, msa_id: null },
-        // Platform level (global fallback — all nulls)
         { scope_level: 'platform', submarket_id: null, property_class: null, vintage_band: null, msa_id: null },
       ];
 
-      // Window priority: TTM (primary) → TTM_24 (sparse fallback) → PYTM (comparison)
       const WINDOW_PRIORITY: CalibrationWindow[] = ['TTM', 'TTM_24', 'PYTM'];
 
       for (const attempt of scopeAttempts) {
@@ -255,7 +419,6 @@ export class CoefficientResolverService {
             };
           }
 
-          // Only use this scope+window if we have at least 2 coefficients
           if (Object.keys(entries).length >= 2) {
             return entries as Record<CoefficientName, PlatformEntry>;
           }
@@ -264,7 +427,9 @@ export class CoefficientResolverService {
 
       return null;
     } catch (err: unknown) {
-      logger.debug('[CoefficientResolver] Platform coefficient lookup failed', { error: err instanceof Error ? err.message : String(err) });
+      logger.debug('[CoefficientResolver] Platform coefficient lookup failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       return null;
     }
   }

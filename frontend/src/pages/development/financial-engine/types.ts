@@ -419,6 +419,42 @@ export interface F9DealFinancials {
       totalGpFees: number;
     };
   } | null;
+  /** Subject property traffic history — M07 §6.  Null until first rent roll uploaded for this deal. */
+  subjectHistory?: F9SubjectHistory | null;
+}
+
+/** Subject property traffic history — M07 §6.  Populated when ≥1 rent roll has been uploaded. */
+export interface F9SubjectHistory {
+  tier: 'S1' | 'S2' | 'S3' | 'S4';
+  snapshot_count: number;
+  coverage_months: number | null;
+  current_state: {
+    occupancy_rate: number;
+    unit_count: number;
+    occupied_count: number;
+    vacant_count: number;
+    notice_count: number;
+    loss_to_lease: number | null;
+    avg_concession_value: number | null;
+    avg_contract_rent: number | null;
+    avg_market_rent: number | null;
+    signing_velocity: number | null;
+    expiration_waterfall: Array<{ months_out: number; expiring_units: number; expiring_pct: number }>;
+  } | null;
+  observed_dynamics: {
+    renewal_rate: number | null;
+    turnover_rate: number | null;
+    new_lease_trade_out_pct: number | null;
+    renewal_trade_out_pct: number | null;
+    signing_velocity: number | null;
+    days_vacant_median: number | null;
+    concession_trend: 'increasing' | 'stable' | 'decreasing' | null;
+    loss_to_lease: number | null;
+    diff_period_count: number;
+  } | null;
+  confidence_weights: Record<string, { n_obs: number; n_required: number; weight: number }>;
+  peer_collisions: Array<{ coefficient: string; subject_value: number; peer_value: number; sigma_deviation: number }>;
+  updated_at: string;
 }
 
 export type F9ProFormaRow = F9DealFinancials['proforma']['year1'][number];

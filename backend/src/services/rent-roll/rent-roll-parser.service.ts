@@ -86,12 +86,37 @@ export class RentRollParserService {
       missingFields.length,
     );
 
-    // Step 4: Persist snapshot
+    // Step 4: Build normalised parsed_payload — serialisable copy of leaseEvents
+    // Dates are converted to ISO strings so they survive JSON round-trips.
+    const parsedPayload = leaseEvents.map(evt => ({
+      unit_id:           evt.unit_id          ?? null,
+      unit_type:         evt.unit_type        ?? null,
+      unit_sf:           evt.unit_sf          ?? null,
+      contract_rent:     evt.contract_rent    ?? null,
+      market_rent:       evt.market_rent      ?? null,
+      concession_value:  evt.concession_value ?? null,
+      concession_months: evt.concession_months ?? null,
+      lease_start:       evt.lease_start  ? (evt.lease_start instanceof Date ? evt.lease_start.toISOString() : evt.lease_start) : null,
+      lease_end:         evt.lease_end    ? (evt.lease_end instanceof Date   ? evt.lease_end.toISOString()   : evt.lease_end)   : null,
+      move_in_date:      evt.move_in_date ? (evt.move_in_date instanceof Date ? evt.move_in_date.toISOString() : evt.move_in_date) : null,
+      move_out_date:     evt.move_out_date ? (evt.move_out_date instanceof Date ? evt.move_out_date.toISOString() : evt.move_out_date) : null,
+      notice_date:       evt.notice_date  ? (evt.notice_date instanceof Date  ? evt.notice_date.toISOString()  : evt.notice_date)  : null,
+      unit_status:       evt.unit_status  ?? null,
+      is_renewal:        evt.is_renewal   ?? null,
+      days_vacant:       evt.days_vacant  ?? null,
+      row_confidence:    evt.row_confidence,
+    }));
+
+    const unitCount    = leaseEvents.length;
+    const occupiedCount = leaseEvents.filter(e => e.unit_status === 'occupied').length;
+
+    // Step 4: Persist snapshot (with parsed_payload, unit/occupied counts, parser_source)
     const snapshotResult = await this.pool.query<{ id: number }>(`
       INSERT INTO rent_roll_snapshots
         (deal_id, original_filename, file_path, file_format, row_count,
-         extraction_confidence, snapshot_date, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'parsed')
+         extraction_confidence, snapshot_date, status,
+         parsed_payload, unit_count, occupied_count, parser_source)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'parsed', $8, $9, $10, $11)
       RETURNING id
     `, [
       dealId,
@@ -101,6 +126,10 @@ export class RentRollParserService {
       leaseEvents.length,
       extractionConfidence,
       snapshotDate.toISOString().split('T')[0],
+      JSON.stringify(parsedPayload),
+      unitCount,
+      occupiedCount,
+      detection.format,
     ]);
 
     const snapshotId = snapshotResult.rows[0].id;
