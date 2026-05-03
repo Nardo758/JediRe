@@ -28,22 +28,37 @@ import { apiClient } from '../../services/api.client';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
 
+// ── Safe array coercion — guards against the API returning objects/nulls ──────
+function toArr<T>(v: unknown): T[] {
+  return Array.isArray(v) ? v : [];
+}
+
 // ── Normalize ModelResults from any source (DB, build, version load) ─────────
 // The engine stores sourcesAndUses.sources / .uses as Record<string,number>
 // objects; ModelResults and all tabs expect {label,amount}[] arrays.
 // Apply this before every setModelResults call.
 function normalizeModelResults(raw: ModelResults): ModelResults {
-  if (!raw?.sourcesAndUses) return raw;
-  const su = raw.sourcesAndUses as { sources: unknown; uses: unknown };
-  if (su.sources && !Array.isArray(su.sources)) {
-    su.sources = Object.entries(su.sources as Record<string, number>).map(
-      ([label, amount]) => ({ label, amount }),
-    );
+  if (!raw) return raw;
+  // sourcesAndUses normalization
+  if (raw.sourcesAndUses) {
+    const su = raw.sourcesAndUses as { sources: unknown; uses: unknown };
+    if (su.sources && !Array.isArray(su.sources)) {
+      su.sources = Object.entries(su.sources as Record<string, number>).map(
+        ([label, amount]) => ({ label, amount }),
+      );
+    }
+    if (su.uses && !Array.isArray(su.uses)) {
+      su.uses = Object.entries(su.uses as Record<string, number>).map(
+        ([label, amount]) => ({ label, amount }),
+      );
+    }
   }
-  if (su.uses && !Array.isArray(su.uses)) {
-    su.uses = Object.entries(su.uses as Record<string, number>).map(
-      ([label, amount]) => ({ label, amount }),
-    );
+  // Ensure array fields are always arrays
+  if (raw.annualCashFlow != null && !Array.isArray(raw.annualCashFlow)) {
+    (raw as any).annualCashFlow = [];
+  }
+  if (raw.waterfallDistributions != null && !Array.isArray(raw.waterfallDistributions)) {
+    (raw as any).waterfallDistributions = [];
   }
   return raw;
 }
@@ -93,8 +108,8 @@ function mergeModelIntoFinancials(
   out.returns.avgNoiGrowth      = null;
   out.returns.gpPromoteEarned   = s.gpPromoteEarned ?? null;
   out.returns.lpTrancheReturns  = [];
-  out.returns.netDistributionsByYear = (model.annualCashFlow ?? []).map(r => r.lpDistribution ?? null);
-  out.returns.cumulativeCfByYear = (model.annualCashFlow ?? []).reduce<number[]>((acc, r, i) => {
+  out.returns.netDistributionsByYear = toArr<any>(model.annualCashFlow).map(r => r.lpDistribution ?? null);
+  out.returns.cumulativeCfByYear = toArr<any>(model.annualCashFlow).reduce<number[]>((acc, r, i) => {
     const prev = i > 0 ? acc[i - 1] : 0;
     acc.push(prev + (r.cashFlow ?? 0));
     return acc;
@@ -139,7 +154,7 @@ function mergeModelIntoFinancials(
     prefRate: 0.08,
     lpShare: 0.9,
     gpShare: 0.1,
-    tiers: (model.waterfallDistributions ?? []).map((w, i) => ({
+    tiers: toArr<any>(model.waterfallDistributions).map((w, i) => ({
       triggerIrr: w.hurdleRate ?? 0.08 + i * 0.03,
       lpPct: w.lpSplit ?? 0.8 - i * 0.1,
       gpPct: w.gpSplit ?? 0.2 + i * 0.1,
@@ -161,7 +176,7 @@ function mergeModelIntoFinancials(
   out.capitalStack.ltc = out.capitalStack.purchasePrice ? (out.capitalStack.loanAmount ?? 0) / out.capitalStack.purchasePrice : null;
 
   // ── Projections (time series for the projections grid) ──
-  out.projections = (model.annualCashFlow ?? []).map(r => ({
+  out.projections = toArr<any>(model.annualCashFlow).map(r => ({
     year: r.year,
     gpr: r.gpr,
     vacancy: r.vacancy,
@@ -182,7 +197,7 @@ function mergeModelIntoFinancials(
       { id: 'lpA', label: 'LP CLASS A', role: 'lp', pct: 90, prefRate: out.waterfall.prefRate, compounding: 'annual', cumulative: true, participatePromote: true },
       { id: 'gp', label: 'GP CO-INVEST', role: 'gp', pct: 10, prefRate: 0, compounding: 'annual', cumulative: false, participatePromote: true },
     ],
-    schedule: (model.annualCashFlow ?? []).map((r, i) => ({
+    schedule: toArr<any>(model.annualCashFlow).map((r, i) => ({
       year: r.year,
       prefAccrued: 0,
       prefPaid: Math.min((r.cashFlow ?? 0) * 0.9, 100000),

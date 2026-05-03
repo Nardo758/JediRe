@@ -154,23 +154,16 @@ const MarketScreen = (props: ScreenProps) => (
 const StrategyScreen = (props: ScreenProps) => (
   <StrategyArbitragePage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
 );
-const ProFormaScreen = (props: ScreenProps) => (
-  <DealScreenWrapper
-    passProps={props}
-    tabs={[
-      {
-        id: 'proforma',
-        label: 'Pro Forma',
-        component: (p: ScreenProps) => (
-          <FinancialEnginePage
-            dealId={p.dealId}
-            deal={p.deal as Record<string, unknown> | undefined}
-            dealType={p.dealType}
-          />
-        ),
-      },
-    ]}
+const FinancialEngineWrapper = (p: ScreenProps) => (
+  <FinancialEnginePage
+    dealId={p.dealId}
+    deal={p.deal as Record<string, unknown> | undefined}
+    dealType={p.dealType}
   />
+);
+const PROFORMA_TABS = [{ id: 'proforma', label: 'Pro Forma', component: FinancialEngineWrapper }];
+const ProFormaScreen = (props: ScreenProps) => (
+  <DealScreenWrapper passProps={props} tabs={PROFORMA_TABS} />
 );
 const PortfolioAssetBridge: React.FC<{ dealId: string; featureName: string }> = ({ dealId, featureName }) => {
   // Neural network context awareness
@@ -202,6 +195,17 @@ const isOwnedDeal = (status?: string, pipelineStage?: string) =>
   ['owned', 'closed'].includes((status ?? '').toLowerCase()) ||
   ['closed', 'owned'].includes((pipelineStage ?? '').toLowerCase());
 
+const ExitCapitalWrapper = (p: ScreenProps) => (
+  <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} />
+);
+const InvestorCapitalWrapper = (p: ScreenProps) =>
+  isOwnedDeal(p.deal?.status, p.deal?.pipeline_stage)
+    ? <PortfolioAssetBridge dealId={p.dealId} featureName="Investor Capital" />
+    : <InvestorCapitalModule dealId={p.dealId} deal={p.deal} />;
+const DEBT_CAPITAL_TABS = [
+  { id: 'exit',      label: 'Exit & Debt Analysis', component: ExitCapitalWrapper },
+  { id: 'investors', label: 'Investor Capital',      component: InvestorCapitalWrapper },
+];
 const DebtCapitalScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
@@ -214,12 +218,7 @@ const DebtCapitalScreen = (props: ScreenProps) => (
       { l: 'EXIT', c: BT.text.amber },
     ]}
     accentColor={BT.text.cyan}
-    tabs={[
-      { id: 'exit',     label: 'Exit & Debt Analysis',   component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} /> },
-      { id: 'investors', label: 'Investor Capital',       component: (p: ScreenProps) => isOwnedDeal(p.deal?.status, p.deal?.pipeline_stage)
-          ? <PortfolioAssetBridge dealId={p.dealId} featureName="Investor Capital" />
-          : <InvestorCapitalModule dealId={p.dealId} deal={p.deal} /> },
-    ]}
+    tabs={DEBT_CAPITAL_TABS}
   />
 );
 const RiskScreen = (props: ScreenProps) => (
