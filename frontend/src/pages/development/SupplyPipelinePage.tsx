@@ -122,8 +122,13 @@ const SupplyPipelinePage: React.FC = () => {
       .catch(() => {});
   }, [dealId]);
 
-  useEffect(() => { fetchSupplyData(); }, [dealId, timeHorizon, fetchSupplyData]);
-  useEffect(() => { if (dealCity) fetchSupplyData(dealCity); }, [dealCity, fetchSupplyData]);
+  // fetchSupplyData is declared below; it closes over dealId/timeHorizon/dealCity
+  // directly so re-running on those keys is sufficient (and including
+  // fetchSupplyData would create a TDZ ReferenceError on first render).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchSupplyData(); }, [dealId, timeHorizon]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (dealCity) fetchSupplyData(dealCity); }, [dealCity]);
 
   const fetchSupplyData = async (cityOverride?: string) => {
     setLoading(true);

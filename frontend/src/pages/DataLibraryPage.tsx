@@ -154,7 +154,10 @@ export const DataLibraryPage: React.FC = () => {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const visibilityPollListenerRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => { loadFiles(); }, [filters, loadFiles]);
+  // loadFiles is a stable function declared below this effect; it closes
+  // over `filters` directly so re-running on `filters` change is sufficient.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadFiles(); }, [filters]);
 
   useEffect(() => {
     return () => {
