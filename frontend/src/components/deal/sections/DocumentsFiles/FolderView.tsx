@@ -27,6 +27,8 @@ interface FolderViewProps {
   onDelete: (fileId: string) => void;
   onDownload: (file: DealFile) => void;
   onUpdate: (fileId: string, updates: Partial<DealFile>) => void;
+  /** Task #517 — re-run extraction pipeline for a single file. */
+  onReextract?: (fileId: string) => void;
   isPipeline: boolean;
   predefinedFolders?: string[];
 }
@@ -62,6 +64,7 @@ export const FolderView: React.FC<FolderViewProps> = ({
   onFolderChange,
   onDelete,
   onDownload,
+  onReextract,
   // onUpdate and isPipeline reserved for future folder-level actions
   predefinedFolders = [],
 }) => {
@@ -382,6 +385,29 @@ export const FolderView: React.FC<FolderViewProps> = ({
                     >
                       DL
                     </button>
+                    {onReextract && (() => {
+                      const inFlight = file.extraction_status === 'queued' || file.extraction_status === 'running';
+                      return (
+                        <button
+                          onClick={() => onReextract(file.id)}
+                          disabled={inFlight}
+                          title={inFlight ? 'Extraction already in progress' : 'Re-extract this file'}
+                          style={{
+                            background: BG_HOVER,
+                            border: `1px solid ${BORDER}`,
+                            color: '#A78BFA',
+                            cursor: inFlight ? 'not-allowed' : 'pointer',
+                            opacity: inFlight ? 0.4 : 1,
+                            padding: '4px 10px',
+                            fontSize: 10,
+                            fontFamily: MONO,
+                            letterSpacing: '0.06em',
+                          }}
+                        >
+                          ⟳ RE
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={() => onDelete(file.id)}
                       style={{

@@ -265,10 +265,12 @@ router.post(
         mime_type: string | null;
       };
 
-      // Atomic single-flight guard: reset state ONLY if not already running.
+      // Atomic single-flight guard: reset state ONLY if not already in flight.
       // Concurrent reextract calls would otherwise spawn duplicate parser
       // runs (LLM cost, repeated data-router side effects, racing terminal
-      // status writes). rowCount=0 means a run is already in flight.
+      // status writes). Both 'queued' and 'running' count as in-flight, so
+      // a second click while the worker hasn't picked up the job yet still
+      // 409s instead of clobbering state. rowCount=0 means in-flight.
       const reset = await dbQuery(
         `UPDATE deal_files
             SET extraction_status = 'queued',
@@ -277,14 +279,16 @@ router.post(
                 extraction_error = NULL,
                 extraction_started_at = NULL,
                 extraction_completed_at = NULL
-          WHERE id = $1 AND extraction_status IS DISTINCT FROM 'running'`,
+          WHERE id = $1
+            AND extraction_status IS DISTINCT FROM 'running'
+            AND extraction_status IS DISTINCT FROM 'queued'`,
         [fileId]
       );
 
       if (reset.rowCount === 0) {
         return res.status(409).json({
           success: false,
-          message: 'Extraction is already running for this file',
+          message: 'Extraction is already in progress for this file',
           fileId: file.id,
         });
       }

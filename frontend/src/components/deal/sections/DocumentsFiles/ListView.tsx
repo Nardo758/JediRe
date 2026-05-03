@@ -38,6 +38,8 @@ interface ListViewProps {
   onDelete: (fileId: string) => void;
   onDownload: (file: DealFile) => void;
   onUpdate: (fileId: string, updates: Partial<DealFile>) => void;
+  /** Task #517 — re-run extraction pipeline for a single file. */
+  onReextract?: (fileId: string) => void;
   isPipeline: boolean;
 }
 
@@ -46,6 +48,7 @@ export const ListView: React.FC<ListViewProps> = ({
   onDelete,
   onDownload,
   onUpdate,
+  onReextract,
 }) => {
   const [sortBy, setSortBy] = useState<'name' | 'date' | 'size' | 'category'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -181,6 +184,20 @@ export const ListView: React.FC<ListViewProps> = ({
                 <button onClick={() => onDownload(file)} className="action-btn" title="Download">
                   ⬇
                 </button>
+                {onReextract && (
+                  <button
+                    onClick={() => onReextract(file.id)}
+                    className="action-btn reextract"
+                    title={
+                      file.extraction_status === 'queued' || file.extraction_status === 'running'
+                        ? 'Extraction already in progress'
+                        : 'Re-extract this file'
+                    }
+                    disabled={file.extraction_status === 'queued' || file.extraction_status === 'running'}
+                  >
+                    ⟳
+                  </button>
+                )}
                 <button onClick={() => onDelete(file.id)} className="action-btn delete" title="Delete">
                   🗑
                 </button>

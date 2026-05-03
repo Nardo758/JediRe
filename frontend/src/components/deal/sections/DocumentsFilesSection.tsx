@@ -265,6 +265,64 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
     setCurrentFolder(path);
   };
 
+  // Per-file re-extract (Task #517) — re-runs the extraction pipeline for a
+  // single document via POST /api/v1/deals/:dealId/files/:fileId/reextract.
+  // Useful for re-running a specific rent roll after the parser is improved
+  // (e.g. Task #514 extraction-quality flags) without re-extracting every
+  // document on the deal. The endpoint enforces a single-flight guard server
+  // side, so concurrent clicks just return 409 instead of duplicating work.
+  // We seed extraction_status='queued' optimistically so the existing polling
+  // effect (lines 134-163) starts ticking immediately and shows live progress.
+  const handleReextractFile = async (fileId: string) => {
+    const file = files.find((f) => f.id === fileId);
+    if (!file) return;
+    if (file.extraction_status === 'running' || file.extraction_status === 'queued') {
+      setReprocessMsg(`Extraction is already in progress for "${file.original_filename}".`);
+      return;
+    }
+    if (!confirm(
+      `Re-run extraction on "${file.original_filename}"? Existing parsed data for this file will be overwritten when the new extraction completes.`,
+    )) return;
+
+    try {
+      setReprocessMsg(null);
+      // Optimistic local state — flip to 'queued' so the polling loop kicks
+      // in and the badge updates without waiting for the next loadData().
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === fileId
+            ? { ...f, extraction_status: 'queued', extraction_error: null }
+            : f
+        )
+      );
+      const r = await axios.post(
+        `/api/v1/deals/${deal.id}/files/${fileId}/reextract`
+      );
+      const ok = r.data?.success !== false;
+      setReprocessMsg(
+        ok
+          ? `Re-extraction queued for "${file.original_filename}". The deal capsule will refresh automatically once it completes.`
+          : `Re-extract request rejected: ${r.data?.message ?? 'unknown error'}`
+      );
+    } catch (err: any) {
+      // Roll back optimistic update on failure so the badge doesn't lie.
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === fileId
+            ? { ...f, extraction_status: file.extraction_status, extraction_error: file.extraction_error }
+            : f
+        )
+      );
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.message ?? err?.message ?? 'unknown error';
+      setReprocessMsg(
+        status === 409
+          ? `Re-extract failed: extraction is already running for this file.`
+          : `Re-extract failed: ${msg}`
+      );
+    }
+  };
+
   const handleReprocess = async () => {
     if (reprocessing) return;
     if (files.length === 0) {
@@ -344,8 +402,8 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
             padding: '8px 12px',
             margin: '8px 0',
             borderRadius: 4,
-            background: reprocessMsg.startsWith('Re-process failed') ? '#fee' : '#eef7ff',
-            color: reprocessMsg.startsWith('Re-process failed') ? '#a40000' : '#0a4a7a',
+            background: /^Re-(process|extract) failed/.test(reprocessMsg) ? '#fee' : '#eef7ff',
+            color: /^Re-(process|extract) failed/.test(reprocessMsg) ? '#a40000' : '#0a4a7a',
             fontSize: 13,
           }}
         >
@@ -438,6 +496,7 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
           onDelete={handleDelete}
           onDownload={handleDownload}
           onUpdate={handleUpdate}
+          onReextract={handleReextractFile}
           isPipeline={isPipeline}
           predefinedFolders={allowedCategories}
         />
@@ -462,6 +521,7 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
               onDelete={handleDelete}
               onDownload={handleDownload}
               onUpdate={handleUpdate}
+              onReextract={handleReextractFile}
               isPipeline={isPipeline}
             />
           )}
@@ -472,6 +532,7 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
               onDelete={handleDelete}
               onDownload={handleDownload}
               onUpdate={handleUpdate}
+              onReextract={handleReextractFile}
               isPipeline={isPipeline}
             />
           )}

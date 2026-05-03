@@ -12,6 +12,8 @@ interface GridViewProps {
   onDelete: (fileId: string) => void;
   onDownload: (file: DealFile) => void;
   onUpdate: (fileId: string, updates: Partial<DealFile>) => void;
+  /** Task #517 — re-run extraction pipeline for a single file. */
+  onReextract?: (fileId: string) => void;
   isPipeline: boolean;
 }
 
@@ -20,6 +22,7 @@ export const GridView: React.FC<GridViewProps> = ({
   onDelete,
   onDownload,
   onUpdate,
+  onReextract,
   isPipeline,
 }) => {
   return (
@@ -109,6 +112,20 @@ export const GridView: React.FC<GridViewProps> = ({
             >
               ⬇
             </button>
+            {onReextract && (
+              <button
+                onClick={() => onReextract(file.id)}
+                className="action-btn reextract"
+                title={
+                  file.extraction_status === 'queued' || file.extraction_status === 'running'
+                    ? 'Extraction already in progress'
+                    : 'Re-extract this file'
+                }
+                disabled={file.extraction_status === 'queued' || file.extraction_status === 'running'}
+              >
+                ⟳
+              </button>
+            )}
             <button
               onClick={() => onDelete(file.id)}
               className="action-btn delete"
@@ -312,6 +329,16 @@ export const GridView: React.FC<GridViewProps> = ({
 
         .action-btn.delete:hover {
           background: #fee2e2;
+        }
+
+        .action-btn.reextract:hover:not(:disabled) {
+          background: #ede9fe;
+          color: #6d28d9;
+        }
+
+        .action-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.4;
         }
 
         .ext-badge {
