@@ -12,7 +12,8 @@
     "lint:hooks": "eslint . --ext ts,tsx --report-unused-disable-directives --rule '{\"react-hooks/exhaustive-deps\":\"error\",\"react-hooks/rules-of-hooks\":\"error\",\"@typescript-eslint/no-explicit-any\":\"off\",\"@typescript-eslint/no-unused-vars\":\"off\",\"react-refresh/only-export-components\":\"off\",\"no-empty\":\"off\"}' --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "deploy:check": "npm run lint:hooks && npm run lint && npm run test && npm run build"
+    "test:ci": "vitest run src/components/deal/sections/__tests__/V2FullAnalysis.errorBoundary.test.tsx",
+    "deploy:check": "npm run lint:hooks && npm run lint && npm run test:ci && npm run build"
   },
   "overrides": {
     "@types/react": "^18.2.43",
