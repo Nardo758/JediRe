@@ -164,7 +164,9 @@ export const fetchLineItemBenchmarksTool = {
 
         for (const bucket of bucketLevels) {
           const params: unknown[] = [normalizedItem];
-          const conditions: string[] = ['(line_item = $1 OR $1 = ANY(line_item_aliases))'];
+          // Cast $1 to text on the ANY() side so pg can resolve the
+          // operator unambiguously against the line_item_aliases text[].
+          const conditions: string[] = ['(line_item = $1 OR $1::text = ANY(line_item_aliases))'];
           let paramIdx = 1;
 
           // Build dynamic WHERE clause. Only consume a positional param when
@@ -187,10 +189,8 @@ export const fetchLineItemBenchmarksTool = {
           addCondition('vintage_band', bucket.filters.vintage_band);
           addCondition('unit_count_band', bucket.filters.unit_count_band);
 
-          // Cast $1 to text so the OR comparison with the line_item_aliases
-          // text[] column doesn't trigger an "operator does not exist" /
-          // type-inference error when pg sees an untyped text literal.
-          const sql = `SELECT 
+          const result = await query(
+            `SELECT 
               line_item, category,
               per_unit_p10, per_unit_p25, per_unit_p50, per_unit_p75, per_unit_p90, per_unit_mean,
               pct_egi_p10, pct_egi_p25, pct_egi_p50, pct_egi_p75, pct_egi_p90,
@@ -198,11 +198,12 @@ export const fetchLineItemBenchmarksTool = {
               n_samples, n_deals, as_of,
               state, msa, submarket, asset_class, deal_type, vintage_band, unit_count_band
             FROM line_item_benchmarks
-            WHERE ${conditions.join(' AND ').replace('$1 = ANY(line_item_aliases)', '$1::text = ANY(line_item_aliases)')}
+            WHERE ${conditions.join(' AND ')}
               AND n_samples >= 3
             ORDER BY n_samples DESC, as_of DESC
-            LIMIT 1`;
-          const result = await query(sql, params);
+            LIMIT 1`,
+            params
+          );
 
           if (result.rows.length > 0) {
             const row = result.rows[0] as Record<string, unknown>;
