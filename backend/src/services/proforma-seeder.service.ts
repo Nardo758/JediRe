@@ -321,9 +321,17 @@ function buildSeed(
   });
 
   const oi = rrOIMObj;
+  // Per-category ancillary lines (parking, pet, storage, laundry, rubs, fees,
+  // insurance_admin, other) are positive-by-design revenue buckets. When the
+  // rent-roll reports 0 or a negative value for one of them, that almost
+  // always means the property manager doesn't track the line at the unit
+  // level (or a write-off / concession is leaking into the bucket) — NOT
+  // that the property earned $0 from it. Coerce ≤0 to null so the resolver
+  // falls through to OM. Task #519 (464 Bishop fix).
   const oiAnnual = (key: string) => {
     const v = num(oi, key);
-    return v != null ? v * months : null;
+    if (v == null || v <= 0) return null;
+    return v * months;
   };
   // Per-category priority: prefer rent-roll truth, fall back to OM broker
   // pro-forma (T-12 has no per-category breakdown — only an aggregate).
