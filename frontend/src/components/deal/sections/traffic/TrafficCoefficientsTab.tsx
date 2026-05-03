@@ -88,7 +88,9 @@ export default function TrafficCoefficientsTab({ dealId }: TrafficCoefficientsTa
     }
   };
 
-  useEffect(() => { load(); }, [dealId, load]);
+  // load is an inline function recreated each render; including it would cause an infinite re-fetch loop. It closes over the listed primitive deps directly.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [dealId]);
 
   const rows: CoefficientRow[] = Object.entries(BASELINE_DEFAULTS).map(([key, def]) => {
     const comp = calibration?.comparisons?.[key] ?? calibration?.comparisons?.[def.label] ?? null;

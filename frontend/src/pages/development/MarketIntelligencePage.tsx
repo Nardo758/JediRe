@@ -361,7 +361,9 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     }
   };
 
-  useEffect(() => { fetchData(); }, [dealId, fetchData]);
+  // fetchData is an inline function recreated each render; including it would cause an infinite re-fetch loop. It closes over the listed primitive deps directly.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchData(); }, [dealId]);
 
   const narrative = useMemo(() => data ? generateNarrative(data) : null, [data]);
   const riskSignals = useMemo(() => data ? detectRiskSignals(data) : [], [data]);
