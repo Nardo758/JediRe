@@ -351,3 +351,64 @@ export interface SubjectTrafficHistory {
   created_at: Date;
   updated_at: Date;
 }
+
+// ============================================================================
+// Concession Environment Sub-Engine — M07 Task #525
+// ============================================================================
+
+export type ConcessionConfidence = 'HIGH' | 'MED' | 'LOW';
+export type ConcessionSeverity = 'MINOR' | 'MATERIAL' | 'SEVERE';
+
+/**
+ * Per-year source blend weights (must sum to ≤ 1; remainder is class_default).
+ * Captures how much each data layer contributed to the resolved value.
+ */
+export interface ConcessionSourceBlend {
+  class_default_weight: number;
+  submarket_weight: number;
+  subject_weight: number;
+}
+
+/**
+ * Collision logged when subject-history S2+ concession diverges
+ * materially (≥1.5σ) from the M05 submarket baseline.
+ */
+export interface ConcessionCollision {
+  year: number;
+  subject_value_months: number;
+  submarket_value_months: number;
+  std_dev: number;
+  delta_sigma: number;
+  severity: ConcessionSeverity;
+  narrative: string;
+}
+
+/**
+ * Resolved concession environment for a single hold-period year.
+ * This is the canonical output consumed by the M09 Projections Adapter
+ * and the CashFlow Agent.
+ */
+export interface PerYearConcessionEnv {
+  year: number;
+  free_months: number;
+  concession_pct: number;
+  supply_pressure_modifier: number;
+  confidence: ConcessionConfidence;
+  source_blend: ConcessionSourceBlend;
+  renovated_free_months?: number;
+  untouched_free_months?: number;
+}
+
+/** Top-level output written to dealContext.traffic.concession_environment */
+export interface ConcessionEnvironmentOutput {
+  deal_id: string;
+  mode: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
+  property_class: string;
+  hold_years: number;
+  per_year: PerYearConcessionEnv[];
+  collisions: ConcessionCollision[];
+  computed_at: string;
+  supply_pressure_score: number | null;
+  submarket_sample_size: number | null;
+  subject_s2_available: boolean;
+}

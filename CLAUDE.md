@@ -222,3 +222,90 @@ Every Pro Forma field must be explicitly assigned to Section A or Section B at t
 - UI placement: Section B block in AssumptionsTab, with "Y2+ ONLY" badge.
 
 **When in doubt:** if the value can appear on a T12, rent roll, or tax bill, it belongs in Section A. If it is a growth rate, a trajectory assumption, or an exit parameter, it belongs in Section B.
+
+---
+
+## M07 Subject-First Calibration
+
+> Full implementation: `backend/src/services/rent-roll/`, `backend/src/services/coefficient-resolver.service.ts`
+> Types: `backend/src/types/traffic-calibration.types.ts`
+> DB: `subject_traffic_history`, `rent_roll_diffs`, `rent_roll_snapshots` (extended)
+
+### SUBJECT-FIRST Rule
+
+The M07 coefficient resolver uses a **subject-first** Bayesian hierarchy for all traffic conversion coefficients:
+
+```
+SUBJECT (w >= 0.5) → tier SUBJECT (subject dominates)
+SUBJECT (0 < w < 0.5) → tier PLATFORM (peer dominates; blend still applied)
+w = 0 or no subject → PLATFORM → BASELINE
+```
+
+**The DEAL proxy layer is intentionally excluded.** The pre-M07 binary deal-first lookup is replaced by Bayesian subject-vs-peer blending against the platform posterior.
+
+### Evidence Tiers
+
+| Tier | Trigger | Data Available |
+|------|---------|----------------|
+| S1 | First rent roll upload | `current_state`: occupancy, LTL, concessions, signing velocity |
+| S2 | ≥2 snapshots ≥60 days apart | + `observed_dynamics`: renewal_rate, turnover, trade-outs, vacancy days, concession_trend |
+| S3 | Future: ≥6-month span | Extended longitudinal |
+| S4 | Future: ≥12-month span | Full longitudinal |
+
+### Bayesian Blend Formula
+
+```
+w_subject = min(1, n_obs / n_required)
+resolved  = w × subject_value + (1 − w) × platform_peer_posterior
+```
+
+`n_required` thresholds are defined in `SUBJECT_N_REQUIRED` in `traffic-calibration.types.ts`.
+Tier SUBJECT is reported only when `w >= 0.5` (subject dominates); below that, PLATFORM is reported.
+
+### N_REQUIRED Thresholds (key coefficients)
+
+| Metric | n_required | Source tier |
+|--------|-----------|-------------|
+| `loss_to_lease` | 4 | S1 (single snapshot) |
+| `signing_velocity` | 8 | S1 |
+| `renewal_rate` | 12 | S2 |
+| `days_vacant_median` | 8 | S2 |
+| `concession_trend` | 3 | S2 diff periods |
+
+### Coefficient → Metric Mapping
+
+| Traffic Coefficient | Subject History Metric |
+|--------------------|----------------------|
+| `walkin_to_tour` | `signing_velocity` |
+| `stop_probability` | `days_vacant_median` |
+| `app_to_signed` | `renewal_rate` |
+| `apartment_seeker_pct` | `concession_trend` → `loss_to_lease` (S1 fallback) |
+
+### Pipeline Trigger (rent roll upload)
+
+Every `POST /api/v1/calibration/rent-roll/upload` runs:
+1. Parse + store (`parsed_payload`, `unit_count`, `occupied_count`, `parser_source` on snapshot)
+2. Run derivations (`derived_metrics` JSONB)
+3. **S1 aggregation** — always (non-fatal if fails)
+4. **S2 diff extraction** — only when a prior snapshot exists AND `period_days >= 60`
+
+### Key Files
+
+- `rent-roll-parser.service.ts` — Step 1: parse → `parsed_payload` + columns
+- `rent-roll-derivations.service.ts` — Step 2: derive → `derived_metrics`
+- `subject-history-s1.service.ts` — Step 3: S1 current-state → `subject_traffic_history`
+- `rent-roll-diff.service.ts` — Step 4: S2 dynamics → `rent_roll_diffs` + promote to S2
+- `coefficient-resolver.service.ts` — Bayesian subject-vs-peer blend at resolution time
+
+### Collision Detection
+
+Peer collision: when `|subject_value − peer_posterior| / (peer_posterior × 0.15) > 1.5σ`.
+Stored in `subject_traffic_history.peer_collisions[]` at S2 promotion.
+Exposed in `/api/v1/calibration/coefficients/:dealId` response via `meta.subject_history.peer_collisions`.
+
+### Frontend Integration (F9 ProjectionsTab)
+
+`SubjectHistoryPanel` renders when `f9Financials.subjectHistory != null`.
+Toggle button: `SUBJ·{tier}` in teal — uses `SUBJ_TEAL = '#2DD4BF'` color.
+`F9SubjectHistory` type is in `frontend/src/pages/development/financial-engine/types.ts`.
+`SourceBadge` supports `subject_history:s1|s2|s3|s4` via `LayeredValueSource` union.

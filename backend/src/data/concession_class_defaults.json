@@ -1,0 +1,110 @@
+{
+  "_comment": "Concession Environment Sub-Engine — class × mode default table (Task #525). free_months = free rent months offered per stabilization year. concession_pct = concession as fraction of annual rent (0.0–1.0). Managed via admin panel GET /api/v1/calibration/concession-defaults.",
+  "A": {
+    "STABILIZED": {
+      "free_months": 0.5,
+      "concession_pct": 0.04
+    },
+    "LEASE_UP": {
+      "free_months": 2.0,
+      "concession_pct": 0.15,
+      "monthly_decay_curve": [2.5, 2.5, 2.0, 2.0, 1.75, 1.75, 1.5, 1.5, 1.25, 1.25, 1.0, 1.0,
+                               0.75, 0.75, 0.75, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
+    },
+    "REDEVELOPMENT": {
+      "renovated": {
+        "free_months": 1.0,
+        "concession_pct": 0.08
+      },
+      "untouched": {
+        "free_months": 0.5,
+        "concession_pct": 0.04,
+        "retention_bump_months": 0.25
+      }
+    }
+  },
+  "B": {
+    "STABILIZED": {
+      "free_months": 0.75,
+      "concession_pct": 0.06
+    },
+    "LEASE_UP": {
+      "free_months": 2.5,
+      "concession_pct": 0.19,
+      "monthly_decay_curve": [3.0, 3.0, 2.5, 2.5, 2.25, 2.25, 2.0, 2.0, 1.75, 1.5, 1.25, 1.0,
+                               0.875, 0.875, 0.875, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75]
+    },
+    "REDEVELOPMENT": {
+      "renovated": {
+        "free_months": 1.25,
+        "concession_pct": 0.10
+      },
+      "untouched": {
+        "free_months": 0.75,
+        "concession_pct": 0.06,
+        "retention_bump_months": 0.25
+      }
+    }
+  },
+  "C": {
+    "STABILIZED": {
+      "free_months": 1.0,
+      "concession_pct": 0.08
+    },
+    "LEASE_UP": {
+      "free_months": 3.0,
+      "concession_pct": 0.23,
+      "monthly_decay_curve": [3.5, 3.5, 3.0, 3.0, 2.75, 2.75, 2.5, 2.5, 2.25, 2.0, 1.75, 1.5,
+                               1.25, 1.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    },
+    "REDEVELOPMENT": {
+      "renovated": {
+        "free_months": 1.5,
+        "concession_pct": 0.12
+      },
+      "untouched": {
+        "free_months": 1.0,
+        "concession_pct": 0.08,
+        "retention_bump_months": 0.25
+      }
+    }
+  },
+  "_defaults_fallback": {
+    "STABILIZED": {
+      "free_months": 0.75,
+      "concession_pct": 0.06
+    },
+    "LEASE_UP": {
+      "free_months": 2.5,
+      "concession_pct": 0.19,
+      "monthly_decay_curve": [3.0, 3.0, 2.5, 2.5, 2.25, 2.25, 2.0, 2.0, 1.75, 1.5, 1.25, 1.0,
+                               0.875, 0.875, 0.875, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75]
+    },
+    "REDEVELOPMENT": {
+      "renovated": {
+        "free_months": 1.25,
+        "concession_pct": 0.10
+      },
+      "untouched": {
+        "free_months": 0.75,
+        "concession_pct": 0.06,
+        "retention_bump_months": 0.25
+      }
+    }
+  },
+  "_meta": {
+    "version": "1.0.0",
+    "supply_pressure_coefficient": 1.5,
+    "supply_pressure_bounds": [0.5, 2.5],
+    "subject_weight_schedule": {
+      "Y1": 1.0,
+      "Y2": 0.5,
+      "Y3_plus": 0.0
+    },
+    "collision_sigma_thresholds": {
+      "minor": 1.5,
+      "material": 2.5
+    },
+    "thin_submarket_threshold": 30
+  }
+}

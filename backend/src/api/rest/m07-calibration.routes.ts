@@ -45,18 +45,20 @@ import { CoefficientResolverService } from '../../services/coefficient-resolver.
 import { TrafficCalibrationJob } from '../../jobs/trafficCalibrationJob';
 import { SubjectHistoryS1Service } from '../../services/rent-roll/subject-history-s1.service';
 import { RentRollDiffService, S2_MIN_PERIOD_DAYS } from '../../services/rent-roll/rent-roll-diff.service';
+import { ConcessionEnvironmentEngine } from '../../services/concession-environment-engine';
 import { logger } from '../../utils/logger';
 
 const router = Router();
 
 // Services
-const rentRollParser       = new RentRollParserService(pool);
-const derivationsService   = new RentRollDerivationsService(pool);
-const startingStateService = new StartingStateService(pool);
-const coefficientResolver  = new CoefficientResolverService(pool);
-const calibrationJob       = new TrafficCalibrationJob(pool);
-const subjectHistoryS1     = new SubjectHistoryS1Service(pool);
-const rentRollDiff         = new RentRollDiffService(pool);
+const rentRollParser           = new RentRollParserService(pool);
+const derivationsService       = new RentRollDerivationsService(pool);
+const startingStateService     = new StartingStateService(pool);
+const coefficientResolver      = new CoefficientResolverService(pool);
+const calibrationJob           = new TrafficCalibrationJob(pool);
+const subjectHistoryS1         = new SubjectHistoryS1Service(pool);
+const rentRollDiff             = new RentRollDiffService(pool);
+const concessionEnvEngine      = new ConcessionEnvironmentEngine(pool);
 
 // Multer for rent roll uploads.
 // Uses diskStorage with explicit filename so the original extension is preserved —
@@ -495,6 +497,91 @@ router.get('/subject-history/:dealId', async (req, res) => {
   } catch (error: unknown) {
     logger.error('[M07] Subject history fetch failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ error: 'Failed to fetch subject history', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// ============================================================================
+// GET /concession-environment/:dealId
+// Compute per-year concession environment for a deal (four-step stack).
+// Consumed by the M09 Projections Adapter and the CashFlow Agent.
+// ============================================================================
+router.get('/concession-environment/:dealId', async (req, res) => {
+  try {
+    const dealId = req.params['dealId'];
+    const holdYears = req.query['hold_years'] ? parseInt(String(req.query['hold_years'])) : 5;
+
+    const authorized = await assertDealOwnership(req, res, dealId);
+    if (!authorized) return;
+
+    if (isNaN(holdYears) || holdYears < 1 || holdYears > 30) {
+      return res.status(400).json({ error: 'hold_years must be an integer between 1 and 30' });
+    }
+
+    const output = await concessionEnvEngine.computeForDeal(dealId, holdYears);
+    return res.json(output);
+  } catch (error: unknown) {
+    logger.error('[M07] Concession environment computation failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({
+      error: 'Failed to compute concession environment',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// ============================================================================
+// GET /concession-defaults
+// Admin read route: expose concession_class_defaults.json for the admin panel.
+// Also exposes the _meta tuning parameters (supply_pressure_coefficient,
+// collision sigma thresholds, etc.).
+// ============================================================================
+router.get('/concession-defaults', async (req, res) => {
+  try {
+    if (!assertAdminRole(req, res)) return;
+
+    const defaults = require('../../data/concession_class_defaults.json');
+    return res.json({
+      classes:       { A: defaults['A'], B: defaults['B'], C: defaults['C'] },
+      fallback:      defaults['_defaults_fallback'],
+      meta:          defaults['_meta'],
+      note:          defaults['_comment'],
+    });
+  } catch (error: unknown) {
+    logger.error('[M07] Concession defaults fetch failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ error: 'Failed to load concession defaults' });
+  }
+});
+
+// ============================================================================
+// POST /concession-environment/fixtures/run
+// Admin-only: run the seven test fixture scenarios and return results.
+// Useful for integration verification after schema or parameter changes.
+// ============================================================================
+router.post('/concession-environment/fixtures/run', async (req, res) => {
+  try {
+    if (!assertAdminRole(req, res)) return;
+
+    const { runFixtures } = require('../../services/concession-environment-engine.fixtures');
+    const results = await runFixtures(pool);
+    const allPassed = results.every((r: any) => r.passed);
+
+    return res.json({
+      all_passed: allPassed,
+      passed:     results.filter((r: any) => r.passed).length,
+      total:      results.length,
+      results,
+    });
+  } catch (error: unknown) {
+    logger.error('[M07] Fixture run failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({
+      error: 'Fixture run failed',
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 
