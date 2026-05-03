@@ -288,8 +288,8 @@ async function runPendingMigrationsLocked(
   const collisions: string[] = [];
   for (const m of all) {
     const prior = seen.get(m.trackingKey);
-    if (prior) collisions.push(`${prior}  vs  ${m.relPath}`);
-    else seen.set(m.trackingKey, m.relPath);
+    if (prior) collisions.push(`${prior}  vs  ${m.label}`);
+    else seen.set(m.trackingKey, m.label);
   }
   if (collisions.length > 0) {
     throw new Error(
@@ -500,9 +500,37 @@ export async function baselineMigrations(
 
 // ── CLI entry point ────────────────────────────────────────────────────────
 
+/**
+ * Build a Pool directly from env vars instead of going through
+ * `database/connection.ts`. That module imports the winston-based shared
+ * logger, which has occasionally failed to initialise in standalone
+ * ts-node runs (winston.format.combine throwing). The CLI doesn't need
+ * the shared logger — it has its own consoleLogger — so we skip that
+ * dependency entirely to keep `npm run migrate` reliable.
+ */
+function buildStandalonePool(): import('pg').Pool {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Pool } = require('pg');
+  const cfg: any = {
+    min: parseInt(process.env.DB_POOL_MIN || '2', 10),
+    max: parseInt(process.env.DB_POOL_MAX || '10', 10),
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+  };
+  if (process.env.DATABASE_URL) {
+    cfg.connectionString = process.env.DATABASE_URL;
+  } else {
+    cfg.host     = process.env.DB_HOST || 'localhost';
+    cfg.port     = parseInt(process.env.DB_PORT || '5432', 10);
+    cfg.database = process.env.DB_NAME || 'jedire';
+    cfg.user     = process.env.DB_USER || 'postgres';
+    cfg.password = process.env.DB_PASSWORD;
+  }
+  return new Pool(cfg);
+}
+
 async function main() {
-  const { getPool } = await import('../database/connection');
-  const pool = getPool();
+  const pool = buildStandalonePool();
   const isBaseline = process.argv.includes('--baseline');
   try {
     if (isBaseline) {
