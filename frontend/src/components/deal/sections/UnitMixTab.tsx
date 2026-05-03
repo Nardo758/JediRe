@@ -1018,7 +1018,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                 {fallback.length > 0 && (
                   <>Low-confidence columns (resolved by position rather than header match): <strong>{fallback.join(', ')}</strong>. </>
                 )}
-                Re-export the rent roll in the standard Yardi RRwLC layout (the only currently supported export format) or verify the affected columns before relying on these figures for underwriting.
+                Re-export the rent roll in the standard Yardi RRwLC layout (the recommended format for highest-confidence extraction; a generic flat layout is also accepted but with reduced fidelity), or verify the affected columns before relying on these figures for underwriting.
               </span>
             </div>
             {/* Task #514 — banner is session-dismissable. Re-renders on the next
