@@ -355,6 +355,7 @@ interface RowDef {
   brokerPage?: string; brokerLine?: string;
   getBroker:     (f: DealFinancials, yr: number) => number|null;
   getPlatform:   (f: DealFinancials, yr: number) => number|null;
+  getResolved?:  (f: DealFinancials, yr: number) => number|null;
   getConfidence: (f: DealFinancials) => number|null;
 }
 
@@ -393,6 +394,20 @@ function buildRowDef(osRow: OSRow, section: 5|6, meta: FieldMeta): RowDef {
       const row = y1(f, field);
       if (!row) return null;
       const base = row.platform;
+      if (base == null) return null;
+      if (yr === 1) return base;
+      if (meta.growthKey === 'rent') return Math.round(base * rentCompound(f, yr));
+      if (meta.growthKey === 'opex' || meta.growthPct != null) {
+        const liveRate = meta.assumptionKey != null ? (f.assumptions as Record<string, number|null>)[meta.assumptionKey as string] : null;
+        const g = liveRate ?? meta.growthPct ?? 0.03;
+        return Math.round(base * Math.pow(1 + g, yr - 1));
+      }
+      return base;
+    },
+    getResolved: (f, yr) => {
+      const row = y1(f, field);
+      if (!row) return null;
+      const base = row.resolved ?? row.platform ?? row.broker ?? row.t12 ?? row.rentRoll;
       if (base == null) return null;
       if (yr === 1) return base;
       if (meta.growthKey === 'rent') return Math.round(base * rentCompound(f, yr));
@@ -1957,7 +1972,26 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
           if (!next[rd.key]) next[rd.key] = {};
           next[rd.key][yr] = v;
           if (rd.patchField) {
-            // stabilizedOcc getBroker returns occupancy; PATCH expects vacancy (1 - occ)
+            const pv = rd.key === 'stabilizedOcc' ? +(1 - v).toFixed(4) : v;
+            enqueuePatch(rd.patchField, yr, pv);
+          }
+        }
+      }
+    }
+    setOverrides(next);
+  };
+
+  const handleUseResolved = () => {
+    if (!financials || lockedOverrides) return;
+    const next: Overrides = { ...overrides };
+    for (const rd of allRows) {
+      if (rd.readonly) continue;
+      for (const yr of years) {
+        const v = rd.getResolved?.(financials, yr) ?? null;
+        if (v != null) {
+          if (!next[rd.key]) next[rd.key] = {};
+          next[rd.key][yr] = v;
+          if (rd.patchField) {
             const pv = rd.key === 'stabilizedOcc' ? +(1 - v).toFixed(4) : v;
             enqueuePatch(rd.patchField, yr, pv);
           }
@@ -2166,9 +2200,9 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
           className="px-2 py-0.5 text-[8px] font-bold rounded border border-[#1e1e1e] text-slate-600 hover:text-cyan-400 hover:border-cyan-500/40 disabled:opacity-30">
           USE ALL PLATFORM
         </button>
-        <button onClick={handleUseBroker} disabled={!financials || lockedOverrides}
-          className="px-2 py-0.5 text-[8px] font-bold rounded border border-[#1e1e1e] text-slate-600 hover:text-amber-400 hover:border-amber-500/40 disabled:opacity-30">
-          USE ALL BROKER
+        <button onClick={handleUseResolved} disabled={!financials || lockedOverrides}
+          className="px-2 py-0.5 text-[8px] font-bold rounded border border-[#1e1e1e] text-slate-600 hover:text-orange-400 hover:border-orange-500/40 disabled:opacity-30">
+          USE RESOLVED
         </button>
         {overrideCount > 0 && (
           <>
