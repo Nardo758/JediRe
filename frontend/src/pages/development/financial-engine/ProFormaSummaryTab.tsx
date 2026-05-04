@@ -5,7 +5,6 @@ import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
 import { CommentaryPanel } from './CommentaryPanel';
 import { useDealStore } from '../../../stores/dealStore';
-import type { Y1Source } from '../../../stores/dealStore';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -340,8 +339,6 @@ function applyEvidenceFilter(
 export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh }: FinancialEngineTabProps) {
   const viewMode    = useDealStore(s => s.viewMode);
   const setViewMode = useDealStore(s => s.setViewMode);
-  const y1Source    = useDealStore(s => s.y1Source);
-  const setY1Source = useDealStore(s => s.setY1Source);
 
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
@@ -527,21 +524,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 {mode === 'BROKER_VIEW' ? 'BROKER VIEW' : 'BUILD YOUR OWN'}
               </button>
             ))}
-          </div>
-          {/* Y1 source picker */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ fontFamily: MONO, fontSize: 7, color: '#475569', letterSpacing: '0.08em' }}>Y1 SRC</span>
-            <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a' }}>
-              {(['PLATFORM','BROKER','T12','T6','T3','T1'] as Y1Source[]).map(src => (
-                <button key={src} onClick={() => setY1Source(src)} style={{
-                  padding: '2px 7px', fontSize: 8, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer', fontFamily: MONO, transition: 'all 0.15s',
-                  background: y1Source === src ? (src === 'PLATFORM' ? 'rgba(8,145,178,0.5)' : 'rgba(146,64,14,0.5)') : 'transparent',
-                  color: y1Source === src ? (src === 'PLATFORM' ? '#67e8f9' : '#fcd34d') : '#4b5563',
-                }}>
-                  {src}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 
