@@ -1791,6 +1791,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
             <input
               autoFocus
               value={corr.draft}
+              placeholder="Enter to save"
               onChange={e => setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], draft: e.target.value } }))}
               onBlur={commitEdit}
               onKeyDown={e => {
@@ -1802,6 +1803,15 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
                 fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, textAlign: 'right',
               }}
             />
+            <button
+              title="Save"
+              onMouseDown={e => { e.preventDefault(); commitEdit(); }}
+              style={{
+                background: '#0f2d1a', border: '1px solid #16a34a', borderRadius: 2,
+                color: '#4ade80', fontFamily: MONO, fontSize: 9, padding: '1px 4px',
+                cursor: 'pointer', lineHeight: 1, fontWeight: 700,
+              }}
+            >✓</button>
           </div>
         ) : (
           <span
