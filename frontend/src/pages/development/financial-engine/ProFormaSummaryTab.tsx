@@ -349,8 +349,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const setViewMode      = useDealStore(s => s.setViewMode);
   const y1Source         = useDealStore(s => s.y1Source);
   const setY1Source      = useDealStore(s => s.setY1Source);
-  const platformColSource    = useDealStore(s => s.platformColSource);
-  const setPlatformColSource = useDealStore(s => s.setPlatformColSource);
 
   const T_PERIODS = ['T12', 'T6', 'T3', 'T1'] as const;
   type TPeriod = typeof T_PERIODS[number];
@@ -361,20 +359,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   };
   // Whether each column is the "active" Y1 source (drives column header highlight)
   const y1IsBroker   = y1Source === 'BROKER';
-  const y1IsPlatform = y1Source === 'PLATFORM';
   const y1IsTperiod  = (T_PERIODS as readonly string[]).includes(y1Source);
-
-  const PLATFORM_SOURCES: PlatformColSource[] = ['PLATFORM', 'T12', 'T6', 'T3', 'T1'];
-  const cyclePlatformSource = () => {
-    const idx = PLATFORM_SOURCES.indexOf(platformColSource);
-    setPlatformColSource(PLATFORM_SOURCES[(idx + 1) % PLATFORM_SOURCES.length]);
-  };
-  const platformColLabel =
-    platformColSource === 'T12' ? 'T-12' :
-    platformColSource === 'T6'  ? 'T-6'  :
-    platformColSource === 'T3'  ? 'T-3'  :
-    platformColSource === 'T1'  ? 'T-1'  :
-    'Platform';
 
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
@@ -694,7 +679,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <Th label="Line Item" left min={180} sticky />
               <Th label="Broker" color={viewMode === 'BUILD_OWN' || y1IsBroker ? '#f59e0b' : undefined} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label={activePeriod.replace('T', 'T-')} color={y1IsTperiod ? '#34d399' : '#e2e8f0'} hidden={viewMode === 'BROKER_VIEW'} onCycle={cycleTPeriod} />
-              <Th label={platformColLabel} color={y1IsPlatform || platformColSource === 'PLATFORM' ? '#06b6d4' : '#e2e8f0'} hidden={viewMode === 'BROKER_VIEW'} onCycle={cyclePlatformSource} />
               <Th label="Resolved" highlight={viewMode === 'BUILD_OWN'} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label="% of EGI" color="#94a3b8" />
               <Th label="Source" />
@@ -743,7 +727,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 />
                 {showAncillary && (
                   <tr>
-                    <td colSpan={9} style={{ background: '#050d12', padding: 0, borderBottom: '1px solid #0e2030' }}>
+                    <td colSpan={8} style={{ background: '#050d12', padding: 0, borderBottom: '1px solid #0e2030' }}>
                       <AncillaryExpansionPanel
                         totalUnits={totalUnits}
                         dealId={dealId}
@@ -761,7 +745,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} fullFormat />}
 
             {/* ── CONTROLLABLE EXPENSES ── */}
-            <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
+            <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" cols={viewMode === 'BROKER_VIEW' ? 6 : 8} />
             {ctrlRows.map((r, i) => (
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="warm"
                 corrections={corrections} setCorrections={setCorrections}
@@ -775,7 +759,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#1a110a' }}>─── CONTROLLABLE OPEX ───</td>
               <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#fb923c', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.broker)}</td>
               {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.t12)}</td>}
-              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.platform)}</td>}
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#fb923c', fontWeight: 700, background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : 'rgba(0,0,0,0.3)' }}>
                 {fmtFull$(ctrlSubtotalRow.resolved || null)}
               </td>
@@ -786,7 +769,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             </tr>
 
             {/* ── NON-CONTROLLABLE EXPENSES ── */}
-            <SectionHeader label="Non-Controllable Expenses" accentColor="#a855f7" bg="#0d0a14" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
+            <SectionHeader label="Non-Controllable Expenses" accentColor="#a855f7" bg="#0d0a14" cols={viewMode === 'BROKER_VIEW' ? 6 : 8} />
             {nctrlRows.map((r, i) => (
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="purple"
                 corrections={corrections} setCorrections={setCorrections}
@@ -805,7 +788,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   {fmtFull$(totalOpexRow.broker)}
                 </td>
                 {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '5px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(totalOpexRow.t12)}</td>}
-                {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '5px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(pickPlatformValue(totalOpexRow, platformColSource))}</td>}
                 <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: 11,
                   background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : undefined,
                   color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#ffffff',
@@ -831,10 +813,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 </td>
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#86efac', fontWeight: viewMode === 'BROKER_VIEW' ? 700 : 400 }}>{fmtFull$(noiRow.broker)}</td>
                 {viewMode !== 'BROKER_VIEW' && (
-                  <>
-                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmtFull$(noiRow.t12)}</td>
-                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmtFull$(pickPlatformValue(noiRow, platformColSource))}</td>
-                  </>
+                  <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmtFull$(noiRow.t12)}</td>
                 )}
                 <td style={{
                   padding: '7px 8px', textAlign: 'right', fontWeight: 700, fontSize: 13,
@@ -1090,17 +1069,6 @@ function Th({ label, color, highlight, left, min, sticky, hidden, brokerActive, 
   );
 }
 
-/** Returns the value to display in the Platform comparison column based on the user-selected source. */
-function pickPlatformValue(row: OperatingStatementRow, src: PlatformColSource): number | null {
-  switch (src) {
-    case 'T12': return row.t12;
-    case 'T6':  return row.t6 ?? row.t12;
-    case 'T3':  return row.t3 ?? row.t12;
-    case 'T1':  return row.t1 ?? row.t12;
-    default:    return row.platform;
-  }
-}
-
 /** Returns the value for the trailing-period Y1 column based on the active period picker. */
 function pickY1ColValue(row: OperatingStatementRow, period: 'T12' | 'T6' | 'T3' | 'T1'): number | null {
   switch (period) {
@@ -1111,7 +1079,7 @@ function pickY1ColValue(row: OperatingStatementRow, period: 'T12' | 'T6' | 'T3' 
   }
 }
 
-function SectionHeader({ label, accentColor, bg, cols = 9 }: { label: string; accentColor: string; bg: string; cols?: number }) {
+function SectionHeader({ label, accentColor, bg, cols = 8 }: { label: string; accentColor: string; bg: string; cols?: number }) {
   return (
     <tr>
       <td colSpan={cols} style={{
@@ -1131,8 +1099,7 @@ function SectionHeader({ label, accentColor, bg, cols = 9 }: { label: string; ac
 function SubtotalRow({ label, row, color, textColor, egiResolved, fullFormat }: {
   label: string; row: OperatingStatementRow; color: string; textColor: string; egiResolved: number | null; fullFormat?: boolean;
 }) {
-  const viewMode          = useDealStore(s => s.viewMode);
-  const platformColSource = useDealStore(s => s.platformColSource);
+  const viewMode = useDealStore(s => s.viewMode);
   const isBroker = viewMode === 'BROKER_VIEW';
   const displayResolved = isBroker ? (row.broker ?? row.resolved) : row.resolved;
   const egiPct = egiResolved && displayResolved ? (displayResolved / egiResolved) * 100 : null;
@@ -1144,7 +1111,6 @@ function SubtotalRow({ label, row, color, textColor, egiResolved, fullFormat }: 
       </td>
       <td style={{ padding: '4px 8px', textAlign: 'right', color: isBroker ? '#fcd34d' : textColor, fontSize: 9, fontWeight: isBroker ? 700 : 400 }}>{f(row.broker)}</td>
       {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{f(row.t12)}</td>}
-      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: platformColSource === 'PLATFORM' ? '#06b6d4' : '#e2e8f0', fontSize: 9 }}>{f(pickPlatformValue(row, platformColSource))}</td>}
       <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700,
         color: isBroker ? '#fcd34d' : textColor,
         background: isBroker ? '#1c0f00' : 'rgba(0,0,0,0.3)',
@@ -1607,8 +1573,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   /** Resolved evidence metadata + canonical field_path for this row (null when no underwriting evidence exists) */
   evidenceResolved?: { meta: EvidenceFieldMeta; path: string } | null;
 }) {
-  const viewMode          = useDealStore(s => s.viewMode);
-  const platformColSource = useDealStore(s => s.platformColSource);
+  const viewMode = useDealStore(s => s.viewMode);
   const isBroker = viewMode === 'BROKER_VIEW';
   const isSubtotal = SUBTOTALS.has(row.field);
   const isDeviant = row.benchmarkPosition === 'above' || row.benchmarkPosition === 'below';
@@ -1619,9 +1584,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   // Management fee can be edited as $ or % of EGI — default to % since it's conceptually a rate.
   const [mgmtFeeEditMode, setMgmtFeeEditMode] = useState<'$' | '%'>('%');
 
-  // Hover states for clickable source cells — lightweight per-row visual affordance.
-  const [hoverT12, setHoverT12]   = useState(false);
-  const [hoverPlat, setHoverPlat] = useState(false);
+  // Hover state for clickable T-period cell.
+  const [hoverT12, setHoverT12] = useState(false);
   // Optimistic Resolved overlay: set immediately on click so the Resolved column
   // updates without waiting for load() to return. undefined = no overlay (use server value).
   const [optimisticResolved, setOptimisticResolved] = useState<number | null | undefined>(undefined);
@@ -1639,12 +1603,11 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   // across reloads; corr?.savedAt covers the optimistic in-session window before
   // the next load() response arrives.
   const hasActiveOverride = row.source === 'override' || corr?.savedAt != null;
-  const t12Val  = pickY1ColValue(row, activePeriod);
-  const platVal = pickPlatformValue(row, platformColSource);
+  const t12Val = pickY1ColValue(row, activePeriod);
   /** True when the active-period cell's value is the active user override driving Resolved. */
-  const isT12ActiveOverride  = hasActiveOverride && t12Val  != null && Math.abs((row.resolved ?? 0) - t12Val)  < 0.01;
-  /** True when the Platform cell's value is the active user override driving Resolved. */
-  const isPlatActiveOverride = hasActiveOverride && platVal != null && Math.abs((row.resolved ?? 0) - platVal) < 0.01;
+  const isT12ActiveOverride = hasActiveOverride && t12Val != null && Math.abs((row.resolved ?? 0) - t12Val) < 0.01;
+  /** True when the broker cell's value is the active user override driving Resolved. */
+  const isBrokerActiveOverride = hasActiveOverride && row.broker != null && Math.abs((row.resolved ?? 0) - row.broker) < 0.01;
 
   function fmtDisplay(val: number | null): string {
     if (isPct) return fmtPct(val);
@@ -1773,40 +1736,6 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
         </td>
       )}
 
-      {/* PLATFORM column — hidden in BROKER VIEW; source controlled by platformColSource; clickable to adopt value as Resolved override */}
-      {!isBroker && (
-        <td
-          onMouseEnter={platVal != null ? () => setHoverPlat(true)  : undefined}
-          onMouseLeave={platVal != null ? () => setHoverPlat(false) : undefined}
-          onClick={platVal != null ? async () => {
-            if (isPlatActiveOverride) {
-              setOptimisticResolved(undefined);
-              await onResetCorrection(row.field);
-            } else {
-              setOptimisticResolved(platVal);
-              const saveVal = isMgmtFee && egiResolved ? platVal / egiResolved : platVal;
-              await onSaveCorrection(row.field, saveVal, row.resolved);
-            }
-          } : undefined}
-          title={platVal != null
-            ? (isPlatActiveOverride
-                ? 'Active — click again to revert to auto-resolution'
-                : 'Click to use this value as the Resolved figure')
-            : undefined}
-          style={{
-            padding: '4px 8px', textAlign: 'right', fontSize: 9,
-            color: isPlatActiveOverride ? '#4ade80' : (platformColSource === 'PLATFORM' ? '#06b6d4' : '#e2e8f0'),
-            cursor: platVal != null ? 'pointer' : undefined,
-            background: isPlatActiveOverride
-              ? 'rgba(74,222,128,0.10)'
-              : (hoverPlat && platVal != null ? 'rgba(74,222,128,0.05)' : undefined),
-            borderLeft:  isPlatActiveOverride ? '1px solid rgba(74,222,128,0.4)' : undefined,
-            borderRight: isPlatActiveOverride ? '1px solid rgba(74,222,128,0.4)' : undefined,
-          }}
-        >
-          {fmtDisplay(platVal)}
-        </td>
-      )}
 
       {/* RESOLVED (BUILD_OWN) / BROKER NOI (BROKER_VIEW) */}
       <td
