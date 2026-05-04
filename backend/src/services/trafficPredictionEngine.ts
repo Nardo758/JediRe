@@ -276,7 +276,7 @@ interface TrafficPrediction {
 
   // M07 §4.2: top-level convenience fields promoted from calibration_meta.
   // Consumers may read these directly without drilling into calibration_meta.
-  match_tier?: 'DEAL' | 'PLATFORM' | 'BASELINE';
+  match_tier?: 'SUBJECT' | 'DEAL' | 'PLATFORM' | 'BASELINE';
   window?: 'TTM' | 'PYTM' | 'TTM_24';
   calibration_source?: string;
   confidence_band?: { low: number; mid: number; high: number };
