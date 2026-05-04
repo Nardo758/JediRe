@@ -753,7 +753,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             ))}
 
             {/* ── EGI SUBTOTAL ── */}
-            {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} />}
+            {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} fullFormat />}
 
             {/* ── CONTROLLABLE EXPENSES ── */}
             <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
