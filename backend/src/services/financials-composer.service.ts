@@ -733,9 +733,6 @@ async function loadTrailingActualsMap(
          insurance, real_estate_taxes, total_opex, noi
        FROM deal_monthly_actuals
        WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
-         AND (gross_potential_rent IS NOT NULL
-              OR noi IS NOT NULL
-              OR effective_gross_income IS NOT NULL)
        ORDER BY report_month DESC
        LIMIT 12`,
       [dealId],
@@ -958,6 +955,21 @@ function buildOSRows(
   const bpMgmtDol  = bpMgmtPct != null && egi   != null ? bpMgmtPct * egi   : null;
   const bpReserves = bpResPerUt != null && totalUnits > 0 ? bpResPerUt * totalUnits : null;
 
+  // Per-expense-line broker dollar amounts — extracted directly from OM pro-forma statement.
+  // Keyed by OSRow field name for lookup in addExpenseRow.
+  const bpExpense: Record<string, number | null> = {
+    payroll:             brokerProforma?.payrollAnnual            != null ? Number(brokerProforma.payrollAnnual)            : null,
+    insurance:           brokerProforma?.insuranceAnnual          != null ? Number(brokerProforma.insuranceAnnual)          : null,
+    utilities:           brokerProforma?.utilitiesAnnual          != null ? Number(brokerProforma.utilitiesAnnual)          : null,
+    repairs_maintenance: brokerProforma?.repairsMaintenanceAnnual != null ? Number(brokerProforma.repairsMaintenanceAnnual) : null,
+    turnover:            brokerProforma?.turnoverAnnual           != null ? Number(brokerProforma.turnoverAnnual)           : null,
+    marketing:           brokerProforma?.marketingAnnual          != null ? Number(brokerProforma.marketingAnnual)          : null,
+    g_and_a:             brokerProforma?.gAndAAnnual              != null ? Number(brokerProforma.gAndAAnnual)              : null,
+    contract_services:   brokerProforma?.contractServicesAnnual   != null ? Number(brokerProforma.contractServicesAnnual)   : null,
+    real_estate_taxes:   brokerProforma?.realEstateTaxesAnnual    != null ? Number(brokerProforma.realEstateTaxesAnnual)    : null,
+  };
+  const bpTotalOpex = brokerProforma?.totalOpexAnnual != null ? Number(brokerProforma.totalOpexAnnual) : null;
+
   addRow('gpr',                'Gross Potential Rent',       gprPick.resolved,    { isSubtotal: true, source: gprPick.source, platform: platformGpr, rentRoll: um.gprFromUnitMix, t12: lv('gpr').t12 });
   addRow('vacancy_loss',       'Vacancy Loss',               vacPick.resolved,    { source: vacPick.source, platform: platformVacancyLoss, rentRoll: um.vacancyLossFromUnitMix, broker: bpVacLoss });
   addRow('loss_to_lease',      'Loss to Lease',              l2lPick.resolved,    { source: l2lPick.source, platform: platformL2L, rentRoll: um.lossToLeaseFromUnitMix, broker: bpLtlDol });
@@ -983,6 +995,7 @@ function buildOSRows(
       rentRoll: v.rent_roll ?? null,
       taxBill:  v.tax_bill  ?? null,
       platform: v.platform  ?? null,
+      broker:   bpExpense[field] ?? null,
     });
   }
 
@@ -1044,7 +1057,7 @@ function buildOSRows(
     return any ? sum : null;
   })();
   addRow('total_opex', 'Total Operating Expenses',
-    storedTotalOpex ?? summedOpex, { isSubtotal: true });
+    storedTotalOpex ?? summedOpex, { isSubtotal: true, broker: bpTotalOpex });
 
   // NOI
   const noiY1 = res('noi');

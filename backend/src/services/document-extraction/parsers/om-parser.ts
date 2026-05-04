@@ -103,6 +103,17 @@ export interface OMBrokerProforma {
   targetIRR: number | null;
   stabilizedNOI: number | null;
   yearOneNOI: number | null;
+  // Per-expense-line annual dollar amounts from the broker's pro-forma statement
+  payrollAnnual: number | null;
+  insuranceAnnual: number | null;
+  utilitiesAnnual: number | null;
+  repairsMaintenanceAnnual: number | null;
+  turnoverAnnual: number | null;
+  marketingAnnual: number | null;
+  gAndAAnnual: number | null;
+  contractServicesAnnual: number | null;
+  realEstateTaxesAnnual: number | null;
+  totalOpexAnnual: number | null;
 }
 
 export interface OMCapitalPlan {
@@ -316,7 +327,18 @@ Return ONLY valid JSON matching this schema:
     "goingInCapRate": "decimal or null",
     "targetIRR": "decimal or null",
     "stabilizedNOI": "number or null",
-    "yearOneNOI": "number or null"
+    "yearOneNOI": "number or null",
+    "_opex_comment": "Per-line annual expense amounts from the broker's stabilized pro-forma. Annual total dollars. Only populate what the OM explicitly states — leave null if not shown.",
+    "payrollAnnual": "annual payroll / personnel expense from broker pro-forma, or null",
+    "insuranceAnnual": "annual property insurance expense from broker pro-forma, or null",
+    "utilitiesAnnual": "annual utilities expense from broker pro-forma, or null",
+    "repairsMaintenanceAnnual": "annual repairs & maintenance expense from broker pro-forma, or null",
+    "turnoverAnnual": "annual turnover / make-ready expense from broker pro-forma, or null",
+    "marketingAnnual": "annual marketing & leasing expense from broker pro-forma, or null",
+    "gAndAAnnual": "annual G&A / administrative expense from broker pro-forma, or null",
+    "contractServicesAnnual": "annual contract services expense from broker pro-forma, or null",
+    "realEstateTaxesAnnual": "annual real estate taxes from broker pro-forma, or null",
+    "totalOpexAnnual": "total annual operating expenses from broker pro-forma, or null"
   },
   "capitalPlan": {
     "interiorRenovationPerUnit": "number or null",
@@ -612,6 +634,16 @@ function normalizeExtraction(raw: any, textLength: number): OMExtraction {
       targetIRR: raw.brokerProforma?.targetIRR ?? null,
       stabilizedNOI: raw.brokerProforma?.stabilizedNOI ?? null,
       yearOneNOI: raw.brokerProforma?.yearOneNOI ?? null,
+      payrollAnnual: typeof raw.brokerProforma?.payrollAnnual === 'number' ? raw.brokerProforma.payrollAnnual : null,
+      insuranceAnnual: typeof raw.brokerProforma?.insuranceAnnual === 'number' ? raw.brokerProforma.insuranceAnnual : null,
+      utilitiesAnnual: typeof raw.brokerProforma?.utilitiesAnnual === 'number' ? raw.brokerProforma.utilitiesAnnual : null,
+      repairsMaintenanceAnnual: typeof raw.brokerProforma?.repairsMaintenanceAnnual === 'number' ? raw.brokerProforma.repairsMaintenanceAnnual : null,
+      turnoverAnnual: typeof raw.brokerProforma?.turnoverAnnual === 'number' ? raw.brokerProforma.turnoverAnnual : null,
+      marketingAnnual: typeof raw.brokerProforma?.marketingAnnual === 'number' ? raw.brokerProforma.marketingAnnual : null,
+      gAndAAnnual: typeof raw.brokerProforma?.gAndAAnnual === 'number' ? raw.brokerProforma.gAndAAnnual : null,
+      contractServicesAnnual: typeof raw.brokerProforma?.contractServicesAnnual === 'number' ? raw.brokerProforma.contractServicesAnnual : null,
+      realEstateTaxesAnnual: typeof raw.brokerProforma?.realEstateTaxesAnnual === 'number' ? raw.brokerProforma.realEstateTaxesAnnual : null,
+      totalOpexAnnual: typeof raw.brokerProforma?.totalOpexAnnual === 'number' ? raw.brokerProforma.totalOpexAnnual : null,
     },
     capitalPlan: {
       interiorRenovationPerUnit: raw.capitalPlan?.interiorRenovationPerUnit ?? null,
