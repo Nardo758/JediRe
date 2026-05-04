@@ -2114,7 +2114,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         </div>
       </div>
 
-      {/* Header — Row 2: view mode toggle + Y1 source picker + PUSH → PROJECTIONS */}
+      {/* Header — Row 2: view mode toggle + scenario pills + Y1 source picker + PUSH → PROJECTIONS */}
       <div className="flex items-center gap-3 px-4 py-1.5 bg-[#0f0f0f] border-b border-[#1e1e1e] sticky top-[36px] z-29">
         {/* BROKER VIEW / BUILD YOUR OWN toggle */}
         <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a' }}>
@@ -2128,6 +2128,22 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
               {mode === 'BROKER_VIEW' ? 'BROKER VIEW' : 'BUILD YOUR OWN'}
             </button>
           ))}
+        </div>
+        {/* Scenario / hold-period pills — in the same control strip as mode toggle */}
+        <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a', gap: 1 }}>
+          {(['5 YR', '7 YR', '10 YR'] as const).map(tab => {
+            const active = holdTab === tab || (holdTab === null && holdYears === (tab === '5 YR' ? 5 : tab === '7 YR' ? 7 : 10));
+            return (
+              <button key={tab} onClick={() => setHoldTab(tab)} style={{
+                padding: '3px 8px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer',
+                fontFamily: MONO, letterSpacing: '0.05em', transition: 'all 0.15s',
+                background: active ? 'rgba(29,78,216,0.5)' : 'transparent',
+                color: active ? '#bfdbfe' : '#475569',
+              }}>
+                {tab}
+              </button>
+            );
+          })}
         </div>
         <Y1SourcePicker />
         <div style={{ flex: 1 }} />
@@ -2508,21 +2524,23 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                               // PLATFORM: keep default resolvePlatform value
                             }
 
-                            // BROKER VIEW: nullify platform so LayeredCell resolves user ?? broker
-                            // (user override wins; otherwise broker value is shown, never platform)
-                            const displayPlatform = isBrokerView ? null : platform;
+                            // BROKER VIEW: broker value is the ONLY displayed source.
+                            // Nullify platform, user overrides, and formula results so
+                            // LayeredCell always resolves to broker (or null when no broker).
+                            const displayPlatform    = isBrokerView ? null : platform;
+                            const displayUser        = isBrokerView ? null : user;
+                            const formulaResult      = (!isBrokerView && mode === 'formula') ? computeFormulaResult(rd, yr) : null;
 
-                            const formulaResult = mode === 'formula' ? computeFormulaResult(rd, yr) : null;
                             const divergence = getDivergenceColor(
-                              formulaResult ?? user, displayPlatform, broker,
+                              formulaResult ?? displayUser, displayPlatform, broker,
                             );
-                            const ovrVal = formulaResult ?? user;
+                            const ovrVal = formulaResult ?? displayUser;
                             const classification = ovrVal != null
                               ? classifyFieldOverride(`${rd.key}:${yr}`, ovrVal)?.classification ?? null
                               : null;
                             return (
                               <LayeredCell key={yr}
-                                vals={{ broker, platform: displayPlatform, user }}
+                                vals={{ broker, platform: displayPlatform, user: displayUser }}
                                 format={rd.format}
                                 readonly={rd.readonly || lockedOverrides || isBrokerView}
                                 isM07={!!rd.isM07}
