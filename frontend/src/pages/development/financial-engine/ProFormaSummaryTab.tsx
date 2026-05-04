@@ -150,6 +150,10 @@ function fmt$(n: number | null): string {
   if (Math.abs(n) >= 1_000) return `$${n.toLocaleString()}`;
   return `$${n}`;
 }
+function fmtFull$(n: number | null): string {
+  if (n == null) return '—';
+  return `$${Math.round(n).toLocaleString()}`;
+}
 
 function fmtPct(n: number | null): string {
   if (n == null) return '—';
@@ -699,7 +703,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
             {/* GPR — top-line broker vs platform comparison */}
             {byField['gpr'] && (
-              <SubtotalRow label="GROSS POTENTIAL RENT" row={byField['gpr']} color="#041520" textColor="#38bdf8" egiResolved={egiResolved} />
+              <SubtotalRow label="GROSS POTENTIAL RENT" row={byField['gpr']} color="#041520" textColor="#38bdf8" egiResolved={egiResolved} fullFormat />
             )}
 
             {/* Income deductions (vacancy, LTL, concessions, bad debt, NRU) */}
@@ -1112,27 +1116,28 @@ function SectionHeader({ label, accentColor, bg, cols = 9 }: { label: string; ac
   );
 }
 
-function SubtotalRow({ label, row, color, textColor, egiResolved }: {
-  label: string; row: OperatingStatementRow; color: string; textColor: string; egiResolved: number | null;
+function SubtotalRow({ label, row, color, textColor, egiResolved, fullFormat }: {
+  label: string; row: OperatingStatementRow; color: string; textColor: string; egiResolved: number | null; fullFormat?: boolean;
 }) {
   const viewMode          = useDealStore(s => s.viewMode);
   const platformColSource = useDealStore(s => s.platformColSource);
   const isBroker = viewMode === 'BROKER_VIEW';
   const displayResolved = isBroker ? (row.broker ?? row.resolved) : row.resolved;
   const egiPct = egiResolved && displayResolved ? (displayResolved / egiResolved) * 100 : null;
+  const f = fullFormat ? fmtFull$ : fmt$;
   return (
     <tr style={{ background: color }}>
       <td style={{ padding: '4px 8px', fontWeight: 700, color: '#cbd5e1', fontFamily: 'Inter, sans-serif', fontSize: 9, position: 'sticky', left: 0, background: color }}>
         ─── {label} ───
       </td>
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: isBroker ? '#fcd34d' : textColor, fontSize: 9, fontWeight: isBroker ? 700 : 400 }}>{fmt$(row.broker)}</td>
-      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmt$(row.t12)}</td>}
-      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: platformColSource === 'PLATFORM' ? '#06b6d4' : '#e2e8f0', fontSize: 9 }}>{fmt$(pickPlatformValue(row, platformColSource))}</td>}
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: isBroker ? '#fcd34d' : textColor, fontSize: 9, fontWeight: isBroker ? 700 : 400 }}>{f(row.broker)}</td>
+      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{f(row.t12)}</td>}
+      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: platformColSource === 'PLATFORM' ? '#06b6d4' : '#e2e8f0', fontSize: 9 }}>{f(pickPlatformValue(row, platformColSource))}</td>}
       <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700,
         color: isBroker ? '#fcd34d' : textColor,
         background: isBroker ? '#1c0f00' : 'rgba(0,0,0,0.3)',
       }}>
-        {fmt$(displayResolved)}
+        {f(displayResolved)}
       </td>
       <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
         {egiPct != null ? `${egiPct.toFixed(1)}%` : '—'}
