@@ -5,7 +5,6 @@ import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
 import { CommentaryPanel } from './CommentaryPanel';
 import { useDealStore, PlatformColSource } from '../../../stores/dealStore';
-import { Y1SourcePicker } from './Y1SourcePicker';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -558,7 +557,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               </button>
             ))}
           </div>
-          <Y1SourcePicker />
         </div>
 
         {/* KPI pills */}
