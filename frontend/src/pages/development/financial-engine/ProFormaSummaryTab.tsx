@@ -339,6 +339,16 @@ function applyEvidenceFilter(
 export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh }: FinancialEngineTabProps) {
   const viewMode    = useDealStore(s => s.viewMode);
   const setViewMode = useDealStore(s => s.setViewMode);
+  const y1Source    = useDealStore(s => s.y1Source);
+  const setY1Source = useDealStore(s => s.setY1Source);
+
+  const T_PERIODS = ['T12', 'T6', 'T3', 'T1'] as const;
+  type TPeriod = typeof T_PERIODS[number];
+  const activePeriod: TPeriod = (T_PERIODS as readonly string[]).includes(y1Source) ? y1Source as TPeriod : 'T12';
+  const cycleTPeriod = () => {
+    const idx = T_PERIODS.indexOf(activePeriod);
+    setY1Source(T_PERIODS[(idx + 1) % T_PERIODS.length]);
+  };
 
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
@@ -645,7 +655,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             <tr style={{ background: '#111111', borderBottom: '1px solid #2d2d2d' }}>
               <Th label="Line Item" left min={180} sticky />
               <Th label="Broker" color={viewMode === 'BUILD_OWN' ? '#f59e0b' : undefined} brokerActive={viewMode === 'BROKER_VIEW'} />
-              <Th label="T-12" color="#e2e8f0" hidden={viewMode === 'BROKER_VIEW'} />
+              <Th label={activePeriod.replace('T', 'T-')} color="#e2e8f0" hidden={viewMode === 'BROKER_VIEW'} onCycle={cycleTPeriod} />
               <Th label="Platform" color="#06b6d4" hidden={viewMode === 'BROKER_VIEW'} />
               <Th label="Resolved" highlight={viewMode === 'BUILD_OWN'} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label="% of EGI" color="#94a3b8" />
@@ -977,23 +987,34 @@ function ValuationSnapshotStrip({ vs }: { vs: ValuationSnapshot }) {
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
-function Th({ label, color, highlight, left, min, sticky, hidden, brokerActive }: {
+function Th({ label, color, highlight, left, min, sticky, hidden, brokerActive, onCycle }: {
   label: string; color?: string; highlight?: boolean; left?: boolean; min?: number; sticky?: boolean;
-  hidden?: boolean; brokerActive?: boolean;
+  hidden?: boolean; brokerActive?: boolean; onCycle?: () => void;
 }) {
   if (hidden) return null;
   return (
-    <th style={{
-      padding: '5px 8px', textAlign: left ? 'left' : 'right',
-      color: brokerActive ? '#f59e0b' : highlight ? '#e2e8f0' : (color ?? '#64748b'),
-      fontWeight: 700, fontSize: 9, letterSpacing: 0.5,
-      minWidth: min, whiteSpace: 'nowrap',
-      position: sticky ? 'sticky' : undefined, left: sticky ? 0 : undefined,
-      background: '#111111', borderBottom: '1px solid #2d2d2d',
-      fontFamily: 'Inter, sans-serif',
-      ...(brokerActive ? { borderBottom: '2px solid #f59e0b', background: '#1c1000' } : {}),
-      ...(highlight ? { borderBottom: '2px solid #06b6d4', background: '#0d1f2d' } : {}),
-    }}>{label}</th>
+    <th
+      onClick={onCycle}
+      style={{
+        padding: '5px 8px', textAlign: left ? 'left' : 'right',
+        color: brokerActive ? '#f59e0b' : highlight ? '#e2e8f0' : (color ?? '#64748b'),
+        fontWeight: 700, fontSize: 9, letterSpacing: 0.5,
+        minWidth: min, whiteSpace: 'nowrap',
+        position: sticky ? 'sticky' : undefined, left: sticky ? 0 : undefined,
+        background: '#111111', borderBottom: '1px solid #2d2d2d',
+        fontFamily: 'Inter, sans-serif',
+        ...(onCycle ? { cursor: 'pointer', userSelect: 'none' } : {}),
+        ...(brokerActive ? { borderBottom: '2px solid #f59e0b', background: '#1c1000' } : {}),
+        ...(highlight ? { borderBottom: '2px solid #06b6d4', background: '#0d1f2d' } : {}),
+      }}
+    >
+      {onCycle ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+          {label}
+          <span style={{ fontSize: 7, color: '#475569', letterSpacing: 0 }}>▲▼</span>
+        </span>
+      ) : label}
+    </th>
   );
 }
 
