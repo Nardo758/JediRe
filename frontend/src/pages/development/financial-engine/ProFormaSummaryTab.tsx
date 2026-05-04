@@ -422,8 +422,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   const handleSaveCorrection = useCallback(async (field: string, value: number | null, original: number | null) => {
     try {
+      // management_fee is stored as management_fee_pct; value is already a decimal (0.025 = 2.5%).
+      // Translate to the camelCase field name the override endpoint expects.
+      const apiField = field === 'management_fee' ? 'managementFeePct' : field;
       await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
-        field,
+        field: apiField,
         year: null,
         value,
       });
@@ -456,8 +459,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   // Clears a user override on the backend (value: null = revert to ingested)
   const handleResetCorrection = useCallback(async (field: string) => {
     try {
+      const apiField = field === 'management_fee' ? 'managementFeePct' : field;
       await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
-        field,
+        field: apiField,
         year: null,
         value: null,
       });
@@ -1627,7 +1631,9 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
       const pctDecimal = mgmtFeeEditMode === '%'
         ? parsed / 100          // user typed "2.5" → 0.025
         : parsed / egiResolved; // user typed dollar amount → back-calculate %
-      onSaveCorrection('managementFeePct', pctDecimal, corr.original);
+      // Use row.field ('management_fee') as the corrections state key — handleSaveCorrection
+      // translates it to 'managementFeePct' for the API call internally.
+      onSaveCorrection(row.field, pctDecimal, corr.original);
       return;
     }
     onSaveCorrection(row.field, parsed, corr.original);
@@ -1691,12 +1697,11 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
           onClick={t12Val != null ? async () => {
             if (isT12ActiveOverride) {
               setOptimisticResolved(undefined);
-              await onResetCorrection(isMgmtFee ? 'managementFeePct' : row.field);
+              await onResetCorrection(row.field);
             } else {
               setOptimisticResolved(t12Val);
-              const saveField = isMgmtFee ? 'managementFeePct' : row.field;
-              const saveVal   = isMgmtFee && egiResolved ? t12Val / egiResolved : t12Val;
-              await onSaveCorrection(saveField, saveVal, row.resolved);
+              const saveVal = isMgmtFee && egiResolved ? t12Val / egiResolved : t12Val;
+              await onSaveCorrection(row.field, saveVal, row.resolved);
             }
           } : undefined}
           title={t12Val != null
@@ -1727,12 +1732,11 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
           onClick={platVal != null ? async () => {
             if (isPlatActiveOverride) {
               setOptimisticResolved(undefined);
-              await onResetCorrection(isMgmtFee ? 'managementFeePct' : row.field);
+              await onResetCorrection(row.field);
             } else {
               setOptimisticResolved(platVal);
-              const saveField = isMgmtFee ? 'managementFeePct' : row.field;
-              const saveVal   = isMgmtFee && egiResolved ? platVal / egiResolved : platVal;
-              await onSaveCorrection(saveField, saveVal, row.resolved);
+              const saveVal = isMgmtFee && egiResolved ? platVal / egiResolved : platVal;
+              await onSaveCorrection(row.field, saveVal, row.resolved);
             }
           } : undefined}
           title={platVal != null
@@ -1928,7 +1932,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
           {corr?.savedAt && (
             <button
               title="Reset to ingested value (clears backend override)"
-              onClick={() => onResetCorrection(isMgmtFee ? 'managementFeePct' : row.field)}
+              onClick={() => onResetCorrection(row.field)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', padding: '1px 2px' }}
             >
               <RotateCcw size={9} />
