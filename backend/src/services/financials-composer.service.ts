@@ -740,9 +740,15 @@ async function loadTrailingActualsMap(
 
     const annualise = (sum: number, months: number) => (sum / months) * 12;
 
+    // Intentional: the divisor is always `n` (full window), even when individual
+    // months have a null value for a given column.  A null month is treated as
+    // a $0 period rather than an excluded period.  This is the conservative choice
+    // for underwriting — it prevents sparse data from artificially inflating the
+    // annualised figure.  If all months in the slice are null, we return null
+    // (no data) rather than $0.
     const sumSlice = (col: string, n: number): number | null => {
       const slice = rows.slice(0, n);
-      if (slice.length < n) return null;
+      if (slice.length < n) return null;  // insufficient history for this window
       let total = 0; let hasAny = false;
       for (const row of slice) {
         const v = row[col];
