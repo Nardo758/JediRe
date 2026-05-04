@@ -117,8 +117,8 @@ export interface StrategyAnalysisV2Slice {
 /** Which document source the F9 Y1 column is anchored to. Shared across Assumptions / Pro Forma / Projections tabs. */
 export type Y1Source = 'BROKER' | 'T12' | 'T6' | 'T3' | 'T1' | 'PLATFORM';
 
-/** Which source drives the Resolved column in the Pro Forma operating statement. */
-export type ResolvedSource = 'AUTO' | 'BROKER' | 'T12' | 'PLATFORM';
+/** Which source is displayed in the Platform comparison column of the Pro Forma operating statement. */
+export type PlatformColSource = 'PLATFORM' | 'T12' | 'T6' | 'T3' | 'T1';
 
 interface DealStoreActions {
   // ─── DEAL LIST (Dashboard) ────────────────────────────────
@@ -360,10 +360,10 @@ interface DealStoreActions {
   y1Source: Y1Source;
   setY1Source: (source: Y1Source) => void;
 
-  // ─── F9 RESOLVED SOURCE PICKER ──────────────────────────────────────────────
-  /** Which source drives the Resolved column. AUTO = server-computed resolution. */
-  resolvedSource: ResolvedSource;
-  setResolvedSource: (source: ResolvedSource) => void;
+  // ─── F9 PLATFORM COLUMN SOURCE PICKER ───────────────────────────────────────
+  /** Which source is shown in the Platform comparison column. Default: 'PLATFORM'. */
+  platformColSource: PlatformColSource;
+  setPlatformColSource: (source: PlatformColSource) => void;
 
   // ─── F9 VIEW MODE ────────────────────────────────────────────────────────────
   /** Pro Forma view mode — BROKER_VIEW shows OM numbers, BUILD_OWN shows platform underwriting. Shared across Pro Forma / Assumptions tabs. */
@@ -1701,9 +1701,9 @@ export const useDealStore = create<DealStore>()(
     y1Source: 'PLATFORM' as Y1Source,
     setY1Source: (source) => set({ y1Source: source }),
 
-    // ─── F9 RESOLVED SOURCE PICKER ───────────────────────────
-    resolvedSource: 'AUTO' as ResolvedSource,
-    setResolvedSource: (source) => set({ resolvedSource: source }),
+    // ─── F9 PLATFORM COLUMN SOURCE PICKER ────────────────────────────────
+    platformColSource: 'PLATFORM' as PlatformColSource,
+    setPlatformColSource: (source) => set({ platformColSource: source }),
 
     // ─── F9 VIEW MODE ────────────────────────────────────────
     viewMode: 'BUILD_OWN' as 'BROKER_VIEW' | 'BUILD_OWN',
