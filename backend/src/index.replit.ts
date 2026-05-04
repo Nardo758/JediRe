@@ -1,4 +1,4 @@
-/**
+﻿/**
  * JediRe Backend - Replit Entry Point
  * Route handlers extracted to dedicated router modules
  */
@@ -290,11 +290,11 @@ app.use('/api/v1/cycle-intelligence', m28CycleIntelligenceRoutes);
 import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
 app.use('/api/v1', taxCompAnalysisRouter);
 
-// FRED macro ticker — public (no auth required) — used by TerminalPage ticker bar
+// FRED macro ticker â€” public (no auth required) â€” used by TerminalPage ticker bar
 import tickerRoutes from './api/rest/ticker.routes';
 app.use('/api/v1/ticker', tickerRoutes);
 
-// Time Series Explorer — public (no auth required) — used by TimeSeriesExplorerPage
+// Time Series Explorer â€” public (no auth required) â€” used by TimeSeriesExplorerPage
 import timeSeriesRoutes from './api/rest/time-series.routes';
 app.use('/api/v1/time-series', timeSeriesRoutes);
 
@@ -330,7 +330,7 @@ app.use('/api/v1/grid', optionalAuth, gridRouter);
 app.use('/api/v1/rankings', optionalAuth, rankingsRouter);
 app.use('/api/v1/portfolio', portfolioRouter);
 
-// Neural Network Hub: GET /api/v1/agents/status — must be mounted BEFORE the
+// Neural Network Hub: GET /api/v1/agents/status â€” must be mounted BEFORE the
 // broader /api/v1/agents routers below so the existing GET /status in
 // agent-chat.routes.ts (which returns hard-coded fake data) doesn't shadow it.
 import { createAgentStatusRoutes } from './api/rest/agent-status.routes';
@@ -455,7 +455,7 @@ app.use('/api/v1/proforma', requireAuth, proformaRouter);
 app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/deals', financialDocumentsRoutes);
 
-// Scene storage for 3D scenes — must be BEFORE documentsFilesRoutes so
+// Scene storage for 3D scenes â€” must be BEFORE documentsFilesRoutes so
 // /:dealId/files/3d-scene wins match against /:dealId/files/:fileId (Express first-match)
 import { sceneStorageRouter } from './services/design/scene-storage.service';
 app.use('/api/v1/deals', requireAuth, sceneStorageRouter);
@@ -501,21 +501,21 @@ app.use('/api/v1/knowledge-graph', createKnowledgeGraphRoutes(pool));
 app.use('/api/v1/knowledge-graph', createKGDealIngestionRoutes(pool));
 app.use('/api/v1/knowledge-graph/context', requireAuth, createKGDealContextRoutes(pool));
 
-// KG Deal Listener — auto-ingests deal analysis results into the knowledge graph.
+// KG Deal Listener â€” auto-ingests deal analysis results into the knowledge graph.
 // Hooks into zoning analysis, market analysis, and program target events.
-// Initialized lazily — no background thread, no blocking startup.
+// Initialized lazily â€” no background thread, no blocking startup.
 import { getKGDealListener } from './services/knowledge-graph/kg-deal-listener.service';
 
-// Initialize KG Deal Listener — hooks into deal lifecycle events
+// Initialize KG Deal Listener â€” hooks into deal lifecycle events
 // and pushes analysis results into the knowledge graph.
 getKGDealListener(pool);
-// Knowledge Graph public path aliases — see kg-aliases.routes.ts.
+// Knowledge Graph public path aliases â€” see kg-aliases.routes.ts.
 // Mounted at /api (not /api/v1) to satisfy the contracted public paths:
 //   GET  /api/kg/semantic-search
 //   POST /api/admin/kg/embeddings/backfill
 const { createKgAliasRoutes } = require('./api/rest/kg-aliases.routes');
 app.use('/api', createKgAliasRoutes(pool));
-// Context Awareness — analyst brain (analyze, supply-pipeline, gaps, what-if,
+// Context Awareness â€” analyst brain (analyze, supply-pipeline, gaps, what-if,
 // query). Wrapped in requireAuth so the LLM-backed /query endpoint can never
 // be reached unauthenticated even if the broader '/api/v1' requireAuth chain
 // above is reordered in the future.
@@ -614,14 +614,16 @@ import organizationRouter from './api/rest/organization.routes';
 import sigmaRouter from './api/rest/sigma.routes';
 import sigmaFullRouter from './api/rest/sigma-full.routes';
 import { designMassingRouter } from './services/design/design-massing.service';
+import leaseVelocityRouter from './api/rest/lease-velocity.routes';
 app.use('/api/v1/organization', organizationRouter);
 
-// Design 3D — AI massing generation
+// Design 3D â€” AI massing generation
 app.use('/api/v1/design', requireAuth, designMassingRouter);
 
-// M36 Joint Distribution Engine — plausibility scoring + goal-seeking
+// M36 Joint Distribution Engine â€” plausibility scoring + goal-seeking
 app.use('/api/v1/sigma', requireAuth, sigmaRouter);
 app.use('/api/v2/sigma', requireAuth, sigmaFullRouter);
+app.use('/api/v1/lease-velocity', leaseVelocityRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 
@@ -877,10 +879,10 @@ app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
 app.use('/api/v1/capsules', requireAuth, createCapsuleRoutes(pool));
 app.use('/api/v1/email', emailRouter);
 
-// ── Deal Capsule Bridge ──────────────────────────────────────────────────────
+// â”€â”€ Deal Capsule Bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use('/api/v1/deals/:dealId/capsule', requireAuth, createDealCapsuleBridge(pool));
 
-// ── Renovation Data API ───────────────────────────────────────────────────────
+// â”€â”€ Renovation Data API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use('/api/v1/deals/:dealId/renovation', requireAuth, createRenovationRoutes(pool));
 
 const activeUsers = new Map<string, any>();
@@ -1077,19 +1079,19 @@ async function initStripe() {
 }
 
 async function startServer() {
-  // ── Agent prompt seeding — runs before the server accepts any traffic ────
+  // â”€â”€ Agent prompt seeding â€” runs before the server accepts any traffic â”€â”€â”€â”€
   // Fail-fast with explicit process.exit(1): do not rely on unhandled-rejection
   // behavior to catch seed errors. A partial seed is worse than a clean abort.
   try {
     const { seedAllAgentPrompts } = await import('./agents/seeds/index');
     await seedAllAgentPrompts();
   } catch (err: any) {
-    console.error('[FATAL] Agent prompt seeding failed — aborting startup:', err.message);
+    console.error('[FATAL] Agent prompt seeding failed â€” aborting startup:', err.message);
     process.exit(1);
     return;
   }
 
-  // ── Seed system user for ROCKEMAN_API_KEY identity ───────────────────
+  // â”€â”€ Seed system user for ROCKEMAN_API_KEY identity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // The API key identity in requireApiKey() uses a fixed UUID so that
   // metering queries (user_credit_balances, ai_usage_log) don't violate
   // foreign-key constraints. Ensure the row exists at startup.
@@ -1103,7 +1105,7 @@ async function startServer() {
     console.warn('[Startup] Could not seed rockeman user (may already exist):', err.message);
   }
 
-  // ── Schema migrations (Task #512) ────────────────────────────────────────
+  // â”€â”€ Schema migrations (Task #512) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Apply any unapplied .sql files in backend/src/{db,database}/migrations/
   // before accepting traffic. Without this, columns added in code (e.g.
   // assumptions_hash, error_message) silently miss the database and the
@@ -1118,7 +1120,7 @@ async function startServer() {
   // (skip everything) or LENIENT_SCHEMA_CHECK=1 (run migrations but do not
   // abort startup on per-file failures or missing critical columns).
   if (process.env.SKIP_AUTO_MIGRATIONS === '1') {
-    console.warn('[Startup] SKIP_AUTO_MIGRATIONS=1 — schema migrations and verification skipped.');
+    console.warn('[Startup] SKIP_AUTO_MIGRATIONS=1 â€” schema migrations and verification skipped.');
   } else {
     const lenient = process.env.LENIENT_SCHEMA_CHECK === '1';
     try {
@@ -1127,7 +1129,7 @@ async function startServer() {
       const res = await runPendingMigrations(pool);
       if (res.failed.length > 0) {
         const msg =
-          `${res.failed.length} migration(s) failed — schema may be in a partial state. ` +
+          `${res.failed.length} migration(s) failed â€” schema may be in a partial state. ` +
           `See [migrate] log lines above.`;
         if (lenient) {
           console.warn('[Startup] ' + msg + ' Continuing because LENIENT_SCHEMA_CHECK=1.');
@@ -1144,7 +1146,7 @@ async function startServer() {
       if (lenient) {
         console.error('[Startup] Migration/verify error (lenient mode, continuing):', err.message);
       } else {
-        console.error('[FATAL] Schema not current — aborting startup before listen():', err.message);
+        console.error('[FATAL] Schema not current â€” aborting startup before listen():', err.message);
         console.error('[FATAL] Set LENIENT_SCHEMA_CHECK=1 to start anyway, or SKIP_AUTO_MIGRATIONS=1 to bypass entirely.');
         process.exit(1);
         return;
@@ -1154,7 +1156,7 @@ async function startServer() {
 
   httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   console.log('='.repeat(60));
-  console.log('🚀 JediRe Backend (Replit Edition)');
+  console.log('ðŸš€ JediRe Backend (Replit Edition)');
   console.log('='.repeat(60));
   console.log(`Server running on port ${PORT}`);
   console.log(`Server bound to 0.0.0.0:${PORT} (accessible externally)`);
@@ -1207,7 +1209,7 @@ async function startServer() {
       const runSweep = async () => {
         if (!svc.hasKey()) return;
         if (sweepInFlight) {
-          console.log('[Embeddings] staleness sweep skipped — previous run still in flight');
+          console.log('[Embeddings] staleness sweep skipped â€” previous run still in flight');
           return;
         }
         sweepInFlight = true;
@@ -1259,7 +1261,7 @@ async function startServer() {
     console.error('Failed to start email sync scheduler:', error);
   }
 
-  // Task #329 Phase 2 — hourly poller for per-user authenticated RSS feeds.
+  // Task #329 Phase 2 â€” hourly poller for per-user authenticated RSS feeds.
   try {
     const { startRssPoller } = await import('./services/news-connections/rss-feeds');
     startRssPoller();
@@ -1267,7 +1269,7 @@ async function startServer() {
     console.error('Failed to start news-connections RSS poller:', error);
   }
 
-  // M35 Impact Measurement — nightly job (runs once a day at ~3:00 AM)
+  // M35 Impact Measurement â€” nightly job (runs once a day at ~3:00 AM)
   try {
     const { runImpactMeasurementJob } = await import('./services/m35-impact.service');
     const scheduleM35ImpactJob = () => {
@@ -1362,7 +1364,7 @@ async function startServer() {
 
   await initStripe();
 
-  // M35 Phase 4: Nightly divergence tracking — fires at 2:00 AM UTC each day
+  // M35 Phase 4: Nightly divergence tracking â€” fires at 2:00 AM UTC each day
   // Mirrors the fixed-time scheduling pattern used by the M35 impact job.
   function scheduleM35DivergenceJob() {
     const now = new Date();
@@ -1386,7 +1388,7 @@ async function startServer() {
   }
   scheduleM35DivergenceJob();
 
-  // M35 Phase 5: monthly backtest — node-cron fires at 01:00 UTC on the 1st of each month.
+  // M35 Phase 5: monthly backtest â€” node-cron fires at 01:00 UTC on the 1st of each month.
   // node-cron avoids setTimeout overflow (max ~24.8 days) for month-length delays.
   cron.schedule('0 1 1 * *', async () => {
     try {
@@ -1404,12 +1406,12 @@ async function startServer() {
   if (cron.validate(discoveryCron)) {
     cron.schedule(discoveryCron, async () => {
       try {
-        console.log('[Property Discovery] Daily run starting…');
+        console.log('[Property Discovery] Daily run startingâ€¦');
         const { getPropertyDiscoveryService } = await import('./services/property-enrichment/discovery/property-discovery.service');
         const { getPropertyMatcherService } = await import('./services/property-enrichment/matching/property-matcher.service');
         const { COUNTY_CONFIGS } = await import('./services/property-enrichment/property-info/county-configs');
 
-        // 1) AL sync from legacy properties → apartment_locator_properties
+        // 1) AL sync from legacy properties â†’ apartment_locator_properties
         //    (must run BEFORE matching so newly-onboarded AL rows are
         //    available to the matcher in the same daily cycle).
         try {
