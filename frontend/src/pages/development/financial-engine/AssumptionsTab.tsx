@@ -2126,12 +2126,16 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         </div>
         <div className="flex items-center gap-2">
           {/* Hold period tabs */}
-          <div className="flex bg-[#1e1e1e] p-0.5 rounded">
+          <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a', gap: 1 }}>
             {(['5 YR','7 YR','10 YR'] as const).map(tab => {
               const active = holdTab === tab || (holdTab === null && holdYears === (tab === '5 YR' ? 5 : tab === '7 YR' ? 7 : 10));
               return (
-                <button key={tab} onClick={() => setHoldTab(tab)}
-                  className={`px-3 py-1 text-[10px] font-bold rounded-sm ${active ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+                <button key={tab} onClick={() => setHoldTab(tab)} style={{
+                  padding: '3px 8px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer',
+                  fontFamily: MONO, letterSpacing: '0.05em', transition: 'all 0.15s',
+                  background: active ? 'rgba(29,78,216,0.5)' : 'transparent',
+                  color: active ? '#bfdbfe' : '#475569',
+                }}>
                   {tab}
                 </button>
               );
