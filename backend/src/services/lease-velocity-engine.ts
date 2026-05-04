@@ -127,12 +127,15 @@ function rnLU(inp: LeaseVelocityInputs, tu: number, tO: number, mr: number, cls:
       eB.set(i + aT, (eB.get(i + aT) ?? 0) + mn);
     }
     ts = pre + on; const gpr = Math.round(co * mR);
-    const c = cStack(i, ts, ren, Math.max(0, exp - ren), 0, tu, 'LEASE_UP_NEW_CONSTRUCTION', cs, mi, mr, cls, gpr, er, treatment, fullGpr);
+    // §16 MODE-TRANSITION-IS-VISIBLE: costMode follows stable flag from *previous* iteration so
+    // the stabilization month itself is priced as lease-up (still crossing the threshold) while
+    // every subsequent month gets stabilized cost/funnel parameters.
+    const costMode: LeaseMode = (stable && sm !== null) ? 'STABILIZED_MAINTENANCE' : 'LEASE_UP_NEW_CONSTRUCTION';
+    const c = cStack(i, ts, ren, Math.max(0, exp - ren), 0, tu, costMode, cs, mi, mr, cls, gpr, er, treatment, fullGpr);
     er = c.cumulative_lease_up_reserve_drawn; const phy = tu > 0 ? co / tu : 0;
     const st = isSt(phy, phy, def); if (st && sm === null) { sm = i; stable = true; }
-    // FIX: mark mode transition — months after stabilization switch to STABILIZED (§16 MODE-TRANSITION-IS-VISIBLE)
     const modeThisMonth: LeaseMode = (stable && sm !== null && i > sm) ? 'STABILIZED_MAINTENANCE' : 'LEASE_UP_NEW_CONSTRUCTION';
-    const cR = FUNNEL['LEASE_UP_NEW_CONSTRUCTION']?.o ?? 0.03; const ip = cR > 0 ? Math.round(ts / cR) : 0;
+    const cR = FUNNEL[modeThisMonth]?.o ?? 0.03; const ip = cR > 0 ? Math.round(ts / cR) : 0;
     mo.push({ month_index: i, calendar_month: cal, mode_for_month: modeThisMonth, expirations: exp, renewals: ren, replacement_leases: Math.max(0, exp - ren), gap_close_leases: 0, pre_lease_signings: pre, lease_up_signings: on, total_signings: ts, move_ins: mn, move_outs: mOut, cumulative_occupied: co, physical_occupancy_pct: Math.round(phy * 10000) / 100, economic_occupancy_pct: Math.round(phy * 10000) / 100, gpr, vacancy_loss: Math.round(gpr * (1 - phy)), concessions_new_lease: c.new_lease_concessions_onetime, concessions_renewal: c.renewal_concessions_onetime, loss_to_lease_dollars: c.loss_to_lease_dollars, effective_rent: Math.round(Math.max(0, gpr - c.new_lease_concessions_onetime)), marketing_spend: c.marketing_spend, locator_fees: c.locator_broker_fees, make_ready: c.make_ready_turn_costs, bad_debt: c.bad_debt, opex: Math.round(gpr * 0.55), noi: Math.round(gpr - gpr * 0.55), debt_service: Math.round(-gpr * 0.40), cash_flow: Math.round(gpr - gpr * 0.55 - gpr * 0.40), lease_up_reserve_burn: c.lease_up_reserve_burn, cumulative_lease_up_reserve: er, implied_prospect_volume: ip, stabilization_marker: st && sm === i,
     });
   }
