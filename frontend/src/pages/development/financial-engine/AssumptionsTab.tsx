@@ -474,20 +474,6 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 't07Trajectory', label: 'T-07  Demand Trajectory % YoY', section: 5, unit: 'pct',
-    isM07: true, format: n => (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%', readonly: true,
-    description: 'YoY tour-volume change (T-07). Positive = accelerating demand.',
-    platformSource: 'M07 — T-07 derived from T-01 YoY change', brokerSource: 'N/A — derived',
-    getBroker:   (_f, _yr) => null,
-    getPlatform: (f, yr) => {
-      if (yr < 2) return null;
-      const curr = tyr(f, yr)?.t01WeeklyTours;
-      const prev = tyr(f, yr - 1)?.t01WeeklyTours;
-      return (curr != null && prev != null && prev !== 0) ? (curr / prev) - 1 : null;
-    },
-    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
-  },
-  {
     key: 'derivedVacancy', label: 'Derived Vacancy % (M07 equilibrium)', section: 5, unit: 'pct',
     isM07: true, format: fmtPct2, readonly: true,
     description: 'Read-only equilibrium vacancy from T-01×T-05 traffic model. Fallback to broker T12 vacancy when M07 offline.',
@@ -517,25 +503,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'leaseUpTo90', label: 'Lease-Up Curve: 90% Occ (weeks)', section: 5, unit: 'weeks',
-    isM07: true, format: fmtWks, readonly: true,
-    description: 'Weeks from CO to 90% physical occupancy. Derived from T-06 weekly leases.',
-    platformSource: 'M07 — T-06 velocity → weeks to 90%', brokerSource: 'OM / Pro Forma Assumptions',
-    getBroker:   (_f, _yr) => null,
-    getPlatform: (f, _yr) => f.trafficProjection?.leaseUp?.weeksTo90 ?? null,
-    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
-  },
-  {
-    key: 'leaseUpTo93', label: 'Lease-Up Curve: 93% Occ (weeks)', section: 5, unit: 'weeks',
-    isM07: true, format: fmtWks, readonly: true,
-    description: 'Weeks from CO to 93% physical occupancy.',
-    platformSource: 'M07 — T-06 velocity → weeks to 93%', brokerSource: 'OM / Pro Forma Assumptions',
-    getBroker:   (_f, _yr) => null,
-    getPlatform: (f, _yr) => f.trafficProjection?.leaseUp?.weeksTo93 ?? null,
-    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
-  },
-  {
-    key: 'leaseUpTo95', label: 'Lease-Up Curve: 95% Occ (weeks)', section: 5, unit: 'weeks',
+    key: 'leaseUpTo95', label: 'Weeks to 95% Stabilization (Lease-Up Target)', section: 5, unit: 'weeks',
     isM07: true, format: fmtWks, readonly: true,
     description: 'Weeks from CO to 95% physical occupancy. Standard stabilization threshold.',
     platformSource: 'M07 — T-06 velocity → weeks to 95%', brokerSource: 'OM / Pro Forma Assumptions',
@@ -2049,7 +2017,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     { id: '6',      sec: 6, label: SEC[6],
       rows: opexRows,                                                                   sectionGroup: 'A' },
     // ── Section B starts here ────────────────────────────────────────────────────
-    { id: '5-traf', sec: 5, label: '5  REVENUE › M07 TRAFFIC INTEL  [Vacancy Trajectory]',
+    { id: '5-traf', sec: 5, label: '5  REVENUE › M07 TRAFFIC INTEL + CONCESSIONS & LEASING  [Stabilization Path: 80%→95%]',
       rows: STATIC_ROWS.filter(r => r.section === 5),                                  sectionGroup: 'B' },
     { id: '7',      sec: 7, label: SEC[7],
       rows: STATIC_ROWS.filter(r => r.section === 7),                                  sectionGroup: 'B' },
