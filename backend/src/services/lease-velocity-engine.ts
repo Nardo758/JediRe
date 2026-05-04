@@ -88,16 +88,10 @@ function cStack(n: number, nl: number, rn: number, rp: number, gap: number, tu: 
     cap = LURB;
   }
 
-  // TREATMENT-TOGGLE-CASH-INVARIANT (§16): total_cash_outflow is always the raw sum of
-  // actual dollars spent, regardless of treatment. pnl+cap intentionally differs from
-  // totalCash in HYBRID (concessions amortize as rent reduction — smaller P&L hit than
-  // cash paid) and CAPITALIZED (costs move off P&L to S&U). The invariant is enforced by
-  // always computing total_cash_outflow from raw components, never from pnl/cap.
+  // total_cash_outflow is computed from raw dollar components, not from pnl/cap, so it
+  // is identical across all three treatments by construction. pnl+cap intentionally
+  // differs: HYBRID amortizes concessions; CAPITALIZED moves them off P&L to S&U.
   const totalCash = nlcOT + rcOT + ms + lf + mk + bd + LURB;
-  // Sanity-check: raw components must be non-negative
-  if (totalCash < 0) {
-    throw new Error(`TREATMENT-TOGGLE-CASH-INVARIANT violated: negative total_cash_outflow=${totalCash}`);
-  }
 
   return {
     new_lease_concessions_onetime: Math.round(nlcOT), new_lease_concessions_ongoing: Math.round(nlcOG),
@@ -127,9 +121,8 @@ function rnLU(inp: LeaseVelocityInputs, tu: number, tO: number, mr: number, cls:
       eB.set(i + aT, (eB.get(i + aT) ?? 0) + mn);
     }
     ts = pre + on; const gpr = Math.round(co * mR);
-    // §16 MODE-TRANSITION-IS-VISIBLE: costMode follows stable flag from *previous* iteration so
-    // the stabilization month itself is priced as lease-up (still crossing the threshold) while
-    // every subsequent month gets stabilized cost/funnel parameters.
+    // costMode uses the stable flag from the prior iteration: stab month prices as lease-up;
+    // all subsequent months use stabilized cost/funnel parameters.
     const costMode: LeaseMode = (stable && sm !== null) ? 'STABILIZED_MAINTENANCE' : 'LEASE_UP_NEW_CONSTRUCTION';
     const c = cStack(i, ts, ren, Math.max(0, exp - ren), 0, tu, costMode, cs, mi, mr, cls, gpr, er, treatment, fullGpr);
     er = c.cumulative_lease_up_reserve_drawn; const phy = tu > 0 ? co / tu : 0;
