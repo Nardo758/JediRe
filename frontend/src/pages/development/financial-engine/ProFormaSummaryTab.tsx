@@ -771,7 +771,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <td />
               {viewMode === 'BUILD_OWN' && <><td /><td /></>}
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#fb923c', fontWeight: 700 }}>
-                {fmt$(ctrlSubtotalRow.resolved || null)}
+                {fmtFull$(ctrlSubtotalRow.resolved || null)}
               </td>
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
                 {egiResolved && ctrlSubtotalRow.resolved ? `${((ctrlSubtotalRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
