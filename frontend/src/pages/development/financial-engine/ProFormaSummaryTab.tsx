@@ -345,10 +345,11 @@ function applyEvidenceFilter(
 }
 
 export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh }: FinancialEngineTabProps) {
-  const viewMode         = useDealStore(s => s.viewMode);
-  const setViewMode      = useDealStore(s => s.setViewMode);
-  const y1Source         = useDealStore(s => s.y1Source);
-  const setY1Source      = useDealStore(s => s.setY1Source);
+  const viewMode          = useDealStore(s => s.viewMode);
+  const setViewMode       = useDealStore(s => s.setViewMode);
+  const y1Source          = useDealStore(s => s.y1Source);
+  const setY1Source       = useDealStore(s => s.setY1Source);
+  const platformColSource = useDealStore(s => s.platformColSource);
 
   const T_PERIODS = ['T12', 'T6', 'T3', 'T1'] as const;
   type TPeriod = typeof T_PERIODS[number];
@@ -679,6 +680,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <Th label="Line Item" left min={180} sticky />
               <Th label="Broker" color={viewMode === 'BUILD_OWN' || y1IsBroker ? '#f59e0b' : undefined} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label={activePeriod.replace('T', 'T-')} color={y1IsTperiod ? '#34d399' : '#e2e8f0'} hidden={viewMode === 'BROKER_VIEW'} onCycle={cycleTPeriod} />
+              <Th label="Platform" color="#06b6d4" hidden={viewMode === 'BROKER_VIEW'} />
               <Th label="Resolved" highlight={viewMode === 'BUILD_OWN'} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label="% of EGI" color="#94a3b8" />
               <Th label="Source" />
@@ -727,7 +729,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 />
                 {showAncillary && (
                   <tr>
-                    <td colSpan={8} style={{ background: '#050d12', padding: 0, borderBottom: '1px solid #0e2030' }}>
+                    <td colSpan={9} style={{ background: '#050d12', padding: 0, borderBottom: '1px solid #0e2030' }}>
                       <AncillaryExpansionPanel
                         totalUnits={totalUnits}
                         dealId={dealId}
@@ -745,7 +747,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} fullFormat />}
 
             {/* ── CONTROLLABLE EXPENSES ── */}
-            <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" cols={viewMode === 'BROKER_VIEW' ? 6 : 8} />
+            <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
             {ctrlRows.map((r, i) => (
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="warm"
                 corrections={corrections} setCorrections={setCorrections}
@@ -759,6 +761,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#1a110a' }}>─── CONTROLLABLE OPEX ───</td>
               <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#fb923c', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.broker)}</td>
               {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.t12)}</td>}
+              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.platform)}</td>}
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#fb923c', fontWeight: 700, background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : 'rgba(0,0,0,0.3)' }}>
                 {fmtFull$(ctrlSubtotalRow.resolved || null)}
               </td>
@@ -769,7 +772,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             </tr>
 
             {/* ── NON-CONTROLLABLE EXPENSES ── */}
-            <SectionHeader label="Non-Controllable Expenses" accentColor="#a855f7" bg="#0d0a14" cols={viewMode === 'BROKER_VIEW' ? 6 : 8} />
+            <SectionHeader label="Non-Controllable Expenses" accentColor="#a855f7" bg="#0d0a14" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
             {nctrlRows.map((r, i) => (
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="purple"
                 corrections={corrections} setCorrections={setCorrections}
@@ -788,6 +791,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   {fmtFull$(totalOpexRow.broker)}
                 </td>
                 {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '5px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(totalOpexRow.t12)}</td>}
+                {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '5px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(pickPlatformValue(totalOpexRow, platformColSource))}</td>}
                 <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: 11,
                   background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : undefined,
                   color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#ffffff',
@@ -813,7 +817,10 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 </td>
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#86efac', fontWeight: viewMode === 'BROKER_VIEW' ? 700 : 400 }}>{fmtFull$(noiRow.broker)}</td>
                 {viewMode !== 'BROKER_VIEW' && (
-                  <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmtFull$(noiRow.t12)}</td>
+                  <>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmtFull$(noiRow.t12)}</td>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#06b6d4' }}>{fmtFull$(pickPlatformValue(noiRow, platformColSource))}</td>
+                  </>
                 )}
                 <td style={{
                   padding: '7px 8px', textAlign: 'right', fontWeight: 700, fontSize: 13,
@@ -1069,6 +1076,17 @@ function Th({ label, color, highlight, left, min, sticky, hidden, brokerActive, 
   );
 }
 
+/** Returns the value to display in the Platform comparison column based on the user-selected source. */
+function pickPlatformValue(row: OperatingStatementRow, src: PlatformColSource): number | null {
+  switch (src) {
+    case 'T12': return row.t12;
+    case 'T6':  return row.t6 ?? row.t12;
+    case 'T3':  return row.t3 ?? row.t12;
+    case 'T1':  return row.t1 ?? row.t12;
+    default:    return row.platform;
+  }
+}
+
 /** Returns the value for the trailing-period Y1 column based on the active period picker. */
 function pickY1ColValue(row: OperatingStatementRow, period: 'T12' | 'T6' | 'T3' | 'T1'): number | null {
   switch (period) {
@@ -1079,7 +1097,7 @@ function pickY1ColValue(row: OperatingStatementRow, period: 'T12' | 'T6' | 'T3' 
   }
 }
 
-function SectionHeader({ label, accentColor, bg, cols = 8 }: { label: string; accentColor: string; bg: string; cols?: number }) {
+function SectionHeader({ label, accentColor, bg, cols = 9 }: { label: string; accentColor: string; bg: string; cols?: number }) {
   return (
     <tr>
       <td colSpan={cols} style={{
@@ -1099,7 +1117,8 @@ function SectionHeader({ label, accentColor, bg, cols = 8 }: { label: string; ac
 function SubtotalRow({ label, row, color, textColor, egiResolved, fullFormat }: {
   label: string; row: OperatingStatementRow; color: string; textColor: string; egiResolved: number | null; fullFormat?: boolean;
 }) {
-  const viewMode = useDealStore(s => s.viewMode);
+  const viewMode          = useDealStore(s => s.viewMode);
+  const platformColSource = useDealStore(s => s.platformColSource);
   const isBroker = viewMode === 'BROKER_VIEW';
   const displayResolved = isBroker ? (row.broker ?? row.resolved) : row.resolved;
   const egiPct = egiResolved && displayResolved ? (displayResolved / egiResolved) * 100 : null;
@@ -1111,6 +1130,7 @@ function SubtotalRow({ label, row, color, textColor, egiResolved, fullFormat }: 
       </td>
       <td style={{ padding: '4px 8px', textAlign: 'right', color: isBroker ? '#fcd34d' : textColor, fontSize: 9, fontWeight: isBroker ? 700 : 400 }}>{f(row.broker)}</td>
       {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{f(row.t12)}</td>}
+      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{f(pickPlatformValue(row, platformColSource))}</td>}
       <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700,
         color: isBroker ? '#fcd34d' : textColor,
         background: isBroker ? '#1c0f00' : 'rgba(0,0,0,0.3)',
@@ -1573,7 +1593,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   /** Resolved evidence metadata + canonical field_path for this row (null when no underwriting evidence exists) */
   evidenceResolved?: { meta: EvidenceFieldMeta; path: string } | null;
 }) {
-  const viewMode = useDealStore(s => s.viewMode);
+  const viewMode          = useDealStore(s => s.viewMode);
+  const platformColSource = useDealStore(s => s.platformColSource);
   const isBroker = viewMode === 'BROKER_VIEW';
   const isSubtotal = SUBTOTALS.has(row.field);
   const isDeviant = row.benchmarkPosition === 'above' || row.benchmarkPosition === 'below';
@@ -1736,6 +1757,17 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
         </td>
       )}
 
+      {/* PLATFORM column — always T12/platform data, no cycling, static color */}
+      {!isBroker && (
+        <td
+          style={{
+            padding: '4px 8px', textAlign: 'right', fontSize: 9,
+            color: '#06b6d4',
+          }}
+        >
+          {fmtDisplay(pickPlatformValue(row, platformColSource))}
+        </td>
+      )}
 
       {/* RESOLVED (BUILD_OWN) / BROKER NOI (BROKER_VIEW) */}
       <td
