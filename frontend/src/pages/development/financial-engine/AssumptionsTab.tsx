@@ -8,6 +8,7 @@ import type { FinancialEngineTabProps, F9NarrativeBlock } from './types';
 import { apiClient } from '../../../services/api.client';
 import { F9ProtectorsPanel } from './F9ProtectorsPanel';
 import { useDealStore } from '../../../stores/dealStore';
+import type { Y1Source } from '../../../stores/dealStore';
 import { computeConfidenceBands, evaluateRefusal } from '../../../services/proforma/validators';
 import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma/types';
 
@@ -1476,7 +1477,17 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const removeValidationFlag = useDealStore(s => s.removeValidationFlag);
   const validationFlags = useDealStore(s => s.validationFlags);
   const setRefusalReasons = useDealStore(s => s.setRefusalReasons);
-  const refusalReasons = useDealStore(s => s.refusalReasons);
+  const refusalReasons    = useDealStore(s => s.refusalReasons);
+  const y1Source          = useDealStore(s => s.y1Source);
+  const setY1Source       = useDealStore(s => s.setY1Source);
+
+  const [viewMode, setViewMode]   = useState<'BROKER_VIEW'|'BUILD_OWN'>('BUILD_OWN');
+  const [closeDate, setCloseDate] = useState('');
+  const [saleDate,  setSaleDate]  = useState('');
+  const [csLocal, setCsLocal]     = useState<{
+    purchasePrice: string; ltcPct: string; interestRate: string;
+    ioPeriodMonths: string; amortizationYears: string;
+  }>({ purchasePrice: '', ltcPct: '', interestRate: '', ioPeriodMonths: '', amortizationYears: '' });
 
   const [financials, setFinancials]     = useState<DealFinancials|null>(null);
   const [loading, setLoading]           = useState(false);
@@ -1552,6 +1563,28 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       setNarrativeBlocks(res.data?.data?.blocks ?? []);
     } catch { /* non-fatal */ }
   }, [dealId]);
+
+  // Sync capital-stack guidance inputs from freshly-loaded financials (first load only).
+  // Session edits win — if the user has already typed something we don't clobber it.
+  useEffect(() => {
+    if (!financials?.capitalStack) return;
+    const cs = financials.capitalStack;
+    setCsLocal(prev => ({
+      purchasePrice:     prev.purchasePrice     || (cs.purchasePrice     != null ? String(Math.round(cs.purchasePrice)) : ''),
+      ltcPct:            prev.ltcPct            || (cs.ltcPct            != null ? (cs.ltcPct * 100).toFixed(2)         : ''),
+      interestRate:      prev.interestRate      || (cs.interestRate      != null ? (cs.interestRate * 100).toFixed(3)   : ''),
+      ioPeriodMonths:    prev.ioPeriodMonths    || (cs.ioPeriodMonths    != null ? String(cs.ioPeriodMonths)            : ''),
+      amortizationYears: prev.amortizationYears || (cs.amortizationYears != null ? String(cs.amortizationYears)        : ''),
+    }));
+  }, [financials]);
+
+  // Patch a capital-stack guidance field to the backend (year: null = deal-level).
+  const patchCapStack = useCallback((field: string, rawVal: string) => {
+    const v = parseFloat(rawVal.replace(/,/g, ''));
+    if (isNaN(v)) return;
+    const normalized = (field === 'ltcPct' || field === 'interestRate') ? +(v / 100).toFixed(6) : v;
+    enqueuePatch(field, null, normalized);
+  }, [enqueuePatch]);
 
   // Initial-load fetch: keyed strictly on dealId. We deliberately exclude
   // `fetchFinancials` from deps because that callback closes over
@@ -1969,8 +2002,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       rows: revRows,                                                                    sectionGroup: 'A' },
     { id: '6',      sec: 6, label: SEC[6],
       rows: opexRows,                                                                   sectionGroup: 'A' },
-    { id: '9',      sec: 9, label: SEC[9],
-      rows: STATIC_ROWS.filter(r => r.section === 9),                                  sectionGroup: 'A' },
     // ── Section B starts here ────────────────────────────────────────────────────
     { id: '5-traf', sec: 5, label: '5  REVENUE › M07 TRAFFIC INTEL  [Vacancy Trajectory]',
       rows: STATIC_ROWS.filter(r => r.section === 5),                                  sectionGroup: 'B' },
@@ -2031,7 +2062,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
 
   return (
     <div className="flex flex-col w-full h-full bg-[#0a0a0a] text-slate-300 text-xs overflow-hidden" style={{ fontFamily: 'system-ui,sans-serif' }}>
-      {/* Header */}
+      {/* Header — Row 1: title + deal info + hold tabs + actions */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#111] border-b border-[#1e1e1e] sticky top-0 z-30">
         <div className="flex items-center gap-3">
           <span className="font-bold text-slate-100 tracking-wider text-[11px]">F9 ASSUMPTIONS</span>
@@ -2048,6 +2079,40 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
           {loading && <span style={{ fontFamily: MONO, fontSize: 8, color: '#22d3ee' }}>SYNCING…</span>}
         </div>
         <div className="flex items-center gap-2">
+          {/* BROKER VIEW / BUILD YOUR OWN toggle */}
+          <div className="flex bg-[#1a1a1a] p-0.5 rounded border border-[#2a2a2a]">
+            {(['BROKER_VIEW', 'BUILD_OWN'] as const).map(mode => (
+              <button key={mode} onClick={() => setViewMode(mode)}
+                className={`px-2.5 py-1 text-[9px] font-bold rounded-sm transition-colors ${
+                  viewMode === mode
+                    ? mode === 'BROKER_VIEW'
+                      ? 'bg-amber-700/60 text-amber-300'
+                      : 'bg-blue-700/60 text-blue-200'
+                    : 'text-slate-600 hover:text-slate-400'
+                }`}>
+                {mode === 'BROKER_VIEW' ? 'BROKER VIEW' : 'BUILD YOUR OWN'}
+              </button>
+            ))}
+          </div>
+          {/* Y1 Source picker — shared via dealStore */}
+          <div className="flex items-center gap-1">
+            <span style={{ fontFamily: MONO, fontSize: 7, color: '#475569', letterSpacing: '0.08em' }}>Y1 SRC</span>
+            <div className="flex bg-[#1a1a1a] p-0.5 rounded border border-[#2a2a2a]">
+              {(['PLATFORM','BROKER','T12','T6','T3','T1'] as Y1Source[]).map(src => (
+                <button key={src} onClick={() => setY1Source(src)}
+                  className={`px-2 py-0.5 text-[8px] font-bold rounded-sm transition-colors ${
+                    y1Source === src
+                      ? src === 'PLATFORM'
+                        ? 'bg-cyan-800/60 text-cyan-300'
+                        : 'bg-amber-800/60 text-amber-300'
+                      : 'text-slate-700 hover:text-slate-400'
+                  }`}>
+                  {src}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Hold period tabs */}
           <div className="flex bg-[#1e1e1e] p-0.5 rounded">
             {(['5 YR','7 YR','10 YR'] as const).map(tab => {
               const active = holdTab === tab || (holdTab === null && holdYears === (tab === '5 YR' ? 5 : tab === '7 YR' ? 7 : 10));
@@ -2134,6 +2199,117 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         />
       )}
 
+      {/* ── Section A: Deal Timeline ─────────────────────────────────────────── */}
+      <div className="px-4 py-2 bg-[#0c0c0c] border-b border-[#1e1e1e]">
+        <div className="flex items-center gap-2 mb-2">
+          <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#22d3ee', letterSpacing: '0.1em' }}>
+            A — DEAL TIMELINE
+          </span>
+          <div style={{ flex: 1, borderTop: '1px dashed #22d3ee22' }} />
+          <span style={{ fontFamily: MONO, fontSize: 7, color: '#0e7490' }}>seeds hold period · exit waterfall</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label style={{ fontFamily: MONO, fontSize: 8, color: '#64748b', letterSpacing: '0.06em' }}>CLOSE DATE</label>
+            <input
+              type="date"
+              value={closeDate}
+              onChange={e => setCloseDate(e.target.value)}
+              style={{
+                fontFamily: MONO, fontSize: 9, background: '#1a1a1a', color: '#e2e8f0',
+                border: '1px solid #2a2a2a', borderRadius: 3, padding: '2px 6px',
+                colorScheme: 'dark',
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label style={{ fontFamily: MONO, fontSize: 8, color: '#64748b', letterSpacing: '0.06em' }}>TARGET SALE DATE</label>
+            <input
+              type="date"
+              value={saleDate}
+              onChange={e => setSaleDate(e.target.value)}
+              style={{
+                fontFamily: MONO, fontSize: 9, background: '#1a1a1a', color: '#e2e8f0',
+                border: '1px solid #2a2a2a', borderRadius: 3, padding: '2px 6px',
+                colorScheme: 'dark',
+              }}
+            />
+          </div>
+          {closeDate && saleDate && (() => {
+            const ms = new Date(saleDate).getTime() - new Date(closeDate).getTime();
+            const yrs = (ms / (1000 * 60 * 60 * 24 * 365.25));
+            return yrs > 0 ? (
+              <span style={{ fontFamily: MONO, fontSize: 9, color: '#10b981' }}>
+                {yrs.toFixed(1)} yr hold
+              </span>
+            ) : null;
+          })()}
+          <span style={{ fontFamily: MONO, fontSize: 7, color: '#334155', marginLeft: 'auto' }}>
+            Backend persistence: pending
+          </span>
+        </div>
+      </div>
+
+      {/* ── Section B: Capital Structure Guidance ───────────────────────────── */}
+      <div className="px-4 py-2 bg-[#0c0c0c] border-b border-[#1e1e1e]">
+        <div className="flex items-center gap-2 mb-2">
+          <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#7c3aed', letterSpacing: '0.1em' }}>
+            B — CAPITAL STRUCTURE GUIDANCE
+          </span>
+          <div style={{ flex: 1, borderTop: '1px dashed #7c3aed33' }} />
+          <span style={{ fontFamily: MONO, fontSize: 7, color: '#6d28d9' }}>seeds Debt Tab · optimizer runs independently</span>
+        </div>
+        <div className="flex items-center gap-4 flex-wrap">
+          {([
+            { key: 'purchasePrice',     label: 'PURCHASE PRICE',  placeholder: '0',      suffix: '$',   hint: 'e.g. 12500000' },
+            { key: 'ltcPct',            label: 'LTV %',           placeholder: '65.00',  suffix: '%',   hint: '% of purchase price' },
+            { key: 'interestRate',      label: 'RATE %',          placeholder: '6.750',  suffix: '%',   hint: 'senior loan rate' },
+            { key: 'ioPeriodMonths',    label: 'I/O PERIOD',      placeholder: '24',     suffix: 'mo',  hint: 'months before amort' },
+            { key: 'amortizationYears', label: 'AMORT',           placeholder: '30',     suffix: 'yr',  hint: 'amortization years' },
+          ] as Array<{ key: keyof typeof csLocal; label: string; placeholder: string; suffix: string; hint: string }>).map(({ key, label, placeholder, suffix, hint }) => (
+            <div key={key} className="flex flex-col gap-0.5">
+              <label style={{ fontFamily: MONO, fontSize: 7, color: '#475569', letterSpacing: '0.07em' }}>{label}</label>
+              <div className="flex items-center gap-1">
+                {suffix === '$' && <span style={{ fontFamily: MONO, fontSize: 9, color: '#64748b' }}>$</span>}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={csLocal[key]}
+                  placeholder={placeholder}
+                  title={hint}
+                  onChange={e => setCsLocal(prev => ({ ...prev, [key]: e.target.value }))}
+                  onBlur={e => patchCapStack(key, e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); } }}
+                  style={{
+                    fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                    background: '#1a1a1a', color: '#e2e8f0',
+                    border: '1px solid #2a2a2a', borderRadius: 3,
+                    padding: '2px 5px', width: key === 'purchasePrice' ? 100 : 56,
+                    outline: 'none',
+                  }}
+                />
+                {suffix !== '$' && <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>{suffix}</span>}
+              </div>
+            </div>
+          ))}
+          <div className="flex flex-col justify-end ml-2">
+            {financials?.capitalStack && (
+              <span style={{ fontFamily: MONO, fontSize: 7, color: '#334155' }}>
+                Loan: {financials.capitalStack.loanAmount != null
+                  ? '$' + (financials.capitalStack.loanAmount / 1e6).toFixed(1) + 'M'
+                  : '—'}
+                {financials.capitalStack.equityAtClose != null && (
+                  <>  ·  Equity: ${(financials.capitalStack.equityAtClose / 1e6).toFixed(1)}M</>
+                )}
+              </span>
+            )}
+            <span style={{ fontFamily: MONO, fontSize: 6, color: '#1e293b', marginTop: 2 }}>
+              ▸ DEBT TAB has final say · these seed the optimizer
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Grid + findings */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 overflow-auto">
@@ -2142,7 +2318,11 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
               <tr className="border-b border-[#1e1e1e]">
                 <th className="px-3 py-1.5 text-left text-[10px] font-bold text-slate-500 min-w-[220px] sticky left-0 bg-[#111111] z-20 border-r border-[#1e1e1e]">ASSUMPTION</th>
                 {years.map(yr => (
-                  <th key={yr} className="px-2 py-1.5 text-center text-[10px] font-bold text-slate-500 border-r border-[#1e1e1e]" style={{ minWidth: 82, fontFamily: MONO }}>YR {yr}</th>
+                  <th key={yr} className="px-2 py-1.5 text-center text-[10px] font-bold border-r border-[#1e1e1e]"
+                    style={{ minWidth: 82, fontFamily: MONO,
+                      color: yr === 1 ? (y1Source === 'PLATFORM' ? '#22d3ee' : '#f59e0b') : '#64748b' }}>
+                    {yr === 1 ? `YR 1 · ${y1Source}` : `YR ${yr}`}
+                  </th>
                 ))}
                 <th className="px-2 py-1.5 text-center text-[8px] font-bold text-slate-600" style={{ minWidth: 48 }}>MODE</th>
               </tr>

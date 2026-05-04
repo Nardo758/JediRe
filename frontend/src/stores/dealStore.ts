@@ -113,6 +113,10 @@ export interface StrategyAnalysisV2Slice {
   setStrategyAnalysisV2: (data: import('../hooks/useStrategyAnalysisV2').StrategyAnalysisV2 | null) => void;
 }
 
+// ─── F9 Y1 SOURCE PICKER ────────────────────────────────────────────────────
+/** Which document source the F9 Y1 column is anchored to. Shared across Assumptions / Pro Forma / Projections tabs. */
+export type Y1Source = 'BROKER' | 'T12' | 'T6' | 'T3' | 'T1' | 'PLATFORM';
+
 interface DealStoreActions {
   // ─── DEAL LIST (Dashboard) ────────────────────────────────
   deals: any[];
@@ -347,6 +351,11 @@ interface DealStoreActions {
     opexGrowth: number | null,
     noiMargin: number,
   ) => number | null;
+
+  // ─── F9 Y1 SOURCE PICKER ────────────────────────────────────────────────────
+  /** Document source the Y1 column in F9 tabs is anchored to. Default: 'PLATFORM'. */
+  y1Source: Y1Source;
+  setY1Source: (source: Y1Source) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1674,6 +1683,10 @@ export const useDealStore = create<DealStore>()(
     confidenceBands: {},
     validationFlags: [],
     refusalReasons: {},
+
+    // ─── F9 Y1 SOURCE PICKER ─────────────────────────────────
+    y1Source: 'PLATFORM' as Y1Source,
+    setY1Source: (source) => set({ y1Source: source }),
 
     setConfidenceBands: (bands) => set({ confidenceBands: bands }),
 
