@@ -1,0 +1,38 @@
+That changes the architecture. The tab isn't a sprawling input list — it's a transformation layer:
+F9 Pro Forma (Y1 baseline)  →  F9 Assumptions (this tab: methods + curves + escalations)  →  F9 Projections + Returns
+Each row is essentially: Y1 baseline (mirrored from Pro Forma, read-only) → growth method → Y2/Y3/Y4/Y5 (computed or overridden per year) → pushed downstream. The "control center" framing makes sense now: it's the one place that controls how every Y1 line becomes a multi-year stream.
+For Occupancy & Concessions specifically, the modeling problem most ProFormas botch is right here — they apply a flat vacancy % and forget about concession burn-off, lease-up drag during reno, or LtL closure. So this section needs methods (Stabilized curve / Lease-up ramp / Custom / Linked to M07), not just static cells.
+Layout I'll build:
+
+Header banner — explicit data-flow ribbon: ← Pro Forma · Y1 Source … Assumptions (here) … → Projections · Returns · Sensitivities. Click either side to jump.
+Control bar — scenario, override count, collision count, search, "reset all"
+Sections (top to bottom):
+
+Revenue Drivers (rent growth method, other income growth)
+Occupancy & Concessions — mode-aware (Stabilized / Lease-Up / Redev), full curves, concession schedule, LtL closure, bad debt
+Operating Expense Drivers (per category, mgmt fee linked to EGI)
+Capital Plan Timing (reno pace → drives the occupancy drag in section 2)
+Exit Method (cap rate delta, selling costs)
+
+
+Per-row anatomy: Y1 (read-only mirror) · METHOD picker · Y2-Y5 cells (each with source pill + conf dots, click to override) · "→ Projections" trail indicator
+Tax mechanics, debt amort, waterfall stay on their own F9 tabs — but Tax-growth and Debt-service appear as passthrough rows here so you see them in the projection stack
+
+Building it.Ran 3 commands, created a file, read a fileRan 3 commands, created a file, read a fileBuilt. Here's what's in it:
+Data-flow ribbon at top — explicit ← Pro Forma · Y1 Source ━▶ ASSUMPTIONS · CONTROL CENTER ━▶ Projections · Returns · Sensitivities. Makes the architecture you described visible on the surface, and each tab is clickable to jump.
+Row anatomy — every row is: LABEL | Y1 (mirrored from Pro Forma, cyan-tinted, read-only) | METHOD picker | Y2 / Y3 / Y4 / Y5 cells. Below each row: a BASIS line (one-sentence evidence trail) and a → Projections flows-to indicator showing which downstream tabs consume it.
+Method picker is the key new construct — Flat % / Stepped / CPI-Linked / Curve / Linked / M07 Absorption / Manual / Passthrough. This is what controls how Y1 becomes Y2-Y5+. Linked rows (Mgmt Fee, Economic Occupancy) auto-derive and can't be directly overridden.
+Sections:
+
+Revenue Drivers — Rent Growth (with broker collision visible: 4.5% vs platform 3.4%), Other Income Growth, Renovation Premium curve
+Occupancy & Concessions — mode-aware toggle (Stabilized / Lease-Up / Redev) at the section header. Switching mode reshapes the section. Includes Physical Occupancy curve, Structural Floor (M05), Concessions split into New vs Renewal vs % of New Leases (so the burn-off can be modeled), Loss-to-Lease closure, Bad Debt, Non-Revenue Units, and a derived Economic Occupancy row. Bottom strip shows the aggregate EGI drag year-by-year vs broker
+Operating Expense Drivers — by category, mgmt fee linked to EGI, insurance shows a user override on FL wind exposure
+Passthrough — Property Taxes (FL) and Debt Service shown as read-only with → F9 Taxes / → F9 Debt jump buttons. Editable on dedicated tabs but visible here so the projection stack is complete
+Exit Method — exit cap rate w/ broker collision (5.00% vs user 5.50%, ~$3.8M valuation gap), selling costs
+
+Control bar has scenario switcher (Base / Upside / Downside / Stress / Lender View), counters (84 total / 12 overridden / 3 collisions / 5 locked), search, "overrides only" toggle, "Reset all overrides", and the prominent amber PUSH → PROJECTIONS action.
+Sticky footer confirms downstream sync status to all consumers.
+Two things worth flagging for the next pass:
+
+Concession aggregation math — I split concessions into three rows (new lease months, renewal months, % of new w/ concession). The aggregate concession loss flowing to Projections is (% new × new_months + % renewal × renewal_months) × monthly_rent. Worth confirming that's how you want it computed vs a single blended row.
+Lease-Up / Redev mode shape — the toggle is wired and the context strip changes, but I built the row set for Stabilized only. The Lease-Up version would replace phys_occ with an M07 absorption pull (units/month curve, pre-leased % at TCO) and the Redev version adds a down-unit schedule row. Want me to build those mode variants out next, or push for live-data integration first?
