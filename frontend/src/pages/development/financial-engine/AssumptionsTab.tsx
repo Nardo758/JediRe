@@ -2039,10 +2039,10 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   // STATIC_ROWS section 5 (M07 Traffic Intel: velocity, derived vacancy, lease-up curve,
   // stabilized occupancy) → B because they drive the Y2+ vacancy ramp / trajectory.
   const allSections: Array<{ id: string; sec: number; label: string; rows: RowDef[]; sectionGroup: 'A' | 'B' }> = [
-    { id: '5-base', sec: 5, label: '5  REVENUE  [proforma.year1 · Rent Roll]',
-      rows: revRows,                                                                    sectionGroup: 'A' },
-    { id: '5-traf', sec: 5, label: '5B  REVENUE › M07 TRAFFIC INTEL + CONCESSIONS & LEASING  [Stabilization Path: 80%→95%]',
+    { id: '5-traf', sec: 5, label: '5A  REVENUE › M07 TRAFFIC INTEL + CONCESSIONS & LEASING  [Stabilization Path: 80%→95%]',
       rows: STATIC_ROWS.filter(r => r.section === 5),                                  sectionGroup: 'A' },
+    { id: '5-base', sec: 5, label: '5B  REVENUE  [proforma.year1 · Rent Roll]',
+      rows: revRows,                                                                    sectionGroup: 'A' },
     { id: '6',      sec: 6, label: SEC[6],
       rows: opexRows,                                                                   sectionGroup: 'A' },
     // ── Section B starts here ────────────────────────────────────────────────────
