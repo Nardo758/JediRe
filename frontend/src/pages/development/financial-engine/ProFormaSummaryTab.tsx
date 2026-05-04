@@ -1561,6 +1561,10 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   const isDeviant = row.benchmarkPosition === 'above' || row.benchmarkPosition === 'below';
   const isPct = PCT_FIELDS.has(row.field);
   const isPerUnit = PER_UNIT_FIELDS.has(row.field);
+  const isMgmtFee = row.field === 'management_fee';
+
+  // Management fee can be edited as $ or % of EGI — default to % since it's conceptually a rate.
+  const [mgmtFeeEditMode, setMgmtFeeEditMode] = useState<'$' | '%'>('%');
 
   // Hover states for clickable source cells — lightweight per-row visual affordance.
   const [hoverT12, setHoverT12]   = useState(false);
@@ -1616,7 +1620,11 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   function commitEdit() {
     if (!corr) return;
     const parsed = parseFloat(corr.draft);
-    const value = isNaN(parsed) ? null : parsed;
+    let value = isNaN(parsed) ? null : parsed;
+    // Management fee in % mode: user types a percentage, convert to dollars before saving.
+    if (isMgmtFee && mgmtFeeEditMode === '%' && value != null && egiResolved != null) {
+      value = (value / 100) * egiResolved;
+    }
     onSaveCorrection(row.field, value, corr.original);
   }
 
@@ -1756,20 +1764,45 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
         }}
       >
         {!isBroker && corr?.editing ? (
-          <input
-            autoFocus
-            value={corr.draft}
-            onChange={e => setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], draft: e.target.value } }))}
-            onBlur={commitEdit}
-            onKeyDown={e => {
-              if (e.key === 'Enter') commitEdit();
-              if (e.key === 'Escape') setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], editing: false } }));
-            }}
-            style={{
-              width: 80, background: '#0f172a', border: '1px solid #06b6d4', color: '#f8fafc',
-              fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, textAlign: 'right',
-            }}
-          />
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+            {isMgmtFee && (
+              <button
+                onMouseDown={e => {
+                  e.preventDefault(); // prevent blur before toggle fires
+                  const parsed = parseFloat(corr.draft);
+                  if (!isNaN(parsed) && egiResolved) {
+                    const newDraft = mgmtFeeEditMode === '%'
+                      ? String(Math.round((parsed / 100) * egiResolved))
+                      : ((parsed / egiResolved) * 100).toFixed(2);
+                    setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], draft: newDraft } }));
+                  }
+                  setMgmtFeeEditMode(m => m === '$' ? '%' : '$');
+                }}
+                title={mgmtFeeEditMode === '%' ? 'Editing as % of EGI — click to switch to $' : 'Editing as $ amount — click to switch to %'}
+                style={{
+                  background: '#0f172a', border: '1px solid #0891b2', borderRadius: 2,
+                  color: '#06b6d4', fontFamily: MONO, fontSize: 8, padding: '1px 3px',
+                  cursor: 'pointer', lineHeight: 1, fontWeight: 700,
+                }}
+              >
+                {mgmtFeeEditMode}
+              </button>
+            )}
+            <input
+              autoFocus
+              value={corr.draft}
+              onChange={e => setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], draft: e.target.value } }))}
+              onBlur={commitEdit}
+              onKeyDown={e => {
+                if (e.key === 'Enter') commitEdit();
+                if (e.key === 'Escape') setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], editing: false } }));
+              }}
+              style={{
+                width: isMgmtFee ? 56 : 80, background: '#0f172a', border: '1px solid #06b6d4', color: '#f8fafc',
+                fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, textAlign: 'right',
+              }}
+            />
+          </div>
         ) : (
           <span
             title={corr?.savedAt ? `Overridden at ${new Date(corr.savedAt).toLocaleTimeString()}` : undefined}
@@ -1861,7 +1894,13 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
               ...prev,
               [row.field]: prev[row.field]?.editing
                 ? prev[row.field]
-                : { editing: true, original: row.resolved, draft: String(row.resolved ?? '') },
+                : {
+                    editing: true,
+                    original: row.resolved,
+                    draft: isMgmtFee && mgmtFeeEditMode === '%' && row.resolved != null && egiResolved != null
+                      ? ((row.resolved / egiResolved) * 100).toFixed(2)
+                      : String(row.resolved ?? ''),
+                  },
             }))}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#334155', padding: '1px 2px' }}
           >
