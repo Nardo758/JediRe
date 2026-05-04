@@ -355,6 +355,10 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     const idx = T_PERIODS.indexOf(activePeriod);
     setY1Source(T_PERIODS[(idx + 1) % T_PERIODS.length]);
   };
+  // Whether each column is the "active" Y1 source (drives column header highlight)
+  const y1IsBroker   = y1Source === 'BROKER';
+  const y1IsPlatform = y1Source === 'PLATFORM';
+  const y1IsTperiod  = (T_PERIODS as readonly string[]).includes(y1Source);
 
   const PLATFORM_SOURCES: PlatformColSource[] = ['PLATFORM', 'T12', 'T6', 'T3', 'T1'];
   const cyclePlatformSource = () => {
@@ -677,9 +681,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
             <tr style={{ background: '#111111', borderBottom: '1px solid #2d2d2d' }}>
               <Th label="Line Item" left min={180} sticky />
-              <Th label="Broker" color={viewMode === 'BUILD_OWN' ? '#f59e0b' : undefined} brokerActive={viewMode === 'BROKER_VIEW'} />
-              <Th label={activePeriod.replace('T', 'T-')} color="#e2e8f0" hidden={viewMode === 'BROKER_VIEW'} onCycle={cycleTPeriod} />
-              <Th label={platformColLabel} color={platformColSource === 'PLATFORM' ? '#06b6d4' : '#e2e8f0'} hidden={viewMode === 'BROKER_VIEW'} onCycle={cyclePlatformSource} />
+              <Th label="Broker" color={viewMode === 'BUILD_OWN' || y1IsBroker ? '#f59e0b' : undefined} brokerActive={viewMode === 'BROKER_VIEW'} />
+              <Th label={activePeriod.replace('T', 'T-')} color={y1IsTperiod ? '#34d399' : '#e2e8f0'} hidden={viewMode === 'BROKER_VIEW'} onCycle={cycleTPeriod} />
+              <Th label={platformColLabel} color={y1IsPlatform || platformColSource === 'PLATFORM' ? '#06b6d4' : '#e2e8f0'} hidden={viewMode === 'BROKER_VIEW'} onCycle={cyclePlatformSource} />
               <Th label="Resolved" highlight={viewMode === 'BUILD_OWN'} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label="% of EGI" color="#94a3b8" />
               <Th label="Source" />

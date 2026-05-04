@@ -526,7 +526,7 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
 router.patch('/:dealId/assumptions/dates', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const userId = (req as any).user?.id;
+    const userId = req.user?.userId;
     const { closeDate, saleDate } = req.body as { closeDate?: string | null; saleDate?: string | null };
 
     const own = await pool.query(

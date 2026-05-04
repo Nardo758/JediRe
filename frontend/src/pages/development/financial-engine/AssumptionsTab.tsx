@@ -1474,7 +1474,7 @@ function KeystonePanel({
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResults, onAssumptionsChange }: FinancialEngineTabProps) {
+export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResults, onAssumptionsChange, onTabChange }: FinancialEngineTabProps) {
   const setConfidenceBands = useDealStore(s => s.setConfidenceBands);
   const classifyFieldOverride = useDealStore(s => s.classifyFieldOverride);
   const upsertValidationFlag = useDealStore(s => s.upsertValidationFlag);
@@ -1489,8 +1489,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const [saleDate,  setSaleDate]  = useState('');
   const [csLocal, setCsLocal]     = useState<{
     purchasePrice: string; ltcPct: string; interestRate: string;
-    ioPeriodMonths: string; amortizationYears: string;
-  }>({ purchasePrice: '', ltcPct: '', interestRate: '', ioPeriodMonths: '', amortizationYears: '' });
+    ioPeriodMonths: string; amortizationYears: string; originationFeePct: string;
+  }>({ purchasePrice: '', ltcPct: '', interestRate: '', ioPeriodMonths: '', amortizationYears: '', originationFeePct: '' });
 
   const [financials, setFinancials]     = useState<DealFinancials|null>(null);
   const [loading, setLoading]           = useState(false);
@@ -1500,6 +1500,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const [formulas, setFormulas]       = useState<Formulas>({});
   const [rowModes, setRowModes]       = useState<Record<string, RowMode>>({});
   const [drawerTarget, setDrawerTarget] = useState<DrawerTarget|null>(null);
+  const [annotationOpen, setAnnotationOpen] = useState<string | null>(null);
+  const [annotations, setAnnotations]       = useState<Record<string, string>>({});
   const [lockedOverrides, setLockedOverrides] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
   const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
@@ -1551,7 +1553,13 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       const res = await apiClient.get(`/api/v1/deals/${dealId}/financials?hold=${h}`);
       if (tok !== fetchRef.current) return;
       const data: DealFinancials = res.data?.data ?? res.data;
-      if (data?.proforma) setFinancials(data);
+      if (data?.proforma) {
+        setFinancials(data);
+        // Hydrate close/sale dates — first-load wins; user edits are not clobbered
+        const d = data as any;
+        if (d.closeDate) setCloseDate((prev: string) => prev || String(d.closeDate));
+        if (d.saleDate)  setSaleDate((prev: string)  => prev || String(d.saleDate));
+      }
     } catch { /* silent degradation */ }
     finally { if (tok === fetchRef.current) setLoading(false); }
   }, [dealId, holdYears]);
@@ -1578,6 +1586,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       interestRate:      prev.interestRate      || (cs.interestRate      != null ? (cs.interestRate * 100).toFixed(3)   : ''),
       ioPeriodMonths:    prev.ioPeriodMonths    || (cs.ioPeriodMonths    != null ? String(cs.ioPeriodMonths)            : ''),
       amortizationYears: prev.amortizationYears || (cs.amortizationYears != null ? String(cs.amortizationYears)        : ''),
+      originationFeePct: prev.originationFeePct || (cs.originationFeePct != null ? (cs.originationFeePct * 100).toFixed(3) : ''),
     }));
   }, [financials]);
 
@@ -2268,14 +2277,24 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         </div>
         <div className="flex items-center gap-4 flex-wrap">
           {([
-            { key: 'purchasePrice',     label: 'PURCHASE PRICE',  placeholder: '0',      suffix: '$',   hint: 'e.g. 12500000' },
-            { key: 'ltcPct',            label: 'LTV %',           placeholder: '65.00',  suffix: '%',   hint: '% of purchase price' },
-            { key: 'interestRate',      label: 'RATE %',          placeholder: '6.750',  suffix: '%',   hint: 'senior loan rate' },
-            { key: 'ioPeriodMonths',    label: 'I/O PERIOD',      placeholder: '24',     suffix: 'mo',  hint: 'months before amort' },
-            { key: 'amortizationYears', label: 'AMORT',           placeholder: '30',     suffix: 'yr',  hint: 'amortization years' },
-          ] as Array<{ key: keyof typeof csLocal; label: string; placeholder: string; suffix: string; hint: string }>).map(({ key, label, placeholder, suffix, hint }) => (
+            { key: 'purchasePrice',     label: 'PURCHASE PRICE',  placeholder: '0',      suffix: '$',   hint: 'e.g. 12500000',      debtLink: false },
+            { key: 'ltcPct',            label: 'LTV %',           placeholder: '65.00',  suffix: '%',   hint: '% of purchase price', debtLink: true  },
+            { key: 'interestRate',      label: 'RATE %',          placeholder: '6.750',  suffix: '%',   hint: 'senior loan rate',    debtLink: true  },
+            { key: 'ioPeriodMonths',    label: 'I/O PERIOD',      placeholder: '24',     suffix: 'mo',  hint: 'months before amort', debtLink: true  },
+            { key: 'amortizationYears', label: 'AMORT',           placeholder: '30',     suffix: 'yr',  hint: 'amortization years',  debtLink: true  },
+            { key: 'originationFeePct', label: 'ORIG FEE %',      placeholder: '1.000',  suffix: '%',   hint: 'origination fee %',   debtLink: true  },
+          ] as Array<{ key: keyof typeof csLocal; label: string; placeholder: string; suffix: string; hint: string; debtLink: boolean }>).map(({ key, label, placeholder, suffix, hint, debtLink }) => (
             <div key={key} className="flex flex-col gap-0.5">
-              <label style={{ fontFamily: MONO, fontSize: 7, color: '#475569', letterSpacing: '0.07em' }}>{label}</label>
+              <div className="flex items-center gap-1">
+                <label style={{ fontFamily: MONO, fontSize: 7, color: '#475569', letterSpacing: '0.07em' }}>{label}</label>
+                {debtLink && (
+                  <button
+                    title="View / edit in Debt Tab"
+                    onClick={() => onTabChange?.(4)}
+                    style={{ fontFamily: MONO, fontSize: 6, color: '#2dd4bf', background: 'none', border: '1px solid #2dd4bf44', borderRadius: 2, padding: '0 3px', cursor: 'pointer', lineHeight: 1.5 }}
+                  >→ DEBT</button>
+                )}
+              </div>
               <div className="flex items-center gap-1">
                 {suffix === '$' && <span style={{ fontFamily: MONO, fontSize: 9, color: '#64748b' }}>$</span>}
                 <input
@@ -2310,9 +2329,10 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                 )}
               </span>
             )}
-            <span style={{ fontFamily: MONO, fontSize: 6, color: '#1e293b', marginTop: 2 }}>
-              ▸ DEBT TAB has final say · these seed the optimizer
-            </span>
+            <button
+              onClick={() => onTabChange?.(4)}
+              style={{ fontFamily: MONO, fontSize: 6, color: '#2dd4bf', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, marginTop: 2 }}
+            >▸ DEBT TAB has final say · open Debt Tab →</button>
           </div>
         </div>
       </div>
@@ -2440,7 +2460,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                     {!isCollapsed && rows.map(rd => {
                       const mode = getMode(rd.key);
                       return (
-                        <tr key={rd.key} className="border-b border-[#1e1e1e]/40 hover:bg-[#0f0f0f] h-[26px]">
+                        <React.Fragment key={rd.key}>
+                        <tr className="border-b border-[#1e1e1e]/40 hover:bg-[#0f0f0f] h-[26px]">
                           <td className="px-3 py-0.5 text-[11px] text-slate-400 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 min-w-[220px]">
                             <span className="flex items-center gap-1.5 truncate">
                               {rd.readonly && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
@@ -2458,12 +2479,32 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                                 </span>
                               )}
                               <span className="truncate">{rd.label}</span>
+                              {viewMode === 'BROKER_VIEW' && (
+                                <button
+                                  title="Log a disagreement note (local — persistence in follow-up)"
+                                  onClick={() => setAnnotationOpen(prev => prev === rd.key ? null : rd.key)}
+                                  style={{ fontFamily: MONO, fontSize: 8, color: annotationOpen === rd.key ? '#fcd34d' : '#475569', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', flexShrink: 0 }}
+                                >✎</button>
+                              )}
                             </span>
                           </td>
                           {years.map(yr => {
-                            const broker       = financials ? rd.getBroker(financials, yr)   : null;
-                            const platform     = resolvePlatform(rd, yr);
-                            const user         = getUser(rd.key, yr);
+                            const broker   = financials ? rd.getBroker(financials, yr) : null;
+                            let platform   = resolvePlatform(rd, yr);
+                            const user     = getUser(rd.key, yr);
+
+                            // Y1 source: when yr===1 and no explicit user override, surface
+                            // the value from the selected y1Source so every Y1 cell updates live.
+                            if (yr === 1 && user == null && financials) {
+                              const y1Row = financials.proforma.year1.find((r: any) => r.field === rd.key);
+                              if (y1Source === 'BROKER')        platform = broker;
+                              else if (y1Source === 'T12')      platform = (y1Row as any)?.t12 ?? broker ?? platform;
+                              else if (y1Source === 'T6')       platform = (y1Row as any)?.t6  ?? (y1Row as any)?.t12 ?? platform;
+                              else if (y1Source === 'T3')       platform = (y1Row as any)?.t3  ?? (y1Row as any)?.t12 ?? platform;
+                              else if (y1Source === 'T1')       platform = (y1Row as any)?.t1  ?? (y1Row as any)?.t12 ?? platform;
+                              // PLATFORM: keep default resolvePlatform value
+                            }
+
                             const formulaResult = mode === 'formula' ? computeFormulaResult(rd, yr) : null;
                             const divergence = getDivergenceColor(
                               formulaResult ?? user, platform, broker,
@@ -2472,16 +2513,17 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                             const classification = ovrVal != null
                               ? classifyFieldOverride(`${rd.key}:${yr}`, ovrVal)?.classification ?? null
                               : null;
+                            const isBrokerView = viewMode === 'BROKER_VIEW';
                             return (
                               <LayeredCell key={yr}
                                 vals={{ broker, platform, user }}
                                 format={rd.format}
-                                readonly={rd.readonly || lockedOverrides}
+                                readonly={rd.readonly || lockedOverrides || isBrokerView}
                                 isM07={!!rd.isM07}
                                 divergence={divergence}
                                 formulaResult={formulaResult}
                                 classification={classification}
-                                onClick={() => openDrawer(rd, yr)}
+                                onClick={isBrokerView ? undefined : () => openDrawer(rd, yr)}
                               />
                             );
                           })}
@@ -2504,6 +2546,22 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                             )}
                           </td>
                         </tr>
+                        {/* BROKER VIEW annotation drawer — appears inline below the row */}
+                        {viewMode === 'BROKER_VIEW' && annotationOpen === rd.key && (
+                          <tr style={{ background: '#0c0800' }}>
+                            <td colSpan={years.length + 2} style={{ padding: '2px 14px 4px' }}>
+                              <input
+                                autoFocus
+                                placeholder="Disagree? Log a note here… (local-only — persistence in follow-up)"
+                                value={annotations[rd.key] ?? ''}
+                                onChange={e => setAnnotations(prev => ({ ...prev, [rd.key]: e.target.value }))}
+                                onKeyDown={e => { if (e.key === 'Escape') setAnnotationOpen(null); }}
+                                style={{ fontFamily: MONO, fontSize: 9, width: '100%', background: 'transparent', color: '#fcd34d', border: 'none', outline: 'none' }}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                        </React.Fragment>
                       );
                     })}
                     {!isCollapsed && sec === 5 && <GprDecompRow years={years} financials={financials} />}
