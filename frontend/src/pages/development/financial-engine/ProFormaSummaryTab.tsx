@@ -1549,6 +1549,15 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   const [hoverT12, setHoverT12]   = useState(false);
   const [hoverPlat, setHoverPlat] = useState(false);
 
+  const baseBg = shade === 'warm'
+    ? (isEven ? '#0e0a06' : '#0c0907')
+    : shade === 'purple'
+      ? (isEven ? '#0d0a10' : '#0b0810')
+      : (isEven ? '#0c0c0c' : '#0a0a0a');
+
+  const rowBg = isDeviant ? 'rgba(234,179,8,0.07)' : baseBg;
+  const corr = corrections[row.field];
+
   // ── Active-override detection ─────────────────────────────────────────────
   // Derived from server state (row.resolution) + in-session correction metadata
   // (corr?.savedAt). Both signals are needed: server state covers cross-reload
@@ -1560,15 +1569,6 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   const isT12ActiveOverride  = hasActiveOverride && t12Val  != null && Math.abs((row.resolved ?? 0) - t12Val)  < 0.01;
   /** True when the Platform cell's value is the active user override driving Resolved. */
   const isPlatActiveOverride = hasActiveOverride && platVal != null && Math.abs((row.resolved ?? 0) - platVal) < 0.01;
-
-  const baseBg = shade === 'warm'
-    ? (isEven ? '#0e0a06' : '#0c0907')
-    : shade === 'purple'
-      ? (isEven ? '#0d0a10' : '#0b0810')
-      : (isEven ? '#0c0c0c' : '#0a0a0a');
-
-  const rowBg = isDeviant ? 'rgba(234,179,8,0.07)' : baseBg;
-  const corr = corrections[row.field];
 
   function fmtDisplay(val: number | null): string {
     if (isPct) return fmtPct(val);
