@@ -1548,6 +1548,9 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   // Hover states for clickable source cells — lightweight per-row visual affordance.
   const [hoverT12, setHoverT12]   = useState(false);
   const [hoverPlat, setHoverPlat] = useState(false);
+  // Optimistic Resolved overlay: set immediately on click so the Resolved column
+  // updates without waiting for load() to return. undefined = no overlay (use server value).
+  const [optimisticResolved, setOptimisticResolved] = useState<number | null | undefined>(undefined);
 
   const baseBg = shade === 'warm'
     ? (isEven ? '#0e0a06' : '#0c0907')
@@ -1575,7 +1578,10 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
     return fmt$(val);
   }
 
-  const resolvedVal = isBroker ? (row.broker ?? row.resolved) : row.resolved;
+  const serverResolved = row.resolved;
+  const resolvedVal = isBroker
+    ? (row.broker ?? serverResolved)
+    : (optimisticResolved !== undefined ? optimisticResolved : serverResolved);
   const egiPct = egiResolved && resolvedVal && !isPct && !isPerUnit
     ? (resolvedVal / egiResolved) * 100
     : null;
@@ -1653,10 +1659,11 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
           onMouseEnter={t12Val != null ? () => setHoverT12(true)  : undefined}
           onMouseLeave={t12Val != null ? () => setHoverT12(false) : undefined}
           onClick={t12Val != null ? async () => {
-            // Branch on server-derived active state — no risk of local-state drift.
             if (isT12ActiveOverride) {
+              setOptimisticResolved(undefined);   // clear overlay immediately on reset
               await onResetCorrection(row.field);
             } else {
+              setOptimisticResolved(t12Val);      // show value immediately before load() returns
               await onSaveCorrection(row.field, t12Val, row.resolved);
             }
           } : undefined}
@@ -1687,8 +1694,10 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
           onMouseLeave={platVal != null ? () => setHoverPlat(false) : undefined}
           onClick={platVal != null ? async () => {
             if (isPlatActiveOverride) {
+              setOptimisticResolved(undefined);   // clear overlay immediately on reset
               await onResetCorrection(row.field);
             } else {
+              setOptimisticResolved(platVal);     // show value immediately before load() returns
               await onSaveCorrection(row.field, platVal, row.resolved);
             }
           } : undefined}
