@@ -483,6 +483,14 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
 
     const data = await getDealFinancials(pool, dealId, holdYears);
 
+    // Fetch close/sale dates stored in deal_data jsonb
+    const dateRes = await pool.query(
+      `SELECT deal_data->>'close_date' AS close_date, deal_data->>'sale_date' AS sale_date FROM deals WHERE id = $1`,
+      [dealId]
+    );
+    const closeDate: string | null = dateRes.rows[0]?.close_date ?? null;
+    const saleDate: string | null  = dateRes.rows[0]?.sale_date  ?? null;
+
     // Compute hold-period returns from F9 projection engine
     const projs = buildProjectionsForExport(data, holdYears);
     const equity = data.capitalStack.equityAtClose ?? 0;
@@ -501,11 +509,49 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       returns = { irr, equityMultiple, cashOnCash } as any;
     }
 
-    res.json({ success: true, data: { ...data, returns } });
+    res.json({ success: true, data: { ...data, returns, closeDate, saleDate } });
   } catch (error: any) {
     logger.error('Error fetching deal financials:', error);
     const status = (error as Error).message?.includes('not found') ? 404 : 500;
     res.status(status).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /:dealId/assumptions/dates
+ *
+ * Persist close date and target sale date for a deal.
+ * Stored in deals.deal_data jsonb as { close_date, sale_date }.
+ */
+router.patch('/:dealId/assumptions/dates', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = (req as any).user?.id;
+    const { closeDate, saleDate } = req.body as { closeDate?: string | null; saleDate?: string | null };
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
+    await pool.query(
+      `UPDATE deals
+         SET deal_data  = deal_data || jsonb_build_object(
+               'close_date', $2::text,
+               'sale_date',  $3::text
+             ),
+             updated_at = NOW()
+       WHERE id = $1`,
+      [dealId, closeDate ?? null, saleDate ?? null]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error patching deal dates:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

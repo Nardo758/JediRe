@@ -377,13 +377,13 @@ class TabErrorBoundary extends Component<
 // Built-in tabs always come first; custom tabs are appended after.
 const BUILTIN_TAB_LABELS = [
   '⊞ OVERVIEW',
-  '≡ PRO FORMA',
   '⊞ UNIT MIX',
-  '⋮≡ PROJECTIONS',
-  '⊕ ASSUMPTIONS',
+  '≡ PRO FORMA',
   '$ TAXES',
-  '⇄ SRC & USES',
   '⊙ DEBT',
+  '⊕ ASSUMPTIONS',
+  '⋮≡ PROJECTIONS',
+  '⇄ SRC & USES',
   '◈ CAP & WFALL',
   '∿ SENSITIVITY',
   '✓ DECISION',
@@ -1595,15 +1595,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         {/* ── TAB CONTENT (RIGHT) ── */}
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           {activeTab === 0  && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 1  && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 2  && <BtTabWrapper><UnitMixTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 3  && (
+          {activeTab === 1  && <BtTabWrapper><UnitMixTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 2  && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 3  && <BtTabWrapper><TaxesTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 4  && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 5  && <BtTabWrapper><TabErrorBoundary tabName="Assumptions"><AssumptionsTab {...tabProps} /></TabErrorBoundary></BtTabWrapper>}
+          {activeTab === 6  && (
             <BtTabWrapper><ProjectionsTab {...tabProps} integrityWarning={integrityBlocked} /></BtTabWrapper>
           )}
-          {activeTab === 4  && <BtTabWrapper><TabErrorBoundary tabName="Assumptions"><AssumptionsTab {...tabProps} /></TabErrorBoundary></BtTabWrapper>}
-          {activeTab === 5  && <BtTabWrapper><TaxesTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 6  && <BtTabWrapper><SourcesUsesTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 7  && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 7  && <BtTabWrapper><SourcesUsesTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 8  && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 9  && <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 10 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}

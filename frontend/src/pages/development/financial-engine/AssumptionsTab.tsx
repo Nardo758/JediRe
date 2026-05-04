@@ -8,6 +8,7 @@ import type { FinancialEngineTabProps, F9NarrativeBlock } from './types';
 import { apiClient } from '../../../services/api.client';
 import { F9ProtectorsPanel } from './F9ProtectorsPanel';
 import { useDealStore } from '../../../stores/dealStore';
+import { Y1SourcePicker } from './Y1SourcePicker';
 import { computeConfidenceBands, evaluateRefusal } from '../../../services/proforma/validators';
 import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma/types';
 
@@ -726,39 +727,6 @@ const STATIC_ROWS: RowDef[] = [
       return Math.round(gross * 0.98);
     },
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 60,
-  },
-
-  // ── Section 10: Financing [→ Debt Tab] ─────────────────────────────────────
-  // Read-only cross-reference to Debt tab. Edit these in the Debt Tab.
-  {
-    key: 'interestRate', label: 'Interest Rate', section: 9, unit: 'pct',
-    format: fmtPct2, readonly: true,
-    description: 'Senior loan fixed rate. Edit in Debt Tab → cross-referenced here.',
-    platformSource: 'JEDI — SOFR + spread (market rate)', brokerSource: 'OM / Term Sheet or Debt Broker',
-    brokerPage: 'Financing Assumptions', brokerLine: 'Interest Rate',
-    getBroker: (f, _yr) => f.capitalStack.interestRate ?? null,
-    getPlatform: (_f, _yr) => 0.0675,
-    getConfidence: _f => 80,
-  },
-  {
-    key: 'ltcPct', label: 'LTV / LTC %', section: 9, unit: 'pct',
-    format: fmtPct2, readonly: true,
-    description: 'Loan-to-value/cost at closing. Edit in Debt Tab → cross-referenced here.',
-    platformSource: 'JEDI — Market LTV norms', brokerSource: 'OM / Financing Assumptions',
-    brokerPage: 'Financing Assumptions', brokerLine: 'LTV',
-    getBroker: (f, _yr) => f.capitalStack.ltcPct ?? null,
-    getPlatform: (_f, _yr) => 0.65,
-    getConfidence: _f => 75,
-  },
-  {
-    key: 'ioPeriodMonths', label: 'Interest-Only Period (months)', section: 9, unit: 'months',
-    format: fmtMo, readonly: true,
-    description: 'Months of I/O payments before amortization begins. Edit in Debt Tab → cross-referenced here.',
-    platformSource: 'JEDI — Lender market norms', brokerSource: 'OM / Term Sheet',
-    brokerPage: 'Financing Assumptions', brokerLine: 'I/O Period',
-    getBroker: (f, _yr) => f.capitalStack.ioPeriodMonths ?? null,
-    getPlatform: (_f, _yr) => 24,
-    getConfidence: _f => 80,
   },
 
   // ── Section 10: Forward Growth Rates ───────────────────────────────────────
@@ -1516,6 +1484,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const refusalReasons    = useDealStore(s => s.refusalReasons);
   const y1Source          = useDealStore(s => s.y1Source);
   const viewMode          = useDealStore(s => s.viewMode);
+  const setViewMode       = useDealStore(s => s.setViewMode);
   const [closeDate, setCloseDate] = useState('');
   const [saleDate,  setSaleDate]  = useState('');
   const [csLocal, setCsLocal]     = useState<{
@@ -2135,6 +2104,36 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         </div>
       </div>
 
+      {/* Header — Row 2: view mode toggle + Y1 source picker + PUSH → PROJECTIONS */}
+      <div className="flex items-center gap-3 px-4 py-1.5 bg-[#0f0f0f] border-b border-[#1e1e1e] sticky top-[36px] z-29">
+        {/* BROKER VIEW / BUILD YOUR OWN toggle */}
+        <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a' }}>
+          {(['BROKER_VIEW', 'BUILD_OWN'] as const).map(mode => (
+            <button key={mode} onClick={() => setViewMode(mode)} style={{
+              padding: '3px 10px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer',
+              fontFamily: MONO, letterSpacing: '0.06em', transition: 'all 0.15s',
+              background: viewMode === mode ? (mode === 'BROKER_VIEW' ? 'rgba(180,83,9,0.5)' : 'rgba(29,78,216,0.5)') : 'transparent',
+              color: viewMode === mode ? (mode === 'BROKER_VIEW' ? '#fcd34d' : '#bfdbfe') : '#475569',
+            }}>
+              {mode === 'BROKER_VIEW' ? 'BROKER VIEW' : 'BUILD YOUR OWN'}
+            </button>
+          ))}
+        </div>
+        <Y1SourcePicker />
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={() => { onAssumptionsChange?.({}); fetchFinancials(holdYears); }}
+          style={{
+            fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: '0.07em',
+            padding: '3px 12px', borderRadius: 3, cursor: 'pointer',
+            background: 'rgba(34,197,94,0.15)', color: '#4ade80',
+            border: '1px solid rgba(34,197,94,0.3)',
+          }}
+        >
+          PUSH → PROJECTIONS
+        </button>
+      </div>
+
       {/* Bulk actions */}
       <div className="flex items-center gap-3 px-4 py-1 bg-[#0d0d0d] border-b border-[#1e1e1e]">
         <span className="text-[8px] font-bold text-slate-600 tracking-widest">BULK:</span>
@@ -2216,6 +2215,11 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
               type="date"
               value={closeDate}
               onChange={e => setCloseDate(e.target.value)}
+              onBlur={e => {
+                apiClient.patch(`/api/v1/deals/${dealId}/assumptions/dates`, {
+                  closeDate: e.target.value || null, saleDate: saleDate || null,
+                }).catch(() => {});
+              }}
               style={{
                 fontFamily: MONO, fontSize: 9, background: '#1a1a1a', color: '#e2e8f0',
                 border: '1px solid #2a2a2a', borderRadius: 3, padding: '2px 6px',
@@ -2229,6 +2233,11 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
               type="date"
               value={saleDate}
               onChange={e => setSaleDate(e.target.value)}
+              onBlur={e => {
+                apiClient.patch(`/api/v1/deals/${dealId}/assumptions/dates`, {
+                  closeDate: closeDate || null, saleDate: e.target.value || null,
+                }).catch(() => {});
+              }}
               style={{
                 fontFamily: MONO, fontSize: 9, background: '#1a1a1a', color: '#e2e8f0',
                 border: '1px solid #2a2a2a', borderRadius: 3, padding: '2px 6px',
@@ -2245,9 +2254,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
               </span>
             ) : null;
           })()}
-          <span style={{ fontFamily: MONO, fontSize: 7, color: '#334155', marginLeft: 'auto' }}>
-            Backend persistence: pending
-          </span>
         </div>
       </div>
 
@@ -2340,7 +2346,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
               )}
               {allSections.map(({ id, sec, label, rows, sectionGroup }, idx) => {
                 const isCollapsed = collapsedSections.has(sec);
-                const isFinancing = sec === 9;
                 const isSectionBStart =
                   sectionGroup === 'B' &&
                   (idx === 0 || allSections[idx - 1].sectionGroup === 'A');
@@ -2423,11 +2428,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                             : <ChevronDown className="w-3 h-3 text-slate-500 shrink-0" />
                           }
                           {label}
-                          {isFinancing && (
-                            <span className="ml-2 text-[8px] font-normal border rounded px-1" style={{ color: '#10b981', borderColor: '#065f46' }}>
-                              READ-ONLY · → DEBT TAB
-                            </span>
-                          )}
                           {sectionGroup === 'B' && (
                             <span className="ml-2 text-[7px] font-normal border rounded px-1" style={{ color: '#7c3aed', borderColor: '#7c3aed44' }}>
                               Y2+ ONLY
@@ -2445,7 +2445,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                             <span className="flex items-center gap-1.5 truncate">
                               {rd.readonly && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
                               {rd.isM07 && !rd.readonly && <span style={{ fontFamily: MONO, fontSize: 6, color: '#7e22ce', border: '1px solid #4c1d95', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>M07</span>}
-                              {isFinancing && <span style={{ fontFamily: MONO, fontSize: 6, color: '#10b981', border: '1px solid #065f46', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>→ DEBT</span>}
                               {mode === 'formula' && <FlaskConical className="w-2.5 h-2.5 text-teal-500 shrink-0" />}
                               {/* F9 Tier-1 §9: REFUSED chip surfaces when evaluateRefusal()
                                   determines the platform lacks the comp/history support to

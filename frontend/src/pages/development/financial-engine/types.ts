@@ -313,6 +313,8 @@ export interface F9DealFinancials {
   };
   userOverrides: Record<string, Record<number, number|null>>;
   meta: { seeded: boolean; updatedAt: string|null };
+  closeDate: string | null;
+  saleDate: string | null;
   taxes: F9TaxData | null;
   /** Debt stack — senior + mezz/B-Note loans (v2) */
   debt: F9DebtStack | null;
