@@ -400,6 +400,7 @@ export interface ProFormaYear1Seed {
   insurance: LayeredValue<number>;
   real_estate_tax: LayeredValue<number>;
   personal_property_tax: LayeredValue<number>;
+  replacement_reserves: LayeredValue<number>;
   total_opex: LayeredValue<number>;
   noi: LayeredValue<number>;
   noi_per_unit: LayeredValue<number>;

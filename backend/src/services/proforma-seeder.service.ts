@@ -206,9 +206,31 @@ function buildSeed(
   rrCapsule: Capsule | null,
   taxBillCapsule: Capsule | null,
   omCapsule: Capsule | null,
-  existingSeed: ExistingSeed | null
+  existingSeed: ExistingSeed | null,
+  bpCapsule: Record<string, unknown> | null = null
 ): ProFormaYear1Seed {
   const ex = existingSeed || {} as ExistingSeed;
+
+  // ── Broker proforma values (om layer) ────────────────────────────────────
+  const bpNum = (k: string): number | null => {
+    const v = bpCapsule?.[k];
+    return typeof v === 'number' && isFinite(v) ? v : null;
+  };
+  const bpVacPct   = bpNum('stabilizedVacancy');
+  const bpLtlPct   = bpNum('lossToLease');
+  const bpConcPct  = bpNum('concessionsPct');
+  const bpBdPct    = bpNum('badDebtPct');
+  const bpMgmtPct  = bpNum('managementFeePct');
+  const bpResPerUt = bpNum('replacementReservesPerUnit');
+  const bpNOI      = bpNum('yearOneNOI') ?? bpNum('stabilizedNOI');
+  const bpPayroll  = bpNum('payrollAnnual');
+  const bpInsur    = bpNum('insuranceAnnual');
+  const bpUtils    = bpNum('utilitiesAnnual');
+  const bpRM       = bpNum('repairsMaintenanceAnnual');
+  const bpTurnover = bpNum('turnoverAnnual');
+  const bpMktg     = bpNum('marketingAnnual');
+  const bpGA       = bpNum('gAndAAnnual');
+  const bpReserves = bpResPerUt != null && totalUnits > 0 ? bpResPerUt * totalUnits : null;
   const getOverride = (fieldName: string): number | null => {
     const parts = fieldName.split('.');
     let current: unknown = ex;
@@ -245,6 +267,7 @@ function buildSeed(
   const ltl_rr = num(rrCapsule, 'loss_to_lease_pct');
   const lossToLeasePct = resolve('loss_to_lease_pct', null, {
     t12: ltl_t12, rent_roll: ltl_rr,
+    om: bpLtlPct,
     existingOverride: getOverride('loss_to_lease_pct'),
   });
 
@@ -252,6 +275,7 @@ function buildSeed(
   const vac_rr = rrCapsule ? 1 - (num(rrCapsule, 'occupancy_by_unit_pct') ?? 1) : null;
   const vacancyPct = resolve('vacancy_pct', platform.vacancy_pct, {
     t12: vac_t12, rent_roll: vac_rr,
+    om: bpVacPct,
     existingOverride: getOverride('vacancy_pct'),
   });
 
@@ -265,6 +289,7 @@ function buildSeed(
     : null;
   const concessionsPct = resolve('concessions_pct', platform.concessions_pct, {
     t12: conc_t12, rent_roll: conc_rr,
+    om: bpConcPct,
     existingOverride: getOverride('concessions_pct'),
   });
 
@@ -274,6 +299,7 @@ function buildSeed(
   const bd_t12 = t12egi > 0 ? Math.abs(bdRaw) / t12egi : null;
   const badDebtPct = resolve('bad_debt_pct', platform.bad_debt_pct, {
     t12: bd_t12,
+    om: bpBdPct,
     existingOverride: getOverride('bad_debt_pct'),
   });
 
@@ -407,16 +433,18 @@ function buildSeed(
     ? (ex.other_income_user_lines as ProFormaYear1Seed['other_income_user_lines'])
     : undefined;
 
-  // ───────── OPEX (T12 primary; platform fallback) ─────────
+  // ───────── OPEX (T12 primary; platform fallback; broker om layer) ─────────
   const t12Opex = obj(t12Capsule, 'opex');
   const opexFromT12 = (
     t12Field: string,
     fieldName: string,
-    platformValue: number | null = null
+    platformValue: number | null = null,
+    omVal: number | null = null
   ): LayeredValue<number> => {
     const t12Val = num(t12Opex, t12Field);
     return resolve(fieldName, platformValue, {
       t12: t12Val,
+      om: omVal,
       existingOverride: getOverride(fieldName),
       priority: ['t12'],
     });
@@ -425,16 +453,16 @@ function buildSeed(
   const platformOpEx = (perUnit: number | null) =>
     perUnit != null && totalUnits > 0 ? perUnit * totalUnits : null;
 
-  const payroll = opexFromT12('payroll', 'payroll', platformOpEx(platform.opex_per_unit_annual.payroll));
-  const repairsMaintenance = opexFromT12('r_and_m', 'repairs_maintenance', platformOpEx(platform.opex_per_unit_annual.r_and_m));
-  const turnover = opexFromT12('turnover', 'turnover', platformOpEx(platform.opex_per_unit_annual.turnover));
+  const payroll = opexFromT12('payroll', 'payroll', platformOpEx(platform.opex_per_unit_annual.payroll), bpPayroll);
+  const repairsMaintenance = opexFromT12('r_and_m', 'repairs_maintenance', platformOpEx(platform.opex_per_unit_annual.r_and_m), bpRM);
+  const turnover = opexFromT12('turnover', 'turnover', platformOpEx(platform.opex_per_unit_annual.turnover), bpTurnover);
   const amenities = opexFromT12('amenities', 'amenities', null);
   const contractServices = opexFromT12('contract', 'contract_services', platformOpEx(platform.opex_per_unit_annual.contract_services));
-  const marketing = opexFromT12('marketing', 'marketing', platformOpEx(platform.opex_per_unit_annual.marketing));
+  const marketing = opexFromT12('marketing', 'marketing', platformOpEx(platform.opex_per_unit_annual.marketing), bpMktg);
   const office = opexFromT12('office', 'office', null);
-  const gAndA = opexFromT12('g_and_a', 'g_and_a', platformOpEx(platform.opex_per_unit_annual.g_and_a));
+  const gAndA = opexFromT12('g_and_a', 'g_and_a', platformOpEx(platform.opex_per_unit_annual.g_and_a), bpGA);
   const hoaDues = opexFromT12('hoa_dues', 'hoa_dues', null);
-  const utilities = opexFromT12('utilities', 'utilities', platformOpEx(platform.opex_per_unit_annual.utilities));
+  const utilities = opexFromT12('utilities', 'utilities', platformOpEx(platform.opex_per_unit_annual.utilities), bpUtils);
   const personalPropTax = opexFromT12('personal_property_tax', 'personal_property_tax', null);
 
   // ───────── CUSTOM LINE ITEMS (unrecognized GL rows captured by parser) ─────────
@@ -515,6 +543,7 @@ function buildSeed(
   const mgmt_t12_pct = t12egi > 0 ? (num(t12Opex, 'mgmt_fee') ?? 0) / t12egi : null;
   const mgmtFeePct = resolve('management_fee_pct', platform.management_fee_pct_egi, {
     t12: mgmt_t12_pct,
+    om: bpMgmtPct,
     existingOverride: getOverride('management_fee_pct'),
   });
 
@@ -522,6 +551,7 @@ function buildSeed(
   const t12Ins = num(t12Opex, 'insurance');
   const insurance = resolve('insurance', insurancePlatform, {
     t12: t12Ins,
+    om: bpInsur,
     existingOverride: getOverride('insurance'),
     warning: (t12Ins == null && t12Capsule != null)
       ? 'No property insurance line in T12 — using platform baseline. Confirm with insurance binder.'
@@ -619,10 +649,17 @@ function buildSeed(
   const noi_resolved = egi_after_bad_debt - total_opex_resolved;
   const noi: LayeredValue<number> = {
     platform: null, override: null,
+    om: bpNOI,
     resolved: noi_resolved,
     resolution: 'platform_fallback',
     updated_at: now(),
   };
+
+  const replacementReserves: LayeredValue<number> = resolve('replacement_reserves', null, {
+    om: bpReserves,
+    existingOverride: getOverride('replacement_reserves'),
+    priority: ['t12', 'om'],
+  });
 
   return {
     gpr,
@@ -650,6 +687,7 @@ function buildSeed(
     insurance,
     real_estate_tax: realEstateTax,
     personal_property_tax: personalPropTax,
+    replacement_reserves: replacementReserves,
     total_opex: totalOpex,
     noi,
     noi_per_unit: {
@@ -729,7 +767,11 @@ export async function seedProFormaYear1(
           : existing.rows[0].year1)
       : null;
 
-    const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed);
+    const bcRaw = capsule?.broker_claims;
+    const bcObj = bcRaw && typeof bcRaw === 'object' ? bcRaw as Record<string, unknown> : null;
+    const bpRaw = bcObj?.proforma;
+    const bpProforma = bpRaw && typeof bpRaw === 'object' ? bpRaw as Record<string, unknown> : null;
+    const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma);
 
     // Surface warnings from any layered value
     for (const [k, v] of Object.entries(seed)) {
