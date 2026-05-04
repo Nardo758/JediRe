@@ -286,7 +286,7 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
           {lpTranches.length === 0 ? (
             <div style={{ padding: '8px 10px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
               No LP tranches configured.{' '}
-              <span style={{ color: BT.text.cyan, cursor: 'pointer' }} onClick={() => onTabChange?.(7)}>
+              <span style={{ color: BT.text.cyan, cursor: 'pointer' }} onClick={() => onTabChange?.(8)}>
                 Configure in Cap &amp; Wfall →
               </span>
             </div>
@@ -914,7 +914,7 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
         LP IRR: Newton-Raphson on annual equity cashflows incl. net sale proceeds.
         Unleveraged IRR: NOI cashflows + gross sale / purchase price.
         {' '}
-        <span style={{ color: BT.text.cyan, cursor: 'pointer' }} onClick={() => onTabChange?.(2)}>
+        <span style={{ color: BT.text.cyan, cursor: 'pointer' }} onClick={() => onTabChange?.(6)}>
           View Projections →
         </span>
       </div>

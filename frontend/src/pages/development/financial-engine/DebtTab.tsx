@@ -1309,8 +1309,8 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
               <div
                 role="button"
                 tabIndex={0}
-                onClick={() => onTabChange?.(4)}
-                onKeyDown={e => { if (e.key === 'Enter') onTabChange?.(4); }}
+                onClick={() => onTabChange?.(3)}
+                onKeyDown={e => { if (e.key === 'Enter') onTabChange?.(3); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', background: '#065f4630', border: `1px solid #10b981`, borderRadius: 4, cursor: onTabChange ? 'pointer' : 'default', alignSelf: 'center' }}
                 title="Click to open Taxes tab — refi doc stamps"
               >
