@@ -335,8 +335,8 @@ export async function composeDealFinancials(
   // 10. Build traffic projection
   const trafficProjection = buildTrafficProjection();
 
-  // 11. Build assumptions
-  const assumptions = buildAssumptions(year1Data);
+  // 11. Build assumptions (pass pyOvs so growth-rate overrides are reflected)
+  const assumptions = buildAssumptions(year1Data, pyOvs);
 
   // 12. Build capital stack
   const capitalStack = buildCapitalStack(purchasePrice, year1Data);
@@ -1304,8 +1304,13 @@ function buildTrafficProjection(): any {
 
 // â”€â”€ Helper: Assumptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function buildAssumptions(y1: any): any {
+function buildAssumptions(y1: any, pyOvs: Record<string, { value: unknown }> = {}): any {
   const holdYears = y1?.holdYears ?? 10;
+  const pyNum = (key: string): number | null => {
+    const v = pyOvs[key]?.value;
+    const n = typeof v === 'number' ? v : (v != null ? Number(v) : NaN);
+    return Number.isFinite(n) ? n : null;
+  };
   return {
     holdYears,
     exitCap: y1?.exitCap ?? null,
@@ -1318,8 +1323,15 @@ function buildAssumptions(y1: any): any {
       exitCapIfLastYear: i === holdYears - 1 ? (y1?.exitCap ?? null) : null,
       capexDraw: null,
     })),
-    opexGrowthPct: null,
-    concessionBurnOffPct: null,
+    // Growth-rate overrides — read from per_year_overrides['growth:*'] written
+    // by applyFinancialsOverride when the user edits a Section 10 row.
+    opexGrowthPct:       pyNum('growth:opex'),
+    utilitiesGrowthPct:  pyNum('growth:utilities'),
+    insuranceGrowthPct:  pyNum('growth:insurance'),
+    taxGrowthPct:        pyNum('growth:tax'),
+    reservesGrowthPct:   pyNum('growth:reserves'),
+    ancillaryGrowthPct:  pyNum('growth:ancillary'),
+    concessionBurnOffPct: pyNum('concessionBurnOffPct:yr1'),
     gprDecomposition: y1?.gprDecomposition ?? null,
     narrative: y1?.narrative ?? null,
   };

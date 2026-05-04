@@ -3948,6 +3948,61 @@ export async function applyFinancialsOverride(
     };
   }
 
+  // Route Section 10 growth-rate overrides to per_year_overrides['growth:*'].
+  // These are deal-level scalar rates (not year1 LayeredValue fields), so they
+  // bypass the standard applyUserOverride path and go straight to JSONB.
+  // patchField → per_year_overrides key:
+  //   growthOpexPct       → growth:opex
+  //   growthInsurancePct  → growth:insurance
+  //   growthTaxPct        → growth:tax
+  //   growthUtilitiesPct  → growth:utilities
+  //   growthReservesPct   → growth:reserves
+  //   growthAncillaryPct  → growth:ancillary
+  //   concessionBurnOffPct→ concessionBurnOffPct:yr1  (existing key)
+  const GROWTH_FIELD_TO_PY_KEY: Record<string, string> = {
+    growthOpexPct:       'growth:opex',
+    growthInsurancePct:  'growth:insurance',
+    growthTaxPct:        'growth:tax',
+    growthUtilitiesPct:  'growth:utilities',
+    growthReservesPct:   'growth:reserves',
+    growthAncillaryPct:  'growth:ancillary',
+    concessionBurnOffPct: 'concessionBurnOffPct:yr1',
+  };
+  if (GROWTH_FIELD_TO_PY_KEY[field]) {
+    const pyKey = GROWTH_FIELD_TO_PY_KEY[field];
+    if (value === null) {
+      await pool.query(
+        `UPDATE deal_assumptions
+            SET per_year_overrides = COALESCE(per_year_overrides, '{}'::jsonb) - $2,
+                updated_at = NOW()
+          WHERE deal_id = $1`,
+        [dealId, pyKey],
+      );
+    } else {
+      const pyEntry = {
+        field, year: year ?? 0, value, updatedBy: userId,
+        updatedAt: new Date().toISOString(), resolution: 'override',
+      };
+      await pool.query(
+        `INSERT INTO deal_assumptions (deal_id, per_year_overrides, updated_at)
+              VALUES ($1, jsonb_build_object($2::text, $3::jsonb), NOW())
+         ON CONFLICT (deal_id) DO UPDATE
+              SET per_year_overrides = jsonb_set(
+                    COALESCE(deal_assumptions.per_year_overrides, '{}'::jsonb),
+                    ARRAY[$2::text],
+                    $3::jsonb
+                  ),
+                  updated_at = NOW()`,
+        [dealId, pyKey, JSON.stringify(pyEntry)],
+      );
+    }
+    return {
+      year1Key: field, year: year ?? 0, appliedValue: value, resolution: value != null ? 'user_override' : 'cleared',
+      updatedCell: { [field]: value },
+      derivedRecomputation: { egi: null, noi: null, totalOpex: null, derivedVacancyPct: null, affectedFields: [field] },
+    };
+  }
+
   // Route Sources & Uses overrides to per_year_overrides with 'su:' prefix
   // Field format: "su:{fieldName}" e.g. "su:workingCapital"
   if (field.startsWith('su:')) {

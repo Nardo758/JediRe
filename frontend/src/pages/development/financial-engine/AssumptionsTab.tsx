@@ -48,6 +48,14 @@ interface DealFinancials {
     gprDecomposition: GprDecomposition|null;
     /** AI narrative synthesizing M07 signals. Null when M07 offline. */
     narrative: string|null;
+    /** Live growth rates from per_year_overrides — null = use FIELD_META default */
+    opexGrowthPct: number|null;
+    utilitiesGrowthPct: number|null;
+    insuranceGrowthPct: number|null;
+    taxGrowthPct: number|null;
+    reservesGrowthPct: number|null;
+    ancillaryGrowthPct: number|null;
+    concessionBurnOffPct: number|null;
   };
   /** Persisted user overrides keyed by camelCase field name → hold year → value.
    *  Returned by backend so the frontend can rehydrate overrides state across sessions. */
@@ -175,8 +183,11 @@ interface FieldMeta {
   platformSource?: string; brokerSource?: string;
   brokerPage?: string; brokerLine?: string;
   // Year-N projection approach
-  growthPct?: number;        // fixed growth rate (e.g. 0.03 = 3%)
-  growthKey?: 'rent'|'opex'; // dynamic: 'rent' = per-year from assumptions; 'opex' = 3%
+  growthPct?: number;        // fixed fallback rate (e.g. 0.03 = 3%) used when no live rate available
+  growthKey?: 'rent'|'opex'; // dynamic: 'rent' = per-year from assumptions; 'opex' = general opex rate
+  /** Key in financials.assumptions that carries the user-overrideable live growth rate for this row.
+   *  When set, buildRowDef prefers this over the hardcoded growthPct fallback. */
+  assumptionKey?: keyof DealFinancials['assumptions'];
   // Custom per-year platform getter (for traffic-driven metrics)
   getYearNPlatform?: (f: DealFinancials, yr: number) => number|null;
 }
@@ -253,43 +264,43 @@ const FIELD_META: Record<string, FieldMeta> = {
   },
   // ── OpEx fields (Section 3) ───────────────────────────────────────────────
   payroll: {
-    unit: 'dollar', format: fmtDlr, patchField: 'payroll', growthPct: 0.03,
+    unit: 'dollar', format: fmtDlr, patchField: 'payroll', growthPct: 0.03, assumptionKey: 'opexGrowthPct',
     description: 'On-site payroll and property management fee per year.',
     platformSource: 'JEDI — Submarket OpEx benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Payroll & Benefits',
   },
   repairs_maintenance: {
-    unit: 'dollar', format: fmtDlr, patchField: 'repairsMaintenance', growthPct: 0.03,
+    unit: 'dollar', format: fmtDlr, patchField: 'repairsMaintenance', growthPct: 0.03, assumptionKey: 'opexGrowthPct',
     description: 'Routine R&M per year. Excludes capital expenditures.',
     platformSource: 'JEDI — Property class benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Repairs & Maintenance',
   },
   turnover: {
-    unit: 'dollar', format: fmtDlr, patchField: 'turnover', growthPct: 0.03,
+    unit: 'dollar', format: fmtDlr, patchField: 'turnover', growthPct: 0.03, assumptionKey: 'opexGrowthPct',
     description: 'Make-ready and turnover costs per year.',
     platformSource: 'JEDI — Turnover benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Turnover / Make Ready',
   },
   contract_services: {
-    unit: 'dollar', format: fmtDlr, patchField: 'contractServices', growthPct: 0.03,
+    unit: 'dollar', format: fmtDlr, patchField: 'contractServices', growthPct: 0.03, assumptionKey: 'opexGrowthPct',
     description: 'Landscaping, pest control, elevator, janitorial contract services per year.',
     platformSource: 'JEDI — Contract services benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Contract Services',
   },
   marketing: {
-    unit: 'dollar', format: fmtDlr, patchField: 'marketing', growthPct: 0.03,
+    unit: 'dollar', format: fmtDlr, patchField: 'marketing', growthPct: 0.03, assumptionKey: 'opexGrowthPct',
     description: 'Leasing, advertising, and marketing costs per year.',
     platformSource: 'JEDI — Marketing benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Marketing',
   },
   utilities: {
-    unit: 'dollar', format: fmtDlr, patchField: 'utilities', growthPct: 0.03,
+    unit: 'dollar', format: fmtDlr, patchField: 'utilities', growthPct: 0.03, assumptionKey: 'utilitiesGrowthPct',
     description: 'Owner-paid utilities per year.',
     platformSource: 'JEDI — Utility benchmark by market', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Utilities',
   },
   g_and_a: {
-    unit: 'dollar', format: fmtDlr, patchField: 'gAndA', growthPct: 0.03,
+    unit: 'dollar', format: fmtDlr, patchField: 'gAndA', growthPct: 0.03, assumptionKey: 'opexGrowthPct',
     description: 'General and administrative expenses per year.',
     platformSource: 'JEDI — G&A benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'G&A / Admin',
@@ -300,19 +311,19 @@ const FIELD_META: Record<string, FieldMeta> = {
     platformSource: 'JEDI — Market management fee norms', brokerSource: 'OM / Management Agreement',
   },
   insurance: {
-    unit: 'dollar', format: fmtDlr, patchField: 'insurance', growthPct: 0.035,
+    unit: 'dollar', format: fmtDlr, patchField: 'insurance', growthPct: 0.035, assumptionKey: 'insuranceGrowthPct',
     description: 'Hazard, liability, and specialty insurance per year.',
     platformSource: 'JEDI — Insurance benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Insurance',
   },
   real_estate_tax: {
-    unit: 'dollar', format: fmtDlr, patchField: 'realEstateTax', growthPct: 0.04,
+    unit: 'dollar', format: fmtDlr, patchField: 'realEstateTax', growthPct: 0.04, assumptionKey: 'taxGrowthPct',
     description: 'Annual RE tax. Reassessment at purchase causes Year-1 shock in Florida.',
     platformSource: 'JEDI — County millage model', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Real Estate Taxes',
   },
   replacement_reserves: {
-    unit: 'dollar', format: fmtDlr, patchField: 'replacementReserves',
+    unit: 'dollar', format: fmtDlr, patchField: 'replacementReserves', growthPct: 0.02, assumptionKey: 'reservesGrowthPct',
     description: 'Annual replacement reserves per unit. Industry standard $150–$350.',
     platformSource: 'JEDI — Industry reserve standard', brokerSource: 'OM / Pro Forma Expenses',
   },
@@ -320,7 +331,7 @@ const FIELD_META: Record<string, FieldMeta> = {
     unit: 'dollar', format: fmtDlr, readonly: true,
     description: 'Total operating expenses — sum of all expense lines above.',
     platformSource: 'Computed — sum of all opex lines', brokerSource: 'OM / T12 Operating Statement',
-    growthPct: 0.03,
+    growthPct: 0.03, assumptionKey: 'opexGrowthPct',
   },
   noi: {
     unit: 'dollar', format: fmtDlr, readonly: true,
@@ -369,7 +380,8 @@ function buildRowDef(osRow: OSRow, section: 5|6, meta: FieldMeta): RowDef {
       if (yr === 1) return base;
       if (meta.growthKey === 'rent') return Math.round(base * rentCompound(f, yr));
       if (meta.growthKey === 'opex' || meta.growthPct != null) {
-        const g = meta.growthPct ?? 0.03;
+        const liveRate = meta.assumptionKey != null ? (f.assumptions as Record<string, number|null>)[meta.assumptionKey as string] : null;
+        const g = liveRate ?? meta.growthPct ?? 0.03;
         return Math.round(base * Math.pow(1 + g, yr - 1));
       }
       return base;
@@ -383,7 +395,8 @@ function buildRowDef(osRow: OSRow, section: 5|6, meta: FieldMeta): RowDef {
       if (yr === 1) return base;
       if (meta.growthKey === 'rent') return Math.round(base * rentCompound(f, yr));
       if (meta.growthKey === 'opex' || meta.growthPct != null) {
-        const g = meta.growthPct ?? 0.03;
+        const liveRate = meta.assumptionKey != null ? (f.assumptions as Record<string, number|null>)[meta.assumptionKey as string] : null;
+        const g = liveRate ?? meta.growthPct ?? 0.03;
         return Math.round(base * Math.pow(1 + g, yr - 1));
       }
       return base;
@@ -769,11 +782,11 @@ const STATIC_ROWS: RowDef[] = [
   },
   {
     key: 'growthAncillaryPct', label: 'Ancillary Income Growth % / yr', section: 10, unit: 'pct',
-    format: fmtPct2,
+    format: fmtPct2, patchField: 'growthAncillaryPct',
     description: 'Annual growth rate for ancillary/other income (parking, RUBS, pet fees, valet trash, etc.). Excel model: 3%/yr.',
     platformSource: 'JEDI — Historical ancillary income growth by market', brokerSource: 'OM / Growth Rate Assumptions',
     brokerPage: 'Growth Rate Assumptions', brokerLine: 'Ancillary Income',
-    getBroker:   (_f, _yr) => 0.03,
+    getBroker:   (_f, _yr) => _f.assumptions.ancillaryGrowthPct ?? 0.03,
     getPlatform: (_f, _yr) => 0.03,
     getConfidence: _f => 65,
   },
@@ -783,47 +796,47 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Annual growth rate applied to variable operating expenses (payroll, R&M, marketing, contract services, G&A, turnover). Excel model: 2%/yr.',
     platformSource: 'JEDI — CPI + labor market trends', brokerSource: 'OM / Growth Rate Assumptions',
     brokerPage: 'Growth Rate Assumptions', brokerLine: 'OpEx Growth',
-    getBroker:   (_f, _yr) => 0.02,
+    getBroker:   (_f, _yr) => _f.assumptions.opexGrowthPct ?? 0.02,
     getPlatform: (_f, _yr) => 0.02,
     getConfidence: _f => 70,
   },
   {
     key: 'growthUtilitiesPct', label: 'Utilities Growth % / yr', section: 10, unit: 'pct',
-    format: fmtPct2,
+    format: fmtPct2, patchField: 'growthUtilitiesPct',
     description: 'Annual growth rate for owner-paid utilities. Tracked separately from general OpEx due to energy price volatility. Excel model: 2%/yr.',
     platformSource: 'JEDI — Energy price trend model by market', brokerSource: 'OM / Growth Rate Assumptions',
     brokerPage: 'Growth Rate Assumptions', brokerLine: 'Utility Growth',
-    getBroker:   (_f, _yr) => 0.02,
+    getBroker:   (_f, _yr) => _f.assumptions.utilitiesGrowthPct ?? 0.02,
     getPlatform: (_f, _yr) => 0.02,
     getConfidence: _f => 60,
   },
   {
     key: 'growthInsurancePct', label: 'Insurance Growth % / yr', section: 10, unit: 'pct',
-    format: fmtPct2,
+    format: fmtPct2, patchField: 'growthInsurancePct',
     description: 'Annual growth rate for property insurance. Florida assets typically see 3.5–5% annual increases due to hurricane/flood exposure.',
     platformSource: 'JEDI — Florida insurance market model', brokerSource: 'OM / Growth Rate Assumptions',
     brokerPage: 'Growth Rate Assumptions', brokerLine: 'Insurance Growth',
-    getBroker:   (_f, _yr) => 0.035,
+    getBroker:   (_f, _yr) => _f.assumptions.insuranceGrowthPct ?? 0.035,
     getPlatform: (_f, _yr) => 0.04,
     getConfidence: _f => 60,
   },
   {
     key: 'growthTaxPct', label: 'Property Tax Growth % / yr', section: 10, unit: 'pct',
-    format: fmtPct2,
+    format: fmtPct2, patchField: 'growthTaxPct',
     description: 'Annual growth rate for real estate taxes. Florida Homestead cap exemption does not apply to multifamily — subject to full reassessment. Excel model: 2%/yr.',
     platformSource: 'JEDI — County millage trend + assessment cap model', brokerSource: 'OM / Growth Rate Assumptions',
     brokerPage: 'Growth Rate Assumptions', brokerLine: 'Property Tax Growth',
-    getBroker:   (_f, _yr) => 0.02,
+    getBroker:   (_f, _yr) => _f.assumptions.taxGrowthPct ?? 0.02,
     getPlatform: (_f, _yr) => 0.02,
     getConfidence: _f => 70,
   },
   {
     key: 'growthReservesPct', label: 'Capital Reserves Growth % / yr', section: 10, unit: 'pct',
-    format: fmtPct2,
+    format: fmtPct2, patchField: 'growthReservesPct',
     description: 'Annual escalation of replacement reserve contributions. Excel model: 2%/yr.',
     platformSource: 'JEDI — Industry reserve escalation standard', brokerSource: 'OM / Growth Rate Assumptions',
     brokerPage: 'Growth Rate Assumptions', brokerLine: 'Capital Reserves',
-    getBroker:   (_f, _yr) => 0.02,
+    getBroker:   (_f, _yr) => _f.assumptions.reservesGrowthPct ?? 0.02,
     getPlatform: (_f, _yr) => 0.02,
     getConfidence: _f => 75,
   },
