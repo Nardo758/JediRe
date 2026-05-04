@@ -1558,11 +1558,10 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   const rowBg = isDeviant ? 'rgba(234,179,8,0.07)' : baseBg;
   const corr = corrections[row.field];
 
-  // ── Active-override detection ─────────────────────────────────────────────
-  // Derived from server state (row.resolution) + in-session correction metadata
-  // (corr?.savedAt). Both signals are needed: server state covers cross-reload
-  // persistence; corr covers the window between save and the next load() response.
-  const hasActiveOverride = row.resolution === 'user_override' || corr?.savedAt != null;
+  // Active override: server-side source ('override') covers persisted overrides
+  // across reloads; corr?.savedAt covers the optimistic in-session window before
+  // the next load() response arrives.
+  const hasActiveOverride = row.source === 'override' || corr?.savedAt != null;
   const t12Val  = row.t12;
   const platVal = pickPlatformValue(row, platformColSource);
   /** True when the T-12 cell's value is the active user override driving Resolved. */
