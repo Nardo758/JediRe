@@ -504,7 +504,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const byField: Record<string, OperatingStatementRow> = {};
   rows.forEach(r => { byField[r.field] = r; });
 
-  const revRows  = displayRows.filter(r => REVENUE_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
+  const revRows     = displayRows.filter(r => REVENUE_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
+  const preNriRows  = revRows.filter(r => ['vacancy_loss', 'loss_to_lease', 'concessions', 'bad_debt', 'non_revenue_units'].includes(r.field));
+  const postNriRows = revRows.filter(r => r.field === 'other_income');
   const ctrlRows = displayRows.filter(r => CTRL_OPEX_FIELDS.has(r.field));
   const nctrlRows = displayRows.filter(r => NCTRL_OPEX_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
   const noiRow   = rows.find(r => r.field === 'noi');
@@ -694,7 +696,31 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           <tbody>
             {/* ── REVENUE ── */}
             <SectionHeader label="Revenue" accentColor="#06b6d4" bg="#051a24" />
-            {revRows.map((r, i) => (
+
+            {/* GPR — top-line broker vs platform comparison */}
+            {byField['gpr'] && (
+              <SubtotalRow label="GROSS POTENTIAL RENT" row={byField['gpr']} color="#041520" textColor="#38bdf8" egiResolved={egiResolved} />
+            )}
+
+            {/* Income deductions (vacancy, LTL, concessions, bad debt, NRU) */}
+            {preNriRows.map((r, i) => (
+              <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="blue"
+                corrections={corrections} setCorrections={setCorrections}
+                totalUnits={totalUnits} egiResolved={egiResolved}
+                activePeriod={activePeriod}
+                onSaveCorrection={handleSaveCorrection}
+                onResetCorrection={handleResetCorrection}
+                evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
+              />
+            ))}
+
+            {/* NRI — broker vs platform comparison after deductions */}
+            {byField['net_rental_income'] && (
+              <SubtotalRow label="NET RENTAL INCOME" row={byField['net_rental_income']} color="#041a14" textColor="#34d399" egiResolved={egiResolved} />
+            )}
+
+            {/* Other Income (with ancillary expansion) */}
+            {postNriRows.map((r, i) => (
               <React.Fragment key={r.field}>
                 <DataRow row={r} isEven={i % 2 === 0} shade="blue"
                   corrections={corrections} setCorrections={setCorrections}
@@ -702,11 +728,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   activePeriod={activePeriod}
                   onSaveCorrection={handleSaveCorrection}
                   onResetCorrection={handleResetCorrection}
-                  onToggleAncillary={r.field === 'other_income' ? () => setShowAncillary(v => !v) : undefined}
-                  ancillaryOpen={r.field === 'other_income' ? showAncillary : undefined}
+                  onToggleAncillary={() => setShowAncillary(v => !v)}
+                  ancillaryOpen={showAncillary}
                   evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                 />
-                {r.field === 'other_income' && showAncillary && (
+                {showAncillary && (
                   <tr>
                     <td colSpan={9} style={{ background: '#050d12', padding: 0, borderBottom: '1px solid #0e2030' }}>
                       <AncillaryExpansionPanel
