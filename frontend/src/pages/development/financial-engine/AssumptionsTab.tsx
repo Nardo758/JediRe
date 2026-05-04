@@ -953,16 +953,27 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
   onApply: (rd: RowDef, yr: number, val: number|null, applyAllYears: boolean, layer: 'broker'|'platform'|'user'|'formula') => void;
   onFormulaChange: (rowKey: string, expr: string) => void;
 }) {
+  const viewMode = useDealStore(s => s.viewMode);
   const [activeLayer, setActiveLayer] = useState<'broker'|'platform'|'user'|'formula'>('platform');
   const [draft, setDraft]   = useState('');
   const [formula, setFormula] = useState('');
   const [applyAll, setApplyAll] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const platHidden   = viewMode === 'BROKER_VIEW';
+  const brokerHidden = viewMode === 'BUILD_OWN';
+
   useEffect(() => {
     if (!target) return;
     const { vals, formulaExpr } = target;
-    setActiveLayer(vals.user != null ? 'user' : vals.platform != null ? 'platform' : vals.broker != null ? 'broker' : 'user');
+    const preferPlatform = !platHidden && vals.platform != null;
+    const preferBroker   = !brokerHidden && vals.broker != null;
+    setActiveLayer(
+      vals.user != null    ? 'user'
+      : preferPlatform     ? 'platform'
+      : preferBroker       ? 'broker'
+      : 'user'
+    );
     setDraft(vals.user != null
       ? (target.row.unit === 'pct' ? (vals.user * 100).toFixed(2) : String(Math.round(vals.user)))
       : '');
@@ -997,11 +1008,11 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
   };
 
   const LAYER_CFG = [
-    { id: 'platform' as const, label: 'PLATFORM', color: '#22d3ee', val: vals.platform },
-    { id: 'broker'   as const, label: 'BROKER',   color: '#f59e0b', val: vals.broker },
-    { id: 'user'     as const, label: 'USER',      color: '#3b82f6', val: vals.user },
-    { id: 'formula'  as const, label: 'FORMULA',   color: '#2dd4bf', val: previewFormula },
-  ];
+    { id: 'platform' as const, label: 'PLATFORM', color: '#22d3ee', val: vals.platform, hidden: platHidden },
+    { id: 'broker'   as const, label: 'BROKER',   color: '#f59e0b', val: vals.broker,   hidden: brokerHidden },
+    { id: 'user'     as const, label: 'USER',      color: '#3b82f6', val: vals.user,     hidden: false },
+    { id: 'formula'  as const, label: 'FORMULA',   color: '#2dd4bf', val: previewFormula, hidden: false },
+  ].filter(lc => !lc.hidden);
 
   return (
     <div style={{
@@ -1015,9 +1026,22 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
           <div style={{ fontSize: 10, fontWeight: 700, color: '#e2e8f0' }}>{rd.label}</div>
           <div style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>YR {yr} · {rd.unit}</div>
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4 }}>
-          <X style={{ width: 14, height: 14 }} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {(platHidden || brokerHidden) && (
+            <span style={{
+              fontSize: 7, fontFamily: MONO, fontWeight: 700, letterSpacing: '0.08em',
+              padding: '2px 5px', borderRadius: 2,
+              border: `1px solid ${brokerHidden ? '#22d3ee40' : '#f59e0b40'}`,
+              color: brokerHidden ? '#22d3ee' : '#f59e0b',
+              background: brokerHidden ? '#22d3ee0a' : '#f59e0b0a',
+            }}>
+              {brokerHidden ? 'BUILD OWN' : 'BROKER VIEW'}
+            </span>
+          )}
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4 }}>
+            <X style={{ width: 14, height: 14 }} />
+          </button>
+        </div>
       </div>
 
       <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
