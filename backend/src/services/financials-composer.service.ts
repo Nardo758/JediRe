@@ -687,7 +687,10 @@ function omUnitMixToRentRollRows(
 
 // â”€â”€ Helper: Build operating statement rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-/** Maps each OSRow field name to the corresponding deal_monthly_actuals column. */
+/**
+ * Maps each OSRow field name to the exact deal_monthly_actuals column name.
+ * Column list verified against live schema (information_schema.columns).
+ */
 const TRAILING_FIELD_COL: Record<string, string> = {
   gpr:                 'gross_potential_rent',
   vacancy_loss:        'vacancy_loss',
@@ -699,19 +702,21 @@ const TRAILING_FIELD_COL: Record<string, string> = {
   egi:                 'effective_gross_income',
   payroll:             'payroll',
   management_fee:      'management_fee',
-  utilities:           'utilities_total',
+  utilities:           'utilities',          // actual column; NOT utilities_total
   repairs_maintenance: 'repairs_maintenance',
-  turnover:            'make_ready',
+  turnover:            'turnover_costs',     // actual column; NOT make_ready
   insurance:           'insurance',
   real_estate_taxes:   'real_estate_taxes',
-  total_opex:          'total_opex_coalesced',
+  total_opex:          'total_opex',         // actual column; NOT total_operating_expenses
   noi:                 'noi',
 };
 
 /**
  * Loads the most-recent 12 months of non-budget, non-proforma actuals for a deal
  * and returns an annualised T-1 / T-3 / T-6 value for each mapped OSRow field.
- * Returns an empty object on any query failure (column not present, no rows, etc.).
+ * Column names are verified against the live deal_monthly_actuals schema.
+ * Logs a warning and returns {} on any query failure so upstream rows are
+ * untouched (t6/t3/t1 stay null) rather than crashing the financials response.
  */
 async function loadTrailingActualsMap(
   pool: Pool,
@@ -722,9 +727,8 @@ async function loadTrailingActualsMap(
       `SELECT
          gross_potential_rent, vacancy_loss, loss_to_lease, concessions, bad_debt,
          net_rental_income, other_income, effective_gross_income,
-         payroll, management_fee, utilities_total, repairs_maintenance, make_ready,
-         insurance, real_estate_taxes, noi,
-         COALESCE(total_operating_expenses, total_opex) AS total_opex_coalesced
+         payroll, management_fee, utilities, repairs_maintenance, turnover_costs,
+         insurance, real_estate_taxes, total_opex, noi
        FROM deal_monthly_actuals
        WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
        ORDER BY report_month DESC
@@ -756,7 +760,8 @@ async function loadTrailingActualsMap(
       };
     }
     return out;
-  } catch {
+  } catch (err) {
+    console.warn('[composer] loadTrailingActualsMap failed (t6/t3/t1 will be null):', (err as Error)?.message ?? err);
     return {};
   }
 }
