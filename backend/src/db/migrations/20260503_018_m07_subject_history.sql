@@ -100,6 +100,11 @@ CREATE TABLE IF NOT EXISTS subject_traffic_history (
   --   [ { coefficient, subject_value, peer_value, sigma_deviation } ]
   peer_collisions     jsonb         NOT NULL DEFAULT '[]',
 
+  -- Deal operating mode at time of last S1 aggregation.
+  -- ConcessionEnvironmentEngine uses this to reject mode-mismatched subject coefficients
+  -- (e.g. LEASE_UP subject history must not influence STABILIZED projections).
+  deal_mode           text,
+
   created_at          timestamptz   NOT NULL DEFAULT NOW(),
   updated_at          timestamptz   NOT NULL DEFAULT NOW(),
 
@@ -107,6 +112,11 @@ CREATE TABLE IF NOT EXISTS subject_traffic_history (
 );
 
 CREATE INDEX IF NOT EXISTS subject_traffic_history_deal_idx ON subject_traffic_history (deal_id);
+
+-- Backfill: add deal_mode if the table was already created without it
+-- (idempotent — ADD COLUMN IF NOT EXISTS is safe to re-run)
+ALTER TABLE subject_traffic_history
+  ADD COLUMN IF NOT EXISTS deal_mode text;
 
 COMMENT ON TABLE subject_traffic_history IS
   'Per-deal subject history record consumed by the M07 Bayesian blend. '

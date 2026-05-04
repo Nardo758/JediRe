@@ -1578,14 +1578,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     }));
   }, [financials]);
 
-  // Patch a capital-stack guidance field to the backend (year: null = deal-level).
-  const patchCapStack = useCallback((field: string, rawVal: string) => {
-    const v = parseFloat(rawVal.replace(/,/g, ''));
-    if (isNaN(v)) return;
-    const normalized = (field === 'ltcPct' || field === 'interestRate') ? +(v / 100).toFixed(6) : v;
-    enqueuePatch(field, null, normalized);
-  }, [enqueuePatch]);
-
   // Initial-load fetch: keyed strictly on dealId. We deliberately exclude
   // `fetchFinancials` from deps because that callback closes over
   // `holdYears` — including it would cause a fetch every time holdYears
@@ -1623,6 +1615,14 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       fetchFinancials(holdYears);
     }, 600);
   }, [dealId, holdYears, fetchFinancials]);
+
+  // Patch a capital-stack guidance field to the backend (year: null = deal-level).
+  const patchCapStack = useCallback((field: string, rawVal: string) => {
+    const v = parseFloat(rawVal.replace(/,/g, ''));
+    if (isNaN(v)) return;
+    const normalized = (field === 'ltcPct' || field === 'interestRate') ? +(v / 100).toFixed(6) : v;
+    enqueuePatch(field, null, normalized);
+  }, [enqueuePatch]);
 
   // ── Backend-driven row derivation from proforma.year1 ──────────────────────
   // Sections 1 & 3: rows derived from financials.proforma.year1 + FIELD_META
