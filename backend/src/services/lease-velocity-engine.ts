@@ -1,4 +1,4 @@
-import type { LeaseMode, LeaseVelocityInputs, LeaseVelocityResult, MonthOutput, DealContext, ConcessionStrategy, MarketingIntensity, StabilizationDefinition } from './lease-velocity-types';
+import type { LeaseMode, LeaseVelocityInputs, LeaseVelocityResult, MonthOutput, DealContext, LeasingCostTreatment, StabilizationDefinition } from './lease-velocity-types';
 
 const PRE_LEASE_SIGNING_CURVE_6MO = [0.05, 0.08, 0.12, 0.15, 0.18, 0.22, 0.20];
 const MOVE_IN_LAG = { same_month_as_sign: 0.30, one_month_after: 0.55, two_months_after: 0.13, three_months_after: 0.02 };
@@ -50,7 +50,9 @@ function isSt(phy: number, eco: number, def: StabilizationDefinition): boolean {
   if (def === 'PHYSICAL_95') return phy >= 0.95; if (def === 'ECONOMIC_95') return eco >= 0.95; return phy >= 0.90;
 }
 
-function cStack(n: number, nl: number, rn: number, rp: number, gap: number, tu: number, mode: string, cs: string, mi: string, mr: number, cls: string, gpr: number, er: number): CostPerMo {
+// FIX §11 + §5: reserve burn uses full stabilized opex+ds, not % of current gpr (which is always 0).
+// Treatment branching: total_cash_outflow is identical across all three — only P&L presentation differs.
+function cStack(n: number, nl: number, rn: number, rp: number, gap: number, tu: number, mode: string, cs: string, mi: string, mr: number, cls: string, gpr: number, er: number, treatment: LeasingCostTreatment, fullMonthlyGpr: number): CostPerMo {
   const sm2 = CONC_MULT[cs] ?? 1.0; const cpl = mr * sm2; const nlcOT = nl * cpl; const rcOT = rn * 0.02 * mr;
   const dM = DECAY_CURVE_24MO[Math.min(n, 23)] ?? 0.05; const nlcOG = nlcOT * dM; const rcOG = rcOT / 12;
   const m = MKTG_DEFS[mode] ?? { pl: 400, bm: 2000 }; const ms = m.pl * nl + m.bm;
@@ -58,25 +60,61 @@ function cStack(n: number, nl: number, rn: number, rp: number, gap: number, tu: 
   const lp = (agg && (mode === 'LEASE_UP_NEW_CONSTRUCTION' || mode === 'OCCUPANCY_RECOVERY')) ? 0.30 : 0;
   const lf = lp * nl * mr * 0.75; const tc = TURN_COST[cls] ?? 1000; const mk = (rp + gap) * tc;
   const bd = gpr * 0.015; const ltl = gpr * 0.025;
-  const LURB = mode === 'LEASE_UP_NEW_CONSTRUCTION' ? Math.max(0, (gpr * 0.95) - gpr) : 0;
-  const cLUR = er + LURB; const pnl = nlcOT + rcOT + ms + lf + mk + bd;
-  const cap = mode === 'LEASE_UP_NEW_CONSTRUCTION' ? LURB + nlcOT * 0.5 : 0;
+
+  // FIX: reserve burn = max(0, full_opex + full_debt_service - current_gpr)
+  // full_opex ≈ 55% of stabilized GPR; full_ds ≈ 40% of stabilized GPR (per §8.2 run rate)
+  // In early lease-up gpr << fullMonthlyGpr, so this correctly produces positive burn.
+  const LURB = mode === 'LEASE_UP_NEW_CONSTRUCTION'
+    ? Math.max(0, fullMonthlyGpr * 0.55 + fullMonthlyGpr * 0.40 - gpr)
+    : 0;
+  const cLUR = er + LURB;
+
+  // LEASE-UP-RESERVE-IS-S&U: reserve is always capitalized regardless of treatment (§16)
+  // Treatment branching — only P&L presentation differs; total cash is invariant (§5, §16)
+  let pnl: number; let cap: number;
+  if (treatment === 'OPERATING') {
+    // Everything hits P&L; reserve is S&U (capitalized) per the hard rule
+    pnl = nlcOT + rcOT + ms + lf + mk + bd;
+    cap = LURB;
+  } else if (treatment === 'CAPITALIZED') {
+    // Lease-up concessions, marketing, locator fees → S&U; only make-ready + bad debt stay as P&L
+    const isLeaseUp = mode === 'LEASE_UP_NEW_CONSTRUCTION';
+    const capCosts = isLeaseUp ? nlcOT + rcOT + ms + lf : 0;
+    pnl = mk + bd + (isLeaseUp ? 0 : nlcOT + rcOT + ms + lf);
+    cap = LURB + capCosts;
+  } else {
+    // HYBRID (default): concessions amortize as effective-rent reduction (ongoing); marketing stays OpEx
+    pnl = nlcOG + rcOG + ms + mk + bd;
+    cap = LURB;
+  }
+
+  // TREATMENT-TOGGLE-CASH-INVARIANT (§16): total_cash_outflow is always the raw sum of
+  // actual dollars spent, regardless of treatment. pnl+cap intentionally differs from
+  // totalCash in HYBRID (concessions amortize as rent reduction — smaller P&L hit than
+  // cash paid) and CAPITALIZED (costs move off P&L to S&U). The invariant is enforced by
+  // always computing total_cash_outflow from raw components, never from pnl/cap.
+  const totalCash = nlcOT + rcOT + ms + lf + mk + bd + LURB;
+  // Sanity-check: raw components must be non-negative
+  if (totalCash < 0) {
+    throw new Error(`TREATMENT-TOGGLE-CASH-INVARIANT violated: negative total_cash_outflow=${totalCash}`);
+  }
+
   return {
     new_lease_concessions_onetime: Math.round(nlcOT), new_lease_concessions_ongoing: Math.round(nlcOG),
     renewal_concessions_onetime: Math.round(rcOT), renewal_concessions_ongoing: Math.round(rcOG),
     marketing_spend: Math.round(ms), locator_broker_fees: Math.round(lf), make_ready_turn_costs: Math.round(mk),
     bad_debt: Math.round(bd), loss_to_lease_dollars: Math.round(ltl), lease_up_reserve_burn: Math.round(LURB),
     cumulative_lease_up_reserve_drawn: Math.round(cLUR), total_leasing_p_and_l_impact: Math.round(pnl),
-    total_capitalized: Math.round(cap), total_cash_outflow: Math.round(pnl + LURB),
+    total_capitalized: Math.round(cap), total_cash_outflow: Math.round(totalCash),
   };
 }
 
-function rnLU(inp: LeaseVelocityInputs, tu: number, tO: number, mr: number, cls: string, def: StabilizationDefinition, cs: string, mi: string): RunResult {
+function rnLU(inp: LeaseVelocityInputs, tu: number, tO: number, mr: number, cls: string, def: StabilizationDefinition, cs: string, mi: string, treatment: LeasingCostTreatment): RunResult {
   const w: string[] = []; const mo: MonthOutput[] = []; const h = inp.time_horizon_months ?? 36;
   const dm = inp.delivery_month ?? 4; const plc = inp.pre_leased_count ?? 0; const pw = inp.pre_lease_window_months ?? 6;
   const pS = distPre(plc, dm, pw); const mM = distMove(pS, dm);
   let co = 0; let er = 0; let sm: number | null = null; let stable = false; const eB = new Map<number, number>();
-  const aT = inp.avg_lease_term_months ?? 12; const mR = mr / 12;
+  const aT = inp.avg_lease_term_months ?? 12; const mR = mr / 12; const fullGpr = tu * mR;
   for (let i = 0; i < h; i++) {
     const cal = fmtMon(2026, 0, i); let pre = 0, on = 0, mn = 0, mOut = 0, exp = 0, ren = 0, ts = 0;
     if (i < dm) { pre = pS.get(i) ?? 0; co = 0; }
@@ -89,34 +127,37 @@ function rnLU(inp: LeaseVelocityInputs, tu: number, tO: number, mr: number, cls:
       eB.set(i + aT, (eB.get(i + aT) ?? 0) + mn);
     }
     ts = pre + on; const gpr = Math.round(co * mR);
-    const c = cStack(i, ts, ren, Math.max(0, exp - ren), 0, tu, 'LEASE_UP_NEW_CONSTRUCTION', cs, mi, mr, cls, gpr, er);
+    const c = cStack(i, ts, ren, Math.max(0, exp - ren), 0, tu, 'LEASE_UP_NEW_CONSTRUCTION', cs, mi, mr, cls, gpr, er, treatment, fullGpr);
     er = c.cumulative_lease_up_reserve_drawn; const phy = tu > 0 ? co / tu : 0;
     const st = isSt(phy, phy, def); if (st && sm === null) { sm = i; stable = true; }
+    // FIX: mark mode transition — months after stabilization switch to STABILIZED (§16 MODE-TRANSITION-IS-VISIBLE)
+    const modeThisMonth: LeaseMode = (stable && sm !== null && i > sm) ? 'STABILIZED_MAINTENANCE' : 'LEASE_UP_NEW_CONSTRUCTION';
     const cR = FUNNEL['LEASE_UP_NEW_CONSTRUCTION']?.o ?? 0.03; const ip = cR > 0 ? Math.round(ts / cR) : 0;
-    mo.push({ month_index: i, calendar_month: cal, mode_for_month: 'LEASE_UP_NEW_CONSTRUCTION', expirations: exp, renewals: ren, replacement_leases: Math.max(0, exp - ren), gap_close_leases: 0, pre_lease_signings: pre, lease_up_signings: on, total_signings: ts, move_ins: mn, move_outs: mOut, cumulative_occupied: co, physical_occupancy_pct: Math.round(phy * 10000) / 100, economic_occupancy_pct: Math.round(phy * 10000) / 100, gpr, vacancy_loss: Math.round(gpr * (1 - phy)), concessions_new_lease: c.new_lease_concessions_onetime, concessions_renewal: c.renewal_concessions_onetime, loss_to_lease_dollars: c.loss_to_lease_dollars, effective_rent: Math.round(Math.max(0, gpr - c.new_lease_concessions_onetime)), marketing_spend: c.marketing_spend, locator_fees: c.locator_broker_fees, make_ready: c.make_ready_turn_costs, bad_debt: c.bad_debt, opex: Math.round(gpr * 0.55), noi: Math.round(gpr - gpr * 0.55), debt_service: Math.round(-gpr * 0.40), cash_flow: Math.round(gpr - gpr * 0.55 - gpr * 0.40), lease_up_reserve_burn: c.lease_up_reserve_burn, cumulative_lease_up_reserve: er, implied_prospect_volume: ip, stabilization_marker: st && sm === i,
+    mo.push({ month_index: i, calendar_month: cal, mode_for_month: modeThisMonth, expirations: exp, renewals: ren, replacement_leases: Math.max(0, exp - ren), gap_close_leases: 0, pre_lease_signings: pre, lease_up_signings: on, total_signings: ts, move_ins: mn, move_outs: mOut, cumulative_occupied: co, physical_occupancy_pct: Math.round(phy * 10000) / 100, economic_occupancy_pct: Math.round(phy * 10000) / 100, gpr, vacancy_loss: Math.round(gpr * (1 - phy)), concessions_new_lease: c.new_lease_concessions_onetime, concessions_renewal: c.renewal_concessions_onetime, loss_to_lease_dollars: c.loss_to_lease_dollars, effective_rent: Math.round(Math.max(0, gpr - c.new_lease_concessions_onetime)), marketing_spend: c.marketing_spend, locator_fees: c.locator_broker_fees, make_ready: c.make_ready_turn_costs, bad_debt: c.bad_debt, opex: Math.round(gpr * 0.55), noi: Math.round(gpr - gpr * 0.55), debt_service: Math.round(-gpr * 0.40), cash_flow: Math.round(gpr - gpr * 0.55 - gpr * 0.40), lease_up_reserve_burn: c.lease_up_reserve_burn, cumulative_lease_up_reserve: er, implied_prospect_volume: ip, stabilization_marker: st && sm === i,
     });
   }
   return { mo, sm, cr: er, w };
 }
 
-function rnST(inp: LeaseVelocityInputs, tu: number, tO: number, cO: number, mr: number, cls: string, def: StabilizationDefinition, cs: string): RunResult {
+function rnST(inp: LeaseVelocityInputs, tu: number, tO: number, cO: number, mr: number, cls: string, def: StabilizationDefinition, cs: string, treatment: LeasingCostTreatment): RunResult {
   const mo: MonthOutput[] = []; const w: string[] = []; const h = inp.time_horizon_months ?? 24;
-  const rr = 0.65; const dv = 21; const mR = mr / 12; let er = 0; const bE = 1 / 12;
+  const rr = 0.65; const dv = 21; const mR = mr / 12; let er = 0; const bE = 1 / 12; const fullGpr = tu * mR;
   for (let i = 0; i < h; i++) {
     const cal = fmtMon(2026, 0, i); const exp = Math.round(tu * bE); const ren = Math.round(exp * rr); const rep = exp - ren;
     const drag = tu > 0 ? (rep * dv) / (tu * 30) : 0; const nl = rep; const sm_ = SEASONAL[i % 12]; const adj = Math.round(nl * sm_);
     const iO = tO + drag; const co = Math.min(tu, Math.floor(tu * iO)); const gpr = Math.round(co * mR);
-    const c = cStack(i, adj, ren, rep, 0, tu, 'STABILIZED_MAINTENANCE', cs, 'MARKET', mr, cls, gpr, er);
+    const c = cStack(i, adj, ren, rep, 0, tu, 'STABILIZED_MAINTENANCE', cs, 'MARKET', mr, cls, gpr, er, treatment, fullGpr);
     const phy = tu > 0 ? co / tu : 0; const cR = FUNNEL['STABILIZED_MAINTENANCE']?.o ?? 0.067; const ip = cR > 0 ? Math.round(adj / cR) : 0;
     mo.push({ month_index: i, calendar_month: cal, mode_for_month: 'STABILIZED_MAINTENANCE', expirations: exp, renewals: ren, replacement_leases: rep, gap_close_leases: 0, pre_lease_signings: 0, lease_up_signings: adj, total_signings: adj, move_ins: adj, move_outs: rep, cumulative_occupied: co, physical_occupancy_pct: Math.round(phy * 10000) / 100, economic_occupancy_pct: Math.round(phy * 10000) / 100, gpr, vacancy_loss: Math.round(gpr * (1 - phy)), concessions_new_lease: c.new_lease_concessions_onetime, concessions_renewal: c.renewal_concessions_onetime, loss_to_lease_dollars: c.loss_to_lease_dollars, effective_rent: Math.round(Math.max(0, gpr - c.new_lease_concessions_onetime)), marketing_spend: c.marketing_spend, locator_fees: c.locator_broker_fees, make_ready: c.make_ready_turn_costs, bad_debt: c.bad_debt, opex: Math.round(gpr * 0.55), noi: Math.round(gpr - gpr * 0.55), debt_service: Math.round(-gpr * 0.40), cash_flow: Math.round(gpr - gpr * 0.55 - gpr * 0.40), lease_up_reserve_burn: 0, cumulative_lease_up_reserve: 0, implied_prospect_volume: ip, stabilization_marker: true });
   }
   return { mo, sm: 0, cr: 0, w };
 }
 
-function rnRC(inp: LeaseVelocityInputs, tu: number, tO: number, cO: number, mr: number, cls: string, def: StabilizationDefinition, cs: string, pm?: number): RunResult {
+function rnRC(inp: LeaseVelocityInputs, tu: number, tO: number, cO: number, mr: number, cls: string, def: StabilizationDefinition, cs: string, treatment: LeasingCostTreatment, pm?: number): RunResult {
   const w: string[] = []; const mo: MonthOutput[] = []; const cu = inp.catch_up_period_months ?? 12;
   const h = inp.time_horizon_months ?? (cu + 12); const rr = 0.65; const dv = 21; const mR = mr / 12; const bE = 1 / 12;
   const gU = Math.max(0, (tO - cO) * tu); let co = Math.round(tu * cO); let er = 0; let cG = 0; let sm: number | null = null;
+  const fullGpr = tu * mR;
   for (let i = 0; i < h; i++) {
     const cal = fmtMon(2026, 0, i); const exp = Math.round(tu * bE); const ren = Math.round(exp * rr); const rep = exp - ren;
     const sm_ = SEASONAL[i % 12]; let gl = 0;
@@ -124,7 +165,7 @@ function rnRC(inp: LeaseVelocityInputs, tu: number, tO: number, cO: number, mr: 
     if (pm && gl > pm && i === 0) w.push(`INFEASIBLE_CATCHUP_PACE:${gl} exceeds peer max ${pm}`);
     const tn = rep + gl; const adj = Math.round(tn * sm_); cG += gl;
     co = Math.round((cO + (cG / tu)) * tu); const gpr = Math.round(co * mR);
-    const c = cStack(i, adj, ren, rep, gl, tu, 'OCCUPANCY_RECOVERY', cs, 'AGGRESSIVE', mr, cls, gpr, er);
+    const c = cStack(i, adj, ren, rep, gl, tu, 'OCCUPANCY_RECOVERY', cs, 'AGGRESSIVE', mr, cls, gpr, er, treatment, fullGpr);
     const phy = tu > 0 ? co / tu : 0; const st = isSt(phy, phy, def); if (st && sm === null) sm = i;
     const cR = FUNNEL['OCCUPANCY_RECOVERY']?.o ?? 0.048; const ip = cR > 0 ? Math.round(adj / cR) : 0;
     mo.push({ month_index: i, calendar_month: cal, mode_for_month: 'OCCUPANCY_RECOVERY', expirations: exp, renewals: ren, replacement_leases: rep, gap_close_leases: gl, pre_lease_signings: 0, lease_up_signings: adj, total_signings: adj, move_ins: adj, move_outs: rep, cumulative_occupied: co, physical_occupancy_pct: Math.round(phy * 10000) / 100, economic_occupancy_pct: Math.round(phy * 10000) / 100, gpr, vacancy_loss: Math.round(gpr * (1 - phy)), concessions_new_lease: c.new_lease_concessions_onetime, concessions_renewal: c.renewal_concessions_onetime, loss_to_lease_dollars: c.loss_to_lease_dollars, effective_rent: Math.round(Math.max(0, gpr - c.new_lease_concessions_onetime)), marketing_spend: c.marketing_spend, locator_fees: c.locator_broker_fees, make_ready: c.make_ready_turn_costs, bad_debt: c.bad_debt, opex: Math.round(gpr * 0.55), noi: Math.round(gpr - gpr * 0.55), debt_service: Math.round(-gpr * 0.40), cash_flow: Math.round(gpr - gpr * 0.55 - gpr * 0.40), lease_up_reserve_burn: c.lease_up_reserve_burn, cumulative_lease_up_reserve: er, implied_prospect_volume: ip, stabilization_marker: st && sm === i });
@@ -151,12 +192,13 @@ export class LeaseVelocityEngine {
     const mr = inputs.avg_market_rent ?? 1800; const cls = inputs.property_class ?? 'B';
     const def = inputs.stabilization_definition ?? 'PHYSICAL_95'; const cs = inputs.concession_strategy ?? 'MARKET';
     const mi = inputs.marketing_intensity ?? 'MARKET';
+    const treatment = inputs.leasing_cost_treatment ?? 'HYBRID';
     let r: RunResult;
     switch (mode) {
-      case 'LEASE_UP_NEW_CONSTRUCTION': r = rnLU(inputs, tu, tO, mr, cls, def, cs, mi); break;
-      case 'STABILIZED_MAINTENANCE': r = rnST(inputs, tu, tO, cO, mr, cls, def, cs); break;
-      case 'OCCUPANCY_RECOVERY': r = rnRC(inputs, tu, tO, cO, mr, cls, def, cs, dc?.traffic?.peer_set?.max_monthly_absorption_per_class_msa); break;
-      default: r = rnST(inputs, tu, tO, cO, mr, cls, def, cs);
+      case 'LEASE_UP_NEW_CONSTRUCTION': r = rnLU(inputs, tu, tO, mr, cls, def, cs, mi, treatment); break;
+      case 'STABILIZED_MAINTENANCE': r = rnST(inputs, tu, tO, cO, mr, cls, def, cs, treatment); break;
+      case 'OCCUPANCY_RECOVERY': r = rnRC(inputs, tu, tO, cO, mr, cls, def, cs, treatment, dc?.traffic?.peer_set?.max_monthly_absorption_per_class_msa); break;
+      default: r = rnST(inputs, tu, tO, cO, mr, cls, def, cs, treatment);
     }
     allW.push(...r.w);
     return { success: true, mode, inputs, months: r.mo, narrative: narr(mode, inputs, r.mo, r.sm, r.cr, allW), stabilization_month: r.sm, cumulative_reserve_required: r.cr, warnings: allW };
