@@ -733,7 +733,15 @@ async function loadTrailingActualsMap(
          payroll, management_fee, utilities, repairs_maintenance, turnover_costs,
          insurance, real_estate_taxes, total_opex, noi
        FROM deal_monthly_actuals
-       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+       WHERE deal_id = $1
+         AND is_budget = false
+         AND is_proforma = false
+         AND (
+           gross_potential_rent IS NOT NULL
+           OR effective_gross_income IS NOT NULL
+           OR total_opex IS NOT NULL
+           OR noi IS NOT NULL
+         )
        ORDER BY report_month DESC
        LIMIT 12`,
       [dealId],
