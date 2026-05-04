@@ -15,7 +15,8 @@ import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma
 // ─── Backend contract ──────────────────────────────────────────────────────────
 interface OSRow {
   field: string; label: string;
-  broker: number|null; platform: number|null; t12: number|null;
+  broker: number|null; platform: number|null;
+  t12: number|null; t6: number|null; t3: number|null; t1: number|null;
   rentRoll: number|null; taxBill: number|null;
   resolved: number|null; resolution: string|null; perUnit: number|null;
   source: string|null; confidence: number|null;
@@ -34,6 +35,7 @@ interface GprDecomposition {
 }
 interface DealFinancials {
   dealId: string; dealName: string; totalUnits: number;
+  closeDate?: string | null; saleDate?: string | null;
   proforma: { year1: OSRow[]; integrityChecks: unknown[]; unitEconomics: Record<string,number|null> };
   capitalStack: { purchasePrice: number|null; loanAmount: number|null; equityAtClose: number|null; ltcPct: number|null; interestRate: number|null; ioPeriodMonths: number|null; amortizationYears: number|null; dscrMin: number|null; originationFeePct: number|null; pricePerUnit: number|null };
   rentRollSummary: { avgInPlaceRent: number|null; weightedOccupancyPct: number|null }|null;
@@ -1556,9 +1558,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       if (data?.proforma) {
         setFinancials(data);
         // Hydrate close/sale dates — first-load wins; user edits are not clobbered
-        const d = data as any;
-        if (d.closeDate) setCloseDate((prev: string) => prev || String(d.closeDate));
-        if (d.saleDate)  setSaleDate((prev: string)  => prev || String(d.saleDate));
+        if (data.closeDate) setCloseDate((prev: string) => prev || String(data.closeDate));
+        if (data.saleDate)  setSaleDate((prev: string)  => prev || String(data.saleDate));
       }
     } catch { /* silent degradation */ }
     finally { if (tok === fetchRef.current) setLoading(false); }
@@ -1632,7 +1633,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const patchCapStack = useCallback((field: string, rawVal: string) => {
     const v = parseFloat(rawVal.replace(/,/g, ''));
     if (isNaN(v)) return;
-    const normalized = (field === 'ltcPct' || field === 'interestRate') ? +(v / 100).toFixed(6) : v;
+    const normalized = (field === 'ltcPct' || field === 'interestRate' || field === 'originationFeePct') ? +(v / 100).toFixed(6) : v;
     enqueuePatch(field, null, normalized);
   }, [enqueuePatch]);
 
@@ -2493,30 +2494,35 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                             let platform   = resolvePlatform(rd, yr);
                             const user     = getUser(rd.key, yr);
 
+                            const isBrokerView = viewMode === 'BROKER_VIEW';
+
                             // Y1 source: when yr===1 and no explicit user override, surface
                             // the value from the selected y1Source so every Y1 cell updates live.
                             if (yr === 1 && user == null && financials) {
-                              const y1Row = financials.proforma.year1.find((r: any) => r.field === rd.key);
+                              const y1Row = financials.proforma.year1.find(r => r.field === rd.key);
                               if (y1Source === 'BROKER')        platform = broker;
-                              else if (y1Source === 'T12')      platform = (y1Row as any)?.t12 ?? broker ?? platform;
-                              else if (y1Source === 'T6')       platform = (y1Row as any)?.t6  ?? (y1Row as any)?.t12 ?? platform;
-                              else if (y1Source === 'T3')       platform = (y1Row as any)?.t3  ?? (y1Row as any)?.t12 ?? platform;
-                              else if (y1Source === 'T1')       platform = (y1Row as any)?.t1  ?? (y1Row as any)?.t12 ?? platform;
+                              else if (y1Source === 'T12')      platform = y1Row?.t12 ?? broker ?? platform;
+                              else if (y1Source === 'T6')       platform = y1Row?.t6  ?? y1Row?.t12 ?? platform;
+                              else if (y1Source === 'T3')       platform = y1Row?.t3  ?? y1Row?.t12 ?? platform;
+                              else if (y1Source === 'T1')       platform = y1Row?.t1  ?? y1Row?.t12 ?? platform;
                               // PLATFORM: keep default resolvePlatform value
                             }
 
+                            // BROKER VIEW: nullify platform so LayeredCell resolves user ?? broker
+                            // (user override wins; otherwise broker value is shown, never platform)
+                            const displayPlatform = isBrokerView ? null : platform;
+
                             const formulaResult = mode === 'formula' ? computeFormulaResult(rd, yr) : null;
                             const divergence = getDivergenceColor(
-                              formulaResult ?? user, platform, broker,
+                              formulaResult ?? user, displayPlatform, broker,
                             );
                             const ovrVal = formulaResult ?? user;
                             const classification = ovrVal != null
                               ? classifyFieldOverride(`${rd.key}:${yr}`, ovrVal)?.classification ?? null
                               : null;
-                            const isBrokerView = viewMode === 'BROKER_VIEW';
                             return (
                               <LayeredCell key={yr}
-                                vals={{ broker, platform, user }}
+                                vals={{ broker, platform: displayPlatform, user }}
                                 format={rd.format}
                                 readonly={rd.readonly || lockedOverrides || isBrokerView}
                                 isM07={!!rd.isM07}
