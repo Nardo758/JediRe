@@ -1545,6 +1545,9 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   const isPct = PCT_FIELDS.has(row.field);
   const isPerUnit = PER_UNIT_FIELDS.has(row.field);
 
+  /** Tracks which column cell was last clicked to override Resolved for this row. Used for toggle-off detection. Resets on page reload (acceptable — pencil reset button handles cross-session revert). */
+  const [clickSource, setClickSource] = useState<'T12' | 'PLATFORM' | null>(null);
+
   const baseBg = shade === 'warm'
     ? (isEven ? '#0e0a06' : '#0c0907')
     : shade === 'purple'
@@ -1632,11 +1635,68 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
         background: isBroker ? 'rgba(180,83,9,0.08)' : undefined,
       }}>{fmtDisplay(row.broker)}</td>
 
-      {/* T-12 — hidden in BROKER VIEW */}
-      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtDisplay(row.t12)}</td>}
+      {/* T-12 — hidden in BROKER VIEW; clickable to adopt as Resolved override */}
+      {!isBroker && (() => {
+        const t12Val = row.t12;
+        const canClick = t12Val != null;
+        const isActive = clickSource === 'T12';
+        return (
+          <td
+            onClick={canClick ? async () => {
+              if (isActive) {
+                setClickSource(null);
+                await onResetCorrection(row.field);
+              } else {
+                setClickSource('T12');
+                await onSaveCorrection(row.field, t12Val, row.resolved);
+              }
+            } : undefined}
+            title={canClick ? (isActive ? 'Active — click again to revert to auto-resolution' : 'Click to use this T-12 value as the Resolved figure') : undefined}
+            style={{
+              padding: '4px 8px', textAlign: 'right', fontSize: 9,
+              color: isActive ? '#4ade80' : '#e2e8f0',
+              cursor: canClick ? 'pointer' : undefined,
+              background: isActive ? 'rgba(74,222,128,0.10)' : undefined,
+              borderLeft: isActive ? '1px solid rgba(74,222,128,0.4)' : undefined,
+              borderRight: isActive ? '1px solid rgba(74,222,128,0.4)' : undefined,
+            }}
+          >
+            {fmtDisplay(t12Val)}
+          </td>
+        );
+      })()}
 
-      {/* PLATFORM column — hidden in BROKER VIEW; source controlled by platformColSource */}
-      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: platformColSource === 'PLATFORM' ? '#06b6d4' : '#e2e8f0', fontSize: 9 }}>{fmtDisplay(pickPlatformValue(row, platformColSource))}</td>}
+      {/* PLATFORM column — hidden in BROKER VIEW; source controlled by platformColSource; clickable to adopt as Resolved override */}
+      {!isBroker && (() => {
+        const platVal = pickPlatformValue(row, platformColSource);
+        const canClick = platVal != null;
+        const isActive = clickSource === 'PLATFORM';
+        const baseColor = platformColSource === 'PLATFORM' ? '#06b6d4' : '#e2e8f0';
+        return (
+          <td
+            onClick={canClick ? async () => {
+              if (isActive) {
+                setClickSource(null);
+                await onResetCorrection(row.field);
+              } else {
+                setClickSource('PLATFORM');
+                await onSaveCorrection(row.field, platVal, row.resolved);
+              }
+            } : undefined}
+            title={canClick ? (isActive ? 'Active — click again to revert to auto-resolution' : 'Click to use this value as the Resolved figure') : undefined}
+            style={{
+              padding: '4px 8px', textAlign: 'right', fontSize: 9,
+              color: isActive ? '#4ade80' : baseColor,
+              cursor: canClick ? 'pointer' : undefined,
+              background: isActive ? 'rgba(74,222,128,0.10)' : undefined,
+              borderLeft: isActive ? '1px solid rgba(74,222,128,0.4)' : undefined,
+              borderRight: isActive ? '1px solid rgba(74,222,128,0.4)' : undefined,
+            }}
+          >
+            {fmtDisplay(platVal)}
+          </td>
+        );
+      })()}
 
       {/* RESOLVED (BUILD_OWN) / BROKER NOI (BROKER_VIEW) */}
       <td
