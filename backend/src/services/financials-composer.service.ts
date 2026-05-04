@@ -175,6 +175,8 @@ export async function composeDealFinancials(
   const dealData = typeof deal.deal_data === 'object' && deal.deal_data ? deal.deal_data : {};
   const totalUnits = deal.target_units || deal.unit_count || (dealData?.units) || 0;
   const purchasePrice = dealData?.purchase_price || dealData?.asking_price || null;
+  const brokerClaims = dealData?.broker_claims && typeof dealData.broker_claims === 'object' ? dealData.broker_claims as Record<string, any> : {};
+  const brokerProforma = brokerClaims.proforma && typeof brokerClaims.proforma === 'object' ? brokerClaims.proforma as Record<string, any> : null;
 
   // 2. Load deal_assumptions (year1 proforma JSON)
   const assRes = await pool.query(
@@ -316,7 +318,7 @@ export async function composeDealFinancials(
     : null;
 
   // 5. Build operating statement rows
-  const year1Rows: OSRow[] = buildOSRows(year1Data, totalUnits, purchasePrice, rentRollRows, unitMixDerived, useUnitMixForGpr);
+  const year1Rows: OSRow[] = buildOSRows(year1Data, totalUnits, purchasePrice, rentRollRows, unitMixDerived, useUnitMixForGpr, brokerProforma);
 
   // 5b. Enrich rows with trailing-period actuals (T-6, T-3, T-1) from deal_monthly_actuals.
   //     Falls back gracefully (rows unchanged) when no actuals exist for a deal.
@@ -781,7 +783,8 @@ function buildOSRows(
   _purchasePrice: number | null,
   _rentRollRows: any[],
   unitMixDerived: UnitMixDerived,
-  useUnitMixForGpr: boolean
+  useUnitMixForGpr: boolean,
+  brokerProforma: Record<string, any> | null = null
 ): OSRow[] {
   const rows: OSRow[] = [];
 
@@ -933,14 +936,37 @@ function buildOSRows(
   const egiY1 = res('egi');
   const egi = egiY1 ?? (nri != null ? nri + (otherPick.resolved ?? 0) : null);
 
+  // ── Broker OM proforma values ──────────────────────────────────────────────
+  // Populated when the deal has extraction_om / broker_claims data from an
+  // uploaded Offering Memorandum. All values are null when no OM was extracted.
+  // GPR-dependent broker values use the resolved GPR as the base (the OM unit
+  // mix is the source for GPR when present, otherwise it mirrors platform GPR).
+  const bpGpr      = gprPick.resolved;
+  const bpVacPct   = brokerProforma?.stabilizedVacancy  != null ? Number(brokerProforma.stabilizedVacancy)          : null;
+  const bpLtlPct   = brokerProforma?.lossToLease        != null ? Number(brokerProforma.lossToLease)                : null;
+  const bpConcPct  = brokerProforma?.concessionsPct     != null ? Number(brokerProforma.concessionsPct)             : null;
+  const bpBdPct    = brokerProforma?.badDebtPct         != null ? Number(brokerProforma.badDebtPct)                 : null;
+  const bpMgmtPct  = brokerProforma?.managementFeePct   != null ? Number(brokerProforma.managementFeePct)           : null;
+  const bpResPerUt = brokerProforma?.replacementReservesPerUnit != null ? Number(brokerProforma.replacementReservesPerUnit) : null;
+  const bpNOI      = brokerProforma?.yearOneNOI != null ? Number(brokerProforma.yearOneNOI)
+                   : brokerProforma?.stabilizedNOI != null ? Number(brokerProforma.stabilizedNOI) : null;
+
+  const bpVacLoss  = bpVacPct  != null && bpGpr != null ? bpVacPct  * bpGpr : null;
+  const bpLtlDol   = bpLtlPct  != null && bpGpr != null ? bpLtlPct  * bpGpr : null;
+  const bpConcDol  = bpConcPct != null && bpGpr != null ? bpConcPct * bpGpr : null;
+  const bpBdDol    = bpBdPct   != null && egi   != null ? bpBdPct   * egi   : null;
+  const bpMgmtDol  = bpMgmtPct != null && egi   != null ? bpMgmtPct * egi   : null;
+  const bpReserves = bpResPerUt != null && totalUnits > 0 ? bpResPerUt * totalUnits : null;
+
   addRow('gpr',                'Gross Potential Rent',       gprPick.resolved,    { isSubtotal: true, source: gprPick.source, platform: platformGpr, rentRoll: um.gprFromUnitMix, t12: lv('gpr').t12 });
-  addRow('vacancy_loss',       'Vacancy Loss',               vacPick.resolved,    { source: vacPick.source, platform: platformVacancyLoss, rentRoll: um.vacancyLossFromUnitMix });
-  addRow('loss_to_lease',      'Loss to Lease',              l2lPick.resolved,    { source: l2lPick.source, platform: platformL2L, rentRoll: um.lossToLeaseFromUnitMix });
-  addRow('concessions',        'Concessions',                concPick.resolved,   { source: concPick.source, platform: platformConcessions, rentRoll: um.concessionsFromUnitMix });
+  addRow('vacancy_loss',       'Vacancy Loss',               vacPick.resolved,    { source: vacPick.source, platform: platformVacancyLoss, rentRoll: um.vacancyLossFromUnitMix, broker: bpVacLoss });
+  addRow('loss_to_lease',      'Loss to Lease',              l2lPick.resolved,    { source: l2lPick.source, platform: platformL2L, rentRoll: um.lossToLeaseFromUnitMix, broker: bpLtlDol });
+  addRow('concessions',        'Concessions',                concPick.resolved,   { source: concPick.source, platform: platformConcessions, rentRoll: um.concessionsFromUnitMix, broker: bpConcDol });
   addRow('bad_debt',           'Bad Debt / Collection Loss', platformBadDebt,     {
     source: badDebtSource,
     t12:      badDebtSource === 't12'       ? platformBadDebt : null,
     rentRoll: badDebtSource === 'rent_roll' ? platformBadDebt : null,
+    broker:   bpBdDol,
   });
   addRow('non_revenue_units',  'Non-Revenue Units',          nruPick.resolved,    { source: nruPick.source, platform: platformNRU });
   addRow('net_rental_income',  'Net Rental Income',          nri,                  { isSubtotal: true });
@@ -977,11 +1003,20 @@ function buildOSRows(
     source:   mgmtPctLV.resolution ?? 'platform',
     t12:      mgmtPctLV.t12 != null && egi != null ? mgmtPctLV.t12 * egi : null,
     platform: mgmtPctLV.platform != null && egi != null ? mgmtPctLV.platform * egi : null,
+    broker:   bpMgmtDol,
   });
 
   addExpenseRow('insurance',            'Insurance',           'insurance');
   addExpenseRow('real_estate_taxes',    'Real Estate Taxes',   'real_estate_tax');
-  addExpenseRow('replacement_reserves', 'Replacement Reserves','replacement_reserves');
+  addRow('replacement_reserves', 'Replacement Reserves',
+    lv('replacement_reserves').resolved ?? lv('replacement_reserves').platform ?? null, {
+    source:   lv('replacement_reserves').resolution ?? 'platform',
+    t12:      lv('replacement_reserves').t12       ?? null,
+    rentRoll: lv('replacement_reserves').rent_roll ?? null,
+    taxBill:  lv('replacement_reserves').tax_bill  ?? null,
+    platform: lv('replacement_reserves').platform  ?? null,
+    broker:   bpReserves,
+  });
 
   // Total OpEx â€” prefer stored value, otherwise sum the rows we just added
   // plus any custom_opex_* GL line items the seeder may have surfaced.
@@ -1015,7 +1050,7 @@ function buildOSRows(
   const noiY1 = res('noi');
   const totalOpForNoi = storedTotalOpex ?? summedOpex;
   const computedNoi = (egi != null && totalOpForNoi != null) ? egi - totalOpForNoi : null;
-  addRow('noi', 'Net Operating Income', noiY1 ?? computedNoi, { isSubtotal: true });
+  addRow('noi', 'Net Operating Income', noiY1 ?? computedNoi, { isSubtotal: true, broker: bpNOI });
 
   // Debt (composer doesn't surface debt yet â€” leave nullable rows)
   addRow('debt_service',      'Debt Service',      null);
