@@ -395,8 +395,19 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
   })();
 
   const opexBroker = (() => {
-    // Derive broker opex ratio from stabilizedNOI + stabilizedVacancy if both present.
-    // OPEX = EGI - NOI; EGI = GPR × (1 - vacancy); opex ratio = OPEX / EGI.
+    // Prefer totalOpexAnnual / stabilizedEgi when both are extracted from the OM pro-forma.
+    if (bcProforma?.totalOpexAnnual != null && bcProforma?.stabilizedEgi != null) {
+      const egi = Number(bcProforma.stabilizedEgi);
+      if (egi > 0) return `${Math.round((Number(bcProforma.totalOpexAnnual) / egi) * 100)}%`;
+    }
+    // Fallback: derive from totalOpexAnnual / (stabilizedNOI + totalOpexAnnual).
+    if (bcProforma?.totalOpexAnnual != null && bcProforma?.stabilizedNOI != null) {
+      const opex = Number(bcProforma.totalOpexAnnual);
+      const noi = Number(bcProforma.stabilizedNOI);
+      const egi = opex + noi;
+      if (egi > 0) return `${Math.round((opex / egi) * 100)}%`;
+    }
+    // Legacy fallback: derive from T12 GPR × (1 - vacancy) - NOI.
     if (bcProforma?.stabilizedNOI != null && bcProforma?.stabilizedVacancy != null) {
       const bcGpr = (extDealData?.extraction_t12 as Record<string, unknown> | undefined)?.gpr as number | undefined;
       if (bcGpr != null && bcGpr > 0) {

@@ -939,9 +939,10 @@ function buildOSRows(
   // Populated when the deal has extraction_om / broker_claims data from an
   // uploaded Offering Memorandum. All values are null when no OM was extracted.
   //
-  // Broker GPR: prefer sum of unit_mix marketRent × count × 12 from extraction_om.
-  // This gives the true broker GPR from the OM rent schedule rather than mirroring
-  // the platform-resolved value.
+  // Broker GPR: prefer explicit stabilizedGpr stored in brokerProforma (from OM pro-forma
+  // statement), then fall back to sum of unit_mix marketRent × count × 12, then platform GPR.
+  const bpStabilizedGpr: number | null =
+    brokerProforma?.stabilizedGpr != null ? Number(brokerProforma.stabilizedGpr) : null;
   const omUnitMix: Array<{ count: number | null; marketRent: number | null }> =
     Array.isArray(extractionOm?.unit_mix) ? extractionOm.unit_mix : [];
   const bpGprFromUnitMix: number | null = omUnitMix.length > 0
@@ -951,13 +952,16 @@ function buildOSRows(
         return sum + cnt * rent * 12;
       }, 0) || null
     : null;
-  // Broker other income: extraction_om.other_income_total_monthly × 12 (annual).
+  // Broker other income: prefer stabilizedOtherIncomeAnnual stored in brokerProforma (from OM
+  // pro-forma statement), then fall back to extraction_om.other_income_total_monthly × 12.
   const bpOtherIncomeAnnual: number | null =
-    extractionOm?.other_income_total_monthly != null
-      ? Number(extractionOm.other_income_total_monthly) * 12
-      : null;
+    brokerProforma?.stabilizedOtherIncomeAnnual != null
+      ? Number(brokerProforma.stabilizedOtherIncomeAnnual)
+      : extractionOm?.other_income_total_monthly != null
+        ? Number(extractionOm.other_income_total_monthly) * 12
+        : null;
 
-  const bpGpr      = bpGprFromUnitMix ?? gprPick.resolved;
+  const bpGpr      = bpStabilizedGpr ?? bpGprFromUnitMix ?? gprPick.resolved;
   const bpVacPct   = brokerProforma?.stabilizedVacancy  != null ? Number(brokerProforma.stabilizedVacancy)          : null;
   const bpLtlPct   = brokerProforma?.lossToLease        != null ? Number(brokerProforma.lossToLease)                : null;
   const bpConcPct  = brokerProforma?.concessionsPct     != null ? Number(brokerProforma.concessionsPct)             : null;
@@ -999,7 +1003,7 @@ function buildOSRows(
     ? Number(brokerProforma.totalOpexAnnual)
     : (bpEgi != null && bpNOI != null ? bpEgi - bpNOI : null);
 
-  addRow('gpr',                'Gross Potential Rent',       gprPick.resolved,    { isSubtotal: true, source: gprPick.source, platform: platformGpr, rentRoll: um.gprFromUnitMix, t12: lv('gpr').t12, broker: bpGprFromUnitMix });
+  addRow('gpr',                'Gross Potential Rent',       gprPick.resolved,    { isSubtotal: true, source: gprPick.source, platform: platformGpr, rentRoll: um.gprFromUnitMix, t12: lv('gpr').t12, broker: bpStabilizedGpr ?? bpGprFromUnitMix });
   addRow('vacancy_loss',       'Vacancy Loss',               vacPick.resolved,    { source: vacPick.source, platform: platformVacancyLoss, rentRoll: um.vacancyLossFromUnitMix, broker: bpVacLoss });
   addRow('loss_to_lease',      'Loss to Lease',              l2lPick.resolved,    { source: l2lPick.source, platform: platformL2L, rentRoll: um.lossToLeaseFromUnitMix, broker: bpLtlDol });
   addRow('concessions',        'Concessions',                concPick.resolved,   { source: concPick.source, platform: platformConcessions, rentRoll: um.concessionsFromUnitMix, broker: bpConcDol });
