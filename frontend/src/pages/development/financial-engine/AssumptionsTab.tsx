@@ -2115,20 +2115,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
 
       {/* Header — Row 2: view mode toggle + scenario pills + Y1 source picker + PUSH → PROJECTIONS */}
       <div className="flex items-center gap-3 px-4 py-1.5 bg-[#0f0f0f] border-b border-[#1e1e1e] sticky top-[36px] z-29">
-        {/* BROKER VIEW / BUILD YOUR OWN toggle */}
-        <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a' }}>
-          {(['BROKER_VIEW', 'BUILD_OWN'] as const).map(mode => (
-            <button key={mode} onClick={() => setViewMode(mode)} style={{
-              padding: '3px 10px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer',
-              fontFamily: MONO, letterSpacing: '0.06em', transition: 'all 0.15s',
-              background: viewMode === mode ? (mode === 'BROKER_VIEW' ? 'rgba(180,83,9,0.5)' : 'rgba(29,78,216,0.5)') : 'transparent',
-              color: viewMode === mode ? (mode === 'BROKER_VIEW' ? '#fcd34d' : '#bfdbfe') : '#475569',
-            }}>
-              {mode === 'BROKER_VIEW' ? 'BROKER VIEW' : 'BUILD YOUR OWN'}
-            </button>
-          ))}
-        </div>
-        {/* Scenario / hold-period pills — in the same control strip as mode toggle */}
+        {/* Scenario / hold-period pills */}
         <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a', gap: 1 }}>
           {(['5 YR', '7 YR', '10 YR'] as const).map(tab => {
             const active = holdTab === tab || (holdTab === null && holdYears === (tab === '5 YR' ? 5 : tab === '7 YR' ? 7 : 10));
@@ -2160,6 +2147,20 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
 
       {/* Bulk actions */}
       <div className="flex items-center gap-3 px-4 py-1 bg-[#0d0d0d] border-b border-[#1e1e1e]">
+        {/* View mode toggle — merged into BULK bar */}
+        <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a' }}>
+          {(['BROKER_VIEW', 'BUILD_OWN'] as const).map(mode => (
+            <button key={mode} onClick={() => setViewMode(mode)} style={{
+              padding: '3px 10px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer',
+              fontFamily: MONO, letterSpacing: '0.06em', transition: 'all 0.15s',
+              background: viewMode === mode ? (mode === 'BROKER_VIEW' ? 'rgba(180,83,9,0.5)' : 'rgba(29,78,216,0.5)') : 'transparent',
+              color: viewMode === mode ? (mode === 'BROKER_VIEW' ? '#fcd34d' : '#bfdbfe') : '#475569',
+            }}>
+              {mode === 'BROKER_VIEW' ? 'BROKER VIEW' : 'BUILD YOUR OWN'}
+            </button>
+          ))}
+        </div>
+        <span style={{ color: '#1e1e1e', fontWeight: 700 }}>|</span>
         <span className="text-[8px] font-bold text-slate-600 tracking-widest">BULK:</span>
         <button onClick={handleUsePlatform} disabled={!financials || lockedOverrides}
           className="px-2 py-0.5 text-[8px] font-bold rounded border border-[#1e1e1e] text-slate-600 hover:text-cyan-400 hover:border-cyan-500/40 disabled:opacity-30">
