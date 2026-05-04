@@ -4,7 +4,7 @@ import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
 import { CommentaryPanel } from './CommentaryPanel';
-import { useDealStore } from '../../../stores/dealStore';
+import { useDealStore, ResolvedSource } from '../../../stores/dealStore';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -337,10 +337,12 @@ function applyEvidenceFilter(
 }
 
 export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh }: FinancialEngineTabProps) {
-  const viewMode    = useDealStore(s => s.viewMode);
-  const setViewMode = useDealStore(s => s.setViewMode);
-  const y1Source    = useDealStore(s => s.y1Source);
-  const setY1Source = useDealStore(s => s.setY1Source);
+  const viewMode         = useDealStore(s => s.viewMode);
+  const setViewMode      = useDealStore(s => s.setViewMode);
+  const y1Source         = useDealStore(s => s.y1Source);
+  const setY1Source      = useDealStore(s => s.setY1Source);
+  const resolvedSource   = useDealStore(s => s.resolvedSource);
+  const setResolvedSource = useDealStore(s => s.setResolvedSource);
 
   const T_PERIODS = ['T12', 'T6', 'T3', 'T1'] as const;
   type TPeriod = typeof T_PERIODS[number];
@@ -349,6 +351,17 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     const idx = T_PERIODS.indexOf(activePeriod);
     setY1Source(T_PERIODS[(idx + 1) % T_PERIODS.length]);
   };
+
+  const RESOLVED_SOURCES: ResolvedSource[] = ['AUTO', 'BROKER', 'T12', 'PLATFORM'];
+  const cycleResolvedSource = () => {
+    const idx = RESOLVED_SOURCES.indexOf(resolvedSource);
+    setResolvedSource(RESOLVED_SOURCES[(idx + 1) % RESOLVED_SOURCES.length]);
+  };
+  const resolvedLabel =
+    resolvedSource === 'BROKER'   ? 'Resolved ↦ BRK' :
+    resolvedSource === 'T12'      ? `Resolved ↦ ${activePeriod.replace('T', 'T-')}` :
+    resolvedSource === 'PLATFORM' ? 'Resolved ↦ PLT' :
+    'Resolved';
 
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
@@ -657,7 +670,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <Th label="Broker" color={viewMode === 'BUILD_OWN' ? '#f59e0b' : undefined} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label={activePeriod.replace('T', 'T-')} color="#e2e8f0" hidden={viewMode === 'BROKER_VIEW'} onCycle={cycleTPeriod} />
               <Th label="Platform" color="#06b6d4" hidden={viewMode === 'BROKER_VIEW'} />
-              <Th label="Resolved" highlight={viewMode === 'BUILD_OWN'} brokerActive={viewMode === 'BROKER_VIEW'} />
+              <Th label={resolvedLabel} highlight={viewMode === 'BUILD_OWN'} brokerActive={viewMode === 'BROKER_VIEW'} onCycle={viewMode === 'BUILD_OWN' ? cycleResolvedSource : undefined} />
               <Th label="% of EGI" color="#94a3b8" />
               <Th label="Source" />
               <Th label="$/Unit" />
@@ -738,7 +751,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 <td />
                 {viewMode === 'BUILD_OWN' && <><td /><td /></>}
                 <td style={{ padding: '5px 8px', textAlign: 'right', color: '#ffffff', fontWeight: 700, fontSize: 11 }}>
-                  {fmt$(viewMode === 'BROKER_VIEW' ? (totalOpexRow.broker ?? totalOpexRow.resolved) : totalOpexRow.resolved)}
+                  {fmt$(pickResolvedValue(totalOpexRow, resolvedSource, viewMode === 'BROKER_VIEW'))}
                 </td>
                 <td style={{ padding: '5px 8px', textAlign: 'right', color: '#94a3b8', fontSize: 9 }}>
                   {egiResolved && totalOpexRow.resolved ? `${((totalOpexRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
@@ -769,7 +782,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#4ade80',
                   background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : undefined,
                 }}>
-                  {fmt$(viewMode === 'BROKER_VIEW' ? (noiRow.broker ?? noiRow.resolved) : noiRow.resolved)}
+                  {fmt$(pickResolvedValue(noiRow, resolvedSource, viewMode === 'BROKER_VIEW'))}
                 </td>
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac', fontSize: 9 }}>
                   {egiResolved && noiRow.resolved ? `${((noiRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
@@ -1018,6 +1031,17 @@ function Th({ label, color, highlight, left, min, sticky, hidden, brokerActive, 
   );
 }
 
+/** Returns the value to display in the Resolved column given the user-selected source. Falls back to row.resolved when the chosen source has no data. */
+function pickResolvedValue(row: OperatingStatementRow, src: ResolvedSource, isBroker: boolean): number | null {
+  if (isBroker) return row.broker ?? row.resolved;
+  switch (src) {
+    case 'BROKER':   return row.broker   ?? row.resolved;
+    case 'T12':      return row.t12      ?? row.resolved;
+    case 'PLATFORM': return row.platform ?? row.resolved;
+    default:         return row.resolved;
+  }
+}
+
 function SectionHeader({ label, accentColor, bg, cols = 9 }: { label: string; accentColor: string; bg: string; cols?: number }) {
   return (
     <tr>
@@ -1038,9 +1062,10 @@ function SectionHeader({ label, accentColor, bg, cols = 9 }: { label: string; ac
 function SubtotalRow({ label, row, color, textColor, egiResolved }: {
   label: string; row: OperatingStatementRow; color: string; textColor: string; egiResolved: number | null;
 }) {
-  const viewMode = useDealStore(s => s.viewMode);
+  const viewMode      = useDealStore(s => s.viewMode);
+  const resolvedSource = useDealStore(s => s.resolvedSource);
   const isBroker = viewMode === 'BROKER_VIEW';
-  const displayResolved = isBroker ? (row.broker ?? row.resolved) : row.resolved;
+  const displayResolved = pickResolvedValue(row, resolvedSource, isBroker);
   const egiPct = egiResolved && displayResolved ? (displayResolved / egiResolved) * 100 : null;
   return (
     <tr style={{ background: color }}>
@@ -1511,7 +1536,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   /** Resolved evidence metadata + canonical field_path for this row (null when no underwriting evidence exists) */
   evidenceResolved?: { meta: EvidenceFieldMeta; path: string } | null;
 }) {
-  const viewMode = useDealStore(s => s.viewMode);
+  const viewMode       = useDealStore(s => s.viewMode);
+  const resolvedSource = useDealStore(s => s.resolvedSource);
   const isBroker = viewMode === 'BROKER_VIEW';
   const isSubtotal = SUBTOTALS.has(row.field);
   const isDeviant = row.benchmarkPosition === 'above' || row.benchmarkPosition === 'below';
@@ -1533,7 +1559,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
     return fmt$(val);
   }
 
-  const resolvedVal = isBroker ? (row.broker ?? row.resolved) : row.resolved;
+  const resolvedVal = pickResolvedValue(row, resolvedSource, isBroker);
   const egiPct = egiResolved && resolvedVal && !isPct && !isPerUnit
     ? (resolvedVal / egiResolved) * 100
     : null;
