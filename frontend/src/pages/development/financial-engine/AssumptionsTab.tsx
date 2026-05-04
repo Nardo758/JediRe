@@ -1508,6 +1508,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const [annotations, setAnnotations]       = useState<Record<string, string>>({});
   const [lockedOverrides, setLockedOverrides] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
+  const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
   const fetchRef   = useRef(0);
   const patchQueue = useRef<Array<{field:string; year:number|null; value:number|null}>>([]);
@@ -2022,6 +2023,12 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       if (next.has(sec)) next.delete(sec); else next.add(sec);
       return next;
     });
+  const toggleSectionById = (id: string) =>
+    setCollapsedSectionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
 
   // Section A = base-year document-sourced inputs (T12 / Rent Roll / Tax Bill / OM).
   // Editing a Section A field cascades through Pro Forma Y1 AND all projection years.
@@ -2034,11 +2041,11 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const allSections: Array<{ id: string; sec: number; label: string; rows: RowDef[]; sectionGroup: 'A' | 'B' }> = [
     { id: '5-base', sec: 5, label: '5  REVENUE  [proforma.year1 · Rent Roll]',
       rows: revRows,                                                                    sectionGroup: 'A' },
+    { id: '5-traf', sec: 5, label: '5B  REVENUE › M07 TRAFFIC INTEL + CONCESSIONS & LEASING  [Stabilization Path: 80%→95%]',
+      rows: STATIC_ROWS.filter(r => r.section === 5),                                  sectionGroup: 'A' },
     { id: '6',      sec: 6, label: SEC[6],
       rows: opexRows,                                                                   sectionGroup: 'A' },
     // ── Section B starts here ────────────────────────────────────────────────────
-    { id: '5-traf', sec: 5, label: '5  REVENUE › M07 TRAFFIC INTEL + CONCESSIONS & LEASING  [Stabilization Path: 80%→95%]',
-      rows: STATIC_ROWS.filter(r => r.section === 5),                                  sectionGroup: 'B' },
     { id: '7',      sec: 7, label: SEC[7],
       rows: STATIC_ROWS.filter(r => r.section === 7),                                  sectionGroup: 'B' },
     { id: '8',      sec: 8, label: SEC[8],
@@ -2379,7 +2386,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                 />
               )}
               {allSections.map(({ id, sec, label, rows, sectionGroup }, idx) => {
-                const isCollapsed = collapsedSections.has(sec);
+                const isCollapsed = collapsedSectionIds.has(id);
                 const isSectionBStart =
                   sectionGroup === 'B' &&
                   (idx === 0 || allSections[idx - 1].sectionGroup === 'A');
@@ -2452,7 +2459,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                     )}
                     <tr
                       className="bg-[#181818] border-y border-[#1e1e1e] h-[22px] cursor-pointer hover:bg-[#1e1e1e] select-none"
-                      onClick={() => toggleSection(sec)}
+                      onClick={() => toggleSectionById(id)}
                       title={sectionTooltip}
                     >
                       <td colSpan={years.length + 2} className="px-3 py-1 text-[11px] font-bold text-slate-300 sticky left-0 bg-[#181818]">
