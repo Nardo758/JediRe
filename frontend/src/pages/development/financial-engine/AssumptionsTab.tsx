@@ -76,7 +76,7 @@ type Overrides = Record<string, Record<number, number|null>>;
 type Formulas  = Record<string, string>;
 
 // Field ordering from backend (sections 1 & 3)
-const REVENUE_ORDER = ['gpr','loss_to_lease_pct','vacancy_pct','concessions_pct','bad_debt_pct','non_revenue_units_pct','other_income_per_unit','net_rental_income','egi'];
+const REVENUE_ORDER = ['gpr','vacancy_pct','bad_debt_pct','non_revenue_units_pct','other_income_per_unit','net_rental_income','egi'];
 const OPEX_ORDER    = ['payroll','repairs_maintenance','turnover','contract_services','marketing','utilities','g_and_a','management_fee_pct','insurance','real_estate_tax','replacement_reserves','total_opex','noi'];
 
 // ─── Formula evaluator — constrained arithmetic parser (no new Function) ───────
@@ -569,6 +569,26 @@ const STATIC_ROWS: RowDef[] = [
       return wk != null ? Math.round(wk * 4.33) : null;
     },
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
+  },
+  {
+    key: 'loss_to_lease_pct', label: 'Loss-to-Lease %', section: 5, unit: 'pct',
+    format: fmtPct2, patchField: 'lossToLeasePct',
+    description: 'Market rent minus in-place rent as % of market rent. Narrows as leases roll over hold period.',
+    platformSource: 'JEDI — Submarket Avg Loss-to-Lease', brokerSource: 'OM / Operating Assumptions',
+    brokerPage: 'Operating Assumptions', brokerLine: 'Loss-to-Lease',
+    getBroker:   (f, _yr) => y1(f, 'loss_to_lease_pct')?.broker ?? y1(f, 'loss_to_lease_pct')?.t12 ?? null,
+    getPlatform: (f, _yr) => y1(f, 'loss_to_lease_pct')?.platform ?? null,
+    getConfidence: _f => 60,
+  },
+  {
+    key: 'concessions_pct', label: 'Concession % of Rent', section: 5, unit: 'pct',
+    format: fmtPct2, patchField: 'concessionsPct',
+    description: 'Free rent / net effective concessions as % of GPR. Declines as market tightens.',
+    platformSource: 'M07 — Leasing velocity implies concession pressure', brokerSource: 'OM / Operating Assumptions',
+    brokerPage: 'Operating Assumptions', brokerLine: 'Concessions',
+    getBroker:   (f, _yr) => y1(f, 'concessions_pct')?.broker ?? y1(f, 'concessions_pct')?.t12 ?? null,
+    getPlatform: (f, _yr) => y1(f, 'concessions_pct')?.platform ?? null,
+    getConfidence: _f => 60,
   },
 
   // ── Section 7: Capex & Reserves ────────────────────────────────────────────
