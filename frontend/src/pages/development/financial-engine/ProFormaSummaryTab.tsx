@@ -644,10 +644,10 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
             <tr style={{ background: '#111111', borderBottom: '1px solid #2d2d2d' }}>
               <Th label="Line Item" left min={180} sticky />
-              <Th label="Broker" color="#f59e0b" />
-              <Th label="T-12" color="#e2e8f0" />
-              <Th label="Platform" color="#06b6d4" />
-              <Th label="Resolved" highlight />
+              <Th label="Broker" color={viewMode === 'BUILD_OWN' ? '#f59e0b' : undefined} brokerActive={viewMode === 'BROKER_VIEW'} />
+              <Th label="T-12" color="#e2e8f0" hidden={viewMode === 'BROKER_VIEW'} />
+              <Th label="Platform" color="#06b6d4" hidden={viewMode === 'BROKER_VIEW'} />
+              <Th label={viewMode === 'BROKER_VIEW' ? 'Broker NOI' : 'Resolved'} highlight={viewMode === 'BUILD_OWN'} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label="% of EGI" color="#94a3b8" />
               <Th label="Source" />
               <Th label="$/Unit" />
@@ -688,7 +688,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} />}
 
             {/* ── CONTROLLABLE EXPENSES ── */}
-            <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" />
+            <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
             {ctrlRows.map((r, i) => (
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="warm"
                 corrections={corrections} setCorrections={setCorrections}
@@ -699,7 +699,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             ))}
             <tr style={{ background: '#1a110a' }}>
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12 }}>─── CONTROLLABLE OPEX ───</td>
-              <td /><td /><td />
+              <td />
+              {viewMode === 'BUILD_OWN' && <><td /><td /></>}
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#fb923c', fontWeight: 700 }}>
                 {fmt$(ctrlSubtotalRow.resolved || null)}
               </td>
@@ -710,7 +711,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             </tr>
 
             {/* ── NON-CONTROLLABLE EXPENSES ── */}
-            <SectionHeader label="Non-Controllable Expenses" accentColor="#a855f7" bg="#0d0a14" />
+            <SectionHeader label="Non-Controllable Expenses" accentColor="#a855f7" bg="#0d0a14" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
             {nctrlRows.map((r, i) => (
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="purple"
                 corrections={corrections} setCorrections={setCorrections}
@@ -724,9 +725,10 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             {totalOpexRow && (
               <tr style={{ background: '#1e1b4b', borderTop: '1px solid #312e81', borderBottom: '1px solid #312e81' }}>
                 <td style={{ padding: '5px 8px', fontWeight: 700, color: '#e2e8f0', fontFamily: LABEL, fontSize: 9, position: 'sticky', left: 0, background: '#1e1b4b' }}>═══ TOTAL OPEX ═══</td>
-                <td /><td /><td />
+                <td />
+                {viewMode === 'BUILD_OWN' && <><td /><td /></>}
                 <td style={{ padding: '5px 8px', textAlign: 'right', color: '#ffffff', fontWeight: 700, fontSize: 11 }}>
-                  {fmt$(totalOpexRow.resolved)}
+                  {fmt$(viewMode === 'BROKER_VIEW' ? (totalOpexRow.broker ?? totalOpexRow.resolved) : totalOpexRow.resolved)}
                 </td>
                 <td style={{ padding: '5px 8px', textAlign: 'right', color: '#94a3b8', fontSize: 9 }}>
                   {egiResolved && totalOpexRow.resolved ? `${((totalOpexRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
@@ -746,10 +748,18 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   ═══ NET OPERATING INCOME ═══
                 </td>
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.broker)}</td>
-                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.t12)}</td>
-                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.platform)}</td>
-                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#4ade80', fontWeight: 700, fontSize: 13 }}>
-                  {fmt$(noiRow.resolved)}
+                {viewMode === 'BUILD_OWN' && (
+                  <>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.t12)}</td>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.platform)}</td>
+                  </>
+                )}
+                <td style={{
+                  padding: '7px 8px', textAlign: 'right', fontWeight: 700, fontSize: 13,
+                  color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#4ade80',
+                  background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : undefined,
+                }}>
+                  {fmt$(viewMode === 'BROKER_VIEW' ? (noiRow.broker ?? noiRow.resolved) : noiRow.resolved)}
                 </td>
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac', fontSize: 9 }}>
                   {egiResolved && noiRow.resolved ? `${((noiRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
@@ -967,27 +977,30 @@ function ValuationSnapshotStrip({ vs }: { vs: ValuationSnapshot }) {
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
-function Th({ label, color, highlight, left, min, sticky }: {
+function Th({ label, color, highlight, left, min, sticky, hidden, brokerActive }: {
   label: string; color?: string; highlight?: boolean; left?: boolean; min?: number; sticky?: boolean;
+  hidden?: boolean; brokerActive?: boolean;
 }) {
+  if (hidden) return null;
   return (
     <th style={{
       padding: '5px 8px', textAlign: left ? 'left' : 'right',
-      color: highlight ? '#e2e8f0' : (color ?? '#64748b'),
+      color: brokerActive ? '#f59e0b' : highlight ? '#e2e8f0' : (color ?? '#64748b'),
       fontWeight: 700, fontSize: 9, letterSpacing: 0.5,
       minWidth: min, whiteSpace: 'nowrap',
       position: sticky ? 'sticky' : undefined, left: sticky ? 0 : undefined,
       background: '#111111', borderBottom: '1px solid #2d2d2d',
       fontFamily: 'Inter, sans-serif',
+      ...(brokerActive ? { borderBottom: '2px solid #f59e0b', background: '#1c1000' } : {}),
       ...(highlight ? { borderBottom: '2px solid #06b6d4', background: '#0d1f2d' } : {}),
     }}>{label}</th>
   );
 }
 
-function SectionHeader({ label, accentColor, bg }: { label: string; accentColor: string; bg: string }) {
+function SectionHeader({ label, accentColor, bg, cols = 9 }: { label: string; accentColor: string; bg: string; cols?: number }) {
   return (
     <tr>
-      <td colSpan={9} style={{
+      <td colSpan={cols} style={{
         padding: '5px 8px 5px 12px',
         background: bg,
         borderTop: '1px solid #1e1e1e',
@@ -1004,17 +1017,23 @@ function SectionHeader({ label, accentColor, bg }: { label: string; accentColor:
 function SubtotalRow({ label, row, color, textColor, egiResolved }: {
   label: string; row: OperatingStatementRow; color: string; textColor: string; egiResolved: number | null;
 }) {
-  const egiPct = egiResolved && row.resolved ? (row.resolved / egiResolved) * 100 : null;
+  const viewMode = useDealStore(s => s.viewMode);
+  const isBroker = viewMode === 'BROKER_VIEW';
+  const displayResolved = isBroker ? (row.broker ?? row.resolved) : row.resolved;
+  const egiPct = egiResolved && displayResolved ? (displayResolved / egiResolved) * 100 : null;
   return (
     <tr style={{ background: color }}>
       <td style={{ padding: '4px 8px', fontWeight: 700, color: '#cbd5e1', fontFamily: 'Inter, sans-serif', fontSize: 9, position: 'sticky', left: 0, background: color }}>
         ─── {label} ───
       </td>
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontSize: 9 }}>{fmt$(row.broker)}</td>
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontSize: 9 }}>{fmt$(row.t12)}</td>
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontSize: 9 }}>{fmt$(row.platform)}</td>
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontWeight: 700, background: 'rgba(0,0,0,0.3)' }}>
-        {fmt$(row.resolved)}
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: isBroker ? '#fcd34d' : textColor, fontSize: 9, fontWeight: isBroker ? 700 : 400 }}>{fmt$(row.broker)}</td>
+      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontSize: 9 }}>{fmt$(row.t12)}</td>}
+      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontSize: 9 }}>{fmt$(row.platform)}</td>}
+      <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700,
+        color: isBroker ? '#fcd34d' : textColor,
+        background: isBroker ? '#1c0f00' : 'rgba(0,0,0,0.3)',
+      }}>
+        {fmt$(displayResolved)}
       </td>
       <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
         {egiPct != null ? `${egiPct.toFixed(1)}%` : '—'}
@@ -1471,6 +1490,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   /** Resolved evidence metadata + canonical field_path for this row (null when no underwriting evidence exists) */
   evidenceResolved?: { meta: EvidenceFieldMeta; path: string } | null;
 }) {
+  const viewMode = useDealStore(s => s.viewMode);
+  const isBroker = viewMode === 'BROKER_VIEW';
   const isSubtotal = SUBTOTALS.has(row.field);
   const isDeviant = row.benchmarkPosition === 'above' || row.benchmarkPosition === 'below';
   const isPct = PCT_FIELDS.has(row.field);
@@ -1491,17 +1512,20 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
     return fmt$(val);
   }
 
-  const egiPct = egiResolved && row.resolved && !isPct && !isPerUnit
-    ? (row.resolved / egiResolved) * 100
+  const resolvedVal = isBroker ? (row.broker ?? row.resolved) : row.resolved;
+  const egiPct = egiResolved && resolvedVal && !isPct && !isPerUnit
+    ? (resolvedVal / egiResolved) * 100
     : null;
 
-  const resolvedDisplay = fmtDisplay(row.resolved);
+  const resolvedDisplay = fmtDisplay(resolvedVal);
 
-  const resolvedColor = isSubtotal
-    ? '#22c55e'
-    : row.field.includes('pct') || row.field.includes('loss') || row.field.includes('vacancy')
-      ? '#fb923c'
-      : '#e2e8f0';
+  const resolvedColor = isBroker
+    ? '#fcd34d'
+    : isSubtotal
+      ? '#22c55e'
+      : row.field.includes('pct') || row.field.includes('loss') || row.field.includes('vacancy')
+        ? '#fb923c'
+        : '#e2e8f0';
 
   function commitEdit() {
     if (!corr) return;
@@ -1553,33 +1577,37 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
       </td>
 
       {/* BROKER */}
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#f59e0b', fontSize: 9 }}>{fmtDisplay(row.broker)}</td>
+      <td style={{
+        padding: '4px 8px', textAlign: 'right', fontSize: 9,
+        color: isBroker ? '#fcd34d' : '#f59e0b',
+        fontWeight: isBroker ? 700 : 400,
+        background: isBroker ? 'rgba(180,83,9,0.08)' : undefined,
+      }}>{fmtDisplay(row.broker)}</td>
 
-      {/* T-12 */}
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtDisplay(row.t12)}</td>
+      {/* T-12 — hidden in BROKER VIEW */}
+      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtDisplay(row.t12)}</td>}
 
-      {/* PLATFORM */}
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtDisplay(row.platform)}</td>
+      {/* PLATFORM — hidden in BROKER VIEW */}
+      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtDisplay(row.platform)}</td>}
 
-      {/* RESOLVED — clickable to open EvidencePanel when evidence exists */}
-      {/* User-input cell: resolved value is editable via pencil icon — teal accent highlights editability */}
+      {/* RESOLVED (BUILD_OWN) / BROKER NOI (BROKER_VIEW) */}
       <td
-        onClick={evidenceResolved ? () => {
+        onClick={!isBroker && evidenceResolved ? () => {
           window.dispatchEvent(new CustomEvent('fe-evidence-click', {
             detail: { path: evidenceResolved.path, label: row.label },
           }));
         } : undefined}
-        title={evidenceResolved ? 'Click to view evidence for this value' : 'Editable via pencil icon — overrides write back to server'}
+        title={isBroker ? 'Broker OM value' : evidenceResolved ? 'Click to view evidence for this value' : 'Editable via pencil icon — overrides write back to server'}
         style={{
           padding: '4px 8px', textAlign: 'right',
           color: resolvedColor, fontWeight: isSubtotal ? 700 : 600,
-          background: '#0d1f2d',
-          cursor: evidenceResolved ? 'pointer' : undefined,
-          borderLeft: '1px solid #0891b2',
-          borderRight: '1px solid #0891b2',
+          background: isBroker ? '#1c0f00' : '#0d1f2d',
+          cursor: !isBroker && evidenceResolved ? 'pointer' : undefined,
+          borderLeft: isBroker ? '1px solid #b45309' : '1px solid #0891b2',
+          borderRight: isBroker ? '1px solid #b45309' : '1px solid #0891b2',
         }}
       >
-        {corr?.editing ? (
+        {!isBroker && corr?.editing ? (
           <input
             autoFocus
             value={corr.draft}
@@ -1600,7 +1628,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
             style={{ borderBottom: corr?.savedAt ? '1px dotted #f59e0b' : undefined }}
           >
             {resolvedDisplay}
-            {corr?.savedAt && <span style={{ marginLeft: 4, color: '#f59e0b', fontSize: 8 }}>✎</span>}
+            {!isBroker && corr?.savedAt && <span style={{ marginLeft: 4, color: '#f59e0b', fontSize: 8 }}>✎</span>}
           </span>
         )}
       </td>
