@@ -689,6 +689,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 <DataRow row={r} isEven={i % 2 === 0} shade="blue"
                   corrections={corrections} setCorrections={setCorrections}
                   totalUnits={totalUnits} egiResolved={egiResolved}
+                  activePeriod={activePeriod}
                   onSaveCorrection={handleSaveCorrection}
                   onResetCorrection={handleResetCorrection}
                   onToggleAncillary={r.field === 'other_income' ? () => setShowAncillary(v => !v) : undefined}
@@ -720,6 +721,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="warm"
                 corrections={corrections} setCorrections={setCorrections}
                 totalUnits={totalUnits} egiResolved={egiResolved}
+                activePeriod={activePeriod}
                 onSaveCorrection={handleSaveCorrection}
                 onResetCorrection={handleResetCorrection}
                 evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)} />
@@ -743,6 +745,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="purple"
                 corrections={corrections} setCorrections={setCorrections}
                 totalUnits={totalUnits} egiResolved={egiResolved}
+                activePeriod={activePeriod}
                 onSaveCorrection={handleSaveCorrection}
                 onResetCorrection={handleResetCorrection}
                 evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)} />
@@ -1043,6 +1046,16 @@ function pickPlatformValue(row: OperatingStatementRow, src: PlatformColSource): 
     case 'T3':  return row.t3 ?? row.t12;
     case 'T1':  return row.t1 ?? row.t12;
     default:    return row.platform;
+  }
+}
+
+/** Returns the value for the trailing-period Y1 column based on the active period picker. */
+function pickY1ColValue(row: OperatingStatementRow, period: 'T12' | 'T6' | 'T3' | 'T1'): number | null {
+  switch (period) {
+    case 'T6': return row.t6 ?? row.t12;
+    case 'T3': return row.t3 ?? row.t12;
+    case 'T1': return row.t1 ?? row.t12;
+    default:   return row.t12;
   }
 }
 
@@ -1525,7 +1538,7 @@ const COLLISION_COLOR: Record<string, string> = {
   minor:    '#94a3b8',
 };
 
-function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved }: {
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved }: {
   row: OperatingStatementRow;
   isEven: boolean;
   shade?: 'blue' | 'warm' | 'purple';
@@ -1533,6 +1546,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   setCorrections: React.Dispatch<React.SetStateAction<CorrectionState>>;
   totalUnits: number;
   egiResolved: number | null;
+  activePeriod: 'T12' | 'T6' | 'T3' | 'T1';
   onSaveCorrection: (field: string, value: number | null, original: number | null) => Promise<void>;
   onResetCorrection: (field: string) => Promise<void>;
   onToggleAncillary?: () => void;
@@ -1568,9 +1582,9 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   // across reloads; corr?.savedAt covers the optimistic in-session window before
   // the next load() response arrives.
   const hasActiveOverride = row.source === 'override' || corr?.savedAt != null;
-  const t12Val  = row.t12;
+  const t12Val  = pickY1ColValue(row, activePeriod);
   const platVal = pickPlatformValue(row, platformColSource);
-  /** True when the T-12 cell's value is the active user override driving Resolved. */
+  /** True when the active-period cell's value is the active user override driving Resolved. */
   const isT12ActiveOverride  = hasActiveOverride && t12Val  != null && Math.abs((row.resolved ?? 0) - t12Val)  < 0.01;
   /** True when the Platform cell's value is the active user override driving Resolved. */
   const isPlatActiveOverride = hasActiveOverride && platVal != null && Math.abs((row.resolved ?? 0) - platVal) < 0.01;
