@@ -647,7 +647,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <Th label="Broker" color={viewMode === 'BUILD_OWN' ? '#f59e0b' : undefined} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label="T-12" color="#e2e8f0" hidden={viewMode === 'BROKER_VIEW'} />
               <Th label="Platform" color="#06b6d4" hidden={viewMode === 'BROKER_VIEW'} />
-              <Th label={viewMode === 'BROKER_VIEW' ? 'Broker NOI' : 'Resolved'} highlight={viewMode === 'BUILD_OWN'} brokerActive={viewMode === 'BROKER_VIEW'} />
+              <Th label="Resolved" highlight={viewMode === 'BUILD_OWN'} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label="% of EGI" color="#94a3b8" />
               <Th label="Source" />
               <Th label="$/Unit" />
