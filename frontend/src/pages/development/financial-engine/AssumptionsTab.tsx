@@ -2129,6 +2129,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
             </button>
           ))}
         </div>
+        <Y1SourcePicker />
         {/* Scenario / hold-period pills — in the same control strip as mode toggle */}
         <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a', gap: 1 }}>
           {(['5 YR', '7 YR', '10 YR'] as const).map(tab => {
@@ -2145,7 +2146,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
             );
           })}
         </div>
-        <Y1SourcePicker />
         <div style={{ flex: 1 }} />
         <button
           onClick={() => { onAssumptionsChange?.({}); fetchFinancials(holdYears); }}
