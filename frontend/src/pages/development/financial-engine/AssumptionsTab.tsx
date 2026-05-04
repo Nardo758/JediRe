@@ -2141,42 +2141,14 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
             className="px-3 py-1 text-[10px] font-bold bg-cyan-900/40 text-cyan-400 border border-cyan-500/30 rounded hover:bg-cyan-900/60">
             RECALCULATE
           </button>
+          <button onClick={() => { onAssumptionsChange?.({}); fetchFinancials(holdYears); }}
+            className="px-3 py-1 text-[10px] font-bold bg-emerald-900/40 text-emerald-400 border border-emerald-500/30 rounded hover:bg-emerald-900/60">
+            PUSH → PROJECTIONS
+          </button>
           <button className="p-1 text-slate-400 hover:text-slate-200 bg-[#1e1e1e] rounded">
             <Download className="w-3.5 h-3.5" />
           </button>
         </div>
-      </div>
-
-      {/* Header — Row 2: view mode toggle + scenario pills + Y1 source picker + PUSH → PROJECTIONS */}
-      <div className="flex items-center gap-3 px-4 py-1.5 bg-[#0f0f0f] border-b border-[#1e1e1e] sticky top-[36px] z-29">
-        {/* Scenario / hold-period pills */}
-        <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a', gap: 1 }}>
-          {(['5 YR', '7 YR', '10 YR'] as const).map(tab => {
-            const active = holdTab === tab || (holdTab === null && holdYears === (tab === '5 YR' ? 5 : tab === '7 YR' ? 7 : 10));
-            return (
-              <button key={tab} onClick={() => setHoldTab(tab)} style={{
-                padding: '3px 8px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer',
-                fontFamily: MONO, letterSpacing: '0.05em', transition: 'all 0.15s',
-                background: active ? 'rgba(29,78,216,0.5)' : 'transparent',
-                color: active ? '#bfdbfe' : '#475569',
-              }}>
-                {tab}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={() => { onAssumptionsChange?.({}); fetchFinancials(holdYears); }}
-          style={{
-            fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: '0.07em',
-            padding: '3px 12px', borderRadius: 3, cursor: 'pointer',
-            background: 'rgba(34,197,94,0.15)', color: '#4ade80',
-            border: '1px solid rgba(34,197,94,0.3)',
-          }}
-        >
-          PUSH → PROJECTIONS
-        </button>
       </div>
 
       {/* Bulk actions */}
