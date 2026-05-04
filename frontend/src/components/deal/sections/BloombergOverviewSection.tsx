@@ -295,6 +295,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     : deal?.budget ? dollar(deal.budget) : '$--';
 
   const extDealData = deal?.deal_data as Record<string, unknown> | null;
+  const bcProforma = (extDealData?.broker_claims as Record<string, unknown> | undefined)?.proforma as Record<string, unknown> | undefined;
   const extRRUnits = (extDealData?.extraction_rent_roll as Record<string, unknown> | undefined)?.totalUnits ?? (extDealData?.extraction_rent_roll as Record<string, unknown> | undefined)?.total_units;
   const units = deal?.units || deal?.targetUnits || (extRRUnits != null ? Number(extRRUnits) : 0);
   const ppuNum = units > 0 && deal?.purchasePrice ? Math.round(deal.purchasePrice / units) : null;
@@ -331,9 +332,15 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
   })();
 
   // COLLISION banner: broker vs platform IRR/vacancy divergence
-  const brokerIRR: number | null = deal?.deal_data?.broker_irr ?? deal?.brokerIrr ?? null;
+  // Primary source: deal_data.broker_claims.proforma (set by the document extraction pipeline).
+  // Fields are stored as decimals (0.05 = 5%), so multiply by 100 for percentage display.
+  const brokerIRR: number | null = bcProforma?.targetIRR != null
+    ? Number(bcProforma.targetIRR) * 100
+    : (extDealData?.broker_irr != null ? Number(extDealData.broker_irr) : null);
   const platformIRR: number | null = irrNum;
-  const brokerVacancy: number | null = deal?.strategyDefaults?.assumptions?.vacancy ?? deal?.vacancy ?? null;
+  const brokerVacancy: number | null = bcProforma?.stabilizedVacancy != null
+    ? Number(bcProforma.stabilizedVacancy) * 100
+    : ((deal as any)?.strategyDefaults?.assumptions?.vacancy ?? (deal as any)?.vacancy ?? null);
   const platformVacancy: number | null = market?.occupancy != null ? 100 - market.occupancy : null;
   const irrDivergence = brokerIRR != null && platformIRR != null
     ? Math.abs(brokerIRR - platformIRR * 100)
@@ -362,6 +369,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
 
   // Rent/unit = $/unit/month (not rent growth %)
   const rentUnitBroker: string = (() => {
+    if (bcProforma?.rentPerUnit != null) return `$${Math.round(Number(bcProforma.rentPerUnit)).toLocaleString()}/mo`;
     const v = (deal?.strategyDefaults as Record<string, unknown>)?.assumptions
       ? ((deal.strategyDefaults as Record<string, unknown>).assumptions as Record<string, unknown>)?.rentPerUnit
       : null;
@@ -387,6 +395,16 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
   })();
 
   const opexBroker = (() => {
+    // Derive broker opex ratio from stabilizedNOI + stabilizedVacancy if both present.
+    // OPEX = EGI - NOI; EGI = GPR × (1 - vacancy); opex ratio = OPEX / EGI.
+    if (bcProforma?.stabilizedNOI != null && bcProforma?.stabilizedVacancy != null) {
+      const bcGpr = (extDealData?.extraction_t12 as Record<string, unknown> | undefined)?.gpr as number | undefined;
+      if (bcGpr != null && bcGpr > 0) {
+        const egi = bcGpr * (1 - Number(bcProforma.stabilizedVacancy));
+        const opex = egi - Number(bcProforma.stabilizedNOI);
+        if (egi > 0) return `${Math.round((opex / egi) * 100)}%`;
+      }
+    }
     const assumptions_ = (deal?.strategyDefaults as Record<string, unknown>)?.assumptions as Record<string, unknown> | undefined;
     if (assumptions_?.opexRatio != null) return `${assumptions_.opexRatio}%`;
     if (dData?.opex_ratio != null) return `${dData.opex_ratio}%`;
@@ -400,7 +418,11 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     return '—';
   })();
 
-  const capRateBroker = deal?.capRate != null ? `${deal.capRate}%` : '—';
+  const capRateBroker = (() => {
+    if (bcProforma?.goingInCapRate != null) return `${(Number(bcProforma.goingInCapRate) * 100).toFixed(1)}%`;
+    if (deal?.capRate != null) return `${deal.capRate}%`;
+    return '—';
+  })();
   const capRatePlatform = assumptions?.capRate != null ? `${assumptions.capRate}%`
     : (() => {
         const assumptions_ = (deal?.strategyDefaults as Record<string, unknown>)?.assumptions as Record<string, unknown> | undefined;
@@ -408,6 +430,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
       })();
 
   const exitYearBroker = (() => {
+    if (bcProforma?.holdPeriodYears != null) return `${bcProforma.holdPeriodYears}yr`;
     const assumptions_ = (deal?.strategyDefaults as Record<string, unknown>)?.assumptions as Record<string, unknown> | undefined;
     return assumptions_?.holdPeriod != null ? `${assumptions_.holdPeriod}yr` : '—';
   })();
