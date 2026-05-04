@@ -1003,6 +1003,32 @@ function buildOSRows(
     ? Number(brokerProforma.totalOpexAnnual)
     : (bpEgi != null && bpNOI != null ? bpEgi - bpNOI : null);
 
+  // ─── T12 and Platform revenue subtotals ─────────────────────────────────────
+  // Compute t12/platform NRI and EGI so the OS subtotal rows show all four
+  // columns (broker / t12 / platform / resolved). Opex subtotals are computed
+  // later, after mgmtPctLV is defined.
+  const t12GprVal       = lv('gpr').t12;
+  const t12OtherIncome  = lv('other_income').t12;
+  const t12Nri = t12GprVal != null
+    ? t12GprVal
+      - (lv('vacancy_loss').t12       ?? 0)
+      - (lv('loss_to_lease').t12      ?? 0)
+      - (lv('concessions').t12        ?? 0)
+      - (lv('bad_debt').t12           ?? 0)
+      - (lv('non_revenue_units').t12  ?? 0)
+    : null;
+  const t12Egi = t12Nri != null ? t12Nri + (t12OtherIncome ?? 0) : null;
+
+  const platformNri = platformGpr != null
+    ? platformGpr
+      - (platformVacancyLoss  ?? 0)
+      - (platformL2L          ?? 0)
+      - (platformConcessions  ?? 0)
+      - (platformBadDebt      ?? 0)
+      - (platformNRU          ?? 0)
+    : null;
+  const platformEgi = platformNri != null ? platformNri + (platformOtherIncome ?? 0) : null;
+
   addRow('gpr',                'Gross Potential Rent',       gprPick.resolved,    { isSubtotal: true, source: gprPick.source, platform: platformGpr, rentRoll: um.gprFromUnitMix, t12: lv('gpr').t12, broker: bpStabilizedGpr ?? bpGprFromUnitMix });
   addRow('vacancy_loss',       'Vacancy Loss',               vacPick.resolved,    { source: vacPick.source, platform: platformVacancyLoss, rentRoll: um.vacancyLossFromUnitMix, broker: bpVacLoss });
   addRow('loss_to_lease',      'Loss to Lease',              l2lPick.resolved,    { source: l2lPick.source, platform: platformL2L, rentRoll: um.lossToLeaseFromUnitMix, broker: bpLtlDol });
@@ -1014,9 +1040,9 @@ function buildOSRows(
     broker:   bpBdDol,
   });
   addRow('non_revenue_units',  'Non-Revenue Units',          nruPick.resolved,    { source: nruPick.source, platform: platformNRU });
-  addRow('net_rental_income',  'Net Rental Income',          nri,                  { isSubtotal: true, broker: bpNri });
-  addRow('other_income',       'Other Income',               otherPick.resolved,  { source: otherPick.source, platform: platformOtherIncome, broker: bpOtherIncomeAnnual });
-  addRow('egi',                'Effective Gross Income',     egi,                  { isSubtotal: true, broker: bpEgi });
+  addRow('net_rental_income',  'Net Rental Income',          nri,                  { isSubtotal: true, broker: bpNri,  t12: t12Nri,  platform: platformNri });
+  addRow('other_income',       'Other Income',               otherPick.resolved,  { source: otherPick.source, platform: platformOtherIncome, broker: bpOtherIncomeAnnual, t12: t12OtherIncome });
+  addRow('egi',                'Effective Gross Income',     egi,                  { isSubtotal: true, broker: bpEgi,  t12: t12Egi,  platform: platformEgi });
 
   // â”€â”€â”€ Expenses (mirrors Projections EXPENSES section) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Helper: emit an expense row pulling resolved + source columns from the LayeredValue.
@@ -1089,14 +1115,36 @@ function buildOSRows(
     }
     return any ? sum : null;
   })();
+
+  // ─── T12 and Platform opex subtotals (requires mgmtPctLV, defined above) ────
+  const opexExpKeys: string[] = ['payroll', 'repairs_maintenance', 'turnover', 'contract_services',
+                                  'marketing', 'utilities', 'g_and_a', 'insurance', 'real_estate_tax',
+                                  'replacement_reserves'];
+  const t12TotalOpex = (() => {
+    let sum = 0; let any = false;
+    for (const k of opexExpKeys) { const v = lv(k).t12; if (v != null) { sum += v; any = true; } }
+    const mgmtT12 = mgmtPctLV.t12 != null && egi != null ? mgmtPctLV.t12 * egi : null;
+    if (mgmtT12 != null) { sum += mgmtT12; any = true; }
+    return any ? sum : null;
+  })();
+  const platformTotalOpex = (() => {
+    let sum = 0; let any = false;
+    for (const k of opexExpKeys) { const v = lv(k).platform; if (v != null) { sum += v; any = true; } }
+    const mgmtPlatform = mgmtPctLV.platform != null && egi != null ? mgmtPctLV.platform * egi : null;
+    if (mgmtPlatform != null) { sum += mgmtPlatform; any = true; }
+    return any ? sum : null;
+  })();
+
   addRow('total_opex', 'Total Operating Expenses',
-    storedTotalOpex ?? summedOpex, { isSubtotal: true, broker: bpTotalOpex });
+    storedTotalOpex ?? summedOpex, { isSubtotal: true, broker: bpTotalOpex, t12: t12TotalOpex, platform: platformTotalOpex });
 
   // NOI
   const noiY1 = res('noi');
   const totalOpForNoi = storedTotalOpex ?? summedOpex;
   const computedNoi = (egi != null && totalOpForNoi != null) ? egi - totalOpForNoi : null;
-  addRow('noi', 'Net Operating Income', noiY1 ?? computedNoi, { isSubtotal: true, broker: bpNOI });
+  const t12Noi      = t12Egi  != null && t12TotalOpex      != null ? t12Egi  - t12TotalOpex      : null;
+  const platformNoi = platformEgi != null && platformTotalOpex != null ? platformEgi - platformTotalOpex : null;
+  addRow('noi', 'Net Operating Income', noiY1 ?? computedNoi, { isSubtotal: true, broker: bpNOI, t12: t12Noi, platform: platformNoi });
 
   // Debt (composer doesn't surface debt yet â€” leave nullable rows)
   addRow('debt_service',      'Debt Service',      null);

@@ -801,10 +801,16 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             {totalOpexRow && (
               <tr style={{ background: '#1e1b4b', borderTop: '1px solid #312e81', borderBottom: '1px solid #312e81' }}>
                 <td style={{ padding: '5px 8px', fontWeight: 700, color: '#e2e8f0', fontFamily: LABEL, fontSize: 9, position: 'sticky', left: 0, background: '#1e1b4b' }}>═══ TOTAL OPEX ═══</td>
-                <td />
-                {viewMode === 'BUILD_OWN' && <><td /><td /></>}
-                <td style={{ padding: '5px 8px', textAlign: 'right', color: '#ffffff', fontWeight: 700, fontSize: 11 }}>
-                  {fmt$(viewMode === 'BROKER_VIEW' ? (totalOpexRow.broker ?? totalOpexRow.resolved) : totalOpexRow.resolved)}
+                <td style={{ padding: '5px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#c4b5fd', fontSize: 9, fontWeight: viewMode === 'BROKER_VIEW' ? 700 : 400 }}>
+                  {fmtFull$(totalOpexRow.broker)}
+                </td>
+                {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '5px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(totalOpexRow.t12)}</td>}
+                {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '5px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(pickPlatformValue(totalOpexRow, platformColSource))}</td>}
+                <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: 11,
+                  background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : undefined,
+                  color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#ffffff',
+                }}>
+                  {fmtFull$(viewMode === 'BROKER_VIEW' ? (totalOpexRow.broker ?? totalOpexRow.resolved) : totalOpexRow.resolved)}
                 </td>
                 <td style={{ padding: '5px 8px', textAlign: 'right', color: '#94a3b8', fontSize: 9 }}>
                   {egiResolved && totalOpexRow.resolved ? `${((totalOpexRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
@@ -823,11 +829,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 <td style={{ padding: '7px 8px', fontWeight: 700, color: '#f8fafc', fontFamily: LABEL, letterSpacing: 1, position: 'sticky', left: 0, background: '#042304' }}>
                   ═══ NET OPERATING INCOME ═══
                 </td>
-                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.broker)}</td>
-                {viewMode === 'BUILD_OWN' && (
+                <td style={{ padding: '7px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#86efac', fontWeight: viewMode === 'BROKER_VIEW' ? 700 : 400 }}>{fmtFull$(noiRow.broker)}</td>
+                {viewMode !== 'BROKER_VIEW' && (
                   <>
-                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.t12)}</td>
-                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.platform)}</td>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmtFull$(noiRow.t12)}</td>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmtFull$(pickPlatformValue(noiRow, platformColSource))}</td>
                   </>
                 )}
                 <td style={{
@@ -835,7 +841,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#4ade80',
                   background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : undefined,
                 }}>
-                  {fmt$(viewMode === 'BROKER_VIEW' ? (noiRow.broker ?? noiRow.resolved) : noiRow.resolved)}
+                  {fmtFull$(viewMode === 'BROKER_VIEW' ? (noiRow.broker ?? noiRow.resolved) : noiRow.resolved)}
                 </td>
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac', fontSize: 9 }}>
                   {egiResolved && noiRow.resolved ? `${((noiRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
