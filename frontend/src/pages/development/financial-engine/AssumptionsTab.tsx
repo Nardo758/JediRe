@@ -8,7 +8,6 @@ import type { FinancialEngineTabProps, F9NarrativeBlock } from './types';
 import { apiClient } from '../../../services/api.client';
 import { F9ProtectorsPanel } from './F9ProtectorsPanel';
 import { useDealStore } from '../../../stores/dealStore';
-import { Y1SourcePicker } from './Y1SourcePicker';
 import { computeConfidenceBands, evaluateRefusal } from '../../../services/proforma/validators';
 import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma/types';
 
@@ -2129,7 +2128,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
             </button>
           ))}
         </div>
-        <Y1SourcePicker />
         {/* Scenario / hold-period pills — in the same control strip as mode toggle */}
         <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a', gap: 1 }}>
           {(['5 YR', '7 YR', '10 YR'] as const).map(tab => {
