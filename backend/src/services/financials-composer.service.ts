@@ -28,6 +28,9 @@ export interface OSRow {
   broker: number | null;
   platform: number | null;
   t12: number | null;
+  t6: number | null;
+  t3: number | null;
+  t1: number | null;
   rentRoll: number | null;
   taxBill: number | null;
   resolved: number | null;
@@ -314,6 +317,18 @@ export async function composeDealFinancials(
 
   // 5. Build operating statement rows
   const year1Rows: OSRow[] = buildOSRows(year1Data, totalUnits, purchasePrice, rentRollRows, unitMixDerived, useUnitMixForGpr);
+
+  // 5b. Enrich rows with trailing-period actuals (T-6, T-3, T-1) from deal_monthly_actuals.
+  //     Falls back gracefully (rows unchanged) when no actuals exist for a deal.
+  const trailingMap = await loadTrailingActualsMap(pool, dealId);
+  for (const row of year1Rows) {
+    const ta = trailingMap[row.field];
+    if (ta) {
+      row.t6 = ta.t6;
+      row.t3 = ta.t3;
+      row.t1 = ta.t1;
+    }
+  }
 
   // 6. Build integrity checks
   const integrityChecks: IntegrityCheck[] = buildIntegrityChecks(year1Data, totalUnits, year1Rows, dealData);
@@ -672,6 +687,80 @@ function omUnitMixToRentRollRows(
 
 // â”€â”€ Helper: Build operating statement rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+/** Maps each OSRow field name to the corresponding deal_monthly_actuals column. */
+const TRAILING_FIELD_COL: Record<string, string> = {
+  gpr:                 'gross_potential_rent',
+  vacancy_loss:        'vacancy_loss',
+  loss_to_lease:       'loss_to_lease',
+  concessions:         'concessions',
+  bad_debt:            'bad_debt',
+  net_rental_income:   'net_rental_income',
+  other_income:        'other_income',
+  egi:                 'effective_gross_income',
+  payroll:             'payroll',
+  management_fee:      'management_fee',
+  utilities:           'utilities_total',
+  repairs_maintenance: 'repairs_maintenance',
+  turnover:            'make_ready',
+  insurance:           'insurance',
+  real_estate_taxes:   'real_estate_taxes',
+  total_opex:          'total_opex_coalesced',
+  noi:                 'noi',
+};
+
+/**
+ * Loads the most-recent 12 months of non-budget, non-proforma actuals for a deal
+ * and returns an annualised T-1 / T-3 / T-6 value for each mapped OSRow field.
+ * Returns an empty object on any query failure (column not present, no rows, etc.).
+ */
+async function loadTrailingActualsMap(
+  pool: Pool,
+  dealId: string,
+): Promise<Record<string, { t6: number | null; t3: number | null; t1: number | null }>> {
+  try {
+    const res = await pool.query(
+      `SELECT
+         gross_potential_rent, vacancy_loss, loss_to_lease, concessions, bad_debt,
+         net_rental_income, other_income, effective_gross_income,
+         payroll, management_fee, utilities_total, repairs_maintenance, make_ready,
+         insurance, real_estate_taxes, noi,
+         COALESCE(total_operating_expenses, total_opex) AS total_opex_coalesced
+       FROM deal_monthly_actuals
+       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+       ORDER BY report_month DESC
+       LIMIT 12`,
+      [dealId],
+    );
+    const rows = res.rows as Record<string, string | null>[];
+    if (rows.length === 0) return {};
+
+    const annualise = (sum: number, months: number) => (sum / months) * 12;
+
+    const sumSlice = (col: string, n: number): number | null => {
+      const slice = rows.slice(0, n);
+      if (slice.length < n) return null;
+      let total = 0; let hasAny = false;
+      for (const row of slice) {
+        const v = row[col];
+        if (v != null) { total += Number(v); hasAny = true; }
+      }
+      return hasAny ? annualise(total, n) : null;
+    };
+
+    const out: Record<string, { t6: number | null; t3: number | null; t1: number | null }> = {};
+    for (const [field, col] of Object.entries(TRAILING_FIELD_COL)) {
+      out[field] = {
+        t1: rows.length >= 1 ? sumSlice(col, 1) : null,
+        t3: rows.length >= 3 ? sumSlice(col, 3) : null,
+        t6: rows.length >= 6 ? sumSlice(col, 6) : null,
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 function buildOSRows(
   y1: any,
   totalUnits: number,
@@ -703,6 +792,9 @@ function buildOSRows(
       broker: opts?.broker ?? null,
       platform: opts?.platform ?? null,
       t12: opts?.t12 ?? null,
+      t6: null,
+      t3: null,
+      t1: null,
       rentRoll: opts?.rentRoll ?? null,
       taxBill: opts?.taxBill ?? null,
       resolved,

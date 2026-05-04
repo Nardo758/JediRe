@@ -226,6 +226,7 @@ export interface F9DealFinancials {
     year1: Array<{
       field: string; label: string;
       broker: number|null; platform: number|null; t12: number|null;
+      t6: number|null; t3: number|null; t1: number|null;
       rentRoll: number|null; taxBill: number|null;
       resolved: number|null; resolution: string|null; perUnit: number|null;
       source?: string|null; confidence?: number|null;

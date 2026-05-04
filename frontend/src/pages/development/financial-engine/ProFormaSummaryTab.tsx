@@ -16,6 +16,9 @@ interface OperatingStatementRow {
   broker: number | null;
   platform: number | null;
   t12: number | null;
+  t6: number | null;
+  t3: number | null;
+  t1: number | null;
   rentRoll: number | null;
   taxBill: number | null;
   resolved: number | null;
@@ -1032,14 +1035,14 @@ function Th({ label, color, highlight, left, min, sticky, hidden, brokerActive, 
   );
 }
 
-/** Returns the value to display in the Platform comparison column based on the user-selected source. T6/T3/T1 use row.t12 until per-period data is available from backend. */
+/** Returns the value to display in the Platform comparison column based on the user-selected source. */
 function pickPlatformValue(row: OperatingStatementRow, src: PlatformColSource): number | null {
   switch (src) {
-    case 'T12':
-    case 'T6':
-    case 'T3':
-    case 'T1':    return row.t12;
-    default:      return row.platform;
+    case 'T12': return row.t12;
+    case 'T6':  return row.t6 ?? row.t12;
+    case 'T3':  return row.t3 ?? row.t12;
+    case 'T1':  return row.t1 ?? row.t12;
+    default:    return row.platform;
   }
 }
 
