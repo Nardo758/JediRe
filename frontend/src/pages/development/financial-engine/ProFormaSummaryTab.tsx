@@ -1620,12 +1620,17 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   function commitEdit() {
     if (!corr) return;
     const parsed = parseFloat(corr.draft);
-    let value = isNaN(parsed) ? null : parsed;
-    // Management fee in % mode: user types a percentage, convert to dollars before saving.
-    if (isMgmtFee && mgmtFeeEditMode === '%' && value != null && egiResolved != null) {
-      value = (value / 100) * egiResolved;
+    if (isNaN(parsed)) { onSaveCorrection(row.field, null, corr.original); return; }
+    // Management fee is stored as management_fee_pct (decimal %) not as dollars.
+    // The override endpoint expects camelCase 'managementFeePct' with a decimal value (0.025 = 2.5%).
+    if (isMgmtFee && egiResolved != null) {
+      const pctDecimal = mgmtFeeEditMode === '%'
+        ? parsed / 100          // user typed "2.5" → 0.025
+        : parsed / egiResolved; // user typed dollar amount → back-calculate %
+      onSaveCorrection('managementFeePct', pctDecimal, corr.original);
+      return;
     }
-    onSaveCorrection(row.field, value, corr.original);
+    onSaveCorrection(row.field, parsed, corr.original);
   }
 
   return (
@@ -1685,11 +1690,13 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
           onMouseLeave={t12Val != null ? () => setHoverT12(false) : undefined}
           onClick={t12Val != null ? async () => {
             if (isT12ActiveOverride) {
-              setOptimisticResolved(undefined);   // clear overlay immediately on reset
-              await onResetCorrection(row.field);
+              setOptimisticResolved(undefined);
+              await onResetCorrection(isMgmtFee ? 'managementFeePct' : row.field);
             } else {
-              setOptimisticResolved(t12Val);      // show value immediately before load() returns
-              await onSaveCorrection(row.field, t12Val, row.resolved);
+              setOptimisticResolved(t12Val);
+              const saveField = isMgmtFee ? 'managementFeePct' : row.field;
+              const saveVal   = isMgmtFee && egiResolved ? t12Val / egiResolved : t12Val;
+              await onSaveCorrection(saveField, saveVal, row.resolved);
             }
           } : undefined}
           title={t12Val != null
@@ -1719,11 +1726,13 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
           onMouseLeave={platVal != null ? () => setHoverPlat(false) : undefined}
           onClick={platVal != null ? async () => {
             if (isPlatActiveOverride) {
-              setOptimisticResolved(undefined);   // clear overlay immediately on reset
-              await onResetCorrection(row.field);
+              setOptimisticResolved(undefined);
+              await onResetCorrection(isMgmtFee ? 'managementFeePct' : row.field);
             } else {
-              setOptimisticResolved(platVal);     // show value immediately before load() returns
-              await onSaveCorrection(row.field, platVal, row.resolved);
+              setOptimisticResolved(platVal);
+              const saveField = isMgmtFee ? 'managementFeePct' : row.field;
+              const saveVal   = isMgmtFee && egiResolved ? platVal / egiResolved : platVal;
+              await onSaveCorrection(saveField, saveVal, row.resolved);
             }
           } : undefined}
           title={platVal != null
@@ -1919,7 +1928,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
           {corr?.savedAt && (
             <button
               title="Reset to ingested value (clears backend override)"
-              onClick={() => onResetCorrection(row.field)}
+              onClick={() => onResetCorrection(isMgmtFee ? 'managementFeePct' : row.field)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', padding: '1px 2px' }}
             >
               <RotateCcw size={9} />
