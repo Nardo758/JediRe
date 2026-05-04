@@ -356,6 +356,11 @@ interface DealStoreActions {
   /** Document source the Y1 column in F9 tabs is anchored to. Default: 'PLATFORM'. */
   y1Source: Y1Source;
   setY1Source: (source: Y1Source) => void;
+
+  // ─── F9 VIEW MODE ────────────────────────────────────────────────────────────
+  /** Pro Forma view mode — BROKER_VIEW shows OM numbers, BUILD_OWN shows platform underwriting. Shared across Pro Forma / Assumptions tabs. */
+  viewMode: 'BROKER_VIEW' | 'BUILD_OWN';
+  setViewMode: (mode: 'BROKER_VIEW' | 'BUILD_OWN') => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1687,6 +1692,10 @@ export const useDealStore = create<DealStore>()(
     // ─── F9 Y1 SOURCE PICKER ─────────────────────────────────
     y1Source: 'PLATFORM' as Y1Source,
     setY1Source: (source) => set({ y1Source: source }),
+
+    // ─── F9 VIEW MODE ────────────────────────────────────────
+    viewMode: 'BUILD_OWN' as 'BROKER_VIEW' | 'BUILD_OWN',
+    setViewMode: (mode) => set({ viewMode: mode }),
 
     setConfidenceBands: (bands) => set({ confidenceBands: bands }),
 

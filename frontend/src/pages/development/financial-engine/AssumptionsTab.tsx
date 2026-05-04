@@ -8,7 +8,6 @@ import type { FinancialEngineTabProps, F9NarrativeBlock } from './types';
 import { apiClient } from '../../../services/api.client';
 import { F9ProtectorsPanel } from './F9ProtectorsPanel';
 import { useDealStore } from '../../../stores/dealStore';
-import type { Y1Source } from '../../../stores/dealStore';
 import { computeConfidenceBands, evaluateRefusal } from '../../../services/proforma/validators';
 import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma/types';
 
@@ -1479,9 +1478,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const setRefusalReasons = useDealStore(s => s.setRefusalReasons);
   const refusalReasons    = useDealStore(s => s.refusalReasons);
   const y1Source          = useDealStore(s => s.y1Source);
-  const setY1Source       = useDealStore(s => s.setY1Source);
-
-  const [viewMode, setViewMode]   = useState<'BROKER_VIEW'|'BUILD_OWN'>('BUILD_OWN');
+  const viewMode          = useDealStore(s => s.viewMode);
   const [closeDate, setCloseDate] = useState('');
   const [saleDate,  setSaleDate]  = useState('');
   const [csLocal, setCsLocal]     = useState<{
@@ -2079,39 +2076,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
           {loading && <span style={{ fontFamily: MONO, fontSize: 8, color: '#22d3ee' }}>SYNCING…</span>}
         </div>
         <div className="flex items-center gap-2">
-          {/* BROKER VIEW / BUILD YOUR OWN toggle */}
-          <div className="flex bg-[#1a1a1a] p-0.5 rounded border border-[#2a2a2a]">
-            {(['BROKER_VIEW', 'BUILD_OWN'] as const).map(mode => (
-              <button key={mode} onClick={() => setViewMode(mode)}
-                className={`px-2.5 py-1 text-[9px] font-bold rounded-sm transition-colors ${
-                  viewMode === mode
-                    ? mode === 'BROKER_VIEW'
-                      ? 'bg-amber-700/60 text-amber-300'
-                      : 'bg-blue-700/60 text-blue-200'
-                    : 'text-slate-600 hover:text-slate-400'
-                }`}>
-                {mode === 'BROKER_VIEW' ? 'BROKER VIEW' : 'BUILD YOUR OWN'}
-              </button>
-            ))}
-          </div>
-          {/* Y1 Source picker — shared via dealStore */}
-          <div className="flex items-center gap-1">
-            <span style={{ fontFamily: MONO, fontSize: 7, color: '#475569', letterSpacing: '0.08em' }}>Y1 SRC</span>
-            <div className="flex bg-[#1a1a1a] p-0.5 rounded border border-[#2a2a2a]">
-              {(['PLATFORM','BROKER','T12','T6','T3','T1'] as Y1Source[]).map(src => (
-                <button key={src} onClick={() => setY1Source(src)}
-                  className={`px-2 py-0.5 text-[8px] font-bold rounded-sm transition-colors ${
-                    y1Source === src
-                      ? src === 'PLATFORM'
-                        ? 'bg-cyan-800/60 text-cyan-300'
-                        : 'bg-amber-800/60 text-amber-300'
-                      : 'text-slate-700 hover:text-slate-400'
-                  }`}>
-                  {src}
-                </button>
-              ))}
-            </div>
-          </div>
           {/* Hold period tabs */}
           <div className="flex bg-[#1e1e1e] p-0.5 rounded">
             {(['5 YR','7 YR','10 YR'] as const).map(tab => {
