@@ -11,6 +11,7 @@ import { registerDemandConsumer } from './demand-consumer';
 import { registerJEDIScoreConsumer } from './jedi-score-consumer';
 import { registerAlertConsumer } from './alert-consumer';
 import { registerM35ForecastConsumer } from './m35-forecast-consumer';
+import { registerTaxBillUploadedConsumer } from './tax-bill-uploaded-consumer';
 import { consumerManager } from '../kafka-consumer-manager.service';
 import { retryHandler } from '../retry-handler.service';
 
@@ -34,6 +35,8 @@ export async function initializeConsumers(): Promise<void> {
       registerJEDIScoreConsumer(),
       registerAlertConsumer(),
       registerM35ForecastConsumer(),
+      // Tax Service Phase 4 (Task #592): parcel cache invalidation on tax bill upload
+      registerTaxBillUploadedConsumer(),
     ]);
 
     // Start health check monitoring

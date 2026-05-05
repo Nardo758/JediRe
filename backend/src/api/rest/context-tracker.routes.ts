@@ -3,6 +3,8 @@ import { getPool } from '../../database/connection';
 import { parcelCacheInvalidate } from '../../services/tax/parcelCache';
 import { inngest } from '../../lib/inngest';
 import { TAX_BILL_UPLOADED_EVENT } from '../../inngest/functions/taxBillUploaded.handler';
+import { kafkaProducer } from '../../services/kafka/kafka-producer.service';
+import { KAFKA_TOPICS } from '../../services/kafka/event-schemas';
 
 const router = Router();
 
@@ -208,9 +210,24 @@ router.post('/deals/:dealId/documents', async (req: Request, res: Response) => {
         const parcelId = dd.parcel_id as string | undefined;
         if (parcelId) {
           // Belt-and-suspenders: invalidate synchronously so the response is
-          // consistent even if the Inngest event consumer is delayed.
+          // consistent even if the async consumers are delayed.
           await parcelCacheInvalidate(parcelId);
-          // Also fire the Inngest event for the authoritative consumer path.
+          // Publish to Kafka — the authoritative event-driven invalidation path.
+          // tax-bill-uploaded-consumer.ts subscribes and calls parcelCacheInvalidate()
+          // for any upload paths that bypass this REST route.
+          void kafkaProducer.publish(
+            KAFKA_TOPICS.TAX_BILL_UPLOADED,
+            {
+              eventType: 'tax_bill_uploaded',
+              eventId:   `tax-bill-${dealId}-${Date.now()}`,
+              timestamp: new Date().toISOString(),
+              parcelId,
+              dealId:     String(dealId),
+              uploadedBy: String(userId),
+            },
+            { publishedBy: 'context-tracker.routes' },
+          ).catch(() => { /* Kafka publish failure must not block upload */ });
+          // Also fire the Inngest event for webhook/retry fan-out.
           void inngest.send({
             name: TAX_BILL_UPLOADED_EVENT,
             data: { parcelId, dealId: String(dealId), uploadedBy: String(userId) },
