@@ -60,6 +60,11 @@ export interface MonthOutput {
   stabilization_marker: boolean;
 }
 
+export interface WarningFlag {
+  type: string;
+  message: string;
+}
+
 export interface LeaseVelocityResult {
   success: boolean;
   mode: LeaseMode;
@@ -68,7 +73,10 @@ export interface LeaseVelocityResult {
   narrative: string;
   stabilization_month: number | null;
   cumulative_reserve_required: number;
-  warnings: string[];
+  /** Structured warning flags from backend engine (type + message) */
+  warningFlags: WarningFlag[];
+  /** Legacy string warnings — mapped to warningFlags if present */
+  warnings?: string[];
 }
 
 export interface LVInputs {
@@ -157,10 +165,10 @@ export function LeasingCostTreatmentToggle({
 
 // ─── WarningFlagsPanel ────────────────────────────────────────────────────────
 
-function WarningFlagsPanel({ warnings }: { warnings: string[] }) {
+function WarningFlagsPanel({ warningFlags }: { warningFlags: WarningFlag[] }) {
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
 
-  const visible = warnings.filter((_, i) => !dismissed.has(i));
+  const visible = warningFlags.filter((_, i) => !dismissed.has(i));
   if (!visible.length) return null;
 
   const dismiss = (origIdx: number) =>
@@ -176,11 +184,10 @@ function WarningFlagsPanel({ warnings }: { warnings: string[] }) {
       <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, fontWeight: 700, marginBottom: 4, letterSpacing: 0.6 }}>
         ENGINE WARNINGS ({visible.length})
       </div>
-      {warnings.map((w, origIdx) => {
+      {warningFlags.map((flag, origIdx) => {
         if (dismissed.has(origIdx)) return null;
-        const isCatchup = w.includes('INFEASIBLE_CATCHUP_PACE');
-        // Extract recommended months from "... minimum N months ..." pattern
-        const minMatch = w.match(/minimum[:\s]+(\d+)\s*months?/i);
+        const isCatchup = flag.type === 'INFEASIBLE_CATCHUP_PACE';
+        const minMatch = flag.message.match(/minimum[:\s]+(\d+)\s*months?/i);
         const recMonths = minMatch ? minMatch[1] : null;
         return (
           <div key={origIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
@@ -188,10 +195,14 @@ function WarningFlagsPanel({ warnings }: { warnings: string[] }) {
               ⚠ {isCatchup ? (
                 <>
                   <strong>INFEASIBLE CATCHUP PACE</strong>
-                  {recMonths ? ` — recommended minimum: ${recMonths} months` : ''}
-                  {!minMatch && `: ${w.replace('INFEASIBLE_CATCHUP_PACE', '').trim()}`}
+                  {recMonths ? ` — recommended minimum: ${recMonths} months` : `: ${flag.message}`}
                 </>
-              ) : w}
+              ) : (
+                <>
+                  <strong style={{ letterSpacing: 0.4 }}>{flag.type.replace(/_/g, ' ')}</strong>
+                  {flag.message ? ` — ${flag.message}` : ''}
+                </>
+              )}
             </span>
             <button
               onClick={() => dismiss(origIdx)}
@@ -576,18 +587,25 @@ function LeaseVelocityInputPanel({
   onRun,
   loading,
   resolvedMode,
+  leaseOverride,
+  onModeOverride,
 }: {
   inputs: LVInputs;
   onInputsChange: (v: LVInputs) => void;
   onRun: () => void;
   loading: boolean;
   resolvedMode?: LeaseMode;
+  /** Stored deal.lease_mode_override — truthy means user has explicitly set a mode override */
+  leaseOverride?: LeaseMode | null;
+  /** Called when user changes the mode — caller PATCHes deal.lease_mode_override */
+  onModeOverride?: (mode: LeaseMode) => void;
 }) {
   const set = <K extends keyof LVInputs>(k: K, v: LVInputs[K]) =>
     onInputsChange({ ...inputs, [k]: v });
 
   const mode = inputs.mode;
-  const isOverridden = resolvedMode != null && mode !== resolvedMode;
+  /** True when deal.lease_mode_override is set (real deal-field override, not just UI divergence) */
+  const isOverridden = leaseOverride != null && leaseOverride !== resolvedMode;
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -622,7 +640,7 @@ function LeaseVelocityInputPanel({
             {(['LEASE_UP_NEW_CONSTRUCTION', 'STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'] as LeaseMode[]).map(m => (
               <button
                 key={m}
-                onClick={() => set('mode', m)}
+                onClick={() => { set('mode', m); onModeOverride?.(m); }}
                 style={{
                   background: mode === m ? `${MODE_COLORS[m]}22` : 'transparent',
                   color:      mode === m ? MODE_COLORS[m] : BT.text.muted,
@@ -826,12 +844,21 @@ export interface LeaseVelocitySectionProps {
   showConfig:      boolean;
   onToggleConfig:  () => void;
   runError:        string | null;
-  /** Auto-detected mode from deal occupancy data — shows MODE OVERRIDDEN when inputs.mode differs */
+  /** Auto-detected mode from deal occupancy data (for "AUTO:" label) */
   resolvedMode?:   LeaseMode;
+  /**
+   * The value stored in deal.lease_mode_override (the real override field).
+   * When set and different from resolvedMode, MODE OVERRIDDEN badge is shown.
+   * When the user changes mode in the panel, this callback writes the new
+   * value to deal.lease_mode_override via PATCH.
+   */
+  leaseOverride?:  LeaseMode | null;
+  onModeOverride?: (mode: LeaseMode) => void;
 }
 
 export function LeaseVelocitySection({
-  result, loading, inputs, onInputsChange, onRun, showConfig, onToggleConfig, runError, resolvedMode,
+  result, loading, inputs, onInputsChange, onRun, showConfig, onToggleConfig, runError,
+  resolvedMode, leaseOverride, onModeOverride,
 }: LeaseVelocitySectionProps) {
   const [showTable, setShowTable] = useState(false);
 
@@ -888,6 +915,8 @@ export function LeaseVelocitySection({
           onRun={onRun}
           loading={loading}
           resolvedMode={resolvedMode}
+          leaseOverride={leaseOverride}
+          onModeOverride={onModeOverride}
         />
       )}
 
@@ -908,8 +937,13 @@ export function LeaseVelocitySection({
       {result && !loading && (
         <div style={{ padding: '8px 10px' }}>
 
-          {/* Warnings */}
-          {result.warnings.length > 0 && <WarningFlagsPanel warnings={result.warnings} />}
+          {/* Warnings — uses warningFlags[] (structured); falls back to legacy string warnings */}
+          {(() => {
+            const flags: WarningFlag[] = result.warningFlags?.length
+              ? result.warningFlags
+              : (result.warnings ?? []).map(w => ({ type: 'ENGINE_WARNING', message: w }));
+            return flags.length > 0 ? <WarningFlagsPanel warningFlags={flags} /> : null;
+          })()}
 
           {/* KPI strip + narrative */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>

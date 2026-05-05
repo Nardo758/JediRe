@@ -368,8 +368,17 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const [reparsing, setReparsing] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionState>({});
   const [showAncillary, setShowAncillary] = useState(false);
-  // Location B — LeasingCostTreatmentToggle: local view-state only (does NOT write deal field)
-  const [lvTreatmentView, setLvTreatmentView] = useState<LeasingCostTreatment>('OPERATING');
+  // Location B — LeasingCostTreatmentToggle: view-state only (does NOT write deal field).
+  // Calls onF9Refresh so Pro Forma, Projections, and Returns re-compute in one cycle.
+  const [lvTreatmentView, setLvTreatmentView] = useState<LeasingCostTreatment>(() => {
+    const saved = (deal?.['deal_data'] as Record<string, unknown> | null | undefined)
+      ?.['leasing_cost_treatment'] as LeasingCostTreatment | undefined;
+    return saved ?? 'OPERATING';
+  });
+  const handleLvTreatmentViewChange = useCallback((t: LeasingCostTreatment) => {
+    setLvTreatmentView(t);
+    onF9Refresh?.();
+  }, [onF9Refresh]);
 
   // Prefer model results from the build pipeline; fall back to composer fetch.
   const modelData = modelResults ?? null;
@@ -566,7 +575,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>LEASING:</span>
           <LeasingCostTreatmentToggle
             value={lvTreatmentView}
-            onChange={setLvTreatmentView}
+            onChange={handleLvTreatmentViewChange}
             dealDefault={
               (deal?.['deal_data'] as Record<string, unknown> | null | undefined)
                 ?.['leasing_cost_treatment'] as LeasingCostTreatment | undefined

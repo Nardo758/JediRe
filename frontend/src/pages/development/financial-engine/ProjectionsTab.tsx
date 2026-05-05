@@ -10,10 +10,8 @@ import { apiClient } from '../../../services/api.client';
 import { useDealStore } from '../../../stores/dealStore';
 import {
   LeaseVelocitySection,
-  LeasingCostTreatmentToggle,
   type LVInputs,
   type LeaseVelocityResult,
-  type LeasingCostTreatment,
   type LeaseMode,
 } from './LeaseVelocitySection';
 
@@ -868,6 +866,7 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
 // ─── Main component ───────────────────────────────────────────────────────
 export function ProjectionsTab({
   dealId,
+  deal,
   integrityWarning,
   f9Financials,
   onTabChange,
@@ -969,20 +968,19 @@ export function ProjectionsTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [f9Financials?.dealId, dealId]);
 
-  // Location A: treatment toggle — PATCHes deal context + re-runs engine
-  const handleLvTreatmentChange = useCallback(async (treatment: LeasingCostTreatment) => {
-    const next = { ...lvInputs, leasing_cost_treatment: treatment };
+  // Mode override: user changes mode in the panel → write deal.lease_mode_override + re-run engine
+  const handleModeOverride = useCallback(async (mode: LeaseMode) => {
+    const next = { ...lvInputs, mode };
     setLvInputs(next);
     if (dealId) {
       try {
-        await apiClient.patch(`/api/v1/deals/${dealId}/context`, { leasing_cost_treatment: treatment });
-        onF9Refresh?.();
+        await apiClient.patch(`/api/v1/deals/${dealId}/context`, { lease_mode_override: mode });
       } catch (err) {
-        console.error('[LV] Failed to save leasing_cost_treatment:', err);
+        console.error('[LV] Failed to save lease_mode_override:', err);
       }
     }
     void runLvEngine(next);
-  }, [lvInputs, dealId, onF9Refresh, runLvEngine]);
+  }, [lvInputs, dealId, runLvEngine]);
 
   const [narrative,        setNarrative]       = useState<string | null>(null);
   const [narrativeBlocks,  setNarrativeBlocks] = useState<F9NarrativeBlock[]>([]);
@@ -1192,26 +1190,6 @@ export function ProjectionsTab({
         )}
 
 
-        {/* ── Lease Velocity Engine (§12) ─────────────────────────────────
-             Deterministic placement: above GPR Decomp, gated by result/loading */}
-        {(lvResult != null || lvLoading || lvError != null) && (
-          <LeaseVelocitySection
-            result={lvResult}
-            loading={lvLoading}
-            inputs={lvInputs}
-            onInputsChange={setLvInputs}
-            onRun={() => void runLvEngine(lvInputs)}
-            showConfig={lvShowConfig}
-            onToggleConfig={() => setLvShowConfig(v => !v)}
-            runError={lvError}
-            resolvedMode={lvResolvedMode}
-          />
-        )}
-
-        {/* ── GPR Decomposition ──────────────────────────────────────────── */}
-        {showGprDecomp && hasGprDecomp && (
-          <GprDecompPanel decomp={financials!.assumptions.gprDecomposition!} totalUnits={financials!.totalUnits} />
-        )}
 
         {/* ── Export error ───────────────────────────────────────────────── */}
         {error && (
@@ -1412,6 +1390,33 @@ export function ProjectionsTab({
             </div>
           )}
         </div>
+
+        {/* ── Lease Velocity Engine (§12) ─────────────────────────────────────
+             Placement: BELOW the projections grid, ABOVE GPR Decomposition.
+             Gated on result/loading/error to avoid rendering an empty panel. */}
+        {(lvResult != null || lvLoading || lvError != null) && (
+          <LeaseVelocitySection
+            result={lvResult}
+            loading={lvLoading}
+            inputs={lvInputs}
+            onInputsChange={setLvInputs}
+            onRun={() => void runLvEngine(lvInputs)}
+            showConfig={lvShowConfig}
+            onToggleConfig={() => setLvShowConfig(v => !v)}
+            runError={lvError}
+            resolvedMode={lvResolvedMode}
+            leaseOverride={
+              (deal?.['deal_data'] as Record<string, unknown> | null | undefined)
+                ?.['lease_mode_override'] as LeaseMode | null | undefined
+            }
+            onModeOverride={handleModeOverride}
+          />
+        )}
+
+        {/* ── GPR Decomposition ──────────────────────────────────────────────── */}
+        {showGprDecomp && hasGprDecomp && (
+          <GprDecompPanel decomp={financials!.assumptions.gprDecomposition!} totalUnits={financials!.totalUnits} />
+        )}
 
       </div>
 
