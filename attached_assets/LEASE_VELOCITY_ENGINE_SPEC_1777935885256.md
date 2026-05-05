@@ -1,13 +1,22 @@
 # LEASE VELOCITY ENGINE — IMPLEMENTATION SPEC
 
-**Status:** Draft v1.0
+**Status:** Draft v1.1
 **Owner:** M07 Traffic Engine ↔ M09 ProForma/Projections
 **Target executor:** Replit Agent (with reference back to Claude Code for engine-level work)
 **Depends on (must ship first or in parallel):**
+  - `M07_SCHEMA_EXTENSION_FOR_LEASE_VELOCITY_ENGINE_SPEC` ← **ship before backend LV implementation**
   - `M07_SUBJECT_HISTORY_AND_DIFF_EXTRACTOR_SPEC.txt`
   - `CONCESSION_ENVIRONMENT_SUB_ENGINE_SPEC.txt`
   - `M07_PROJECTIONS_INTEGRATION_SPEC.txt`
   - `INLINE_ASSUMPTION_BLOCK_COMPONENT_SPEC.txt`
+**Data layer sources (per architecture diagram):**
+  - **M07 Traffic Engine** — subject_history, peer_set, expiration_waterfall, renewal_rate,
+    turnover_rate, days_vacant_median, seasonality_curve, absorption_curve, avg_market_rent,
+    avg_lease_term, loss_to_lease_pct, funnel_conversions, mode block, move_in_lag,
+    absorption_capacity, stabilization, pre_lease_signing_curve
+  - **Concession Env Engine** (sub-engine within M07) — per_year concession environment payload
+  - **M04 Supply Pipeline** — supply_pressure_score, peer_max_absorption_pace_for_class_msa
+  - **M22** (V2 modes only) — capex_schedule, delivery phasing
 **Unblocks:** Live, defensible Year-1 monthly Projections for any deal
                   Per-deal lease-up reserve calculation that flows to S&U
                   Marketing-budget sizing (downstream)
@@ -56,10 +65,24 @@ V1 covers three modes. V2 adds three more.
 
 ## 3. MODE SELECTION LOGIC
 
-The engine receives `dealContext` and resolves mode automatically, with user override available.
+**Mode resolution belongs to M07, not to the Lease Velocity Engine.** M07 computes the `ModeBlock` and exposes it at `dealContext.traffic.mode`. The Lease Velocity Engine reads `dealContext.traffic.mode.effective` only.
 
 ```typescript
-function resolveMode(dealContext: DealContext): LeaseMode {
+// What M07 assembles in dealContext.traffic.mode:
+interface ModeBlock {
+  resolved: LeaseMode;                          // automatic classification result
+  resolution_reasoning: string;                 // audit trail, e.g. "Built 2024, 18 months old, 12% occupied"
+  resolution_confidence: 'high' | 'medium' | 'low';
+  user_override: LayeredValue<LeaseMode> | null; // null if not overridden; writes from deal.lease_mode_override
+  effective: LeaseMode;                          // = user_override ?? resolved — this is what LV consumes
+}
+
+// Resolution logic lives in M07 (backend/src/services/m07/):
+function resolveMode(dealContext: DealContext): {
+  resolved: LeaseMode;
+  reasoning: string;
+  confidence: 'high' | 'medium' | 'low';
+} {
   const yearBuilt = dealContext.deal.year_built;
   const currentYear = new Date().getFullYear();
   const ageMonths = (currentYear - yearBuilt) * 12;
@@ -69,32 +92,32 @@ function resolveMode(dealContext: DealContext): LeaseMode {
 
   const hasActiveCapex = dealContext.capex_schedule?.has_active_phase ?? false;
 
-  // V1 detection
   if (ageMonths <= 24 && currentOcc < 0.80 && !dealContext.has_prior_history) {
-    return 'LEASE_UP_NEW_CONSTRUCTION';
+    return { resolved: 'LEASE_UP_NEW_CONSTRUCTION', reasoning: '...', confidence: 'high' };
   }
-
   if (currentOcc >= 0.90 && !hasActiveCapex) {
-    return 'STABILIZED_MAINTENANCE';
+    return { resolved: 'STABILIZED_MAINTENANCE', reasoning: '...', confidence: 'high' };
   }
-
   if (currentOcc >= 0.70 && currentOcc < 0.90 && !hasActiveCapex) {
-    return 'OCCUPANCY_RECOVERY';
+    return { resolved: 'OCCUPANCY_RECOVERY', reasoning: '...', confidence: 'high' };
   }
-
-  // V2 modes — surface for user
   if (hasActiveCapex && currentOcc < 0.95) {
-    return 'V2_PENDING_VALUE_ADD';     // not yet implemented
+    return { resolved: 'V2_PENDING_VALUE_ADD', reasoning: '...', confidence: 'medium' };
   }
-
-  // Fallback
-  return 'STABILIZED_MAINTENANCE';
+  return { resolved: 'STABILIZED_MAINTENANCE', reasoning: 'fallback', confidence: 'low' };
 }
 ```
 
-The user can override via the deal-settings panel. Override stored on `deal.lease_mode_override` (LayeredValue with source `override`).
+**How the LV Engine reads mode:**
+```typescript
+// In lease-velocity-engine.ts:
+const mode = dealContext.traffic.mode.effective;  // always use this; never re-resolve
+const isOverridden = dealContext.traffic.mode.user_override != null;
+```
 
-When mode is overridden, the engine displays a small badge on the lease-up output: `MODE OVERRIDDEN: STABILIZED → OCCUPANCY_RECOVERY`.
+The user can override via the deal-settings panel. Override stored on `deal.lease_mode_override`; PATCH writes it to `dealContext.traffic.mode.user_override` (LayeredValue) which M07 resolves into `effective`.
+
+When mode is overridden, the engine displays a small badge on the lease-up output: `MODE OVERRIDDEN: STABILIZED → OCCUPANCY_RECOVERY`. The ↺ AUTO button on the frontend clears `lease_mode_override` to null, returning M07 to the auto-resolved `effective` value.
 
 ---
 
@@ -225,26 +248,48 @@ deal.leasing_cost_treatment changes
 | `catch_up_period_months` | integer | yes | 12 | User specifies stabilization timeline |
 | `concession_strategy` | enum | no | `AGGRESSIVE` | Recovery typically requires above-market concessions |
 
-### Engine-resolved inputs (NOT user-input — sourced from dealContext)
+### Engine-resolved inputs (NOT user-input — sourced from dealContext.traffic)
 
-These are LayeredValues resolved per the M07 Subject History spec:
+All sourced from the M07-assembled `dealContext.traffic` payload per the M07 Schema Extension spec. LV Engine reads; does not compute.
 
 ```
-renewal_rate                    LayeredValue<number>
-turnover_rate                   LayeredValue<number>  // = 1 - renewal_rate
-days_vacant_median              LayeredValue<number>
-seasonality_curve               LayeredValue<number[12]>
-expiration_waterfall            LayeredValue<number[24]>
-trade_out_new                   LayeredValue<number>
-trade_out_renewal               LayeredValue<number>
-concession_environment          LayeredValue<ConcessionEnv>
-loss_to_lease_pct               LayeredValue<number>
-funnel_conversion_ratios        LayeredValue<FunnelConversion>
-absorption_curve                LayeredValue<number[24]>  // LEASE_UP only
-supply_pressure_score           LayeredValue<number[60]>
-avg_market_rent                 LayeredValue<number>
-avg_in_place_rent               LayeredValue<number>
-avg_lease_term_months           LayeredValue<number>
+// Existing M07 fields
+dealContext.traffic.renewal_rate                     LayeredValue<number>
+dealContext.traffic.turnover_rate                    LayeredValue<number>  // = 1 - renewal_rate
+dealContext.traffic.days_vacant_median               LayeredValue<number>
+dealContext.traffic.seasonality_curve                LayeredValue<number[12]>
+dealContext.traffic.expiration_waterfall             LayeredValue<number[]>
+dealContext.traffic.trade_out_new                    LayeredValue<number>
+dealContext.traffic.trade_out_renewal                LayeredValue<number>
+dealContext.traffic.concession_environment           ConcessionEnvBlock    // Concession Sub-Engine output
+dealContext.traffic.loss_to_lease_pct                LayeredValue<number>
+dealContext.traffic.avg_market_rent                  LayeredValue<number>
+dealContext.traffic.avg_in_place_rent                LayeredValue<number>
+
+// New M07 Schema Extension fields (Groups A–F)
+dealContext.traffic.mode.effective                   LeaseMode             // Group D — the operating mode
+dealContext.traffic.mode.user_override               LayeredValue<LeaseMode> | null
+dealContext.traffic.funnel_conversion.active         ConversionStageSet    // Group A — by-mode conversion ratios
+dealContext.traffic.absorption_capacity              AbsorptionCapacityBlock  // Group B
+  .peer_max_monthly_pace                             LayeredValue<number>  // ceiling from M04
+  .current_mode_curve                                LayeredValue<number[]>  // 24-month mode-aware curve
+  .saturation_threshold                              LayeredValue<number>  // default 0.85
+  .velocity_decay_post_saturation                    LayeredValue<number>  // default 0.50
+dealContext.traffic.move_in_lag                      MoveInLagBlock        // Group C
+  .distribution                                      LayeredValue<MoveInLagBuckets>
+  .median_lag_days                                   LayeredValue<number>
+  .source_quality                                    'subject' | 'peer_set' | 'platform_default'
+dealContext.traffic.stabilization                    StabilizationBlock    // Group E
+  .ceiling_occupancy                                 LayeredValue<number>  // default 0.95
+  .definition                                        LayeredValue<StabilizationDefinition>
+  .achieved                                          boolean
+  .achieved_month                                    number | null
+dealContext.traffic.pre_lease_signing_curve          LayeredValue<number[]>  // §3.3 PRE_LEASE curve
+dealContext.traffic.property_reference               PropertyReferenceBlock   // Group F — getter pointers
+  .total_units, .avg_market_rent, .avg_lease_term_months, .unit_mix, etc.
+
+// Supply pressure from M04 (surfaced via M07)
+dealContext.traffic.coefficients.supply_pressure_score  LayeredValue<number[60]>
 ```
 
 ---
@@ -390,18 +435,20 @@ Then ongoing absorption (§8) continues from month 7+1.
 
 ### 7.4 Subject-sourced lag distribution (when available)
 
-Once a property has 2+ rent roll snapshots AND lease records contain both `lease_start_date` (sign) and `move_in_date` (commencement):
+The lag distribution is not computed in the LV Engine — it is read from `dealContext.traffic.move_in_lag` assembled by M07:
 
-```
-sign_to_move_in_lag_distribution = LayeredValue<LagDist> {
-  platform: MOVE_IN_LAG_DISTRIBUTION_DEFAULT,
-  peer_set: M07.peer_lag_distribution_for_class_msa,
-  subject_history: derived from rent roll lease vs move-in dates,
-  override: user-set
-}
+```typescript
+// LV Engine reads:
+const lagDist = dealContext.traffic.move_in_lag?.distribution
+  ?? buildPlatformDefaultMoveInLag();  // defensive fallback during cache transition
+
+const sourceQuality = dealContext.traffic.move_in_lag?.source_quality;
+// 'subject'           → high confidence, both date fields present in rent roll
+// 'peer_set'          → medium confidence
+// 'platform_default'  → low confidence, flag in narrative
 ```
 
-Subject wins per Bayesian blend (M07 Subject History spec §3).
+Subject-sourced when a property has 2+ rent roll snapshots with both `lease_start_date` AND `move_in_date` populated (Yardi typically yes). M07's parser flags `quality_flags.move_in_date_missing` when `move_in_date` is absent — in that case M07 uses platform default rather than treating `move_in = lease_start` (which would imply zero lag).
 
 **Field-availability caveat:** Yardi rent rolls typically have both fields. Some other parsers (RealPage older versions, OneSite manual exports) only have one. The parser_normalizer must flag when the lag-distribution-from-subject is unavailable so the resolver falls back to peer/platform without silent error.
 
@@ -439,28 +486,32 @@ function absorptionCurve(
   monthsSinceDelivery: number,
   remainingUnitsToLease: number,
   supplyPressure: number,
-  marketingIntensity: 'LOW' | 'MARKET' | 'AGGRESSIVE'
+  marketingIntensity: 'LOW' | 'MARKET' | 'AGGRESSIVE',
+  absorptionCapacity: AbsorptionCapacityBlock  // from dealContext.traffic.absorption_capacity
 ): number {
-  // S-curve normalized to total absorption window
-  const baseCurve = LEASE_UP_S_CURVE[monthsSinceDelivery];  // see below
+  // S-curve sourced from M07 LayeredValue (platform default → peer-set calibrated → subject)
+  const baseCurve = absorptionCapacity.current_mode_curve.value[monthsSinceDelivery];
   const supplyAdj = 1 - 0.5 * (supplyPressure - 0.5);  // tighter market faster
   const intensityAdj = { LOW: 0.85, MARKET: 1.00, AGGRESSIVE: 1.15 }[marketingIntensity];
 
-  return baseCurve * supplyAdj * intensityAdj;
+  // Saturation slowdown: once occupancy passes saturation_threshold, pace decays
+  const saturationThreshold = absorptionCapacity.saturation_threshold.value;  // default 0.85
+  const currentOcc = (absorptionCapacity as any)._currentOcc ?? 0;  // injected by engine loop
+  const saturationMult = currentOcc >= saturationThreshold
+    ? absorptionCapacity.velocity_decay_post_saturation.value  // default 0.50
+    : 1.0;
+
+  return baseCurve * supplyAdj * intensityAdj * saturationMult;
 }
 
-// LEASE_UP_S_CURVE — fraction of remaining_units leased per month
-const LEASE_UP_S_CURVE = [
-  0.06, 0.07, 0.08,    // months 1-3 post-CO: slow ramp (punch list, marketing momentum)
-  0.10, 0.12, 0.13,    // months 4-6: acceleration
-  0.13, 0.13, 0.12,    // months 7-9: peak
-  0.10, 0.08, 0.07,    // months 10-12: deceleration
-  0.05, 0.04, 0.03,    // months 13-15: tail
-  0.02, 0.02, 0.02,    // months 16-18: stragglers
-  0.01, 0.01, 0.01,    // months 19-21: edge cases
-  0.005, 0.005, 0.005  // months 22-24: long tail to stabilization
-];
-// Approximately sums to 1.00 — tunable via admin
+// Platform-default curve (LEASE_UP_S_CURVE_24MO) lives in M07 defaults module.
+// LV Engine reads it from dealContext.traffic.absorption_capacity.current_mode_curve.value.
+// Do NOT hardcode the array here — read from dealContext to respect LayeredValue overrides.
+//
+// For reference, the platform default values:
+// [0.06, 0.07, 0.08, 0.10, 0.12, 0.13, 0.13, 0.13, 0.12, 0.10, 0.08, 0.07,
+//  0.05, 0.04, 0.03, 0.02, 0.02, 0.02, 0.01, 0.01, 0.01, 0.005, 0.005, 0.005]
+// Approximately sums to 1.00 — tunable via M07 admin layer
 ```
 
 ### 8.4 Concession decay during ramp
@@ -661,11 +712,13 @@ function recoveryMonth(n: number, dealContext: DealContext): MonthOutput {
 
 ### 10.2 Catch-up pace constraint
 
-The user-supplied `catch_up_period_months` is feasibility-checked against M04 absorption capacity. If pace required exceeds peer-set absorption max:
+The user-supplied `catch_up_period_months` is feasibility-checked against M04 absorption capacity, surfaced via M07's `dealContext.traffic.absorption_capacity.peer_max_monthly_pace`. If pace required exceeds peer-set absorption max:
 
 ```typescript
-const peerMaxAbsorptionPace = dealContext.traffic.peer_set
-  .max_monthly_absorption_per_class_msa;
+// M04 supply pipeline feeds peer_max_monthly_pace into M07 absorption_capacity block
+const peerMaxAbsorptionPace = dealContext.traffic.absorption_capacity
+  ?.peer_max_monthly_pace?.value
+  ?? buildPlatformDefaultAbsorptionCapacity(mode).peer_max_monthly_pace.value;  // defensive fallback
 
 if (gapCloseLeasesThisMonth > peerMaxAbsorptionPace) {
   warningFlags.push({
@@ -1030,16 +1083,19 @@ InvestmentMemoSynthesis    // narrative inclusion
 
 ```typescript
 dealContext.lease_velocity = {
-  mode: LeaseMode,
+  mode: LeaseMode,                         // = dealContext.traffic.mode.effective
+  mode_resolved: LeaseMode,               // = dealContext.traffic.mode.resolved (auto-classified)
+  mode_override_active: boolean,          // = dealContext.traffic.mode.user_override != null
   resolved_at: ISODateString,
   inputs: { ... user inputs ... },
   monthly_table: MonthOutput[],
   ramp_chart_data: RampChartSpec,
   narrative: string,
   warnings: WarningFlag[],
+  lease_up_reserve_required: number | null,  // peak cumulative negative cash; null if not LEASE_UP mode
   confidence: 'high' | 'medium' | 'low',
   source_summary: {
-    subject_history_used_for: string[],   // which coefficients
+    subject_history_used_for: string[],   // which coefficients came from subject
     peer_set_used_for: string[],
     platform_default_used_for: string[]
   }
@@ -1127,6 +1183,33 @@ calibrated and authoritative. Outputs at the Prospect Volume layer are
 derived via conversion ratios and carry inherently lower confidence.
 Reports must label which layer is being shown and not present derived
 prospect counts as if they were measured.
+
+### M07-IS-THE-DATA-LAYER (from M07 Schema Extension spec §10)
+
+When new fields are needed by the Lease Velocity Engine or other downstream
+services, they are added to `dealContext.traffic` as schema extensions to M07.
+The COMPUTATION of those fields lives in M07 (via subject_history aggregation,
+peer-set calibration, or platform defaults) but the ALGORITHMS that consume
+them — lease-up curves, gap-close math, return calcs — live in their respective
+service layers.
+
+This rule prevents architectural drift where lease-up logic creeps into M07
+because "M07 already has the traffic data." Resist that pattern. Schema
+extensions are cheap; service-boundary violations are expensive to unwind.
+
+### PLATFORM-DEFAULTS-MUST-BE-SHIPPABLE
+
+Every field in `dealContext.traffic` consumed by the Lease Velocity Engine MUST
+have a platform-default value sufficient to produce output. Subject calibration
+and peer-set refinement are roadmap items, not blocking requirements. A field
+that can only be populated when subject history exists is an incomplete schema
+entry — find a defensible platform default first.
+
+All platform-default curves and ratios are mastered in
+`backend/src/services/m07/defaults/lease-velocity-defaults.ts`. The LV Engine
+reads them from `dealContext.traffic.*` (M07-assembled), not directly from the
+constants file. Direct constants access is only acceptable in the defensive
+fallback pattern during the 24h cache-transition window.
 
 ---
 
