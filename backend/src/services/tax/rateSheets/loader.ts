@@ -1,25 +1,28 @@
 /**
  * Tax Service — Rate Sheet Loader
  *
- * Loads and validates every rate sheet registered in `_manifest.ts` at service
- * boot. The manifest uses static JSON imports (TypeScript resolveJsonModule),
- * so JSON data is embedded in the dist bundle — no filesystem scanning is
- * needed and the loader works identically in ts-node (dev) and compiled dist
- * (production).
+ * Scans all `*.json` files in this directory at boot, validates each via Zod,
+ * and caches the result. Fails loud — any invalid sheet causes process.exit(1)
+ * in the bootstrap caller (index.replit.ts) so bad data never reaches production
+ * silently.
+ *
+ * Works in both ts-node (dev) and compiled dist (production). In production,
+ * the `postbuild` npm script copies `*.json` files alongside the compiled JS so
+ * `__dirname` points to a directory containing the JSON assets at runtime.
  *
  * To add a new rate sheet:
- *   1. Create the JSON file in this directory
- *   2. Register it in _manifest.ts (one import + one array entry)
- *   → The loader picks it up automatically on next boot
+ *   1. Create backend/src/services/tax/rateSheets/<jurisdiction>-<year>.json
+ *   2. No other files need to change — the directory scan auto-discovers it
  *
  * Usage:
  *   import { getRateSheet, getAllRateSheets } from './loader';
  *   const sheet = getRateSheet('fl-miami-dade', 2026);
  */
 
+import * as fs   from 'fs';
+import * as path from 'path';
 import { validateRateSheet } from './schema';
 import type { RateSheet } from './schema';
-import { ALL_RATE_SHEETS, MINIMUM_SHEETS } from './_manifest';
 
 /** In-memory cache: `${jurisdiction}-${year}` → RateSheet */
 const rateSheetCache = new Map<string, RateSheet>();
@@ -27,34 +30,49 @@ const rateSheetCache = new Map<string, RateSheet>();
 let initialized = false;
 
 /**
- * Load and validate every sheet in the manifest.
- * Called once at service boot via index.replit.ts.
- * Re-calling is idempotent.
+ * Scan `__dirname` for all `*.json` files, validate each via Zod, and cache.
+ * Called once at service boot. Re-calling is idempotent.
  *
- * Throws loudly on:
- *   - Any sheet that fails Zod validation
- *   - Fewer than MINIMUM_SHEETS loaded (catches manifest misconfiguration)
+ * Throws loudly when:
+ *   - Any `.json` file fails Zod validation (invalid schema)
+ *   - Zero `.json` files are found (packaging failure — no sheets in directory)
  */
 export function initRateSheets(): void {
   if (initialized) return;
 
-  for (const { raw, filename } of ALL_RATE_SHEETS) {
+  const dir = __dirname;
+  const jsonFiles = fs
+    .readdirSync(dir)
+    .filter(f => f.endsWith('.json'))
+    .sort();                 // deterministic load order
+
+  if (jsonFiles.length === 0) {
+    throw new Error(
+      `[RateSheetLoader] No *.json rate sheets found in ${dir}. ` +
+      `Ensure the postbuild copy step ran (npm run build) or ` +
+      `that JSON files are present in src/services/tax/rateSheets/.`,
+    );
+  }
+
+  for (const filename of jsonFiles) {
+    const filePath = path.join(dir, filename);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (err) {
+      throw new Error(
+        `[RateSheetLoader] Failed to parse ${filename}: ${(err as Error).message}`,
+      );
+    }
+
     const sheet = validateRateSheet(raw, filename);
     const key = `${sheet.jurisdiction}-${sheet.year}`;
     rateSheetCache.set(key, sheet);
   }
 
-  if (rateSheetCache.size < MINIMUM_SHEETS) {
-    throw new Error(
-      `[RateSheetLoader] Expected at least ${MINIMUM_SHEETS} rate sheet(s), ` +
-      `but only ${rateSheetCache.size} loaded. ` +
-      `Check _manifest.ts for missing or duplicate entries.`,
-    );
-  }
-
   initialized = true;
   console.log(
-    `[RateSheetLoader] Loaded ${rateSheetCache.size} rate sheet(s): ` +
+    `[RateSheetLoader] Loaded ${rateSheetCache.size} rate sheet(s) from ${dir}: ` +
     Array.from(rateSheetCache.keys()).join(', '),
   );
 }
@@ -71,8 +89,7 @@ export function getRateSheet(jurisdiction: string, year: number): RateSheet | nu
 }
 
 /**
- * Get all loaded rate sheets.
- * Useful for the coverage endpoint and staleness-check cron.
+ * Get all loaded rate sheets. Useful for the coverage endpoint and staleness cron.
  */
 export function getAllRateSheets(): RateSheet[] {
   if (!initialized) initRateSheets();
