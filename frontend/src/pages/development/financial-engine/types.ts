@@ -606,6 +606,23 @@ export interface EvidenceFieldMeta {
 }
 
 /**
+ * Per-period cohort breakdown for the drilldown modal (Task #575).
+ * One entry per YYYYMM key in F9ConcessionRecognition.monthly_detail.
+ */
+export interface F9ConcessionMonthlyDetail {
+  new_lease_count: number;
+  new_lease_dollars: number;
+  renewal_count: number;
+  renewal_dollars: number;
+  continuing_count: number;
+  continuing_dollars: number;
+  earliest_commencement?: string;
+  latest_commencement?: string;
+  methods: string[];
+  write_offs: Array<{ amount: number; reason: string; concession_id: string }>;
+}
+
+/**
  * Concession amortization recognition schedule — frontend projection of
  * backend DealConcessionRecognition (backend/src/types/concessions.ts).
  *
@@ -630,6 +647,11 @@ export interface F9ConcessionRecognition {
    * Used by the S&U "Capitalized Lease-up Concessions" line (Task #574).
    */
   capitalized_lease_up_total?: number;
+  /**
+   * Per-period cohort breakdown for the drilldown modal (Task #575).
+   * Key: YYYYMM. Populated by backend fresh-compute and cache-hit paths.
+   */
+  monthly_detail?: Record<string, F9ConcessionMonthlyDetail>;
 }
 
 /**

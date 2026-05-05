@@ -6,6 +6,8 @@ import type {
   F9SubjectHistory,
 } from './types';
 import { fmt$, fmtPct } from './types';
+import { ConcessionDrilldownModal, aggregateConcessionDetail } from './ConcessionDrilldownModal';
+import type { AggregatedConcessionDetail } from './ConcessionDrilldownModal';
 import { apiClient } from '../../../services/api.client';
 import { useDealStore } from '../../../stores/dealStore';
 import {
@@ -465,6 +467,12 @@ function buildSubCols(holdYears: number, mode: 'quarterly' | 'monthly'): SubColH
   return cols;
 }
 
+function yyyymmFromClose(closeDate: string | null | undefined, offsetMonths: number): string | null {
+  if (!closeDate) return null;
+  const d = new Date(closeDate + 'T00:00:00');
+  d.setMonth(d.getMonth() + offsetMonths);
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 // ─── Subject History Inline Assumption Block ──────────────────────────────
 // Renders when f9Financials.subjectHistory is present (≥S1 tier).
@@ -1027,7 +1035,13 @@ export function ProjectionsTab({
   const [exporting,        setExporting]       = useState(false);
   const [error,            setError]           = useState<string | null>(null);
   const [drilldown, setDrilldown] = useState<DrilldownInfo | null>(null);
-
+  const [concessionDrill, setConcessionDrill] = useState<{
+    open: boolean;
+    periodLabel: string;
+    recognizedAmount: number | null;
+    earnedAmount: number | null;
+    detail: AggregatedConcessionDetail | null;
+  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null });
 
   // Narrative load — non-critical, fires once
   const loadNarrative = useCallback(async () => {
@@ -1119,6 +1133,7 @@ export function ProjectionsTab({
   const colCount  = isAnnual ? holdYears : subCols.length;
 
   return (
+    <>
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
 
       {/* ── Main panel ─────────────────────────────────────────────────────── */}
@@ -1323,9 +1338,25 @@ export function ProjectionsTab({
                                 return (
                                   <td
                                     key={yr}
-                                    onClick={() => proj && setDrilldown(buildDrilldown(row, proj, financials))}
+                                    onClick={() => {
+                                      if (!proj) return;
+                                      const recog = financials?.concessionRecognition;
+                                      if (row.key === 'concessions' && recog?.monthly_detail) {
+                                        const calYr = closeYear + (yr - 1);
+                                        const yyyymms = Array.from({ length: 12 }, (_, i) => `${calYr}${String(i + 1).padStart(2, '0')}`);
+                                        setConcessionDrill({
+                                          open: true,
+                                          periodLabel: `YR ${calYr}`,
+                                          recognizedAmount: recog.by_calendar_year[String(calYr)] ?? null,
+                                          earnedAmount: (proj.concessions as number | null | undefined) ?? null,
+                                          detail: aggregateConcessionDetail(recog.monthly_detail, yyyymms),
+                                        });
+                                      } else {
+                                        setDrilldown(buildDrilldown(row, proj, financials));
+                                      }
+                                    }}
                                     style={{ padding: '3px 8px', textAlign: 'right', color: textColor, fontWeight: row.isTotal ? 700 : 400, cursor: proj ? 'pointer' : 'default', borderLeft: isSaleYear ? `2px solid ${BT.text.amber}40` : undefined, background: isSaleYear ? `${BT.text.amber}06` : undefined }}
-                                    title={proj ? (isSaleYear ? `SALE YEAR — Click for formula drilldown` : `Click for formula drilldown`) : undefined}
+                                    title={proj ? (isSaleYear ? `SALE YEAR — Click for formula drilldown` : row.key === 'concessions' ? 'Click for concession breakdown' : `Click for formula drilldown`) : undefined}
                                   >
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
                                       {srcBadge && (
@@ -1353,9 +1384,31 @@ export function ProjectionsTab({
                                 return (
                                   <td
                                     key={c.periodKey}
-                                    onClick={() => proj && setDrilldown(buildDrilldown(row, proj, financials))}
+                                    onClick={() => {
+                                      if (!proj) return;
+                                      const recog = financials?.concessionRecognition;
+                                      if (row.key === 'concessions' && recog?.monthly_detail && viewMode === 'monthly') {
+                                        const monthNum = parseInt(c.periodKey.slice(1, 3), 10);
+                                        const yearNum  = parseInt(c.periodKey.slice(4), 10);
+                                        const offset   = (yearNum - 1) * 12 + (monthNum - 1);
+                                        const yyyymm   = yyyymmFromClose(financials?.closeDate, offset);
+                                        if (yyyymm) {
+                                          const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                                          const mLabel = `${MONTHS[parseInt(yyyymm.slice(4), 10) - 1]} ${yyyymm.slice(0, 4)}`;
+                                          setConcessionDrill({
+                                            open: true,
+                                            periodLabel: mLabel,
+                                            recognizedAmount: recog.monthly[yyyymm] ?? null,
+                                            earnedAmount: subVal,
+                                            detail: aggregateConcessionDetail(recog.monthly_detail, [yyyymm]),
+                                          });
+                                          return;
+                                        }
+                                      }
+                                      setDrilldown(buildDrilldown(row, proj, financials));
+                                    }}
                                     style={{ padding: '3px 6px', textAlign: 'right', color: textColor, fontWeight: row.isTotal ? 700 : 400, cursor: proj ? 'pointer' : 'default', fontSize: 8 }}
-                                    title={proj ? periodLabel : undefined}
+                                    title={proj ? (row.key === 'concessions' && viewMode === 'monthly' ? 'Click for concession breakdown' : periodLabel) : undefined}
                                   >
                                     {display}
                                   </td>
@@ -1405,9 +1458,21 @@ export function ProjectionsTab({
                                   return (
                                     <td
                                       key={yr}
-                                      style={{ padding: '3px 8px', textAlign: 'right', color: val != null ? BT.text.amber : BT.text.muted, fontWeight: 400 }}
+                                      onClick={() => {
+                                        if (calYear !== currentCalendarYear || !financials?.concessionRecognition?.monthly_detail) return;
+                                        const recog = financials.concessionRecognition;
+                                        const yyyymms = Array.from({ length: 12 }, (_, i) => `${currentCalendarYear}${String(i + 1).padStart(2, '0')}`);
+                                        setConcessionDrill({
+                                          open: true,
+                                          periodLabel: `YR ${currentCalendarYear} RECOGNIZED`,
+                                          recognizedAmount: recognizedAmt,
+                                          earnedAmount: null,
+                                          detail: aggregateConcessionDetail(recog.monthly_detail, yyyymms),
+                                        });
+                                      }}
+                                      style={{ padding: '3px 8px', textAlign: 'right', color: val != null ? BT.text.amber : BT.text.muted, fontWeight: 400, cursor: calYear === currentCalendarYear ? 'pointer' : 'default' }}
                                       title={val != null
-                                        ? `Recognized concessions for ${currentCalendarYear} (straight-line amortization). See Drilldown for monthly detail.`
+                                        ? `Click for concession recognition breakdown — ${currentCalendarYear}`
                                         : `Not the current calendar year (${currentCalendarYear})`}
                                     >
                                       {display}
@@ -1543,6 +1608,16 @@ export function ProjectionsTab({
       )}
 
     </div>
+
+    <ConcessionDrilldownModal
+      open={concessionDrill.open}
+      onClose={() => setConcessionDrill(p => ({ ...p, open: false }))}
+      periodLabel={concessionDrill.periodLabel}
+      recognizedAmount={concessionDrill.recognizedAmount}
+      earnedAmount={concessionDrill.earnedAmount}
+      detail={concessionDrill.detail}
+    />
+    </>
   );
 }
 

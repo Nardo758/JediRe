@@ -8,7 +8,12 @@
 import { Pool } from 'pg';
 import { seedProFormaYear1 } from './proforma-seeder.service';
 import { amortizeConcessions } from './concession-amortization/index';
-import type { DealConcessionRecognition, ConcessionRecord } from '../types/concessions';
+import type {
+  ConcessionAmortizationSchedule,
+  ConcessionMonthlyDetail,
+  DealConcessionRecognition,
+  ConcessionRecord,
+} from '../types/concessions';
 import { RentRollDiffService } from './rent-roll/rent-roll-diff.service';
 
 // â”€â”€ M07 Subject Traffic History record shape (mirrors frontend F9SubjectHistory) â”€â”€â”€
@@ -489,6 +494,88 @@ const CONCESSION_RECOGNITION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
  *
  * Non-fatal: any error returns null (engine errors logged; do not break financials response).
  */
+
+function computeMonthlyDetail(
+  schedules: ConcessionAmortizationSchedule[],
+  records: ConcessionRecord[],
+): Record<string, ConcessionMonthlyDetail> {
+  const recordMap = new Map(records.map(r => [r.id, r]));
+  const detail: Record<string, {
+    new_lease_count: number; new_lease_dollars: number;
+    renewal_count: number; renewal_dollars: number;
+    continuing_count: number; continuing_dollars: number;
+    earliest_commencement?: string; latest_commencement?: string;
+    methodSet: Set<string>;
+    write_offs: Array<{ amount: number; reason: string; concession_id: string }>;
+  }> = {};
+
+  const ensure = (month: string) => {
+    if (!detail[month]) {
+      detail[month] = {
+        new_lease_count: 0, new_lease_dollars: 0,
+        renewal_count: 0, renewal_dollars: 0,
+        continuing_count: 0, continuing_dollars: 0,
+        methodSet: new Set(),
+        write_offs: [],
+      };
+    }
+    return detail[month];
+  };
+
+  for (const sched of schedules) {
+    if (sched.is_lease_up_period) continue;
+    const record = recordMap.get(sched.concession_id);
+    if (!record) continue;
+    const commMonth = record.lease_start_date.slice(0, 7).replace('-', '');
+
+    for (const entry of sched.monthly_entries) {
+      const md = ensure(entry.month);
+      md.methodSet.add(sched.method);
+      if (entry.month === commMonth) {
+        if (record.is_renewal) {
+          md.renewal_count += 1;
+          md.renewal_dollars += entry.amount;
+        } else {
+          md.new_lease_count += 1;
+          md.new_lease_dollars += entry.amount;
+        }
+      } else {
+        md.continuing_count += 1;
+        md.continuing_dollars += entry.amount;
+        const commDate = record.lease_start_date;
+        if (!md.earliest_commencement || commDate < md.earliest_commencement) {
+          md.earliest_commencement = commDate;
+        }
+        if (!md.latest_commencement || commDate > md.latest_commencement) {
+          md.latest_commencement = commDate;
+        }
+      }
+    }
+
+    for (const wo of sched.write_offs) {
+      const md = ensure(wo.write_off_month);
+      md.write_offs.push({ amount: wo.amount, reason: wo.reason, concession_id: wo.concession_id });
+    }
+  }
+
+  const result: Record<string, ConcessionMonthlyDetail> = {};
+  for (const [month, md] of Object.entries(detail)) {
+    result[month] = {
+      new_lease_count: md.new_lease_count,
+      new_lease_dollars: md.new_lease_dollars,
+      renewal_count: md.renewal_count,
+      renewal_dollars: md.renewal_dollars,
+      continuing_count: md.continuing_count,
+      continuing_dollars: md.continuing_dollars,
+      earliest_commencement: md.earliest_commencement,
+      latest_commencement: md.latest_commencement,
+      methods: Array.from(md.methodSet),
+      write_offs: md.write_offs,
+    };
+  }
+  return result;
+}
+
 async function computeConcessionRecognition(
   pool: Pool,
   dealId: string,
@@ -618,6 +705,7 @@ async function computeConcessionRecognition(
         write_offs_year_to_date: cached.write_offs_year_to_date,
         last_recomputed: cached.last_recomputed,
         capitalized_lease_up_total: cached.capitalized_lease_up_total,
+        monthly_detail: cached.monthly_detail,
       };
     }
   }
@@ -636,6 +724,7 @@ async function computeConcessionRecognition(
       write_offs_year_to_date: output.write_offs_year_to_date,
       last_recomputed: output.computed_at,
       capitalized_lease_up_total: output.lease_up_reserve_required,
+      monthly_detail: computeMonthlyDetail(output.schedules, records),
     };
 
     // ── Write-through cache: persist to deal_data ──────────────────────────

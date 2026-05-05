@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
-import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
+import type { FinancialEngineTabProps, EvidenceFieldMeta, F9ConcessionMonthlyDetail } from './types';
+import { ConcessionDrilldownModal, aggregateConcessionDetail } from './ConcessionDrilldownModal';
 import { CommentaryPanel } from './CommentaryPanel';
 import { useDealStore, PlatformColSource } from '../../../stores/dealStore';
 import { LeasingCostTreatmentToggle, type LeasingCostTreatment } from './LeaseVelocitySection';
@@ -136,6 +137,7 @@ interface DealFinancials {
     by_fiscal_year: Record<string, number>;
     write_offs_year_to_date: number;
     last_recomputed: string | null;
+    monthly_detail?: Record<string, F9ConcessionMonthlyDetail>;
   } | null;
 }
 
@@ -382,6 +384,33 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const [reparsing, setReparsing] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionState>({});
   const [showAncillary, setShowAncillary] = useState(false);
+  const [conDrill, setConDrill] = useState<{
+    open: boolean;
+    periodLabel: string;
+    recognizedAmount: number | null;
+    detail: ReturnType<typeof aggregateConcessionDetail>;
+  }>({ open: false, periodLabel: '', recognizedAmount: null, detail: null });
+
+  const openY1Drill = useCallback(() => {
+    const rec = data?.concessionRecognition;
+    if (!rec || !data?.closeDate) return;
+    const refDate = new Date(data.closeDate);
+    const startYear = refDate.getFullYear();
+    const startMonth = refDate.getMonth() + 1;
+    const yyyymms: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const m = ((startMonth - 1 + i) % 12) + 1;
+      const y = startYear + Math.floor((startMonth - 1 + i) / 12);
+      yyyymms.push(`${y}${String(m).padStart(2, '0')}`);
+    }
+    const sum = yyyymms.reduce((s, k) => s + (rec.monthly[k] ?? 0), 0);
+    setConDrill({
+      open: true,
+      periodLabel: `Y1 FROM ${data.closeDate}`,
+      recognizedAmount: sum,
+      detail: aggregateConcessionDetail(rec.monthly_detail, yyyymms),
+    });
+  }, [data]);
 
   // Location B — LeasingCostTreatmentToggle.
   // The active treatment is owned by the parent (lvCostTreatmentView prop) and
@@ -600,6 +629,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const capRate = data.assumptions.exitCap;
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#0a0a0a', color: '#e2e8f0', fontFamily: LABEL }}>
 
       {/* ── Header bar ── */}
@@ -811,10 +841,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     <tr style={{ background: '#110e00' }}>
                       <td
                         colSpan={9}
-                        style={{ padding: '2px 8px 2px 28px', fontSize: 8, color: '#92714a', fontFamily: MONO, borderBottom: '1px solid #1f1a00' }}
-                        title={`Recognized (STRAIGHT_LINE_GAAP amortized) concessions for Y1 window starting ${data.closeDate ?? '?'}. Earned total may differ — see Projections tab for monthly earned vs recognized detail.`}
+                        onClick={openY1Drill}
+                        style={{ padding: '2px 8px 2px 28px', fontSize: 8, color: '#92714a', fontFamily: MONO, borderBottom: '1px solid #1f1a00', cursor: 'pointer' }}
+                        title="Click for Y1 concession recognition breakdown by lease cohort"
                       >
-                        ↑ Recognized (STRAIGHT_LINE_GAAP) · Y1 from {data.closeDate ?? '?'} · earned total may differ · Projections for monthly detail
+                        ↑ Recognized (STRAIGHT_LINE_GAAP) · Y1 from {data.closeDate ?? '?'} · click for breakdown ↗
                       </td>
                     </tr>
                   )}
@@ -999,6 +1030,16 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         </div>
       </div>
     </div>
+
+    <ConcessionDrilldownModal
+      open={conDrill.open}
+      onClose={() => setConDrill(p => ({ ...p, open: false }))}
+      periodLabel={conDrill.periodLabel}
+      recognizedAmount={conDrill.recognizedAmount}
+      earnedAmount={null}
+      detail={conDrill.detail}
+    />
+    </>
   );
 }
 
@@ -2165,6 +2206,7 @@ function CapitalStackPanel({ capitalStack, purchasePriceFallback, capRate, noi, 
         )}
       </div>
     </div>
+
   );
 }
 
