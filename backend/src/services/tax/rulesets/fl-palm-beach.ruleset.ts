@@ -33,7 +33,7 @@ function getPalmBeachMillage(ctx: TaxContext): number {
 }
 
 export const flPalmBeachRuleset: CountyOverlayRuleset = makeCountyOverlay(
-  'FL-Palm-Beach',
+  'FL-Palm Beach',
   flRuleset,
   getPalmBeachMillage,
 );

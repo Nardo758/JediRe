@@ -156,13 +156,29 @@ export const txRuleset: TaxRuleset = {
 
   tppFilingRequirement(): TPPFiling | null { return tppFiling(); },
 
-  // ── Section C — TX has no state income tax ────────────────────────────────
+  // ── Section C — TX has no state income tax (tx-2026.json stores 0 for all types) ────────
 
   depreciationLife(_propertyType: AssetClass): number { return 0; }, // federal owns dep life
   bonusDepreciationPct(_year: number): number { return 0; },          // federal owns bonus dep
   costSegEligible(_propertyType: AssetClass): boolean { return false; }, // federal owns cost seg
 
-  stateIncomeTaxRate(_entityType: EntityType): number { return 0; },
+  stateIncomeTaxRate(entityType: EntityType): number {
+    const sheet = getSheet();
+    if (!sheet?.state_income_tax_rate?.length) {
+      throw new Error(
+        `[txRuleset] tx-${TX_RATE_SHEET_YEAR} rate sheet missing state_income_tax_rate. ` +
+        `Ensure initRateSheets() ran at boot.`,
+      );
+    }
+    const match = sheet.state_income_tax_rate.find(r => r.entity_type === entityType);
+    if (!match) {
+      throw new Error(
+        `[txRuleset] No state income tax rate for entity type "${entityType}" ` +
+        `in tx-${TX_RATE_SHEET_YEAR}.json.`,
+      );
+    }
+    return match.rate; // All TX entity types = 0 per tx-2026.json
+  },
 
   conformsToBonusDep(): boolean { return conformsBonusDep(); },
   conformsToCostSeg(): boolean { return conformsCostSeg(); },
