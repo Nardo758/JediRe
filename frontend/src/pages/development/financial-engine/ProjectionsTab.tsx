@@ -8,6 +8,7 @@ import type {
 import { fmt$, fmtPct } from './types';
 import { apiClient } from '../../../services/api.client';
 import { useDealStore } from '../../../stores/dealStore';
+import { LeaseVelocitySection } from './LeaseVelocitySection';
 
 const MONO = BT.font.mono;
 type TimelineOption = 3 | 5 | 7 | 10;
@@ -876,9 +877,10 @@ export function ProjectionsTab({
     new Set(SECTIONS.map(s => s.key)),
   );
   const [showAfterTax, setShowAfterTax] = useState(false);
-  const [showGprDecomp,      setShowGprDecomp]      = useState(true);
-  const [showFindings,       setShowFindings]        = useState(true);
-  const [showSubjectHistory, setShowSubjectHistory]  = useState(true);
+  const [showGprDecomp,        setShowGprDecomp]        = useState(true);
+  const [showFindings,         setShowFindings]          = useState(true);
+  const [showSubjectHistory,   setShowSubjectHistory]    = useState(true);
+  const [showLeaseVelocity,    setShowLeaseVelocity]     = useState(false);
   const [narrative,        setNarrative]       = useState<string | null>(null);
   const [narrativeBlocks,  setNarrativeBlocks] = useState<F9NarrativeBlock[]>([]);
   const [narrativeLoading, setNarrativeLoading]= useState(false);
@@ -1044,6 +1046,13 @@ export function ProjectionsTab({
             }}>SUBJ·{financials.subjectHistory.tier}</button>
           )}
 
+          <button onClick={() => setShowLeaseVelocity(v => !v)} style={{
+            background: showLeaseVelocity ? `${BT.text.cyan}18` : 'transparent',
+            color:      showLeaseVelocity ? BT.text.cyan : BT.text.muted,
+            border: `1px solid ${showLeaseVelocity ? BT.text.cyan : BT.border.subtle}`,
+            padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
+          }}>LEASE VEL</button>
+
           <div style={{ flex: 1 }} />
 
           {financials && (
@@ -1097,6 +1106,11 @@ export function ProjectionsTab({
           <div style={{ padding: '4px 10px', background: `${BT.text.red}12`, fontFamily: MONO, fontSize: 8, color: BT.text.red, flexShrink: 0 }}>
             {error}
           </div>
+        )}
+
+        {/* ── Lease Velocity Engine ──────────────────────────────────────── */}
+        {showLeaseVelocity && (
+          <LeaseVelocitySection f9Financials={f9Financials} />
         )}
 
         {/* ── Operating Statement Table ──────────────────────────────────── */}
