@@ -362,22 +362,22 @@ function buildDrilldown(
     case 'gpr': {
       const gprDecomp = f?.assumptions?.gprDecomposition;
       if (gprDecomp?.resolvedAnnual != null) {
-        entries.push({ label: 'Y1 Resolved GPR (M07)', value: fmt$(gprDecomp.resolvedAnnual), sourceTab: 'PRO FORMA', tabIndex: 1, formula: 'Max(broker, platform, t12, rentRoll)' });
+        entries.push({ label: 'Y1 Resolved GPR (M07)', value: fmt$(gprDecomp.resolvedAnnual), sourceTab: 'PRO FORMA', tabIndex: 2, formula: 'Max(broker, platform, t12, rentRoll)' });
       }
-      entries.push({ label: `Rent Growth Multiplier (YR ${proj.year})`, value: `×${(rawVal != null && gprDecomp?.resolvedAnnual ? rawVal / gprDecomp.resolvedAnnual : 1).toFixed(4)}`, sourceTab: 'ASSUMPTIONS', tabIndex: 3, formula: 'Compound(rentGrowthPct per year)' });
+      entries.push({ label: `Rent Growth Multiplier (YR ${proj.year})`, value: `×${(rawVal != null && gprDecomp?.resolvedAnnual ? rawVal / gprDecomp.resolvedAnnual : 1).toFixed(4)}`, sourceTab: 'ASSUMPTIONS', tabIndex: 1, formula: 'Compound(rentGrowthPct per year)' });
       break;
     }
     case 'reTaxes': {
       const src = proj.reTaxSource;
       const taxYr = f?.taxes?.reTax?.perYear?.find(t => t.year === proj.year);
       if (src === 'taxes_tab' && taxYr) {
-        entries.push({ label: 'Taxes Tab · Per-Year RE Tax', value: fmt$(taxYr.taxAmount), sourceTab: 'TAXES', tabIndex: 4, formula: `assessedValue × millageRate (${(taxYr.millageRate * 100).toFixed(2)}%)` });
-        entries.push({ label: 'Assessed Value', value: fmt$(taxYr.assessedValue), sourceTab: 'TAXES', tabIndex: 4 });
-        entries.push({ label: 'SOH Cap Binding?', value: taxYr.sohCapBinding ? 'YES — growth capped' : 'NO', sourceTab: 'TAXES', tabIndex: 4 });
+        entries.push({ label: 'Taxes Tab · Per-Year RE Tax', value: fmt$(taxYr.taxAmount), sourceTab: 'TAXES', tabIndex: 1, formula: `assessedValue × millageRate (${(taxYr.millageRate * 100).toFixed(2)}%)` });
+        entries.push({ label: 'Assessed Value', value: fmt$(taxYr.assessedValue), sourceTab: 'TAXES', tabIndex: 1 });
+        entries.push({ label: 'SOH Cap Binding?', value: taxYr.sohCapBinding ? 'YES — growth capped' : 'NO', sourceTab: 'TAXES', tabIndex: 1 });
       } else if (src === 'proforma') {
-        entries.push({ label: 'Pro Forma Y1 RE Tax', value: fmt$(rawVal ?? 0), sourceTab: 'PRO FORMA', tabIndex: 1, formula: 'Y1 RE Tax × opexGrowthMultiplier' });
+        entries.push({ label: 'Pro Forma Y1 RE Tax', value: fmt$(rawVal ?? 0), sourceTab: 'PRO FORMA', tabIndex: 2, formula: 'Y1 RE Tax × opexGrowthMultiplier' });
       } else {
-        entries.push({ label: 'Estimate (no tax data)', value: '—', sourceTab: 'TAXES', tabIndex: 4, formula: 'Seed deal data to compute' });
+        entries.push({ label: 'Estimate (no tax data)', value: '—', sourceTab: 'TAXES', tabIndex: 1, formula: 'Seed deal data to compute' });
       }
       break;
     }
@@ -387,25 +387,25 @@ function buildDrilldown(
       const src = proj.debtSource;
       if (src === 'debt_tab') {
         const aggDS = f?.debt?.aggregate?.totalAnnualDS;
-        entries.push({ label: 'Debt Tab · Aggregate Annual DS', value: aggDS != null ? fmt$(aggDS) : '—', sourceTab: 'DEBT', tabIndex: 6, formula: 'Sum(allLoans.derivedAnnualDS)' });
+        entries.push({ label: 'Debt Tab · Aggregate Annual DS', value: aggDS != null ? fmt$(aggDS) : '—', sourceTab: 'DEBT', tabIndex: 4, formula: 'Sum(allLoans.derivedAnnualDS)' });
         const sen = f?.debt?.loans?.find(l => l.id === 'senior');
         if (sen) {
-          entries.push({ label: 'Senior Loan Amount', value: fmt$(sen.loanAmount?.platform ?? 0), sourceTab: 'DEBT', tabIndex: 6 });
-          entries.push({ label: 'Interest Rate', value: `${((sen.interestRate?.platform ?? 0) * 100).toFixed(2)}%`, sourceTab: 'DEBT', tabIndex: 6 });
-          entries.push({ label: 'IO Period', value: `${sen.ioMonths?.platform ?? 0} mo`, sourceTab: 'DEBT', tabIndex: 6 });
+          entries.push({ label: 'Senior Loan Amount', value: fmt$(sen.loanAmount?.platform ?? 0), sourceTab: 'DEBT', tabIndex: 4 });
+          entries.push({ label: 'Interest Rate', value: `${((sen.interestRate?.platform ?? 0) * 100).toFixed(2)}%`, sourceTab: 'DEBT', tabIndex: 4 });
+          entries.push({ label: 'IO Period', value: `${sen.ioMonths?.platform ?? 0} mo`, sourceTab: 'DEBT', tabIndex: 4 });
         }
       } else {
-        entries.push({ label: 'Capital Stack · Loan Amount', value: fmt$(f?.capitalStack?.loanAmount ?? 0), sourceTab: 'DEBT', tabIndex: 6, formula: 'Standard amortizing schedule' });
-        entries.push({ label: 'Interest Rate', value: `${((f?.capitalStack?.interestRate ?? 0) * 100).toFixed(2)}%`, sourceTab: 'DEBT', tabIndex: 6 });
+        entries.push({ label: 'Capital Stack · Loan Amount', value: fmt$(f?.capitalStack?.loanAmount ?? 0), sourceTab: 'DEBT', tabIndex: 4, formula: 'Standard amortizing schedule' });
+        entries.push({ label: 'Interest Rate', value: `${((f?.capitalStack?.interestRate ?? 0) * 100).toFixed(2)}%`, sourceTab: 'DEBT', tabIndex: 4 });
       }
       break;
     }
     case 'cfads': {
       const capRow = f?.capital?.schedule?.find(r => r.year === proj.year);
       if (capRow) {
-        entries.push({ label: 'Capital Schedule CFADS', value: fmt$(capRow.cfads), sourceTab: 'CAP & WFALL', tabIndex: 7, formula: 'NOI - DebtService - Distributions' });
-        entries.push({ label: 'LP Distributions', value: fmt$(capRow.lpDist), sourceTab: 'CAP & WFALL', tabIndex: 7 });
-        entries.push({ label: 'GP Distributions', value: fmt$(capRow.gpDist), sourceTab: 'CAP & WFALL', tabIndex: 7 });
+        entries.push({ label: 'Capital Schedule CFADS', value: fmt$(capRow.cfads), sourceTab: 'CAP & WFALL', tabIndex: 4, formula: 'NOI - DebtService - Distributions' });
+        entries.push({ label: 'LP Distributions', value: fmt$(capRow.lpDist), sourceTab: 'CAP & WFALL', tabIndex: 4 });
+        entries.push({ label: 'GP Distributions', value: fmt$(capRow.gpDist), sourceTab: 'CAP & WFALL', tabIndex: 4 });
       } else {
         entries.push({ label: 'Cash Flow Before Tax (fallback)', value: fmt$(proj.cfbt), sourceTab: 'CASH FLOW', tabIndex: -1, formula: 'NOI - Annual Debt Service' });
       }
@@ -417,21 +417,21 @@ function buildDrilldown(
     case 'depreciation': {
       const depr = f?.taxes?.incomeTax?.annualDepreciation;
       const base = f?.taxes?.incomeTax?.depreciableBase;
-      entries.push({ label: 'Depreciable Base', value: base != null ? fmt$(base) : '—', sourceTab: 'TAXES', tabIndex: 4, formula: 'purchasePrice × (1 − landValuePct)' });
-      entries.push({ label: 'Annual Depreciation (39yr)', value: depr != null ? fmt$(depr) : '—', sourceTab: 'TAXES', tabIndex: 4 });
+      entries.push({ label: 'Depreciable Base', value: base != null ? fmt$(base) : '—', sourceTab: 'TAXES', tabIndex: 1, formula: 'purchasePrice × (1 − landValuePct)' });
+      entries.push({ label: 'Annual Depreciation (39yr)', value: depr != null ? fmt$(depr) : '—', sourceTab: 'TAXES', tabIndex: 1 });
       const mtr = f?.taxes?.incomeTax?.marginalTaxRate;
-      entries.push({ label: 'Effective Tax Rate', value: mtr != null ? `${(mtr * 100).toFixed(2)}%` : '37.00%', sourceTab: 'TAXES', tabIndex: 4, formula: 'Sourced from taxes.incomeTax.marginalTaxRate' });
+      entries.push({ label: 'Effective Tax Rate', value: mtr != null ? `${(mtr * 100).toFixed(2)}%` : '37.00%', sourceTab: 'TAXES', tabIndex: 1, formula: 'Sourced from taxes.incomeTax.marginalTaxRate' });
       break;
     }
     case 'noi': {
-      entries.push({ label: 'EGI', value: fmt$(proj.egi), sourceTab: 'PROJECTIONS', tabIndex: 2, formula: 'NRI + OtherIncome' });
-      entries.push({ label: 'Total OpEx', value: fmt$(proj.totalOpex), sourceTab: 'PROJECTIONS', tabIndex: 2, formula: 'Sum(all expense lines)' });
-      entries.push({ label: 'NOI Formula', value: fmt$(proj.noi), sourceTab: 'PROJECTIONS', tabIndex: 2, formula: 'EGI − TotalOpEx' });
+      entries.push({ label: 'EGI', value: fmt$(proj.egi), sourceTab: 'PROJECTIONS', tabIndex: 3, formula: 'NRI + OtherIncome' });
+      entries.push({ label: 'Total OpEx', value: fmt$(proj.totalOpex), sourceTab: 'PROJECTIONS', tabIndex: 3, formula: 'Sum(all expense lines)' });
+      entries.push({ label: 'NOI Formula', value: fmt$(proj.noi), sourceTab: 'PROJECTIONS', tabIndex: 3, formula: 'EGI − TotalOpEx' });
       break;
     }
     case 'grossSaleValue': {
-      entries.push({ label: 'Exit NOI', value: fmt$(proj.exitNoi ?? 0), sourceTab: 'ASSUMPTIONS', tabIndex: 3, formula: `NOI × (1 + rentGrowth)` });
-      entries.push({ label: 'Exit Cap Rate', value: fmtCell(proj.exitCap, 'pct'), sourceTab: 'ASSUMPTIONS', tabIndex: 3 });
+      entries.push({ label: 'Exit NOI', value: fmt$(proj.exitNoi ?? 0), sourceTab: 'ASSUMPTIONS', tabIndex: 1, formula: `NOI × (1 + rentGrowth)` });
+      entries.push({ label: 'Exit Cap Rate', value: fmtCell(proj.exitCap, 'pct'), sourceTab: 'ASSUMPTIONS', tabIndex: 1 });
       entries.push({ label: 'Gross Sale Value', value: fmt$(proj.grossSaleValue ?? 0), sourceTab: 'EXIT', tabIndex: -1, formula: 'ExitNOI ÷ ExitCap' });
       break;
     }

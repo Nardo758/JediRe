@@ -7,19 +7,12 @@ import {
 } from '../../components/deal/bloomberg-ui';
 import { OverviewTab } from './financial-engine/OverviewTab';
 import { ProFormaSummaryTab } from './financial-engine/ProFormaSummaryTab';
-import { UnitMixTab } from '../../components/deal/sections/UnitMixTab';
-import { ProjectionsTab } from './financial-engine/ProjectionsTab';
-import { AssumptionsTab } from './financial-engine/AssumptionsTab';
-import { DebtTab } from './financial-engine/DebtTab';
-import { WaterfallTab } from './financial-engine/WaterfallTab';
-import { TaxesTab } from './financial-engine/TaxesTab';
-import { SourcesUsesTab } from './financial-engine/SourcesUsesTab';
-import { ReturnsTab } from './financial-engine/ReturnsTab';
-import { SensitivityTab } from './financial-engine/SensitivityTab';
+import { AssumptionsHubTab } from './financial-engine/AssumptionsHubTab';
+import { ProjectionsHubTab } from './financial-engine/ProjectionsHubTab';
+import { CapitalHubTab } from './financial-engine/CapitalHubTab';
+import { ReturnsHubTab } from './financial-engine/ReturnsHubTab';
+import { CompareHubTab } from './financial-engine/CompareHubTab';
 import { DecisionTab } from './financial-engine/DecisionTab';
-import { CompareTab } from './financial-engine/CompareTab';
-import { CostSheetTab } from '../../components/deal/sections/CostSheetTab';
-import InteractiveProformaTab from './financial-engine/InteractiveProformaTab';
 import { CustomTabRenderer } from './financial-engine/CustomTabRenderer';
 import { exportToExcel } from './financial-engine/excel-export';
 import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials, EvidenceFieldMeta, LeasingCostTreatment } from './financial-engine/types';
@@ -351,7 +344,6 @@ function normalizeBuildResponse(raw: any): ModelResults {
 }
 
 import { EvidencePanel } from '../../components/underwriting/EvidencePanel';
-import { UnderwritingWalkthrough } from '../../components/f9/UnderwritingWalkthrough';
 
 const MONO = BT.font.mono;
 
@@ -395,21 +387,13 @@ class TabErrorBoundary extends Component<
 // Built-in tabs always come first; custom tabs are appended after.
 const BUILTIN_TAB_LABELS = [
   '⊞ OVERVIEW',
-  '⊞ UNIT MIX',
-  '≡ PRO FORMA',
-  '$ TAXES',
-  '⊙ DEBT',
   '⊕ ASSUMPTIONS',
+  '≡ PRO FORMA',
   '⋮≡ PROJECTIONS',
-  '⇄ SRC & USES',
-  '◈ CAP & WFALL',
-  '∿ SENSITIVITY',
-  '✓ DECISION',
-  '⇔ COMPARE',
+  '◈ CAPITAL',
   '% RETURNS',
-  '₵ COST SHEET',
-  '⊟ WALKTHROUGH',
-  '△ INTERACTIVE PRO',
+  '◐ SCENARIOS',
+  '⇔ COMPARE',
 ];
 const BUILTIN_TAB_COUNT = BUILTIN_TAB_LABELS.length;
 
@@ -1315,7 +1299,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: BT.text.white, letterSpacing: 0.8, fontFamily: MONO }}>FINANCIAL ENGINE</span>
-          <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO }}>M08 · v3.1</span>
+          <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO }}>M08 · v4.0</span>
           {kpiLoading
             ? <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>LOADING...</span>
             : kpi
@@ -1664,37 +1648,24 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
 
         {/* ── TAB CONTENT (RIGHT) ── */}
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-          {activeTab === 0  && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 1  && <BtTabWrapper><UnitMixTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 2  && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 3  && <BtTabWrapper><TaxesTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 4  && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 5  && <BtTabWrapper><TabErrorBoundary tabName="Assumptions"><AssumptionsTab {...tabProps} /></TabErrorBoundary></BtTabWrapper>}
-          {activeTab === 6  && (
-            <BtTabWrapper><ProjectionsTab {...tabProps} integrityWarning={integrityBlocked} /></BtTabWrapper>
-          )}
-          {activeTab === 7  && <BtTabWrapper><SourcesUsesTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 8  && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 9  && <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 10 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 11 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 12 && <BtTabWrapper><ReturnsTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 15 && <BtTabWrapper><InteractiveProformaTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 13 && (
-            <div style={{ height: '100%', overflow: 'hidden', padding: 16, display: 'flex', flexDirection: 'column' }}>
-              <CostSheetTab
-                dealId={tabProps.dealId}
-                deal={tabProps.deal as Record<string, any> | undefined}
-                assumptions={tabProps.assumptions as Record<string, any> | null | undefined}
-                f9Financials={tabProps.f9Financials}
-              />
-            </div>
-          )}
-          {activeTab === 14 && (
+          {activeTab === 0 && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 1 && (
             <BtTabWrapper>
-              <UnderwritingWalkthrough dealId={resolvedDealId} />
+              <TabErrorBoundary tabName="Assumptions">
+                <AssumptionsHubTab {...tabProps} />
+              </TabErrorBoundary>
             </BtTabWrapper>
           )}
+          {activeTab === 2 && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 3 && (
+            <BtTabWrapper>
+              <ProjectionsHubTab {...tabProps} integrityWarning={integrityBlocked} />
+            </BtTabWrapper>
+          )}
+          {activeTab === 4 && <BtTabWrapper><CapitalHubTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 5 && <BtTabWrapper><ReturnsHubTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 6 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 7 && <BtTabWrapper><CompareHubTab {...tabProps} /></BtTabWrapper>}
           {activeCustomTab && (
             <BtTabWrapper>
               <CustomTabRenderer

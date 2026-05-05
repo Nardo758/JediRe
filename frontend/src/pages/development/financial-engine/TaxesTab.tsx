@@ -1261,8 +1261,8 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                     <div
                       role="button"
                       tabIndex={0}
-                      onClick={() => onTabChange?.(7)}
-                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onTabChange?.(7); }}
+                      onClick={() => onTabChange?.(4)}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onTabChange?.(4); }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', background: '#065f4630', border: `1px solid #10b981`, borderRadius: 4, cursor: onTabChange ? 'pointer' : 'default' }}
                       title="Click to open Sources & Uses tab"
                     >

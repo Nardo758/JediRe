@@ -1,0 +1,28 @@
+Looking at the original 12-tab spec versus the v3.1 framework you already trimmed to 9, the consolidation logic should follow workflow phase, not financial taxonomy. Institutional users move through a deal in phases — define inputs → read the operating story → understand the capital wrapper → judge the returns — not by accounting category. That's the lens for which tabs should merge.
+The natural pairings
+There are three groups in the original 12 where tabs are doing the same cognitive job from different angles, and one place where you correctly want adjacency without merger:
+Inputs cluster: Assumptions + Taxes. Florida tax mechanics (10% non-homestead cap, doc stamps, intangible tax, reassessment-on-sale) aren't a separate analytical surface — they're a specialized assumption family with jurisdiction-specific rules. They belong as a panel inside Assumptions, sourced and badged the same way every other LayeredValue assumption is. Carving them into their own tab signals "tax is a thing apart," when really it's just inputs with FL rules baked in. v3.1 already does this; it's the right move.
+Capital cluster: Sources & Uses + Debt + Capital & Waterfall. These are three views of the same question — how is the deal capitalized, what does servicing look like, who gets paid in what order. v3.1 split them apart (Debt as its own tab, Waterfall as its own tab), which is defensible but I'd push harder. The cleaner architecture is one Capital tab inside F9 with three sub-sections (S&U snapshot, Debt schedule, Waterfall distribution), and let F7/M11 own the structural design surface (Stack Designer, Strategy-Aware Debt Selector, Rate Environment, Scenario Comparison). F9's job is operating-impact-of-capital; F7's job is capital-structure-design. Keeping them confused across two tabs in F9 muddies that boundary.
+Outputs cluster: Returns + Sensitivity. Both are downstream output analysis. Sensitivity is just Returns explored across a range. Make Returns the home, Sensitivity a sub-section within it. Same data spine, different visualization mode.
+Adjacent but distinct: Pro Forma + Projections. Don't merge these. Pro Forma is the executive summary read (GPR → NOI → CF on one screen); Projections is the institutional detail sheet (every line item, every period, monthly toggle, IO-to-amort transition visible). Different cognitive jobs at different points in the workflow — broker/LP scan vs DD-grade audit. Keep them adjacent in tab order.
+Recommended end state (8 tabs)
+
+Overview — KPIs, S&U snapshot card, disposition summary, AI commentary, collision counter, confidence distribution
+Assumptions — every input with source badges, FL tax mechanics as a panel inside
+Pro Forma — summary operating statement
+Projections — full operating detail, timeline selector (3/5/7/10yr), monthly toggle
+Capital — S&U + Debt schedule + Waterfall as three sub-sections (operating-impact view; F7 owns structure)
+Returns — IRR/EM/CoC/DSCR + Sensitivity heat maps as a sub-section
+Scenarios — Bull/Base/Bear/Stress, percentile paths from M36 once wired
+Compare — version diff (this is the deal archive flywheel surface)
+
+That's 12 → 8 with no loss of content, just better grouping by what the user is doing on each tab rather than what financial category the data falls into.
+What I'd push back on consolidating further
+Going below 8 starts to hurt. Specifically:
+
+Don't merge Pro Forma + Projections behind a toggle. The toggle pattern hides the institutional detail sheet behind a click and weakens the "show your work" UX contract from the Cashflow Agent spec. Two adjacent tabs is the right shape.
+Don't merge Returns + Scenarios. Returns is point-in-time outputs from the active assumption set; Scenarios is multiple full-model runs. Different mental models — folding them flattens the difference between "what does this model say" and "what could the world look like."
+Don't fold Compare into Overview. Version compare is the data flywheel surface (per CI Engine S7). It deserves its own tab because it's where the assumption-accuracy benchmarking story lives over time, and that's a feature you'll want to grow into, not bury.
+
+One adjacency to reconsider
+The current v3.1 ordering puts Projections after Pro Forma. Audit your existing M07 Traffic and F4 Markets tab patterns — both use summary tab → detail tab adjacency, which is the right precedent. The only question is whether Assumptions should sit before Pro Forma (inputs-first read order) or after (results-first, drill-into-inputs read order). Bloomberg native pattern is results-first. Given your audience is institutional readers who scan headline returns then audit assumptions, I'd put Assumptions in tab 2 position only if you expect heavy input editing in flow; otherwise move it to position 4 or 5 and lead with Overview → Pro Forma → Projections.
