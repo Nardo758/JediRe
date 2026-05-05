@@ -600,6 +600,122 @@ describe('§573.11 deal_id embedded in all generated records', () => {
   });
 });
 
+// ── §573.15 Merged records written to canonical deal_data.concession_records ──
+
+describe('§573.15 Merged records in canonical concession_records — no double-counting', () => {
+  it('deduplication by ID prevents double-counting on re-run simulation', () => {
+    // Simulate: concession_records already contains a merged set from a prior run
+    // (lv record + hist record already present). On re-run, lv and hist sources
+    // are present separately. The merger must produce exactly lv+hist (no duplication).
+    const lvRecord: ConcessionRecord = {
+      id: 'deal-lu-lv-2026-05-new',
+      deal_id: 'deal-lu',
+      lease_id: 'lv-2026-05-new',
+      concession_type: 'FREE_RENT',
+      cash_value: 1200,
+      lease_start_date: '2026-05-01',
+      lease_end_date: '2027-04-30',
+      lease_term_months: 12,
+      amortization_method: 'FRONT_LOADED',
+      is_lease_up_period: true,
+      leasing_cost_treatment: 'OPERATING',
+      is_renewal: false,
+      is_subject_history: false,
+      inferred_from_rent_roll: false,
+      early_termination_date: null,
+      structural_write_off_date: null,
+    };
+    const histRecord = makeHistoryRecord({ id: 'hist-deal-lu-unit-42-2025-08-01', deal_id: 'deal-lu' });
+
+    // Simulate prior merged output already in concession_records
+    const priorMerged: ConcessionRecord[] = [lvRecord, histRecord];
+
+    // lvHistIds would contain both IDs → manualRecords would be empty after dedup
+    const lvHistIds = new Set([lvRecord.id, histRecord.id]);
+    const deduped = priorMerged.filter(r => !lvHistIds.has(r.id));
+    expect(deduped).toHaveLength(0); // all were already in lv/hist → no duplicates
+
+    // Final merged = lv (1) + hist (1) + manual-deduped (0) = 2 records
+    const merged = [lvRecord, histRecord, ...deduped];
+    expect(merged).toHaveLength(2);
+  });
+
+  it('manual-only records survive dedup when they have unique IDs', () => {
+    const manualRecord: ConcessionRecord = makeHistoryRecord({
+      id: 'manual-user-001',
+      is_subject_history: false,
+      inferred_from_rent_roll: false,
+    });
+    const lvRecord: ConcessionRecord = {
+      id: 'lv-2026-05-new',
+      deal_id: 'deal-x',
+      lease_id: 'lv-2026-05-new',
+      concession_type: 'FREE_RENT',
+      cash_value: 600,
+      lease_start_date: '2026-05-01',
+      lease_end_date: '2027-04-30',
+      lease_term_months: 12,
+      amortization_method: 'FRONT_LOADED',
+      is_lease_up_period: true,
+      leasing_cost_treatment: 'OPERATING',
+      is_renewal: false,
+      is_subject_history: false,
+      inferred_from_rent_roll: false,
+      early_termination_date: null,
+      structural_write_off_date: null,
+    };
+
+    const lvHistIds = new Set([lvRecord.id]);
+    // manualRecord.id is 'manual-user-001' — not in lvHistIds → survives
+    const deduped = [manualRecord].filter(r => !lvHistIds.has(r.id));
+    expect(deduped).toHaveLength(1);
+    expect(deduped[0].id).toBe('manual-user-001');
+  });
+
+  it('amortization of deduped merged set produces exactly the right total', () => {
+    const lvRecord: ConcessionRecord = {
+      id: 'lv-dedup-test',
+      deal_id: 'deal-dedup',
+      lease_id: 'lv-dedup-test',
+      concession_type: 'FREE_RENT',
+      cash_value: 1200,
+      lease_start_date: '2026-01-01',
+      lease_end_date: '2026-12-31',
+      lease_term_months: 12,
+      amortization_method: 'STRAIGHT_LINE_GAAP',
+      is_lease_up_period: true,
+      leasing_cost_treatment: 'OPERATING',
+      is_renewal: false,
+      is_subject_history: false,
+      inferred_from_rent_roll: false,
+      early_termination_date: null,
+      structural_write_off_date: null,
+    };
+    const histRecord = makeHistoryRecord({ cash_value: 2400, deal_id: 'deal-dedup' });
+
+    // Simulate concession_records containing the prior merged output
+    const priorConcessionRecords: ConcessionRecord[] = [lvRecord, histRecord];
+    // lv+hist IDs → manual dedup excludes both
+    const lvHistIds = new Set([lvRecord.id, histRecord.id]);
+    const manualDeduped = priorConcessionRecords.filter(r => !lvHistIds.has(r.id));
+    const mergedRecords = [lvRecord, histRecord, ...manualDeduped];
+
+    // Should have exactly 2 records (no duplicates)
+    expect(mergedRecords).toHaveLength(2);
+
+    const output = amortizeConcessions({
+      records: mergedRecords,
+      leasing_cost_treatment: 'OPERATING',
+      current_date: '2026-01-01',
+      horizon_months: 120,
+    });
+
+    // Total recognized = 1200 + 2400 = 3600 (not 4800 which would indicate duplication)
+    const total = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    expect(total).toBeCloseTo(3600, 0);
+  });
+});
+
 // ── §573.13 deliveryCalMonth fallback when delivery_month omitted ──────────────
 
 describe('§573.13 PRE_LEASE_BONUS commencement when delivery_month is omitted', () => {

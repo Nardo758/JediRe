@@ -533,35 +533,44 @@ async function computeConcessionRecognition(
     histRecords = dealData.history_concession_records as ConcessionRecord[];
   }
 
-  const manualRecords: ConcessionRecord[] = Array.isArray(dealData?.concession_records)
-    ? (dealData.concession_records as ConcessionRecord[])
-    : [];
+  // ── Source 3: manual / legacy records ───────────────────────────────────
+  // Read from concession_records, but deduplicate against the lv+hist sources
+  // below so that re-runs (where concession_records already holds the prior
+  // merged output) do not double-count projected or historical records.
+  // Any record whose ID is already present in lv or hist is skipped here.
+  const lvHistIds = new Set<string>([
+    ...lvRecords.map(r => r.id),
+    ...histRecords.map(r => r.id),
+  ]);
+  const manualRecords: ConcessionRecord[] = (
+    Array.isArray(dealData?.concession_records)
+      ? (dealData.concession_records as ConcessionRecord[])
+      : []
+  ).filter(r => !lvHistIds.has(r.id));
 
   const records: ConcessionRecord[] = [...lvRecords, ...histRecords, ...manualRecords];
 
-  // ── Persist merged set as canonical amortization input ───────────────────
-  // Writes the full merged array to deal_data.merged_concession_records so that
-  // downstream tasks (#574, #575) and audits can inspect the exact records fed
-  // to the amortization engine. Uses a separate key from concession_records
-  // (which holds user-authored manual records only) to prevent double-counting
-  // on re-runs. Non-fatal — persistence failure does not block amortization.
-  if (records.length > 0) {
-    pool.query(
-      `UPDATE deals
-       SET deal_data = jsonb_set(
-         COALESCE(deal_data, '{}'::jsonb),
-         '{merged_concession_records}',
-         $1::jsonb
-       )
-       WHERE id = $2`,
-      [JSON.stringify(records), dealId],
-    ).catch((persistErr: any) => {
-      console.warn(
-        '[computeConcessionRecognition] Failed to persist merged_concession_records:',
-        persistErr?.message ?? persistErr,
-      );
-    });
-  }
+  // ── Persist merged set as canonical concession_records ───────────────────
+  // Task #573 contract: write the full merged past+projected stream to
+  // deal_data.concession_records so downstream tasks (#574, #575) and the
+  // financials panel read a single canonical field.
+  // Always persisted (including empty array) so zero-record recomputes clear
+  // any stale data left by a prior run. Non-fatal — failure does not block.
+  pool.query(
+    `UPDATE deals
+     SET deal_data = jsonb_set(
+       COALESCE(deal_data, '{}'::jsonb),
+       '{concession_records}',
+       $1::jsonb
+     )
+     WHERE id = $2`,
+    [JSON.stringify(records), dealId],
+  ).catch((persistErr: any) => {
+    console.warn(
+      '[computeConcessionRecognition] Failed to persist concession_records:',
+      persistErr?.message ?? persistErr,
+    );
+  });
 
   if (records.length === 0) return null;
 
