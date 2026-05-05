@@ -162,13 +162,160 @@ function TaxRow({ label, broker, platform, user, resolved, userEditable = false,
 
 // ── RATES Modal ───────────────────────────────────────────────────────────────
 
-interface RateSheetEntry {
-  jurisdiction: string;
-  year: number;
-  version: string;
-  asOf: string;
-  validThrough: string;
-  sourceCitationsCount: number;
+interface RsSourceCitation { field: string; source_url: string; retrieved_at: string; document_title?: string }
+interface RsMillageLine   { authority: string; rate: number; applies_to?: string }
+interface RsMillage       { aggregate?: number; breakdown?: RsMillageLine[] }
+interface RsTpp           { taxed: boolean; millage?: number | 'same_as_re'; exemption_amount?: number; filing_form?: string; filing_deadline?: string; name?: string }
+interface RsTransferTax   { deed_rate_per_100?: number; deed_rate_per_1000?: number; intangible_rate_per_100?: number; mortgage_stamp_rate_per_100?: number; recording_fee_per_page?: number }
+interface RsBonusDepEntry { year: number; pct: number }
+interface RsStateIncomeTaxRate { entity_type: string; rate: number }
+interface RateSheetData {
+  jurisdiction: string; level: string; year: number; version: string;
+  as_of: string; valid_through: string;
+  source_citations: RsSourceCitation[];
+  millage?: RsMillage;
+  assessment_ratio?: number;
+  tpp?: RsTpp;
+  transfer_tax?: RsTransferTax;
+  bonus_depreciation?: RsBonusDepEntry[];
+  cost_seg_available_pct?: number;
+  state_income_tax_rate?: RsStateIncomeTaxRate[];
+  conforms_to_bonus_dep?: boolean;
+  conforms_to_cost_seg?: boolean;
+}
+
+function staleBadge(validThrough: string) {
+  const ms = new Date(validThrough).getTime() - Date.now();
+  const d  = Math.max(0, Math.floor(ms / 86400000));
+  if (d <= 0)  return { label: 'EXPIRED',   color: '#FF4757' };
+  if (d <= 14) return { label: `${d}d LEFT`, color: '#FF6B35' };
+  if (d <= 30) return { label: `${d}d LEFT`, color: '#FFB300' };
+  return { label: `${d}d LEFT`, color: '#10B981' };
+}
+
+function RateFieldRow({ label, value, fieldKey, citations }: {
+  label: string; value: React.ReactNode; fieldKey: string; citations: RsSourceCitation[];
+}) {
+  const cite = citations.find(c => c.field === fieldKey);
+  return (
+    <tr style={{ borderBottom: `1px solid ${BT.border.subtle}`, height: 24 }}>
+      <td style={{ padding: '3px 10px', fontSize: 9, color: BT.text.muted, whiteSpace: 'nowrap', width: 220 }}>{label}</td>
+      <td style={{ padding: '3px 10px', fontSize: 9, color: BT.text.cyan, fontWeight: 600, fontFamily: MONO }}>{value}</td>
+      <td style={{ padding: '3px 10px', fontSize: 8 }}>
+        {cite ? (
+          <a href={cite.source_url} target="_blank" rel="noreferrer"
+            style={{ color: BT.text.secondary, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+            title={cite.document_title ?? cite.source_url}
+          >
+            <Link style={{ width: 8, height: 8 }} />
+            {cite.document_title ?? new URL(cite.source_url).hostname}
+          </a>
+        ) : (
+          <span style={{ color: BT.text.muted }}>—</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function RatesSheetPanel({ sheet }: { sheet: RateSheetData }) {
+  const cites = sheet.source_citations ?? [];
+  const badge = staleBadge(sheet.valid_through);
+  return (
+    <div style={{ marginBottom: 20 }}>
+      {/* Sheet header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, borderTop: `1px solid ${BT.border.medium}` }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: BT.text.white, letterSpacing: 0.6 }}>
+          {sheet.level.toUpperCase()} — {sheet.jurisdiction.toUpperCase()}
+        </span>
+        <span style={{ fontSize: 8, color: BT.text.muted }}>v{sheet.version} · {sheet.year}</span>
+        <span style={{ fontSize: 8, color: BT.text.muted }}>as of {new Date(sheet.as_of).toLocaleDateString()}</span>
+        <span style={{ fontSize: 7, padding: '1px 6px', background: `${badge.color}25`, border: `1px solid ${badge.color}50`, borderRadius: 3, color: badge.color, fontWeight: 700, marginLeft: 'auto' }}>
+          {badge.label}
+        </span>
+      </div>
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
+        <thead>
+          <tr style={{ background: BT.bg.panelAlt }}>
+            <th style={{ padding: '4px 10px', textAlign: 'left', color: BT.text.muted, fontSize: 7, fontWeight: 700, letterSpacing: 0.5, width: 220 }}>FIELD</th>
+            <th style={{ padding: '4px 10px', textAlign: 'left', color: BT.text.muted, fontSize: 7, fontWeight: 700, letterSpacing: 0.5 }}>VALUE</th>
+            <th style={{ padding: '4px 10px', textAlign: 'left', color: BT.text.muted, fontSize: 7, fontWeight: 700, letterSpacing: 0.5 }}>SOURCE</th>
+          </tr>
+        </thead>
+        <tbody>
+          {/* Section A */}
+          {(sheet.millage?.aggregate != null || sheet.assessment_ratio != null) && (<>
+            <tr><td colSpan={3} style={{ padding: '5px 10px 2px', fontSize: 7, color: BT.text.muted, fontWeight: 700, letterSpacing: 0.8, background: BT.bg.panelAlt, borderTop: `1px solid ${BT.border.subtle}` }}>A · REAL ESTATE TAX</td></tr>
+            {sheet.millage?.aggregate != null && (
+              <RateFieldRow label="Millage rate (aggregate)" value={`${sheet.millage.aggregate.toFixed(4)} mills`} fieldKey="millage.aggregate" citations={cites} />
+            )}
+            {sheet.millage?.breakdown?.map((line, i) => (
+              <RateFieldRow key={i} label={`  ${line.authority}${line.applies_to && line.applies_to !== 'all' ? ` (${line.applies_to})` : ''}`} value={`${line.rate.toFixed(4)} mills`} fieldKey={`millage.breakdown.${i}`} citations={cites} />
+            ))}
+            {sheet.assessment_ratio != null && (
+              <RateFieldRow label="Assessment ratio" value={`${(sheet.assessment_ratio * 100).toFixed(0)}%`} fieldKey="assessment_ratio" citations={cites} />
+            )}
+          </>)}
+
+          {/* Section B */}
+          {sheet.tpp && (<>
+            <tr><td colSpan={3} style={{ padding: '5px 10px 2px', fontSize: 7, color: BT.text.muted, fontWeight: 700, letterSpacing: 0.8, background: BT.bg.panelAlt, borderTop: `1px solid ${BT.border.subtle}` }}>B · TANGIBLE PERSONAL PROPERTY</td></tr>
+            <RateFieldRow label="TPP taxed" value={sheet.tpp.taxed ? 'YES' : 'NO'} fieldKey="tpp.taxed" citations={cites} />
+            {sheet.tpp.millage != null && (
+              <RateFieldRow label="TPP millage" value={sheet.tpp.millage === 'same_as_re' ? 'same as RE' : `${sheet.tpp.millage} mills`} fieldKey="tpp.millage" citations={cites} />
+            )}
+            {sheet.tpp.exemption_amount != null && (
+              <RateFieldRow label="Exemption threshold" value={`$${sheet.tpp.exemption_amount.toLocaleString()}`} fieldKey="tpp.exemption_amount" citations={cites} />
+            )}
+            {sheet.tpp.filing_form && (
+              <RateFieldRow label="Filing form" value={`${sheet.tpp.filing_form}${sheet.tpp.filing_deadline ? ` · due ${sheet.tpp.filing_deadline}` : ''}`} fieldKey="tpp.filing_form" citations={cites} />
+            )}
+          </>)}
+
+          {/* Section C — federal fields */}
+          {(sheet.bonus_depreciation?.length || sheet.cost_seg_available_pct != null || sheet.conforms_to_bonus_dep != null) && (<>
+            <tr><td colSpan={3} style={{ padding: '5px 10px 2px', fontSize: 7, color: BT.text.muted, fontWeight: 700, letterSpacing: 0.8, background: BT.bg.panelAlt, borderTop: `1px solid ${BT.border.subtle}` }}>C · INCOME TAX &amp; DEPRECIATION</td></tr>
+            {sheet.cost_seg_available_pct != null && (
+              <RateFieldRow label="Cost seg available %" value={`${(sheet.cost_seg_available_pct * 100).toFixed(0)}%`} fieldKey="cost_seg_available_pct" citations={cites} />
+            )}
+            {sheet.bonus_depreciation?.map(bd => (
+              <RateFieldRow key={bd.year} label={`Bonus depreciation ${bd.year}`} value={`${(bd.pct * 100).toFixed(0)}%`} fieldKey={`bonus_depreciation.${bd.year}`} citations={cites} />
+            ))}
+            {sheet.conforms_to_bonus_dep != null && (
+              <RateFieldRow label="Conforms to federal bonus dep" value={sheet.conforms_to_bonus_dep ? 'YES' : 'NO'} fieldKey="conforms_to_bonus_dep" citations={cites} />
+            )}
+            {sheet.conforms_to_cost_seg != null && (
+              <RateFieldRow label="Conforms to cost segregation" value={sheet.conforms_to_cost_seg ? 'YES' : 'NO'} fieldKey="conforms_to_cost_seg" citations={cites} />
+            )}
+            {sheet.state_income_tax_rate?.map(s => (
+              <RateFieldRow key={s.entity_type} label={`State income tax (${s.entity_type})`} value={`${(s.rate * 100).toFixed(2)}%`} fieldKey={`state_income_tax_rate.${s.entity_type}`} citations={cites} />
+            ))}
+          </>)}
+
+          {/* Section D */}
+          {sheet.transfer_tax && (<>
+            <tr><td colSpan={3} style={{ padding: '5px 10px 2px', fontSize: 7, color: BT.text.muted, fontWeight: 700, letterSpacing: 0.8, background: BT.bg.panelAlt, borderTop: `1px solid ${BT.border.subtle}` }}>D · TRANSFER TAX</td></tr>
+            {sheet.transfer_tax.deed_rate_per_100 != null && (
+              <RateFieldRow label="Deed rate per $100" value={`$${sheet.transfer_tax.deed_rate_per_100.toFixed(4)}`} fieldKey="transfer_tax.deed_rate_per_100" citations={cites} />
+            )}
+            {sheet.transfer_tax.deed_rate_per_1000 != null && (
+              <RateFieldRow label="Deed rate per $1,000" value={`$${sheet.transfer_tax.deed_rate_per_1000.toFixed(4)}`} fieldKey="transfer_tax.deed_rate_per_1000" citations={cites} />
+            )}
+            {sheet.transfer_tax.intangible_rate_per_100 != null && (
+              <RateFieldRow label="Intangible tax per $100" value={`$${sheet.transfer_tax.intangible_rate_per_100.toFixed(4)}`} fieldKey="transfer_tax.intangible_rate_per_100" citations={cites} />
+            )}
+            {sheet.transfer_tax.mortgage_stamp_rate_per_100 != null && (
+              <RateFieldRow label="Mortgage stamp per $100" value={`$${sheet.transfer_tax.mortgage_stamp_rate_per_100.toFixed(4)}`} fieldKey="transfer_tax.mortgage_stamp_rate_per_100" citations={cites} />
+            )}
+            {sheet.transfer_tax.recording_fee_per_page != null && (
+              <RateFieldRow label="Recording fee / page" value={`$${sheet.transfer_tax.recording_fee_per_page.toFixed(2)}`} fieldKey="transfer_tax.recording_fee_per_page" citations={cites} />
+            )}
+          </>)}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function RatesModal({ open, onClose, jurisdiction }: {
@@ -176,43 +323,50 @@ function RatesModal({ open, onClose, jurisdiction }: {
   onClose: () => void;
   jurisdiction: string;
 }) {
-  const [coverage, setCoverage] = useState<RateSheetEntry[] | null>(null);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState<string | null>(null);
+  const [sheets, setSheets]   = useState<RateSheetData[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+
+  // Normalize jurisdiction for API (lowercase, replace spaces with dashes)
+  const normalizedJur = jurisdiction.toLowerCase().replace(/\s+/g, '-').split('-')[0];
 
   useEffect(() => {
-    if (!open || coverage !== null) return;
+    if (!open || sheets !== null) return;
     setLoading(true);
     setError(null);
-    apiClient.get('/api/v1/tax/rulesets/coverage')
-      .then((res: any) => setCoverage(res.data?.data?.coverage ?? []))
-      .catch((e: any) => setError(e?.message ?? 'Failed to load rate sheets'))
+
+    // Fetch both the state sheet and (optionally) the county overlay in parallel
+    const stateJur = normalizedJur;
+    const countyJur = jurisdiction.toLowerCase().replace(/\s+/g, '-');
+
+    const fetchSheet = (jur: string) => apiClient
+      .get(`/api/v1/tax/rate-sheets/${jur}`)
+      .then((res: any) => res.data?.data as RateSheetData)
+      .catch(() => null);
+
+    Promise.all([
+      fetchSheet(stateJur),
+      countyJur !== stateJur ? fetchSheet(countyJur) : Promise.resolve(null),
+    ]).then(([stateSheet, countySheet]) => {
+      const loaded: RateSheetData[] = [];
+      if (stateSheet) loaded.push(stateSheet);
+      if (countySheet) loaded.push(countySheet);
+      if (!loaded.length) setError('No rate sheet found for this jurisdiction.');
+      else setSheets(loaded);
+    }).catch((e: any) => setError(e?.message ?? 'Failed to load rate sheets'))
       .finally(() => setLoading(false));
   }, [open]);
 
   if (!open) return null;
 
-  const daysRemaining = (validThrough: string) => {
-    const ms = new Date(validThrough).getTime() - Date.now();
-    return Math.max(0, Math.floor(ms / 86400000));
-  };
-
-  const staleBadge = (validThrough: string) => {
-    const d = daysRemaining(validThrough);
-    if (d <= 0)  return { label: 'EXPIRED',    color: BT.text.red };
-    if (d <= 14) return { label: `${d}d LEFT`,  color: BT.text.orange };
-    if (d <= 30) return { label: `${d}d LEFT`,  color: BT.text.amber };
-    return { label: 'CURRENT', color: BT.text.green };
-  };
-
   return (
     <div
       onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: '#00000080', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      style={{ position: 'fixed', inset: 0, background: '#00000085', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, borderRadius: 6, width: 680, maxHeight: '80vh', display: 'flex', flexDirection: 'column', fontFamily: MONO }}
+        style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, borderRadius: 6, width: 720, maxHeight: '85vh', display: 'flex', flexDirection: 'column', fontFamily: MONO }}
       >
         {/* Modal header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, flexShrink: 0, borderRadius: '6px 6px 0 0' }}>
@@ -229,66 +383,24 @@ function RatesModal({ open, onClose, jurisdiction }: {
         </div>
 
         {/* Modal body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
           {loading && (
             <div style={{ textAlign: 'center', padding: 24, fontSize: 10, color: BT.text.muted }}>Loading rate sheets…</div>
           )}
           {error && (
-            <div style={{ padding: 12, background: '#FF475715', border: `1px solid ${BT.text.red}40`, borderRadius: 4, fontSize: 9, color: BT.text.red }}>
+            <div style={{ padding: 12, background: '#FF475715', border: `1px solid #FF475740`, borderRadius: 4, fontSize: 9, color: BT.text.red }}>
               {error}
             </div>
           )}
-          {coverage && !loading && (
-            <>
-              <div style={{ fontSize: 8, color: BT.text.muted, marginBottom: 10, letterSpacing: 0.6 }}>
-                {coverage.length} RATE SHEET{coverage.length !== 1 ? 'S' : ''} LOADED IN MEMORY
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
-                <thead>
-                  <tr style={{ background: BT.bg.panelAlt }}>
-                    {(['JURISDICTION', 'YEAR', 'VERSION', 'AS OF', 'VALID THROUGH', 'STATUS', 'SOURCES'] as const).map(h => (
-                      <th key={h} style={{ padding: '5px 10px', textAlign: 'left', color: BT.text.muted, letterSpacing: 0.5, fontWeight: 700, borderBottom: `1px solid ${BT.border.medium}`, whiteSpace: 'nowrap', fontSize: 8 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {coverage.map(s => {
-                    const badge = staleBadge(s.validThrough);
-                    const isActive = s.jurisdiction === jurisdiction.toLowerCase() || s.jurisdiction.startsWith(jurisdiction.toLowerCase().split('-')[0]);
-                    return (
-                      <tr
-                        key={`${s.jurisdiction}-${s.year}`}
-                        style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: isActive ? '#0A1F1A30' : 'transparent' }}
-                      >
-                        <td style={{ padding: '5px 10px', color: isActive ? BT.text.green : BT.text.primary, fontWeight: isActive ? 700 : 400 }}>
-                          {s.jurisdiction.toUpperCase()}
-                          {isActive && <span style={{ marginLeft: 4, fontSize: 7, color: BT.text.green }}>ACTIVE</span>}
-                        </td>
-                        <td style={{ padding: '5px 10px', color: BT.text.secondary }}>{s.year}</td>
-                        <td style={{ padding: '5px 10px', color: BT.text.muted, fontSize: 8 }}>{s.version}</td>
-                        <td style={{ padding: '5px 10px', color: BT.text.muted, fontSize: 8 }}>{s.asOf ? new Date(s.asOf).toLocaleDateString() : '—'}</td>
-                        <td style={{ padding: '5px 10px', color: BT.text.muted, fontSize: 8 }}>{s.validThrough ? new Date(s.validThrough).toLocaleDateString() : '—'}</td>
-                        <td style={{ padding: '5px 10px' }}>
-                          <span style={{ fontSize: 7, padding: '1px 5px', background: `${badge.color}20`, border: `1px solid ${badge.color}50`, borderRadius: 3, color: badge.color, fontWeight: 700 }}>
-                            {badge.label}
-                          </span>
-                        </td>
-                        <td style={{ padding: '5px 10px', color: BT.text.muted, textAlign: 'center' }}>{s.sourceCitationsCount}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {coverage.length === 0 && (
-                <div style={{ padding: 20, textAlign: 'center', fontSize: 9, color: BT.text.muted }}>No rate sheets loaded.</div>
-              )}
-            </>
-          )}
+          {sheets && sheets.map((s, i) => (
+            <RatesSheetPanel key={`${s.jurisdiction}-${i}`} sheet={s} />
+          ))}
         </div>
 
         {/* Modal footer */}
-        <div style={{ padding: '8px 16px', borderTop: `1px solid ${BT.border.medium}`, fontSize: 8, color: BT.text.muted, flexShrink: 0, borderRadius: '0 0 6px 6px' }}>
-          Rate sheets are loaded at server boot from <span style={{ color: BT.text.cyan }}>src/services/tax/rateSheets/*.json</span>. Re-deploy to refresh.
+        <div style={{ padding: '7px 16px', borderTop: `1px solid ${BT.border.medium}`, fontSize: 8, color: BT.text.muted, flexShrink: 0, borderRadius: '0 0 6px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>Loaded from <span style={{ color: BT.text.cyan }}>services/tax/rateSheets/*.json</span> at server boot. Re-deploy to refresh.</span>
+          {sheets && <span style={{ color: BT.text.muted }}>{sheets.reduce((a, s) => a + (s.source_citations?.length ?? 0), 0)} source citations</span>}
         </div>
       </div>
     </div>

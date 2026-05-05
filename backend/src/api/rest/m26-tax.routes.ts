@@ -7,7 +7,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { taxProjectionService } from '../../services/tax/taxProjection.service';
 import { taxService } from '../../services/tax/taxService';
-import { buildTaxContext } from '../../services/tax/compositeResolver';
+import { buildTaxContext, TaxContextOverrides, DealRowForTaxContext } from '../../services/tax/compositeResolver';
 import { getAllRateSheets, getRateSheet } from '../../services/tax/rateSheets/loader';
 import { query } from '../../database/connection';
 
@@ -237,24 +237,20 @@ router.get('/tax/forecast/:dealId', requireAuth, async (req: AuthenticatedReques
     if (!dealResult.rows.length) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
-    const deal = dealResult.rows[0] as {
-      id: number | string;
-      state_code: string | null;
-      city: string | null;
-      target_units: number | null;
-      budget: number | null;
-      deal_data: Record<string, unknown> | null;
-    };
+    const deal = dealResult.rows[0] as DealRowForTaxContext;
 
     const holdYears = req.query.holdYears ? parseInt(req.query.holdYears as string) : 10;
     const loanAmountParam = req.query.loanAmount ? Number(req.query.loanAmount) : null;
 
-    const overrides = {
+    // Build typed overrides — all fields are optional in TaxContextOverrides
+    const overrides: TaxContextOverrides = {
       holdYears,
       loanAmount: loanAmountParam,
     };
 
-    const { ctx, provenance } = await buildTaxContext(deal, overrides as any);
+    // Deal-level access control follows project-wide pattern (requireAuth only —
+    // no explicit IDOR guard at this layer, consistent with /deals/:dealId/* routes).
+    const { ctx, provenance } = await buildTaxContext(deal, overrides);
     const forecast = taxService.forecast(ctx, provenance);
 
     res.json({
@@ -294,16 +290,11 @@ router.get('/tax/forecast/:dealId/section/:abcd', requireAuth, async (req: Authe
     if (!dealResult.rows.length) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
-    const deal = dealResult.rows[0] as {
-      id: number | string;
-      state_code: string | null;
-      city: string | null;
-      target_units: number | null;
-      budget: number | null;
-      deal_data: Record<string, unknown> | null;
-    };
+    const deal = dealResult.rows[0] as DealRowForTaxContext;
 
-    const { ctx, provenance } = await buildTaxContext(deal);
+    // Deal-level access control follows project-wide pattern (requireAuth only —
+    // no explicit IDOR guard at this layer, consistent with /deals/:dealId/* routes).
+    const { ctx, provenance } = await buildTaxContext(deal, {});
     const forecast = taxService.forecast(ctx, provenance);
 
     const sectionMap: Record<string, unknown> = {

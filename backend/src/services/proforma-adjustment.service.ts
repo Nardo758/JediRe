@@ -2468,9 +2468,10 @@ export async function getDealFinancials(
   const rrLv = lv(year1Seed, 'replacement_reserves') as Record<string, unknown> | null;
   const rrBroker = layerN(rrLv, 'broker') ?? layerN(rrLv, 't12');
   const tppBroker: number | null = rrBroker != null ? Math.round(rrBroker * 0.5) : (totalUnits > 0 ? totalUnits * 150 : null);
-  // Platform TPP: use taxService sectionB when jurisdiction taxes TPP, else generic per-unit fallback
-  const tppPlatform: number | null = taxForecast.sectionB.taxesTPP && taxForecast.sectionB.tppAnnualTax > 0
-    ? taxForecast.sectionB.tppAnnualTax
+  // Platform TPP: always use engine-computed value when jurisdiction taxes TPP — this includes
+  // legitimate zero (property value below exemption threshold); only fall back for non-TPP jurisdictions.
+  const tppPlatform: number | null = taxForecast.sectionB.taxesTPP
+    ? taxForecast.sectionB.tppAnnualTax  // engine value — 0 means below exemption, not missing data
     : (totalUnits > 0 ? totalUnits * 200 : null);
 
   // Income tax / depreciation — sourced from taxService.forecast() sectionC
