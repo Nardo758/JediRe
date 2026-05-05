@@ -2055,7 +2055,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
                   padding: '1px 4px', borderRadius: 2,
                   background: bg, border: `1px solid ${tc}33`,
                   fontFamily: 'monospace', fontSize: 7, color: tc, fontWeight: 700, letterSpacing: 0.4,
-                }}>Σ {sigmaTier}</span>
+                }}>Σ {sigmaTier.charAt(0) + sigmaTier.slice(1).toLowerCase()}</span>
               );
             })()}
           </span>
