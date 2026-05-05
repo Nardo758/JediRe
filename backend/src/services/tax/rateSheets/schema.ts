@@ -127,6 +127,8 @@ export const RateSheetSchema = z.object({
   bonus_depreciation: z.array(BonusDepreciationEntrySchema).optional(),
   depreciation_lives: DepreciationLivesSchema.optional(),
   federal_income_tax_brackets: z.array(FederalTaxBracketSchema).optional(),
+  /** Conventional fraction of depreciable basis reclassified in a cost seg study (0–1). */
+  cost_seg_available_pct: z.number().min(0).max(1).optional(),
   // Section C (state sheets)
   state_income_tax_rate: z.array(StateIncomeTaxRateSchema).optional(),
   conforms_to_bonus_dep: z.boolean().optional(),

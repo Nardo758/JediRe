@@ -35,6 +35,7 @@
     { "year": 2026, "pct": 0.20 },
     { "year": 2027, "pct": 0.00 }
   ],
+  "cost_seg_available_pct": 0.30,
   "federal_income_tax_brackets": [
     { "min_income": 0, "max_income": null, "entity_type": "c_corp", "rate": 0.21 },
     { "min_income": 0, "max_income": null, "entity_type": "reit", "rate": 0.00 },
