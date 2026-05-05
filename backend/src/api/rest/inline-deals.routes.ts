@@ -9,11 +9,31 @@ import { validate, createDealSchema, updateDealSchema } from './validation';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
 import { processDocument, processDealDocuments } from '../../services/document-extraction/extraction-pipeline';
 import { computeAndPersistTrafficSnapshot } from '../../services/traffic-analytics.service';
+import { getDealFinancials } from '../../services/proforma-adjustment.service';
+import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
+import { buildProjectionsForExport } from '../../services/f9-financial-export.service';
 import { cashflowRuntime } from '../../agents/cashflow.config';
 import { researchRuntime } from '../../agents/research.config';
 import { supplyRuntime } from '../../agents/supply.config';
 import { commentaryRuntime } from '../../agents/commentary.config';
 import { logger } from '../../utils/logger';
+
+// ── IRR bisection helper ──────────────────────────────────────────────
+function computeIrr(cashFlows: number[]): number | null {
+  if (cashFlows.length < 2) return null;
+  const npv = (r: number) => cashFlows.reduce((s, cf, i) => s + cf / Math.pow(1 + r, i), 0);
+  const v0 = npv(0);
+  if (v0 === 0) return 0;
+  let lo = -0.9999, hi = 10.0;
+  if (npv(lo) * npv(hi) > 0) return null;
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    const m = npv(mid);
+    if (Math.abs(m) < 1e-4 || (hi - lo) < 1e-8) return +mid.toFixed(6);
+    if (v0 > 0 ? m > 0 : m < 0) lo = mid; else hi = mid;
+  }
+  return +((lo + hi) / 2).toFixed(6);
+}
 
 // ── Pipeline-to-deal-data sync ────────────────────────────────────────
 
@@ -1693,38 +1713,44 @@ router.patch('/:dealId/proforma/year1/override', requireAuth, async (req: Authen
 router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { dealId } = req.params;
-    const userId = req.user!.userId;
+    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 30);
+    const runSeed = req.query.seed === 'true';
 
-    // 1. Verify access
-    const dealResult = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-    if (dealResult.rows.length === 0) {
-      return res.status(403).json({ success: false, error: 'Not authorized' });
+    if (runSeed) {
+      await seedProFormaYear1(pool, dealId);
     }
 
-    // 2. Auto-seed proforma if empty
-    const existingYear1 = await pool.query(
-      `SELECT year1 FROM deal_assumptions WHERE deal_id = $1`,
+    const data = await getDealFinancials(pool, dealId, holdYears);
+
+    // Fetch close/sale dates stored in deal_data jsonb
+    const dateRes = await pool.query(
+      `SELECT deal_data->>'close_date' AS close_date, deal_data->>'sale_date' AS sale_date FROM deals WHERE id = $1`,
       [dealId]
     );
-    if (existingYear1.rows.length === 0 || !existingYear1.rows[0].year1) {
-      try {
-        const { seedProFormaYear1 } = await import('../../services/proforma-seeder.service');
-        await seedProFormaYear1(pool, dealId);
-      } catch (seedErr) {
-        console.warn('Proforma seed failed (non-critical):', (seedErr as Error).message);
+    const closeDate: string | null = dateRes.rows[0]?.close_date ?? null;
+    const saleDate: string | null  = dateRes.rows[0]?.sale_date  ?? null;
+
+    // Compute hold-period returns from F9 projection engine
+    const projs = buildProjectionsForExport(data, holdYears);
+    const equity = data.capitalStack.equityAtClose ?? 0;
+    let returns: typeof data.returns = null;
+    if (equity > 0 && projs.length > 0) {
+      const lastProj = projs[projs.length - 1];
+      const cashFlows: number[] = [-equity];
+      for (let i = 0; i < projs.length - 1; i++) {
+        cashFlows.push(projs[i].cfbt);
       }
+      cashFlows.push((lastProj.cfbt ?? 0) + (lastProj.netSaleProceeds ?? 0));
+      const irr = computeIrr(cashFlows);
+      const equityMultiple = lastProj.cumulativeEM ?? null;
+      const cashOnCash = projs.length > 0 ? (projs[0].coc ?? null) : null;
+      returns = { irr, equityMultiple, cashOnCash } as any;
     }
 
-    // 3. Compose full financials from the composer service
-    const { composeDealFinancials } = await import('../../services/financials-composer.service');
-    const result = await composeDealFinancials(pool, dealId, userId);
-    res.json(result);
+    res.json({ success: true, data: { ...data, returns, closeDate, saleDate } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Financials endpoint error:', message);
+    logger.error('Financials endpoint error:', message);
     res.status(500).json({ success: false, error: message });
   }
 });
