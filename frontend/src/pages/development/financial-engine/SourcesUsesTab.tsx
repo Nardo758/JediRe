@@ -246,9 +246,12 @@ export function SourcesUsesTab({
   // Effective total uses includes the reserve line when injected on the frontend.
   // effectiveDelta and effectiveBalanced must also account for the injected reserve
   // so that the balance status row and header badge remain internally consistent.
+  // When CAPITALIZED treatment is active, the capitalized concessions line is also
+  // included so TOTAL USES and the balance badge stay reconciled (Task #574).
   const injectedReserve = showLeaseUpReserve && leaseUpReserveAmount != null ? leaseUpReserveAmount : 0;
-  const effectiveTotalUses = (su?.totalUses ?? totalUses) + injectedReserve;
-  const effectiveDelta    = delta - injectedReserve;
+  const injectedCapConcessions = showCapitalizedConcessions && capitalizedConcessionsAmount != null ? capitalizedConcessionsAmount : 0;
+  const effectiveTotalUses = (su?.totalUses ?? totalUses) + injectedReserve + injectedCapConcessions;
+  const effectiveDelta    = delta - injectedReserve - injectedCapConcessions;
   const effectiveBalanced = Math.abs(effectiveDelta) < 1000;
 
   // Editable rows that should appear as ADD placeholders (only when not already in the grid)

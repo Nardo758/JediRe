@@ -522,17 +522,26 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const totalUnits = data.totalUnits;
 
   // ── Y1 recognized concessions (Task #574 §14) ──────────────────────────────
-  // Sum of monthly[] values falling in the Year-1 calendar window.
-  // Year 1 = the calendar year of closeDate (or current year if absent).
-  // §14: recognized dollars — never displayed in the same row as earned amounts above.
+  // Sum of monthly[] values for the 12-month window starting at closeDate.
+  // Year 1 = months [closeYYYYMM .. closeYYYYMM+11] — matches the analysis horizon
+  // used in the rent build (first 12 months, not the closeDate's calendar year).
+  // §14: recognized dollars — replaces the earned value in the concessions DataRow.
   const y1RecognizedConcessions: number | null = (() => {
     const rec = data.concessionRecognition;
     if (!rec) return null;
-    const closeYear = data.closeDate
-      ? new Date(data.closeDate).getFullYear()
-      : new Date().getFullYear();
+    // Derive start month from closeDate, fall back to current month.
+    const refDate = data.closeDate ? new Date(data.closeDate) : new Date();
+    const startYear  = refDate.getFullYear();
+    const startMonth = refDate.getMonth() + 1; // 1-based
+    // Build the 12 YYYYMM keys covering Year 1.
+    const y1Keys = new Set<string>();
+    for (let i = 0; i < 12; i++) {
+      const m = ((startMonth - 1 + i) % 12) + 1;
+      const y = startYear + Math.floor((startMonth - 1 + i) / 12);
+      y1Keys.add(`${y}${String(m).padStart(2, '0')}`);
+    }
     const sum = Object.entries(rec.monthly)
-      .filter(([k]) => parseInt(k.slice(0, 4), 10) === closeYear)
+      .filter(([k]) => y1Keys.has(k))
       .reduce((s, [, v]) => s + v, 0);
     return sum > 0 ? sum : null;
   })();
@@ -759,9 +768,23 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             )}
 
             {/* Income deductions (vacancy, LTL, concessions, bad debt, NRU) */}
-            {preNriRows.map((r, i) => (
-              <React.Fragment key={r.field}>
-                <DataRow row={r} isEven={i % 2 === 0} shade="blue"
+            {preNriRows.map((r, i) => {
+              // §14 Task #574: For the concessions row, override the resolved display value
+              // with the Y1 recognized (straight-line amortized) sum when available.
+              // Spec: "replace the static earned concessions value with the Y1 sum of
+              // concession_recognition.monthly; single-number display."
+              // EARNED-VS-RECOGNIZED: the override is transparent to the user via tooltip.
+              const displayRow = (r.field === 'concessions' && y1RecognizedConcessions != null)
+                ? {
+                    ...r,
+                    // Concessions are contra-revenue (negative); recognized sum is positive.
+                    resolved: -Math.abs(y1RecognizedConcessions),
+                    // Preserve source label so the source badge still renders correctly.
+                    source: r.source ?? 'recognition',
+                  }
+                : r;
+              return (
+                <DataRow key={r.field} row={displayRow} isEven={i % 2 === 0} shade="blue"
                   corrections={corrections} setCorrections={setCorrections}
                   totalUnits={totalUnits} egiResolved={egiResolved}
                   activePeriod={activePeriod}
@@ -769,34 +792,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   onResetCorrection={handleResetCorrection}
                   evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                 />
-                {/* §14 Y1 Recognized Concessions sub-row — injected after earned concessions.
-                    Uses recognized (amortized) sum for Year 1 calendar window, not earned cash.
-                    EARNED-VS-RECOGNIZED-DISTINCTION: never collapsed into the earned row above. */}
-                {r.field === 'concessions' && y1RecognizedConcessions != null && (
-                  <tr style={{ background: '#1a1500', borderBottom: '1px solid #2d2010' }}>
-                    <td
-                      colSpan={1}
-                      style={{ padding: '3px 8px 3px 24px', color: '#f59e0b', fontSize: 9, fontFamily: MONO, position: 'sticky', left: 0, background: '#1a1500', zIndex: 1 }}
-                      title={`Recognized (straight-line amortized) concessions for Year 1. Distinct from earned (cash) concessions above — §14 EARNED-VS-RECOGNIZED. Method: ${data.concessionRecognition?.last_recomputed ? 'STRAIGHT_LINE_GAAP (last recomputed ' + new Date(data.concessionRecognition.last_recomputed).toLocaleDateString() + ')' : 'STRAIGHT_LINE_GAAP'}.`}
-                    >
-                      <span style={{ color: '#78716c', marginRight: 4 }}>↳</span>
-                      Recognized Y1 (amortized)
-                      <span style={{
-                        marginLeft: 6, fontSize: 7, color: '#f59e0b',
-                        background: '#2d1d00', border: '1px solid #f59e0b40',
-                        padding: '0 3px', borderRadius: 2,
-                      }}>AMORT</span>
-                    </td>
-                    <td style={{ padding: '3px 8px', textAlign: 'right', color: '#f59e0b', fontSize: 9, fontFamily: MONO }}
-                      title="Sum of recognized (straight-line amortized) concession dollars for Year 1 window. See Projections tab for month-by-month detail."
-                    >
-                      {`(${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(y1RecognizedConcessions)})`}
-                    </td>
-                    <td colSpan={7} style={{ background: '#1a1500' }} />
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
+              );
+            })}
 
             {/* NRI — broker vs platform comparison after deductions */}
             {byField['net_rental_income'] && (

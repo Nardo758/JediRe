@@ -1394,7 +1394,7 @@ export function ProjectionsTab({
                             >
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <span style={{ color: BT.text.amber }}>
-                                  Recognized Concessions ({currentCalendarYear})
+                                  Current Year ({currentCalendarYear}) Concessions
                                 </span>
                                 <span style={{ fontSize: 7, color: BT.text.amber, fontFamily: MONO, padding: '0 2px', border: `1px solid ${BT.text.amber}40`, borderRadius: 2 }}>
                                   AMORT
