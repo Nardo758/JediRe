@@ -1,0 +1,21 @@
+Document delivered. The full spec set for the Leasing/Lease Velocity workstream is now complete:
+
+M07_SUBJECT_HISTORY_AND_DIFF_EXTRACTOR_SPEC — calibration foundation
+CONCESSION_ENVIRONMENT_SUB_ENGINE_SPEC — concession formula stack
+M07_PROJECTIONS_INTEGRATION_SPEC — adapter wiring M07 to M09 rows
+INLINE_ASSUMPTION_BLOCK_COMPONENT_SPEC — UI component
+M07_SCHEMA_EXTENSION_FOR_LEASE_VELOCITY — payload prerequisite
+LEASE_VELOCITY_ENGINE_SPEC — algorithm/orchestrator
+LEASING_ASSUMPTIONS_UI_SPEC — editable surface configuration
+CONCESSION_AMORTIZATION_SPEC — earned-vs-recognized translation layer
+
+A few things worth flagging on this last spec specifically:
+The Cash-Invariant-Across-Treatments runtime assertion (§14) is non-negotiable. Wire it into CI as the first regression test. The failure mode it prevents — total cash differing by hundreds of thousands across HYBRID/OPERATING/CAPITALIZED views of the same deal — is the worst class of bug because the numbers always "look reasonable" individually. You only catch it when somebody runs all three treatments and notices the discrepancy. By then it's already polluted IRR calculations in deal memos. The runtime check is cheap and catches it on every test run.
+The Earned-vs-Recognized distinction (§14) is the conceptual core of this whole spec. The screenshot from earlier showed two rows that look similar but mean different things: TOTAL CONCESSIONS = dollars associated with lease events in the period; Current Year (YYYY) Concessions = dollars hitting the calendar-year P&L. They're computed from the same underlying ConcessionRecord stream but aggregated differently. F9's row labels must be unambiguous about which is which — mixing them in one row is the most common cause of "the model doesn't tie out" frustration in CRE underwriting.
+The Subject-History-Concessions-Are-First-Class-Records rule (§14) is the unification that makes the engine simple. Every concession — past observed, present projected, future projected — flows through one ConcessionRecord array and one amortization engine. The engine doesn't know or care whether a record came from a rent roll diff or a Lease Velocity projection. This is what allows the "Current Year YYYY" row to seamlessly include amortization tail from leases that commenced before the analysis horizon. Bifurcating historical and projected processing creates timing inconsistencies that are nearly impossible to debug.
+Build order matters here in a specific way: the Lease Velocity Engine should produce ConcessionRecord arrays in §13 step 5 BEFORE the Amortization Engine starts consuming them. Otherwise the Amortization Engine has nothing to amortize and ships in a non-functional state. The integration in step 5 is small (a few lines in Lease Velocity output assembly) but it's the gating dependency — if Replit builds the Amortization Engine first and tries to test it, they'll need synthetic ConcessionRecord fixtures to validate against.
+Final build sequence for the entire workstream:
+
+Specs 5 → 1 → 2 → 6 → 8 → 3 → 4 → 7
+
+That is: schema first (5), data layer (1), concessions data (2), algorithm orchestrator (6), amortization layer (8), integration adapter (3), component (4), then the configuration that ties it all to the user (7). Eight services, ~5-7 weeks of focused work for a senior engineer or a well-coordinated agent run.

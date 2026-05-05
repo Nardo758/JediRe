@@ -11,6 +11,8 @@ import { useDealStore } from '../../../stores/dealStore';
 import { computeConfidenceBands, evaluateRefusal } from '../../../services/proforma/validators';
 import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma/types';
 import { LeasingCostTreatmentToggle, type LeasingCostTreatment } from './LeaseVelocitySection';
+import { LeasingAssumptionsTab, LeasingSummaryCard } from './LeasingAssumptionsTab';
+import { SECTION5_MIGRATION_MAP } from '../../../config/leasing-fields.config';
 
 // ─── Backend contract ──────────────────────────────────────────────────────────
 interface OSRow {
@@ -1523,6 +1525,60 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   // are const bindings declared later in this function scope.
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
+
+  // ── Leasing sub-tab state ──────────────────────────────────────────────────
+  // MAX 3 sub-tabs under Assumptions. Do not add a 4th.
+  // If a new concern grows large enough, it belongs on its own F-key page.
+  type AssumptionsSubTab = 'GENERAL' | 'LEASING';
+  const [activeSubTab, setActiveSubTab] = useState<AssumptionsSubTab>('GENERAL');
+
+  // Leasing field overrides — keyed by LeasingFieldDef.id (not RowDef.key).
+  // Separate from `overrides` which uses RowDef.key + year.
+  const [leasingFieldOverrides, setLeasingFieldOverrides] = useState<Record<string, string | number | null>>({});
+
+  // ── Section 5 override migration ──────────────────────────────────────────
+  // One-time idempotent migration: old Section 5 override paths → new spec paths.
+  // Runs once per deal on first financials load. Keys that map to null are dropped
+  // (engine-computed; no longer user-overridable).
+  const migrationDoneRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!dealId || migrationDoneRef.current === dealId) return;
+    migrationDoneRef.current = dealId;
+    setOverrides(prev => {
+      const next = { ...prev };
+      let changed = false;
+      for (const [oldKey, newKey] of Object.entries(SECTION5_MIGRATION_MAP)) {
+        if (oldKey in next) {
+          if (newKey !== null && !(newKey in next)) {
+            next[newKey] = next[oldKey];
+          }
+          delete next[oldKey];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [dealId]);
+
+  // Handler for leasing field commits
+  const handleLeasingFieldCommit = useCallback((fieldId: string, rawInput: string) => {
+    const trimmed = rawInput.trim();
+    if (!trimmed) return;
+    // Parse numeric vs string
+    const num = parseFloat(trimmed.replace('%', ''));
+    const isNum = !isNaN(num);
+    // For percent fields, convert "45" or "45%" → 0.45
+    // We don't have direct access to the field def here — heuristic: if input ends with %
+    // or is between 0 and 100, treat as percent.
+    const isPct = trimmed.endsWith('%');
+    const finalVal = isNum ? (isPct ? num / 100 : num) : trimmed;
+    setLeasingFieldOverrides(prev => ({ ...prev, [fieldId]: finalVal as string | number }));
+    // Emit assumption:changed so downstream consumers (Projections, Returns) re-render
+    window.dispatchEvent(new CustomEvent('assumption:changed', {
+      detail: { source: 'leasing_assumptions_tab', fieldId, value: finalVal },
+    }));
+  }, []);
+
   const fetchRef   = useRef(0);
   const patchQueue = useRef<Array<{field:string; year:number|null; value:number|null}>>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -2233,6 +2289,43 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         </div>
       </div>
 
+      {/* ── Sub-tab bar: GENERAL | LEASING ─────────────────────────────────── */}
+      {/* MAX 3 sub-tabs total. Do not add a 4th — put new concerns on their own F-key page. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 1,
+        padding: '0 16px', background: '#0d0d0d', borderBottom: '1px solid #1a1a1a',
+        flexShrink: 0,
+      }}>
+        {(['GENERAL', 'LEASING'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveSubTab(tab)}
+            style={{
+              fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: '0.07em',
+              padding: '6px 14px', border: 'none', cursor: 'pointer',
+              background: 'none',
+              color: activeSubTab === tab ? '#e2e8f0' : '#334155',
+              borderBottom: activeSubTab === tab ? '2px solid #3b82f6' : '2px solid transparent',
+              transition: 'all 0.15s',
+            }}
+          >
+            {tab === 'GENERAL' ? 'GENERAL' : 'LEASING'}
+          </button>
+        ))}
+      </div>
+
+      {/* ── LEASING sub-tab ────────────────────────────────────────────────── */}
+      {activeSubTab === 'LEASING' && (
+        <LeasingAssumptionsTab
+          financials={financials}
+          fieldOverrides={leasingFieldOverrides}
+          onFieldCommit={handleLeasingFieldCommit}
+        />
+      )}
+
+      {/* ── GENERAL sub-tab — everything below only mounts when GENERAL is active ── */}
+      {activeSubTab === 'GENERAL' && <>
+
       {/* M07 offline banner */}
       {trafficOffline && (
         <div className="flex items-center gap-3 px-4 py-1.5 bg-amber-900/20 border-b border-amber-500/20 text-[10px] text-amber-400">
@@ -2513,7 +2606,22 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                         </span>
                       </td>
                     </tr>
-                    {!isCollapsed && rows.map(rd => {
+                    {/* Section 5-traf: replace the raw T-code rows with the 4-metric Leasing
+                        Summary Card + a "→ Edit in Leasing tab" button. The T-codes and M07
+                        signals are still computed by the engine; they simply don't render here
+                        anymore. All editing moves to the dedicated Leasing sub-tab. */}
+                    {!isCollapsed && id === '5-traf' && (
+                      <tr>
+                        <td colSpan={years.length + 2} style={{ padding: 0 }}>
+                          <LeasingSummaryCard
+                            financials={financials}
+                            overrides={leasingFieldOverrides}
+                            onGoToLeasing={() => setActiveSubTab('LEASING')}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    {!isCollapsed && id !== '5-traf' && rows.map(rd => {
                       const mode = getMode(rd.key);
                       return (
                         <React.Fragment key={rd.key}>
@@ -2627,7 +2735,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                         </React.Fragment>
                       );
                     })}
-                    {!isCollapsed && sec === 5 && <GprDecompRow years={years} financials={financials} />}
+                    {!isCollapsed && sec === 5 && id !== '5-traf' && <GprDecompRow years={years} financials={financials} />}
                   </React.Fragment>
                 );
               })}
@@ -2637,7 +2745,10 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         <FindingsRail financials={financials} narrativeBlocks={narrativeBlocks} />
       </div>
 
-      {/* Footer */}
+      {/* end GENERAL sub-tab */}
+      </>}
+
+      {/* Footer — always visible regardless of active sub-tab */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#0a0a0a] border-t border-[#1e1e1e] sticky bottom-0 z-20">
         <div className="flex items-center gap-6">
           <div className="flex flex-col">

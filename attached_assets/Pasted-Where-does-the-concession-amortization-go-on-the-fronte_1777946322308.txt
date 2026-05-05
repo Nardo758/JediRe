@@ -1,0 +1,77 @@
+Where does the concession amortization go on the frontend? Projections?9:56 PMClaude responded: Projections is the primary home, but the amortization output flows to multiple F9 surfaces.Mapped concession amortization outputs across multiple frontend tabsMapped concession amortization outputs across multiple frontend tabsProjections is the primary home, but the amortization output flows to multiple F9 surfaces. Each surface shows a different aggregation of the same underlying data.
+The data → surface mapping
+F9 SurfaceWhat it showsSource fieldProjections (primary)Two time-series rows: per-period earned + per-calendar-year recognizeddealContext.concession_recognition.monthly and .by_calendar_yearPro FormaYear-1 single-number total in the rent build (feeds Effective Rent line)sum of monthly over Year 1Sources & UsesCapitalized lease-up concession line (when treatment = CAPITALIZED)sum of lease-up-period records flagged for capitalizationReturnsEmbedded in NOI/CF per period; not visible as linereads recognized values for cash flow mathDecision / MemoNarrative reference ("Lease-up reserve includes $480K of capitalized concessions...")summary stats
+The Assumptions tab does NOT show amortization output. It exposes the method selection (STRAIGHT_LINE_GAAP / CASH_AT_COMMENCEMENT / BURN_OFF) as a user-editable field in the Leasing sub-tab > Concessions section. But the result of that method choice lives on the view tabs.
+On Projections specifically
+Two read-only rows in the Concessions block:
+┌─ CONCESSIONS ─────────────────────────────────────────────────────┐
+│ Expected New Lease — Onetime Concessions   (19,194)  (13,710) ... │  ← detail
+│ Expected New Lease — On-Going Concessions       0         0   ... │  ← detail
+│ Renewal — Onetime Concessions               (4,500)   (3,000) ... │  ← detail
+│ Renewal — On-Going Concessions                  0         0   ... │  ← detail
+│ ─────────────────────────────────────────────────────────────────│
+│ TOTAL CONCESSIONS (earned)                 (23,694) (16,710) ... │  ← read-only output
+│ Current year (2026) Concessions            (29,116) (21,448) ... │  ← read-only output
+└────────────────────────────────────────────────────────────────────┘
+The four detail lines above TOTAL are derived from per-event math (count × per-unit amount) — these tie directly to leasing activity in each period. Earned dollars.
+The TOTAL row is the sum of the four lines. Still earned dollars.
+The "Current year" row is the amortization recognition — the calendar-year-portion of recognized concessions for current calendar year. This is the row that depends on the Concession Amortization Engine's output (per-month recognition rolled into the calendar year). Different math, different value, same source data.
+Both rows are clickable. Click opens the §9.2 drilldown modal showing the full breakdown — which lease cohorts contributed, what method, calendar vs fiscal split, write-offs in that period.
+On Pro Forma
+Pro Forma is the Year-1 single-column institutional view. Concessions appear as:
+Market Rent                        $5,609,460
+Loss to Lease                       (109,990)
+Gross Potential Rent                5,499,470
+Vacancy Loss                        (302,470)
+Concessions                         (220,310)   ← Y1 sum of recognized
+Bad Debt                             (54,995)
+─────────────────────────────────────────────
+Effective Rent                      4,921,695
+Single number — sum of monthly recognition over Y1. Same underlying data as Projections, just aggregated. Click → drilldown modal showing month-by-month for Y1 with method breakdown.
+On Sources & Uses (treatment-dependent)
+Only visible when leasing_cost_treatment = CAPITALIZED:
+SOURCES & USES — USES
+─────────────────────
+Acquisition Price                   38,500,000
+Closing Costs                          875,000
+Lease-up Operating Reserve             480,000   ← cumulative ramp shortfall
+Capitalized Lease-up Concessions     1,100,000   ← from amortization engine
+Reserves (Non-leasing)                 250,000
+─────────────────────────────────────────────
+Total Uses                          41,205,000
+When treatment = HYBRID or OPERATING, the "Capitalized Lease-up Concessions" line disappears (those dollars flow through P&L as effective-rent reduction instead). The Lease-up Operating Reserve line stays in HYBRID (the cumulative cash shortfall from operations during ramp is always a capital line, regardless of how concessions themselves are treated).
+This is the §6.2 treatment-toggle behavior from the Concession Amortization Spec made visible.
+On Returns — what's visible vs invisible
+Returns tab shows IRR, equity multiple, MOIC, cash-on-cash. Concessions don't show as a line — they're embedded in the NOI/CF math. But the treatment toggle changes IRR because it changes:
+
+WHEN concession cash impacts the model (Year 1 capital outflow under CAPITALIZED vs straight-line operating reduction under HYBRID)
+WHAT denominator IRR is calculated against (CAPITALIZED has higher equity basis)
+
+So a user who toggles between CAPITALIZED and HYBRID on the F9 top bar will see IRR move. That's the right behavior — same property, same cash, different presentation produces different IRR. The toggle's value is exactly to let the analyst run the same model under all three treatments and quote whichever fits the audience.
+Where it should NOT appear
+
+Not in the Assumptions tab. Method selection is an assumption (Leasing sub-tab > Concessions > Amortization Method). Output is not.
+Not in Inline Assumption Blocks. Inline Blocks are for assumption editing; the recognized-dollar output is read-only.
+Not on the General tab summary card. The card is for assumption headlines, not output. Adding "Total Concessions Y1: $220K" there mixes input and output surfaces.
+Not on a dedicated tab. A separate "Concession Schedule" tab is overkill for V1 — the Projections drilldown modal handles full-detail inspection on demand.
+
+The drilldown is the power-user surface
+For institutional users who want to audit specific concession recognition (e.g., "why is Mar 2026 showing $29K when only 24 leases signed?"), the §9.2 drilldown modal shows:
+
+Per-source-cohort contribution (new leases this period, renewals this period, continuing amortization from prior periods)
+Method used per concession type
+Calendar vs fiscal split for the period
+Write-offs (if any) included in the period
+
+Reachable from Projections cells, Pro Forma cells, and the Decision tab narrative. Same modal, three entry points.
+Practical implication for build order
+Build sequence:
+
+Concession Amortization Engine output → cached on dealContext.concession_recognition
+Wire output into Projections rows first (the canonical visible surface)
+Wire into Pro Forma rent build (single Y1 number)
+Wire into Sources & Uses CAPITALIZED treatment (treatment-toggle responsive)
+Returns automatically picks it up via NOI/CF (no separate wiring needed if NOI uses recognized values)
+Drilldown modal last (the audit surface — useful but not blocking)
+
+Most of the visible UX work is steps 2–4. Steps 1 and 5 are plumbing. Step 6 is a polish item that makes the institutional users happy and can defer if Phase 1 timeline is tight.
