@@ -214,6 +214,15 @@ export function SourcesUsesTab({
   // When mode = LEASE_UP_NEW_CONSTRUCTION and the backend has not already
   // included the line in su.uses, inject it from the LV engine output.
   // The reserve is ALWAYS a use-of-funds regardless of leasing_cost_treatment.
+  //
+  // Contract invariant: peakCumulativeReserve is the cumulative sum of
+  // monthly cash-shortfall reserves from the LV engine monthly table.
+  // It is treatment-invariant — cost treatment only affects whether concessions
+  // flow through ops or are capitalized, but the required cash reserve to fund
+  // the lease-up period does not change with treatment classification.
+  // Backend guarantee: when M07 + engine ship, peakCumulativeReserve will
+  // mirror max(cumulativeShortfall) from the monthly table regardless of
+  // the leasing_cost_treatment query param.
   const lv = f9Financials?.leaseVelocity ?? null;
   const showLeaseUpReserve =
     lv?.resolvedMode === 'LEASE_UP_NEW_CONSTRUCTION' &&

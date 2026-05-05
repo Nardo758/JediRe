@@ -81,12 +81,19 @@ function mergeModelIntoFinancials(
   out.returns = out.returns ?? {};
   // ── LV engine guard ─────────────────────────────────────────────────────
   // When the backend Lease Velocity engine has run (src.leaseVelocity != null)
-  // AND the /financials response already carries treatment-aware IRR/EM values,
-  // preserve those — do NOT overwrite with the legacy model summary which is
-  // treatment-agnostic.  Without this guard, toggling leasing_cost_treatment
-  // re-fetches /financials with treatment-aware returns but mergeModel would
-  // immediately clobber them, making the Returns tab appear unresponsive.
-  const hasLvReturns = src.leaseVelocity != null && src.returns?.lpNetIrr != null;
+  // AND the /financials response includes a returns object, preserve those
+  // treatment-aware values — do NOT overwrite with the legacy model summary
+  // which is treatment-agnostic.  Without this guard, toggling
+  // leasing_cost_treatment re-fetches /financials with treatment-aware returns
+  // but mergeModel would immediately clobber them.
+  //
+  // Guard rationale: keyed on `src.leaseVelocity != null` (LV engine has run)
+  // AND `src.returns != null` (backend included a returns object) rather than
+  // `lpNetIrr != null` — the latter would silently fall back to legacy metrics
+  // if the backend intentionally returns a null IRR (e.g. insufficient hold
+  // period).  A null backend IRR should propagate as null, not be replaced with
+  // a treatment-agnostic legacy value.
+  const hasLvReturns = src.leaseVelocity != null && src.returns != null;
   out.returns.lpNetIrr          = hasLvReturns ? src.returns!.lpNetIrr         : (s.lpIrr        ?? s.irr ?? null);
   out.returns.lpEquityMultiple  = hasLvReturns ? src.returns!.lpEquityMultiple  : (s.lpEm         ?? s.equityMultiple ?? null);
   out.returns.avgCashOnCash     = hasLvReturns ? src.returns!.avgCashOnCash     : (s.lpCoC        ?? s.cashOnCash ?? null);

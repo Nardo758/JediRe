@@ -322,9 +322,18 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
                         {modeLabel[lv.resolvedMode] ?? lv.resolvedMode}
                       </div>
                     </div>
-                    {/* Confidence */}
-                    <div style={{ background: BT.bg.base, padding: '8px 10px' }}>
-                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3 }}>CONFIDENCE</div>
+                    {/* Confidence — tooltip clarifies score impact */}
+                    <div
+                      style={{ background: BT.bg.base, padding: '8px 10px', cursor: 'help' }}
+                      title={
+                        lv.confidence === 'high'
+                          ? 'HIGH confidence: rent-roll data is dense and internally consistent. No penalty applied to Position Score.'
+                          : lv.confidence === 'medium'
+                          ? 'MEDIUM confidence: some rent-roll gaps or comp dispersion. −10 pts applied to Position Score.'
+                          : 'LOW confidence: sparse or conflicting data. −22 pts applied to Position Score. Underwrite conservatively.'
+                      }
+                    >
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3 }}>CONFIDENCE ⓘ</div>
                       <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: confColor[lv.confidence] ?? BT.text.muted }}>
                         {lv.confidence.toUpperCase()}
                       </div>
