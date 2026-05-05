@@ -21,6 +21,7 @@ import type {
 } from '../../types/traffic-calibration.types';
 import { SUBJECT_N_REQUIRED } from '../../types/traffic-calibration.types';
 import { logger } from '../../utils/logger';
+import type { ConcessionRecord } from '../../types/concessions';
 
 // ── Serialised unit shape stored in parsed_payload ──────────────────────────
 interface ParsedUnit {
@@ -74,6 +75,35 @@ const MAX_PER_UNIT_EVENTS = 10_000;
 
 // ── Minimum period to qualify for S2 ────────────────────────────────────────
 export const S2_MIN_PERIOD_DAYS = 60;
+
+// ── Historical record helpers (Task #573) ────────────────────────────────────
+
+/**
+ * Compute inclusive lease term in months between two ISO date strings.
+ * e.g. "2025-08-01" → "2026-07-31" = 12 months.
+ */
+function histMonthsBetween(startStr: string, endStr: string): number {
+  const s = new Date(startStr);
+  const e = new Date(endStr);
+  const months =
+    (e.getFullYear() - s.getFullYear()) * 12 +
+    (e.getMonth() - s.getMonth()) +
+    1;
+  return Math.max(1, months);
+}
+
+/**
+ * Add `n` months to an ISO date string and return the last day of the resulting month.
+ * Used to derive lease_end_date when the snapshot only carries lease_start.
+ */
+function addHistMonths(startStr: string, n: number): string {
+  const s = new Date(startStr);
+  const totalMonth0 = s.getFullYear() * 12 + s.getMonth() + n;
+  const endYear = Math.floor(totalMonth0 / 12);
+  const endMo = (totalMonth0 % 12) + 1; // 1-indexed
+  const lastDay = new Date(endYear, endMo, 0).getDate();
+  return `${endYear}-${String(endMo).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
 
 export class RentRollDiffService {
 
@@ -682,6 +712,117 @@ export class RentRollDiffService {
       dealId, diffCount, snapshotCount, coverageMonths: coverageMonths.toFixed(1),
       totalRenewalN, totalTurnoverN,
     });
+  }
+
+  // ============================================================================
+  // Public: Extract historical ConcessionRecord[] from the latest rent roll snapshot
+  // Task #573 — M07 subject history wiring.
+  //
+  // For each occupied unit in the most recent snapshot:
+  //   1. If concession_value > 0: explicit record, inferred_from_rent_roll = false
+  //   2. If concession_months > 0 (and no concession_value): convert months × rent
+  //   3. If market_rent > 0 && contract_rent < market_rent × 0.95: infer discount
+  //      amount = (market_rent - contract_rent) × termMonths; inferred = true
+  //
+  // All records carry is_subject_history = true.
+  // Records with cash_value === 0 after all derivations are still emitted (the
+  // amortization engine skips inferred zero-value records gracefully via §7.9).
+  // ============================================================================
+
+  async extractHistoricalConcessionRecords(dealId: string): Promise<ConcessionRecord[]> {
+    try {
+      const snapResult = await this.pool.query<{
+        id: number;
+        snapshot_date: string;
+        parsed_payload: ParsedUnit[] | null;
+      }>(`
+        SELECT id, snapshot_date::text, parsed_payload
+        FROM rent_roll_snapshots
+        WHERE deal_id = $1
+          AND status IN ('derived', 'calibrated', 'parsed')
+          AND parsed_payload IS NOT NULL
+        ORDER BY snapshot_date DESC, id DESC
+        LIMIT 1
+      `, [dealId]);
+
+      if (snapResult.rows.length === 0) {
+        logger.debug('[RentRollDiff] No snapshot found for historical concession extraction', { dealId });
+        return [];
+      }
+
+      const snap = snapResult.rows[0];
+      const units: ParsedUnit[] = snap.parsed_payload ?? [];
+      const snapDate = snap.snapshot_date;
+
+      const records: ConcessionRecord[] = [];
+
+      for (const unit of units) {
+        if (unit.unit_status !== 'occupied') continue;
+
+        // Derive lease term in months
+        const termMonths = unit.lease_start && unit.lease_end
+          ? histMonthsBetween(unit.lease_start, unit.lease_end)
+          : 12;
+
+        const leaseStart = unit.lease_start ?? snapDate.slice(0, 10);
+        const leaseEnd = unit.lease_end ?? addHistMonths(leaseStart, termMonths - 1);
+        const unitKey = unit.unit_id ?? `${unit.unit_type ?? 'unit'}::${unit.unit_sf ?? 'na'}`;
+
+        let cashValue = 0;
+        let inferred = false;
+
+        if (unit.concession_value != null && unit.concession_value > 0) {
+          cashValue = unit.concession_value;
+        } else if (unit.concession_months != null && unit.concession_months > 0) {
+          const monthlyRent = unit.contract_rent ?? unit.market_rent ?? 0;
+          cashValue = unit.concession_months * monthlyRent;
+        } else if (
+          unit.market_rent != null &&
+          unit.contract_rent != null &&
+          unit.market_rent > 0 &&
+          unit.contract_rent < unit.market_rent * 0.95
+        ) {
+          cashValue = (unit.market_rent - unit.contract_rent) * termMonths;
+          inferred = true;
+        } else {
+          continue;
+        }
+
+        records.push({
+          id: `hist-${dealId}-${unitKey}-${leaseStart}`,
+          deal_id: dealId,
+          lease_id: `hist-${unitKey}-${leaseStart}`,
+          concession_type: 'FREE_RENT',
+          cash_value: Math.round(cashValue),
+          lease_start_date: leaseStart,
+          lease_end_date: leaseEnd,
+          lease_term_months: termMonths,
+          amortization_method: 'STRAIGHT_LINE_GAAP',
+          is_lease_up_period: false,
+          leasing_cost_treatment: 'OPERATING',
+          is_renewal: unit.is_renewal ?? false,
+          is_subject_history: true,
+          inferred_from_rent_roll: inferred,
+          early_termination_date: null,
+          structural_write_off_date: null,
+        });
+      }
+
+      logger.info('[RentRollDiff] Historical concession records extracted', {
+        dealId,
+        snapshotId: snap.id,
+        totalOccupied: units.filter(u => u.unit_status === 'occupied').length,
+        recordsProduced: records.length,
+      });
+
+      return records;
+    } catch (err: unknown) {
+      logger.error('[RentRollDiff] extractHistoricalConcessionRecords failed', {
+        dealId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }
   }
 
   // ============================================================================

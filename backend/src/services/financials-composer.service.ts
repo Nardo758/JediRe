@@ -493,9 +493,21 @@ async function computeConcessionRecognition(
   dealId: string,
   dealData: Record<string, any>,
 ): Promise<DealConcessionRecognition | null> {
-  const records: ConcessionRecord[] = Array.isArray(dealData?.concession_records)
+  // ── Task #573: Merge all three concession record sources ─────────────────
+  // 1. lv_concession_records  — set by the LV engine route when dealId is present
+  // 2. history_concession_records — extracted by M07 subject history diff extractor
+  // 3. concession_records     — manually provided or legacy records
+  const lvRecords: ConcessionRecord[] = Array.isArray(dealData?.lv_concession_records)
+    ? (dealData.lv_concession_records as ConcessionRecord[])
+    : [];
+  const histRecords: ConcessionRecord[] = Array.isArray(dealData?.history_concession_records)
+    ? (dealData.history_concession_records as ConcessionRecord[])
+    : [];
+  const manualRecords: ConcessionRecord[] = Array.isArray(dealData?.concession_records)
     ? (dealData.concession_records as ConcessionRecord[])
     : [];
+
+  const records: ConcessionRecord[] = [...lvRecords, ...histRecords, ...manualRecords];
 
   if (records.length === 0) return null;
 

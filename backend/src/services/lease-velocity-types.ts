@@ -1,6 +1,8 @@
 // ── Lease Velocity Engine — Type Definitions ─────────────────────────────────
 // Spec: attached_assets/LEASE_VELOCITY_ENGINE_SPEC_1777935885256.md
 
+import type { ConcessionRecord } from '../types/concessions';
+
 export type LeaseMode =
   | 'LEASE_UP_NEW_CONSTRUCTION'
   | 'STABILIZED_MAINTENANCE'
@@ -61,6 +63,12 @@ export interface LeaseVelocityInputs {
   avg_lease_term_months?: number;
   turn_cost_per_unit?: number;
   property_class?: 'A' | 'B' | 'C';
+  /**
+   * Optional deal identifier.
+   * When present, the engine embeds it in generated ConcessionRecord.deal_id
+   * and the API route persists concession_records to deal_data.
+   */
+  deal_id?: string;
 }
 
 export interface MonthOutput {
@@ -108,4 +116,17 @@ export interface LeaseVelocityResult {
   stabilization_month: number | null;
   cumulative_reserve_required: number;
   warnings: string[];
+  /**
+   * ConcessionRecord[] assembled from every lease-event month in the forward table.
+   * Task #573: LV Engine Output Assembly (§13 step 5).
+   *
+   * Each new-lease and renewal event with concession dollars produces one record,
+   * using the §4 platform default amortization method for the event type.
+   * Records are ready for direct consumption by amortizeConcessions().
+   *
+   * Empty array when no concession dollars are projected (zero-concession runs).
+   */
+  concession_records: ConcessionRecord[];
 }
+
+export type { ConcessionRecord };

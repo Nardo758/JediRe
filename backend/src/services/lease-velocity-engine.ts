@@ -1,4 +1,6 @@
 import type { LeaseMode, LeaseVelocityInputs, LeaseVelocityResult, MonthOutput, DealContext, LeasingCostTreatment, StabilizationDefinition } from './lease-velocity-types';
+import type { ConcessionRecord, ConcessionType } from '../types/concessions';
+import { type LeaseEventType, defaultMethodForEventType } from './concession-amortization/defaults';
 
 const PRE_LEASE_SIGNING_CURVE_6MO = [0.05, 0.08, 0.12, 0.15, 0.18, 0.22, 0.20];
 const MOVE_IN_LAG = { same_month_as_sign: 0.30, one_month_after: 0.55, two_months_after: 0.13, three_months_after: 0.02 };
@@ -181,6 +183,138 @@ function narr(mode: LeaseMode, inp: LeaseVelocityInputs, mo: MonthOutput[], sm: 
   return `Lease velocity engine: ${tm} months, ${ts} total signings.${wt}`;
 }
 
+// ── ConcessionRecord assembly ─────────────────────────────────────────────────
+
+/**
+ * Map a LeaseEventType to the ConcessionType field on ConcessionRecord.
+ * Free rent is the canonical concession for lease-up and renewal events;
+ * move-in specials for new-lease one-time and pre-lease signing bonuses.
+ */
+const EVENT_TO_CONCESSION_TYPE: Record<LeaseEventType, ConcessionType> = {
+  NEW_LEASE_ONETIME:  'MOVE_IN_SPECIAL',
+  NEW_LEASE_ONGOING:  'FREE_RENT',
+  RENEWAL_ONETIME:    'FREE_RENT',
+  RENEWAL_ONGOING:    'FREE_RENT',
+  LEASE_UP_INCENTIVE: 'FREE_RENT',
+  PRE_LEASE_BONUS:    'MOVE_IN_SPECIAL',
+};
+
+/**
+ * Compute the lease end date (ISO YYYY-MM-DD, last day of end month) given
+ * a calendar month string ("YYYY-MM") and a term length in months.
+ */
+function computeLeaseEndDate(calendarMonth: string, termMonths: number): string {
+  const yr = parseInt(calendarMonth.slice(0, 4), 10);
+  const mo = parseInt(calendarMonth.slice(5, 7), 10); // 1-indexed
+  const totalMonth0 = (yr * 12 + mo - 1) + (termMonths - 1); // 0-indexed end month
+  const endYear = Math.floor(totalMonth0 / 12);
+  const endMo = (totalMonth0 % 12) + 1; // 1-indexed
+  const lastDay = new Date(endYear, endMo, 0).getDate();
+  return `${endYear}-${String(endMo).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
+
+/**
+ * Build a single ConcessionRecord for a given lease event in a month.
+ */
+function makeRecord(
+  dealId: string,
+  calendarMonth: string,
+  eventType: LeaseEventType,
+  cashValue: number,
+  termMonths: number,
+  isLeaseUpPeriod: boolean,
+  treatment: LeasingCostTreatment,
+  suffix: string,
+): ConcessionRecord {
+  const leaseStart = `${calendarMonth}-01`;
+  const leaseEnd = computeLeaseEndDate(calendarMonth, termMonths);
+  return {
+    id: `${dealId}-lv-${calendarMonth}-${suffix}`,
+    deal_id: dealId,
+    lease_id: `lv-${calendarMonth}-${suffix}`,
+    concession_type: EVENT_TO_CONCESSION_TYPE[eventType],
+    cash_value: cashValue,
+    lease_start_date: leaseStart,
+    lease_end_date: leaseEnd,
+    lease_term_months: termMonths,
+    amortization_method: defaultMethodForEventType(eventType),
+    is_lease_up_period: isLeaseUpPeriod,
+    leasing_cost_treatment: treatment,
+    is_renewal: eventType === 'RENEWAL_ONETIME' || eventType === 'RENEWAL_ONGOING',
+    is_subject_history: false,
+    inferred_from_rent_roll: false,
+    early_termination_date: null,
+    structural_write_off_date: null,
+  };
+}
+
+/**
+ * Assemble ConcessionRecord[] from the monthly forward table produced by the LV engine.
+ *
+ * §13 step 5 — LV Engine Output Assembly:
+ *   For each MonthOutput with concession dollars:
+ *   - New lease signings: classified as PRE_LEASE_BONUS (pre-delivery), LEASE_UP_INCENTIVE
+ *     (lease-up window), or NEW_LEASE_ONETIME (stabilized).
+ *   - Renewal signings: classified as RENEWAL_ONETIME.
+ *   - is_lease_up_period: true when mode_for_month === 'LEASE_UP_NEW_CONSTRUCTION'.
+ *   - Months with mixed pre+on signings generate proportionally split records.
+ *   - Months with zero concession dollars produce no record (clean empty array).
+ */
+function buildConcessionRecords(
+  months: MonthOutput[],
+  inputs: LeaseVelocityInputs,
+  treatment: LeasingCostTreatment,
+): ConcessionRecord[] {
+  const dealId = inputs.deal_id ?? 'lv';
+  const termMonths = inputs.avg_lease_term_months ?? 12;
+  const records: ConcessionRecord[] = [];
+
+  for (const month of months) {
+    const cal = month.calendar_month;
+    const isLeaseUp = month.mode_for_month === 'LEASE_UP_NEW_CONSTRUCTION';
+
+    // ── New lease concessions ───────────────────────────────────────────────
+    const nlCash = month.concessions_new_lease;
+    if (nlCash > 0) {
+      const pre = month.pre_lease_signings;
+      const on = month.lease_up_signings;
+      const total = pre + on;
+
+      if (total === 0) {
+        // Signings info unavailable — emit one aggregate record
+        const eventType: LeaseEventType = isLeaseUp ? 'LEASE_UP_INCENTIVE' : 'NEW_LEASE_ONETIME';
+        records.push(makeRecord(dealId, cal, eventType, nlCash, termMonths, isLeaseUp, treatment, 'new'));
+      } else if (pre > 0 && on === 0) {
+        // Pure pre-lease month
+        records.push(makeRecord(dealId, cal, 'PRE_LEASE_BONUS', nlCash, termMonths, isLeaseUp, treatment, 'pre'));
+      } else if (pre === 0) {
+        // On-lease or stabilized signings only
+        const eventType: LeaseEventType = isLeaseUp ? 'LEASE_UP_INCENTIVE' : 'NEW_LEASE_ONETIME';
+        records.push(makeRecord(dealId, cal, eventType, nlCash, termMonths, isLeaseUp, treatment, 'new'));
+      } else {
+        // Mixed month — split proportionally between PRE_LEASE_BONUS and LEASE_UP_INCENTIVE
+        const preCash = Math.round((nlCash * pre) / total);
+        const onCash = nlCash - preCash;
+        if (preCash > 0) {
+          records.push(makeRecord(dealId, cal, 'PRE_LEASE_BONUS', preCash, termMonths, isLeaseUp, treatment, 'pre'));
+        }
+        if (onCash > 0) {
+          const eventType: LeaseEventType = isLeaseUp ? 'LEASE_UP_INCENTIVE' : 'NEW_LEASE_ONETIME';
+          records.push(makeRecord(dealId, cal, eventType, onCash, termMonths, isLeaseUp, treatment, 'new'));
+        }
+      }
+    }
+
+    // ── Renewal concessions ─────────────────────────────────────────────────
+    const rnCash = month.concessions_renewal;
+    if (rnCash > 0 && month.renewals > 0) {
+      records.push(makeRecord(dealId, cal, 'RENEWAL_ONETIME', rnCash, termMonths, false, treatment, 'ren'));
+    }
+  }
+
+  return records;
+}
+
 export class LeaseVelocityEngine {
   run(inputs: LeaseVelocityInputs, dc?: DealContext): LeaseVelocityResult {
     const { mode, w } = resMode(inputs, dc); const allW: string[] = [...w];
@@ -197,7 +331,20 @@ export class LeaseVelocityEngine {
       default: r = rnST(inputs, tu, tO, cO, mr, cls, def, cs, treatment);
     }
     allW.push(...r.w);
-    return { success: true, mode, inputs, months: r.mo, narrative: narr(mode, inputs, r.mo, r.sm, r.cr, allW), stabilization_month: r.sm, cumulative_reserve_required: r.cr, warnings: allW };
+
+    const concessionRecords = buildConcessionRecords(r.mo, inputs, treatment);
+
+    return {
+      success: true,
+      mode,
+      inputs,
+      months: r.mo,
+      narrative: narr(mode, inputs, r.mo, r.sm, r.cr, allW),
+      stabilization_month: r.sm,
+      cumulative_reserve_required: r.cr,
+      warnings: allW,
+      concession_records: concessionRecords,
+    };
   }
 }
 
