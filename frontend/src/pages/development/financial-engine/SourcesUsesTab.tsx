@@ -244,33 +244,14 @@ export function SourcesUsesTab({
     concessionRecognition != null &&
     !usesHasId.has('capitalizedConcessions');
 
-  const capitalizedConcessionsAmount: number | null = (() => {
-    if (!concessionRecognition) return null;
-    // Prefer backend-computed exact total when available (backend Task #574 wiring)
-    if (concessionRecognition.capitalizedLeaseUpTotal != null) {
-      return concessionRecognition.capitalizedLeaseUpTotal;
-    }
-    // Frontend approximation: filter monthly recognition to the lease-up window.
-    // Lease-up window = months 1..stabilizationMonth from the deal's close date.
-    const closeDate = f9Financials?.closeDate ?? null;
-    const stabilizationMonth = lv?.stabilizationMonth ?? null;
-    if (closeDate != null && stabilizationMonth != null && stabilizationMonth > 0) {
-      const refDate = new Date(closeDate);
-      const leaseUpKeys = new Set<string>();
-      for (let i = 0; i < stabilizationMonth; i++) {
-        const m = ((refDate.getMonth() + i) % 12) + 1;
-        const y = refDate.getFullYear() + Math.floor((refDate.getMonth() + i) / 12);
-        leaseUpKeys.add(`${y}${String(m).padStart(2, '0')}`);
-      }
-      const sum = Object.entries(concessionRecognition.monthly)
-        .filter(([k]) => leaseUpKeys.has(k))
-        .reduce((a, [, v]) => a + v, 0);
-      return sum > 0 ? sum : null;
-    }
-    // Last resort: full monthly sum when lease-up window cannot be computed.
-    const fullSum = Object.values(concessionRecognition.monthly).reduce((a, b) => a + b, 0);
-    return fullSum > 0 ? fullSum : null;
-  })();
+  // Value: concessionRecognition.capitalizedLeaseUpTotal — the backend-computed sum
+  // of amount_total for lease-up-period concession records flagged for capitalization.
+  // This field is populated by the backend when leasing_cost_treatment = CAPITALIZED.
+  // When absent (backend not yet wired / no lease-up records), the line is hidden.
+  // Do NOT fall back to concessionRecognition.monthly — that is a recognized-amortization
+  // schedule, not a capitalized-cash figure, and would misstate Uses.
+  const capitalizedConcessionsAmount: number | null =
+    concessionRecognition?.capitalizedLeaseUpTotal ?? null;
 
   // Effective total uses includes the reserve line when injected on the frontend.
   // effectiveDelta and effectiveBalanced must also account for the injected reserve

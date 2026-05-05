@@ -558,7 +558,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     const sum = Object.entries(rec.monthly)
       .filter(([k]) => y1Keys.has(k))
       .reduce((s, [, v]) => s + v, 0);
-    return sum > 0 ? sum : null;
+    // Return sum even if 0 — zero recognized concessions is a valid recognized value.
+    // Only return null when the data window is not determinable (closeDate missing above).
+    return sum;
   })();
 
   // Apply evidence summary-bar filter when a pill is active
@@ -809,24 +811,14 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     onResetCorrection={handleResetCorrection}
                     evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                   />
-                  {/* §14 Annotation: visible user-facing explanation when recognized value
-                      replaces earned. Not a financial row — no separate dollar amount shown.
-                      STRAIGHT_LINE_GAAP tooltip per Task #574 spec §4 requirement. */}
                   {isConcessionsOverridden && (
                     <tr style={{ background: '#110e00' }}>
                       <td
                         colSpan={9}
-                        style={{
-                          padding: '2px 8px 2px 28px',
-                          fontSize: 8,
-                          color: '#92714a',
-                          fontFamily: MONO,
-                          borderBottom: '1px solid #1f1a00',
-                          letterSpacing: '0.01em',
-                        }}
-                        title={`Recognized value (STRAIGHT_LINE_GAAP): Y1 concession amortization sum for ${data.closeDate ? new Date(data.closeDate).getFullYear() : '?'} analysis window. Earned (cash) total may differ — see Projections tab for month-by-month earned vs recognized detail. §14 EARNED-VS-RECOGNIZED-DISTINCTION.`}
+                        style={{ padding: '2px 8px 2px 28px', fontSize: 8, color: '#92714a', fontFamily: MONO, borderBottom: '1px solid #1f1a00' }}
+                        title={`Recognized (STRAIGHT_LINE_GAAP amortized) concessions for Y1 window starting ${data.closeDate ?? '?'}. Earned total may differ — see Projections tab for monthly earned vs recognized detail.`}
                       >
-                        ↑ Showing recognized (STRAIGHT_LINE_GAAP amortized) · Y1 window starting {data.closeDate ?? '?'} · earned total may differ · see Projections for monthly detail
+                        ↑ Recognized (STRAIGHT_LINE_GAAP) · Y1 from {data.closeDate ?? '?'} · earned total may differ · Projections for monthly detail
                       </td>
                     </tr>
                   )}
