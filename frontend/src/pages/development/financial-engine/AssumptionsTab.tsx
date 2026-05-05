@@ -13,6 +13,36 @@ import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma
 import { LeasingCostTreatmentToggle, type LeasingCostTreatment } from './LeaseVelocitySection';
 import { LeasingAssumptionsTab, LeasingSummaryCard } from './LeasingAssumptionsTab';
 import { SECTION5_MIGRATION_MAP, LEASING_FIELDS_BY_PATH } from '../../../config/leasing-fields.config';
+import type { LeaseMode } from '../../../config/leasing-fields.config';
+
+/**
+ * Resolve the canonical LeaseMode for a deal.
+ *
+ * Priority order (spec §6.5):
+ *   1. trafficProjection.mode.effective  — traffic engine authoritative source
+ *   2. leaseVelocity.resolvedMode        — LV engine fallback
+ *   3. null                              — engine not yet present
+ *
+ * Normalises legacy `V2_PENDING_VALUE_ADD` to `VALUE_ADD` so that
+ * Category J (Renovation Assumptions) renders correctly on older backends.
+ */
+function resolveLeaseMode(financials: { trafficProjection?: { mode?: { effective: string } | null } | null; leaseVelocity?: { resolvedMode?: string } | null } | null | undefined): LeaseMode | null {
+  const raw =
+    financials?.trafficProjection?.mode?.effective ??
+    financials?.leaseVelocity?.resolvedMode ??
+    null;
+  if (!raw) return null;
+  // Normalise legacy sentinel
+  if (raw === 'V2_PENDING_VALUE_ADD') return 'VALUE_ADD';
+  const VALID: LeaseMode[] = [
+    'LEASE_UP_NEW_CONSTRUCTION',
+    'STABILIZED_MAINTENANCE',
+    'OCCUPANCY_RECOVERY',
+    'VALUE_ADD',
+    'REDEVELOPMENT',
+  ];
+  return VALID.includes(raw as LeaseMode) ? (raw as LeaseMode) : null;
+}
 
 // ─── Backend contract ──────────────────────────────────────────────────────────
 interface OSRow {
@@ -1712,15 +1742,22 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       setLeasingPathOverrides(prev => ({ ...newPaths, ...prev })); // session edits win
       // Persist migrated values back through the existing override pipeline so they
       // become authoritative backend overrides (not just session-local).
-      // Enum values are stored as their index in field.enumValues (backend contract).
+      // ALL numeric targets are persisted regardless of whether they appear in the
+      // editable UI config (some migration targets are engine-read-only but still
+      // need to land in userOverrides as authoritative seeds).
+      // Enum values (strings) are encoded as their index in field.enumValues.
       for (const [path, val] of Object.entries(newPaths)) {
         if (val == null) continue;
-        const fieldDef = LEASING_FIELDS_BY_PATH[path];
-        if (!fieldDef) continue;
-        if (fieldDef.type === 'enum' && typeof val === 'string' && fieldDef.enumValues) {
-          const idx = fieldDef.enumValues.indexOf(val);
-          if (idx >= 0) enqueuePatch(path, 0, idx);
+        if (typeof val === 'string') {
+          // Enum migration — encode as index; only possible if path is in UI config
+          const fieldDef = LEASING_FIELDS_BY_PATH[path];
+          if (fieldDef?.enumValues) {
+            const idx = fieldDef.enumValues.indexOf(val);
+            if (idx >= 0) enqueuePatch(path, 0, idx);
+          }
+          // String paths not in config cannot be encoded numerically — skip persist
         } else if (typeof val === 'number') {
+          // Persist ALL numeric targets unconditionally (idempotent migration contract)
           enqueuePatch(path, 0, val);
         }
       }
@@ -2390,7 +2427,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       {activeSubTab === 'LEASING' && (
         <LeasingAssumptionsTab
           financials={financials}
-          leaseMode={(financials?.leaseVelocity?.resolvedMode ?? null) as import('../../../config/leasing-fields.config').LeaseMode | null}
+          leaseMode={resolveLeaseMode(financials)}
           leasingPathOverrides={leasingPathOverrides}
           onFieldCommit={handleLeasingFieldCommit}
         />

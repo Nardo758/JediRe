@@ -303,6 +303,9 @@ export interface F9DealFinancials {
     leaseUp: { weeksTo90: number|null; weeksTo93: number|null; weeksTo95: number|null }|null;
     calibrated: { vacancyPct: number|null; rentGrowthPct: number|null; exitCap: number|null; lastCalibrated: string|null };
     leasingSignals: { t01WeeklyTours: number|null; t05ClosingRatio: number|null; t06WeeklyLeases: number|null; t07LeaseUpWeeksTo95: number|null; stabilizedOccupancyPct: number|null; confidence: number|null }|null;
+    /** traffic.mode.effective — the authoritative five-mode deal mode from the traffic engine.
+     *  Preferred over leaseVelocity.resolvedMode for mode-conditional rendering. */
+    mode?: { effective: string; raw: string } | null;
   }|null;
   assumptions: {
     holdYears: number; exitCap: number|null; rentGrowthYr1: number|null;
@@ -434,8 +437,13 @@ export interface F9DealFinancials {
  * null until M07 schema extension + backend LV engine ship.
  */
 export interface F9LeaseVelocity {
-  /** Engine-resolved leasing mode for this deal */
-  resolvedMode: 'LEASE_UP_NEW_CONSTRUCTION' | 'STABILIZED_MAINTENANCE' | 'OCCUPANCY_RECOVERY' | 'V2_PENDING_VALUE_ADD';
+  /**
+   * Engine-resolved leasing mode for this deal.
+   * VALUE_ADD / REDEVELOPMENT may arrive as V2_PENDING_VALUE_ADD from older backends;
+   * use resolveLeaseMode() (AssumptionsTab) to normalize to the canonical five-mode set.
+   */
+  resolvedMode: 'LEASE_UP_NEW_CONSTRUCTION' | 'STABILIZED_MAINTENANCE' | 'OCCUPANCY_RECOVERY'
+    | 'VALUE_ADD' | 'REDEVELOPMENT' | 'V2_PENDING_VALUE_ADD';
   /** Data confidence — drives JEDI Position sub-score adjustment */
   confidence: 'high' | 'medium' | 'low';
   /** Month index (1-based) when 95% occupancy stabilization threshold is reached */
