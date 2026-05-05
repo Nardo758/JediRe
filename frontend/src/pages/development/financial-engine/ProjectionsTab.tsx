@@ -915,21 +915,16 @@ function TrafficFunnelPanel({ yearly, holdYears, isOffline, expanded, onToggle }
       <div
         onClick={onToggle}
         style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          display: 'flex', alignItems: 'center', gap: 8,
           padding: '4px 8px', cursor: 'pointer',
           background: BT.bg.header,
           borderTop: `1px solid ${BT.border.medium}`,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.met.physTraffic, letterSpacing: 0.8 }}>
-            {expanded ? '▾' : '▸'} TRAFFIC FUNNEL — M07 PROJECTIONS
-          </span>
-          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
-            walk-ins → tours → apps → leases
-          </span>
-        </div>
-        {/* W/M/Y toggle */}
+        <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.met.physTraffic, letterSpacing: 0.8 }}>
+          {expanded ? '▾' : '▸'} TRAFFIC FUNNEL — M07 PROJECTIONS
+        </span>
+        {/* W/M/Y toggle — kept left so it doesn't obscure year columns */}
         <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 2 }}>
           {(['W', 'M', 'Y'] as FunnelCadence[]).map(c => (
             <button
@@ -947,6 +942,9 @@ function TrafficFunnelPanel({ yearly, holdYears, isOffline, expanded, onToggle }
             </button>
           ))}
         </div>
+        <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+          walk-ins → tours → apps → leases
+        </span>
       </div>
 
       {expanded && (
