@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { AlertTriangle, Lock, ChevronDown, ChevronRight, Link, Check } from 'lucide-react';
+import { AlertTriangle, Lock, ChevronDown, ChevronRight, Link, Check, X, Info } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps, F9TaxData, F9TaxYear, F9DealFinancials } from './types';
@@ -72,7 +72,7 @@ function ColHeader() {
   );
 }
 
-function TaxRow({ label, broker, platform, user, resolved, userEditable = false, onUserChange, format = fmtDlr, locked = false, sub }: {
+function TaxRow({ label, broker, platform, user, resolved, userEditable = false, onUserChange, format = fmtDlr, locked = false, sub, platformTooltip }: {
   label: string;
   broker: number | null | undefined;
   platform: number | null | undefined;
@@ -83,6 +83,7 @@ function TaxRow({ label, broker, platform, user, resolved, userEditable = false,
   format?: (n: number | null | undefined) => string;
   locked?: boolean;
   sub?: string;
+  platformTooltip?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -118,9 +119,17 @@ function TaxRow({ label, broker, platform, user, resolved, userEditable = false,
       <td style={{ padding: '3px 10px', textAlign: 'center', fontFamily: MONO, fontSize: 10, color: BT.text.amber, borderRight: `1px solid ${BT.border.subtle}` }}>
         {format(broker)}
       </td>
-      {/* Platform */}
-      <td style={{ padding: '3px 10px', textAlign: 'center', fontFamily: MONO, fontSize: 10, color: BT.text.cyan, borderRight: `1px solid ${BT.border.subtle}` }}>
-        {format(platform)}
+      {/* Platform — LayeredValue tooltip when provenance is available */}
+      <td
+        title={platformTooltip}
+        style={{ padding: '3px 10px', textAlign: 'center', fontFamily: MONO, fontSize: 10, color: BT.text.cyan, borderRight: `1px solid ${BT.border.subtle}`, cursor: platformTooltip ? 'help' : 'default' }}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+          {format(platform)}
+          {platformTooltip && (
+            <Info style={{ width: 8, height: 8, color: `${BT.text.cyan}80`, flexShrink: 0 }} />
+          )}
+        </span>
       </td>
       {/* User */}
       <td
@@ -148,6 +157,141 @@ function TaxRow({ label, broker, platform, user, resolved, userEditable = false,
         {hasUser && <span style={{ fontSize: 7, color: BT.text.green, marginLeft: 3 }}>USR</span>}
       </td>
     </tr>
+  );
+}
+
+// ── RATES Modal ───────────────────────────────────────────────────────────────
+
+interface RateSheetEntry {
+  jurisdiction: string;
+  year: number;
+  version: string;
+  asOf: string;
+  validThrough: string;
+  sourceCitationsCount: number;
+}
+
+function RatesModal({ open, onClose, jurisdiction }: {
+  open: boolean;
+  onClose: () => void;
+  jurisdiction: string;
+}) {
+  const [coverage, setCoverage] = useState<RateSheetEntry[] | null>(null);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || coverage !== null) return;
+    setLoading(true);
+    setError(null);
+    apiClient.get('/api/v1/tax/rulesets/coverage')
+      .then((res: any) => setCoverage(res.data?.data?.coverage ?? []))
+      .catch((e: any) => setError(e?.message ?? 'Failed to load rate sheets'))
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  if (!open) return null;
+
+  const daysRemaining = (validThrough: string) => {
+    const ms = new Date(validThrough).getTime() - Date.now();
+    return Math.max(0, Math.floor(ms / 86400000));
+  };
+
+  const staleBadge = (validThrough: string) => {
+    const d = daysRemaining(validThrough);
+    if (d <= 0)  return { label: 'EXPIRED',    color: BT.text.red };
+    if (d <= 14) return { label: `${d}d LEFT`,  color: BT.text.orange };
+    if (d <= 30) return { label: `${d}d LEFT`,  color: BT.text.amber };
+    return { label: 'CURRENT', color: BT.text.green };
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: '#00000080', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, borderRadius: 6, width: 680, maxHeight: '80vh', display: 'flex', flexDirection: 'column', fontFamily: MONO }}
+      >
+        {/* Modal header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, flexShrink: 0, borderRadius: '6px 6px 0 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.white, letterSpacing: 0.8 }}>F9 · RATE SHEETS</span>
+            <span style={{ fontSize: 8, color: BT.text.muted }}>Active jurisdiction: {jurisdiction.toUpperCase()}</span>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: BT.text.muted, padding: 2 }}
+          >
+            <X style={{ width: 14, height: 14 }} />
+          </button>
+        </div>
+
+        {/* Modal body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          {loading && (
+            <div style={{ textAlign: 'center', padding: 24, fontSize: 10, color: BT.text.muted }}>Loading rate sheets…</div>
+          )}
+          {error && (
+            <div style={{ padding: 12, background: '#FF475715', border: `1px solid ${BT.text.red}40`, borderRadius: 4, fontSize: 9, color: BT.text.red }}>
+              {error}
+            </div>
+          )}
+          {coverage && !loading && (
+            <>
+              <div style={{ fontSize: 8, color: BT.text.muted, marginBottom: 10, letterSpacing: 0.6 }}>
+                {coverage.length} RATE SHEET{coverage.length !== 1 ? 'S' : ''} LOADED IN MEMORY
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
+                <thead>
+                  <tr style={{ background: BT.bg.panelAlt }}>
+                    {(['JURISDICTION', 'YEAR', 'VERSION', 'AS OF', 'VALID THROUGH', 'STATUS', 'SOURCES'] as const).map(h => (
+                      <th key={h} style={{ padding: '5px 10px', textAlign: 'left', color: BT.text.muted, letterSpacing: 0.5, fontWeight: 700, borderBottom: `1px solid ${BT.border.medium}`, whiteSpace: 'nowrap', fontSize: 8 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {coverage.map(s => {
+                    const badge = staleBadge(s.validThrough);
+                    const isActive = s.jurisdiction === jurisdiction.toLowerCase() || s.jurisdiction.startsWith(jurisdiction.toLowerCase().split('-')[0]);
+                    return (
+                      <tr
+                        key={`${s.jurisdiction}-${s.year}`}
+                        style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: isActive ? '#0A1F1A30' : 'transparent' }}
+                      >
+                        <td style={{ padding: '5px 10px', color: isActive ? BT.text.green : BT.text.primary, fontWeight: isActive ? 700 : 400 }}>
+                          {s.jurisdiction.toUpperCase()}
+                          {isActive && <span style={{ marginLeft: 4, fontSize: 7, color: BT.text.green }}>ACTIVE</span>}
+                        </td>
+                        <td style={{ padding: '5px 10px', color: BT.text.secondary }}>{s.year}</td>
+                        <td style={{ padding: '5px 10px', color: BT.text.muted, fontSize: 8 }}>{s.version}</td>
+                        <td style={{ padding: '5px 10px', color: BT.text.muted, fontSize: 8 }}>{s.asOf ? new Date(s.asOf).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '5px 10px', color: BT.text.muted, fontSize: 8 }}>{s.validThrough ? new Date(s.validThrough).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '5px 10px' }}>
+                          <span style={{ fontSize: 7, padding: '1px 5px', background: `${badge.color}20`, border: `1px solid ${badge.color}50`, borderRadius: 3, color: badge.color, fontWeight: 700 }}>
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: '5px 10px', color: BT.text.muted, textAlign: 'center' }}>{s.sourceCitationsCount}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {coverage.length === 0 && (
+                <div style={{ padding: 20, textAlign: 'center', fontSize: 9, color: BT.text.muted }}>No rate sheets loaded.</div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Modal footer */}
+        <div style={{ padding: '8px 16px', borderTop: `1px solid ${BT.border.medium}`, fontSize: 8, color: BT.text.muted, flexShrink: 0, borderRadius: '0 0 6px 6px' }}>
+          Rate sheets are loaded at server boot from <span style={{ color: BT.text.cyan }}>src/services/tax/rateSheets/*.json</span>. Re-deploy to refresh.
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -255,8 +399,9 @@ function DeprecSchedule({ taxes, costSeg, f9Financials }: {
       const taxableIncome = noi != null && annualInterest != null
         ? noi - annualInterest - deprec
         : null;
-      const taxPayable = taxableIncome != null ? Math.round(Math.max(0, taxableIncome) * 0.37) : null;
-      const taxShield = Math.round(deprec * 0.37);
+      const marginalRate = taxes.incomeTax.marginalTaxRate > 0 ? taxes.incomeTax.marginalTaxRate : 0.37;
+      const taxPayable = taxableIncome != null ? Math.round(Math.max(0, taxableIncome) * marginalRate) : null;
+      const taxShield = Math.round(deprec * marginalRate);
       return {
         yr,
         noi,
@@ -274,7 +419,8 @@ function DeprecSchedule({ taxes, costSeg, f9Financials }: {
     <tr><td colSpan={6} style={{ padding: '12px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>No purchase price — depreciation unavailable.</td></tr>
   );
 
-  const COLS = ['YR', 'NOI (EST)', 'INTEREST EXP', 'DEPRECIATION', 'TAXABLE INCOME', 'TAX PAYABLE (37%)', 'CUMUL DEPREC'];
+  const displayRatePct = Math.round((taxes.incomeTax.marginalTaxRate > 0 ? taxes.incomeTax.marginalTaxRate : 0.37) * 100);
+  const COLS = ['YR', 'NOI (EST)', 'INTEREST EXP', 'DEPRECIATION', 'TAXABLE INCOME', `TAX PAYABLE (${displayRatePct}%)`, 'CUMUL DEPREC'];
 
   return (
     <tr>
@@ -363,6 +509,7 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [costSeg, setCostSeg] = useState(true);
+  const [ratesOpen, setRatesOpen] = useState(false);
   // countyOverride: FL-only toggle (null = auto, true = Miami-Dade, false = statewide)
   const [countyOverride, setCountyOverride] = useState<boolean | null>(taxes?.userOverrides?.taxCounty ?? null);
 
@@ -546,6 +693,14 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* RATES pill — opens rate sheet coverage modal */}
+          <button
+            onClick={() => setRatesOpen(true)}
+            style={{ padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: '#0A1A2A', border: `1px solid #1A5C8A`, color: '#4A9FD0', borderRadius: 3, cursor: 'pointer', letterSpacing: 0.5 }}
+            title="View active rate sheets and jurisdictions"
+          >
+            RATES
+          </button>
           {isFlDeal ? (
             <>
               <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>COUNTY:</span>
@@ -627,6 +782,12 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                   userEditable
                   onUserChange={handleAssessedValue}
                   format={fmtDlr}
+                  platformTooltip={taxes ? [
+                    `Source: ${taxes.millageSource === 'live' ? 'live millage service' : taxes.millageSource === 'user' ? 'user override' : 'ruleset default'}`,
+                    `Jurisdiction: ${taxes.jurisdiction ?? 'unknown'}`,
+                    `Formula: purchasePrice used as post-acquisition assessed value`,
+                    `Confidence: ${taxes.millageSource === 'live' ? 'high' : taxes.millageSource === 'user' ? 'high' : 'medium'}`,
+                  ].join('\n') : undefined}
                 />
                 <TaxRow
                   label="Millage Rate"
@@ -641,6 +802,12 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                   userEditable
                   onUserChange={handleMillageRate}
                   format={fmtMills}
+                  platformTooltip={taxes ? [
+                    `Source: ${taxes.millageSource === 'live' ? 'live millage service (TX Comptroller / county PA)' : taxes.millageSource === 'user' ? 'user override' : 'ruleset hardcoded default'}`,
+                    `Jurisdiction: ${taxes.jurisdiction ?? 'unknown'}`,
+                    `Formula: ${taxes.reTax.isMiamiDade ? 'Miami-Dade overlay millage' : `${state} state ruleset millage`}`,
+                    `Rate: ${effMillageRate.toFixed(2)} mills per $1,000 assessed value`,
+                  ].join('\n') : undefined}
                 />
                 <TaxRow
                   label="Annual RE Tax (Y1)"
@@ -651,6 +818,14 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                   resolved={effAnnualTax}
                   locked
                   format={fmtDlr}
+                  platformTooltip={taxes && effAssessedValue != null ? [
+                    `Formula: assessedValue × millageRate / 1,000`,
+                    `Inputs: ${fmtDlr(effAssessedValue)} × ${effMillageRate.toFixed(2)} mills`,
+                    `Source: tax_service_computed`,
+                    taxes.reTax.deltaVsT12Pct != null
+                      ? `Delta vs T-12: ${taxes.reTax.deltaVsT12Pct >= 0 ? '+' : ''}${(taxes.reTax.deltaVsT12Pct * 100).toFixed(1)}% (post-acquisition reassessment)`
+                      : '',
+                  ].filter(Boolean).join('\n') : undefined}
                 />
                 {/* Assessment Projection Grid */}
                 <tr>
@@ -679,21 +854,67 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
             {/* ── Section B: TPP ──────────────────────────────────────────────── */}
             <SectionHeader
               id="B" title="TANGIBLE PERSONAL PROPERTY (TPP)"
-              subtitle="Personal property tax on FF&E and appliances"
+              subtitle={taxes?.tpp.tppTaxed === false
+                ? 'Not taxed in this jurisdiction'
+                : taxes?.tpp.tppFilingRequirement
+                  ? `${taxes.tpp.tppFilingRequirement.formName} due ${taxes.tpp.tppFilingRequirement.deadline} · $${taxes.tpp.tppExemption?.toLocaleString() ?? '0'} exemption`
+                  : 'Personal property tax on FF&E and appliances'}
               collapsed={collapsed.has('B')} onToggle={() => toggle('B')}
             />
             {!collapsed.has('B') && (
-              <TaxRow
-                label="TPP Annual Tax Estimate"
-                sub="FF&E + appliances × TPP millage (~6 mills). Override with actual assessor bill."
-                broker={taxes?.tpp.broker}
-                platform={taxes?.tpp.platform}
-                user={userTppAmount}
-                resolved={userTppAmount ?? taxes?.tpp.platform ?? taxes?.tpp.broker}
-                userEditable
-                onUserChange={handleTppAmount}
-                format={fmtDlr}
-              />
+              <>
+                {/* Section B metadata strip */}
+                {taxes?.tpp.tppTaxed !== undefined && (
+                  <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                    <td colSpan={6} style={{ padding: '5px 12px', background: BT.bg.panelAlt }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontFamily: MONO, fontSize: 8 }}>
+                        <span style={{ color: BT.text.muted }}>TPP TAXED:</span>
+                        <span style={{ color: taxes.tpp.tppTaxed ? BT.text.amber : BT.text.green, fontWeight: 700 }}>
+                          {taxes.tpp.tppTaxed ? 'YES' : 'NO — exempt jurisdiction'}
+                        </span>
+                        {taxes.tpp.tppExemption != null && taxes.tpp.tppExemption > 0 && (
+                          <>
+                            <span style={{ color: BT.text.muted }}>EXEMPTION THRESHOLD:</span>
+                            <span style={{ color: BT.text.cyan }}>${taxes.tpp.tppExemption.toLocaleString()}</span>
+                          </>
+                        )}
+                        {taxes.tpp.tppFilingRequirement && (
+                          <>
+                            <span style={{ color: BT.text.muted }}>FILING:</span>
+                            <span style={{ color: BT.text.amber }}>
+                              {taxes.tpp.tppFilingRequirement.formName} · due {taxes.tpp.tppFilingRequirement.deadline}
+                              {taxes.tpp.tppFilingRequirement.penaltyPct > 0 && (
+                                <span style={{ color: BT.text.red, marginLeft: 4 }}>
+                                  ({(taxes.tpp.tppFilingRequirement.penaltyPct * 100).toFixed(0)}% late penalty)
+                                </span>
+                              )}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                <TaxRow
+                  label="TPP Annual Tax Estimate"
+                  sub={taxes?.tpp.tppTaxed
+                    ? `State ruleset tppTax() — ${taxes.tpp.tppExemption ? `$${taxes.tpp.tppExemption.toLocaleString()} exemption applied` : 'no exemption'}. Override with actual assessor bill.`
+                    : 'FF&E + appliances × estimated millage. Override with actual assessor bill.'}
+                  broker={taxes?.tpp.broker}
+                  platform={taxes?.tpp.platform}
+                  user={userTppAmount}
+                  resolved={userTppAmount ?? taxes?.tpp.platform ?? taxes?.tpp.broker}
+                  userEditable
+                  onUserChange={handleTppAmount}
+                  format={fmtDlr}
+                  platformTooltip={taxes?.tpp.tppTaxed != null ? [
+                    `Source: tax_service_computed (stateRuleset.tppTax())`,
+                    `Jurisdiction taxes TPP: ${taxes.tpp.tppTaxed ? 'Yes' : 'No'}`,
+                    taxes.tpp.tppExemption != null ? `Exemption threshold: $${taxes.tpp.tppExemption.toLocaleString()}` : '',
+                    taxes.tpp.tppAnnualTax != null ? `Engine estimate: ${fmtDlr(taxes.tpp.tppAnnualTax)}` : '',
+                  ].filter(Boolean).join('\n') : undefined}
+                />
+              </>
             )}
 
             {/* ── Section C: Income Tax / Depreciation ────────────────────────── */}
@@ -946,6 +1167,13 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
           }
         </div>
       </div>
+
+      {/* RATES modal — mounts outside the scrollable area */}
+      <RatesModal
+        open={ratesOpen}
+        onClose={() => setRatesOpen(false)}
+        jurisdiction={taxes?.jurisdiction ?? 'fl'}
+      />
     </div>
   );
 }

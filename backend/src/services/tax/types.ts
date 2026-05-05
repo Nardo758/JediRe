@@ -198,6 +198,28 @@ export interface SectionCForecast {
 }
 
 /**
+ * SectionBForecast — TPP (Tangible Personal Property) results.
+ * Computed by taxService.forecast() using the state ruleset.
+ * Maps into the `taxes.tpp` shape sent to the frontend.
+ */
+export interface SectionBForecast {
+  /** True when this state/jurisdiction taxes TPP. */
+  taxesTPP: boolean;
+  /** Statutory exemption threshold in dollars (e.g. 25000 for FL). */
+  tppExemptionAmount: number;
+  /** Millage rate applied to TPP assessed value (0 when not taxed). */
+  tppMillage: number;
+  /** Platform Y1 annual TPP tax estimate (0 when not taxed or below exemption). */
+  tppAnnualTax: number;
+  /** Filing requirement details (form name, deadline, penalty). Null when not applicable. */
+  tppFilingRequirement: TPPFiling | null;
+  /** Formula trace for auditability. */
+  tppFormula: string;
+  /** Confidence level of this estimate. */
+  tppConfidence: 'high' | 'medium' | 'low';
+}
+
+/**
  * TaxForecast — output of taxService.forecast().
  *
  * Structured to map directly onto the existing `taxes.reTax` and
@@ -236,6 +258,13 @@ export interface TaxForecast {
 
   specialTaxes: SpecialTax[];
   abatementPrograms: AbatementProgram[];
+
+  /**
+   * Section B — Tangible Personal Property (TPP) forecast.
+   * Always populated by taxService.forecast() using the state ruleset.
+   * Additive field — callers that don't read it are unaffected.
+   */
+  sectionB: SectionBForecast;
 
   /**
    * Section C — Federal income tax & depreciation forecast.

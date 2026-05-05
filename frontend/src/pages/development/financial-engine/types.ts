@@ -563,6 +563,14 @@ export interface F9TaxData {
   tpp: {
     broker: number | null;
     platform: number | null;
+    /** Annual TPP tax from state ruleset tppTax() — 0 when jurisdiction does not tax TPP */
+    tppAnnualTax?: number | null;
+    /** Statutory exemption threshold in dollars (e.g. $25,000 FL) */
+    tppExemption?: number | null;
+    /** True when this state/county taxes tangible personal property */
+    tppTaxed?: boolean;
+    /** Filing requirement: form name, deadline, penalty fraction */
+    tppFilingRequirement?: { formName: string; deadline: string; penaltyPct: number } | null;
   };
   incomeTax: {
     purchasePrice: number | null;
@@ -573,6 +581,10 @@ export interface F9TaxData {
     costSegAvailablePct: number;
     /** Blended marginal income tax rate sourced from taxes engine (default 0.37 top bracket) */
     marginalTaxRate: number;
+    /** State income tax rate for this entity type (0 for TX/FL; ~5.39% for GA) */
+    stateIncomeTaxRate?: number;
+    /** Federal income tax rate for this entity type */
+    federalIncomeTaxRate?: number;
   };
   transferTax: {
     purchasePrice: number | null;

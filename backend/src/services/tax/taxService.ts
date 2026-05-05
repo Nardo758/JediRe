@@ -24,7 +24,7 @@
 
 import { resolveRulesetStack } from './resolver';
 import { federalRuleset, federalIncomeTaxRate, federalCostSegAvailablePct } from './rulesets/federal.ruleset';
-import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast, TaxForecastProvenance, LayeredValue } from './types';
+import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast, SectionBForecast, TaxForecastProvenance, LayeredValue, TPPContext } from './types';
 
 /**
  * Fixed year used as the default placed-in-service year when TaxContext omits it.
@@ -33,7 +33,7 @@ import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast, TaxForecastP
  */
 const FEDERAL_RATE_SHEET_YEAR = 2026;
 
-export { TaxContext, TaxForecast, TaxForecastProvenance, LayeredValue } from './types';
+export { TaxContext, TaxForecast, TaxForecastProvenance, LayeredValue, SectionBForecast } from './types';
 
 export const taxService = {
   /**
@@ -115,6 +115,27 @@ export const taxService = {
       assessmentGrowthPct = (perYear[1].assessedValue - perYear[0].assessedValue) / perYear[0].assessedValue;
       if (!isFinite(assessmentGrowthPct) || assessmentGrowthPct < 0) assessmentGrowthPct = 0;
     }
+
+    // ── Section B — Tangible Personal Property (always state) ───────────────
+    const tppCtx: TPPContext = {
+      state: ctx.state,
+      county: ctx.county,
+      purchasePrice: ctx.purchasePrice,
+      units: ctx.units,
+      ffEAssessedValue: null,  // ruleset uses its own estimation from units
+      ffEAgeYears: 5,
+      ffEFilingStatus: 'not_filed',
+    };
+    const tppResult = stateRuleset.tppTax(tppCtx, 1);
+    const sectionB: SectionBForecast = {
+      taxesTPP:            stateRuleset.taxesTPP(),
+      tppExemptionAmount:  stateRuleset.tppExemptionAmount(),
+      tppMillage:          stateRuleset.tppMillage(ctx),
+      tppAnnualTax:        tppResult.amount,
+      tppFilingRequirement: stateRuleset.tppFilingRequirement(),
+      tppFormula:          tppResult.formula,
+      tppConfidence:       tppResult.confidence,
+    };
 
     // ── Section C — Income Tax & Depreciation (always federal) ──────────────
     // Defaults must be deterministic (no runtime Date calls) so that identical
@@ -387,6 +408,7 @@ export const taxService = {
       transferTax,
       specialTaxes: stateRuleset.specialTaxes(ctx),
       abatementPrograms: stateRuleset.abatementEligibility(ctx),
+      sectionB,
       sectionC,
       provenance: finalProvenance,
     };

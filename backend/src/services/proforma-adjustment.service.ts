@@ -2464,11 +2464,14 @@ export async function getDealFinancials(
     ).catch(() => { /* intentionally swallowed — Kafka is not required for forecast accuracy */ });
   }
 
-  // TPP (Tangible Personal Property) estimates — generic per-unit, not state-specific
+  // TPP (Tangible Personal Property) — Section B wired to state ruleset tppTax()
   const rrLv = lv(year1Seed, 'replacement_reserves') as Record<string, unknown> | null;
   const rrBroker = layerN(rrLv, 'broker') ?? layerN(rrLv, 't12');
   const tppBroker: number | null = rrBroker != null ? Math.round(rrBroker * 0.5) : (totalUnits > 0 ? totalUnits * 150 : null);
-  const tppPlatform: number | null = totalUnits > 0 ? totalUnits * 200 : null;
+  // Platform TPP: use taxService sectionB when jurisdiction taxes TPP, else generic per-unit fallback
+  const tppPlatform: number | null = taxForecast.sectionB.taxesTPP && taxForecast.sectionB.tppAnnualTax > 0
+    ? taxForecast.sectionB.tppAnnualTax
+    : (totalUnits > 0 ? totalUnits * 200 : null);
 
   // Income tax / depreciation — sourced from taxService.forecast() sectionC
   const sc = taxForecast.sectionC;
@@ -2480,7 +2483,15 @@ export async function getDealFinancials(
     assessmentGrowthPct: taxForecast.assessmentGrowthPct,
     millageSource,
     reTax: taxForecast.reTax,
-    tpp: { broker: tppBroker, platform: tppPlatform },
+    tpp: {
+      broker: tppBroker,
+      platform: tppPlatform,
+      // Section B wired fields — exposed for F9 TaxesTab display
+      tppAnnualTax: taxForecast.sectionB.tppAnnualTax,
+      tppExemption: taxForecast.sectionB.tppExemptionAmount,
+      tppTaxed: taxForecast.sectionB.taxesTPP,
+      tppFilingRequirement: taxForecast.sectionB.tppFilingRequirement,
+    },
     incomeTax: {
       purchasePrice,
       landValuePct: sc.landAllocationPct,
@@ -2492,6 +2503,9 @@ export async function getDealFinancials(
       // Use the combined rate directly — a zero rate is valid (e.g. REIT federal rate = 0.00).
       // Do not apply a > 0 guard, which would wrongly overwrite legitimate zero-rate entities.
       marginalTaxRate: sc.effectiveCombinedRate,
+      // Section C: expose state and federal rates separately for F9 TaxesTab display
+      stateIncomeTaxRate: sc.stateIncomeTaxRate,
+      federalIncomeTaxRate: sc.federalIncomeTaxRate,
     },
     transferTax: {
       purchasePrice,
