@@ -507,11 +507,32 @@ async function computeConcessionRecognition(
     ? dealData.fiscal_year_start_month
     : 1;
 
+  // ── Content fingerprint (detects LV-output / subject-history changes) ───
+  // Fingerprints all fields that affect amortization output. A change in any record's
+  // cash_value, dates, method, write-off dates, or treatment flags invalidates the cache
+  // even when record count stays constant. Sort by id for stable ordering.
+  const fingerprint = [treatment, String(fiscalStart), ...records
+    .map(r => [
+      r.id,
+      String(r.cash_value),
+      r.amortization_method,
+      r.lease_start_date,
+      r.lease_end_date,
+      String(r.lease_term_months),
+      r.early_termination_date ?? '',
+      r.structural_write_off_date ?? '',
+      String(r.is_lease_up_period),
+      String(r.inferred_from_rent_roll ?? false),
+      r.leasing_cost_treatment,
+    ].join(':'))
+    .sort(),
+  ].join('|');
+
   // ── Cache read ───────────────────────────────────────────────────────────
   const cached = dealData?.concession_recognition as (DealConcessionRecognition & {
     _cache_key?: string;
   }) | null | undefined;
-  const cacheKey = `${treatment}|${fiscalStart}|${records.length}`;
+  const cacheKey = fingerprint;
   if (cached?.last_recomputed && cached?._cache_key === cacheKey) {
     const age = Date.now() - new Date(cached.last_recomputed).getTime();
     if (age < CONCESSION_RECOGNITION_CACHE_TTL_MS) {

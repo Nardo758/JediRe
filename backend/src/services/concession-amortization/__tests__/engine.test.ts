@@ -166,6 +166,25 @@ describe('§12.3 FRONT_LOADED', () => {
     expect(Math.abs(total - 1800)).toBeLessThanOrEqual(0.01);
   });
 
+  it('curve for 18-month lease: tail months 13–18 get non-zero weight', () => {
+    // Regression test for the n>12 bug where FRONT_LOADED_CURVE_12MO already sums to 1.0,
+    // causing remainder ≈ 0 and months 13+ getting zero weight.
+    const record = makeRecord({
+      amortization_method: 'FRONT_LOADED',
+      cash_value: 1800,
+      lease_term_months: 18,
+      lease_end_date: '2026-06-30',
+    });
+    const entries = generateFrontLoaded(record);
+    expect(entries).toHaveLength(18);
+    // All 18 entries must have a positive amount — no zero-weight tail months.
+    for (let i = 12; i < 18; i++) {
+      expect(entries[i].amount).toBeGreaterThan(0);
+    }
+    // Front-loaded: month 1 should still exceed any tail month.
+    expect(entries[0].amount).toBeGreaterThan(entries[12].amount);
+  });
+
   it('FRONT_LOADED_CURVE_12MO constant sums to 1.0', () => {
     const sum = FRONT_LOADED_CURVE_12MO.reduce((s, w) => s + w, 0);
     expect(Math.abs(sum - 1.0)).toBeLessThanOrEqual(0.001);

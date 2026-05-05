@@ -162,21 +162,28 @@ export function generateFrontLoaded(record: ConcessionRecord): MonthlyRecognitio
   let rawWeights: number[];
 
   if (n <= 12) {
+    // Take first n weights from the platform curve and renormalize (curve[11] = 0.00 is a floor).
     rawWeights = Array.from(FRONT_LOADED_CURVE_12MO.slice(0, n));
   } else {
-    // First 12 months use the platform curve
-    rawWeights = Array.from(FRONT_LOADED_CURVE_12MO);
-    // Remaining months share the last curve weight proportionally
-    const curveSum = rawWeights.reduce((s, w) => s + w, 0);
-    const remainder = Math.max(0, 1 - curveSum);
+    // For n > 12: scale the 12-month curve to cover 12/n of total recognition so months 1-12
+    // remain front-loaded relative to the full term. Months 13+ each receive an equal flat 1/n
+    // share. By construction: 12/n + (n-12)/n = 1.0, so no renormalization needed.
+    //
+    //   curve[i] * (12/n) for i=0..11  → front-loaded shape, proportionally scaled
+    //   1/n for months 13..n            → flat extension tail, each month gets 1/n
+    //
+    // This avoids the incorrect "remainder = 0" bug (FRONT_LOADED_CURVE_12MO sums to 1.0,
+    // so 1 - curveSum ≈ 0, giving zero weight to all extension months).
+    const scale = 12 / n;
+    rawWeights = FRONT_LOADED_CURVE_12MO.map(w => w * scale);
+    const tailWeight = 1 / n; // Each extension month = 1/n of total
     const extMonths = n - 12;
-    const perExtMonth = extMonths > 0 ? remainder / extMonths : 0;
     for (let i = 0; i < extMonths; i++) {
-      rawWeights.push(perExtMonth);
+      rawWeights.push(tailWeight);
     }
   }
 
-  // Renormalize so weights sum exactly to 1.0
+  // Renormalize to absorb floating-point drift (sum should already be 1.0 by construction).
   const total = rawWeights.reduce((s, w) => s + w, 0);
   const weights = total > 0 ? rawWeights.map(w => w / total) : rawWeights.map(() => 1 / n);
 
