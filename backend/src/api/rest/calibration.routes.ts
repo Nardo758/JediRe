@@ -1,445 +1,195 @@
 import { Router, Request, Response } from 'express';
-import { Pool } from 'pg';
-import { CalibrationCalculator } from '../../services/calibration/calibration-calculator';
-import {
-  PropertyActuals,
-  ForecastValidation,
-  CalibrationFactors,
-} from '../../models/calibration';
+import { calibrationLedger } from '../services/sigma/calibration-ledger';
+import type { PredictionRecord, RealizationRecord, StratumKey } from '../services/sigma/calibration-ledger';
 
-export function createCalibrationRoutes(pool: Pool): Router {
-  const router = Router();
-  const calibrationCalculator = new CalibrationCalculator();
+const router = Router();
 
-  /**
-   * POST /api/calibration/actuals
-   * Record actual performance data for a property
-   */
-  router.post('/actuals', async (req: Request, res: Response) => {
-    try {
-      const {
-        user_id,
-        property_id,
-        measurement_date,
-        measurement_type,
-        actual_noi,
-        actual_rent_avg,
-        actual_occupancy,
-        actual_expenses,
-        actual_revenue,
-        actual_traffic_weekly,
-        actual_traffic_data_source,
-        actual_construction_cost,
-        actual_months_to_complete,
-        actual_cost_overrun_percentage,
-        data_source,
-        quality_score,
-        notes
-      } = req.body as {
-        user_id: string;
-        property_id: string;
-        measurement_date: string;
-        measurement_type: string;
-        actual_noi?: number;
-        actual_rent_avg?: number;
-        actual_occupancy?: number;
-        actual_expenses?: number;
-        actual_revenue?: number;
-        actual_traffic_weekly?: number;
-        actual_traffic_data_source?: string;
-        actual_construction_cost?: number;
-        actual_months_to_complete?: number;
-        actual_cost_overrun_percentage?: number;
-        data_source?: string;
-        quality_score?: number;
-        notes?: string;
-      };
-
-      if (!user_id || !property_id || !measurement_date || !measurement_type) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, property_id, measurement_date, measurement_type' });
-      }
-
-      const result = await pool.query(
-        `INSERT INTO property_actuals 
-         (user_id, property_id, measurement_date, measurement_type, actual_noi, actual_rent_avg, actual_occupancy, actual_expenses, actual_revenue, actual_traffic_weekly, actual_traffic_data_source, actual_construction_cost, actual_months_to_complete, actual_cost_overrun_percentage, data_source, quality_score, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-         RETURNING *`,
-        [user_id, property_id, measurement_date, measurement_type, actual_noi || null, actual_rent_avg || null, actual_occupancy || null, actual_expenses || null, actual_revenue || null, actual_traffic_weekly || null, actual_traffic_data_source || null, actual_construction_cost || null, actual_months_to_complete || null, actual_cost_overrun_percentage || null, data_source || null, quality_score || null, notes || null]
-      );
-
-      res.json({
-        success: true,
-        actuals: result.rows[0],
-        message: 'Actuals recorded successfully'
-      });
-    } catch (error) {
-      console.error('Error recording actuals:', error);
-      res.status(500).json({ error: 'Failed to record actuals' });
+/**
+ * POST /api/v1/calibration/predictions
+ * Record a prediction emission.
+ * spec §9
+ */
+router.post('/predictions', (req: Request, res: Response) => {
+  try {
+    const prediction = req.body as PredictionRecord;
+    if (!prediction.predictionId || !prediction.source?.module || !prediction.metric) {
+      return res.status(400).json({ success: false, error: 'Missing required fields: predictionId, source.module, metric' });
     }
-  });
+    calibrationLedger.recordPrediction(prediction);
+    return res.json({ success: true, data: { predictionId: prediction.predictionId } });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Prediction recording error' });
+  }
+});
 
-  /**
-   * POST /api/calibration/actuals/bulk
-   * Bulk import actuals (e.g., from property management system)
-   */
-  router.post('/actuals/bulk', async (req: Request, res: Response) => {
-    try {
-      const { user_id, actuals } = req.body;
-
-      if (!user_id || !Array.isArray(actuals) || actuals.length === 0) {
-        return res.status(400).json({ error: 'Invalid bulk actuals data' });
-      }
-
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-
-        const insertedActuals = [];
-        for (const actual of actuals) {
-          const result = await client.query(
-            `INSERT INTO property_actuals 
-             (user_id, property_id, measurement_date, measurement_type, actual_noi, actual_rent_avg, actual_occupancy, actual_expenses, actual_revenue, notes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-             RETURNING *`,
-            [
-              user_id,
-              actual.property_id,
-              actual.measurement_date,
-              actual.measurement_type,
-              actual.actual_noi || null,
-              actual.actual_rent_avg || null,
-              actual.actual_occupancy || null,
-              actual.actual_expenses || null,
-              actual.actual_revenue || null,
-              actual.notes || null
-            ]
-          );
-          insertedActuals.push(result.rows[0]);
-        }
-
-        await client.query('COMMIT');
-
-        res.json({
-          success: true,
-          count: insertedActuals.length,
-          actuals: insertedActuals,
-          message: `Successfully recorded ${insertedActuals.length} actuals`
-        });
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    } catch (error) {
-      console.error('Error bulk recording actuals:', error);
-      res.status(500).json({ error: 'Failed to bulk record actuals' });
+/**
+ * POST /api/v1/calibration/realizations
+ * Record a realized outcome.
+ * spec §9
+ */
+router.post('/realizations', (req: Request, res: Response) => {
+  try {
+    const realization = req.body as RealizationRecord;
+    if (!realization.realizationId || !realization.metric || realization.observedValue == null) {
+      return res.status(400).json({ success: false, error: 'Missing required fields: realizationId, metric, observedValue' });
     }
-  });
+    calibrationLedger.recordRealization(realization);
+    return res.json({ success: true, data: { realizationId: realization.realizationId } });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Realization recording error' });
+  }
+});
 
-  /**
-   * POST /api/calibration/validate
-   * Create forecast validation (compare forecast vs actuals)
-   */
-  router.post('/validate', async (req: Request, res: Response) => {
-    try {
-      const {
-        user_id,
-        property_id,
-        module_id,
-        capsule_id,
-        forecast_metric,
-        forecast_value,
-        forecast_made_at,
-        forecast_timeframe,
-        actual_value,
-        actual_measured_at,
-        actual_data_source,
-        deal_context
-      } = req.body;
+/**
+ * POST /api/v1/calibration/pair
+ * Run the pairing engine.
+ * spec §9
+ */
+router.post('/pair', (req: Request, res: Response) => {
+  try {
+    const { since } = req.body as { since?: string };
+    const sinceDate = since ? new Date(since) : undefined;
+    const pairings = calibrationLedger.runPairing(sinceDate);
+    return res.json({ success: true, data: { pairingsCreated: pairings.length } });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Pairing error' });
+  }
+});
 
-      if (!user_id || !property_id || !module_id || !forecast_metric || forecast_value === undefined) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, property_id, module_id, forecast_metric, forecast_value' });
-      }
+/**
+ * GET /api/v1/calibration/reliability
+ * Get reliability stats for a stratum.
+ * spec §9
+ */
+router.get('/reliability', (req: Request, res: Response) => {
+  try {
+    const { source, metric, assetClass, regime, horizon } = req.query as Record<string, string>;
+    const stratum: StratumKey = {
+      source: source ?? 'all',
+      metric: metric ?? 'all',
+      assetClass: assetClass ?? 'multifamily',
+      regime: regime ?? 'Expansion',
+      horizon: horizon ?? 'medium',
+    };
+    const stats = calibrationLedger.computeReliability(stratum);
+    return res.json({ success: true, data: stats });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Reliability error' });
+  }
+});
 
-      const errorAbsolute = actual_value !== undefined && actual_value !== null
-        ? Math.abs(forecast_value - actual_value)
-        : null;
-      const errorPercentage = actual_value !== undefined && actual_value !== null && actual_value !== 0
-        ? Math.abs((forecast_value - actual_value) / actual_value) * 100
-        : null;
+/**
+ * GET /api/v1/calibration/factors
+ * Get calibration factors for a stratum.
+ * spec §9
+ */
+router.get('/factors', (req: Request, res: Response) => {
+  try {
+    const { source, metric, assetClass, regime } = req.query as Record<string, string>;
+    const stratum: StratumKey = {
+      source: source ?? 'all',
+      metric: metric ?? 'all',
+      assetClass: assetClass ?? 'multifamily',
+      regime: regime ?? 'Expansion',
+      horizon: 'medium',
+    };
+    const factors = calibrationLedger.computeCalibrationFactors(stratum);
+    return res.json({ success: true, data: factors });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Factors error' });
+  }
+});
 
-      const result = await pool.query(
-        `INSERT INTO forecast_validations 
-         (user_id, module_id, property_id, capsule_id, forecast_metric, forecast_value, forecast_made_at, forecast_timeframe, actual_value, actual_measured_at, actual_data_source, error_absolute, error_percentage, deal_context)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         RETURNING *`,
-        [user_id, module_id, property_id, capsule_id || null, forecast_metric, forecast_value, forecast_made_at || null, forecast_timeframe || null, actual_value || null, actual_measured_at || null, actual_data_source || null, errorAbsolute, errorPercentage, deal_context || null]
-      );
-
-      res.json({
-        success: true,
-        validation: result.rows[0],
-        message: 'Forecast validated successfully'
-      });
-    } catch (error) {
-      console.error('Error validating forecast:', error);
-      res.status(500).json({ error: 'Failed to validate forecast' });
+/**
+ * GET /api/v1/calibration/profile
+ * Get calibration profile for an agent.
+ * spec §9
+ */
+router.get('/profile', (req: Request, res: Response) => {
+  try {
+    const { source, version, assetClass, regime } = req.query as Record<string, string>;
+    if (!source) {
+      return res.status(400).json({ success: false, error: 'Missing required field: source' });
     }
-  });
+    const profile = calibrationLedger.getAgentProfile(source, version, assetClass, regime);
+    return res.json({ success: true, data: profile });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Profile error' });
+  }
+});
 
-  /**
-   * POST /api/calibration/calculate
-   * Calculate calibration factors from validation data
-   */
-  router.post('/calculate', async (req: Request, res: Response) => {
-    try {
-      const {
-        user_id,
-        module_id,
-        min_validations = 3
-      } = req.body as {
-        user_id: string;
-        module_id: string;
-        min_validations?: number;
-      };
+/**
+ * GET /api/v1/calibration/drift
+ * Get drift alerts.
+ * spec §9
+ */
+router.get('/drift', (req: Request, res: Response) => {
+  try {
+    const { status, since, metric } = req.query as Record<string, string>;
+    const sinceDate = since ? new Date(since) : undefined;
+    const alerts = calibrationLedger.getDriftAlerts(status, sinceDate, metric);
+    return res.json({ success: true, data: alerts });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Drift error' });
+  }
+});
 
-      if (!user_id || !module_id) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, module_id' });
-      }
-
-      const validationsResult = await pool.query(
-        `SELECT * FROM forecast_validations 
-         WHERE user_id = $1 AND module_id = $2
-         ORDER BY created_at DESC`,
-        [user_id, module_id]
-      );
-
-      if (validationsResult.rows.length < min_validations) {
-        return res.status(400).json({
-          error: `Insufficient validation data. Need at least ${min_validations} validations, have ${validationsResult.rows.length}`
-        });
-      }
-
-      const validations = validationsResult.rows as ForecastValidation[];
-
-      const factors = calibrationCalculator.calculateFactors(module_id, validations);
-      const confidence = calibrationCalculator.calculateConfidence(validations);
-
-      const result = await pool.query(
-        `INSERT INTO calibration_factors 
-         (user_id, module_id, calibration_data, sample_size, confidence)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING *`,
-        [user_id, module_id, factors, validations.length, confidence]
-      );
-
-      res.json({
-        success: true,
-        calibration: result.rows[0],
-        factors,
-        confidence,
-        validation_count: validations.length
-      });
-    } catch (error) {
-      console.error('Error calculating calibration:', error);
-      res.status(500).json({ error: 'Failed to calculate calibration' });
+/**
+ * POST /api/v1/calibration/drift/:id/acknowledge
+ * Acknowledge a drift alert.
+ */
+router.post('/drift/:id/acknowledge', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { resolutionNotes } = req.body as { resolutionNotes?: string };
+    const ok = calibrationLedger.acknowledgeDrift(id, resolutionNotes ?? 'Acknowledged');
+    if (!ok) {
+      return res.status(404).json({ success: false, error: `Alert ${id} not found` });
     }
-  });
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Acknowledge error' });
+  }
+});
 
-  /**
-   * GET /api/calibration/:userId/:moduleId
-   * Get calibration factors for a module
-   */
-  router.get('/:userId/:moduleId', async (req: Request, res: Response) => {
-    try {
-      const { userId, moduleId } = req.params;
+/**
+ * GET /api/v1/calibration/diagram
+ * Get reliability diagram data for UI rendering.
+ */
+router.get('/diagram', (req: Request, res: Response) => {
+  try {
+    const { source, metric, assetClass, regime } = req.query as Record<string, string>;
+    const stratum: StratumKey = {
+      source: source ?? 'all',
+      metric: metric ?? 'all',
+      assetClass: assetClass ?? 'multifamily',
+      regime: regime ?? 'Expansion',
+      horizon: 'medium',
+    };
+    const stats = calibrationLedger.computeReliability(stratum);
+    const points = [
+      { stated: 0.50, captured: stats.captured50 },
+      { stated: 0.80, captured: stats.captured80 },
+      { stated: 0.90, captured: stats.captured90 },
+      { stated: 0.95, captured: stats.captured95 },
+    ];
+    return res.json({ success: true, data: { points, nPairings: stats.nPairings, reliabilityScore: stats.reliabilityScore } });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Diagram error' });
+  }
+});
 
-      const result = await pool.query(
-        `SELECT * FROM calibration_factors 
-         WHERE user_id = $1 AND module_id = $2
-         ORDER BY last_updated DESC
-         LIMIT 1`,
-        [userId, moduleId]
-      );
+/**
+ * GET /api/v1/calibration/stats
+ * Get ledger statistics.
+ */
+router.get('/stats', (_req: Request, res: Response) => {
+  try {
+    const stats = calibrationLedger.getStats();
+    return res.json({ success: true, data: stats });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Stats error' });
+  }
+});
 
-      if (result.rows.length === 0) {
-        return res.json({
-          success: true,
-          calibrated: false,
-          message: 'No calibration data found for this module'
-        });
-      }
-
-      res.json({
-        success: true,
-        calibrated: true,
-        calibration: result.rows[0]
-      });
-    } catch (error) {
-      console.error('Error fetching calibration:', error);
-      res.status(500).json({ error: 'Failed to fetch calibration' });
-    }
-  });
-
-  /**
-   * GET /api/calibration/:userId/summary
-   * Get calibration summary for all modules (uses view)
-   */
-  router.get('/:userId/summary', async (req: Request, res: Response) => {
-    try {
-      const { userId } = req.params;
-
-      const result = await pool.query(
-        `SELECT * FROM user_validation_summary 
-         WHERE user_id = $1`,
-        [userId]
-      );
-
-      res.json({
-        success: true,
-        summary: result.rows
-      });
-    } catch (error) {
-      console.error('Error fetching calibration summary:', error);
-      res.status(500).json({ error: 'Failed to fetch calibration summary' });
-    }
-  });
-
-  /**
-   * GET /api/calibration/:userId/:moduleId/validations
-   * Get validation history for a module
-   */
-  router.get('/:userId/:moduleId/validations', async (req: Request, res: Response) => {
-    try {
-      const { userId, moduleId } = req.params;
-      const limit = parseInt(req.query.limit as string) || 50;
-      const offset = parseInt(req.query.offset as string) || 0;
-
-      const result = await pool.query(
-        `SELECT fv.*
-         FROM forecast_validations fv
-         WHERE fv.user_id = $1 AND fv.module_id = $2
-         ORDER BY fv.created_at DESC
-         LIMIT $3 OFFSET $4`,
-        [userId, moduleId, limit, offset]
-      );
-
-      const countResult = await pool.query(
-        `SELECT COUNT(*) FROM forecast_validations 
-         WHERE user_id = $1 AND module_id = $2`,
-        [userId, moduleId]
-      );
-
-      res.json({
-        success: true,
-        validations: result.rows,
-        total: parseInt(countResult.rows[0].count),
-        limit,
-        offset
-      });
-    } catch (error) {
-      console.error('Error fetching validations:', error);
-      res.status(500).json({ error: 'Failed to fetch validations' });
-    }
-  });
-
-  /**
-   * POST /api/calibration/:userId/:moduleId/recalculate
-   * Force recalculation of calibration factors
-   */
-  router.post('/:userId/:moduleId/recalculate', async (req: Request, res: Response) => {
-    try {
-      const { userId, moduleId } = req.params;
-
-      const validationsResult = await pool.query(
-        `SELECT * FROM forecast_validations 
-         WHERE user_id = $1 AND module_id = $2
-         ORDER BY created_at DESC`,
-        [userId, moduleId]
-      );
-
-      if (validationsResult.rows.length < 3) {
-        return res.status(400).json({
-          error: `Insufficient validation data. Need at least 3 validations, have ${validationsResult.rows.length}`
-        });
-      }
-
-      const validations = validationsResult.rows as ForecastValidation[];
-
-      const factors = calibrationCalculator.calculateFactors(moduleId, validations);
-      const confidence = calibrationCalculator.calculateConfidence(validations);
-
-      const result = await pool.query(
-        `INSERT INTO calibration_factors 
-         (user_id, module_id, calibration_data, sample_size, confidence)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING *`,
-        [userId, moduleId, factors, validations.length, confidence]
-      );
-
-      res.json({
-        success: true,
-        calibration: result.rows[0],
-        factors,
-        confidence,
-        validation_count: validations.length,
-        message: 'Calibration recalculated successfully'
-      });
-    } catch (error) {
-      console.error('Error recalculating calibration:', error);
-      res.status(500).json({ error: 'Failed to recalculate calibration' });
-    }
-  });
-
-  /**
-   * GET /api/calibration/:userId/:propertyId/actuals
-   * Get actuals history for a property
-   */
-  router.get('/:userId/:propertyId/actuals', async (req: Request, res: Response) => {
-    try {
-      const { userId, propertyId } = req.params;
-
-      const result = await pool.query(
-        `SELECT * FROM property_actuals 
-         WHERE user_id = $1 AND property_id = $2
-         ORDER BY measurement_date DESC`,
-        [userId, propertyId]
-      );
-
-      res.json({
-        success: true,
-        actuals: result.rows
-      });
-    } catch (error) {
-      console.error('Error fetching actuals:', error);
-      res.status(500).json({ error: 'Failed to fetch actuals' });
-    }
-  });
-
-  /**
-   * DELETE /api/calibration/:userId/:moduleId
-   * Reset calibration for a module
-   */
-  router.delete('/:userId/:moduleId', async (req: Request, res: Response) => {
-    try {
-      const { userId, moduleId } = req.params;
-
-      await pool.query(
-        `DELETE FROM calibration_factors 
-         WHERE user_id = $1 AND module_id = $2`,
-        [userId, moduleId]
-      );
-
-      res.json({
-        success: true,
-        message: `Calibration data for ${moduleId} has been reset`
-      });
-    } catch (error) {
-      console.error('Error resetting calibration:', error);
-      res.status(500).json({ error: 'Failed to reset calibration' });
-    }
-  });
-
-  return router;
-}
+export default router;

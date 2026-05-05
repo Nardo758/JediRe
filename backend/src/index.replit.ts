@@ -17,7 +17,10 @@ import { emailSyncScheduler } from './services/email-sync-scheduler';
 import { agentAlertService } from './services/agent-alert.service';
 import { taskCoordinatorService } from './services/task-coordinator.service';
 import { createTrainingRoutes } from './api/rest/training.routes';
-import { createCalibrationRoutes } from './api/rest/calibration.routes';
+import analogRouter from './api/rest/analog.routes';
+import calibrationRouter from './api/rest/calibration.routes';
+import causalDisciplineRouter from './api/rest/causal-discipline.routes';
+import peerIntelligenceRouter from './api/rest/peer-intelligence.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
 import { createDealCapsuleBridge } from './api/rest/capsule-bridge.routes';
 import { createRenovationRoutes } from './api/rest/renovation.routes';
@@ -623,6 +626,7 @@ app.use('/api/v1/design', requireAuth, designMassingRouter);
 // M36 Joint Distribution Engine â€” plausibility scoring + goal-seeking
 app.use('/api/v1/sigma', requireAuth, sigmaRouter);
 app.use('/api/v2/sigma', requireAuth, sigmaFullRouter);
+app.use('/api/v1/analogs', analogRouter);
 app.use('/api/v1/lease-velocity', leaseVelocityRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
@@ -874,7 +878,9 @@ app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) 
 });
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
-app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
+app.use('/api/v1/calibration-ledger', requireAuth, calibrationRouter);
+app.use('/api/v1/causal', requireAuth, causalDisciplineRouter);
+app.use('/api/v1/peers', requireAuth, peerIntelligenceRouter);
 app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
 app.use('/api/v1/capsules', requireAuth, createCapsuleRoutes(pool));
 app.use('/api/v1/email', emailRouter);

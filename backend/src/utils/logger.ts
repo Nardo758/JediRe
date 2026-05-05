@@ -63,3 +63,14 @@ if (!fs.existsSync(logDir)) {
 }
 
 export default logger;
+
+/**
+ * Create a child logger with a named context.
+ * Returns a winston-compatible child logger with pino-identical API:
+ *   .info(msg, ...meta)
+ *   .warn(msg, ...meta)
+ *   .error(msg, ...meta)
+ */
+export function createLogger(context: string) {
+  return logger.child({ context });
+}
