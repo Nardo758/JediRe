@@ -244,42 +244,56 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
       {(() => {
         const lv = f9Financials?.leaseVelocity ?? null;
         if (!lv) {
+          // LV engine not yet connected — IRR comes from legacy model summary,
+          // NOT from treatment-aware monthly cash flows.
           return (
             <div style={{
               padding: '5px 16px', background: `${BT.text.muted}08`,
               borderBottom: `1px solid ${BT.border.subtle}`,
               display: 'flex', alignItems: 'center', gap: 8,
             }}>
-              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-                LEASING COST TREATMENT
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, fontWeight: 700, letterSpacing: 0.4 }}>
+                COST TREATMENT
               </span>
               <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>
-                ◌ LV engine not connected — IRR uses NOI-based operating cash flows (OPERATING basis assumed).
-                Cost-treatment-aware monthly cash flows will load once M07 + backend engine ship.
+                ◌ LV engine pending
+              </span>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>·</span>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>
+                IRR / EM shown above derive from the legacy projection engine (NOI-based, treatment-agnostic).
+                Once the Lease Velocity backend engine ships, toggling treatment will shift IRR within one re-fetch cycle.
               </span>
             </div>
           );
         }
+        // LV engine is connected — the LP Net IRR and Equity Multiple in the hero
+        // strip above ALREADY reflect cost-treatment-aware monthly cash flows from
+        // GET /financials?leasing_cost_treatment=T.  The mergeModelIntoFinancials
+        // guard preserves these values; they are NOT overwritten by the legacy model.
         const treatColors: Record<string, string> = {
           OPERATING:   BT.met.financial,
           CAPITALIZED: BT.text.cyan,
           HYBRID:      BT.text.amber,
         };
         const treatDesc: Record<string, string> = {
-          OPERATING:   'Concessions & marketing in operating cash flows — IRR reflects full periodic leasing drag',
-          CAPITALIZED: 'Lease-up concessions & marketing removed from ops; added to initial equity — boosts in-place IRR',
-          HYBRID:      'Concessions amortized as effective-rent reduction; marketing remains in ops — blended treatment',
+          OPERATING:   'All concessions & marketing stay in operating cash flows — IRR reflects full periodic leasing drag',
+          CAPITALIZED: 'Lease-up concessions & marketing removed from ops, capitalized into initial equity — IRR lifts vs OPERATING',
+          HYBRID:      'Concessions amortized as effective-rent reduction; marketing stays in ops — blended treatment, IRR between OPER and CAP',
         };
         const t = lv.costTreatmentInEffect;
+        const color = treatColors[t] ?? BT.text.muted;
         return (
           <div style={{
-            padding: '5px 16px', background: `${treatColors[t] ?? BT.text.muted}0A`,
-            borderBottom: `1px solid ${(treatColors[t] ?? BT.text.muted)}30`,
-            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '5px 16px', background: `${color}0A`,
+            borderBottom: `1px solid ${color}30`,
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           }}>
-            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LEASING COST TREATMENT</span>
-            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: treatColors[t] ?? BT.text.muted }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, fontWeight: 700, letterSpacing: 0.4 }}>COST TREATMENT</span>
+            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color }}>
               {t}
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.met.financial }}>
+              ✓ IRR & EM above are treatment-adjusted
             </span>
             <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>·</span>
             <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>
@@ -290,6 +304,7 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>·</span>
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.teal }}>
                   LEASE-UP MODE · {lv.stabilizationMonth != null ? `Mo ${lv.stabilizationMonth} stab` : 'stab month pending'}
+                  · monthly CF sourced from LV engine table
                 </span>
               </>
             )}

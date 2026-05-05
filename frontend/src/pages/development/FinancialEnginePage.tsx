@@ -78,10 +78,18 @@ function mergeModelIntoFinancials(
   // ── Returns ──
   const s = model.summary ?? {};
   out.returns = out.returns ?? {};
-  out.returns.lpNetIrr          = s.lpIrr        ?? s.irr ?? null;
-  out.returns.lpEquityMultiple  = s.lpEm         ?? s.equityMultiple ?? null;
-  out.returns.avgCashOnCash     = s.lpCoC        ?? s.cashOnCash ?? null;
-  out.returns.gpPromoteEarned   = s.gpPromoteEarned ?? null;
+  // ── LV engine guard ─────────────────────────────────────────────────────
+  // When the backend Lease Velocity engine has run (src.leaseVelocity != null)
+  // AND the /financials response already carries treatment-aware IRR/EM values,
+  // preserve those — do NOT overwrite with the legacy model summary which is
+  // treatment-agnostic.  Without this guard, toggling leasing_cost_treatment
+  // re-fetches /financials with treatment-aware returns but mergeModel would
+  // immediately clobber them, making the Returns tab appear unresponsive.
+  const hasLvReturns = src.leaseVelocity != null && src.returns?.lpNetIrr != null;
+  out.returns.lpNetIrr          = hasLvReturns ? src.returns!.lpNetIrr         : (s.lpIrr        ?? s.irr ?? null);
+  out.returns.lpEquityMultiple  = hasLvReturns ? src.returns!.lpEquityMultiple  : (s.lpEm         ?? s.equityMultiple ?? null);
+  out.returns.avgCashOnCash     = hasLvReturns ? src.returns!.avgCashOnCash     : (s.lpCoC        ?? s.cashOnCash ?? null);
+  out.returns.gpPromoteEarned   = hasLvReturns ? src.returns!.gpPromoteEarned   : (s.gpPromoteEarned ?? null);
   out.returns.unleveragedIrr    = null;
   out.returns.unleveragedEm     = null;
   // FIX: type has `proforma.valuationSnapshot.goingInCapT12`, not `proforma.valuation.capRate.resolved`.
