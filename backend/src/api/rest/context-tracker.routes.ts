@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getPool } from '../../database/connection';
+import { parcelCacheInvalidate } from '../../services/tax/parcelCache';
 
 const router = Router();
 
@@ -185,6 +186,25 @@ router.post('/deals/:dealId/documents', async (req: Request, res: Response) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [dealId, file_name, file_type, file_url, file_size || 0, userId, metadata || {}]
     );
+
+    // When a tax bill is uploaded, invalidate any stale ATTOM parcel cache entry
+    // for this deal so the next tax forecast re-fetches fresh data.
+    if (file_type && /tax.?bill/i.test(String(file_type))) {
+      try {
+        const dealRow = await pool.query(
+          `SELECT deal_data FROM deals WHERE id = $1`,
+          [dealId],
+        );
+        const dd = (dealRow.rows[0]?.deal_data ?? {}) as Record<string, unknown>;
+        const parcelId = dd.parcel_id as string | undefined;
+        if (parcelId) {
+          await parcelCacheInvalidate(parcelId);
+        }
+      } catch {
+        // Non-fatal: cache invalidation failure does not block the upload response.
+      }
+    }
+
     res.json(result.rows[0]);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

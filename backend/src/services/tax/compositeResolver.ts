@@ -245,8 +245,8 @@ export async function buildTaxContext(
           millageSource = 'live_millage_service';
           // Store in jurisdiction cache so subsequent forecasts skip the HTTP call.
           await jurisdictionCacheSet(
-            jurisdictionKey, 'millage_rate', fiscalYear ?? new Date().getUTCFullYear(),
-            liveMillage, 'live_millage_service',
+            jurisdictionKey, 'millage_rate', liveMillage,
+            'live_millage_service', fiscalYear,
           );
         }
       } catch {

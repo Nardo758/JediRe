@@ -45,10 +45,16 @@ export const taxService = {
    *   - TPP (Section B): always state
    *   - Income/depreciation (Section C): always federal
    *
-   * @param ctx  All deal-level tax inputs. See TaxContext for field docs.
-   * @returns    TaxForecast with jurisdictionMapped + confidence flags
+   * @param ctx               All deal-level tax inputs. See TaxContext for field docs.
+   * @param externalProvenance Optional provenance from buildTaxContext() carrying
+   *                           parcel-sourced field annotations (ATTOM, tax bill PDF,
+   *                           county adapter). When provided, parcel-sourced LayeredValue
+   *                           fields are merged into the internally-computed provenance
+   *                           so the final forecast reflects the actual data tier used.
+   *                           Existing callers omit this param — fully backward-compatible.
+   * @returns                  TaxForecast with jurisdictionMapped + confidence flags
    */
-  forecast(ctx: TaxContext): TaxForecast {
+  forecast(ctx: TaxContext, externalProvenance?: TaxForecastProvenance): TaxForecast {
     const stack = resolveRulesetStack(ctx.state, ctx.county);
     const { federal: _federal, state: stateRuleset, county: countyOverlay } = stack;
     const holdYears = ctx.holdYears;
@@ -309,6 +315,45 @@ export const taxService = {
       ),
     };
 
+    // ── Merge external provenance (from buildTaxContext) ──────────────────────
+    // When the caller built the TaxContext via buildTaxContext(), it will supply
+    // externalProvenance carrying parcel_source, parcel_confidence, and
+    // LayeredValue annotations derived from the actual data tier (ATTOM, PDF,
+    // county adapter).  We overwrite the corresponding internal fields so the
+    // final forecast reflects the real data lineage rather than the default
+    // 'tax_service_computed' / null placeholders.
+    //
+    // Only parcel-sourced fields are merged — computed fields (transfer tax
+    // amounts, depreciation, etc.) keep their internally-computed values since
+    // taxService holds the definitive runtime numbers at this point.
+    //
+    // Existing callers that omit externalProvenance see no change (backward compat).
+    const PARCEL_SOURCES = new Set(['attom', 'tax_bill_pdf', 'county_adapter', 'live_millage_service', 'jurisdiction_cache']);
+    const isParcelSource = (src: string) => PARCEL_SOURCES.has(src);
+
+    const finalProvenance: import('./types').TaxForecastProvenance = {
+      ...provenance,
+      // Always adopt parcel identification from external when available
+      parcel_source:     externalProvenance?.parcel_source     ?? provenance.parcel_source,
+      parcel_confidence: externalProvenance?.parcel_confidence ?? provenance.parcel_confidence,
+      // Merge LayeredValue fields where external has a higher-trust parcel source
+      assessed_value:
+        externalProvenance && isParcelSource(externalProvenance.assessed_value.source)
+          ? externalProvenance.assessed_value : provenance.assessed_value,
+      millage_rate:
+        externalProvenance && isParcelSource(externalProvenance.millage_rate.source)
+          ? externalProvenance.millage_rate : provenance.millage_rate,
+      t12_annual_tax:
+        externalProvenance && isParcelSource(externalProvenance.t12_annual_tax.source)
+          ? externalProvenance.t12_annual_tax : provenance.t12_annual_tax,
+      t12_millage_rate:
+        externalProvenance && isParcelSource(externalProvenance.t12_millage_rate.source)
+          ? externalProvenance.t12_millage_rate : provenance.t12_millage_rate,
+      t12_assessed_value:
+        externalProvenance && isParcelSource(externalProvenance.t12_assessed_value.source)
+          ? externalProvenance.t12_assessed_value : provenance.t12_assessed_value,
+    };
+
     return {
       jurisdiction: `${ctx.state || 'unknown'}${ctx.county ? `-${ctx.county}` : ''}`,
       rulesetUsed: activeRuleset.jurisdiction,
@@ -331,7 +376,7 @@ export const taxService = {
       specialTaxes: stateRuleset.specialTaxes(ctx),
       abatementPrograms: stateRuleset.abatementEligibility(ctx),
       sectionC,
-      provenance,
+      provenance: finalProvenance,
     };
   },
 };

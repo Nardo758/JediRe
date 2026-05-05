@@ -11,8 +11,7 @@ ALTER TABLE rate_sheet_versions
   ADD COLUMN IF NOT EXISTS valid_through DATE NULL;
 
 COMMENT ON COLUMN rate_sheet_versions.valid_through IS
-  'Date after which this rate sheet should be re-verified by the Research Agent. '
-  'NULL = no expiry set. Staleness cron flags sheets within 30 days of this date.';
+  'Date after which this rate sheet should be re-verified by the Research Agent. NULL = no expiry set. Staleness cron flags sheets within 30 days of this date.';
 
 CREATE INDEX IF NOT EXISTS idx_rate_sheet_valid_through
   ON rate_sheet_versions(valid_through)

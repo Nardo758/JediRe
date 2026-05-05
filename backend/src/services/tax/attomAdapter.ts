@@ -168,10 +168,13 @@ export async function fetchFromAttom(
 
   const warnings: string[] = [];
 
-  // Build query: ATTOM accepts APN + state or APN + FIPS.
-  // We use the address-based parcel lookup by APN + state.
+  // Build query: ATTOM v3 property/detail accepts APN (attomId) + stateCode for
+  // a state-scoped lookup. stateCode filters results to the correct state when
+  // two parcels in different states share the same APN (common for sequential
+  // county numbering schemes).
   const params = new URLSearchParams({
-    attomId: parcelId,
+    attomId:   parcelId,
+    stateCode: state.toUpperCase(),
   });
 
   const url = `https://api.attomdata.com/property/v3/property/detail?${params.toString()}`;
