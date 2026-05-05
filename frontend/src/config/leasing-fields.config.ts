@@ -123,11 +123,13 @@ const CAT_A: LeasingCategoryDef = {
 };
 
 // ── Category B — Renewal & Turnover Behavior ──────────────────────────────────
-// Hidden for LEASE_UP and VALUE_ADD/REDEVELOPMENT (no renewals during initial ramp)
+// Hidden only for LEASE_UP_NEW_CONSTRUCTION (no renewal cohort yet during initial ramp).
+// Visible for all other modes, including VALUE_ADD and REDEVELOPMENT where renovated
+// units still roll leases and require renewal/turnover assumptions post-renovation.
 const CAT_B: LeasingCategoryDef = {
   id: 'B',
   label: 'Renewal & Turnover',
-  visibleIn: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
+  visibleIn: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY', 'VALUE_ADD', 'REDEVELOPMENT'],
   fields: [
     {
       id: 'b_renewal_rate',
@@ -135,7 +137,7 @@ const CAT_B: LeasingCategoryDef = {
       path: 'traffic.renewal_rate',
       type: 'percent',
       tier: 'beginner',
-      modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
+      modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY', 'VALUE_ADD', 'REDEVELOPMENT'],
       platformDefault: 0.55,
       min: 0.20, max: 0.85,
       tooltip: 'Fraction of lease expirations that renew at the property. Drives Year 2+ vacancy and concession costs.',
@@ -148,7 +150,7 @@ const CAT_B: LeasingCategoryDef = {
       path: 'traffic.turnover_rate',
       type: 'percent',
       tier: 'beginner',
-      modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
+      modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY', 'VALUE_ADD', 'REDEVELOPMENT'],
       readonly: true,
       tooltip: 'Computed as 1 − renewal rate. Read-only to prevent drift from the renewal rate definition.',
       defaultSource: 'Computed: 1 − renewal rate',
@@ -160,7 +162,7 @@ const CAT_B: LeasingCategoryDef = {
       path: 'traffic.days_vacant_median',
       type: 'days',
       tier: 'beginner',
-      modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
+      modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY', 'VALUE_ADD', 'REDEVELOPMENT'],
       platformDefault: 21,
       min: 0, max: 90,
       tooltip: 'Average days between move-out and new lease move-in. Drives the days-vacant correction in occupancy targeting.',
@@ -186,7 +188,7 @@ const CAT_B: LeasingCategoryDef = {
       path: 'traffic.rent_step_renewal_pct',
       type: 'percent',
       tier: 'advanced',
-      modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
+      modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY', 'VALUE_ADD', 'REDEVELOPMENT'],
       platformDefault: 0.03,
       min: -0.05, max: 0.10,
       tooltip: 'Rent change (%) when an existing tenant renews. Positive = renewal at higher rent. Negative = concession to retain tenant.',
@@ -199,7 +201,7 @@ const CAT_B: LeasingCategoryDef = {
       path: 'traffic.trade_out_new',
       type: 'percent',
       tier: 'advanced',
-      modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
+      modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY', 'VALUE_ADD', 'REDEVELOPMENT'],
       platformDefault: 0.045,
       min: -0.10, max: 0.20,
       tooltip: 'Rent change (%) on new leases compared to the prior tenant\'s rent. Drives effective rent ramp vs in-place rent.',
