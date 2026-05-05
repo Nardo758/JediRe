@@ -1493,7 +1493,7 @@ export function ProjectionsTab({
                                     <td
                                       key={yr}
                                       onClick={() => {
-                                        if (!val || !financials?.concessionRecognition?.monthly_detail) return;
+                                        if (val == null || !financials?.concessionRecognition?.monthly_detail) return;
                                         const recogInner = financials.concessionRecognition;
                                         const yyyymms = Array.from({ length: 12 }, (_, i) => `${calYear}${String(i + 1).padStart(2, '0')}`);
                                         setConcessionDrill({
@@ -1529,7 +1529,7 @@ export function ProjectionsTab({
                                       <td
                                         key={c.periodKey}
                                         onClick={() => {
-                                          if (!mVal || !yyyymm || !recog.monthly_detail) return;
+                                          if (mVal == null || !yyyymm || !recog.monthly_detail) return;
                                           const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                                           const mLabel = `${MONTHS[parseInt(yyyymm.slice(4), 10) - 1]} ${yyyymm.slice(0, 4)}`;
                                           setConcessionDrill({
@@ -1559,7 +1559,7 @@ export function ProjectionsTab({
                                     <td
                                       key={c.periodKey}
                                       onClick={() => {
-                                        if (!qVal || qMms.length === 0 || !recog.monthly_detail) return;
+                                        if (qVal == null || qMms.length === 0 || !recog.monthly_detail) return;
                                         setConcessionDrill({
                                           open: true,
                                           periodLabel: `Q${periodNum} YR${yearNum} RECOGNIZED`,

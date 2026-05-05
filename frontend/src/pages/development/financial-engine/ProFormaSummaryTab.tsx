@@ -848,7 +848,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     onSaveCorrection={handleSaveCorrection}
                     onResetCorrection={handleResetCorrection}
                     evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
-                    onRowClick={isConcessionsOverridden ? openY1Drill : undefined}
+                    onRowClick={r.field === 'concessions' && data?.concessionRecognition != null ? openY1Drill : undefined}
                   />
                   {isConcessionsOverridden && (
                     <tr style={{ background: '#110e00' }}>
