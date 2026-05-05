@@ -898,14 +898,15 @@ function fmtFunnel(v: number | null, cadence: FunnelCadence): string {
 interface TrafficFunnelPanelProps {
   yearly: F9TrafficYear[];
   holdYears: number;
+  isOffline?: boolean;
 }
 
-function TrafficFunnelPanel({ yearly, holdYears }: TrafficFunnelPanelProps) {
+function TrafficFunnelPanel({ yearly, holdYears, isOffline }: TrafficFunnelPanelProps) {
   const [expanded, setExpanded] = useState(true);
   const [cadence, setCadence]   = useState<FunnelCadence>('W');
 
   const years = Array.from({ length: holdYears }, (_, i) => i + 1);
-  const hasAnyData = yearly.some(y => y.walkInsPerWeek != null);
+  const hasAnyData = !isOffline && yearly.some(y => y.walkInsPerWeek != null);
 
   return (
     <div style={{ borderBottom: `1px solid ${BT.border.medium}` }}>
@@ -969,8 +970,10 @@ function TrafficFunnelPanel({ yearly, holdYears }: TrafficFunnelPanelProps) {
             <tbody>
               {!hasAnyData ? (
                 <tr>
-                  <td colSpan={years.length + 1} style={{ padding: '8px', textAlign: 'center', fontFamily: MONO, fontSize: 8, color: BT.text.muted, fontStyle: 'italic' }}>
-                    M07 traffic data unavailable — run traffic prediction to populate funnel
+                  <td colSpan={years.length + 1} style={{ padding: '10px 8px', textAlign: 'center', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                    {isOffline
+                      ? '⚠ M07 Traffic Engine not yet run for this deal — trigger a traffic prediction to see walk-ins, tours, apps & leases over time'
+                      : 'Traffic funnel counts unavailable — weekly walk-in baseline not yet computed'}
                   </td>
                 </tr>
               ) : (
@@ -1616,12 +1619,13 @@ export function ProjectionsTab({
               )}
 
               {/* ── Traffic Funnel Panel ── walk-ins → tours → apps → leases over hold period ─── */}
-              {isAnnual && financials?.trafficProjection?.yearly && financials.trafficProjection.yearly.length > 0 && (
+              {isAnnual && financials && (
                 <tr>
                   <td colSpan={colCount + 1} style={{ padding: 0 }}>
                     <TrafficFunnelPanel
-                      yearly={financials.trafficProjection.yearly}
+                      yearly={financials.trafficProjection?.yearly ?? []}
                       holdYears={holdYears}
+                      isOffline={!financials.trafficProjection}
                     />
                   </td>
                 </tr>

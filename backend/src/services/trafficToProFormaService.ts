@@ -838,7 +838,7 @@ export async function getTrafficProjection(
   dealId: string,
   holdYears = 10
 ): Promise<TrafficProjectionResult | null> {
-  const [tpRes, lrRes] = await Promise.all([
+  const [tpRes, lrRes, predRes] = await Promise.all([
     pool.query(
       `SELECT tp.*, pa.vacancy_current, pa.rent_growth_current, pa.exit_cap_current,
               pa.updated_at AS pa_updated_at, da.avg_lease_term_months
@@ -862,6 +862,17 @@ export async function getTrafficProjection(
        LIMIT 1`,
       [dealId]
     ),
+    // weekly_walk_ins from traffic_predictions — cast varchar property_id to uuid for join
+    pool.query(
+      `SELECT tp2.weekly_walk_ins
+       FROM traffic_predictions tp2
+       JOIN traffic_projections tpr ON tpr.property_id = tp2.property_id::uuid
+       WHERE tpr.deal_id = $1
+         AND tp2.weekly_walk_ins IS NOT NULL
+       ORDER BY tp2.prediction_year DESC, tp2.prediction_week DESC
+       LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] as { weekly_walk_ins: number | null }[] })),
   ]);
 
   if (tpRes.rows.length === 0) return null;
@@ -923,7 +934,8 @@ export async function getTrafficProjection(
     const t01Yr = t01 != null ? +(t01 * tourDecayFactor).toFixed(3) : null;
 
     // Absolute weekly funnel counts for this hold-year
-    const baseWalkIns = row.weekly_walk_ins != null ? Number(row.weekly_walk_ins) : null;
+    // weekly_walk_ins comes from traffic_predictions (separate table), fetched above
+    const baseWalkIns = predRes.rows[0]?.weekly_walk_ins != null ? Number(predRes.rows[0].weekly_walk_ins) : null;
     const tourRate    = lr?.tour_rate != null ? Number(lr.tour_rate) : null;
     const appRate     = lr?.app_rate  != null ? Number(lr.app_rate)  : null;
     const leaseRate   = lr?.lease_rate != null ? Number(lr.lease_rate) : null;
