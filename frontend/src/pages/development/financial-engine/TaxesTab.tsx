@@ -791,6 +791,47 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
     );
   }
 
+  // No purchase price → tax engine has nothing to work from; show setup prompt
+  const purchasePrice = f9Financials?.capitalStack?.purchasePrice ?? null;
+  const noPurchasePrice = purchasePrice == null || purchasePrice === 0;
+  if (noPurchasePrice) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, overflow: 'hidden' }}>
+        {/* Minimal header so user sees they're in the right place */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, flexShrink: 0 }}>
+          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.white, letterSpacing: 0.8 }}>F9 · TAXES</span>
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{dealName}</span>
+        </div>
+        {/* Empty state */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 40 }}>
+          <AlertTriangle style={{ width: 28, height: 28, color: BT.text.amber }} />
+          <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: BT.text.white, letterSpacing: 0.5 }}>
+            PURCHASE PRICE REQUIRED
+          </span>
+          <span style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted, textAlign: 'center', maxWidth: 420, lineHeight: 1.6 }}>
+            The tax engine uses the purchase price to calculate assessed value, RE tax,
+            transfer taxes, and depreciation schedules. Set a purchase price in the
+            INPUTS tab to unlock all tax projections.
+          </span>
+          <button
+            onClick={() => onTabChange?.(1)}
+            style={{
+              marginTop: 8,
+              padding: '6px 20px',
+              fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 0.8,
+              background: `${BT.met.financial}18`,
+              border: `1px solid ${BT.met.financial}`,
+              color: BT.met.financial,
+              borderRadius: 3, cursor: 'pointer',
+            }}
+          >
+            GO TO INPUTS →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, color: BT.text.primary, overflow: 'hidden' }}>
       {/* Header */}
