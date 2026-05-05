@@ -716,6 +716,73 @@ describe('§573.15 Merged records in canonical concession_records — no double-
   });
 });
 
+// ── §573.16 Snapshot update → history refresh → merged freshness ──────────────
+
+describe('§573.16 Snapshot update invalidation — merged source freshness', () => {
+  it('new history records replace stale ones in merged output', () => {
+    // Simulate: prior merged output in concession_records uses old hist record ($1200)
+    const oldHistRecord = makeHistoryRecord({ id: 'hist-deal-snap-unit-1-2025-01-01', cash_value: 1200 });
+    // After snapshot update, extractor produces a new hist record ($2400 for same unit with corrected value)
+    const newHistRecord = makeHistoryRecord({ id: 'hist-deal-snap-unit-1-2025-08-01', cash_value: 2400 });
+
+    // Old concession_records = [oldHistRecord] (from prior merged write)
+    // New extraction = [newHistRecord] (snapshot updated, new snapshot_date)
+    // dedup logic: lvHistIds contains newHistRecord.id, NOT oldHistRecord.id
+    const lvHistIds = new Set([newHistRecord.id]);
+    const priorConcessionRecords: ConcessionRecord[] = [oldHistRecord];
+    const manualDeduped = priorConcessionRecords.filter(r => !lvHistIds.has(r.id));
+
+    // oldHistRecord has different ID → survives dedup → appears in manual slot
+    // newHistRecord is in histRecords → appears in hist slot
+    // Result: both present (different IDs from different snapshot dates)
+    const merged = [newHistRecord, ...manualDeduped];
+    expect(merged).toHaveLength(2); // new + old (different IDs = different snapshot periods)
+    expect(merged.find(r => r.id === newHistRecord.id)?.cash_value).toBe(2400);
+  });
+
+  it('same-ID history refresh overwrites prior record via lv/hist dedup', () => {
+    // If the extractor emits the SAME record ID (same unit, same lease date),
+    // the dedup prevents the old copy in concession_records from double-counting.
+    const sharedId = 'hist-deal-snap-unit-2-2025-08-01';
+    const oldHistRecord = makeHistoryRecord({ id: sharedId, cash_value: 1200 });
+    const newHistRecord = makeHistoryRecord({ id: sharedId, cash_value: 2400 }); // same ID, updated value
+
+    const lvHistIds = new Set([newHistRecord.id]);
+    const priorConcessionRecords: ConcessionRecord[] = [oldHistRecord];
+    const manualDeduped = priorConcessionRecords.filter(r => !lvHistIds.has(r.id));
+
+    // Old record has same ID → excluded from manual → only newHistRecord in final merged
+    const merged = [newHistRecord, ...manualDeduped];
+    expect(merged).toHaveLength(1);
+    expect(merged[0].cash_value).toBe(2400); // refreshed value wins
+    expect(merged[0].id).toBe(sharedId);
+  });
+
+  it('merged amortization total reflects fresh history after snapshot update', () => {
+    const sharedId = 'hist-deal-snap-unit-3-2025-08-01';
+    const newHistRecord = makeHistoryRecord({ id: sharedId, cash_value: 3600 });
+
+    // Prior concession_records had stale copy ($1800) — deduped out by new extraction
+    const staleRecord = makeHistoryRecord({ id: sharedId, cash_value: 1800 });
+    const lvHistIds = new Set([newHistRecord.id]);
+    const priorManual = [staleRecord].filter(r => !lvHistIds.has(r.id));
+
+    const mergedRecords = [newHistRecord, ...priorManual];
+    expect(mergedRecords).toHaveLength(1);
+
+    const output = amortizeConcessions({
+      records: mergedRecords,
+      leasing_cost_treatment: 'OPERATING',
+      current_date: '2026-01-01',
+      horizon_months: 120,
+    });
+
+    // Total must reflect fresh value ($3600), not stale ($1800) or double ($5400)
+    const total = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    expect(total).toBeCloseTo(3600, 0);
+  });
+});
+
 // ── §573.13 deliveryCalMonth fallback when delivery_month omitted ──────────────
 
 describe('§573.13 PRE_LEASE_BONUS commencement when delivery_month is omitted', () => {

@@ -51,8 +51,11 @@ router.post('/run', async (req: Request, res: Response) => {
       });
     }
 
+    // Always use the request's dealId as the authoritative deal target.
+    // Override any deal_id carried in inputs to prevent a payload targeting
+    // deal A from being persisted against a different deal B.
     const enrichedInputs: LeaseVelocityInputs = dealId
-      ? { ...inputs, deal_id: inputs.deal_id ?? dealId }
+      ? { ...inputs, deal_id: dealId }
       : inputs;
 
     const result = engine.run(enrichedInputs);
@@ -138,7 +141,9 @@ router.post('/scenario', async (req: Request, res: Response) => {
         });
     }
 
+    // Normalize: always use request dealId, not any deal_id carried in inputs
     if (dealId) inputs = { ...inputs, deal_id: dealId };
+    else delete (inputs as Partial<LeaseVelocityInputs>).deal_id;
 
     const result = engine.run(inputs);
 

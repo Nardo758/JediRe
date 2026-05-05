@@ -526,6 +526,33 @@ export class RentRollDiffService {
       // ── Promote to S2: aggregate ALL qualifying diffs for the deal ────────
       await this.promoteToS2(dealId);
 
+      // ── Refresh history_concession_records when new snapshot arrives ──────
+      // Re-extract so financials-composer always has current historical records
+      // without waiting for the next financials request to trigger lazy extraction.
+      // Non-blocking: failure is logged but does not affect diff return value.
+      this.extractHistoricalConcessionRecords(dealId)
+        .then(async (records) => {
+          await this.pool.query(
+            `UPDATE deals
+             SET deal_data = jsonb_set(
+               COALESCE(deal_data, '{}'::jsonb),
+               '{history_concession_records}',
+               $1::jsonb
+             )
+             WHERE id = $2`,
+            [JSON.stringify(records), dealId],
+          );
+          logger.debug('[RentRollDiff] Refreshed history_concession_records after snapshot', {
+            dealId, snapshotId: toSnapshotId, count: records.length,
+          });
+        })
+        .catch((refreshErr: unknown) => {
+          logger.warn('[RentRollDiff] Failed to refresh history_concession_records', {
+            dealId,
+            error: refreshErr instanceof Error ? refreshErr.message : String(refreshErr),
+          });
+        });
+
       logger.info('[RentRollDiff] Diff extraction complete', {
         dealId, diffId, periodDays, renewalRate, turnoverRate,
       });
