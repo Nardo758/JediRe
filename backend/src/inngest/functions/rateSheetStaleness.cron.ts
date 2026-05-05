@@ -95,9 +95,17 @@ export const rateSheetStalenessCron = inngest.createFunction(
                (id, agent_id, agent_version, prompt_version,
                 deal_id, user_id, triggered_by, trigger_context,
                 status, input, tokens_in, tokens_out, cost_usd, started_at)
-             VALUES (gen_random_uuid(), 'research', '1.0', 'rate_sheet_review_v1',
-                     NULL, NULL, 'cron', NULL,
-                     'pending', $1::jsonb, 0, 0, 0, NOW())`,
+             SELECT gen_random_uuid(), 'research', '1.0', 'rate_sheet_review_v1',
+                    NULL, NULL, 'cron', NULL,
+                    'pending', $1::jsonb, 0, 0, 0, NOW()
+              WHERE NOT EXISTS (
+                SELECT 1 FROM agent_runs
+                 WHERE agent_id = 'research'
+                   AND status   = 'pending'
+                   AND (input->>'task')         = 'rate_sheet_review'
+                   AND (input->>'jurisdiction')  = $2
+                   AND (input->>'year')::int     = $3
+              )`,
             [
               JSON.stringify({
                 task: 'rate_sheet_review',
@@ -110,6 +118,8 @@ export const rateSheetStalenessCron = inngest.createFunction(
                   : null,
                 triggered_by: 'staleness_cron',
               }),
+              sheet.jurisdiction,
+              sheet.year,
             ],
           );
           created++;

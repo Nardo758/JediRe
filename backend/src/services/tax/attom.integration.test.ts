@@ -103,6 +103,7 @@ function buildExternalProvenance(
     state_income_tax_rate:   mkLv(0,   'tax_service_computed'),
     effective_combined_rate: mkLv(0,   'tax_service_computed'),
     tpp_exemption_amount:    mkLv(0,   'tax_service_computed'),
+    per_year:                mkLv([],  'tax_service_computed'),
   };
 }
 
@@ -285,5 +286,40 @@ describe('ATTOM data layer + provenance carry-through', () => {
     const { assessed_value, annual_tax, millage_rate } = result.parcel!;
     const derived = (assessed_value ?? 0) * (millage_rate ?? 0) / 1000;
     expect(annual_tax).toBeCloseTo(derived, -2);   // within ~$100
+  });
+
+  it('cache hit: second fetch for same parcel does not call ATTOM', async () => {
+    // First call — ATTOM returns mock parcel, cache miss (query returns []).
+    useAttomParcel(MOCK_PARCEL);
+    vi.mocked(query).mockResolvedValueOnce({ rows: [] });  // parcel cache read miss
+    vi.mocked(query).mockResolvedValueOnce({ rows: [] });  // cache write (no-op)
+
+    await generalPropertyAppraiserFetcher.fetch({
+      dealId:   'deal-cache-test-1',
+      parcelId: FLORIDA_APN,
+      state:    FLORIDA_STATE,
+      county:   FLORIDA_COUNTY,
+    });
+
+    const attomCallCount = vi.mocked(fetchFromAttom).mock.calls.length;
+    expect(attomCallCount).toBe(1);
+
+    // Second call — Tier 1 (deal_documents) still misses, parcel cache returns a hit.
+    vi.mocked(query).mockResolvedValueOnce({ rows: [] });             // deal_documents miss
+    vi.mocked(query).mockResolvedValueOnce({ rows: [{ data: MOCK_PARCEL }] }); // parcel cache HIT
+
+    const cachedResult = await generalPropertyAppraiserFetcher.fetch({
+      dealId:   'deal-cache-test-2',
+      parcelId: FLORIDA_APN,
+      state:    FLORIDA_STATE,
+      county:   FLORIDA_COUNTY,
+    });
+
+    // ATTOM must not have been called again
+    expect(vi.mocked(fetchFromAttom).mock.calls.length).toBe(attomCallCount);
+    // Result should reflect the cached parcel
+    expect(cachedResult.parcel).not.toBeNull();
+    expect(cachedResult.parcel!.source).toBe('attom');
+    expect(cachedResult.parcel!.assessed_value).toBe(3_200_000);
   });
 });
