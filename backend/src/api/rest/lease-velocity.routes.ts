@@ -57,7 +57,9 @@ router.post('/run', async (req: Request, res: Response) => {
 
     const result = engine.run(enrichedInputs);
 
-    if (dealId && result.concession_records.length > 0) {
+    // Always persist when dealId is provided — including empty array — so that
+    // stale records from a prior run are cleared when a re-run yields zero concessions.
+    if (dealId) {
       await persistLvConcessionRecords(dealId, result.concession_records);
     }
 
@@ -140,7 +142,8 @@ router.post('/scenario', async (req: Request, res: Response) => {
 
     const result = engine.run(inputs);
 
-    if (dealId && result.concession_records.length > 0) {
+    // Always persist when dealId is provided — clears stale records on zero-concession runs
+    if (dealId) {
       await persistLvConcessionRecords(dealId, result.concession_records);
     }
 

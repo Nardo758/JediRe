@@ -9,6 +9,7 @@ import { Pool } from 'pg';
 import { seedProFormaYear1 } from './proforma-seeder.service';
 import { amortizeConcessions } from './concession-amortization/index';
 import type { DealConcessionRecognition, ConcessionRecord } from '../types/concessions';
+import { RentRollDiffService } from './rent-roll/rent-roll-diff.service';
 
 // â”€â”€ M07 Subject Traffic History record shape (mirrors frontend F9SubjectHistory) â”€â”€â”€
 export interface SubjectHistoryRecord {
@@ -494,15 +495,44 @@ async function computeConcessionRecognition(
   dealData: Record<string, any>,
 ): Promise<DealConcessionRecognition | null> {
   // ── Task #573: Merge all three concession record sources ─────────────────
-  // 1. lv_concession_records  — set by the LV engine route when dealId is present
-  // 2. history_concession_records — extracted by M07 subject history diff extractor
-  // 3. concession_records     — manually provided or legacy records
+  // 1. lv_concession_records       — set by the LV engine route when dealId is present
+  // 2. history_concession_records  — extracted from the latest M07 rent roll snapshot;
+  //    lazily populated here on first financials computation if not yet persisted
+  // 3. concession_records          — manually provided or legacy records
   const lvRecords: ConcessionRecord[] = Array.isArray(dealData?.lv_concession_records)
     ? (dealData.lv_concession_records as ConcessionRecord[])
     : [];
-  const histRecords: ConcessionRecord[] = Array.isArray(dealData?.history_concession_records)
-    ? (dealData.history_concession_records as ConcessionRecord[])
-    : [];
+
+  // ── M07 history: lazy extraction when not yet persisted ─────────────────
+  // If deal_data.history_concession_records has never been written (undefined/null),
+  // run extractHistoricalConcessionRecords now and persist the result so future
+  // financials calls can use it from cache without hitting the DB extractor again.
+  let histRecords: ConcessionRecord[] = [];
+  if (!Array.isArray(dealData?.history_concession_records)) {
+    try {
+      const rrDiff = new RentRollDiffService(pool);
+      const extracted = await rrDiff.extractHistoricalConcessionRecords(dealId);
+      histRecords = extracted;
+      await pool.query(
+        `UPDATE deals
+         SET deal_data = jsonb_set(
+           COALESCE(deal_data, '{}'::jsonb),
+           '{history_concession_records}',
+           $1::jsonb
+         )
+         WHERE id = $2`,
+        [JSON.stringify(extracted), dealId],
+      );
+    } catch (err: any) {
+      console.warn(
+        '[computeConcessionRecognition] M07 history extraction failed:',
+        err?.message ?? err,
+      );
+    }
+  } else {
+    histRecords = dealData.history_concession_records as ConcessionRecord[];
+  }
+
   const manualRecords: ConcessionRecord[] = Array.isArray(dealData?.concession_records)
     ? (dealData.concession_records as ConcessionRecord[])
     : [];

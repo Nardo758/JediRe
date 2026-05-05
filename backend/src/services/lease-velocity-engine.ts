@@ -215,6 +215,10 @@ function computeLeaseEndDate(calendarMonth: string, termMonths: number): string 
 
 /**
  * Build a single ConcessionRecord for a given lease event in a month.
+ *
+ * @param commencementCalMonth  Optional override for lease commencement month (YYYY-MM).
+ *   Used for PRE_LEASE_BONUS records where signing precedes delivery: the
+ *   lease_start_date must reflect the delivery/move-in date, not the signing month.
  */
 function makeRecord(
   dealId: string,
@@ -225,9 +229,11 @@ function makeRecord(
   isLeaseUpPeriod: boolean,
   treatment: LeasingCostTreatment,
   suffix: string,
+  commencementCalMonth?: string,
 ): ConcessionRecord {
-  const leaseStart = `${calendarMonth}-01`;
-  const leaseEnd = computeLeaseEndDate(calendarMonth, termMonths);
+  const effectiveStartMonth = commencementCalMonth ?? calendarMonth;
+  const leaseStart = `${effectiveStartMonth}-01`;
+  const leaseEnd = computeLeaseEndDate(effectiveStartMonth, termMonths);
   return {
     id: `${dealId}-lv-${calendarMonth}-${suffix}`,
     deal_id: dealId,
@@ -256,14 +262,22 @@ function makeRecord(
  *   - New lease signings: classified as PRE_LEASE_BONUS (pre-delivery), LEASE_UP_INCENTIVE
  *     (lease-up window), or NEW_LEASE_ONETIME (stabilized).
  *   - Renewal signings: classified as RENEWAL_ONETIME.
- *   - is_lease_up_period: true when mode_for_month === 'LEASE_UP_NEW_CONSTRUCTION'.
+ *   - is_lease_up_period: true for commencement within delivery_month→stabilization window.
+ *     PRE_LEASE_BONUS records have is_lease_up_period=true because commencement is at
+ *     delivery (which is in the lease-up window), even though signing precedes it.
+ *   - PRE_LEASE_BONUS lease_start_date = delivery month (commencement), NOT signing month.
+ *     Amortization must not begin before property delivery.
  *   - Months with mixed pre+on signings generate proportionally split records.
  *   - Months with zero concession dollars produce no record (clean empty array).
+ *
+ * @param deliveryCalMonth  Calendar month string for property delivery ("YYYY-MM").
+ *   Required for correct lease_start_date on PRE_LEASE_BONUS records.
  */
 function buildConcessionRecords(
   months: MonthOutput[],
   inputs: LeaseVelocityInputs,
   treatment: LeasingCostTreatment,
+  deliveryCalMonth?: string,
 ): ConcessionRecord[] {
   const dealId = inputs.deal_id ?? 'lv';
   const termMonths = inputs.avg_lease_term_months ?? 12;
@@ -285,8 +299,9 @@ function buildConcessionRecords(
         const eventType: LeaseEventType = isLeaseUp ? 'LEASE_UP_INCENTIVE' : 'NEW_LEASE_ONETIME';
         records.push(makeRecord(dealId, cal, eventType, nlCash, termMonths, isLeaseUp, treatment, 'new'));
       } else if (pre > 0 && on === 0) {
-        // Pure pre-lease month
-        records.push(makeRecord(dealId, cal, 'PRE_LEASE_BONUS', nlCash, termMonths, isLeaseUp, treatment, 'pre'));
+        // Pure pre-lease month: commencement is at delivery, not at signing.
+        // is_lease_up_period=true because commencement falls in delivery→stabilization window.
+        records.push(makeRecord(dealId, cal, 'PRE_LEASE_BONUS', nlCash, termMonths, true, treatment, 'pre', deliveryCalMonth));
       } else if (pre === 0) {
         // On-lease or stabilized signings only
         const eventType: LeaseEventType = isLeaseUp ? 'LEASE_UP_INCENTIVE' : 'NEW_LEASE_ONETIME';
@@ -296,7 +311,8 @@ function buildConcessionRecords(
         const preCash = Math.round((nlCash * pre) / total);
         const onCash = nlCash - preCash;
         if (preCash > 0) {
-          records.push(makeRecord(dealId, cal, 'PRE_LEASE_BONUS', preCash, termMonths, isLeaseUp, treatment, 'pre'));
+          // Pre-lease portion: commencement = delivery month
+          records.push(makeRecord(dealId, cal, 'PRE_LEASE_BONUS', preCash, termMonths, true, treatment, 'pre', deliveryCalMonth));
         }
         if (onCash > 0) {
           const eventType: LeaseEventType = isLeaseUp ? 'LEASE_UP_INCENTIVE' : 'NEW_LEASE_ONETIME';
@@ -323,6 +339,10 @@ export class LeaseVelocityEngine {
     const def = inputs.stabilization_definition ?? 'PHYSICAL_95'; const cs = inputs.concession_strategy ?? 'MARKET';
     const mi = inputs.marketing_intensity ?? 'MARKET';
     const treatment = inputs.leasing_cost_treatment ?? 'HYBRID';
+    // Delivery calendar month: used by buildConcessionRecords to set PRE_LEASE_BONUS commencement date
+    const deliveryCalMonth = inputs.delivery_month !== undefined
+      ? fmtMon(2026, 0, inputs.delivery_month)
+      : undefined;
     let r: RunResult;
     switch (mode) {
       case 'LEASE_UP_NEW_CONSTRUCTION': r = rnLU(inputs, tu, tO, mr, cls, def, cs, mi, treatment); break;
@@ -332,7 +352,7 @@ export class LeaseVelocityEngine {
     }
     allW.push(...r.w);
 
-    const concessionRecords = buildConcessionRecords(r.mo, inputs, treatment);
+    const concessionRecords = buildConcessionRecords(r.mo, inputs, treatment, deliveryCalMonth);
 
     return {
       success: true,

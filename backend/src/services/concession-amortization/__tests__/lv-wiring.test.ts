@@ -195,7 +195,7 @@ describe('§573.2 LEASE_UP_NEW_CONSTRUCTION months → LEASE_UP_INCENTIVE → FR
   });
 });
 
-// ── §573.3 Pre-lease bonus → CASH_AT_COMMENCEMENT ─────────────────────────────
+// ── §573.3 PRE_LEASE_BONUS → CASH_AT_COMMENCEMENT ─────────────────────────────
 
 describe('§573.3 PRE_LEASE_BONUS → CASH_AT_COMMENCEMENT', () => {
   it('pre-lease signings produce CASH_AT_COMMENCEMENT records', () => {
@@ -217,6 +217,70 @@ describe('§573.3 PRE_LEASE_BONUS → CASH_AT_COMMENCEMENT', () => {
     );
     for (const rec of preRecs) {
       expect(rec.is_renewal).toBe(false);
+    }
+  });
+
+  it('PRE_LEASE_BONUS lease_start_date equals delivery month — not signing month', () => {
+    // delivery_month=6 → calendar month "2026-07" (0-indexed month 6 = July)
+    const deliveryIdx = 6;
+    const result = runLU({
+      pre_leased_count: 30,
+      pre_lease_window_months: 6,
+      delivery_month: deliveryIdx,
+    });
+    const preRecs = result.concession_records.filter(
+      r => r.amortization_method === 'CASH_AT_COMMENCEMENT',
+    );
+    // All pre-lease records must commence AT or AFTER delivery month
+    // (signing may be earlier, but commencement must be at delivery)
+    for (const rec of preRecs) {
+      // delivery month index 6 → Jan+6 = July 2026 → "2026-07-01"
+      expect(rec.lease_start_date >= '2026-07-01').toBe(true);
+    }
+  });
+
+  it('PRE_LEASE_BONUS lease_end_date is computed from delivery month, not signing month', () => {
+    const deliveryIdx = 4; // May 2026
+    const result = runLU({
+      pre_leased_count: 20,
+      pre_lease_window_months: 6,
+      delivery_month: deliveryIdx,
+      avg_lease_term_months: 12,
+    });
+    const preRecs = result.concession_records.filter(
+      r => r.amortization_method === 'CASH_AT_COMMENCEMENT',
+    );
+    for (const rec of preRecs) {
+      // Lease end must be at least 11 months after lease start (12-month term)
+      const startYear = parseInt(rec.lease_start_date.slice(0, 4), 10);
+      const startMo   = parseInt(rec.lease_start_date.slice(5, 7), 10);
+      const endYear   = parseInt(rec.lease_end_date.slice(0, 4), 10);
+      const endMo     = parseInt(rec.lease_end_date.slice(5, 7), 10);
+      const monthDiff = (endYear - startYear) * 12 + (endMo - startMo);
+      expect(monthDiff).toBe(11); // 12-month term = end month is start+11
+    }
+  });
+
+  it('no amortization recognized before delivery month for pre-lease records', () => {
+    const deliveryIdx = 5; // June 2026
+    const result = runLU({
+      pre_leased_count: 20,
+      pre_lease_window_months: 6,
+      delivery_month: deliveryIdx,
+    });
+    const preRecs = result.concession_records.filter(
+      r => r.amortization_method === 'CASH_AT_COMMENCEMENT',
+    );
+    const output = amortizeConcessions({
+      records: preRecs,
+      leasing_cost_treatment: 'OPERATING',
+      current_date: '2026-01-01',
+      horizon_months: 120,
+    });
+    // No recognition before delivery month (Jun 2026 = "202606")
+    const preDeliveryMonths = ['202601', '202602', '202603', '202604', '202605'];
+    for (const mo of preDeliveryMonths) {
+      expect(output.monthly_recognition[mo] ?? 0).toBe(0);
     }
   });
 });
