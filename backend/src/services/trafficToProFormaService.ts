@@ -788,6 +788,11 @@ export interface TrafficProjectionYear {
   t01WeeklyTours: number | null;
   t05ClosingRatio: number | null;
   t06WeeklyLeases: number | null;
+  // Absolute weekly funnel counts — derived from weekly_walk_ins × decay × conversion rates
+  walkInsPerWeek: number | null;
+  toursPerWeek: number | null;
+  appsPerWeek: number | null;
+  leasesPerWeek: number | null;
 }
 
 /** T-01/T-05/T-06/T-07 leasing velocity signals sourced from traffic_learned_rates */
@@ -917,6 +922,16 @@ export async function getTrafficProjection(
     const tourDecayFactor = Math.max(0.7, 1 - (yr - 1) * 0.03); // 3% annual decline in walk-ins as stabilized
     const t01Yr = t01 != null ? +(t01 * tourDecayFactor).toFixed(3) : null;
 
+    // Absolute weekly funnel counts for this hold-year
+    const baseWalkIns = row.weekly_walk_ins != null ? Number(row.weekly_walk_ins) : null;
+    const tourRate    = lr?.tour_rate != null ? Number(lr.tour_rate) : null;
+    const appRate     = lr?.app_rate  != null ? Number(lr.app_rate)  : null;
+    const leaseRate   = lr?.lease_rate != null ? Number(lr.lease_rate) : null;
+    const walkInsPerWeek = baseWalkIns != null ? +(baseWalkIns * tourDecayFactor).toFixed(2) : null;
+    const toursPerWeek   = walkInsPerWeek != null && tourRate  != null ? +(walkInsPerWeek * tourRate).toFixed(2)  : null;
+    const appsPerWeek    = toursPerWeek   != null && appRate   != null ? +(toursPerWeek   * appRate).toFixed(2)   : null;
+    const leasesPerWeek  = appsPerWeek    != null && leaseRate != null ? +(appsPerWeek    * leaseRate).toFixed(2) : null;
+
     yearly.push({
       year: yr,
       vacancyPct: avgOcc != null ? +((1 - avgOcc / 100)).toFixed(4) : null,
@@ -926,6 +941,10 @@ export async function getTrafficProjection(
       t01WeeklyTours: t01Yr,
       t05ClosingRatio: t05 != null ? +t05.toFixed(4) : null,
       t06WeeklyLeases: t01Yr != null && t05 != null ? +(t01Yr * t05).toFixed(3) : null,
+      walkInsPerWeek,
+      toursPerWeek,
+      appsPerWeek,
+      leasesPerWeek,
     });
   }
 

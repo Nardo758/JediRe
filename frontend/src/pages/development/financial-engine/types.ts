@@ -211,6 +211,8 @@ export interface F9TrafficYear {
   year: number; vacancyPct: number|null; occupancyPct: number|null;
   effRent: number|null; rentGrowthPct: number|null;
   t01WeeklyTours: number|null; t05ClosingRatio: number|null; t06WeeklyLeases: number|null;
+  walkInsPerWeek: number|null; toursPerWeek: number|null;
+  appsPerWeek: number|null; leasesPerWeek: number|null;
 }
 
 export interface F9GprDecomposition {

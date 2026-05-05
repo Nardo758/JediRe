@@ -873,6 +873,153 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
   );
 }
 
+// ─── Traffic Funnel Panel ─────────────────────────────────────────────────
+
+type FunnelCadence = 'W' | 'M' | 'Y';
+
+const FUNNEL_ROWS: { key: keyof F9TrafficYear; label: string; unit: string }[] = [
+  { key: 'walkInsPerWeek', label: 'Walk-Ins',    unit: 'visits' },
+  { key: 'toursPerWeek',   label: 'Tours',       unit: 'tours'  },
+  { key: 'appsPerWeek',    label: 'Applications',unit: 'apps'   },
+  { key: 'leasesPerWeek',  label: 'Leases',      unit: 'leases' },
+];
+
+const CADENCE_MULTIPLIER: Record<FunnelCadence, number> = { W: 1, M: 4.33, Y: 52 };
+const CADENCE_SUFFIX:     Record<FunnelCadence, string> = { W: '/wk', M: '/mo', Y: '/yr' };
+
+function fmtFunnel(v: number | null, cadence: FunnelCadence): string {
+  if (v == null) return '—';
+  const scaled = v * CADENCE_MULTIPLIER[cadence];
+  return scaled >= 10
+    ? Math.round(scaled).toLocaleString() + CADENCE_SUFFIX[cadence]
+    : scaled.toFixed(1) + CADENCE_SUFFIX[cadence];
+}
+
+interface TrafficFunnelPanelProps {
+  yearly: F9TrafficYear[];
+  holdYears: number;
+}
+
+function TrafficFunnelPanel({ yearly, holdYears }: TrafficFunnelPanelProps) {
+  const [expanded, setExpanded] = useState(true);
+  const [cadence, setCadence]   = useState<FunnelCadence>('W');
+
+  const years = Array.from({ length: holdYears }, (_, i) => i + 1);
+  const hasAnyData = yearly.some(y => y.walkInsPerWeek != null);
+
+  return (
+    <div style={{ borderBottom: `1px solid ${BT.border.medium}` }}>
+      {/* Header bar */}
+      <div
+        onClick={() => setExpanded(p => !p)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '4px 8px', cursor: 'pointer',
+          background: BT.bg.header,
+          borderTop: `1px solid ${BT.border.medium}`,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.met.physTraffic, letterSpacing: 0.8 }}>
+            {expanded ? '▾' : '▸'} TRAFFIC FUNNEL — M07 PROJECTIONS
+          </span>
+          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+            walk-ins → tours → apps → leases
+          </span>
+        </div>
+        {/* W/M/Y toggle */}
+        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 2 }}>
+          {(['W', 'M', 'Y'] as FunnelCadence[]).map(c => (
+            <button
+              key={c}
+              onClick={() => setCadence(c)}
+              style={{
+                fontFamily: MONO, fontSize: 7, padding: '1px 5px',
+                background: cadence === c ? BT.met.physTraffic : 'transparent',
+                color: cadence === c ? BT.bg.terminal : BT.text.muted,
+                border: `1px solid ${cadence === c ? BT.met.physTraffic : BT.border.medium}`,
+                borderRadius: 2, cursor: 'pointer',
+              }}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: 140 }} />
+              {years.map(yr => <col key={yr} style={{ width: 80 }} />)}
+            </colgroup>
+            <thead>
+              <tr style={{ background: BT.bg.panel }}>
+                <th style={{ padding: '3px 8px', textAlign: 'left', fontFamily: MONO, fontSize: 7, color: BT.text.muted, fontWeight: 500 }}>
+                  METRIC
+                </th>
+                {years.map(yr => (
+                  <th key={yr} style={{ padding: '3px 6px', textAlign: 'right', fontFamily: MONO, fontSize: 7, color: BT.text.muted, fontWeight: 500 }}>
+                    YR {yr}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {!hasAnyData ? (
+                <tr>
+                  <td colSpan={years.length + 1} style={{ padding: '8px', textAlign: 'center', fontFamily: MONO, fontSize: 8, color: BT.text.muted, fontStyle: 'italic' }}>
+                    M07 traffic data unavailable — run traffic prediction to populate funnel
+                  </td>
+                </tr>
+              ) : (
+                FUNNEL_ROWS.map((row, ri) => {
+                  const isLast = ri === FUNNEL_ROWS.length - 1;
+                  const rowBg  = ri % 2 === 0 ? BT.bg.panel : BT.bg.terminal;
+                  return (
+                    <tr key={row.key} style={{ background: rowBg, borderBottom: isLast ? `1px solid ${BT.border.medium}` : `1px solid ${BT.border.subtle}` }}>
+                      <td style={{ padding: '3px 8px', fontFamily: MONO, fontSize: 8, color: isLast ? BT.met.physTraffic : BT.text.secondary, fontWeight: isLast ? 600 : 400, position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
+                        {row.label}
+                        {ri < FUNNEL_ROWS.length - 1 && (
+                          <span style={{ color: BT.text.muted, marginLeft: 4 }}>↓</span>
+                        )}
+                      </td>
+                      {years.map(yr => {
+                        const tv = yearly.find(y => y.year === yr);
+                        const raw = tv ? (tv[row.key] as number | null) : null;
+                        return (
+                          <td key={yr} style={{ padding: '3px 6px', textAlign: 'right', fontFamily: MONO, fontSize: 8, color: raw != null ? (isLast ? BT.met.physTraffic : BT.text.primary) : BT.text.muted }}>
+                            {fmtFunnel(raw, cadence)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })
+              )}
+              {/* Conversion efficiency footnote row */}
+              {hasAnyData && (() => {
+                const yr1 = yearly.find(y => y.year === 1);
+                const convPct = yr1?.walkInsPerWeek != null && yr1.walkInsPerWeek > 0 && yr1.leasesPerWeek != null
+                  ? (yr1.leasesPerWeek / yr1.walkInsPerWeek * 100).toFixed(1)
+                  : null;
+                return (
+                  <tr style={{ background: BT.bg.header }}>
+                    <td colSpan={years.length + 1} style={{ padding: '3px 8px', fontFamily: MONO, fontSize: 7, color: BT.text.muted, fontStyle: 'italic' }}>
+                      Overall conversion (walk-in → lease): {convPct != null ? `${convPct}%` : '—'} · 3% annual walk-in decay applied · Powered by M07 Engine
+                    </td>
+                  </tr>
+                );
+              })()}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── InlineAssumptionBlock helpers ────────────────────────────────────────
 
 function confidenceFromWeight(w: number | null): 'HIGH' | 'MED' | 'LOW' {
@@ -1463,6 +1610,18 @@ export function ProjectionsTab({
                       subjectSnapshotCount={financials.subjectHistory?.snapshot_count}
                       collisions={leasingCollisionEntries.length > 0 ? leasingCollisionEntries : undefined}
                       defaultExpanded={true}
+                    />
+                  </td>
+                </tr>
+              )}
+
+              {/* ── Traffic Funnel Panel ── walk-ins → tours → apps → leases over hold period ─── */}
+              {isAnnual && financials?.trafficProjection?.yearly && financials.trafficProjection.yearly.length > 0 && (
+                <tr>
+                  <td colSpan={colCount + 1} style={{ padding: 0 }}>
+                    <TrafficFunnelPanel
+                      yearly={financials.trafficProjection.yearly}
+                      holdYears={holdYears}
                     />
                   </td>
                 </tr>
