@@ -14,8 +14,7 @@
  */
 
 import { resolveRuleset } from './resolver';
-import { federalRuleset, federalIncomeTaxRate } from './rulesets/federal.ruleset';
-import { getRateSheet } from './rateSheets/loader';
+import { federalRuleset, federalIncomeTaxRate, federalCostSegAvailablePct } from './rulesets/federal.ruleset';
 import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast } from './types';
 
 /**
@@ -102,9 +101,8 @@ export const taxService = {
       ? Math.round(depreciableBase / depreciationLife)
       : null;
     const bonusDepreciationCurrentYearPct = federalRuleset.bonusDepreciationPct(placedInServiceYear);
-    const fedSheet = getRateSheet('federal', FEDERAL_RATE_SHEET_YEAR);
     const costSegAvailablePct = federalRuleset.costSegEligible(propertyType)
-      ? (fedSheet?.cost_seg_available_pct ?? 0.30)
+      ? federalCostSegAvailablePct()
       : 0;
     const fedRate   = federalIncomeTaxRate(entityType);
     const stateRate = ruleset.stateIncomeTaxRate(entityType);

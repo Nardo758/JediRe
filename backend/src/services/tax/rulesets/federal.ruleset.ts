@@ -233,3 +233,24 @@ export const federalRuleset: TaxRuleset = {
 export function federalIncomeTaxRate(entityType: EntityType): number {
   return lookupFederalRate(entityType);
 }
+
+/**
+ * Return the conventional cost segregation available percentage from the federal rate sheet.
+ * Throws when the rate sheet is unavailable or the field is absent — no numeric fallback.
+ */
+export function federalCostSegAvailablePct(): number {
+  const sheet = getSheet();
+  if (!sheet) {
+    throw new Error(
+      `[federalRuleset] federal-${RATE_SHEET_YEAR} rate sheet not loaded. ` +
+      `Ensure initRateSheets() ran at boot.`,
+    );
+  }
+  if (sheet.cost_seg_available_pct == null) {
+    throw new Error(
+      `[federalRuleset] federal-${RATE_SHEET_YEAR}.json is missing cost_seg_available_pct. ` +
+      `Add the field to the rate sheet.`,
+    );
+  }
+  return sheet.cost_seg_available_pct;
+}
