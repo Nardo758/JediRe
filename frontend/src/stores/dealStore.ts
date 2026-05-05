@@ -369,6 +369,21 @@ interface DealStoreActions {
   /** Pro Forma view mode — BROKER_VIEW shows OM numbers, BUILD_OWN shows platform underwriting. Shared across Pro Forma / Assumptions tabs. */
   viewMode: 'BROKER_VIEW' | 'BUILD_OWN';
   setViewMode: (mode: 'BROKER_VIEW' | 'BUILD_OWN') => void;
+
+  // ─── LEASE VELOCITY — EVENT BUS ─────────────────────────────────────────────
+  /**
+   * Dispatch `lease_velocity.output.updated` on the shared window event bus.
+   * Call this after a successful POST /api/v1/lease-velocity/run so that
+   * downstream F9 consumers (S&U reserve, Returns IRR, JEDI Position sub-score)
+   * re-fetch /financials with the latest LV output.
+   */
+  emitLeaseVelocityUpdated: () => void;
+  /**
+   * Dispatch `leasing_cost_treatment.changed` on the shared window event bus.
+   * Call this whenever the top-bar cost-treatment toggle changes so that
+   * all F9 consumers re-fetch /financials with the new treatment parameter.
+   */
+  emitLeasingCostTreatmentChanged: (treatment: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1764,6 +1779,14 @@ export const useDealStore = create<DealStore>()(
         set({ validationFlags: filtered });
       }
       return result;
+    },
+
+    emitLeaseVelocityUpdated: () => {
+      window.dispatchEvent(new CustomEvent('lease_velocity.output.updated'));
+    },
+
+    emitLeasingCostTreatmentChanged: (treatment) => {
+      window.dispatchEvent(new CustomEvent('leasing_cost_treatment.changed', { detail: { treatment } }));
     },
 
     classifyFieldOverride: (field, value) => {

@@ -25,6 +25,7 @@ import { exportToExcel } from './financial-engine/excel-export';
 import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials, EvidenceFieldMeta, LeasingCostTreatment } from './financial-engine/types';
 import { fmt$, fmtPct, fmtX } from './financial-engine/types';
 import { apiClient } from '../../services/api.client';
+import { useDealStore } from '../../stores/dealStore';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
 
@@ -114,7 +115,9 @@ function mergeModelIntoFinancials(
   out.returns.maxLtv            = null;
   out.returns.avgDscr           = s.dscr ?? null;
   out.returns.avgNoiGrowth      = null;
-  out.returns.gpPromoteEarned   = s.gpPromoteEarned ?? null;
+  // NOTE: gpPromoteEarned intentionally NOT repeated here — line above (with LV guard) is the
+  // single assignment point. The duplicate unconditional assignment has been removed to preserve
+  // treatment-aware gpPromote when the LV engine is connected.
   out.returns.lpTrancheReturns  = [];
   out.returns.netDistributionsByYear = toArr<any>(model.annualCashFlow).map(r => r.lpDistribution ?? null);
   out.returns.cumulativeCfByYear = toArr<any>(model.annualCashFlow).reduce<number[]>((acc, r, i) => {
@@ -622,7 +625,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const handleLvTreatmentViewChange = useCallback((t: LeasingCostTreatment) => {
     lvTreatmentRef.current = t;
     setLvCostTreatmentView(t);
-    window.dispatchEvent(new CustomEvent('leasing_cost_treatment.changed', { detail: { treatment: t } }));
+    // Route through dealStore event bus (consistent with assumption:changed pattern)
+    useDealStore.getState().emitLeasingCostTreatmentChanged(t);
   }, []);
 
   // ── Evidence Summary — fetch collision/confidence/tier stats ─────────────

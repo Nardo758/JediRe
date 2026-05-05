@@ -933,8 +933,8 @@ export function ProjectionsTab({
       if (resp.data?.success) {
         setLvResult(resp.data.data);
         // Notify downstream F9 consumers (S&U reserve, Returns IRR, JEDI Position sub-score)
-        // so they re-fetch /financials and pick up the new leaseVelocity output.
-        window.dispatchEvent(new CustomEvent('lease_velocity.output.updated'));
+        // via the dealStore event bus so they re-fetch /financials with updated LV output.
+        useDealStore.getState().emitLeaseVelocityUpdated();
       } else {
         setLvError(resp.data?.error ?? 'Engine returned an error');
       }

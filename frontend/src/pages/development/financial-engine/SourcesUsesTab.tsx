@@ -220,10 +220,13 @@ export function SourcesUsesTab({
     !usesHasId.has('leaseUpReserve');
   const leaseUpReserveAmount = lv?.peakCumulativeReserve ?? null;
 
-  // Effective total uses includes the reserve line when injected on the frontend
-  const effectiveTotalUses = showLeaseUpReserve && leaseUpReserveAmount != null
-    ? (su?.totalUses ?? totalUses) + leaseUpReserveAmount
-    : (su?.totalUses ?? totalUses);
+  // Effective total uses includes the reserve line when injected on the frontend.
+  // effectiveDelta and effectiveBalanced must also account for the injected reserve
+  // so that the balance status row and header badge remain internally consistent.
+  const injectedReserve = showLeaseUpReserve && leaseUpReserveAmount != null ? leaseUpReserveAmount : 0;
+  const effectiveTotalUses = (su?.totalUses ?? totalUses) + injectedReserve;
+  const effectiveDelta    = delta - injectedReserve;
+  const effectiveBalanced = Math.abs(effectiveDelta) < 1000;
 
   // Editable rows that should appear as ADD placeholders (only when not already in the grid)
   const sourceEditableRows: { key: string; id: string; label: string }[] = [
@@ -281,9 +284,9 @@ export function SourcesUsesTab({
       <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>CAPITAL DEPLOYMENT · DAY-ONE CLOSE</span>
         <Bd c={BT.text.cyan}>SOURCES & USES</Bd>
-        {balanced
+        {effectiveBalanced
           ? <Bd c={BT.met.financial}>BALANCED</Bd>
-          : <Bd c={BT.text.red}>IMBALANCE {delta > 0 ? '+' : ''}{fmt$(delta)}</Bd>
+          : <Bd c={BT.text.red}>IMBALANCE {effectiveDelta > 0 ? '+' : ''}{fmt$(effectiveDelta)}</Bd>
         }
         {su && <Bd c={BT.text.muted}>BACKEND</Bd>}
         {showLeaseUpReserve && <Bd c={BT.text.teal}>LEASE-UP</Bd>}
@@ -419,12 +422,12 @@ export function SourcesUsesTab({
       </div>
 
       {/* ── Reconciliation row ─────────────────────────────────────────────── */}
-      <div style={{ padding: '4px 12px', background: balanced ? `${BT.met.financial}12` : `${BT.text.red}12`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${BT.border.subtle}` }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: balanced ? BT.met.financial : BT.text.red, fontWeight: 700 }}>
-          {balanced ? 'SOURCES = USES · BALANCED' : `EQUITY GAP ${fmt$(Math.abs(delta))}`}
+      <div style={{ padding: '4px 12px', background: effectiveBalanced ? `${BT.met.financial}12` : `${BT.text.red}12`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${BT.border.subtle}` }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: effectiveBalanced ? BT.met.financial : BT.text.red, fontWeight: 700 }}>
+          {effectiveBalanced ? 'SOURCES = USES · BALANCED' : `EQUITY GAP ${fmt$(Math.abs(effectiveDelta))}`}
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: balanced ? BT.met.financial : BT.text.red, fontWeight: 700 }}>
-          {balanced ? '✓' : `${delta >= 0 ? '+' : ''}${fmt$(delta)}`}
+        <span style={{ fontFamily: MONO, fontSize: 9, color: effectiveBalanced ? BT.met.financial : BT.text.red, fontWeight: 700 }}>
+          {effectiveBalanced ? '✓' : `${effectiveDelta >= 0 ? '+' : ''}${fmt$(effectiveDelta)}`}
         </span>
       </div>
 
