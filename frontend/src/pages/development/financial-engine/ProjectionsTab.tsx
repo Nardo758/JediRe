@@ -899,11 +899,12 @@ interface TrafficFunnelPanelProps {
   yearly: F9TrafficYear[];
   holdYears: number;
   isOffline?: boolean;
+  expanded: boolean;
+  onToggle: () => void;
 }
 
-function TrafficFunnelPanel({ yearly, holdYears, isOffline }: TrafficFunnelPanelProps) {
-  const [expanded, setExpanded] = useState(true);
-  const [cadence, setCadence]   = useState<FunnelCadence>('W');
+function TrafficFunnelPanel({ yearly, holdYears, isOffline, expanded, onToggle }: TrafficFunnelPanelProps) {
+  const [cadence, setCadence] = useState<FunnelCadence>('W');
 
   const years = Array.from({ length: holdYears }, (_, i) => i + 1);
   const hasAnyData = !isOffline && yearly.some(y => y.walkInsPerWeek != null);
@@ -912,7 +913,7 @@ function TrafficFunnelPanel({ yearly, holdYears, isOffline }: TrafficFunnelPanel
     <div style={{ borderBottom: `1px solid ${BT.border.medium}` }}>
       {/* Header bar */}
       <div
-        onClick={() => setExpanded(p => !p)}
+        onClick={onToggle}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '4px 8px', cursor: 'pointer',
@@ -1193,7 +1194,7 @@ export function ProjectionsTab({
   }, [onHoldChange]);
   const [viewMode, setViewMode] = useState<ViewMode>('annual');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(SECTIONS.map(s => s.key)),
+    new Set(['traffic-funnel', ...SECTIONS.map(s => s.key)]),
   );
   const [showAfterTax, setShowAfterTax] = useState(false);
   const [showGprDecomp,        setShowGprDecomp]        = useState(true);
@@ -1607,6 +1608,8 @@ export function ProjectionsTab({
                       yearly={financials.trafficProjection?.yearly ?? []}
                       holdYears={holdYears}
                       isOffline={!financials.trafficProjection}
+                      expanded={expandedSections.has('traffic-funnel')}
+                      onToggle={() => toggleSection('traffic-funnel')}
                     />
                   </td>
                 </tr>
