@@ -617,6 +617,7 @@ async function computeConcessionRecognition(
         by_fiscal_year: cached.by_fiscal_year,
         write_offs_year_to_date: cached.write_offs_year_to_date,
         last_recomputed: cached.last_recomputed,
+        capitalized_lease_up_total: cached.capitalized_lease_up_total,
       };
     }
   }
@@ -634,6 +635,7 @@ async function computeConcessionRecognition(
       by_fiscal_year: output.fiscal_year_recognition,
       write_offs_year_to_date: output.write_offs_year_to_date,
       last_recomputed: output.computed_at,
+      capitalized_lease_up_total: output.lease_up_reserve_required,
     };
 
     // ── Write-through cache: persist to deal_data ──────────────────────────

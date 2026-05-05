@@ -234,4 +234,11 @@ export interface DealConcessionRecognition {
   write_offs_year_to_date: number;
   /** ISO timestamp of last engine run */
   last_recomputed: string;
+  /**
+   * Total dollars routed to S&U under CAPITALIZED treatment
+   * (= AmortizationOutput.lease_up_reserve_required).
+   * Sum of amount_total for is_lease_up_period=true records.
+   * Used by the S&U "Capitalized Lease-up Concessions" line (Task #574).
+   */
+  capitalized_lease_up_total?: number;
 }

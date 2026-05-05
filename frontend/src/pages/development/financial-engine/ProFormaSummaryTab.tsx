@@ -786,11 +786,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
             {/* Income deductions (vacancy, LTL, concessions, bad debt, NRU) */}
             {preNriRows.map((r, i) => {
-              // §14 Task #574: For the concessions row, override the resolved display value
-              // with the Y1 recognized (straight-line amortized) sum when available.
-              // Spec: "replace the static earned concessions value with the Y1 sum of
-              // concession_recognition.monthly; single-number display."
-              // EARNED-VS-RECOGNIZED: the override is surfaced via an annotation row below.
+              // Concessions row: override resolved with Y1 recognized sum when available.
               const isConcessionsOverridden = r.field === 'concessions' && y1RecognizedConcessions != null;
               const displayRow = isConcessionsOverridden
                 ? {

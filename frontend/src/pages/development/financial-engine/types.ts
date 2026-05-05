@@ -625,13 +625,11 @@ export interface F9ConcessionRecognition {
   /** ISO timestamp of last engine run */
   last_recomputed: string;
   /**
-   * Sum of amount_total for lease-up-period concession records flagged for
-   * capitalization. Populated by backend when leasing_cost_treatment = CAPITALIZED.
-   * Used by S&U "Capitalized Lease-up Concessions" line (Task #574).
-   * When absent, SourcesUsesTab falls back to monthly sum filtered to the
-   * lease-up window (months 1..stabilizationMonth from close date).
+   * Sum of amount_total for lease-up-period concession records under CAPITALIZED
+   * treatment (= AmortizationOutput.lease_up_reserve_required). Populated by backend.
+   * Used by the S&U "Capitalized Lease-up Concessions" line (Task #574).
    */
-  capitalizedLeaseUpTotal?: number | null;
+  capitalized_lease_up_total?: number;
 }
 
 /**

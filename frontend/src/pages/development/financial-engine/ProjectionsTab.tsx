@@ -1365,12 +1365,8 @@ export function ProjectionsTab({
                         </tr>
                       );
 
-                      // ── §14 Recognized-Concessions row ───────────────────────────────
-                      // Injected immediately after the earned "Concessions" row in REVENUE.
-                      // Reads by_calendar_year[currentYear] — never shares a label or value
-                      // with the earned row above (EARNED-VS-RECOGNIZED-DISTINCTION §14).
-                      // Only shown when concessionRecognition is available AND current
-                      // calendar year falls within the analysis horizon.
+                      // "Current Year (YYYY) Concessions" — recognized (amortized) row,
+                      // injected after the earned concessions row in REVENUE section.
                       if (
                         section.key === 'revenue' &&
                         row.key === 'concessions' &&

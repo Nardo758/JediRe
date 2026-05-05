@@ -229,29 +229,18 @@ export function SourcesUsesTab({
     !usesHasId.has('leaseUpReserve');
   const leaseUpReserveAmount = lv?.peakCumulativeReserve ?? null;
 
-  // ── Capitalized Lease-up Concessions line (Task #574) ────────────────────
-  // Shown only when treatment = CAPITALIZED and concessionRecognition is available.
-  // Value: sum of lease-up-period concession records' amount_total (capitalized cash).
-  // Source priority:
-  //   1. concessionRecognition.capitalizedLeaseUpTotal — backend-populated exact total
-  //   2. concessionRecognition.monthly filtered to the lease-up window [1..stabilizationMonth]
-  //      from close date — best frontend approximation of lease-up-period capitalized dollars
-  // §14 EARNED-VS-RECOGNIZED: displayed as capitalized cost, not ongoing OpEx recognition.
-  // Disappears on OPERATING or HYBRID treatment toggle without page reload.
+  // Capitalized Lease-up Concessions — shown only under CAPITALIZED treatment.
+  // Disappears on treatment toggle without page reload.
   const concessionRecognition = f9Financials?.concessionRecognition ?? null;
+  // Backend-computed sum of amount_total for CAPITALIZED lease-up-period records
+  // (AmortizationOutput.lease_up_reserve_required → capitalized_lease_up_total).
+  // Hidden when field is absent — no monthly-sum fallback (different metric).
+  const capitalizedConcessionsAmount: number | null =
+    concessionRecognition?.capitalized_lease_up_total ?? null;
   const showCapitalizedConcessions =
     lvCostTreatmentView === 'CAPITALIZED' &&
-    concessionRecognition != null &&
+    capitalizedConcessionsAmount != null &&
     !usesHasId.has('capitalizedConcessions');
-
-  // Value: concessionRecognition.capitalizedLeaseUpTotal — the backend-computed sum
-  // of amount_total for lease-up-period concession records flagged for capitalization.
-  // This field is populated by the backend when leasing_cost_treatment = CAPITALIZED.
-  // When absent (backend not yet wired / no lease-up records), the line is hidden.
-  // Do NOT fall back to concessionRecognition.monthly — that is a recognized-amortization
-  // schedule, not a capitalized-cash figure, and would misstate Uses.
-  const capitalizedConcessionsAmount: number | null =
-    concessionRecognition?.capitalizedLeaseUpTotal ?? null;
 
   // Effective total uses includes the reserve line when injected on the frontend.
   // effectiveDelta and effectiveBalanced must also account for the injected reserve
@@ -439,7 +428,6 @@ export function SourcesUsesTab({
             </div>
           )}
 
-          {/* Capitalized Lease-up Concessions — shown only when treatment = CAPITALIZED (Task #574) */}
           {showCapitalizedConcessions && (
             <div
               style={{
@@ -447,20 +435,18 @@ export function SourcesUsesTab({
                 borderTop: `1px solid ${BT.text.amber}40`,
                 background: `${BT.text.amber}07`,
               }}
-              title="Capitalized concessions: total recognized (straight-line amortized) concession amount capitalized at close. Shown only when leasing cost treatment = CAPITALIZED. §14 EARNED-VS-RECOGNIZED: recognized dollars only."
+              title="Capitalized lease-up concessions: sum of concession amount_total for lease-up-period records under CAPITALIZED treatment. Hidden on OPERATING or HYBRID."
             >
               <div>
                 <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber, fontWeight: 600 }}>
                   CAPITALIZED LEASE-UP CONCESSIONS
                 </div>
                 <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-                  Recognized (amortized) · CAPITALIZED treatment · §14 · disappears on OPERATING / HYBRID
+                  Sum of lease-up concession records · CAPITALIZED treatment only
                 </div>
               </div>
               <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber, fontWeight: 600 }}>
-                {capitalizedConcessionsAmount != null && capitalizedConcessionsAmount > 0
-                  ? fmt$(capitalizedConcessionsAmount)
-                  : '— pending engine'}
+                {fmt$(capitalizedConcessionsAmount!)}
               </span>
             </div>
           )}
