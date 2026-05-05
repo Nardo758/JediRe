@@ -14,7 +14,8 @@
  */
 
 import { resolveRuleset } from './resolver';
-import type { TaxContext, TaxForecast, ReTaxYear } from './types';
+import { federalRuleset, federalIncomeTaxRate } from './rulesets/federal.ruleset';
+import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast } from './types';
 
 export { TaxContext, TaxForecast } from './types';
 
@@ -77,6 +78,35 @@ export const taxService = {
       if (!isFinite(assessmentGrowthPct) || assessmentGrowthPct < 0) assessmentGrowthPct = 0;
     }
 
+    // ── Section C — Income Tax & Depreciation (always federal) ──────────────
+    const propertyType   = ctx.propertyType   ?? 'multifamily';
+    const entityType     = ctx.entityType     ?? 'pass_through';
+    const placedInServiceYear = ctx.placedInServiceYear ?? new Date().getFullYear();
+    const landAllocationPct   = ctx.landAllocationPct   ?? 0.20;
+
+    const depreciationLife  = federalRuleset.depreciationLife(propertyType);
+    const depreciableBase   = ctx.purchasePrice != null
+      ? Math.round(ctx.purchasePrice * (1 - landAllocationPct))
+      : null;
+    const annualDepreciation = depreciableBase != null
+      ? Math.round(depreciableBase / depreciationLife)
+      : null;
+    const bonusDepreciationCurrentYearPct = federalRuleset.bonusDepreciationPct(placedInServiceYear);
+    const costSegAvailablePct = federalRuleset.costSegEligible(propertyType) ? 0.30 : 0;
+    const fedRate   = federalIncomeTaxRate(entityType);
+    const stateRate = ruleset.stateIncomeTaxRate(entityType);
+
+    const sectionC: SectionCForecast = {
+      landAllocationPct,
+      depreciableBase,
+      annualDepreciation,
+      bonusDepreciationCurrentYearPct,
+      costSegAvailablePct,
+      federalIncomeTaxRate: fedRate,
+      stateIncomeTaxRate:   stateRate,
+      effectiveCombinedRate: fedRate + stateRate,
+    };
+
     return {
       jurisdiction: `${ctx.state || 'unknown'}${ctx.county ? `-${ctx.county}` : ''}`,
       rulesetUsed: ruleset.jurisdiction,
@@ -96,6 +126,7 @@ export const taxService = {
       transferTax,
       specialTaxes: ruleset.specialTaxes(ctx),
       abatementPrograms: ruleset.abatementEligibility(ctx),
+      sectionC,
     };
   },
 };

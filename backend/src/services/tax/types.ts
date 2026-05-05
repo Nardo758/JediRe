@@ -166,6 +166,30 @@ export interface TransferTaxResult {
 // ── TaxForecast output ─────────────────────────────────────────────────────────
 
 /**
+ * SectionCForecast — federal income tax & depreciation results.
+ * Computed by taxService.forecast() using the federal ruleset and rate sheet.
+ * Maps directly onto the `taxes.incomeTax` shape sent to the frontend.
+ */
+export interface SectionCForecast {
+  /** Land allocation fraction used (e.g. 0.20 = 20% land / 80% improvement) */
+  landAllocationPct: number;
+  /** Depreciable basis = purchasePrice × (1 - landAllocationPct) */
+  depreciableBase: number | null;
+  /** Annual straight-line depreciation = depreciableBase / depreciationLife */
+  annualDepreciation: number | null;
+  /** Bonus depreciation percentage for the placed-in-service year (e.g. 0.20 for 2026) */
+  bonusDepreciationCurrentYearPct: number;
+  /** Fraction of depreciable basis eligible for cost segregation (0 when not eligible) */
+  costSegAvailablePct: number;
+  /** Federal income tax rate for the entity type, sourced from federal rate sheet */
+  federalIncomeTaxRate: number;
+  /** State income tax rate (0 for TX/FL; expanded in Phase 3 for GA) */
+  stateIncomeTaxRate: number;
+  /** Combined effective rate = federalIncomeTaxRate + stateIncomeTaxRate */
+  effectiveCombinedRate: number;
+}
+
+/**
  * TaxForecast — output of taxService.forecast().
  *
  * Structured to map directly onto the existing `taxes.reTax` and
@@ -196,6 +220,13 @@ export interface TaxForecast {
 
   specialTaxes: SpecialTax[];
   abatementPrograms: AbatementProgram[];
+
+  /**
+   * Section C — Federal income tax & depreciation forecast.
+   * Always populated by taxService.forecast() using the federal ruleset.
+   * Additive field — callers that don't read it are unaffected.
+   */
+  sectionC: SectionCForecast;
 }
 
 // ── TaxRuleset interface ───────────────────────────────────────────────────────

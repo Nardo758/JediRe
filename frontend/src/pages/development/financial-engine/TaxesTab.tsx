@@ -236,8 +236,9 @@ function DeprecSchedule({ taxes, costSeg, bonusYear, f9Financials }: {
   const loanAmount = f9Financials?.capitalStack?.loanAmount ?? null;
   const interestRate = f9Financials?.capitalStack?.interestRate ?? null;
   const annualInterest = loanAmount != null && interestRate != null ? Math.round(loanAmount * interestRate) : null;
+  const bonusDepPct = incomeTax.bonusDepreciationCurrentYearPct ?? 0.20;
   const bonusBasis = (costSeg && depreciableBase != null)
-    ? Math.round(depreciableBase * costSegAvailablePct * (bonusYear === 2026 ? 0.40 : 0.20))
+    ? Math.round(depreciableBase * costSegAvailablePct * bonusDepPct)
     : 0;
 
   const rows = useMemo(() => {
@@ -775,14 +776,14 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                 />
                 <TaxRow
                   label="Bonus Depreciation (Y1 cost seg)"
-                  sub={`${costSeg ? `${taxes?.incomeTax.costSegAvailablePct != null ? (taxes.incomeTax.costSegAvailablePct * 100).toFixed(0) : 30}% of basis eligible × ${bonusYear === 2026 ? '40%' : '20%'} bonus rate` : 'Cost seg OFF'}`}
+                  sub={`${costSeg ? `${taxes?.incomeTax.costSegAvailablePct != null ? (taxes.incomeTax.costSegAvailablePct * 100).toFixed(0) : 30}% of basis eligible × ${((taxes?.incomeTax.bonusDepreciationCurrentYearPct ?? 0.20) * 100).toFixed(0)}% bonus rate` : 'Cost seg OFF'}`}
                   broker={null}
                   platform={costSeg && taxes?.incomeTax.depreciableBase != null
-                    ? Math.round(taxes.incomeTax.depreciableBase * (taxes.incomeTax.costSegAvailablePct ?? 0.30) * (bonusYear === 2026 ? 0.40 : 0.20))
+                    ? Math.round(taxes.incomeTax.depreciableBase * (taxes.incomeTax.costSegAvailablePct ?? 0.30) * (taxes.incomeTax.bonusDepreciationCurrentYearPct ?? 0.20))
                     : null}
                   user={null}
                   resolved={costSeg && taxes?.incomeTax.depreciableBase != null
-                    ? Math.round(taxes.incomeTax.depreciableBase * (taxes.incomeTax.costSegAvailablePct ?? 0.30) * (bonusYear === 2026 ? 0.40 : 0.20))
+                    ? Math.round(taxes.incomeTax.depreciableBase * (taxes.incomeTax.costSegAvailablePct ?? 0.30) * (taxes.incomeTax.bonusDepreciationCurrentYearPct ?? 0.20))
                     : null}
                   locked
                   format={fmtDlr}

@@ -2406,12 +2406,8 @@ export async function getDealFinancials(
   const tppBroker: number | null = rrBroker != null ? Math.round(rrBroker * 0.5) : (totalUnits > 0 ? totalUnits * 150 : null);
   const tppPlatform: number | null = totalUnits > 0 ? totalUnits * 200 : null;
 
-  // Income tax / depreciation — federal-level, not state-specific
-  const LAND_PCT = 0.20;
-  const depreciableBase = purchasePrice != null ? Math.round(purchasePrice * (1 - LAND_PCT)) : null;
-  const annualDepreciation = depreciableBase != null ? Math.round(depreciableBase / 27.5) : null;
-  const currentYear = new Date().getFullYear();
-  const bonusRate = currentYear >= 2027 ? 0.20 : 0.40;  // 2026=40%, 2027=20%
+  // Income tax / depreciation — sourced from taxService.forecast() sectionC
+  const sc = taxForecast.sectionC;
 
   // Assemble taxes object — shape preserved for backward compatibility
   const taxes = {
@@ -2422,11 +2418,15 @@ export async function getDealFinancials(
     reTax: taxForecast.reTax,
     tpp: { broker: tppBroker, platform: tppPlatform },
     incomeTax: {
-      purchasePrice, landValuePct: LAND_PCT, depreciableBase,
-      annualDepreciation, bonusDepreciationCurrentYearPct: bonusRate, costSegAvailablePct: 0.30,
-      // Marginal blended rate (federal + state). Use 0.37 as conventional top-bracket default
-      // when incomeTax data is seeded but no explicit rate override is available.
-      marginalTaxRate: 0.37,
+      purchasePrice,
+      landValuePct: sc.landAllocationPct,
+      depreciableBase: sc.depreciableBase,
+      annualDepreciation: sc.annualDepreciation,
+      bonusDepreciationCurrentYearPct: sc.bonusDepreciationCurrentYearPct,
+      costSegAvailablePct: sc.costSegAvailablePct,
+      // Blended marginal rate from federal rate sheet + state rate (0 for TX/FL).
+      // Falls back to 0.37 (conventional top-bracket) when rate is zero (data gap).
+      marginalTaxRate: sc.effectiveCombinedRate > 0 ? sc.effectiveCombinedRate : 0.37,
     },
     transferTax: {
       purchasePrice,
