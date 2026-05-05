@@ -911,7 +911,7 @@ function buildLeasingAssumptionFields(financials: DealFinancials): AssumptionFie
 
   const fields: AssumptionFieldDef[] = [];
 
-  // Renewal Rate
+  // 1. Renewal Rate
   {
     const subject = dyn?.renewal_rate ?? null;
     const peer    = psv['renewal_rate'] ?? null;
@@ -927,13 +927,13 @@ function buildLeasingAssumptionFields(financials: DealFinancials): AssumptionFie
     });
   }
 
-  // Turnover Rate
+  // 2. Expected Turnover Rate
   {
     const subject = dyn?.turnover_rate ?? null;
     const peer    = psv['turnover_rate'] ?? null;
     const w       = cw['turnover_rate']?.weight ?? null;
     fields.push({
-      fieldId: 'turnover_rate', label: 'Turnover Rate',
+      fieldId: 'turnover_rate', label: 'Expected Turnover Rate',
       format: 'pct', precision: 0.01, min: 0, max: 1,
       peerValue: peer, subjectValue: subject,
       effectiveValue: blendedEffective(subject, 'turnover_rate', psv, cw),
@@ -943,7 +943,7 @@ function buildLeasingAssumptionFields(financials: DealFinancials): AssumptionFie
     });
   }
 
-  // Days Vacant (median)
+  // 3. Days Vacant (median)
   {
     const subject = dyn?.days_vacant_median ?? null;
     const peer    = psv['days_vacant_median'] ?? null;
@@ -959,37 +959,28 @@ function buildLeasingAssumptionFields(financials: DealFinancials): AssumptionFie
     });
   }
 
-  // Signing Velocity (leases/mo)
-  {
-    const subject = sh?.current_state?.signing_velocity ?? null;
-    const peer    = psv['signing_velocity'] ?? null;
-    const w       = cw['signing_velocity']?.weight ?? null;
-    fields.push({
-      fieldId: 'signing_velocity', label: 'Signing Velocity (leases/mo)',
-      format: 'num', precision: 0.1, min: 0,
-      peerValue: peer, subjectValue: subject,
-      effectiveValue: blendedEffective(subject, 'signing_velocity', psv, cw),
-      source: sourceTag(subject, w),
-      confidence: confidenceFromWeight(w),
-      blendWeight: w,
-    });
-  }
-
-  // Rent Growth Yr 1 — from traffic calibration or assumptions fallback
+  // 4. Blended Rent Growth — subject: traffic calibration output,
+  //    peer: platform peer-set posterior, blend from confidence_weights
   {
     const calibrated = financials.trafficProjection?.calibrated?.rentGrowthPct ?? null;
     const yr1Assump  = financials.assumptions?.rentGrowthYr1 ?? null;
-    const peer       = psv['rent_growth_yr1'] ?? psv['rentGrowthYr1'] ?? yr1Assump;
-    const effective  = calibrated ?? yr1Assump;
+    const peer       = psv['rent_growth_yr1'] ?? psv['rentGrowthYr1'] ?? null;
+    const w          = cw['rent_growth_yr1']?.weight ?? (calibrated != null ? 1 : null);
+    const effective  = (() => {
+      if (calibrated != null && peer != null && w != null && w < 1 && w > 0) {
+        return w * calibrated + (1 - w) * peer;
+      }
+      return calibrated ?? peer ?? yr1Assump;
+    })();
     fields.push({
-      fieldId: 'rent_growth_yr1', label: 'Rent Growth (Yr 1)',
+      fieldId: 'rent_growth_yr1', label: 'Blended Rent Growth',
       format: 'pct', precision: 0.001, min: -0.2, max: 0.2,
-      peerValue: peer,
+      peerValue: peer ?? yr1Assump,
       subjectValue: calibrated,
       effectiveValue: effective,
-      source: calibrated != null ? 'TRAFFIC' : 'ASSUMPTIONS',
-      confidence: calibrated != null ? 'HIGH' : 'LOW',
-      blendWeight: calibrated != null ? 1 : null,
+      source: sourceTag(calibrated, w),
+      confidence: confidenceFromWeight(w),
+      blendWeight: w,
     });
   }
 
@@ -1401,21 +1392,6 @@ export function ProjectionsTab({
           <SubjectHistoryPanel history={financials.subjectHistory} />
         )}
 
-        {/* ── Occupancy & Leasing Assumptions (InlineAssumptionBlock) ─────── */}
-        {financials && (
-          <InlineAssumptionBlock
-            blockId="occupancy-leasing"
-            blockLabel="OCCUPANCY & LEASING"
-            dealId={dealId}
-            fields={leasingAssumptionFields}
-            hasSubjectHistory={financials.subjectHistory != null}
-            subjectTier={financials.subjectHistory?.tier}
-            subjectSnapshotCount={financials.subjectHistory?.snapshot_count}
-            collisions={leasingCollisionEntries.length > 0 ? leasingCollisionEntries : undefined}
-            defaultExpanded={true}
-          />
-        )}
-
         {/* ── Export error ───────────────────────────────────────────────── */}
         {error && (
           <div style={{ padding: '4px 10px', background: `${BT.text.red}12`, fontFamily: MONO, fontSize: 8, color: BT.text.red, flexShrink: 0 }}>
@@ -1448,6 +1424,25 @@ export function ProjectionsTab({
             </thead>
 
             <tbody>
+              {/* ── Occupancy & Leasing Assumptions ── above REVENUE rows ─── */}
+              {financials && (
+                <tr>
+                  <td colSpan={colCount + 1} style={{ padding: 0 }}>
+                    <InlineAssumptionBlock
+                      blockId="occupancy-leasing"
+                      blockLabel="OCCUPANCY & LEASING — MARKET RATE UNITS"
+                      dealId={dealId}
+                      fields={leasingAssumptionFields}
+                      hasSubjectHistory={financials.subjectHistory != null}
+                      subjectTier={financials.subjectHistory?.tier}
+                      subjectSnapshotCount={financials.subjectHistory?.snapshot_count}
+                      collisions={leasingCollisionEntries.length > 0 ? leasingCollisionEntries : undefined}
+                      defaultExpanded={true}
+                    />
+                  </td>
+                </tr>
+              )}
+
               {SECTIONS.map(section => {
                 const isExpanded = expandedSections.has(section.key);
                 // Hide after-tax section unless toggle active
