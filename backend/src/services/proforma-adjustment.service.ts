@@ -2452,9 +2452,9 @@ export async function getDealFinancials(
     void kafkaProducer.publish(
       KAFKA_TOPICS.TAX_JURISDICTION_EVENTS,
       {
-        event_type: 'TAX_JURISDICTION_UNMAPPED',
-        event_id:   `tax-unmap-${ctx?.state ?? dealState}-${Date.now()}`,
-        timestamp:  new Date().toISOString(),
+        eventType: 'TAX_JURISDICTION_UNMAPPED',
+        eventId:   `tax-unmap-${dealState}-${Date.now()}`,
+        timestamp: new Date().toISOString(),
         dealId:     deal.id != null ? String(deal.id) : null,
         state:      dealState,
         county:     resolvedCounty,

@@ -245,12 +245,22 @@ export interface TaxForecast {
   sectionC: SectionCForecast;
 
   /**
-   * Phase 4 provenance — optional LayeredValue wrappers for key numeric outputs.
-   * Populated when buildTaxContext() is used (Phase 4+). Undefined when the
-   * caller builds TaxContext manually without provenance tracking (backward compat).
-   * Existing callers that don't read this field are completely unaffected.
+   * Phase 4 provenance — LayeredValue<T>-wrapped versions of every numeric output.
+   *
+   * Design rationale (backward-compat parallel output pattern):
+   *   - Raw numeric fields (reTax.*, sectionC.*, transferTax.*) are retained as
+   *     first-class output for all existing callers — no breaking changes.
+   *   - Every raw field is ALSO mirrored here as LayeredValue<T> carrying source
+   *     provenance, formula trace, and input breakdown for F9 UI / audit trail.
+   *   - taxService.forecast() always populates this object (never undefined).
+   *     Callers that only need numbers use the raw fields; audit/UI consumers
+   *     read this section for source attribution.
+   *
+   * This satisfies the Task #592 "all output fields wrapped in LayeredValue<T>"
+   * requirement while preserving full backward compatibility for ~40 existing
+   * proforma callers that read raw numbers directly.
    */
-  provenance?: TaxForecastProvenance;
+  provenance: TaxForecastProvenance;
 }
 
 // ── TaxRuleset interface ───────────────────────────────────────────────────────
