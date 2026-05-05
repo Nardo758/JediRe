@@ -7,6 +7,8 @@
  */
 import { Pool } from 'pg';
 import { seedProFormaYear1 } from './proforma-seeder.service';
+import { amortizeConcessions } from './concession-amortization/index';
+import type { DealConcessionRecognition, ConcessionRecord } from '../types/concessions';
 
 // â”€â”€ M07 Subject Traffic History record shape (mirrors frontend F9SubjectHistory) â”€â”€â”€
 export interface SubjectHistoryRecord {
@@ -104,6 +106,19 @@ export interface ComposedFinancials {
     created_at: string;
     updated_at?: string;
   }>;
+  /**
+   * Concession amortization recognition schedule — populated by the
+   * ConcessionAmortizationEngine when ConcessionRecord[] are available.
+   * Null until Task #573 wires LV engine output → concession_records[].
+   *
+   * EARNED-VS-RECOGNIZED-DISTINCTION (§14):
+   *   This field holds "recognized" dollars only. Never display
+   *   concession_recognition values in the same row as earned (cash_value) amounts.
+   *
+   * Recomputed on: LV engine output update, leasing_cost_treatment change,
+   *   subject_history update, fiscal_year_start_month change (24h cache per DealContext rules).
+   */
+  concessionRecognition: DealConcessionRecognition | null;
 }
 
 export interface OtherIncomeBreakdownRow {
@@ -440,8 +455,60 @@ export async function composeDealFinancials(
       otherIncomeUserLines: Array.isArray(year1Data?.other_income_user_lines)
         ? year1Data.other_income_user_lines
         : [],
+      concessionRecognition: computeConcessionRecognition(dealData),
     },
   };
+}
+
+/**
+ * Compute concession recognition from any ConcessionRecord[] already embedded in dealData.
+ *
+ * Task #572 ships the engine. Full LV-engine → ConcessionRecord[] wiring is Task #573.
+ * Until then, concession_records are optionally attached to dealData by the LV engine stub
+ * or manually seeded; this function returns null gracefully when none are present.
+ *
+ * Recompute triggers wired here:
+ *   - leasing_cost_treatment change (reads from dealData.leasing_cost_treatment)
+ *   - fiscal_year_start_month change (reads from dealData.fiscal_year_start_month)
+ *   - concession_records update (list present in dealData.concession_records)
+ *
+ * Subject history and LV engine recompute triggers are wired in Task #573.
+ */
+function computeConcessionRecognition(
+  dealData: Record<string, any>,
+): DealConcessionRecognition | null {
+  const records: ConcessionRecord[] = Array.isArray(dealData?.concession_records)
+    ? (dealData.concession_records as ConcessionRecord[])
+    : [];
+
+  if (records.length === 0) return null;
+
+  const treatment: string = dealData?.leasing_cost_treatment ?? 'OPERATING';
+  if (treatment !== 'OPERATING' && treatment !== 'CAPITALIZED' && treatment !== 'HYBRID') {
+    return null;
+  }
+
+  const fiscalStart = typeof dealData?.fiscal_year_start_month === 'number'
+    ? dealData.fiscal_year_start_month
+    : 1;
+
+  try {
+    const output = amortizeConcessions({
+      records,
+      leasing_cost_treatment: treatment as 'OPERATING' | 'CAPITALIZED' | 'HYBRID',
+      fiscal_year_start_month: fiscalStart,
+    });
+    return {
+      monthly: output.monthly_recognition,
+      by_calendar_year: output.calendar_year_recognition,
+      by_fiscal_year: output.fiscal_year_recognition,
+      write_offs_year_to_date: output.write_offs_year_to_date,
+      last_recomputed: output.computed_at,
+    };
+  } catch (err: any) {
+    console.warn('[composer] computeConcessionRecognition failed (non-fatal):', err?.message ?? err);
+    return null;
+  }
 }
 
 /**

@@ -429,6 +429,19 @@ export interface F9DealFinancials {
   subjectHistory?: F9SubjectHistory | null;
   /** Lease Velocity Engine output — null until backend LV engine ships (M07 prereq). */
   leaseVelocity?: F9LeaseVelocity | null;
+  /**
+   * Concession amortization recognition schedule.
+   * Populated by the backend ConcessionAmortizationEngine when ConcessionRecord[] are available.
+   * Null until Task #573 wires LV engine output → concession_records[].
+   *
+   * EARNED-VS-RECOGNIZED-DISTINCTION (§14):
+   *   This shape holds "recognized" dollars only — never mix with earned (cash_value) amounts
+   *   or display them in the same Projections row.
+   *
+   * Recomputed on: LV engine output update, leasing_cost_treatment change,
+   *   subject_history update, fiscal_year_start_month change.
+   */
+  concessionRecognition?: F9ConcessionRecognition | null;
 }
 
 /**
@@ -590,6 +603,27 @@ export interface EvidenceFieldMeta {
   confidence: string;
   has_collision: boolean;
   collision_magnitude: 'minor' | 'material' | 'severe' | null;
+}
+
+/**
+ * Concession amortization recognition schedule — frontend projection of
+ * backend DealConcessionRecognition (backend/src/types/concessions.ts).
+ *
+ * EARNED-VS-RECOGNIZED-DISTINCTION (§14):
+ *   monthly/by_calendar_year/by_fiscal_year hold "recognized" dollars only.
+ *   Never display alongside earned (cash_value) amounts in the same P&L row.
+ */
+export interface F9ConcessionRecognition {
+  /** Per-month recognized dollars. Key: YYYYMM e.g. "202501" */
+  monthly: Record<string, number>;
+  /** Calendar year totals. Key: YYYY e.g. "2025" */
+  by_calendar_year: Record<string, number>;
+  /** Fiscal year totals. Key: YYYY (fiscal year label) */
+  by_fiscal_year: Record<string, number>;
+  /** Write-off dollars recognized in the current calendar year */
+  write_offs_year_to_date: number;
+  /** ISO timestamp of last engine run */
+  last_recomputed: string;
 }
 
 /**
