@@ -344,7 +344,7 @@ function applyEvidenceFilter(
   return rows;
 }
 
-export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh }: FinancialEngineTabProps) {
+export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh, lvCostTreatmentView, onLvTreatmentViewChange }: FinancialEngineTabProps) {
   const viewMode          = useDealStore(s => s.viewMode);
   const setViewMode       = useDealStore(s => s.setViewMode);
   const y1Source          = useDealStore(s => s.y1Source);
@@ -368,34 +368,31 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const [reparsing, setReparsing] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionState>({});
   const [showAncillary, setShowAncillary] = useState(false);
-  // Location B — LeasingCostTreatmentToggle: view-state only (does NOT write deal field).
-  // Calls onF9Refresh so Pro Forma, Projections, and Returns re-compute in one cycle.
-  const [lvTreatmentView, setLvTreatmentView] = useState<LeasingCostTreatment>(() => {
-    const saved = (deal?.['deal_data'] as Record<string, unknown> | null | undefined)
-      ?.['leasing_cost_treatment'] as LeasingCostTreatment | undefined;
-    return saved ?? 'OPERATING';
-  });
+
+  // Location B — LeasingCostTreatmentToggle.
+  // The active treatment is owned by the parent (lvCostTreatmentView prop) and
+  // shared with every sibling tab.  When the user toggles here, we call
+  // onLvTreatmentViewChange which updates parent state → triggers a single shared
+  // fetchF9Financials with the new treatment param — no local re-fetch needed.
+  const lvTreatmentView = lvCostTreatmentView ?? 'OPERATING';
+  const handleLvTreatmentViewChange = useCallback((t: LeasingCostTreatment) => {
+    onLvTreatmentViewChange?.(t);
+  }, [onLvTreatmentViewChange]);
+
   // Prefer model results from the build pipeline; fall back to composer fetch.
   const modelData = modelResults ?? null;
 
-  /**
-   * Internal fetch helper.  Accepts an explicit `treatmentOverride` so callers
-   * can pass a just-changed treatment without waiting for state to propagate.
-   * The `leasing_cost_treatment` query param is consumed by the financials
-   * endpoint to adjust leasing-cost classification in the returned numbers.
-   * Must be defined BEFORE handleLvTreatmentViewChange to avoid temporal
-   * dead-zone error (const bindings are not hoisted).
-   */
-  const loadWithTreatment = useCallback(async (treatmentOverride?: LeasingCostTreatment) => {
+  const load = useCallback(async () => {
+    // Always fetch the composer financials — this populates data.proforma.year1
+    // (the T12 operating statement) which is the primary render source for this
+    // tab. modelResults is used separately for KPI overlays and must NOT gate
+    // this fetch; skipping it left data=null and rendered a blank screen when a
+    // saved model was already loaded on mount (from /financial-model/:id/latest).
     if (!dealId) return;
     setLoading(true);
     setError(null);
-    const treatment = treatmentOverride ?? lvTreatmentView;
-    const qs = `?leasing_cost_treatment=${encodeURIComponent(treatment)}`;
     try {
-      const res = await apiClient.get<{ success: boolean; data: DealFinancials; message?: string }>(
-        `/api/v1/deals/${dealId}/financials${qs}`,
-      );
+      const res = await apiClient.get<{ success: boolean; data: DealFinancials; message?: string }>(`/api/v1/deals/${dealId}/financials`);
       const body = res.data;
       if (body?.success === false) throw new Error(body.message ?? 'Unknown error');
       const financials = body?.data ?? (body as unknown as DealFinancials);
@@ -405,39 +402,14 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         const hasErrors = financials.proforma.integrityChecks.some(c => c.status !== 'ok');
         onIntegrityChange(hasErrors);
       }
-      // Propagate to sibling tabs (Projections, Returns) via parent refresh
+      // Also trigger parent refresh so other tabs stay in sync
       if (onF9Refresh) onF9Refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load financials');
     } finally {
       setLoading(false);
     }
-  // lvTreatmentView is intentionally excluded: callers pass explicit override to
-  // avoid stale-closure issues; default path reads view state as a fallback only.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, onIntegrityChange, onF9Refresh]);
-
-  /**
-   * Location B — LeasingCostTreatmentToggle handler.
-   * Stores the view-state override locally, re-fetches THIS tab's financials with
-   * the new treatment as a query param (so displayed numbers reflect the override
-   * without mutating deal.leasing_cost_treatment), then fires onF9Refresh so
-   * Projections and Returns also update in the same cycle.
-   */
-  const handleLvTreatmentViewChange = useCallback((t: LeasingCostTreatment) => {
-    setLvTreatmentView(t);
-    void loadWithTreatment(t);
-    onF9Refresh?.();
-  }, [loadWithTreatment, onF9Refresh]);
-
-  const load = useCallback(async () => {
-    // Always fetch the composer financials — this populates data.proforma.year1
-    // (the T12 operating statement) which is the primary render source for this
-    // tab. modelResults is used separately for KPI overlays and must NOT gate
-    // this fetch; skipping it left data=null and rendered a blank screen when a
-    // saved model was already loaded on mount (from /financial-model/:id/latest).
-    await loadWithTreatment();
-  }, [loadWithTreatment]);
 
   useEffect(() => { load(); }, [load]);
 

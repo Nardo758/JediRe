@@ -551,6 +551,13 @@ export interface EvidenceFieldMeta {
   collision_magnitude: 'minor' | 'material' | 'severe' | null;
 }
 
+/**
+ * Leasing-cost-treatment classification for the Lease Velocity Engine.
+ * Defined here so FinancialEngineTabProps can reference it without importing
+ * from LeaseVelocitySection (which would create a circular-dep risk).
+ */
+export type LeasingCostTreatment = 'OPERATING' | 'CAPITALIZED' | 'HYBRID';
+
 export interface FinancialEngineTabProps {
   dealId: string;
   deal?: Record<string, unknown>;
@@ -572,6 +579,19 @@ export interface FinancialEngineTabProps {
   onTabChange?: (tabIndex: number) => void;
   /** Refetch f9Financials from the server (e.g. after a PATCH override) */
   onF9Refresh?: () => void;
+  /**
+   * Shared top-bar leasing-cost-treatment view override.
+   * Set by either Location A (Assumptions, persists to deal) or Location B
+   * (ProForma top-bar, view-state only).  Passed to every tab so Projections,
+   * Pro Forma, and Returns all re-fetch with the same treatment in one cycle.
+   */
+  lvCostTreatmentView?: LeasingCostTreatment;
+  /**
+   * Update the shared treatment view override.  Triggers a full F9 re-fetch
+   * (parent re-fetches /financials?leasing_cost_treatment=T) so all sibling
+   * tabs reflect the change without duplicated fetch calls.
+   */
+  onLvTreatmentViewChange?: (t: LeasingCostTreatment) => void;
   /** Called when the Projections tab timeline (hold period) changes, so parent can re-fetch with ?hold=N */
   onHoldChange?: (years: number) => void;
   /** Active summary-bar filter — passed into tabs that support per-row filtering */

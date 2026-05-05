@@ -22,7 +22,7 @@ import { CostSheetTab } from '../../components/deal/sections/CostSheetTab';
 import InteractiveProformaTab from './financial-engine/InteractiveProformaTab';
 import { CustomTabRenderer } from './financial-engine/CustomTabRenderer';
 import { exportToExcel } from './financial-engine/excel-export';
-import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials, EvidenceFieldMeta } from './financial-engine/types';
+import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials, EvidenceFieldMeta, LeasingCostTreatment } from './financial-engine/types';
 import { fmt$, fmtPct, fmtX } from './financial-engine/types';
 import { apiClient } from '../../services/api.client';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
@@ -434,6 +434,14 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const [integrityBlocked, setIntegrityBlocked] = useState(false);
   // F9 DealFinancials — fetched here so F1/F8/F10 tabs can consume it
   const [f9Financials, setF9Financials] = useState<F9DealFinancials | null>(null);
+  // Shared leasing-cost-treatment view override — set by either Location A
+  // (Assumptions PATCH, persists to deal) or Location B (ProForma top-bar,
+  // view-state only).  Stored here so all tabs receive the same value and
+  // the single fetchF9Financials call includes it as a query param.
+  const [lvCostTreatmentView, setLvCostTreatmentView] = useState<LeasingCostTreatment>('OPERATING');
+  // Ref mirrors state so fetchF9Financials closure stays stable (avoids
+  // recreating the callback on every treatment toggle).
+  const lvTreatmentRef = useRef<LeasingCostTreatment>('OPERATING');
   // Evidence system — field click panel + summary bar
   const [evidenceField, setEvidenceField] = useState<{ path: string; label: string } | null>(null);
   const [evidenceSummary, setEvidenceSummary] = useState<{
@@ -571,14 +579,24 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const fetchF9Financials = useCallback((hold?: number) => {
     if (!resolvedDealId) return;
     const h = hold ?? f9HoldRef.current;
+    const t = lvTreatmentRef.current;
     apiClient.get<{ success: boolean; data: F9DealFinancials }>(
-      `/api/v1/deals/${resolvedDealId}/financials?hold=${h}`,
+      `/api/v1/deals/${resolvedDealId}/financials?hold=${h}&leasing_cost_treatment=${t}`,
     ).then(res => {
       if (res.data?.data) setF9Financials(res.data.data);
     }).catch(() => {});
   }, [resolvedDealId]);
 
   useEffect(() => {
+    fetchF9Financials();
+  }, [fetchF9Financials]);
+
+  // ── Shared leasing-cost-treatment handler ────────────────────────────────
+  // Updates the ref (read by fetchF9Financials closure), sets React state (so
+  // tabs re-render with the new prop), then triggers a single shared re-fetch.
+  const handleLvTreatmentViewChange = useCallback((t: LeasingCostTreatment) => {
+    lvTreatmentRef.current = t;
+    setLvCostTreatmentView(t);
     fetchF9Financials();
   }, [fetchF9Financials]);
 
@@ -1223,13 +1241,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     onTabChange: setActiveTab,
     onF9Refresh: fetchF9Financials,
     onHoldChange: handleHoldChange,
+    lvCostTreatmentView,
+    onLvTreatmentViewChange: handleLvTreatmentViewChange,
     evidenceFilter,
     evidenceFieldMap: evidenceSummary?.field_metadata ?? undefined,
     collisionFields: evidenceSummary?.collision_summary?.fields_with_collision ?? null,
     severeCollisionFields: evidenceSummary?.collision_summary?.severe_collision_fields ?? null,
     materialCollisionFields: evidenceSummary?.collision_summary?.material_collision_fields ?? null,
     minorCollisionFields: evidenceSummary?.collision_summary?.minor_collision_fields ?? null,
-  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits mergedFinancials — closure reads it from enclosing scope; re-running on listed deps is the desired trigger
+  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary, lvCostTreatmentView, handleLvTreatmentViewChange]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits mergedFinancials — closure reads it from enclosing scope; re-running on listed deps is the desired trigger
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>

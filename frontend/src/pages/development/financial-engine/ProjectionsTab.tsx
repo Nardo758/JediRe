@@ -872,6 +872,7 @@ export function ProjectionsTab({
   onTabChange,
   onHoldChange,
   onF9Refresh,
+  lvCostTreatmentView,
 }: FinancialEngineTabProps) {
   const [timeline, setTimeline] = useState<TimelineOption>(5);
 
@@ -968,11 +969,14 @@ export function ProjectionsTab({
 
     const seedInputs: LVInputs = {
       ...DEFAULT_LV_INPUTS,
-      total_units:      f9Financials.totalUnits || DEFAULT_LV_INPUTS.total_units,
-      avg_market_rent:  autoMktRent,
-      avg_in_place_rent: Math.round(f9Financials.rentRollSummary?.avgInPlaceRent ?? autoMktRent),
-      current_occupancy: occ ?? 0,
-      mode: autoMode,
+      total_units:           f9Financials.totalUnits || DEFAULT_LV_INPUTS.total_units,
+      avg_market_rent:       autoMktRent,
+      avg_in_place_rent:     Math.round(f9Financials.rentRollSummary?.avgInPlaceRent ?? autoMktRent),
+      current_occupancy:     occ ?? 0,
+      mode:                  autoMode,
+      // Inherit the shared top-bar treatment so the LV engine uses the same
+      // classification as the Pro Forma / Projections numbers.
+      leasing_cost_treatment: lvCostTreatmentView ?? DEFAULT_LV_INPUTS.leasing_cost_treatment,
     };
     setLvResolvedMode(autoMode);
     setLvInputs(seedInputs);
