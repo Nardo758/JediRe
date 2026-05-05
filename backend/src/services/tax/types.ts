@@ -87,6 +87,10 @@ export interface TransferTaxResult {
 export interface TaxForecast {
   jurisdiction: string;
   rulesetUsed: string;
+  /** Human-readable county label, e.g. "Fulton County" / "Miami-Dade County" / null for statewide */
+  countyLabel: string | null;
+  /** Annual assessment growth rate used by this ruleset (0 = no cap / full reassessment each year) */
+  assessmentGrowthPct: number;
 
   reTax: {
     t12AssessedValue: number | null;

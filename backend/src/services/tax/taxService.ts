@@ -65,9 +65,23 @@ export const taxService = {
 
     const sohCapPct = ruleset.annualAssessmentCap() ?? 0;
 
+    // Derive a human-readable county label and the assessment growth rate used
+    // by this ruleset so the frontend can render jurisdiction-correct UI strings.
+    const countyLabel: string | null = ctx.county ? `${ctx.county} County` : null;
+    // Estimate assessment growth from the Y2 vs Y1 assessed value ratio (if purchasePrice > 0).
+    // This lets the frontend client-side projection use the same growth assumption as the ruleset
+    // without needing to import ruleset-internal constants.
+    let assessmentGrowthPct = 0;
+    if (perYear.length >= 2 && perYear[0].assessedValue > 0) {
+      assessmentGrowthPct = (perYear[1].assessedValue - perYear[0].assessedValue) / perYear[0].assessedValue;
+      if (!isFinite(assessmentGrowthPct) || assessmentGrowthPct < 0) assessmentGrowthPct = 0;
+    }
+
     return {
       jurisdiction: `${ctx.state || 'unknown'}${ctx.county ? `-${ctx.county}` : ''}`,
       rulesetUsed: ruleset.jurisdiction,
+      countyLabel,
+      assessmentGrowthPct,
       reTax: {
         t12AssessedValue,
         t12MillageRate,

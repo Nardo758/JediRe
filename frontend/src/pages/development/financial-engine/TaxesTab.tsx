@@ -160,7 +160,7 @@ function KpiTile({ label, value, color }: { label: string; value: string; color?
   );
 }
 
-function SohGrid({ perYear }: { perYear: F9TaxYear[] }) {
+function AssessmentGrid({ perYear, hasCap, capPct }: { perYear: F9TaxYear[]; hasCap: boolean; capPct: number }) {
   if (!perYear.length) return null;
   return (
     <tr>
@@ -169,7 +169,7 @@ function SohGrid({ perYear }: { perYear: F9TaxYear[] }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
             <thead>
               <tr style={{ background: BT.bg.panelAlt }}>
-                {(['YEAR', 'ASSESSED VALUE', 'MILLAGE', 'RE TAX', 'SOH CAP', 'EVENT'] as const).map(h => (
+                {(['YEAR', 'ASSESSED VALUE', 'MILLAGE', 'RE TAX', hasCap ? 'CAP' : 'GROWTH', 'EVENT'] as const).map(h => (
                   <th key={h} style={{ padding: '4px 10px', textAlign: 'center', color: BT.text.muted, letterSpacing: 0.5, fontWeight: 700, borderRight: `1px solid ${BT.border.subtle}` }}>
                     {h}
                   </th>
@@ -191,16 +191,19 @@ function SohGrid({ perYear }: { perYear: F9TaxYear[] }) {
                   <td style={{ padding: '3px 10px', textAlign: 'center', color: BT.text.muted }}>{fmtMills(row.millageRate)}</td>
                   <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.amber, fontWeight: 700 }}>{fmtDlr(row.taxAmount)}</td>
                   <td style={{ padding: '3px 10px', textAlign: 'center' }}>
-                    {row.sohCapBinding
-                      ? (
-                        <span
-                          title="FL Save Our Homes 10% annual cap binding — market value growth exceeds the 10% cap, so assessed value is limited to prior year + 10%. RE tax liability is lower than market-value-based assessment."
-                          style={{ color: BT.text.red, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'help' }}
-                        >
-                          <Lock style={{ width: 8, height: 8 }} />CAP
-                        </span>
-                      )
-                      : <span style={{ color: BT.text.green }}>—</span>}
+                    {hasCap
+                      ? row.sohCapBinding
+                        ? (
+                          <span
+                            title={`${(capPct * 100).toFixed(0)}% annual cap binding — assessed value growth is limited`}
+                            style={{ color: BT.text.red, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'help' }}
+                          >
+                            <Lock style={{ width: 8, height: 8 }} />CAP
+                          </span>
+                        )
+                        : <span style={{ color: BT.text.green }}>—</span>
+                      : <span style={{ color: BT.text.muted }}>—</span>
+                    }
                   </td>
                   <td style={{ padding: '3px 10px', textAlign: 'center' }}>
                     {row.reassessmentEvent
@@ -310,22 +313,65 @@ function DeprecSchedule({ taxes, costSeg, bonusYear, f9Financials }: {
   );
 }
 
+// ── Jurisdiction helpers ──────────────────────────────────────────────────────
+
+/** Extract the state code from the jurisdiction string (e.g. "GA-Fulton" → "GA") */
+function parseState(jurisdiction: string | undefined): string {
+  if (!jurisdiction) return '';
+  return jurisdiction.split('-')[0].toUpperCase();
+}
+
+/** True only for FL deals — county toggle and SOH cap UI are FL-specific */
+function isFL(state: string): boolean { return state === 'FL'; }
+
+/**
+ * Build a short county display label for the KPI tile and header badge.
+ * Examples:
+ *   GA-Fulton       → "Fulton Co."
+ *   FL-Miami-Dade   → "Miami-Dade"
+ *   TX-Harris       → "Harris Co."
+ *   FL (statewide)  → "FL Statewide"
+ */
+function countyDisplayLabel(taxes: F9TaxData | null, isMiamiDadeEffective: boolean, state: string): string {
+  if (!taxes) return '—';
+  if (isFL(state)) {
+    return isMiamiDadeEffective ? 'Miami-Dade' : 'FL Statewide';
+  }
+  const county = taxes.countyLabel;
+  if (county) {
+    // countyLabel is e.g. "Fulton County" — shorten to "Fulton Co."
+    return county.replace(/ County$/i, ' Co.');
+  }
+  return state ? `${state} Statewide` : '—';
+}
+
+/**
+ * Default millage rate for client-side override preview.
+ * Use the backend-computed Y1 millage from perYear[0] when available
+ * (this is always jurisdiction-correct), falling back to 0.
+ */
+function defaultMillageFromBackend(taxes: F9TaxData | null): number {
+  return taxes?.reTax.perYear[0]?.millageRate ?? 0;
+}
+
 export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: FinancialEngineTabProps) {
   const taxes = f9Financials?.taxes ?? null;
   const dealName = f9Financials?.dealName ?? 'Deal';
 
+  const state = parseState(taxes?.jurisdiction);
+  const isFlDeal = isFL(state);
+
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [costSeg, setCostSeg] = useState(true);
   const [bonusYear, setBonusYear] = useState<2026 | 2027>(2026);
-  // County: null = use server-resolved value; true/false = user explicit override (persisted)
+  // countyOverride: FL-only toggle (null = auto, true = Miami-Dade, false = statewide)
   const [countyOverride, setCountyOverride] = useState<boolean | null>(taxes?.userOverrides?.taxCounty ?? null);
 
   const [userAssessedValue, setUserAssessedValue] = useState<number | null>(taxes?.userOverrides?.taxAssessedValue ?? null);
   const [userMillageRate, setUserMillageRate]       = useState<number | null>(taxes?.userOverrides?.taxMillageRate   ?? null);
   const [userTppAmount, setUserTppAmount]           = useState<number | null>(taxes?.userOverrides?.tppAmount ?? null);
 
-  // Sync local state when async f9Financials arrives after mount (e.g. on initial load).
-  // Only hydrate once (when local state is still null) to avoid clobbering live user edits.
+  // Sync local state when async f9Financials arrives after mount
   useEffect(() => {
     if (taxes?.userOverrides) {
       setCountyOverride(prev        => prev ?? (taxes.userOverrides.taxCounty        ?? null));
@@ -335,46 +381,86 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
     }
   }, [taxes?.userOverrides]);
 
-  const isMiamiDade = countyOverride ?? taxes?.reTax.isMiamiDade ?? false;
-  const effMillageRate = userMillageRate ?? (isMiamiDade ? 23.09 : 20.00);
+  // isMiamiDade: only meaningful for FL deals
+  const isMiamiDade = isFlDeal
+    ? (countyOverride ?? taxes?.reTax.isMiamiDade ?? false)
+    : false;
+
+  // Effective millage: user override → backend Y1 millage (jurisdiction-correct)
+  // For FL, adjust between Miami-Dade and statewide when user hasn't locked a rate
+  const backendMillage = defaultMillageFromBackend(taxes);
+  const effMillageRate: number = userMillageRate ?? (
+    isFlDeal
+      ? (isMiamiDade ? 23.09 : 20.00)
+      : backendMillage
+  );
+
   const effAssessedValue = userAssessedValue ?? taxes?.reTax.platformAssessedValue ?? null;
   const effAnnualTax = effAssessedValue != null ? Math.round(effAssessedValue * (effMillageRate / 1000)) : null;
 
   const effectiveTaxRate = effAnnualTax != null && f9Financials?.capitalStack?.purchasePrice != null
     ? effAnnualTax / f9Financials.capitalStack.purchasePrice : null;
 
-  // Client-side SOH projection — recomputed whenever assessed value or millage changes
-  // so the grid reflects user overrides immediately without waiting for a server round-trip.
-  const FL_SOH_CAP = 0.10;
-  const MKT_GROWTH = 0.12;  // FL market appreciation (12%/yr) — exceeds 10% SOH cap so cap binds after Y1
+  // Client-side assessment projection — uses jurisdiction-correct growth from backend.
+  // For FL: SOH cap applies (market growth exceeds cap so cap binds after Y1).
+  // For GA/TX/others: no cap — just use the ruleset's assessment growth rate.
+  const sohCapPct   = taxes?.reTax.sohCapPct ?? 0;
+  const hasCap      = sohCapPct > 0;
+  // assessmentGrowthPct: comes from backend (derived from ruleset Y1→Y2 ratio).
+  // For FL we use the known 12% market assumption (cap-limited to sohCapPct).
+  const FL_MARKET_GROWTH = 0.12;
+  const assessGrowth = isFlDeal
+    ? FL_MARKET_GROWTH
+    : (taxes?.assessmentGrowthPct ?? 0);
+
   const computedPerYear: F9TaxYear[] = useMemo(() => {
     const baseAssessed = effAssessedValue;
     if (!baseAssessed) return taxes?.reTax.perYear ?? [];
     const numYears = Math.max(taxes?.reTax.perYear.length ?? 10, 10);
     const rows: F9TaxYear[] = [];
     let prevCapped = baseAssessed;
+
     for (let yr = 1; yr <= numYears; yr++) {
-      const marketValue = baseAssessed * Math.pow(1 + MKT_GROWTH, yr - 1);
-      const capLimited = yr === 1 ? baseAssessed : Math.min(marketValue, prevCapped * (1 + FL_SOH_CAP));
-      const sohCapBinding = yr > 1 && marketValue > capLimited + 1;
-      const assessedValue = Math.round(capLimited);
-      const taxAmount = Math.round(assessedValue * (effMillageRate / 1000));
-      rows.push({ year: yr, assessedValue, millageRate: effMillageRate, taxAmount, sohCapBinding, reassessmentEvent: yr === 1 });
-      prevCapped = capLimited;
+      let assessedValue: number;
+      let sohCapBinding = false;
+
+      if (yr === 1) {
+        assessedValue = baseAssessed;
+        prevCapped = baseAssessed;
+      } else if (hasCap) {
+        // FL-style cap
+        const marketValue = baseAssessed * Math.pow(1 + assessGrowth, yr - 1);
+        const capLimited = Math.min(marketValue, prevCapped * (1 + sohCapPct));
+        sohCapBinding = marketValue > capLimited + 1;
+        assessedValue = Math.round(capLimited);
+        prevCapped = capLimited;
+      } else {
+        // No cap — simple annual growth (GA 4%, TX full-reassess, etc.)
+        assessedValue = Math.round(prevCapped * (1 + assessGrowth));
+        prevCapped = assessedValue;
+      }
+
+      rows.push({
+        year: yr,
+        assessedValue,
+        millageRate: effMillageRate,
+        taxAmount: Math.round(assessedValue * (effMillageRate / 1000)),
+        sohCapBinding,
+        reassessmentEvent: yr === 1,
+      });
     }
     return rows;
-  }, [effAssessedValue, effMillageRate, taxes?.reTax.perYear]);
+  }, [effAssessedValue, effMillageRate, hasCap, sohCapPct, assessGrowth, taxes?.reTax.perYear]);
 
-  // Debounced PATCH helper — uses apiClient for consistent auth/error handling
+  // Debounced PATCH helper
   const patchTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const patchField = useCallback((field: string, value: number | null) => {
     clearTimeout(patchTimeouts.current[field]);
     patchTimeouts.current[field] = setTimeout(async () => {
       try {
         await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, { field, year: 1, value });
-        // Refresh parent f9Financials so cross-tab totals (Sources & Uses, etc.) update
         onF9Refresh?.();
-      } catch { /* non-fatal override failure */ }
+      } catch { /* non-fatal */ }
     }, 600);
   }, [dealId, onF9Refresh]);
 
@@ -388,20 +474,44 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
     return n;
   });
 
-  // Resolve transfer tax with Miami-Dade toggle
-  const txRate = isMiamiDade ? 0.0105 : 0.0070;
-  const pp = taxes?.transferTax.purchasePrice ?? null;
-  const loan = taxes?.transferTax.loanAmount ?? null;
-  const docStamps = pp != null ? Math.round(pp * txRate) : null;
-  const intangible = loan != null ? Math.round(loan * 0.002) : null;
-  const totalTransfer = ((docStamps ?? 0) + (intangible ?? 0)) || null;
+  // Transfer tax — use backend values directly (they are jurisdiction-correct from the ruleset)
+  const backendDocStamps   = taxes?.transferTax.docStampAmount ?? null;
+  const backendIntangible  = taxes?.transferTax.intangibleTaxAmount ?? null;
+  const backendTransferTotal = taxes?.transferTax.totalTransferTax ?? null;
+  const appliedTransferRate  = taxes?.transferTax.appliedRatePct ?? null;
 
-  // Recompute delta vs T-12 from effective (potentially user-overridden) values
+  // Delta vs T-12
   const t12AnnualTax = taxes?.reTax.t12AnnualTax ?? null;
   const deltaVsT12 = effAnnualTax != null && t12AnnualTax != null && t12AnnualTax > 0
     ? (effAnnualTax - t12AnnualTax) / t12AnnualTax
     : taxes?.reTax.deltaVsT12Pct ?? null;
   const largeDelta = deltaVsT12 != null && Math.abs(deltaVsT12) > 0.30;
+
+  // Header badge and county KPI label
+  const countyKpiLabel = countyDisplayLabel(taxes, isMiamiDade, state);
+
+  // Badge: FL shows Miami-Dade/Statewide; other states show county or state
+  const badgeLabel = isFlDeal
+    ? (isMiamiDade ? 'MIAMI-DADE RATES' : 'FL STATEWIDE')
+    : (taxes?.countyLabel ? taxes.countyLabel.toUpperCase() : (state ? `${state} RATES` : 'RATES'));
+  const badgeIsMiamiDade = isFlDeal && isMiamiDade;
+
+  // Section A subtitle — jurisdiction-aware cap language
+  const capLabel = hasCap
+    ? `${state} ${(sohCapPct * 100).toFixed(0)}% Cap`
+    : 'No Assessment Cap';
+  const reassessLabel = 'Reassessment at acquisition';
+  const millageLabel = `${state || 'County'} millage ${effMillageRate.toFixed(2)} mills`;
+  const sectionASubtitle = `${capLabel} · ${reassessLabel} · ${millageLabel}`;
+
+  // Section D subtitle — jurisdiction-aware transfer tax language
+  const sectionDSubtitle = state === 'GA'
+    ? 'GA deed transfer tax ($1.00 per $1,000 of purchase price)'
+    : state === 'TX'
+      ? 'TX — no state deed transfer tax (county recording fee only)'
+      : isFlDeal
+        ? 'FL documentary stamp tax on deed + intangible tax on mortgage'
+        : `${state || 'State'} deed transfer tax`;
 
   if (!taxes && !f9Financials) {
     return (
@@ -418,38 +528,49 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.white, letterSpacing: 0.8 }}>F9 · TAXES</span>
           <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{dealName}</span>
-          <span style={{ fontFamily: MONO, fontSize: 8, padding: '2px 6px', background: isMiamiDade ? '#1A1A2E' : '#0A1A0A', border: `1px solid ${isMiamiDade ? '#3B3B8B' : '#1A3B1A'}`, borderRadius: 3, color: isMiamiDade ? BT.text.purple : BT.text.green }}>
-            {isMiamiDade ? 'MIAMI-DADE RATES' : 'STATEWIDE RATES'}
+          <span style={{ fontFamily: MONO, fontSize: 8, padding: '2px 6px', background: badgeIsMiamiDade ? '#1A1A2E' : '#0A1A0A', border: `1px solid ${badgeIsMiamiDade ? '#3B3B8B' : '#1A3B1A'}`, borderRadius: 3, color: badgeIsMiamiDade ? BT.text.purple : BT.text.green }}>
+            {badgeLabel}
           </span>
-          {countyOverride == null && taxes?.reTax.isMiamiDade && (
+          {isFlDeal && countyOverride == null && taxes?.reTax.isMiamiDade && (
             <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>auto-detected</span>
           )}
-          {countyOverride != null && (
+          {isFlDeal && countyOverride != null && (
             <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.amber }}>overridden</span>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>COUNTY:</span>
-          <button
-            onClick={() => { setCountyOverride(false); patchField('taxCounty', 0); }}
-            style={{ padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: !isMiamiDade ? BT.bg.active : BT.bg.panel, border: `1px solid ${!isMiamiDade ? BT.border.bright : BT.border.subtle}`, color: !isMiamiDade ? BT.text.white : BT.text.muted, borderRadius: 3, cursor: 'pointer' }}
-          >
-            STATEWIDE
-          </button>
-          <button
-            onClick={() => { setCountyOverride(true); patchField('taxCounty', 1); }}
-            style={{ padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: isMiamiDade ? BT.bg.active : BT.bg.panel, border: `1px solid ${isMiamiDade ? BT.border.bright : BT.border.subtle}`, color: isMiamiDade ? BT.text.white : BT.text.muted, borderRadius: 3, cursor: 'pointer' }}
-          >
-            MIAMI-DADE
-          </button>
-          {countyOverride != null && (
-            <button
-              onClick={() => { setCountyOverride(null); patchField('taxCounty', null); }}
-              title="Reset to auto-detected county"
-              style={{ padding: '2px 6px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: 'transparent', border: `1px solid ${BT.border.subtle}`, color: BT.text.amber, borderRadius: 3, cursor: 'pointer' }}
-            >
-              ↺ AUTO
-            </button>
+          {isFlDeal ? (
+            <>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>COUNTY:</span>
+              <button
+                onClick={() => { setCountyOverride(false); patchField('taxCounty', 0); }}
+                style={{ padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: !isMiamiDade ? BT.bg.active : BT.bg.panel, border: `1px solid ${!isMiamiDade ? BT.border.bright : BT.border.subtle}`, color: !isMiamiDade ? BT.text.white : BT.text.muted, borderRadius: 3, cursor: 'pointer' }}
+              >
+                STATEWIDE
+              </button>
+              <button
+                onClick={() => { setCountyOverride(true); patchField('taxCounty', 1); }}
+                style={{ padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: isMiamiDade ? BT.bg.active : BT.bg.panel, border: `1px solid ${isMiamiDade ? BT.border.bright : BT.border.subtle}`, color: isMiamiDade ? BT.text.white : BT.text.muted, borderRadius: 3, cursor: 'pointer' }}
+              >
+                MIAMI-DADE
+              </button>
+              {countyOverride != null && (
+                <button
+                  onClick={() => { setCountyOverride(null); patchField('taxCounty', null); }}
+                  title="Reset to auto-detected county"
+                  style={{ padding: '2px 6px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: 'transparent', border: `1px solid ${BT.border.subtle}`, color: BT.text.amber, borderRadius: 3, cursor: 'pointer' }}
+                >
+                  ↺ AUTO
+                </button>
+              )}
+            </>
+          ) : (
+            // Non-FL: show resolved county as read-only label
+            taxes?.countyLabel && (
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                COUNTY: <span style={{ color: BT.text.green, fontWeight: 700 }}>{taxes.countyLabel.toUpperCase()}</span>
+              </span>
+            )
           )}
         </div>
       </div>
@@ -458,10 +579,10 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
       <div style={{ display: 'flex', borderBottom: `1px solid ${BT.border.medium}`, flexShrink: 0 }}>
         <KpiTile label="Y1 RE TAX"          value={fmtDlr(effAnnualTax)}                          color={BT.text.amber} />
         <KpiTile label="EFFECTIVE TAX RATE"  value={fmtPct(effectiveTaxRate)}                      color={BT.text.orange} />
-        <KpiTile label="DOC STAMPS"          value={fmtDlr(docStamps)}                             color={BT.text.red} />
+        <KpiTile label="DOC STAMPS"          value={fmtDlr(backendDocStamps)}                      color={BT.text.red} />
         <KpiTile label="ANNUAL DEPRECIATION" value={fmtDlr(taxes?.incomeTax.annualDepreciation)}   color={BT.text.purple} />
         <KpiTile label="TPP ESTIMATE"        value={fmtDlr(userTppAmount ?? taxes?.tpp.platform)}  color={BT.text.cyan} />
-        <KpiTile label="COUNTY"              value={isMiamiDade ? 'MIAMI-DADE' : 'FL STATEWIDE'}   color={isMiamiDade ? BT.text.purple : BT.text.green} />
+        <KpiTile label="COUNTY"              value={countyKpiLabel}                                color={badgeIsMiamiDade ? BT.text.purple : BT.text.green} />
       </div>
 
       {/* Red banner: Y1 RE tax spike > 30% vs T-12 */}
@@ -484,7 +605,7 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
             {/* ── Section A: Real Estate Tax ──────────────────────────────────── */}
             <SectionHeader
               id="A" title="REAL ESTATE TAX"
-              subtitle={`FL SOH 10% Cap · Reassessment at acquisition · ${isMiamiDade ? 'Miami-Dade' : 'Statewide'} millage ${effMillageRate.toFixed(2)} mills`}
+              subtitle={sectionASubtitle}
               collapsed={collapsed.has('A')} onToggle={() => toggle('A')}
             />
             {!collapsed.has('A') && (
@@ -502,7 +623,10 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                 />
                 <TaxRow
                   label="Millage Rate"
-                  sub={isMiamiDade ? 'Miami-Dade county: 23.09 mills' : 'FL statewide average: 20.00 mills'}
+                  sub={isFlDeal
+                    ? (isMiamiDade ? 'Miami-Dade county: 23.09 mills' : 'FL statewide average: 20.00 mills')
+                    : (taxes?.countyLabel ? `${taxes.countyLabel}: ${backendMillage.toFixed(2)} mills` : `${state} millage: ${backendMillage.toFixed(2)} mills`)
+                  }
                   broker={taxes?.reTax.t12MillageRate}
                   platform={effMillageRate}
                   user={userMillageRate}
@@ -521,17 +645,20 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                   locked
                   format={fmtDlr}
                 />
-                {/* SOH Projection Grid — uses client-side computed values so overrides show immediately */}
+                {/* Assessment Projection Grid */}
                 <tr>
                   <td colSpan={6} style={{ padding: '4px 12px 2px', fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.6, background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
-                    FL SOH 10% CAP ENGINE — Y1–Y{computedPerYear.length || 10} PROJECTION (12% mkt growth assumed) &nbsp;
+                    {hasCap
+                      ? `${state} ${(sohCapPct * 100).toFixed(0)}% CAP ENGINE`
+                      : `${state || 'STATE'} ASSESSMENT GROWTH (${assessGrowth > 0 ? `+${(assessGrowth * 100).toFixed(0)}%/yr` : 'FULL REASSESS'})`
+                    }
+                    {' '}— Y1–Y{computedPerYear.length || 10} PROJECTION &nbsp;
                     <span style={{ color: BT.text.red }}>█ REASSESSMENT</span>
-                    &nbsp;&nbsp;
-                    <span style={{ color: BT.text.muted }}>🔒 SOH CAP BINDING</span>
+                    {hasCap && <>&nbsp;&nbsp;<span style={{ color: BT.text.muted }}>🔒 CAP BINDING</span></>}
                   </td>
                 </tr>
                 {computedPerYear.length > 0 ? (
-                  <SohGrid perYear={computedPerYear} />
+                  <AssessmentGrid perYear={computedPerYear} hasCap={hasCap} capPct={sohCapPct} />
                 ) : (
                   <tr>
                     <td colSpan={6} style={{ padding: '8px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
@@ -545,7 +672,7 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
             {/* ── Section B: TPP ──────────────────────────────────────────────── */}
             <SectionHeader
               id="B" title="TANGIBLE PERSONAL PROPERTY (TPP)"
-              subtitle="FL TPP tax on FF&E and appliances"
+              subtitle="Personal property tax on FF&E and appliances"
               collapsed={collapsed.has('B')} onToggle={() => toggle('B')}
             />
             {!collapsed.has('B') && (
@@ -669,56 +796,68 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
             {/* ── Section D: Transfer Taxes & Doc Stamps ──────────────────────── */}
             <SectionHeader
               id="D" title="TRANSFER TAXES & DOC STAMPS"
-              subtitle="FL documentary stamp tax on deed + intangible tax on mortgage"
+              subtitle={sectionDSubtitle}
               collapsed={collapsed.has('D')} onToggle={() => toggle('D')}
             />
             {!collapsed.has('D') && (
               <>
-                {/* Miami-Dade vs Statewide summary row */}
+                {/* Transfer tax summary row */}
                 <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                   <td colSpan={6} style={{ padding: '6px 12px', background: BT.bg.panelAlt }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontFamily: MONO, fontSize: 9 }}>
-                      <span style={{ color: BT.text.muted }}>Doc Stamp Rate:</span>
-                      <span style={{ color: isMiamiDade ? BT.text.purple : BT.text.green, fontWeight: 700 }}>
-                        {isMiamiDade ? '1.05%' : '0.70%'}
-                        {isMiamiDade ? ' (Miami-Dade — includes 0.35% surtax)' : ' (Statewide — $0.70 per $100)'}
+                      <span style={{ color: BT.text.muted }}>Transfer Rate:</span>
+                      <span style={{ color: BT.text.green, fontWeight: 700 }}>
+                        {appliedTransferRate != null ? fmtPctRaw(appliedTransferRate) : '—'}
+                        {isFlDeal && (
+                          isMiamiDade
+                            ? ' (Miami-Dade — includes 0.35% surtax)'
+                            : ' (FL Statewide — $0.70 per $100)'
+                        )}
+                        {state === 'GA' && ' (GA — $1.00 per $1,000)'}
+                        {state === 'TX' && ' (TX — no state transfer tax)'}
                       </span>
-                      <span style={{ color: BT.text.muted }}>Intangible Tax on Mortgage:</span>
-                      <span style={{ color: BT.text.amber, fontWeight: 700 }}>0.20% ({fmtDlr(intangible)})</span>
+                      {backendIntangible != null && backendIntangible > 0 && (
+                        <>
+                          <span style={{ color: BT.text.muted }}>Intangible Tax on Mortgage:</span>
+                          <span style={{ color: BT.text.amber, fontWeight: 700 }}>0.20% ({fmtDlr(backendIntangible)})</span>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
                 <TaxRow
                   label="Documentary Stamp Tax (deed)"
-                  sub={`Purchase Price × ${fmtPctRaw(txRate)} — ${isMiamiDade ? 'Miami-Dade incl. 0.35% surtax' : 'FL statewide rate'}`}
+                  sub={`Purchase Price × ${appliedTransferRate != null ? fmtPctRaw(appliedTransferRate) : '—'}`}
                   broker={null}
-                  platform={docStamps}
+                  platform={backendDocStamps}
                   user={null}
-                  resolved={docStamps}
+                  resolved={backendDocStamps}
                   locked
                   format={fmtDlr}
                 />
-                <TaxRow
-                  label="Intangible Tax (new mortgage)"
-                  sub="0.20% of loan amount (FL intangible tax on new mortgages)"
-                  broker={null}
-                  platform={intangible}
-                  user={null}
-                  resolved={intangible}
-                  locked
-                  format={fmtDlr}
-                />
+                {backendIntangible != null && backendIntangible > 0 && (
+                  <TaxRow
+                    label="Intangible Tax (new mortgage)"
+                    sub={isFlDeal ? '0.20% of loan amount (FL intangible tax on new mortgages)' : '0.20% of loan amount'}
+                    broker={null}
+                    platform={backendIntangible}
+                    user={null}
+                    resolved={backendIntangible}
+                    locked
+                    format={fmtDlr}
+                  />
+                )}
                 <TaxRow
                   label="Total Transfer Taxes"
-                  sub="Doc stamps + intangible tax — feeds Sources & Uses tab"
+                  sub="Deed transfer + intangible tax — feeds Sources & Uses tab"
                   broker={null}
-                  platform={totalTransfer}
+                  platform={backendTransferTotal}
                   user={null}
-                  resolved={totalTransfer}
+                  resolved={backendTransferTotal}
                   locked
                   format={fmtDlr}
                 />
-                {/* Refi event taxes — sourced from backend refi data in transferTax.refi */}
+                {/* Refi event taxes */}
                 {taxes?.transferTax.refi?.enabled && (
                   <>
                     <tr style={{ borderTop: `1px dashed ${BT.border.medium}` }}>
@@ -730,7 +869,7 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                     </tr>
                     <TaxRow
                       label="Refi Mortgage Doc Stamps"
-                      sub="$0.35 per $100 of new note (FL F.S. 201.08)"
+                      sub={isFlDeal ? '$0.35 per $100 of new note (FL F.S. 201.08)' : 'Refi transfer tax on new note'}
                       broker={null}
                       platform={taxes.transferTax.refi.refiDocStampAmount}
                       user={null}
@@ -760,7 +899,7 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                     />
                   </>
                 )}
-                {/* Cross-tab link badge → Sources & Uses (tab index 7) */}
+                {/* Cross-tab link badge */}
                 <tr>
                   <td colSpan={6} style={{ padding: '6px 12px', borderBottom: `1px solid ${BT.border.medium}` }}>
                     <div
@@ -773,7 +912,7 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                     >
                       <Link style={{ width: 10, height: 10, color: '#10b981' }} />
                       <span style={{ fontFamily: MONO, fontSize: 8, color: '#10b981', fontWeight: 700 }}>
-                        → SOURCES & USES — Transfer taxes ({fmtDlr(totalTransfer)}) included in total uses
+                        → SOURCES & USES — Transfer taxes ({fmtDlr(backendTransferTotal)}) included in total uses
                       </span>
                       <Check style={{ width: 10, height: 10, color: '#10b981' }} />
                     </div>
@@ -793,10 +932,13 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
           <span style={{ color: BT.text.cyan  }}>■ PLATFORM</span>
           <span style={{ color: BT.text.green }}>■ USER / RESOLVED</span>
           <span style={{ color: BT.text.red   }}>█ REASSESSMENT EVENT</span>
-          <span style={{ color: BT.text.muted }}>🔒 SOH CAP BINDING</span>
+          {hasCap && <span style={{ color: BT.text.muted }}>🔒 CAP BINDING</span>}
         </div>
         <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-          FL SOH CAP · 10%/YR MAX ASSESSED VALUE INCREASE POST-ACQUISITION
+          {hasCap
+            ? `${state} ${(sohCapPct * 100).toFixed(0)}% CAP · MAX ASSESSED VALUE INCREASE POST-ACQUISITION`
+            : `${state || 'STATE'} · FULL REASSESSMENT AT ACQUISITION · ${assessGrowth > 0 ? `+${(assessGrowth * 100).toFixed(0)}%/yr ASSESSMENT GROWTH` : 'ANNUAL REASSESSMENT'}`
+          }
         </div>
       </div>
     </div>

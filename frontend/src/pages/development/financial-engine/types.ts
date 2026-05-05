@@ -536,6 +536,12 @@ export interface F9TaxYear {
 }
 
 export interface F9TaxData {
+  /** Jurisdiction string, e.g. "GA-Fulton", "FL-Miami-Dade", "TX-Harris" */
+  jurisdiction?: string;
+  /** Human-readable county label, e.g. "Fulton County" or null for statewide */
+  countyLabel?: string | null;
+  /** Annual assessment growth rate used by this ruleset (e.g. 0.04 for GA, 0.12 for FL market) */
+  assessmentGrowthPct?: number;
   reTax: {
     t12AssessedValue: number | null;
     t12MillageRate: number | null;

@@ -2396,6 +2396,9 @@ export async function getDealFinancials(
 
   // Assemble taxes object — shape preserved for backward compatibility
   const taxes = {
+    jurisdiction: taxForecast.jurisdiction,
+    countyLabel: taxForecast.countyLabel,
+    assessmentGrowthPct: taxForecast.assessmentGrowthPct,
     reTax: taxForecast.reTax,
     tpp: { broker: tppBroker, platform: tppPlatform },
     incomeTax: {
