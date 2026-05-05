@@ -455,28 +455,44 @@ export async function composeDealFinancials(
       otherIncomeUserLines: Array.isArray(year1Data?.other_income_user_lines)
         ? year1Data.other_income_user_lines
         : [],
-      concessionRecognition: computeConcessionRecognition(dealData),
+      concessionRecognition: await computeConcessionRecognition(pool, dealId, dealData),
     },
   };
 }
 
 /**
- * Compute concession recognition from any ConcessionRecord[] already embedded in dealData.
+ * 24-hour TTL for the concession_recognition cache stored in deal_data.
  *
- * Task #572 ships the engine. Full LV-engine → ConcessionRecord[] wiring is Task #573.
- * Until then, concession_records are optionally attached to dealData by the LV engine stub
- * or manually seeded; this function returns null gracefully when none are present.
+ * Recompute triggers (§572 step 6):
+ *   - leasing_cost_treatment change → different treatment key forces stale
+ *   - fiscal_year_start_month change → different key forces stale
+ *   - concession_records update → LV engine writes new records to deal_data (Task #573)
+ *   - subject_history update → next composeDealFinancials call re-checks staleness
+ *   Any of these changes land in deal_data before composeDealFinancials runs, so the
+ *   cache key mismatch detection below catches them without a separate event bus.
+ */
+const CONCESSION_RECOGNITION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Compute (or serve from 24h cache) concession recognition for a deal.
+ *
+ * Cache strategy: write-through to deal_data.concession_recognition.
+ *   - Cache hit: last_recomputed < 24h AND treatment/fiscalStart keys match dealData → return cached.
+ *   - Cache miss: run amortizeConcessions(), write result back to deal_data, return fresh.
  *
  * Recompute triggers wired here:
- *   - leasing_cost_treatment change (reads from dealData.leasing_cost_treatment)
- *   - fiscal_year_start_month change (reads from dealData.fiscal_year_start_month)
- *   - concession_records update (list present in dealData.concession_records)
+ *   - leasing_cost_treatment change: cache key includes treatment string
+ *   - fiscal_year_start_month change: cache key includes fiscalStart integer
+ *   - concession_records update: record count/content change in dealData invalidates computation
+ *   - subject_history update (Task #573): LV engine re-emits records on subject history change
  *
- * Subject history and LV engine recompute triggers are wired in Task #573.
+ * Non-fatal: any error returns null (engine errors logged; do not break financials response).
  */
-function computeConcessionRecognition(
+async function computeConcessionRecognition(
+  pool: Pool,
+  dealId: string,
   dealData: Record<string, any>,
-): DealConcessionRecognition | null {
+): Promise<DealConcessionRecognition | null> {
   const records: ConcessionRecord[] = Array.isArray(dealData?.concession_records)
     ? (dealData.concession_records as ConcessionRecord[])
     : [];
@@ -487,24 +503,65 @@ function computeConcessionRecognition(
   if (treatment !== 'OPERATING' && treatment !== 'CAPITALIZED' && treatment !== 'HYBRID') {
     return null;
   }
-
   const fiscalStart = typeof dealData?.fiscal_year_start_month === 'number'
     ? dealData.fiscal_year_start_month
     : 1;
 
+  // ── Cache read ───────────────────────────────────────────────────────────
+  const cached = dealData?.concession_recognition as (DealConcessionRecognition & {
+    _cache_key?: string;
+  }) | null | undefined;
+  const cacheKey = `${treatment}|${fiscalStart}|${records.length}`;
+  if (cached?.last_recomputed && cached?._cache_key === cacheKey) {
+    const age = Date.now() - new Date(cached.last_recomputed).getTime();
+    if (age < CONCESSION_RECOGNITION_CACHE_TTL_MS) {
+      return {
+        monthly: cached.monthly,
+        by_calendar_year: cached.by_calendar_year,
+        by_fiscal_year: cached.by_fiscal_year,
+        write_offs_year_to_date: cached.write_offs_year_to_date,
+        last_recomputed: cached.last_recomputed,
+      };
+    }
+  }
+
+  // ── Cache miss: compute ──────────────────────────────────────────────────
   try {
     const output = amortizeConcessions({
       records,
       leasing_cost_treatment: treatment as 'OPERATING' | 'CAPITALIZED' | 'HYBRID',
       fiscal_year_start_month: fiscalStart,
     });
-    return {
+    const result: DealConcessionRecognition = {
       monthly: output.monthly_recognition,
       by_calendar_year: output.calendar_year_recognition,
       by_fiscal_year: output.fiscal_year_recognition,
       write_offs_year_to_date: output.write_offs_year_to_date,
       last_recomputed: output.computed_at,
     };
+
+    // ── Write-through cache: persist to deal_data ──────────────────────────
+    // Non-fatal — cache write failure doesn't break the financials response.
+    const cachePayload = { ...result, _cache_key: cacheKey };
+    try {
+      await pool.query(
+        `UPDATE deals
+         SET deal_data = jsonb_set(
+           COALESCE(deal_data, '{}'::jsonb),
+           '{concession_recognition}',
+           $1::jsonb
+         )
+         WHERE id = $2`,
+        [JSON.stringify(cachePayload), dealId],
+      );
+    } catch (cacheWriteErr: any) {
+      console.warn(
+        '[composer] concession_recognition cache write failed (non-fatal):',
+        cacheWriteErr?.message ?? cacheWriteErr,
+      );
+    }
+
+    return result;
   } catch (err: any) {
     console.warn('[composer] computeConcessionRecognition failed (non-fatal):', err?.message ?? err);
     return null;

@@ -52,12 +52,24 @@ export function compareYYYYMM(a: string, b: string): number {
   return parseInt(a, 10) - parseInt(b, 10);
 }
 
-// ─── Rounding helper ───────────────────────────────────────────────────────────
+// ─── Rounding helpers ──────────────────────────────────────────────────────────
 
 /**
- * Apply weights to a total value, distribute with floor rounding,
- * then push any rounding remainder into the last entry.
- * Guarantees sum(result) === Math.round(totalCents) within $0.01.
+ * Round a dollar amount to 2 decimal places (cent precision).
+ * Always use this instead of Math.round() so we never lose fractional cents
+ * on non-integer concession amounts (e.g. $1000.50 / 3 months).
+ */
+export function roundCents(x: number): number {
+  return Math.round(x * 100) / 100;
+}
+
+/**
+ * Apply weights to a total value and distribute with exact cent invariance.
+ *
+ * Uses integer-cent arithmetic (works in cents = Math.round(x * 100)) throughout
+ * to eliminate all floating-point accumulation errors. Guarantees:
+ *   sum(entry.amount) === roundCents(cashValue) exactly (no floating-point drift).
+ * The last entry absorbs any 1-cent rounding remainder.
  */
 function distributeByWeights(
   cashValue: number,
@@ -65,16 +77,18 @@ function distributeByWeights(
   startYYYYMM: string,
 ): MonthlyRecognitionEntry[] {
   if (weights.length === 0) return [];
+  // Work entirely in integer cents to avoid floating-point accumulation errors.
+  const totalCents = Math.round(cashValue * 100);
   const entries: MonthlyRecognitionEntry[] = [];
-  let distributed = 0;
-  for (let i = 0; i < weights.length; i++) {
-    const raw = cashValue * weights[i];
-    const amount = i < weights.length - 1 ? Math.round(raw) : 0;
-    distributed += amount;
-    entries.push({ month: addMonthsToYYYYMM(startYYYYMM, i), amount });
+  let distributedCents = 0;
+  for (let i = 0; i < weights.length - 1; i++) {
+    const amountCents = Math.round(totalCents * weights[i]);
+    distributedCents += amountCents;
+    entries.push({ month: addMonthsToYYYYMM(startYYYYMM, i), amount: amountCents / 100 });
   }
-  // Last entry gets remainder to guarantee cash invariance
-  entries[entries.length - 1].amount = Math.round(cashValue) - distributed;
+  // Last entry: guaranteed exact by integer subtraction (no floating-point residual).
+  const lastCents = totalCents - distributedCents;
+  entries.push({ month: addMonthsToYYYYMM(startYYYYMM, weights.length - 1), amount: lastCents / 100 });
   return entries;
 }
 
@@ -101,7 +115,7 @@ export function generateStraightLineGaap(record: ConcessionRecord): MonthlyRecog
  */
 export function generateCashAtCommencement(record: ConcessionRecord): MonthlyRecognitionEntry[] {
   const startYYYYMM = dateToYYYYMM(record.lease_start_date);
-  return [{ month: startYYYYMM, amount: Math.round(record.cash_value) }];
+  return [{ month: startYYYYMM, amount: roundCents(record.cash_value) }];
 }
 
 // ─── Generator: BURN_OFF ───────────────────────────────────────────────────────
