@@ -330,6 +330,12 @@ function RatesModal({ open, onClose, jurisdiction }: {
   // Normalize jurisdiction for API (lowercase, replace spaces with dashes)
   const normalizedJur = jurisdiction.toLowerCase().replace(/\s+/g, '-').split('-')[0];
 
+  // Reset fetched sheets when modal closes or jurisdiction changes so the next
+  // open always re-fetches fresh data for the current deal context.
+  useEffect(() => {
+    if (!open) { setSheets(null); return; }
+  }, [open, jurisdiction]);
+
   useEffect(() => {
     if (!open || sheets !== null) return;
     setLoading(true);
