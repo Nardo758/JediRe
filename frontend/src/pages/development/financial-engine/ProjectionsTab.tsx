@@ -16,6 +16,8 @@ import {
   type LeaseVelocityResult,
   type LeaseMode,
 } from './LeaseVelocitySection';
+import { InlineAssumptionBlock } from '../../../components/InlineAssumptionBlock';
+import type { AssumptionFieldDef, CollisionEntry } from '../../../components/InlineAssumptionBlock';
 
 const MONO = BT.font.mono;
 type TimelineOption = 3 | 5 | 7 | 10;
@@ -871,6 +873,141 @@ function SubjectHistoryPanel({ history }: { history: F9SubjectHistory }) {
   );
 }
 
+// ─── InlineAssumptionBlock helpers ────────────────────────────────────────
+
+function confidenceFromWeight(w: number | null): 'HIGH' | 'MED' | 'LOW' {
+  if (w == null) return 'LOW';
+  if (w >= 0.8) return 'HIGH';
+  if (w >= 0.5) return 'MED';
+  return 'LOW';
+}
+
+function sourceTag(subject: number | null, w: number | null): string {
+  if (subject == null) return 'PEER';
+  if (w == null || w >= 1) return 'SUBJECT';
+  return 'SUBJECT+PEER';
+}
+
+function blendedEffective(
+  subject: number | null,
+  key: string,
+  psv: Record<string, number>,
+  cw: Record<string, { n_obs: number; n_required: number; weight: number }>,
+): number | null {
+  const peer = psv[key] ?? null;
+  const w = cw[key]?.weight ?? null;
+  if (subject == null) return peer;
+  if (peer != null && w != null && w < 1 && w > 0) {
+    return w * subject + (1 - w) * peer;
+  }
+  return subject;
+}
+
+function buildLeasingAssumptionFields(financials: DealFinancials): AssumptionFieldDef[] {
+  const sh  = financials.subjectHistory ?? null;
+  const dyn = sh?.observed_dynamics ?? null;
+  const cw  = sh?.confidence_weights ?? {};
+  const psv = sh?.peer_set_values ?? {};
+
+  const fields: AssumptionFieldDef[] = [];
+
+  // Renewal Rate
+  {
+    const subject = dyn?.renewal_rate ?? null;
+    const peer    = psv['renewal_rate'] ?? null;
+    const w       = cw['renewal_rate']?.weight ?? null;
+    fields.push({
+      fieldId: 'renewal_rate', label: 'Renewal Rate',
+      format: 'pct', precision: 0.01, min: 0, max: 1,
+      peerValue: peer, subjectValue: subject,
+      effectiveValue: blendedEffective(subject, 'renewal_rate', psv, cw),
+      source: sourceTag(subject, w),
+      confidence: confidenceFromWeight(w),
+      blendWeight: w,
+    });
+  }
+
+  // Turnover Rate
+  {
+    const subject = dyn?.turnover_rate ?? null;
+    const peer    = psv['turnover_rate'] ?? null;
+    const w       = cw['turnover_rate']?.weight ?? null;
+    fields.push({
+      fieldId: 'turnover_rate', label: 'Turnover Rate',
+      format: 'pct', precision: 0.01, min: 0, max: 1,
+      peerValue: peer, subjectValue: subject,
+      effectiveValue: blendedEffective(subject, 'turnover_rate', psv, cw),
+      source: sourceTag(subject, w),
+      confidence: confidenceFromWeight(w),
+      blendWeight: w,
+    });
+  }
+
+  // Days Vacant (median)
+  {
+    const subject = dyn?.days_vacant_median ?? null;
+    const peer    = psv['days_vacant_median'] ?? null;
+    const w       = cw['days_vacant_median']?.weight ?? null;
+    fields.push({
+      fieldId: 'days_vacant_median', label: 'Days Vacant (median)',
+      format: 'days', precision: 1, min: 0,
+      peerValue: peer, subjectValue: subject,
+      effectiveValue: blendedEffective(subject, 'days_vacant_median', psv, cw),
+      source: sourceTag(subject, w),
+      confidence: confidenceFromWeight(w),
+      blendWeight: w,
+    });
+  }
+
+  // Signing Velocity (leases/mo)
+  {
+    const subject = sh?.current_state?.signing_velocity ?? null;
+    const peer    = psv['signing_velocity'] ?? null;
+    const w       = cw['signing_velocity']?.weight ?? null;
+    fields.push({
+      fieldId: 'signing_velocity', label: 'Signing Velocity (leases/mo)',
+      format: 'num', precision: 0.1, min: 0,
+      peerValue: peer, subjectValue: subject,
+      effectiveValue: blendedEffective(subject, 'signing_velocity', psv, cw),
+      source: sourceTag(subject, w),
+      confidence: confidenceFromWeight(w),
+      blendWeight: w,
+    });
+  }
+
+  // Rent Growth Yr 1 — from traffic calibration or assumptions fallback
+  {
+    const calibrated = financials.trafficProjection?.calibrated?.rentGrowthPct ?? null;
+    const yr1Assump  = financials.assumptions?.rentGrowthYr1 ?? null;
+    const peer       = psv['rent_growth_yr1'] ?? psv['rentGrowthYr1'] ?? yr1Assump;
+    const effective  = calibrated ?? yr1Assump;
+    fields.push({
+      fieldId: 'rent_growth_yr1', label: 'Rent Growth (Yr 1)',
+      format: 'pct', precision: 0.001, min: -0.2, max: 0.2,
+      peerValue: peer,
+      subjectValue: calibrated,
+      effectiveValue: effective,
+      source: calibrated != null ? 'TRAFFIC' : 'ASSUMPTIONS',
+      confidence: calibrated != null ? 'HIGH' : 'LOW',
+      blendWeight: calibrated != null ? 1 : null,
+    });
+  }
+
+  return fields;
+}
+
+function mapPeerCollisionsToEntries(
+  peerCollisions: NonNullable<F9SubjectHistory['peer_collisions']>,
+): CollisionEntry[] {
+  return peerCollisions.map(c => ({
+    fieldId:      c.coefficient,
+    deltaSigma:   Math.abs(c.sigma_deviation),
+    subjectValue: c.subject_value,
+    peerValue:    c.peer_value,
+    severity:     Math.abs(c.sigma_deviation) >= 2.5 ? 'severe' : 'material',
+  }));
+}
+
 // ─── Main component ───────────────────────────────────────────────────────
 export function ProjectionsTab({
   dealId,
@@ -1122,6 +1259,18 @@ export function ProjectionsTab({
   const integrityChecks = financials?.proforma.integrityChecks ?? [];
   const hasAfterTaxData = projections.some(p => p.depreciation != null);
 
+  // InlineAssumptionBlock — leasing coefficient fields + collision entries
+  const leasingAssumptionFields = useMemo<AssumptionFieldDef[]>(
+    () => financials ? buildLeasingAssumptionFields(financials) : [],
+    [financials],
+  );
+  const leasingCollisionEntries = useMemo<CollisionEntry[]>(
+    () => financials?.subjectHistory?.peer_collisions
+      ? mapPeerCollisionsToEntries(financials.subjectHistory.peer_collisions)
+      : [],
+    [financials],
+  );
+
   // Sub-period columns for monthly/quarterly
   const subCols = useMemo(
     () => viewMode !== 'annual' ? buildSubCols(Math.min(holdYears, viewMode === 'monthly' ? 2 : holdYears), viewMode) : [],
@@ -1252,7 +1401,20 @@ export function ProjectionsTab({
           <SubjectHistoryPanel history={financials.subjectHistory} />
         )}
 
-
+        {/* ── Occupancy & Leasing Assumptions (InlineAssumptionBlock) ─────── */}
+        {financials && (
+          <InlineAssumptionBlock
+            blockId="occupancy-leasing"
+            blockLabel="OCCUPANCY & LEASING"
+            dealId={dealId}
+            fields={leasingAssumptionFields}
+            hasSubjectHistory={financials.subjectHistory != null}
+            subjectTier={financials.subjectHistory?.tier}
+            subjectSnapshotCount={financials.subjectHistory?.snapshot_count}
+            collisions={leasingCollisionEntries.length > 0 ? leasingCollisionEntries : undefined}
+            defaultExpanded={true}
+          />
+        )}
 
         {/* ── Export error ───────────────────────────────────────────────── */}
         {error && (
