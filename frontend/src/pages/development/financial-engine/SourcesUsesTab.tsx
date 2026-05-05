@@ -231,17 +231,46 @@ export function SourcesUsesTab({
 
   // ── Capitalized Lease-up Concessions line (Task #574) ────────────────────
   // Shown only when treatment = CAPITALIZED and concessionRecognition is available.
-  // Value: total lifetime recognized concessions (sum of all monthly amounts).
-  // §14 EARNED-VS-RECOGNIZED: this is the recognized (amortized) amount, not cash earned.
+  // Value: sum of lease-up-period concession records' amount_total (capitalized cash).
+  // Source priority:
+  //   1. concessionRecognition.capitalizedLeaseUpTotal — backend-populated exact total
+  //   2. concessionRecognition.monthly filtered to the lease-up window [1..stabilizationMonth]
+  //      from close date — best frontend approximation of lease-up-period capitalized dollars
+  // §14 EARNED-VS-RECOGNIZED: displayed as capitalized cost, not ongoing OpEx recognition.
   // Disappears on OPERATING or HYBRID treatment toggle without page reload.
   const concessionRecognition = f9Financials?.concessionRecognition ?? null;
   const showCapitalizedConcessions =
     lvCostTreatmentView === 'CAPITALIZED' &&
     concessionRecognition != null &&
     !usesHasId.has('capitalizedConcessions');
-  const capitalizedConcessionsAmount = concessionRecognition != null
-    ? Object.values(concessionRecognition.monthly).reduce((a, b) => a + b, 0)
-    : null;
+
+  const capitalizedConcessionsAmount: number | null = (() => {
+    if (!concessionRecognition) return null;
+    // Prefer backend-computed exact total when available (backend Task #574 wiring)
+    if (concessionRecognition.capitalizedLeaseUpTotal != null) {
+      return concessionRecognition.capitalizedLeaseUpTotal;
+    }
+    // Frontend approximation: filter monthly recognition to the lease-up window.
+    // Lease-up window = months 1..stabilizationMonth from the deal's close date.
+    const closeDate = f9Financials?.closeDate ?? null;
+    const stabilizationMonth = lv?.stabilizationMonth ?? null;
+    if (closeDate != null && stabilizationMonth != null && stabilizationMonth > 0) {
+      const refDate = new Date(closeDate);
+      const leaseUpKeys = new Set<string>();
+      for (let i = 0; i < stabilizationMonth; i++) {
+        const m = ((refDate.getMonth() + i) % 12) + 1;
+        const y = refDate.getFullYear() + Math.floor((refDate.getMonth() + i) / 12);
+        leaseUpKeys.add(`${y}${String(m).padStart(2, '0')}`);
+      }
+      const sum = Object.entries(concessionRecognition.monthly)
+        .filter(([k]) => leaseUpKeys.has(k))
+        .reduce((a, [, v]) => a + v, 0);
+      return sum > 0 ? sum : null;
+    }
+    // Last resort: full monthly sum when lease-up window cannot be computed.
+    const fullSum = Object.values(concessionRecognition.monthly).reduce((a, b) => a + b, 0);
+    return fullSum > 0 ? fullSum : null;
+  })();
 
   // Effective total uses includes the reserve line when injected on the frontend.
   // effectiveDelta and effectiveBalanced must also account for the injected reserve

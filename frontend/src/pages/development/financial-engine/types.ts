@@ -624,6 +624,14 @@ export interface F9ConcessionRecognition {
   write_offs_year_to_date: number;
   /** ISO timestamp of last engine run */
   last_recomputed: string;
+  /**
+   * Sum of amount_total for lease-up-period concession records flagged for
+   * capitalization. Populated by backend when leasing_cost_treatment = CAPITALIZED.
+   * Used by S&U "Capitalized Lease-up Concessions" line (Task #574).
+   * When absent, SourcesUsesTab falls back to monthly sum filtered to the
+   * lease-up window (months 1..stabilizationMonth from close date).
+   */
+  capitalizedLeaseUpTotal?: number | null;
 }
 
 /**

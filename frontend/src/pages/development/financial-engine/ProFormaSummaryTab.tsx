@@ -436,6 +436,17 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   useEffect(() => { load(); }, [load]);
 
+  // Reactive wiring: re-fetch when concession recognition is recomputed on the backend.
+  // The amortization engine fires 'concession_recognition.updated' on the window event bus
+  // after every engine run (treatment toggle, assumption change, write-off trigger).
+  // Without this listener, the concessions DataRow could show stale recognized values until
+  // the next lvCostTreatmentView change triggers a re-fetch.
+  useEffect(() => {
+    const handler = () => { load(); };
+    window.addEventListener('concession_recognition.updated', handler);
+    return () => window.removeEventListener('concession_recognition.updated', handler);
+  }, [load]);
+
   const handleReparse = async () => {
     setReparsing(true);
     try {
@@ -525,12 +536,16 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   // Sum of monthly[] values for the 12-month window starting at closeDate.
   // Year 1 = months [closeYYYYMM .. closeYYYYMM+11] — matches the analysis horizon
   // used in the rent build (first 12 months, not the closeDate's calendar year).
+  // Requires closeDate: without it we cannot determine the Year-1 window; return null
+  // so the concessions DataRow falls back to the server-provided earned value.
   // §14: recognized dollars — replaces the earned value in the concessions DataRow.
   const y1RecognizedConcessions: number | null = (() => {
     const rec = data.concessionRecognition;
     if (!rec) return null;
-    // Derive start month from closeDate, fall back to current month.
-    const refDate = data.closeDate ? new Date(data.closeDate) : new Date();
+    // closeDate is required: without it Year-1 window is indeterminate.
+    // Never fall back to current date — that would produce non-deterministic output.
+    if (!data.closeDate) return null;
+    const refDate = new Date(data.closeDate);
     const startYear  = refDate.getFullYear();
     const startMonth = refDate.getMonth() + 1; // 1-based
     // Build the 12 YYYYMM keys covering Year 1.
@@ -773,25 +788,49 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               // with the Y1 recognized (straight-line amortized) sum when available.
               // Spec: "replace the static earned concessions value with the Y1 sum of
               // concession_recognition.monthly; single-number display."
-              // EARNED-VS-RECOGNIZED: the override is transparent to the user via tooltip.
-              const displayRow = (r.field === 'concessions' && y1RecognizedConcessions != null)
+              // EARNED-VS-RECOGNIZED: the override is surfaced via an annotation row below.
+              const isConcessionsOverridden = r.field === 'concessions' && y1RecognizedConcessions != null;
+              const displayRow = isConcessionsOverridden
                 ? {
                     ...r,
                     // Concessions are contra-revenue (negative); recognized sum is positive.
-                    resolved: -Math.abs(y1RecognizedConcessions),
+                    resolved: -Math.abs(y1RecognizedConcessions!),
                     // Preserve source label so the source badge still renders correctly.
                     source: r.source ?? 'recognition',
                   }
                 : r;
               return (
-                <DataRow key={r.field} row={displayRow} isEven={i % 2 === 0} shade="blue"
-                  corrections={corrections} setCorrections={setCorrections}
-                  totalUnits={totalUnits} egiResolved={egiResolved}
-                  activePeriod={activePeriod}
-                  onSaveCorrection={handleSaveCorrection}
-                  onResetCorrection={handleResetCorrection}
-                  evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
-                />
+                <React.Fragment key={r.field}>
+                  <DataRow row={displayRow} isEven={i % 2 === 0} shade="blue"
+                    corrections={corrections} setCorrections={setCorrections}
+                    totalUnits={totalUnits} egiResolved={egiResolved}
+                    activePeriod={activePeriod}
+                    onSaveCorrection={handleSaveCorrection}
+                    onResetCorrection={handleResetCorrection}
+                    evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
+                  />
+                  {/* §14 Annotation: visible user-facing explanation when recognized value
+                      replaces earned. Not a financial row — no separate dollar amount shown.
+                      STRAIGHT_LINE_GAAP tooltip per Task #574 spec §4 requirement. */}
+                  {isConcessionsOverridden && (
+                    <tr style={{ background: '#110e00' }}>
+                      <td
+                        colSpan={9}
+                        style={{
+                          padding: '2px 8px 2px 28px',
+                          fontSize: 8,
+                          color: '#92714a',
+                          fontFamily: MONO,
+                          borderBottom: '1px solid #1f1a00',
+                          letterSpacing: '0.01em',
+                        }}
+                        title={`Recognized value (STRAIGHT_LINE_GAAP): Y1 concession amortization sum for ${data.closeDate ? new Date(data.closeDate).getFullYear() : '?'} analysis window. Earned (cash) total may differ — see Projections tab for month-by-month earned vs recognized detail. §14 EARNED-VS-RECOGNIZED-DISTINCTION.`}
+                      >
+                        ↑ Showing recognized (STRAIGHT_LINE_GAAP amortized) · Y1 window starting {data.closeDate ?? '?'} · earned total may differ · see Projections for monthly detail
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
 
