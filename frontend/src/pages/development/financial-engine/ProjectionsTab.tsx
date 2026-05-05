@@ -921,7 +921,10 @@ export function ProjectionsTab({
   const lvLastSeedRef = useRef<typeof f9Financials>(null);
 
   // Core engine runner — accepts inputs directly (no closure over stale state)
-  const runLvEngine = useCallback(async (inputs: LVInputs) => {
+  // emitEvent=true only for user-triggered runs (mode override, clear override, manual Run
+  // button).  The auto-seed effect passes false (default) to avoid an infinite loop:
+  //   auto-seed → emit → fetchF9Financials → new f9Financials ref → auto-seed → …
+  const runLvEngine = useCallback(async (inputs: LVInputs, emitEvent = false) => {
     if (!dealId) return;
     setLvLoading(true);
     setLvError(null);
@@ -932,9 +935,12 @@ export function ProjectionsTab({
       );
       if (resp.data?.success) {
         setLvResult(resp.data.data);
-        // Notify downstream F9 consumers (S&U reserve, Returns IRR, JEDI Position sub-score)
-        // via the dealStore event bus so they re-fetch /financials with updated LV output.
-        useDealStore.getState().emitLeaseVelocityUpdated();
+        if (emitEvent) {
+          // Notify downstream F9 consumers (S&U reserve, Returns IRR, JEDI Position
+          // sub-score) via the dealStore event bus so they re-fetch /financials.
+          // Only fired for user-triggered runs to prevent f9Financials→LV feedback loop.
+          useDealStore.getState().emitLeaseVelocityUpdated();
+        }
       } else {
         setLvError(resp.data?.error ?? 'Engine returned an error');
       }
@@ -997,7 +1003,7 @@ export function ProjectionsTab({
         console.error('[LV] Failed to save lease_mode_override:', err);
       }
     }
-    void runLvEngine(next);
+    void runLvEngine(next, true); // user-triggered: emit event to refresh F9 consumers
   }, [lvInputs, dealId, runLvEngine]);
 
   // Clear override: resets deal.lease_mode_override to null → engine returns to
@@ -1012,7 +1018,7 @@ export function ProjectionsTab({
         console.error('[LV] Failed to clear lease_mode_override:', err);
       }
     }
-    void runLvEngine(next);
+    void runLvEngine(next, true); // user-triggered: emit event to refresh F9 consumers
   }, [lvInputs, lvResolvedMode, dealId, runLvEngine]);
 
   const [narrative,        setNarrative]       = useState<string | null>(null);
@@ -1435,7 +1441,7 @@ export function ProjectionsTab({
             loading={lvLoading}
             inputs={lvInputs}
             onInputsChange={setLvInputs}
-            onRun={() => void runLvEngine(lvInputs)}
+            onRun={() => void runLvEngine(lvInputs, true)}
             showConfig={lvShowConfig}
             onToggleConfig={() => setLvShowConfig(v => !v)}
             runError={lvError}
