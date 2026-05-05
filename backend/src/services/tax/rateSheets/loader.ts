@@ -67,6 +67,13 @@ export function initRateSheets(): void {
 
     const sheet = validateRateSheet(raw, filename);
     const key = `${sheet.jurisdiction}-${sheet.year}`;
+    if (rateSheetCache.has(key)) {
+      throw new Error(
+        `[RateSheetLoader] Duplicate rate sheet key "${key}" ` +
+        `while loading "${filename}". Each jurisdiction-year combination must be unique. ` +
+        `Remove or rename the conflicting file.`,
+      );
+    }
     rateSheetCache.set(key, sheet);
   }
 
