@@ -168,13 +168,12 @@ export async function fetchFromAttom(
 
   const warnings: string[] = [];
 
-  // Build query: ATTOM v3 property/detail accepts APN (attomId) + stateCode for
-  // a state-scoped lookup. stateCode filters results to the correct state when
-  // two parcels in different states share the same APN (common for sequential
-  // county numbering schemes).
+  // Build query: ATTOM v3 property/detail looks up by APN + state.
+  // The `apn` param accepts the Assessor Parcel Number (APN/folio/account).
+  // `state` filters to the correct jurisdiction when APNs are not globally unique.
   const params = new URLSearchParams({
-    attomId:   parcelId,
-    stateCode: state.toUpperCase(),
+    apn:   parcelId,
+    state: state.toUpperCase(),
   });
 
   const url = `https://api.attomdata.com/property/v3/property/detail?${params.toString()}`;

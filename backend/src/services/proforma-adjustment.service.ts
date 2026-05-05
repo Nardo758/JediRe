@@ -15,11 +15,12 @@ import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import { Pool } from 'pg';
 import { taxService } from './tax/taxService';
-import type { TaxContext } from './tax/taxService';
+import type { TaxContext, TaxForecastProvenance } from './tax/taxService';
 import { deriveCounty } from './tax/resolver';
 import { kafkaProducer } from './kafka/kafka-producer.service';
 import { KAFKA_TOPICS } from './kafka/event-schemas';
 import { liveMillageService } from './tax/liveMlillageService';
+import { generalPropertyAppraiserFetcher } from './tax/propertyAppraiserFetcher';
 
 // ============================================================================
 // Types
@@ -2421,6 +2422,73 @@ export async function getDealFinancials(
     return undefined; // taxService defaults to 0.20
   })();
 
+  // ── Tier 2 parcel fetch (GeneralPropertyAppraiserFetcher) ───────────────────
+  // Attempt to enrich TaxContext with ATTOM or tax-bill PDF parcel data.
+  // Runs after the millage override resolution so user overrides always win.
+  // Failures are swallowed — forecast falls back to ruleset defaults.
+  let fetcherProvenance: TaxForecastProvenance | undefined;
+  if (deal.id != null && taxAssessedValueOvr == null) {
+    try {
+      const parcelId = (dealDataJson.parcel_id as string | null) ?? null;
+      const parcelResult = await generalPropertyAppraiserFetcher.fetch({
+        dealId:     String(deal.id),
+        parcelId,
+        state:      dealState,
+        county:     resolvedCounty,
+        fiscalYear: closeYear,
+      });
+      if (parcelResult.parcel) {
+        const p = parcelResult.parcel;
+        // Enrich context: use parcel assessed value and millage only if not user-overridden
+        if (taxAssessedValueOvr == null && p.assessed_value != null) {
+          // taxCtx will be built below; store for injection
+        }
+        if (taxMillageRateOvr == null && p.millage_rate != null) {
+          effectiveMillageOverride = p.millage_rate;
+        }
+        // Build a minimal provenance record to pass into forecast()
+        const pSrc = p.source;
+        const pConf = parcelResult.confidence;
+        const rulesetVer = `${dealState || 'DEFAULT'}-${closeYear ?? new Date().getFullYear()}`;
+        const now = new Date().toISOString();
+        const mkLv = <T>(v: T, src: string) => ({
+          value: v, source: src,
+          metadata: { ruleset_version: rulesetVer, formula: `${src} parcel data`, confidence: pConf, computed_at: now },
+        });
+        fetcherProvenance = {
+          computed_at: now,
+          ruleset_version: rulesetVer,
+          parcel_source: pSrc,
+          parcel_confidence: pConf,
+          assessed_value:     mkLv(p.assessed_value ?? null, pSrc),
+          millage_rate:       mkLv(p.millage_rate   ?? null, pSrc),
+          t12_annual_tax:     mkLv(p.annual_tax     ?? null, pSrc),
+          t12_millage_rate:   mkLv(p.millage_rate   ?? null, pSrc),
+          t12_assessed_value: mkLv(p.assessed_value ?? null, pSrc),
+          platform_annual_tax:       mkLv(null, 'tax_service_computed'),
+          delta_vs_t12_pct:          mkLv(null, 'tax_service_computed'),
+          assessment_growth_pct:     mkLv(0,    'tax_service_computed'),
+          soh_cap_pct:               mkLv(0,    'tax_service_computed'),
+          doc_stamp_amount:          mkLv(null, 'tax_service_computed'),
+          intangible_tax_amount:     mkLv(null, 'tax_service_computed'),
+          county_surtax_amount:      mkLv(null, 'tax_service_computed'),
+          total_transfer_tax:        mkLv(null, 'tax_service_computed'),
+          land_allocation_pct:       mkLv(0.20, 'ruleset_default'),
+          depreciable_base:          mkLv(null, 'tax_service_computed'),
+          annual_depreciation:       mkLv(null, 'tax_service_computed'),
+          bonus_depreciation_pct:    mkLv(0,    'tax_service_computed'),
+          cost_seg_available_pct:    mkLv(0,    'tax_service_computed'),
+          federal_income_tax_rate:   mkLv(0,    'tax_service_computed'),
+          state_income_tax_rate:     mkLv(0,    'tax_service_computed'),
+          effective_combined_rate:   mkLv(0,    'tax_service_computed'),
+          tpp_exemption_amount:      mkLv(0,    'tax_service_computed'),
+        } as TaxForecastProvenance;
+      }
+    } catch {
+      // Parcel fetch failure is non-fatal; forecast continues with manual context.
+    }
+  }
+
   // Build tax context and invoke jurisdiction-agnostic tax service
   const taxCtx: TaxContext = {
     state: dealState,
@@ -2444,7 +2512,7 @@ export async function getDealFinancials(
     landAllocationPct:  sectionCLandAllocPct,
     dealId:             deal.id != null ? String(deal.id) : null,
   };
-  const taxForecast = taxService.forecast(taxCtx);
+  const taxForecast = taxService.forecast(taxCtx, fetcherProvenance);
 
   // Fire-and-forget: emit jurisdiction_unmapped so Research Agent can queue onboarding.
   // Non-fatal — Kafka unavailability must never block the proforma calculation.

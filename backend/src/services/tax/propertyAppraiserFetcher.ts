@@ -19,6 +19,7 @@
  */
 
 import { parseTaxBillAsync } from '../document-extraction/parsers/tax-bill-parser';
+import type { TaxBillData } from '../document-extraction/types';
 import { fetchFromAttom } from './attomAdapter';
 import { parcelCache } from './parcelCache';
 import { query } from '../../database/connection';
@@ -48,7 +49,7 @@ export interface PropertyAppraiserFetcher {
 async function fetchFromTaxBillPdf(dealId: string): Promise<NormalizedParcel | null> {
   let row: { file_url: string; metadata: any } | undefined;
   try {
-    const res = await query<{ file_url: string; metadata: any }>(
+    const res = await query(
       `SELECT file_url, metadata
          FROM deal_documents
         WHERE deal_id   = $1
@@ -59,7 +60,7 @@ async function fetchFromTaxBillPdf(dealId: string): Promise<NormalizedParcel | n
         LIMIT 1`,
       [dealId],
     );
-    row = res.rows[0];
+    row = (res.rows as { file_url: string; metadata: any }[])[0];
   } catch {
     return null;
   }
@@ -104,7 +105,7 @@ async function fetchFromTaxBillPdf(dealId: string): Promise<NormalizedParcel | n
     const result = await parseTaxBillAsync(buf, 'tax_bill.pdf');
     if (!result.success || !result.data) return null;
 
-    const d = result.data;
+    const d = result.data as TaxBillData;
     return {
       parcel_id: d.parcelId ?? `deal:${dealId}`,
       state: '',
