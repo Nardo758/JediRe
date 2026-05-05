@@ -490,20 +490,78 @@ export interface PropertyAppraiserResult {
 // ── Phase 4: TaxForecastProvenance ────────────────────────────────────────────
 
 /**
- * TaxForecastProvenance — additive companion to TaxForecast carrying LayeredValue
- * wrappers for key numeric outputs. Callers that don't need provenance can ignore this.
+ * TaxForecastProvenance — additive companion to TaxForecast.
+ *
+ * Every numeric output field on TaxForecast is mirrored here as a LayeredValue<T>
+ * carrying source provenance, formula trace, and input breakdown.
+ * Callers that only need raw numbers use the existing TaxForecast fields directly.
+ * F9 UI and audit trail consumers read this section.
+ *
+ * Field groupings mirror TaxForecast sections:
+ *   meta        — ruleset/parcel identification
+ *   section_a   — reTax numeric outputs
+ *   transfer    — transferTax numeric outputs
+ *   section_c   — income tax & depreciation outputs
+ *   section_b   — TPP outputs
  */
 export interface TaxForecastProvenance {
   computed_at: string;
-  /** E.g. "FL-2026" or "TX-2026" — jurisdiction + year of active ruleset. */
+  /** E.g. "FL-2026" or "TX-2026" — jurisdiction + rate sheet year. */
   ruleset_version: string;
-  /** Source label for the parcel data used. Null when ATTOM was not called. */
+  /** Source label for the parcel data tier used. Null when no parcel fetch occurred. */
   parcel_source: string | null;
   parcel_confidence: 'high' | 'medium' | 'low' | null;
+
+  // ── Section A — Real Estate Tax ──────────────────────────────────────────────
+  /** Post-acquisition assessed value used as the platform baseline. */
   assessed_value: LayeredValue<number | null>;
+  /** Aggregate millage rate (mills per $1,000). */
   millage_rate: LayeredValue<number | null>;
+  /** Platform Year-1 annual RE tax = assessedValue × millageRate / 1000. */
   platform_annual_tax: LayeredValue<number | null>;
+  /** T12 assessed value back-computed from t12AnnualTax / (t12MillageRate/1000). */
+  t12_assessed_value: LayeredValue<number | null>;
+  /** T12 millage rate used as the pre-acquisition baseline. */
+  t12_millage_rate: LayeredValue<number | null>;
+  /** T12 annual tax (trailing-12-month tax amount). */
+  t12_annual_tax: LayeredValue<number | null>;
+  /** Delta between platform and T12 annual tax as a fraction. */
+  delta_vs_t12_pct: LayeredValue<number | null>;
+  /** Annual assessment growth rate (0 = full reassessment; >0 = capped). */
+  assessment_growth_pct: LayeredValue<number>;
+  /** SOH / non-homestead cap percentage (e.g. 0.10 for FL 10% non-homestead cap). */
+  soh_cap_pct: LayeredValue<number>;
+
+  // ── Transfer Taxes (Section D / acquisition) ─────────────────────────────────
+  /** State doc stamp / deed recording tax amount. */
+  doc_stamp_amount: LayeredValue<number | null>;
+  /** Intangible tax on the mortgage note. */
+  intangible_tax_amount: LayeredValue<number | null>;
+  /** County-level deed surtax (Miami-Dade only; null elsewhere). */
+  county_surtax_amount: LayeredValue<number | null>;
+  /** Total transfer tax = doc_stamp + intangible + county_surtax. */
+  total_transfer_tax: LayeredValue<number | null>;
+
+  // ── Section C — Income Tax & Depreciation ────────────────────────────────────
+  /** Land allocation fraction used (non-depreciable). */
+  land_allocation_pct: LayeredValue<number>;
+  /** Depreciable basis = purchasePrice × (1 − landAllocationPct). */
+  depreciable_base: LayeredValue<number | null>;
+  /** Annual straight-line depreciation = depreciableBase / depreciationLife. */
+  annual_depreciation: LayeredValue<number | null>;
+  /** Bonus depreciation % for the placed-in-service year (federal schedule). */
+  bonus_depreciation_pct: LayeredValue<number>;
+  /** Cost segregation reclassification fraction (0 when not eligible). */
+  cost_seg_available_pct: LayeredValue<number>;
+  /** Federal income tax rate for the entity type. */
+  federal_income_tax_rate: LayeredValue<number>;
+  /** State income tax rate for the entity type. */
   state_income_tax_rate: LayeredValue<number>;
+  /** Combined effective rate = federal + state. */
+  effective_combined_rate: LayeredValue<number>;
+
+  // ── Section B — Tangible Personal Property ───────────────────────────────────
+  /** TPP filing exemption threshold ($). */
   tpp_exemption_amount: LayeredValue<number>;
 }
 

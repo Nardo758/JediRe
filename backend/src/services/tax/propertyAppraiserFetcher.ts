@@ -21,8 +21,8 @@
 import { parseTaxBillAsync } from '../document-extraction/parsers/tax-bill-parser';
 import { fetchFromAttom } from './attomAdapter';
 import { parcelCache } from './parcelCache';
-import { query } from '../database/connection';
-import { logger } from '../utils/logger';
+import { query } from '../../database/connection';
+import { logger } from '../../utils/logger';
 import type { NormalizedParcel, PropertyAppraiserResult } from './types';
 
 // ── Interface ─────────────────────────────────────────────────────────────────

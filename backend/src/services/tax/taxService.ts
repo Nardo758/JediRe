@@ -160,72 +160,153 @@ export const taxService = {
     const computedAt = new Date().toISOString();
     const rulesetVersion = `${ctx.state || 'DEFAULT'}-${FEDERAL_RATE_SHEET_YEAR}`;
 
+    const lv = <T>(
+      value: T,
+      source: string,
+      conf: 'high' | 'medium' | 'low',
+      formula: string,
+      inputs?: Record<string, { value: unknown; source: string }>,
+    ): import('./types').LayeredValue<T> => ({
+      value,
+      source,
+      metadata: { ruleset_version: rulesetVersion, formula, ...(inputs ? { inputs } : {}), confidence: conf, computed_at: computedAt },
+    });
+
     const provenance: import('./types').TaxForecastProvenance = {
       computed_at: computedAt,
       ruleset_version: rulesetVersion,
       parcel_source: null,
       parcel_confidence: null,
-      assessed_value: {
-        value: platformAssessedValue ?? null,
-        source: ctx.assessedValueOverride != null ? 'user_override'
-              : platformAssessedValue != null ? 'tax_service_computed' : 'fallback',
-        metadata: {
-          ruleset_version: rulesetVersion,
-          formula: ctx.assessedValueOverride != null
-            ? 'user-supplied assessedValueOverride'
-            : 'purchasePrice used as post-acquisition assessed value',
-          inputs: {
-            purchase_price: { value: ctx.purchasePrice, source: 'deal_data' },
-          },
-          confidence,
-          computed_at: computedAt,
-        },
-      },
-      millage_rate: {
-        value: t12MillageRate ?? null,
-        source: ctx.millageRateOverride != null ? 'user_override' : 'tax_service_computed',
-        metadata: {
-          ruleset_version: rulesetVersion,
-          formula: `${activeRuleset.jurisdiction}.annualPropertyTax(ctx, 1, 0).millageRate`,
-          confidence,
-          computed_at: computedAt,
-        },
-      },
-      platform_annual_tax: {
-        value: platformAnnualTax ?? null,
-        source: 'tax_service_computed',
-        metadata: {
-          ruleset_version: rulesetVersion,
-          formula: `millageRate × assessedValue / 1000`,
-          inputs: {
-            assessed_value:  { value: platformAssessedValue, source: 'tax_service_computed' },
-            millage_rate_mills: { value: t12MillageRate, source: 'tax_service_computed' },
-          },
-          confidence,
-          computed_at: computedAt,
-        },
-      },
-      state_income_tax_rate: {
-        value: stateRate,
-        source: 'tax_service_computed',
-        metadata: {
-          ruleset_version: rulesetVersion,
-          formula: `${stateRuleset.jurisdiction}.stateIncomeTaxRate(${entityType})`,
-          inputs: { entity_type: { value: entityType, source: 'deal_data' } },
-          confidence,
-          computed_at: computedAt,
-        },
-      },
-      tpp_exemption_amount: {
-        value: stateRuleset.tppExemptionAmount(),
-        source: 'tax_service_computed',
-        metadata: {
-          ruleset_version: rulesetVersion,
-          formula: `${stateRuleset.jurisdiction}.tppExemptionAmount()`,
-          confidence,
-          computed_at: computedAt,
-        },
-      },
+
+      // Section A
+      assessed_value: lv(
+        platformAssessedValue ?? null,
+        ctx.assessedValueOverride != null ? 'user_override' : platformAssessedValue != null ? 'tax_service_computed' : 'fallback',
+        confidence,
+        ctx.assessedValueOverride != null ? 'user-supplied assessedValueOverride' : 'purchasePrice used as post-acquisition assessed value',
+        { purchase_price: { value: ctx.purchasePrice, source: 'deal_data' } },
+      ),
+      millage_rate: lv(
+        t12MillageRate ?? null,
+        ctx.millageRateOverride != null ? 'user_override' : 'tax_service_computed',
+        confidence,
+        `${activeRuleset.jurisdiction}.annualPropertyTax(ctx, 1, 0).millageRate`,
+      ),
+      platform_annual_tax: lv(
+        platformAnnualTax ?? null, 'tax_service_computed', confidence,
+        'millageRate × assessedValue / 1000',
+        { assessed_value: { value: platformAssessedValue, source: 'tax_service_computed' },
+          millage_rate_mills: { value: t12MillageRate, source: 'tax_service_computed' } },
+      ),
+      t12_assessed_value: lv(
+        t12AssessedValue ?? null, 'tax_service_computed', confidence,
+        't12AnnualTax / (t12MillageRate / 1000)',
+        { t12_annual_tax: { value: t12AnnualTax, source: 'context' },
+          t12_millage_rate: { value: t12MillageRate, source: 'tax_service_computed' } },
+      ),
+      t12_millage_rate: lv(
+        t12MillageRate ?? null,
+        ctx.millageRateOverride != null ? 'user_override' : 'tax_service_computed',
+        confidence,
+        `${activeRuleset.jurisdiction}.annualPropertyTax(ctx, 1, 0).millageRate`,
+      ),
+      t12_annual_tax: lv(
+        t12AnnualTax ?? null,
+        ctx.t12AnnualTax != null ? 'context' : 'fallback',
+        ctx.t12AnnualTax != null ? confidence : 'low',
+        'ctx.t12AnnualTax (from overrides or deal_data)',
+      ),
+      delta_vs_t12_pct: lv(
+        deltaVsT12Pct ?? null, 'tax_service_computed', confidence,
+        '(platformAnnualTax - t12AnnualTax) / t12AnnualTax',
+        { platform_annual_tax: { value: platformAnnualTax, source: 'tax_service_computed' },
+          t12_annual_tax: { value: t12AnnualTax, source: 'context' } },
+      ),
+      assessment_growth_pct: lv(
+        assessmentGrowthPct, 'tax_service_computed', confidence,
+        '(yr2.assessedValue - yr1.assessedValue) / yr1.assessedValue',
+      ),
+      soh_cap_pct: lv(
+        sohCapPct, 'tax_service_computed', confidence,
+        `${stateRuleset.jurisdiction}.annualAssessmentCap()`,
+      ),
+
+      // Transfer taxes
+      doc_stamp_amount: lv(
+        transferTax.docStampAmount ?? null, 'tax_service_computed',
+        jurisdictionMapped ? (countyOverlay ? 'high' : 'medium') : 'low',
+        'stateRuleset.acquisitionTransferTax(ctx).docStampAmount',
+        { purchase_price: { value: ctx.purchasePrice, source: 'deal_data' } },
+      ),
+      intangible_tax_amount: lv(
+        transferTax.intangibleTaxAmount ?? null, 'tax_service_computed',
+        jurisdictionMapped ? (countyOverlay ? 'high' : 'medium') : 'low',
+        'stateRuleset.acquisitionTransferTax(ctx).intangibleTaxAmount',
+        { loan_amount: { value: ctx.loanAmount, source: 'deal_data' } },
+      ),
+      county_surtax_amount: lv(
+        transferTax.countySurtaxAmount ?? null,
+        countyOverlay ? 'tax_service_computed' : 'not_applicable',
+        jurisdictionMapped ? 'high' : 'low',
+        'countyOverlay?.countySurtax(purchasePrice)',
+      ),
+      total_transfer_tax: lv(
+        transferTax.totalTransferTax ?? null, 'tax_service_computed',
+        jurisdictionMapped ? (countyOverlay ? 'high' : 'medium') : 'low',
+        'docStampAmount + intangibleTaxAmount + countySurtaxAmount',
+      ),
+
+      // Section C
+      land_allocation_pct: lv(
+        landAllocationPct,
+        ctx.landAllocationPct != null ? 'deal_data' : 'ruleset_default',
+        ctx.landAllocationPct != null ? 'high' : 'medium',
+        'ctx.landAllocationPct ?? 0.20',
+      ),
+      depreciable_base: lv(
+        depreciableBase, 'tax_service_computed',
+        ctx.purchasePrice != null ? 'high' : 'low',
+        'purchasePrice × (1 − landAllocationPct)',
+        { purchase_price: { value: ctx.purchasePrice, source: 'deal_data' },
+          land_allocation_pct: { value: landAllocationPct, source: 'deal_data' } },
+      ),
+      annual_depreciation: lv(
+        annualDepreciation, 'tax_service_computed',
+        depreciableBase != null ? 'high' : 'low',
+        `depreciableBase / ${federalRuleset.depreciationLife(propertyType)} (${propertyType} life)`,
+        { depreciable_base: { value: depreciableBase, source: 'tax_service_computed' } },
+      ),
+      bonus_depreciation_pct: lv(
+        bonusDepreciationCurrentYearPct, 'tax_service_computed', 'high',
+        `federalRuleset.bonusDepreciationPct(${placedInServiceYear})`,
+        { placed_in_service_year: { value: placedInServiceYear, source: 'deal_data' } },
+      ),
+      cost_seg_available_pct: lv(
+        costSegAvailablePct, 'tax_service_computed', 'high',
+        `federalRuleset.costSegEligible(${propertyType}) → federalCostSegAvailablePct()`,
+      ),
+      federal_income_tax_rate: lv(
+        fedRate, 'tax_service_computed', 'high',
+        `federalIncomeTaxRate(${entityType})`,
+        { entity_type: { value: entityType, source: 'deal_data' } },
+      ),
+      state_income_tax_rate: lv(
+        stateRate, 'tax_service_computed', confidence,
+        `${stateRuleset.jurisdiction}.stateIncomeTaxRate(${entityType})`,
+        { entity_type: { value: entityType, source: 'deal_data' } },
+      ),
+      effective_combined_rate: lv(
+        fedRate + stateRate, 'tax_service_computed', confidence,
+        'federalIncomeTaxRate + stateIncomeTaxRate',
+        { federal_rate: { value: fedRate, source: 'federal_ruleset' },
+          state_rate:   { value: stateRate, source: 'state_ruleset' } },
+      ),
+
+      // Section B
+      tpp_exemption_amount: lv(
+        stateRuleset.tppExemptionAmount(), 'tax_service_computed', confidence,
+        `${stateRuleset.jurisdiction}.tppExemptionAmount()`,
+      ),
     };
 
     return {

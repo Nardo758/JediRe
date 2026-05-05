@@ -95,8 +95,8 @@ export const rateSheetStalenessCron = inngest.createFunction(
                (id, agent_id, agent_version, prompt_version,
                 deal_id, user_id, triggered_by, trigger_context,
                 status, input, tokens_in, tokens_out, cost_usd, started_at)
-             VALUES (gen_random_uuid(), 'research', '1.0', NULL,
-                     NULL, NULL, 'staleness_cron', NULL,
+             VALUES (gen_random_uuid(), 'research', '1.0', 'rate_sheet_review_v1',
+                     NULL, NULL, 'cron', NULL,
                      'pending', $1::jsonb, 0, 0, 0, NOW())`,
             [
               JSON.stringify({

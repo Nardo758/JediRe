@@ -16,8 +16,8 @@
  * gracefully to ruleset defaults.
  */
 
-import { query } from '../database/connection';
-import { logger } from '../utils/logger';
+import { query } from '../../database/connection';
+import { logger } from '../../utils/logger';
 import type { NormalizedParcel } from './types';
 
 // ── TTL helper ────────────────────────────────────────────────────────────────

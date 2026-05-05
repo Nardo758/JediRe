@@ -19,8 +19,8 @@
  * gracefully to hardcoded ruleset defaults.
  */
 
-import { query } from '../database/connection';
-import { logger } from '../utils/logger';
+import { query } from '../../database/connection';
+import { logger } from '../../utils/logger';
 
 // ── TTL helpers ───────────────────────────────────────────────────────────────
 

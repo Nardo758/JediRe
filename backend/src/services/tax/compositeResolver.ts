@@ -22,8 +22,10 @@
 
 import { generalPropertyAppraiserFetcher } from './propertyAppraiserFetcher';
 import { liveMillageService } from './liveMlillageService';
-import { resolveRulesetStack } from './resolver';
-import { logger } from '../utils/logger';
+import { resolveRulesetStack, deriveCounty } from './resolver';
+import { jurisdictionCacheGet, jurisdictionCacheSet } from './jurisdictionCache';
+import { federalRuleset, federalIncomeTaxRate, federalCostSegAvailablePct } from './rulesets/federal.ruleset';
+import { logger } from '../../utils/logger';
 import type {
   TaxContext,
   LayeredValue,
@@ -98,15 +100,9 @@ function makeLayered<T>(
   };
 }
 
-function deriveCountyFromCity(city: string | null, state: string): string | null {
-  if (!city || !state) return null;
-  // Delegate to resolver's CITY_TO_COUNTY map via resolveRulesetStack —
-  // we call with a dummy unknown county so the resolver falls through to city detection.
-  // Actually, import the CITY_TO_COUNTY map directly to avoid creating a stack.
-  const { CITY_TO_COUNTY } = require('./resolver') as { CITY_TO_COUNTY: Map<string, string> };
-  const key = `${city.toLowerCase().trim()}|${state.toUpperCase()}`;
-  return CITY_TO_COUNTY?.get(key) ?? null;
-}
+// deriveCounty imported from resolver — uses the same CITY_TO_COUNTY record that
+// the resolver uses for stack resolution, keeping county derivation consistent.
+
 
 // ── Main function ─────────────────────────────────────────────────────────────
 
@@ -130,7 +126,7 @@ export async function buildTaxContext(
   const dealState = (deal.state_code ?? '').toUpperCase().trim();
   const dealCountyRaw = (dd.county ?? dd.property_county ?? null) as string | null;
   const dealCity = deal.city ?? null;
-  const resolvedCounty = dealCountyRaw ?? deriveCountyFromCity(dealCity, dealState);
+  const resolvedCounty = dealCountyRaw ?? deriveCounty(dealCity, dealState);
 
   const purchasePrice: number | null =
     dd.purchase_price != null ? Number(dd.purchase_price) :
@@ -223,33 +219,56 @@ export async function buildTaxContext(
       },
     );
   } else {
-    // Try live millage service
-    let liveMillage: number | null = null;
-    try {
-      const live = await liveMillageService.getLiveMillageRate(dealState, resolvedCounty);
-      if (live) {
-        liveMillage = live.millageRate;
-        millageSource = 'live_millage_service';
-      }
-    } catch {
-      // fall through
-    }
+    // Try jurisdiction cache first, then live millage service, then ruleset default.
+    const jurisdictionKey = resolvedCounty
+      ? `${dealState}-${resolvedCounty}`
+      : dealState;
+    const cachedMillage = await jurisdictionCacheGet<number>(
+      jurisdictionKey, 'millage_rate', fiscalYear,
+    );
 
-    if (liveMillage != null) {
-      effectiveMillageOverride = liveMillage;
+    if (cachedMillage != null) {
+      effectiveMillageOverride = cachedMillage;
+      millageSource = 'jurisdiction_cache';
       millageRateLayered = makeLayered(
-        liveMillage,
-        'live_millage_service',
+        cachedMillage,
+        'jurisdiction_cache',
         'medium',
-        { ruleset_version: rulesetVersion, formula: 'TX Comptroller live county rates' },
+        { ruleset_version: rulesetVersion, formula: 'jurisdiction_tax_cache read-through' },
       );
     } else {
-      millageRateLayered = makeLayered(
-        null,
-        'ruleset_default',
-        'medium',
-        { ruleset_version: rulesetVersion, formula: 'ruleset hardcoded default millage' },
-      );
+      let liveMillage: number | null = null;
+      try {
+        const live = await liveMillageService.getLiveMillageRate(dealState, resolvedCounty);
+        if (live) {
+          liveMillage = live.millageRate;
+          millageSource = 'live_millage_service';
+          // Store in jurisdiction cache so subsequent forecasts skip the HTTP call.
+          await jurisdictionCacheSet(
+            jurisdictionKey, 'millage_rate', fiscalYear ?? new Date().getUTCFullYear(),
+            liveMillage, 'live_millage_service',
+          );
+        }
+      } catch {
+        // fall through to ruleset default
+      }
+
+      if (liveMillage != null) {
+        effectiveMillageOverride = liveMillage;
+        millageRateLayered = makeLayered(
+          liveMillage,
+          'live_millage_service',
+          'medium',
+          { ruleset_version: rulesetVersion, formula: 'TX Comptroller live county rates' },
+        );
+      } else {
+        millageRateLayered = makeLayered(
+          null,
+          'ruleset_default',
+          'medium',
+          { ruleset_version: rulesetVersion, formula: 'ruleset hardcoded default millage' },
+        );
+      }
     }
   }
 
@@ -270,53 +289,38 @@ export async function buildTaxContext(
   })();
 
   const landAllocPct = overrides.landAllocationPct ??
-    (dd.land_allocation_pct != null ? Number(dd.land_allocation_pct) : undefined);
+    (dd.land_allocation_pct != null ? Number(dd.land_allocation_pct) : undefined) ?? 0.20;
 
   // ── t12 annual tax ────────────────────────────────────────────────────────
   const t12FromParcel = parcel?.annual_tax ?? null;
   const t12FromDeal   = dd.t12_annual_tax != null ? Number(dd.t12_annual_tax) : null;
   const t12AnnualTax  = overrides.t12AnnualTax ?? t12FromParcel ?? t12FromDeal ?? null;
 
-  // ── Platform annual tax provenance ────────────────────────────────────────
-  // Computed after forecast; placeholder source set here.
-  const platformAnnualTaxLayered: LayeredValue<number | null> = makeLayered(
-    null,
-    'tax_service_computed',
-    stack.jurisdictionMapped ? (stack.county ? 'high' : 'medium') : 'low',
-    {
-      ruleset_version: rulesetVersion,
-      formula: 'taxService.forecast() → reTax.platformAnnualTax',
-    },
-  );
+  // ── Section C derivations (mirrors taxService.forecast() Section C block) ──
+  // Computed here so provenance wrappers can reference actual values.
+  const entityTypeForRate  = sectionCEntityType ?? 'pass_through';
+  const propertyTypeForDep = sectionCPropertyType ?? 'multifamily';
+  const placedInSvcYear    = closeYear ?? (fiscalYear ?? new Date().getUTCFullYear());
 
-  // ── State income tax rate provenance ─────────────────────────────────────
-  const entityTypeForRate = sectionCEntityType ?? 'pass_through';
   let stateRate = 0;
-  try {
-    stateRate = stack.state.stateIncomeTaxRate(entityTypeForRate);
-  } catch { /* use 0 on error */ }
+  try { stateRate = stack.state.stateIncomeTaxRate(entityTypeForRate); } catch { /* 0 */ }
+  const fedRate        = federalIncomeTaxRate(entityTypeForRate);
+  const depreciationLife = federalRuleset.depreciationLife(propertyTypeForDep);
+  const depreciableBase  = purchasePrice != null
+    ? Math.round(purchasePrice * (1 - landAllocPct)) : null;
+  const annualDepreciation = depreciableBase != null
+    ? Math.round(depreciableBase / depreciationLife) : null;
+  const bonusDepPct    = federalRuleset.bonusDepreciationPct(placedInSvcYear);
+  const costSegPct     = federalRuleset.costSegEligible(propertyTypeForDep)
+    ? federalCostSegAvailablePct() : 0;
+  const tppExempt      = stack.state.tppExemptionAmount();
+  const confBase: 'high' | 'medium' | 'low' = stack.jurisdictionMapped ? 'high' : 'low';
 
-  const stateRateLayered: LayeredValue<number> = makeLayered(
-    stateRate,
-    'tax_service_computed',
-    stack.jurisdictionMapped ? 'high' : 'low',
-    {
-      ruleset_version: rulesetVersion,
-      formula: `${stack.state.jurisdiction}.stateIncomeTaxRate(${entityTypeForRate})`,
-      inputs: { entity_type: { value: entityTypeForRate, source: 'deal_data' } },
-    },
-  );
-
-  // ── TPP exemption provenance ──────────────────────────────────────────────
-  const tppExemptLayered: LayeredValue<number> = makeLayered(
-    stack.state.tppExemptionAmount(),
-    'tax_service_computed',
-    stack.jurisdictionMapped ? 'high' : 'low',
-    {
-      ruleset_version: rulesetVersion,
-      formula: `${stack.state.jurisdiction}.tppExemptionAmount()`,
-    },
-  );
+  // ── Transfer tax provenance (acquisition only) ────────────────────────────
+  // Actual dollar amounts are computed by taxService.forecast(); these are
+  // source annotations only — values are null at context-build time.
+  const transferConfidence: 'high' | 'medium' | 'low' =
+    stack.jurisdictionMapped ? (stack.county ? 'high' : 'medium') : 'low';
 
   // ── Assemble TaxContext ───────────────────────────────────────────────────
   const ctx: TaxContext = {
@@ -342,17 +346,144 @@ export async function buildTaxContext(
     dealId: deal.id,
   };
 
+  // ── t12 assessed value & delta (preview; definitive values come from forecast) ─
+  const defaultMillage = (stack.county ?? stack.state)
+    .annualPropertyTax(ctx, 1, 0).millageRate;
+  const resolvedMillage = effectiveMillageOverride ?? defaultMillage;
+  const t12AssessedValuePrev = t12AnnualTax != null && resolvedMillage > 0
+    ? Math.round(t12AnnualTax / (resolvedMillage / 1000)) : null;
+
   // ── Assemble provenance ───────────────────────────────────────────────────
   const provenance: TaxForecastProvenance = {
     computed_at: now,
     ruleset_version: rulesetVersion,
     parcel_source: parcel?.source ?? null,
     parcel_confidence: parcelResult?.confidence ?? null,
-    assessed_value:       assessedValueLayered,
-    millage_rate:         millageRateLayered,
-    platform_annual_tax:  platformAnnualTaxLayered,
-    state_income_tax_rate: stateRateLayered,
-    tpp_exemption_amount:  tppExemptLayered,
+
+    // Section A
+    assessed_value: assessedValueLayered,
+    millage_rate:   millageRateLayered,
+    platform_annual_tax: makeLayered(
+      null, 'tax_service_computed',
+      stack.jurisdictionMapped ? (stack.county ? 'high' : 'medium') : 'low',
+      { ruleset_version: rulesetVersion, formula: 'taxService.forecast() → reTax.platformAnnualTax' },
+    ),
+    t12_assessed_value: makeLayered(
+      t12AssessedValuePrev, 'tax_service_computed', 'medium',
+      {
+        ruleset_version: rulesetVersion,
+        formula: 't12AnnualTax / (resolvedMillage / 1000)',
+        inputs: { t12_annual_tax: { value: t12AnnualTax, source: 't12FromParcel or deal_data' },
+                  millage_rate:   { value: resolvedMillage, source: millageSource } },
+      },
+    ),
+    t12_millage_rate: makeLayered(
+      resolvedMillage, millageSource, 'medium',
+      { ruleset_version: rulesetVersion, formula: 'millageRateOverride ?? parcel.millage_rate ?? live ?? ruleset_default' },
+    ),
+    t12_annual_tax: makeLayered(
+      t12AnnualTax,
+      t12AnnualTax != null ? (parcel?.annual_tax != null ? parcel.source : 'deal_data') : 'fallback',
+      t12AnnualTax != null ? 'medium' : 'low',
+      { ruleset_version: rulesetVersion, formula: 'overrides.t12AnnualTax ?? parcel.annual_tax ?? deal_data.t12_annual_tax' },
+    ),
+    delta_vs_t12_pct: makeLayered(
+      null, 'tax_service_computed',
+      stack.jurisdictionMapped ? 'medium' : 'low',
+      { ruleset_version: rulesetVersion, formula: '(platformAnnualTax - t12AnnualTax) / t12AnnualTax' },
+    ),
+    assessment_growth_pct: makeLayered(
+      0, 'tax_service_computed', confBase,
+      { ruleset_version: rulesetVersion, formula: '(yr2.assessedValue - yr1.assessedValue) / yr1.assessedValue' },
+    ),
+    soh_cap_pct: makeLayered(
+      stack.state.annualAssessmentCap() ?? 0, 'tax_service_computed', confBase,
+      {
+        ruleset_version: rulesetVersion,
+        formula: `${stack.state.jurisdiction}.annualAssessmentCap()`,
+      },
+    ),
+
+    // Transfer taxes
+    doc_stamp_amount: makeLayered(
+      null, 'tax_service_computed', transferConfidence,
+      { ruleset_version: rulesetVersion, formula: 'stateRuleset.acquisitionTransferTax(ctx).docStampAmount' },
+    ),
+    intangible_tax_amount: makeLayered(
+      null, 'tax_service_computed', transferConfidence,
+      { ruleset_version: rulesetVersion, formula: 'stateRuleset.acquisitionTransferTax(ctx).intangibleTaxAmount' },
+    ),
+    county_surtax_amount: makeLayered(
+      null, stack.county ? 'tax_service_computed' : 'not_applicable', transferConfidence,
+      { ruleset_version: rulesetVersion, formula: 'countyOverlay?.countySurtax(purchasePrice)' },
+    ),
+    total_transfer_tax: makeLayered(
+      null, 'tax_service_computed', transferConfidence,
+      { ruleset_version: rulesetVersion, formula: 'docStamp + intangible + countySurtax' },
+    ),
+
+    // Section C
+    land_allocation_pct: makeLayered(
+      landAllocPct,
+      landAllocPct !== 0.20 ? 'deal_data' : 'ruleset_default',
+      landAllocPct !== 0.20 ? 'high' : 'medium',
+      { ruleset_version: rulesetVersion, formula: 'overrides.landAllocationPct ?? deal_data.land_allocation_pct ?? 0.20' },
+    ),
+    depreciable_base: makeLayered(
+      depreciableBase, 'tax_service_computed', purchasePrice != null ? 'high' : 'low',
+      {
+        ruleset_version: rulesetVersion,
+        formula: 'purchasePrice × (1 − landAllocationPct)',
+        inputs: { purchase_price: { value: purchasePrice, source: 'deal_data' },
+                  land_allocation_pct: { value: landAllocPct, source: 'deal_data' } },
+      },
+    ),
+    annual_depreciation: makeLayered(
+      annualDepreciation, 'tax_service_computed', depreciableBase != null ? 'high' : 'low',
+      {
+        ruleset_version: rulesetVersion,
+        formula: `depreciableBase / ${depreciationLife} (${propertyTypeForDep} life)`,
+        inputs: { depreciable_base: { value: depreciableBase, source: 'tax_service_computed' } },
+      },
+    ),
+    bonus_depreciation_pct: makeLayered(
+      bonusDepPct, 'tax_service_computed', 'high',
+      {
+        ruleset_version: rulesetVersion,
+        formula: `federalRuleset.bonusDepreciationPct(${placedInSvcYear})`,
+        inputs: { placed_in_service_year: { value: placedInSvcYear, source: 'deal_data' } },
+      },
+    ),
+    cost_seg_available_pct: makeLayered(
+      costSegPct, 'tax_service_computed', 'high',
+      { ruleset_version: rulesetVersion, formula: `federalRuleset.costSegEligible(${propertyTypeForDep}) → federalCostSegAvailablePct()` },
+    ),
+    federal_income_tax_rate: makeLayered(
+      fedRate, 'tax_service_computed', 'high',
+      {
+        ruleset_version: rulesetVersion,
+        formula: `federalIncomeTaxRate(${entityTypeForRate})`,
+        inputs: { entity_type: { value: entityTypeForRate, source: 'deal_data' } },
+      },
+    ),
+    state_income_tax_rate: makeLayered(
+      stateRate, 'tax_service_computed', confBase,
+      {
+        ruleset_version: rulesetVersion,
+        formula: `${stack.state.jurisdiction}.stateIncomeTaxRate(${entityTypeForRate})`,
+        inputs: { entity_type: { value: entityTypeForRate, source: 'deal_data' } },
+      },
+    ),
+    effective_combined_rate: makeLayered(
+      fedRate + stateRate, 'tax_service_computed', confBase,
+      { ruleset_version: rulesetVersion, formula: 'federalRate + stateRate', inputs: { federal: { value: fedRate, source: 'federal_ruleset' }, state: { value: stateRate, source: 'state_ruleset' } } },
+    ),
+
+    // Section B
+    tpp_exemption_amount: makeLayered(
+      tppExempt, 'tax_service_computed', confBase,
+      { ruleset_version: rulesetVersion, formula: `${stack.state.jurisdiction}.tppExemptionAmount()` },
+    ),
   };
 
   return { ctx, provenance, parcelResult };
