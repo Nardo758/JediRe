@@ -424,6 +424,39 @@ export interface F9DealFinancials {
   } | null;
   /** Subject property traffic history — M07 §6.  Null until first rent roll uploaded for this deal. */
   subjectHistory?: F9SubjectHistory | null;
+  /** Lease Velocity Engine output — null until backend LV engine ships (M07 prereq). */
+  leaseVelocity?: F9LeaseVelocity | null;
+}
+
+/**
+ * Lease Velocity Engine output shape — mirrors backend lease-velocity-types.ts.
+ * Populated by GET /financials when the LV backend engine is present;
+ * null until M07 schema extension + backend LV engine ship.
+ */
+export interface F9LeaseVelocity {
+  /** Engine-resolved leasing mode for this deal */
+  resolvedMode: 'LEASE_UP_NEW_CONSTRUCTION' | 'STABILIZED_MAINTENANCE' | 'OCCUPANCY_RECOVERY' | 'V2_PENDING_VALUE_ADD';
+  /** Data confidence — drives JEDI Position sub-score adjustment */
+  confidence: 'high' | 'medium' | 'low';
+  /** Month index (1-based) when 95% occupancy stabilization threshold is reached */
+  stabilizationMonth: number | null;
+  /**
+   * Peak cumulative negative operating cash position during lease-up.
+   * Used as the S&U lease-up reserve line amount per LEASE-UP-RESERVE-IS-S&U rule.
+   * Null when mode is not LEASE_UP_NEW_CONSTRUCTION.
+   */
+  peakCumulativeReserve: number | null;
+  /** Leasing cost treatment applied when the engine computed monthly cash flows */
+  costTreatmentInEffect: 'OPERATING' | 'CAPITALIZED' | 'HYBRID';
+  /**
+   * Post-stabilization NOI clarity signal: 0–1.
+   * 1.0 = fully calibrated with S2+ subject history, zero collisions.
+   * 0.0 = no subject history, low confidence.
+   * Used by the JEDI Score Position sub-score.
+   */
+  stabilizedNoiClarity: number | null;
+  /** Subject property traffic history tier feeding this engine run */
+  subjectHistoryTier: 'S1' | 'S2' | 'S3' | 'S4' | null;
 }
 
 /** Subject property traffic history — M07 §6.  Populated when ≥1 rent roll has been uploaded. */

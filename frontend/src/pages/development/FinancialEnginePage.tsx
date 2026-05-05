@@ -646,6 +646,20 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     return () => window.removeEventListener('fe-tab-change', handler);
   }, []);
 
+  // ── Lease Velocity reactive update chain ─────────────────────────────────
+  // Re-fetch f9Financials whenever the LV engine emits new output or the
+  // cost treatment toggle changes — so S&U reserve, Returns IRR, and the
+  // JEDI Position sub-score all update in the same re-fetch cycle.
+  useEffect(() => {
+    const handler = () => fetchF9Financials();
+    window.addEventListener('lease_velocity.output.updated', handler);
+    window.addEventListener('leasing_cost_treatment.changed', handler);
+    return () => {
+      window.removeEventListener('lease_velocity.output.updated', handler);
+      window.removeEventListener('leasing_cost_treatment.changed', handler);
+    };
+  }, [fetchF9Financials]);
+
   // ── Merge model results into f9Financials so tabs that read
   // ── f9Financials.returns / .waterfall / .projections get populated.
   // ── This runs after every successful model build or version load.

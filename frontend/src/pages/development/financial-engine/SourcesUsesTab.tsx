@@ -210,6 +210,21 @@ export function SourcesUsesTab({
   const sourcesHasId = new Set(su?.sources?.map(s => s.id) ?? []);
   const usesHasId    = new Set(su?.uses?.map(u => u.id) ?? []);
 
+  // ── Lease-up reserve line (LEASE-UP-RESERVE-IS-S&U rule) ─────────────────
+  // When mode = LEASE_UP_NEW_CONSTRUCTION and the backend has not already
+  // included the line in su.uses, inject it from the LV engine output.
+  // The reserve is ALWAYS a use-of-funds regardless of leasing_cost_treatment.
+  const lv = f9Financials?.leaseVelocity ?? null;
+  const showLeaseUpReserve =
+    lv?.resolvedMode === 'LEASE_UP_NEW_CONSTRUCTION' &&
+    !usesHasId.has('leaseUpReserve');
+  const leaseUpReserveAmount = lv?.peakCumulativeReserve ?? null;
+
+  // Effective total uses includes the reserve line when injected on the frontend
+  const effectiveTotalUses = showLeaseUpReserve && leaseUpReserveAmount != null
+    ? (su?.totalUses ?? totalUses) + leaseUpReserveAmount
+    : (su?.totalUses ?? totalUses);
+
   // Editable rows that should appear as ADD placeholders (only when not already in the grid)
   const sourceEditableRows: { key: string; id: string; label: string }[] = [
     { key: 'sellerFinancing', id: 'sellerFinancing', label: 'SELLER FINANCING' },
@@ -271,12 +286,13 @@ export function SourcesUsesTab({
           : <Bd c={BT.text.red}>IMBALANCE {delta > 0 ? '+' : ''}{fmt$(delta)}</Bd>
         }
         {su && <Bd c={BT.text.muted}>BACKEND</Bd>}
+        {showLeaseUpReserve && <Bd c={BT.text.teal}>LEASE-UP</Bd>}
       </div>
 
       {/* ── KPI strip ──────────────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1, background: BT.border.subtle, padding: 1 }}>
         <KpiTile label="TOTAL SOURCES" value={totalSources > 0 ? fmt$(totalSources) : '—'} color={BT.met.financial} />
-        <KpiTile label="TOTAL USES"    value={totalUses > 0    ? fmt$(totalUses)    : '—'} color={BT.text.white} />
+        <KpiTile label="TOTAL USES"    value={effectiveTotalUses > 0 ? fmt$(effectiveTotalUses) : '—'} color={BT.text.white} />
         <KpiTile label="LTV AT CLOSE"  value={debtPct != null ? fmtPctRaw(debtPct) : (loanAmountFb > 0 && purchasePriceFb > 0 ? fmtPct((loanAmountFb / purchasePriceFb) * 100) : '—')} color={BT.text.cyan} />
         <KpiTile label="EQUITY REQ'D"  value={
           (equityFb > 0 || (su?.sources?.some(s => s.id.includes('Equity')))) ? fmt$(su ? su.sources.filter(s => s.id === 'lpEquity' || s.id === 'gpEquity').reduce((a, b) => a + (b.amount ?? 0), 0) : equityFb) : '—'
@@ -363,9 +379,30 @@ export function SourcesUsesTab({
             </div>
           ))}
 
+          {/* Lease-Up Reserve — injected when LV engine reports LEASE_UP mode */}
+          {showLeaseUpReserve && (
+            <div style={{
+              padding: '4px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              borderTop: `1px solid ${BT.text.teal}40`,
+              background: `${BT.text.teal}08`,
+            }}>
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.teal, fontWeight: 600 }}>
+                  LEASE-UP RESERVE
+                </div>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                  Peak cumulative negative cash position · S&U regardless of cost treatment · LV engine
+                </div>
+              </div>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.teal, fontWeight: 600 }}>
+                {leaseUpReserveAmount != null ? fmt$(leaseUpReserveAmount) : '—  pending engine'}
+              </span>
+            </div>
+          )}
+
           <div style={{ padding: '4px 8px', display: 'flex', justifyContent: 'space-between', borderTop: `2px solid ${BT.border.medium}`, background: `${BT.text.cyan}10` }}>
             <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan, fontWeight: 700 }}>TOTAL USES</span>
-            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan, fontWeight: 700 }}>{totalUses > 0 ? fmt$(totalUses) : '—'}</span>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan, fontWeight: 700 }}>{effectiveTotalUses > 0 ? fmt$(effectiveTotalUses) : '—'}</span>
           </div>
 
           {/* Stacked bar */}

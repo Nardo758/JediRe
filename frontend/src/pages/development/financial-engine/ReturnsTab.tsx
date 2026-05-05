@@ -240,6 +240,63 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
         </span>
       </div>
 
+      {/* ── Leasing Cost Treatment Banner ──────────────────────────────────── */}
+      {(() => {
+        const lv = f9Financials?.leaseVelocity ?? null;
+        if (!lv) {
+          return (
+            <div style={{
+              padding: '5px 16px', background: `${BT.text.muted}08`,
+              borderBottom: `1px solid ${BT.border.subtle}`,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                LEASING COST TREATMENT
+              </span>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>
+                ◌ LV engine not connected — IRR uses NOI-based operating cash flows (OPERATING basis assumed).
+                Cost-treatment-aware monthly cash flows will load once M07 + backend engine ship.
+              </span>
+            </div>
+          );
+        }
+        const treatColors: Record<string, string> = {
+          OPERATING:   BT.met.financial,
+          CAPITALIZED: BT.text.cyan,
+          HYBRID:      BT.text.amber,
+        };
+        const treatDesc: Record<string, string> = {
+          OPERATING:   'Concessions & marketing in operating cash flows — IRR reflects full periodic leasing drag',
+          CAPITALIZED: 'Lease-up concessions & marketing removed from ops; added to initial equity — boosts in-place IRR',
+          HYBRID:      'Concessions amortized as effective-rent reduction; marketing remains in ops — blended treatment',
+        };
+        const t = lv.costTreatmentInEffect;
+        return (
+          <div style={{
+            padding: '5px 16px', background: `${treatColors[t] ?? BT.text.muted}0A`,
+            borderBottom: `1px solid ${(treatColors[t] ?? BT.text.muted)}30`,
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LEASING COST TREATMENT</span>
+            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: treatColors[t] ?? BT.text.muted }}>
+              {t}
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>·</span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>
+              {treatDesc[t] ?? ''}
+            </span>
+            {lv.resolvedMode === 'LEASE_UP_NEW_CONSTRUCTION' && (
+              <>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>·</span>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.teal }}>
+                  LEASE-UP MODE · {lv.stabilizationMonth != null ? `Mo ${lv.stabilizationMonth} stab` : 'stab month pending'}
+                </span>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── Hero Strip ────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 8, padding: '12px 12px 4px' }}>
         <HeroTile

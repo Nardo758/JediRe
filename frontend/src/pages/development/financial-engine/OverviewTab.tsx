@@ -277,7 +277,100 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
       )}
 
       {subTab === 'insights' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+          {/* ── JEDI Score: Position Sub-score ──────────────────────────── */}
+          {(() => {
+            const lv = f9Financials?.leaseVelocity ?? null;
+
+            // Compute position score: base from NOI clarity, adjusted by confidence + tier
+            let posScore: number | null = null;
+            if (lv) {
+              const clarity = lv.stabilizedNoiClarity ?? 0;
+              const confAdj = lv.confidence === 'high' ? 0 : lv.confidence === 'medium' ? -10 : -22;
+              const tierAdj = lv.subjectHistoryTier === 'S1' ? -15
+                : lv.subjectHistoryTier === 'S2' ? 0
+                : lv.subjectHistoryTier === 'S3' ? 8
+                : lv.subjectHistoryTier === 'S4' ? 12 : -20;
+              posScore = Math.max(0, Math.min(100, Math.round(clarity * 100 + confAdj + tierAdj)));
+            }
+
+            const modeLabel: Record<string, string> = {
+              LEASE_UP_NEW_CONSTRUCTION: 'LEASE-UP',
+              STABILIZED_MAINTENANCE:   'STABILIZED',
+              OCCUPANCY_RECOVERY:       'RECOVERY',
+              V2_PENDING_VALUE_ADD:     'VALUE-ADD',
+            };
+            const confColor: Record<string, string> = {
+              high:   BT.met.financial,
+              medium: BT.text.amber,
+              low:    BT.text.red,
+            };
+            const scoreColor = posScore == null ? BT.text.muted
+              : posScore >= 70 ? BT.met.financial
+              : posScore >= 45 ? BT.text.amber
+              : BT.text.red;
+
+            return (
+              <SectionPanel title="JEDI SCORE · POSITION SUB-SCORE" subtitle="Lease Velocity engine — stabilized NOI defensibility" borderColor={BT.text.cyan}>
+                {lv ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 1, background: BT.border.subtle, padding: 1 }}>
+                    {/* Mode */}
+                    <div style={{ background: BT.bg.base, padding: '8px 10px' }}>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3 }}>MODE</div>
+                      <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.cyan }}>
+                        {modeLabel[lv.resolvedMode] ?? lv.resolvedMode}
+                      </div>
+                    </div>
+                    {/* Confidence */}
+                    <div style={{ background: BT.bg.base, padding: '8px 10px' }}>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3 }}>CONFIDENCE</div>
+                      <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: confColor[lv.confidence] ?? BT.text.muted }}>
+                        {lv.confidence.toUpperCase()}
+                      </div>
+                      {lv.subjectHistoryTier && (
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                          {lv.subjectHistoryTier} history
+                        </div>
+                      )}
+                    </div>
+                    {/* Stab month */}
+                    <div style={{ background: BT.bg.base, padding: '8px 10px' }}>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3 }}>STABILIZATION</div>
+                      <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.primary }}>
+                        {lv.stabilizationMonth != null ? `Mo ${lv.stabilizationMonth}` : '—'}
+                      </div>
+                      {lv.stabilizationMonth != null && (
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                          {Math.ceil(lv.stabilizationMonth / 12)} yr lease-up
+                        </div>
+                      )}
+                    </div>
+                    {/* Position score */}
+                    <div style={{ background: `${scoreColor}10`, padding: '8px 10px', borderLeft: `2px solid ${scoreColor}` }}>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3 }}>POSITION SCORE</div>
+                      <div style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color: scoreColor }}>
+                        {posScore != null ? posScore : '—'}
+                      </div>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                        NOI clarity {lv.stabilizedNoiClarity != null ? `${(lv.stabilizedNoiClarity * 100).toFixed(0)}%` : '—'}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: '10px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: BT.text.amber }}>◌</span>
+                    LV engine not connected — Position sub-score pending M07 schema + backend engine.
+                    Score will reflect stabilized NOI clarity once lease velocity data is available.
+                  </div>
+                )}
+                <div style={{ padding: '4px 10px', borderTop: `1px solid ${BT.border.subtle}`, fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                  Reacts to <span style={{ color: BT.text.cyan }}>lease_velocity.output.updated</span> and <span style={{ color: BT.text.cyan }}>leasing_cost_treatment.changed</span> events.
+                </div>
+              </SectionPanel>
+            );
+          })()}
+
           <SectionPanel title="JEDI AI INSIGHTS" subtitle="Opus-powered deal intelligence" borderColor={BT.met.financial}>
             <div style={{ padding: '12px', fontFamily: MONO, fontSize: 10, color: BT.text.secondary, lineHeight: 1.6 }}>
               <div style={{ marginBottom: 8, color: BT.text.muted, fontSize: 9, letterSpacing: 0.5 }}>SOURCE: ENGINE + AI</div>
