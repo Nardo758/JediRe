@@ -194,23 +194,6 @@ export interface TaxForecast {
 
   transferTax: TransferTaxResult;
 
-  /**
-   * Section C — Income Tax & Depreciation.
-   * Populated by the federal ruleset (Phase 2+). Fields are null until
-   * the federal ruleset is wired in.
-   */
-  sectionC: {
-    depreciableBase: number | null;
-    annualDepreciation: number | null;
-    bonusDepreciationCurrentYearPct: number;
-    bonusDepreciationAmount: number | null;
-    costSegAvailablePct: number;
-    costSegEligible: boolean;
-    stateIncomeTaxRate: number;
-    conformsToBonusDep: boolean;
-    conformsToCostSeg: boolean;
-  } | null;
-
   specialTaxes: SpecialTax[];
   abatementPrograms: AbatementProgram[];
 }

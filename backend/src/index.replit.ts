@@ -1308,6 +1308,14 @@ async function startServer() {
   }
 
   try {
+    const { initRateSheets } = await import('./services/tax/rateSheets/loader');
+    initRateSheets();
+  } catch (error) {
+    console.error('[RateSheetLoader] Fatal: rate sheet validation failed at boot —', (error as Error).message);
+    process.exit(1);
+  }
+
+  try {
     const { MetricCorrelationEngine } = await import('./services/metric-correlation-engine.service');
     const correlationPool = getPool();
     const correlationEngine = new MetricCorrelationEngine(correlationPool);

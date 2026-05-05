@@ -332,6 +332,7 @@ export interface LayeredValue<T = number> {
     | 'override'
     | 'platform_fallback'
     | 'tax_service_computed'
+    | 'tax_bill_parsed'
     | 'attom'
     | 'agent_research';
   warning?: string;
