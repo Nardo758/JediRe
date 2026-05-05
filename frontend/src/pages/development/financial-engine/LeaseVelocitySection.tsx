@@ -604,8 +604,13 @@ function LeaseVelocityInputPanel({
     onInputsChange({ ...inputs, [k]: v });
 
   const mode = inputs.mode;
-  /** True when deal.lease_mode_override is set (real deal-field override, not just UI divergence) */
-  const isOverridden = leaseOverride != null && leaseOverride !== resolvedMode;
+  /**
+   * True whenever deal.lease_mode_override is set — i.e., the user has explicitly
+   * chosen a mode rather than accepting the auto-detected one.
+   * We do NOT require leaseOverride !== resolvedMode; the badge fires on any
+   * persisted override because the intent is to show "user has taken control".
+   */
+  const isOverridden = leaseOverride != null;
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 

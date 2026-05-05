@@ -1479,7 +1479,7 @@ function KeystonePanel({
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResults, onAssumptionsChange, onTabChange }: FinancialEngineTabProps) {
+export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResults, onAssumptionsChange, onTabChange, onF9Refresh }: FinancialEngineTabProps) {
   const setConfidenceBands = useDealStore(s => s.setConfidenceBands);
   const classifyFieldOverride = useDealStore(s => s.classifyFieldOverride);
   const upsertValidationFlag = useDealStore(s => s.upsertValidationFlag);
@@ -1522,11 +1522,15 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     setLctLocal(treatment);
     try {
       await apiClient.patch(`/api/v1/deals/${dealId}/context`, { leasing_cost_treatment: treatment });
+      // Refresh own financials (AssumptionsTab) then propagate to all sibling tabs
+      // (Pro Forma, Projections, Returns) via onF9Refresh so they also re-fetch
+      // with the updated treatment — completing the single re-fetch cycle.
       fetchFinancials(holdYears);
+      onF9Refresh?.();
     } catch (err) {
       console.error('[F9 Deal Settings] Failed to save leasing_cost_treatment:', err);
     }
-  }, [dealId, holdYears, fetchFinancials]);
+  }, [dealId, holdYears, fetchFinancials, onF9Refresh]);
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
   const fetchRef   = useRef(0);

@@ -375,25 +375,27 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       ?.['leasing_cost_treatment'] as LeasingCostTreatment | undefined;
     return saved ?? 'OPERATING';
   });
-  const handleLvTreatmentViewChange = useCallback((t: LeasingCostTreatment) => {
-    setLvTreatmentView(t);
-    onF9Refresh?.();
-  }, [onF9Refresh]);
-
   // Prefer model results from the build pipeline; fall back to composer fetch.
   const modelData = modelResults ?? null;
 
-  const load = useCallback(async () => {
-    // Always fetch the composer financials — this populates data.proforma.year1
-    // (the T12 operating statement) which is the primary render source for this
-    // tab. modelResults is used separately for KPI overlays and must NOT gate
-    // this fetch; skipping it left data=null and rendered a blank screen when a
-    // saved model was already loaded on mount (from /financial-model/:id/latest).
+  /**
+   * Internal fetch helper.  Accepts an explicit `treatmentOverride` so callers
+   * can pass a just-changed treatment without waiting for state to propagate.
+   * The `leasing_cost_treatment` query param is consumed by the financials
+   * endpoint to adjust leasing-cost classification in the returned numbers.
+   * Must be defined BEFORE handleLvTreatmentViewChange to avoid temporal
+   * dead-zone error (const bindings are not hoisted).
+   */
+  const loadWithTreatment = useCallback(async (treatmentOverride?: LeasingCostTreatment) => {
     if (!dealId) return;
     setLoading(true);
     setError(null);
+    const treatment = treatmentOverride ?? lvTreatmentView;
+    const qs = `?leasing_cost_treatment=${encodeURIComponent(treatment)}`;
     try {
-      const res = await apiClient.get<{ success: boolean; data: DealFinancials; message?: string }>(`/api/v1/deals/${dealId}/financials`);
+      const res = await apiClient.get<{ success: boolean; data: DealFinancials; message?: string }>(
+        `/api/v1/deals/${dealId}/financials${qs}`,
+      );
       const body = res.data;
       if (body?.success === false) throw new Error(body.message ?? 'Unknown error');
       const financials = body?.data ?? (body as unknown as DealFinancials);
@@ -403,14 +405,39 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         const hasErrors = financials.proforma.integrityChecks.some(c => c.status !== 'ok');
         onIntegrityChange(hasErrors);
       }
-      // Also trigger parent refresh so other tabs stay in sync
+      // Propagate to sibling tabs (Projections, Returns) via parent refresh
       if (onF9Refresh) onF9Refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load financials');
     } finally {
       setLoading(false);
     }
+  // lvTreatmentView is intentionally excluded: callers pass explicit override to
+  // avoid stale-closure issues; default path reads view state as a fallback only.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, onIntegrityChange, onF9Refresh]);
+
+  /**
+   * Location B — LeasingCostTreatmentToggle handler.
+   * Stores the view-state override locally, re-fetches THIS tab's financials with
+   * the new treatment as a query param (so displayed numbers reflect the override
+   * without mutating deal.leasing_cost_treatment), then fires onF9Refresh so
+   * Projections and Returns also update in the same cycle.
+   */
+  const handleLvTreatmentViewChange = useCallback((t: LeasingCostTreatment) => {
+    setLvTreatmentView(t);
+    void loadWithTreatment(t);
+    onF9Refresh?.();
+  }, [loadWithTreatment, onF9Refresh]);
+
+  const load = useCallback(async () => {
+    // Always fetch the composer financials — this populates data.proforma.year1
+    // (the T12 operating statement) which is the primary render source for this
+    // tab. modelResults is used separately for KPI overlays and must NOT gate
+    // this fetch; skipping it left data=null and rendered a blank screen when a
+    // saved model was already loaded on mount (from /financial-model/:id/latest).
+    await loadWithTreatment();
+  }, [loadWithTreatment]);
 
   useEffect(() => { load(); }, [load]);
 

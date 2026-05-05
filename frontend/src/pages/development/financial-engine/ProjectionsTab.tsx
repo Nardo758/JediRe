@@ -910,7 +910,14 @@ export function ProjectionsTab({
   const [lvShowConfig, setLvShowConfig] = useState(false);
   /** Auto-detected mode from deal data — used to show MODE OVERRIDDEN badge */
   const [lvResolvedMode, setLvResolvedMode] = useState<LeaseMode>('LEASE_UP_NEW_CONSTRUCTION');
-  const lvAutoFetchedRef = useRef(false);
+  /**
+   * Track the last f9Financials reference we seeded from so we can re-run the
+   * LV engine whenever the parent refreshes financials (e.g., after a treatment
+   * change).  We intentionally use object-identity (ref) not deal-ID so that
+   * a treatment toggle → onF9Refresh → new f9Financials object triggers a
+   * re-run even within the same deal.
+   */
+  const lvLastSeedRef = useRef<typeof f9Financials>(null);
 
   // Core engine runner — accepts inputs directly (no closure over stale state)
   const runLvEngine = useCallback(async (inputs: LVInputs) => {
@@ -938,10 +945,16 @@ export function ProjectionsTab({
     }
   }, [dealId]);
 
-  // Auto-fetch once when f9Financials first loads — seeds inputs from deal data
+  // Re-seed and re-run the LV engine whenever f9Financials is a new object
+  // (including after onF9Refresh / treatment changes), not just on deal-ID change.
+  // Using object-identity avoids the one-shot anti-pattern that prevented re-runs
+  // after upstream refreshes.
   useEffect(() => {
-    if (!f9Financials || !dealId || lvAutoFetchedRef.current) return;
-    lvAutoFetchedRef.current = true;
+    if (!f9Financials || !dealId) return;
+    // Skip if we already processed this exact reference (prevents double-fire
+    // in React StrictMode double-invoke without blocking legitimate re-fetches).
+    if (lvLastSeedRef.current === f9Financials) return;
+    lvLastSeedRef.current = f9Financials;
 
     const occ = f9Financials.rentRollSummary?.weightedOccupancyPct ?? null;
     const autoMode: LeaseMode =
@@ -964,9 +977,7 @@ export function ProjectionsTab({
     setLvResolvedMode(autoMode);
     setLvInputs(seedInputs);
     void runLvEngine(seedInputs);
-  // Only re-run when the deal ID changes — not on every f9Financials update
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [f9Financials?.dealId, dealId]);
+  }, [f9Financials, dealId, runLvEngine]);
 
   // Mode override: user changes mode in the panel → write deal.lease_mode_override + re-run engine
   const handleModeOverride = useCallback(async (mode: LeaseMode) => {
@@ -1393,8 +1404,10 @@ export function ProjectionsTab({
 
         {/* ── Lease Velocity Engine (§12) ─────────────────────────────────────
              Placement: BELOW the projections grid, ABOVE GPR Decomposition.
-             Gated on result/loading/error to avoid rendering an empty panel. */}
-        {(lvResult != null || lvLoading || lvError != null) && (
+             Always shown when dealId is present so users can see / configure
+             the panel immediately — it renders a pending/empty state while the
+             engine is running on first mount. */}
+        {!!dealId && (
           <LeaseVelocitySection
             result={lvResult}
             loading={lvLoading}
