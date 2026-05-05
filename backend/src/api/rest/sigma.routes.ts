@@ -180,13 +180,13 @@ router.get('/variables', (_req: Request, res: Response) => {
 
 // Operating-statement field → VARIABLE_META key
 const FIELD_TO_SIGMA_VAR: Record<string, string> = {
-  vacancy:               'vacancyAtStabilization',
+  vacancy_loss:          'vacancyAtStabilization',
   loss_to_lease:         'lossToLeasePct',
   concessions:           'concessionsPct',
   management_fee:        'managementFeePct',
   managementFeePct:      'managementFeePct',
   insurance:             'insurancePerUnit',
-  property_taxes:        'propertyTaxPctOfRevenue',
+  real_estate_taxes:     'propertyTaxPctOfRevenue',
   replacement_reserves:  'replacementReservesPerUnit',
   other_income:          'otherIncomePerUnit',
   exit_cap_rate:         'exitCapRate',

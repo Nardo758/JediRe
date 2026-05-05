@@ -414,30 +414,23 @@ export async function composeDealFinancials(
         // Platform posteriors not available — peer column stays empty for non-collision rows
       }
       // M39: enrich peer_set_values with top-competitor recent metrics from the
-      // peer intelligence engine. Non-fatal — engine may have no registered characters.
+      // peer intelligence engine. Writes to canonical F9 keys consumed by
+      // ProjectionsTab (peer_set_values['rent_growth_yr1']). Non-fatal.
       if (deal.submarket_id) {
         try {
           const m39AssetClass = deal.property_class ?? 'multifamily';
           const m39Ranking = peerIntelligenceService.computeDualRanking(
             deal.submarket_id, m39AssetClass, 1,
           );
+          // Use competitor rentGrowth as primary source; fall back to analog.
           const topCompetitor = m39Ranking.competitors[0];
-          if (topCompetitor?.recentMetrics) {
-            if (topCompetitor.recentMetrics.rentGrowth != null) {
-              peerSetValues['m39_peer_rent_growth'] = topCompetitor.recentMetrics.rentGrowth;
-            }
-            if (topCompetitor.recentMetrics.occupancy != null) {
-              peerSetValues['m39_peer_occupancy'] = topCompetitor.recentMetrics.occupancy;
-            }
-          }
-          const topAnalog = m39Ranking.analogs[0];
-          if (topAnalog?.recentMetrics) {
-            if (topAnalog.recentMetrics.rentGrowth != null) {
-              peerSetValues['m39_analog_rent_growth'] = topAnalog.recentMetrics.rentGrowth;
-            }
-            if (topAnalog.recentMetrics.occupancy != null) {
-              peerSetValues['m39_analog_occupancy'] = topAnalog.recentMetrics.occupancy;
-            }
+          const topAnalog     = m39Ranking.analogs[0];
+          const m39RentGrowth =
+            topCompetitor?.recentMetrics?.rentGrowth ??
+            topAnalog?.recentMetrics?.rentGrowth ??
+            null;
+          if (m39RentGrowth != null) {
+            peerSetValues['rent_growth_yr1'] = m39RentGrowth;
           }
         } catch {
           // M39 enrichment non-fatal
@@ -462,39 +455,91 @@ export async function composeDealFinancials(
 
   const concessionRecognition = await computeConcessionRecognition(pool, dealId, dealData);
 
-  // M38: record a non-blocking calibration prediction for Year-1 NOI after every
-  // successful compose. Fire-and-forget — never throws or blocks the response.
-  const noiResolved = year1Rows.find(r => (r as any).field === 'noi')?.resolved ?? null;
-  if (noiResolved != null) {
+  // M38: record non-blocking calibration predictions for Year-1 NOI, occupancy,
+  // and rent growth after every successful compose. Fire-and-forget — never
+  // throws or blocks the response.
+  const m38NoiRow  = year1Rows.find(r => r.field === 'noi');
+  const m38GprRow  = year1Rows.find(r => r.field === 'gpr');
+  const m38VacRow  = year1Rows.find(r => r.field === 'vacancy_loss');
+  const m38Noi     = m38NoiRow?.resolved ?? null;
+  const m38Gpr     = m38GprRow?.resolved ?? null;
+  const m38Vac     = m38VacRow?.resolved ?? null;
+  // Occupancy = 1 - (|vacancyLoss| / gpr) when both are available and gpr > 0
+  const m38Occupancy = (m38Gpr != null && m38Gpr > 0 && m38Vac != null)
+    ? 1 - Math.abs(m38Vac) / m38Gpr
+    : null;
+  const m38RentGrowth: number | null = (year1Data as any)?.rentGrowthRate ?? null;
+  if (m38Noi != null) {
     setImmediate(() => {
+      const now = new Date();
+      const realizationTargetDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+      const baseSource = {
+        module: 'M38.financials-composer',
+        version: '1.0.0',
+        dealId,
+        submarketId: deal.submarket_id ?? undefined,
+      };
+      const assetClass = deal.property_class ?? 'multifamily';
       try {
-        const now = new Date();
         calibrationLedger.recordPrediction({
           predictionId: randomUUID(),
           emittedAt: now,
-          source: {
-            module: 'M38.financials-composer',
-            version: '1.0.0',
-            dealId,
-            submarketId: deal.submarket_id ?? undefined,
-          },
+          source: baseSource,
           metric: 'noi_year1',
-          assetClass: deal.property_class ?? 'multifamily',
+          assetClass,
           regimeAtPrediction: 'expansion',
           predictionType: 'point_with_ci',
-          pointEstimate: noiResolved,
+          pointEstimate: m38Noi,
           ciLevels: [
-            { level: 0.80, low: noiResolved * 0.90, high: noiResolved * 1.10 },
-            { level: 0.90, low: noiResolved * 0.85, high: noiResolved * 1.15 },
+            { level: 0.80, low: m38Noi * 0.90, high: m38Noi * 1.10 },
+            { level: 0.90, low: m38Noi * 0.85, high: m38Noi * 1.15 },
           ],
           realizationHorizonMonths: 12,
-          realizationTargetDate: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000),
-          context: {
-            rationaleSummary: 'Year-1 NOI from pro-forma compose (M38)',
-          },
+          realizationTargetDate,
+          context: { rationaleSummary: 'Year-1 NOI from pro-forma compose (M38)' },
         });
-      } catch {
-        // Calibration recording is non-fatal
+      } catch { /* non-fatal */ }
+      if (m38Occupancy != null) {
+        try {
+          calibrationLedger.recordPrediction({
+            predictionId: randomUUID(),
+            emittedAt: now,
+            source: baseSource,
+            metric: 'occupancy_year1',
+            assetClass,
+            regimeAtPrediction: 'expansion',
+            predictionType: 'point_with_ci',
+            pointEstimate: m38Occupancy,
+            ciLevels: [
+              { level: 0.80, low: m38Occupancy - 0.04, high: Math.min(1, m38Occupancy + 0.04) },
+              { level: 0.90, low: m38Occupancy - 0.06, high: Math.min(1, m38Occupancy + 0.06) },
+            ],
+            realizationHorizonMonths: 12,
+            realizationTargetDate,
+            context: { rationaleSummary: 'Year-1 occupancy derived from vacancy_loss/gpr (M38)' },
+          });
+        } catch { /* non-fatal */ }
+      }
+      if (m38RentGrowth != null) {
+        try {
+          calibrationLedger.recordPrediction({
+            predictionId: randomUUID(),
+            emittedAt: now,
+            source: baseSource,
+            metric: 'rent_growth_yr1',
+            assetClass,
+            regimeAtPrediction: 'expansion',
+            predictionType: 'point_with_ci',
+            pointEstimate: m38RentGrowth,
+            ciLevels: [
+              { level: 0.80, low: m38RentGrowth - 0.01, high: m38RentGrowth + 0.01 },
+              { level: 0.90, low: m38RentGrowth - 0.015, high: m38RentGrowth + 0.015 },
+            ],
+            realizationHorizonMonths: 12,
+            realizationTargetDate,
+            context: { rationaleSummary: 'Year-1 rent growth assumption from pro-forma (M38)' },
+          });
+        } catch { /* non-fatal */ }
       }
     });
   }

@@ -384,6 +384,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const [reparsing, setReparsing] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionState>({});
   const [sigmaField, setSigmaField] = useState<{ tier: 'REALISTIC' | 'AGGRESSIVE' | 'HEROIC'; field: string; dScore: number } | null>(null);
+  useEffect(() => {
+    if (!sigmaField) return;
+    const t = setTimeout(() => setSigmaField(null), 4000);
+    return () => clearTimeout(t);
+  }, [sigmaField]);
   const [showAncillary, setShowAncillary] = useState(false);
   const [conDrill, setConDrill] = useState<{
     open: boolean;
@@ -769,28 +774,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 <AlertTriangle size={11} />{c.id}
               </span>
           )}
-          {/* M36 plausibility badge — shown after the user saves a field correction */}
-          {sigmaField && (() => {
-            const tierColor =
-              sigmaField.tier === 'REALISTIC'  ? '#22c55e' :
-              sigmaField.tier === 'AGGRESSIVE' ? '#f59e0b' : '#ef4444';
-            const tierBg =
-              sigmaField.tier === 'REALISTIC'  ? '#0a1c10' :
-              sigmaField.tier === 'AGGRESSIVE' ? '#1a1200' : '#1c0a0a';
-            return (
-              <span
-                title={`M36 Σ · ${sigmaField.field} override: d=${sigmaField.dScore.toFixed(2)} — ${sigmaField.tier}`}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                  padding: '2px 6px', borderRadius: 2,
-                  background: tierBg, border: `1px solid ${tierColor}22`,
-                  fontFamily: MONO, fontSize: 8, color: tierColor, fontWeight: 700, letterSpacing: 0.5,
-                }}
-              >
-                Σ {sigmaField.tier}
-              </span>
-            );
-          })()}
           <button
             onClick={handleReparse}
             disabled={reparsing}
@@ -883,6 +866,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     onResetCorrection={handleResetCorrection}
                     evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                     onRowClick={r.field === 'concessions' && data?.concessionRecognition != null ? openY1Drill : undefined}
+                    sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
                   />
                   {isConcessionsOverridden && (
                     <tr style={{ background: '#110e00' }}>
@@ -917,6 +901,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   onToggleAncillary={() => setShowAncillary(v => !v)}
                   ancillaryOpen={showAncillary}
                   evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
+                  sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
                 />
                 {showAncillary && (
                   <tr>
@@ -946,7 +931,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 activePeriod={activePeriod}
                 onSaveCorrection={handleSaveCorrection}
                 onResetCorrection={handleResetCorrection}
-                evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)} />
+                evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
+                sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null} />
             ))}
             <tr style={{ background: '#1a110a' }}>
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#1a110a' }}>─── CONTROLLABLE OPEX ───</td>
@@ -971,7 +957,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 activePeriod={activePeriod}
                 onSaveCorrection={handleSaveCorrection}
                 onResetCorrection={handleResetCorrection}
-                evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)} />
+                evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
+                sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null} />
             ))}
 
             {/* ── TOTAL OPEX ── */}
@@ -1781,7 +1768,7 @@ const COLLISION_COLOR: Record<string, string> = {
   minor:    '#94a3b8',
 };
 
-function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved, onRowClick }: {
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved, onRowClick, sigmaTier }: {
   row: OperatingStatementRow;
   isEven: boolean;
   shade?: 'blue' | 'warm' | 'purple';
@@ -1798,6 +1785,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   evidenceResolved?: { meta: EvidenceFieldMeta; path: string } | null;
   /** Optional row-level click handler (e.g. concession drilldown). Label cell click dispatches evidence event instead. */
   onRowClick?: () => void;
+  /** M36 Σ plausibility tier for this row — shown inline in the Resolved cell for 4 s after a correction is saved. */
+  sigmaTier?: 'REALISTIC' | 'AGGRESSIVE' | 'HEROIC' | null;
 }) {
   const viewMode          = useDealStore(s => s.viewMode);
   const platformColSource = useDealStore(s => s.platformColSource);
@@ -2049,12 +2038,26 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
             >✓</button>
           </div>
         ) : (
-          <span
-            title={corr?.savedAt ? `Overridden at ${new Date(corr.savedAt).toLocaleTimeString()}` : undefined}
-            style={{ borderBottom: corr?.savedAt ? '1px dotted #f59e0b' : undefined }}
-          >
-            {resolvedDisplay}
-            {!isBroker && corr?.savedAt && <span style={{ marginLeft: 4, color: '#f59e0b', fontSize: 8 }}>✎</span>}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span
+              title={corr?.savedAt ? `Overridden at ${new Date(corr.savedAt).toLocaleTimeString()}` : undefined}
+              style={{ borderBottom: corr?.savedAt ? '1px dotted #f59e0b' : undefined }}
+            >
+              {resolvedDisplay}
+              {!isBroker && corr?.savedAt && <span style={{ marginLeft: 4, color: '#f59e0b', fontSize: 8 }}>✎</span>}
+            </span>
+            {sigmaTier && (() => {
+              const tc = sigmaTier === 'REALISTIC' ? '#22c55e' : sigmaTier === 'AGGRESSIVE' ? '#f59e0b' : '#ef4444';
+              const bg = sigmaTier === 'REALISTIC' ? '#0a1c10' : sigmaTier === 'AGGRESSIVE' ? '#1a1200' : '#1c0a0a';
+              return (
+                <span title={`M36 Σ plausibility: ${sigmaTier}`} style={{
+                  display: 'inline-flex', alignItems: 'center',
+                  padding: '1px 4px', borderRadius: 2,
+                  background: bg, border: `1px solid ${tc}33`,
+                  fontFamily: 'monospace', fontSize: 7, color: tc, fontWeight: 700, letterSpacing: 0.4,
+                }}>Σ {sigmaTier}</span>
+              );
+            })()}
           </span>
         )}
       </td>
