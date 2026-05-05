@@ -1,0 +1,70 @@
+Direction is strongly correct. This is the right structural move for three reasons that the proposal already gets right, plus a few refinements worth making explicit.
+Why this is the right direction
+1. The old Section 5 was mixing two different concerns. Engine internals (T-codes, walk-ins, capture rates) sat next to user assumptions (occupancy targets, concessions). Anyone outside the platform team had no business seeing T-01. The replacement separates engine-internal calibration from user-facing assumption editing — that's exactly the right boundary.
+2. The mapping table you produced is migration-grade. You've explicitly said where every old field goes. That's what makes a refactor safe: nobody can claim a field "got lost in the move" because the table proves otherwise. Keep this table; it becomes part of the migration documentation.
+3. Sub-tabs match the F-key navigation pattern. F9 → Assumptions → [General | Leasing] is consistent with the Bloomberg-style deep navigation already in use. Two-level hierarchy is the right depth — three levels would be too much.
+Refinements worth making explicit
+The summary card on General — keep it lean and read-only
+Recommend Option A from this menu (the simplest):
+
+Read-only display of 4 metrics with source/confidence badges (consistent with platform pattern)
+Click any metric → opens drilldown modal showing peer/subject/effective layers (read-only)
+Modal has [→ Edit in Leasing tab] button as the only edit action
+
+Do NOT make the cells on the summary card directly editable. That would create a third editing surface for the same LayeredValues (Global Leasing tab + Inline Blocks above Projections sections + summary card on General). Three editing surfaces for the same data is where consistency bugs live. The summary card's job is context and navigation, not editing.
+For the four metrics on the card, recommend:
+
+Current occupancy (with [SUBJ] / [PEER] / [PLAT] badge)
+Target stabilized occupancy
+Blended rent growth
+Concession strategy (read-only display of MARKET / CONSERVATIVE / AGGRESSIVE enum)
+
+Cost treatment is intentionally NOT on the summary card. It already lives in two locations (Deal Settings + F9 top bar) per the UI spec §6 — adding it to the summary card violates the dual-location-only principle.
+The General/Leasing boundary line
+Your proposal is consistent with the UI spec. Just to make it explicit so Replit doesn't blur it:
+Goes in GENERALGoes in LEASINGDeal timeline (close, hold)Occupancy targetsDebt structure (LTV, rate, IO, amort)Renewal & turnover behaviorOpEx line items + growthRent growth & loss-to-leaseTax assumptions (FL-specific)ConcessionsDisposition (exit cap, exit year)Lease-up / Recovery strategyCapEx schedule referenceMarketing & leasing costOther income (parking, pet, etc.)Funnel conversion (Expert)InsuranceBad debtReserves (non-leasing)
+The litmus test: "Does this assumption affect leasing velocity, occupancy, or rent capture?" If yes → Leasing tab. If no → General tab. Bad debt is borderline (could go either way) — recommend Leasing because it's revenue-side and the M22 actuals path will calibrate it through the same pipeline as renewal rate.
+Renovation fields — separate concern, not General-tab residual
+Renovation Traffic Lift % and Target After-Repair Rent are V2-mode fields (VALUE_ADD_REPOSITIONING). They don't belong in General OR Leasing in V1 because the value-add mode isn't shipped yet. Three options:
+
+Option A: keep them in their own collapsible "Renovation" section on the Leasing tab, hidden until mode = VALUE_ADD or REDEVELOPMENT (mode-conditional, same pattern as Lease-Up Strategy / Recovery Strategy categories E and F)
+Option B: ship them temporarily on General with a "VALUE_ADD MODE — V2" banner, migrate to Leasing when V2 lands
+Option C: strip them entirely until V2 lands; users who need value-add modeling today use overrides
+
+Recommend Option A — they're already mode-conditional in nature, the Leasing tab is the right home, and the same traffic.mode.effective subscription that hides Lease-Up Strategy in stabilized deals will hide Renovation in non-value-add deals.
+What's missing from Phase 1 deliverables
+You listed four. Add a fifth:
+5. Migration script for existing user overrides. Any user who has already customized a T-code field on Section 5 has overrides stored in dealStore at the old field paths. Those need to map to new field paths before the old fields are removed, otherwise their customizations silently vanish.
+typescript// Migration mapping — runs once per deal on first load post-deploy
+const FIELD_MIGRATION_MAP = {
+  'traffic.t01_walk_ins_per_week':
+    'traffic.funnel_conversion.active.prospect_volume_per_week',
+  'traffic.t05_trade_area_capture_pct':
+    'traffic.funnel_conversion.active.prospect_to_tour',
+  'traffic.t06_velocity_signal':
+    null,  // read-only, no override possible — drop existing if any
+  'traffic.derived_vacancy_pct':
+    null,  // computed, drop
+  'traffic.stabilized_occupancy_target':
+    'traffic.stabilization.ceiling_occupancy',
+  'traffic.weeks_to_95_stabilization':
+    null,  // engine-detected, drop
+  'traffic.lease_up_velocity':
+    'lease_velocity.absorption_capacity.peer_max_monthly_pace',
+  'traffic.loss_to_lease_pct':
+    'traffic.loss_to_lease_pct',  // unchanged
+  'traffic.concession_pct_of_rent':
+    'lease_velocity.inputs.concession_strategy',
+    // Note: enum mapping needed (X% → CONSERVATIVE/MARKET/AGGRESSIVE)
+  // ... etc
+};
+For paths that map to null, the override is silently dropped (the field is no longer user-overridable; engine output replaces it). For non-null mappings, override layer + value transfers to new path. Run as a one-time idempotent migration on dealContext load.
+This is the least glamorous part of the work and the easiest to skip. Skipping it means existing customers' previous customizations vanish on deploy day, which is a much worse user experience than spending the half-day to write the migration.
+One thing worth thinking about now to avoid future rework
+Sub-tab proliferation. If [General | Leasing] is right today, what's the stopping rule for tomorrow? Likely candidates for future sub-tabs:
+
+Debt (when capital structure complexity grows — refinancing scenarios, mezz, agency)
+Capital (S&U, waterfall, returns) — though these probably belong on F9 sibling tabs, not under Assumptions
+Tax (when FL-specific complexity expands to other states)
+
+Recommend stopping at three sub-tabs maximum under Assumptions. Beyond three, navigation becomes unwieldy. If a fourth concern emerges, it probably belongs on its own F-key page rather than as a sub-tab. This is a discipline question — codify it now, before the temptation to add a fourth tab arrives.
