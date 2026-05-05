@@ -1599,7 +1599,20 @@ export function ProjectionsTab({
             </thead>
 
             <tbody>
-              {/* ── Occupancy & Leasing Assumptions ── above REVENUE rows ─── */}
+              {/* ── Traffic Funnel Panel ── walk-ins → tours → apps → leases over hold period ─── */}
+              {isAnnual && financials && (
+                <tr>
+                  <td colSpan={colCount + 1} style={{ padding: 0 }}>
+                    <TrafficFunnelPanel
+                      yearly={financials.trafficProjection?.yearly ?? []}
+                      holdYears={holdYears}
+                      isOffline={!financials.trafficProjection}
+                    />
+                  </td>
+                </tr>
+              )}
+
+              {/* ── Occupancy & Leasing Assumptions ── below Traffic Funnel, above REVENUE rows ─── */}
               {financials && (
                 <tr>
                   <td colSpan={colCount + 1} style={{ padding: 0 }}>
@@ -1613,19 +1626,6 @@ export function ProjectionsTab({
                       subjectSnapshotCount={financials.subjectHistory?.snapshot_count}
                       collisions={leasingCollisionEntries.length > 0 ? leasingCollisionEntries : undefined}
                       defaultExpanded={true}
-                    />
-                  </td>
-                </tr>
-              )}
-
-              {/* ── Traffic Funnel Panel ── walk-ins → tours → apps → leases over hold period ─── */}
-              {isAnnual && financials && (
-                <tr>
-                  <td colSpan={colCount + 1} style={{ padding: 0 }}>
-                    <TrafficFunnelPanel
-                      yearly={financials.trafficProjection?.yearly ?? []}
-                      holdYears={holdYears}
-                      isOffline={!financials.trafficProjection}
                     />
                   </td>
                 </tr>
