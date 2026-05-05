@@ -2,14 +2,27 @@
  * engine.test.ts
  *
  * Vitest unit tests for the Concession Amortization Engine.
- * Implements all §12 test fixtures (12.1–12.10) from the spec.
+ * Implements all §12 test fixtures (12.1–12.10) from the spec, plus
+ * additional coverage for:
+ *   - early termination + horizon truncation interaction (blocking double-count bug)
+ *   - structural write-offs (§7.8)
+ *   - treatment metadata on schedule matches runtime treatment, not record-level
+ *   - renewal mid-amortization independence (§7.2)
+ *   - inferred_from_rent_roll zero-value skip
  *
  * Run: npx vitest run backend/src/services/concession-amortization/__tests__/engine.test.ts
  */
 
 import { describe, it, expect } from 'vitest';
 import { amortizeConcessions, CashInvariantError } from '../index';
-import { generateStraightLineGaap, generateBurnOff, generateFrontLoaded, generateCashAtCommencement, generateCustom, FRONT_LOADED_CURVE_12MO } from '../schedule-generators';
+import {
+  generateStraightLineGaap,
+  generateBurnOff,
+  generateFrontLoaded,
+  generateCashAtCommencement,
+  generateCustom,
+  FRONT_LOADED_CURVE_12MO,
+} from '../schedule-generators';
 import { aggregateByCalendarYear, aggregateByFiscalYear, computeFiscalYear } from '../aggregator';
 import type { ConcessionRecord, AmortizationEngineInput } from '../../../types/concessions';
 
@@ -31,6 +44,8 @@ function makeRecord(overrides: Partial<ConcessionRecord> = {}): ConcessionRecord
     is_renewal: false,
     is_subject_history: false,
     early_termination_date: null,
+    structural_write_off_date: null,
+    inferred_from_rent_roll: false,
     fiscal_year_start_month: 1,
     ...overrides,
   };
@@ -131,7 +146,6 @@ describe('§12.3 FRONT_LOADED', () => {
     expect(entries).toHaveLength(6);
     const total = entries.reduce((s, e) => s + e.amount, 0);
     expect(total).toBe(600);
-    // Earlier months should have more weight
     expect(entries[0].amount).toBeGreaterThan(entries[5].amount);
   });
 
@@ -241,7 +255,7 @@ describe('§12.6 Early termination write-off', () => {
     expect(output.write_offs[0].reason).toBe('early_termination');
     expect(output.write_offs[0].write_off_month).toBe('202506');
     expect(output.write_offs[0].amount).toBeGreaterThan(0);
-    // Total recognition (entries + write-offs) must still equal cash_value
+    // Total recognition (entries + write-offs) must equal cash_value
     const totalRecognized = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
     expect(Math.abs(totalRecognized - 1200)).toBeLessThanOrEqual(0.02);
   });
@@ -253,9 +267,60 @@ describe('§12.6 Early termination write-off', () => {
       early_termination_date: '2025-06-01',
     });
     const output = amortizeConcessions(makeInput([record]));
-    // The write-off amount should appear in monthly_recognition for 202506
     const termMonthRecognized = output.monthly_recognition['202506'] ?? 0;
     expect(termMonthRecognized).toBeGreaterThan(0);
+  });
+
+  it('§7.1+§7.6 interaction — early termination within short horizon: no double-counting', () => {
+    // Lease runs Jan–Dec 2025 (12 months)
+    // Horizon is only 6 months (cuts off at Jun 2025)
+    // Early termination at Apr 2025
+    // Write-off fires in Apr 2025 (within horizon) for ALL remaining months (May–Dec = 8 months)
+    // truncated MUST be 0 — write-off already captured the horizon tail
+    const record = makeRecord({
+      cash_value: 1200,
+      lease_term_months: 12,
+      lease_start_date: '2025-01-01',
+      lease_end_date: '2025-12-31',
+      early_termination_date: '2025-04-01',
+    });
+    const output = amortizeConcessions(
+      makeInput([record], { current_date: '2025-01-01', horizon_months: 6 }),
+    );
+    const schedule = output.schedules[0];
+    // Write-off fires in 202504
+    expect(output.write_offs).toHaveLength(1);
+    expect(output.write_offs[0].write_off_month).toBe('202504');
+    // truncated must be 0 — no double-counting
+    expect(schedule.truncated_recognition_post_horizon).toBe(0);
+    // recognized = Jan+Feb+Mar slices + write-off for Apr–Dec
+    const recognized = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    expect(Math.abs(recognized - 1200)).toBeLessThanOrEqual(0.02);
+    // Cash invariant holds
+    expect(() => amortizeConcessions(makeInput([record], { horizon_months: 6 }))).not.toThrow(CashInvariantError);
+  });
+
+  it('§7.1+§7.6 interaction — early termination beyond horizon: only truncation, no write-off', () => {
+    // Lease runs Jan–Dec 2025, horizon only 3 months (Jan–Mar 2025)
+    // Early termination date Aug 2025 — beyond the horizon
+    // No write-off should fire; only horizon truncation applies
+    const record = makeRecord({
+      cash_value: 1200,
+      lease_term_months: 12,
+      early_termination_date: '2025-08-01',
+    });
+    const output = amortizeConcessions(
+      makeInput([record], { current_date: '2025-01-01', horizon_months: 3 }),
+    );
+    // No write-off fires (termination is beyond horizon)
+    expect(output.write_offs).toHaveLength(0);
+    // Truncated captures months 4–12
+    const schedule = output.schedules[0];
+    expect(schedule.truncated_recognition_post_horizon).toBeGreaterThan(0);
+    // recognized + truncated = cash_value
+    const recognized = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    const total = recognized + schedule.truncated_recognition_post_horizon;
+    expect(Math.abs(total - 1200)).toBeLessThanOrEqual(0.02);
   });
 });
 
@@ -299,7 +364,7 @@ describe('§12.7 Cash invariant across treatments', () => {
     }
   });
 
-  it('total cash is identical across treatments (invariant holds)', () => {
+  it('total cash (recognized + capitalized) is identical across all three treatments', () => {
     const treatmentTotals = (['OPERATING', 'CAPITALIZED', 'HYBRID'] as const).map(t => {
       const output = amortizeConcessions(makeInput([baseRecord], { leasing_cost_treatment: t }));
       return (
@@ -307,8 +372,22 @@ describe('§12.7 Cash invariant across treatments', () => {
         output.lease_up_reserve_required
       );
     });
-    // All three totals should equal cash_value = 3600
     treatmentTotals.forEach(total => expect(Math.abs(total - 3600)).toBeLessThanOrEqual(0.02));
+    // All three totals must be equal to each other (cross-treatment invariant)
+    expect(Math.abs(treatmentTotals[0] - treatmentTotals[1])).toBeLessThanOrEqual(0.02);
+    expect(Math.abs(treatmentTotals[1] - treatmentTotals[2])).toBeLessThanOrEqual(0.02);
+  });
+
+  it('schedule.treatment reflects runtime treatment, not record-level treatment', () => {
+    // record has leasing_cost_treatment: 'OPERATING', but we run with CAPITALIZED
+    const record = makeRecord({
+      leasing_cost_treatment: 'OPERATING',
+      is_lease_up_period: true,
+      cash_value: 1200,
+    });
+    const output = amortizeConcessions(makeInput([record], { leasing_cost_treatment: 'CAPITALIZED' }));
+    // schedule.treatment must be the RUNTIME treatment (CAPITALIZED), not OPERATING
+    expect(output.schedules[0].treatment).toBe('CAPITALIZED');
   });
 });
 
@@ -326,7 +405,6 @@ describe('§12.8 Subject history record', () => {
     const output = amortizeConcessions(
       makeInput([record], { current_date: '2024-07-01', horizon_months: 120 }),
     );
-    // Months 202401–202406 should be in the schedule (past, but still recognized)
     const schedule = output.schedules[0];
     const months = schedule.monthly_entries.map(e => e.month);
     expect(months).toContain('202401');
@@ -346,7 +424,6 @@ describe('§12.9 Cross-horizon truncation', () => {
       lease_start_date: '2025-01-01',
       lease_end_date: '2025-12-31',
     });
-    // Only 6 months of horizon — truncates the back half of the lease
     const output = amortizeConcessions(
       makeInput([record], { current_date: '2025-01-01', horizon_months: 6 }),
     );
@@ -354,8 +431,15 @@ describe('§12.9 Cross-horizon truncation', () => {
     expect(schedule.truncated_recognition_post_horizon).toBeGreaterThan(0);
     const recognized = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
     const total = recognized + schedule.truncated_recognition_post_horizon;
-    // recognized + truncated should = cash_value (within rounding)
     expect(Math.abs(total - 1200)).toBeLessThanOrEqual(0.02);
+  });
+
+  it('no write-offs generated when only horizon truncation applies', () => {
+    const record = makeRecord({ cash_value: 1200, lease_term_months: 12 });
+    const output = amortizeConcessions(
+      makeInput([record], { current_date: '2025-01-01', horizon_months: 6 }),
+    );
+    expect(output.write_offs).toHaveLength(0);
   });
 });
 
@@ -381,9 +465,115 @@ describe('§12.10 Multi-concession overlap (AMORTIZATION-METHOD-IS-PER-CONCESSIO
     expect(output.schedules).toHaveLength(2);
     const total = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
     expect(Math.abs(total - 1700)).toBeLessThanOrEqual(0.02);
-    // Commencement month (202501) should contain straight-line slice + full gift card
+    // Commencement month (202501) = straight-line slice (100) + full gift card (500)
     const commencementMonth = output.monthly_recognition['202501'] ?? 0;
-    expect(commencementMonth).toBe(100 + 500); // 100/mo straight-line + 500 cash-at-commence
+    expect(commencementMonth).toBe(100 + 500);
+  });
+});
+
+// ─── §7.2: Renewal mid-amortization independence ──────────────────────────────
+
+describe('§7.2 Renewal mid-amortization', () => {
+  it('original and renewal concession records amortize independently', () => {
+    const original = makeRecord({
+      id: 'rec-orig',
+      lease_id: 'lease-001',
+      cash_value: 1200,
+      lease_term_months: 12,
+      is_renewal: false,
+    });
+    const renewal = makeRecord({
+      id: 'rec-renew',
+      lease_id: 'lease-001-renewal',
+      cash_value: 600,
+      lease_term_months: 6,
+      is_renewal: true,
+      lease_start_date: '2025-07-01',
+      lease_end_date: '2025-12-31',
+      amortization_method: 'STRAIGHT_LINE_GAAP',
+    });
+    const output = amortizeConcessions(makeInput([original, renewal]));
+    expect(output.schedules).toHaveLength(2);
+    const total = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    // Both records' cash_value should be fully recognized (within rounding)
+    expect(Math.abs(total - 1800)).toBeLessThanOrEqual(0.02);
+  });
+});
+
+// ─── §7.8: Structural write-offs ──────────────────────────────────────────────
+
+describe('§7.8 Structural write-offs', () => {
+  it('writes off remaining balance on structural_write_off_date', () => {
+    const record = makeRecord({
+      cash_value: 1200,
+      lease_term_months: 12,
+      structural_write_off_date: '2025-04-01',
+    });
+    const output = amortizeConcessions(makeInput([record]));
+    expect(output.write_offs).toHaveLength(1);
+    expect(output.write_offs[0].reason).toBe('structural');
+    expect(output.write_offs[0].write_off_month).toBe('202504');
+    const total = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    expect(Math.abs(total - 1200)).toBeLessThanOrEqual(0.02);
+  });
+
+  it('structural write-off beyond horizon causes truncation, not write-off', () => {
+    const record = makeRecord({
+      cash_value: 1200,
+      lease_term_months: 12,
+      structural_write_off_date: '2025-09-01',
+    });
+    const output = amortizeConcessions(
+      makeInput([record], { current_date: '2025-01-01', horizon_months: 6 }),
+    );
+    // Write-off date (Sep) > horizon (Jun) — no write-off fires
+    expect(output.write_offs).toHaveLength(0);
+    // Truncation applies to post-horizon months
+    expect(output.schedules[0].truncated_recognition_post_horizon).toBeGreaterThan(0);
+  });
+
+  it('when both early_termination and structural dates set, earlier date governs', () => {
+    // early term = Feb, structural = Apr — Feb governs → reason = 'early_termination'
+    const record = makeRecord({
+      cash_value: 1200,
+      lease_term_months: 12,
+      early_termination_date: '2025-02-01',
+      structural_write_off_date: '2025-04-01',
+    });
+    const output = amortizeConcessions(makeInput([record]));
+    expect(output.write_offs).toHaveLength(1);
+    expect(output.write_offs[0].write_off_month).toBe('202502');
+    expect(output.write_offs[0].reason).toBe('early_termination');
+  });
+
+  it('when structural date is earlier than early_termination, structural governs', () => {
+    const record = makeRecord({
+      cash_value: 1200,
+      lease_term_months: 12,
+      early_termination_date: '2025-06-01',
+      structural_write_off_date: '2025-03-01',
+    });
+    const output = amortizeConcessions(makeInput([record]));
+    expect(output.write_offs[0].write_off_month).toBe('202503');
+    expect(output.write_offs[0].reason).toBe('structural');
+  });
+});
+
+// ─── inferred_from_rent_roll zero-skip ────────────────────────────────────────
+
+describe('inferred_from_rent_roll zero-value skip', () => {
+  it('skips records with cash_value=0 and inferred_from_rent_roll=true', () => {
+    const badRecord = makeRecord({ cash_value: 0, inferred_from_rent_roll: true });
+    const goodRecord = makeRecord({ id: 'rec-good', cash_value: 1200 });
+    const output = amortizeConcessions(makeInput([badRecord, goodRecord]));
+    // Only goodRecord contributes to recognition
+    const total = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    expect(Math.abs(total - 1200)).toBeLessThanOrEqual(0.02);
+  });
+
+  it('does not throw for a zero-value inferred record', () => {
+    const record = makeRecord({ cash_value: 0, inferred_from_rent_roll: true });
+    expect(() => amortizeConcessions(makeInput([record]))).not.toThrow();
   });
 });
 

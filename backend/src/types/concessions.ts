@@ -91,9 +91,18 @@ export interface ConcessionRecord {
   leasing_cost_treatment: LeasingCostTreatment;
   /**
    * If the lease terminated early, the ISO date of termination.
-   * The engine writes off the remaining unamortized balance in this month.
+   * The engine writes off the remaining unamortized balance in the termination month.
+   * §7.1 — mutually exclusive with structural_write_off_date; if both are set,
+   * the earlier date governs.
    */
   early_termination_date?: string | null;
+  /**
+   * §7.8 — Structural write-off date: when a deal-level event (sale, foreclosure,
+   * partnership dissolution) forces all unamortized concession balances off the books.
+   * Engine writes off remaining balance in this month with reason='structural'.
+   * Applied AFTER early_termination_date if both are set (only one write-off fires).
+   */
+  structural_write_off_date?: string | null;
   /** True when the concession was for a renewal (vs. new lease) */
   is_renewal: boolean;
   /**
@@ -103,6 +112,15 @@ export interface ConcessionRecord {
    * in the schedule so trailing totals reconcile correctly.
    */
   is_subject_history: boolean;
+  /**
+   * §7.9 / §12.9 no-concession-field inference flag.
+   * True when cash_value was inferred from rent roll / LV engine data rather than
+   * explicitly provided. Engine processes the record normally; this flag is informational
+   * for upstream callers to know the origin of cash_value. Records where inference
+   * failed (cash_value === 0 and inferred_from_rent_roll === true) are skipped by
+   * the orchestrator with a console.warn — not thrown, to avoid blocking other records.
+   */
+  inferred_from_rent_roll?: boolean;
   /**
    * Fiscal year start month (1=Jan … 12=Dec). Inherited from deal settings.
    * Defaults to 1 when absent. Used by aggregateByFiscalYear.
