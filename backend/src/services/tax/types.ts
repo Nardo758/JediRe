@@ -573,6 +573,14 @@ export interface TaxForecastProvenance {
   // ── Section B — Tangible Personal Property ───────────────────────────────────
   /** TPP filing exemption threshold ($). */
   tpp_exemption_amount: LayeredValue<number>;
+
+  // ── Section A — Per-year time series ─────────────────────────────────────────
+  /**
+   * Full hold-period array of (assessedValue, millageRate, taxAmount, sohCapBinding,
+   * reassessmentEvent) for every projected year. Mirrors reTax.perYear exactly;
+   * the LayeredValue wrapper carries formula trace and confidence for the series.
+   */
+  per_year: LayeredValue<ReTaxYear[]>;
 }
 
 // ── County Overlay ────────────────────────────────────────────────────────────

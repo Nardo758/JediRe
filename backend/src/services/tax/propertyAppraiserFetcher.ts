@@ -90,45 +90,20 @@ async function fetchFromTaxBillPdf(dealId: string): Promise<NormalizedParcel | n
     return parcel;
   }
 
-  // SSRF defence: only fetch from trusted object-storage hosts.
-  // file_url originates from the upload route which accepts it from request body —
-  // without this check an attacker could supply an internal service URL.
-  const TRUSTED_STORAGE_HOSTS = new Set([
-    // AWS S3 (path-style and virtual-hosted)
-    's3.amazonaws.com',
-    // Supabase storage (project-specific subdomains handled below)
-    'supabase.co',
-    // Cloudflare R2
-    'r2.cloudflarestorage.com',
-    // Google Cloud Storage
-    'storage.googleapis.com',
-    // Azure Blob Storage
-    'blob.core.windows.net',
-  ]);
-
+  // SSRF: only fetch from trusted object-storage hosts (file_url comes from request body).
+  const TRUSTED_STORAGE_HOSTS = ['s3.amazonaws.com', 'supabase.co', 'r2.cloudflarestorage.com', 'storage.googleapis.com', 'blob.core.windows.net'];
   function isTrustedStorageUrl(rawUrl: string): boolean {
     try {
       const u = new URL(rawUrl);
       if (u.protocol !== 'https:') return false;
       const host = u.hostname.toLowerCase();
-      // Accept exact matches or subdomain matches (*.s3.amazonaws.com, *.supabase.co, etc.)
-      for (const trusted of TRUSTED_STORAGE_HOSTS) {
-        if (host === trusted || host.endsWith(`.${trusted}`)) return true;
-      }
-      // Also accept the platform's own STORAGE_HOST env var (e.g. a signed-CDN domain)
+      if (TRUSTED_STORAGE_HOSTS.some(t => host === t || host.endsWith(`.${t}`))) return true;
       const envHost = (process.env.STORAGE_HOST ?? '').toLowerCase().trim();
-      if (envHost && (host === envHost || host.endsWith(`.${envHost}`))) return true;
-      return false;
-    } catch {
-      return false;
-    }
+      return !!envHost && (host === envHost || host.endsWith(`.${envHost}`));
+    } catch { return false; }
   }
-
   if (!isTrustedStorageUrl(row!.file_url)) {
-    logger.warn('[propertyAppraiserFetcher] Tier-1 fetch rejected — untrusted file_url host', {
-      dealId,
-      host: (() => { try { return new URL(row!.file_url).hostname; } catch { return '(invalid)'; } })(),
-    });
+    logger.warn('[propertyAppraiserFetcher] Tier-1 fetch rejected — untrusted file_url host', { dealId });
     return null;
   }
 

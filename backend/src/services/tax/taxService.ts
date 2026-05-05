@@ -316,6 +316,15 @@ export const taxService = {
         stateRuleset.tppExemptionAmount(), 'tax_service_computed', confidence,
         `${stateRuleset.jurisdiction}.tppExemptionAmount()`,
       ),
+
+      // Per-year time series — covers all numeric leaves in reTax.perYear
+      per_year: lv(
+        perYear, 'tax_service_computed', confidence,
+        `${activeRuleset.jurisdiction}.annualPropertyTax(ctx, yr, prev) × ${perYear.length} years`,
+        { assessed_value: { value: platformAssessedValue, source: 'tax_service_computed' },
+          millage_rate_mills: { value: t12MillageRate, source: 'tax_service_computed' },
+          soh_cap_pct: { value: sohCapPct, source: 'tax_service_computed' } },
+      ),
     };
 
     // ── Merge external provenance (from buildTaxContext) ──────────────────────

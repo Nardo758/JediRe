@@ -491,6 +491,12 @@ export async function buildTaxContext(
       tppExempt, 'tax_service_computed', confBase,
       { ruleset_version: rulesetVersion, formula: `${stack.state.jurisdiction}.tppExemptionAmount()` },
     ),
+
+    // Per-year time series — placeholder; definitive values computed by taxService.forecast()
+    per_year: makeLayered(
+      [], 'tax_service_computed', confBase,
+      { ruleset_version: rulesetVersion, formula: 'taxService.forecast() → reTax.perYear' },
+    ),
   };
 
   return { ctx, provenance, parcelResult };
