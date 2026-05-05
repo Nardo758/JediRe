@@ -17,7 +17,7 @@ import {
   type LeaseMode,
 } from './LeaseVelocitySection';
 import { InlineAssumptionBlock } from '../../../components/InlineAssumptionBlock';
-import type { AssumptionFieldDef } from '../../../components/InlineAssumptionBlock';
+import type { AssumptionFieldDef, CollisionEntry } from '../../../components/InlineAssumptionBlock';
 
 const MONO = BT.font.mono;
 type TimelineOption = 3 | 5 | 7 | 10;
@@ -904,30 +904,31 @@ function blendedEffective(
 }
 
 function buildLeasingAssumptionFields(financials: DealFinancials): AssumptionFieldDef[] {
-  const sh  = financials.subjectHistory ?? null;
+  const sh         = financials.subjectHistory ?? null;
+  // When no subject history, all subjectValues are null and subject-aware logic is suppressed.
+  const hasHistory = sh != null;
   const dyn = sh?.observed_dynamics ?? null;
   const cw  = sh?.confidence_weights ?? {};
   const psv = sh?.peer_set_values ?? {};
 
   // proforma.year1 rows — canonical resolver outputs that feed the projection engine.
-  // Used as primary source for effectiveValue (and peer platform fallback when no history).
+  // Primary source for effectiveValue; platform column used as peer fallback when no history.
   const pf1 = financials.proforma?.year1 ?? [];
   const pfRow = (key: string) => pf1.find(r => r.field === key) ?? null;
 
-  // Derive confidence: prefer proforma.year1 confidence scalar when present
+  // Confidence from proforma scalar › weight bucket; LOW when no history
   const conf = (key: string, w: number | null): 'HIGH' | 'MED' | 'LOW' =>
-    confidenceFromWeight(pfRow(key)?.confidence ?? w);
+    hasHistory ? confidenceFromWeight(pfRow(key)?.confidence ?? w) : 'LOW';
 
   const fields: AssumptionFieldDef[] = [];
 
   // 1. Renewal Rate
   {
     const pf      = pfRow('renewal_rate');
-    const subject = dyn?.renewal_rate ?? null;
-    // Peer: platform peer-set posterior (subject-history) › proforma platform column
+    // subjectValue: observed only when subject history is present
+    const subject = hasHistory ? (dyn?.renewal_rate ?? null) : null;
     const peer    = psv['renewal_rate'] ?? pf?.platform ?? null;
-    const w       = cw['renewal_rate']?.weight ?? null;
-    // Effective: proforma resolved (authoritative projection input) › Bayesian blend fallback
+    const w       = hasHistory ? (cw['renewal_rate']?.weight ?? null) : null;
     const effective = pf?.resolved ?? blendedEffective(subject, 'renewal_rate', psv, cw);
     fields.push({
       fieldId: 'renewal_rate', label: 'Renewal Rate',
@@ -943,9 +944,9 @@ function buildLeasingAssumptionFields(financials: DealFinancials): AssumptionFie
   // 2. Expected Turnover Rate
   {
     const pf      = pfRow('turnover_rate');
-    const subject = dyn?.turnover_rate ?? null;
+    const subject = hasHistory ? (dyn?.turnover_rate ?? null) : null;
     const peer    = psv['turnover_rate'] ?? pf?.platform ?? null;
-    const w       = cw['turnover_rate']?.weight ?? null;
+    const w       = hasHistory ? (cw['turnover_rate']?.weight ?? null) : null;
     const effective = pf?.resolved ?? blendedEffective(subject, 'turnover_rate', psv, cw);
     fields.push({
       fieldId: 'turnover_rate', label: 'Expected Turnover Rate',
@@ -961,9 +962,9 @@ function buildLeasingAssumptionFields(financials: DealFinancials): AssumptionFie
   // 3. Days Vacant (median)
   {
     const pf      = pfRow('days_vacant_median');
-    const subject = dyn?.days_vacant_median ?? null;
+    const subject = hasHistory ? (dyn?.days_vacant_median ?? null) : null;
     const peer    = psv['days_vacant_median'] ?? pf?.platform ?? null;
-    const w       = cw['days_vacant_median']?.weight ?? null;
+    const w       = hasHistory ? (cw['days_vacant_median']?.weight ?? null) : null;
     const effective = pf?.resolved ?? blendedEffective(subject, 'days_vacant_median', psv, cw);
     fields.push({
       fieldId: 'days_vacant_median', label: 'Days Vacant (median)',
@@ -976,16 +977,21 @@ function buildLeasingAssumptionFields(financials: DealFinancials): AssumptionFie
     });
   }
 
-  // 4. Blended Rent Growth — subject: traffic calibration output,
-  //    peer: platform peer-set posterior or proforma platform, blend from confidence_weights
+  // 4. Blended Rent Growth
+  // subjectValue sourced from traffic calibration ONLY when subject history exists
+  // (trafficProjection.calibrated is the M07 calibration output, populated with rent rolls).
+  // When hasHistory=false, subjectValue is null — no subject column, no collision panel.
   {
     const pf         = pfRow('rent_growth_yr1');
-    const calibrated = financials.trafficProjection?.calibrated?.rentGrowthPct ?? null;
+    const calibrated = hasHistory
+      ? (financials.trafficProjection?.calibrated?.rentGrowthPct ?? null)
+      : null;
     const yr1Assump  = financials.assumptions?.rentGrowthYr1 ?? null;
     const peer       = psv['rent_growth_yr1'] ?? psv['rentGrowthYr1'] ?? pf?.platform ?? null;
-    const w          = cw['rent_growth_yr1']?.weight ?? (calibrated != null ? 1 : null);
-    // Effective: proforma resolved › Bayesian blend › calibrated › peer › assumptions fallback
-    const effective = pf?.resolved ?? (() => {
+    const w          = hasHistory
+      ? (cw['rent_growth_yr1']?.weight ?? (calibrated != null ? 1 : null))
+      : null;
+    const effective  = pf?.resolved ?? (() => {
       if (calibrated != null && peer != null && w != null && w < 1 && w > 0) {
         return w * calibrated + (1 - w) * peer;
       }
@@ -1004,6 +1010,18 @@ function buildLeasingAssumptionFields(financials: DealFinancials): AssumptionFie
   }
 
   return fields;
+}
+
+function mapPeerCollisionsToEntries(
+  peerCollisions: NonNullable<F9SubjectHistory['peer_collisions']>,
+): CollisionEntry[] {
+  return peerCollisions.map(c => ({
+    fieldId:      c.coefficient,
+    deltaSigma:   Math.abs(c.sigma_deviation),
+    subjectValue: c.subject_value,
+    peerValue:    c.peer_value,
+    severity:     Math.abs(c.sigma_deviation) >= 2.5 ? 'severe' : 'material',
+  }));
 }
 
 // ─── Main component ───────────────────────────────────────────────────────
@@ -1257,11 +1275,15 @@ export function ProjectionsTab({
   const integrityChecks = financials?.proforma.integrityChecks ?? [];
   const hasAfterTaxData = projections.some(p => p.depreciation != null);
 
-  // InlineAssumptionBlock — leasing coefficient fields
-  // Collisions are NOT passed externally; useBlockCollisions inside the component
-  // derives them from field data to capture both outperformance and underperformance.
+  // InlineAssumptionBlock — leasing coefficient fields + pre-computed peer collisions
   const leasingAssumptionFields = useMemo<AssumptionFieldDef[]>(
     () => financials ? buildLeasingAssumptionFields(financials) : [],
+    [financials],
+  );
+  const leasingCollisionEntries = useMemo<CollisionEntry[]>(
+    () => financials?.subjectHistory?.peer_collisions
+      ? mapPeerCollisionsToEntries(financials.subjectHistory.peer_collisions)
+      : [],
     [financials],
   );
 
@@ -1439,6 +1461,7 @@ export function ProjectionsTab({
                       hasSubjectHistory={financials.subjectHistory != null}
                       subjectTier={financials.subjectHistory?.tier}
                       subjectSnapshotCount={financials.subjectHistory?.snapshot_count}
+                      collisions={leasingCollisionEntries.length > 0 ? leasingCollisionEntries : undefined}
                       defaultExpanded={true}
                     />
                   </td>
