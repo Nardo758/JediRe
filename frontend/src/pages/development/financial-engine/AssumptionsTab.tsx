@@ -14,6 +14,8 @@ import { LeasingCostTreatmentToggle, type LeasingCostTreatment } from './LeaseVe
 import { LeasingAssumptionsTab, LeasingSummaryCard } from './LeasingAssumptionsTab';
 import { SECTION5_MIGRATION_MAP, LEASING_FIELDS_BY_PATH } from '../../../config/leasing-fields.config';
 import type { LeaseMode } from '../../../config/leasing-fields.config';
+import { MonthlyScheduleGrid } from './MonthlyScheduleGrid';
+import type { MonthlyScheduleRow } from './MonthlyScheduleGrid';
 
 /**
  * Resolve the canonical LeaseMode for a deal.
@@ -1562,6 +1564,12 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   type AssumptionsSubTab = 'GENERAL' | 'LEASING';
   const [activeSubTab, setActiveSubTab] = useState<AssumptionsSubTab>('GENERAL');
 
+  // ── Monthly override state (Section 5A + LEASING schedule) ────────────────
+  // Keyed fieldKey → absMonth (1-based) → stored string value.
+  // Persisted to deal_monthly_assumptions via GET/PATCH /assumptions/monthly.
+  const [trafficMonthlyView, setTrafficMonthlyView] = useState(false);
+  const [monthlyOverrides, setMonthlyOverrides] = useState<Record<string, Record<number, string>>>({});
+
   // Path-keyed leasing overrides — keyed by LeasingFieldDef.path (backend dealContext paths).
   // Separate from `overrides` (which is year-matrix-keyed for proforma STATIC_ROWS) because
   // leasing fields are year-independent and can be string enum values.
@@ -1627,6 +1635,44 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     } catch { /* silent degradation */ }
     finally { if (tok === fetchRef.current) setLoading(false); }
   }, [dealId, holdYears]);
+
+  // ── Monthly overrides fetch — reloads when dealId changes ────────────────
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/deals/${dealId}/assumptions/monthly`)
+      .then(res => {
+        const data = res.data?.data?.overrides ?? {};
+        setMonthlyOverrides(data);
+      })
+      .catch(() => {});
+  }, [dealId]);
+
+  // Monthly override handler — updates local state and debounce-saves to backend.
+  // The save is fire-and-forget; local state is the UI source of truth.
+  const monthlyFlushTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const handleMonthlyChange = useCallback((field: string, month: number, value: string | null) => {
+    setMonthlyOverrides(prev => {
+      const next = { ...prev };
+      if (!next[field]) next[field] = {};
+      if (value === null) {
+        const copy = { ...next[field] };
+        delete copy[month];
+        next[field] = copy;
+      } else {
+        next[field] = { ...next[field], [month]: value };
+      }
+      return next;
+    });
+    const key = `${field}:${month}`;
+    const existing = monthlyFlushTimers.current.get(key);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      monthlyFlushTimers.current.delete(key);
+      apiClient.patch(`/api/v1/deals/${dealId}/assumptions/monthly`, { field, month, value })
+        .catch(() => {});
+    }, 500);
+    monthlyFlushTimers.current.set(key, timer);
+  }, [dealId]);
 
   // handleLctChange declared HERE (after holdYears at line ~1569 and fetchFinancials
   // at line ~1574) to avoid temporal dead-zone: both are const bindings that would
@@ -2430,6 +2476,9 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
           leaseMode={resolveLeaseMode(financials)}
           leasingPathOverrides={leasingPathOverrides}
           onFieldCommit={handleLeasingFieldCommit}
+          holdYears={holdYears}
+          monthlyOverrides={monthlyOverrides}
+          onMonthlyChange={handleMonthlyChange}
         />
       )}
 
@@ -2716,18 +2765,128 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                         </span>
                       </td>
                     </tr>
-                    {/* Section 5-traf: replace the raw T-code rows with the 4-metric Leasing
-                        Summary Card + a "→ Edit in Leasing tab" button. The T-codes and M07
-                        signals are still computed by the engine; they simply don't render here
-                        anymore. All editing moves to the dedicated Leasing sub-tab. */}
+                    {/* Section 5-traf: ANNUAL (summary card) or MONTHLY (full timeline grid).
+                        Toggle lives in the panel bar below. T-codes from M07 are the
+                        baseline for each monthly column; all values are user-overridable. */}
                     {!isCollapsed && id === '5-traf' && (
                       <tr>
                         <td colSpan={years.length + 2} style={{ padding: 0 }}>
-                          <LeasingSummaryCard
-                            financials={financials}
-                            leasingPathOverrides={leasingPathOverrides}
-                            onGoToLeasing={() => setActiveSubTab('LEASING')}
-                          />
+                          {/* ── View toggle bar ── */}
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '4px 12px', background: '#111', borderBottom: '1px solid #1a1a1a',
+                          }}>
+                            <span style={{ fontFamily: MONO, fontSize: 7, color: '#475569', letterSpacing: '0.06em' }}>VIEW:</span>
+                            {(['ANNUAL', 'MONTHLY'] as const).map(v => (
+                              <button
+                                key={v}
+                                onClick={() => setTrafficMonthlyView(v === 'MONTHLY')}
+                                style={{
+                                  fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                                  padding: '2px 10px', borderRadius: 2, cursor: 'pointer', border: 'none',
+                                  background: (trafficMonthlyView ? v === 'MONTHLY' : v === 'ANNUAL') ? '#0c2a3a' : '#1a1a1a',
+                                  color: (trafficMonthlyView ? v === 'MONTHLY' : v === 'ANNUAL') ? '#22d3ee' : '#334155',
+                                  transition: 'all 0.12s',
+                                }}
+                              >
+                                {v}
+                              </button>
+                            ))}
+                            {trafficMonthlyView && (
+                              <span style={{ fontFamily: MONO, fontSize: 7, color: '#1e3347' }}>
+                                {holdYears * 12} months · baseline from annual M07 signals
+                              </span>
+                            )}
+                            <div style={{ flex: 1 }} />
+                            <button
+                              onClick={() => setActiveSubTab('LEASING')}
+                              style={{
+                                fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#22d3ee',
+                                background: 'none', border: '1px solid #22d3ee33', borderRadius: 3,
+                                padding: '2px 8px', cursor: 'pointer',
+                              }}
+                            >
+                              → Edit in Leasing tab
+                            </button>
+                          </div>
+
+                          {/* ── ANNUAL view: existing summary card ── */}
+                          {!trafficMonthlyView && (
+                            <LeasingSummaryCard
+                              financials={financials}
+                              leasingPathOverrides={leasingPathOverrides}
+                              onGoToLeasing={() => setActiveSubTab('LEASING')}
+                            />
+                          )}
+
+                          {/* ── MONTHLY view: full timeline grid ── */}
+                          {trafficMonthlyView && financials && (() => {
+                            const trafficRows: MonthlyScheduleRow[] = [
+                              {
+                                key: 'traffic_t01_walkins',
+                                label: 'T-01  Walk-Ins / Week',
+                                unit: 'per_wk',
+                                labelColor: '#7e22ce',
+                                getBaseline: (m) => {
+                                  const yr = Math.ceil(m / 12);
+                                  return tyr(financials, yr)?.t01WeeklyTours ?? null;
+                                },
+                              },
+                              {
+                                key: 'traffic_t05_capture',
+                                label: 'T-05  Capture Rate %',
+                                unit: 'pct',
+                                labelColor: '#7e22ce',
+                                getBaseline: (m) => {
+                                  const yr = Math.ceil(m / 12);
+                                  const v = tyr(financials, yr)?.t05ClosingRatio;
+                                  return v != null ? (v > 1 ? v / 100 : v) : null;
+                                },
+                              },
+                              {
+                                key: 'traffic_t06_leases',
+                                label: 'T-06  Net Leases / Week',
+                                unit: 'per_wk',
+                                labelColor: '#7e22ce',
+                                getBaseline: (m) => {
+                                  const yr = Math.ceil(m / 12);
+                                  return tyr(financials, yr)?.t06WeeklyLeases ?? null;
+                                },
+                              },
+                              {
+                                key: 'traffic_occ_target',
+                                label: 'Stabilized Occ Target',
+                                unit: 'pct',
+                                labelColor: '#0e7490',
+                                getBaseline: (m) => {
+                                  const yr = Math.ceil(m / 12);
+                                  const t = tyr(financials, yr);
+                                  return t?.occupancyPct ?? (t?.vacancyPct != null ? 1 - t.vacancyPct : null);
+                                },
+                              },
+                              {
+                                key: 'traffic_vacancy_derived',
+                                label: 'Derived Vacancy %',
+                                unit: 'pct',
+                                readonly: true,
+                                labelColor: '#334155',
+                                getBaseline: (m) => {
+                                  const yr = Math.ceil(m / 12);
+                                  const t = tyr(financials, yr);
+                                  if (t?.vacancyPct != null) return t.vacancyPct;
+                                  return t?.occupancyPct != null ? 1 - t.occupancyPct : null;
+                                },
+                              },
+                            ];
+                            return (
+                              <MonthlyScheduleGrid
+                                rows={trafficRows}
+                                holdMonths={holdYears * 12}
+                                overrides={monthlyOverrides}
+                                onCellChange={handleMonthlyChange}
+                              />
+                            );
+                          })()}
                         </td>
                       </tr>
                     )}

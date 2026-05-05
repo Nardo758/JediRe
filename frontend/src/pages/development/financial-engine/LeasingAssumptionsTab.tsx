@@ -27,6 +27,8 @@ import {
   type FieldType,
 } from '../../../config/leasing-fields.config';
 import type { F9DealFinancials } from './types';
+import { MonthlyScheduleGrid } from './MonthlyScheduleGrid';
+import type { MonthlyScheduleRow } from './MonthlyScheduleGrid';
 
 const MONO = "'JetBrains Mono','Fira Code',monospace";
 
@@ -493,9 +495,88 @@ export interface LeasingAssumptionsTabProps {
    */
   leasingPathOverrides: Record<string, number | string | null>;
   onFieldCommit: (path: string, rawInput: string, field: LeasingFieldDef) => void;
+  /** Monthly schedule props — passed from AssumptionsTab */
+  holdYears?: number;
+  monthlyOverrides?: Record<string, Record<number, string>>;
+  onMonthlyChange?: (field: string, month: number, value: string | null) => void;
 }
 
-export function LeasingAssumptionsTab({ financials, leaseMode, leasingPathOverrides, onFieldCommit }: LeasingAssumptionsTabProps) {
+// ── Monthly leasing rows config ────────────────────────────────────────────────
+// These are the time-varying leasing fields that benefit from monthly granularity.
+// Keyed field_key → leasingPathOverrides.path for baseline resolution.
+interface MonthlyLeasingRowDef {
+  key: string;
+  label: string;
+  unit: 'pct' | 'days' | 'dollar' | 'enum';
+  enumValues?: string[];
+  enumLabels?: string[];
+  pathKey?: string;           // leasingPathOverrides key for baseline
+  platformDefault?: number | string | null;
+  labelColor?: string;
+}
+
+const MONTHLY_LEASING_ROWS: MonthlyLeasingRowDef[] = [
+  {
+    key: 'leasing_renewal_rate',
+    label: 'Renewal rate',
+    unit: 'pct',
+    pathKey: 'traffic.renewal_rate',
+    platformDefault: 0.55,
+    labelColor: '#60a5fa',
+  },
+  {
+    key: 'leasing_days_vacant',
+    label: 'Days vacant (median)',
+    unit: 'days',
+    pathKey: 'traffic.days_vacant_median',
+    platformDefault: 21,
+    labelColor: '#60a5fa',
+  },
+  {
+    key: 'leasing_rent_growth',
+    label: 'Blended rent growth',
+    unit: 'pct',
+    pathKey: 'traffic.coefficients.blended_rent_growth',
+    platformDefault: 0.030,
+    labelColor: '#86efac',
+  },
+  {
+    key: 'leasing_conc_strategy',
+    label: 'Concession strategy',
+    unit: 'enum',
+    enumValues: ['CONSERVATIVE', 'MARKET', 'AGGRESSIVE'],
+    enumLabels: ['CON', 'MKT', 'AGG'],
+    pathKey: 'lease_velocity.inputs.concession_strategy',
+    platformDefault: 'MARKET',
+    labelColor: '#fcd34d',
+  },
+  {
+    key: 'leasing_mkt_intensity',
+    label: 'Marketing intensity',
+    unit: 'enum',
+    enumValues: ['LOW', 'MARKET', 'AGGRESSIVE'],
+    enumLabels: ['LOW', 'MKT', 'AGG'],
+    pathKey: 'lease_velocity.inputs.marketing_intensity',
+    platformDefault: 'MARKET',
+    labelColor: '#fcd34d',
+  },
+  {
+    key: 'leasing_conc_new_unit',
+    label: 'New lease concession ($/unit)',
+    unit: 'dollar',
+    pathKey: 'traffic.concession_environment.new_lease_onetime_per_unit',
+    platformDefault: 0,
+    labelColor: '#f472b6',
+  },
+];
+
+export function LeasingAssumptionsTab({
+  financials, leaseMode, leasingPathOverrides, onFieldCommit,
+  holdYears = 5, monthlyOverrides = {}, onMonthlyChange,
+}: LeasingAssumptionsTabProps) {
+  // ── View mode: ANNUAL (category form) or SCHEDULE (monthly grid) ──────────
+  const [viewMode, setViewMode] = useState<'ANNUAL' | 'SCHEDULE'>('ANNUAL');
+
   // ── Tier preferences (per-user, persisted in localStorage) ───────────────
   const [tierPrefs, setTierPrefs] = useState<LeasingTierPrefs>(() => {
     try {
@@ -571,33 +652,109 @@ export function LeasingAssumptionsTab({ financials, leaseMode, leasingPathOverri
           <span style={{ fontFamily: MONO, fontSize: 7, color: '#334155' }}>MODE PENDING</span>
         )}
         <div style={{ flex: 1 }} />
-        <span style={{ fontFamily: MONO, fontSize: 7, color: '#475569' }}>SHOW:</span>
-        <button
-          onClick={() => setTierPref('show_advanced', !tierPrefs.show_advanced)}
-          style={{
-            fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
-            padding: '3px 10px', borderRadius: 3, cursor: 'pointer', border: 'none',
-            background: tierPrefs.show_advanced ? '#1e3a5f' : '#1a1a1a',
-            color: tierPrefs.show_advanced ? '#bfdbfe' : '#475569',
-            transition: 'all 0.15s',
-          }}
-        >
-          {tierPrefs.show_advanced ? '▾' : '▸'} Advanced ({advCount})
-        </button>
-        <button
-          onClick={() => setTierPref('show_expert', !tierPrefs.show_expert)}
-          style={{
-            fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
-            padding: '3px 10px', borderRadius: 3, cursor: 'pointer', border: 'none',
-            background: tierPrefs.show_expert ? '#3b1f6d' : '#1a1a1a',
-            color: tierPrefs.show_expert ? '#d8b4fe' : '#475569',
-            transition: 'all 0.15s',
-          }}
-        >
-          {tierPrefs.show_expert ? '▾' : '▸'} Expert ({expCount})
-        </button>
+
+        {/* ── View toggle: ANNUAL | SCHEDULE ── */}
+        <span style={{ fontFamily: MONO, fontSize: 7, color: '#475569', letterSpacing: '0.05em' }}>VIEW:</span>
+        {(['ANNUAL', 'SCHEDULE'] as const).map(v => (
+          <button
+            key={v}
+            onClick={() => setViewMode(v)}
+            style={{
+              fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
+              padding: '3px 10px', borderRadius: 3, cursor: 'pointer', border: 'none',
+              background: viewMode === v ? (v === 'SCHEDULE' ? '#1a2e1a' : '#1e3a5f') : '#1a1a1a',
+              color: viewMode === v ? (v === 'SCHEDULE' ? '#86efac' : '#bfdbfe') : '#475569',
+              transition: 'all 0.15s',
+            }}
+          >
+            {v}
+          </button>
+        ))}
+
+        {viewMode === 'ANNUAL' && (
+          <>
+            <span style={{ fontFamily: MONO, fontSize: 7, color: '#334155', marginLeft: 6 }}>|</span>
+            <span style={{ fontFamily: MONO, fontSize: 7, color: '#475569' }}>SHOW:</span>
+            <button
+              onClick={() => setTierPref('show_advanced', !tierPrefs.show_advanced)}
+              style={{
+                fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
+                padding: '3px 10px', borderRadius: 3, cursor: 'pointer', border: 'none',
+                background: tierPrefs.show_advanced ? '#1e3a5f' : '#1a1a1a',
+                color: tierPrefs.show_advanced ? '#bfdbfe' : '#475569',
+                transition: 'all 0.15s',
+              }}
+            >
+              {tierPrefs.show_advanced ? '▾' : '▸'} Advanced ({advCount})
+            </button>
+            <button
+              onClick={() => setTierPref('show_expert', !tierPrefs.show_expert)}
+              style={{
+                fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
+                padding: '3px 10px', borderRadius: 3, cursor: 'pointer', border: 'none',
+                background: tierPrefs.show_expert ? '#3b1f6d' : '#1a1a1a',
+                color: tierPrefs.show_expert ? '#d8b4fe' : '#475569',
+                transition: 'all 0.15s',
+              }}
+            >
+              {tierPrefs.show_expert ? '▾' : '▸'} Expert ({expCount})
+            </button>
+          </>
+        )}
       </div>
 
+      {/* ── SCHEDULE view: monthly timeline grid ──────────────────────────────── */}
+      {viewMode === 'SCHEDULE' && onMonthlyChange && (() => {
+        const holdMonths = holdYears * 12;
+        const scheduleRows: MonthlyScheduleRow[] = MONTHLY_LEASING_ROWS.map(def => ({
+          key: def.key,
+          label: def.label,
+          unit: def.unit,
+          enumValues: def.enumValues,
+          enumLabels: def.enumLabels,
+          labelColor: def.labelColor,
+          getBaseline: (_absMonth) => {
+            if (!def.pathKey) return def.platformDefault ?? null;
+            const ov = leasingPathOverrides[def.pathKey];
+            if (ov != null) {
+              if (def.unit === 'enum' && typeof ov === 'number' && def.enumValues) {
+                return def.enumValues[ov] ?? def.platformDefault ?? null;
+              }
+              return ov as number | string;
+            }
+            return def.platformDefault ?? null;
+          },
+        }));
+        return (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Schedule header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '4px 16px', background: '#0d0d0d', borderBottom: '1px solid #141414', flexShrink: 0,
+            }}>
+              <span style={{ fontFamily: MONO, fontSize: 7, color: '#334155' }}>
+                MONTHLY SCHEDULE — {holdMonths} months · baseline from ANNUAL tab values
+              </span>
+              <div style={{ flex: 1 }} />
+              <span style={{ fontFamily: MONO, fontSize: 7, color: '#334155' }}>
+                {holdYears}yr hold
+              </span>
+            </div>
+            <div style={{ flex: 1, overflowX: 'auto', overflowY: 'auto' }}>
+              <MonthlyScheduleGrid
+                rows={scheduleRows}
+                holdMonths={holdMonths}
+                overrides={monthlyOverrides}
+                onCellChange={onMonthlyChange}
+              />
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── ANNUAL view: column header + category blocks ───────────────────────── */}
+      {viewMode === 'ANNUAL' && (
+        <>
       {/* ── Column header ── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
@@ -650,6 +807,8 @@ export function LeasingAssumptionsTab({ financials, leaseMode, leasingPathOverri
         )}
         <div style={{ height: 40 }} />
       </div>
+      </>
+    )}
     </div>
   );
 }

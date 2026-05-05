@@ -653,6 +653,73 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
 });
 
 /**
+ * ─── Monthly assumption overrides (Section 5A traffic + LEASING schedule) ────
+ *
+ * GET  /:dealId/assumptions/monthly
+ *   Returns all stored monthly overrides for the deal as:
+ *   { overrides: { [fieldKey]: { [absMonth]: string } } }
+ *
+ * PATCH /:dealId/assumptions/monthly
+ *   Body: { field: string, month: number, value: string | null }
+ *   Upserts or clears a single cell.  value=null deletes the row.
+ */
+router.get('/:dealId/assumptions/monthly', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId ?? 'unknown';
+    const own = await pool.query(`SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`, [dealId, userId]);
+    if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized' });
+
+    const { rows } = await pool.query(
+      `SELECT field_key, abs_month, value FROM deal_monthly_assumptions WHERE deal_id = $1 ORDER BY field_key, abs_month`,
+      [dealId]
+    );
+    const overrides: Record<string, Record<number, string>> = {};
+    for (const row of rows) {
+      if (!overrides[row.field_key]) overrides[row.field_key] = {};
+      overrides[row.field_key][row.abs_month] = row.value;
+    }
+    res.json({ success: true, data: { overrides } });
+  } catch (err: any) {
+    logger.error('GET monthly assumptions error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/:dealId/assumptions/monthly', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { field, month, value } = req.body as { field: string; month: number; value: string | null };
+    const userId = req.user?.userId ?? 'unknown';
+
+    if (!field || typeof field !== 'string') return res.status(400).json({ error: 'field required' });
+    if (!Number.isInteger(month) || month < 1 || month > 120) return res.status(400).json({ error: 'month must be 1–120' });
+
+    const own = await pool.query(`SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`, [dealId, userId]);
+    if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized' });
+
+    if (value === null || value === undefined) {
+      await pool.query(
+        `DELETE FROM deal_monthly_assumptions WHERE deal_id = $1 AND field_key = $2 AND abs_month = $3`,
+        [dealId, field, month]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO deal_monthly_assumptions (deal_id, field_key, abs_month, value, updated_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (deal_id, field_key, abs_month)
+         DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+        [dealId, field, month, String(value)]
+      );
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error('PATCH monthly assumptions error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * ─── User-added ancillary income lines (Task #519) ──────────────────────────
  * Custom rows that don't fit the canonical other_income_breakdown categories
  * (e.g. "Solar revenue", "Cell tower lease", "Vending"). Each line carries a
