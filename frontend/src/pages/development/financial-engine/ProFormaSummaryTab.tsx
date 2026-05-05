@@ -390,7 +390,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     recognizedAmount: number | null;
     earnedAmount: number | null;
     detail: ReturnType<typeof aggregateConcessionDetail>;
-  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null });
+    calendarYearTotal: number | null;
+    fiscalYearTotal: number | null;
+  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null, calendarYearTotal: null, fiscalYearTotal: null });
 
   const openY1Drill = useCallback(() => {
     const rec = data?.concessionRecognition;
@@ -407,12 +409,16 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     const sum = yyyymms.reduce((s, k) => s + (rec.monthly[k] ?? 0), 0);
     const earnedRow = data.proforma.year1.find(r => r.field === 'concessions');
     const earned = earnedRow?.resolved != null ? Math.abs(earnedRow.resolved) : null;
+    const calYr = rec.by_calendar_year?.[String(startYear)] ?? null;
+    const fisYr = rec.by_fiscal_year?.[String(startYear)] ?? null;
     setConDrill({
       open: true,
       periodLabel: `Y1 FROM ${data.closeDate}`,
       recognizedAmount: sum,
       earnedAmount: earned,
       detail: aggregateConcessionDetail(rec.monthly_detail, yyyymms),
+      calendarYearTotal: calYr,
+      fiscalYearTotal: fisYr,
     });
   }, [data]);
 
@@ -840,6 +846,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     onSaveCorrection={handleSaveCorrection}
                     onResetCorrection={handleResetCorrection}
                     evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
+                    onRowClick={isConcessionsOverridden ? openY1Drill : undefined}
                   />
                   {isConcessionsOverridden && (
                     <tr style={{ background: '#110e00' }}>
@@ -1042,6 +1049,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       recognizedAmount={conDrill.recognizedAmount}
       earnedAmount={conDrill.earnedAmount}
       detail={conDrill.detail}
+      calendarYearTotal={conDrill.calendarYearTotal}
+      fiscalYearTotal={conDrill.fiscalYearTotal}
     />
     </>
   );
@@ -1735,7 +1744,7 @@ const COLLISION_COLOR: Record<string, string> = {
   minor:    '#94a3b8',
 };
 
-function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved }: {
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved, onRowClick }: {
   row: OperatingStatementRow;
   isEven: boolean;
   shade?: 'blue' | 'warm' | 'purple';
@@ -1750,6 +1759,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   ancillaryOpen?: boolean;
   /** Resolved evidence metadata + canonical field_path for this row (null when no underwriting evidence exists) */
   evidenceResolved?: { meta: EvidenceFieldMeta; path: string } | null;
+  /** Optional row-level click handler (e.g. concession drilldown). Label cell click dispatches evidence event instead. */
+  onRowClick?: () => void;
 }) {
   const viewMode          = useDealStore(s => s.viewMode);
   const platformColSource = useDealStore(s => s.platformColSource);
@@ -1831,11 +1842,15 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   }
 
   return (
-    <tr style={{ background: rowBg, borderBottom: `1px solid #161616` }}>
-      {/* LINE ITEM — click label to open evidence panel */}
+    <tr
+      style={{ background: rowBg, borderBottom: `1px solid #161616`, cursor: onRowClick ? 'pointer' : undefined }}
+      onClick={onRowClick}
+    >
+      {/* LINE ITEM — click label to open evidence panel (stops propagation so tr onClick doesn't fire) */}
       <td
         title="Click to view evidence for this assumption"
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation();
           window.dispatchEvent(new CustomEvent('fe-evidence-click', {
             detail: { path: evidenceResolved?.path ?? row.field, label: row.label },
           }));

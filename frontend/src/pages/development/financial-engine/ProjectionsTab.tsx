@@ -1041,7 +1041,9 @@ export function ProjectionsTab({
     recognizedAmount: number | null;
     earnedAmount: number | null;
     detail: AggregatedConcessionDetail | null;
-  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null });
+    calendarYearTotal: number | null;
+    fiscalYearTotal: number | null;
+  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null, calendarYearTotal: null, fiscalYearTotal: null });
 
   // Narrative load — non-critical, fires once
   const loadNarrative = useCallback(async () => {
@@ -1350,6 +1352,8 @@ export function ProjectionsTab({
                                           recognizedAmount: recog.by_calendar_year[String(calYr)] ?? null,
                                           earnedAmount: (proj.concessions as number | null | undefined) ?? null,
                                           detail: aggregateConcessionDetail(recog.monthly_detail, yyyymms),
+                                          calendarYearTotal: recog.by_calendar_year[String(calYr)] ?? null,
+                                          fiscalYearTotal: recog.by_fiscal_year?.[String(calYr)] ?? null,
                                         });
                                       } else {
                                         setDrilldown(buildDrilldown(row, proj, financials));
@@ -1395,12 +1399,15 @@ export function ProjectionsTab({
                                         if (yyyymm) {
                                           const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                                           const mLabel = `${MONTHS[parseInt(yyyymm.slice(4), 10) - 1]} ${yyyymm.slice(0, 4)}`;
+                                          const mYr = yyyymm.slice(0, 4);
                                           setConcessionDrill({
                                             open: true,
                                             periodLabel: mLabel,
                                             recognizedAmount: recog.monthly[yyyymm] ?? null,
                                             earnedAmount: subVal,
                                             detail: aggregateConcessionDetail(recog.monthly_detail, [yyyymm]),
+                                            calendarYearTotal: recog.by_calendar_year?.[mYr] ?? null,
+                                            fiscalYearTotal: recog.by_fiscal_year?.[mYr] ?? null,
                                           });
                                           return;
                                         }
@@ -1468,6 +1475,8 @@ export function ProjectionsTab({
                                           recognizedAmount: recognizedAmt,
                                           earnedAmount: null,
                                           detail: aggregateConcessionDetail(recog.monthly_detail, yyyymms),
+                                          calendarYearTotal: recog.by_calendar_year?.[String(currentCalendarYear)] ?? null,
+                                          fiscalYearTotal: recog.by_fiscal_year?.[String(currentCalendarYear)] ?? null,
                                         });
                                       }}
                                       style={{ padding: '3px 8px', textAlign: 'right', color: val != null ? BT.text.amber : BT.text.muted, fontWeight: 400, cursor: calYear === currentCalendarYear ? 'pointer' : 'default' }}
@@ -1616,6 +1625,8 @@ export function ProjectionsTab({
       recognizedAmount={concessionDrill.recognizedAmount}
       earnedAmount={concessionDrill.earnedAmount}
       detail={concessionDrill.detail}
+      calendarYearTotal={concessionDrill.calendarYearTotal}
+      fiscalYearTotal={concessionDrill.fiscalYearTotal}
     />
     </>
   );

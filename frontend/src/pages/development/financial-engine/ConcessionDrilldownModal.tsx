@@ -90,12 +90,15 @@ interface Props {
   recognizedAmount: number | null;
   earnedAmount: number | null;
   detail: AggregatedConcessionDetail | null;
+  calendarYearTotal?: number | null;
+  fiscalYearTotal?: number | null;
 }
 
 type ViewToggle = 'recognized' | 'earned';
 
 export function ConcessionDrilldownModal({
   open, onClose, periodLabel, recognizedAmount, earnedAmount, detail,
+  calendarYearTotal, fiscalYearTotal,
 }: Props) {
   const [view, setView] = useState<ViewToggle>('recognized');
 
@@ -222,6 +225,32 @@ export function ConcessionDrilldownModal({
             </div>
           )}
         </div>
+
+        {/* Fiscal / Calendar split — shown only when fiscal ≠ calendar for this period */}
+        {calendarYearTotal != null && fiscalYearTotal != null &&
+         Math.round(calendarYearTotal) !== Math.round(fiscalYearTotal) && (
+          <div style={{
+            borderBottom: `1px solid ${BORDER}`,
+            padding: '6px 14px',
+            background: '#0b0f08',
+            display: 'flex', gap: 24,
+          }}>
+            <div>
+              <div style={{ fontSize: 7, color: MUTED, letterSpacing: 0.5, marginBottom: 2 }}>CALENDAR YEAR</div>
+              <div style={{ fontSize: 11, color: TEAL, fontWeight: 700 }}>{fmt$(calendarYearTotal)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 7, color: MUTED, letterSpacing: 0.5, marginBottom: 2 }}>FISCAL YEAR</div>
+              <div style={{ fontSize: 11, color: TEAL, fontWeight: 700 }}>{fmt$(fiscalYearTotal)}</div>
+            </div>
+            <div style={{ marginLeft: 'auto', alignSelf: 'center' }}>
+              <div style={{ fontSize: 7, color: MUTED, letterSpacing: 0.5, marginBottom: 2 }}>DIFFERENCE</div>
+              <div style={{ fontSize: 9, color: Math.abs(calendarYearTotal - fiscalYearTotal) > 0 ? BT.text.amber : MUTED }}>
+                {calendarYearTotal > fiscalYearTotal ? '+' : ''}{fmt$(calendarYearTotal - fiscalYearTotal)}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Body */}
         <div style={{ padding: '0 0 12px' }}>

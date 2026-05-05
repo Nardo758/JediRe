@@ -46,7 +46,9 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
     recognizedAmount: number | null;
     earnedAmount: number | null;
     detail: AggregatedConcessionDetail | null;
-  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null });
+    calendarYearTotal: number | null;
+    fiscalYearTotal: number | null;
+  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null, calendarYearTotal: null, fiscalYearTotal: null });
 
   const openConDrill = useCallback(() => {
     const rec = f9Financials?.concessionRecognition;
@@ -56,12 +58,16 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
     const recognized = rec.by_calendar_year?.[String(currentYear)] ?? null;
     const earnedRow = f9Financials?.proforma.year1.find(r => r.field === 'concessions');
     const earned = earnedRow?.resolved != null ? Math.abs(earnedRow.resolved) : null;
+    const calYr = rec.by_calendar_year?.[String(currentYear)] ?? null;
+    const fisYr = rec.by_fiscal_year?.[String(currentYear)] ?? null;
     setConDrill({
       open: true,
       periodLabel: `${currentYear} CONCESSIONS`,
       recognizedAmount: recognized,
       earnedAmount: earned,
       detail: aggregateConcessionDetail(rec.monthly_detail, yyyymms),
+      calendarYearTotal: calYr,
+      fiscalYearTotal: fisYr,
     });
   }, [f9Financials]);
 
@@ -229,24 +235,27 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
       </SectionPanel>
 
       {f9Financials?.concessionRecognition && (
-        <SectionPanel title="CONCESSION ANALYSIS" subtitle="Click row to open per-period breakdown" borderColor={BT.text.cyan}>
-          <div
-            onClick={openConDrill}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '6px 10px', cursor: 'pointer',
-            }}
-            title="Click to open concession amortization drilldown"
-          >
-            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
-              {new Date().getFullYear()} RECOGNIZED CONCESSIONS
-            </span>
-            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber, fontWeight: 600 }}>
-              {f9Financials.concessionRecognition.by_calendar_year?.[String(new Date().getFullYear())] != null
-                ? `$${Math.abs(f9Financials.concessionRecognition.by_calendar_year[String(new Date().getFullYear())]).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-                : '—'}
-              <span style={{ marginLeft: 6, fontSize: 7, color: BT.text.muted }}>▸ DRILLDOWN</span>
-            </span>
+        <SectionPanel title="DEAL NOTES" subtitle="Supplemental model annotations" borderColor={BT.text.muted}>
+          <div style={{ padding: '6px 10px', fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.7 }}>
+            Concession recognition (straight-line, §14) totals{' '}
+            {f9Financials.concessionRecognition.by_calendar_year?.[String(new Date().getFullYear())] != null
+              ? <span style={{ color: BT.text.amber, fontWeight: 600 }}>
+                  ${Math.abs(f9Financials.concessionRecognition.by_calendar_year[String(new Date().getFullYear())]).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </span>
+              : <span style={{ color: BT.text.muted }}>—</span>
+            }{' '}
+            recognized in {new Date().getFullYear()}.{' '}
+            <button
+              onClick={openConDrill}
+              style={{
+                background: 'none', border: 'none', padding: 0,
+                color: BT.text.cyan, fontFamily: MONO, fontSize: 9,
+                cursor: 'pointer', textDecoration: 'underline',
+              }}
+              title="Open concession amortization drilldown"
+            >
+              View amortization breakdown ↗
+            </button>
           </div>
         </SectionPanel>
       )}
@@ -259,6 +268,8 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
       recognizedAmount={conDrill.recognizedAmount}
       earnedAmount={conDrill.earnedAmount}
       detail={conDrill.detail}
+      calendarYearTotal={conDrill.calendarYearTotal}
+      fiscalYearTotal={conDrill.fiscalYearTotal}
     />
   </>
   );
