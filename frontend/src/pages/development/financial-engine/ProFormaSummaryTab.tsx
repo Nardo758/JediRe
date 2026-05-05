@@ -1903,7 +1903,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
         <td
           onMouseEnter={t12Val != null ? () => setHoverT12(true)  : undefined}
           onMouseLeave={t12Val != null ? () => setHoverT12(false) : undefined}
-          onClick={t12Val != null ? async () => {
+          onClick={t12Val != null ? async (e) => {
+            e.stopPropagation();
             if (isT12ActiveOverride) {
               setOptimisticResolved(undefined);
               await onResetCorrection(row.field);
@@ -1947,7 +1948,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
 
       {/* RESOLVED (BUILD_OWN) / BROKER NOI (BROKER_VIEW) */}
       <td
-        onClick={!isBroker && evidenceResolved ? () => {
+        onClick={!isBroker && evidenceResolved ? (e) => {
+          e.stopPropagation();
           window.dispatchEvent(new CustomEvent('fe-evidence-click', {
             detail: { path: evidenceResolved.path, label: row.label },
           }));
@@ -2030,7 +2032,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
 
       {/* SOURCE BADGE — shows financials-API source + evidence tier badge when underwriting evidence exists */}
       <td
-        onClick={evidenceResolved ? () => {
+        onClick={evidenceResolved ? (e) => {
+          e.stopPropagation();
           window.dispatchEvent(new CustomEvent('fe-evidence-click', {
             detail: { path: evidenceResolved.path, label: row.label },
           }));

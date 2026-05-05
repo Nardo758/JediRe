@@ -1516,9 +1516,68 @@ export function ProjectionsTab({
                                     </td>
                                   );
                                 })
-                              : subCols.map(c => (
-                                  <td key={c.periodKey} style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted, fontSize: 8 }}>—</td>
-                                ))
+                              : subCols.map(c => {
+                                  const prefix = c.periodKey[0]; // 'M' or 'Q'
+                                  const periodNum = parseInt(c.periodKey.slice(1, 3), 10);
+                                  const yearNum   = parseInt(c.periodKey.slice(4), 10);
+                                  if (prefix === 'M') {
+                                    const offset = (yearNum - 1) * 12 + (periodNum - 1);
+                                    const yyyymm = yyyymmFromClose(financials?.closeDate, offset);
+                                    const mVal   = yyyymm ? (recog.monthly[yyyymm] ?? null) : null;
+                                    const mYr    = yyyymm ? yyyymm.slice(0, 4) : null;
+                                    return (
+                                      <td
+                                        key={c.periodKey}
+                                        onClick={() => {
+                                          if (!mVal || !yyyymm || !recog.monthly_detail) return;
+                                          const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                                          const mLabel = `${MONTHS[parseInt(yyyymm.slice(4), 10) - 1]} ${yyyymm.slice(0, 4)}`;
+                                          setConcessionDrill({
+                                            open: true,
+                                            periodLabel: `${mLabel} RECOGNIZED`,
+                                            recognizedAmount: mVal,
+                                            earnedAmount: null,
+                                            detail: aggregateConcessionDetail(recog.monthly_detail, [yyyymm]),
+                                            source: 'recognized',
+                                            calendarYearTotal: mYr ? recog.by_calendar_year?.[mYr] ?? null : null,
+                                            fiscalYearTotal: mYr ? recog.by_fiscal_year?.[mYr] ?? null : null,
+                                          });
+                                        }}
+                                        style={{ padding: '3px 6px', textAlign: 'right', color: mVal != null ? BT.text.amber : BT.text.muted, fontSize: 8, cursor: mVal != null ? 'pointer' : 'default' }}
+                                        title={mVal != null ? 'Click for recognized concession breakdown' : undefined}
+                                      >
+                                        {mVal != null ? fmt$(-Math.abs(mVal)) : '—'}
+                                      </td>
+                                    );
+                                  }
+                                  // quarterly
+                                  const baseOffset = (yearNum - 1) * 12 + (periodNum - 1) * 3;
+                                  const qMms = ([0, 1, 2].map(i => yyyymmFromClose(financials?.closeDate, baseOffset + i)).filter(Boolean)) as string[];
+                                  const qVal  = qMms.length > 0 ? qMms.reduce((s, k) => s + (recog.monthly[k] ?? 0), 0) || null : null;
+                                  const qYr   = qMms.length > 0 ? qMms[0].slice(0, 4) : null;
+                                  return (
+                                    <td
+                                      key={c.periodKey}
+                                      onClick={() => {
+                                        if (!qVal || qMms.length === 0 || !recog.monthly_detail) return;
+                                        setConcessionDrill({
+                                          open: true,
+                                          periodLabel: `Q${periodNum} YR${yearNum} RECOGNIZED`,
+                                          recognizedAmount: qVal,
+                                          earnedAmount: null,
+                                          detail: aggregateConcessionDetail(recog.monthly_detail, qMms),
+                                          source: 'recognized',
+                                          calendarYearTotal: qYr ? recog.by_calendar_year?.[qYr] ?? null : null,
+                                          fiscalYearTotal: qYr ? recog.by_fiscal_year?.[qYr] ?? null : null,
+                                        });
+                                      }}
+                                      style={{ padding: '3px 6px', textAlign: 'right', color: qVal != null ? BT.text.amber : BT.text.muted, fontSize: 8, cursor: qVal != null ? 'pointer' : 'default' }}
+                                      title={qVal != null ? 'Click for recognized concession breakdown' : undefined}
+                                    >
+                                      {qVal != null ? fmt$(-Math.abs(qVal)) : '—'}
+                                    </td>
+                                  );
+                                })
                             }
                           </tr>
                         );
