@@ -200,7 +200,7 @@ export const InlineAssumptionBlock = forwardRef<AssumptionBlockRef, InlineAssump
           {/* Body */}
           {expanded && (
             <div id={`iab-body-${blockId}`}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table style={{ width: 'auto', minWidth: 380, borderCollapse: 'collapse' }}>
                 {/* Column headers */}
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
