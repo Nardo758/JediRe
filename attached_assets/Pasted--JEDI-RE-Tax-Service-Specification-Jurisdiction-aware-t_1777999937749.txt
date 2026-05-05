@@ -1,0 +1,842 @@
+# JEDI RE — Tax Service Specification
+
+> Jurisdiction-aware tax math engine powering the F9 Taxes tab (Sections A/B/C/D).
+>
+> Companion to `AGENT_TASK_INVENTORY.md` Tasks 6.5 (tax math) and 6.10 (insurance ruleset pattern). Implements the deterministic-service pattern referenced in `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` ground rule #10 ("Nothing is hardcoded to Florida outside the FL ruleset files").
+>
+> Classification: **C** (deterministic service). Not an agent. Agents have a narrow onboarding/flagging role only — see §11.
+
+---
+
+## 1. Purpose & Scope
+
+The Tax Service computes the full tax picture for any deal across four sections that mirror the F9 Taxes tab:
+
+- **Section A — Real Estate Tax** (annual ad valorem, caps, exemptions, reassessment)
+- **Section B — Tangible Personal Property (TPP)** (FF&E, appliances, equipment)
+- **Section C — Income Tax & Depreciation** (federal depreciation, bonus dep, cost seg, state income tax, conformity)
+- **Section D — Transfer Taxes & Doc Stamps** (deed transfer, intangible tax, county surtaxes, recording fees)
+
+It is the single source of truth for every tax line item that flows into:
+
+- F9 ProForma → Operating Expenses → Property Taxes (Section A + B)
+- F9 ProForma → Below-Line → Depreciation Shield (Section C federal)
+- F9 ProForma → Below-Line → Income Tax (Section C state)
+- F9 Sources & Uses → Closing Costs → Transfer Taxes (Section D)
+- M14 Risk → Tax Reassessment Risk (uses ruleset's `reassessmentOnSale`)
+- Deal Capsule → Cost Basis → Acquisition Costs (Section D)
+
+It is **NOT** an agent. It is a deterministic TypeScript service with pluggable rulesets per jurisdiction.
+
+---
+
+## 2. Architectural Principles
+
+All inherited from existing platform docs; restated here so they apply unambiguously to this work.
+
+1. **Deterministic over agentic.** Tax computation is `if X then Y` math. No LLM in the hot path. (`REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` GR#8)
+2. **Ruleset pattern from day one.** No `if (state === 'FL')` outside `rulesets/fl/`. (GR#10)
+3. **Three-layer data model.** Rule mechanics in TypeScript, annual rates in versioned config, per-deal data via runtime fetch. Mixing layers is the bug.
+4. **LayeredValue everywhere.** Every output field wraps in `LayeredValue<T>` with source provenance. Tier ordering: `t12_or_tax_bill` > `tax_service_computed` > `agent_research` > `unresolved`.
+5. **Cache aggressively, invalidate by fiscal year.** Jurisdiction-level data (millage) cached per-county per-year; parcel data cached per-parcel per-year.
+6. **Composite resolution.** Every property resolves three stacked rulesets: federal (always), state (one of FL/TX/GA/...), county overlay (optional). The composer walks the stack.
+7. **No UI changes required.** F9 layout (4 sections × 4-column grid) already exists; this spec populates cells, doesn't restructure the tab.
+
+---
+
+## 3. Three-Layer Data Model
+
+| Layer | Storage | Cadence | Owner | Example |
+|---|---|---|---|---|
+| **Rule mechanics** | TypeScript code in `src/services/tax/rulesets/` | Generational — rarely | Engineering | "FL caps non-homestead AV growth at 10%/yr" |
+| **Annual rate sheets** | Versioned config in `src/services/tax/rateSheets/` | Yearly — TRIM cycle, legislative session, IRC | Ops + Engineering | "Miami-Dade 2026 aggregate millage = 19.8344"; "2026 bonus dep = 20%" |
+| **Per-deal data** | Runtime fetch via `PropertyAppraiserFetcher` + tax bill PDF parser | Per-deal | `LayeredValue` provenance | "464 Bishop assessed at $X; homestead = false" |
+
+This split is the most important architectural decision in the spec. Violating it (e.g. embedding 2026 millage in `fl.ruleset.ts`) silently corrupts 2027 deals and is the failure mode every refactor attempt has produced.
+
+---
+
+## 4. Composition Model
+
+Every property has **three stacked rulesets**: federal, state, county. The Tax Service walks the stack per section.
+
+```typescript
+interface RulesetStack {
+  federal: TaxRuleset;          // always present
+  state:   TaxRuleset;          // FL, TX, GA, ... or default
+  county:  TaxRuleset | null;   // Miami-Dade, Harris, Fulton, ... optional
+}
+
+function resolveRulesetStack(deal: Deal): RulesetStack {
+  return {
+    federal: federalRuleset,
+    state:   STATE_RULESETS[deal.state]                              ?? defaultStateRuleset,
+    county:  COUNTY_RULESETS[`${deal.state}-${deal.county}`]         ?? null,
+  };
+}
+```
+
+### Section → Stack mapping
+
+| Section | Federal | State | County |
+|---|:-:|:-:|:-:|
+| A · Real Estate Tax | — | ✅ | ✅ (millage, surtaxes, special districts) |
+| B · TPP | — | ✅ (does state tax TPP at all?) | ✅ (TPP millage, exemption threshold) |
+| C · Income & Depreciation | ✅ (rates, bonus dep schedule, cost seg eligibility) | ✅ (state income tax rate, conformity) | — |
+| D · Transfer Taxes | — | ✅ (deed stamp, intangible tax) | ✅ (Miami-Dade $0.45/$100 surtax) |
+
+---
+
+## 5. The `TaxRuleset` Interface (Full Surface)
+
+```typescript
+// src/services/tax/types.ts
+
+export interface TaxRuleset {
+  jurisdiction: string;                       // 'federal', 'FL', 'FL-Miami-Dade', etc.
+  level: 'federal' | 'state' | 'county';
+  rateSheetVersion: string;                   // e.g. 'fl-2026.v1'
+
+  // ── Section A · Real Estate Tax ────────────────────────────────
+  annualPropertyTax(ctx: TaxContext, year: number): TaxLineResult;
+  annualAssessmentCap(): number | null;
+  reassessmentOnSale(ctx: TaxContext): 'full' | 'capped' | 'none';
+  millageBreakdown(ctx: TaxContext): MillageLine[];
+  realEstateExemptions(ctx: TaxContext): Exemption[];
+
+  // ── Section B · Tangible Personal Property ─────────────────────
+  taxesTPP(): boolean;
+  tppTax(ctx: TPPContext, year: number): TaxLineResult;
+  tppExemptionAmount(): number;
+  tppMillage(ctx: TaxContext): number;
+  tppFilingRequirement(): TPPFiling | null;
+  tppDepreciationSchedule(): TPPDepTable;
+
+  // ── Section C · Income Tax & Depreciation ──────────────────────
+  // Federal ruleset owns these:
+  depreciationLife(propertyType: AssetClass): number;
+  bonusDepreciationPct(placedInServiceYear: number): number;
+  costSegEligible(propertyType: AssetClass): boolean;
+  costSegReclassRanges(propertyType: AssetClass): CostSegRanges;
+  federalIncomeTaxRate(entityType: EntityType, taxableIncome: number): number;
+  // State ruleset owns these:
+  stateIncomeTaxRate(entityType: EntityType): number;
+  conformsToBonusDep(): boolean;
+  conformsToCostSeg(): boolean;
+
+  // ── Section D · Transfer Taxes & Doc Stamps ────────────────────
+  acquisitionTransferTax(price: number, deal: Deal): TransferTaxBreakdown;
+  dispositionTransferTax(price: number, deal: Deal): TransferTaxBreakdown;
+  intangibleTax(loanAmount: number): number;
+  recordingFees(docType: 'deed' | 'mortgage' | 'assignment', pages: number): number;
+  countySurtax(price: number): number;
+
+  // ── Metadata ───────────────────────────────────────────────────
+  requiresInputs(section: 'A' | 'B' | 'C' | 'D'): string[];
+  rateSheetAsOf(): Date;
+  rateSheetValidThrough(): Date;
+}
+```
+
+Not every level implements every method. State-only and county-only rulesets return `0` / `null` / `false` from methods owned by other levels. The composer (§7) handles this cleanly.
+
+### Supporting types
+
+```typescript
+export interface TaxContext {
+  parcel_id: string;
+  state: string;
+  county: string;
+  city?: string;
+  // From PropertyAppraiserFetcher
+  just_value: number;
+  assessed_value: number;
+  taxable_value: number;
+  millage_aggregate: number;
+  exemptions: Exemption[];
+  homestead_status: boolean;
+  last_qualifying_sale: { date: Date; price: number } | null;
+  // From deal
+  purchase_price: number;
+  purchase_date: Date;
+  loan_amount: number;
+  property_type: AssetClass;
+  entity_type: EntityType;
+  hold_period_years: number;
+  exit_year: number;
+  exit_price_estimate: number;
+  // From cost basis allocation
+  land_allocation_pct: number;       // typically 15-25% in multifamily
+  building_basis: number;             // (purchase + closing - land) — depreciable basis
+}
+
+export interface TPPContext {
+  // Subset of TaxContext + TPP-specific fields
+  ff_e_assessed_value: number;
+  ff_e_age_years: number;
+  ff_e_filing_status: 'filed' | 'waived' | 'not_filed';
+}
+
+export interface TaxLineResult {
+  amount: number;                              // dollars
+  formula: string;                             // human-readable formula trace
+  inputs: Record<string, { value: any; source: string }>;
+  reassessment_event_in_year: boolean;         // for the red bar in F9 UI
+  confidence: 'high' | 'medium' | 'low';
+  notes: string[];
+}
+
+export interface TransferTaxBreakdown {
+  state_deed_stamp: number;
+  county_surtax: number;
+  intangible_tax: number;
+  mortgage_doc_stamp: number;
+  recording_fees: number;
+  total: number;
+  formula: string;
+}
+
+export interface MillageLine {
+  authority: string;            // 'Miami-Dade County', 'School Board', 'Water Mgmt'
+  rate: number;                 // mills (per $1000 of taxable value)
+  applies_to: 'all' | 'homestead' | 'non_homestead';
+}
+
+export type AssetClass = 'multifamily' | 'sfr' | 'retail' | 'office' | 'industrial' | 'hospitality';
+export type EntityType = 'individual' | 'pass_through' | 'c_corp' | 'reit' | 'partnership';
+```
+
+---
+
+## 6. Rate Sheet Schema
+
+Rate sheets are versioned JSON files. One per jurisdiction-year. Loaded at boot and cached in process memory.
+
+### File naming
+`src/services/tax/rateSheets/{jurisdiction}-{year}.json`
+
+Examples:
+- `federal-2026.json`
+- `fl-2026.json`
+- `fl-miami-dade-2026.json`
+- `ga-2026.json`
+- `ga-fulton-2026.json`
+- `tx-2026.json`
+- `tx-harris-2026.json`
+
+### Schema
+
+```typescript
+// src/services/tax/rateSheets/schema.ts
+
+export interface RateSheet {
+  jurisdiction: string;
+  level: 'federal' | 'state' | 'county';
+  year: number;
+  version: string;                  // e.g. 'fl-2026.v1'
+  as_of: string;                    // ISO date when rates were last verified
+  valid_through: string;            // ISO date when rates expire (typically end of fiscal year)
+  source_citations: SourceCitation[];
+
+  // Section A
+  millage?: {
+    aggregate?: number;
+    breakdown?: { authority: string; rate: number; applies_to?: string }[];
+  };
+  assessment_ratio?: number;        // GA: 0.40
+  exemption_dollar_amounts?: Record<string, number>;
+
+  // Section B
+  tpp?: {
+    taxed: boolean;
+    millage?: number | 'same_as_re';
+    exemption_amount?: number;
+    depreciation_schedule?: TPPDepTable;
+  };
+
+  // Section C — federal sheet only
+  bonus_depreciation?: { year: number; pct: number }[];
+  depreciation_lives?: Record<AssetClass, number>;
+  federal_income_tax_brackets?: TaxBracket[];
+  // Section C — state sheets
+  state_income_tax_rate?: { entity_type: EntityType; rate: number }[];
+  conforms_to_bonus_dep?: boolean;
+  conforms_to_cost_seg?: boolean;
+
+  // Section D
+  transfer_tax?: {
+    deed_rate_per_100?: number;       // FL: 0.70
+    intangible_rate_per_100?: number; // FL: 0.20
+    mortgage_stamp_rate_per_100?: number; // FL: 0.35
+    recording_fee_per_page?: number;
+  };
+  county_surtax?: {
+    rate_per_100: number;             // Miami-Dade: 0.45
+    applies_to: 'all' | 'non_homestead' | 'commercial';
+  };
+}
+
+interface SourceCitation {
+  field: string;                    // e.g. 'millage.aggregate'
+  source_url: string;               // gov source where rate was verified
+  retrieved_at: string;             // ISO timestamp
+  document_title?: string;
+}
+```
+
+### Refresh cadence
+
+| Level | Cadence | Trigger |
+|---|---|---|
+| Federal | Annual (after Dec congressional sessions, end of tax year) + ad-hoc on bills passed | Engineering PR |
+| State | Annual after legislative session ends | Engineering PR |
+| County | Annual post-TRIM (FL: ~Sept 15; GA: typically June; TX: varies by CAD) | Ops review + PR |
+
+A cron job (`tax/rateSheetStaleness.cron.ts`) checks `valid_through` weekly and queues an agent task when a sheet is within 30 days of expiry.
+
+---
+
+## 7. Composite Resolver (`taxService` Entry Point)
+
+```typescript
+// src/services/tax/taxService.ts
+
+export const taxService = {
+  /**
+   * Top-level entry — returns the full tax picture for a deal across all 4 sections.
+   * Called by CashFlow Agent, F9 UI loaders, M14 Risk, Sources & Uses.
+   */
+  async forecast(deal: Deal): Promise<TaxForecast> {
+    const stack = resolveRulesetStack(deal);
+    const ctx = await buildTaxContext(deal, stack);
+
+    return {
+      sectionA_realEstate: await computeSectionA(ctx, stack, deal),
+      sectionB_tpp:        await computeSectionB(ctx, stack, deal),
+      sectionC_income:     await computeSectionC(ctx, stack, deal),
+      sectionD_transfer:   await computeSectionD(ctx, stack, deal),
+      meta: {
+        ruleset_versions: {
+          federal: stack.federal.rateSheetVersion,
+          state:   stack.state.rateSheetVersion,
+          county:  stack.county?.rateSheetVersion ?? null,
+        },
+        computed_at: new Date(),
+      },
+    };
+  },
+
+  // Per-section entry points (used by F9 lazy loaders)
+  async sectionA(deal: Deal): Promise<SectionAResult> { /* ... */ },
+  async sectionB(deal: Deal): Promise<SectionBResult> { /* ... */ },
+  async sectionC(deal: Deal): Promise<SectionCResult> { /* ... */ },
+  async sectionD(deal: Deal): Promise<SectionDResult> { /* ... */ },
+};
+```
+
+### Composition rules per section
+
+```typescript
+function computeSectionA(ctx: TaxContext, stack: RulesetStack, deal: Deal) {
+  // Real Estate Tax: state mechanics + county millage/exemptions overlay
+  const baseLine = stack.state.annualPropertyTax(ctx, deal.year);
+  const countyLine = stack.county?.annualPropertyTax(ctx, deal.year) ?? null;
+
+  // County overlay can override state default millage; state owns cap formula
+  const merged = mergeRealEstateLines(baseLine, countyLine);
+  return {
+    annual_tax: merged,
+    millage_breakdown: stack.county?.millageBreakdown(ctx) ?? stack.state.millageBreakdown(ctx),
+    exemptions: stack.state.realEstateExemptions(ctx),
+    cap_pct: stack.state.annualAssessmentCap(),
+    reassessment_in_year_1: stack.state.reassessmentOnSale(ctx) === 'full',
+  };
+}
+
+function computeSectionC(ctx: TaxContext, stack: RulesetStack, deal: Deal) {
+  // Federal owns depreciation; state owns income tax rate + conformity
+  const fedDep = stack.federal.depreciationLife(deal.property_type);
+  const fedBonusPct = stack.federal.bonusDepreciationPct(deal.placed_in_service_year);
+  const stateConforms = stack.state.conformsToBonusDep();
+  const effectiveBonusPct = stateConforms ? fedBonusPct : 0;
+  // ... build out full Section C
+}
+```
+
+Detailed pseudocode for B and D in **Appendix A**.
+
+---
+
+## 8. `PropertyAppraiserFetcher` Contract
+
+(Already specified in prior architecture conversation — restated here for completeness.)
+
+```typescript
+// src/services/tax/dataSources/propertyAppraiserFetcher.ts
+
+export interface PropertyAppraiserFetcher {
+  getParcel(deal: Deal): Promise<NormalizedParcel | null>;
+  getTppRecord(deal: Deal): Promise<NormalizedTppRecord | null>;
+  canResolve(field: string, deal: Deal): boolean;
+}
+
+export interface NormalizedParcel {
+  parcel_id: string;
+  just_value: number | null;
+  assessed_value: number | null;
+  taxable_value: number | null;
+  millage_aggregate: number | null;
+  exemptions: Exemption[];
+  last_qualifying_sale: { date: Date; price: number } | null;
+  homestead_status: boolean | null;
+  source_metadata: { provider: string; fetched_at: Date; staleness_days: number };
+}
+```
+
+**Implementation:** `GeneralPropertyAppraiserFetcher` routes internally:
+
+1. **Tier 1** — tax bill PDF parser output (if user uploaded)
+2. **Tier 2** — commercial aggregator (ATTOM primary, ~$0.05–0.50 per parcel)
+3. **Tier 3** — county-direct adapter (only where built; optional optimization)
+4. **Tier 4** — agent-flagged research (returns `null`; CashFlow Agent picks up via `web_search`)
+
+County adapters are **internal implementation detail**, not first-class entries in any registry. Build only when ATTOM cost or staleness justifies it for a specific high-volume county.
+
+---
+
+## 9. File Structure
+
+```
+src/services/tax/
+├── taxService.ts                    # Entry point (§7)
+├── types.ts                          # All shared types (§5)
+├── compositeResolver.ts             # resolveRulesetStack + section composers
+├── rulesets/
+│   ├── federal.ruleset.ts            # Federal — Section C primary
+│   ├── default.ruleset.ts            # Generic state fallback
+│   ├── fl/
+│   │   ├── fl.ruleset.ts             # FL state-level
+│   │   ├── fl-miami-dade.ruleset.ts  # County overlays
+│   │   ├── fl-broward.ruleset.ts
+│   │   └── fl-palm-beach.ruleset.ts
+│   ├── ga/
+│   │   ├── ga.ruleset.ts
+│   │   └── ga-fulton.ruleset.ts
+│   └── tx/
+│       ├── tx.ruleset.ts
+│       └── tx-harris.ruleset.ts
+├── rateSheets/
+│   ├── schema.ts                     # RateSheet type + JSON Schema validator
+│   ├── loader.ts                     # Loads + validates sheets at boot
+│   ├── federal-2026.json
+│   ├── fl-2026.json
+│   ├── fl-miami-dade-2026.json
+│   ├── fl-broward-2026.json
+│   ├── fl-palm-beach-2026.json
+│   ├── ga-2026.json
+│   ├── ga-fulton-2026.json
+│   ├── tx-2026.json
+│   └── tx-harris-2026.json
+├── dataSources/
+│   ├── propertyAppraiserFetcher.ts   # General fetcher
+│   ├── attomAdapter.ts                # Primary aggregator
+│   ├── countyAdapters/
+│   │   ├── miamiDadeAdapter.ts        # Optional optimization
+│   │   ├── browardAdapter.ts          # Optional optimization
+│   │   └── ...
+│   └── normalizers.ts                 # Shape normalization
+├── caches/
+│   ├── jurisdictionCache.ts          # County × field × fiscal year
+│   └── parcelCache.ts                 # Parcel × fiscal year
+└── crons/
+    └── rateSheetStaleness.cron.ts    # Weekly sheet expiry check
+```
+
+---
+
+## 10. DB Schema
+
+Three new tables. All migrations idempotent.
+
+```sql
+-- Jurisdiction-level cache (millage rates, etc. — shared across all deals in jurisdiction)
+CREATE TABLE jurisdiction_tax_cache (
+  jurisdiction TEXT NOT NULL,         -- 'fl-miami-dade'
+  field        TEXT NOT NULL,         -- 'millage_aggregate'
+  fiscal_year  INT  NOT NULL,
+  value        JSONB NOT NULL,
+  source       TEXT NOT NULL,         -- 'attom', 'miami_dade_pa_api', 'manual'
+  fetched_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at   TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (jurisdiction, field, fiscal_year)
+);
+
+CREATE INDEX idx_jurisdiction_cache_expiry
+  ON jurisdiction_tax_cache(expires_at);
+
+-- Parcel-level cache (assessed value, exemptions — per property)
+CREATE TABLE parcel_tax_cache (
+  parcel_id    TEXT NOT NULL,
+  fiscal_year  INT  NOT NULL,
+  data         JSONB NOT NULL,        -- full NormalizedParcel
+  source       TEXT NOT NULL,
+  fetched_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at   TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (parcel_id, fiscal_year)
+);
+
+-- Rate sheet version registry (for audit trail + agent-onboarded sheet review queue)
+CREATE TABLE rate_sheet_versions (
+  jurisdiction TEXT NOT NULL,
+  year         INT  NOT NULL,
+  version      TEXT NOT NULL,         -- 'fl-miami-dade-2026.v1'
+  status       TEXT NOT NULL CHECK (status IN ('active', 'pending_review', 'deprecated')),
+  source       TEXT NOT NULL CHECK (source IN ('engineering', 'agent_research')),
+  agent_run_id UUID REFERENCES agent_runs(id),  -- non-null when status='pending_review'
+  content      JSONB NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  activated_at TIMESTAMPTZ,
+  PRIMARY KEY (jurisdiction, year, version)
+);
+
+CREATE UNIQUE INDEX idx_rate_sheet_active
+  ON rate_sheet_versions(jurisdiction, year)
+  WHERE status = 'active';
+```
+
+---
+
+## 11. The Agent's Narrow Role
+
+The Tax Service is deterministic. Agents do not compute tax. They have exactly three roles, all out-of-band of the hot path:
+
+### 11.1 New jurisdiction onboarding
+
+Deal lands in a state/county with no ruleset (e.g. Charleston SC). Behavior:
+
+1. `resolveRulesetStack` returns `state: defaultStateRuleset` and `county: null`
+2. `taxService.forecast()` runs against defaults; returns results with `confidence: 'low'` and `notes: ['Using default ruleset; jurisdiction-specific rules not yet modeled']`
+3. A Kafka event `jurisdiction_unmapped` fires; an Inngest function queues a Research Agent run
+4. Research Agent uses `web_search` to locate state and county tax rules, drafts a `RateSheet` JSON and a `TaxRuleset` skeleton
+5. Output written to `rate_sheet_versions` with `status='pending_review'`, `source='agent_research'`
+6. Engineering reviews, refines, promotes to `status='active'`
+
+### 11.2 Staleness flagging
+
+Weekly cron reads all `active` rate sheets where `valid_through < NOW() + INTERVAL '30 days'`. For each:
+
+1. Queues an agent task to re-verify the rates
+2. Agent compares current `RateSheet` against fresh web research, surfaces deltas
+3. If no changes detected, agent updates `valid_through` and increments minor version
+4. If changes detected, agent drafts new sheet → `pending_review`
+
+### 11.3 Edge cases the standard ruleset doesn't model
+
+TIF districts, recently-passed abatement programs, special assessment liens. When `PropertyAppraiserFetcher` returns a parcel flag like `in_tif_district: true` and the ruleset has no TIF handler:
+
+1. Tax line marked with `confidence: 'medium'` and `notes: ['TIF district detected but not modeled']`
+2. Research Agent invoked once per parcel to characterize the program
+3. Output stored in LayeredValue with `derived_from_search: true`, surfaces in F9 UI as a yellow advisory
+
+In all three roles, agents **propose**, humans **approve**, code **executes**. The agent never writes to the runtime computation path.
+
+---
+
+## 12. UI Integration (No Changes)
+
+F9 Taxes tab as currently designed (per uploaded screenshot) is correct. This service populates:
+
+| F9 Cell | Source | Tax Service Method |
+|---|---|---|
+| Section A · Real Estate Tax · PLATFORM column | `taxService.sectionA(deal).annual_tax` | `computeSectionA` |
+| Section A · `County millage X.XX mills` header text | `taxService.sectionA(deal).millage_breakdown` aggregate | derived |
+| Section A · Reassessment red bar | `taxService.sectionA(deal).reassessment_in_year_1` | from ruleset |
+| Section B · TPP · PLATFORM column | `taxService.sectionB(deal).annual_tax` | `computeSectionB` |
+| Section C · Annual Depreciation pill | `taxService.sectionC(deal).annual_depreciation` | composed federal+state |
+| Section C · Effective Tax Rate pill | `taxService.sectionC(deal).effective_tax_rate` | composed |
+| Section D · Documentary Stamp Tax (deed) | `taxService.sectionD(deal).state_deed_stamp` | from ruleset |
+| Section D · Total Transfer Taxes | `taxService.sectionD(deal).total` | sum of breakdown |
+| `RATES` pill (header) | Opens read-only rate sheet viewer | reads from active rate_sheet_versions |
+| `RESOLVED` column (all sections) | LayeredValue merge of T-12 / PLATFORM / USER | existing pattern |
+
+**The optional `RATES` viewer** opens a modal showing the active rate sheet for the deal's jurisdiction (federal + state + county stacked) with `as_of` dates, source citations, and `valid_through` countdown. Read-only. Wires to `GET /api/tax/rate-sheets/:jurisdiction`.
+
+---
+
+## 13. API Surface (Internal)
+
+```
+GET  /api/tax/forecast/:dealId                 → TaxForecast (all 4 sections)
+GET  /api/tax/forecast/:dealId/section/:abcd   → SectionResult
+GET  /api/tax/rate-sheets/:jurisdiction        → active RateSheet (federal+state+county stacked)
+GET  /api/tax/rate-sheets/:jurisdiction/history → version history
+POST /api/tax/rate-sheets/:jurisdiction/promote → admin: promote pending_review → active
+GET  /api/tax/rulesets/coverage                → which (state, county) pairs have rulesets
+```
+
+All routes follow existing platform auth/audit conventions. Writes go through audit middleware per `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` GR#6.
+
+---
+
+## 14. LayeredValue Provenance
+
+Every Tax Service output field wraps in `LayeredValue<T>`:
+
+```typescript
+{
+  value: 247_350,
+  source: 'tax_service_computed',
+  metadata: {
+    ruleset_version: 'fl-miami-dade-2026.v1',
+    formula: '(taxable_value × millage) / 1000',
+    inputs: {
+      taxable_value: { value: 12_450_000, source: 'attom', as_of: '2026-03-15' },
+      millage_aggregate: { value: 19.8344, source: 'rate_sheet:fl-miami-dade-2026.v1' },
+    },
+    confidence: 'high',
+    computed_at: '2026-05-05T14:32:00Z',
+  },
+  user_override: null,
+}
+```
+
+If user overrides any input (e.g. corrects taxable_value from a tax bill they uploaded), the override goes through the standard LayeredValue merge — the service recomputes downstream fields automatically when an upstream input changes.
+
+---
+
+## 15. Acceptance Criteria
+
+This spec is complete when, for a real Atlanta multifamily deal end-to-end:
+
+- [ ] All four F9 sections populate with non-`—` values when minimum required inputs are present
+- [ ] `taxService.forecast(deal)` returns deterministic output (same inputs ⇒ same outputs, byte-identical)
+- [ ] Federal + GA + Fulton rulesets compose correctly; depreciation reflects 2026 bonus dep schedule (20%); state income tax uses GA conformity flag (decouples from bonus)
+- [ ] Section D for an FL Miami-Dade deal correctly applies $0.45/$100 county surtax on top of $0.70/$100 state deed stamp
+- [ ] Section D for a TX Houston deal returns near-zero (recording fees only, no transfer tax)
+- [ ] Reassessment red bar fires in F9 Section A header when `reassessmentOnSale === 'full'` (FL behavior) at year 1
+- [ ] Rate sheet staleness cron correctly identifies sheets within 30 days of expiry
+- [ ] An unmapped jurisdiction (e.g. SC deal) falls back to `default.ruleset.ts` with `confidence: 'low'` and triggers Research Agent onboarding workflow
+- [ ] All outputs wrapped in LayeredValue with full provenance metadata
+- [ ] No `if (state === 'X')` outside `rulesets/X/` directory (verified by grep in CI)
+- [ ] Unit test coverage ≥ 90% for ruleset files; integration tests for each launch jurisdiction (FL, FL-Miami-Dade, FL-Broward, FL-Palm-Beach, GA, GA-Fulton, TX, TX-Harris)
+
+---
+
+## 16. Out of Scope
+
+- Insurance ruleset (Task 6.10 — separate spec)
+- 1031 exchange modeling (future — added as Section E if needed)
+- International tax treatment
+- Property tax appeal modeling (future M-module)
+- Multi-state apportionment for entities with operations across states
+- AMT, opportunity zone deferrals (future Section C extensions)
+
+---
+
+## Appendix A — Section B/D Composition Pseudocode
+
+```typescript
+function computeSectionB(ctx, stack, deal) {
+  if (!stack.state.taxesTPP()) {
+    return { taxed: false, annual_tax: 0, notes: [`${stack.state.jurisdiction} does not tax TPP`] };
+  }
+  const stateLine = stack.state.tppTax(toTPPContext(ctx), deal.year);
+  const countyLine = stack.county?.tppTax(toTPPContext(ctx), deal.year) ?? null;
+  return {
+    taxed: true,
+    annual_tax: mergeTppLines(stateLine, countyLine),
+    exemption_amount: stack.state.tppExemptionAmount(),
+    filing_requirement: stack.state.tppFilingRequirement(),
+  };
+}
+
+function computeSectionD(ctx, stack, deal) {
+  const stateBreakdown = stack.state.acquisitionTransferTax(deal.purchase_price, deal);
+  const countySurtax = stack.county?.countySurtax(deal.purchase_price) ?? 0;
+  const stateIntangible = stack.state.intangibleTax(deal.loan_amount);
+  return {
+    state_deed_stamp: stateBreakdown.state_deed_stamp,
+    county_surtax: countySurtax,
+    intangible_tax: stateIntangible,
+    mortgage_doc_stamp: stateBreakdown.mortgage_doc_stamp,
+    recording_fees: stack.state.recordingFees('deed', 4) + stack.state.recordingFees('mortgage', 12),
+    total: /* sum of above */,
+    formula: /* human-readable trace */,
+  };
+}
+```
+
+## Appendix B — Initial Rate Sheet Seed Values (2026)
+
+Bundled as launch deliverables. Engineering verifies before merge.
+
+### `federal-2026.json`
+
+```json
+{
+  "jurisdiction": "federal",
+  "level": "federal",
+  "year": 2026,
+  "version": "federal-2026.v1",
+  "as_of": "2026-01-15",
+  "valid_through": "2026-12-31",
+  "depreciation_lives": {
+    "multifamily": 27.5,
+    "sfr": 27.5,
+    "retail": 39,
+    "office": 39,
+    "industrial": 39,
+    "hospitality": 39
+  },
+  "bonus_depreciation": [
+    { "year": 2022, "pct": 1.00 },
+    { "year": 2023, "pct": 0.80 },
+    { "year": 2024, "pct": 0.60 },
+    { "year": 2025, "pct": 0.40 },
+    { "year": 2026, "pct": 0.20 },
+    { "year": 2027, "pct": 0.00 }
+  ],
+  "source_citations": [
+    {
+      "field": "bonus_depreciation",
+      "source_url": "https://www.irs.gov/publications/p946",
+      "retrieved_at": "2026-01-15T10:00:00Z",
+      "document_title": "IRS Publication 946 — Depreciation"
+    }
+  ]
+}
+```
+
+> ⚠️ Bonus dep is a moving target — Congress has had extension bills in flight. Cron-flag any deal modeled past 2026 for federal sheet re-verification.
+
+### `fl-2026.json` (state)
+
+```json
+{
+  "jurisdiction": "fl",
+  "level": "state",
+  "year": 2026,
+  "version": "fl-2026.v1",
+  "as_of": "2026-01-15",
+  "valid_through": "2026-12-31",
+  "transfer_tax": {
+    "deed_rate_per_100": 0.70,
+    "intangible_rate_per_100": 0.20,
+    "mortgage_stamp_rate_per_100": 0.35,
+    "recording_fee_per_page": 10
+  },
+  "tpp": {
+    "taxed": true,
+    "millage": "same_as_re",
+    "exemption_amount": 25000
+  },
+  "state_income_tax_rate": [
+    { "entity_type": "individual",   "rate": 0.00 },
+    { "entity_type": "pass_through", "rate": 0.00 },
+    { "entity_type": "c_corp",       "rate": 0.055 },
+    { "entity_type": "reit",         "rate": 0.00 }
+  ],
+  "conforms_to_bonus_dep": true,
+  "conforms_to_cost_seg": true
+}
+```
+
+### `fl-miami-dade-2026.json` (county overlay)
+
+```json
+{
+  "jurisdiction": "fl-miami-dade",
+  "level": "county",
+  "year": 2026,
+  "version": "fl-miami-dade-2026.v1",
+  "as_of": "2025-09-20",
+  "valid_through": "2026-09-30",
+  "millage": {
+    "aggregate": 19.8344,
+    "breakdown": [
+      { "authority": "Miami-Dade County",     "rate": 4.6669 },
+      { "authority": "School Board",           "rate": 7.0190 },
+      { "authority": "Children's Trust",       "rate": 0.4673 },
+      { "authority": "Library",                "rate": 0.2840 },
+      { "authority": "Fire & Rescue",          "rate": 2.4207 },
+      { "authority": "South Florida Water Mgmt","rate": 0.0948 },
+      { "authority": "FIND",                   "rate": 0.0288 },
+      { "authority": "City (varies)",          "rate": 4.8529 }
+    ]
+  },
+  "county_surtax": {
+    "rate_per_100": 0.45,
+    "applies_to": "all"
+  }
+}
+```
+
+### `ga-2026.json` (state)
+
+```json
+{
+  "jurisdiction": "ga",
+  "level": "state",
+  "year": 2026,
+  "version": "ga-2026.v1",
+  "as_of": "2026-01-15",
+  "valid_through": "2026-12-31",
+  "assessment_ratio": 0.40,
+  "transfer_tax": {
+    "deed_rate_per_1000": 1.00,
+    "recording_fee_per_page": 25
+  },
+  "tpp": {
+    "taxed": true,
+    "millage": "same_as_re",
+    "exemption_amount": 7500
+  },
+  "state_income_tax_rate": [
+    { "entity_type": "individual",   "rate": 0.0539 },
+    { "entity_type": "pass_through", "rate": 0.0539 },
+    { "entity_type": "c_corp",       "rate": 0.0539 }
+  ],
+  "conforms_to_bonus_dep": false,
+  "conforms_to_cost_seg": true
+}
+```
+
+> Engineering note: GA's transfer tax is per $1,000 not per $100 — schema must support both bases (`deed_rate_per_100` OR `deed_rate_per_1000`).
+
+### `tx-2026.json` (state)
+
+```json
+{
+  "jurisdiction": "tx",
+  "level": "state",
+  "year": 2026,
+  "version": "tx-2026.v1",
+  "as_of": "2026-01-15",
+  "valid_through": "2026-12-31",
+  "transfer_tax": {
+    "deed_rate_per_100": 0.00,
+    "recording_fee_per_page": 25
+  },
+  "tpp": {
+    "taxed": true,
+    "name": "Business Personal Property Tax",
+    "millage": "same_as_re",
+    "filing_form": "Rendition (Form 50-144)",
+    "filing_deadline": "April 15"
+  },
+  "state_income_tax_rate": [
+    { "entity_type": "individual",   "rate": 0.00 },
+    { "entity_type": "pass_through", "rate": 0.00 },
+    { "entity_type": "c_corp",       "rate": 0.00 }
+  ],
+  "franchise_tax_note": "TX has a margin/franchise tax on entities; not modeled in v1",
+  "conforms_to_bonus_dep": true,
+  "conforms_to_cost_seg": true
+}
+```
+
+> Engineering note: TX's lack of state income tax means `computeSectionC` for TX deals returns federal-only. The franchise tax is intentionally out of v1 scope; flag for v2.
+
+---
+
+*End of TAX_SERVICE_SPEC.md*

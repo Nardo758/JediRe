@@ -1,0 +1,382 @@
+# Tax Service — Replit Agent Implementation Prompt
+
+> Implementation companion to `TAX_SERVICE_SPEC.md`.
+>
+> **Read `TAX_SERVICE_SPEC.md` in full before starting.** This document tells you HOW to execute against that spec, in what order, and under what constraints.
+>
+> Pattern source: this prompt mirrors the structure and rigor of `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` (the agent platform implementation prompt). Apply the same standards.
+
+---
+
+## Context
+
+You are implementing the Tax Service — a deterministic, jurisdiction-aware tax math engine that powers the F9 Taxes tab (Sections A, B, C, D) across all four sections of the JEDI RE platform. The F9 UI already exists; you are populating it, not redesigning it.
+
+This is **Task 6.5** in `AGENT_TASK_INVENTORY.md`, classified as **C** (deterministic code). It is not an agent. It is a service that agents call as a tool.
+
+The launch jurisdictions are: **FL** (with Miami-Dade, Broward, Palm Beach county overlays), **GA** (with Fulton county overlay), **TX** (with Harris county overlay), and a **federal** ruleset that always applies. Plus a **default** state ruleset for jurisdictions not yet modeled.
+
+---
+
+## Ground Rules — Non-Negotiable
+
+These are derived from the existing `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` ground rules and apply unchanged here:
+
+1. **No `if (state === 'X')` outside `src/services/tax/rulesets/X/`.** This is verified by a CI grep check. If you find yourself wanting to write state-conditional logic anywhere else, stop and architect it as a ruleset method.
+
+2. **Three-layer separation is sacred.** Rule mechanics → TypeScript code. Annual rates → JSON config. Per-deal data → runtime fetch. Never embed a 2026 millage rate in `fl.ruleset.ts`. Never put cap-formula math in a JSON file. Mixing layers silently corrupts future-year deals.
+
+3. **Every output wraps in `LayeredValue<T>`.** No raw numbers escape the service. Provenance is always preserved.
+
+4. **Composition is mandatory.** Every property resolves three stacked rulesets (federal + state + county). The composer walks the stack. Do not bypass it.
+
+5. **Rate sheets are validated at boot.** Use a JSON schema validator (`zod` or `ajv`) on every rate sheet during service initialization. Invalid sheets fail loud, not silent.
+
+6. **Deterministic outputs.** Same inputs ⇒ byte-identical outputs. Test this explicitly.
+
+7. **No LLM in the hot path.** Agents have a narrow role (§11 of the spec) and operate out-of-band. The runtime computation is pure code.
+
+8. **Cache aggressively, invalidate by fiscal year.** Jurisdiction cache TTL = end of fiscal year. Parcel cache TTL = end of fiscal year OR on tax bill upload, whichever comes first.
+
+9. **All writes are audited.** Per platform convention; rate sheet promotions, cache invalidations, and override events all hit `audit_log`.
+
+10. **No UI changes.** F9 tab structure already exists per the latest design. You populate cells; you do not restructure the tab.
+
+11. **Audit before building.** Before Phase 1, run a codebase audit per the "audit before building" principle in CLAUDE.md. Document findings in `SPEC_QUESTIONS.md`. Do not duplicate existing types or services.
+
+12. **JSX rendering rules apply** (even though this is mostly backend). Any UI integration code (e.g. F9 cell wiring) follows: space after `return` before JSX; no `React.Fragment` with keys inside CSS grids; no IIFE patterns inside JSX; named function components with explicit returns.
+
+---
+
+## Build Phases — Mandatory Sequencing
+
+Execute phases in order. Do not start a phase until the previous phase is fully merged, tested, and acknowledged. Each phase ends with a written summary.
+
+### Phase 0 — Audit & Spec Questions (no code)
+
+**Goal:** Understand existing platform state before writing anything.
+
+**Deliverables:**
+1. Inventory of existing tax-related code:
+   - Search for `tax`, `millage`, `doc_stamp`, `bonus_dep`, `transfer_tax` across `src/`
+   - List any existing types, services, or utilities that overlap with the spec
+   - Identify mock files in `frontend/src/data/` that will need to be retired (per platform state notes — there are 25 mock files being retired; tax-related ones are part of the work)
+2. Existing tax bill PDF parser:
+   - Verify the parser exists per `AGENT_TASK_INVENTORY.md` task 1.10
+   - Document its output shape
+   - Confirm it produces fields needed for `NormalizedParcel` (just_value, assessed_value, millage, exemptions)
+3. F9 Taxes tab frontend code:
+   - Locate the existing component(s)
+   - Document the props/data contract it currently expects
+   - Identify which cells are placeholders (showing `—`) and which are wired to real data
+4. `LayeredValue<T>` type:
+   - Confirm location at `src/types/layered-value.ts` (per agent platform spec)
+   - Document any tax-specific source values that need adding to the `source` enum (`'tax_service_computed'`, `'tax_bill_parsed'`, `'attom'`, `'agent_research'`)
+5. Output: `SPEC_QUESTIONS.md` with a list of:
+   - Ambiguities you encountered in the spec
+   - Existing code you propose to reuse vs. rewrite
+   - Any conflicts with existing patterns
+
+**Checkpoint with Leon before Phase 1.** Do not proceed without acknowledgment.
+
+---
+
+### Phase 1 — Foundation (Types, File Structure, Rate Sheet Loader)
+
+**Goal:** All scaffolding for tax computation exists; no math yet.
+
+**Deliverables:**
+1. Create `src/services/tax/` directory tree per spec §9
+2. `src/services/tax/types.ts` with all interfaces from spec §5:
+   - `TaxRuleset`
+   - `TaxContext`, `TPPContext`
+   - `TaxLineResult`, `TransferTaxBreakdown`, `MillageLine`
+   - `Exemption`, `TPPFiling`, `TPPDepTable`, `CostSegRanges`
+   - `AssetClass`, `EntityType`
+   - `TaxForecast`, `SectionAResult`, `SectionBResult`, `SectionCResult`, `SectionDResult`
+3. `src/services/tax/rateSheets/schema.ts` with the `RateSheet` type and a Zod validator
+4. `src/services/tax/rateSheets/loader.ts`:
+   - Loads all `*.json` files from `rateSheets/` at boot
+   - Validates each against the Zod schema
+   - Throws on validation failure (fail-loud)
+   - Exposes `getRateSheet(jurisdiction: string, year: number): RateSheet | null`
+5. DB migrations:
+   - `jurisdiction_tax_cache`
+   - `parcel_tax_cache`
+   - `rate_sheet_versions`
+   - All idempotent (use `IF NOT EXISTS` and `ON CONFLICT DO NOTHING`)
+6. Extend `LayeredValue<T>` source enum with the four new tax-specific values
+7. Unit tests for the schema validator: invalid sheets must throw with helpful errors; valid sheets must parse cleanly
+
+**No business logic in this phase.** Rulesets do not exist yet. The composer does not exist yet.
+
+**Checkpoint:** All tests pass. CI grep check confirms no Florida-specific code outside future ruleset directories. Hand off summary to Leon.
+
+---
+
+### Phase 2 — Federal Ruleset (Section C — Cleanest Starting Point)
+
+**Goal:** Federal ruleset implements the cleanest section first (Section C — pure rules, no fetcher dependency).
+
+Why federal first: Section C is entirely rule-driven (depreciation lives, bonus dep schedule, federal income tax brackets). No data fetching. Lets you exercise the ruleset interface, the rate sheet loader, and the LayeredValue wiring without coupling to PropertyAppraiserFetcher.
+
+**Deliverables:**
+1. `src/services/tax/rulesets/federal.ruleset.ts` implementing the federal ruleset:
+   - All Section C methods (depreciation, bonus dep, cost seg, federal income tax rate)
+   - All Section A/B/D methods return safe defaults (federal does not compute these)
+   - `level: 'federal'`, `jurisdiction: 'federal'`
+2. `src/services/tax/rateSheets/federal-2026.json` per spec Appendix B
+3. Unit tests:
+   - Bonus dep returns 0.20 for 2026, 0.40 for 2025, 0 for 2027
+   - Depreciation life: 27.5 for multifamily, 39 for office
+   - Cost seg eligible for all property types
+   - Federal income tax rate by entity + bracket
+4. Section C composer stub (`computeSectionC`) that takes `RulesetStack` with only `federal` populated and returns the federal-only result
+
+**Checkpoint:** Federal ruleset passes tests. Hand off summary.
+
+---
+
+### Phase 3 — Default & FL Rulesets
+
+**Goal:** Default state ruleset (fallback for unmapped jurisdictions) + FL state-level ruleset + Miami-Dade, Broward, Palm Beach county overlays.
+
+**Deliverables:**
+1. `src/services/tax/rulesets/default.ruleset.ts`:
+   - Generic ad valorem property tax (taxable_value × millage / 1000)
+   - Generic transfer tax stub (returns zeros with `confidence: 'low'`)
+   - All TPP methods return `taxesTPP: false`
+   - All Section C methods return safe defaults (state-level conformity unknown — flag as low confidence)
+2. `src/services/tax/rulesets/fl/fl.ruleset.ts`:
+   - 10% non-homestead annual cap (`annualAssessmentCap: 0.10`)
+   - Reassessment-on-sale: `'full'`
+   - State doc stamp: $0.70/$100
+   - Intangible tax: $0.20/$100 on note
+   - Mortgage doc stamp: $0.35/$100
+   - TPP taxed: yes; exemption $25K
+   - State income tax: 0% individual/pass-through, 5.5% C-corp
+   - Conforms to bonus dep + cost seg
+3. County overlays:
+   - `fl-miami-dade.ruleset.ts` — adds $0.45/$100 surtax; aggregate millage from rate sheet
+   - `fl-broward.ruleset.ts` — millage from rate sheet
+   - `fl-palm-beach.ruleset.ts` — millage from rate sheet
+4. Rate sheets:
+   - `fl-2026.json` per spec Appendix B
+   - `fl-miami-dade-2026.json` per spec Appendix B
+   - `fl-broward-2026.json` (engineering verifies millage)
+   - `fl-palm-beach-2026.json` (engineering verifies millage)
+5. Unit tests for each ruleset:
+   - $50M Miami-Dade acquisition → $350K state deed stamp + $225K county surtax = $575K transfer
+   - $50M Broward acquisition → $350K state deed stamp + $0 surtax = $350K transfer
+   - 10% cap correctly limits assessed value growth
+   - Reassessment fires in year 1
+   - TPP exemption correctly subtracts $25K from FF&E assessed value before tax
+
+**Checkpoint:** All FL tests pass. Hand off summary including which millage rates engineering needs to verify before merge.
+
+---
+
+### Phase 4 — GA & TX Rulesets
+
+**Goal:** Two more launch jurisdictions, exercising the multi-state pattern.
+
+**Deliverables:**
+1. `src/services/tax/rulesets/ga/ga.ruleset.ts`:
+   - 40% assessment ratio (taxable = market_value × 0.40)
+   - $1.00 per $1,000 transfer tax (note the per-1000 base, not per-100)
+   - TPP taxed; $7,500 exemption
+   - State income tax: 5.39% individual/pass-through/corp
+   - **Decouples from federal bonus dep** (`conformsToBonusDep: false`)
+   - Conforms to cost seg
+2. `src/services/tax/rulesets/ga/ga-fulton.ruleset.ts`:
+   - Fulton County millage breakdown
+   - Atlanta city millage where applicable
+   - APS school district millage
+3. `src/services/tax/rulesets/tx/tx.ruleset.ts`:
+   - **No transfer tax** (returns zeros for deed stamp, intangible)
+   - Recording fees only
+   - Business Personal Property Tax (TPP renamed); rendition due April 15
+   - State income tax: 0% across the board
+   - Franchise tax: noted as out-of-scope for v1, flagged in output notes
+   - Conforms to bonus dep + cost seg
+4. `src/services/tax/rulesets/tx/tx-harris.ruleset.ts`:
+   - Harris CAD millage breakdown
+   - Houston city + HISD where applicable
+5. Rate sheets: `ga-2026.json`, `ga-fulton-2026.json`, `tx-2026.json`, `tx-harris-2026.json`
+6. Unit tests:
+   - $50M Houston acquisition → near-zero transfer (recording fees only)
+   - $50M Atlanta acquisition → $50,000 transfer tax (per-1000 math)
+   - GA bonus dep correctly returns 0% (state decouples)
+   - TX state income tax always returns 0%
+
+**Checkpoint:** All GA + TX tests pass. Hand off summary.
+
+---
+
+### Phase 5 — Composite Resolver & Tax Service Entry Point
+
+**Goal:** All four section composers wired up; `taxService.forecast()` returns full output for any deal.
+
+**Deliverables:**
+1. `src/services/tax/compositeResolver.ts`:
+   - `resolveRulesetStack(deal): RulesetStack`
+   - Section composers: `computeSectionA`, `computeSectionB`, `computeSectionC`, `computeSectionD`
+   - Composition logic per spec §7 and Appendix A
+2. `src/services/tax/taxService.ts`:
+   - Top-level `forecast(deal)` entry point
+   - Per-section entry points (`sectionA`, `sectionB`, `sectionC`, `sectionD`) for F9 lazy-loaders
+3. End-to-end integration tests with synthetic deals:
+   - Miami-Dade multifamily, $50M, $35M loan, 5-year hold, REIT entity
+   - Houston multifamily, $30M, $20M loan, 7-year hold, pass-through entity
+   - Atlanta multifamily, $40M, $28M loan, 10-year hold, individual entity
+   - Charleston SC multifamily (unmapped) — falls through to default ruleset, returns low-confidence output, fires `jurisdiction_unmapped` event
+4. Determinism test: run `forecast` twice on the same deal; assert byte-identical outputs
+
+**Checkpoint:** End-to-end tests pass. Hand off summary.
+
+---
+
+### Phase 6 — PropertyAppraiserFetcher Integration
+
+**Goal:** Wire the data layer so `TaxContext` is populated with real per-deal data, not stubs.
+
+**Deliverables:**
+1. `src/services/tax/dataSources/propertyAppraiserFetcher.ts` interface
+2. `src/services/tax/dataSources/attomAdapter.ts`:
+   - Calls ATTOM API
+   - Maps ATTOM response to `NormalizedParcel`
+   - Tracks `staleness_days` from ATTOM's `lastUpdated` field
+   - Per-county freshness profile in `COUNTY_FRESHNESS_PROFILE` config
+3. `src/services/tax/dataSources/normalizers.ts`:
+   - Field-name normalization (ATTOM's `marketValue` → our `just_value`, etc.)
+4. `GeneralPropertyAppraiserFetcher` routing:
+   - Tier 1: tax bill PDF parser output (call existing parser per Phase 0 audit)
+   - Tier 2: ATTOM
+   - Tier 3: county adapters (none built in v1; placeholder)
+   - Tier 4: returns `null` → composer marks `confidence: 'low'`
+5. `buildTaxContext(deal, stack)` in `compositeResolver.ts`:
+   - Calls fetcher
+   - Falls back to defaults with confidence flags when fields are missing
+   - Wraps every input in `LayeredValue` with full provenance
+
+**Checkpoint:** End-to-end test with real ATTOM data for at least one Florida deal. Verify provenance carries through to output. Hand off summary.
+
+---
+
+### Phase 7 — Caching Layer
+
+**Goal:** Jurisdiction and parcel caches operational; hot-path queries hit cache, not external APIs.
+
+**Deliverables:**
+1. `src/services/tax/caches/jurisdictionCache.ts`:
+   - Read-through cache backed by `jurisdiction_tax_cache` table
+   - TTL = end of fiscal year
+   - Invalidation hooks for rate sheet promotion events
+2. `src/services/tax/caches/parcelCache.ts`:
+   - Read-through cache backed by `parcel_tax_cache` table
+   - TTL = end of fiscal year OR on tax bill upload
+   - Invalidation on `tax_bill_uploaded` Kafka event for the parcel
+3. `src/services/tax/crons/rateSheetStaleness.cron.ts`:
+   - Weekly cron
+   - Queues agent task for sheets within 30 days of `valid_through`
+   - Writes to `agent_runs` table per platform convention
+4. Cache hit/miss metrics exposed for observability
+
+**Checkpoint:** Run a synthetic load test — 100 sequential `forecast` calls for the same Miami deal should hit external APIs ~1 time. Hand off summary.
+
+---
+
+### Phase 8 — F9 UI Wiring & Mock Retirement
+
+**Goal:** F9 Taxes tab populates from real Tax Service output; tax-related mock files retired.
+
+**Deliverables:**
+1. API routes per spec §13:
+   - `GET /api/tax/forecast/:dealId`
+   - `GET /api/tax/forecast/:dealId/section/:abcd`
+   - `GET /api/tax/rate-sheets/:jurisdiction`
+2. F9 Taxes tab data hooks:
+   - Each section uses its section-specific endpoint for lazy loading
+   - LayeredValue → BROKER/T-12 / PLATFORM / USER / RESOLVED column mapping
+   - Reassessment red bar wires to `sectionA.reassessment_in_year_1`
+   - Header pill values (Y1 RE TAX, Effective Tax Rate, Doc Stamps, Annual Depreciation, TPP Estimate) derived from forecast
+3. RATES pill modal:
+   - Read-only viewer for active rate sheet (federal + state + county stacked)
+   - Shows `as_of` date and `valid_through` countdown
+   - Shows source citations
+4. Retire mock files:
+   - Identify tax-related entries in the 25-file mock inventory in `frontend/src/data/`
+   - Replace with live data hook; delete mock file
+   - Update mock retirement tracker
+
+**Checkpoint:** F9 Taxes tab renders fully populated for a Miami-Dade deal end-to-end. Visual review with Leon. Hand off summary.
+
+---
+
+### Phase 9 — Acceptance Verification
+
+**Goal:** Run through every acceptance criterion in spec §15. Document pass/fail.
+
+**Deliverables:**
+1. Test report covering all 11 acceptance criteria
+2. CI grep check passing (no `if (state === ...)` outside ruleset directories)
+3. Coverage report: ruleset files ≥ 90%
+4. Integration test report for all 8 launch jurisdictions
+5. Performance baseline: forecast latency p50/p95/p99 measured
+
+**Checkpoint:** Full acceptance review with Leon. Sign-off triggers v1 launch.
+
+---
+
+## Communication Protocol
+
+- End every phase with a written summary: what was built, what tests pass, what's blocked, what needs Leon's input
+- Do not start the next phase without acknowledgment
+- If a spec is ambiguous, log in `SPEC_QUESTIONS.md` and proceed with a documented default; do not block silently
+- If you discover existing platform code that overlaps with the spec, flag it; do not duplicate
+- If you think a spec decision is wrong, say so in writing — but implement as specced unless overridden
+- All web-search-derived rate values require source URL + retrieval timestamp in the rate sheet's `source_citations` field
+
+---
+
+## Environment Notes
+
+- Repo: `github.com/Nardo758/JediRe.git`
+- Stack: TypeScript backend (Node), PostgreSQL with PostGIS, Drizzle ORM, Kafka, Zustand stores
+- Validation: Zod for rate sheet schemas (already in dependencies per existing agent platform work)
+- HTTP client for ATTOM: existing platform HTTP client; do not introduce new dependencies
+- Caching: PostgreSQL-backed (use the cache tables in spec §10); do not introduce Redis for this work
+- Cron: Inngest (already in stack per agent platform spec)
+- Test framework: existing platform test runner (Vitest per existing pattern)
+
+---
+
+## What NOT to Do
+
+- ❌ Do NOT redesign the F9 Taxes tab UI — it exists, you populate it
+- ❌ Do NOT make tax math agent-driven; this is a deterministic service
+- ❌ Do NOT embed rates (millage, doc stamp, bonus dep %) inside ruleset TypeScript files — rates go in JSON
+- ❌ Do NOT embed rule logic (10% cap formula, bonus dep schedule structure) in JSON — rules go in TypeScript
+- ❌ Do NOT add `if (state === 'FL')` anywhere outside `rulesets/fl/`
+- ❌ Do NOT skip the Phase 0 audit — duplicating existing types/services is the highest-cost failure mode
+- ❌ Do NOT bypass `LayeredValue` wrapping — every output field carries provenance
+- ❌ Do NOT introduce new dependencies (Redis, alternate HTTP clients, etc.) without flagging
+- ❌ Do NOT write a Miami-Dade-specific scraper in v1 — use ATTOM. County adapters are deferred until cost/staleness justifies them
+- ❌ Do NOT model TX franchise tax in v1 — it's flagged out of scope
+- ❌ Do NOT model 1031 exchanges, opportunity zones, or AMT — also out of scope
+- ❌ Do NOT silently work around ground rules — flag conflicts in writing
+
+---
+
+## Reference Documents
+
+- `TAX_SERVICE_SPEC.md` — full architectural spec (read first)
+- `AGENT_TASK_INVENTORY.md` — Task 6.5 (this work) and 6.10 (parallel insurance ruleset pattern)
+- `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` — pattern source for ground rules and phase structure
+- `CLAUDE.md` — persistent architectural context
+- `CASHFLOW_AGENT_UNDERWRITING_SPEC.md` — three-tier evidence model that Tax Service participates in
+- F9 Taxes tab screenshot (uploaded May 2026) — UI contract this service populates
+
+---
+
+*End of TAX_SERVICE_REPLIT_PROMPT.md*
