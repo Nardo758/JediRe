@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { SectionPanel, DataRow, Bd } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps } from './types';
 import { fmt$, fmtPct, fmtX } from './types';
+import { ConcessionDrilldownModal, aggregateConcessionDetail } from './ConcessionDrilldownModal';
+import type { AggregatedConcessionDetail } from './ConcessionDrilldownModal';
 
 const MONO = BT.font.mono;
 
@@ -37,6 +39,31 @@ const SEVERITY_COLORS = {
 
 export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
   const summary = modelResults?.summary;
+
+  const [conDrill, setConDrill] = useState<{
+    open: boolean;
+    periodLabel: string;
+    recognizedAmount: number | null;
+    earnedAmount: number | null;
+    detail: AggregatedConcessionDetail | null;
+  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null });
+
+  const openConDrill = useCallback(() => {
+    const rec = f9Financials?.concessionRecognition;
+    if (!rec) return;
+    const currentYear = new Date().getFullYear();
+    const yyyymms = Array.from({ length: 12 }, (_, i) => `${currentYear}${String(i + 1).padStart(2, '0')}`);
+    const recognized = rec.by_calendar_year?.[String(currentYear)] ?? null;
+    const earnedRow = f9Financials?.proforma.year1.find(r => r.field === 'concessions');
+    const earned = earnedRow?.resolved != null ? Math.abs(earnedRow.resolved) : null;
+    setConDrill({
+      open: true,
+      periodLabel: `${currentYear} CONCESSIONS`,
+      recognizedAmount: recognized,
+      earnedAmount: earned,
+      detail: aggregateConcessionDetail(rec.monthly_detail, yyyymms),
+    });
+  }, [f9Financials]);
 
   // F10 wiring: benchmark-based risk flags from financials.assumptions vs M07 platform signals
   const f9Flags: RiskFlag[] = [];
@@ -140,6 +167,7 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
   const verdictColor = highFlags.length > 0 ? BT.text.red : medFlags.length > 0 ? BT.text.amber : BT.met.financial;
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
       <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>AI RATIONALE · RISK FLAGS · RECOMMENDED ACTIONS</span>
@@ -199,7 +227,40 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
           <DataRow key={i} label={a.action} value={<Bd c={a.color}>{a.priority}</Bd>} valueColor={a.color} border={i < 4} />
         ))}
       </SectionPanel>
+
+      {f9Financials?.concessionRecognition && (
+        <SectionPanel title="CONCESSION ANALYSIS" subtitle="Click row to open per-period breakdown" borderColor={BT.text.cyan}>
+          <div
+            onClick={openConDrill}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '6px 10px', cursor: 'pointer',
+            }}
+            title="Click to open concession amortization drilldown"
+          >
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
+              {new Date().getFullYear()} RECOGNIZED CONCESSIONS
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber, fontWeight: 600 }}>
+              {f9Financials.concessionRecognition.by_calendar_year?.[String(new Date().getFullYear())] != null
+                ? `$${Math.abs(f9Financials.concessionRecognition.by_calendar_year[String(new Date().getFullYear())]).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                : '—'}
+              <span style={{ marginLeft: 6, fontSize: 7, color: BT.text.muted }}>▸ DRILLDOWN</span>
+            </span>
+          </div>
+        </SectionPanel>
+      )}
     </div>
+
+    <ConcessionDrilldownModal
+      open={conDrill.open}
+      onClose={() => setConDrill(p => ({ ...p, open: false }))}
+      periodLabel={conDrill.periodLabel}
+      recognizedAmount={conDrill.recognizedAmount}
+      earnedAmount={conDrill.earnedAmount}
+      detail={conDrill.detail}
+    />
+  </>
   );
 }
 

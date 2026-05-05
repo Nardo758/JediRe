@@ -501,22 +501,26 @@ function computeMonthlyDetail(
 ): Record<string, ConcessionMonthlyDetail> {
   const recordMap = new Map(records.map(r => [r.id, r]));
   const detail: Record<string, {
-    new_lease_count: number; new_lease_dollars: number;
-    renewal_count: number; renewal_dollars: number;
+    new_lease_count: number; new_lease_dollars: number; new_lease_earned: number;
+    renewal_count: number; renewal_dollars: number; renewal_earned: number;
     continuing_count: number; continuing_dollars: number;
     earliest_commencement?: string; latest_commencement?: string;
     methodSet: Set<string>;
+    methodByType: Map<string, Set<string>>;
     write_offs: Array<{ amount: number; reason: string; concession_id: string }>;
+    commencingIds: Set<string>;
   }> = {};
 
   const ensure = (month: string) => {
     if (!detail[month]) {
       detail[month] = {
-        new_lease_count: 0, new_lease_dollars: 0,
-        renewal_count: 0, renewal_dollars: 0,
+        new_lease_count: 0, new_lease_dollars: 0, new_lease_earned: 0,
+        renewal_count: 0, renewal_dollars: 0, renewal_earned: 0,
         continuing_count: 0, continuing_dollars: 0,
         methodSet: new Set(),
+        methodByType: new Map(),
         write_offs: [],
+        commencingIds: new Set(),
       };
     }
     return detail[month];
@@ -527,17 +531,30 @@ function computeMonthlyDetail(
     const record = recordMap.get(sched.concession_id);
     if (!record) continue;
     const commMonth = record.lease_start_date.slice(0, 7).replace('-', '');
+    const ctype = record.concession_type;
 
     for (const entry of sched.monthly_entries) {
       const md = ensure(entry.month);
       md.methodSet.add(sched.method);
+      const typeSet = md.methodByType.get(ctype) ?? new Set<string>();
+      typeSet.add(sched.method);
+      md.methodByType.set(ctype, typeSet);
+
       if (entry.month === commMonth) {
         if (record.is_renewal) {
           md.renewal_count += 1;
           md.renewal_dollars += entry.amount;
+          if (!md.commencingIds.has(record.id)) {
+            md.renewal_earned += record.cash_value;
+            md.commencingIds.add(record.id);
+          }
         } else {
           md.new_lease_count += 1;
           md.new_lease_dollars += entry.amount;
+          if (!md.commencingIds.has(record.id)) {
+            md.new_lease_earned += record.cash_value;
+            md.commencingIds.add(record.id);
+          }
         }
       } else {
         md.continuing_count += 1;
@@ -560,16 +577,23 @@ function computeMonthlyDetail(
 
   const result: Record<string, ConcessionMonthlyDetail> = {};
   for (const [month, md] of Object.entries(detail)) {
+    const method_by_type: Record<string, string[]> = {};
+    for (const [ctype, mSet] of md.methodByType.entries()) {
+      method_by_type[ctype] = Array.from(mSet);
+    }
     result[month] = {
       new_lease_count: md.new_lease_count,
       new_lease_dollars: md.new_lease_dollars,
+      new_lease_earned: md.new_lease_earned,
       renewal_count: md.renewal_count,
       renewal_dollars: md.renewal_dollars,
+      renewal_earned: md.renewal_earned,
       continuing_count: md.continuing_count,
       continuing_dollars: md.continuing_dollars,
       earliest_commencement: md.earliest_commencement,
       latest_commencement: md.latest_commencement,
       methods: Array.from(md.methodSet),
+      method_by_type,
       write_offs: md.write_offs,
     };
   }

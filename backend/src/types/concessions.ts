@@ -227,9 +227,13 @@ export interface ConcessionMonthlyDetail {
   /** Records signed in this period (new leases, non-renewal) */
   new_lease_count: number;
   new_lease_dollars: number;
+  /** Full cash_value sum of new leases commencing in this period (EARNED, not amortized) */
+  new_lease_earned: number;
   /** Records signed in this period (renewals) */
   renewal_count: number;
   renewal_dollars: number;
+  /** Full cash_value sum of renewals commencing in this period (EARNED, not amortized) */
+  renewal_earned: number;
   /** Records from prior periods still amortizing into this period */
   continuing_count: number;
   continuing_dollars: number;
@@ -239,6 +243,11 @@ export interface ConcessionMonthlyDetail {
   latest_commencement?: string;
   /** Distinct amortization methods contributing to this period */
   methods: string[];
+  /**
+   * Amortization method(s) by concession type.
+   * Key: ConcessionType (e.g. 'FREE_RENT'), Value: distinct AmortizationMethod values.
+   */
+  method_by_type: Record<string, string[]>;
   /** Write-offs hitting P&L in this period */
   write_offs: Array<{ amount: number; reason: string; concession_id: string }>;
 }

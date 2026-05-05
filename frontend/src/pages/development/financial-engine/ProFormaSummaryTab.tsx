@@ -388,8 +388,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     open: boolean;
     periodLabel: string;
     recognizedAmount: number | null;
+    earnedAmount: number | null;
     detail: ReturnType<typeof aggregateConcessionDetail>;
-  }>({ open: false, periodLabel: '', recognizedAmount: null, detail: null });
+  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null });
 
   const openY1Drill = useCallback(() => {
     const rec = data?.concessionRecognition;
@@ -404,10 +405,13 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       yyyymms.push(`${y}${String(m).padStart(2, '0')}`);
     }
     const sum = yyyymms.reduce((s, k) => s + (rec.monthly[k] ?? 0), 0);
+    const earnedRow = data.proforma.year1.find(r => r.field === 'concessions');
+    const earned = earnedRow?.resolved != null ? Math.abs(earnedRow.resolved) : null;
     setConDrill({
       open: true,
       periodLabel: `Y1 FROM ${data.closeDate}`,
       recognizedAmount: sum,
+      earnedAmount: earned,
       detail: aggregateConcessionDetail(rec.monthly_detail, yyyymms),
     });
   }, [data]);
@@ -1036,7 +1040,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       onClose={() => setConDrill(p => ({ ...p, open: false }))}
       periodLabel={conDrill.periodLabel}
       recognizedAmount={conDrill.recognizedAmount}
-      earnedAmount={null}
+      earnedAmount={conDrill.earnedAmount}
       detail={conDrill.detail}
     />
     </>

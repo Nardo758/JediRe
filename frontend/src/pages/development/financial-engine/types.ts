@@ -612,13 +612,16 @@ export interface EvidenceFieldMeta {
 export interface F9ConcessionMonthlyDetail {
   new_lease_count: number;
   new_lease_dollars: number;
+  new_lease_earned: number;
   renewal_count: number;
   renewal_dollars: number;
+  renewal_earned: number;
   continuing_count: number;
   continuing_dollars: number;
   earliest_commencement?: string;
   latest_commencement?: string;
   methods: string[];
+  method_by_type: Record<string, string[]>;
   write_offs: Array<{ amount: number; reason: string; concession_id: string }>;
 }
 
