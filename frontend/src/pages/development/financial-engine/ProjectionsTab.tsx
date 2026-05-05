@@ -1059,6 +1059,12 @@ export function ProjectionsTab({
     [financials, holdYears],
   );
 
+  // Current calendar year for recognized-concessions row (§14 earned-vs-recognized)
+  const currentCalendarYear = new Date().getFullYear();
+  const closeYear = financials?.closeDate
+    ? new Date(financials.closeDate).getFullYear()
+    : currentCalendarYear;
+
   const toggleSection = (key: string) => {
     setExpandedSections(prev => {
       const next = new Set(prev);
@@ -1282,7 +1288,7 @@ export function ProjectionsTab({
                       const isEven = ri % 2 === 0;
                       const rowBg  = row.isTotal ? `${section.color}08` : isEven ? BT.bg.panel : BT.bg.terminal;
 
-                      return (
+                      const rowEl = (
                         <tr key={row.key} style={{ background: rowBg, borderBottom: row.isTotal ? `2px solid ${BT.border.medium}` : `1px solid ${BT.border.subtle}` }}>
                           <td style={{ padding: `3px 8px 3px ${row.indent ? 20 : 8}px`, color: row.isTotal ? BT.text.white : BT.text.secondary, fontWeight: row.isTotal ? 700 : 400, position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1358,6 +1364,75 @@ export function ProjectionsTab({
                           }
                         </tr>
                       );
+
+                      // ── §14 Recognized-Concessions row ───────────────────────────────
+                      // Injected immediately after the earned "Concessions" row in REVENUE.
+                      // Reads by_calendar_year[currentYear] — never shares a label or value
+                      // with the earned row above (EARNED-VS-RECOGNIZED-DISTINCTION §14).
+                      // Only shown when concessionRecognition is available AND current
+                      // calendar year falls within the analysis horizon.
+                      if (
+                        section.key === 'revenue' &&
+                        row.key === 'concessions' &&
+                        financials?.concessionRecognition != null
+                      ) {
+                        const recog = financials.concessionRecognition;
+                        const recognizedAmt = recog.by_calendar_year[String(currentCalendarYear)] ?? null;
+                        const horizonYears = annualYears.map(yr => closeYear + (yr - 1));
+                        const currentYearInHorizon = horizonYears.includes(currentCalendarYear);
+                        if (!currentYearInHorizon) return rowEl;
+
+                        const recBg = `${BT.text.amber}07`;
+                        const recognizedRowEl = (
+                          <tr
+                            key="__recognized_concessions__"
+                            style={{ background: recBg, borderBottom: `1px solid ${BT.border.subtle}` }}
+                          >
+                            <td
+                              style={{ padding: '3px 8px 3px 20px', color: BT.text.amber, fontWeight: 400, position: 'sticky', left: 0, background: recBg, zIndex: 1 }}
+                              title={`Recognized (straight-line amortized) concessions for calendar year ${currentCalendarYear}. Distinct from earned (cash) concessions above — §14 EARNED-VS-RECOGNIZED-DISTINCTION.`}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ color: BT.text.amber }}>
+                                  Recognized Concessions ({currentCalendarYear})
+                                </span>
+                                <span style={{ fontSize: 7, color: BT.text.amber, fontFamily: MONO, padding: '0 2px', border: `1px solid ${BT.text.amber}40`, borderRadius: 2 }}>
+                                  AMORT
+                                </span>
+                              </div>
+                            </td>
+                            {isAnnual
+                              ? annualYears.map(yr => {
+                                  const calYear = closeYear + (yr - 1);
+                                  const val = calYear === currentCalendarYear ? recognizedAmt : null;
+                                  const display = val != null ? fmt$(-Math.abs(val)) : '—';
+                                  return (
+                                    <td
+                                      key={yr}
+                                      style={{ padding: '3px 8px', textAlign: 'right', color: val != null ? BT.text.amber : BT.text.muted, fontWeight: 400 }}
+                                      title={val != null
+                                        ? `Recognized concessions for ${currentCalendarYear} (straight-line amortization). See Drilldown for monthly detail.`
+                                        : `Not the current calendar year (${currentCalendarYear})`}
+                                    >
+                                      {display}
+                                    </td>
+                                  );
+                                })
+                              : subCols.map(c => (
+                                  <td key={c.periodKey} style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted, fontSize: 8 }}>—</td>
+                                ))
+                            }
+                          </tr>
+                        );
+                        return (
+                          <React.Fragment key={`${row.key}_frag`}>
+                            {rowEl}
+                            {recognizedRowEl}
+                          </React.Fragment>
+                        );
+                      }
+
+                      return rowEl;
                     })}
                   </React.Fragment>
                 );

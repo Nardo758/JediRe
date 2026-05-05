@@ -99,7 +99,7 @@ const BENCH_THRESHOLDS = {
 // ─── Main Tab ────────────────────────────────────────────────────────────────
 
 export function SourcesUsesTab({
-  dealId, deal, assumptions, modelResults, f9Financials, onF9Refresh,
+  dealId, deal, assumptions, modelResults, f9Financials, onF9Refresh, lvCostTreatmentView,
 }: FinancialEngineTabProps) {
 
   const su = f9Financials?.sourcesUses ?? null;
@@ -228,6 +228,20 @@ export function SourcesUsesTab({
     lv?.resolvedMode === 'LEASE_UP_NEW_CONSTRUCTION' &&
     !usesHasId.has('leaseUpReserve');
   const leaseUpReserveAmount = lv?.peakCumulativeReserve ?? null;
+
+  // ── Capitalized Lease-up Concessions line (Task #574) ────────────────────
+  // Shown only when treatment = CAPITALIZED and concessionRecognition is available.
+  // Value: total lifetime recognized concessions (sum of all monthly amounts).
+  // §14 EARNED-VS-RECOGNIZED: this is the recognized (amortized) amount, not cash earned.
+  // Disappears on OPERATING or HYBRID treatment toggle without page reload.
+  const concessionRecognition = f9Financials?.concessionRecognition ?? null;
+  const showCapitalizedConcessions =
+    lvCostTreatmentView === 'CAPITALIZED' &&
+    concessionRecognition != null &&
+    !usesHasId.has('capitalizedConcessions');
+  const capitalizedConcessionsAmount = concessionRecognition != null
+    ? Object.values(concessionRecognition.monthly).reduce((a, b) => a + b, 0)
+    : null;
 
   // Effective total uses includes the reserve line when injected on the frontend.
   // effectiveDelta and effectiveBalanced must also account for the injected reserve
@@ -408,6 +422,32 @@ export function SourcesUsesTab({
               </div>
               <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.teal, fontWeight: 600 }}>
                 {leaseUpReserveAmount != null ? fmt$(leaseUpReserveAmount) : '—  pending engine'}
+              </span>
+            </div>
+          )}
+
+          {/* Capitalized Lease-up Concessions — shown only when treatment = CAPITALIZED (Task #574) */}
+          {showCapitalizedConcessions && (
+            <div
+              style={{
+                padding: '4px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                borderTop: `1px solid ${BT.text.amber}40`,
+                background: `${BT.text.amber}07`,
+              }}
+              title="Capitalized concessions: total recognized (straight-line amortized) concession amount capitalized at close. Shown only when leasing cost treatment = CAPITALIZED. §14 EARNED-VS-RECOGNIZED: recognized dollars only."
+            >
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber, fontWeight: 600 }}>
+                  CAPITALIZED LEASE-UP CONCESSIONS
+                </div>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                  Recognized (amortized) · CAPITALIZED treatment · §14 · disappears on OPERATING / HYBRID
+                </div>
+              </div>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber, fontWeight: 600 }}>
+                {capitalizedConcessionsAmount != null && capitalizedConcessionsAmount > 0
+                  ? fmt$(capitalizedConcessionsAmount)
+                  : '— pending engine'}
               </span>
             </div>
           )}
