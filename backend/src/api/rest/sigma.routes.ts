@@ -172,6 +172,61 @@ router.get('/variables', (_req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/v1/sigma/plausibility/field
+ * M36 — lightweight single-field plausibility check.
+ * Maps a proforma field name to its sigma variable and scores it.
+ * Returns a 3-tier badge: REALISTIC | AGGRESSIVE | HEROIC.
+ */
+
+// Operating-statement field → VARIABLE_META key
+const FIELD_TO_SIGMA_VAR: Record<string, string> = {
+  vacancy:               'vacancyAtStabilization',
+  loss_to_lease:         'lossToLeasePct',
+  concessions:           'concessionsPct',
+  management_fee:        'managementFeePct',
+  managementFeePct:      'managementFeePct',
+  insurance:             'insurancePerUnit',
+  property_taxes:        'propertyTaxPctOfRevenue',
+  replacement_reserves:  'replacementReservesPerUnit',
+  other_income:          'otherIncomePerUnit',
+  exit_cap_rate:         'exitCapRate',
+  rent_growth:           'rentGrowthStabilized',
+};
+
+function mapBandTo3Tier(band: string): 'REALISTIC' | 'AGGRESSIVE' | 'HEROIC' {
+  if (band === 'Realistic' || band === 'Stretch') return 'REALISTIC';
+  if (band === 'Aggressive') return 'AGGRESSIVE';
+  return 'HEROIC';
+}
+
+router.post('/plausibility/field', (req: Request, res: Response) => {
+  try {
+    const { field, value } = req.body as { field: string; value: number };
+    if (!field || value == null || typeof value !== 'number') {
+      return res.status(400).json({ success: false, error: 'field and numeric value required' });
+    }
+    const sigmaVar = FIELD_TO_SIGMA_VAR[field];
+    if (!sigmaVar) {
+      return res.json({ success: true, data: { field, sigmaVar: null, band: null, dScore: null, tier: null } });
+    }
+    const result = computePlausibility({ [sigmaVar]: value });
+    const tier = mapBandTo3Tier(result.band);
+    return res.json({
+      success: true,
+      data: {
+        field,
+        sigmaVar,
+        dScore: parseFloat(result.dScore.toFixed(3)),
+        band: result.band,
+        tier,
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message ?? 'Field plausibility error' });
+  }
+});
+
+/**
  * GET /api/v1/sigma/mu/breakdown
  * Show the macro-anchored μ breakdown for inspection.
  * Query params: metric, muEmpirical, metricStd

@@ -16,7 +16,7 @@
  */
 
 import type { Logger } from 'pino';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '../../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

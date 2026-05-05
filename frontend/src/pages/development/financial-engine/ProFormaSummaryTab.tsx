@@ -383,6 +383,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const [error, setError] = useState<string | null>(null);
   const [reparsing, setReparsing] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionState>({});
+  const [sigmaField, setSigmaField] = useState<{ tier: 'REALISTIC' | 'AGGRESSIVE' | 'HEROIC'; field: string; dScore: number } | null>(null);
   const [showAncillary, setShowAncillary] = useState(false);
   const [conDrill, setConDrill] = useState<{
     open: boolean;
@@ -514,6 +515,17 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         ...prev,
         [field]: { ...prev[field], editing: false, savedAt: new Date().toISOString(), original },
       }));
+      // M36 — fire non-blocking plausibility check for the saved field value.
+      if (value != null) {
+        apiClient.post<{ success: boolean; data: { tier: 'REALISTIC' | 'AGGRESSIVE' | 'HEROIC'; dScore: number; sigmaVar: string | null } }>(
+          '/api/v1/sigma/plausibility/field',
+          { field, value },
+        ).then(r => {
+          if (r.data?.success && r.data.data.tier) {
+            setSigmaField({ tier: r.data.data.tier, field, dScore: r.data.data.dScore ?? 0 });
+          }
+        }).catch(() => {});
+      }
       load();
     } catch (e: unknown) {
       console.error('Override failed:', e instanceof Error ? e.message : e);
@@ -757,6 +769,28 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 <AlertTriangle size={11} />{c.id}
               </span>
           )}
+          {/* M36 plausibility badge — shown after the user saves a field correction */}
+          {sigmaField && (() => {
+            const tierColor =
+              sigmaField.tier === 'REALISTIC'  ? '#22c55e' :
+              sigmaField.tier === 'AGGRESSIVE' ? '#f59e0b' : '#ef4444';
+            const tierBg =
+              sigmaField.tier === 'REALISTIC'  ? '#0a1c10' :
+              sigmaField.tier === 'AGGRESSIVE' ? '#1a1200' : '#1c0a0a';
+            return (
+              <span
+                title={`M36 Σ · ${sigmaField.field} override: d=${sigmaField.dScore.toFixed(2)} — ${sigmaField.tier}`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  padding: '2px 6px', borderRadius: 2,
+                  background: tierBg, border: `1px solid ${tierColor}22`,
+                  fontFamily: MONO, fontSize: 8, color: tierColor, fontWeight: 700, letterSpacing: 0.5,
+                }}
+              >
+                Σ {sigmaField.tier}
+              </span>
+            );
+          })()}
           <button
             onClick={handleReparse}
             disabled={reparsing}

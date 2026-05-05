@@ -17,7 +17,7 @@
  */
 
 import type { Logger } from 'pino';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '../../utils/logger';
 import { spatialKernel } from './spatial-kernel';
 import { multiTierFactorDecomposition, type SubmarketFactors } from './multi-tier-factor';
 

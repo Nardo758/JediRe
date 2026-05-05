@@ -18,7 +18,7 @@
  */
 
 import type { Logger } from 'pino';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '../../utils/logger';
 import { factorEstimator } from './factor-estimator';
 import { spatialKernel } from './spatial-kernel';
 

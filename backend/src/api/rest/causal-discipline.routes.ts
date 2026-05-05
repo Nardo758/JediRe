@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { causalDisciplineEngine } from '../services/sigma/causal-discipline-engine';
-import type { ExpectedState, ObservedState } from '../services/sigma/causal-discipline-engine';
+import { causalDisciplineEngine } from '../../services/sigma/causal-discipline-engine';
+import type { ExpectedState, ObservedState } from '../../services/sigma/causal-discipline-engine';
 
 const router = Router();
 

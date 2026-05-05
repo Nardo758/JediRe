@@ -17,7 +17,7 @@
  */
 
 import type { Logger } from 'pino';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '../../utils/logger';
 import { calibrationLedger } from './calibration-ledger';
 import { hmmRegimeClassifier } from './hmm-regime-classifier';
 import { analogEngine } from './analog-engine';

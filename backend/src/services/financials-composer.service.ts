@@ -15,6 +15,9 @@ import type {
   ConcessionRecord,
 } from '../types/concessions';
 import { RentRollDiffService } from './rent-roll/rent-roll-diff.service';
+import { peerIntelligenceService } from './sigma/peer-intelligence';
+import { calibrationLedger } from './sigma/calibration-ledger';
+import { randomUUID } from 'crypto';
 
 // â”€â”€ M07 Subject Traffic History record shape (mirrors frontend F9SubjectHistory) â”€â”€â”€
 export interface SubjectHistoryRecord {
@@ -408,7 +411,37 @@ export async function composeDealFinancials(
       try {
         peerSetValues = await loadDealScopedPeerPosteriors(pool, deal);
       } catch {
-        // Platform posteriors not available â€” peer column stays empty for non-collision rows
+        // Platform posteriors not available — peer column stays empty for non-collision rows
+      }
+      // M39: enrich peer_set_values with top-competitor recent metrics from the
+      // peer intelligence engine. Non-fatal — engine may have no registered characters.
+      if (deal.submarket_id) {
+        try {
+          const m39AssetClass = deal.property_class ?? 'multifamily';
+          const m39Ranking = peerIntelligenceService.computeDualRanking(
+            deal.submarket_id, m39AssetClass, 1,
+          );
+          const topCompetitor = m39Ranking.competitors[0];
+          if (topCompetitor?.recentMetrics) {
+            if (topCompetitor.recentMetrics.rentGrowth != null) {
+              peerSetValues['m39_peer_rent_growth'] = topCompetitor.recentMetrics.rentGrowth;
+            }
+            if (topCompetitor.recentMetrics.occupancy != null) {
+              peerSetValues['m39_peer_occupancy'] = topCompetitor.recentMetrics.occupancy;
+            }
+          }
+          const topAnalog = m39Ranking.analogs[0];
+          if (topAnalog?.recentMetrics) {
+            if (topAnalog.recentMetrics.rentGrowth != null) {
+              peerSetValues['m39_analog_rent_growth'] = topAnalog.recentMetrics.rentGrowth;
+            }
+            if (topAnalog.recentMetrics.occupancy != null) {
+              peerSetValues['m39_analog_occupancy'] = topAnalog.recentMetrics.occupancy;
+            }
+          }
+        } catch {
+          // M39 enrichment non-fatal
+        }
       }
       subjectHistory = {
         tier:               row.tier as SubjectHistoryRecord['tier'],
@@ -425,6 +458,45 @@ export async function composeDealFinancials(
   } catch {
     // subject_traffic_history table may not exist in older envs â€” graceful fallback
     subjectHistory = null;
+  }
+
+  const concessionRecognition = await computeConcessionRecognition(pool, dealId, dealData);
+
+  // M38: record a non-blocking calibration prediction for Year-1 NOI after every
+  // successful compose. Fire-and-forget — never throws or blocks the response.
+  const noiResolved = year1Rows.find(r => (r as any).field === 'noi')?.resolved ?? null;
+  if (noiResolved != null) {
+    setImmediate(() => {
+      try {
+        const now = new Date();
+        calibrationLedger.recordPrediction({
+          predictionId: randomUUID(),
+          emittedAt: now,
+          source: {
+            module: 'M38.financials-composer',
+            version: '1.0.0',
+            dealId,
+            submarketId: deal.submarket_id ?? undefined,
+          },
+          metric: 'noi_year1',
+          assetClass: deal.property_class ?? 'multifamily',
+          regimeAtPrediction: 'expansion',
+          predictionType: 'point_with_ci',
+          pointEstimate: noiResolved,
+          ciLevels: [
+            { level: 0.80, low: noiResolved * 0.90, high: noiResolved * 1.10 },
+            { level: 0.90, low: noiResolved * 0.85, high: noiResolved * 1.15 },
+          ],
+          realizationHorizonMonths: 12,
+          realizationTargetDate: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000),
+          context: {
+            rationaleSummary: 'Year-1 NOI from pro-forma compose (M38)',
+          },
+        });
+      } catch {
+        // Calibration recording is non-fatal
+      }
+    });
   }
 
   return {
@@ -461,10 +533,11 @@ export async function composeDealFinancials(
       otherIncomeUserLines: Array.isArray(year1Data?.other_income_user_lines)
         ? year1Data.other_income_user_lines
         : [],
-      concessionRecognition: await computeConcessionRecognition(pool, dealId, dealData),
+      concessionRecognition,
     },
   };
 }
+
 
 /**
  * 24-hour TTL for the concession_recognition cache stored in deal_data.
