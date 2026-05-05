@@ -335,22 +335,26 @@ function RatesModal({ open, onClose, jurisdiction }: {
     setLoading(true);
     setError(null);
 
-    // Fetch both the state sheet and (optionally) the county overlay in parallel
-    const stateJur = normalizedJur;
+    // Fetch stacked federal → state → county sheets in parallel
+    const stateJur  = normalizedJur;
     const countyJur = jurisdiction.toLowerCase().replace(/\s+/g, '-');
 
-    const fetchSheet = (jur: string) => apiClient
-      .get(`/api/v1/tax/rate-sheets/${jur}`)
-      .then((res: any) => res.data?.data as RateSheetData)
-      .catch(() => null);
+    const fetchSheet = (jur: string): Promise<RateSheetData | null> =>
+      apiClient
+        .get(`/api/v1/tax/rate-sheets/${jur}`)
+        .then((res: any) => res.data?.data as RateSheetData)
+        .catch(() => null);
 
     Promise.all([
-      fetchSheet(stateJur),
-      countyJur !== stateJur ? fetchSheet(countyJur) : Promise.resolve(null),
-    ]).then(([stateSheet, countySheet]) => {
+      fetchSheet('federal'),                                              // always include federal layer
+      fetchSheet(stateJur),                                              // state layer
+      countyJur !== stateJur ? fetchSheet(countyJur) : Promise.resolve(null), // county overlay if distinct
+    ]).then(([fedSheet, stateSheet, countySheet]) => {
+      // Stack federal → state → county (omit duplicates / missing layers)
       const loaded: RateSheetData[] = [];
-      if (stateSheet) loaded.push(stateSheet);
-      if (countySheet) loaded.push(countySheet);
+      if (fedSheet) loaded.push(fedSheet);
+      if (stateSheet && stateSheet.jurisdiction !== 'federal') loaded.push(stateSheet);
+      if (countySheet && countySheet.jurisdiction !== stateJur && countySheet.jurisdiction !== 'federal') loaded.push(countySheet);
       if (!loaded.length) setError('No rate sheet found for this jurisdiction.');
       else setSheets(loaded);
     }).catch((e: any) => setError(e?.message ?? 'Failed to load rate sheets'))
@@ -511,7 +515,9 @@ function DeprecSchedule({ taxes, costSeg, f9Financials }: {
       const taxableIncome = noi != null && annualInterest != null
         ? noi - annualInterest - deprec
         : null;
-      const marginalRate = taxes.incomeTax.marginalTaxRate > 0 ? taxes.incomeTax.marginalTaxRate : 0.37;
+      // Use the engine-computed marginal rate — do not fall back to a hardcoded value.
+      // A rate of 0 is valid (e.g. REIT federal pass-through entity type).
+      const marginalRate = taxes.incomeTax.marginalTaxRate;
       const taxPayable = taxableIncome != null ? Math.round(Math.max(0, taxableIncome) * marginalRate) : null;
       const taxShield = Math.round(deprec * marginalRate);
       return {
@@ -531,7 +537,7 @@ function DeprecSchedule({ taxes, costSeg, f9Financials }: {
     <tr><td colSpan={6} style={{ padding: '12px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>No purchase price — depreciation unavailable.</td></tr>
   );
 
-  const displayRatePct = Math.round((taxes.incomeTax.marginalTaxRate > 0 ? taxes.incomeTax.marginalTaxRate : 0.37) * 100);
+  const displayRatePct = Math.round(taxes.incomeTax.marginalTaxRate * 100);
   const COLS = ['YR', 'NOI (EST)', 'INTEREST EXP', 'DEPRECIATION', 'TAXABLE INCOME', `TAX PAYABLE (${displayRatePct}%)`, 'CUMUL DEPREC'];
 
   return (
@@ -895,11 +901,13 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                   onUserChange={handleAssessedValue}
                   format={fmtDlr}
                   platformTooltip={taxes ? [
-                    `Source: ${taxes.millageSource === 'live' ? 'live millage service' : taxes.millageSource === 'user' ? 'user override' : 'ruleset default'}`,
-                    `Jurisdiction: ${taxes.jurisdiction ?? 'unknown'}`,
-                    `Formula: purchasePrice used as post-acquisition assessed value`,
-                    `Confidence: ${taxes.millageSource === 'live' ? 'high' : taxes.millageSource === 'user' ? 'high' : 'medium'}`,
-                  ].join('\n') : undefined}
+                    `Source: ${taxes.provenance?.assessedValue.source ?? (taxes.millageSource === 'live' ? 'live_millage_service' : taxes.millageSource === 'user' ? 'user_override' : 'fallback')}`,
+                    `Confidence: ${taxes.provenance?.assessedValue.confidence ?? (taxes.millageSource === 'live' ? 'high' : 'medium')}`,
+                    taxes.provenance?.assessedValue.formula ? `Formula: ${taxes.provenance.assessedValue.formula}` : `Formula: purchasePrice → post-acquisition assessed value`,
+                    taxes.provenance?.assessedValue.rulesetVersion ? `Ruleset: ${taxes.provenance.assessedValue.rulesetVersion}` : '',
+                    taxes.provenance?.computedAt ? `As of: ${new Date(taxes.provenance.computedAt).toLocaleString()}` : '',
+                    taxes.provenance?.parcelSource ? `Parcel tier: ${taxes.provenance.parcelSource}` : '',
+                  ].filter(Boolean).join('\n') : undefined}
                 />
                 <TaxRow
                   label="Millage Rate"
@@ -915,11 +923,12 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                   onUserChange={handleMillageRate}
                   format={fmtMills}
                   platformTooltip={taxes ? [
-                    `Source: ${taxes.millageSource === 'live' ? 'live millage service (TX Comptroller / county PA)' : taxes.millageSource === 'user' ? 'user override' : 'ruleset hardcoded default'}`,
-                    `Jurisdiction: ${taxes.jurisdiction ?? 'unknown'}`,
-                    `Formula: ${taxes.reTax.isMiamiDade ? 'Miami-Dade overlay millage' : `${state} state ruleset millage`}`,
+                    `Source: ${taxes.provenance?.millageRate.source ?? (taxes.millageSource === 'live' ? 'live_millage_service' : taxes.millageSource === 'user' ? 'user_override' : 'tax_service_computed')}`,
+                    `Confidence: ${taxes.provenance?.millageRate.confidence ?? 'medium'}`,
+                    taxes.provenance?.millageRate.formula ? `Formula: ${taxes.provenance.millageRate.formula}` : `Formula: ${taxes.reTax.isMiamiDade ? 'Miami-Dade county overlay' : `${state} state ruleset`}`,
+                    taxes.provenance?.millageRate.rulesetVersion ? `Ruleset: ${taxes.provenance.millageRate.rulesetVersion}` : '',
                     `Rate: ${effMillageRate.toFixed(2)} mills per $1,000 assessed value`,
-                  ].join('\n') : undefined}
+                  ].filter(Boolean).join('\n') : undefined}
                 />
                 <TaxRow
                   label="Annual RE Tax (Y1)"
@@ -930,13 +939,16 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                   resolved={effAnnualTax}
                   locked
                   format={fmtDlr}
-                  platformTooltip={taxes && effAssessedValue != null ? [
-                    `Formula: assessedValue × millageRate / 1,000`,
-                    `Inputs: ${fmtDlr(effAssessedValue)} × ${effMillageRate.toFixed(2)} mills`,
-                    `Source: tax_service_computed`,
+                  platformTooltip={taxes ? [
+                    `Source: ${taxes.provenance?.platformAnnualTax.source ?? 'tax_service_computed'}`,
+                    `Confidence: ${taxes.provenance?.platformAnnualTax.confidence ?? 'medium'}`,
+                    taxes.provenance?.platformAnnualTax.formula
+                      ? `Formula: ${taxes.provenance.platformAnnualTax.formula}`
+                      : effAssessedValue != null ? `Formula: ${fmtDlr(effAssessedValue)} × ${effMillageRate.toFixed(2)} mills / 1,000` : '',
                     taxes.reTax.deltaVsT12Pct != null
                       ? `Delta vs T-12: ${taxes.reTax.deltaVsT12Pct >= 0 ? '+' : ''}${(taxes.reTax.deltaVsT12Pct * 100).toFixed(1)}% (post-acquisition reassessment)`
                       : '',
+                    taxes.provenance?.computedAt ? `As of: ${new Date(taxes.provenance.computedAt).toLocaleString()}` : '',
                   ].filter(Boolean).join('\n') : undefined}
                 />
                 {/* Assessment Projection Grid */}

@@ -560,6 +560,20 @@ export interface F9TaxData {
     perYear: F9TaxYear[];
     deltaVsT12Pct: number | null;
   };
+  /**
+   * Provenance: server-provided LayeredValue metadata for the key Section A fields.
+   * Populated from taxForecast.provenance by proforma-adjustment.service.ts.
+   * Used by TaxesTab PLATFORM column tooltips.
+   */
+  provenance?: {
+    assessedValue: { source: string; confidence: 'high' | 'medium' | 'low'; formula?: string; computedAt?: string; rulesetVersion?: string };
+    millageRate: { source: string; confidence: 'high' | 'medium' | 'low'; formula?: string; rulesetVersion?: string };
+    platformAnnualTax: { source: string; confidence: 'high' | 'medium' | 'low'; formula?: string };
+    parcelSource?: string | null;
+    parcelConfidence?: 'high' | 'medium' | 'low' | null;
+    rulesetVersion: string;
+    computedAt: string;
+  } | null;
   tpp: {
     broker: number | null;
     platform: number | null;

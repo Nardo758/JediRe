@@ -5,6 +5,7 @@
 
 import { Router, Request, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { requireDealAccess } from '../../middleware/deal-access';
 import { taxProjectionService } from '../../services/tax/taxProjection.service';
 import { taxService } from '../../services/tax/taxService';
 import { buildTaxContext, TaxContextOverrides, DealRowForTaxContext } from '../../services/tax/compositeResolver';
@@ -226,7 +227,7 @@ router.get('/tax/rate-sheets/:jurisdiction/history', requireAuth, async (req: Re
  * Run a fresh taxService.forecast() for a deal and return the full TaxForecast.
  * Accepts optional query params: holdYears, loanAmount (override deal values).
  */
-router.get('/tax/forecast/:dealId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/tax/forecast/:dealId', requireAuth, requireDealAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
 
@@ -248,8 +249,8 @@ router.get('/tax/forecast/:dealId', requireAuth, async (req: AuthenticatedReques
       loanAmount: loanAmountParam,
     };
 
-    // Deal-level access control follows project-wide pattern (requireAuth only —
-    // no explicit IDOR guard at this layer, consistent with /deals/:dealId/* routes).
+    // Deal-level access control enforced by requireDealAccess middleware above —
+    // checks organization membership (or user_id ownership for un-orged deals).
     const { ctx, provenance } = await buildTaxContext(deal, overrides);
     const forecast = taxService.forecast(ctx, provenance);
 
@@ -274,7 +275,7 @@ router.get('/tax/forecast/:dealId', requireAuth, async (req: AuthenticatedReques
  * Return a single section (A/B/C/D) from the tax forecast for a deal.
  * Useful for lazy per-section fetches from the F9 TaxesTab.
  */
-router.get('/tax/forecast/:dealId/section/:abcd', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/tax/forecast/:dealId/section/:abcd', requireAuth, requireDealAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId, abcd } = req.params;
     const section = abcd.toUpperCase();
@@ -292,8 +293,8 @@ router.get('/tax/forecast/:dealId/section/:abcd', requireAuth, async (req: Authe
     }
     const deal = dealResult.rows[0] as DealRowForTaxContext;
 
-    // Deal-level access control follows project-wide pattern (requireAuth only —
-    // no explicit IDOR guard at this layer, consistent with /deals/:dealId/* routes).
+    // Deal-level access control enforced by requireDealAccess middleware above —
+    // checks organization membership (or user_id ownership for un-orged deals).
     const { ctx, provenance } = await buildTaxContext(deal, {});
     const forecast = taxService.forecast(ctx, provenance);
 

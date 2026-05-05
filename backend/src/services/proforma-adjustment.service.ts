@@ -2468,11 +2468,12 @@ export async function getDealFinancials(
   const rrLv = lv(year1Seed, 'replacement_reserves') as Record<string, unknown> | null;
   const rrBroker = layerN(rrLv, 'broker') ?? layerN(rrLv, 't12');
   const tppBroker: number | null = rrBroker != null ? Math.round(rrBroker * 0.5) : (totalUnits > 0 ? totalUnits * 150 : null);
-  // Platform TPP: always use engine-computed value when jurisdiction taxes TPP — this includes
-  // legitimate zero (property value below exemption threshold); only fall back for non-TPP jurisdictions.
-  const tppPlatform: number | null = taxForecast.sectionB.taxesTPP
-    ? taxForecast.sectionB.tppAnnualTax  // engine value — 0 means below exemption, not missing data
-    : (totalUnits > 0 ? totalUnits * 200 : null);
+  // Platform TPP: always use the Tax Service sectionB engine output as source of truth.
+  // - taxesTPP=false → tppAnnualTax=0 (jurisdiction does not tax TPP, zero is correct)
+  // - taxesTPP=true, value≤exemption → tppAnnualTax=0 (below exemption threshold, zero is correct)
+  // - taxesTPP=true, value>exemption → tppAnnualTax=computed positive amount
+  // Never substitute a non-engine fallback for the PLATFORM column.
+  const tppPlatform: number = taxForecast.sectionB.tppAnnualTax;
 
   // Income tax / depreciation — sourced from taxService.forecast() sectionC
   const sc = taxForecast.sectionC;
@@ -2518,6 +2519,32 @@ export async function getDealFinancials(
       tppAmount: tppAmountOvr,
       taxCounty: taxCountyOvr,
     },
+    // LayeredValue provenance for the F9 TaxesTab PLATFORM column tooltips.
+    // Includes source, confidence, and formula for Section A key fields.
+    provenance: taxForecast.provenance ? {
+      assessedValue: {
+        source:         taxForecast.provenance.assessed_value.source,
+        confidence:     taxForecast.provenance.assessed_value.metadata.confidence,
+        formula:        taxForecast.provenance.assessed_value.metadata.formula,
+        computedAt:     taxForecast.provenance.assessed_value.metadata.computed_at,
+        rulesetVersion: taxForecast.provenance.assessed_value.metadata.ruleset_version,
+      },
+      millageRate: {
+        source:         taxForecast.provenance.millage_rate.source,
+        confidence:     taxForecast.provenance.millage_rate.metadata.confidence,
+        formula:        taxForecast.provenance.millage_rate.metadata.formula,
+        rulesetVersion: taxForecast.provenance.millage_rate.metadata.ruleset_version,
+      },
+      platformAnnualTax: {
+        source:     taxForecast.provenance.platform_annual_tax.source,
+        confidence: taxForecast.provenance.platform_annual_tax.metadata.confidence,
+        formula:    taxForecast.provenance.platform_annual_tax.metadata.formula,
+      },
+      parcelSource:     taxForecast.provenance.parcel_source,
+      parcelConfidence: taxForecast.provenance.parcel_confidence,
+      rulesetVersion:   taxForecast.provenance.ruleset_version,
+      computedAt:       taxForecast.provenance.computed_at,
+    } : null,
   };
 
   // ── Debt Stack v2 — build from capitalStack fields + persisted per_year_overrides ────
