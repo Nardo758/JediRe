@@ -220,10 +220,9 @@ function AssessmentGrid({ perYear, hasCap, capPct }: { perYear: F9TaxYear[]; has
   );
 }
 
-function DeprecSchedule({ taxes, costSeg, bonusYear, f9Financials }: {
+function DeprecSchedule({ taxes, costSeg, f9Financials }: {
   taxes: F9TaxData;
   costSeg: boolean;
-  bonusYear: 2026 | 2027;
   f9Financials: F9DealFinancials | null | undefined;
 }) {
   const { incomeTax } = taxes;
@@ -364,7 +363,6 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [costSeg, setCostSeg] = useState(true);
-  const [bonusYear, setBonusYear] = useState<2026 | 2027>(2026);
   // countyOverride: FL-only toggle (null = auto, true = Miami-Dade, false = statewide)
   const [countyOverride, setCountyOverride] = useState<boolean | null>(taxes?.userOverrides?.taxCounty ?? null);
 
@@ -719,18 +717,16 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                           </button>
                         ))}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>BONUS DEPREC YEAR:</span>
-                        {([2026, 2027] as const).map(yr => (
-                          <button key={yr} onClick={() => setBonusYear(yr)}
-                            style={{ padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: bonusYear === yr ? BT.bg.active : BT.bg.panel, border: `1px solid ${bonusYear === yr ? BT.border.bright : BT.border.subtle}`, color: bonusYear === yr ? BT.text.white : BT.text.muted, borderRadius: 3, cursor: 'pointer' }}>
-                            {yr} ({yr === 2026 ? '40%' : '20%'})
-                          </button>
-                        ))}
-                      </div>
+                      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                        BONUS DEPREC: <span style={{ color: BT.text.purple, fontWeight: 700 }}>
+                          {taxes?.incomeTax.bonusDepreciationCurrentYearPct != null
+                            ? `${(taxes.incomeTax.bonusDepreciationCurrentYearPct * 100).toFixed(0)}%`
+                            : '—'}
+                        </span>
+                      </span>
                       <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
                         Depreciable Base: <span style={{ color: BT.text.purple }}>{fmtDlr(taxes?.incomeTax.depreciableBase)}</span>
-                        &nbsp;(80% of purchase price — 20% land excluded)
+                        &nbsp;({taxes?.incomeTax.landValuePct != null ? `${((1 - taxes.incomeTax.landValuePct) * 100).toFixed(0)}% of purchase price — ${(taxes.incomeTax.landValuePct * 100).toFixed(0)}% land excluded` : '80% of purchase price — 20% land excluded'})
                       </span>
                     </div>
                   </td>
@@ -795,7 +791,7 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                   </td>
                 </tr>
                 {taxes ? (
-                  <DeprecSchedule taxes={taxes} costSeg={costSeg} bonusYear={bonusYear} f9Financials={f9Financials} />
+                  <DeprecSchedule taxes={taxes} costSeg={costSeg} f9Financials={f9Financials} />
                 ) : (
                   <tr><td colSpan={6} style={{ padding: '8px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>No data.</td></tr>
                 )}

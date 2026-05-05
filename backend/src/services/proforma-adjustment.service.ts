@@ -2380,6 +2380,45 @@ export async function getDealFinancials(
     }
   }
 
+  // ── Section C context fields — wire from deal data sources ──────────────────
+  // Valid set guard: reject unknown enum values so the federal ruleset doesn't throw.
+  const VALID_ASSET_CLASSES = new Set(['multifamily','sfr','retail','office','industrial','hospitality']);
+  const VALID_ENTITY_TYPES  = new Set(['individual','pass_through','c_corp','reit','partnership']);
+
+  const rawAssetClass = (dealData.asset_class ?? dealData.property_type ?? '').toString().toLowerCase().trim();
+  const sectionCPropertyType = VALID_ASSET_CLASSES.has(rawAssetClass)
+    ? (rawAssetClass as import('./tax/types').AssetClass)
+    : undefined; // taxService defaults to 'multifamily'
+
+  const rawEntityType = (dealData.entity_type ?? '').toString().toLowerCase().trim();
+  const sectionCEntityType = VALID_ENTITY_TYPES.has(rawEntityType)
+    ? (rawEntityType as import('./tax/types').EntityType)
+    : undefined; // taxService defaults to 'pass_through'
+
+  // Placed-in-service year: use the deal's close/acquisition date year when available.
+  // Fallback: taxService uses FEDERAL_RATE_SHEET_YEAR (2026) — deterministic default.
+  const closeYear = (() => {
+    const raw = dealData.close_date ?? deal.timeline_start;
+    if (!raw) return undefined;
+    const yr = new Date(String(raw)).getFullYear();
+    return isFinite(yr) && yr >= 2020 && yr <= 2040 ? yr : undefined;
+  })();
+
+  // Land allocation pct: prefer per_year_overrides override, then deal_data field.
+  const sectionCLandAllocPct = (() => {
+    const pyOvr = (rawTaxOvs['tax:land_allocation_pct'] as Record<string, unknown> | null);
+    if (pyOvr?.value != null) {
+      const v = Number(pyOvr.value);
+      return isFinite(v) && v > 0 && v < 1 ? v : undefined;
+    }
+    const dd = dealData.land_allocation_pct;
+    if (dd != null) {
+      const v = Number(dd);
+      return isFinite(v) && v > 0 && v < 1 ? v : undefined;
+    }
+    return undefined; // taxService defaults to 0.20
+  })();
+
   // Build tax context and invoke jurisdiction-agnostic tax service
   const taxCtx: TaxContext = {
     state: dealState,
@@ -2397,6 +2436,10 @@ export async function getDealFinancials(
     refiEnabled,
     refiTriggerYear,
     refiNewLoanType,
+    propertyType:       sectionCPropertyType,
+    entityType:         sectionCEntityType,
+    placedInServiceYear: closeYear,
+    landAllocationPct:  sectionCLandAllocPct,
   };
   const taxForecast = taxService.forecast(taxCtx);
 
