@@ -323,13 +323,20 @@ export async function buildTaxContext(
     stack.jurisdictionMapped ? (stack.county ? 'high' : 'medium') : 'low';
 
   // ── Assemble TaxContext ───────────────────────────────────────────────────
+  // assessedValueOverride priority: explicit user override > parcel data > null
+  // (null causes taxService to fall back to purchasePrice as assessed value)
+  const resolvedAssessedValueOverride: number | null =
+    overrides.assessedValueOverride != null
+      ? overrides.assessedValueOverride
+      : parcel?.assessed_value ?? null;
+
   const ctx: TaxContext = {
     state:       dealState,
     county:      resolvedCounty,
     city:        dealCity,
     purchasePrice,
     loanAmount:  overrides.loanAmount ?? null,
-    assessedValueOverride: overrides.assessedValueOverride ?? null,
+    assessedValueOverride: resolvedAssessedValueOverride,
     millageRateOverride:   effectiveMillageOverride,
     countyOverride:        overrides.countyOverride ?? null,
     units:       totalUnits,

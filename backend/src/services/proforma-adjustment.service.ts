@@ -19,8 +19,7 @@ import type { TaxContext, TaxForecastProvenance } from './tax/taxService';
 import { deriveCounty } from './tax/resolver';
 import { kafkaProducer } from './kafka/kafka-producer.service';
 import { KAFKA_TOPICS } from './kafka/event-schemas';
-import { liveMillageService } from './tax/liveMlillageService';
-import { generalPropertyAppraiserFetcher } from './tax/propertyAppraiserFetcher';
+import { buildTaxContext } from './tax/compositeResolver';
 
 // ============================================================================
 // Types
@@ -2365,24 +2364,6 @@ export async function getDealFinancials(
   const dealState = (deal.state_code ?? '').toUpperCase().trim();
   const resolvedCounty = dealCountyRaw ?? deriveCounty(deal.city ?? null, dealState);
 
-  // Try to get a live millage rate if the user hasn't set a manual override.
-  // Priority: user override > live API > ruleset hardcoded default.
-  let effectiveMillageOverride = taxMillageRateOvr;
-  let millageSource: 'user' | 'live' | 'hardcoded' = 'hardcoded';
-  if (taxMillageRateOvr != null) {
-    millageSource = 'user';
-  } else {
-    try {
-      const liveRate = await liveMillageService.getLiveMillageRate(dealState, resolvedCounty);
-      if (liveRate != null) {
-        effectiveMillageOverride = liveRate.millageRate;
-        millageSource = 'live';
-      }
-    } catch {
-      // Live lookup failed — fall through to ruleset hardcoded default
-    }
-  }
-
   // ── Section C context fields — wire from deal data sources ──────────────────
   // Valid set guard: reject unknown enum values so the federal ruleset doesn't throw.
   const VALID_ASSET_CLASSES = new Set(['multifamily','sfr','retail','office','industrial','hospitality']);
@@ -2422,96 +2403,47 @@ export async function getDealFinancials(
     return undefined; // taxService defaults to 0.20
   })();
 
-  // ── Tier 2 parcel fetch (GeneralPropertyAppraiserFetcher) ───────────────────
-  // Attempt to enrich TaxContext with ATTOM or tax-bill PDF parcel data.
-  // Runs after the millage override resolution so user overrides always win.
-  // Failures are swallowed — forecast falls back to ruleset defaults.
-  let fetcherProvenance: TaxForecastProvenance | undefined;
-  if (deal.id != null && taxAssessedValueOvr == null) {
-    try {
-      const parcelId = (dealDataJson.parcel_id as string | null) ?? null;
-      const parcelResult = await generalPropertyAppraiserFetcher.fetch({
-        dealId:     String(deal.id),
-        parcelId,
-        state:      dealState,
-        county:     resolvedCounty,
-        fiscalYear: closeYear,
-      });
-      if (parcelResult.parcel) {
-        const p = parcelResult.parcel;
-        // Enrich context: use parcel assessed value and millage only if not user-overridden
-        if (taxAssessedValueOvr == null && p.assessed_value != null) {
-          // taxCtx will be built below; store for injection
-        }
-        if (taxMillageRateOvr == null && p.millage_rate != null) {
-          effectiveMillageOverride = p.millage_rate;
-        }
-        // Build a minimal provenance record to pass into forecast()
-        const pSrc = p.source;
-        const pConf = parcelResult.confidence;
-        const rulesetVer = `${dealState || 'DEFAULT'}-${closeYear ?? new Date().getFullYear()}`;
-        const now = new Date().toISOString();
-        const mkLv = <T>(v: T, src: string) => ({
-          value: v, source: src,
-          metadata: { ruleset_version: rulesetVer, formula: `${src} parcel data`, confidence: pConf, computed_at: now },
-        });
-        fetcherProvenance = {
-          computed_at: now,
-          ruleset_version: rulesetVer,
-          parcel_source: pSrc,
-          parcel_confidence: pConf,
-          assessed_value:     mkLv(p.assessed_value ?? null, pSrc),
-          millage_rate:       mkLv(p.millage_rate   ?? null, pSrc),
-          t12_annual_tax:     mkLv(p.annual_tax     ?? null, pSrc),
-          t12_millage_rate:   mkLv(p.millage_rate   ?? null, pSrc),
-          t12_assessed_value: mkLv(p.assessed_value ?? null, pSrc),
-          platform_annual_tax:       mkLv(null, 'tax_service_computed'),
-          delta_vs_t12_pct:          mkLv(null, 'tax_service_computed'),
-          assessment_growth_pct:     mkLv(0,    'tax_service_computed'),
-          soh_cap_pct:               mkLv(0,    'tax_service_computed'),
-          doc_stamp_amount:          mkLv(null, 'tax_service_computed'),
-          intangible_tax_amount:     mkLv(null, 'tax_service_computed'),
-          county_surtax_amount:      mkLv(null, 'tax_service_computed'),
-          total_transfer_tax:        mkLv(null, 'tax_service_computed'),
-          land_allocation_pct:       mkLv(0.20, 'ruleset_default'),
-          depreciable_base:          mkLv(null, 'tax_service_computed'),
-          annual_depreciation:       mkLv(null, 'tax_service_computed'),
-          bonus_depreciation_pct:    mkLv(0,    'tax_service_computed'),
-          cost_seg_available_pct:    mkLv(0,    'tax_service_computed'),
-          federal_income_tax_rate:   mkLv(0,    'tax_service_computed'),
-          state_income_tax_rate:     mkLv(0,    'tax_service_computed'),
-          effective_combined_rate:   mkLv(0,    'tax_service_computed'),
-          tpp_exemption_amount:      mkLv(0,    'tax_service_computed'),
-        } as TaxForecastProvenance;
-      }
-    } catch {
-      // Parcel fetch failure is non-fatal; forecast continues with manual context.
-    }
-  }
-
-  // Build tax context and invoke jurisdiction-agnostic tax service
-  const taxCtx: TaxContext = {
-    state: dealState,
-    county: resolvedCounty,
-    city: deal.city ?? null,
-    purchasePrice,
-    loanAmount,
+  // ── Build TaxContext via the canonical composite resolver ────────────────────
+  // buildTaxContext handles all tier-routing: PDF → ATTOM → live millage →
+  // jurisdiction cache → ruleset default.  It applies parcel assessed value and
+  // millage to the context when no user override exists, and assembles a full
+  // TaxForecastProvenance record so forecast outputs and provenance are consistent.
+  const dealForCtx = {
+    id:           deal.id != null ? String(deal.id) : '',
+    state_code:   deal.state_code ?? null,
+    city:         deal.city ?? null,
+    target_units: deal.target_units ?? null,
+    budget:       deal.budget ?? null,
+    deal_data:    dealDataJson,
+  };
+  const ctxOverrides = {
     assessedValueOverride: taxAssessedValueOvr,
-    millageRateOverride: effectiveMillageOverride,
-    countyOverride: taxCountyOvr,
-    units: totalUnits,
-    t12AnnualTax,
+    millageRateOverride:   taxMillageRateOvr,
+    countyOverride:        taxCountyOvr,
+    loanAmount,
     holdYears,
-    isRefi: refiEnabled,
+    isRefi:              refiEnabled,
     refiEnabled,
     refiTriggerYear,
     refiNewLoanType,
-    propertyType:       sectionCPropertyType,
-    entityType:         sectionCEntityType,
+    propertyType:        sectionCPropertyType,
+    entityType:          sectionCEntityType,
     placedInServiceYear: closeYear,
-    landAllocationPct:  sectionCLandAllocPct,
-    dealId:             deal.id != null ? String(deal.id) : null,
+    landAllocationPct:   sectionCLandAllocPct,
+    t12AnnualTax,
   };
+  const { ctx: taxCtx, provenance: fetcherProvenance } = await buildTaxContext(
+    dealForCtx,
+    ctxOverrides,
+    { parcelId: (dealDataJson.parcel_id as string | null) ?? null, fiscalYear: closeYear },
+  );
+
+  // millageSource: surfaced in the taxes output object for legacy consumers
+  const rawMillageSrc = fetcherProvenance.millage_rate.source;
+  const millageSource: 'user' | 'live' | 'hardcoded' =
+    rawMillageSrc === 'user_override'       ? 'user' :
+    rawMillageSrc === 'live_millage_service' ? 'live' : 'hardcoded';
+
   const taxForecast = taxService.forecast(taxCtx, fetcherProvenance);
 
   // Fire-and-forget: emit jurisdiction_unmapped so Research Agent can queue onboarding.
