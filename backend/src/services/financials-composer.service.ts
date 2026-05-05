@@ -498,6 +498,7 @@ const CONCESSION_RECOGNITION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 function computeMonthlyDetail(
   schedules: ConcessionAmortizationSchedule[],
   records: ConcessionRecord[],
+  treatment: 'OPERATING' | 'CAPITALIZED' | 'HYBRID' = 'OPERATING',
 ): Record<string, ConcessionMonthlyDetail> {
   const recordMap = new Map(records.map(r => [r.id, r]));
   const detail: Record<string, {
@@ -527,7 +528,7 @@ function computeMonthlyDetail(
   };
 
   for (const sched of schedules) {
-    if (sched.is_lease_up_period) continue;
+    if (sched.is_lease_up_period && treatment === 'CAPITALIZED') continue;
     const record = recordMap.get(sched.concession_id);
     if (!record) continue;
     const commMonth = record.lease_start_date.slice(0, 7).replace('-', '');
@@ -748,7 +749,7 @@ async function computeConcessionRecognition(
       write_offs_year_to_date: output.write_offs_year_to_date,
       last_recomputed: output.computed_at,
       capitalized_lease_up_total: output.lease_up_reserve_required,
-      monthly_detail: computeMonthlyDetail(output.schedules, records),
+      monthly_detail: computeMonthlyDetail(output.schedules, records, treatment as 'OPERATING' | 'CAPITALIZED' | 'HYBRID'),
     };
 
     // ── Write-through cache: persist to deal_data ──────────────────────────

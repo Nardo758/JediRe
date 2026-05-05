@@ -222,7 +222,7 @@ export function ConcessionDrilldownModal({
             {view === 'recognized' ? 'TOTAL RECOGNIZED' : 'TOTAL EARNED'} · {periodLabel}
           </div>
           <div style={{ fontSize: 18, color: AMBER, fontWeight: 700 }}>
-            {total != null ? fmt$(total) : '—'}
+            {total != null ? fmt$(-Math.abs(total)) : '—'}
           </div>
           {view === 'earned' && total == null && (
             <div style={{ fontSize: 7, color: MUTED, marginTop: 4 }}>
@@ -247,16 +247,17 @@ export function ConcessionDrilldownModal({
           }}>
             <div>
               <div style={{ fontSize: 7, color: MUTED, letterSpacing: 0.5, marginBottom: 2 }}>CALENDAR YEAR</div>
-              <div style={{ fontSize: 11, color: TEAL, fontWeight: 700 }}>{fmt$(calendarYearTotal)}</div>
+              <div style={{ fontSize: 11, color: TEAL, fontWeight: 700 }}>{fmt$(-Math.abs(calendarYearTotal))}</div>
             </div>
             <div>
               <div style={{ fontSize: 7, color: MUTED, letterSpacing: 0.5, marginBottom: 2 }}>FISCAL YEAR</div>
-              <div style={{ fontSize: 11, color: TEAL, fontWeight: 700 }}>{fmt$(fiscalYearTotal)}</div>
+              <div style={{ fontSize: 11, color: TEAL, fontWeight: 700 }}>{fmt$(-Math.abs(fiscalYearTotal))}</div>
             </div>
             <div style={{ marginLeft: 'auto', alignSelf: 'center' }}>
               <div style={{ fontSize: 7, color: MUTED, letterSpacing: 0.5, marginBottom: 2 }}>DIFFERENCE</div>
               <div style={{ fontSize: 9, color: Math.abs(calendarYearTotal - fiscalYearTotal) > 0 ? BT.text.amber : MUTED }}>
-                {calendarYearTotal > fiscalYearTotal ? '+' : ''}{fmt$(calendarYearTotal - fiscalYearTotal)}
+                {Math.abs(calendarYearTotal) > Math.abs(fiscalYearTotal) ? '-' : '+'}
+                {fmt$(Math.abs(Math.abs(calendarYearTotal) - Math.abs(fiscalYearTotal)))}
               </div>
             </div>
           </div>
@@ -291,7 +292,7 @@ export function ConcessionDrilldownModal({
                             {detail!.new_lease_count}
                           </td>
                           <td style={{ padding: '4px 14px', textAlign: 'right', color: TEAL, fontWeight: 600 }}>
-                            {fmt$(detail!.new_lease_dollars)}
+                            {fmt$(-Math.abs(detail!.new_lease_dollars))}
                           </td>
                         </tr>
                       )}
@@ -304,7 +305,7 @@ export function ConcessionDrilldownModal({
                             {detail!.renewal_count}
                           </td>
                           <td style={{ padding: '4px 14px', textAlign: 'right', color: '#A78BFA', fontWeight: 600 }}>
-                            {fmt$(detail!.renewal_dollars)}
+                            {fmt$(-Math.abs(detail!.renewal_dollars))}
                           </td>
                         </tr>
                       )}
@@ -325,7 +326,7 @@ export function ConcessionDrilldownModal({
                             {detail!.continuing_count}
                           </td>
                           <td style={{ padding: '4px 14px', textAlign: 'right', color: SEC, fontWeight: 600 }}>
-                            {fmt$(detail!.continuing_dollars)}
+                            {fmt$(-Math.abs(detail!.continuing_dollars))}
                           </td>
                         </tr>
                       )}
@@ -339,7 +340,7 @@ export function ConcessionDrilldownModal({
                           </td>
                           <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.text.red }}>—</td>
                           <td style={{ padding: '4px 14px', textAlign: 'right', color: BT.text.red, fontWeight: 600 }}>
-                            {fmt$(totalWriteOffDollars)}
+                            {fmt$(-Math.abs(totalWriteOffDollars))}
                           </td>
                         </tr>
                       )}
@@ -405,7 +406,7 @@ export function ConcessionDrilldownModal({
                         return (
                           <div key={reason} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: SEC, padding: '1px 0' }}>
                             <span style={{ color: BT.text.red }}>{reason.replace(/_/g, ' ')}</span>
-                            <span>{count}× · {fmt$(total)}</span>
+                            <span>{count}× · {fmt$(-Math.abs(total))}</span>
                           </div>
                         );
                       })}
@@ -443,14 +444,14 @@ export function ConcessionDrilldownModal({
                         <tr style={{ borderBottom: `1px solid ${BORDER}20` }}>
                           <td style={{ padding: '4px 14px', color: TEAL }}>NEW LEASES SIGNED</td>
                           <td style={{ padding: '4px 8px', textAlign: 'right', color: SEC }}>{detail!.new_lease_count}</td>
-                          <td style={{ padding: '4px 14px', textAlign: 'right', color: TEAL, fontWeight: 600 }}>{fmt$(detail!.new_lease_earned)}</td>
+                          <td style={{ padding: '4px 14px', textAlign: 'right', color: TEAL, fontWeight: 600 }}>{fmt$(-Math.abs(detail!.new_lease_earned))}</td>
                         </tr>
                       )}
                       {detail!.renewal_earned > 0 && (
                         <tr style={{ borderBottom: `1px solid ${BORDER}20` }}>
                           <td style={{ padding: '4px 14px', color: '#A78BFA' }}>RENEWALS SIGNED</td>
                           <td style={{ padding: '4px 8px', textAlign: 'right', color: SEC }}>{detail!.renewal_count}</td>
-                          <td style={{ padding: '4px 14px', textAlign: 'right', color: '#A78BFA', fontWeight: 600 }}>{fmt$(detail!.renewal_earned)}</td>
+                          <td style={{ padding: '4px 14px', textAlign: 'right', color: '#A78BFA', fontWeight: 600 }}>{fmt$(-Math.abs(detail!.renewal_earned))}</td>
                         </tr>
                       )}
                     </tbody>

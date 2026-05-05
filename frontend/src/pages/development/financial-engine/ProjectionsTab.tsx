@@ -1415,6 +1415,30 @@ export function ProjectionsTab({
                                           return;
                                         }
                                       }
+                                      if (row.key === 'concessions' && recog?.monthly_detail && viewMode === 'quarterly') {
+                                        const qNum    = parseInt(c.periodKey.slice(1, 3), 10);
+                                        const yearNum = parseInt(c.periodKey.slice(4), 10);
+                                        const baseOffset = (yearNum - 1) * 12 + (qNum - 1) * 3;
+                                        const yyyymms = ([0, 1, 2]
+                                          .map(i => yyyymmFromClose(financials?.closeDate, baseOffset + i))
+                                          .filter(Boolean)) as string[];
+                                        if (yyyymms.length > 0) {
+                                          const qLabel = `Q${qNum} YR${yearNum}`;
+                                          const qYr = yyyymms[0].slice(0, 4);
+                                          const recognizedQ = yyyymms.reduce((s, k) => s + (recog.monthly[k] ?? 0), 0);
+                                          setConcessionDrill({
+                                            open: true,
+                                            periodLabel: qLabel,
+                                            recognizedAmount: recognizedQ || null,
+                                            earnedAmount: subVal,
+                                            detail: aggregateConcessionDetail(recog.monthly_detail, yyyymms),
+                                            source: 'earned',
+                                            calendarYearTotal: recog.by_calendar_year?.[qYr] ?? null,
+                                            fiscalYearTotal: recog.by_fiscal_year?.[qYr] ?? null,
+                                          });
+                                          return;
+                                        }
+                                      }
                                       setDrilldown(buildDrilldown(row, proj, financials));
                                     }}
                                     style={{ padding: '3px 6px', textAlign: 'right', color: textColor, fontWeight: row.isTotal ? 700 : 400, cursor: proj ? 'pointer' : 'default', fontSize: 8 }}
@@ -1463,30 +1487,30 @@ export function ProjectionsTab({
                             {isAnnual
                               ? annualYears.map(yr => {
                                   const calYear = closeYear + (yr - 1);
-                                  const val = calYear === currentCalendarYear ? recognizedAmt : null;
+                                  const val = recog.by_calendar_year[String(calYear)] ?? null;
                                   const display = val != null ? fmt$(-Math.abs(val)) : '—';
                                   return (
                                     <td
                                       key={yr}
                                       onClick={() => {
-                                        if (calYear !== currentCalendarYear || !financials?.concessionRecognition?.monthly_detail) return;
-                                        const recog = financials.concessionRecognition;
-                                        const yyyymms = Array.from({ length: 12 }, (_, i) => `${currentCalendarYear}${String(i + 1).padStart(2, '0')}`);
+                                        if (!val || !financials?.concessionRecognition?.monthly_detail) return;
+                                        const recogInner = financials.concessionRecognition;
+                                        const yyyymms = Array.from({ length: 12 }, (_, i) => `${calYear}${String(i + 1).padStart(2, '0')}`);
                                         setConcessionDrill({
                                           open: true,
-                                          periodLabel: `YR ${currentCalendarYear} RECOGNIZED`,
-                                          recognizedAmount: recognizedAmt,
+                                          periodLabel: `YR ${calYear} RECOGNIZED`,
+                                          recognizedAmount: val,
                                           earnedAmount: null,
-                                          detail: aggregateConcessionDetail(recog.monthly_detail, yyyymms),
+                                          detail: aggregateConcessionDetail(recogInner.monthly_detail, yyyymms),
                                           source: 'recognized',
-                                          calendarYearTotal: recog.by_calendar_year?.[String(currentCalendarYear)] ?? null,
-                                          fiscalYearTotal: recog.by_fiscal_year?.[String(currentCalendarYear)] ?? null,
+                                          calendarYearTotal: recogInner.by_calendar_year?.[String(calYear)] ?? null,
+                                          fiscalYearTotal: recogInner.by_fiscal_year?.[String(calYear)] ?? null,
                                         });
                                       }}
-                                      style={{ padding: '3px 8px', textAlign: 'right', color: val != null ? BT.text.amber : BT.text.muted, fontWeight: 400, cursor: calYear === currentCalendarYear ? 'pointer' : 'default' }}
+                                      style={{ padding: '3px 8px', textAlign: 'right', color: val != null ? BT.text.amber : BT.text.muted, fontWeight: 400, cursor: val != null ? 'pointer' : 'default' }}
                                       title={val != null
-                                        ? `Click for concession recognition breakdown — ${currentCalendarYear}`
-                                        : `Not the current calendar year (${currentCalendarYear})`}
+                                        ? `Click for concession recognition breakdown — ${calYear}`
+                                        : `No recognition data for ${calYear}`}
                                     >
                                       {display}
                                     </td>
