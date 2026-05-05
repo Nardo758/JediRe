@@ -1,16 +1,16 @@
 /**
  * Tax Service — Rate Sheet Loader
  *
- * Loads and validates all seed rate sheets at service boot via static JSON imports
- * (enabled by `resolveJsonModule: true` in tsconfig). Static imports are compiled
- * into the dist bundle so the JSON files are always co-located and never lost in
- * production builds — unlike `fs.readdirSync(__dirname)` which breaks when the
- * source tree is absent.
+ * Loads and validates every rate sheet registered in `_manifest.ts` at service
+ * boot. The manifest uses static JSON imports (TypeScript resolveJsonModule),
+ * so JSON data is embedded in the dist bundle — no filesystem scanning is
+ * needed and the loader works identically in ts-node (dev) and compiled dist
+ * (production).
  *
  * To add a new rate sheet:
- *   1. Create backend/src/services/tax/rateSheets/<jurisdiction>-<year>.json
- *   2. Import it below and add it to SEED_SHEETS
- *   3. Bump the MINIMUM_SHEETS constant if this sheet is now required at boot
+ *   1. Create the JSON file in this directory
+ *   2. Register it in _manifest.ts (one import + one array entry)
+ *   → The loader picks it up automatically on next boot
  *
  * Usage:
  *   import { getRateSheet, getAllRateSheets } from './loader';
@@ -19,20 +19,7 @@
 
 import { validateRateSheet } from './schema';
 import type { RateSheet } from './schema';
-
-import federal2026Raw from './federal-2026.json';
-import fl2026Raw from './fl-2026.json';
-import flMiamiDade2026Raw from './fl-miami-dade-2026.json';
-
-/** Minimum number of sheets that must load for the service to start. */
-const MINIMUM_SHEETS = 3;
-
-/** All seed sheets. Add new imports above and register here. */
-const SEED_SHEETS: Array<{ raw: unknown; name: string }> = [
-  { raw: federal2026Raw,       name: 'federal-2026.json' },
-  { raw: fl2026Raw,            name: 'fl-2026.json' },
-  { raw: flMiamiDade2026Raw,   name: 'fl-miami-dade-2026.json' },
-];
+import { ALL_RATE_SHEETS, MINIMUM_SHEETS } from './_manifest';
 
 /** In-memory cache: `${jurisdiction}-${year}` → RateSheet */
 const rateSheetCache = new Map<string, RateSheet>();
@@ -40,28 +27,28 @@ const rateSheetCache = new Map<string, RateSheet>();
 let initialized = false;
 
 /**
- * Load and validate all seed rate sheets.
+ * Load and validate every sheet in the manifest.
  * Called once at service boot via index.replit.ts.
- * Re-calling is idempotent (returns immediately if already loaded).
+ * Re-calling is idempotent.
  *
  * Throws loudly on:
  *   - Any sheet that fails Zod validation
- *   - Fewer than MINIMUM_SHEETS loaded (catches packaging failures)
+ *   - Fewer than MINIMUM_SHEETS loaded (catches manifest misconfiguration)
  */
 export function initRateSheets(): void {
   if (initialized) return;
 
-  for (const { raw, name } of SEED_SHEETS) {
-    const sheet = validateRateSheet(raw, name);
+  for (const { raw, filename } of ALL_RATE_SHEETS) {
+    const sheet = validateRateSheet(raw, filename);
     const key = `${sheet.jurisdiction}-${sheet.year}`;
     rateSheetCache.set(key, sheet);
   }
 
   if (rateSheetCache.size < MINIMUM_SHEETS) {
     throw new Error(
-      `[RateSheetLoader] Expected at least ${MINIMUM_SHEETS} rate sheets, ` +
+      `[RateSheetLoader] Expected at least ${MINIMUM_SHEETS} rate sheet(s), ` +
       `but only ${rateSheetCache.size} loaded. ` +
-      `Add missing sheets to SEED_SHEETS in loader.ts.`,
+      `Check _manifest.ts for missing or duplicate entries.`,
     );
   }
 
@@ -74,7 +61,7 @@ export function initRateSheets(): void {
 
 /**
  * Get the active rate sheet for a jurisdiction and year.
- * Returns null if no sheet is found.
+ * Returns null if no sheet is found (e.g. jurisdiction not yet modeled).
  *
  * Auto-initializes if called before initRateSheets() (tests / lazy paths).
  */
@@ -84,7 +71,8 @@ export function getRateSheet(jurisdiction: string, year: number): RateSheet | nu
 }
 
 /**
- * Get all loaded rate sheets. Useful for the coverage endpoint and staleness cron.
+ * Get all loaded rate sheets.
+ * Useful for the coverage endpoint and staleness-check cron.
  */
 export function getAllRateSheets(): RateSheet[] {
   if (!initialized) initRateSheets();
@@ -92,8 +80,7 @@ export function getAllRateSheets(): RateSheet[] {
 }
 
 /**
- * Check if any rate sheets are approaching expiry (within `thresholdDays`).
- * Returns entries where the sheet's valid_through date is within the threshold.
+ * Check for rate sheets approaching expiry (within `thresholdDays`).
  */
 export function getStalenessWarnings(
   thresholdDays = 30,
@@ -120,7 +107,7 @@ export function getStalenessWarnings(
 }
 
 /**
- * Reset the loader (tests only). Never call in production code.
+ * Reset the loader state (tests only). Never call in production code.
  */
 export function _resetLoaderForTests(): void {
   rateSheetCache.clear();
