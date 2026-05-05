@@ -438,10 +438,25 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   // (Assumptions PATCH, persists to deal) or Location B (ProForma top-bar,
   // view-state only).  Stored here so all tabs receive the same value and
   // the single fetchF9Financials call includes it as a query param.
-  const [lvCostTreatmentView, setLvCostTreatmentView] = useState<LeasingCostTreatment>('OPERATING');
+  // Initialized from propDeal.deal_data.leasing_cost_treatment so the deal's
+  // persisted value is honoured on first load, not overridden to OPERATING.
+  const initialTreatment = (
+    (propDeal as Record<string, unknown> | null | undefined)
+      ?.['deal_data'] as Record<string, unknown> | null | undefined
+  )?.['leasing_cost_treatment'] as LeasingCostTreatment | undefined ?? 'OPERATING';
+  const [lvCostTreatmentView, setLvCostTreatmentView] = useState<LeasingCostTreatment>(initialTreatment);
   // Ref mirrors state so fetchF9Financials closure stays stable (avoids
   // recreating the callback on every treatment toggle).
-  const lvTreatmentRef = useRef<LeasingCostTreatment>('OPERATING');
+  const lvTreatmentRef = useRef<LeasingCostTreatment>(initialTreatment);
+  // Re-sync if the deal prop itself changes (e.g. navigation to a different deal).
+  useEffect(() => {
+    const t = (
+      (propDeal as Record<string, unknown> | null | undefined)
+        ?.['deal_data'] as Record<string, unknown> | null | undefined
+    )?.['leasing_cost_treatment'] as LeasingCostTreatment | undefined ?? 'OPERATING';
+    lvTreatmentRef.current = t;
+    setLvCostTreatmentView(t);
+  }, [propDeal]);
   // Evidence system — field click panel + summary bar
   const [evidenceField, setEvidenceField] = useState<{ path: string; label: string } | null>(null);
   const [evidenceSummary, setEvidenceSummary] = useState<{

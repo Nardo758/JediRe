@@ -388,11 +388,18 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     // tab. modelResults is used separately for KPI overlays and must NOT gate
     // this fetch; skipping it left data=null and rendered a blank screen when a
     // saved model was already loaded on mount (from /financial-model/:id/latest).
+    // leasing_cost_treatment is included so this tab's numbers stay in sync with
+    // the shared top-bar override on every re-fetch (treatment change → parent
+    // fetchF9Financials fires → parent f9Financials prop changes → this effect
+    // re-runs because lvCostTreatmentView prop also changes → new treatment in URL).
     if (!dealId) return;
     setLoading(true);
     setError(null);
+    const treatment = lvCostTreatmentView ?? 'OPERATING';
     try {
-      const res = await apiClient.get<{ success: boolean; data: DealFinancials; message?: string }>(`/api/v1/deals/${dealId}/financials`);
+      const res = await apiClient.get<{ success: boolean; data: DealFinancials; message?: string }>(
+        `/api/v1/deals/${dealId}/financials?leasing_cost_treatment=${encodeURIComponent(treatment)}`,
+      );
       const body = res.data;
       if (body?.success === false) throw new Error(body.message ?? 'Unknown error');
       const financials = body?.data ?? (body as unknown as DealFinancials);
@@ -409,7 +416,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     } finally {
       setLoading(false);
     }
-  }, [dealId, onIntegrityChange, onF9Refresh]);
+  // lvCostTreatmentView in deps: when parent updates treatment, load reference
+  // changes → useEffect re-runs → re-fetches with correct treatment param.
+  }, [dealId, onIntegrityChange, onF9Refresh, lvCostTreatmentView]);
 
   useEffect(() => { load(); }, [load]);
 

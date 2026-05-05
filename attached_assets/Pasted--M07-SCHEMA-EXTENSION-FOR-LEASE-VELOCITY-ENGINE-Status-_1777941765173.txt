@@ -1,0 +1,584 @@
+# M07 SCHEMA EXTENSION FOR LEASE VELOCITY ENGINE
+
+**Status:** Draft v1.0
+**Owner:** M07 Traffic Engine
+**Scope:** Schema-only — adds payload fields required by Lease Velocity Engine. No new algorithm work in M07.
+**Prerequisite for:** `LEASE_VELOCITY_ENGINE_SPEC`
+**Depends on:** `M07_SUBJECT_HISTORY_AND_DIFF_EXTRACTOR_SPEC` (LayeredValue source enum and merge order)
+**Estimated implementation:** 1–2 days. Tight surgical change.
+
+---
+
+## 1. PURPOSE
+
+The Lease Velocity Engine reads several fields from `dealContext.traffic` that don't yet exist in M07's documented output schema. This spec defines those additions so M07 schema can ship first, with platform-default values populated immediately. The Lease Velocity Engine then builds against a guaranteed payload shape — no chicken-and-egg risk, no defensive null-handling scattered through the algorithm code.
+
+### What this spec does NOT do
+
+- No changes to M07 calibration logic
+- No changes to subject_history aggregation
+- No changes to peer-set retraining jobs
+- No new algorithms
+
+This is purely additive schema work with platform defaults.
+
+---
+
+## 2. SCHEMA DELTAS
+
+Six field groups added to `dealContext.traffic`. Each group is independently shippable.
+
+### Group A — Funnel Conversion (NEW)
+
+The conversion ratios between Golden Chain stages. Per mode, because conversion behaves differently in lease-up vs stabilized.
+
+```typescript
+dealContext.traffic.funnel_conversion = {
+  by_mode: {
+    LEASE_UP_NEW_CONSTRUCTION: ConversionStageSet,
+    STABILIZED_MAINTENANCE: ConversionStageSet,
+    OCCUPANCY_RECOVERY: ConversionStageSet
+  },
+  current_mode: LeaseMode,         // mirrors traffic.mode.effective
+  active: ConversionStageSet,      // = by_mode[current_mode] for convenience
+  last_updated: ISODateString
+};
+
+interface ConversionStageSet {
+  prospect_to_tour: LayeredValue<number>;
+  tour_to_application: LayeredValue<number>;
+  application_to_approval: LayeredValue<number>;
+  approval_to_lease: LayeredValue<number>;
+  overall: LayeredValue<number>;     // computed = product of above
+  confidence: 'high' | 'medium' | 'low';
+}
+```
+
+**Default values (platform layer):**
+
+| Stage | LEASE_UP | STABILIZED | RECOVERY |
+|---|---|---|---|
+| `prospect_to_tour` | 0.18 | 0.25 | 0.22 |
+| `tour_to_application` | 0.30 | 0.40 | 0.35 |
+| `application_to_approval` | 0.65 | 0.75 | 0.70 |
+| `approval_to_lease` | 0.85 | 0.90 | 0.88 |
+| `overall` (computed) | 0.030 | 0.067 | 0.048 |
+
+**Calibration path:**
+- Today: platform default only
+- Phase 2: peer-set calibration from leasing-CRM aggregate data (when integrated)
+- Phase 3: subject calibration from per-property leasing-CRM exports
+
+`subject_history` source NOT available for Group A in V1 (no subject-level data yet collected). Platform defaults flagged with `confidence: 'low'` so consumers know.
+
+---
+
+### Group B — Absorption Capacity (NEW)
+
+Bounds on how fast a property can absorb leases. Used by Lease Velocity feasibility checks (Recovery mode catch-up pace, Lease-up curve scaling).
+
+```typescript
+dealContext.traffic.absorption_capacity = {
+  peer_max_monthly_pace: LayeredValue<number>;
+    // Maximum signed leases per month observed in peer set (MSA × class × vintage)
+    // Used as feasibility ceiling for Recovery catch-up pace
+
+  current_mode_curve: LayeredValue<number[24]>;
+    // Per-mode curve, 24 months forward
+    // For LEASE_UP: S-curve (fraction of remaining units leased per month)
+    // For STABILIZED: flat at ~replacement rate
+    // For RECOVERY: front-loaded curve approaching stabilized pace
+
+  saturation_threshold: LayeredValue<number>;
+    // Occupancy % beyond which absorption pace decelerates
+    // Default: 0.85 — past 85% leased, the remaining units are the
+    // less-desirable inventory and lease slower
+
+  velocity_decay_post_saturation: LayeredValue<number>;
+    // Multiplier applied to absorption pace once saturation crossed
+    // Default: 0.50 (pace halves)
+};
+```
+
+**Default values:**
+
+| Field | LEASE_UP default | STABILIZED default | RECOVERY default |
+|---|---|---|---|
+| `peer_max_monthly_pace` | 12 | 8 | 10 |
+| `current_mode_curve` | LEASE_UP_S_CURVE_24MO (see §3.1) | flat at replacement rate | RECOVERY_CURVE_24MO (see §3.2) |
+| `saturation_threshold` | 0.85 | n/a | 0.92 |
+| `velocity_decay_post_saturation` | 0.50 | n/a | 0.65 |
+
+**Calibration path:**
+- Today: platform defaults, mode-aware
+- Phase 2: peer-set MSA/class/vintage adjusted
+- Phase 3: subject calibration from S2+ snapshot history (`actual_signing_velocity` over time)
+
+---
+
+### Group C — Move-in Lag Distribution (NEW)
+
+The lag between lease signing and physical move-in. Critical for sign-vs-move-in math in Lease Velocity Engine.
+
+```typescript
+dealContext.traffic.move_in_lag = {
+  distribution: LayeredValue<MoveInLagBuckets>;
+  median_lag_days: LayeredValue<number>;
+  source_quality: 'subject' | 'peer_set' | 'platform_default';
+};
+
+interface MoveInLagBuckets {
+  same_month_as_sign: number;       // signed early in month, moved in late same month
+  one_month_after: number;
+  two_months_after: number;
+  three_months_after: number;
+  // Must sum to 1.00
+}
+```
+
+**Default values (platform layer, 21-day median):**
+
+```
+distribution = {
+  same_month_as_sign:   0.30,
+  one_month_after:      0.55,
+  two_months_after:     0.13,
+  three_months_after:   0.02
+}
+median_lag_days = 21
+```
+
+**Calibration path:**
+- Today: platform default
+- Subject calibration available IMMEDIATELY when rent roll has both `lease_start_date` AND `move_in_date` populated (Yardi typically yes; some others only one)
+- Peer-set: derived from M07's broader observation set across MSA
+
+**Critical parser note:** When `move_in_date` is absent from a rent roll, `lease_start_date` is used as a proxy with a warning flag in `quality_flags.move_in_date_missing`. The aggregator uses platform default in that case rather than treating `move_in = lease_start` (which would imply zero lag).
+
+---
+
+### Group D — Mode Classification (FORMALIZE)
+
+The mode field is referenced throughout existing specs but the structure isn't formalized. Lease Velocity needs explicit resolution + override + effective fields.
+
+```typescript
+dealContext.traffic.mode = {
+  resolved: LeaseMode;
+    // Result of automatic mode-resolution logic (Lease Velocity §3)
+
+  resolution_reasoning: string;
+    // Why this mode was selected — for narrative/audit
+    // e.g., "Built 2024, 18 months old, 12% occupied, no prior history"
+
+  resolution_confidence: 'high' | 'medium' | 'low';
+
+  user_override: LayeredValue<LeaseMode> | null;
+    // User-set override; null if not overridden
+
+  effective: LeaseMode;
+    // = user_override ?? resolved
+    // This is the value Lease Velocity actually consumes
+};
+
+type LeaseMode =
+  | 'LEASE_UP_NEW_CONSTRUCTION'
+  | 'STABILIZED_MAINTENANCE'
+  | 'OCCUPANCY_RECOVERY'
+  | 'V2_PENDING_VALUE_ADD'           // placeholder, V2
+  | 'V2_PENDING_PHASED_DELIVERY'     // placeholder, V2
+  | 'V2_PENDING_REDEVELOPMENT';      // placeholder, V2
+```
+
+**Resolution logic** lives in M07 (or a thin shared utility). The logic is per Lease Velocity Engine §3:
+
+```typescript
+function resolveMode(dealContext: DealContext): {
+  resolved: LeaseMode,
+  reasoning: string,
+  confidence: 'high' | 'medium' | 'low'
+} { /* ... */ }
+```
+
+This belongs on the M07 service because mode classification is fundamentally a property-state question (what is this property doing right now), not a leasing-strategy question. Lease Velocity reads it; doesn't compute it.
+
+---
+
+### Group E — Stabilization Definition & Tracking (FORMALIZE)
+
+```typescript
+dealContext.traffic.stabilization = {
+  ceiling_occupancy: LayeredValue<number>;
+    // Target stabilized occupancy. 0.95 platform default.
+    // Peer-set adjusts ±2% by class (Class A typically 0.94, Class C 0.92)
+
+  definition: LayeredValue<StabilizationDefinition>;
+    // PHYSICAL_95 | ECONOMIC_95 | AGENCY_90_30_60_90
+
+  achieved: boolean;
+    // True once detected per definition
+
+  achieved_month: number | null;
+    // Month index when stabilization was first detected (LEASE_UP and RECOVERY only)
+
+  monthly_check: {
+    physical_occ: number;
+    economic_occ: number;
+    agency_check_passed: boolean;
+  } | null;
+    // Most recent stabilization check result, for diagnostics
+};
+
+type StabilizationDefinition = 'PHYSICAL_95' | 'ECONOMIC_95' | 'AGENCY_90_30_60_90';
+```
+
+**Default values:**
+
+```
+ceiling_occupancy = 0.95
+definition = 'PHYSICAL_95'
+achieved = false
+achieved_month = null
+```
+
+User override on `definition` available per deal — agency-financed deals typically set `AGENCY_90_30_60_90`, conservative LP underwriting may set `ECONOMIC_95`.
+
+---
+
+### Group F — Property Reference Resolution (POINTER, NOT NEW DATA)
+
+These fields already exist on `dealContext.deal` and `dealContext.proforma`. Lease Velocity needs a guaranteed pointer to find them. Adding a thin reference object on `dealContext.traffic` keeps the algorithm code clean (one place to read from rather than three different paths).
+
+```typescript
+dealContext.traffic.property_reference = {
+  // Pointers to canonical sources, NOT duplicated data
+  total_units: () => dealContext.deal.total_units,
+  property_class: () => dealContext.deal.property_class,
+  year_built: () => dealContext.deal.year_built,
+
+  avg_market_rent: () => dealContext.traffic.subject_history?.current_state?.avg_market_rent
+                         ?? dealContext.proforma?.avg_market_rent,
+  avg_in_place_rent: () => dealContext.traffic.subject_history?.current_state?.avg_in_place_rent
+                          ?? dealContext.proforma?.avg_in_place_rent,
+  avg_lease_term_months: () => dealContext.traffic.subject_history?.signing_history?.avg_lease_term
+                              ?? 12,
+
+  unit_mix: () => dealContext.deal.unit_mix
+};
+```
+
+**Implementation note:** These are getter functions, not stored values. They resolve at call-time so they always reflect current state. No staleness, no duplication.
+
+---
+
+## 3. CURVE DEFINITIONS
+
+The platform-default curves referenced in Group B.
+
+### 3.1 LEASE_UP_S_CURVE_24MO
+
+Fraction of `remaining_units_to_lease` absorbed per month from delivery month forward.
+
+```typescript
+const LEASE_UP_S_CURVE_24MO = [
+  0.06, 0.07, 0.08,    // months 1-3 post-CO: slow ramp
+  0.10, 0.12, 0.13,    // months 4-6: acceleration
+  0.13, 0.13, 0.12,    // months 7-9: peak
+  0.10, 0.08, 0.07,    // months 10-12: deceleration
+  0.05, 0.04, 0.03,    // months 13-15: tail
+  0.02, 0.02, 0.02,    // months 16-18: stragglers
+  0.01, 0.01, 0.01,    // months 19-21: edge cases
+  0.005, 0.005, 0.005  // months 22-24: long tail
+];
+// Approximately sums to 1.00
+```
+
+### 3.2 RECOVERY_CURVE_24MO
+
+Front-loaded curve for sub-stabilized properties pushing toward target.
+
+```typescript
+const RECOVERY_CURVE_24MO = [
+  0.10, 0.11, 0.12,    // months 1-3: aggressive push
+  0.12, 0.11, 0.10,    // months 4-6: peak
+  0.09, 0.08, 0.07,    // months 7-9: tapering as gap closes
+  0.05, 0.04, 0.04,    // months 10-12: approach stabilized
+  // months 13-24: stabilized maintenance pace (handled by mode transition)
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+];
+// Sums to ~1.00 over months 1-12
+```
+
+### 3.3 PRE_LEASE_SIGNING_CURVE_6MO
+
+Used by Lease Velocity for pre-lease distribution. Should live on M07 as platform-default `dealContext.traffic.pre_lease_signing_curve` (LayeredValue).
+
+```typescript
+const PRE_LEASE_SIGNING_CURVE_6MO = [
+  0.05,   // delivery - 6
+  0.08,   // delivery - 5
+  0.12,   // delivery - 4
+  0.15,   // delivery - 3
+  0.18,   // delivery - 2
+  0.22,   // delivery - 1
+  0.20    // delivery + 0
+];
+// Sums to 1.00
+```
+
+Add as:
+```typescript
+dealContext.traffic.pre_lease_signing_curve = LayeredValue<number[]> {
+  platform: PRE_LEASE_SIGNING_CURVE_6MO,
+  peer_set: undefined,    // future calibration
+  subject_history: undefined,
+  override: undefined
+};
+```
+
+---
+
+## 4. CONCESSION ENVIRONMENT SUB-ENGINE WIRING
+
+Confirming the sub-engine output payload location. Per `CONCESSION_ENVIRONMENT_SUB_ENGINE_SPEC §3`:
+
+```typescript
+dealContext.traffic.concession_environment = {
+  by_year: PerYearConcessionEnv[],
+  primary_source: 'subject:s3' | 'subject:s2' | 'submarket' | 'class_default',
+  confidence: 'high' | 'medium' | 'low',
+  collision: ConcessionCollision | null,
+  decay_curve: number[24] | null,
+  derivation_notes: string
+};
+```
+
+If this isn't already wired into the dealContext.traffic shape, add it here as part of the schema extension. The Concession Engine itself ships independently per its own spec; this just ensures the output payload lands in the right namespace where Lease Velocity reads it.
+
+---
+
+## 5. COMPLETE EXTENDED SCHEMA
+
+The full `dealContext.traffic` shape after this extension (existing fields + new):
+
+```typescript
+dealContext.traffic = {
+  // EXISTING (from prior specs) — not modified
+  subject_history: SubjectHistoryPayload,           // M07 Subject History spec
+  coefficients: CoefficientSet,                     // existing peer-set output
+  mode: ModeBlock,                                  // FORMALIZED — Group D
+  expiration_waterfall: LayeredValue<number[]>,     // existing
+  renewal_rate: LayeredValue<number>,               // existing
+  turnover_rate: LayeredValue<number>,              // existing (computed)
+  days_vacant_median: LayeredValue<number>,         // existing
+  seasonality_curve: LayeredValue<number[12]>,      // existing
+  trade_out_new: LayeredValue<number>,              // existing
+  trade_out_renewal: LayeredValue<number>,          // existing
+  loss_to_lease_pct: LayeredValue<number>,          // existing
+  avg_market_rent: LayeredValue<number>,            // existing or proxy
+  avg_in_place_rent: LayeredValue<number>,          // existing or proxy
+
+  // NEW (this spec)
+  funnel_conversion: FunnelConversionBlock,         // Group A
+  absorption_capacity: AbsorptionCapacityBlock,     // Group B
+  move_in_lag: MoveInLagBlock,                      // Group C
+  stabilization: StabilizationBlock,                // Group E
+  property_reference: PropertyReferenceBlock,       // Group F (pointers)
+  pre_lease_signing_curve: LayeredValue<number[]>,  // §3.3
+
+  // SUB-ENGINE OUTPUT (confirmation of wiring)
+  concession_environment: ConcessionEnvBlock        // Concession Sub-Engine spec
+};
+```
+
+---
+
+## 6. MIGRATION PLAN
+
+This is additive — no existing field changes shape. Migration is straightforward.
+
+### Step 1 — Type definitions
+
+File: `backend/src/types/traffic.ts`
+
+Add the new interfaces (FunnelConversionBlock, AbsorptionCapacityBlock, MoveInLagBlock, StabilizationBlock, PropertyReferenceBlock). Export from the type module.
+
+### Step 2 — Default value constants
+
+File: `backend/src/services/m07/defaults/lease-velocity-defaults.ts`
+
+Module containing all platform default values (the curves, conversion ratios, lag distribution, etc.). Single source of truth for tunability.
+
+### Step 3 — Schema extension in M07 dealContext assembler
+
+File: `backend/src/services/m07/dealcontext-assembler.ts`
+
+Where the `dealContext.traffic` object gets built, add population of the new fields:
+
+```typescript
+function assembleTraffic(deal: Deal): DealContext['traffic'] {
+  const existing = assembleExistingTrafficFields(deal);
+
+  return {
+    ...existing,
+
+    funnel_conversion: assembleFunnelConversion(deal, existing.mode),
+    absorption_capacity: assembleAbsorptionCapacity(deal, existing.mode),
+    move_in_lag: assembleMoveInLag(deal),
+    stabilization: assembleStabilization(deal),
+    property_reference: assemblePropertyReference(deal),
+    pre_lease_signing_curve: getPreLeaseSigningCurveLayered(deal)
+  };
+}
+```
+
+Each `assemble*` helper returns a fully-populated block with platform defaults at minimum, peer-set/subject layers populated when available.
+
+### Step 4 — Cache invalidation
+
+The `dealContext.traffic` shape change does NOT require cache invalidation in itself (additive fields). Existing cached payloads will lack the new fields; consumers (Lease Velocity Engine) must handle absent fields with platform-default fallback during the transition window (24h max — cache will roll over).
+
+```typescript
+// Lease Velocity defensive read pattern during migration
+const funnelConversion = dealContext.traffic.funnel_conversion
+  ?? buildPlatformDefaultFunnelConversion(dealContext.traffic.mode?.effective);
+```
+
+After 24h, the defensive fallback can be removed (or kept as cheap insurance).
+
+### Step 5 — DealContext consumer updates
+
+Two consumers need to know about the new fields:
+
+1. **M07 → M09 Adapter** (Projections integration): no immediate action required; adapter only uses fields it explicitly references. New fields are inert to existing consumers.
+
+2. **Investment Memo Synthesis**: optional updates to include funnel narrative, lag-distribution narrative, stabilization-tracking narrative. Defer to follow-up task.
+
+### Step 6 — No DB migration required
+
+All new fields are computed at DealContext-assembly time from existing data + platform defaults. No new tables, no new columns. The `subject_traffic_history` table from the M07 Subject History spec is unchanged.
+
+If/when funnel conversion gets subject calibration (Phase 3), a new `funnel_conversion_observations` table will be added — but that's out of scope here.
+
+---
+
+## 7. SOURCE PROVENANCE PER FIELD
+
+For each new field, which `LayeredValueSource` tier provides values today and which is planned.
+
+| Field | Today | Phase 2 | Phase 3 |
+|---|---|---|---|
+| `funnel_conversion.*` | platform | platform | peer_set + subject |
+| `absorption_capacity.peer_max_monthly_pace` | platform | peer_set:m07 | subject_history |
+| `absorption_capacity.current_mode_curve` | platform (mode-aware) | peer_set | subject_history |
+| `absorption_capacity.saturation_threshold` | platform | platform | subject_history |
+| `move_in_lag.distribution` | platform | peer_set | subject_history (S2+ when both date fields present) |
+| `move_in_lag.median_lag_days` | platform (21d) | peer_set | subject_history |
+| `mode.resolved` | computed by M07 | computed | computed (using subject signals if present) |
+| `mode.user_override` | n/a | user-set | user-set |
+| `stabilization.ceiling_occupancy` | platform (0.95) | peer_set:m07 (class-adjusted) | subject_history (for properties with stabilized history) |
+| `stabilization.definition` | platform (PHYSICAL_95) | n/a — user choice | n/a — user choice |
+| `pre_lease_signing_curve` | platform | peer_set (when leasing-CRM data integrated) | subject_history |
+
+Subject calibration on these fields requires data sources that aren't yet integrated (leasing CRM exports for funnel; consistent move_in_date in rent rolls for lag). This spec does not block on those — it ships defaults today, calibrates over time.
+
+---
+
+## 8. TEST FIXTURES
+
+Three minimum test scenarios.
+
+### 8.1 Empty dealContext (greenfield deal, no documents)
+
+```
+Inputs: deal.id only
+Expected:
+  dealContext.traffic.funnel_conversion populated with mode-aware defaults
+  dealContext.traffic.absorption_capacity populated with mode-aware defaults
+  dealContext.traffic.move_in_lag uses platform default (21d, default distribution)
+  dealContext.traffic.mode.resolved = 'STABILIZED_MAINTENANCE' (default fallback)
+  dealContext.traffic.mode.resolution_confidence = 'low'
+  dealContext.traffic.stabilization.ceiling_occupancy = 0.95 (platform)
+
+Verify Lease Velocity Engine can run end-to-end against this and produces
+output with confidence='low' flags.
+```
+
+### 8.2 Existing deal with S2 subject history
+
+```
+Inputs: deal with rent roll snapshots × 2 (8 months apart)
+Expected:
+  funnel_conversion still platform (no leasing-CRM data yet)
+  move_in_lag.distribution sourced from subject (rent rolls have both dates)
+  mode.resolved = 'STABILIZED_MAINTENANCE' (94% occupancy, no capex)
+  mode.resolution_confidence = 'high'
+
+Lease Velocity output: HIGH confidence on lag-derived rows; MEDIUM confidence
+on funnel-derived rows.
+```
+
+### 8.3 New construction lease-up
+
+```
+Inputs: deal with year_built within 12 months, no rent rolls, has M22 capex with
+        delivery_month set
+Expected:
+  funnel_conversion uses LEASE_UP defaults (overall ~3%)
+  absorption_capacity uses LEASE_UP_S_CURVE_24MO
+  mode.resolved = 'LEASE_UP_NEW_CONSTRUCTION'
+  mode.resolution_confidence = 'high'
+  pre_lease_signing_curve populated with platform default
+
+Lease Velocity output: full ramp scenario per LEASE_UP algorithm.
+```
+
+### 8.4 Cache transition test
+
+```
+Inputs: cached dealContext from before this schema extension
+Expected: Lease Velocity Engine handles missing new fields gracefully
+          via defensive-read pattern, no crashes, output produced with
+          'low' confidence flags noting the schema-transition cause
+```
+
+---
+
+## 9. ESTIMATED LIFT
+
+| Task | Estimate |
+|---|---|
+| Type definitions | 0.5 day |
+| Default constants module | 0.5 day |
+| Assembler updates | 0.5 day |
+| Defensive reads in Lease Velocity (insurance) | 0.5 day |
+| Tests | 0.5 day |
+| **Total** | **~2.5 days** |
+
+This is genuinely a small change. The complexity is in getting the types right and the defaults sourced correctly, not in any algorithmic work.
+
+---
+
+## 10. ARCHITECTURAL RULE (codify in CLAUDE.md)
+
+### M07 IS THE DATA LAYER, NOT THE ALGORITHM LAYER
+
+When new fields are needed by downstream services (Lease Velocity, Cashflow Agent, Investment Memo), they're added to `dealContext.traffic` as schema extensions to M07. The COMPUTATION of those fields lives in M07 (via subject_history aggregation, peer-set calibration, or platform defaults) but the ALGORITHMS that consume them — lease-up curves, gap-close math, return calcs — live in their respective service layers.
+
+This rule prevents architectural drift where lease-up logic creeps into M07 because "M07 already has the traffic data." Resist that pattern. Schema extensions are cheap; service-boundary violations are expensive to unwind.
+
+### PLATFORM DEFAULTS MUST BE SHIPPABLE ON DAY ZERO
+
+Every new field in this schema MUST have a platform-default value sufficient for the downstream service to produce output. Subject calibration and peer-set refinement are roadmap items, not blocking requirements. A field that can only be populated when subject history exists is an incomplete schema entry — find a defensible platform default first.
+
+---
+
+**End of spec.**
+
+Build order recommendation:
+1. Add type definitions (Step 1)
+2. Add default constants (Step 2)
+3. Wire into DealContext assembler (Step 3)
+4. Verify with the three test fixtures (§8)
+5. Then proceed to Lease Velocity Engine implementation against the now-guaranteed schema
+
+This unblocks Lease Velocity without any chicken-and-egg risk.

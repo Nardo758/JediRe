@@ -1518,19 +1518,9 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const [lctLocal, setLctLocal] = useState<LeasingCostTreatment>(
     persistedTreatment ?? 'OPERATING',
   );
-  const handleLctChange = useCallback(async (treatment: LeasingCostTreatment) => {
-    setLctLocal(treatment);
-    try {
-      await apiClient.patch(`/api/v1/deals/${dealId}/context`, { leasing_cost_treatment: treatment });
-      // Sync the shared parent treatment view state so all tabs re-fetch with the
-      // same treatment in one cycle (this triggers onF9Refresh internally in the parent).
-      onLvTreatmentViewChange?.(treatment);
-      // Also refresh own (Assumptions) financials independently.
-      fetchFinancials(holdYears);
-    } catch (err) {
-      console.error('[F9 Deal Settings] Failed to save leasing_cost_treatment:', err);
-    }
-  }, [dealId, holdYears, fetchFinancials, onLvTreatmentViewChange]);
+  // NOTE: handleLctChange is declared BELOW fetchFinancials (line ~1592) to avoid
+  // a temporal dead-zone error — it closes over holdYears and fetchFinancials which
+  // are const bindings declared later in this function scope.
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
   const fetchRef   = useRef(0);
@@ -1590,6 +1580,23 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     } catch { /* silent degradation */ }
     finally { if (tok === fetchRef.current) setLoading(false); }
   }, [dealId, holdYears]);
+
+  // handleLctChange declared HERE (after holdYears at line ~1569 and fetchFinancials
+  // at line ~1574) to avoid temporal dead-zone: both are const bindings that would
+  // be referenced before initialization if this callback were declared earlier.
+  const handleLctChange = useCallback(async (treatment: LeasingCostTreatment) => {
+    setLctLocal(treatment);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/context`, { leasing_cost_treatment: treatment });
+      // Sync the shared parent treatment view state so all tabs re-fetch with the
+      // same treatment in one cycle (parent fetchF9Financials handles sibling updates).
+      onLvTreatmentViewChange?.(treatment);
+      // Also refresh own (Assumptions) financials independently.
+      fetchFinancials(holdYears);
+    } catch (err) {
+      console.error('[F9 Deal Settings] Failed to save leasing_cost_treatment:', err);
+    }
+  }, [dealId, holdYears, fetchFinancials, onLvTreatmentViewChange]);
 
   const loadNarrativeBlocks = useCallback(async () => {
     if (!dealId) return;
