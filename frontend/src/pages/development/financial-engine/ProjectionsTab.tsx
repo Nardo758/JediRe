@@ -997,6 +997,21 @@ export function ProjectionsTab({
     void runLvEngine(next);
   }, [lvInputs, dealId, runLvEngine]);
 
+  // Clear override: resets deal.lease_mode_override to null → engine returns to
+  // auto-detected mode (heuristic from occupancy in lvResolvedMode).
+  const handleClearModeOverride = useCallback(async () => {
+    const next = { ...lvInputs, mode: lvResolvedMode };
+    setLvInputs(next);
+    if (dealId) {
+      try {
+        await apiClient.patch(`/api/v1/deals/${dealId}/context`, { lease_mode_override: null });
+      } catch (err) {
+        console.error('[LV] Failed to clear lease_mode_override:', err);
+      }
+    }
+    void runLvEngine(next);
+  }, [lvInputs, lvResolvedMode, dealId, runLvEngine]);
+
   const [narrative,        setNarrative]       = useState<string | null>(null);
   const [narrativeBlocks,  setNarrativeBlocks] = useState<F9NarrativeBlock[]>([]);
   const [narrativeLoading, setNarrativeLoading]= useState(false);
@@ -1427,6 +1442,7 @@ export function ProjectionsTab({
                 ?.['lease_mode_override'] as LeaseMode | null | undefined
             }
             onModeOverride={handleModeOverride}
+            onClearOverride={handleClearModeOverride}
           />
         )}
 

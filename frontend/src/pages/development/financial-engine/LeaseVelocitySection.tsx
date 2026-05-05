@@ -589,6 +589,7 @@ function LeaseVelocityInputPanel({
   resolvedMode,
   leaseOverride,
   onModeOverride,
+  onClearOverride,
 }: {
   inputs: LVInputs;
   onInputsChange: (v: LVInputs) => void;
@@ -599,6 +600,8 @@ function LeaseVelocityInputPanel({
   leaseOverride?: LeaseMode | null;
   /** Called when user changes the mode — caller PATCHes deal.lease_mode_override */
   onModeOverride?: (mode: LeaseMode) => void;
+  /** Clear the persisted lease_mode_override and return engine to auto-detected mode */
+  onClearOverride?: () => void;
 }) {
   const set = <K extends keyof LVInputs>(k: K, v: LVInputs[K]) =>
     onInputsChange({ ...inputs, [k]: v });
@@ -631,14 +634,32 @@ function LeaseVelocityInputPanel({
               </span>
             )}
             {isOverridden && (
-              <span style={{
-                fontFamily: MONO, fontSize: 6, letterSpacing: 0.5, fontWeight: 700,
-                color: BT.text.amber, background: `${BT.text.amber}18`,
-                border: `1px solid ${BT.text.amber}`, borderRadius: 2,
-                padding: '0px 4px',
-              }}>
-                MODE OVERRIDDEN
-              </span>
+              <>
+                <span style={{
+                  fontFamily: MONO, fontSize: 6, letterSpacing: 0.5, fontWeight: 700,
+                  color: BT.text.amber, background: `${BT.text.amber}18`,
+                  border: `1px solid ${BT.text.amber}`, borderRadius: 2,
+                  padding: '0px 4px',
+                }}>
+                  MODE OVERRIDDEN
+                </span>
+                {onClearOverride && (
+                  <button
+                    onClick={onClearOverride}
+                    title="Clear override — return to auto-detected mode"
+                    style={{
+                      background: 'transparent',
+                      border: `1px solid ${BT.border.subtle}`,
+                      color: BT.text.muted,
+                      fontFamily: MONO, fontSize: 6,
+                      padding: '0px 4px', borderRadius: 2,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ↺ AUTO
+                  </button>
+                )}
+              </>
             )}
           </div>
           <div style={{ display: 'flex', gap: 2 }}>
@@ -859,11 +880,13 @@ export interface LeaseVelocitySectionProps {
    */
   leaseOverride?:  LeaseMode | null;
   onModeOverride?: (mode: LeaseMode) => void;
+  /** Clear the persisted lease_mode_override and return engine to auto-detected mode */
+  onClearOverride?: () => void;
 }
 
 export function LeaseVelocitySection({
   result, loading, inputs, onInputsChange, onRun, showConfig, onToggleConfig, runError,
-  resolvedMode, leaseOverride, onModeOverride,
+  resolvedMode, leaseOverride, onModeOverride, onClearOverride,
 }: LeaseVelocitySectionProps) {
   const [showTable, setShowTable] = useState(false);
 
@@ -922,6 +945,7 @@ export function LeaseVelocitySection({
           resolvedMode={resolvedMode}
           leaseOverride={leaseOverride}
           onModeOverride={onModeOverride}
+          onClearOverride={onClearOverride}
         />
       )}
 
