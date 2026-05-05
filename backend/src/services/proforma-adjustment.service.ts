@@ -17,6 +17,7 @@ import { Pool } from 'pg';
 import { taxService } from './tax/taxService';
 import type { TaxContext } from './tax/taxService';
 import { deriveCounty } from './tax/resolver';
+import { liveMillageService } from './tax/liveMlillageService';
 
 // ============================================================================
 // Types
@@ -2361,6 +2362,24 @@ export async function getDealFinancials(
   const dealState = (deal.state_code ?? '').toUpperCase().trim();
   const resolvedCounty = dealCountyRaw ?? deriveCounty(deal.city ?? null, dealState);
 
+  // Try to get a live millage rate if the user hasn't set a manual override.
+  // Priority: user override > live API > ruleset hardcoded default.
+  let effectiveMillageOverride = taxMillageRateOvr;
+  let millageSource: 'user' | 'live' | 'hardcoded' = 'hardcoded';
+  if (taxMillageRateOvr != null) {
+    millageSource = 'user';
+  } else {
+    try {
+      const liveRate = await liveMillageService.getLiveMillageRate(dealState, resolvedCounty);
+      if (liveRate != null) {
+        effectiveMillageOverride = liveRate.millageRate;
+        millageSource = 'live';
+      }
+    } catch {
+      // Live lookup failed — fall through to ruleset hardcoded default
+    }
+  }
+
   // Build tax context and invoke jurisdiction-agnostic tax service
   const taxCtx: TaxContext = {
     state: dealState,
@@ -2369,7 +2388,7 @@ export async function getDealFinancials(
     purchasePrice,
     loanAmount,
     assessedValueOverride: taxAssessedValueOvr,
-    millageRateOverride: taxMillageRateOvr,
+    millageRateOverride: effectiveMillageOverride,
     countyOverride: taxCountyOvr,
     units: totalUnits,
     t12AnnualTax,
@@ -2399,6 +2418,7 @@ export async function getDealFinancials(
     jurisdiction: taxForecast.jurisdiction,
     countyLabel: taxForecast.countyLabel,
     assessmentGrowthPct: taxForecast.assessmentGrowthPct,
+    millageSource,
     reTax: taxForecast.reTax,
     tpp: { broker: tppBroker, platform: tppPlatform },
     incomeTax: {

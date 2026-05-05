@@ -531,6 +531,14 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
           <span style={{ fontFamily: MONO, fontSize: 8, padding: '2px 6px', background: badgeIsMiamiDade ? '#1A1A2E' : '#0A1A0A', border: `1px solid ${badgeIsMiamiDade ? '#3B3B8B' : '#1A3B1A'}`, borderRadius: 3, color: badgeIsMiamiDade ? BT.text.purple : BT.text.green }}>
             {badgeLabel}
           </span>
+          {taxes?.millageSource === 'live' && (
+            <span style={{ fontFamily: MONO, fontSize: 7, padding: '1px 5px', background: '#0A1F1A', border: '1px solid #1A5C3A', borderRadius: 3, color: '#4AE8A0', letterSpacing: 0.5 }}>
+              LIVE DATA
+            </span>
+          )}
+          {taxes?.millageSource === 'user' && (
+            <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.amber }}>user override</span>
+          )}
           {isFlDeal && countyOverride == null && taxes?.reTax.isMiamiDade && (
             <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>auto-detected</span>
           )}

@@ -542,6 +542,13 @@ export interface F9TaxData {
   countyLabel?: string | null;
   /** Annual assessment growth rate used by this ruleset (e.g. 0.04 for GA, 0.12 for FL market) */
   assessmentGrowthPct?: number;
+  /**
+   * Where the millage rate originated:
+   *   'live'      — fetched from a live government API this request
+   *   'user'      — manually overridden by the user in the UI
+   *   'hardcoded' — ruleset default (no live data available for this jurisdiction)
+   */
+  millageSource?: 'live' | 'user' | 'hardcoded';
   reTax: {
     t12AssessedValue: number | null;
     t12MillageRate: number | null;
