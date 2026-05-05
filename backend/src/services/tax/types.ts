@@ -243,6 +243,14 @@ export interface TaxForecast {
    * Additive field — callers that don't read it are unaffected.
    */
   sectionC: SectionCForecast;
+
+  /**
+   * Phase 4 provenance — optional LayeredValue wrappers for key numeric outputs.
+   * Populated when buildTaxContext() is used (Phase 4+). Undefined when the
+   * caller builds TaxContext manually without provenance tracking (backward compat).
+   * Existing callers that don't read this field are completely unaffected.
+   */
+  provenance?: TaxForecastProvenance;
 }
 
 // ── TaxRuleset interface ───────────────────────────────────────────────────────
@@ -395,6 +403,108 @@ export interface TaxRuleset {
    * Hints for where to source the required inputs.
    */
   dataSourceHints(): string[];
+}
+
+// ── Phase 4: LayeredValue provenance wrapper ──────────────────────────────────
+
+/**
+ * LayeredValue<T> — wraps any tax output field with source provenance and
+ * audit metadata. Callers that only need the raw value read `.value`.
+ * The F9 UI and audit trail consumers read the full object.
+ */
+export interface LayeredValue<T> {
+  /** The computed or fetched value. Mirrors the corresponding raw field on TaxForecast. */
+  value: T;
+  /**
+   * Origin of the value:
+   *   'tax_bill_pdf'        — parsed from an uploaded tax bill PDF (highest trust)
+   *   'attom'               — fetched from ATTOM property detail API
+   *   'county_adapter'      — fetched from a direct county PA adapter
+   *   'live_millage_service'— TX Comptroller live rates
+   *   'tax_service_computed'— derived by taxService.forecast() from ruleset + context
+   *   'user_override'       — explicit user-supplied override
+   *   'fallback'            — purchase price or ruleset default used (low confidence)
+   */
+  source: string;
+  metadata: {
+    /** Ruleset jurisdiction + year used to compute this value, e.g. "FL-2026". */
+    ruleset_version?: string;
+    /** Human-readable formula trace, e.g. "$50,000,000 × 1.05% doc stamp". */
+    formula?: string;
+    /** Named inputs consumed by this calculation with their own sources. */
+    inputs?: Record<string, { value: unknown; source: string }>;
+    /** Confidence level of this specific value. */
+    confidence: 'high' | 'medium' | 'low';
+    /** ISO timestamp when this value was computed / fetched. */
+    computed_at: string;
+  };
+}
+
+// ── Phase 4: NormalizedParcel from PropertyAppraiserFetcher ───────────────────
+
+/**
+ * NormalizedParcel — canonical parcel record returned by any PropertyAppraiserFetcher tier.
+ * All monetary fields are in USD. Millage rate is in mills (per $1,000 of assessed value).
+ */
+export interface NormalizedParcel {
+  parcel_id: string;
+  state: string;
+  county: string | null;
+  /** Market / just value (ATTOM: marketValue / marketValueNational). */
+  just_value: number | null;
+  /** Taxable assessed value after exemptions. */
+  assessed_value: number | null;
+  land_value: number | null;
+  improvement_value: number | null;
+  /** Total exemptions applied (homestead + SOH benefit + other). */
+  exemptions_total: number | null;
+  /** Aggregate millage rate if provided by the data source (mills per $1,000). */
+  millage_rate: number | null;
+  /** Annual tax bill amount for the tax_year. */
+  annual_tax: number | null;
+  tax_year: number | null;
+  /** ISO date string of last data update from the source (ATTOM: lastUpdated). */
+  last_updated: string | null;
+  /** Days elapsed since last_updated. Null when last_updated is unknown. */
+  staleness_days: number | null;
+  /** Which tier/source provided this record. */
+  source: 'attom' | 'tax_bill_pdf' | 'county_adapter' | 'manual';
+}
+
+/**
+ * PropertyAppraiserResult — output of PropertyAppraiserFetcher.fetch().
+ * Tier numbering matches spec §8:
+ *   Tier 1 = tax bill PDF parser
+ *   Tier 2 = ATTOM
+ *   Tier 3 = placeholder county adapter
+ *   Tier 4 = null / fallback
+ */
+export interface PropertyAppraiserResult {
+  parcel: NormalizedParcel | null;
+  confidence: 'high' | 'medium' | 'low';
+  tier: 1 | 2 | 3 | 4;
+  tier_label: 'tax_bill_pdf' | 'attom' | 'county_adapter' | 'fallback';
+  warnings: string[];
+}
+
+// ── Phase 4: TaxForecastProvenance ────────────────────────────────────────────
+
+/**
+ * TaxForecastProvenance — additive companion to TaxForecast carrying LayeredValue
+ * wrappers for key numeric outputs. Callers that don't need provenance can ignore this.
+ */
+export interface TaxForecastProvenance {
+  computed_at: string;
+  /** E.g. "FL-2026" or "TX-2026" — jurisdiction + year of active ruleset. */
+  ruleset_version: string;
+  /** Source label for the parcel data used. Null when ATTOM was not called. */
+  parcel_source: string | null;
+  parcel_confidence: 'high' | 'medium' | 'low' | null;
+  assessed_value: LayeredValue<number | null>;
+  millage_rate: LayeredValue<number | null>;
+  platform_annual_tax: LayeredValue<number | null>;
+  state_income_tax_rate: LayeredValue<number>;
+  tpp_exemption_amount: LayeredValue<number>;
 }
 
 // ── County Overlay ────────────────────────────────────────────────────────────

@@ -1,0 +1,1289 @@
+# JEDI RE — Tax Service Specification
+
+**Version:** 2.0
+**Status:** Active
+**Supersedes:** v1.0 (2026-05-05)
+
+> Jurisdiction-aware tax math engine powering the F9 Taxes tab (Sections A/B/C/D).
+>
+> Companion to `AGENT_TASK_INVENTORY.md` Tasks 6.5 (tax math) and 6.10 (insurance ruleset pattern). Implements the deterministic-service pattern referenced in `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` ground rule #10 ("Nothing is hardcoded to Florida outside the FL ruleset files").
+>
+> Classification: **C** (deterministic service). Not an agent. Agents have a narrow onboarding/flagging role only — see §11.
+
+### v2 changes (vs v1.0)
+
+- **§5 / §7:** Replaced narrow `reassessmentOnSale()` method with full **reassessment triggers model** — supports sale, cyclical, new construction, substantial improvement, use change, and exemption-loss events. Required to correctly model NC's cyclical revaluation, development deals' CO step-function, and value-add capex impact on tax basis.
+- **§5:** Added `reassessmentEventsForDeal()` — walks deal timeline and emits per-year events.
+- **§7:** Section A composition now walks year-by-year and applies events across the ruleset stack.
+- **§4:** Added NC as a launch jurisdiction (Mecklenburg + Wake counties). NC is the canonical example of state-declared trigger with county-overridden cycle parameters.
+- **§9:** Added `rulesets/nc/` directory and `nc-{mecklenburg,wake}-2026.json` rate sheets.
+- **§15:** Added acceptance criteria for trigger evaluation across deal type variants (Existing / Development / Redevelopment).
+- **Appendix A:** Expanded Section A pseudocode to show the timeline walk.
+- **Appendix B:** Added NC rate sheets.
+
+---
+
+## 1. Purpose & Scope
+
+The Tax Service computes the full tax picture for any deal across four sections that mirror the F9 Taxes tab:
+
+- **Section A — Real Estate Tax** (annual ad valorem, caps, exemptions, **reassessment events across hold period**)
+- **Section B — Tangible Personal Property (TPP)** (FF&E, appliances, equipment)
+- **Section C — Income Tax & Depreciation** (federal depreciation, bonus dep, cost seg, state income tax, conformity)
+- **Section D — Transfer Taxes & Doc Stamps** (deed transfer, intangible tax, county surtaxes, recording fees)
+
+It is the single source of truth for every tax line item that flows into:
+
+- F9 ProForma → Operating Expenses → Property Taxes (Section A + B; **year-by-year** with reassessment events)
+- F9 ProForma → Below-Line → Depreciation Shield (Section C federal)
+- F9 ProForma → Below-Line → Income Tax (Section C state)
+- F9 Sources & Uses → Closing Costs → Transfer Taxes (Section D)
+- M14 Risk → Tax Reassessment Risk (uses ruleset's trigger declarations)
+- Deal Capsule → Cost Basis → Acquisition Costs (Section D)
+- F9 ProForma → Annual Cash Flow → red REASSESSMENT EVENT bars (rendered from emitted events)
+
+It is **NOT** an agent. It is a deterministic TypeScript service with pluggable rulesets per jurisdiction.
+
+---
+
+## 2. Architectural Principles
+
+All inherited from existing platform docs; restated here so they apply unambiguously to this work.
+
+1. **Deterministic over agentic.** Tax computation is `if X then Y` math. No LLM in the hot path. (`REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` GR#8)
+2. **Ruleset pattern from day one.** No `if (state === 'FL')` outside `rulesets/fl/`. (GR#10)
+3. **Three-layer data model.** Rule mechanics in TypeScript, annual rates in versioned config, per-deal data via runtime fetch. Mixing layers is the bug.
+4. **LayeredValue everywhere.** Every output field wraps in `LayeredValue<T>` with source provenance. Tier ordering: `t12_or_tax_bill` > `tax_service_computed` > `agent_research` > `unresolved`.
+5. **Cache aggressively, invalidate by fiscal year.** Jurisdiction-level data (millage) cached per-county per-year; parcel data cached per-parcel per-year.
+6. **Composite resolution.** Every property resolves three stacked rulesets: federal (always), state (one of FL/TX/GA/NC/...), county overlay (optional). The composer walks the stack.
+7. **No UI changes required.** F9 layout (4 sections × 4-column grid + reassessment red-bar legend) already exists; this spec populates cells, doesn't restructure the tab.
+8. **Triggers, not hardcoded years.** Reassessment events are emitted by ruleset trigger declarations, never hardcoded to "year 1" or "year of sale" outside the trigger evaluator.
+
+---
+
+## 3. Three-Layer Data Model
+
+| Layer | Storage | Cadence | Owner | Example |
+|---|---|---|---|---|
+| **Rule mechanics** | TypeScript code in `src/services/tax/rulesets/` | Generational — rarely | Engineering | "FL caps non-homestead AV growth at 10%/yr"; "NC has cyclical reval, county sets cycle" |
+| **Annual rate sheets** | Versioned config in `src/services/tax/rateSheets/` | Yearly — TRIM cycle, legislative session, IRC, county reval anchor years | Ops + Engineering | "Miami-Dade 2026 aggregate millage = 19.8344"; "NC-Mecklenburg cycle anchor = 2023, cycle = 4 yrs"; "2026 bonus dep = 20%" |
+| **Per-deal data** | Runtime fetch via `PropertyAppraiserFetcher` + tax bill PDF parser | Per-deal | `LayeredValue` provenance | "464 Bishop assessed at $X; homestead = false; placed in service 2024-08-15" |
+
+This split is the most important architectural decision in the spec. Violating it (e.g. embedding 2026 millage in `fl.ruleset.ts`, or hardcoding NC's 4-year cycle in `nc.ruleset.ts` instead of declaring it cyclical and putting cycle length in the county rate sheet) silently corrupts future deals and is the failure mode every refactor attempt has produced.
+
+---
+
+## 4. Composition Model
+
+Every property has **three stacked rulesets**: federal, state, county. The Tax Service walks the stack per section.
+
+```typescript
+interface RulesetStack {
+  federal: TaxRuleset;          // always present
+  state:   TaxRuleset;          // FL, TX, GA, NC, ... or default
+  county:  TaxRuleset | null;   // Miami-Dade, Harris, Fulton, Mecklenburg, Wake, ... optional
+}
+
+function resolveRulesetStack(deal: Deal): RulesetStack {
+  return {
+    federal: federalRuleset,
+    state:   STATE_RULESETS[deal.state]                              ?? defaultStateRuleset,
+    county:  COUNTY_RULESETS[`${deal.state}-${deal.county}`]         ?? null,
+  };
+}
+```
+
+### Section → Stack mapping
+
+| Section | Federal | State | County |
+|---|:-:|:-:|:-:|
+| A · Real Estate Tax | — | ✅ (rules + triggers) | ✅ (millage, surtaxes, special districts, **cycle parameters**) |
+| B · TPP | — | ✅ (does state tax TPP at all?) | ✅ (TPP millage, exemption threshold) |
+| C · Income & Depreciation | ✅ (rates, bonus dep schedule, cost seg eligibility) | ✅ (state income tax rate, conformity) | — |
+| D · Transfer Taxes | — | ✅ (deed stamp, intangible tax) | ✅ (Miami-Dade $0.45/$100 surtax) |
+
+### Launch jurisdictions (v1)
+
+- **Federal** — always
+- **FL** — state + Miami-Dade, Broward, Palm Beach county overlays
+- **GA** — state + Fulton county overlay
+- **TX** — state + Harris county overlay
+- **NC** — state + Mecklenburg, Wake county overlays
+- **default** — fallback for unmapped states
+
+NC is a launch jurisdiction specifically because it exercises the cyclical-trigger pattern that no other launch state exhibits. Without NC in the launch set, the trigger architecture is under-tested.
+
+---
+
+## 5. The `TaxRuleset` Interface (Full Surface)
+
+```typescript
+// src/services/tax/types.ts
+
+export interface TaxRuleset {
+  jurisdiction: string;                       // 'federal', 'FL', 'FL-Miami-Dade', etc.
+  level: 'federal' | 'state' | 'county';
+  rateSheetVersion: string;                   // e.g. 'fl-2026.v1'
+
+  // ── Section A · Real Estate Tax ────────────────────────────────
+  annualPropertyTax(ctx: TaxContext, year: number): TaxLineResult;
+  annualAssessmentCap(): AssessmentCap | null;
+  reassessmentTriggers(): ReassessmentTrigger[];
+  reassessmentEventsForDeal(
+    ctx: TaxContext,
+    deal: Deal,
+    timeline: DealTimeline
+  ): ReassessmentEvent[];
+  millageBreakdown(ctx: TaxContext): MillageLine[];
+  realEstateExemptions(ctx: TaxContext): Exemption[];
+
+  // ── Section B · Tangible Personal Property ─────────────────────
+  taxesTPP(): boolean;
+  tppTax(ctx: TPPContext, year: number): TaxLineResult;
+  tppExemptionAmount(): number;
+  tppMillage(ctx: TaxContext): number;
+  tppFilingRequirement(): TPPFiling | null;
+  tppDepreciationSchedule(): TPPDepTable;
+
+  // ── Section C · Income Tax & Depreciation ──────────────────────
+  // Federal ruleset owns these:
+  depreciationLife(propertyType: AssetClass): number;
+  bonusDepreciationPct(placedInServiceYear: number): number;
+  costSegEligible(propertyType: AssetClass): boolean;
+  costSegReclassRanges(propertyType: AssetClass): CostSegRanges;
+  federalIncomeTaxRate(entityType: EntityType, taxableIncome: number): number;
+  // State ruleset owns these:
+  stateIncomeTaxRate(entityType: EntityType): number;
+  conformsToBonusDep(): boolean;
+  conformsToCostSeg(): boolean;
+
+  // ── Section D · Transfer Taxes & Doc Stamps ────────────────────
+  acquisitionTransferTax(price: number, deal: Deal): TransferTaxBreakdown;
+  dispositionTransferTax(price: number, deal: Deal): TransferTaxBreakdown;
+  intangibleTax(loanAmount: number): number;
+  recordingFees(docType: 'deed' | 'mortgage' | 'assignment', pages: number): number;
+  countySurtax(price: number): number;
+
+  // ── Metadata ───────────────────────────────────────────────────
+  requiresInputs(section: 'A' | 'B' | 'C' | 'D'): string[];
+  rateSheetAsOf(): Date;
+  rateSheetValidThrough(): Date;
+}
+```
+
+Not every level implements every method. State-only and county-only rulesets return `0` / `null` / `false` / `[]` from methods owned by other levels. The composer (§7) handles this cleanly.
+
+### 5.1 Reassessment Triggers — Full Type Definitions
+
+The trigger model is the v2 architectural addition. It replaces the v1 `reassessmentOnSale()` method.
+
+```typescript
+export type TriggerType =
+  | 'sale'                       // qualifying ownership transfer
+  | 'cyclical'                   // jurisdiction-mandated revaluation cycle
+  | 'annual'                     // assessor's annual roll (most states)
+  | 'new_construction'           // building permit / construction in progress
+  | 'substantial_improvement'    // renovation exceeds threshold
+  | 'use_change'                 // conversion (office → resi, etc.)
+  | 'ownership_restructure'      // LLC reorg, partial transfer (out of scope v1)
+  | 'appeal'                     // owner-initiated protest (downward only)
+  | 'exemption_loss'             // homestead abandonment, abatement expiry
+  | 'millage_change';            // rate change only; base unchanged
+
+export type TriggerEffect =
+  | 'full_reset'                 // assessed value → just/market value
+  | 'sale_price_reset'           // assessed value → purchase price
+  | 'cost_basis'                 // assessed value → land + (construction_cost × completion%)
+  | 'co_reset'                   // full market reset at certificate of occupancy
+  | 'partial_reset'              // only the improved portion is reassessed
+  | 'phased_in'                  // change spread over N years
+  | 'capped_reset'               // reset but capped at X% above prior
+  | 'rate_only';                 // millage change; base unchanged
+
+export interface ReassessmentTrigger {
+  trigger_type: TriggerType;
+  effect: TriggerEffect;
+
+  // Cyclical specifics — populated for cyclical triggers
+  cycle_years?: number;                        // e.g. NC Mecklenburg: 4; NC Wake: 8
+  cycle_anchor_year?: number;                  // last revaluation year, e.g. 2023
+
+  // New construction specifics
+  cost_basis_during_build?: boolean;           // most jurisdictions: yes
+  completion_pct_rule?: 'jan_1_snapshot' | 'continuous' | 'co_only';
+
+  // Improvement specifics
+  improvement_threshold_pct?: number;          // e.g. 25% of prior just value
+  improvement_threshold_dollar?: number;
+
+  // Phase-in specifics (for jurisdictions that phase large jumps)
+  phase_in_years?: number;
+
+  // Cap specifics (post-trigger annual cap, distinct from baseline annual cap)
+  post_trigger_annual_cap?: number;
+
+  notes: string;                               // human-readable description
+}
+
+export interface AssessmentCap {
+  pct: number;                                 // e.g. 0.10 for FL 10%
+  applies_to: 'all' | 'homestead_only' | 'non_homestead';
+  baseline_rule: 'prior_year' | 'cap_inception_value' | 'last_qualifying_sale';
+}
+
+export interface DealTimeline {
+  acquisition_year: number;                    // calendar year
+  hold_years: number;
+  exit_year: number;                           // calendar year
+
+  // Development-specific
+  placed_in_service_date?: Date;               // CO date; required for development variant
+  construction_start_date?: Date;
+  construction_milestones?: ConstructionMilestone[];
+
+  // Redevelopment / value-add specific
+  major_capex_events?: CapexEvent[];
+
+  // Edge cases
+  homestead_status_changes?: { year: number; status: boolean }[];
+  abatement_expirations?: { year: number; program_name: string }[];
+}
+
+export interface CapexEvent {
+  year_of_hold: number;                        // 1-indexed
+  dollar_amount: number;
+  scope: 'unit_renovation' | 'common_area' | 'mep_replacement' |
+         'envelope' | 'addition' | 'gut_rehab';
+}
+
+export interface ConstructionMilestone {
+  date: Date;
+  completion_pct: number;                      // 0.0 to 1.0
+  cumulative_cost: number;
+}
+
+export interface ReassessmentEvent {
+  year_of_hold: number;                        // 1-indexed year of the deal
+  calendar_year: number;
+  trigger_type: TriggerType;
+  effect: TriggerEffect;
+  prior_assessed_value: number;
+  new_assessed_value: number;
+  delta_dollars: number;
+  delta_pct: number;
+  tax_impact_dollars: number;                  // delta × millage / 1000
+  source_ruleset: string;                      // which ruleset emitted this event
+  notes: string[];
+}
+```
+
+### Supporting types (unchanged from v1)
+
+```typescript
+export interface TaxContext {
+  parcel_id: string;
+  state: string;
+  county: string;
+  city?: string;
+  // From PropertyAppraiserFetcher
+  just_value: number;
+  assessed_value: number;
+  taxable_value: number;
+  millage_aggregate: number;
+  exemptions: Exemption[];
+  homestead_status: boolean;
+  last_qualifying_sale: { date: Date; price: number } | null;
+  // From deal
+  purchase_price: number;
+  purchase_date: Date;
+  loan_amount: number;
+  property_type: AssetClass;
+  entity_type: EntityType;
+  hold_period_years: number;
+  exit_year: number;
+  exit_price_estimate: number;
+  // Variant-specific (set by resolveProjectType)
+  project_type: 'existing' | 'development' | 'redevelopment';
+  // From cost basis allocation
+  land_allocation_pct: number;
+  building_basis: number;
+}
+
+export interface TaxLineResult {
+  amount: number;
+  formula: string;
+  inputs: Record<string, { value: any; source: string }>;
+  reassessment_event_in_year: boolean;
+  triggering_event?: ReassessmentEvent;        // populated when reassessment_event_in_year is true
+  confidence: 'high' | 'medium' | 'low';
+  notes: string[];
+}
+
+// (TransferTaxBreakdown, MillageLine, Exemption, AssetClass, EntityType, etc. unchanged)
+```
+
+---
+
+## 6. Rate Sheet Schema
+
+Rate sheets are versioned JSON files. One per jurisdiction-year. Loaded at boot and cached in process memory.
+
+### File naming
+
+`src/services/tax/rateSheets/{jurisdiction}-{year}.json`
+
+Examples:
+- `federal-2026.json`
+- `fl-2026.json`, `fl-miami-dade-2026.json`, `fl-broward-2026.json`, `fl-palm-beach-2026.json`
+- `ga-2026.json`, `ga-fulton-2026.json`
+- `tx-2026.json`, `tx-harris-2026.json`
+- `nc-2026.json`, `nc-mecklenburg-2026.json`, `nc-wake-2026.json`
+
+### Schema
+
+```typescript
+// src/services/tax/rateSheets/schema.ts
+
+export interface RateSheet {
+  jurisdiction: string;
+  level: 'federal' | 'state' | 'county';
+  year: number;
+  version: string;
+  as_of: string;
+  valid_through: string;
+  source_citations: SourceCitation[];
+
+  // Section A
+  millage?: {
+    aggregate?: number;
+    breakdown?: { authority: string; rate: number; applies_to?: string }[];
+  };
+  assessment_ratio?: number;
+  exemption_dollar_amounts?: Record<string, number>;
+
+  // Section A — trigger parameters (v2 addition)
+  // County rate sheets override state-declared cycle parameters here
+  trigger_parameters?: {
+    cyclical?: {
+      cycle_years: number;                     // 4 for NC-Mecklenburg, 8 for NC-Wake
+      cycle_anchor_year: number;               // last revaluation year
+    };
+    substantial_improvement?: {
+      threshold_pct?: number;                  // override state default if set
+      threshold_dollar?: number;
+    };
+  };
+
+  // Section B
+  tpp?: {
+    taxed: boolean;
+    millage?: number | 'same_as_re';
+    exemption_amount?: number;
+    depreciation_schedule?: TPPDepTable;
+  };
+
+  // Section C — federal sheet only
+  bonus_depreciation?: { year: number; pct: number }[];
+  depreciation_lives?: Record<AssetClass, number>;
+  federal_income_tax_brackets?: TaxBracket[];
+  // Section C — state sheets
+  state_income_tax_rate?: { entity_type: EntityType; rate: number }[];
+  conforms_to_bonus_dep?: boolean;
+  conforms_to_cost_seg?: boolean;
+
+  // Section D
+  transfer_tax?: {
+    deed_rate_per_100?: number;
+    deed_rate_per_1000?: number;               // GA uses per-1000 base
+    intangible_rate_per_100?: number;
+    mortgage_stamp_rate_per_100?: number;
+    recording_fee_per_page?: number;
+  };
+  county_surtax?: {
+    rate_per_100: number;
+    applies_to: 'all' | 'non_homestead' | 'commercial';
+  };
+}
+
+interface SourceCitation {
+  field: string;
+  source_url: string;
+  retrieved_at: string;
+  document_title?: string;
+}
+```
+
+### Refresh cadence
+
+| Level | Cadence | Trigger |
+|---|---|---|
+| Federal | Annual (after Dec congressional sessions) + ad-hoc on bills passed | Engineering PR |
+| State | Annual after legislative session ends | Engineering PR |
+| County millage | Annual post-TRIM (FL: ~Sept 15; GA: typically June; TX: varies by CAD; NC: counties set during budget cycle) | Ops review + PR |
+| **County cycle anchors** | Updated when revaluation completes (e.g. Mecklenburg's 2027 reval shifts anchor from 2023 to 2027) | Ops + Engineering — verify with county tax office |
+
+A cron job (`tax/rateSheetStaleness.cron.ts`) checks `valid_through` weekly and queues an agent task when a sheet is within 30 days of expiry.
+
+---
+
+## 7. Composite Resolver (`taxService` Entry Point)
+
+```typescript
+// src/services/tax/taxService.ts
+
+export const taxService = {
+  /**
+   * Top-level entry — returns the full tax picture for a deal across all 4 sections.
+   * Called by CashFlow Agent, F9 UI loaders, M14 Risk, Sources & Uses.
+   */
+  async forecast(deal: Deal): Promise<TaxForecast> {
+    const stack = resolveRulesetStack(deal);
+    const ctx = await buildTaxContext(deal, stack);
+    const timeline = buildDealTimeline(deal);
+
+    return {
+      sectionA_realEstate: await computeSectionA(ctx, stack, deal, timeline),
+      sectionB_tpp:        await computeSectionB(ctx, stack, deal),
+      sectionC_income:     await computeSectionC(ctx, stack, deal),
+      sectionD_transfer:   await computeSectionD(ctx, stack, deal),
+      meta: {
+        ruleset_versions: {
+          federal: stack.federal.rateSheetVersion,
+          state:   stack.state.rateSheetVersion,
+          county:  stack.county?.rateSheetVersion ?? null,
+        },
+        timeline_summary: summarizeTimeline(timeline),
+        computed_at: new Date(),
+      },
+    };
+  },
+
+  // Per-section entry points (used by F9 lazy loaders)
+  async sectionA(deal: Deal): Promise<SectionAResult> { /* ... */ },
+  async sectionB(deal: Deal): Promise<SectionBResult> { /* ... */ },
+  async sectionC(deal: Deal): Promise<SectionCResult> { /* ... */ },
+  async sectionD(deal: Deal): Promise<SectionDResult> { /* ... */ },
+};
+```
+
+### Section A composition — year-by-year timeline walk
+
+This is the v2 critical change. Section A is no longer a single annual computation; it walks the hold period and emits events.
+
+```typescript
+function computeSectionA(
+  ctx: TaxContext,
+  stack: RulesetStack,
+  deal: Deal,
+  timeline: DealTimeline
+): SectionAResult {
+  // 1. Collect all trigger declarations from the stack
+  //    Federal contributes none. State + county both contribute.
+  //    County-level cycle parameters override state-declared cycle.
+  const declaredTriggers = mergeTriggers([
+    ...stack.state.reassessmentTriggers(),
+    ...(stack.county?.reassessmentTriggers() ?? []),
+  ]);
+
+  // 2. Evaluate triggers against the deal's timeline
+  //    Each ruleset gets to emit events; events from county-overridden triggers
+  //    take precedence over state defaults for the same trigger_type.
+  const stateEvents = stack.state.reassessmentEventsForDeal(ctx, deal, timeline);
+  const countyEvents = stack.county?.reassessmentEventsForDeal(ctx, deal, timeline) ?? [];
+  const events = reconcileEvents(stateEvents, countyEvents);
+
+  // 3. Build the year-by-year tax line
+  const annualLines: AnnualTaxLine[] = [];
+  let runningAssessedValue = ctx.assessed_value;
+
+  for (let yearOfHold = 1; yearOfHold <= timeline.hold_years; yearOfHold++) {
+    const calendarYear = timeline.acquisition_year + yearOfHold - 1;
+    const eventThisYear = events.find(e => e.year_of_hold === yearOfHold);
+
+    if (eventThisYear) {
+      runningAssessedValue = eventThisYear.new_assessed_value;
+    } else {
+      // No event — apply jurisdiction's annual cap or natural growth
+      const cap = stack.state.annualAssessmentCap();
+      runningAssessedValue = applyAnnualGrowth(runningAssessedValue, ctx, cap);
+    }
+
+    const taxLine = stack.state.annualPropertyTax(
+      { ...ctx, assessed_value: runningAssessedValue },
+      calendarYear
+    );
+
+    annualLines.push({
+      year_of_hold: yearOfHold,
+      calendar_year: calendarYear,
+      assessed_value: runningAssessedValue,
+      tax_amount: taxLine.amount,
+      reassessment_event: eventThisYear ?? null,
+    });
+  }
+
+  return {
+    annual_lines: annualLines,
+    reassessment_events: events,
+    millage_breakdown: stack.county?.millageBreakdown(ctx) ?? stack.state.millageBreakdown(ctx),
+    exemptions: stack.state.realEstateExemptions(ctx),
+    annual_cap: stack.state.annualAssessmentCap(),
+    declared_triggers: declaredTriggers,
+  };
+}
+```
+
+### `reconcileEvents` — county overrides state for same trigger
+
+```typescript
+/**
+ * When state and county both emit events for the same trigger_type in the same year,
+ * county wins. This handles e.g. NC-Mecklenburg's 4-year cycle overriding NC's
+ * default 8-year cycle declaration.
+ */
+function reconcileEvents(
+  stateEvents: ReassessmentEvent[],
+  countyEvents: ReassessmentEvent[]
+): ReassessmentEvent[] {
+  const merged = [...countyEvents];
+  for (const stateEvent of stateEvents) {
+    const overridden = countyEvents.some(
+      ce => ce.year_of_hold === stateEvent.year_of_hold &&
+            ce.trigger_type === stateEvent.trigger_type
+    );
+    if (!overridden) merged.push(stateEvent);
+  }
+  return merged.sort((a, b) => a.year_of_hold - b.year_of_hold);
+}
+```
+
+Detailed pseudocode for B and D, plus example trigger evaluations, in **Appendix A**.
+
+---
+
+## 8. `PropertyAppraiserFetcher` Contract
+
+(Unchanged from v1. Restated for completeness.)
+
+```typescript
+export interface PropertyAppraiserFetcher {
+  getParcel(deal: Deal): Promise<NormalizedParcel | null>;
+  getTppRecord(deal: Deal): Promise<NormalizedTppRecord | null>;
+  canResolve(field: string, deal: Deal): boolean;
+}
+
+export interface NormalizedParcel {
+  parcel_id: string;
+  just_value: number | null;
+  assessed_value: number | null;
+  taxable_value: number | null;
+  millage_aggregate: number | null;
+  exemptions: Exemption[];
+  last_qualifying_sale: { date: Date; price: number } | null;
+  homestead_status: boolean | null;
+  source_metadata: { provider: string; fetched_at: Date; staleness_days: number };
+}
+```
+
+**Implementation:** `GeneralPropertyAppraiserFetcher` routes internally:
+
+1. **Tier 1** — tax bill PDF parser output (if user uploaded)
+2. **Tier 2** — commercial aggregator (ATTOM primary, ~$0.05–0.50 per parcel)
+3. **Tier 3** — county-direct adapter (only where built; optional optimization)
+4. **Tier 4** — agent-flagged research (returns `null`; CashFlow Agent picks up via `web_search`)
+
+County adapters are **internal implementation detail**, not first-class entries in any registry. Build only when ATTOM cost or staleness justifies it for a specific high-volume county.
+
+---
+
+## 9. File Structure
+
+```
+src/services/tax/
+├── taxService.ts                    # Entry point (§7)
+├── types.ts                          # All shared types (§5)
+├── compositeResolver.ts             # resolveRulesetStack + section composers + timeline walk
+├── triggerEvaluator.ts              # Shared trigger evaluation helpers (NEW v2)
+├── rulesets/
+│   ├── federal.ruleset.ts            # Federal — Section C primary
+│   ├── default.ruleset.ts            # Generic state fallback
+│   ├── fl/
+│   │   ├── fl.ruleset.ts             # FL state-level — declares sale + new_construction triggers
+│   │   ├── fl-miami-dade.ruleset.ts
+│   │   ├── fl-broward.ruleset.ts
+│   │   └── fl-palm-beach.ruleset.ts
+│   ├── ga/
+│   │   ├── ga.ruleset.ts             # GA state-level — declares annual + new_construction
+│   │   └── ga-fulton.ruleset.ts
+│   ├── tx/
+│   │   ├── tx.ruleset.ts
+│   │   └── tx-harris.ruleset.ts
+│   └── nc/                           # NEW v2 launch jurisdiction
+│       ├── nc.ruleset.ts             # NC state-level — declares cyclical trigger; cycle params come from county
+│       ├── nc-mecklenburg.ruleset.ts # 4-year cycle override
+│       └── nc-wake.ruleset.ts        # 8-year cycle override
+├── rateSheets/
+│   ├── schema.ts
+│   ├── loader.ts
+│   ├── federal-2026.json
+│   ├── fl-2026.json
+│   ├── fl-miami-dade-2026.json
+│   ├── fl-broward-2026.json
+│   ├── fl-palm-beach-2026.json
+│   ├── ga-2026.json
+│   ├── ga-fulton-2026.json
+│   ├── tx-2026.json
+│   ├── tx-harris-2026.json
+│   ├── nc-2026.json                  # NEW v2
+│   ├── nc-mecklenburg-2026.json      # NEW v2 — declares cycle_years: 4, anchor: 2023
+│   └── nc-wake-2026.json             # NEW v2 — declares cycle_years: 8, anchor: 2024
+├── dataSources/
+│   ├── propertyAppraiserFetcher.ts
+│   ├── attomAdapter.ts
+│   ├── countyAdapters/
+│   └── normalizers.ts
+├── caches/
+│   ├── jurisdictionCache.ts
+│   └── parcelCache.ts
+└── crons/
+    └── rateSheetStaleness.cron.ts
+```
+
+---
+
+## 10. DB Schema
+
+(Unchanged from v1.)
+
+```sql
+CREATE TABLE jurisdiction_tax_cache (
+  jurisdiction TEXT NOT NULL,
+  field        TEXT NOT NULL,
+  fiscal_year  INT  NOT NULL,
+  value        JSONB NOT NULL,
+  source       TEXT NOT NULL,
+  fetched_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at   TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (jurisdiction, field, fiscal_year)
+);
+
+CREATE INDEX idx_jurisdiction_cache_expiry
+  ON jurisdiction_tax_cache(expires_at);
+
+CREATE TABLE parcel_tax_cache (
+  parcel_id    TEXT NOT NULL,
+  fiscal_year  INT  NOT NULL,
+  data         JSONB NOT NULL,
+  source       TEXT NOT NULL,
+  fetched_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at   TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (parcel_id, fiscal_year)
+);
+
+CREATE TABLE rate_sheet_versions (
+  jurisdiction TEXT NOT NULL,
+  year         INT  NOT NULL,
+  version      TEXT NOT NULL,
+  status       TEXT NOT NULL CHECK (status IN ('active', 'pending_review', 'deprecated')),
+  source       TEXT NOT NULL CHECK (source IN ('engineering', 'agent_research')),
+  agent_run_id UUID REFERENCES agent_runs(id),
+  content      JSONB NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  activated_at TIMESTAMPTZ,
+  PRIMARY KEY (jurisdiction, year, version)
+);
+
+CREATE UNIQUE INDEX idx_rate_sheet_active
+  ON rate_sheet_versions(jurisdiction, year)
+  WHERE status = 'active';
+```
+
+---
+
+## 11. The Agent's Narrow Role
+
+The Tax Service is deterministic. Agents do not compute tax. They have exactly three roles, all out-of-band of the hot path:
+
+### 11.1 New jurisdiction onboarding
+
+Deal lands in a state/county with no ruleset (e.g. Charleston SC). Behavior:
+
+1. `resolveRulesetStack` returns `state: defaultStateRuleset` and `county: null`
+2. `taxService.forecast()` runs against defaults; returns results with `confidence: 'low'` and `notes: ['Using default ruleset; jurisdiction-specific rules not yet modeled']`
+3. A Kafka event `jurisdiction_unmapped` fires; an Inngest function queues a Research Agent run
+4. Research Agent uses `web_search` to locate state and county tax rules — including **declared trigger types and cycle parameters**, not just rates
+5. Output written to `rate_sheet_versions` with `status='pending_review'`, `source='agent_research'`
+6. Engineering reviews, refines, promotes to `status='active'`
+
+### 11.2 Staleness flagging
+
+Weekly cron reads all `active` rate sheets where `valid_through < NOW() + INTERVAL '30 days'`. For each:
+
+1. Queues an agent task to re-verify the rates
+2. Agent compares current `RateSheet` against fresh web research, surfaces deltas
+3. If no changes detected, agent updates `valid_through` and increments minor version
+4. If changes detected, agent drafts new sheet → `pending_review`
+
+**Special case for cyclical-trigger jurisdictions:** When a county completes a revaluation, the cycle anchor year shifts. Agent flags this as a high-priority update. (Example: when Mecklenburg completes its 2027 revaluation, `cycle_anchor_year` shifts from 2023 to 2027, affecting every NC-Mecklenburg deal in the system.)
+
+### 11.3 Edge cases the standard ruleset doesn't model
+
+TIF districts, recently-passed abatement programs, special assessment liens, ownership_restructure scenarios. When `PropertyAppraiserFetcher` returns a parcel flag like `in_tif_district: true` and the ruleset has no TIF handler:
+
+1. Tax line marked with `confidence: 'medium'` and `notes: ['TIF district detected but not modeled']`
+2. Research Agent invoked once per parcel to characterize the program
+3. Output stored in LayeredValue with `derived_from_search: true`, surfaces in F9 UI as a yellow advisory
+
+In all three roles, agents **propose**, humans **approve**, code **executes**. The agent never writes to the runtime computation path.
+
+---
+
+## 12. UI Integration (No Changes)
+
+F9 Taxes tab as currently designed (per uploaded screenshot) is correct. This service populates:
+
+| F9 Cell | Source | Tax Service Method |
+|---|---|---|
+| Section A · Real Estate Tax · PLATFORM column | `taxService.sectionA(deal).annual_lines[year - 1].tax_amount` | `computeSectionA` |
+| Section A · `County millage X.XX mills` header text | `taxService.sectionA(deal).millage_breakdown` aggregate | derived |
+| Section A · Reassessment red bar (in legend) | `taxService.sectionA(deal).reassessment_events` | from trigger evaluation |
+| Section A · Per-year red bars in ProForma | each `reassessment_events[i]` rendered at `year_of_hold` | from trigger evaluation |
+| Section B · TPP · PLATFORM column | `taxService.sectionB(deal).annual_tax` | `computeSectionB` |
+| Section C · Annual Depreciation pill | `taxService.sectionC(deal).annual_depreciation` | composed federal+state |
+| Section C · Effective Tax Rate pill | `taxService.sectionC(deal).effective_tax_rate` | composed |
+| Section D · Documentary Stamp Tax (deed) | `taxService.sectionD(deal).state_deed_stamp` | from ruleset |
+| Section D · Total Transfer Taxes | `taxService.sectionD(deal).total` | sum of breakdown |
+| `RATES` pill (header) | Opens read-only rate sheet viewer | reads from active rate_sheet_versions |
+| `RESOLVED` column (all sections) | LayeredValue merge of T-12 / PLATFORM / USER | existing pattern |
+
+**The optional `RATES` viewer** opens a modal showing the active rate sheet for the deal's jurisdiction (federal + state + county stacked) with `as_of` dates, source citations, `valid_through` countdown, **and declared trigger types with cycle parameters**. Read-only. Wires to `GET /api/tax/rate-sheets/:jurisdiction`.
+
+---
+
+## 13. API Surface (Internal)
+
+```
+GET  /api/tax/forecast/:dealId                 → TaxForecast (all 4 sections)
+GET  /api/tax/forecast/:dealId/section/:abcd   → SectionResult
+GET  /api/tax/forecast/:dealId/timeline        → ReassessmentEvent[] across hold period
+GET  /api/tax/rate-sheets/:jurisdiction        → active RateSheet (federal+state+county stacked)
+GET  /api/tax/rate-sheets/:jurisdiction/history → version history
+POST /api/tax/rate-sheets/:jurisdiction/promote → admin: promote pending_review → active
+GET  /api/tax/rulesets/coverage                → which (state, county) pairs have rulesets
+```
+
+All routes follow existing platform auth/audit conventions. Writes go through audit middleware per `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` GR#6.
+
+---
+
+## 14. LayeredValue Provenance
+
+Every Tax Service output field wraps in `LayeredValue<T>`:
+
+```typescript
+{
+  value: 247_350,
+  source: 'tax_service_computed',
+  metadata: {
+    ruleset_version: 'fl-miami-dade-2026.v1',
+    formula: '(taxable_value × millage) / 1000',
+    inputs: {
+      taxable_value: { value: 12_450_000, source: 'attom', as_of: '2026-03-15' },
+      millage_aggregate: { value: 19.8344, source: 'rate_sheet:fl-miami-dade-2026.v1' },
+    },
+    triggering_event: { /* ReassessmentEvent if applicable */ },
+    confidence: 'high',
+    computed_at: '2026-05-05T14:32:00Z',
+  },
+  user_override: null,
+}
+```
+
+If user overrides any input (e.g. corrects taxable_value from a tax bill they uploaded), the override goes through the standard LayeredValue merge — the service recomputes downstream fields automatically when an upstream input changes, **including re-running trigger evaluation if the override changes deal timeline inputs**.
+
+---
+
+## 15. Acceptance Criteria
+
+This spec is complete when, for real deals end-to-end across all launch jurisdictions:
+
+### Section A — Real Estate Tax + Triggers
+
+- [ ] All four F9 sections populate with non-`—` values when minimum required inputs are present
+- [ ] `taxService.forecast(deal)` returns deterministic output (same inputs ⇒ same outputs, byte-identical)
+- [ ] **FL Existing deal**: sale trigger fires year 1 → full reset to purchase price; subsequent years capped at 10%
+- [ ] **FL Development deal**: years 1-2 use cost-basis (low taxes during construction); CO trigger fires year of placed-in-service → full market reset
+- [ ] **FL Redevelopment deal with $8.5M capex in year 2**: substantial_improvement trigger fires year 2 → partial_reset on improvement portion only
+- [ ] **GA Existing deal**: no trigger events; assessed value drifts annually with market (uncapped)
+- [ ] **TX Existing deal (non-homestead)**: no cap; full annual reassessment; no sale trigger (TX doesn't reassess on sale specifically)
+- [ ] **NC-Mecklenburg Existing deal acquired 2025**: cyclical trigger fires year 3 (2027 revaluation per anchor 2023 + cycle 4)
+- [ ] **NC-Wake Existing deal acquired 2025**: cyclical trigger fires year 8 (2032 revaluation per anchor 2024 + cycle 8); deal exiting in year 5 sees no event
+- [ ] **NC-Mecklenburg Development deal**: cost-basis during construction → CO reset → next event is cyclical revaluation per Mecklenburg cycle (county overrides state default cycle)
+- [ ] Reassessment events render correctly in F9 ProForma year-by-year as red bars with tooltip showing trigger type and impact dollars
+
+### Section C — Income & Depreciation
+
+- [ ] Federal + GA + Fulton compose correctly; depreciation reflects 2026 bonus dep (20%); GA conformity correctly returns 0% bonus dep at state level
+- [ ] FL deal correctly returns 0% state income tax for individual/pass-through entity; 5.5% for C-corp
+- [ ] TX deal correctly returns 0% state income tax across all entity types
+
+### Section D — Transfer Taxes
+
+- [ ] FL Miami-Dade $50M acquisition correctly returns $350K state deed stamp + $225K county surtax = $575K transfer
+- [ ] FL Broward $50M acquisition returns $350K state deed stamp + $0 surtax
+- [ ] TX Houston $50M acquisition returns near-zero (recording fees only)
+- [ ] GA Atlanta $50M acquisition returns $50K transfer tax (per-1000 base, not per-100)
+- [ ] NC $50M acquisition returns $50K transfer tax + recording fees ($1.00 per $500 deed transfer in NC)
+
+### Architecture & Quality
+
+- [ ] No `if (state === 'X')` outside `rulesets/X/` directory (verified by grep in CI)
+- [ ] No hardcoded "year 1" reassessment behavior anywhere outside trigger evaluator
+- [ ] An unmapped jurisdiction (e.g. SC deal) falls back to `default.ruleset.ts` with `confidence: 'low'` and triggers Research Agent onboarding workflow
+- [ ] All outputs wrapped in LayeredValue with full provenance metadata, including triggering_event when applicable
+- [ ] Rate sheet staleness cron correctly identifies sheets within 30 days of expiry
+- [ ] Cycle anchor updates (e.g. simulated Mecklenburg 2027 revaluation completion) correctly shift downstream event projections
+- [ ] Unit test coverage ≥ 90% for ruleset files; integration tests for each launch jurisdiction (FL × 3 counties, GA × 1 county, TX × 1 county, NC × 2 counties)
+- [ ] Deterministic re-run test: same inputs in two separate runs yield byte-identical outputs
+
+---
+
+## 16. Out of Scope
+
+- Insurance ruleset (Task 6.10 — separate spec)
+- 1031 exchange modeling (future — added as Section E if needed)
+- International tax treatment
+- Property tax appeal modeling (future M-module — `appeal` trigger declared but not user-actionable in v1)
+- Multi-state apportionment for entities with operations across states
+- AMT, opportunity zone deferrals (future Section C extensions)
+- **Ownership restructure triggers** (LLC reorgs, partial transfers in CA-style "change of ownership" rules) — declared in trigger taxonomy but not evaluated in v1
+- TX franchise (margin) tax — flagged in tx ruleset notes; not modeled
+- Use-change triggers — declared in taxonomy but not evaluated in v1 (most relevant for hospitality conversions)
+
+---
+
+## Appendix A — Section Composition Pseudocode
+
+### A.1 Section A — Timeline Walk (canonical example)
+
+```typescript
+// FL Development deal acquired 2025, CO 2027, hold through 2032
+//
+// timeline = {
+//   acquisition_year: 2025,
+//   hold_years: 7,
+//   exit_year: 2032,
+//   construction_start_date: 2025-06-01,
+//   placed_in_service_date: 2027-09-15,
+// }
+//
+// FL ruleset declares two triggers:
+//   1. { trigger_type: 'new_construction', effect: 'cost_basis',
+//        cost_basis_during_build: true, completion_pct_rule: 'jan_1_snapshot' }
+//   2. { trigger_type: 'sale', effect: 'sale_price_reset' }  // also fires year 1
+//
+// Trigger evaluator emits:
+//   year 1 (2025): sale event — assessed_value = land + (construction_cost × completion%)
+//                  (sale + construction merge into single event in development variant)
+//   year 2 (2026): no new event — assessed value reflects more completion
+//   year 3 (2027): co_reset event — assessed_value → full market value
+//   years 4-7:     no events — annual cap (10% non-homestead) applies
+
+function fl_reassessmentEventsForDeal(ctx, deal, timeline) {
+  const events: ReassessmentEvent[] = [];
+
+  if (deal.project_type === 'development') {
+    // Cost-basis years
+    for (let y = 1; y <= yearsUntilCO(timeline); y++) {
+      events.push(buildCostBasisEvent(ctx, timeline, y));
+    }
+    // CO reset
+    events.push(buildCOResetEvent(ctx, timeline));
+  } else {
+    // Existing or redevelopment → sale fires year 1
+    events.push(buildSaleResetEvent(ctx, deal, year_of_hold: 1));
+  }
+
+  if (deal.project_type === 'redevelopment' && timeline.major_capex_events) {
+    for (const capex of timeline.major_capex_events) {
+      if (exceedsImprovementThreshold(capex, ctx)) {
+        events.push(buildImprovementEvent(capex, ctx));
+      }
+    }
+  }
+
+  return events;
+}
+```
+
+### A.2 NC — Cyclical Trigger with County Override
+
+```typescript
+// nc.ruleset.ts declares:
+nc_reassessmentTriggers() {
+  return [{
+    trigger_type: 'cyclical',
+    effect: 'full_reset',
+    // cycle_years and cycle_anchor_year are NOT set at state level —
+    // they MUST be provided by county rate sheet
+    notes: 'NC mandates revaluation; counties set cycle length (4-8 years) and anchor.',
+  }];
+}
+
+// nc-mecklenburg.ruleset.ts overrides via rate sheet:
+//   trigger_parameters.cyclical = { cycle_years: 4, cycle_anchor_year: 2023 }
+//
+// nc-wake.ruleset.ts overrides via rate sheet:
+//   trigger_parameters.cyclical = { cycle_years: 8, cycle_anchor_year: 2024 }
+
+function nc_mecklenburg_reassessmentEventsForDeal(ctx, deal, timeline) {
+  const sheet = loadRateSheet('nc-mecklenburg', timeline.acquisition_year);
+  const { cycle_years, cycle_anchor_year } = sheet.trigger_parameters.cyclical;
+
+  const events: ReassessmentEvent[] = [];
+  for (let y = 1; y <= timeline.hold_years; y++) {
+    const calendarYear = timeline.acquisition_year + y - 1;
+    const yearsSinceAnchor = calendarYear - cycle_anchor_year;
+    if (yearsSinceAnchor > 0 && yearsSinceAnchor % cycle_years === 0) {
+      events.push({
+        year_of_hold: y,
+        calendar_year: calendarYear,
+        trigger_type: 'cyclical',
+        effect: 'full_reset',
+        prior_assessed_value: ctx.assessed_value,
+        new_assessed_value: estimateMarketValueAtYear(ctx, deal, y),
+        // ...
+        source_ruleset: 'nc-mecklenburg-2026.v1',
+        notes: [`Mecklenburg County 4-year revaluation cycle (last: ${cycle_anchor_year})`],
+      });
+    }
+  }
+  return events;
+}
+```
+
+### A.3 Section B / D — unchanged from v1
+
+```typescript
+function computeSectionB(ctx, stack, deal) {
+  if (!stack.state.taxesTPP()) {
+    return { taxed: false, annual_tax: 0, notes: [`${stack.state.jurisdiction} does not tax TPP`] };
+  }
+  const stateLine = stack.state.tppTax(toTPPContext(ctx), deal.year);
+  const countyLine = stack.county?.tppTax(toTPPContext(ctx), deal.year) ?? null;
+  return {
+    taxed: true,
+    annual_tax: mergeTppLines(stateLine, countyLine),
+    exemption_amount: stack.state.tppExemptionAmount(),
+    filing_requirement: stack.state.tppFilingRequirement(),
+  };
+}
+
+function computeSectionD(ctx, stack, deal) {
+  const stateBreakdown = stack.state.acquisitionTransferTax(deal.purchase_price, deal);
+  const countySurtax = stack.county?.countySurtax(deal.purchase_price) ?? 0;
+  const stateIntangible = stack.state.intangibleTax(deal.loan_amount);
+  return {
+    state_deed_stamp: stateBreakdown.state_deed_stamp,
+    county_surtax: countySurtax,
+    intangible_tax: stateIntangible,
+    mortgage_doc_stamp: stateBreakdown.mortgage_doc_stamp,
+    recording_fees: stack.state.recordingFees('deed', 4) + stack.state.recordingFees('mortgage', 12),
+    total: /* sum of above */,
+    formula: /* human-readable trace */,
+  };
+}
+```
+
+---
+
+## Appendix B — Initial Rate Sheet Seed Values (2026)
+
+Bundled as launch deliverables. Engineering verifies before merge.
+
+### `federal-2026.json`
+
+```json
+{
+  "jurisdiction": "federal",
+  "level": "federal",
+  "year": 2026,
+  "version": "federal-2026.v1",
+  "as_of": "2026-01-15",
+  "valid_through": "2026-12-31",
+  "depreciation_lives": {
+    "multifamily": 27.5,
+    "sfr": 27.5,
+    "retail": 39,
+    "office": 39,
+    "industrial": 39,
+    "hospitality": 39
+  },
+  "bonus_depreciation": [
+    { "year": 2022, "pct": 1.00 },
+    { "year": 2023, "pct": 0.80 },
+    { "year": 2024, "pct": 0.60 },
+    { "year": 2025, "pct": 0.40 },
+    { "year": 2026, "pct": 0.20 },
+    { "year": 2027, "pct": 0.00 }
+  ],
+  "source_citations": [
+    {
+      "field": "bonus_depreciation",
+      "source_url": "https://www.irs.gov/publications/p946",
+      "retrieved_at": "2026-01-15T10:00:00Z",
+      "document_title": "IRS Publication 946 — Depreciation"
+    }
+  ]
+}
+```
+
+> ⚠️ Bonus dep is a moving target — Congress has had extension bills in flight. Cron-flag any deal modeled past 2026 for federal sheet re-verification.
+
+### `fl-2026.json` (state)
+
+```json
+{
+  "jurisdiction": "fl",
+  "level": "state",
+  "year": 2026,
+  "version": "fl-2026.v1",
+  "as_of": "2026-01-15",
+  "valid_through": "2026-12-31",
+  "transfer_tax": {
+    "deed_rate_per_100": 0.70,
+    "intangible_rate_per_100": 0.20,
+    "mortgage_stamp_rate_per_100": 0.35,
+    "recording_fee_per_page": 10
+  },
+  "tpp": {
+    "taxed": true,
+    "millage": "same_as_re",
+    "exemption_amount": 25000
+  },
+  "state_income_tax_rate": [
+    { "entity_type": "individual",   "rate": 0.00 },
+    { "entity_type": "pass_through", "rate": 0.00 },
+    { "entity_type": "c_corp",       "rate": 0.055 },
+    { "entity_type": "reit",         "rate": 0.00 }
+  ],
+  "conforms_to_bonus_dep": true,
+  "conforms_to_cost_seg": true,
+  "trigger_parameters": {
+    "substantial_improvement": {
+      "threshold_pct": 0.25
+    }
+  }
+}
+```
+
+### `fl-miami-dade-2026.json` (county overlay)
+
+```json
+{
+  "jurisdiction": "fl-miami-dade",
+  "level": "county",
+  "year": 2026,
+  "version": "fl-miami-dade-2026.v1",
+  "as_of": "2025-09-20",
+  "valid_through": "2026-09-30",
+  "millage": {
+    "aggregate": 19.8344,
+    "breakdown": [
+      { "authority": "Miami-Dade County",     "rate": 4.6669 },
+      { "authority": "School Board",           "rate": 7.0190 },
+      { "authority": "Children's Trust",       "rate": 0.4673 },
+      { "authority": "Library",                "rate": 0.2840 },
+      { "authority": "Fire & Rescue",          "rate": 2.4207 },
+      { "authority": "South Florida Water Mgmt","rate": 0.0948 },
+      { "authority": "FIND",                   "rate": 0.0288 },
+      { "authority": "City (varies)",          "rate": 4.8529 }
+    ]
+  },
+  "county_surtax": {
+    "rate_per_100": 0.45,
+    "applies_to": "all"
+  }
+}
+```
+
+### `ga-2026.json` (state)
+
+```json
+{
+  "jurisdiction": "ga",
+  "level": "state",
+  "year": 2026,
+  "version": "ga-2026.v1",
+  "as_of": "2026-01-15",
+  "valid_through": "2026-12-31",
+  "assessment_ratio": 0.40,
+  "transfer_tax": {
+    "deed_rate_per_1000": 1.00,
+    "recording_fee_per_page": 25
+  },
+  "tpp": {
+    "taxed": true,
+    "millage": "same_as_re",
+    "exemption_amount": 7500
+  },
+  "state_income_tax_rate": [
+    { "entity_type": "individual",   "rate": 0.0539 },
+    { "entity_type": "pass_through", "rate": 0.0539 },
+    { "entity_type": "c_corp",       "rate": 0.0539 }
+  ],
+  "conforms_to_bonus_dep": false,
+  "conforms_to_cost_seg": true
+}
+```
+
+### `tx-2026.json` (state)
+
+```json
+{
+  "jurisdiction": "tx",
+  "level": "state",
+  "year": 2026,
+  "version": "tx-2026.v1",
+  "as_of": "2026-01-15",
+  "valid_through": "2026-12-31",
+  "transfer_tax": {
+    "deed_rate_per_100": 0.00,
+    "recording_fee_per_page": 25
+  },
+  "tpp": {
+    "taxed": true,
+    "name": "Business Personal Property Tax",
+    "millage": "same_as_re",
+    "filing_form": "Rendition (Form 50-144)",
+    "filing_deadline": "April 15"
+  },
+  "state_income_tax_rate": [
+    { "entity_type": "individual",   "rate": 0.00 },
+    { "entity_type": "pass_through", "rate": 0.00 },
+    { "entity_type": "c_corp",       "rate": 0.00 }
+  ],
+  "franchise_tax_note": "TX has a margin/franchise tax on entities; not modeled in v1",
+  "conforms_to_bonus_dep": true,
+  "conforms_to_cost_seg": true
+}
+```
+
+### `nc-2026.json` (state) — NEW v2
+
+```json
+{
+  "jurisdiction": "nc",
+  "level": "state",
+  "year": 2026,
+  "version": "nc-2026.v1",
+  "as_of": "2026-01-15",
+  "valid_through": "2026-12-31",
+  "transfer_tax": {
+    "deed_rate_per_500": 1.00,
+    "recording_fee_per_page": 26
+  },
+  "tpp": {
+    "taxed": true,
+    "millage": "same_as_re",
+    "exemption_amount": 0,
+    "notes": "NC taxes business personal property at the same millage as real property; no general exemption."
+  },
+  "state_income_tax_rate": [
+    { "entity_type": "individual",   "rate": 0.0425 },
+    { "entity_type": "pass_through", "rate": 0.0425 },
+    { "entity_type": "c_corp",       "rate": 0.0225 }
+  ],
+  "conforms_to_bonus_dep": true,
+  "conforms_to_cost_seg": true,
+  "source_citations": [
+    {
+      "field": "trigger_declaration_cyclical",
+      "source_url": "https://www.ncleg.gov/EnactedLegislation/Statutes/HTML/ByChapter/Chapter_105.html",
+      "retrieved_at": "2026-01-15T10:00:00Z",
+      "document_title": "NC General Statutes Chapter 105 — Taxation, Article 11 (Property Tax)"
+    }
+  ]
+}
+```
+
+> Engineering note: NC declares the cyclical trigger at state level but **does not** specify cycle_years or cycle_anchor_year — those come from the county overlay. State minimum is 8 years; counties may opt for shorter cycles. NC also has a per-$500 transfer tax base (different from FL's per-$100 and GA's per-$1000) — schema must support this.
+
+### `nc-mecklenburg-2026.json` (county overlay) — NEW v2
+
+```json
+{
+  "jurisdiction": "nc-mecklenburg",
+  "level": "county",
+  "year": 2026,
+  "version": "nc-mecklenburg-2026.v1",
+  "as_of": "2025-08-15",
+  "valid_through": "2026-08-31",
+  "millage": {
+    "aggregate": 0.6169,
+    "breakdown": [
+      { "authority": "Mecklenburg County", "rate": 0.4731 },
+      { "authority": "Charlotte (city)",   "rate": 0.3481 },
+      { "authority": "Fire District",      "rate": 0.0000 }
+    ],
+    "notes": "NC expresses millage as $ per $100 of value, not per $1000. Millage shown is per-$100. Engineering: convert at compose-time."
+  },
+  "trigger_parameters": {
+    "cyclical": {
+      "cycle_years": 4,
+      "cycle_anchor_year": 2023
+    }
+  },
+  "source_citations": [
+    {
+      "field": "trigger_parameters.cyclical",
+      "source_url": "https://www.mecknc.gov/AssessorsOffice/Pages/Reappraisal.aspx",
+      "retrieved_at": "2025-08-15T10:00:00Z",
+      "document_title": "Mecklenburg County Assessor — Reappraisal Schedule"
+    }
+  ]
+}
+```
+
+> Engineering note: Mecklenburg's last revaluation was 2023; next is 2027. NC expresses millage as $-per-$100, unlike FL/GA/TX which use mills (per-$1000). Either normalize at compose-time or extend the schema to track the base unit explicitly. Recommendation: extend schema with `millage_unit: 'per_1000' | 'per_100'`.
+
+### `nc-wake-2026.json` (county overlay) — NEW v2
+
+```json
+{
+  "jurisdiction": "nc-wake",
+  "level": "county",
+  "year": 2026,
+  "version": "nc-wake-2026.v1",
+  "as_of": "2025-08-15",
+  "valid_through": "2026-08-31",
+  "millage": {
+    "aggregate": 0.5135,
+    "breakdown": [
+      { "authority": "Wake County",       "rate": 0.5135 },
+      { "authority": "Raleigh (city)",     "rate": 0.3550 }
+    ],
+    "notes": "Per-$100 base; see normalization note in nc-mecklenburg-2026.json."
+  },
+  "trigger_parameters": {
+    "cyclical": {
+      "cycle_years": 8,
+      "cycle_anchor_year": 2024
+    }
+  },
+  "source_citations": [
+    {
+      "field": "trigger_parameters.cyclical",
+      "source_url": "https://www.wake.gov/departments-government/tax-administration/real-estate-tax-bill-search-payment/revaluation",
+      "retrieved_at": "2025-08-15T10:00:00Z",
+      "document_title": "Wake County Tax Administration — Revaluation Cycle"
+    }
+  ]
+}
+```
+
+> Engineering note: Wake's last revaluation was 2024; next is 2032. A 5-year hold acquired 2025 sees no cyclical event (exits 2030 before the 2032 reval). A 7-year hold sees the event in year 8.
+
+---
+
+*End of TAX_SERVICE_SPEC.md v2.0*

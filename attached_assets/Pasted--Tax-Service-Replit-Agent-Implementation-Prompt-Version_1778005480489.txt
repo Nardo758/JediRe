@@ -1,0 +1,542 @@
+# Tax Service — Replit Agent Implementation Prompt
+
+**Version:** 2.0
+**Status:** Active
+**Supersedes:** v1.0 (2026-05-05)
+
+> Implementation companion to `TAX_SERVICE_SPEC.md` v2.0.
+>
+> **Read `TAX_SERVICE_SPEC.md` v2.0 in full before starting.** This document tells you HOW to execute against that spec, in what order, and under what constraints.
+>
+> Pattern source: this prompt mirrors the structure and rigor of `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` (the agent platform implementation prompt). Apply the same standards.
+
+### v2 changes (vs v1.0)
+
+- **Phase 3:** FL ruleset must declare reassessment **triggers** (sale + new_construction + substantial_improvement), not a single `reassessmentOnSale` boolean. Cost-basis-during-construction handling required.
+- **Phase 4:** Added **NC ruleset family** (`nc.ruleset.ts`, `nc-mecklenburg.ruleset.ts`, `nc-wake.ruleset.ts`) as a launch jurisdiction. NC is the canonical exercise for the cyclical-trigger pattern with county-overridden cycle parameters. Without NC in launch, the trigger architecture is undertested.
+- **Phase 5:** Integration tests now include all three deal type variants (Existing / Development / Redevelopment) for each launch jurisdiction.
+- **Phase 5:** Added timeline-walk determinism test for Section A — same `DealTimeline` input must produce byte-identical event sequence.
+- **Ground rule #13 added:** No hardcoded "year 1 reassessment" or "fires on sale" anywhere outside trigger evaluator. Triggers are declared, evaluated, and emitted — never assumed.
+- **What NOT to Do:** Added prohibition on bypassing trigger evaluation for "simple" cases.
+
+---
+
+## Context
+
+You are implementing the Tax Service — a deterministic, jurisdiction-aware tax math engine that powers the F9 Taxes tab (Sections A, B, C, D) across all four sections of the JEDI RE platform. The F9 UI already exists; you are populating it, not redesigning it.
+
+This is **Task 6.5** in `AGENT_TASK_INVENTORY.md`, classified as **C** (deterministic code). It is not an agent. It is a service that agents call as a tool.
+
+The launch jurisdictions are: **FL** (Miami-Dade, Broward, Palm Beach county overlays), **GA** (Fulton county overlay), **TX** (Harris county overlay), **NC** (Mecklenburg, Wake county overlays), and a **federal** ruleset that always applies. Plus a **default** state ruleset for jurisdictions not yet modeled.
+
+The Tax Service computes year-by-year tax lines across the deal hold period, emitting **reassessment events** at the years they fire based on jurisdiction-declared triggers (sale, cyclical revaluation, new construction CO, substantial improvement, etc.). These events flow into the F9 ProForma timeline, render as red bars in the year-by-year tax row, and feed M14 Risk's reassessment-risk scoring.
+
+---
+
+## Ground Rules — Non-Negotiable
+
+These are derived from the existing `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` ground rules and apply unchanged here.
+
+1. **No `if (state === 'X')` outside `src/services/tax/rulesets/X/`.** This is verified by a CI grep check. If you find yourself wanting to write state-conditional logic anywhere else, stop and architect it as a ruleset method.
+
+2. **Three-layer separation is sacred.** Rule mechanics → TypeScript code. Annual rates → JSON config. Per-deal data → runtime fetch. Never embed a 2026 millage rate in `fl.ruleset.ts`. Never put cap-formula math in a JSON file. **Never hardcode NC's 4-year cycle in `nc.ruleset.ts` — it lives in the county rate sheet.** Mixing layers silently corrupts future-year deals.
+
+3. **Every output wraps in `LayeredValue<T>`.** No raw numbers escape the service. Provenance is always preserved.
+
+4. **Composition is mandatory.** Every property resolves three stacked rulesets (federal + state + county). The composer walks the stack. Do not bypass it.
+
+5. **Rate sheets are validated at boot.** Use a JSON schema validator (`zod`) on every rate sheet during service initialization. Invalid sheets fail loud, not silent.
+
+6. **Deterministic outputs.** Same inputs ⇒ byte-identical outputs. Test this explicitly, including timeline event sequences.
+
+7. **No LLM in the hot path.** Agents have a narrow role (spec §11) and operate out-of-band. The runtime computation is pure code.
+
+8. **Cache aggressively, invalidate by fiscal year.** Jurisdiction cache TTL = end of fiscal year. Parcel cache TTL = end of fiscal year OR on tax bill upload, whichever comes first.
+
+9. **All writes are audited.** Per platform convention; rate sheet promotions, cache invalidations, and override events all hit `audit_log`.
+
+10. **No UI changes.** F9 tab structure already exists per the latest design. You populate cells; you do not restructure the tab.
+
+11. **Audit before building.** Before Phase 1, run a codebase audit per the "audit before building" principle in CLAUDE.md. Document findings in `SPEC_QUESTIONS.md`. Do not duplicate existing types or services.
+
+12. **JSX rendering rules apply** for any UI integration code. Space after `return` before JSX; no `React.Fragment` with keys inside CSS grids; no IIFE patterns inside JSX; named function components with explicit returns.
+
+13. **Triggers are declared, evaluated, and emitted — never assumed.** No code anywhere should hardcode "reassessment fires in year 1" or "sale always triggers reset" outside the trigger evaluator. The pattern is: ruleset declares triggers via `reassessmentTriggers()`, the evaluator walks the timeline, events get emitted with full provenance. If you find yourself writing `if (yearOfHold === 1) reassess()`, stop and route through the trigger evaluator instead.
+
+---
+
+## Build Phases — Mandatory Sequencing
+
+Execute phases in order. Do not start a phase until the previous phase is fully merged, tested, and acknowledged. Each phase ends with a written summary.
+
+### Phase 0 — Audit & Spec Questions (no code)
+
+**Goal:** Understand existing platform state before writing anything.
+
+**Deliverables:**
+
+1. Inventory of existing tax-related code:
+   - Search for `tax`, `millage`, `doc_stamp`, `bonus_dep`, `transfer_tax`, `reassessment` across `src/`
+   - List any existing types, services, or utilities that overlap with the spec
+   - Identify mock files in `frontend/src/data/` that will need to be retired (per platform state notes — there are 25 mock files being retired; tax-related ones are part of the work)
+
+2. Existing tax bill PDF parser:
+   - Verify the parser exists per `AGENT_TASK_INVENTORY.md` task 1.10
+   - Document its output shape
+   - Confirm it produces fields needed for `NormalizedParcel` (just_value, assessed_value, millage, exemptions)
+
+3. F9 Taxes tab frontend code:
+   - Locate the existing component(s)
+   - Document the props/data contract it currently expects
+   - Identify which cells are placeholders (showing `—`) and which are wired to real data
+   - **Confirm the timeline view that will host year-by-year reassessment red bars** — verify the contract for emitting events into the ProForma year-by-year tax row
+
+4. `LayeredValue<T>` type:
+   - Confirm location at `src/types/layered-value.ts`
+   - Document any tax-specific source values that need adding to the `source` enum (`'tax_service_computed'`, `'tax_bill_parsed'`, `'attom'`, `'agent_research'`)
+
+5. **Deal type variant routing:**
+   - Confirm `resolveProjectType(deal)` exists per CLAUDE.md
+   - Document how it returns `'existing' | 'development' | 'redevelopment'`
+   - Confirm where construction milestones / placed-in-service dates live for development deals
+   - Confirm where major capex events live for redevelopment deals
+
+6. Output: `SPEC_QUESTIONS.md` with a list of:
+   - Ambiguities you encountered in the spec
+   - Existing code you propose to reuse vs. rewrite
+   - Any conflicts with existing patterns
+
+**Checkpoint with Leon before Phase 1.** Do not proceed without acknowledgment.
+
+---
+
+### Phase 1 — Foundation (Types, File Structure, Rate Sheet Loader)
+
+**Goal:** All scaffolding for tax computation exists; no math yet.
+
+**Deliverables:**
+
+1. Create `src/services/tax/` directory tree per spec §9 (includes `rulesets/nc/` directory)
+
+2. `src/services/tax/types.ts` with all interfaces from spec §5:
+   - `TaxRuleset`
+   - `TaxContext`, `TPPContext`
+   - `TaxLineResult`, `TransferTaxBreakdown`, `MillageLine`
+   - `Exemption`, `TPPFiling`, `TPPDepTable`, `CostSegRanges`
+   - `AssetClass`, `EntityType`
+   - `TaxForecast`, `SectionAResult`, `SectionBResult`, `SectionCResult`, `SectionDResult`
+   - **NEW:** `ReassessmentTrigger`, `TriggerType`, `TriggerEffect`, `ReassessmentEvent`, `AssessmentCap`, `DealTimeline`, `CapexEvent`, `ConstructionMilestone`
+
+3. `src/services/tax/rateSheets/schema.ts` with the `RateSheet` type and a Zod validator (must include `trigger_parameters` for cyclical and substantial_improvement overrides)
+
+4. `src/services/tax/rateSheets/loader.ts`:
+   - Loads all `*.json` files from `rateSheets/` at boot
+   - Validates each against the Zod schema
+   - Throws on validation failure (fail-loud)
+   - Exposes `getRateSheet(jurisdiction: string, year: number): RateSheet | null`
+
+5. `src/services/tax/triggerEvaluator.ts` (NEW v2 — scaffolding only, no jurisdiction-specific logic):
+   - Helper: `eventsForCyclicalTrigger(trigger, timeline)` — generic cycle math
+   - Helper: `eventsForNewConstruction(trigger, timeline, ctx)` — cost-basis years + CO reset
+   - Helper: `eventsForSubstantialImprovement(trigger, timeline, ctx)` — capex threshold check
+   - Helper: `eventsForSale(trigger, timeline, ctx)` — year-1 sale event
+   - These helpers are called BY ruleset implementations, not the other way around. Rulesets compose helpers per their declared triggers.
+
+6. DB migrations:
+   - `jurisdiction_tax_cache`
+   - `parcel_tax_cache`
+   - `rate_sheet_versions`
+   - All idempotent (use `IF NOT EXISTS` and `ON CONFLICT DO NOTHING`)
+
+7. Extend `LayeredValue<T>` source enum with the four new tax-specific values
+
+8. Unit tests for the schema validator: invalid sheets must throw with helpful errors; valid sheets must parse cleanly. Include a test for `trigger_parameters.cyclical` validation.
+
+**No business logic in this phase.** Rulesets do not exist yet. The composer does not exist yet.
+
+**Checkpoint:** All tests pass. CI grep check confirms no Florida-specific code outside future ruleset directories. Hand off summary to Leon.
+
+---
+
+### Phase 2 — Federal Ruleset (Section C — Cleanest Starting Point)
+
+**Goal:** Federal ruleset implements the cleanest section first (Section C — pure rules, no fetcher dependency, no triggers).
+
+Why federal first: Section C is entirely rule-driven (depreciation lives, bonus dep schedule, federal income tax brackets). No data fetching. No triggers. Lets you exercise the ruleset interface, the rate sheet loader, and the LayeredValue wiring without coupling to PropertyAppraiserFetcher or trigger evaluation.
+
+**Deliverables:**
+
+1. `src/services/tax/rulesets/federal.ruleset.ts` implementing the federal ruleset:
+   - All Section C methods (depreciation, bonus dep, cost seg, federal income tax rate)
+   - All Section A/B/D methods return safe defaults (federal does not compute these)
+   - `reassessmentTriggers()` returns `[]` (federal has no property tax triggers)
+   - `reassessmentEventsForDeal()` returns `[]`
+   - `level: 'federal'`, `jurisdiction: 'federal'`
+
+2. `src/services/tax/rateSheets/federal-2026.json` per spec Appendix B
+
+3. Unit tests:
+   - Bonus dep returns 0.20 for 2026, 0.40 for 2025, 0 for 2027
+   - Depreciation life: 27.5 for multifamily, 39 for office
+   - Cost seg eligible for all property types
+   - Federal income tax rate by entity + bracket
+   - `reassessmentTriggers()` returns empty array (asserts federal correctly declares no property tax triggers)
+
+4. Section C composer stub (`computeSectionC`) that takes `RulesetStack` with only `federal` populated and returns the federal-only result
+
+**Checkpoint:** Federal ruleset passes tests. Hand off summary.
+
+---
+
+### Phase 3 — Default & FL Rulesets (with full trigger declarations)
+
+**Goal:** Default state ruleset (fallback for unmapped jurisdictions) + FL state-level ruleset + Miami-Dade, Broward, Palm Beach county overlays. **All FL triggers declared explicitly via `reassessmentTriggers()` — no hardcoded year-1 logic anywhere.**
+
+**Deliverables:**
+
+1. `src/services/tax/rulesets/default.ruleset.ts`:
+   - Generic ad valorem property tax (taxable_value × millage / 1000)
+   - Generic transfer tax stub (returns zeros with `confidence: 'low'`)
+   - All TPP methods return `taxesTPP: false`
+   - All Section C methods return safe defaults (state-level conformity unknown — flag as low confidence)
+   - `reassessmentTriggers()` returns a single `{ trigger_type: 'annual', effect: 'full_reset' }` placeholder marked low-confidence
+
+2. `src/services/tax/rulesets/fl/fl.ruleset.ts`:
+   - 10% non-homestead annual cap declared via `annualAssessmentCap()`
+   - **Trigger declarations** (all via `reassessmentTriggers()`):
+     - `{ trigger_type: 'sale', effect: 'sale_price_reset', notes: 'FL fully reassesses on qualifying sale; resets cap baseline.' }`
+     - `{ trigger_type: 'new_construction', effect: 'cost_basis', cost_basis_during_build: true, completion_pct_rule: 'jan_1_snapshot', notes: 'FL valuator assesses partial completion as of Jan 1 each year during construction.' }`
+     - `{ trigger_type: 'substantial_improvement', effect: 'partial_reset', improvement_threshold_pct: 0.25, notes: 'Improvements >25% of just value trigger partial reassessment of improvement portion.' }`
+     - `{ trigger_type: 'exemption_loss', effect: 'rate_only', notes: 'Loss of homestead exemption increases taxable base.' }`
+   - `reassessmentEventsForDeal()` evaluates all four triggers using `triggerEvaluator.ts` helpers and returns the merged event list
+   - State doc stamp: $0.70/$100
+   - Intangible tax: $0.20/$100 on note
+   - Mortgage doc stamp: $0.35/$100
+   - TPP taxed: yes; exemption $25K
+   - State income tax: 0% individual/pass-through, 5.5% C-corp
+   - Conforms to bonus dep + cost seg
+
+3. County overlays (FL counties don't override triggers — FL's triggers are state-level — but they do contribute millage):
+   - `fl-miami-dade.ruleset.ts` — adds $0.45/$100 surtax; aggregate millage from rate sheet
+   - `fl-broward.ruleset.ts` — millage from rate sheet
+   - `fl-palm-beach.ruleset.ts` — millage from rate sheet
+
+4. Rate sheets:
+   - `fl-2026.json` per spec Appendix B
+   - `fl-miami-dade-2026.json` per spec Appendix B
+   - `fl-broward-2026.json` (engineering verifies millage)
+   - `fl-palm-beach-2026.json` (engineering verifies millage)
+
+5. Unit tests:
+   - $50M Miami-Dade acquisition → $350K state deed stamp + $225K county surtax = $575K transfer
+   - $50M Broward acquisition → $350K state deed stamp + $0 surtax = $350K transfer
+   - 10% cap correctly limits assessed value growth
+   - **Trigger evaluation tests:**
+     - FL Existing deal acquired 2025 → emits sale event at year_of_hold 1 with effect `sale_price_reset`
+     - FL Development deal with CO Sep 2027 acquired 2025 → emits cost_basis events for years 1-2, co_reset event at year 3
+     - FL Redevelopment deal with $8.5M capex year 2 (just_value $20M, threshold 25% = $5M, exceeded) → emits substantial_improvement event year 2 with effect `partial_reset`
+     - FL Redevelopment deal with $3M capex year 2 (under threshold) → no event emitted
+   - TPP exemption correctly subtracts $25K from FF&E assessed value before tax
+
+**Checkpoint:** All FL tests pass including trigger scenarios. Hand off summary including which millage rates engineering needs to verify before merge.
+
+---
+
+### Phase 4 — GA, TX, and NC Rulesets
+
+**Goal:** Three more launch jurisdictions, exercising state-only triggers (GA, TX), no-transfer-tax (TX), and the cyclical-trigger pattern with county-overridden cycle parameters (NC).
+
+**NC is added in v2 specifically because it's the canonical example of cyclical triggers. The trigger architecture is undertested without it.**
+
+**Deliverables:**
+
+1. `src/services/tax/rulesets/ga/ga.ruleset.ts`:
+   - 40% assessment ratio (taxable = market_value × 0.40)
+   - $1.00 per $1,000 transfer tax (note the per-1000 base)
+   - TPP taxed; $7,500 exemption
+   - State income tax: 5.39% individual/pass-through/corp
+   - **Decouples from federal bonus dep** (`conformsToBonusDep: false`)
+   - Conforms to cost seg
+   - Trigger declarations:
+     - `{ trigger_type: 'annual', effect: 'full_reset', notes: 'GA reassesses annually; uncapped.' }`
+     - `{ trigger_type: 'new_construction', effect: 'cost_basis', cost_basis_during_build: true, completion_pct_rule: 'jan_1_snapshot' }`
+
+2. `src/services/tax/rulesets/ga/ga-fulton.ruleset.ts`:
+   - Fulton County millage breakdown (state + county + city + APS)
+   - No trigger overrides
+
+3. `src/services/tax/rulesets/tx/tx.ruleset.ts`:
+   - **No transfer tax** (returns zeros for deed stamp, intangible)
+   - Recording fees only
+   - Business Personal Property Tax (TPP renamed); rendition due April 15
+   - State income tax: 0% across the board
+   - Franchise tax: noted as out-of-scope for v1, flagged in output notes
+   - Conforms to bonus dep + cost seg
+   - Trigger declarations:
+     - `{ trigger_type: 'annual', effect: 'full_reset', post_trigger_annual_cap: 0.10, notes: 'TX has 10% homestead cap only; non-homestead uncapped annual reassessment.' }`
+     - `{ trigger_type: 'new_construction', effect: 'cost_basis' }`
+   - **No `sale` trigger** — TX does not specifically reassess on sale; the annual roll captures it
+
+4. `src/services/tax/rulesets/tx/tx-harris.ruleset.ts`:
+   - Harris CAD millage breakdown
+   - No trigger overrides
+
+5. `src/services/tax/rulesets/nc/nc.ruleset.ts` — **NEW v2**:
+   - **State declares cyclical trigger but does NOT specify cycle_years or cycle_anchor_year.** Those come from county rate sheet via `trigger_parameters.cyclical`.
+   - Trigger declarations:
+     - `{ trigger_type: 'cyclical', effect: 'full_reset', notes: 'NC mandates revaluation; counties set cycle length (4-8 years) and anchor.' }`
+     - `{ trigger_type: 'new_construction', effect: 'cost_basis' }`
+     - `{ trigger_type: 'substantial_improvement', effect: 'partial_reset', improvement_threshold_pct: 0.25 }`
+   - No annual cap (NC has none statewide)
+   - $1.00 per $500 transfer tax (note the per-500 base — different from FL/GA/TX)
+   - TPP taxed at same millage; no general exemption
+   - State income tax: 4.25% individual/pass-through, 2.25% corporate
+   - Conforms to bonus dep + cost seg
+   - **`reassessmentEventsForDeal()` reads `trigger_parameters.cyclical` from the active county rate sheet to emit cyclical events.** If no county overlay is present, emits no cyclical events and flags `confidence: 'low'`.
+
+6. `src/services/tax/rulesets/nc/nc-mecklenburg.ruleset.ts` — **NEW v2**:
+   - Inherits state triggers; rate sheet provides `trigger_parameters.cyclical = { cycle_years: 4, cycle_anchor_year: 2023 }`
+   - Mecklenburg + Charlotte + applicable fire district millage
+   - No trigger override beyond cycle parameters
+
+7. `src/services/tax/rulesets/nc/nc-wake.ruleset.ts` — **NEW v2**:
+   - Inherits state triggers; rate sheet provides `trigger_parameters.cyclical = { cycle_years: 8, cycle_anchor_year: 2024 }`
+   - Wake + Raleigh millage
+   - No trigger override beyond cycle parameters
+
+8. Rate sheets:
+   - `ga-2026.json`, `ga-fulton-2026.json`
+   - `tx-2026.json`, `tx-harris-2026.json`
+   - `nc-2026.json` per spec Appendix B
+   - `nc-mecklenburg-2026.json` per spec Appendix B (declares cycle_years: 4, anchor: 2023)
+   - `nc-wake-2026.json` per spec Appendix B (declares cycle_years: 8, anchor: 2024)
+
+9. **Schema extension for NC millage base:** NC expresses millage as $-per-$100, not per-$1000. Either:
+   - (a) Normalize at compose-time (multiply by 10 in NC ruleset's `annualPropertyTax`), OR
+   - (b) Extend rate sheet schema with `millage_unit: 'per_1000' | 'per_100' | 'per_500'`
+   - **Recommendation: option (b).** Schema extension is cleaner, makes the per-jurisdiction unit explicit, and prevents future bugs.
+
+10. Unit tests:
+    - $50M Houston acquisition → near-zero transfer (recording fees only)
+    - $50M Atlanta acquisition → $50,000 transfer tax (per-1000 math)
+    - $50M Charlotte acquisition → $100,000 transfer tax (per-500 math)
+    - GA bonus dep correctly returns 0% (state decouples)
+    - TX state income tax always returns 0%
+    - **Trigger evaluation tests:**
+      - GA Existing deal across 5-year hold → no events emitted (annual reassessment is uncapped continuous, not event-based)
+      - TX Existing deal (non-homestead) across 5-year hold → no events emitted; tax line tracks annual market drift
+      - NC-Mecklenburg Existing deal acquired 2025, 5-year hold → cyclical event in year 3 (calendar 2027 = anchor 2023 + cycle 4)
+      - NC-Mecklenburg Existing deal acquired 2025, 3-year hold (exits 2028) → still emits year 3 event (2027 reval); year 4 not in hold
+      - NC-Wake Existing deal acquired 2025, 5-year hold → no cyclical event (next reval 2032 = anchor 2024 + cycle 8; outside hold)
+      - NC-Wake Existing deal acquired 2025, 8-year hold → cyclical event in year 8 (calendar 2032)
+      - NC-Mecklenburg Development deal acquired 2025, CO 2027, 7-year hold → cost_basis years 1-2, co_reset year 3, cyclical event year 3 OR resolved as combined event (validate the reconciliation logic)
+      - NC deal in unmapped county → falls through to NC state ruleset, emits no cyclical event, flags low-confidence
+
+**Checkpoint:** All GA + TX + NC tests pass including trigger scenarios. Hand off summary including:
+- Which millage rates engineering needs to verify
+- Confirmation that the millage_unit schema extension was implemented
+- Notes on event reconciliation in NC development deals (where co_reset and cyclical may collide)
+
+---
+
+### Phase 5 — Composite Resolver, Tax Service Entry Point, and Timeline Walk
+
+**Goal:** All four section composers wired up; `taxService.forecast()` returns full output for any deal. Section A runs the year-by-year timeline walk and emits events.
+
+**Deliverables:**
+
+1. `src/services/tax/compositeResolver.ts`:
+   - `resolveRulesetStack(deal): RulesetStack`
+   - `buildDealTimeline(deal): DealTimeline` — derives timeline from deal fields based on `project_type`
+   - Section composers: `computeSectionA`, `computeSectionB`, `computeSectionC`, `computeSectionD`
+   - **`computeSectionA` implements the year-by-year timeline walk per spec §7**, applying events from the merged stack via `reconcileEvents`
+   - `reconcileEvents` correctly prioritizes county events over state events for the same trigger_type in the same year
+
+2. `src/services/tax/taxService.ts`:
+   - Top-level `forecast(deal)` entry point
+   - Per-section entry points (`sectionA`, `sectionB`, `sectionC`, `sectionD`) for F9 lazy-loaders
+   - Timeline endpoint (`forecast(deal).sectionA_realEstate.reassessment_events`) for F9 ProForma red-bar rendering
+
+3. **End-to-end integration tests with synthetic deals across all three deal type variants:**
+   - **FL Miami-Dade Existing**: $50M, $35M loan, 5-year hold, REIT entity → sale event year 1, capped growth thereafter
+   - **FL Miami-Dade Development**: $30M land, $80M construction, CO Sep 2027, 7-year hold → cost-basis years 1-2, CO reset year 3, capped growth years 4-7
+   - **FL Miami-Dade Redevelopment**: $40M acquisition, $12M capex year 2, 5-year hold → sale event year 1, substantial_improvement event year 2 (partial_reset)
+   - **TX Houston Existing**: $30M, $20M loan, 7-year hold, pass-through entity → annual market drift; near-zero closing transfer
+   - **TX Houston Development**: $20M land, $60M construction, CO 2028, 10-year hold → cost-basis years 1-3, CO reset year 4
+   - **GA Atlanta Existing**: $40M, $28M loan, 10-year hold, individual entity → annual market drift; $40K closing transfer
+   - **NC-Mecklenburg Existing acquired 2025**: $35M, 5-year hold → cyclical event year 3 (2027 reval)
+   - **NC-Mecklenburg Existing acquired 2027** (modeled as if acquired in revaluation year): $35M, 5-year hold → next event year 4 (2031 reval would be 2031 = 2027 + 4) — verify edge case where acquisition coincides with reval
+   - **NC-Wake Existing acquired 2025**: $35M, 5-year hold → no cyclical event in hold (next reval 2032)
+   - **NC-Mecklenburg Development**: 7-year hold across 2027 reval — verify cost-basis years, CO reset, and cyclical reconciliation logic
+   - **Charleston SC Existing (unmapped)**: falls through to default ruleset, returns low-confidence output, fires `jurisdiction_unmapped` event
+
+4. **Determinism tests:**
+   - Run `forecast` twice on the same deal with the same timeline; assert byte-identical outputs
+   - Run trigger evaluation 100 times on the same input; assert byte-identical event sequence
+   - Verify no Date.now() or non-deterministic randomness leaks into trigger evaluation
+
+5. **F9 ProForma timeline contract test:**
+   - Verify `reassessment_events` array is correctly ordered by `year_of_hold`
+   - Verify each event has all required fields for red-bar rendering (year, trigger_type, effect, prior/new value, delta dollars, tax impact)
+
+**Checkpoint:** All end-to-end tests pass. Hand off summary including timeline-walk performance metrics (target: <50ms per deal forecast).
+
+---
+
+### Phase 6 — PropertyAppraiserFetcher Integration
+
+**Goal:** Wire the data layer so `TaxContext` is populated with real per-deal data, not stubs.
+
+**Deliverables:**
+
+1. `src/services/tax/dataSources/propertyAppraiserFetcher.ts` interface
+2. `src/services/tax/dataSources/attomAdapter.ts`:
+   - Calls ATTOM API
+   - Maps ATTOM response to `NormalizedParcel`
+   - Tracks `staleness_days` from ATTOM's `lastUpdated` field
+   - Per-county freshness profile in `COUNTY_FRESHNESS_PROFILE` config
+3. `src/services/tax/dataSources/normalizers.ts`:
+   - Field-name normalization (ATTOM's `marketValue` → our `just_value`, etc.)
+4. `GeneralPropertyAppraiserFetcher` routing:
+   - Tier 1: tax bill PDF parser output (call existing parser per Phase 0 audit)
+   - Tier 2: ATTOM
+   - Tier 3: county adapters (none built in v1; placeholder)
+   - Tier 4: returns `null` → composer marks `confidence: 'low'`
+5. `buildTaxContext(deal, stack)` in `compositeResolver.ts`:
+   - Calls fetcher
+   - Falls back to defaults with confidence flags when fields are missing
+   - Wraps every input in `LayeredValue` with full provenance
+6. **Verify ATTOM provides `last_qualifying_sale` data needed for FL cap baseline calculations** — if not, flag in SPEC_QUESTIONS.md and propose a fallback (use deal's purchase_date as baseline for newly-acquired properties)
+
+**Checkpoint:** End-to-end test with real ATTOM data for at least one deal in each launch state (FL, GA, TX, NC). Verify provenance carries through to output. Hand off summary.
+
+---
+
+### Phase 7 — Caching Layer
+
+**Goal:** Jurisdiction and parcel caches operational; hot-path queries hit cache, not external APIs.
+
+**Deliverables:**
+
+1. `src/services/tax/caches/jurisdictionCache.ts`:
+   - Read-through cache backed by `jurisdiction_tax_cache` table
+   - TTL = end of fiscal year
+   - Invalidation hooks for rate sheet promotion events
+2. `src/services/tax/caches/parcelCache.ts`:
+   - Read-through cache backed by `parcel_tax_cache` table
+   - TTL = end of fiscal year OR on tax bill upload
+   - Invalidation on `tax_bill_uploaded` Kafka event for the parcel
+3. `src/services/tax/crons/rateSheetStaleness.cron.ts`:
+   - Weekly cron
+   - Queues agent task for sheets within 30 days of `valid_through`
+   - **Special handling for cyclical-trigger jurisdictions:** when a county's `cycle_anchor_year` falls within the next 90 days (revaluation imminent), queue a high-priority agent task to verify and prepare the new anchor year update
+   - Writes to `agent_runs` table per platform convention
+4. Cache hit/miss metrics exposed for observability
+
+**Checkpoint:** Run a synthetic load test — 100 sequential `forecast` calls for the same Miami-Dade deal should hit external APIs ~1 time. Hand off summary.
+
+---
+
+### Phase 8 — F9 UI Wiring & Mock Retirement
+
+**Goal:** F9 Taxes tab populates from real Tax Service output; tax-related mock files retired. Reassessment events render as red bars in ProForma timeline.
+
+**Deliverables:**
+
+1. API routes per spec §13:
+   - `GET /api/tax/forecast/:dealId`
+   - `GET /api/tax/forecast/:dealId/section/:abcd`
+   - `GET /api/tax/forecast/:dealId/timeline` (NEW v2 — for ProForma red bars)
+   - `GET /api/tax/rate-sheets/:jurisdiction`
+2. F9 Taxes tab data hooks:
+   - Each section uses its section-specific endpoint for lazy loading
+   - LayeredValue → BROKER/T-12 / PLATFORM / USER / RESOLVED column mapping
+   - **Reassessment red bars in ProForma year-by-year tax row** wire to `forecast.sectionA_realEstate.reassessment_events`
+   - Each red bar tooltip shows: trigger_type, effect, prior_assessed_value, new_assessed_value, delta_pct, tax_impact_dollars
+   - Header pill values (Y1 RE TAX, Effective Tax Rate, Doc Stamps, Annual Depreciation, TPP Estimate) derived from forecast
+3. RATES pill modal:
+   - Read-only viewer for active rate sheet (federal + state + county stacked)
+   - Shows `as_of` date and `valid_through` countdown
+   - **Shows declared trigger types with cycle parameters (NEW v2)** — e.g. "Cyclical revaluation: 4-year cycle, last revaluation 2023"
+   - Shows source citations
+4. Retire mock files:
+   - Identify tax-related entries in the 25-file mock inventory in `frontend/src/data/`
+   - Replace with live data hook; delete mock file
+   - Update mock retirement tracker
+
+**Checkpoint:** F9 Taxes tab renders fully populated for a Miami-Dade Development deal end-to-end, including cost-basis years and CO reset event in the ProForma red-bar timeline. Visual review with Leon. Hand off summary.
+
+---
+
+### Phase 9 — Acceptance Verification
+
+**Goal:** Run through every acceptance criterion in spec §15. Document pass/fail.
+
+**Deliverables:**
+1. Test report covering all acceptance criteria (Section A triggers across all variants, Sections B/C/D, architecture & quality)
+2. CI grep check passing (no `if (state === ...)` outside ruleset directories; no hardcoded "year 1 reassessment" outside trigger evaluator)
+3. Coverage report: ruleset files ≥ 90%
+4. Integration test report for all 11 launch jurisdictions (federal, FL × 3 counties, GA × 1 county, TX × 1 county, NC × 2 counties, default)
+5. Performance baseline: forecast latency p50/p95/p99 measured (target p95 < 200ms cold, < 50ms warm)
+6. Determinism verification: 1000-run consistency test passing
+
+**Checkpoint:** Full acceptance review with Leon. Sign-off triggers v1 launch.
+
+---
+
+## Communication Protocol
+
+- End every phase with a written summary: what was built, what tests pass, what's blocked, what needs Leon's input
+- Do not start the next phase without acknowledgment
+- If a spec is ambiguous, log in `SPEC_QUESTIONS.md` and proceed with a documented default; do not block silently
+- If you discover existing platform code that overlaps with the spec, flag it; do not duplicate
+- If you think a spec decision is wrong, say so in writing — but implement as specced unless overridden
+- All web-search-derived rate values require source URL + retrieval timestamp in the rate sheet's `source_citations` field
+
+---
+
+## Environment Notes
+
+- Repo: `github.com/Nardo758/JediRe.git`
+- Stack: TypeScript backend (Node), PostgreSQL with PostGIS, Drizzle ORM, Kafka, Zustand stores
+- Validation: Zod for rate sheet schemas (already in dependencies per existing agent platform work)
+- HTTP client for ATTOM: existing platform HTTP client; do not introduce new dependencies
+- Caching: PostgreSQL-backed (use the cache tables in spec §10); do not introduce Redis for this work
+- Cron: Inngest (already in stack per agent platform spec)
+- Test framework: existing platform test runner (Vitest per existing pattern)
+
+---
+
+## What NOT to Do
+
+- ❌ Do NOT redesign the F9 Taxes tab UI — it exists, you populate it
+- ❌ Do NOT make tax math agent-driven; this is a deterministic service
+- ❌ Do NOT embed rates (millage, doc stamp, bonus dep %) inside ruleset TypeScript files — rates go in JSON
+- ❌ Do NOT embed rule logic (10% cap formula, bonus dep schedule structure) in JSON — rules go in TypeScript
+- ❌ Do NOT add `if (state === 'FL')` anywhere outside `rulesets/fl/`
+- ❌ **Do NOT hardcode "reassessment fires in year 1" or "sale always triggers reset" anywhere outside the trigger evaluator. Triggers are declared and evaluated, never assumed.**
+- ❌ **Do NOT bypass trigger evaluation for "simple" cases (e.g., "I know FL always reassesses on sale, let me just hardcode it").** The simple case must go through the same code path as the complex case.
+- ❌ **Do NOT hardcode NC's revaluation cycle in `nc.ruleset.ts`.** Cycle length and anchor year live in county rate sheets via `trigger_parameters.cyclical`.
+- ❌ Do NOT skip the Phase 0 audit — duplicating existing types/services is the highest-cost failure mode
+- ❌ Do NOT bypass `LayeredValue` wrapping — every output field carries provenance
+- ❌ Do NOT introduce new dependencies (Redis, alternate HTTP clients, etc.) without flagging
+- ❌ Do NOT write a Miami-Dade-specific scraper in v1 — use ATTOM. County adapters are deferred until cost/staleness justifies them
+- ❌ Do NOT model TX franchise tax in v1 — it's flagged out of scope
+- ❌ Do NOT model 1031 exchanges, opportunity zones, or AMT — also out of scope
+- ❌ Do NOT model ownership_restructure triggers — declared in taxonomy but not evaluated in v1
+- ❌ Do NOT silently work around ground rules — flag conflicts in writing
+
+---
+
+## Reference Documents
+
+- `TAX_SERVICE_SPEC.md` v2.0 — full architectural spec with reassessment trigger model (read first)
+- `AGENT_TASK_INVENTORY.md` — Task 6.5 (this work) and 6.10 (parallel insurance ruleset pattern)
+- `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` — pattern source for ground rules and phase structure
+- `CLAUDE.md` — persistent architectural context (note: includes `resolveProjectType()` deal type variant routing referenced throughout this prompt)
+- `CASHFLOW_AGENT_UNDERWRITING_SPEC.md` — three-tier evidence model that Tax Service participates in
+- F9 Taxes tab screenshot (uploaded May 2026) — UI contract this service populates
+
+---
+
+*End of TAX_SERVICE_REPLIT_PROMPT.md v2.0*

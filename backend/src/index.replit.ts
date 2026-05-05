@@ -368,6 +368,7 @@ import { syncMartaGtfsFunction } from './inngest/functions/sync-marta-gtfs';
 import { syncOsmPoisFunction } from './inngest/functions/sync-osm-pois';
 import { syncAtlantaPdCrimeFunction } from './inngest/functions/sync-atlanta-pd-crime';
 import { snapshotSentimentDaily } from './inngest/functions/snapshot-sentiment.function';
+import { rateSheetStalenessCron } from './inngest/functions/rateSheetStaleness.cron';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -391,6 +392,8 @@ app.use(
       syncAtlantaPdCrimeFunction,
       // Daily sentiment-history snapshot (Task #382)
       snapshotSentimentDaily,
+      // Tax Service Phase 4 (Task #592): weekly rate sheet staleness check
+      rateSheetStalenessCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,

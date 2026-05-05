@@ -24,7 +24,7 @@
 
 import { resolveRulesetStack } from './resolver';
 import { federalRuleset, federalIncomeTaxRate, federalCostSegAvailablePct } from './rulesets/federal.ruleset';
-import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast } from './types';
+import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast, TaxForecastProvenance, LayeredValue } from './types';
 
 /**
  * Fixed year used as the default placed-in-service year when TaxContext omits it.
@@ -33,7 +33,7 @@ import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast } from './typ
  */
 const FEDERAL_RATE_SHEET_YEAR = 2026;
 
-export { TaxContext, TaxForecast } from './types';
+export { TaxContext, TaxForecast, TaxForecastProvenance, LayeredValue } from './types';
 
 export const taxService = {
   /**
@@ -154,6 +154,80 @@ export const taxService = {
         ? 'high'
         : 'medium';
 
+    // ── Phase 4 provenance ─────────────────────────────────────────────────
+    // Computed inline when no external buildTaxContext provenance was injected.
+    // All raw fields on TaxForecast remain unchanged — these are additive only.
+    const computedAt = new Date().toISOString();
+    const rulesetVersion = `${ctx.state || 'DEFAULT'}-${FEDERAL_RATE_SHEET_YEAR}`;
+
+    const provenance: import('./types').TaxForecastProvenance = {
+      computed_at: computedAt,
+      ruleset_version: rulesetVersion,
+      parcel_source: null,
+      parcel_confidence: null,
+      assessed_value: {
+        value: platformAssessedValue ?? null,
+        source: ctx.assessedValueOverride != null ? 'user_override'
+              : platformAssessedValue != null ? 'tax_service_computed' : 'fallback',
+        metadata: {
+          ruleset_version: rulesetVersion,
+          formula: ctx.assessedValueOverride != null
+            ? 'user-supplied assessedValueOverride'
+            : 'purchasePrice used as post-acquisition assessed value',
+          inputs: {
+            purchase_price: { value: ctx.purchasePrice, source: 'deal_data' },
+          },
+          confidence,
+          computed_at: computedAt,
+        },
+      },
+      millage_rate: {
+        value: t12MillageRate ?? null,
+        source: ctx.millageRateOverride != null ? 'user_override' : 'tax_service_computed',
+        metadata: {
+          ruleset_version: rulesetVersion,
+          formula: `${activeRuleset.jurisdiction}.annualPropertyTax(ctx, 1, 0).millageRate`,
+          confidence,
+          computed_at: computedAt,
+        },
+      },
+      platform_annual_tax: {
+        value: platformAnnualTax ?? null,
+        source: 'tax_service_computed',
+        metadata: {
+          ruleset_version: rulesetVersion,
+          formula: `millageRate × assessedValue / 1000`,
+          inputs: {
+            assessed_value:  { value: platformAssessedValue, source: 'tax_service_computed' },
+            millage_rate_mills: { value: t12MillageRate, source: 'tax_service_computed' },
+          },
+          confidence,
+          computed_at: computedAt,
+        },
+      },
+      state_income_tax_rate: {
+        value: stateRate,
+        source: 'tax_service_computed',
+        metadata: {
+          ruleset_version: rulesetVersion,
+          formula: `${stateRuleset.jurisdiction}.stateIncomeTaxRate(${entityType})`,
+          inputs: { entity_type: { value: entityType, source: 'deal_data' } },
+          confidence,
+          computed_at: computedAt,
+        },
+      },
+      tpp_exemption_amount: {
+        value: stateRuleset.tppExemptionAmount(),
+        source: 'tax_service_computed',
+        metadata: {
+          ruleset_version: rulesetVersion,
+          formula: `${stateRuleset.jurisdiction}.tppExemptionAmount()`,
+          confidence,
+          computed_at: computedAt,
+        },
+      },
+    };
+
     return {
       jurisdiction: `${ctx.state || 'unknown'}${ctx.county ? `-${ctx.county}` : ''}`,
       rulesetUsed: activeRuleset.jurisdiction,
@@ -176,6 +250,7 @@ export const taxService = {
       specialTaxes: stateRuleset.specialTaxes(ctx),
       abatementPrograms: stateRuleset.abatementEligibility(ctx),
       sectionC,
+      provenance,
     };
   },
 };
