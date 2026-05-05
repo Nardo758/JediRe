@@ -58,14 +58,25 @@ function getSheet() {
 
 /**
  * Look up depreciation life for an asset class from the federal rate sheet.
- * Falls back to 27.5yr (multifamily/SFR) when the sheet or asset class is absent.
+ * Throws when the rate sheet is unavailable or the asset class is absent —
+ * rate-sheet data is the sole authoritative source; no numeric fallbacks.
  */
 function lookupDepreciationLife(propertyType: AssetClass): number {
   const sheet = getSheet();
-  const lives = sheet?.depreciation_lives;
-  if (!lives) return 27.5;
-  const val = (lives as Record<string, number | undefined>)[propertyType];
-  return val ?? 27.5;
+  if (!sheet?.depreciation_lives) {
+    throw new Error(
+      `[federalRuleset] federal-${RATE_SHEET_YEAR} rate sheet missing depreciation_lives. ` +
+      `Ensure initRateSheets() ran at boot.`,
+    );
+  }
+  const val = (sheet.depreciation_lives as Record<string, number | undefined>)[propertyType];
+  if (val == null) {
+    throw new Error(
+      `[federalRuleset] No depreciation life found for asset class "${propertyType}" ` +
+      `in federal-${RATE_SHEET_YEAR}.json. Add the entry to the rate sheet.`,
+    );
+  }
+  return val;
 }
 
 /**
@@ -83,12 +94,24 @@ function lookupBonusPct(placedInServiceYear: number): number {
  * Look up the federal income tax rate for an entity type.
  * The sheet stores a single flat rate per entity type (no bracket math needed
  * at this phase — the brackets array uses min/max_income for future expansion).
+ * Throws when the rate sheet or bracket entry is missing — no numeric fallbacks.
  */
 function lookupFederalRate(entityType: EntityType): number {
   const sheet = getSheet();
-  const brackets = sheet?.federal_income_tax_brackets ?? [];
-  const match = brackets.find(b => b.entity_type === entityType);
-  return match?.rate ?? 0.2968; // pass_through top effective rate as safe fallback
+  if (!sheet?.federal_income_tax_brackets?.length) {
+    throw new Error(
+      `[federalRuleset] federal-${RATE_SHEET_YEAR} rate sheet missing federal_income_tax_brackets. ` +
+      `Ensure initRateSheets() ran at boot.`,
+    );
+  }
+  const match = sheet.federal_income_tax_brackets.find(b => b.entity_type === entityType);
+  if (!match) {
+    throw new Error(
+      `[federalRuleset] No federal income tax bracket found for entity type "${entityType}" ` +
+      `in federal-${RATE_SHEET_YEAR}.json. Add the entry to the rate sheet.`,
+    );
+  }
+  return match.rate;
 }
 
 // ── Ruleset implementation ─────────────────────────────────────────────────────

@@ -2425,8 +2425,9 @@ export async function getDealFinancials(
       bonusDepreciationCurrentYearPct: sc.bonusDepreciationCurrentYearPct,
       costSegAvailablePct: sc.costSegAvailablePct,
       // Blended marginal rate from federal rate sheet + state rate (0 for TX/FL).
-      // Falls back to 0.37 (conventional top-bracket) when rate is zero (data gap).
-      marginalTaxRate: sc.effectiveCombinedRate > 0 ? sc.effectiveCombinedRate : 0.37,
+      // Use the combined rate directly — a zero rate is valid (e.g. REIT federal rate = 0.00).
+      // Do not apply a > 0 guard, which would wrongly overwrite legitimate zero-rate entities.
+      marginalTaxRate: sc.effectiveCombinedRate,
     },
     transferTax: {
       purchasePrice,

@@ -17,6 +17,13 @@ import { resolveRuleset } from './resolver';
 import { federalRuleset, federalIncomeTaxRate } from './rulesets/federal.ruleset';
 import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast } from './types';
 
+/**
+ * Fixed year used as the default placed-in-service year when TaxContext omits it.
+ * Must match the active federal rate sheet year (federal-2026.json) so that
+ * identical inputs always produce byte-identical outputs (determinism requirement).
+ */
+const FEDERAL_RATE_SHEET_YEAR = 2026;
+
 export { TaxContext, TaxForecast } from './types';
 
 export const taxService = {
@@ -79,9 +86,11 @@ export const taxService = {
     }
 
     // ── Section C — Income Tax & Depreciation (always federal) ──────────────
+    // Defaults must be deterministic (no runtime Date calls) so that identical
+    // TaxContext inputs always produce byte-identical TaxForecast outputs.
     const propertyType   = ctx.propertyType   ?? 'multifamily';
     const entityType     = ctx.entityType     ?? 'pass_through';
-    const placedInServiceYear = ctx.placedInServiceYear ?? new Date().getFullYear();
+    const placedInServiceYear = ctx.placedInServiceYear ?? FEDERAL_RATE_SHEET_YEAR;
     const landAllocationPct   = ctx.landAllocationPct   ?? 0.20;
 
     const depreciationLife  = federalRuleset.depreciationLife(propertyType);
