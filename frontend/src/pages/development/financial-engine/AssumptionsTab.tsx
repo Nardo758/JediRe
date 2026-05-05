@@ -1532,52 +1532,13 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   type AssumptionsSubTab = 'GENERAL' | 'LEASING';
   const [activeSubTab, setActiveSubTab] = useState<AssumptionsSubTab>('GENERAL');
 
-  // Leasing field overrides — keyed by LeasingFieldDef.id (not RowDef.key).
-  // Separate from `overrides` which uses RowDef.key + year.
-  const [leasingFieldOverrides, setLeasingFieldOverrides] = useState<Record<string, string | number | null>>({});
-
-  // ── Section 5 override migration ──────────────────────────────────────────
-  // One-time idempotent migration: old Section 5 override paths → new spec paths.
-  // Runs once per deal on first financials load. Keys that map to null are dropped
-  // (engine-computed; no longer user-overridable).
-  const migrationDoneRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!dealId || migrationDoneRef.current === dealId) return;
-    migrationDoneRef.current = dealId;
-    setOverrides(prev => {
-      const next = { ...prev };
-      let changed = false;
-      for (const [oldKey, newKey] of Object.entries(SECTION5_MIGRATION_MAP)) {
-        if (oldKey in next) {
-          if (newKey !== null && !(newKey in next)) {
-            next[newKey] = next[oldKey];
-          }
-          delete next[oldKey];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [dealId]);
-
-  // Handler for leasing field commits
-  const handleLeasingFieldCommit = useCallback((fieldId: string, rawInput: string) => {
-    const trimmed = rawInput.trim();
-    if (!trimmed) return;
-    // Parse numeric vs string
-    const num = parseFloat(trimmed.replace('%', ''));
-    const isNum = !isNaN(num);
-    // For percent fields, convert "45" or "45%" → 0.45
-    // We don't have direct access to the field def here — heuristic: if input ends with %
-    // or is between 0 and 100, treat as percent.
-    const isPct = trimmed.endsWith('%');
-    const finalVal = isNum ? (isPct ? num / 100 : num) : trimmed;
-    setLeasingFieldOverrides(prev => ({ ...prev, [fieldId]: finalVal as string | number }));
-    // Emit assumption:changed so downstream consumers (Projections, Returns) re-render
-    window.dispatchEvent(new CustomEvent('assumption:changed', {
-      detail: { source: 'leasing_assumptions_tab', fieldId, value: finalVal },
-    }));
-  }, []);
+  // Path-keyed leasing overrides — keyed by LeasingFieldDef.path (backend dealContext paths).
+  // Separate from `overrides` (which is year-matrix-keyed for proforma STATIC_ROWS) because
+  // leasing fields are year-independent and can be string enum values.
+  // The migration effect below populates this from old Section 5 overrides on first load.
+  // handleLeasingFieldCommit (declared after enqueuePatch) writes here + calls enqueuePatch
+  // for numeric values to wire into the existing backend persistence pipeline.
+  const [leasingPathOverrides, setLeasingPathOverrides] = useState<Record<string, number | string | null>>({});
 
   const fetchRef   = useRef(0);
   const patchQueue = useRef<Array<{field:string; year:number|null; value:number|null}>>([]);
@@ -1717,6 +1678,76 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       fetchFinancials(holdYears);
     }, 600);
   }, [dealId, holdYears, fetchFinancials]);
+
+  // ── Section 5 override migration (runs AFTER hydration) ──────────────────
+  // Idempotent per-deal (sessionStorage guard). Migrates old patchField-keyed
+  // Section 5 overrides to new LeasingFieldDef.path keys in leasingPathOverrides.
+  // Keys mapped to null in SECTION5_MIGRATION_MAP were engine-computed and are dropped.
+  // Enum mapping: traffic.concession_pct_of_rent → concession strategy enum string.
+  useEffect(() => {
+    if (!financials?.userOverrides || !dealId) return;
+    const migKey = `jedi:s5migrated:${dealId}`;
+    if (sessionStorage.getItem(migKey)) return;
+    sessionStorage.setItem(migKey, '1');
+    // Extract any old Section 5 keys from the hydrated overrides
+    const newPaths: Record<string, number | string | null> = {};
+    for (const [oldKey, newPath] of Object.entries(SECTION5_MIGRATION_MAP)) {
+      if (newPath === null) continue; // engine-computed — drop
+      // Old keys were stored year-keyed; take year 0 or year 1 value
+      const yearVals = financials.userOverrides[oldKey];
+      if (!yearVals) continue;
+      const val = yearVals[0] ?? yearVals[1] ?? null;
+      if (val == null) continue;
+      // Special case: concession_pct_of_rent → enum
+      if (oldKey === 'traffic.concession_pct_of_rent' || oldKey === 'traffic.concessions_pct') {
+        const numVal = typeof val === 'number' ? val : parseFloat(String(val));
+        if (!isNaN(numVal)) {
+          newPaths[newPath] = numVal > 0.10 ? 'AGGRESSIVE' : numVal < 0.03 ? 'CONSERVATIVE' : 'MARKET';
+        }
+      } else {
+        newPaths[newPath] = val;
+      }
+    }
+    if (Object.keys(newPaths).length > 0) {
+      setLeasingPathOverrides(prev => ({ ...newPaths, ...prev })); // session edits win
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [financials?.userOverrides, dealId]);
+
+  // ── Leasing field commit handler ──────────────────────────────────────────
+  // Declared after enqueuePatch so it can close over it.
+  // Validation (type + bounds) is done in EditableCell before this is called,
+  // but we defend here too in case of direct calls.
+  // - Enum fields: stored as string in leasingPathOverrides (no enqueuePatch — not year-matrix-keyed)
+  // - Numeric fields: stored in leasingPathOverrides AND enqueued to backend via enqueuePatch
+  //   using year 0 as a sentinel (year-independent leasing fields).
+  const handleLeasingFieldCommit = useCallback((
+    path: string,
+    rawInput: string,
+    field: { type: string; min?: number; max?: number; readonly?: boolean },
+  ) => {
+    const trimmed = rawInput.trim();
+    if (!trimmed || field.readonly) return;
+    let finalVal: number | string;
+    if (field.type === 'enum') {
+      finalVal = trimmed;
+      setLeasingPathOverrides(prev => ({ ...prev, [path]: finalVal }));
+    } else {
+      const raw = trimmed.replace('%', '').replace('$', '').replace(/,/g, '');
+      const num = parseFloat(raw);
+      if (isNaN(num)) return;
+      finalVal = field.type === 'percent' ? +(num / 100).toFixed(6) : num;
+      // Bounds guard (second line of defense; EditableCell already validates)
+      if (field.min != null && (finalVal as number) < field.min) return;
+      if (field.max != null && (finalVal as number) > field.max) return;
+      setLeasingPathOverrides(prev => ({ ...prev, [path]: finalVal }));
+      // Wire into existing backend persistence pipeline (year 0 = leasing sentinel)
+      enqueuePatch(path, 0, finalVal as number);
+    }
+    window.dispatchEvent(new CustomEvent('assumption:changed', {
+      detail: { source: 'leasing_assumptions_tab', path, value: finalVal },
+    }));
+  }, [enqueuePatch]);
 
   // Patch a capital-stack guidance field to the backend (year: null = deal-level).
   const patchCapStack = useCallback((field: string, rawVal: string) => {
@@ -2318,7 +2349,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       {activeSubTab === 'LEASING' && (
         <LeasingAssumptionsTab
           financials={financials}
-          fieldOverrides={leasingFieldOverrides}
+          leaseMode={(financials?.leaseVelocity?.resolvedMode ?? null) as import('../../../config/leasing-fields.config').LeaseMode | null}
+          leasingPathOverrides={leasingPathOverrides}
           onFieldCommit={handleLeasingFieldCommit}
         />
       )}
@@ -2615,7 +2647,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                         <td colSpan={years.length + 2} style={{ padding: 0 }}>
                           <LeasingSummaryCard
                             financials={financials}
-                            overrides={leasingFieldOverrides}
+                            leasingPathOverrides={leasingPathOverrides}
                             onGoToLeasing={() => setActiveSubTab('LEASING')}
                           />
                         </td>

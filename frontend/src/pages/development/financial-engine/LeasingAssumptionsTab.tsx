@@ -11,21 +11,24 @@
 //   - TIER-DEFAULTS-PROTECT-USERS: Beginner fields ≤12 total across all categories.
 //   - SUBJECT-CALIBRATION-PRESERVED: Overrides apply only on top of the
 //     existing layered value chain; they do not erase subject calibration.
-//   - MAX 3 SUB-TABS under Assumptions. Do not add a 4th. If another concern
-//     grows large enough, it belongs on its own F-key page.
+//   - MAX 3 SUB-TABS under Assumptions. Do not add a 4th — put new concerns
+//     on their own F-key page.
+//   - PATH-KEYED OVERRIDES: leasingPathOverrides uses field.path as the key
+//     (same namespace as backend dealContext), not fieldId. This ensures the
+//     migration map and the edit surface read from the same data.
 // ============================================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, Lock, Info } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { ChevronDown, ChevronRight, Lock, Info, AlertCircle } from 'lucide-react';
 import {
   LEASING_CATEGORIES,
-  getVisibleCategories,
   LEASING_TIER_PREFS_KEY,
   DEFAULT_TIER_PREFS,
   type LeasingFieldDef,
   type LeasingCategoryDef,
   type LeaseMode,
   type LeasingTierPrefs,
+  type FieldType,
 } from '../../../config/leasing-fields.config';
 import type { F9DealFinancials } from './types';
 
@@ -66,6 +69,36 @@ function formatFieldValue(field: LeasingFieldDef, raw: number | string | null | 
     case 'enum':      return String(raw);
     default:          return String(raw);
   }
+}
+
+// ── Validation ────────────────────────────────────────────────────────────────
+
+interface ValidationResult {
+  ok: boolean;
+  error?: string;
+}
+
+function validateInput(rawInput: string, field: LeasingFieldDef): ValidationResult {
+  const trimmed = rawInput.trim();
+  if (!trimmed) return { ok: false, error: 'Empty input' };
+  if (field.type === 'enum') {
+    const valid = field.enumValues?.includes(trimmed);
+    return valid ? { ok: true } : { ok: false, error: `Must be one of: ${field.enumValues?.join(', ')}` };
+  }
+  const raw = trimmed.replace('%', '').replace('$', '').replace(/,/g, '');
+  const num = parseFloat(raw);
+  if (isNaN(num)) return { ok: false, error: 'Not a number' };
+  // Convert to the field's native unit (percent fields: user enters 95 → 0.95)
+  const native = field.type === 'percent' ? num / 100 : num;
+  if (field.min != null && native < field.min) {
+    const minDisplay = field.type === 'percent' ? pctFmt(field.min) : String(field.min);
+    return { ok: false, error: `Min: ${minDisplay}` };
+  }
+  if (field.max != null && native > field.max) {
+    const maxDisplay = field.type === 'percent' ? pctFmt(field.max) : String(field.max);
+    return { ok: false, error: `Max: ${maxDisplay}` };
+  }
+  return { ok: true };
 }
 
 // ── Source badge ──────────────────────────────────────────────────────────────
@@ -110,69 +143,97 @@ function TierBadge({ tier }: { tier: 'advanced' | 'expert' }) {
 
 interface EditableCellProps {
   field: LeasingFieldDef;
-  currentValue: string | number | null | undefined;
-  overrideValue: string | number | null;
-  onCommit: (fieldId: string, value: string) => void;
-  disabled?: boolean;
+  /** Current resolved value (override if set, else platform default) */
+  displayValue: number | string | null | undefined;
+  hasOverride: boolean;
+  /** onCommit passes raw input string; validation and parsing happens in parent */
+  onCommit: (path: string, rawInput: string, field: LeasingFieldDef) => void;
 }
 
-function EditableCell({ field, currentValue, overrideValue, onCommit, disabled }: EditableCellProps) {
+function EditableCell({ field, displayValue, hasOverride, onCommit }: EditableCellProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
-
-  const hasOverride = overrideValue != null;
-  const displayVal = hasOverride ? overrideValue : currentValue;
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const handleStartEdit = () => {
-    if (field.readonly || disabled) return;
-    const val = displayVal;
-    if (field.type === 'percent' && typeof val === 'number') {
-      setDraft(String((val * 100).toFixed(2)));
+    if (field.readonly) return;
+    // Seed the draft with the current value in user-friendly format
+    if (typeof displayValue === 'number') {
+      if (field.type === 'percent') {
+        setDraft(String((displayValue * 100).toFixed(2)));
+      } else {
+        setDraft(String(Math.round(displayValue)));
+      }
+    } else if (typeof displayValue === 'string') {
+      setDraft(displayValue);
     } else {
-      setDraft(val != null ? String(val) : '');
+      setDraft('');
     }
+    setValidationError(null);
     setEditing(true);
   };
 
   const handleCommit = () => {
+    if (!draft.trim()) {
+      setEditing(false);
+      return;
+    }
+    const result = validateInput(draft, field);
+    if (!result.ok) {
+      setValidationError(result.error ?? 'Invalid');
+      return;
+    }
+    setValidationError(null);
     setEditing(false);
-    if (draft.trim() === '') return;
-    onCommit(field.id, draft.trim());
+    onCommit(field.path, draft.trim(), field);
   };
 
   if (editing) {
     return (
-      <input
-        autoFocus
-        value={draft}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={handleCommit}
-        onKeyDown={e => { if (e.key === 'Enter') handleCommit(); if (e.key === 'Escape') setEditing(false); }}
-        style={{
-          fontFamily: MONO, fontSize: 10, background: '#1a2a3a', color: '#bfdbfe',
-          border: '1px solid #3b82f6', borderRadius: 2, padding: '2px 6px',
-          width: 90, outline: 'none',
-        }}
-      />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => { setDraft(e.target.value); setValidationError(null); }}
+          onBlur={handleCommit}
+          onKeyDown={e => {
+            if (e.key === 'Enter') handleCommit();
+            if (e.key === 'Escape') { setEditing(false); setValidationError(null); }
+          }}
+          style={{
+            fontFamily: MONO, fontSize: 10,
+            background: validationError ? '#2d1010' : '#1a2a3a',
+            color: validationError ? '#fca5a5' : '#bfdbfe',
+            border: `1px solid ${validationError ? '#b91c1c' : '#3b82f6'}`,
+            borderRadius: 2, padding: '2px 6px',
+            width: 90, outline: 'none',
+          }}
+        />
+        {validationError && (
+          <span style={{ fontFamily: MONO, fontSize: 7, color: '#fca5a5' }}>
+            {validationError}
+          </span>
+        )}
+      </div>
     );
   }
 
   return (
     <span
       onClick={handleStartEdit}
-      title={field.tooltip}
+      title={field.readonly ? '(read-only — computed value)' : field.tooltip}
       style={{
         fontFamily: MONO, fontSize: 10, fontWeight: 600,
         color: hasOverride ? '#3b82f6' : '#e2e8f0',
-        cursor: field.readonly || disabled ? 'default' : 'pointer',
+        cursor: field.readonly ? 'default' : 'pointer',
         padding: '1px 4px',
         borderRadius: 2,
         borderBottom: field.readonly ? 'none' : '1px dashed #2a2a2a',
         minWidth: 60, display: 'inline-block', textAlign: 'right',
       }}
     >
-      {formatFieldValue(field, displayVal as number | string | null)}
-      {hasOverride && (
+      {formatFieldValue(field, displayValue)}
+      {hasOverride && !field.readonly && (
         <span style={{ fontFamily: MONO, fontSize: 6, color: '#3b82f6', marginLeft: 2 }}>✎</span>
       )}
     </span>
@@ -183,22 +244,29 @@ function EditableCell({ field, currentValue, overrideValue, onCommit, disabled }
 
 interface FieldRowProps {
   field: LeasingFieldDef;
-  showTier: boolean;
-  currentValue: string | number | null | undefined;
-  overrideValue: string | number | null;
-  onCommit: (fieldId: string, value: string) => void;
+  showTierBadge: boolean;
+  /** The path-keyed override value for this field (leasingPathOverrides[field.path]) */
+  overrideValue: number | string | null;
+  onCommit: (path: string, rawInput: string, field: LeasingFieldDef) => void;
 }
 
-function FieldRow({ field, showTier, currentValue, overrideValue, onCommit }: FieldRowProps) {
+function FieldRow({ field, showTierBadge, overrideValue, onCommit }: FieldRowProps) {
   const [hovered, setHovered] = useState(false);
   const hasOverride = overrideValue != null;
 
-  // Infer source badge: EDIT if override, SUBJ/PEER/PLAT heuristic from default source
+  // Resolved display value: override → platform default → null
+  const displayValue: number | string | null | undefined = hasOverride
+    ? overrideValue
+    : (field.platformDefault ?? null);
+
+  // Infer source badge from override + default source text
   const sourceBadge: 'SUBJ' | 'PEER' | 'PLAT' | 'EDIT' | null = hasOverride ? 'EDIT'
-    : field.defaultSource.startsWith('Subject') ? 'SUBJ'
-    : field.defaultSource.startsWith('Peer') || field.defaultSource.includes('peer') ? 'PEER'
-    : field.defaultSource.startsWith('Platform') || field.defaultSource.startsWith('Mode') ? 'PLAT'
-    : null;
+    : field.defaultSource.startsWith('Subject') || field.defaultSource.startsWith('From') ? 'SUBJ'
+    : field.defaultSource.includes('peer') ? 'PEER'
+    : 'PLAT';
+
+  const confLevel: 'HIGH' | 'MED' | 'LOW' | null =
+    sourceBadge === 'SUBJ' ? 'HIGH' : sourceBadge === 'PEER' ? 'MED' : 'LOW';
 
   return (
     <div
@@ -213,12 +281,10 @@ function FieldRow({ field, showTier, currentValue, overrideValue, onCommit }: Fi
         transition: 'background 0.1s',
       }}
     >
-      {/* Lock icon for read-only */}
       {field.readonly && (
         <Lock style={{ width: 9, height: 9, color: '#334155', flexShrink: 0 }} />
       )}
 
-      {/* Label */}
       <span style={{
         fontFamily: MONO, fontSize: 10, color: '#94a3b8',
         width: 280, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -226,30 +292,25 @@ function FieldRow({ field, showTier, currentValue, overrideValue, onCommit }: Fi
         {field.label}
       </span>
 
-      {/* Tier badge (ADV/EXP) — shown when in mixed-tier view */}
-      {showTier && field.tier !== 'beginner' && (
+      {showTierBadge && field.tier !== 'beginner' && (
         <TierBadge tier={field.tier as 'advanced' | 'expert'} />
       )}
 
-      {/* Value / edit cell */}
       <div style={{ flex: 1 }} />
+
       <EditableCell
         field={field}
-        currentValue={currentValue}
-        overrideValue={overrideValue}
+        displayValue={displayValue}
+        hasOverride={hasOverride}
         onCommit={onCommit}
-        disabled={false}
       />
 
-      {/* Source + confidence */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, width: 110, justifyContent: 'flex-end' }}>
         <SourceBadge source={sourceBadge} />
-        {/* Confidence is not per-field yet — show HIGH for SUBJ-sourced, MED for PEER, LOW/null for PLAT */}
-        <ConfBadge level={sourceBadge === 'SUBJ' ? 'HIGH' : sourceBadge === 'PEER' ? 'MED' : sourceBadge === 'PLAT' ? 'LOW' : null} />
+        <ConfBadge level={hasOverride ? null : confLevel} />
       </div>
 
-      {/* Tooltip icon */}
-      {hovered && (
+      {hovered && !field.readonly && (
         <Info style={{ width: 9, height: 9, color: '#334155', flexShrink: 0 }} title={field.tooltip} />
       )}
     </div>
@@ -260,17 +321,21 @@ function FieldRow({ field, showTier, currentValue, overrideValue, onCommit }: Fi
 
 interface CategoryBlockProps {
   cat: LeasingCategoryDef;
+  leaseMode: LeaseMode | null;
   showAdvanced: boolean;
   showExpert: boolean;
-  fieldOverrides: Record<string, string | number | null>;
-  financials: F9DealFinancials | null;
-  onCommit: (fieldId: string, value: string) => void;
+  leasingPathOverrides: Record<string, number | string | null>;
+  onCommit: (path: string, rawInput: string, field: LeasingFieldDef) => void;
 }
 
-function CategoryBlock({ cat, showAdvanced, showExpert, fieldOverrides, onCommit }: CategoryBlockProps) {
+function CategoryBlock({ cat, leaseMode, showAdvanced, showExpert, leasingPathOverrides, onCommit }: CategoryBlockProps) {
   const [collapsed, setCollapsed] = useState(false);
 
+  // Per-field mode enforcement (not just category-level)
   const visibleFields = cat.fields.filter(f => {
+    // Mode filter (field-level)
+    if (f.modes !== 'all' && leaseMode != null && !f.modes.includes(leaseMode)) return false;
+    // Tier filter
     if (f.tier === 'beginner') return true;
     if (f.tier === 'advanced') return showAdvanced || showExpert;
     if (f.tier === 'expert') return showExpert;
@@ -283,7 +348,6 @@ function CategoryBlock({ cat, showAdvanced, showExpert, fieldOverrides, onCommit
 
   return (
     <div style={{ marginBottom: 1 }}>
-      {/* Category header */}
       <div
         onClick={() => setCollapsed(c => !c)}
         style={{
@@ -303,18 +367,16 @@ function CategoryBlock({ cat, showAdvanced, showExpert, fieldOverrides, onCommit
         </span>
         <div style={{ flex: 1, borderTop: '1px solid #1e1e1e', marginLeft: 8 }} />
         <span style={{ fontFamily: MONO, fontSize: 7, color: '#2a2a2a' }}>
-          {visibleFields.length} fields
+          {visibleFields.length}
         </span>
       </div>
 
-      {/* Fields */}
       {!collapsed && visibleFields.map(field => (
         <FieldRow
           key={field.id}
           field={field}
-          showTier={showTierBadges}
-          currentValue={field.platformDefault as number | string | null}
-          overrideValue={fieldOverrides[field.id] ?? null}
+          showTierBadge={showTierBadges}
+          overrideValue={leasingPathOverrides[field.path] ?? null}
           onCommit={onCommit}
         />
       ))}
@@ -322,49 +384,51 @@ function CategoryBlock({ cat, showAdvanced, showExpert, fieldOverrides, onCommit
   );
 }
 
-// ── Leasing summary card (rendered in General tab when activeSubTab === 'GENERAL') ──
-// Exported so AssumptionsTab can render it in place of Section 5.
-// Read-only: 4 key metrics + "→ Edit in Leasing tab" button.
-// DO NOT add edit affordances here — this violates the dual-surface-only rule.
+// ── Leasing summary card — read-only 4-metric snapshot for General tab ────────
+// Exported so AssumptionsTab renders it in place of Section 5-traf rows.
+// This MUST remain read-only. Cost Treatment toggle MUST NOT appear here.
+// Dual-location-only principle (spec §6): Cost Treatment lives in Deal Settings
+// and the F9 top bar only.
 
 export interface LeasingSummaryCardProps {
   financials: F9DealFinancials | null;
-  overrides: Record<string, number | string | null>;
+  /** Path-keyed override map (same keys as field.path in leasing-fields.config.ts) */
+  leasingPathOverrides: Record<string, number | string | null>;
   onGoToLeasing: () => void;
 }
 
-export function LeasingSummaryCard({ financials, overrides, onGoToLeasing }: LeasingSummaryCardProps) {
+export function LeasingSummaryCard({ financials, leasingPathOverrides, onGoToLeasing }: LeasingSummaryCardProps) {
   const sig = financials?.trafficProjection?.leasingSignals;
   const yr1 = financials?.trafficProjection?.yearly?.[0];
 
-  // Derive the 4 metrics
   const currentOcc = yr1?.occupancyPct ?? null;
-  const targetOcc = (overrides?.['a_stabilized_occ'] as number | null) ?? 0.95;
-  const rentGrowth = yr1?.rentGrowthPct ?? null;
-  const concStrategy = (overrides?.['d_concession_strategy'] as string | null) ?? 'MARKET';
+  // Path-keyed reads — same paths as field.path in leasing-fields.config.ts
+  const targetOcc = (leasingPathOverrides['traffic.stabilization.ceiling_occupancy'] as number | null) ?? 0.95;
+  const rentGrowth = yr1?.rentGrowthPct ?? (leasingPathOverrides['traffic.coefficients.blended_rent_growth'] as number | null);
+  const concStrategy = (leasingPathOverrides['lease_velocity.inputs.concession_strategy'] as string | null) ?? 'MARKET';
 
   const metrics = [
     {
       label: 'Current Occupancy',
       value: currentOcc != null ? pctFmt(currentOcc) : '—',
-      source: currentOcc != null ? 'SUBJ' : 'PLAT',
+      source: (currentOcc != null ? 'SUBJ' : 'PLAT') as 'SUBJ' | 'PLAT' | 'EDIT',
     },
     {
       label: 'Target Stabilized Occ.',
       value: pctFmt(targetOcc),
-      source: overrides?.['a_stabilized_occ'] != null ? 'EDIT' : 'PLAT',
+      source: (leasingPathOverrides['traffic.stabilization.ceiling_occupancy'] != null ? 'EDIT' : 'PLAT') as 'PLAT' | 'EDIT',
     },
     {
       label: 'Blended Rent Growth',
       value: rentGrowth != null ? pctFmt(rentGrowth) : '—',
-      source: rentGrowth != null ? 'SUBJ' : 'PLAT',
+      source: (yr1?.rentGrowthPct != null ? 'SUBJ' : leasingPathOverrides['traffic.coefficients.blended_rent_growth'] != null ? 'EDIT' : 'PLAT') as 'SUBJ' | 'PLAT' | 'EDIT',
     },
     {
       label: 'Concession Strategy',
       value: concStrategy,
-      source: overrides?.['d_concession_strategy'] != null ? 'EDIT' : 'PLAT',
+      source: (leasingPathOverrides['lease_velocity.inputs.concession_strategy'] != null ? 'EDIT' : 'PLAT') as 'PLAT' | 'EDIT',
     },
-  ] as const;
+  ];
 
   return (
     <div style={{
@@ -374,7 +438,6 @@ export function LeasingSummaryCard({ financials, overrides, onGoToLeasing }: Lea
       margin: '8px 12px',
       overflow: 'hidden',
     }}>
-      {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '5px 12px', background: '#141414', borderBottom: '1px solid #1e1e1e',
@@ -389,7 +452,6 @@ export function LeasingSummaryCard({ financials, overrides, onGoToLeasing }: Lea
         )}
       </div>
 
-      {/* 4 metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: '#1a1a1a' }}>
         {metrics.map(m => (
           <div key={m.label} style={{ background: '#0e0e0e', padding: '7px 12px' }}>
@@ -400,13 +462,12 @@ export function LeasingSummaryCard({ financials, overrides, onGoToLeasing }: Lea
               <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>
                 {m.value}
               </span>
-              <SourceBadge source={m.source as 'SUBJ' | 'PEER' | 'PLAT' | 'EDIT'} />
+              <SourceBadge source={m.source} />
             </div>
           </div>
         ))}
       </div>
 
-      {/* CTA */}
       <div style={{ padding: '6px 12px', borderTop: '1px solid #1a1a1a', display: 'flex', justifyContent: 'flex-end' }}>
         <button
           onClick={onGoToLeasing}
@@ -427,12 +488,29 @@ export function LeasingSummaryCard({ financials, overrides, onGoToLeasing }: Lea
 
 export interface LeasingAssumptionsTabProps {
   financials: F9DealFinancials | null;
-  /** Leasing field overrides — keyed by LeasingFieldDef.id */
-  fieldOverrides: Record<string, string | number | null>;
-  onFieldCommit: (fieldId: string, rawInput: string) => void;
+  /** Resolved lease mode (computed from financials in AssumptionsTab, passed as prop) */
+  leaseMode: LeaseMode | null;
+  /**
+   * Path-keyed override map — same keys as LeasingFieldDef.path.
+   * Backed by existing overrides state in AssumptionsTab (not a separate state).
+   * Keys that are string enum values coexist with numeric year-0 values.
+   */
+  leasingPathOverrides: Record<string, number | string | null>;
+  /**
+   * Called when the user commits an edit.
+   * path     = field.path (backend dealContext path)
+   * rawInput = raw user input string (e.g. "95" for 95%)
+   * field    = full field def (for type, min, max, readonly)
+   */
+  onFieldCommit: (path: string, rawInput: string, field: LeasingFieldDef) => void;
 }
 
-export function LeasingAssumptionsTab({ financials, fieldOverrides, onFieldCommit }: LeasingAssumptionsTabProps) {
+export function LeasingAssumptionsTab({
+  financials,
+  leaseMode,
+  leasingPathOverrides,
+  onFieldCommit,
+}: LeasingAssumptionsTabProps) {
   // ── Tier preferences (per-user, not per-deal) ─────────────────────────────
   const [tierPrefs, setTierPrefs] = useState<LeasingTierPrefs>(() => {
     try {
@@ -454,17 +532,28 @@ export function LeasingAssumptionsTab({ financials, fieldOverrides, onFieldCommi
     });
   }, []);
 
-  // ── Resolve lease mode from financials ────────────────────────────────────
-  const leaseMode: LeaseMode | null = (financials?.leaseVelocity?.resolvedMode as LeaseMode | null) ?? null;
-  const visibleCatIds = getVisibleCategories(leaseMode);
-
-  const visibleCats = LEASING_CATEGORIES.filter(cat => visibleCatIds.includes(cat.id));
+  // ── Mode-conditional category visibility ──────────────────────────────────
+  // Category-level: categories E and F are entirely mode-conditional.
+  // Field-level: per-field mode filtering happens inside CategoryBlock.
+  const visibleCats = LEASING_CATEGORIES.filter(cat => {
+    if (cat.visibleIn === 'all') return true;
+    if (leaseMode == null) return true; // show all when mode pending
+    return cat.visibleIn.includes(leaseMode);
+  });
 
   // ── Count fields for toggle labels ────────────────────────────────────────
   const advCount = visibleCats.reduce((n, cat) =>
-    n + cat.fields.filter(f => f.tier === 'advanced' && visibleCatIds.includes(cat.id)).length, 0);
+    n + cat.fields.filter(f => {
+      if (f.tier !== 'advanced') return false;
+      if (f.modes !== 'all' && leaseMode != null && !f.modes.includes(leaseMode)) return false;
+      return true;
+    }).length, 0);
   const expCount = visibleCats.reduce((n, cat) =>
-    n + cat.fields.filter(f => f.tier === 'expert' && visibleCatIds.includes(cat.id)).length, 0);
+    n + cat.fields.filter(f => {
+      if (f.tier !== 'expert') return false;
+      if (f.modes !== 'all' && leaseMode != null && !f.modes.includes(leaseMode)) return false;
+      return true;
+    }).length, 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: '#0a0a0a' }}>
@@ -474,7 +563,6 @@ export function LeasingAssumptionsTab({ financials, fieldOverrides, onFieldCommi
         padding: '6px 16px', background: '#111', borderBottom: '1px solid #1e1e1e',
         flexShrink: 0,
       }}>
-        {/* Mode badge */}
         {leaseMode ? (
           <span style={{
             fontFamily: MONO, fontSize: 7, fontWeight: 700, letterSpacing: '0.08em',
@@ -495,7 +583,6 @@ export function LeasingAssumptionsTab({ financials, fieldOverrides, onFieldCommi
 
         <div style={{ flex: 1 }} />
 
-        {/* Tier toggles */}
         <span style={{ fontFamily: MONO, fontSize: 7, color: '#475569' }}>SHOW:</span>
         <button
           onClick={() => setTierPref('show_advanced', !tierPrefs.show_advanced)}
@@ -544,16 +631,16 @@ export function LeasingAssumptionsTab({ financials, fieldOverrides, onFieldCommi
           <CategoryBlock
             key={cat.id}
             cat={cat}
+            leaseMode={leaseMode}
             showAdvanced={tierPrefs.show_advanced}
             showExpert={tierPrefs.show_expert}
-            fieldOverrides={fieldOverrides}
-            financials={financials}
+            leasingPathOverrides={leasingPathOverrides}
             onCommit={onFieldCommit}
           />
         ))}
 
         {/* ── Advanced toggle prompt (when not yet expanded) ── */}
-        {!tierPrefs.show_advanced && (
+        {!tierPrefs.show_advanced && advCount > 0 && (
           <div
             onClick={() => setTierPref('show_advanced', true)}
             style={{
@@ -570,7 +657,7 @@ export function LeasingAssumptionsTab({ financials, fieldOverrides, onFieldCommi
         )}
 
         {/* ── Expert toggle prompt (when advanced shown but not expert) ── */}
-        {tierPrefs.show_advanced && !tierPrefs.show_expert && (
+        {tierPrefs.show_advanced && !tierPrefs.show_expert && expCount > 0 && (
           <div
             onClick={() => setTierPref('show_expert', true)}
             style={{
@@ -586,11 +673,11 @@ export function LeasingAssumptionsTab({ financials, fieldOverrides, onFieldCommi
           </div>
         )}
 
-        {/* ── Bottom padding ── */}
         <div style={{ height: 40 }} />
       </div>
     </div>
   );
 }
 
+export type { LeasingFieldDef, FieldType };
 export default LeasingAssumptionsTab;
