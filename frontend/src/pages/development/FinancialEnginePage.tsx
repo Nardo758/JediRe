@@ -615,13 +615,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   }, [fetchF9Financials]);
 
   // ── Shared leasing-cost-treatment handler ────────────────────────────────
-  // Updates the ref (read by fetchF9Financials closure), sets React state (so
-  // tabs re-render with the new prop), then triggers a single shared re-fetch.
+  // Updates the ref (read by fetchF9Financials closure) and React state, then
+  // dispatches leasing_cost_treatment.changed so the reactive event chain drives
+  // the re-fetch.  The listener added below calls fetchF9Financials() — keeping
+  // treatment change and LV-engine-update in a single consistent pathway.
   const handleLvTreatmentViewChange = useCallback((t: LeasingCostTreatment) => {
     lvTreatmentRef.current = t;
     setLvCostTreatmentView(t);
-    fetchF9Financials();
-  }, [fetchF9Financials]);
+    window.dispatchEvent(new CustomEvent('leasing_cost_treatment.changed', { detail: { treatment: t } }));
+  }, []);
 
   // ── Evidence Summary — fetch collision/confidence/tier stats ─────────────
   useEffect(() => {
