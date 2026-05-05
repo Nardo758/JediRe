@@ -51,7 +51,7 @@
     { "entity_type": "individual",   "rate": 0.0539 },
     { "entity_type": "pass_through", "rate": 0.0539 },
     { "entity_type": "c_corp",       "rate": 0.0539 },
-    { "entity_type": "reit",         "rate": 0.0000 },
+    { "entity_type": "reit",         "rate": 0.0539 },
     { "entity_type": "partnership",  "rate": 0.0539 }
   ],
   "conforms_to_bonus_dep": false,

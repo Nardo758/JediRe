@@ -218,14 +218,13 @@ function run(): void {
   console.log('\n── Phase 3: State Rulesets B+C & County Overlays ─────────────────');
 
   // 9. GA state income tax rates by entity type
-  //    SB 56 flat rate: 5.39% for c_corp, pass_through, individual, partnership
-  //    REIT: 0% — REITs are exempt from GA state corporate income tax (same as federal treatment)
+  //    SB 56 flat rate: 5.39% for ALL entity types (GA does not carve out REIT treatment)
   const gaStateTaxCases: Array<[TaxContext['entityType'], number]> = [
     ['c_corp',       0.0539],
     ['pass_through', 0.0539],
     ['individual',   0.0539],
     ['partnership',  0.0539],
-    ['reit',         0.0000],  // GA REITs: exempt from state income tax
+    ['reit',         0.0539],  // GA SB 56 flat rate applies to all entity types
   ];
   for (const [et, expectedGARate] of gaStateTaxCases) {
     const f = taxService.forecast({ ...GA_CTX, entityType: et });
