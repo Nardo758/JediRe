@@ -5,26 +5,39 @@
  * and provides city→county derivation for deals where county is not stored on the record.
  *
  * Resolution order (most-specific to least-specific):
- *   1. state-county  (e.g. 'FL-Miami-Dade') — future county-level override rulesets
+ *   1. state-county  (e.g. 'FL-Miami-Dade') — county overlay rulesets
  *   2. state         (e.g. 'FL', 'TX', 'GA')
- *   3. default       (generic fallback)
+ *   3. default       (generic fallback — emits jurisdictionMapped=false)
  *
  * County resolution order:
  *   1. Explicit county field from deal record (deal_data.county or future deals.county column)
  *   2. City→county derivation from CITY_TO_COUNTY map below
  *   3. null (rulesets fall back to their own city-detection if needed)
  *
+ * resolveRulesetStack() — primary API used by taxService.forecast()
+ * resolveRuleset()      — legacy single-ruleset API (delegates to stack internally)
+ *
  * Adding a new state ruleset:
  *   1. Create rulesets/<state>.ruleset.ts implementing TaxRuleset
  *   2. Import and register it in STATE_RULESETS below
  *   3. Add city→county entries for that state in CITY_TO_COUNTY
+ *
+ * Adding a new county overlay:
+ *   1. Create rulesets/<state>-<county>.ruleset.ts implementing CountyOverlayRuleset
+ *   2. Import and register it in COUNTY_RULESETS below using key 'STATE-County'
  */
 
-import type { TaxRuleset } from './types';
+import type { TaxRuleset, CountyOverlayRuleset, RulesetStack } from './types';
 import { flRuleset } from './rulesets/fl.ruleset';
 import { txRuleset } from './rulesets/tx.ruleset';
 import { gaRuleset } from './rulesets/ga.ruleset';
 import { defaultRuleset } from './rulesets/default.ruleset';
+import { federalRuleset } from './rulesets/federal.ruleset';
+import { flMiamiDadeRuleset } from './rulesets/fl-miami-dade.ruleset';
+import { flBrowardRuleset } from './rulesets/fl-broward.ruleset';
+import { flPalmBeachRuleset } from './rulesets/fl-palm-beach.ruleset';
+import { gaFultonRuleset } from './rulesets/ga-fulton.ruleset';
+import { txHarrisRuleset } from './rulesets/tx-harris.ruleset';
 
 const STATE_RULESETS: Record<string, TaxRuleset> = {
   FL: flRuleset,
@@ -33,9 +46,24 @@ const STATE_RULESETS: Record<string, TaxRuleset> = {
 };
 
 /**
+ * County overlay registry.
+ * Keys: `${STATE}-${county}` using the exact county string from CITY_TO_COUNTY values.
+ *
+ * taxService.forecast() calls stack.county?.annualPropertyTax() (millage override)
+ * and stack.county?.countySurtax() (Miami-Dade only).
+ */
+const COUNTY_RULESETS: Record<string, CountyOverlayRuleset> = {
+  'FL-Miami-Dade':  flMiamiDadeRuleset,
+  'FL-Broward':     flBrowardRuleset,
+  'FL-Palm Beach':  flPalmBeachRuleset,
+  'GA-Fulton':      gaFultonRuleset,
+  'TX-Harris':      txHarrisRuleset,
+};
+
+/**
  * City→County lookup for the three launch markets.
  * Key: `${STATE}:${city.toLowerCase().trim()}`
- * Value: normalized county name (matches the keys used in each ruleset's millage tables)
+ * Value: normalized county name (matches the keys used in COUNTY_RULESETS above)
  *
  * Sources: US Census TIGER/Line; county property appraiser TRIM notices.
  */
@@ -184,15 +212,41 @@ export function deriveCounty(city: string | null, state: string): string | null 
   return CITY_TO_COUNTY[key] ?? null;
 }
 
-export function resolveRuleset(state: string, county?: string | null): TaxRuleset {
+/**
+ * resolveRulesetStack — PRIMARY three-layer resolver.
+ *
+ * Returns { federal, state, county, jurisdictionMapped } per spec §7 composition rules.
+ *
+ * Composition in taxService.forecast():
+ *   - county overlay (if present): annualPropertyTax() millage; countySurtax()
+ *   - state:   acquisitionTransferTax(), TPP, cap logic, stateIncomeTaxRate()
+ *   - federal: Section C (depreciation, bonus dep, federal income tax)
+ */
+export function resolveRulesetStack(state: string, county: string | null): RulesetStack {
   const stateKey = (state ?? '').toUpperCase().trim();
+  const stateRuleset: TaxRuleset = STATE_RULESETS[stateKey] ?? defaultRuleset;
+  const jurisdictionMapped = stateRuleset !== defaultRuleset;
 
-  if (county) {
+  let countyRuleset: CountyOverlayRuleset | null = null;
+  if (county && stateKey) {
     const countyKey = `${stateKey}-${county.trim()}`;
-    if (STATE_RULESETS[countyKey]) return STATE_RULESETS[countyKey];
+    countyRuleset = COUNTY_RULESETS[countyKey] ?? null;
   }
 
-  if (STATE_RULESETS[stateKey]) return STATE_RULESETS[stateKey];
+  return {
+    federal: federalRuleset,
+    state: stateRuleset,
+    county: countyRuleset,
+    jurisdictionMapped,
+  };
+}
 
-  return defaultRuleset;
+/**
+ * resolveRuleset — legacy single-ruleset API.
+ * Returns the county overlay when registered, else the state ruleset, else default.
+ * Retained for callers that don't yet use the full three-layer stack.
+ */
+export function resolveRuleset(state: string, county?: string | null): TaxRuleset {
+  const stack = resolveRulesetStack(state, county ?? null);
+  return stack.county ?? stack.state;
 }

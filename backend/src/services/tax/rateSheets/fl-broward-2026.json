@@ -1,0 +1,29 @@
+{
+  "jurisdiction": "fl-broward",
+  "level": "county",
+  "year": 2026,
+  "version": "fl-broward-2026.v1",
+  "as_of": "2025-09-20T00:00:00.000Z",
+  "valid_through": "2026-09-30T23:59:59.000Z",
+  "source_citations": [
+    {
+      "field": "millage.aggregate",
+      "source_url": "https://bcpa.net/taxes.asp",
+      "retrieved_at": "2025-09-20T10:00:00.000Z",
+      "document_title": "Broward County Property Appraiser — FY2025/26 TRIM Notice Millage Rates (non-homestead commercial, Fort Lauderdale area)"
+    }
+  ],
+  "millage": {
+    "aggregate": 19.5073,
+    "breakdown": [
+      { "authority": "Broward County General",       "rate": 4.2749, "applies_to": "all" },
+      { "authority": "Broward County School Board",  "rate": 7.0450, "applies_to": "all" },
+      { "authority": "Children's Services Council",  "rate": 0.5000, "applies_to": "all" },
+      { "authority": "Broward County Library",       "rate": 0.4250, "applies_to": "all" },
+      { "authority": "City of Fort Lauderdale",      "rate": 4.4543, "applies_to": "all" },
+      { "authority": "EMS / Fire Rescue District",   "rate": 2.3621, "applies_to": "all" },
+      { "authority": "South Florida Water Mgmt",     "rate": 0.1148, "applies_to": "all" },
+      { "authority": "North Broward Hospital Dist",  "rate": 0.3312, "applies_to": "all" }
+    ]
+  }
+}

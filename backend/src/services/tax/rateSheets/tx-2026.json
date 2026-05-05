@@ -1,0 +1,60 @@
+{
+  "jurisdiction": "tx",
+  "level": "state",
+  "year": 2026,
+  "version": "tx-2026.v1",
+  "as_of": "2026-01-15T00:00:00.000Z",
+  "valid_through": "2026-12-31T23:59:59.000Z",
+  "source_citations": [
+    {
+      "field": "transfer_tax",
+      "source_url": "https://comptroller.texas.gov/taxes/property-tax/",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "TX Comptroller — No state deed transfer tax or documentary stamp tax"
+    },
+    {
+      "field": "tpp",
+      "source_url": "https://comptroller.texas.gov/taxes/property-tax/bpp/",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "TX Comptroller — Business Personal Property (BPP) Rendition Form 50-144; April 15 deadline"
+    },
+    {
+      "field": "state_income_tax_rate",
+      "source_url": "https://comptroller.texas.gov/taxes/franchise/",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "TX Comptroller — No state personal/corporate income tax; TX franchise tax is out of v1 scope"
+    },
+    {
+      "field": "conforms_to_bonus_dep",
+      "source_url": "https://comptroller.texas.gov/taxes/franchise/",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "TX — No state income tax; conforms to federal depreciation schedules for franchise tax margin basis"
+    }
+  ],
+  "transfer_tax": {
+    "deed_rate_per_100": 0.00,
+    "recording_fee_per_page": 25
+  },
+  "tpp": {
+    "taxed": true,
+    "millage": "same_as_re",
+    "exemption_amount": 0,
+    "filing_form": "Rendition Form 50-144",
+    "filing_deadline": "April 15",
+    "name": "Texas Business Personal Property (BPP) Rendition",
+    "depreciation_schedule": {
+      "years": 10,
+      "residual_pct": 0.10,
+      "annual_rate_pct": 0.09
+    }
+  },
+  "state_income_tax_rate": [
+    { "entity_type": "individual",   "rate": 0.00 },
+    { "entity_type": "pass_through", "rate": 0.00 },
+    { "entity_type": "c_corp",       "rate": 0.00 },
+    { "entity_type": "reit",         "rate": 0.00 },
+    { "entity_type": "partnership",  "rate": 0.00 }
+  ],
+  "conforms_to_bonus_dep": true,
+  "conforms_to_cost_seg": true
+}

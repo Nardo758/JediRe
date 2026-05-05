@@ -64,16 +64,19 @@ function run(): void {
     `(one per *.json file on disk) — got ${all.length}`,
   );
 
-  // Required seed sheets present
-  for (const key of ['federal-2026', 'fl-2026', 'fl-miami-dade-2026']) {
-    const [jur, yr] = key.split('-').length === 2
-      ? key.split('-')
-      : [key.replace(/-\d+$/, ''), key.match(/\d+$/)?.[0] ?? '2026'];
+  // All required rate sheets must be present (Phase 1 seeds + Phase 3 additions)
+  const requiredKeys = [
+    'federal-2026',
+    'fl-2026', 'fl-miami-dade-2026', 'fl-broward-2026', 'fl-palm-beach-2026',
+    'ga-2026', 'ga-fulton-2026',
+    'tx-2026', 'tx-harris-2026',
+  ];
+  for (const key of requiredKeys) {
     const sheet = getRateSheet(
-      key.replace(/-\d+$/, ''),    // e.g. 'federal', 'fl', 'fl-miami-dade'
+      key.replace(/-\d+$/, ''),
       parseInt(key.match(/\d+$/)?.[0] ?? '2026'),
     );
-    assert(sheet !== null, `Required seed sheet "${key}" is present`);
+    assert(sheet !== null, `Required sheet "${key}" is present`);
   }
 
   // federal-2026 content
@@ -98,6 +101,34 @@ function run(): void {
     (md?.millage?.breakdown?.length ?? 0) >= 4,
     'fl-miami-dade sheet has ≥ 4 millage breakdown lines',
   );
+
+  // Phase 3 county sheets
+  const flBroward = getRateSheet('fl-broward', 2026);
+  assert(flBroward?.level === 'county', 'fl-broward sheet level = "county"');
+  assert(Math.abs((flBroward?.millage?.aggregate ?? 0) - 19.5073) < 0.001, 'fl-broward aggregate millage ≈ 19.5073');
+
+  const flPB = getRateSheet('fl-palm-beach', 2026);
+  assert(flPB?.level === 'county', 'fl-palm-beach sheet level = "county"');
+  assert(Math.abs((flPB?.millage?.aggregate ?? 0) - 21.2765) < 0.001, 'fl-palm-beach aggregate millage ≈ 21.2765');
+
+  const ga = getRateSheet('ga', 2026);
+  assert(ga?.level === 'state', 'ga-2026 sheet level = "state"');
+  assert(ga?.tpp?.taxed === true, 'ga-2026 tpp.taxed = true');
+  assert(ga?.tpp?.exemption_amount === 7500, 'ga-2026 tpp.exemption_amount = 7500');
+  assert(ga?.conforms_to_bonus_dep === false, 'ga-2026 conforms_to_bonus_dep = false');
+
+  const gaFulton = getRateSheet('ga-fulton', 2026);
+  assert(gaFulton?.level === 'county', 'ga-fulton sheet level = "county"');
+  assert(Math.abs((gaFulton?.millage?.aggregate ?? 0) - 11.60) < 0.01, 'ga-fulton aggregate millage ≈ 11.60');
+
+  const tx = getRateSheet('tx', 2026);
+  assert(tx?.level === 'state', 'tx-2026 sheet level = "state"');
+  assert(tx?.tpp?.taxed === true, 'tx-2026 tpp.taxed = true (BPP)');
+  assert(tx?.conforms_to_bonus_dep === true, 'tx-2026 conforms_to_bonus_dep = true');
+
+  const txHarris = getRateSheet('tx-harris', 2026);
+  assert(txHarris?.level === 'county', 'tx-harris sheet level = "county"');
+  assert(Math.abs((txHarris?.millage?.aggregate ?? 0) - 22.00) < 0.01, 'tx-harris aggregate millage ≈ 22.00');
 
   // Unknown jurisdiction returns null
   assert(getRateSheet('zz-unknown', 2026) === null, 'Unknown jurisdiction returns null');

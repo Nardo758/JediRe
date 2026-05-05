@@ -54,6 +54,8 @@ export interface TaxContext {
   entityType?: EntityType;              // entity structure — defaults to 'pass_through'
   placedInServiceYear?: number;         // year building placed in service — defaults to current year
   landAllocationPct?: number;           // fraction of price allocated to land (non-depreciable); default 0.20
+  // Optional — used for jurisdiction_unmapped event emission when state is unmapped
+  dealId?: string | null;
 }
 
 /**
@@ -150,6 +152,8 @@ export interface TransferTaxResult {
   appliedRatePct: number;
   docStampAmount: number | null;
   intangibleTaxAmount: number | null;
+  /** County-level surtax on deed stamp (Miami-Dade $0.45/$100). Null for all other jurisdictions. */
+  countySurtaxAmount?: number | null;
   loanAmount: number | null;
   totalTransferTax: number | null;
   refi: {
@@ -183,10 +187,14 @@ export interface SectionCForecast {
   costSegAvailablePct: number;
   /** Federal income tax rate for the entity type, sourced from federal rate sheet */
   federalIncomeTaxRate: number;
-  /** State income tax rate (0 for TX/FL; expanded in Phase 3 for GA) */
+  /** State income tax rate (0 for TX/FL; 5.39% for GA) */
   stateIncomeTaxRate: number;
   /** Combined effective rate = federalIncomeTaxRate + stateIncomeTaxRate */
   effectiveCombinedRate: number;
+  /** Whether this state conforms to the federal bonus depreciation schedule (GA: false) */
+  conformsToBonusDep: boolean;
+  /** Whether this state conforms to federal cost segregation treatment */
+  conformsToCostSeg: boolean;
 }
 
 /**
@@ -203,6 +211,14 @@ export interface TaxForecast {
   countyLabel: string | null;
   /** Annual assessment growth rate used by this ruleset (0 = no cap / full reassessment each year) */
   assessmentGrowthPct: number;
+  /**
+   * True when state (and optionally county) resolved to a specific ruleset.
+   * False when the default fallback ruleset is used (unknown/unsupported jurisdiction).
+   * Callers may emit a `jurisdiction_unmapped` event when this is false.
+   */
+  jurisdictionMapped: boolean;
+  /** Forecast confidence level. 'high' = county overlay; 'medium' = state only; 'low' = default fallback. */
+  confidence: 'high' | 'medium' | 'low';
 
   reTax: {
     t12AssessedValue: number | null;
@@ -379,4 +395,47 @@ export interface TaxRuleset {
    * Hints for where to source the required inputs.
    */
   dataSourceHints(): string[];
+}
+
+// ── County Overlay ────────────────────────────────────────────────────────────
+
+/**
+ * CountyOverlayRuleset — extends TaxRuleset with a county-level surtax method.
+ *
+ * County overlays delegate all methods to their parent state ruleset except:
+ *   - annualPropertyTax() → uses county-specific millage from the rate sheet
+ *   - countySurtax()      → county deed stamp surtax (Miami-Dade only; others return null)
+ *
+ * Used by the three-layer resolver stack: { federal, state, county }.
+ */
+export interface CountyOverlayRuleset extends TaxRuleset {
+  /**
+   * Additional county-level surtax applied to deed stamps at acquisition or disposition.
+   * Currently only Miami-Dade implements this ($0.45/$100 = 0.45%).
+   * Returns null for all other county overlays (no surtax).
+   */
+  countySurtax(salePrice: number): number | null;
+}
+
+// ── Three-layer resolver stack ────────────────────────────────────────────────
+
+/**
+ * RulesetStack — result of resolveRulesetStack().
+ *
+ * taxService.forecast() composes this stack per the Section composition rules:
+ *   - county (if present): provides millage override for Section A
+ *   - state:               owns Section A cap logic, Section B (TPP), Section D transfer tax
+ *   - federal:             owns Section C (income tax & depreciation)
+ */
+export interface RulesetStack {
+  federal: TaxRuleset;
+  state: TaxRuleset;
+  /** Null when no county overlay is registered for the resolved state + county. */
+  county: CountyOverlayRuleset | null;
+  /**
+   * True when the state resolved to a specific ruleset (FL, GA, TX).
+   * False when the default fallback ruleset is used (unknown/unsupported jurisdiction).
+   * Callers should emit a `jurisdiction_unmapped` event when this is false.
+   */
+  jurisdictionMapped: boolean;
 }

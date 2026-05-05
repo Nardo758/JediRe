@@ -425,6 +425,8 @@ export const KAFKA_TOPICS = {
   M35_FORECAST_CREATED:    'm35.forecast.created',
   M35_FORECAST_DIVERGED:   'm35.forecast.diverged',
   M35_REGIME_SHIFT_DETECTED: 'm35.regime.shift_detected',
+  /** Emitted by proforma-adjustment.service when taxService returns jurisdictionMapped=false */
+  TAX_JURISDICTION_EVENTS: 'tax.jurisdiction.events',
 } as const;
 
 // ─── M35 Event Impact Engine — Kafka Message Types ────────────────────────────

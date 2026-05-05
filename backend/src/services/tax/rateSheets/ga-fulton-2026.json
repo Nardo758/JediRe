@@ -1,0 +1,24 @@
+{
+  "jurisdiction": "ga-fulton",
+  "level": "county",
+  "year": 2026,
+  "version": "ga-fulton-2026.v1",
+  "as_of": "2025-10-01T00:00:00.000Z",
+  "valid_through": "2026-12-31T23:59:59.000Z",
+  "source_citations": [
+    {
+      "field": "millage.aggregate",
+      "source_url": "https://www.fultoncountytaxes.org/tax-rates",
+      "retrieved_at": "2025-10-01T10:00:00.000Z",
+      "document_title": "Fulton County Tax Commissioner — FY2025 Millage Rates (effective on FMV = assessed mills × 40%)"
+    }
+  ],
+  "millage": {
+    "aggregate": 11.60,
+    "breakdown": [
+      { "authority": "Fulton County General",         "rate": 3.9104, "applies_to": "all" },
+      { "authority": "Fulton County School District", "rate": 7.6576, "applies_to": "all" }
+    ]
+  },
+  "assessment_ratio": 0.40
+}

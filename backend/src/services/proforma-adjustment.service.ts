@@ -17,6 +17,8 @@ import { Pool } from 'pg';
 import { taxService } from './tax/taxService';
 import type { TaxContext } from './tax/taxService';
 import { deriveCounty } from './tax/resolver';
+import { kafkaProducer } from './kafka/kafka-producer.service';
+import { KAFKA_TOPICS } from './kafka/event-schemas';
 import { liveMillageService } from './tax/liveMlillageService';
 
 // ============================================================================
@@ -2440,8 +2442,27 @@ export async function getDealFinancials(
     entityType:         sectionCEntityType,
     placedInServiceYear: closeYear,
     landAllocationPct:  sectionCLandAllocPct,
+    dealId:             deal.id != null ? String(deal.id) : null,
   };
   const taxForecast = taxService.forecast(taxCtx);
+
+  // Fire-and-forget: emit jurisdiction_unmapped so Research Agent can queue onboarding.
+  // Non-fatal — Kafka unavailability must never block the proforma calculation.
+  if (!taxForecast.jurisdictionMapped) {
+    void kafkaProducer.publish(
+      KAFKA_TOPICS.TAX_JURISDICTION_EVENTS,
+      {
+        event_type: 'TAX_JURISDICTION_UNMAPPED',
+        event_id:   `tax-unmap-${ctx?.state ?? dealState}-${Date.now()}`,
+        timestamp:  new Date().toISOString(),
+        dealId:     deal.id != null ? String(deal.id) : null,
+        state:      dealState,
+        county:     resolvedCounty,
+        confidence: taxForecast.confidence,
+      },
+      { publishedBy: 'proforma-adjustment.service' },
+    ).catch(() => { /* intentionally swallowed — Kafka is not required for forecast accuracy */ });
+  }
 
   // TPP (Tangible Personal Property) estimates — generic per-unit, not state-specific
   const rrLv = lv(year1Seed, 'replacement_reserves') as Record<string, unknown> | null;

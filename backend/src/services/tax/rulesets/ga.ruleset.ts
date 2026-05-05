@@ -9,39 +9,48 @@
  * - Annual assessment: typically annual, no cap for commercial
  * - Reassessment on sale: full
  * - No SOH cap equivalent for commercial property
+ * - GA assesses at 40% of FMV; millage table stores the effective rate (mills × 0.40)
  *
- * Millage defaults (mills per $1,000 of assessed value at 40% of FMV):
- *   GA assesses at 40% of fair market value (FMV). Effective tax rate = millage × 0.40.
- *   Fulton County:  ~29 mills on assessed (= ~1.16% effective on FMV)
- *   DeKalb County:  ~33 mills on assessed (= ~1.32% effective on FMV)
- *   Gwinnett County:~27 mills on assessed (= ~1.08% effective on FMV)
- *   Other GA:       ~27 mills on assessed (= ~1.08% effective on FMV) — conservative fallback
+ * Millage defaults (effective mills applied directly to FMV):
+ *   Fulton County:  11.60 mills  (29 mills × 40% assessment ratio)
+ *   DeKalb County:  13.20 mills
+ *   Gwinnett County:10.80 mills
+ *   Other GA:       10.80 mills — conservative statewide fallback
  *
- * Section B (TPP) and Section C (income tax) are stubbed as safe defaults.
- * Phase 3 will populate: taxesTPP()=true, tppExemptionAmount()=7500,
- * stateIncomeTaxRate(all)=0.0539, conformsToBonusDep()=false (GA decouples).
+ * Section B (TPP): taxed=true, exemption=$7,500, form PT-50R, deadline April 1
+ *   Values loaded from ga-2026.json rate sheet.
  *
- * Sources: Fulton County Tax Commissioner, DeKalb County Tax Commissioner,
- *          GA Department of Revenue Property Tax Division
+ * Section C: stateIncomeTaxRate(all)=5.39% (SB 56 flat rate); conformsToBonusDep=false
+ *   GA decouples from IRC §168(k) — no federal bonus dep at state level.
+ *   Values loaded from ga-2026.json rate sheet.
+ *
+ * Sources: Fulton County Tax Commissioner, GA DOR Property Tax Division
  */
 
 import type {
   TaxContext, TaxRuleset, ReTaxYear, TransferTaxResult,
-  SpecialTax, AbatementProgram, TPPContext, TaxLineResult,
+  SpecialTax, AbatementProgram, TPPContext, TaxLineResult, TPPFiling,
   AssetClass, EntityType,
 } from '../types';
+import { getRateSheet } from '../rateSheets/loader';
 
 const GA_MILLAGE_RATES: Record<string, number> = {
-  'fulton':   11.60,  // mills applied to FMV (= 29 mills × 40% assessment ratio)
-  'dekalb':   13.20,  // mills applied to FMV (= 33 mills × 40%)
-  'gwinnett': 10.80,  // mills applied to FMV (= 27 mills × 40%)
-  'cobb':     10.00,  // mills applied to FMV (= 25 mills × 40%)
-  'clayton':  13.00,  // mills applied to FMV
-  'cherokee':  9.20,  // mills applied to FMV
+  'fulton':   11.60,
+  'dekalb':   13.20,
+  'gwinnett': 10.80,
+  'cobb':     10.00,
+  'clayton':  13.00,
+  'cherokee':  9.20,
 };
-const GA_DEFAULT_MILLAGE = 10.80;     // mills applied to FMV — conservative statewide fallback
+const GA_DEFAULT_MILLAGE = 10.80;
 const GA_DEED_TRANSFER_RATE = 0.001;  // $1.00 per $1,000 = 0.1%
-const GA_ANNUAL_APPRECIATION = 0.04; // 4%/yr assessment growth assumption
+const GA_ANNUAL_APPRECIATION = 0.04;
+
+const GA_RATE_SHEET_YEAR = 2026;
+
+function getSheet() {
+  return getRateSheet('ga', GA_RATE_SHEET_YEAR);
+}
 
 function resolveMillage(ctx: TaxContext): number {
   if (ctx.millageRateOverride != null) return ctx.millageRateOverride;
@@ -49,14 +58,50 @@ function resolveMillage(ctx: TaxContext): number {
   return GA_MILLAGE_RATES[county] ?? GA_DEFAULT_MILLAGE;
 }
 
-const ZERO_TPP_RESULT: TaxLineResult = {
-  amount: 0,
-  formula: 'taxesTPP()=false for GA (Phase 1 stub; Phase 3 will enable)',
-  inputs: {},
-  reassessmentEventInYear: false,
-  confidence: 'low',
-  notes: ['GA TPP tax not yet wired — Phase 3 expansion pending'],
-};
+// ── Section B helpers ─────────────────────────────────────────────────────────
+
+function tppExemption(): number {
+  return getSheet()?.tpp?.exemption_amount ?? 7500;
+}
+
+function tppFiling(): TPPFiling | null {
+  const tpp = getSheet()?.tpp;
+  if (!tpp?.filing_form || !tpp?.filing_deadline) return null;
+  return {
+    formName: tpp.filing_form,
+    deadline: tpp.filing_deadline,
+    penaltyPct: 0.10, // GA §48-5-300: 10% penalty for failure to file rendition
+  };
+}
+
+// ── Section C helpers ─────────────────────────────────────────────────────────
+
+function lookupStateIncomeRate(entityType: EntityType): number {
+  const sheet = getSheet();
+  if (!sheet?.state_income_tax_rate?.length) {
+    throw new Error(
+      `[gaRuleset] ga-${GA_RATE_SHEET_YEAR} rate sheet missing state_income_tax_rate. ` +
+      `Ensure initRateSheets() ran at boot.`,
+    );
+  }
+  const match = sheet.state_income_tax_rate.find(r => r.entity_type === entityType);
+  if (!match) {
+    throw new Error(
+      `[gaRuleset] No state income tax rate for entity type "${entityType}" ` +
+      `in ga-${GA_RATE_SHEET_YEAR}.json.`,
+    );
+  }
+  return match.rate;
+}
+
+function conformsBonusDep(): boolean {
+  // GA explicitly decouples from IRC §168(k); rate sheet stores false.
+  return getSheet()?.conforms_to_bonus_dep ?? false;
+}
+
+function conformsCostSeg(): boolean {
+  return getSheet()?.conforms_to_cost_seg ?? true;
+}
 
 export const gaRuleset: TaxRuleset = {
   jurisdiction: 'GA',
@@ -101,23 +146,56 @@ export const gaRuleset: TaxRuleset = {
     ];
   },
 
-  // ── Section B (Phase 1 safe defaults — Phase 3 will set taxesTPP=true) ──────
+  // ── Section B — TPP (GA §48-5-7; form PT-50R; $7,500 exemption) ──────────
 
-  taxesTPP(): boolean { return false; },
-  tppTax(_ctx: TPPContext, _year: number): TaxLineResult { return ZERO_TPP_RESULT; },
-  tppExemptionAmount(): number { return 0; },
-  tppMillage(_ctx: TaxContext): number { return 0; },
-  tppFilingRequirement() { return null; },
+  taxesTPP(): boolean {
+    return getSheet()?.tpp?.taxed ?? true;
+  },
 
-  // ── Section C (Phase 1 safe defaults — Phase 3 will set GA-specific rates)  ─
-  // Note: GA decouples from federal bonus dep; Phase 3 sets conformsToBonusDep=false.
+  tppTax(ctx: TPPContext, year: number): TaxLineResult {
+    if (!this.taxesTPP()) {
+      return { amount: 0, formula: 'taxesTPP()=false', inputs: {}, reassessmentEventInYear: false, confidence: 'low', notes: [] };
+    }
+    const exemption = tppExemption();
+    const millage = resolveMillage({ millageRateOverride: null, county: ctx.county } as TaxContext);
+    const ffEBase = ctx.ffEAssessedValue ?? (ctx.units > 0 ? ctx.units * 4000 : 0);
+    const depRate = Math.max(0, 1 - (ctx.ffEAgeYears / 20));
+    const taxableBase = Math.max(0, Math.round(ffEBase * depRate) - exemption);
+    const amount = Math.round(taxableBase * (millage / 1000));
+    return {
+      amount,
+      formula: `max(0, ffEBase × depRate - exemption) × (millage / 1000)`,
+      inputs: {
+        ffEBase: { value: ffEBase, source: ctx.ffEAssessedValue != null ? 'user-supplied' : 'platform-estimate ($4k/unit)' },
+        depRate: { value: depRate, source: `1 - ageYears(${ctx.ffEAgeYears}) / 20` },
+        exemption: { value: exemption, source: `ga-${GA_RATE_SHEET_YEAR}.json tpp.exemption_amount` },
+        millage: { value: millage, source: 'ga.ruleset county millage' },
+        year: { value: year, source: 'hold year' },
+      },
+      reassessmentEventInYear: year === 1,
+      confidence: ctx.ffEAssessedValue != null ? 'medium' : 'low',
+      notes: ctx.ffEAssessedValue == null ? ['FF&E assessed value not provided — using $4k/unit estimate'] : [],
+    };
+  },
 
-  depreciationLife(_propertyType: AssetClass): number { return 27.5; },
-  bonusDepreciationPct(_year: number): number { return 0; },
-  costSegEligible(_propertyType: AssetClass): boolean { return false; },
-  stateIncomeTaxRate(_entityType: EntityType): number { return 0; },
-  conformsToBonusDep(): boolean { return true; },
-  conformsToCostSeg(): boolean { return true; },
+  tppExemptionAmount(): number { return tppExemption(); },
+
+  tppMillage(ctx: TaxContext): number { return resolveMillage(ctx); },
+
+  tppFilingRequirement(): TPPFiling | null { return tppFiling(); },
+
+  // ── Section C ─────────────────────────────────────────────────────────────
+
+  depreciationLife(_propertyType: AssetClass): number { return 0; }, // federal owns dep life
+  bonusDepreciationPct(_year: number): number { return 0; },          // federal owns bonus dep
+  costSegEligible(_propertyType: AssetClass): boolean { return false; }, // federal owns cost seg
+
+  stateIncomeTaxRate(entityType: EntityType): number {
+    return lookupStateIncomeRate(entityType);
+  },
+
+  conformsToBonusDep(): boolean { return conformsBonusDep(); },
+  conformsToCostSeg(): boolean { return conformsCostSeg(); },
 
   // ── Metadata ─────────────────────────────────────────────────────────────────
 

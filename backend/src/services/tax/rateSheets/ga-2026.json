@@ -1,0 +1,59 @@
+{
+  "jurisdiction": "ga",
+  "level": "state",
+  "year": 2026,
+  "version": "ga-2026.v1",
+  "as_of": "2026-01-15T00:00:00.000Z",
+  "valid_through": "2026-12-31T23:59:59.000Z",
+  "source_citations": [
+    {
+      "field": "transfer_tax.deed_rate_per_1000",
+      "source_url": "https://dor.georgia.gov/real-estate-transfer-tax",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "GA DOR — Real Estate Transfer Tax ($1.00 per $1,000)"
+    },
+    {
+      "field": "tpp",
+      "source_url": "https://dor.georgia.gov/local-government-services/digest-compliance/personal-property-tax",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "GA DOR — Personal Property (Tangible) Tax — PT-50R Rendition"
+    },
+    {
+      "field": "state_income_tax_rate",
+      "source_url": "https://dor.georgia.gov/taxes/business-taxes/corporate-income-net-worth-tax",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "GA DOR — Corporate Income Tax / SB 56 Flat Rate Phase-Down (5.39% for TY 2025-26)"
+    },
+    {
+      "field": "conforms_to_bonus_dep",
+      "source_url": "https://dor.georgia.gov/income-tax-instructions",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "GA DOR — IRC Conformity: GA decouples from IRC §168(k) federal bonus depreciation"
+    }
+  ],
+  "transfer_tax": {
+    "deed_rate_per_1000": 1.00
+  },
+  "tpp": {
+    "taxed": true,
+    "millage": "same_as_re",
+    "exemption_amount": 7500,
+    "filing_form": "PT-50R",
+    "filing_deadline": "April 1",
+    "name": "Georgia Tangible Personal Property Rendition",
+    "depreciation_schedule": {
+      "years": 20,
+      "residual_pct": 0.10,
+      "annual_rate_pct": 0.045
+    }
+  },
+  "state_income_tax_rate": [
+    { "entity_type": "individual",   "rate": 0.0539 },
+    { "entity_type": "pass_through", "rate": 0.0539 },
+    { "entity_type": "c_corp",       "rate": 0.0539 },
+    { "entity_type": "reit",         "rate": 0.0000 },
+    { "entity_type": "partnership",  "rate": 0.0539 }
+  ],
+  "conforms_to_bonus_dep": false,
+  "conforms_to_cost_seg": true
+}

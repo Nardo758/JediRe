@@ -1,0 +1,28 @@
+{
+  "jurisdiction": "fl-palm-beach",
+  "level": "county",
+  "year": 2026,
+  "version": "fl-palm-beach-2026.v1",
+  "as_of": "2025-09-20T00:00:00.000Z",
+  "valid_through": "2026-09-30T23:59:59.000Z",
+  "source_citations": [
+    {
+      "field": "millage.aggregate",
+      "source_url": "https://www.pbcgov.org/papa/aspx/content/taxestimator.aspx",
+      "retrieved_at": "2025-09-20T10:00:00.000Z",
+      "document_title": "Palm Beach County Property Appraiser — FY2025/26 TRIM Notice Millage Rates (non-homestead commercial, West Palm Beach area)"
+    }
+  ],
+  "millage": {
+    "aggregate": 21.2765,
+    "breakdown": [
+      { "authority": "Palm Beach County General",      "rate": 4.7815, "applies_to": "all" },
+      { "authority": "School District of Palm Beach",  "rate": 7.0010, "applies_to": "all" },
+      { "authority": "City of West Palm Beach",        "rate": 4.7220, "applies_to": "all" },
+      { "authority": "Fire-Rescue District",           "rate": 3.2945, "applies_to": "all" },
+      { "authority": "South Florida Water Mgmt",       "rate": 0.1148, "applies_to": "all" },
+      { "authority": "Palm Beach County Library",      "rate": 0.5000, "applies_to": "all" },
+      { "authority": "Health Care District",           "rate": 0.8627, "applies_to": "all" }
+    ]
+  }
+}

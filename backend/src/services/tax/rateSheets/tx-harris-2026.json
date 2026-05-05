@@ -1,0 +1,25 @@
+{
+  "jurisdiction": "tx-harris",
+  "level": "county",
+  "year": 2026,
+  "version": "tx-harris-2026.v1",
+  "as_of": "2025-01-15T00:00:00.000Z",
+  "valid_through": "2026-12-31T23:59:59.000Z",
+  "source_citations": [
+    {
+      "field": "millage.aggregate",
+      "source_url": "https://www.hcad.org/resources/exemptions-special-appraisals/2025-tax-rates/",
+      "retrieved_at": "2025-01-15T10:00:00.000Z",
+      "document_title": "HCAD — Harris County FY2025 Combined Millage (county + city + ISD); expressed as mills per $1,000 FMV"
+    }
+  ],
+  "millage": {
+    "aggregate": 22.00,
+    "breakdown": [
+      { "authority": "Harris County General",   "rate": 3.68,  "applies_to": "all" },
+      { "authority": "City of Houston",         "rate": 3.449, "applies_to": "all" },
+      { "authority": "Houston ISD",             "rate": 8.783, "applies_to": "all" },
+      { "authority": "MUD / Other Districts",   "rate": 6.088, "applies_to": "all" }
+    ]
+  }
+}
