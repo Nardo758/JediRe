@@ -413,24 +413,28 @@ export async function composeDealFinancials(
       } catch {
         // Platform posteriors not available — peer column stays empty for non-collision rows
       }
-      // M39: enrich peer_set_values with top-competitor recent metrics from the
-      // peer intelligence engine. Writes to canonical F9 keys consumed by
-      // ProjectionsTab (peer_set_values['rent_growth_yr1']). Non-fatal.
+      // M39: enrich peer_set_values with top-peer traffic/leasing metrics from
+      // the peer intelligence engine. Writes to canonical F9 keys consumed by
+      // ProjectionsTab and InlineAssumptionBlock:
+      //   renewal_rate, turnover_rate, days_vacant_median, rent_growth_yr1.
+      // Uses competitor recentMetrics as primary source, falls back to analog.
+      // recentMetrics are populated from the candidate's registered character.
+      // Non-fatal — engine may have no registered characters.
       if (deal.submarket_id) {
         try {
           const m39AssetClass = deal.property_class ?? 'multifamily';
           const m39Ranking = peerIntelligenceService.computeDualRanking(
             deal.submarket_id, m39AssetClass, 1,
           );
-          // Use competitor rentGrowth as primary source; fall back to analog.
-          const topCompetitor = m39Ranking.competitors[0];
-          const topAnalog     = m39Ranking.analogs[0];
-          const m39RentGrowth =
-            topCompetitor?.recentMetrics?.rentGrowth ??
-            topAnalog?.recentMetrics?.rentGrowth ??
+          const topPeerMetrics =
+            m39Ranking.competitors[0]?.recentMetrics ??
+            m39Ranking.analogs[0]?.recentMetrics ??
             null;
-          if (m39RentGrowth != null) {
-            peerSetValues['rent_growth_yr1'] = m39RentGrowth;
+          if (topPeerMetrics) {
+            if (topPeerMetrics.rentGrowth != null)        peerSetValues['rent_growth_yr1']   = topPeerMetrics.rentGrowth;
+            if (topPeerMetrics.renewalRate != null)       peerSetValues['renewal_rate']       = topPeerMetrics.renewalRate;
+            if (topPeerMetrics.turnoverRate != null)      peerSetValues['turnover_rate']      = topPeerMetrics.turnoverRate;
+            if (topPeerMetrics.daysVacantMedian != null)  peerSetValues['days_vacant_median'] = topPeerMetrics.daysVacantMedian;
           }
         } catch {
           // M39 enrichment non-fatal
@@ -468,7 +472,7 @@ export async function composeDealFinancials(
   const m38Occupancy = (m38Gpr != null && m38Gpr > 0 && m38Vac != null)
     ? 1 - Math.abs(m38Vac) / m38Gpr
     : null;
-  const m38RentGrowth: number | null = (year1Data as any)?.rentGrowthRate ?? null;
+  const m38RentGrowth: number | null = year1Data?.rentGrowthRate ?? null;
   if (m38Noi != null) {
     setImmediate(() => {
       const now = new Date();

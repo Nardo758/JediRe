@@ -36,6 +36,12 @@ export interface SubmarketCharacter {
   unitCountEstimate?: number;
   avgRentPsf?: number;
   estimationDate: Date;
+  /** Traffic/leasing metrics — used to populate F9 peer_set_values (M39). */
+  renewalRate?: number;       // e.g. 0.55 = 55%
+  turnoverRate?: number;      // e.g. 0.45 = 45%
+  daysVacantMedian?: number;  // median days vacant between tenancies
+  rentGrowth?: number;        // annual rent growth rate, e.g. 0.03 = 3%
+  occupancy?: number;         // stabilized occupancy, e.g. 0.93 = 93%
 }
 
 export interface VectorSimilarityBreakdown {
@@ -53,7 +59,13 @@ export interface PeerScore {
   msaId: string;
   similarity: number;
   breakdown: Partial<VectorSimilarityBreakdown>;
-  recentMetrics?: { rentGrowth?: number; occupancy?: number };
+  recentMetrics?: {
+    rentGrowth?: number;
+    occupancy?: number;
+    renewalRate?: number;
+    turnoverRate?: number;
+    daysVacantMedian?: number;
+  };
 }
 
 export interface DualRankingResult {
@@ -296,6 +308,16 @@ export class PeerIntelligenceService {
 
       const sameMsa = result.msaId === subjectMsaId;
 
+      // Derive recentMetrics from the candidate's registered character (if any).
+      const candChar = this.characters.get(result.submarketId);
+      const recentMetrics: PeerScore['recentMetrics'] = candChar ? {
+        rentGrowth: candChar.rentGrowth,
+        occupancy:  candChar.occupancy,
+        renewalRate:      candChar.renewalRate,
+        turnoverRate:     candChar.turnoverRate,
+        daysVacantMedian: candChar.daysVacantMedian,
+      } : undefined;
+
       if (sameMsa) {
         // Competitor ranking
         const { similarity, breakdown } = this.computeCompetitorSimilarity(
@@ -311,6 +333,7 @@ export class PeerIntelligenceService {
               msaId: result.msaId,
               similarity,
               breakdown,
+              recentMetrics,
             },
           });
         }
@@ -329,6 +352,7 @@ export class PeerIntelligenceService {
               msaId: result.msaId,
               similarity,
               breakdown,
+              recentMetrics,
             },
           });
         }
