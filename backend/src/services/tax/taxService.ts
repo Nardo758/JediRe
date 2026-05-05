@@ -175,7 +175,10 @@ export const taxService = {
     ): import('./types').LayeredValue<T> => ({
       value,
       source,
-      metadata: { ruleset_version: rulesetVersion, formula, ...(inputs ? { inputs } : {}), confidence: conf, computed_at: computedAt },
+      // computed_at intentionally omitted from per-field metadata to preserve
+      // byte-identical outputs for identical TaxContext inputs (determinism contract).
+      // The forecast-level timestamp lives in provenance.computed_at only.
+      metadata: { ruleset_version: rulesetVersion, formula, ...(inputs ? { inputs } : {}), confidence: conf },
     });
 
     const provenance: import('./types').TaxForecastProvenance = {

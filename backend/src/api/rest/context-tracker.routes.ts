@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { parcelCacheInvalidate } from '../../services/tax/parcelCache';
+import { inngest } from '../../lib/inngest';
+import { TAX_BILL_UPLOADED_EVENT } from '../../inngest/functions/taxBillUploaded.handler';
 
 const router = Router();
 
@@ -187,9 +189,16 @@ router.post('/deals/:dealId/documents', async (req: Request, res: Response) => {
       [dealId, file_name, file_type, file_url, file_size || 0, userId, metadata || {}]
     );
 
-    // When a tax bill is uploaded, invalidate any stale ATTOM parcel cache entry
-    // for this deal so the next tax forecast re-fetches fresh data.
-    if (file_type && /tax.?bill/i.test(String(file_type))) {
+    // When a tax bill is uploaded, invalidate ALL stale ATTOM parcel cache entries
+    // for this deal and fire the tax/bill.uploaded Inngest event so the event-driven
+    // consumer path also processes the invalidation independently.
+    //
+    // Detection is intentionally broad: match on file_type regex OR file_name pattern
+    // to handle uploads that use MIME types ('application/pdf') as file_type.
+    const isTaxBill =
+      (file_type && /tax.?bill/i.test(String(file_type))) ||
+      (file_name && /tax[._-]?bill|property[._-]?tax/i.test(String(file_name)));
+    if (isTaxBill) {
       try {
         const dealRow = await pool.query(
           `SELECT deal_data FROM deals WHERE id = $1`,
@@ -198,7 +207,14 @@ router.post('/deals/:dealId/documents', async (req: Request, res: Response) => {
         const dd = (dealRow.rows[0]?.deal_data ?? {}) as Record<string, unknown>;
         const parcelId = dd.parcel_id as string | undefined;
         if (parcelId) {
+          // Belt-and-suspenders: invalidate synchronously so the response is
+          // consistent even if the Inngest event consumer is delayed.
           await parcelCacheInvalidate(parcelId);
+          // Also fire the Inngest event for the authoritative consumer path.
+          void inngest.send({
+            name: TAX_BILL_UPLOADED_EVENT,
+            data: { parcelId, dealId: String(dealId), uploadedBy: String(userId) },
+          }).catch(() => { /* Inngest send failure must not block upload */ });
         }
       } catch {
         // Non-fatal: cache invalidation failure does not block the upload response.

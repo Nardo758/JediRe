@@ -435,8 +435,8 @@ export interface LayeredValue<T> {
     inputs?: Record<string, { value: unknown; source: string }>;
     /** Confidence level of this specific value. */
     confidence: 'high' | 'medium' | 'low';
-    /** ISO timestamp when this value was computed / fetched. */
-    computed_at: string;
+    /** ISO timestamp when this value was computed / fetched. Optional — omit for deterministic inline-computed fields. */
+    computed_at?: string;
   };
 }
 

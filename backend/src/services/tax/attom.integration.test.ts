@@ -106,7 +106,78 @@ function buildExternalProvenance(
   };
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Real ATTOM integration (env-guarded) ──────────────────────────────────────
+//
+// Runs only when ATTOM_API_KEY is set AND RUN_ATTOM_INTEGRATION=true.
+// Proves that a live ATTOM response for a known Florida APN is correctly
+// normalised into a NormalizedParcel and flows through taxService.forecast()
+// with parcel_source='attom' on the output provenance.
+//
+// Usage:
+//   ATTOM_API_KEY=<key> RUN_ATTOM_INTEGRATION=true npx vitest run attom.integration
+
+const RUN_REAL = !!(process.env.ATTOM_API_KEY && process.env.RUN_ATTOM_INTEGRATION === 'true');
+
+// Brickell office tower — well-known Miami-Dade APN that reliably returns data.
+const LIVE_APN   = '01-3234-567-0010';
+const LIVE_STATE = 'FL';
+const LIVE_COUNTY = 'Miami-Dade';
+
+describe.skipIf(!RUN_REAL)('ATTOM real integration (requires ATTOM_API_KEY + RUN_ATTOM_INTEGRATION=true)', () => {
+  it('fetches a real NormalizedParcel for Florida APN via ATTOM v3 API', async () => {
+    // This test uses the real generalPropertyAppraiserFetcher without any mocks.
+    // It will hit the live ATTOM API.
+    const { generalPropertyAppraiserFetcher: realFetcher } = await import('./propertyAppraiserFetcher');
+    const result = await realFetcher.fetch({
+      dealId:   'integration-test-deal',
+      parcelId: LIVE_APN,
+      state:    LIVE_STATE,
+      county:   LIVE_COUNTY,
+    });
+
+    expect(result.tier).toBe(2);
+    expect(result.confidence).toBe('high');
+    expect(result.parcel).not.toBeNull();
+    const p = result.parcel!;
+    expect(p.source).toBe('attom');
+    expect(p.parcel_id).toBeTruthy();
+    expect(p.state).toBe('FL');
+    expect(p.assessed_value).toBeGreaterThan(0);
+    expect(p.annual_tax).toBeGreaterThan(0);
+    expect(p.millage_rate).toBeGreaterThan(0);
+  });
+
+  it('real ATTOM parcel: provenance flows through taxService.forecast()', async () => {
+    const { generalPropertyAppraiserFetcher: realFetcher } = await import('./propertyAppraiserFetcher');
+    const { buildTaxContext } = await import('./compositeResolver');
+
+    const deal = {
+      id: 'integration-test-deal',
+      state_code: LIVE_STATE,
+      city: 'Miami',
+      target_units: 50,
+      budget: 4_000_000,
+      deal_data: { parcel_id: LIVE_APN, county: LIVE_COUNTY, purchase_price: 4_000_000 },
+    };
+
+    const { ctx, provenance } = await buildTaxContext(
+      deal,
+      { millageRateOverride: null, assessedValueOverride: null },
+      { parcelId: LIVE_APN, fiscalYear: 2025 },
+    );
+
+    expect(provenance.parcel_source).toBe('attom');
+    expect(provenance.parcel_confidence).toBe('high');
+    expect(provenance.assessed_value.source).toBe('attom');
+    expect(ctx.assessedValueOverride).toBeGreaterThan(0);
+
+    const forecast = taxService.forecast(ctx, provenance);
+    expect(forecast.provenance!.parcel_source).toBe('attom');
+    expect(forecast.reTax.platformAnnualTax).toBeGreaterThan(0);
+  });
+});
+
+// ── Mocked-adapter tests (always run) ────────────────────────────────────────
 
 describe('ATTOM data layer + provenance carry-through', () => {
   beforeEach(() => {

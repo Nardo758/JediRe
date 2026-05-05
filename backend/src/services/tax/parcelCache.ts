@@ -90,22 +90,37 @@ export async function parcelCacheSet(
 }
 
 /**
- * Invalidate the parcel cache entry for a given parcel + fiscal year.
- * Called when a `tax_bill_uploaded` Kafka event fires for that parcel.
+ * Invalidate ALL cached parcel entries for a given parcel ID across every
+ * fiscal year.  Called when a `tax_bill_uploaded` event fires for that parcel
+ * so the next forecast re-fetches fresh ATTOM / PDF data regardless of which
+ * fiscal year the deal is modelled in.
+ *
+ * The optional `fiscalYear` parameter is retained for targeted single-year
+ * invalidation in tests or administrative tooling, but the default behaviour
+ * (no argument) now deletes all years.
  */
 export async function parcelCacheInvalidate(
   parcelId: string,
   fiscalYear?: number,
 ): Promise<void> {
-  const fy = fiscalYear ?? currentFiscalYear();
   try {
-    await query(
-      `DELETE FROM parcel_tax_cache WHERE parcel_id = $1 AND fiscal_year = $2`,
-      [parcelId, fy],
-    );
-    logger.info('[parcelCache] invalidated', { parcelId, fy });
+    if (fiscalYear != null) {
+      // Targeted single-year invalidation (tests / admin tooling).
+      await query(
+        `DELETE FROM parcel_tax_cache WHERE parcel_id = $1 AND fiscal_year = $2`,
+        [parcelId, fiscalYear],
+      );
+      logger.info('[parcelCache] invalidated (single year)', { parcelId, fiscalYear });
+    } else {
+      // Default: wipe ALL fiscal years so a new tax bill upload always takes effect.
+      await query(
+        `DELETE FROM parcel_tax_cache WHERE parcel_id = $1`,
+        [parcelId],
+      );
+      logger.info('[parcelCache] invalidated (all years)', { parcelId });
+    }
   } catch (err: any) {
-    logger.warn('[parcelCache] invalidate failed', { parcelId, fy, err: err?.message });
+    logger.warn('[parcelCache] invalidate failed', { parcelId, fiscalYear, err: err?.message });
   }
 }
 
