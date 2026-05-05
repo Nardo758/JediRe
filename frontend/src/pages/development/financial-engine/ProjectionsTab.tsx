@@ -1425,11 +1425,12 @@ export function ProjectionsTab({
                                         if (yyyymms.length > 0) {
                                           const qLabel = `Q${qNum} YR${yearNum}`;
                                           const qYr = yyyymms[0].slice(0, 4);
-                                          const recognizedQ = yyyymms.reduce((s, k) => s + (recog.monthly[k] ?? 0), 0);
+                                          const hasQRecog = yyyymms.some(k => k in recog.monthly);
+                                          const recognizedQ = hasQRecog ? yyyymms.reduce((s, k) => s + (recog.monthly[k] ?? 0), 0) : null;
                                           setConcessionDrill({
                                             open: true,
                                             periodLabel: qLabel,
-                                            recognizedAmount: recognizedQ || null,
+                                            recognizedAmount: recognizedQ,
                                             earnedAmount: subVal,
                                             detail: aggregateConcessionDetail(recog.monthly_detail, yyyymms),
                                             source: 'earned',
@@ -1539,8 +1540,8 @@ export function ProjectionsTab({
                                             earnedAmount: null,
                                             detail: aggregateConcessionDetail(recog.monthly_detail, [yyyymm]),
                                             source: 'recognized',
-                                            calendarYearTotal: mYr ? recog.by_calendar_year?.[mYr] ?? null : null,
-                                            fiscalYearTotal: mYr ? recog.by_fiscal_year?.[mYr] ?? null : null,
+                                            calendarYearTotal: null,
+                                            fiscalYearTotal: null,
                                           });
                                         }}
                                         style={{ padding: '3px 6px', textAlign: 'right', color: mVal != null ? BT.text.amber : BT.text.muted, fontSize: 8, cursor: mVal != null ? 'pointer' : 'default' }}
@@ -1553,8 +1554,8 @@ export function ProjectionsTab({
                                   // quarterly
                                   const baseOffset = (yearNum - 1) * 12 + (periodNum - 1) * 3;
                                   const qMms = ([0, 1, 2].map(i => yyyymmFromClose(financials?.closeDate, baseOffset + i)).filter(Boolean)) as string[];
-                                  const qVal  = qMms.length > 0 ? qMms.reduce((s, k) => s + (recog.monthly[k] ?? 0), 0) || null : null;
-                                  const qYr   = qMms.length > 0 ? qMms[0].slice(0, 4) : null;
+                                  const hasQData = qMms.some(k => k in recog.monthly);
+                                  const qVal  = hasQData ? qMms.reduce((s, k) => s + (recog.monthly[k] ?? 0), 0) : null;
                                   return (
                                     <td
                                       key={c.periodKey}
@@ -1567,8 +1568,8 @@ export function ProjectionsTab({
                                           earnedAmount: null,
                                           detail: aggregateConcessionDetail(recog.monthly_detail, qMms),
                                           source: 'recognized',
-                                          calendarYearTotal: qYr ? recog.by_calendar_year?.[qYr] ?? null : null,
-                                          fiscalYearTotal: qYr ? recog.by_fiscal_year?.[qYr] ?? null : null,
+                                          calendarYearTotal: null,
+                                          fiscalYearTotal: null,
                                         });
                                       }}
                                       style={{ padding: '3px 6px', textAlign: 'right', color: qVal != null ? BT.text.amber : BT.text.muted, fontSize: 8, cursor: qVal != null ? 'pointer' : 'default' }}
