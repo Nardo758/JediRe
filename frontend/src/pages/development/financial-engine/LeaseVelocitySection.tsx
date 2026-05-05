@@ -575,121 +575,176 @@ function LeaseVelocityInputPanel({
   onInputsChange,
   onRun,
   loading,
+  resolvedMode,
 }: {
   inputs: LVInputs;
   onInputsChange: (v: LVInputs) => void;
   onRun: () => void;
   loading: boolean;
+  resolvedMode?: LeaseMode;
 }) {
   const set = <K extends keyof LVInputs>(k: K, v: LVInputs[K]) =>
     onInputsChange({ ...inputs, [k]: v });
 
   const mode = inputs.mode;
+  const isOverridden = resolvedMode != null && mode !== resolvedMode;
+
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   return (
     <div style={{
-      padding: '8px 10px',
-      display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end',
       borderBottom: `1px solid ${BT.border.subtle}`,
       background: BT.bg.panel,
     }}>
-      {/* Mode */}
-      <div>
-        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>LEASE MODE</div>
-        <div style={{ display: 'flex', gap: 2 }}>
-          {(['LEASE_UP_NEW_CONSTRUCTION', 'STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'] as LeaseMode[]).map(m => (
-            <button
-              key={m}
-              onClick={() => set('mode', m)}
-              style={{
-                background: mode === m ? `${MODE_COLORS[m]}22` : 'transparent',
-                color:      mode === m ? MODE_COLORS[m] : BT.text.muted,
-                border:     `1px solid ${mode === m ? MODE_COLORS[m] : BT.border.subtle}`,
-                padding: '2px 8px', fontFamily: MONO, fontSize: 8,
-                cursor: 'pointer', borderRadius: 2,
-              }}
-            >
-              {MODE_LABELS[m]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ width: 1, height: 30, background: BT.border.subtle, alignSelf: 'center' }} />
-
-      <InlineNum label="TOTAL UNITS"    value={inputs.total_units}         onChange={v => set('total_units', v)}         step={1}    min={1}   max={9999} width={68} />
-      <InlineNum label="TARGET OCC"     value={inputs.target_occupancy}    onChange={v => set('target_occupancy', v)}    step={0.01} min={0.5} max={1.0}  width={60} fmt={lvFmtPct} />
-      {mode !== 'LEASE_UP_NEW_CONSTRUCTION' && (
-        <InlineNum label="CURRENT OCC"  value={inputs.current_occupancy}   onChange={v => set('current_occupancy', v)}   step={0.01} min={0}   max={1.0}  width={60} fmt={lvFmtPct} />
-      )}
-      <InlineNum label="MKT RENT"       value={inputs.avg_market_rent}     onChange={v => set('avg_market_rent', v)}     step={25}   min={0}               width={72} />
-      {mode === 'LEASE_UP_NEW_CONSTRUCTION' && (
-        <InlineNum label="PRE-LEASED"   value={inputs.pre_leased_count}    onChange={v => set('pre_leased_count', v)}    step={1}    min={0}               width={58} />
-      )}
-      <InlineNum label="HORIZON (MO)"   value={inputs.time_horizon_months} onChange={v => set('time_horizon_months', v)} step={6}    min={6}   max={120}  width={56} />
-
-      {/* Class */}
-      <div>
-        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>CLASS</div>
-        <div style={{ display: 'flex', gap: 2 }}>
-          {(['A', 'B', 'C'] as const).map(cls => (
-            <button key={cls} onClick={() => set('property_class', cls)} style={{
-              background: inputs.property_class === cls ? `${BT.text.amber}22` : 'transparent',
-              color:      inputs.property_class === cls ? BT.text.amber : BT.text.muted,
-              border:     `1px solid ${inputs.property_class === cls ? BT.text.amber : BT.border.subtle}`,
-              padding: '2px 6px', fontFamily: MONO, fontSize: 8, cursor: 'pointer', borderRadius: 2,
-            }}>{cls}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* Concession strategy */}
-      <div>
-        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>CONCESSIONS</div>
-        <div style={{ display: 'flex', gap: 2 }}>
-          {(['CONSERVATIVE', 'MARKET', 'AGGRESSIVE'] as ConcessionStrategy[]).map(s => (
-            <button key={s} onClick={() => set('concession_strategy', s)} style={{
-              background: inputs.concession_strategy === s ? `${BT.text.red}22` : 'transparent',
-              color:      inputs.concession_strategy === s ? BT.text.red : BT.text.muted,
-              border:     `1px solid ${inputs.concession_strategy === s ? BT.text.red : BT.border.subtle}`,
-              padding: '2px 5px', fontFamily: MONO, fontSize: 7, cursor: 'pointer', borderRadius: 2,
-            }}>{s === 'CONSERVATIVE' ? 'CONSRV' : s === 'AGGRESSIVE' ? 'AGGR' : 'MKT'}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* Marketing intensity (lease-up) */}
-      {mode === 'LEASE_UP_NEW_CONSTRUCTION' && (
+      {/* Primary row */}
+      <div style={{ padding: '8px 10px', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+        {/* Mode selector with resolved-mode annotation */}
         <div>
-          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>MARKETING</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+            <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: 0.5 }}>LEASE MODE</span>
+            {resolvedMode != null && (
+              <span style={{ fontFamily: MONO, fontSize: 6, color: BT.text.teal, letterSpacing: 0.3 }}>
+                AUTO:{MODE_LABELS[resolvedMode]}
+              </span>
+            )}
+            {isOverridden && (
+              <span style={{
+                fontFamily: MONO, fontSize: 6, letterSpacing: 0.5, fontWeight: 700,
+                color: BT.text.amber, background: `${BT.text.amber}18`,
+                border: `1px solid ${BT.text.amber}`, borderRadius: 2,
+                padding: '0px 4px',
+              }}>
+                MODE OVERRIDDEN
+              </span>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: 2 }}>
-            {(['LOW', 'MARKET', 'AGGRESSIVE'] as MarketingIntensity[]).map(s => (
-              <button key={s} onClick={() => set('marketing_intensity', s)} style={{
-                background: inputs.marketing_intensity === s ? `${BT.text.cyan}22` : 'transparent',
-                color:      inputs.marketing_intensity === s ? BT.text.cyan : BT.text.muted,
-                border:     `1px solid ${inputs.marketing_intensity === s ? BT.text.cyan : BT.border.subtle}`,
-                padding: '2px 5px', fontFamily: MONO, fontSize: 7, cursor: 'pointer', borderRadius: 2,
-              }}>{s}</button>
+            {(['LEASE_UP_NEW_CONSTRUCTION', 'STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'] as LeaseMode[]).map(m => (
+              <button
+                key={m}
+                onClick={() => set('mode', m)}
+                style={{
+                  background: mode === m ? `${MODE_COLORS[m]}22` : 'transparent',
+                  color:      mode === m ? MODE_COLORS[m] : BT.text.muted,
+                  border:     `1px solid ${mode === m ? MODE_COLORS[m] : BT.border.subtle}`,
+                  padding: '2px 8px', fontFamily: MONO, fontSize: 8,
+                  cursor: 'pointer', borderRadius: 2,
+                }}
+              >
+                {MODE_LABELS[m]}
+              </button>
             ))}
           </div>
         </div>
-      )}
 
-      <button
-        onClick={onRun}
-        disabled={loading}
-        style={{
-          marginLeft: 'auto',
-          background: loading ? BT.bg.active : BT.text.cyan,
-          color:      loading ? BT.text.muted : '#000',
-          border: 'none', padding: '5px 18px',
-          fontFamily: MONO, fontSize: 9, fontWeight: 700,
-          cursor: loading ? 'default' : 'pointer', borderRadius: 2, letterSpacing: 0.6,
-          opacity: loading ? 0.7 : 1,
-        }}
-      >
-        {loading ? 'RUNNING…' : 'RUN ENGINE ▶'}
-      </button>
+        <div style={{ width: 1, height: 30, background: BT.border.subtle, alignSelf: 'center' }} />
+
+        <InlineNum label="TOTAL UNITS"    value={inputs.total_units}         onChange={v => set('total_units', v)}         step={1}    min={1}   max={9999} width={68} />
+        <InlineNum label="TARGET OCC"     value={inputs.target_occupancy}    onChange={v => set('target_occupancy', v)}    step={0.01} min={0.5} max={1.0}  width={60} fmt={lvFmtPct} />
+        {mode !== 'LEASE_UP_NEW_CONSTRUCTION' && (
+          <InlineNum label="CURRENT OCC"  value={inputs.current_occupancy}   onChange={v => set('current_occupancy', v)}   step={0.01} min={0}   max={1.0}  width={60} fmt={lvFmtPct} />
+        )}
+        <InlineNum label="MKT RENT"       value={inputs.avg_market_rent}     onChange={v => set('avg_market_rent', v)}     step={25}   min={0}               width={72} />
+        {mode === 'LEASE_UP_NEW_CONSTRUCTION' && (
+          <InlineNum label="PRE-LEASED"   value={inputs.pre_leased_count}    onChange={v => set('pre_leased_count', v)}    step={1}    min={0}               width={58} />
+        )}
+        <InlineNum label="HORIZON (MO)"   value={inputs.time_horizon_months} onChange={v => set('time_horizon_months', v)} step={6}    min={6}   max={120}  width={56} />
+
+        {/* Class */}
+        <div>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>CLASS</div>
+          <div style={{ display: 'flex', gap: 2 }}>
+            {(['A', 'B', 'C'] as const).map(cls => (
+              <button key={cls} onClick={() => set('property_class', cls)} style={{
+                background: inputs.property_class === cls ? `${BT.text.amber}22` : 'transparent',
+                color:      inputs.property_class === cls ? BT.text.amber : BT.text.muted,
+                border:     `1px solid ${inputs.property_class === cls ? BT.text.amber : BT.border.subtle}`,
+                padding: '2px 6px', fontFamily: MONO, fontSize: 8, cursor: 'pointer', borderRadius: 2,
+              }}>{cls}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* ADVANCED toggle + RUN button */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'flex-end', gap: 6 }}>
+          <button
+            onClick={() => setShowAdvanced(v => !v)}
+            style={{
+              background: showAdvanced ? `${BT.text.purple}18` : 'transparent',
+              color:      showAdvanced ? BT.text.purple : BT.text.muted,
+              border:     `1px solid ${showAdvanced ? BT.text.purple : BT.border.subtle}`,
+              padding: '2px 8px', fontFamily: MONO, fontSize: 7,
+              cursor: 'pointer', borderRadius: 2, letterSpacing: 0.4,
+            }}
+          >
+            {showAdvanced ? '▾ ADVANCED' : '▸ ADVANCED'}
+          </button>
+          <button
+            onClick={onRun}
+            disabled={loading}
+            style={{
+              background: loading ? BT.bg.active : BT.text.cyan,
+              color:      loading ? BT.text.muted : '#000',
+              border: 'none', padding: '5px 18px',
+              fontFamily: MONO, fontSize: 9, fontWeight: 700,
+              cursor: loading ? 'default' : 'pointer', borderRadius: 2, letterSpacing: 0.6,
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? 'RUNNING…' : 'RUN ENGINE ▶'}
+          </button>
+        </div>
+      </div>
+
+      {/* Advanced / optional fields disclosure */}
+      {showAdvanced && (
+        <div style={{
+          padding: '6px 10px 8px',
+          display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end',
+          borderTop: `1px solid ${BT.border.subtle}`,
+          background: `${BT.bg.header}`,
+        }}>
+          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.purple, letterSpacing: 0.5, alignSelf: 'center' }}>
+            ADVANCED INPUTS
+          </span>
+          <div style={{ width: 1, height: 24, background: BT.border.subtle, alignSelf: 'center' }} />
+
+          {/* Concession strategy */}
+          <div>
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>CONCESSIONS</div>
+            <div style={{ display: 'flex', gap: 2 }}>
+              {(['CONSERVATIVE', 'MARKET', 'AGGRESSIVE'] as ConcessionStrategy[]).map(s => (
+                <button key={s} onClick={() => set('concession_strategy', s)} style={{
+                  background: inputs.concession_strategy === s ? `${BT.text.red}22` : 'transparent',
+                  color:      inputs.concession_strategy === s ? BT.text.red : BT.text.muted,
+                  border:     `1px solid ${inputs.concession_strategy === s ? BT.text.red : BT.border.subtle}`,
+                  padding: '2px 5px', fontFamily: MONO, fontSize: 7, cursor: 'pointer', borderRadius: 2,
+                }}>{s === 'CONSERVATIVE' ? 'CONSRV' : s === 'AGGRESSIVE' ? 'AGGR' : 'MKT'}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Marketing intensity (lease-up only) */}
+          {mode === 'LEASE_UP_NEW_CONSTRUCTION' && (
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>MARKETING</div>
+              <div style={{ display: 'flex', gap: 2 }}>
+                {(['LOW', 'MARKET', 'AGGRESSIVE'] as MarketingIntensity[]).map(s => (
+                  <button key={s} onClick={() => set('marketing_intensity', s)} style={{
+                    background: inputs.marketing_intensity === s ? `${BT.text.cyan}22` : 'transparent',
+                    color:      inputs.marketing_intensity === s ? BT.text.cyan : BT.text.muted,
+                    border:     `1px solid ${inputs.marketing_intensity === s ? BT.text.cyan : BT.border.subtle}`,
+                    padding: '2px 5px', fontFamily: MONO, fontSize: 7, cursor: 'pointer', borderRadius: 2,
+                  }}>{s}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Avg in-place rent (optional override) */}
+          <InlineNum label="IN-PLACE RENT"  value={inputs.avg_in_place_rent}  onChange={v => set('avg_in_place_rent', v)}  step={25} min={0} width={76} />
+        </div>
+      )}
     </div>
   );
 }
@@ -771,10 +826,12 @@ export interface LeaseVelocitySectionProps {
   showConfig:      boolean;
   onToggleConfig:  () => void;
   runError:        string | null;
+  /** Auto-detected mode from deal occupancy data — shows MODE OVERRIDDEN when inputs.mode differs */
+  resolvedMode?:   LeaseMode;
 }
 
 export function LeaseVelocitySection({
-  result, loading, inputs, onInputsChange, onRun, showConfig, onToggleConfig, runError,
+  result, loading, inputs, onInputsChange, onRun, showConfig, onToggleConfig, runError, resolvedMode,
 }: LeaseVelocitySectionProps) {
   const [showTable, setShowTable] = useState(false);
 
@@ -830,6 +887,7 @@ export function LeaseVelocitySection({
           onInputsChange={onInputsChange}
           onRun={onRun}
           loading={loading}
+          resolvedMode={resolvedMode}
         />
       )}
 

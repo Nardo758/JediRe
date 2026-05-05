@@ -872,6 +872,7 @@ export function ProjectionsTab({
   f9Financials,
   onTabChange,
   onHoldChange,
+  onF9Refresh,
 }: FinancialEngineTabProps) {
   const [timeline, setTimeline] = useState<TimelineOption>(5);
 
@@ -908,6 +909,8 @@ export function ProjectionsTab({
   const [lvLoading,    setLvLoading]    = useState(false);
   const [lvError,      setLvError]      = useState<string | null>(null);
   const [lvShowConfig, setLvShowConfig] = useState(false);
+  /** Auto-detected mode from deal data — used to show MODE OVERRIDDEN badge */
+  const [lvResolvedMode, setLvResolvedMode] = useState<LeaseMode>('LEASE_UP_NEW_CONSTRUCTION');
   const lvAutoFetchedRef = useRef(false);
 
   // Core engine runner — accepts inputs directly (no closure over stale state)
@@ -959,6 +962,7 @@ export function ProjectionsTab({
       current_occupancy: occ ?? 0,
       mode: autoMode,
     };
+    setLvResolvedMode(autoMode);
     setLvInputs(seedInputs);
     void runLvEngine(seedInputs);
   // Only re-run when the deal ID changes — not on every f9Financials update
@@ -1145,14 +1149,6 @@ export function ProjectionsTab({
             }}>SUBJ·{financials.subjectHistory.tier}</button>
           )}
 
-          {/* Location A — LeasingCostTreatmentToggle: persists via deal PATCH */}
-          <div style={{ width: 1, height: 14, background: BT.border.medium }} />
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.4 }}>LEASING:</span>
-          <LeasingCostTreatmentToggle
-            value={lvInputs.leasing_cost_treatment}
-            onChange={handleLvTreatmentChange}
-          />
-
           <div style={{ flex: 1 }} />
 
           {financials && (
@@ -1208,6 +1204,7 @@ export function ProjectionsTab({
             showConfig={lvShowConfig}
             onToggleConfig={() => setLvShowConfig(v => !v)}
             runError={lvError}
+            resolvedMode={lvResolvedMode}
           />
         )}
 

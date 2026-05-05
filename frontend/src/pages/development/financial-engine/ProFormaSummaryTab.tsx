@@ -560,12 +560,18 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               </button>
             ))}
           </div>
-          {/* Location B — LeasingCostTreatmentToggle: view-state only, does NOT write deal field */}
+          {/* Location B — LeasingCostTreatmentToggle: view-state only, does NOT write deal field.
+              Shows VIEW↑ indicator when overriding the persisted deal default. */}
           <div style={{ width: 1, height: 14, background: '#2a2a2a' }} />
           <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>LEASING:</span>
           <LeasingCostTreatmentToggle
             value={lvTreatmentView}
             onChange={setLvTreatmentView}
+            dealDefault={
+              (deal?.['deal_data'] as Record<string, unknown> | null | undefined)
+                ?.['leasing_cost_treatment'] as LeasingCostTreatment | undefined
+              ?? 'OPERATING'
+            }
           />
         </div>
 

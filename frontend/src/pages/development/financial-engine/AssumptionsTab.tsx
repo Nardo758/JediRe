@@ -10,6 +10,7 @@ import { F9ProtectorsPanel } from './F9ProtectorsPanel';
 import { useDealStore } from '../../../stores/dealStore';
 import { computeConfidenceBands, evaluateRefusal } from '../../../services/proforma/validators';
 import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma/types';
+import { LeasingCostTreatmentToggle, type LeasingCostTreatment } from './LeaseVelocitySection';
 
 // ─── Backend contract ──────────────────────────────────────────────────────────
 interface OSRow {
@@ -1508,6 +1509,24 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const [annotations, setAnnotations]       = useState<Record<string, string>>({});
   const [lockedOverrides, setLockedOverrides] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
+
+  // ── Financial Treatment (Location A) ─────────────────────────────────────
+  // Persisted to deal_data.leasing_cost_treatment via PATCH /api/v1/deals/:id/context
+  const persistedTreatment =
+    (deal?.['deal_data'] as Record<string, unknown> | null | undefined)
+      ?.['leasing_cost_treatment'] as LeasingCostTreatment | undefined;
+  const [lctLocal, setLctLocal] = useState<LeasingCostTreatment>(
+    persistedTreatment ?? 'OPERATING',
+  );
+  const handleLctChange = useCallback(async (treatment: LeasingCostTreatment) => {
+    setLctLocal(treatment);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/context`, { leasing_cost_treatment: treatment });
+      fetchFinancials(holdYears);
+    } catch (err) {
+      console.error('[F9 Deal Settings] Failed to save leasing_cost_treatment:', err);
+    }
+  }, [dealId, holdYears, fetchFinancials]);
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
   const fetchRef   = useRef(0);
@@ -2188,6 +2207,11 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
             </button>
           </>
         )}
+        {/* ── Financial Treatment — Location A: Deal Settings (persisted) ── */}
+        <span style={{ color: '#1e1e1e', fontWeight: 700 }}>|</span>
+        <span className="text-[8px] font-bold tracking-widest" style={{ color: '#475569', fontFamily: MONO }}>LEASING COST:</span>
+        <LeasingCostTreatmentToggle value={lctLocal} onChange={handleLctChange} />
+
         <div className="ml-auto flex items-center gap-3 text-[8px]" style={{ fontFamily: MONO }}>
           <span className="text-blue-500/70">■ USER</span>
           <span className="text-teal-500/70">■ FORMULA</span>
