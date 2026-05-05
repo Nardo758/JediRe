@@ -173,7 +173,7 @@ function ConfBadge({ level }: { level: 'HIGH' | 'MED' | 'LOW' | null }) {
 
 function TierBadge({ tier }: { tier: 'advanced' | 'expert' }) {
   return (
-    <span style={{ fontFamily: MONO, fontSize: 7, color: '#475569', flexShrink: 0 }}>
+    <span style={{ fontFamily: MONO, fontSize: 9, color: '#475569', flexShrink: 0 }}>
       {tier === 'advanced' ? '[ADV]' : '[EXP]'}
     </span>
   );

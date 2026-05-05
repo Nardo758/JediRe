@@ -795,7 +795,7 @@ export function getVisibleCategories(mode: LeaseMode | null): ('A'|'B'|'C'|'D'|'
   if (mode === 'STABILIZED_MAINTENANCE')    return [...base, 'B'];
   if (mode === 'OCCUPANCY_RECOVERY')        return [...base, 'B', 'F'];
   if (mode === 'VALUE_ADD')                 return [...base, 'B', 'J'];
-  if (mode === 'REDEVELOPMENT')             return [...base, 'J'];
+  if (mode === 'REDEVELOPMENT')             return [...base, 'B', 'J'];
   return [...base, 'B']; // default: show stabilized view
 }
 
