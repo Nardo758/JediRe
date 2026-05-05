@@ -390,9 +390,10 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     recognizedAmount: number | null;
     earnedAmount: number | null;
     detail: ReturnType<typeof aggregateConcessionDetail>;
+    source: 'earned' | 'recognized';
     calendarYearTotal: number | null;
     fiscalYearTotal: number | null;
-  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null, calendarYearTotal: null, fiscalYearTotal: null });
+  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null, source: 'recognized', calendarYearTotal: null, fiscalYearTotal: null });
 
   const openY1Drill = useCallback(() => {
     const rec = data?.concessionRecognition;
@@ -417,6 +418,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       recognizedAmount: sum,
       earnedAmount: earned,
       detail: aggregateConcessionDetail(rec.monthly_detail, yyyymms),
+      source: 'recognized',
       calendarYearTotal: calYr,
       fiscalYearTotal: fisYr,
     });
@@ -1049,6 +1051,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       recognizedAmount={conDrill.recognizedAmount}
       earnedAmount={conDrill.earnedAmount}
       detail={conDrill.detail}
+      source={conDrill.source}
       calendarYearTotal={conDrill.calendarYearTotal}
       fiscalYearTotal={conDrill.fiscalYearTotal}
     />

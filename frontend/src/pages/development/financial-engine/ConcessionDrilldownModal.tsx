@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import type { F9ConcessionMonthlyDetail } from './types';
 
 const MONO = BT.font.mono;
 
-const fmt$ = (n: number) =>
-  n === 0 ? '$0' : `$${Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+const fmt$ = (n: number) => {
+  if (n === 0) return '$0';
+  const abs = Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  return n < 0 ? `-$${abs}` : `$${abs}`;
+};
 
 function fmtDate(iso: string | undefined): string {
   if (!iso) return '—';
@@ -90,6 +93,8 @@ interface Props {
   recognizedAmount: number | null;
   earnedAmount: number | null;
   detail: AggregatedConcessionDetail | null;
+  /** Which toggle view to start on when the modal opens. Defaults to 'recognized'. */
+  source?: 'earned' | 'recognized';
   calendarYearTotal?: number | null;
   fiscalYearTotal?: number | null;
 }
@@ -98,9 +103,14 @@ type ViewToggle = 'recognized' | 'earned';
 
 export function ConcessionDrilldownModal({
   open, onClose, periodLabel, recognizedAmount, earnedAmount, detail,
+  source = 'recognized',
   calendarYearTotal, fiscalYearTotal,
 }: Props) {
-  const [view, setView] = useState<ViewToggle>('recognized');
+  const [view, setView] = useState<ViewToggle>(source);
+
+  useEffect(() => {
+    if (open) setView(source);
+  }, [open, source]);
 
   if (!open) return null;
 

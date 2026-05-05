@@ -46,9 +46,10 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
     recognizedAmount: number | null;
     earnedAmount: number | null;
     detail: AggregatedConcessionDetail | null;
+    source: 'earned' | 'recognized';
     calendarYearTotal: number | null;
     fiscalYearTotal: number | null;
-  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null, calendarYearTotal: null, fiscalYearTotal: null });
+  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null, source: 'recognized', calendarYearTotal: null, fiscalYearTotal: null });
 
   const openConDrill = useCallback(() => {
     const rec = f9Financials?.concessionRecognition;
@@ -66,6 +67,7 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
       recognizedAmount: recognized,
       earnedAmount: earned,
       detail: aggregateConcessionDetail(rec.monthly_detail, yyyymms),
+      source: 'recognized',
       calendarYearTotal: calYr,
       fiscalYearTotal: fisYr,
     });
@@ -268,6 +270,7 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
       recognizedAmount={conDrill.recognizedAmount}
       earnedAmount={conDrill.earnedAmount}
       detail={conDrill.detail}
+      source={conDrill.source}
       calendarYearTotal={conDrill.calendarYearTotal}
       fiscalYearTotal={conDrill.fiscalYearTotal}
     />

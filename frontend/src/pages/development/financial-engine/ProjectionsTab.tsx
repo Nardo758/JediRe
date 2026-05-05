@@ -1041,9 +1041,10 @@ export function ProjectionsTab({
     recognizedAmount: number | null;
     earnedAmount: number | null;
     detail: AggregatedConcessionDetail | null;
+    source: 'earned' | 'recognized';
     calendarYearTotal: number | null;
     fiscalYearTotal: number | null;
-  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null, calendarYearTotal: null, fiscalYearTotal: null });
+  }>({ open: false, periodLabel: '', recognizedAmount: null, earnedAmount: null, detail: null, source: 'recognized', calendarYearTotal: null, fiscalYearTotal: null });
 
   // Narrative load — non-critical, fires once
   const loadNarrative = useCallback(async () => {
@@ -1352,6 +1353,7 @@ export function ProjectionsTab({
                                           recognizedAmount: recog.by_calendar_year[String(calYr)] ?? null,
                                           earnedAmount: (proj.concessions as number | null | undefined) ?? null,
                                           detail: aggregateConcessionDetail(recog.monthly_detail, yyyymms),
+                                          source: 'earned',
                                           calendarYearTotal: recog.by_calendar_year[String(calYr)] ?? null,
                                           fiscalYearTotal: recog.by_fiscal_year?.[String(calYr)] ?? null,
                                         });
@@ -1406,6 +1408,7 @@ export function ProjectionsTab({
                                             recognizedAmount: recog.monthly[yyyymm] ?? null,
                                             earnedAmount: subVal,
                                             detail: aggregateConcessionDetail(recog.monthly_detail, [yyyymm]),
+                                            source: 'earned',
                                             calendarYearTotal: recog.by_calendar_year?.[mYr] ?? null,
                                             fiscalYearTotal: recog.by_fiscal_year?.[mYr] ?? null,
                                           });
@@ -1475,6 +1478,7 @@ export function ProjectionsTab({
                                           recognizedAmount: recognizedAmt,
                                           earnedAmount: null,
                                           detail: aggregateConcessionDetail(recog.monthly_detail, yyyymms),
+                                          source: 'recognized',
                                           calendarYearTotal: recog.by_calendar_year?.[String(currentCalendarYear)] ?? null,
                                           fiscalYearTotal: recog.by_fiscal_year?.[String(currentCalendarYear)] ?? null,
                                         });
@@ -1625,6 +1629,7 @@ export function ProjectionsTab({
       recognizedAmount={concessionDrill.recognizedAmount}
       earnedAmount={concessionDrill.earnedAmount}
       detail={concessionDrill.detail}
+      source={concessionDrill.source}
       calendarYearTotal={concessionDrill.calendarYearTotal}
       fiscalYearTotal={concessionDrill.fiscalYearTotal}
     />
