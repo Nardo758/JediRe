@@ -16,11 +16,19 @@
 //   "Does this assumption affect leasing velocity, occupancy, or rent capture?"
 //   YES → Leasing tab. NO → General tab.
 //   Bad debt is Leasing (revenue-side, M22 pipeline same as renewal rate).
+//
+// Category J = Renovation Assumptions (VALUE_ADD / REDEVELOPMENT mode only).
+//   Mode Override control lives in Deal Settings per spec §6.5 — not here.
 // ============================================================================
 
 export type FieldTier = 'beginner' | 'advanced' | 'expert';
 export type FieldType = 'percent' | 'currency' | 'integer' | 'days' | 'months' | 'month' | 'enum' | 'array' | 'schedule';
-export type LeaseMode = 'LEASE_UP_NEW_CONSTRUCTION' | 'STABILIZED_MAINTENANCE' | 'OCCUPANCY_RECOVERY';
+export type LeaseMode =
+  | 'LEASE_UP_NEW_CONSTRUCTION'
+  | 'STABILIZED_MAINTENANCE'
+  | 'OCCUPANCY_RECOVERY'
+  | 'VALUE_ADD'
+  | 'REDEVELOPMENT';
 
 export interface LeasingFieldDef {
   id: string;
@@ -28,13 +36,13 @@ export interface LeasingFieldDef {
   path: string;
   type: FieldType;
   tier: FieldTier;
-  /** Which modes surface this field. Empty = all modes. */
+  /** Which modes surface this field. 'all' = every mode. */
   modes: LeaseMode[] | 'all';
   /** Read-only computed field — no edit affordance */
   readonly?: boolean;
   /** Platform default value (for display when no override exists) */
   platformDefault?: number | string | null;
-  /** Validation bounds [min, max] */
+  /** Validation bounds (in native units — percent fields use 0–1) */
   min?: number;
   max?: number;
   /** Enum values if type === 'enum' */
@@ -42,13 +50,13 @@ export interface LeasingFieldDef {
   tooltip: string;
   /** Default source description */
   defaultSource: string;
-  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I';
+  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J';
 }
 
 export interface LeasingCategoryDef {
-  id: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I';
+  id: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J';
   label: string;
-  /** Modes where this entire category is visible */
+  /** Modes where this entire category is visible ('all' = always visible) */
   visibleIn: LeaseMode[] | 'all';
   fields: LeasingFieldDef[];
 }
@@ -115,7 +123,7 @@ const CAT_A: LeasingCategoryDef = {
 };
 
 // ── Category B — Renewal & Turnover Behavior ──────────────────────────────────
-// Hidden for LEASE_UP mode (no renewals during initial ramp)
+// Hidden for LEASE_UP and VALUE_ADD/REDEVELOPMENT (no renewals during initial ramp)
 const CAT_B: LeasingCategoryDef = {
   id: 'B',
   label: 'Renewal & Turnover',
@@ -130,7 +138,7 @@ const CAT_B: LeasingCategoryDef = {
       modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
       platformDefault: 0.55,
       min: 0.20, max: 0.85,
-      tooltip: 'Fraction of lease expirations that renew at the property. Drives Year 2+ vacancy and concession costs. Higher renewal = lower vacancy loss and fewer make-ready turns.',
+      tooltip: 'Fraction of lease expirations that renew at the property. Drives Year 2+ vacancy and concession costs.',
       defaultSource: 'Subject S2+ → peer set → platform 55%',
       category: 'B',
     },
@@ -155,7 +163,7 @@ const CAT_B: LeasingCategoryDef = {
       modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
       platformDefault: 21,
       min: 0, max: 90,
-      tooltip: 'Average days between move-out and new lease move-in. Drives the days-vacant correction in occupancy targeting. Longer vacancy = lower effective occupancy even at same renewal rate.',
+      tooltip: 'Average days between move-out and new lease move-in. Drives the days-vacant correction in occupancy targeting.',
       defaultSource: 'Subject S2+ → peer set → platform 21 days',
       category: 'B',
     },
@@ -168,7 +176,7 @@ const CAT_B: LeasingCategoryDef = {
       modes: 'all',
       platformDefault: 12,
       min: 3, max: 24,
-      tooltip: 'Weighted average lease term across the unit mix. Drives concession amortization period and LTL decay rate.',
+      tooltip: 'Weighted average lease term across the unit mix. Drives concession amortization and LTL decay rate.',
       defaultSource: 'Subject S1+ → peer set → platform 12 months',
       category: 'B',
     },
@@ -194,7 +202,7 @@ const CAT_B: LeasingCategoryDef = {
       modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
       platformDefault: 0.045,
       min: -0.10, max: 0.20,
-      tooltip: 'Rent change (%) on new leases compared to the prior tenant\'s rent. Positive = new tenant paying more. Drives effective rent ramp vs in-place rent.',
+      tooltip: 'Rent change (%) on new leases compared to the prior tenant\'s rent. Drives effective rent ramp vs in-place rent.',
       defaultSource: 'Subject S2+ → peer → platform 4.5%',
       category: 'B',
     },
@@ -216,7 +224,7 @@ const CAT_C: LeasingCategoryDef = {
       modes: 'all',
       platformDefault: 0.030,
       min: -0.05, max: 0.10,
-      tooltip: 'Year-over-year rent growth applied to all unit types. Platform calibrates from subject S2+ rent history → submarket peer set → MSA trend. Overriding with a schedule allows per-year control.',
+      tooltip: 'Year-over-year rent growth applied to all unit types. Platform calibrates from subject S2+ rent history → submarket peer set → MSA trend.',
       defaultSource: 'Subject S2+ → peer set → platform 3.0%',
       category: 'C',
     },
@@ -229,7 +237,7 @@ const CAT_C: LeasingCategoryDef = {
       modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
       platformDefault: 0,
       min: 0, max: 0.20,
-      tooltip: 'Gap between market rent and average in-place rent, expressed as % of market rent. Positive = in-place rents below market (value to capture on renewal). Decays as leases roll over.',
+      tooltip: 'Gap between market rent and average in-place rent, expressed as % of market rent. Positive = in-place rents below market (value to capture on renewal).',
       defaultSource: 'Subject S1+ → peer → platform 0%',
       category: 'C',
     },
@@ -242,7 +250,7 @@ const CAT_C: LeasingCategoryDef = {
       modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
       platformDefault: null,
       min: 0, max: 1.00,
-      tooltip: 'Annual rate at which loss-to-lease burns off as in-place leases roll to market. Platform default = 1 / avg_lease_term_months × 12. Override if your renewal rate implies a different roll schedule.',
+      tooltip: 'Annual rate at which loss-to-lease burns off as in-place leases roll to market. Platform default = 1 / avg_lease_term_months × 12.',
       defaultSource: 'Platform: 1 / avg_lease_term × 12',
       category: 'C',
     },
@@ -255,7 +263,7 @@ const CAT_C: LeasingCategoryDef = {
       modes: 'all',
       platformDefault: 0.02,
       min: 0, max: 0.05,
-      tooltip: 'Rent growth rate for income-restricted units (HUD/LIHTC). Separate from blended market-rate growth because affordable rents follow HUD adjustment schedules, not market dynamics.',
+      tooltip: 'Rent growth rate for income-restricted units. Separate from blended market-rate growth because affordable rents follow HUD adjustment schedules.',
       defaultSource: 'Platform 2%',
       category: 'C',
     },
@@ -276,7 +284,7 @@ const CAT_D: LeasingCategoryDef = {
       tier: 'beginner',
       modes: 'all',
       enumValues: ['CONSERVATIVE', 'MARKET', 'AGGRESSIVE'],
-      tooltip: 'Overall concession posture. CONSERVATIVE = below-market concessions (tight market). MARKET = peer-set average. AGGRESSIVE = above-market to accelerate velocity (lease-up or recovery).',
+      tooltip: 'Overall concession posture. CONSERVATIVE = below-market concessions. MARKET = peer-set average. AGGRESSIVE = above-market to accelerate velocity.',
       defaultSource: 'Mode-aware: MARKET for stabilized, AGGRESSIVE for recovery',
       category: 'D',
     },
@@ -288,7 +296,7 @@ const CAT_D: LeasingCategoryDef = {
       tier: 'beginner',
       modes: 'all',
       min: 0,
-      tooltip: 'One-time upfront concession per new lease (e.g. 1 month free). Flows through the concession line in the P&L for OPERATING treatment; reduces effective rent for HYBRID treatment.',
+      tooltip: 'One-time upfront concession per new lease (e.g. 1 month free). Flows through the concession line in the P&L.',
       defaultSource: 'Concession engine output',
       category: 'D',
     },
@@ -300,7 +308,7 @@ const CAT_D: LeasingCategoryDef = {
       tier: 'beginner',
       modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
       min: 0,
-      tooltip: 'One-time concession offered to retain renewing tenants. Typically smaller than new-lease concessions. Zero for lease-up (no renewals yet).',
+      tooltip: 'One-time concession offered to retain renewing tenants. Typically smaller than new-lease concessions.',
       defaultSource: 'Concession engine output',
       category: 'D',
     },
@@ -312,7 +320,7 @@ const CAT_D: LeasingCategoryDef = {
       tier: 'advanced',
       modes: ['LEASE_UP_NEW_CONSTRUCTION', 'OCCUPANCY_RECOVERY'],
       min: 0,
-      tooltip: 'Recurring monthly rent abatement on new leases. Common in aggressive lease-up or recovery campaigns. Zero for stabilized deals.',
+      tooltip: 'Recurring monthly rent abatement on new leases. Common in aggressive lease-up or recovery campaigns.',
       defaultSource: 'Concession engine output (0 for stabilized)',
       category: 'D',
     },
@@ -324,7 +332,7 @@ const CAT_D: LeasingCategoryDef = {
       tier: 'advanced',
       modes: ['OCCUPANCY_RECOVERY'],
       min: 0,
-      tooltip: 'Recurring monthly abatement offered to retain renewing tenants during recovery. Used when occupancy is critically low and retention is a priority.',
+      tooltip: 'Recurring monthly abatement offered to retain renewing tenants during recovery.',
       defaultSource: 'Concession engine output (0 for stabilized/lease-up)',
       category: 'D',
     },
@@ -336,7 +344,7 @@ const CAT_D: LeasingCategoryDef = {
       tier: 'advanced',
       modes: 'all',
       min: 0, max: 1.00,
-      tooltip: 'Fraction of new leases that actually receive a concession. 100% in lease-up (everyone gets it). ~40% in stable market. ~70% in recovery.',
+      tooltip: 'Fraction of new leases that actually receive a concession. 100% in lease-up. ~40% in stable market. ~70% in recovery.',
       defaultSource: 'Mode-aware: LEASE_UP 100%, STAB 40%, REC 70%',
       category: 'D',
     },
@@ -348,7 +356,7 @@ const CAT_D: LeasingCategoryDef = {
       tier: 'advanced',
       modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
       min: 0, max: 1.00,
-      tooltip: 'Fraction of renewals receiving a concession. 10% in stabilized (competitive retention). 30% in recovery (aggressive retention).',
+      tooltip: 'Fraction of renewals receiving a concession. 10% in stabilized (competitive retention). 30% in recovery.',
       defaultSource: 'Platform 10% stabilized, 30% recovery',
       category: 'D',
     },
@@ -370,7 +378,7 @@ const CAT_E: LeasingCategoryDef = {
       modes: ['LEASE_UP_NEW_CONSTRUCTION'],
       platformDefault: 0,
       min: 0,
-      tooltip: 'Number of units under signed lease at delivery (pre-leased during construction). Reduces the absorbed units needed from zero on day one.',
+      tooltip: 'Number of units under signed lease at delivery. Reduces absorbed units needed from zero on day one.',
       defaultSource: 'Platform 0 (no pre-leasing assumed)',
       category: 'E',
     },
@@ -393,7 +401,7 @@ const CAT_E: LeasingCategoryDef = {
       tier: 'beginner',
       modes: ['LEASE_UP_NEW_CONSTRUCTION'],
       enumValues: ['LOW', 'MARKET', 'AGGRESSIVE'],
-      tooltip: 'Overall marketing spend posture during lease-up. Drives the cost stack (per-lease marketing spend, base monthly spend). AGGRESSIVE unlocks higher velocity at higher cost.',
+      tooltip: 'Overall marketing spend posture during lease-up. AGGRESSIVE unlocks higher velocity at higher cost.',
       defaultSource: 'Platform MARKET',
       category: 'E',
     },
@@ -406,7 +414,7 @@ const CAT_E: LeasingCategoryDef = {
       modes: ['LEASE_UP_NEW_CONSTRUCTION'],
       platformDefault: 6,
       min: 3, max: 12,
-      tooltip: 'Number of months before delivery when pre-leasing begins. Longer window = more pre-leased units at delivery. Must align with construction schedule.',
+      tooltip: 'Number of months before delivery when pre-leasing begins. Must align with construction schedule.',
       defaultSource: 'Platform 6 months',
       category: 'E',
     },
@@ -431,7 +439,7 @@ const CAT_E: LeasingCategoryDef = {
       tier: 'expert',
       modes: ['LEASE_UP_NEW_CONSTRUCTION'],
       min: 6, max: 36,
-      tooltip: 'Override the engine-detected stabilization month. Use when you have a contractual obligation (e.g. construction loan stabilization test) that differs from the engine\'s estimate.',
+      tooltip: 'Override the engine-detected stabilization month. Use when you have a contractual obligation that differs from the engine\'s estimate.',
       defaultSource: 'Engine-detected (no override)',
       category: 'E',
     },
@@ -453,7 +461,7 @@ const CAT_F: LeasingCategoryDef = {
       modes: ['OCCUPANCY_RECOVERY'],
       platformDefault: 12,
       min: 3, max: 36,
-      tooltip: 'Target months to recover from current occupancy to stabilized target. Drives absorption curve intensity and marketing budget. Shorter = more aggressive spend.',
+      tooltip: 'Target months to recover from current occupancy to stabilized target. Shorter = more aggressive spend.',
       defaultSource: 'Platform 12 months',
       category: 'F',
     },
@@ -466,7 +474,7 @@ const CAT_F: LeasingCategoryDef = {
       modes: ['OCCUPANCY_RECOVERY'],
       platformDefault: 0.30,
       min: 0, max: 1.00,
-      tooltip: 'Fraction of new leases sourced through apartment locators or brokers during recovery. Higher locator usage = faster absorption but higher cost per lease.',
+      tooltip: 'Fraction of new leases sourced through apartment locators or brokers during recovery. Higher = faster absorption but higher cost.',
       defaultSource: 'Platform 30%',
       category: 'F',
     },
@@ -487,7 +495,7 @@ const CAT_G: LeasingCategoryDef = {
       tier: 'advanced',
       modes: 'all',
       min: 0, max: 5000,
-      tooltip: 'Variable marketing cost per signed lease (digital ads, ILS listings, outreach). Mode-aware default: $1,800 lease-up / $400 stabilized / $1,000 recovery.',
+      tooltip: 'Variable marketing cost per signed lease. Mode-aware default: $1,800 lease-up / $400 stabilized / $1,000 recovery.',
       defaultSource: 'Mode-aware: $1,800 LEASE_UP / $400 STAB / $1,000 REC',
       category: 'G',
     },
@@ -499,7 +507,7 @@ const CAT_G: LeasingCategoryDef = {
       tier: 'advanced',
       modes: 'all',
       min: 0, max: 50000,
-      tooltip: 'Fixed monthly marketing spend regardless of leasing volume (brand campaigns, model unit, signage). Mode-aware default: $8,000 lease-up / $2,000 stabilized / $4,000 recovery.',
+      tooltip: 'Fixed monthly marketing spend regardless of leasing volume. Mode-aware default: $8,000 lease-up / $2,000 stabilized / $4,000 recovery.',
       defaultSource: 'Mode-aware: $8K LEASE_UP / $2K STAB / $4K REC',
       category: 'G',
     },
@@ -512,7 +520,7 @@ const CAT_G: LeasingCategoryDef = {
       modes: 'all',
       platformDefault: 0.50,
       min: 0, max: 1.50,
-      tooltip: 'Fee paid to apartment locators or brokers per lease, expressed as fraction of one month\'s rent. Platform default 0.5 (half month). Paid only on locator-sourced leases.',
+      tooltip: 'Fee paid to apartment locators or brokers per lease, expressed as fraction of one month\'s rent.',
       defaultSource: 'Platform 0.5 (half month\'s rent)',
       category: 'G',
     },
@@ -536,7 +544,7 @@ const CAT_G: LeasingCategoryDef = {
       tier: 'advanced',
       modes: ['STABILIZED_MAINTENANCE', 'OCCUPANCY_RECOVERY'],
       min: 0, max: 10000,
-      tooltip: 'Cost to prepare a unit for the next tenant after move-out (cleaning, paint, minor repairs). Platform default is class-aware: $1,500 Class A / $1,000 Class B / $700 Class C.',
+      tooltip: 'Cost to prepare a unit for the next tenant after move-out. Platform default is class-aware: $1,500 Class A / $1,000 Class B / $700 Class C.',
       defaultSource: 'Platform class-aware: $1,500A / $1,000B / $700C',
       category: 'G',
     },
@@ -557,7 +565,7 @@ const CAT_H: LeasingCategoryDef = {
       tier: 'expert',
       modes: 'all',
       min: 0.05, max: 0.50,
-      tooltip: 'Fraction of prospects (inquiries/ILS leads) who schedule and complete a tour. Drives implied prospect volume needed to hit leasing velocity.',
+      tooltip: 'Fraction of prospects who schedule and complete a tour. Drives implied prospect volume needed to hit leasing velocity.',
       defaultSource: 'Mode-aware platform default',
       category: 'H',
     },
@@ -613,7 +621,6 @@ const CAT_H: LeasingCategoryDef = {
 };
 
 // ── Category I — Bad Debt & Other Income ─────────────────────────────────────
-// Bad debt is Leasing (revenue-side, calibrated through M22 same pipeline as renewal rate)
 const CAT_I: LeasingCategoryDef = {
   id: 'I',
   label: 'Bad Debt & Other Income',
@@ -628,7 +635,7 @@ const CAT_I: LeasingCategoryDef = {
       modes: 'all',
       platformDefault: 0.01,
       min: 0, max: 0.05,
-      tooltip: 'Annual uncollectible rent as % of gross potential rent. M22 actuals → peer set → platform 1%. Revenue-side loss distinct from vacancy; shows on the P&L below concessions.',
+      tooltip: 'Annual uncollectible rent as % of gross potential rent. Revenue-side loss distinct from vacancy.',
       defaultSource: 'M22 actuals → peer set → platform 1%',
       category: 'I',
     },
@@ -640,21 +647,133 @@ const CAT_I: LeasingCategoryDef = {
       tier: 'advanced',
       modes: 'all',
       min: -0.05, max: 0.10,
-      tooltip: 'Year-over-year growth applied to parking, pet fees, laundry, and other ancillary income. Platform default = 50% of blended rent growth (ancillary income grows slower than rent).',
+      tooltip: 'Year-over-year growth applied to parking, pet fees, laundry, and other ancillary income. Platform default = 50% of blended rent growth.',
       defaultSource: 'Platform: blended_rent_growth × 0.5',
       category: 'I',
     },
   ],
 };
 
-// ── Full category list — ordered for display ──────────────────────────────────
+// ── Category J — Renovation Assumptions (VALUE_ADD / REDEVELOPMENT only) ──────
+// Mode Override control lives in Deal Settings per spec §6.5 — not here.
+// These fields gate on VALUE_ADD and REDEVELOPMENT modes which engage when the
+// engine detects or the user declares a capex-intensive improvement program.
+const CAT_J: LeasingCategoryDef = {
+  id: 'J',
+  label: 'Renovation Assumptions',
+  visibleIn: ['VALUE_ADD', 'REDEVELOPMENT'],
+  fields: [
+    {
+      id: 'j_reno_lift_pct',
+      label: 'Rent lift after renovation (%)',
+      path: 'reno.assumptions.rent_lift_pct',
+      type: 'percent',
+      tier: 'beginner',
+      modes: ['VALUE_ADD', 'REDEVELOPMENT'],
+      platformDefault: 0.15,
+      min: 0.00, max: 0.60,
+      tooltip: 'Expected percentage increase in achievable rent after a full unit renovation. Drives the post-renovation effective rent ramp. Platform default 15% based on peer set for B→B+ repositionings.',
+      defaultSource: 'Peer set for asset class & submarket → platform 15%',
+      category: 'J',
+    },
+    {
+      id: 'j_after_repair_rent',
+      label: 'After-repair rent target ($/unit/mo)',
+      path: 'reno.assumptions.after_repair_rent_per_unit',
+      type: 'currency',
+      tier: 'beginner',
+      modes: ['VALUE_ADD', 'REDEVELOPMENT'],
+      min: 0, max: 10000,
+      tooltip: 'Absolute post-renovation rent target per unit per month. Overrides the percentage-lift model when you have a firm comparable set. Leave blank to use the lift % above.',
+      defaultSource: 'User input or peer set comps',
+      category: 'J',
+    },
+    {
+      id: 'j_reno_budget_per_unit',
+      label: 'Renovation budget per unit ($)',
+      path: 'reno.assumptions.budget_per_unit',
+      type: 'currency',
+      tier: 'beginner',
+      modes: ['VALUE_ADD', 'REDEVELOPMENT'],
+      min: 0, max: 150000,
+      tooltip: 'All-in hard and soft renovation cost per unit (unit interiors only; exclude common areas and exterior). Feeds the capex waterfall and DSCR tests.',
+      defaultSource: 'M22 capex schedule → contractor bids → platform estimate',
+      category: 'J',
+    },
+    {
+      id: 'j_reno_timeline_months',
+      label: 'Renovation timeline (months/unit)',
+      path: 'reno.assumptions.timeline_months_per_unit',
+      type: 'months',
+      tier: 'beginner',
+      modes: ['VALUE_ADD', 'REDEVELOPMENT'],
+      platformDefault: 1,
+      min: 0.25, max: 6,
+      tooltip: 'Average calendar time to complete one unit renovation from move-out to ready-to-lease. Drives the renovation schedule pacing and resultant vacancy drag.',
+      defaultSource: 'Contractor schedule → platform 1 month',
+      category: 'J',
+    },
+    {
+      id: 'j_reno_pct_of_units',
+      label: 'Fraction of units to renovate (%)',
+      path: 'reno.assumptions.pct_of_units_to_renovate',
+      type: 'percent',
+      tier: 'advanced',
+      modes: ['VALUE_ADD', 'REDEVELOPMENT'],
+      platformDefault: 1.00,
+      min: 0.10, max: 1.00,
+      tooltip: 'What fraction of the total unit count will receive the full renovation scope. 100% = all units renovated. Partial programs (e.g. 60%) renovate only the lowest-rent units first.',
+      defaultSource: 'Platform 100% (full program)',
+      category: 'J',
+    },
+    {
+      id: 'j_reno_batches_per_year',
+      label: 'Renovation batches per year',
+      path: 'reno.assumptions.batches_per_year',
+      type: 'integer',
+      tier: 'advanced',
+      modes: ['VALUE_ADD', 'REDEVELOPMENT'],
+      platformDefault: 12,
+      min: 1, max: 52,
+      tooltip: 'How many separate renovation tranches run per year. 12 = monthly batches (rolling). 1 = one annual batch (all units offline at once). Higher = smoother vacancy drag but more GC coordination.',
+      defaultSource: 'Platform 12 (monthly batches)',
+      category: 'J',
+    },
+    {
+      id: 'j_reno_absorption_lag_days',
+      label: 'Post-reno absorption lag (days)',
+      path: 'reno.assumptions.absorption_lag_days',
+      type: 'days',
+      tier: 'expert',
+      modes: ['VALUE_ADD', 'REDEVELOPMENT'],
+      platformDefault: 21,
+      min: 0, max: 90,
+      tooltip: 'Median days between renovation completion and a new tenant moving in. Analogous to days_vacant for renovated units. Affects the period of zero-rent hold between renovation finish and re-occupancy.',
+      defaultSource: 'Platform 21 days (same as market turn)',
+      category: 'J',
+    },
+  ],
+};
+
+// ── Full category list — ordered for display (A → J) ─────────────────────────
 export const LEASING_CATEGORIES: LeasingCategoryDef[] = [
-  CAT_A, CAT_B, CAT_C, CAT_D, CAT_E, CAT_F, CAT_G, CAT_H, CAT_I,
+  CAT_A, CAT_B, CAT_C, CAT_D, CAT_E, CAT_F, CAT_G, CAT_H, CAT_I, CAT_J,
 ];
 
+// ── Path → field def lookup (for hydration decode + enum index round-trip) ────
+// Used in AssumptionsTab to decode backend numeric enum indices back to strings
+// and to identify which userOverride keys belong to leasing fields on hydration.
+export const LEASING_FIELDS_BY_PATH: Record<string, LeasingFieldDef> = {};
+for (const cat of LEASING_CATEGORIES) {
+  for (const f of cat.fields) {
+    LEASING_FIELDS_BY_PATH[f.path] = f;
+  }
+}
+
 // ── Override migration map — Section 5 old paths → new spec paths ─────────────
-// Runs once per deal on first load after deploy.
+// Runs once per deal on first load after hydration.
 // null = field is now engine-computed; drop any existing override.
+// Enum fields: concession_pct_of_rent is decoded → enum string in the migration effect.
 export const SECTION5_MIGRATION_MAP: Record<string, string | null> = {
   'traffic.stabilized_occupancy_target':    'traffic.stabilization.ceiling_occupancy',
   'traffic.loss_to_lease_pct':              'traffic.loss_to_lease_pct', // unchanged
@@ -667,12 +786,14 @@ export const SECTION5_MIGRATION_MAP: Record<string, string | null> = {
   'traffic.t05_trade_area_capture_pct':     'traffic.funnel_conversion.active.prospect_to_tour',
 };
 
-// ── Mode → visible categories ─────────────────────────────────────────────────
-export function getVisibleCategories(mode: LeaseMode | null): ('A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I')[] {
-  const base: ('A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I')[] = ['A','C','D','G','H','I'];
+// ── Mode → visible categories helper ─────────────────────────────────────────
+export function getVisibleCategories(mode: LeaseMode | null): ('A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J')[] {
+  const base: ('A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J')[] = ['A','C','D','G','H','I'];
   if (mode === 'LEASE_UP_NEW_CONSTRUCTION') return [...base, 'E'];
   if (mode === 'STABILIZED_MAINTENANCE')    return [...base, 'B'];
   if (mode === 'OCCUPANCY_RECOVERY')        return [...base, 'B', 'F'];
+  if (mode === 'VALUE_ADD')                 return [...base, 'B', 'J'];
+  if (mode === 'REDEVELOPMENT')             return [...base, 'J'];
   return [...base, 'B']; // default: show stabilized view
 }
 

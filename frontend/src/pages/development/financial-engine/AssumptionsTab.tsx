@@ -12,7 +12,7 @@ import { computeConfidenceBands, evaluateRefusal } from '../../../services/profo
 import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma/types';
 import { LeasingCostTreatmentToggle, type LeasingCostTreatment } from './LeaseVelocitySection';
 import { LeasingAssumptionsTab, LeasingSummaryCard } from './LeasingAssumptionsTab';
-import { SECTION5_MIGRATION_MAP } from '../../../config/leasing-fields.config';
+import { SECTION5_MIGRATION_MAP, LEASING_FIELDS_BY_PATH } from '../../../config/leasing-fields.config';
 
 // ─── Backend contract ──────────────────────────────────────────────────────────
 interface OSRow {
@@ -1710,21 +1710,59 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     }
     if (Object.keys(newPaths).length > 0) {
       setLeasingPathOverrides(prev => ({ ...newPaths, ...prev })); // session edits win
+      // Persist migrated values back through the existing override pipeline so they
+      // become authoritative backend overrides (not just session-local).
+      // Enum values are stored as their index in field.enumValues (backend contract).
+      for (const [path, val] of Object.entries(newPaths)) {
+        if (val == null) continue;
+        const fieldDef = LEASING_FIELDS_BY_PATH[path];
+        if (!fieldDef) continue;
+        if (fieldDef.type === 'enum' && typeof val === 'string' && fieldDef.enumValues) {
+          const idx = fieldDef.enumValues.indexOf(val);
+          if (idx >= 0) enqueuePatch(path, 0, idx);
+        } else if (typeof val === 'number') {
+          enqueuePatch(path, 0, val);
+        }
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [financials?.userOverrides, dealId]);
+
+  // ── leasingPathOverrides hydration from backend userOverrides ─────────────
+  // On every successful financials fetch, decode any leasing field paths found
+  // in userOverrides and populate leasingPathOverrides. Session edits (prev) win.
+  // Enum fields: backend stores the index (number) → decode to enum string.
+  useEffect(() => {
+    if (!financials?.userOverrides) return;
+    const decoded: Record<string, number | string | null> = {};
+    for (const [path, yearVals] of Object.entries(financials.userOverrides)) {
+      const fieldDef = LEASING_FIELDS_BY_PATH[path];
+      if (!fieldDef) continue; // not a leasing field — skip
+      const val = yearVals[0] ?? yearVals[1] ?? null;
+      if (val == null) continue;
+      if (fieldDef.type === 'enum' && typeof val === 'number' && fieldDef.enumValues) {
+        decoded[path] = fieldDef.enumValues[val] ?? String(val);
+      } else {
+        decoded[path] = val;
+      }
+    }
+    if (Object.keys(decoded).length > 0) {
+      setLeasingPathOverrides(prev => ({ ...decoded, ...prev })); // session edits win
+    }
+  }, [financials?.userOverrides]);
 
   // ── Leasing field commit handler ──────────────────────────────────────────
   // Declared after enqueuePatch so it can close over it.
   // Validation (type + bounds) is done in EditableCell before this is called,
   // but we defend here too in case of direct calls.
-  // - Enum fields: stored as string in leasingPathOverrides (no enqueuePatch — not year-matrix-keyed)
+  // - Enum fields: stored as string in leasingPathOverrides, persisted to backend as their
+  //   index in field.enumValues (via enqueuePatch year 0). Decoded on hydration.
   // - Numeric fields: stored in leasingPathOverrides AND enqueued to backend via enqueuePatch
   //   using year 0 as a sentinel (year-independent leasing fields).
   const handleLeasingFieldCommit = useCallback((
     path: string,
     rawInput: string,
-    field: { type: string; min?: number; max?: number; readonly?: boolean },
+    field: { type: string; min?: number; max?: number; readonly?: boolean; enumValues?: string[] },
   ) => {
     const trimmed = rawInput.trim();
     if (!trimmed || field.readonly) return;
@@ -1732,6 +1770,9 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     if (field.type === 'enum') {
       finalVal = trimmed;
       setLeasingPathOverrides(prev => ({ ...prev, [path]: finalVal }));
+      // Persist as enum index through the existing override pipeline (backend contract)
+      const idx = field.enumValues?.indexOf(trimmed) ?? -1;
+      if (idx >= 0) enqueuePatch(path, 0, idx);
     } else {
       const raw = trimmed.replace('%', '').replace('$', '').replace(/,/g, '');
       const num = parseFloat(raw);
