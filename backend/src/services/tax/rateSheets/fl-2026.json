@@ -1,0 +1,56 @@
+{
+  "jurisdiction": "fl",
+  "level": "state",
+  "year": 2026,
+  "version": "fl-2026.v1",
+  "as_of": "2026-01-15T00:00:00.000Z",
+  "valid_through": "2026-12-31T23:59:59.000Z",
+  "source_citations": [
+    {
+      "field": "transfer_tax.deed_rate_per_100",
+      "source_url": "https://floridarevenue.com/taxes/taxesfees/Pages/doc_stamp.aspx",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "FL DOR — Documentary Stamp Tax"
+    },
+    {
+      "field": "transfer_tax.intangible_rate_per_100",
+      "source_url": "https://floridarevenue.com/taxes/taxesfees/Pages/intangible.aspx",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "FL DOR — Intangible Personal Property Tax"
+    },
+    {
+      "field": "tpp",
+      "source_url": "https://floridarevenue.com/property/Pages/Taxpayers_TPP.aspx",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "FL DOR — Tangible Personal Property"
+    },
+    {
+      "field": "state_income_tax_rate",
+      "source_url": "https://floridarevenue.com/taxes/taxesfees/Pages/corporate.aspx",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "FL DOR — Corporate Income Tax"
+    }
+  ],
+  "transfer_tax": {
+    "deed_rate_per_100": 0.70,
+    "intangible_rate_per_100": 0.20,
+    "mortgage_stamp_rate_per_100": 0.35,
+    "recording_fee_per_page": 10
+  },
+  "tpp": {
+    "taxed": true,
+    "millage": "same_as_re",
+    "exemption_amount": 25000,
+    "filing_form": "DR-405",
+    "filing_deadline": "April 1"
+  },
+  "state_income_tax_rate": [
+    { "entity_type": "individual",   "rate": 0.00 },
+    { "entity_type": "pass_through", "rate": 0.00 },
+    { "entity_type": "c_corp",       "rate": 0.055 },
+    { "entity_type": "reit",         "rate": 0.00 },
+    { "entity_type": "partnership",  "rate": 0.00 }
+  ],
+  "conforms_to_bonus_dep": true,
+  "conforms_to_cost_seg": true
+}

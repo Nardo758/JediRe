@@ -1,0 +1,39 @@
+{
+  "jurisdiction": "fl-miami-dade",
+  "level": "county",
+  "year": 2026,
+  "version": "fl-miami-dade-2026.v1",
+  "as_of": "2025-09-20T00:00:00.000Z",
+  "valid_through": "2026-09-30T23:59:59.000Z",
+  "source_citations": [
+    {
+      "field": "millage.aggregate",
+      "source_url": "https://www.miamidade.gov/pa/property_tax_estimator.asp",
+      "retrieved_at": "2025-09-20T10:00:00.000Z",
+      "document_title": "Miami-Dade Property Appraiser — FY2025/26 TRIM Notice Millage Rates"
+    },
+    {
+      "field": "county_surtax",
+      "source_url": "https://floridarevenue.com/taxes/taxesfees/Pages/doc_stamp.aspx",
+      "retrieved_at": "2026-01-15T10:00:00.000Z",
+      "document_title": "FL DOR — Miami-Dade County Documentary Stamp Tax Surtax"
+    }
+  ],
+  "millage": {
+    "aggregate": 19.8344,
+    "breakdown": [
+      { "authority": "Miami-Dade County",        "rate": 4.6669,  "applies_to": "all" },
+      { "authority": "School Board",              "rate": 7.0190,  "applies_to": "all" },
+      { "authority": "Children's Trust",          "rate": 0.4673,  "applies_to": "all" },
+      { "authority": "Library",                   "rate": 0.2840,  "applies_to": "all" },
+      { "authority": "Fire & Rescue",             "rate": 2.4207,  "applies_to": "all" },
+      { "authority": "South Florida Water Mgmt",  "rate": 0.0948,  "applies_to": "all" },
+      { "authority": "FIND",                      "rate": 0.0288,  "applies_to": "all" },
+      { "authority": "City (varies)",             "rate": 4.8529,  "applies_to": "all" }
+    ]
+  },
+  "county_surtax": {
+    "rate_per_100": 0.45,
+    "applies_to": "all"
+  }
+}

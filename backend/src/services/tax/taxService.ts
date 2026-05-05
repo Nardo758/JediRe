@@ -94,6 +94,13 @@ export const taxService = {
         deltaVsT12Pct,
       },
       transferTax,
+      /**
+       * sectionC — Income Tax & Depreciation.
+       * Returned as null in Phase 1. Phase 2 (federal ruleset) will populate
+       * this using the ruleset's Section C methods and the federal-2026.json
+       * rate sheet. Existing callers that don't read sectionC are unaffected.
+       */
+      sectionC: null,
       specialTaxes: ruleset.specialTaxes(ctx),
       abatementPrograms: ruleset.abatementEligibility(ctx),
     };

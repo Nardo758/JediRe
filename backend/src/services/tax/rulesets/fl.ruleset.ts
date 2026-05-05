@@ -12,16 +12,21 @@
  * - Refi: doc stamps 0.35% + intangible tax 0.2% on new note
  *
  * Millage defaults (mills per $1,000 assessed value):
- *   Miami-Dade non-homestead: 23.09   (FY2024/25 blended)
+ *   Miami-Dade non-homestead: 23.09   (FY2024/25 blended; county overlay in Phase 3)
  *   Statewide FL commercial:  20.00   (conservative statewide median)
  *
- * These defaults fire only when no county millage data is available from the DB.
- * Override via ctx.millageRateOverride.
+ * Section B (TPP) and Section C (income tax) are stubbed as safe defaults.
+ * Phase 3 will populate: taxesTPP()=true, tppExemptionAmount()=25000,
+ * stateIncomeTaxRate('c_corp')=0.055, conformsToBonusDep()=true.
  *
  * Source: FL Statutes §193.155, §201.02, §199.133; Miami-Dade TRIM notices
  */
 
-import type { TaxContext, TaxRuleset, ReTaxYear, TransferTaxResult, SpecialTax, AbatementProgram } from '../types';
+import type {
+  TaxContext, TaxRuleset, ReTaxYear, TransferTaxResult,
+  SpecialTax, AbatementProgram, TPPContext, TaxLineResult,
+  AssetClass, EntityType,
+} from '../types';
 
 const FL_SOH_CAP = 0.10;        // 10% non-homestead annual assessed-value cap
 const FL_MARKET_GROWTH = 0.12; // 12%/yr appreciation assumption — exceeds cap so cap binds
@@ -41,15 +46,6 @@ const MIAMI_DADE_CITIES_FALLBACK = new Set([
   'sunny isles beach', 'surfside', 'sweetwater', 'virginia gardens', 'west miami',
 ]);
 
-/**
- * Normalize a county string to canonical lowercase, stripping punctuation and
- * trailing 'county' for loose-match lookups.
- * Examples:
- *   'Miami-Dade'       → 'miami dade'
- *   'Miami Dade County'→ 'miami dade'
- *   'Dade County'      → 'dade'
- *   'miami-dade'       → 'miami dade'
- */
 function normalizeCounty(s: string): string {
   return s.toLowerCase()
     .replace(/[-_]/g, ' ')
@@ -59,20 +55,9 @@ function normalizeCounty(s: string): string {
 }
 
 const MIAMI_DADE_COUNTY_VARIANTS = new Set([
-  'miami dade',
-  'miami-dade',
-  'dade',
-  'miami dade county',
+  'miami dade', 'miami-dade', 'dade', 'miami dade county',
 ]);
 
-/**
- * Determine if a deal is in Miami-Dade county.
- *
- * Resolution order:
- * 1. countyOverride (explicit user override: 1=Miami-Dade, 0=statewide)
- * 2. ctx.county field, normalized (preferred — resolved upstream via resolver.deriveCounty())
- * 3. City-name fallback (safety net when county resolution fails)
- */
 function resolveIsMiamiDade(ctx: TaxContext): boolean {
   if (ctx.countyOverride !== null) return ctx.countyOverride;
   if (ctx.county != null) {
@@ -88,8 +73,19 @@ function resolveMillage(ctx: TaxContext, isMiamiDade: boolean): number {
   return isMiamiDade ? FL_MILLAGE_MIAMI_DADE : FL_MILLAGE_STATEWIDE;
 }
 
+const ZERO_TPP_RESULT: TaxLineResult = {
+  amount: 0,
+  formula: 'taxesTPP()=false for FL (Phase 1 stub; Phase 3 will enable)',
+  inputs: {},
+  reassessmentEventInYear: false,
+  confidence: 'low',
+  notes: ['FL TPP tax not yet wired — Phase 3 expansion pending'],
+};
+
 export const flRuleset: TaxRuleset = {
   jurisdiction: 'FL',
+
+  // ── Section A ─────────────────────────────────────────────────────────────────
 
   annualPropertyTax(ctx: TaxContext, year: number, prevAssessedValue: number): ReTaxYear {
     const isMiamiDade = resolveIsMiamiDade(ctx);
@@ -100,7 +96,6 @@ export const flRuleset: TaxRuleset = {
     const marketValue = baseAssessed * Math.pow(1 + FL_MARKET_GROWTH, year - 1);
     let assessedValue: number;
     let sohCapBinding = false;
-
     let rawAssessedValue: number;
 
     if (year === 1) {
@@ -109,25 +104,16 @@ export const flRuleset: TaxRuleset = {
     } else {
       const capLimited = Math.min(marketValue, prevAssessedValue * (1 + FL_SOH_CAP));
       sohCapBinding = marketValue > capLimited + 1;
-      rawAssessedValue = capLimited;          // preserve full precision for next-year compounding
-      assessedValue = Math.round(capLimited); // rounded value for display / tax calculation
+      rawAssessedValue = capLimited;
+      assessedValue = Math.round(capLimited);
     }
 
     const taxAmount = Math.round(assessedValue * (millageRate / 1000));
-    return {
-      year,
-      assessedValue,
-      _rawAssessedValue: rawAssessedValue,
-      millageRate,
-      taxAmount,
-      sohCapBinding,
-      reassessmentEvent: isReassessment,
-    };
+    return { year, assessedValue, _rawAssessedValue: rawAssessedValue, millageRate, taxAmount, sohCapBinding, reassessmentEvent: isReassessment };
   },
 
   acquisitionTransferTax(ctx: TaxContext): TransferTaxResult {
     const isMiamiDade = resolveIsMiamiDade(ctx);
-    const millageRate = resolveMillage(ctx, isMiamiDade);
     const miamiDadeRatePct = 0.0105;
     const statewideFlatRatePct = 0.0070;
     const appliedRatePct = isMiamiDade ? miamiDadeRatePct : statewideFlatRatePct;
@@ -141,82 +127,59 @@ export const flRuleset: TaxRuleset = {
       const refiDocStampAmount = refiLoanAmount != null ? Math.round(refiLoanAmount * 0.0035) : null;
       const refiIntangibleTaxAmount = refiLoanAmount != null ? Math.round(refiLoanAmount * 0.002) : null;
       const refiTotalTax = ((refiDocStampAmount ?? 0) + (refiIntangibleTaxAmount ?? 0)) || null;
-      refi = {
-        enabled: ctx.refiEnabled,
-        triggerYear: ctx.refiTriggerYear,
-        newLoanType: ctx.refiNewLoanType,
-        refiLoanAmount,
-        refiDocStampAmount,
-        refiIntangibleTaxAmount,
-        refiTotalTax,
-      };
+      refi = { enabled: ctx.refiEnabled, triggerYear: ctx.refiTriggerYear, newLoanType: ctx.refiNewLoanType, refiLoanAmount, refiDocStampAmount, refiIntangibleTaxAmount, refiTotalTax };
     } else {
-      refi = {
-        enabled: false,
-        triggerYear: ctx.refiTriggerYear,
-        newLoanType: ctx.refiNewLoanType,
-        refiLoanAmount: null,
-        refiDocStampAmount: null,
-        refiIntangibleTaxAmount: null,
-        refiTotalTax: null,
-      };
+      refi = { enabled: false, triggerYear: ctx.refiTriggerYear, newLoanType: ctx.refiNewLoanType, refiLoanAmount: null, refiDocStampAmount: null, refiIntangibleTaxAmount: null, refiTotalTax: null };
     }
 
-    return {
-      isMiamiDade,
-      miamiDadeRatePct,
-      statewideFlatRatePct,
-      appliedRatePct,
-      docStampAmount,
-      intangibleTaxAmount,
-      loanAmount: ctx.loanAmount,
-      totalTransferTax,
-      refi,
-    };
+    return { isMiamiDade, miamiDadeRatePct, statewideFlatRatePct, appliedRatePct, docStampAmount, intangibleTaxAmount, loanAmount: ctx.loanAmount, totalTransferTax, refi };
   },
 
   dispositionTransferTax(salePrice: number, ctx: TaxContext): number {
     const isMiamiDade = resolveIsMiamiDade(ctx);
-    const rate = isMiamiDade ? 0.0105 : 0.0070;
-    return Math.round(salePrice * rate);
+    return Math.round(salePrice * (isMiamiDade ? 0.0105 : 0.0070));
   },
 
-  reassessmentOnSale(_ctx: TaxContext): 'full' | 'capped' | 'none' {
-    return 'full';
-  },
-
-  annualAssessmentCap(): number | null {
-    return FL_SOH_CAP;
-  },
+  reassessmentOnSale(_ctx: TaxContext): 'full' | 'capped' | 'none' { return 'full'; },
+  annualAssessmentCap(): number | null { return FL_SOH_CAP; },
 
   specialTaxes(ctx: TaxContext): SpecialTax[] {
     const taxes: SpecialTax[] = [];
     if (ctx.loanAmount != null && ctx.loanAmount > 0) {
-      taxes.push({
-        name: 'Intangible Tax on Mortgage',
-        description: 'FL §199.133 — 0.2% of mortgage note amount, paid at closing',
-        amount: Math.round(ctx.loanAmount * 0.002),
-        trigger: 'acquisition',
-      });
+      taxes.push({ name: 'Intangible Tax on Mortgage', description: 'FL §199.133 — 0.2% of mortgage note amount, paid at closing', amount: Math.round(ctx.loanAmount * 0.002), trigger: 'acquisition' });
     }
     return taxes;
   },
 
   abatementEligibility(_ctx: TaxContext): AbatementProgram[] {
-    return [
-      {
-        name: 'Chapter 196 Economic Development Exemption',
-        description: 'FL commercial real property may qualify for partial ad valorem exemption for new or expanding businesses (county-level approval required).',
-        estimatedAnnualSavings: null,
-        eligibilityUrl: 'https://floridarevenue.com/property/Pages/LocalOption_ExemptionsClassifications.aspx',
-      },
-    ];
+    return [{
+      name: 'Chapter 196 Economic Development Exemption',
+      description: 'FL commercial real property may qualify for partial ad valorem exemption for new or expanding businesses (county-level approval required).',
+      estimatedAnnualSavings: null,
+      eligibilityUrl: 'https://floridarevenue.com/property/Pages/LocalOption_ExemptionsClassifications.aspx',
+    }];
   },
 
-  requiresInputs(): string[] {
-    return ['purchasePrice', 'loanAmount', 'city', 'county', 'holdYears'];
-  },
+  // ── Section B (Phase 1 safe defaults — Phase 3 will set taxesTPP=true) ──────
 
+  taxesTPP(): boolean { return false; },
+  tppTax(_ctx: TPPContext, _year: number): TaxLineResult { return ZERO_TPP_RESULT; },
+  tppExemptionAmount(): number { return 0; },
+  tppMillage(_ctx: TaxContext): number { return 0; },
+  tppFilingRequirement() { return null; },
+
+  // ── Section C (Phase 1 safe defaults — Phase 3 will set FL-specific rates) ──
+
+  depreciationLife(_propertyType: AssetClass): number { return 27.5; },
+  bonusDepreciationPct(_year: number): number { return 0; },
+  costSegEligible(_propertyType: AssetClass): boolean { return false; },
+  stateIncomeTaxRate(_entityType: EntityType): number { return 0; },
+  conformsToBonusDep(): boolean { return true; },
+  conformsToCostSeg(): boolean { return true; },
+
+  // ── Metadata ─────────────────────────────────────────────────────────────────
+
+  requiresInputs(): string[] { return ['purchasePrice', 'loanAmount', 'city', 'county', 'holdYears']; },
   dataSourceHints(): string[] {
     return [
       'Miami-Dade Property Appraiser: https://www.miamidade.gov/pa/',

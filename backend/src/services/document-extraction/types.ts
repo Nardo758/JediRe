@@ -330,7 +330,10 @@ export interface LayeredValue<T = number> {
     | 'aged_ar'
     | 'om'
     | 'override'
-    | 'platform_fallback';
+    | 'platform_fallback'
+    | 'tax_service_computed'
+    | 'attom'
+    | 'agent_research';
   warning?: string;
   scenarios?: Record<string, T>;
   updated_at: string;
