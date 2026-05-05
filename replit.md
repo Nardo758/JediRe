@@ -8,6 +8,73 @@ JEDI RE is an AI-powered B2B real estate intelligence platform designed for inve
 
 Preferred communication style: Simple, everyday language.
 
+## Tax Service v2.0 — Spec Context & Gap Analysis (2026-05-05)
+
+### Spec documents (authoritative)
+- `attached_assets/Pasted--JEDI-RE-Tax-Service-Specification-Version-2-0-Status-A_1778005472319.txt` — TAX_SERVICE_SPEC.md v2.0 (1289 lines)
+- `attached_assets/Pasted--Tax-Service-Replit-Agent-Implementation-Prompt-Version_1778005480489.txt` — Implementation Prompt v2.0 (542 lines)
+
+### v2 additions over v1 (what the spec changes)
+1. **Reassessment Trigger Model** — replaces the v1 `reassessmentOnSale(): string` method with a full trigger taxonomy: `TriggerType` ('sale'|'cyclical'|'new_construction'|'substantial_improvement'|'annual'|'exemption_loss'|'use_change'|'ownership_restructure'|'appeal'), `TriggerEffect`, `ReassessmentTrigger`, `ReassessmentEvent`, `DealTimeline`, `CapexEvent`, `ConstructionMilestone`, `AssessmentCap`.
+2. **`TaxRuleset` interface extended** — two new required methods: `reassessmentTriggers(): ReassessmentTrigger[]` (declarations) and `reassessmentEventsForDeal(ctx, deal, timeline): ReassessmentEvent[]` (evaluation). Also: `millageBreakdown(ctx)`, `realEstateExemptions(ctx)`, `annualAssessmentCap()`.
+3. **`triggerEvaluator.ts`** — new shared file with pure helpers used by all rulesets: `buildSaleResetEvent`, `buildCostBasisEvent`, `buildCOResetEvent`, `buildImprovementEvent`, `buildCyclicalEvent`, `exceedsImprovementThreshold`, `yearsUntilCO`, `estimateMarketValueAtYear`, `applyAnnualGrowth`.
+4. **NC launch jurisdiction** — `nc/` ruleset family: `nc.ruleset.ts` (declares cyclical trigger but NOT cycle params — those live in county sheet), `nc-mecklenburg.ruleset.ts` (4-year cycle, anchor 2023), `nc-wake.ruleset.ts` (8-year cycle, anchor 2024). NC rate sheets: `nc-2026.json`, `nc-mecklenburg-2026.json`, `nc-wake-2026.json`.
+5. **Rate sheet schema extensions** — `trigger_parameters?: { cyclical?: { cycle_years, cycle_anchor_year }, substantial_improvement?: { threshold_pct, threshold_dollar } }` field; `millage_unit?: 'per_1000' | 'per_100' | 'per_500'` field; `deed_rate_per_500?` on transfer_tax for NC.
+6. **Section A — year-by-year timeline walk** — `computeSectionA` becomes a hold-period loop that collects trigger events from the stack, applies `reconcileEvents()` (county overrides state for same trigger_type + year), walks each year applying events or annual cap/growth. Returns `SectionAResult` with `annual_lines[]`, `reassessment_events[]`, `declared_triggers[]`.
+7. **`buildDealTimeline(deal): DealTimeline`** — derives timeline from deal fields (acquisition_year, hold_years, exit_year, placed_in_service_date, construction_milestones, major_capex_events, etc.) based on project_type.
+8. **`reconcileEvents(stateEvents, countyEvents)`** — county wins for same trigger_type in same year_of_hold; merges and sorts.
+9. **Per-section taxService entry points** — `sectionA(deal)`, `sectionB(deal)`, `sectionC(deal)`, `sectionD(deal)` for F9 lazy loaders.
+10. **New API route** — `GET /api/tax/forecast/:dealId/timeline` → `ReassessmentEvent[]` for F9 ProForma red-bar rendering.
+11. **RATES modal v2** — shows declared trigger types with cycle parameters (e.g. "Cyclical revaluation: 4-year cycle, last revaluation 2023").
+12. **F9 ProForma red bars** — each `ReassessmentEvent` renders at its `year_of_hold` with tooltip: trigger_type, effect, prior/new assessed_value, delta_pct, tax_impact_dollars.
+
+### Current codebase state vs v2 (gap map)
+
+| Component | v2 Requirement | Current State | Gap |
+|---|---|---|---|
+| `types.ts` | New trigger types, extended `TaxRuleset` interface | v1 interface with `reassessmentOnSale()` string return; NO trigger types | ❌ Full |
+| `triggerEvaluator.ts` | New file with shared helpers | Does not exist | ❌ Missing |
+| `rateSheets/schema.ts` | `trigger_parameters`, `millage_unit`, `deed_rate_per_500` | Has basic fields; missing v2 extensions | ❌ Partial |
+| FL rulesets (state + 3 counties) | `reassessmentTriggers()` + `reassessmentEventsForDeal()` declarations | Have `reassessmentOnSale()` only (v1) | ❌ Needs v2 upgrade |
+| GA rulesets (state + Fulton) | `reassessmentTriggers()` + `reassessmentEventsForDeal()` | Have `reassessmentOnSale()` only | ❌ Needs v2 upgrade |
+| TX rulesets (state + Harris) | `reassessmentTriggers()` + `reassessmentEventsForDeal()` | Have `reassessmentOnSale()` only | ❌ Needs v2 upgrade |
+| NC rulesets | nc.ruleset, nc-mecklenburg, nc-wake | nc/ directory does not exist | ❌ Missing entirely |
+| NC rate sheets | nc-2026.json, nc-mecklenburg-2026.json, nc-wake-2026.json | Do not exist | ❌ Missing entirely |
+| FL rate sheet trigger params | `trigger_parameters.substantial_improvement.threshold_pct: 0.25` | Not in fl-2026.json | ❌ Missing |
+| `compositeResolver.ts` — Section A | Year-by-year timeline walk with `reconcileEvents` | Single-computation v1 Section A | ❌ Major rewrite |
+| `compositeResolver.ts` — timeline | `buildDealTimeline(deal): DealTimeline` | Not present | ❌ Missing |
+| `taxService.ts` — section entry points | `sectionA/B/C/D(deal)` per-section methods | Not present; only `forecast()` | ❌ Missing |
+| API — timeline route | `GET /api/tax/forecast/:dealId/timeline` | Not present | ❌ Missing |
+| F9 — red bar rendering | `reassessment_events[]` → ProForma red bars with tooltip | Not wired | ❌ Missing |
+| RATES modal | Trigger declarations + cycle parameters shown | Basic modal; no trigger display | ❌ Missing |
+| Data layer / caching | ATTOM fetcher, parcel/jurisdiction caches, staleness cron | ✅ Done (Task #592) | ✅ |
+| Rate sheet loader | Boot-time load + cache | ✅ Done | ✅ |
+| Federal ruleset (Section C) | Bonus dep schedule, depreciation lives | ✅ Done | ✅ |
+| DB schema | jurisdiction_tax_cache, parcel_tax_cache, rate_sheet_versions | ✅ Done | ✅ |
+| Kafka consumer | tax-bill-uploaded-consumer.ts | ✅ Done (Task #592) | ✅ |
+
+### Implementation Prompt Phase mapping
+- Phase 0 (audit): ✅ Done
+- Phase 1 (foundation types + schema + loader): ✅ Partial — v1 types/schema only; needs v2 extensions
+- Phase 2 (federal ruleset): ✅ Done
+- Phase 3 (FL rulesets with trigger model): ❌ v1 rulesets exist; trigger declarations + events missing
+- Phase 4 (GA, TX, NC rulesets): ❌ GA/TX lack triggers; NC entirely absent
+- Phase 5 (composite resolver + timeline walk): ❌ Year-by-year walk not implemented
+- Phase 6 (PropertyAppraiserFetcher integration): ✅ Done (Task #592)
+- Phase 7 (caching layer): ✅ Done (Task #592)
+- Phase 8 (F9 UI wiring + API routes): ❌ Pending (Task #593) — **blocked on Phases 3-5**
+- Phase 9 (acceptance verification): ❌ Pending
+
+### Ground rules from v2 spec (must be enforced in all future phases)
+- No `if (state === 'X')` outside `rulesets/X/` directory
+- Never hardcode "reassessment fires year 1" — triggers are declared and evaluated, never assumed
+- NC cycle params (`cycle_years`, `cycle_anchor_year`) live in county rate sheets via `trigger_parameters.cyclical`, NOT in `nc.ruleset.ts`
+- All outputs wrapped in `LayeredValue` with full provenance (including `triggering_event` when applicable)
+- Rates in JSON; rules in TypeScript — never cross
+- `millage_unit: 'per_100'` for NC (convert at compose-time: multiply by 10 to get per-$1000 mills)
+
+---
+
 ## System Architecture
 
 ### Recent Changes
