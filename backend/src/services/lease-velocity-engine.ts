@@ -339,9 +339,13 @@ export class LeaseVelocityEngine {
     const def = inputs.stabilization_definition ?? 'PHYSICAL_95'; const cs = inputs.concession_strategy ?? 'MARKET';
     const mi = inputs.marketing_intensity ?? 'MARKET';
     const treatment = inputs.leasing_cost_treatment ?? 'HYBRID';
-    // Delivery calendar month: used by buildConcessionRecords to set PRE_LEASE_BONUS commencement date
-    const deliveryCalMonth = inputs.delivery_month !== undefined
-      ? fmtMon(2026, 0, inputs.delivery_month)
+    // Delivery calendar month: used by buildConcessionRecords to set PRE_LEASE_BONUS commencement date.
+    // For LEASE_UP_NEW_CONSTRUCTION, use delivery_month input OR the same default (4) that rnLU uses
+    // internally — ensuring PRE_LEASE_BONUS records always get delivery-month commencement even when
+    // the caller omits delivery_month from inputs.
+    const effectiveDeliveryMonthIdx = inputs.delivery_month ?? 4;
+    const deliveryCalMonth = mode === 'LEASE_UP_NEW_CONSTRUCTION'
+      ? fmtMon(2026, 0, effectiveDeliveryMonthIdx)
       : undefined;
     let r: RunResult;
     switch (mode) {

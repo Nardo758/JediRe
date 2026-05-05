@@ -774,8 +774,10 @@ export class RentRollDiffService {
         if (unit.concession_value != null && unit.concession_value > 0) {
           cashValue = unit.concession_value;
         } else if (unit.concession_months != null && unit.concession_months > 0) {
+          // concession_months is a derived value (months × rent) — not an explicit dollar amount
           const monthlyRent = unit.contract_rent ?? unit.market_rent ?? 0;
           cashValue = unit.concession_months * monthlyRent;
+          inferred = true;
         } else if (
           unit.market_rent != null &&
           unit.contract_rent != null &&

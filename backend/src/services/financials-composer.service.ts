@@ -539,6 +539,30 @@ async function computeConcessionRecognition(
 
   const records: ConcessionRecord[] = [...lvRecords, ...histRecords, ...manualRecords];
 
+  // ── Persist merged set as canonical amortization input ───────────────────
+  // Writes the full merged array to deal_data.merged_concession_records so that
+  // downstream tasks (#574, #575) and audits can inspect the exact records fed
+  // to the amortization engine. Uses a separate key from concession_records
+  // (which holds user-authored manual records only) to prevent double-counting
+  // on re-runs. Non-fatal — persistence failure does not block amortization.
+  if (records.length > 0) {
+    pool.query(
+      `UPDATE deals
+       SET deal_data = jsonb_set(
+         COALESCE(deal_data, '{}'::jsonb),
+         '{merged_concession_records}',
+         $1::jsonb
+       )
+       WHERE id = $2`,
+      [JSON.stringify(records), dealId],
+    ).catch((persistErr: any) => {
+      console.warn(
+        '[computeConcessionRecognition] Failed to persist merged_concession_records:',
+        persistErr?.message ?? persistErr,
+      );
+    });
+  }
+
   if (records.length === 0) return null;
 
   const treatment: string = dealData?.leasing_cost_treatment ?? 'OPERATING';

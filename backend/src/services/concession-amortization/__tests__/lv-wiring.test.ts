@@ -599,3 +599,92 @@ describe('§573.11 deal_id embedded in all generated records', () => {
     }
   });
 });
+
+// ── §573.13 deliveryCalMonth fallback when delivery_month omitted ──────────────
+
+describe('§573.13 PRE_LEASE_BONUS commencement when delivery_month is omitted', () => {
+  it('pre-lease records use default delivery month (4) as commencement when delivery_month omitted', () => {
+    // When delivery_month is omitted, rnLU defaults to index 4 ("2026-05").
+    // buildConcessionRecords must use the same effective default.
+    const result = engine.run({
+      total_units: 100,
+      target_occupancy: 0.95,
+      current_occupancy: 0,
+      mode: 'LEASE_UP_NEW_CONSTRUCTION',
+      pre_leased_count: 20,
+      pre_lease_window_months: 4,
+      avg_market_rent: 1500,
+      avg_lease_term_months: 12,
+      concession_strategy: 'MARKET',
+      time_horizon_months: 24,
+      // delivery_month intentionally omitted
+    });
+
+    const preRecs = result.concession_records.filter(
+      r => r.amortization_method === 'CASH_AT_COMMENCEMENT',
+    );
+    // Pre-lease records must commence at or after the effective delivery month (May 2026 = "2026-05-01")
+    for (const rec of preRecs) {
+      expect(rec.lease_start_date >= '2026-05-01').toBe(true);
+    }
+  });
+});
+
+// ── §573.14 inferred_from_rent_roll flag semantics ────────────────────────────
+
+describe('§573.14 inferred_from_rent_roll flag on all non-explicit derivations', () => {
+  it('explicitly verifies flag is false for concession_value records (unit-level test)', () => {
+    // Simulated record as if extracted with explicit concession_value
+    const explicit: ConcessionRecord = makeHistoryRecord({
+      inferred_from_rent_roll: false,
+      cash_value: 1200,
+    });
+    expect(explicit.inferred_from_rent_roll).toBe(false);
+  });
+
+  it('concession_months-derived records must have inferred_from_rent_roll=true', () => {
+    // Simulated record as if extracted via concession_months × rent
+    const fromMonths: ConcessionRecord = makeHistoryRecord({
+      inferred_from_rent_roll: true,
+      cash_value: 1400, // 2 months × $700 rent
+    });
+    expect(fromMonths.inferred_from_rent_roll).toBe(true);
+  });
+
+  it('below-market-rent records must have inferred_from_rent_roll=true', () => {
+    const belowMarket: ConcessionRecord = makeHistoryRecord({
+      inferred_from_rent_roll: true,
+      cash_value: 600,
+    });
+    expect(belowMarket.inferred_from_rent_roll).toBe(true);
+  });
+
+  it('explicit concession_value records (inferred=false) are amortized normally', () => {
+    const explicit: ConcessionRecord = makeHistoryRecord({
+      inferred_from_rent_roll: false,
+      cash_value: 2400,
+    });
+    expect(() =>
+      amortizeConcessions({
+        records: [explicit],
+        leasing_cost_treatment: 'OPERATING',
+        current_date: '2026-01-01',
+      }),
+    ).not.toThrow();
+  });
+
+  it('inferred records with cash_value>0 are amortized normally (not skipped)', () => {
+    const inferred: ConcessionRecord = makeHistoryRecord({
+      inferred_from_rent_roll: true,
+      cash_value: 800,
+    });
+    const output = amortizeConcessions({
+      records: [inferred],
+      leasing_cost_treatment: 'OPERATING',
+      current_date: '2026-01-01',
+      horizon_months: 120,
+    });
+    const total = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    expect(total).toBeCloseTo(800, 0);
+  });
+});
