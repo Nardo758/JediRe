@@ -1,0 +1,48 @@
+USER INPUTS                    DATA LAYERS                      ALGORITHM LAYER
+─────────────                  ───────────                      ───────────────
+
+mode override            ┌── M07 Traffic Engine ──┐
+target_occupancy         │  • subject_history     │
+pre_leased_count         │  • peer_set:m07        │
+delivery_month     ──┐   │  • expiration_waterfall │      ┌─────────────────────┐
+catch_up_period      │   │  • renewal_rate        │ ───→ │  LEASE VELOCITY     │
+marketing_intensity  ├──→│  • turnover_rate       │      │  ENGINE             │
+concession_strategy  │   │  • days_vacant_median  │      │                     │
+cost_treatment       │   │  • seasonality_curve   │      │  • mode dispatch    │
+                     │   │  • absorption_curve    │      │  • pre-lease distrib│
+                     │   │  • avg_market_rent     │      │  • S-curve absorpt'n│
+                     │   │  • avg_lease_term      │      │  • gap-close math   │
+                     │   │  • loss_to_lease_pct   │      │  • cost stack       │
+                     │   │  • funnel_conversions  │      │  • treatment toggle │
+                     │   └────────────────────────┘      │                     │
+                     │                                   │                     │
+                     │   ┌── Concession Env Engine ──┐   │                     │
+                     ├──→│  • per_year concession    │──→│                     │
+                     │   │    environment payload    │   │                     │
+                     │   │  (sub-engine within M07)  │   │                     │
+                     │   └───────────────────────────┘   │                     │
+                     │                                   │                     │
+                     │   ┌── M04 Supply Pipeline ────┐   │                     │
+                     ├──→│  • supply_pressure_score  │──→│                     │
+                     │   │  • peer_max_absorption    │   │                     │
+                     │   │    _pace_for_class_msa    │   │                     │
+                     │   └───────────────────────────┘   │                     │
+                     │                                   │                     │
+                     │   ┌── M22 (when ready) ───────┐   │                     │
+                     └──→│  • capex_schedule          │──→│                     │
+                         │    (V2 modes only)         │   └──────────┬──────────┘
+                         └────────────────────────────┘              │
+                                                                     ▼
+                                                          dealContext.lease_velocity
+                                                          { monthly_table,
+                                                            ramp_chart_data,
+                                                            narrative,
+                                                            warnings,
+                                                            lease_up_reserve_required }
+                                                                     │
+                                                       ┌─────────────┴─────────────┐
+                                                       ▼                           ▼
+                                              M07 → M09 Adapter          F9 Sources & Uses
+                                              (Projections rendering)     (lease-up reserve line)
+                                              F9 Returns (cash flows)     JEDI Score (NOI clarity)
+                                              Investment Memo

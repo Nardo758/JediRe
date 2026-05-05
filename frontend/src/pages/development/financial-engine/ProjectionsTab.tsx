@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { BT, Bd } from '../../../components/deal/bloomberg-ui';
 import type {
   FinancialEngineTabProps, F9NarrativeBlock,
@@ -8,7 +8,14 @@ import type {
 import { fmt$, fmtPct } from './types';
 import { apiClient } from '../../../services/api.client';
 import { useDealStore } from '../../../stores/dealStore';
-import { LeaseVelocitySection } from './LeaseVelocitySection';
+import {
+  LeaseVelocitySection,
+  LeasingCostTreatmentToggle,
+  type LVInputs,
+  type LeaseVelocityResult,
+  type LeasingCostTreatment,
+  type LeaseMode,
+} from './LeaseVelocitySection';
 
 const MONO = BT.font.mono;
 type TimelineOption = 3 | 5 | 7 | 10;
@@ -880,7 +887,99 @@ export function ProjectionsTab({
   const [showGprDecomp,        setShowGprDecomp]        = useState(true);
   const [showFindings,         setShowFindings]          = useState(true);
   const [showSubjectHistory,   setShowSubjectHistory]    = useState(true);
-  const [showLeaseVelocity,    setShowLeaseVelocity]     = useState(false);
+
+  // ── Lease Velocity Engine state ──────────────────────────────────────────
+  const DEFAULT_LV_INPUTS: LVInputs = {
+    total_units: 100,
+    target_occupancy: 0.95,
+    current_occupancy: 0,
+    mode: 'LEASE_UP_NEW_CONSTRUCTION' as LeaseMode,
+    avg_market_rent: 1500,
+    avg_in_place_rent: 1500,
+    property_class: 'B',
+    time_horizon_months: 36,
+    concession_strategy: 'MARKET',
+    marketing_intensity: 'MARKET',
+    pre_leased_count: 0,
+    leasing_cost_treatment: 'OPERATING',
+  };
+  const [lvInputs,     setLvInputs]     = useState<LVInputs>(DEFAULT_LV_INPUTS);
+  const [lvResult,     setLvResult]     = useState<LeaseVelocityResult | null>(null);
+  const [lvLoading,    setLvLoading]    = useState(false);
+  const [lvError,      setLvError]      = useState<string | null>(null);
+  const [lvShowConfig, setLvShowConfig] = useState(false);
+  const lvAutoFetchedRef = useRef(false);
+
+  // Core engine runner — accepts inputs directly (no closure over stale state)
+  const runLvEngine = useCallback(async (inputs: LVInputs) => {
+    if (!dealId) return;
+    setLvLoading(true);
+    setLvError(null);
+    try {
+      const resp = await apiClient.post<{ success: boolean; data: LeaseVelocityResult; error?: string }>(
+        '/api/v1/lease-velocity/run',
+        { inputs },
+      );
+      if (resp.data?.success) {
+        setLvResult(resp.data.data);
+      } else {
+        setLvError(resp.data?.error ?? 'Engine returned an error');
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } }; message?: string })
+        ?.response?.data?.error
+        ?? (err as { message?: string }).message
+        ?? 'Request failed';
+      setLvError(msg);
+    } finally {
+      setLvLoading(false);
+    }
+  }, [dealId]);
+
+  // Auto-fetch once when f9Financials first loads — seeds inputs from deal data
+  useEffect(() => {
+    if (!f9Financials || !dealId || lvAutoFetchedRef.current) return;
+    lvAutoFetchedRef.current = true;
+
+    const occ = f9Financials.rentRollSummary?.weightedOccupancyPct ?? null;
+    const autoMode: LeaseMode =
+      occ == null || occ < 0.5  ? 'LEASE_UP_NEW_CONSTRUCTION'
+      : occ < 0.85              ? 'OCCUPANCY_RECOVERY'
+      :                           'STABILIZED_MAINTENANCE';
+    const gprRow = f9Financials.proforma?.year1?.find((r: { field: string }) => r.field === 'gpr');
+    const autoMktRent = gprRow?.resolved != null && f9Financials.totalUnits > 0
+      ? Math.round(gprRow.resolved / f9Financials.totalUnits / 12)
+      : 1500;
+
+    const seedInputs: LVInputs = {
+      ...DEFAULT_LV_INPUTS,
+      total_units:      f9Financials.totalUnits || DEFAULT_LV_INPUTS.total_units,
+      avg_market_rent:  autoMktRent,
+      avg_in_place_rent: Math.round(f9Financials.rentRollSummary?.avgInPlaceRent ?? autoMktRent),
+      current_occupancy: occ ?? 0,
+      mode: autoMode,
+    };
+    setLvInputs(seedInputs);
+    void runLvEngine(seedInputs);
+  // Only re-run when the deal ID changes — not on every f9Financials update
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f9Financials?.dealId, dealId]);
+
+  // Location A: treatment toggle — PATCHes deal context + re-runs engine
+  const handleLvTreatmentChange = useCallback(async (treatment: LeasingCostTreatment) => {
+    const next = { ...lvInputs, leasing_cost_treatment: treatment };
+    setLvInputs(next);
+    if (dealId) {
+      try {
+        await apiClient.patch(`/api/v1/deals/${dealId}/context`, { leasing_cost_treatment: treatment });
+        onF9Refresh?.();
+      } catch (err) {
+        console.error('[LV] Failed to save leasing_cost_treatment:', err);
+      }
+    }
+    void runLvEngine(next);
+  }, [lvInputs, dealId, onF9Refresh, runLvEngine]);
+
   const [narrative,        setNarrative]       = useState<string | null>(null);
   const [narrativeBlocks,  setNarrativeBlocks] = useState<F9NarrativeBlock[]>([]);
   const [narrativeLoading, setNarrativeLoading]= useState(false);
@@ -1046,12 +1145,13 @@ export function ProjectionsTab({
             }}>SUBJ·{financials.subjectHistory.tier}</button>
           )}
 
-          <button onClick={() => setShowLeaseVelocity(v => !v)} style={{
-            background: showLeaseVelocity ? `${BT.text.cyan}18` : 'transparent',
-            color:      showLeaseVelocity ? BT.text.cyan : BT.text.muted,
-            border: `1px solid ${showLeaseVelocity ? BT.text.cyan : BT.border.subtle}`,
-            padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
-          }}>LEASE VEL</button>
+          {/* Location A — LeasingCostTreatmentToggle: persists via deal PATCH */}
+          <div style={{ width: 1, height: 14, background: BT.border.medium }} />
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.4 }}>LEASING:</span>
+          <LeasingCostTreatmentToggle
+            value={lvInputs.leasing_cost_treatment}
+            onChange={handleLvTreatmentChange}
+          />
 
           <div style={{ flex: 1 }} />
 
@@ -1096,6 +1196,21 @@ export function ProjectionsTab({
         )}
 
 
+        {/* ── Lease Velocity Engine (§12) ─────────────────────────────────
+             Deterministic placement: above GPR Decomp, gated by result/loading */}
+        {(lvResult != null || lvLoading || lvError != null) && (
+          <LeaseVelocitySection
+            result={lvResult}
+            loading={lvLoading}
+            inputs={lvInputs}
+            onInputsChange={setLvInputs}
+            onRun={() => void runLvEngine(lvInputs)}
+            showConfig={lvShowConfig}
+            onToggleConfig={() => setLvShowConfig(v => !v)}
+            runError={lvError}
+          />
+        )}
+
         {/* ── GPR Decomposition ──────────────────────────────────────────── */}
         {showGprDecomp && hasGprDecomp && (
           <GprDecompPanel decomp={financials!.assumptions.gprDecomposition!} totalUnits={financials!.totalUnits} />
@@ -1106,11 +1221,6 @@ export function ProjectionsTab({
           <div style={{ padding: '4px 10px', background: `${BT.text.red}12`, fontFamily: MONO, fontSize: 8, color: BT.text.red, flexShrink: 0 }}>
             {error}
           </div>
-        )}
-
-        {/* ── Lease Velocity Engine ──────────────────────────────────────── */}
-        {showLeaseVelocity && (
-          <LeaseVelocitySection f9Financials={f9Financials} />
         )}
 
         {/* ── Operating Statement Table ──────────────────────────────────── */}

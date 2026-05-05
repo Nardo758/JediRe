@@ -5,6 +5,7 @@ import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
 import { CommentaryPanel } from './CommentaryPanel';
 import { useDealStore, PlatformColSource } from '../../../stores/dealStore';
+import { LeasingCostTreatmentToggle, type LeasingCostTreatment } from './LeaseVelocitySection';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -367,6 +368,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const [reparsing, setReparsing] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionState>({});
   const [showAncillary, setShowAncillary] = useState(false);
+  // Location B — LeasingCostTreatmentToggle: local view-state only (does NOT write deal field)
+  const [lvTreatmentView, setLvTreatmentView] = useState<LeasingCostTreatment>('OPERATING');
 
   // Prefer model results from the build pipeline; fall back to composer fetch.
   const modelData = modelResults ?? null;
@@ -557,6 +560,13 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               </button>
             ))}
           </div>
+          {/* Location B — LeasingCostTreatmentToggle: view-state only, does NOT write deal field */}
+          <div style={{ width: 1, height: 14, background: '#2a2a2a' }} />
+          <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>LEASING:</span>
+          <LeasingCostTreatmentToggle
+            value={lvTreatmentView}
+            onChange={setLvTreatmentView}
+          />
         </div>
 
         {/* KPI pills */}
