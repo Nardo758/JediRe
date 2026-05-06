@@ -111,7 +111,7 @@ type Overrides = Record<string, Record<number, number|null>>;
 type Formulas  = Record<string, string>;
 
 // Field ordering from backend (sections 1 & 3)
-const REVENUE_ORDER = ['gpr','vacancy_loss','bad_debt','non_revenue_units','other_income','net_rental_income','egi'];
+const REVENUE_ORDER = ['gpr','loss_to_lease','vacancy_loss','concessions','bad_debt','non_revenue_units','other_income','net_rental_income','egi'];
 const OPEX_ORDER    = ['payroll','repairs_maintenance','turnover','contract_services','marketing','utilities','g_and_a','management_fee','insurance','real_estate_taxes','replacement_reserves','total_opex','noi'];
 
 // ─── Formula evaluator — constrained arithmetic parser (no new Function) ───────
@@ -252,7 +252,7 @@ const FIELD_META: Record<string, FieldMeta> = {
     },
   },
   loss_to_lease: {
-    unit: 'dollar', format: fmtDlr, patchField: 'lossToLeasePct',
+    unit: 'dollar', format: fmtDlr, patchField: 'lossToLeasePct', growthKey: 'rent',
     description: 'Market rent minus in-place rent as % of market rent. Narrows as leases roll over hold period.',
     platformSource: 'JEDI — Submarket Avg Loss-to-Lease', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Loss-to-Lease',
@@ -265,8 +265,8 @@ const FIELD_META: Record<string, FieldMeta> = {
     getYearNPlatform: (f, yr) => tyr(f, yr)?.vacancyPct ?? y1(f,'vacancy_loss')?.platform ?? null,
   },
   concessions: {
-    unit: 'dollar', format: fmtDlr, patchField: 'concessionsPct',
-    description: 'Free rent / net effective concessions as % of GPR. Declines as market tightens.',
+    unit: 'dollar', format: fmtDlr, patchField: 'concessionsPct', growthPct: -0.10, assumptionKey: 'concessionBurnOffPct',
+    description: 'Free rent / net effective concessions as % of GPR. Burns off as market tightens — use concessionBurnOffPct to control the annual decline rate.',
     platformSource: 'M07 — Leasing velocity implies concession pressure', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Concessions',
   },
