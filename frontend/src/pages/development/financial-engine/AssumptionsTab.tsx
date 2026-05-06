@@ -3187,7 +3187,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                                 );
                               })}
 
-                              {/* Total row */}
+                              {/* Total row — sums per-category values respecting session overrides */}
                               {showAncillaryBreakdown && (
                                 <tr
                                   className="border-b border-[#0e2a3a] h-[22px]"
@@ -3200,16 +3200,24 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                                     TOTAL ANCILLARY (RESOLVED)
                                   </td>
                                   {years.map(yr => {
-                                    const total = bkd.total.resolved != null
-                                      ? (yr === 1 ? bkd.total.resolved : Math.round(bkd.total.resolved * Math.pow(1 + g, yr - 1)))
-                                      : null;
+                                    // Sum each category's value (override wins over derived)
+                                    const hasAnyOverride = rows.some(cr => ancillaryOverrides[cr.category]?.[yr] != null);
+                                    const total = rows.reduce((sum, catRow) => {
+                                      const y1v = catRow.resolved;
+                                      const ovr = ancillaryOverrides[catRow.category]?.[yr];
+                                      const val = ovr ?? (y1v != null
+                                        ? (yr === 1 ? y1v : Math.round(y1v * Math.pow(1 + g, yr - 1)))
+                                        : null);
+                                      return sum + (val ?? 0);
+                                    }, 0);
                                     return (
                                       <td
                                         key={yr}
                                         className="px-2 py-0 text-right border-r border-[#1e1e1e]"
-                                        style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#22d3ee' }}
+                                        style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: hasAnyOverride ? '#3b82f6' : '#22d3ee' }}
                                       >
-                                        {total != null ? '$' + Math.round(total).toLocaleString() : '—'}
+                                        {'$' + Math.round(total).toLocaleString()}
+                                        {hasAnyOverride && <sup style={{ fontSize: 6, marginLeft: 1 }}>U</sup>}
                                       </td>
                                     );
                                   })}
