@@ -89,6 +89,17 @@ export interface LayeredValue<T> {
   fillMethod?: string;
   /** Released model version that produced this value (Spec §13). */
   modelVersion?: string;
+  /**
+   * True when OperatorStance modulated this value after tier-hierarchy resolution.
+   * Drives the yellow "attention" marker in the Thesis / Assumptions Console UI.
+   */
+  stanceModulated?: boolean;
+  /**
+   * Human-readable trace of which stance rules fired and their net delta.
+   * e.g. "stance: net +25bps [posture_aggressive_rent_growth(+25bps)]"
+   * Shown in per-row provenance drawers (Console Phase 4).
+   */
+  stanceTrace?: string;
 }
 
 /**
@@ -728,12 +739,48 @@ type DevelopmentEnvelope = {
   impact_fee_credit_units: number;
 };
 
+// ── OperatorStance (frontend mirror of backend/src/types/operator-stance.ts) ──
+// Defined here rather than imported to avoid cross-package coupling.
+// Keep in sync with backend OperatorStance type.
+
+export type RateEnvironment = 'CUTTING' | 'NORMALIZING' | 'HIGHER_FOR_LONGER';
+export type CyclePosition = 'EARLY' | 'MID' | 'LATE';
+export type UnderwritingPosture = 'CONSERVATIVE' | 'MARKET' | 'AGGRESSIVE';
+export type ConcessionStrategy = 'CONSERVATIVE' | 'MARKET' | 'AGGRESSIVE';
+export type MarketingIntensity = 'LOW' | 'MARKET' | 'AGGRESSIVE';
+export type ExpenseGrowthPosture = 'CONTAINED' | 'INFLATION' | 'STRESSED';
+
+export interface OperatorStance {
+  rateEnvironment: RateEnvironment;
+  cyclePosition: CyclePosition;
+  recessionProbability: number;
+  underwritingPosture: UnderwritingPosture;
+  concessionStrategy: ConcessionStrategy;
+  marketingIntensity: MarketingIntensity;
+  expenseGrowthPosture: ExpenseGrowthPosture;
+  stressRentGrowthHaircut: number;
+  stressExitCapWiden: number;
+  stressVacancyFloor: number;
+  defaulted: boolean;
+  updatedAt: string;
+}
+
+export type OperatorStancePatch = Partial<Omit<OperatorStance, 'defaulted' | 'updatedAt'>>;
+
+export interface AffectedStanceField {
+  fieldPath: string;
+  deltaBps: number;
+  trace: string;
+}
+
 interface DealContextBase {
   identity: DealIdentity;
   productType: ProductType;
   site: SiteContext;
   zoning: ZoningContext;
   zoningOutput: import('../types/zoning.types').ZoningOutput | null;
+  /** OperatorStance — the meta-layer that modulates Cashflow Agent discretion. */
+  operatorStance: OperatorStance | null;
 
   resolvedUnitMix: UnitMixRow[];
   unitMixOverrides: Record<string, Partial<Pick<UnitMixRow, 'count' | 'avgSF' | 'targetRent'>>>;

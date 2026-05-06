@@ -29,6 +29,7 @@ _Populate as you build_
     -   **Financial Engine:** `frontend/src/pages/development/financial-engine/`
     -   **Property Card:** `frontend/src/pages/PropertyCardPage.tsx`
 -   **Frontend Components:** `frontend/src/components/`
+-   **OperatorStance:** `backend/src/types/operator-stance.ts` (type + 15 modulation rules), `backend/src/services/operatorStance.service.ts` (CRUD + cache-aware reblend), `backend/src/agents/tools/fetch_operator_stance.ts` (Cashflow Agent tool)
 -   **Deal Capsule Blueprint:** `docs/architecture/deal-capsule-blueprint.md`
 -   **F9 Proforma Spec:** `docs/architecture/f9-proforma-spec.md`
 -   **Rent Roll Analytics Framework Spec:** `docs/architecture/RENT_ROLL_ANALYTICS_FRAMEWORK.md`
@@ -36,7 +37,8 @@ _Populate as you build_
 ## Architecture decisions
 
 -   **Map-Agnostic Architecture:** Integrates user-provided maps to reduce GIS costs, enabling flexibility and avoiding vendor lock-in.
--   **LayeredValue System:** Core data model (`LayeredValue<T>`) for provenance tracking, conflict resolution, and data quality across all financial and analytical inputs. Each value indicates its `resolvedFrom` source (`broker`, `platform`, `user`) and `alertLevel`.
+-   **LayeredValue System:** Core data model (`LayeredValue<T>`) for provenance tracking, conflict resolution, and data quality. Each value indicates its `resolvedFrom` source and `alertLevel`. Extended with `stanceModulated?: boolean` and `stanceTrace?: string` for OperatorStance tagging.
+-   **OperatorStance System:** A sibling to LayeredValue that answers "how should the agent derive numbers?" rather than "what is this number?". Persisted as JSONB in `deals.operator_stance`. Defines 15 deterministic modulation rules across `underwritingPosture`, `rateEnvironment`, `cyclePosition`, and `expenseGrowthPosture`. Stance changes trigger a zero-LLM-cost re-blend against the cached underwriting snapshot.
 -   **Module Wiring System (Hub-and-Spoke):** `DealModuleContext` acts as a central hub, allowing modules to interact without direct dependencies, ensuring modularity and maintainability.
 -   **Bayesian Traffic Calibration:** A multi-layered, self-calibrating system for traffic prediction coefficients, incorporating rent roll ingestion, starting state resolution, and nightly platform calibration jobs for improved accuracy.
 -   **AI-Driven Tooling:** Extensive use of Anthropic Claude for tasks like financial modeling, zoning analysis, commentary generation, design chat, and regulatory risk assessment, moving beyond simple data retrieval to intelligent synthesis and recommendations.

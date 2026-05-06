@@ -21,6 +21,13 @@ import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
 import { getDealFinancials, applyFinancialsOverride } from '../../services/proforma-adjustment.service';
 import { buildF9Workbook, buildProjectionsForExport } from '../../services/f9-financial-export.service';
 import { randomUUID } from 'crypto';
+import {
+  getStanceForDeal,
+  saveStance,
+  resetStance,
+  computeAffectedFields,
+} from '../../services/operatorStance.service';
+import type { OperatorStancePatch } from '../../types/operator-stance';
 
 // ─── IRR bisection helper ─────────────────────────────────────────────────────
 /**
@@ -1302,4 +1309,90 @@ router.get('/:dealId/financials/export', requireAuth, async (req: AuthenticatedR
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// OperatorStance endpoints
+//
+// Routes use distinct sub-paths (/stance, /stance/reset, /stance/affected-fields)
+// so they cannot collide with /:dealId/financials or other parameterized routes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /:dealId/stance
+ * Returns the resolved OperatorStance (persisted or MARKET defaults).
+ */
+router.get('/:dealId/stance', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const stance = await getStanceForDeal(dealId, userId);
+    res.json({ stance });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    const status = msg.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
+  }
+});
+
+/**
+ * PUT /:dealId/stance
+ * Merge-patch the stance for a deal. Partial updates are supported.
+ * Triggers a background stance-only reblend against the last cached snapshot.
+ */
+router.put('/:dealId/stance', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const patch = req.body as OperatorStancePatch;
+    const stance = await saveStance(dealId, userId, patch);
+    res.json({ stance, reblendTriggered: true });
+  } catch (error: unknown) {
+    logger.error('Error saving operator stance:', error);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    const status = msg.includes('Invalid stance') ? 400 : msg.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
+  }
+});
+
+/**
+ * POST /:dealId/stance/reset
+ * Reset stance to MARKET defaults (deletes persisted stance).
+ */
+router.post('/:dealId/stance/reset', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const stance = await resetStance(dealId, userId);
+    res.json({ stance, message: 'Stance reset to MARKET defaults' });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    const status = msg.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
+  }
+});
+
+/**
+ * GET /:dealId/stance/affected-fields
+ * Returns the list of proforma field paths that the current stance modulates,
+ * with net bps deltas. Computed deterministically — no snapshot lookup.
+ * Used by the Console UI to render yellow "stance-modulated" markers.
+ */
+router.get('/:dealId/stance/affected-fields', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const stance = await getStanceForDeal(dealId, userId);
+    const affectedFields = computeAffectedFields(stance);
+    res.json({
+      stance: { underwritingPosture: stance.underwritingPosture, defaulted: stance.defaulted },
+      affectedFields,
+      totalModulatedFields: affectedFields.length,
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    const status = msg.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
+  }
+});
+
 export default router;
+

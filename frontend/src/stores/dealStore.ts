@@ -384,6 +384,14 @@ interface DealStoreActions {
    * all F9 consumers re-fetch /financials with the new treatment parameter.
    */
   emitLeasingCostTreatmentChanged: (treatment: string) => void;
+
+  // ─── OPERATOR STANCE ──────────────────────────────────────────────────────
+  /** Fetch the current OperatorStance for a deal from the backend. */
+  fetchOperatorStance: (dealId: string) => Promise<void>;
+  /** Persist a partial stance update (merge-patch). Triggers background reblend. */
+  saveOperatorStance: (dealId: string, patch: import('./dealContext.types').OperatorStancePatch) => Promise<void>;
+  /** Reset stance to MARKET defaults. */
+  resetOperatorStance: (dealId: string) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -511,6 +519,7 @@ const INITIAL_CONTEXT: DealContext = {
   hydrationStatus: EMPTY_HYDRATION,
   stageHistory: [],
   editLog: [],
+  operatorStance: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -1787,6 +1796,52 @@ export const useDealStore = create<DealStore>()(
 
     emitLeasingCostTreatmentChanged: (treatment) => {
       window.dispatchEvent(new CustomEvent('leasing_cost_treatment.changed', { detail: { treatment } }));
+    },
+
+    // ─── OPERATOR STANCE implementation ─────────────────────────────────────
+
+    fetchOperatorStance: async (dealId) => {
+      try {
+        const res = await fetch(`/api/v1/deals/${dealId}/stance`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { stance } = await res.json();
+        set({ operatorStance: stance });
+      } catch (err) {
+        console.warn('[dealStore] fetchOperatorStance failed (non-fatal):', err);
+      }
+    },
+
+    saveOperatorStance: async (dealId, patch) => {
+      try {
+        const res = await fetch(`/api/v1/deals/${dealId}/stance`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { stance } = await res.json();
+        set({ operatorStance: stance });
+      } catch (err) {
+        console.warn('[dealStore] saveOperatorStance failed:', err);
+        throw err;
+      }
+    },
+
+    resetOperatorStance: async (dealId) => {
+      try {
+        const res = await fetch(`/api/v1/deals/${dealId}/stance/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { stance } = await res.json();
+        set({ operatorStance: stance });
+      } catch (err) {
+        console.warn('[dealStore] resetOperatorStance failed:', err);
+        throw err;
+      }
     },
 
     classifyFieldOverride: (field, value) => {

@@ -531,4 +531,33 @@ IMPORTANT RULES:
 3. source must be a real source key (t12, rent_roll, deal_data, tax_engine, archive, profile_cluster, owned_portfolio, agent_default, etc.)
 4. evidence must describe what data was used and how it was processed
 5. Respond with ONLY the JSON object — no prose before or after it. Do NOT wrap in code fences.
+
+## OperatorStance — Meta-Layer Modulation
+
+After calling fetch_data_matrix, you MUST call fetch_operator_stance(deal_id).
+
+OperatorStance is the operator's macro framing. It is NOT a data tier — it does NOT override
+Tier 1 evidence (T-12, rent roll, tax bill). It modulates your discretion AFTER you resolve
+the tier hierarchy, by applying deterministic adjustments to stance-aware field paths.
+
+### Stance-aware fields (the only fields affected):
+  • rentGrowth, rentGrowthStabilized — affected by underwritingPosture, cyclePosition, stressRentGrowthHaircut
+  • exitCapRate — affected by underwritingPosture, rateEnvironment, cyclePosition, stressExitCapWiden
+  • vacancy — affected by underwritingPosture, cyclePosition, stressVacancyFloor
+  • expenseGrowth — affected by rateEnvironment, expenseGrowthPosture
+
+### How to apply:
+1. Call fetch_operator_stance(deal_id) — it returns deltas[] and instructions.
+2. For each non-zero delta: adjusted_value = Math.max(0, tier_resolved_value + delta.deltaDecimal)
+3. Tag the field in proforma_fields before write_underwriting:
+   { value: adjusted_value, ..., stanceModulated: true, stanceTrace: delta.trace }
+4. In your evidence reasoning, note: "Operator stance applied: <trace>"
+
+### When stance is defaulted=true:
+All deltas are 0. Proceed with tier-resolved values unchanged. No stanceModulated tag needed.
+
+### stanceOnly re-blend mode (triggered when your context includes stanceOnly=true):
+ONLY call fetch_operator_stance, load the last proforma_fields from deal_underwriting_snapshots,
+apply deltas, and call write_underwriting. Do NOT call fetch_t12, fetch_data_matrix, or any
+other data tools. This is a zero-LLM-cost re-blend that preserves existing evidence.
 `;

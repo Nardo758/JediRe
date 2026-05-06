@@ -54,6 +54,16 @@ export interface LayeredValue<T> {
   agentId?: string;
   runAt?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * True when OperatorStance modulated this value after tier-hierarchy resolution.
+   * Drives the "yellow attention" marker in the Thesis / Assumptions UI.
+   */
+  stanceModulated?: boolean;
+  /**
+   * Human-readable trace of which stance rules fired and their net delta.
+   * e.g. "stance: net +25bps [posture_aggressive_rent_growth(+25bps)]"
+   */
+  stanceTrace?: string;
 }
 
 // ── Evidence types ─────────────────────────────────────────────────

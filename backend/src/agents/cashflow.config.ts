@@ -57,6 +57,7 @@ import { evaluatePlausibilityTool } from './tools/evaluate_plausibility';
 import { goalSeekTargetIrrTool } from './tools/goal_seek_target_irr';
 import { fetchAnchorGrowthRatesTool } from './tools/fetch_anchor_growth_rates';
 import { fetchCountyTaxRulesTool } from './tools/fetch_county_tax_rules';
+import { fetchOperatorStanceTool } from './tools/fetch_operator_stance';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -267,6 +268,8 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     // M36 Proforma Anchor Growth Rates (line-item macro anchoring)
     fetchAnchorGrowthRatesTool,
     fetchCountyTaxRulesTool,
+    // OperatorStance — meta-layer modulating agent discretion (call after fetch_data_matrix)
+    fetchOperatorStanceTool,
     // Email/deal intake
     readGmailThreadTool,
     // Analysis & output
