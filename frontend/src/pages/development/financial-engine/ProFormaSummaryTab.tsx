@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
@@ -361,11 +361,19 @@ function applyEvidenceFilter(
 }
 
 export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh, lvCostTreatmentView, onLvTreatmentViewChange }: FinancialEngineTabProps) {
-  const viewMode          = useDealStore(s => s.viewMode);
-  const setViewMode       = useDealStore(s => s.setViewMode);
-  const y1Source          = useDealStore(s => s.y1Source);
-  const setY1Source       = useDealStore(s => s.setY1Source);
-  const platformColSource = useDealStore(s => s.platformColSource);
+  const viewMode             = useDealStore(s => s.viewMode);
+  const setViewMode          = useDealStore(s => s.setViewMode);
+  const y1Source             = useDealStore(s => s.y1Source);
+  const setY1Source          = useDealStore(s => s.setY1Source);
+  const platformColSource    = useDealStore(s => s.platformColSource);
+  const stanceAffectedFields = useDealStore(s => s.stanceAffectedFields);
+
+  // Map stance fieldPath → AffectedStanceField for ProForma row lookup
+  const stanceByPath = useMemo(() => {
+    const map: Record<string, import('../../../stores/dealContext.types').AffectedStanceField> = {};
+    for (const af of (stanceAffectedFields ?? [])) map[af.fieldPath] = af;
+    return map;
+  }, [stanceAffectedFields]);
 
   const T_PERIODS = ['T12', 'T6', 'T3', 'T1'] as const;
   type TPeriod = typeof T_PERIODS[number];
@@ -811,6 +819,35 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         </div>
       )}
 
+      {/* ── Stance-modulated fields banner ── */}
+      {stanceAffectedFields && stanceAffectedFields.length > 0 && (
+        <div style={{
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
+          padding: '3px 12px', background: '#14100000',
+          borderBottom: '1px solid #f59e0b33',
+          borderLeft: '3px solid #f59e0b',
+        }}>
+          <span style={{ color: '#f59e0b', fontSize: 9, fontWeight: 700, fontFamily: MONO, letterSpacing: '0.06em', flexShrink: 0 }}>
+            ● STANCE ACTIVE
+          </span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {stanceAffectedFields.map(af => (
+              <span
+                key={af.fieldPath}
+                title={af.trace}
+                style={{
+                  fontFamily: MONO, fontSize: 8, color: '#f59e0b',
+                  background: '#1a1200', border: '1px solid #f59e0b33',
+                  borderRadius: 2, padding: '1px 5px', cursor: 'help',
+                }}
+              >
+                {af.fieldPath} {af.deltaBps > 0 ? `+${af.deltaBps}` : af.deltaBps}bps
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Scrollable body ── */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
 
@@ -867,6 +904,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                     onRowClick={r.field === 'concessions' && data?.concessionRecognition != null ? openY1Drill : undefined}
                     sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
+                    stanceModulated={r.field === 'vacancy_loss' && !!(stanceByPath['vacancy'])}
+                    stanceTrace={r.field === 'vacancy_loss' ? stanceByPath['vacancy']?.trace : undefined}
                   />
                   {isConcessionsOverridden && (
                     <tr style={{ background: '#110e00' }}>
@@ -932,7 +971,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 onSaveCorrection={handleSaveCorrection}
                 onResetCorrection={handleResetCorrection}
                 evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
-                sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null} />
+                sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
+                stanceModulated={!!(stanceByPath['expenseGrowth'])}
+                stanceTrace={stanceByPath['expenseGrowth']?.trace} />
             ))}
             <tr style={{ background: '#1a110a' }}>
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#1a110a' }}>─── CONTROLLABLE OPEX ───</td>
@@ -958,7 +999,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 onSaveCorrection={handleSaveCorrection}
                 onResetCorrection={handleResetCorrection}
                 evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
-                sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null} />
+                sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
+                stanceModulated={!!(stanceByPath['expenseGrowth'])}
+                stanceTrace={stanceByPath['expenseGrowth']?.trace} />
             ))}
 
             {/* ── TOTAL OPEX ── */}
@@ -1768,7 +1811,7 @@ const COLLISION_COLOR: Record<string, string> = {
   minor:    '#94a3b8',
 };
 
-function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved, onRowClick, sigmaTier }: {
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved, onRowClick, sigmaTier, stanceModulated, stanceTrace }: {
   row: OperatingStatementRow;
   isEven: boolean;
   shade?: 'blue' | 'warm' | 'purple';
@@ -1787,6 +1830,10 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   onRowClick?: () => void;
   /** M36 Σ plausibility tier for this row — shown inline in the Resolved cell for 4 s after a correction is saved. */
   sigmaTier?: 'REALISTIC' | 'AGGRESSIVE' | 'HEROIC' | null;
+  /** True when OperatorStance has modulated the forward assumption driving this row. */
+  stanceModulated?: boolean;
+  /** Human-readable trace of which stance rules fired. */
+  stanceTrace?: string;
 }) {
   const viewMode          = useDealStore(s => s.viewMode);
   const platformColSource = useDealStore(s => s.platformColSource);
@@ -2130,6 +2177,12 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
               }} />
               {(evidenceResolved.meta.collision_magnitude ?? 'minor').toUpperCase()}
             </span>
+          )}
+          {stanceModulated && (
+            <span
+              title={stanceTrace ?? 'Forward assumption adjusted by OperatorStance'}
+              style={{ color: '#f59e0b', fontSize: 9, lineHeight: 1, cursor: 'help', flexShrink: 0 }}
+            >●</span>
           )}
           {isDeviant && (
             <span title={`${row.benchmarkPosition === 'above' ? 'Above' : 'Below'} platform benchmark`}

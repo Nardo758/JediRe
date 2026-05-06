@@ -34,6 +34,10 @@ export interface AssumptionFieldDef {
   narrative?: string | null;
   /** Weight used in Bayesian blend (0-1); null when no subject */
   blendWeight?: number | null;
+  /** True when OperatorStance has modulated this field's effective value. */
+  stanceModulated?: boolean;
+  /** Human-readable trace of which stance rules fired (shown in tooltip). */
+  stanceTrace?: string;
 }
 
 // ─── Collision entry ───────────────────────────────────────────────────────

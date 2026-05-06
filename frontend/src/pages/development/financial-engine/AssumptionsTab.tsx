@@ -1521,9 +1521,31 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const validationFlags = useDealStore(s => s.validationFlags);
   const setRefusalReasons = useDealStore(s => s.setRefusalReasons);
   const refusalReasons    = useDealStore(s => s.refusalReasons);
-  const y1Source          = useDealStore(s => s.y1Source);
-  const viewMode          = useDealStore(s => s.viewMode);
-  const setViewMode       = useDealStore(s => s.setViewMode);
+  const y1Source             = useDealStore(s => s.y1Source);
+  const viewMode             = useDealStore(s => s.viewMode);
+  const setViewMode          = useDealStore(s => s.setViewMode);
+  const stanceAffectedFields = useDealStore(s => s.stanceAffectedFields);
+
+  // Build a map from AssumptionsTab row key → AffectedStanceField so each row
+  // can render an amber ● marker when it has been modulated by OperatorStance.
+  const stanceByRowKey = useMemo(() => {
+    if (!stanceAffectedFields?.length) return {} as Record<string, import('../../../stores/dealContext.types').AffectedStanceField>;
+    const PATH_TO_KEYS: Record<string, string[]> = {
+      rentGrowth:           ['growthRentPct'],
+      rentGrowthStabilized: ['growthRentPct'],
+      exitCapRate:          ['exitCapRate'],
+      vacancy:              ['vacancy_pct', 'stabilizedOcc'],
+      expenseGrowth:        ['growthOpexPct'],
+    };
+    const map: Record<string, import('../../../stores/dealContext.types').AffectedStanceField> = {};
+    for (const af of stanceAffectedFields) {
+      for (const key of (PATH_TO_KEYS[af.fieldPath] ?? [])) {
+        map[key] = af;
+      }
+    }
+    return map;
+  }, [stanceAffectedFields]);
+
   const [closeDate, setCloseDate] = useState('');
   const [saleDate,  setSaleDate]  = useState('');
   const [csLocal, setCsLocal]     = useState<{
@@ -2912,6 +2934,12 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                                 </span>
                               )}
                               <span className="truncate">{rd.label}</span>
+                              {stanceByRowKey[rd.key] && (
+                                <span
+                                  title={stanceByRowKey[rd.key].trace}
+                                  style={{ color: '#f59e0b', fontSize: 9, lineHeight: 1, cursor: 'help', flexShrink: 0 }}
+                                >●</span>
+                              )}
                               {viewMode === 'BROKER_VIEW' && (
                                 <button
                                   title="Log a disagreement note (local — persistence in follow-up)"

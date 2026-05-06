@@ -53,22 +53,32 @@ function AssumptionRowInner({
     >
       {/* Label */}
       <td style={{ padding: '3px 8px', minWidth: 140 }}>
-        <button
-          onClick={() => onOpenDrilldown(field.fieldId)}
-          onKeyDown={e => { if (e.key === 'Enter') onOpenDrilldown(field.fieldId); }}
-          title="Click for source drilldown"
-          style={{
-            fontFamily: T.font.label,
-            fontSize: T.fontSize.label,
-            color: hasOverride ? T.accent.user : T.text.secondary,
-            fontWeight: hasOverride ? 600 : 400,
-            background: 'none', border: 'none',
-            cursor: 'pointer', padding: 0,
-            textAlign: 'left',
-          }}
-        >
-          {field.label}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            onClick={() => onOpenDrilldown(field.fieldId)}
+            onKeyDown={e => { if (e.key === 'Enter') onOpenDrilldown(field.fieldId); }}
+            title="Click for source drilldown"
+            style={{
+              fontFamily: T.font.label,
+              fontSize: T.fontSize.label,
+              color: hasOverride ? T.accent.user : T.text.secondary,
+              fontWeight: hasOverride ? 600 : 400,
+              background: 'none', border: 'none',
+              cursor: 'pointer', padding: 0,
+              textAlign: 'left',
+            }}
+          >
+            {field.label}
+          </button>
+          {field.stanceModulated && (
+            <span
+              title={field.stanceTrace ?? 'Adjusted by OperatorStance'}
+              style={{ color: '#f59e0b', fontSize: 9, lineHeight: 1, cursor: 'help', flexShrink: 0 }}
+            >
+              ●
+            </span>
+          )}
+        </div>
       </td>
 
       {/* PEER SET */}
@@ -157,12 +167,14 @@ function areEqual(prev: AssumptionRowProps, next: AssumptionRowProps) {
   const pf = prev.field;
   const nf = next.field;
   return (
-    pf.effectiveValue === nf.effectiveValue &&
-    pf.overrideValue  === nf.overrideValue  &&
-    pf.source         === nf.source         &&
-    pf.subjectValue   === nf.subjectValue   &&
-    pf.peerValue      === nf.peerValue      &&
-    pf.confidence     === nf.confidence     &&
+    pf.effectiveValue  === nf.effectiveValue  &&
+    pf.overrideValue   === nf.overrideValue   &&
+    pf.source          === nf.source          &&
+    pf.subjectValue    === nf.subjectValue    &&
+    pf.peerValue       === nf.peerValue       &&
+    pf.confidence      === nf.confidence      &&
+    pf.stanceModulated === nf.stanceModulated &&
+    pf.stanceTrace     === nf.stanceTrace     &&
     prev.hasSubjectHistory === next.hasSubjectHistory
   );
 }

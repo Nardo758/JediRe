@@ -790,6 +790,8 @@ interface DealContextBase {
   zoningOutput: import('../types/zoning.types').ZoningOutput | null;
   /** OperatorStance — the meta-layer that modulates Cashflow Agent discretion. */
   operatorStance: OperatorStance | null;
+  /** Cached list of fields currently flagged stanceModulated=true. null = not yet fetched. */
+  stanceAffectedFields: AffectedStanceField[] | null;
 
   resolvedUnitMix: UnitMixRow[];
   unitMixOverrides: Record<string, Partial<Pick<UnitMixRow, 'count' | 'avgSF' | 'targetRent'>>>;

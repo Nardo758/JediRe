@@ -520,6 +520,7 @@ const INITIAL_CONTEXT: DealContext = {
   stageHistory: [],
   editLog: [],
   operatorStance: null,
+  stanceAffectedFields: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -1802,10 +1803,18 @@ export const useDealStore = create<DealStore>()(
 
     fetchOperatorStance: async (dealId) => {
       try {
-        const res = await apiClient.get<{ stance: import('./dealContext.types').OperatorStance }>(
-          `/api/v1/deals/${dealId}/stance`,
-        );
-        set({ operatorStance: res.data.stance });
+        const [stanceRes, fieldsRes] = await Promise.all([
+          apiClient.get<{ stance: import('./dealContext.types').OperatorStance }>(
+            `/api/v1/deals/${dealId}/stance`,
+          ),
+          apiClient.get<{ affectedFields: import('./dealContext.types').AffectedStanceField[] }>(
+            `/api/v1/deals/${dealId}/stance/affected-fields`,
+          ).catch(() => null),
+        ]);
+        set({
+          operatorStance: stanceRes.data.stance,
+          stanceAffectedFields: fieldsRes?.data.affectedFields ?? [],
+        });
       } catch (err) {
         console.warn('[dealStore] fetchOperatorStance failed (non-fatal):', err);
       }
@@ -1818,6 +1827,10 @@ export const useDealStore = create<DealStore>()(
           patch,
         );
         set({ operatorStance: res.data.stance });
+        // Re-fetch affected fields after stance change (non-fatal fire-and-forget)
+        apiClient.get<{ affectedFields: import('./dealContext.types').AffectedStanceField[] }>(
+          `/api/v1/deals/${dealId}/stance/affected-fields`,
+        ).then(r => set({ stanceAffectedFields: r.data.affectedFields ?? [] })).catch(() => {});
       } catch (err) {
         console.warn('[dealStore] saveOperatorStance failed:', err);
         throw err;
@@ -1829,7 +1842,7 @@ export const useDealStore = create<DealStore>()(
         const res = await apiClient.post<{ stance: import('./dealContext.types').OperatorStance }>(
           `/api/v1/deals/${dealId}/stance/reset`,
         );
-        set({ operatorStance: res.data.stance });
+        set({ operatorStance: res.data.stance, stanceAffectedFields: [] });
       } catch (err) {
         console.warn('[dealStore] resetOperatorStance failed:', err);
         throw err;
