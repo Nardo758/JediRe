@@ -956,9 +956,17 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             {/* ── REVENUE ── */}
             <SectionHeader label="Revenue" accentColor="#06b6d4" bg="#051a24" />
 
-            {/* GPR — top-line broker vs platform comparison */}
+            {/* GPR — top-line revenue data row */}
             {byField['gpr'] && (
-              <SubtotalRow label="GROSS POTENTIAL RENT" row={byField['gpr']} color="#041520" textColor="#38bdf8" egiResolved={egiResolved} fullFormat />
+              <DataRow row={byField['gpr']} isEven={false} shade="blue"
+                corrections={corrections} setCorrections={setCorrections}
+                totalUnits={totalUnits} egiResolved={egiResolved}
+                activePeriod={activePeriod}
+                onSaveCorrection={handleSaveCorrection}
+                onResetCorrection={handleResetCorrection}
+                evidenceResolved={resolveEvidence('gpr', evidenceFieldMap)}
+                sigmaTier={sigmaField?.field === 'gpr' ? sigmaField.tier : null}
+              />
             )}
 
             {/* Income deductions (vacancy, LTL, concessions, bad debt, NRU) */}
