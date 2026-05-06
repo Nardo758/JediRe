@@ -398,6 +398,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     return () => clearTimeout(t);
   }, [sigmaField]);
   const [showAncillary, setShowAncillary] = useState(false);
+  const [showUtilitiesBreakdown, setShowUtilitiesBreakdown] = useState(false);
   const [conDrill, setConDrill] = useState<{
     open: boolean;
     periodLabel: string;
@@ -1014,27 +1015,41 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   const waterSewer = byField['water_sewer'];
                   const electric   = byField['electric'];
                   const gasFuel    = byField['gas_fuel'];
-                  const subLines   = [waterSewer, electric, gasFuel].filter(Boolean) as typeof waterSewer[];
-                  if (subLines.length > 0) {
-                    return subLines.map(sub => (
-                      <tr key={sub!.field} style={{ background: '#130e00', borderLeft: '2px solid #6b3d00' }}>
-                        <td style={{ padding: '3px 8px 3px 28px', fontSize: 8.5, color: '#92714a', fontFamily: MONO, position: 'sticky', left: 0, background: '#130e00' }}>
-                          ↳ {sub!.label ?? sub!.field.replace(/_/g, ' ')}
-                        </td>
-                        <td style={{ padding: '3px 8px', textAlign: 'right', color: '#6b3d00', fontSize: 8.5 }}>{fmtFull$(sub!.broker)}</td>
-                        {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '3px 8px', textAlign: 'right', color: '#6b3d00', fontSize: 8.5 }}>{fmtFull$(sub!.t12)}</td>}
-                        {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '3px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 8.5 }}>{fmtFull$(sub!.platform)}</td>}
-                        <td style={{ padding: '3px 8px', textAlign: 'right', color: '#92714a', fontWeight: 600, fontSize: 8.5 }}>{fmtFull$(sub!.resolved)}</td>
-                        <td colSpan={4} />
-                      </tr>
-                    ));
-                  }
+                  const subLines   = [waterSewer, electric, gasFuel].filter(Boolean) as NonNullable<typeof waterSewer>[];
                   return (
-                    <tr style={{ background: '#130e00' }}>
-                      <td colSpan={9} style={{ padding: '2px 8px 2px 28px', fontSize: 8, color: '#4a3010', fontFamily: MONO, borderBottom: '1px solid #1f1200', fontStyle: 'italic' }}>
-                        ↑ Consolidated — water/sewer · electric · gas map to this bucket from T-12 extraction
-                      </td>
-                    </tr>
+                    <>
+                      <tr
+                        onClick={() => setShowUtilitiesBreakdown(v => !v)}
+                        style={{ background: '#100b00', cursor: 'pointer' }}
+                      >
+                        <td colSpan={9} style={{ padding: '2px 8px 2px 24px', fontSize: 8, color: '#6b4a1a', fontFamily: MONO, fontStyle: 'italic', userSelect: 'none' }}>
+                          {showUtilitiesBreakdown ? '▾' : '▸'}{' '}
+                          {subLines.length > 0 ? `${subLines.length} sub-lines available` : 'Consolidated — water/sewer · electric · gas'}{' '}
+                          <span style={{ color: '#3d2a00' }}>(click to {showUtilitiesBreakdown ? 'collapse' : 'expand'})</span>
+                        </td>
+                      </tr>
+                      {showUtilitiesBreakdown && (
+                        subLines.length > 0 ? subLines.map(sub => (
+                          <tr key={sub.field} style={{ background: '#130e00', borderLeft: '2px solid #6b3d00' }}>
+                            <td style={{ padding: '3px 8px 3px 28px', fontSize: 8.5, color: '#92714a', fontFamily: MONO, position: 'sticky', left: 0, background: '#130e00' }}>
+                              ↳ {sub.label ?? sub.field.replace(/_/g, ' ')}
+                            </td>
+                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#6b3d00', fontSize: 8.5 }}>{fmtFull$(sub.broker)}</td>
+                            {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '3px 8px', textAlign: 'right', color: '#6b3d00', fontSize: 8.5 }}>{fmtFull$(sub.t12)}</td>}
+                            {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '3px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 8.5 }}>{fmtFull$(sub.platform)}</td>}
+                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#92714a', fontWeight: 600, fontSize: 8.5 }}>{fmtFull$(sub.resolved)}</td>
+                            <td colSpan={4} />
+                          </tr>
+                        )) : (
+                          <tr style={{ background: '#0d0900' }}>
+                            <td colSpan={9} style={{ padding: '3px 8px 3px 28px', fontSize: 8, color: '#3d2a00', fontFamily: MONO, borderBottom: '1px solid #1a1200', fontStyle: 'italic' }}>
+                              Backend maps water/sewer · electric · gas → single utilities bucket (T-12 extraction).
+                              Split appears here when sub-line data is available.
+                            </td>
+                          </tr>
+                        )
+                      )}
+                    </>
                   );
                 })()}
               </React.Fragment>

@@ -349,8 +349,8 @@ const FIELD_META: Record<string, FieldMeta> = {
     brokerPage: 'T12 Operating Statement', brokerLine: 'G&A / Admin',
   },
   management_fee: {
-    unit: 'dollar', format: fmtDlr, patchField: 'managementFeePct', growthPct: 0.03, growthKey: 'rent',
-    description: 'Property management fee (% of EGI × EGI). Scales with revenue each year.',
+    unit: 'dollar', format: fmtDlr, readonly: true, growthKey: 'rent',
+    description: 'Property management fee in dollars (% of EGI × EGI). Edit via managementFeePct. Scales with revenue each year.',
     platformSource: 'JEDI — Market management fee norms', brokerSource: 'OM / Management Agreement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Management Fee',
   },
