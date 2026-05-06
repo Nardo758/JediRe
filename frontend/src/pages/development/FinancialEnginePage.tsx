@@ -7,7 +7,7 @@ import {
 } from '../../components/deal/bloomberg-ui';
 import { OverviewTab } from './financial-engine/OverviewTab';
 import { ProFormaSummaryTab } from './financial-engine/ProFormaSummaryTab';
-import { AssumptionsHubTab } from './financial-engine/AssumptionsHubTab';
+import { ConsoleHubTab } from './financial-engine/ConsoleHubTab';
 import { ProjectionsHubTab } from './financial-engine/ProjectionsHubTab';
 import { CapitalHubTab } from './financial-engine/CapitalHubTab';
 import { ReturnsHubTab } from './financial-engine/ReturnsHubTab';
@@ -387,7 +387,7 @@ class TabErrorBoundary extends Component<
 // Built-in tabs always come first; custom tabs are appended after.
 const BUILTIN_TAB_LABELS = [
   '⊞ OVERVIEW',
-  '⊕ ASSUMPTIONS',
+  '⊕ CONSOLE',
   '≡ PRO FORMA',
   '⋮≡ PROJECTIONS',
   '◈ CAPITAL',
@@ -1651,8 +1651,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 0 && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 1 && (
             <BtTabWrapper>
-              <TabErrorBoundary tabName="Assumptions">
-                <AssumptionsHubTab {...tabProps} />
+              <TabErrorBoundary tabName="Console">
+                <ConsoleHubTab {...tabProps} />
               </TabErrorBoundary>
             </BtTabWrapper>
           )}
