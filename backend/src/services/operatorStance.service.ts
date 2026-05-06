@@ -6,16 +6,19 @@
  * Responsibilities:
  *   1. Read / write / reset stance to deals.operator_stance (JSONB)
  *   2. Apply stance modulation to a proforma_fields map (stanceOnly re-blend)
- *   3. Return affected-fields list (which LayeredValues are currently stance-modulated)
+ *   3. Return affected-fields list (fields currently flagged stanceModulated in snapshot)
  *
- * Cache-aware re-blend contract (Step 6 of task spec):
- *   PUT /stance → saveStance() → applyStanceReblend() (background, non-blocking)
- *   The reblend reads the last deal_underwriting_snapshots row, applies modulation
- *   to the cached proforma_fields, and writes the result as a new snapshot tagged
- *   as a stance reblend run. No LLM, no fetch_* calls.
+ * ── IDEMPOTENCY CONTRACT ─────────────────────────────────────────────────────
+ * Every re-blend (including reset to MARKET defaults) reads from the BASELINE
+ * snapshot — the most-recent snapshot whose agent_run_id does NOT begin with
+ * "stance_reblend_". This guarantees:
  *
- * This file is importable from backend only (uses pg, not Drizzle) so the type
- * re-export is from the canonical types file, not dealContext.types.ts.
+ *   - Applying CONSERVATIVE twice → same result as applying once.
+ *   - Flipping CONSERVATIVE → MARKET → reset → same original values are restored.
+ *   - Delta of 0 (MARKET defaults) strips stanceModulated=true, restoring originals.
+ *
+ * The stance_reblend snapshot is a VIEW of the baseline, never the new baseline.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { type Pool } from 'pg';
@@ -37,6 +40,33 @@ import { randomUUID } from 'crypto';
 
 function getDb(): Pool {
   return getPool();
+}
+
+/**
+ * Load the BASELINE snapshot for a deal — the most-recent snapshot whose
+ * agent_run_id does NOT begin with "stance_reblend_".
+ *
+ * This is the anchor for all re-blends.  Stance snapshots are ephemeral views;
+ * the baseline is the immutable agent output we always apply deltas on top of.
+ */
+async function loadBaselineSnapshot(
+  db: Pool,
+  dealId: string,
+): Promise<{ id: string; proforma_json: Record<string, any>; evidence_map: Record<string, any> } | null> {
+  const res = await db.query(
+    `SELECT id, proforma_json, evidence_map
+     FROM deal_underwriting_snapshots
+     WHERE deal_id = $1
+       AND (agent_run_id IS NULL OR agent_run_id NOT LIKE 'stance_reblend_%')
+     ORDER BY created_at DESC LIMIT 1`,
+    [dealId],
+  );
+  if (res.rows.length === 0) return null;
+  return {
+    id: res.rows[0].id,
+    proforma_json: res.rows[0].proforma_json ?? {},
+    evidence_map: res.rows[0].evidence_map ?? {},
+  };
 }
 
 // ── Read ─────────────────────────────────────────────────────────────────────
@@ -66,8 +96,8 @@ export async function getStanceForDeal(
 
 /**
  * Merge a partial stance patch into the deal's persisted stance.
- * Triggers a background stance reblend against the last cached snapshot
- * (no LLM call, no data fetches).
+ * Triggers a background stance reblend from the baseline snapshot
+ * (no LLM call, no data fetches — zero credit cost).
  */
 export async function saveStance(
   dealId: string,
@@ -76,7 +106,6 @@ export async function saveStance(
 ): Promise<OperatorStance> {
   const db = getDb();
 
-  // Load existing (may be null)
   const existing = await getStanceForDeal(dealId, userId);
   const merged: OperatorStance = {
     ...existing,
@@ -85,7 +114,6 @@ export async function saveStance(
     updatedAt: new Date().toISOString(),
   };
 
-  // Validate merged result
   const parsed = OperatorStanceSchema.safeParse(merged);
   if (!parsed.success) {
     throw new Error(`Invalid stance: ${parsed.error.message}`);
@@ -96,9 +124,13 @@ export async function saveStance(
     [JSON.stringify(parsed.data), dealId, userId],
   );
 
-  logger.info('[OperatorStance] stance saved', { dealId, underwritingPosture: parsed.data.underwritingPosture });
+  logger.info('[OperatorStance] stance saved', {
+    dealId,
+    underwritingPosture: parsed.data.underwritingPosture,
+    cyclePosition: parsed.data.cyclePosition,
+  });
 
-  // Background reblend — does not block the REST response
+  // Background reblend from baseline — does not block the REST response
   setImmediate(() => {
     applyStanceReblend(dealId, parsed.data).catch(err => {
       logger.warn('[OperatorStance] background reblend failed (non-fatal)', {
@@ -113,6 +145,9 @@ export async function saveStance(
 
 /**
  * Reset stance to platform defaults (delete persisted stance).
+ * Triggers a background reblend so the reset takes effect immediately in the
+ * cached snapshot — the re-blend applies zero deltas which strips all
+ * stanceModulated flags, restoring original agent-run values.
  */
 export async function resetStance(
   dealId: string,
@@ -126,24 +161,95 @@ export async function resetStance(
   if (res.rows.length === 0) {
     throw new Error(`Deal ${dealId} not found or not accessible`);
   }
+
+  const defaults: OperatorStance = { ...PLATFORM_STANCE_DEFAULTS, updatedAt: new Date().toISOString() };
   logger.info('[OperatorStance] stance reset to defaults', { dealId });
-  return { ...PLATFORM_STANCE_DEFAULTS, updatedAt: new Date().toISOString() };
+
+  // Background reblend with MARKET defaults — strips all stanceModulated flags
+  setImmediate(() => {
+    applyStanceReblend(dealId, defaults).catch(err => {
+      logger.warn('[OperatorStance] background reblend (reset) failed (non-fatal)', {
+        dealId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
+  });
+
+  return defaults;
 }
 
-// ── Affected fields ──────────────────────────────────────────────────────────
+// ── Affected fields ───────────────────────────────────────────────────────────
 
 export interface AffectedField {
   fieldPath: string;
   deltaBps: number;
   trace: string;
+  source: 'snapshot' | 'rules';
 }
 
 /**
- * Return the list of field paths that the current stance modulates,
- * along with their net bps deltas. Computed deterministically — no DB query.
- * Used by GET /stance/affected-fields for the future Console yellow markers.
+ * Return the list of field paths currently flagged stanceModulated=true in the
+ * persisted financial outputs (latest snapshot), along with their stanceTrace.
+ *
+ * PRIMARY PATH — snapshot query (reflects actual persisted state):
+ *   Scans the latest deal_underwriting_snapshots.proforma_json for fields where
+ *   stanceModulated=true. This is what the Console yellow markers should read.
+ *
+ * FALLBACK — deterministic rule inference (no snapshot yet):
+ *   When no snapshot exists (agent hasn't run), compute from stance rules
+ *   so the UI can preview which fields WILL be affected when the agent runs.
+ *   Fields from this path are tagged source='rules'.
  */
-export function computeAffectedFields(stance: OperatorStance): AffectedField[] {
+export async function computeAffectedFields(
+  dealId: string,
+  stance: OperatorStance,
+): Promise<AffectedField[]> {
+  const db = getDb();
+
+  // Primary: query latest snapshot (including stance_reblend snapshots)
+  const snapRes = await db.query(
+    `SELECT proforma_json
+     FROM deal_underwriting_snapshots
+     WHERE deal_id = $1
+     ORDER BY created_at DESC LIMIT 1`,
+    [dealId],
+  );
+
+  if (snapRes.rows.length > 0 && snapRes.rows[0].proforma_json) {
+    const proformaJson: Record<string, any> = snapRes.rows[0].proforma_json;
+    const result: AffectedField[] = [];
+
+    for (const [fieldPath, field] of Object.entries(proformaJson)) {
+      if (field && typeof field === 'object' && field.stanceModulated === true) {
+        const { deltaBps, firedRules } = computeStanceDelta(stance, fieldPath);
+        result.push({
+          fieldPath,
+          deltaBps,
+          trace: field.stanceTrace ?? buildStanceTrace(stance, fieldPath, deltaBps, firedRules),
+          source: 'snapshot',
+        });
+      }
+    }
+
+    // Also include fields that WILL be affected by current stance but aren't
+    // yet in the snapshot (e.g. stance was updated after last reblend completed)
+    for (const fieldPath of STANCE_MODULATED_FIELD_PATHS) {
+      if (result.some(f => f.fieldPath === fieldPath)) continue; // already in snapshot result
+      const { deltaBps, firedRules } = computeStanceDelta(stance, fieldPath);
+      if (deltaBps !== 0) {
+        result.push({
+          fieldPath,
+          deltaBps,
+          trace: buildStanceTrace(stance, fieldPath, deltaBps, firedRules),
+          source: 'rules',
+        });
+      }
+    }
+
+    return result;
+  }
+
+  // Fallback: no snapshot — deterministic rule inference only
   const result: AffectedField[] = [];
   for (const fieldPath of STANCE_MODULATED_FIELD_PATHS) {
     const { deltaBps, firedRules } = computeStanceDelta(stance, fieldPath);
@@ -152,6 +258,7 @@ export function computeAffectedFields(stance: OperatorStance): AffectedField[] {
         fieldPath,
         deltaBps,
         trace: buildStanceTrace(stance, fieldPath, deltaBps, firedRules),
+        source: 'rules',
       });
     }
   }
@@ -161,48 +268,44 @@ export function computeAffectedFields(stance: OperatorStance): AffectedField[] {
 // ── Stance-only reblend ───────────────────────────────────────────────────────
 
 /**
- * Apply stance modulation to the last cached underwriting snapshot for a deal.
+ * Apply stance modulation to the BASELINE underwriting snapshot for a deal.
  *
- * CONTRACT:
- *   - Reads last deal_underwriting_snapshots row (the cached agent output)
- *   - Applies stance modulation rules to the proforma_fields map
- *   - Writes a NEW snapshot tagged stance_reblend (no LLM, no data fetches)
- *   - Tags modulated fields with stanceModulated=true and stanceTrace
- *   - If no snapshot exists, logs and exits (agent hasn't run yet — nothing to reblend)
+ * IDEMPOTENCY GUARANTEE:
+ *   Always reads from the baseline (last non-stance_reblend snapshot), so:
+ *   - Applying CONSERVATIVE twice → same result as once (delta applied to original value)
+ *   - Reverting to MARKET (defaulted=true, all deltas=0) restores original values
+ *   - Reset → same as MARKET revert
  *
- * Credit savings: 100% (zero tokens used, no LLM call).
+ * Zero-delta fields (delta=0) strip stanceModulated=true, restoring original values.
+ * Positive/negative delta fields set stanceModulated=true and stanceTrace.
+ *
+ * Credit savings: 100% (zero LLM tokens, zero data fetches).
  */
 export async function applyStanceReblend(
   dealId: string,
   stance: OperatorStance,
-): Promise<{ reblendId: string | null; fieldsModulated: string[] }> {
+): Promise<{ reblendId: string | null; fieldsModulated: string[]; baselineSnapshotId: string | null }> {
   const db = getDb();
 
-  // Load last snapshot
-  const snapRes = await db.query(
-    `SELECT id, proforma_json, evidence_map, agent_run_id
-     FROM deal_underwriting_snapshots
-     WHERE deal_id = $1
-     ORDER BY created_at DESC LIMIT 1`,
-    [dealId],
-  );
-  if (snapRes.rows.length === 0) {
-    logger.info('[OperatorStance] no snapshot found — skipping reblend', { dealId });
-    return { reblendId: null, fieldsModulated: [] };
+  // Load BASELINE snapshot (never a prior stance_reblend)
+  const baseline = await loadBaselineSnapshot(db, dealId);
+  if (!baseline) {
+    logger.info('[OperatorStance] no baseline snapshot found — skipping reblend', { dealId });
+    return { reblendId: null, fieldsModulated: [], baselineSnapshotId: null };
   }
 
-  const snap = snapRes.rows[0];
-  const proformaFields: Record<string, any> = snap.proforma_json ?? {};
+  // Deep-clone the baseline proforma fields so we never mutate the baseline in-memory
+  const proformaFields: Record<string, any> = JSON.parse(JSON.stringify(baseline.proforma_json));
   const fieldsModulated: string[] = [];
 
-  // Apply modulation to each stance-aware field
   for (const fieldPath of STANCE_MODULATED_FIELD_PATHS) {
     const field = proformaFields[fieldPath];
     if (!field || field.value == null) continue;
 
     const { deltaBps, firedRules } = computeStanceDelta(stance, fieldPath);
+
     if (deltaBps === 0) {
-      // Remove stale stance flags if stance was reset
+      // MARKET baseline — ensure no stale stance flags remain in the cloned output
       if (field.stanceModulated) {
         field.stanceModulated = false;
         field.stanceTrace = undefined;
@@ -210,9 +313,7 @@ export async function applyStanceReblend(
       continue;
     }
 
-    // Convert bps delta to the field's natural unit:
-    //   rate fields (rentGrowth, exitCapRate, expenseGrowth, vacancy) are stored as decimals
-    //   e.g. 0.03 = 3%. 25bps = 0.0025.
+    // Apply delta to the baseline value (field comes from the unmodulated baseline)
     const deltaDecimal = deltaBps / 10000;
     const baseValue = typeof field.value === 'number' ? field.value : 0;
     field.value = Math.max(0, baseValue + deltaDecimal);
@@ -221,7 +322,7 @@ export async function applyStanceReblend(
     fieldsModulated.push(fieldPath);
   }
 
-  // Write new snapshot tagged as stance reblend
+  // Write the stance reblend snapshot
   const reblendId = randomUUID();
   const reblendRunId = `stance_reblend_${reblendId}`;
 
@@ -234,24 +335,29 @@ export async function applyStanceReblend(
       dealId,
       reblendRunId,
       JSON.stringify(proformaFields),
-      JSON.stringify(snap.evidence_map ?? {}),
+      JSON.stringify(baseline.evidence_map),
     ],
   );
 
   logger.info('[OperatorStance] reblend complete', {
     dealId,
     reblendId,
+    baselineSnapshotId: baseline.id,
     fieldsModulated,
     underwritingPosture: stance.underwritingPosture,
+    defaulted: stance.defaulted,
   });
 
-  return { reblendId, fieldsModulated };
+  return { reblendId, fieldsModulated, baselineSnapshotId: baseline.id };
 }
 
 /**
  * Apply stance modulation to a live proforma_fields map in-memory.
  * Used by the Cashflow Agent tool fetch_operator_stance to tag values
  * after tier-hierarchy resolution, before write_underwriting persists them.
+ *
+ * IMPORTANT: Call this on a freshly-derived map, NOT a previously-modulated one.
+ * The Cashflow Agent always derives values from raw data — this is always idempotent.
  *
  * Mutates the input map and returns the list of modulated field paths.
  */

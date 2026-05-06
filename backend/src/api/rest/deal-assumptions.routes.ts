@@ -1381,7 +1381,7 @@ router.get('/:dealId/stance/affected-fields', requireAuth, async (req: Authentic
     const { dealId } = req.params;
     const userId = req.user!.userId;
     const stance = await getStanceForDeal(dealId, userId);
-    const affectedFields = computeAffectedFields(stance);
+    const affectedFields = await computeAffectedFields(dealId, stance);
     res.json({
       stance: { underwritingPosture: stance.underwritingPosture, defaulted: stance.defaulted },
       affectedFields,
