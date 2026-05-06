@@ -150,12 +150,11 @@ const REVENUE_FIELDS = new Set([
   'other_income', 'egi',
 ]);
 const CTRL_OPEX_FIELDS = new Set([
-  'repairs_maintenance', 'contract_services', 'landscaping',
-  'payroll', 'marketing', 'g_and_a', 'turnover',
+  'payroll', 'repairs_maintenance', 'turnover', 'contract_services', 'landscaping',
+  'marketing', 'utilities', 'g_and_a',
 ]);
 const NCTRL_OPEX_FIELDS = new Set([
-  'water_sewer', 'electric', 'gas_fuel',
-  'insurance', 'real_estate_taxes', 'management_fee', 'total_opex',
+  'management_fee', 'insurance', 'real_estate_tax', 'total_opex',
 ]);
 const SUBTOTALS = new Set(['gpr', 'net_rental_income', 'egi', 'total_opex', 'noi']);
 const PCT_FIELDS = new Set<string>();
@@ -680,8 +679,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const preNriRows  = revRows.filter(r => ['vacancy_loss', 'loss_to_lease', 'concessions', 'bad_debt', 'non_revenue_units'].includes(r.field));
   const postNriRows = revRows.filter(r => r.field === 'other_income');
   // Spec order: sort by canonical sequence
-  const CTRL_ORDER = ['repairs_maintenance','contract_services','landscaping','payroll','marketing','g_and_a','turnover'];
-  const NCTRL_ORDER = ['water_sewer','electric','gas_fuel','insurance','real_estate_taxes','management_fee'];
+  const CTRL_ORDER  = ['payroll','repairs_maintenance','turnover','contract_services','landscaping','marketing','utilities','g_and_a'];
+  const NCTRL_ORDER = ['management_fee','insurance','real_estate_tax'];
   const ctrlRows = displayRows.filter(r => CTRL_OPEX_FIELDS.has(r.field))
     .sort((a, b) => CTRL_ORDER.indexOf(a.field) - CTRL_ORDER.indexOf(b.field));
   const nctrlRows = displayRows.filter(r => NCTRL_OPEX_FIELDS.has(r.field) && !SUBTOTALS.has(r.field))
@@ -696,7 +695,12 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     t12:      ctrlRows.every(r => r.t12 == null)    ? null : ctrlRows.reduce((s, r) => s + (r.t12 ?? 0), 0),
     platform: ctrlRows.every(r => r.platform == null) ? null : ctrlRows.reduce((s, r) => s + (r.platform ?? 0), 0),
   };
-  const nctrlSubtotalRow = { resolved: nctrlRows.filter(r => r.field !== 'total_opex').reduce((s, r) => s + (r.resolved ?? 0), 0) };
+  const nctrlSubtotalRow = {
+    resolved: nctrlRows.reduce((s, r) => s + (r.resolved ?? 0), 0),
+    broker:   nctrlRows.every(r => r.broker == null) ? null : nctrlRows.reduce((s, r) => s + (r.broker ?? 0), 0),
+    t12:      nctrlRows.every(r => r.t12 == null)    ? null : nctrlRows.reduce((s, r) => s + (r.t12 ?? 0), 0),
+    platform: nctrlRows.every(r => r.platform == null) ? null : nctrlRows.reduce((s, r) => s + (r.platform ?? 0), 0),
+  };
 
   const egiResolved = egiRow?.resolved ?? null;
 
@@ -1223,6 +1227,35 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
                   stanceModulated={!!(stanceByPath['expenseGrowth'])}
                   stanceTrace={stanceByPath['expenseGrowth']?.trace} />
+                {r.field === 'utilities' && (() => {
+                  const waterSewer = byField['water_sewer'];
+                  const electric   = byField['electric'];
+                  const gasFuel    = byField['gas_fuel'];
+                  const subLines   = [waterSewer, electric, gasFuel].filter(Boolean) as NonNullable<typeof waterSewer>[];
+                  return (
+                    <>
+                      <tr
+                        onClick={() => setShowUtilitiesBreakdown(v => !v)}
+                        style={{ background: '#100b00', cursor: 'pointer' }}
+                      >
+                        <td colSpan={9} style={{ padding: '2px 8px 2px 24px', fontSize: 8, color: '#6b4a1a', fontFamily: MONO, fontStyle: 'italic', userSelect: 'none' }}>
+                          {showUtilitiesBreakdown ? '▾' : '▸'}{' '}
+                          {subLines.length > 0 ? `${subLines.length} sub-lines available` : 'Consolidated — water/sewer · electric · gas'}{' '}
+                          <span style={{ color: '#3d2a00' }}>(click to {showUtilitiesBreakdown ? 'collapse' : 'expand'})</span>
+                        </td>
+                      </tr>
+                      {showUtilitiesBreakdown && (
+                        subLines.length > 0 ? subLines.map(sub => (
+                          <tr key={sub.field} style={{ background: '#130e00', borderLeft: '2px solid #6b3d00' }}>
+                            <td style={{ padding: '3px 8px 3px 28px', fontSize: 8.5, color: '#92714a', fontFamily: MONO, position: 'sticky', left: 0, background: '#130e00' }}>
+                              ↳ {sub.label ?? sub.field.replace(/_/g, ' ')}
+                            </td>
+                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#6b3d00', fontSize: 8.5 }}>{fmtFull$(sub.broker)}</td>
+                            {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '3px 8px', textAlign: 'right', color: '#6b3d00', fontSize: 8.5 }}>{fmtFull$(sub.t12)}</td>}
+                            {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '3px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 8.5 }}>{fmtFull$(sub.platform)}</td>}
+                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#92714a', fontWeight: 600, fontSize: 8.5 }}>{fmtFull$(sub.resolved)}</td>
+                            <td colSpan={4} />
+                          </tr>
                         )) : (
                           <tr style={{ background: '#0d0900' }}>
                             <td colSpan={9} style={{ padding: '3px 8px 3px 28px', fontSize: 8, color: '#3d2a00', fontFamily: MONO, borderBottom: '1px solid #1a1200', fontStyle: 'italic' }}>
@@ -1265,6 +1298,19 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 stanceModulated={!!(stanceByPath['expenseGrowth'])}
                 stanceTrace={stanceByPath['expenseGrowth']?.trace} />
             ))}
+            <tr style={{ background: '#0d0a14' }}>
+              <td style={{ padding: '4px 8px', color: '#c084fc', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#0d0a14' }}>─── NON-CONTROLLABLE OPEX ───</td>
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#c084fc', fontSize: 9 }}>{fmtFull$(nctrlSubtotalRow.broker)}</td>
+              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(nctrlSubtotalRow.t12)}</td>}
+              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(nctrlSubtotalRow.platform)}</td>}
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#c084fc', fontWeight: 700, background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : 'rgba(0,0,0,0.3)' }}>
+                {fmtFull$(nctrlSubtotalRow.resolved || null)}
+              </td>
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
+                {egiResolved && nctrlSubtotalRow.resolved ? `${((nctrlSubtotalRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
+              </td>
+              <td colSpan={3} />
+            </tr>
 
             {/* ── TOTAL OPEX ── */}
             {totalOpexRow && (
