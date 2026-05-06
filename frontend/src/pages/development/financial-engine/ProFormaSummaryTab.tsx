@@ -995,16 +995,49 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             {/* ── CONTROLLABLE EXPENSES ── */}
             <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
             {ctrlRows.map((r, i) => (
-              <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="warm"
-                corrections={corrections} setCorrections={setCorrections}
-                totalUnits={totalUnits} egiResolved={egiResolved}
-                activePeriod={activePeriod}
-                onSaveCorrection={handleSaveCorrection}
-                onResetCorrection={handleResetCorrection}
-                evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
-                sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
-                stanceModulated={!!(stanceByPath['expenseGrowth'])}
-                stanceTrace={stanceByPath['expenseGrowth']?.trace} />
+              <React.Fragment key={r.field}>
+                <DataRow row={r} isEven={i % 2 === 0} shade="warm"
+                  corrections={corrections} setCorrections={setCorrections}
+                  totalUnits={totalUnits} egiResolved={egiResolved}
+                  activePeriod={activePeriod}
+                  onSaveCorrection={handleSaveCorrection}
+                  onResetCorrection={handleResetCorrection}
+                  evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
+                  sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
+                  stanceModulated={!!(stanceByPath['expenseGrowth'])}
+                  stanceTrace={stanceByPath['expenseGrowth']?.trace} />
+                {/* ── Utilities sub-breakdown ── forward-compatible: renders split lines when backend
+                    emits water_sewer / electric / gas_fuel; falls back to consolidation note.
+                    Backend currently maps all utility T-12 lines → single `utilities` bucket
+                    (see document-extraction/parsers/t12-parser.ts). */}
+                {r.field === 'utilities' && (() => {
+                  const waterSewer = byField['water_sewer'];
+                  const electric   = byField['electric'];
+                  const gasFuel    = byField['gas_fuel'];
+                  const subLines   = [waterSewer, electric, gasFuel].filter(Boolean) as typeof waterSewer[];
+                  if (subLines.length > 0) {
+                    return subLines.map(sub => (
+                      <tr key={sub!.field} style={{ background: '#130e00', borderLeft: '2px solid #6b3d00' }}>
+                        <td style={{ padding: '3px 8px 3px 28px', fontSize: 8.5, color: '#92714a', fontFamily: MONO, position: 'sticky', left: 0, background: '#130e00' }}>
+                          ↳ {sub!.label ?? sub!.field.replace(/_/g, ' ')}
+                        </td>
+                        <td style={{ padding: '3px 8px', textAlign: 'right', color: '#6b3d00', fontSize: 8.5 }}>{fmtFull$(sub!.broker)}</td>
+                        {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '3px 8px', textAlign: 'right', color: '#6b3d00', fontSize: 8.5 }}>{fmtFull$(sub!.t12)}</td>}
+                        {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '3px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 8.5 }}>{fmtFull$(sub!.platform)}</td>}
+                        <td style={{ padding: '3px 8px', textAlign: 'right', color: '#92714a', fontWeight: 600, fontSize: 8.5 }}>{fmtFull$(sub!.resolved)}</td>
+                        <td colSpan={4} />
+                      </tr>
+                    ));
+                  }
+                  return (
+                    <tr style={{ background: '#130e00' }}>
+                      <td colSpan={9} style={{ padding: '2px 8px 2px 28px', fontSize: 8, color: '#4a3010', fontFamily: MONO, borderBottom: '1px solid #1f1200', fontStyle: 'italic' }}>
+                        ↑ Consolidated — water/sewer · electric · gas map to this bucket from T-12 extraction
+                      </td>
+                    </tr>
+                  );
+                })()}
+              </React.Fragment>
             ))}
             <tr style={{ background: '#1a110a' }}>
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#1a110a' }}>─── CONTROLLABLE OPEX ───</td>
@@ -1165,7 +1198,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   </td>
                   <td colSpan={viewMode === 'BROKER_VIEW' ? 1 : 3} />
                   <td style={{ padding: '3px 8px', textAlign: 'right', color: isIO ? '#475569' : '#818cf8', fontWeight: 600 }}>
-                    {isIO ? '—' : dsPrincipal != null ? fmtFull$(-dsPrincipal) : '—'}
+                    {isIO ? '$0' : dsPrincipal != null ? fmtFull$(-dsPrincipal) : '—'}
                   </td>
                   <td style={{ padding: '3px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
                     {!isIO && egiResolved && dsPrincipal ? `${((dsPrincipal / egiResolved) * 100).toFixed(1)}%` : '—'}
