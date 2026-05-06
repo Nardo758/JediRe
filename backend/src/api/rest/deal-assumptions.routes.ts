@@ -1392,9 +1392,22 @@ router.post('/:dealId/stance/reset', requireAuth, async (req: AuthenticatedReque
 
 /**
  * GET /:dealId/stance/affected-fields
- * Returns the list of proforma field paths that the current stance modulates,
- * with net bps deltas. Computed deterministically — no snapshot lookup.
- * Used by the Console UI to render yellow "stance-modulated" markers.
+ *
+ * Returns the union of proforma field paths affected by the current stance,
+ * with per-field net bps deltas and source tags. Two-tier logic:
+ *
+ *   source='snapshot'  — fields with stanceModulated=true in the latest
+ *                        deal_underwriting_snapshots row. This is the ground
+ *                        truth after a Cashflow Agent run or reblend.
+ *   source='rules'     — fields that the current stance WILL modulate when
+ *                        the agent next runs but are not yet in the snapshot
+ *                        (stance was updated since last reblend, or agent
+ *                        has never run). Computed deterministically from
+ *                        STANCE_MODULATED_FIELD_PATHS + computeStanceDelta().
+ *
+ * The response deliberately includes both tiers so the Console UI can show
+ * yellow markers immediately after a PUT /stance without waiting for reblend.
+ * Callers that want only persisted-snapshot fields should filter by source.
  */
 router.get('/:dealId/stance/affected-fields', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
