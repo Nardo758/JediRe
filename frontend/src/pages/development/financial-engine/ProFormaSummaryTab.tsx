@@ -143,17 +143,19 @@ interface DealFinancials {
 
 // ─── Sections layout ──────────────────────────────────────────────────────────
 // Field names mirror Projections REVENUE block (dollar values, not rates).
+// Per canonical spec: GPR → Loss-to-Lease → Vacancy → Concessions → Bad Debt → NRU → Base Rental Revenue
 const REVENUE_FIELDS = new Set([
-  'gpr', 'vacancy_loss', 'loss_to_lease', 'concessions',
+  'gpr', 'loss_to_lease', 'vacancy_loss', 'concessions',
   'bad_debt', 'non_revenue_units', 'net_rental_income',
   'other_income', 'egi',
 ]);
 const CTRL_OPEX_FIELDS = new Set([
-  'payroll', 'repairs_maintenance', 'turnover', 'contract_services', 'landscaping',
-  'marketing', 'utilities', 'g_and_a',
+  'repairs_maintenance', 'contract_services', 'landscaping',
+  'payroll', 'marketing', 'g_and_a', 'turnover',
 ]);
 const NCTRL_OPEX_FIELDS = new Set([
-  'management_fee', 'insurance', 'real_estate_taxes', 'total_opex',
+  'water_sewer', 'electric', 'gas_fuel',
+  'insurance', 'real_estate_taxes', 'management_fee', 'total_opex',
 ]);
 const SUBTOTALS = new Set(['gpr', 'net_rental_income', 'egi', 'total_opex', 'noi']);
 const PCT_FIELDS = new Set<string>();
@@ -677,8 +679,13 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const revRows     = displayRows.filter(r => REVENUE_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
   const preNriRows  = revRows.filter(r => ['vacancy_loss', 'loss_to_lease', 'concessions', 'bad_debt', 'non_revenue_units'].includes(r.field));
   const postNriRows = revRows.filter(r => r.field === 'other_income');
-  const ctrlRows = displayRows.filter(r => CTRL_OPEX_FIELDS.has(r.field));
-  const nctrlRows = displayRows.filter(r => NCTRL_OPEX_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
+  // Spec order: sort by canonical sequence
+  const CTRL_ORDER = ['repairs_maintenance','contract_services','landscaping','payroll','marketing','g_and_a','turnover'];
+  const NCTRL_ORDER = ['water_sewer','electric','gas_fuel','insurance','real_estate_taxes','management_fee'];
+  const ctrlRows = displayRows.filter(r => CTRL_OPEX_FIELDS.has(r.field))
+    .sort((a, b) => CTRL_ORDER.indexOf(a.field) - CTRL_ORDER.indexOf(b.field));
+  const nctrlRows = displayRows.filter(r => NCTRL_OPEX_FIELDS.has(r.field) && !SUBTOTALS.has(r.field))
+    .sort((a, b) => NCTRL_ORDER.indexOf(a.field) - NCTRL_ORDER.indexOf(b.field));
   const noiRow   = rows.find(r => r.field === 'noi');
 
   const egiRow       = byField['egi'];
@@ -995,7 +1002,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
             {/* NRI — broker vs platform comparison after deductions */}
             {byField['net_rental_income'] && (
-              <SubtotalRow label="NET RENTAL INCOME" row={byField['net_rental_income']} color="#041a14" textColor="#34d399" egiResolved={egiResolved} />
+              <SubtotalRow label="BASE RENTAL REVENUE" row={byField['net_rental_income']} color="#041a14" textColor="#34d399" egiResolved={egiResolved} />
             )}
 
             {/* Other Income — inline ancillary breakdown (Task #612) */}
@@ -1216,39 +1223,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
                   stanceModulated={!!(stanceByPath['expenseGrowth'])}
                   stanceTrace={stanceByPath['expenseGrowth']?.trace} />
-                {/* ── Utilities sub-breakdown ── forward-compatible: renders split lines when backend
-                    emits water_sewer / electric / gas_fuel; falls back to consolidation note.
-                    Backend currently maps all utility T-12 lines → single `utilities` bucket
-                    (see document-extraction/parsers/t12-parser.ts). */}
-                {r.field === 'utilities' && (() => {
-                  const waterSewer = byField['water_sewer'];
-                  const electric   = byField['electric'];
-                  const gasFuel    = byField['gas_fuel'];
-                  const subLines   = [waterSewer, electric, gasFuel].filter(Boolean) as NonNullable<typeof waterSewer>[];
-                  return (
-                    <>
-                      <tr
-                        onClick={() => setShowUtilitiesBreakdown(v => !v)}
-                        style={{ background: '#100b00', cursor: 'pointer' }}
-                      >
-                        <td colSpan={9} style={{ padding: '2px 8px 2px 24px', fontSize: 8, color: '#6b4a1a', fontFamily: MONO, fontStyle: 'italic', userSelect: 'none' }}>
-                          {showUtilitiesBreakdown ? '▾' : '▸'}{' '}
-                          {subLines.length > 0 ? `${subLines.length} sub-lines available` : 'Consolidated — water/sewer · electric · gas'}{' '}
-                          <span style={{ color: '#3d2a00' }}>(click to {showUtilitiesBreakdown ? 'collapse' : 'expand'})</span>
-                        </td>
-                      </tr>
-                      {showUtilitiesBreakdown && (
-                        subLines.length > 0 ? subLines.map(sub => (
-                          <tr key={sub.field} style={{ background: '#130e00', borderLeft: '2px solid #6b3d00' }}>
-                            <td style={{ padding: '3px 8px 3px 28px', fontSize: 8.5, color: '#92714a', fontFamily: MONO, position: 'sticky', left: 0, background: '#130e00' }}>
-                              ↳ {sub.label ?? sub.field.replace(/_/g, ' ')}
-                            </td>
-                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#6b3d00', fontSize: 8.5 }}>{fmtFull$(sub.broker)}</td>
-                            {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '3px 8px', textAlign: 'right', color: '#6b3d00', fontSize: 8.5 }}>{fmtFull$(sub.t12)}</td>}
-                            {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '3px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 8.5 }}>{fmtFull$(sub.platform)}</td>}
-                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#92714a', fontWeight: 600, fontSize: 8.5 }}>{fmtFull$(sub.resolved)}</td>
-                            <td colSpan={4} />
-                          </tr>
                         )) : (
                           <tr style={{ background: '#0d0900' }}>
                             <td colSpan={9} style={{ padding: '3px 8px 3px 28px', fontSize: 8, color: '#3d2a00', fontFamily: MONO, borderBottom: '1px solid #1a1200', fontStyle: 'italic' }}>

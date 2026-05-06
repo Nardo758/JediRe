@@ -1781,19 +1781,23 @@ export async function getDealFinancials(
     ['net_rental_income', 'Net Rental Income'],
     ['egi', 'Effective Gross Income'],
   ];
+  // Canonical pro forma line items (per v31 spec):
   const OPEX_FIELDS: Array<[string, string]> = [
-    ['payroll', 'Payroll'],
-    ['repairs_maintenance', 'Repairs & Maintenance'],
-    ['turnover', 'Turnover / Make Ready'],
+    ['repairs_maintenance', 'Repair & Maintenance'],
     ['contract_services', 'Contract Services'],
-    ['marketing', 'Marketing'],
-    ['utilities', 'Utilities'],
-    ['g_and_a', 'G&A / Admin'],
+    ['landscaping', 'Landscaping / Grounds'],
+    ['payroll', 'Personnel'],
+    ['marketing', 'Marketing / Advertising'],
+    ['g_and_a', 'Administrative'],
+    ['turnover', 'Turnover / Make-Ready'],
+    ['water_sewer', 'Water & Sewer'],
+    ['electric', 'Electric'],
+    ['gas_fuel', 'Gas / Fuel'],
+    ['insurance', 'Insurance'],
+    ['real_estate_tax', 'Property Tax'],
     ['management_fee_pct', 'Management Fee (%)'],
-    ['insurance', 'Property Insurance'],
-    ['real_estate_tax', 'Real Estate Tax'],
     ['replacement_reserves', 'Replacement Reserves'],
-    ['total_opex', 'Total OpEx'],
+    ['total_opex', 'Total Operating Expenses'],
   ];
   const NOI_FIELDS: Array<[string, string]> = [['noi', 'Net Operating Income']];
 
