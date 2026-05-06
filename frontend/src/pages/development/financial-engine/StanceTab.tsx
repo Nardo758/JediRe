@@ -18,7 +18,7 @@
 //   Bottom section flex:1, overflow:auto — affected fields panel + footer.
 // ============================================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { useDealStore } from '../../../stores/dealStore';
 import { apiClient } from '../../../services/api.client';
@@ -249,6 +249,131 @@ function StressRow({ label, unit, value, min, max, step, desc, onChange, saving 
   );
 }
 
+// ─── Base value numeric input row ─────────────────────────────────────────────
+
+interface BaseValueRowProps {
+  label: string;
+  desc: string;
+  currentValue: number | null;
+  dealId: string;
+  field: string;
+  saving: boolean;
+}
+
+function BaseValueRow({ label, desc, currentValue, dealId, field, saving }: BaseValueRowProps) {
+  const [editing, setEditing]     = useState(false);
+  const [inputVal, setInputVal]   = useState('');
+  const [localSaving, setLocalSaving] = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const displayValue = currentValue != null ? `${(currentValue * 100).toFixed(2)}%` : '—';
+
+  const openEdit = () => {
+    setInputVal(currentValue != null ? (currentValue * 100).toFixed(2) : '');
+    setEditing(true);
+    setError(null);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+
+  const save = async (clearOverride = false) => {
+    const apiValue = clearOverride ? null : +(parseFloat(inputVal) / 100).toFixed(6);
+    if (!clearOverride && (apiValue === null || isNaN(apiValue as number))) {
+      setError('Enter a valid number');
+      return;
+    }
+    setLocalSaving(true);
+    setError(null);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
+        field, year: null, value: apiValue,
+      });
+      setEditing(false);
+      window.dispatchEvent(new CustomEvent('assumption:changed', {
+        detail: { source: 'stance_tab', field, value: apiValue },
+      }));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setLocalSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ borderBottom: `1px solid ${BT.border.subtle}`, padding: '9px 14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 1, marginBottom: 2 }}>
+            {label}
+          </div>
+          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>{desc}</div>
+          {error && (
+            <div style={{ fontFamily: MONO, fontSize: 8, color: '#FF4757', marginTop: 2 }}>{error}</div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          {editing ? (
+            <>
+              <input
+                ref={inputRef}
+                type="number"
+                step="0.01"
+                value={inputVal}
+                onChange={e => setInputVal(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter')  void save();
+                  if (e.key === 'Escape') setEditing(false);
+                }}
+                style={{
+                  background: CYAN_DIM, border: `1px solid ${CYAN}55`, color: CYAN,
+                  fontFamily: MONO, fontSize: 9, width: 64,
+                  padding: '3px 6px', borderRadius: 2, outline: 'none', textAlign: 'right',
+                }}
+              />
+              <span style={{ fontFamily: MONO, fontSize: 9, color: CYAN }}>%</span>
+              <button
+                onClick={() => void save()}
+                disabled={localSaving}
+                style={{
+                  background: CYAN_DIM, border: `1px solid ${CYAN}55`, color: CYAN,
+                  fontFamily: MONO, fontSize: 8, padding: '3px 7px', borderRadius: 2, cursor: 'pointer',
+                }}
+              >{localSaving ? '…' : '✓'}</button>
+              <button
+                onClick={() => void save(true)}
+                disabled={localSaving}
+                title="Clear override — revert to platform default"
+                style={{
+                  background: 'transparent', border: `1px solid ${BT.border.medium}`,
+                  color: BT.text.muted, fontFamily: MONO, fontSize: 8,
+                  padding: '3px 5px', borderRadius: 2, cursor: 'pointer',
+                }}
+              >✕</button>
+            </>
+          ) : (
+            <button
+              onClick={openEdit}
+              disabled={saving}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: CYAN_DIM, border: `1px solid ${CYAN}55`, color: CYAN,
+                fontFamily: MONO, fontSize: 9, fontWeight: 700,
+                padding: '4px 10px', borderRadius: 2,
+                cursor: saving ? 'default' : 'pointer',
+                opacity: saving ? 0.5 : 1, letterSpacing: 0.5,
+              }}
+            >
+              {displayValue}
+              <span style={{ fontSize: 8, opacity: 0.7 }}>✎</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Affected fields panel ─────────────────────────────────────────────────────
 
 interface AffectedFieldsProps {
@@ -392,6 +517,10 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
       setResetting(false);
     }
   }, [dealId, resetStance]);
+
+  // ── Live base values from the deal store (LayeredValue<number>) ──────────────
+  const exitCapVal    = useDealStore(s => (s.financial?.assumptions?.exitCapRate as any)?.value ?? null) as number | null;
+  const rentGrowthVal = useDealStore(s => (s.financial?.assumptions?.rentGrowth  as any)?.value ?? null) as number | null;
 
   if (!operatorStance) {
     return (
@@ -594,6 +723,28 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
               : `+${s.stressVacancyFloor}pp added to stabilized vacancy floor`
           }
           onChange={v => handleChange({ stressVacancyFloor: v })}
+          saving={saving}
+        />
+
+        {/* ── Section 5: BASE VALUES ── */}
+        <SectionHeader
+          label="BASE VALUES"
+          sub="direct inputs for exit cap rate and rent growth — stance modulates on top of these"
+        />
+        <BaseValueRow
+          label="EXIT CAP RATE"
+          desc="Terminal cap rate applied to forward NOI at disposition"
+          currentValue={exitCapVal}
+          dealId={dealId}
+          field="exitCapRate"
+          saving={saving}
+        />
+        <BaseValueRow
+          label="RENT GROWTH / YR"
+          desc="Annual stabilized rent growth rate (applied post-lease-up)"
+          currentValue={rentGrowthVal}
+          dealId={dealId}
+          field="rentGrowthStabilized"
           saving={saving}
         />
 

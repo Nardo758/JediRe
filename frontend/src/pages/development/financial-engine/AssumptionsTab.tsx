@@ -700,7 +700,7 @@ const STATIC_ROWS: RowDef[] = [
   },
   {
     key: 'exitCapRate', label: 'Exit Cap Rate', section: 8, unit: 'pct',
-    format: fmtPct2, patchField: 'exitCapRate',
+    format: fmtPct2, readonly: true, patchField: 'exitCapRate',
     description: 'Terminal cap rate applied to forward NOI at disposition.',
     platformSource: 'M07 — Demand velocity implies cap compression trend', brokerSource: 'OM / Underwriting Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Exit Cap Rate',
@@ -773,7 +773,7 @@ const STATIC_ROWS: RowDef[] = [
   // Platform defaults match the Excel model (3%/2%); user can override per-year.
   {
     key: 'growthRentPct', label: 'Rent Growth % / yr', section: 10, unit: 'pct',
-    format: fmtPct2, patchField: 'rentGrowthStabilized',
+    format: fmtPct2, readonly: true, patchField: 'rentGrowthStabilized',
     description: 'Annual rent growth rate applied to GPR each year from stabilization. Excel model: 3%/yr. M07 can override per-year based on demand trajectory.',
     platformSource: 'M07 — Demand velocity implied rent growth', brokerSource: 'OM / Growth Rate Assumptions',
     brokerPage: 'Growth Rate Assumptions', brokerLine: 'Rent Growth',
@@ -2939,6 +2939,16 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                                   title={stanceByRowKey[rd.key].trace}
                                   style={{ color: '#f59e0b', fontSize: 9, lineHeight: 1, cursor: 'help', flexShrink: 0 }}
                                 >●</span>
+                              )}
+                              {(rd.key === 'exitCapRate' || rd.key === 'growthRentPct') && (
+                                <span
+                                  title="Set in Stance tab"
+                                  style={{
+                                    fontFamily: MONO, fontSize: 7, color: '#06b6d4',
+                                    border: '1px solid #06b6d433', borderRadius: 2,
+                                    padding: '0 3px', flexShrink: 0, letterSpacing: 0.3,
+                                  }}
+                                >→ STANCE</span>
                               )}
                               {viewMode === 'BROKER_VIEW' && (
                                 <button
