@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { useDealStore } from '../../../stores/dealStore';
+import { apiClient } from '../../../services/api.client';
 import type {
   OperatorStance,
   OperatorStancePatch,
@@ -148,15 +149,14 @@ function AffectedFieldsPanel({ dealId, stanceUpdatedAt }: AffectedFieldsProps) {
     if (!dealId) return;
     setLoading(true);
     setError(null);
-    fetch(`/api/v1/deals/${dealId}/stance/affected-fields`, {
-      headers: { 'Content-Type': 'application/json' },
-    })
-      .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-      .then(data => {
-        setFields(data.affectedFields ?? []);
-        setTotal(data.totalModulatedFields ?? 0);
+    apiClient.get<{ affectedFields: AffectedStanceField[]; totalModulatedFields: number }>(
+      `/api/v1/deals/${dealId}/stance/affected-fields`,
+    )
+      .then(res => {
+        setFields(res.data.affectedFields ?? []);
+        setTotal(res.data.totalModulatedFields ?? 0);
       })
-      .catch(err => setError(String(err)))
+      .catch(err => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
   }, [dealId, stanceUpdatedAt]);
 

@@ -1802,12 +1802,10 @@ export const useDealStore = create<DealStore>()(
 
     fetchOperatorStance: async (dealId) => {
       try {
-        const res = await fetch(`/api/v1/deals/${dealId}/stance`, {
-          headers: { 'Content-Type': 'application/json' },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const { stance } = await res.json();
-        set({ operatorStance: stance });
+        const res = await apiClient.get<{ stance: import('./dealContext.types').OperatorStance }>(
+          `/api/v1/deals/${dealId}/stance`,
+        );
+        set({ operatorStance: res.data.stance });
       } catch (err) {
         console.warn('[dealStore] fetchOperatorStance failed (non-fatal):', err);
       }
@@ -1815,14 +1813,11 @@ export const useDealStore = create<DealStore>()(
 
     saveOperatorStance: async (dealId, patch) => {
       try {
-        const res = await fetch(`/api/v1/deals/${dealId}/stance`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(patch),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const { stance } = await res.json();
-        set({ operatorStance: stance });
+        const res = await apiClient.put<{ stance: import('./dealContext.types').OperatorStance }>(
+          `/api/v1/deals/${dealId}/stance`,
+          patch,
+        );
+        set({ operatorStance: res.data.stance });
       } catch (err) {
         console.warn('[dealStore] saveOperatorStance failed:', err);
         throw err;
@@ -1831,13 +1826,10 @@ export const useDealStore = create<DealStore>()(
 
     resetOperatorStance: async (dealId) => {
       try {
-        const res = await fetch(`/api/v1/deals/${dealId}/stance/reset`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const { stance } = await res.json();
-        set({ operatorStance: stance });
+        const res = await apiClient.post<{ stance: import('./dealContext.types').OperatorStance }>(
+          `/api/v1/deals/${dealId}/stance/reset`,
+        );
+        set({ operatorStance: res.data.stance });
       } catch (err) {
         console.warn('[dealStore] resetOperatorStance failed:', err);
         throw err;
