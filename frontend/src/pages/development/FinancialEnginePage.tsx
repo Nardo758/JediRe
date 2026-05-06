@@ -1647,10 +1647,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         </div>
 
         {/* ── TAB CONTENT (RIGHT) ── */}
-        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
           {activeTab === 0 && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 1 && (
-            <BtTabWrapper>
+            <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <TabErrorBoundary tabName="Console">
                 <ConsoleHubTab {...tabProps} />
               </TabErrorBoundary>
