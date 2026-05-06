@@ -4,7 +4,10 @@ JEDI RE is an AI-powered B2B real estate intelligence platform designed for inve
 
 ## Run & Operate
 
-_Populate as you build_
+- **Dev workflow:** `JediRe` workflow runs `./start.sh` which starts both the Express backend (port 4000) and Vite dev server (port 5000), with a proxy on port 3000.
+- **IMPORTANT — frontend changes:** The backend serves the **compiled** bundle from `frontend/dist`. Source edits are NOT live-reloaded in the app preview. After any frontend change, run `cd frontend && npm run build` to rebuild, then the changes appear immediately (no server restart needed).
+- **Backend changes:** Restart the `JediRe` workflow to pick up changes.
+- **DB migrations:** `cd backend && npx drizzle-kit migrate`
 
 ## Stack
 
