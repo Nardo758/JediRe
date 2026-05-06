@@ -26,6 +26,8 @@ import {
   saveStance,
   resetStance,
   computeAffectedFields,
+  applyStanceToFinancials,
+  type StanceModulation,
 } from '../../services/operatorStance.service';
 import type { OperatorStancePatch } from '../../types/operator-stance';
 
@@ -516,43 +518,25 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       returns = { irr, equityMultiple, cashOnCash } as any;
     }
 
-    // ── Stance overlay ──────────────────────────────────────────────────────
-    // Read the current operator stance and latest snapshot to annotate the
-    // response with stanceModulated/stanceTrace flags per affected field.
-    // This allows the F9 UI to render yellow stance markers without modifying
-    // the complex getDealFinancials() function.
-    let stanceOverlay: Record<string, { stanceModulated: boolean; stanceTrace?: string; deltaBps: number }> = {};
+    // ── In-place stance modulation ──────────────────────────────────────────
+    // Apply stance deltas directly to data.assumptions values so that the
+    // returned financial payload reflects the operator's current stance.
+    // This ensures PUT /stance → GET /financials shows modulated numbers.
+    // stanceModulations provides per-field trace for UI yellow markers.
+    let stanceModulations: StanceModulation[] = [];
     let stanceDefaulted = true;
     try {
       const userId = req.user!.userId;
       const stance = await getStanceForDeal(dealId, userId);
       stanceDefaulted = stance.defaulted ?? true;
-
-      // Read latest snapshot (may be a stance_reblend) for persisted stance flags
-      const snapRes = await pool.query(
-        `SELECT proforma_json FROM deal_underwriting_snapshots
-         WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1`,
-        [dealId],
-      );
-      if (snapRes.rows.length > 0 && snapRes.rows[0].proforma_json) {
-        const pj: Record<string, any> = snapRes.rows[0].proforma_json;
-        for (const [fieldPath, field] of Object.entries(pj)) {
-          if (field && typeof field === 'object' && field.stanceModulated === true) {
-            const { computeStanceDelta, buildStanceTrace } = await import('../../types/operator-stance');
-            const { deltaBps, firedRules } = computeStanceDelta(stance, fieldPath);
-            stanceOverlay[fieldPath] = {
-              stanceModulated: true,
-              stanceTrace: field.stanceTrace ?? buildStanceTrace(stance, fieldPath, deltaBps, firedRules),
-              deltaBps,
-            };
-          }
-        }
+      if (!stance.defaulted && data.assumptions) {
+        stanceModulations = applyStanceToFinancials(data, stance);
       }
     } catch (_stanceErr) {
-      // Non-fatal — stance overlay failure must not block financials response
+      // Non-fatal — stance modulation failure must not block financials response
     }
 
-    res.json({ success: true, data: { ...data, returns, closeDate, saleDate }, stanceOverlay, stanceDefaulted });
+    res.json({ success: true, data: { ...data, returns, closeDate, saleDate }, stanceModulations, stanceDefaulted });
   } catch (error: any) {
     logger.error('Error fetching deal financials:', error);
     const status = (error as Error).message?.includes('not found') ? 404 : 500;

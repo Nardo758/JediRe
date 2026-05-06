@@ -2,6 +2,15 @@
 // JEDI RE — DealContext: Single Source of Truth Type System
 // ============================================================================
 //
+// NOTE — OperatorStance type source of truth:
+// The canonical OperatorStance type and Zod schema are defined in:
+//   backend/src/types/operator-stance.ts
+// The frontend mirror below (search "OperatorStance" in this file) must
+// stay in sync with that file. There is no shared package in this codebase
+// (frontend and backend are separate dirs without a monorepo package layer).
+// When editing OperatorStance fields, update BOTH files.
+// ============================================================================
+//
 // ARCHITECTURE PRINCIPLE:
 // Every module reads from and writes to the same DealContext object held in
 // dealStore (Zustand). No module owns its own copy of deal data.

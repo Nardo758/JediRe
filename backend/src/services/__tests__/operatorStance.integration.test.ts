@@ -15,6 +15,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   applyStanceToProformaFields,
+  applyStanceToFinancials,
   computeAffectedFields,
 } from '../operatorStance.service';
 import {
@@ -248,6 +249,97 @@ describe('computeAffectedFields — snapshot primary path', () => {
     const exitCapRate = fields.find(f => f.fieldPath === 'exitCapRate');
     expect(exitCapRate).toBeDefined();
     expect(exitCapRate!.source).toBe('rules'); // Not in snapshot, but rule-inferred
+  });
+});
+
+// ── 5b. applyStanceToFinancials — GET /financials in-place modulation ─────────
+
+describe('applyStanceToFinancials — in-place DealFinancials modulation', () => {
+  function makeMockFinancials(overrides: Partial<{
+    rentGrowthYr1: number; rentGrowthStabilized: number;
+    exitCap: number; opexGrowthPct: number; vacancyPct: number;
+  }> = {}) {
+    return {
+      assumptions: {
+        holdYears: 10,
+        rentGrowthYr1: overrides.rentGrowthYr1 ?? 0.03,
+        rentGrowthStabilized: overrides.rentGrowthStabilized ?? 0.025,
+        exitCap: overrides.exitCap ?? 0.055,
+        opexGrowthPct: overrides.opexGrowthPct ?? 0.025,
+        concessionBurnOffPct: null,
+        perYear: [
+          { year: 1, rentGrowthPct: overrides.rentGrowthYr1 ?? 0.03, vacancyPct: overrides.vacancyPct ?? 0.05, exitCapIfLastYear: null, capexDraw: null },
+          { year: 2, rentGrowthPct: 0.03, vacancyPct: overrides.vacancyPct ?? 0.05, exitCapIfLastYear: null, capexDraw: null },
+        ],
+        gprDecomposition: {} as any,
+      },
+    };
+  }
+
+  it('MARKET stance — no mutation, returns empty modulations array', () => {
+    const data = makeMockFinancials();
+    const origRentGrowth = data.assumptions.rentGrowthYr1;
+    const modulations = applyStanceToFinancials(data, marketStance());
+    expect(modulations).toHaveLength(0);
+    expect(data.assumptions.rentGrowthYr1).toBe(origRentGrowth);
+  });
+
+  it('CONSERVATIVE — mutates rentGrowthYr1 by -25bps in-place', () => {
+    const data = makeMockFinancials({ rentGrowthYr1: 0.03 });
+    const modulations = applyStanceToFinancials(data, conservativeStance());
+    expect(data.assumptions.rentGrowthYr1).toBeCloseTo(0.03 - 0.0025, 6);
+    const mod = modulations.find(m => m.fieldPath === 'rentGrowth');
+    expect(mod).toBeDefined();
+    expect(mod!.stanceModulated).toBe(true);
+    expect(mod!.originalValue).toBeCloseTo(0.03, 6);
+    expect(mod!.modulatedValue).toBeCloseTo(0.03 - 0.0025, 6);
+    expect(mod!.deltaBps).toBe(-25);
+    expect(mod!.stanceTrace).toBeTruthy();
+  });
+
+  it('CONSERVATIVE — mutates exitCap by +50bps in-place', () => {
+    const data = makeMockFinancials({ exitCap: 0.055 });
+    applyStanceToFinancials(data, conservativeStance());
+    expect(data.assumptions.exitCap).toBeCloseTo(0.055 + 0.005, 6);
+  });
+
+  it('CONSERVATIVE — mutates perYear[].vacancyPct by +100bps in-place', () => {
+    const data = makeMockFinancials({ vacancyPct: 0.05 });
+    applyStanceToFinancials(data, conservativeStance());
+    for (const yr of data.assumptions.perYear) {
+      expect(yr.vacancyPct).toBeCloseTo(0.05 + 0.01, 6);
+    }
+  });
+
+  it('CONSERVATIVE — perYear[].rentGrowthPct also receives -25bps', () => {
+    const data = makeMockFinancials({ rentGrowthYr1: 0.03 });
+    applyStanceToFinancials(data, conservativeStance());
+    expect(data.assumptions.perYear[0].rentGrowthPct).toBeCloseTo(0.03 - 0.0025, 6);
+  });
+
+  it('MARKET parity — PUT/reset → GET /financials shows original values (no mutation)', () => {
+    const data = makeMockFinancials({ rentGrowthYr1: 0.03, exitCap: 0.055 });
+    const mods = applyStanceToFinancials(data, { ...PLATFORM_STANCE_DEFAULTS, defaulted: true });
+    expect(mods).toHaveLength(0);
+    expect(data.assumptions.rentGrowthYr1).toBeCloseTo(0.03, 6);
+    expect(data.assumptions.exitCap).toBeCloseTo(0.055, 6);
+  });
+
+  it('stanceModulations includes trace + deltaBps per affected field', () => {
+    const stance: OperatorStance = {
+      ...marketStance(),
+      underwritingPosture: 'CONSERVATIVE',
+      rateEnvironment: 'HIGHER_FOR_LONGER',
+      defaulted: false,
+    };
+    const data = makeMockFinancials({ exitCap: 0.055 });
+    const mods = applyStanceToFinancials(data, stance);
+    const exitCapMod = mods.find(m => m.fieldPath === 'exitCapRate');
+    // CONSERVATIVE +50 + HIGHER_FOR_LONGER +50 = +100bps total
+    expect(exitCapMod).toBeDefined();
+    expect(exitCapMod!.deltaBps).toBe(100);
+    expect(exitCapMod!.stanceTrace).toBeTruthy();
+    expect(data.assumptions.exitCap).toBeCloseTo(0.055 + 0.01, 6);
   });
 });
 

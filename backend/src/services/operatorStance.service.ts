@@ -351,6 +351,167 @@ export async function applyStanceReblend(
   return { reblendId, fieldsModulated, baselineSnapshotId: baseline.id };
 }
 
+// ── DealFinancials in-place modulation ───────────────────────────────────────
+
+/**
+ * StanceModulation — per-field record appended to the GET /financials response.
+ * Each entry describes an in-place adjustment made to data.assumptions values.
+ */
+export interface StanceModulation {
+  fieldPath: string;
+  originalValue: number | null;
+  modulatedValue: number | null;
+  stanceModulated: true;
+  stanceTrace: string;
+  deltaBps: number;
+}
+
+/**
+ * Apply stance deltas IN-PLACE to a DealFinancials object.
+ *
+ * Mutates the following fields in data.assumptions:
+ *   rentGrowthYr1      ← rentGrowth delta
+ *   rentGrowthStabilized ← rentGrowthStabilized delta
+ *   exitCap            ← exitCapRate delta
+ *   opexGrowthPct      ← expenseGrowth delta
+ *   perYear[].vacancyPct ← vacancy delta (all years)
+ *   perYear[].rentGrowthPct ← rentGrowth delta (all years)
+ *
+ * Returns the list of StanceModulation records applied (one per field path
+ * that had a non-zero delta), which the route appends as `stanceModulations`
+ * to the GET /financials response. Returns [] for MARKET defaults (no mutation).
+ *
+ * CONTRACT: call this on a fresh getDealFinancials() result only.
+ * Idempotent for a given stance — same input stance always produces same output.
+ */
+export function applyStanceToFinancials(
+  data: {
+    assumptions: {
+      rentGrowthYr1: number | null;
+      rentGrowthStabilized: number | null;
+      exitCap: number | null;
+      opexGrowthPct: number | null;
+      perYear: Array<{ vacancyPct: number | null; rentGrowthPct: number | null; exitCapIfLastYear: number | null }>;
+    };
+  },
+  stance: OperatorStance,
+): StanceModulation[] {
+  const modulations: StanceModulation[] = [];
+  const a = data.assumptions;
+
+  // Helper: apply a bps delta to a number | null value; returns new value
+  const applyDelta = (base: number | null, deltaBps: number): number | null => {
+    if (base == null) return null;
+    return Math.max(0, base + deltaBps / 10000);
+  };
+
+  // ── rentGrowth → rentGrowthYr1 ───────────────────────────────────────────
+  {
+    const { deltaBps, firedRules } = computeStanceDelta(stance, 'rentGrowth');
+    if (deltaBps !== 0) {
+      const orig = a.rentGrowthYr1;
+      a.rentGrowthYr1 = applyDelta(orig, deltaBps);
+      modulations.push({
+        fieldPath: 'rentGrowth',
+        originalValue: orig,
+        modulatedValue: a.rentGrowthYr1,
+        stanceModulated: true,
+        stanceTrace: buildStanceTrace(stance, 'rentGrowth', deltaBps, firedRules),
+        deltaBps,
+      });
+      // Also propagate to perYear.rentGrowthPct
+      for (const yr of a.perYear) {
+        yr.rentGrowthPct = applyDelta(yr.rentGrowthPct, deltaBps);
+      }
+    }
+  }
+
+  // ── rentGrowthStabilized ─────────────────────────────────────────────────
+  {
+    const { deltaBps, firedRules } = computeStanceDelta(stance, 'rentGrowthStabilized');
+    if (deltaBps !== 0) {
+      const orig = a.rentGrowthStabilized;
+      a.rentGrowthStabilized = applyDelta(orig, deltaBps);
+      modulations.push({
+        fieldPath: 'rentGrowthStabilized',
+        originalValue: orig,
+        modulatedValue: a.rentGrowthStabilized,
+        stanceModulated: true,
+        stanceTrace: buildStanceTrace(stance, 'rentGrowthStabilized', deltaBps, firedRules),
+        deltaBps,
+      });
+    }
+  }
+
+  // ── exitCapRate → exitCap ─────────────────────────────────────────────────
+  {
+    const { deltaBps, firedRules } = computeStanceDelta(stance, 'exitCapRate');
+    if (deltaBps !== 0) {
+      const orig = a.exitCap;
+      a.exitCap = applyDelta(orig, deltaBps);
+      modulations.push({
+        fieldPath: 'exitCapRate',
+        originalValue: orig,
+        modulatedValue: a.exitCap,
+        stanceModulated: true,
+        stanceTrace: buildStanceTrace(stance, 'exitCapRate', deltaBps, firedRules),
+        deltaBps,
+      });
+      // Also propagate to perYear.exitCapIfLastYear
+      for (const yr of a.perYear) {
+        yr.exitCapIfLastYear = applyDelta(yr.exitCapIfLastYear, deltaBps);
+      }
+    }
+  }
+
+  // ── vacancy → perYear[].vacancyPct ────────────────────────────────────────
+  {
+    const { deltaBps, firedRules } = computeStanceDelta(stance, 'vacancy');
+    if (deltaBps !== 0) {
+      // perYear carries the time-series; vacancyPct is a % (e.g. 0.05 = 5%)
+      const firstOrigVacancy = a.perYear[0]?.vacancyPct ?? null;
+      for (const yr of a.perYear) {
+        yr.vacancyPct = applyDelta(yr.vacancyPct, deltaBps);
+      }
+      modulations.push({
+        fieldPath: 'vacancy',
+        originalValue: firstOrigVacancy,
+        modulatedValue: a.perYear[0]?.vacancyPct ?? null,
+        stanceModulated: true,
+        stanceTrace: buildStanceTrace(stance, 'vacancy', deltaBps, firedRules),
+        deltaBps,
+      });
+    }
+  }
+
+  // ── expenseGrowth → opexGrowthPct ─────────────────────────────────────────
+  {
+    const { deltaBps, firedRules } = computeStanceDelta(stance, 'expenseGrowth');
+    if (deltaBps !== 0) {
+      const orig = a.opexGrowthPct;
+      a.opexGrowthPct = applyDelta(orig, deltaBps);
+      modulations.push({
+        fieldPath: 'expenseGrowth',
+        originalValue: orig,
+        modulatedValue: a.opexGrowthPct,
+        stanceModulated: true,
+        stanceTrace: buildStanceTrace(stance, 'expenseGrowth', deltaBps, firedRules),
+        deltaBps,
+      });
+    }
+  }
+
+  if (modulations.length > 0) {
+    logger.info('[OperatorStance] in-place financials modulation', {
+      count: modulations.length,
+      fields: modulations.map(m => `${m.fieldPath}(${m.deltaBps > 0 ? '+' : ''}${m.deltaBps}bps)`),
+      underwritingPosture: stance.underwritingPosture,
+    });
+  }
+
+  return modulations;
+}
+
 /**
  * Apply stance modulation to a live proforma_fields map in-memory.
  * Used by the Cashflow Agent tool fetch_operator_stance to tag values
