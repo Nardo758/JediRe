@@ -1605,6 +1605,12 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
   const [showAncillaryBreakdown, setShowAncillaryBreakdown] = useState(false);
+  // Session-local per-category, per-year overrides for ancillary sub-rows.
+  // Keyed: category → year → value. Not persisted to backend yet — parent
+  // other_income row controls the resolved total; category overrides here are
+  // for visual "what-if" analysis only.
+  const [ancillaryOverrides, setAncillaryOverrides] = useState<Record<string, Record<number, number>>>({});
+  const [ancillaryEditing, setAncillaryEditing] = useState<{ cat: string; yr: number; val: string } | null>(null);
 
   // ── Leasing sub-tab state ──────────────────────────────────────────────────
   // MAX 3 sub-tabs under Assumptions. Do not add a 4th.
@@ -3096,13 +3102,13 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                                 </td>
                               </tr>
 
-                              {/* Per-category rows */}
+                              {/* Per-category rows — per-year cells are editable (session-local overrides) */}
                               {showAncillaryBreakdown && rows.map(catRow => {
                                 const y1Val = catRow.resolved;
                                 return (
                                   <tr
                                     key={catRow.category}
-                                    className="border-b border-[#0e2030]/40 h-[22px]"
+                                    className="border-b border-[#0e2030]/40 h-[26px]"
                                     style={{ background: '#060f18', borderLeft: '3px solid #0e3347' }}
                                   >
                                     <td
@@ -3116,25 +3122,66 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                                       )}
                                     </td>
                                     {years.map(yr => {
-                                      const val = y1Val != null
+                                      const derived = y1Val != null
                                         ? (yr === 1 ? y1Val : Math.round(y1Val * Math.pow(1 + g, yr - 1)))
                                         : null;
+                                      const override = ancillaryOverrides[catRow.category]?.[yr];
+                                      const displayVal = override ?? derived;
+                                      const isEditing = ancillaryEditing?.cat === catRow.category && ancillaryEditing.yr === yr;
+                                      const hasOverride = override != null;
                                       return (
                                         <td
                                           key={yr}
-                                          className="px-2 py-0 text-right border-r border-[#1e1e1e]"
-                                          style={{ fontFamily: MONO, fontSize: 9, color: '#22d3ee80' }}
+                                          className="px-1 py-0 text-right border-r border-[#1e1e1e]"
+                                          style={{ fontFamily: MONO, fontSize: 9, minWidth: 82 }}
                                         >
-                                          {val != null ? '$' + Math.round(val).toLocaleString() : '—'}
-                                          {yr > 1 && val != null && (
-                                            <sup style={{ fontSize: 6, color: '#0e3347', marginLeft: 2 }}>+{(g * 100).toFixed(0)}%</sup>
+                                          {isEditing ? (
+                                            <input
+                                              autoFocus type="number" value={ancillaryEditing!.val}
+                                              onChange={e => setAncillaryEditing(prev => prev ? { ...prev, val: e.target.value } : null)}
+                                              onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                  const n = parseFloat(ancillaryEditing!.val);
+                                                  if (Number.isFinite(n)) {
+                                                    setAncillaryOverrides(prev => ({
+                                                      ...prev,
+                                                      [catRow.category]: { ...prev[catRow.category], [yr]: n },
+                                                    }));
+                                                  }
+                                                  setAncillaryEditing(null);
+                                                }
+                                                if (e.key === 'Escape') setAncillaryEditing(null);
+                                              }}
+                                              onBlur={() => setAncillaryEditing(null)}
+                                              style={{ width: 70, background: '#0f172a', border: '1px solid #06b6d4', color: '#06b6d4', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                                            />
+                                          ) : (
+                                            <span
+                                              onClick={() => setAncillaryEditing({ cat: catRow.category, yr, val: displayVal != null ? String(Math.round(displayVal)) : '' })}
+                                              title={hasOverride ? `Override: $${override?.toLocaleString()} · click to change` : `Derived (Y1 × +${(g*100).toFixed(0)}%/yr) · click to override`}
+                                              style={{ cursor: 'pointer', color: hasOverride ? '#3b82f6' : '#22d3ee80', fontWeight: hasOverride ? 700 : 400 }}
+                                            >
+                                              {displayVal != null ? '$' + Math.round(displayVal).toLocaleString() : '—'}
+                                              {hasOverride && <sup style={{ fontSize: 6, color: '#1e40af', marginLeft: 1 }}>U</sup>}
+                                              {!hasOverride && yr > 1 && displayVal != null && (
+                                                <sup style={{ fontSize: 6, color: '#0e3347', marginLeft: 1 }}>+{(g * 100).toFixed(0)}%</sup>
+                                              )}
+                                            </span>
                                           )}
                                         </td>
                                       );
                                     })}
-                                    {/* MODE col — locked (read-only derived) */}
-                                    <td className="px-0.5 py-0">
-                                      <span style={{ fontFamily: MONO, fontSize: 7, color: '#1e3347' }}>RO</span>
+                                    {/* MODE col — editable (session override) */}
+                                    <td className="px-0.5 py-0 text-center">
+                                      {ancillaryOverrides[catRow.category] && Object.keys(ancillaryOverrides[catRow.category]).length > 0 ? (
+                                        <button
+                                          onClick={() => setAncillaryOverrides(prev => { const n = { ...prev }; delete n[catRow.category]; return n; })}
+                                          title="Clear overrides for this category"
+                                          style={{ fontFamily: MONO, fontSize: 7, color: '#ef4444', background: 'none', border: '1px solid #7f1d1d', borderRadius: 2, padding: '0 3px', cursor: 'pointer' }}
+                                        >CLR</button>
+                                      ) : (
+                                        <span style={{ fontFamily: MONO, fontSize: 7, color: '#1e3347' }}>DRV</span>
+                                      )}
                                     </td>
                                   </tr>
                                 );

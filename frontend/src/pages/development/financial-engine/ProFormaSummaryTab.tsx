@@ -419,6 +419,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   }, [sigmaField]);
   const [showAncillary, setShowAncillary] = useState(false);
   const [showUtilitiesBreakdown, setShowUtilitiesBreakdown] = useState(false);
+  // Lifted from AncillaryExpansionPanel so the inline P&L rows can edit category overrides
+  const [ancillaryCatEdit, setAncillaryCatEdit] = useState<{ cat: string; val: string } | null>(null);
+  const [ancillaryCatBusy, setAncillaryCatBusy] = useState(false);
   const [conDrill, setConDrill] = useState<{
     open: boolean;
     periodLabel: string;
@@ -580,6 +583,21 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     } catch (e: unknown) {
       console.error('Toggle use_unit_mix_for_gpr failed:', e instanceof Error ? e.message : e);
     }
+  }, [dealId, load]);
+
+  // Saves a per-category ancillary income override (annual $). Lifted from
+  // AncillaryExpansionPanel so the inline P&L table rows can call it directly.
+  const saveAncillaryCat = useCallback(async (cat: string, raw: string) => {
+    setAncillaryCatBusy(true);
+    try {
+      const num = raw.trim() === '' ? null : parseFloat(raw);
+      if (num != null && (!Number.isFinite(num) || num < 0)) { setAncillaryCatEdit(null); return; }
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
+        field: `other_income_breakdown.${cat}`, year: null, value: num,
+      });
+      await load();
+    } catch (e) { console.error('Ancillary override save failed:', e); }
+    finally { setAncillaryCatBusy(false); setAncillaryCatEdit(null); }
   }, [dealId, load]);
 
   // Clears a user override on the backend (value: null = revert to ingested)
@@ -1027,8 +1045,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                         </td>
                       </tr>
 
-                      {/* Per-category rows */}
+                      {/* Per-category rows — Resolved cell is editable (click to override) */}
                       {breakdown!.rows.map(row => {
+                        const isCatEditing = ancillaryCatEdit?.cat === row.category;
                         const pctEgi  = egiResolved != null && row.resolved != null && egiResolved !== 0
                           ? row.resolved / egiResolved : null;
                         const perUnit = totalUnits > 0 && row.resolved != null
@@ -1052,8 +1071,34 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                             {viewMode !== 'BROKER_VIEW' && (
                               <td style={{ padding: '3px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9, fontFamily: MONO }}>{fmtFull$(row.rent_roll)}</td>
                             )}
-                            {/* Resolved */}
-                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#38bdf8', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>{fmtFull$(row.resolved)}</td>
+                            {/* Resolved — clickable to override */}
+                            <td style={{ padding: '3px 4px', textAlign: 'right', fontFamily: MONO }}>
+                              {isCatEditing ? (
+                                <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
+                                  <input
+                                    autoFocus type="number" value={ancillaryCatEdit!.val}
+                                    onChange={e => setAncillaryCatEdit({ cat: row.category, val: e.target.value })}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') saveAncillaryCat(row.category, ancillaryCatEdit!.val);
+                                      if (e.key === 'Escape') setAncillaryCatEdit(null);
+                                    }}
+                                    style={{ width: 72, background: '#0f172a', border: '1px solid #06b6d4', color: '#06b6d4', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                                  />
+                                  <button onClick={() => saveAncillaryCat(row.category, ancillaryCatEdit!.val)} disabled={ancillaryCatBusy}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', padding: 0, fontSize: 11 }}>✓</button>
+                                  <button onClick={() => setAncillaryCatEdit(null)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 0, fontSize: 11 }}>✕</button>
+                                </span>
+                              ) : (
+                                <span
+                                  onClick={() => setAncillaryCatEdit({ cat: row.category, val: row.resolved != null ? String(Math.round(row.resolved)) : '' })}
+                                  title="Click to override this category's resolved value"
+                                  style={{ color: '#38bdf8', fontWeight: 700, fontSize: 9, borderBottom: '1px dotted #0891b2', cursor: 'pointer', padding: '0 4px' }}
+                                >
+                                  {fmtFull$(row.resolved)}
+                                </span>
+                              )}
+                            </td>
                             {/* % EGI */}
                             <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: 8, color: '#334155', fontFamily: MONO }}>
                               {pctEgi != null ? (pctEgi * 100).toFixed(1) + '%' : '—'}
@@ -1068,13 +1113,12 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                             <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: 8, color: '#475569', fontFamily: MONO }}>
                               {perUnit != null ? `$${perUnit}` : '—'}
                             </td>
-                            {/* Flag */}
                             <td />
                           </tr>
                         );
                       })}
 
-                      {/* User-added lines ("+") */}
+                      {/* User-added lines — read-only display; full CRUD below via panel */}
                       {userLines.map(ul => {
                         const annual  = ul.monthly * 12;
                         const pctEgi  = egiResolved != null && egiResolved !== 0 ? annual / egiResolved : null;
@@ -1088,13 +1132,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                                 <span style={{ marginLeft: 5, color: '#064e24', fontSize: 7 }}>{ul.qty} × ${ul.rate}/mo</span>
                               )}
                             </td>
-                            {/* Broker → blank */}
                             <td />
-                            {/* T-period → blank (hidden in BROKER_VIEW) */}
                             {viewMode !== 'BROKER_VIEW' && <td />}
-                            {/* Platform → blank (hidden in BROKER_VIEW) */}
                             {viewMode !== 'BROKER_VIEW' && <td />}
-                            {/* Resolved = annual */}
                             <td style={{ padding: '3px 8px', textAlign: 'right', color: '#10b981', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>{fmtFull$(annual)}</td>
                             <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: 8, color: '#334155', fontFamily: MONO }}>
                               {pctEgi != null ? (pctEgi * 100).toFixed(1) + '%' : '—'}
@@ -1110,28 +1150,48 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                         );
                       })}
 
-                      {/* Total Other Income subtotal */}
-                      <tr style={{ background: '#041018', borderTop: '1px solid #0e2a3a', borderLeft: '3px solid #06b6d4' }}>
-                        <td style={{ padding: '4px 8px 4px 28px', fontSize: 9, fontWeight: 700, color: '#38bdf8', fontFamily: MONO, position: 'sticky', left: 0, background: '#041018' }}>
-                          TOTAL OTHER INCOME
+                      {/* Total Other Income — named categories resolved + user lines annual */}
+                      {(() => {
+                        const userLinesAnnual = userLines.reduce((s, l) => s + l.monthly * 12, 0);
+                        const grandTotal = (breakdown!.total.resolved ?? 0) + userLinesAnnual;
+                        return (
+                          <tr style={{ background: '#041018', borderTop: '1px solid #0e2a3a', borderLeft: '3px solid #06b6d4' }}>
+                            <td style={{ padding: '4px 8px 4px 28px', fontSize: 9, fontWeight: 700, color: '#38bdf8', fontFamily: MONO, position: 'sticky', left: 0, background: '#041018' }}>
+                              TOTAL OTHER INCOME
+                            </td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right', color: '#92714a', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>
+                              {fmtFull$(breakdown!.total.om)}
+                            </td>
+                            {viewMode !== 'BROKER_VIEW' && (
+                              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#64748b', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>
+                                {fmtFull$(breakdown!.total.t12)}
+                              </td>
+                            )}
+                            {viewMode !== 'BROKER_VIEW' && (
+                              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>
+                                {fmtFull$(breakdown!.total.rent_roll)}
+                              </td>
+                            )}
+                            <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22d3ee', fontWeight: 700, fontSize: 10, fontFamily: MONO }}>
+                              {fmtFull$(grandTotal)}
+                            </td>
+                            <td colSpan={4} />
+                          </tr>
+                        );
+                      })()}
+
+                      {/* User-line CRUD — panel with hideCategoryTable so categories aren't duplicated */}
+                      <tr style={{ background: '#030d16' }}>
+                        <td colSpan={9} style={{ padding: 0, borderBottom: '1px solid #0e2030' }}>
+                          <AncillaryExpansionPanel
+                            totalUnits={totalUnits}
+                            dealId={dealId}
+                            breakdown={breakdown}
+                            userLines={userLines}
+                            onChange={load}
+                            hideCategoryTable
+                          />
                         </td>
-                        <td style={{ padding: '4px 8px', textAlign: 'right', color: '#92714a', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>
-                          {fmtFull$(breakdown!.total.om)}
-                        </td>
-                        {viewMode !== 'BROKER_VIEW' && (
-                          <td style={{ padding: '4px 8px', textAlign: 'right', color: '#64748b', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>
-                            {fmtFull$(breakdown!.total.t12)}
-                          </td>
-                        )}
-                        {viewMode !== 'BROKER_VIEW' && (
-                          <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>
-                            {fmtFull$(breakdown!.total.rent_roll)}
-                          </td>
-                        )}
-                        <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22d3ee', fontWeight: 700, fontSize: 10, fontFamily: MONO }}>
-                          {fmtFull$(breakdown!.total.resolved)}
-                        </td>
-                        <td colSpan={4} />
                       </tr>
                     </>
                   )}
@@ -1728,12 +1788,14 @@ const SRC_BADGE: Record<string, { label: string; color: string }> = {
   unseeded: { label: '—', color: '#475569' },
 };
 
-function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onChange }: {
+function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onChange, hideCategoryTable }: {
   totalUnits: number;
   dealId: string;
   breakdown: DealFinancials['otherIncomeBreakdown'];
   userLines: NonNullable<DealFinancials['otherIncomeUserLines']>;
   onChange: () => Promise<void> | void;
+  /** When true, hides the category reconciliation table and only shows user-line management. */
+  hideCategoryTable?: boolean;
 }) {
   const [editing, setEditing] = useState<
     | { kind: 'cat'; cat: string; val: string }
@@ -1872,12 +1934,12 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
           <button onClick={() => setAddError(null)} style={{ background: 'none', border: 'none', color: '#fecaca', cursor: 'pointer', fontSize: 11 }}>✕</button>
         </div>
       )}
-      {!breakdown && (
+      {!hideCategoryTable && !breakdown && (
         <div style={{ fontFamily: LABEL, fontSize: 9, color: '#475569', padding: '6px 0' }}>
           No ancillary income data extracted yet. Upload an OM, Rent Roll, or T-12 to populate this table.
         </div>
       )}
-      {breakdown && (
+      {!hideCategoryTable && breakdown && (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
           <thead>
             <tr style={{ background: '#0a1520' }}>
