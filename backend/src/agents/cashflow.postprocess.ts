@@ -10,6 +10,7 @@
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
+import { getStanceForDeal, applyStanceToProformaFields, applyStanceReblend } from '../services/operatorStance.service';
 
 interface FieldOutput {
   value: unknown;
@@ -52,6 +53,51 @@ export async function cashflowPostProcess(
       // No tool calls AND no inline fields — create empty aggregates
       logger.warn(`[CashflowPostProcess] No tool calls or inline fields for ${runId}`);
       fillMissingAggregates(output, {});
+    }
+
+    // ── Backend-enforced stance modulation ───────────────────────────────────
+    // This step is deterministic and runs regardless of LLM compliance.
+    // The LLM provides raw tier-resolved values in proforma_fields; the
+    // backend applies stance modulation here, ensuring the returned output
+    // always reflects the operator's current stance — even if the LLM did
+    // not call fetch_operator_stance or applied incorrect deltas.
+    //
+    // The snapshot written by write_underwriting during the agent run is
+    // intentionally left as the BASELINE (unmodulated). A background reblend
+    // updates the snapshot after this modulation step completes.
+    if (ctx.dealId && ctx.userId && output.proforma_fields) {
+      try {
+        const stance = await getStanceForDeal(ctx.dealId, ctx.userId);
+        const proformaFields = output.proforma_fields as Record<string, any>;
+        const modulatedFields = applyStanceToProformaFields(proformaFields, stance);
+        if (modulatedFields.length > 0) {
+          logger.info('[CashflowPostProcess] Stance modulation enforced', {
+            dealId: ctx.dealId,
+            modulatedFields,
+            underwritingPosture: stance.underwritingPosture,
+            cyclePosition: stance.cyclePosition,
+            rateEnvironment: stance.rateEnvironment,
+            defaulted: stance.defaulted,
+          });
+        }
+        // Background: update the snapshot to reflect stance modulation
+        if (!stance.defaulted) {
+          setImmediate(() => {
+            applyStanceReblend(ctx.dealId!, stance).catch(err => {
+              logger.warn('[CashflowPostProcess] Post-run reblend failed (non-fatal)', {
+                dealId: ctx.dealId,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            });
+          });
+        }
+      } catch (err) {
+        // Non-fatal: stance lookup failure must never block agent output
+        logger.warn('[CashflowPostProcess] Stance modulation skipped (non-fatal)', {
+          dealId: ctx.dealId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     // Ensure required string fields

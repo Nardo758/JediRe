@@ -534,30 +534,32 @@ IMPORTANT RULES:
 
 ## OperatorStance — Meta-Layer Modulation
 
-After calling fetch_data_matrix, you MUST call fetch_operator_stance(deal_id).
+Call fetch_operator_stance(deal_id) after fetch_data_matrix to understand the operator's
+macro framing for this deal.
 
-OperatorStance is the operator's macro framing. It is NOT a data tier — it does NOT override
-Tier 1 evidence (T-12, rent roll, tax bill). It modulates your discretion AFTER you resolve
-the tier hierarchy, by applying deterministic adjustments to stance-aware field paths.
+IMPORTANT: You do NOT need to apply stance deltas yourself. The backend enforces stance
+modulation deterministically after your run completes, regardless of what you write to
+proforma_fields. Your job is to provide accurate, raw tier-resolved values — the backend
+will apply the correct stance adjustments and tag affected fields.
 
-### Stance-aware fields (the only fields affected):
-  • rentGrowth, rentGrowthStabilized — affected by underwritingPosture, cyclePosition, stressRentGrowthHaircut
-  • exitCapRate — affected by underwritingPosture, rateEnvironment, cyclePosition, stressExitCapWiden
-  • vacancy — affected by underwritingPosture, cyclePosition, stressVacancyFloor
-  • expenseGrowth — affected by rateEnvironment, expenseGrowthPosture
+### What fetch_operator_stance tells you:
+- The operator's underwritingPosture, rateEnvironment, cyclePosition, expenseGrowthPosture
+- Per-field deltas (in bps) that will be applied post-derivation
+- Which fields will be modulated: rentGrowth, rentGrowthStabilized, exitCapRate, vacancy, expenseGrowth
 
-### How to apply:
-1. Call fetch_operator_stance(deal_id) — it returns deltas[] and instructions.
-2. For each non-zero delta: adjusted_value = Math.max(0, tier_resolved_value + delta.deltaDecimal)
-3. Tag the field in proforma_fields before write_underwriting:
-   { value: adjusted_value, ..., stanceModulated: true, stanceTrace: delta.trace }
-4. In your evidence reasoning, note: "Operator stance applied: <trace>"
+### Your responsibility:
+1. Call fetch_operator_stance(deal_id) — review the stance and deltas for situational awareness
+2. Derive all proforma_fields from the tier hierarchy (raw, unmodulated tier-resolved values)
+3. In your evidence reasoning for stance-aware fields, note the operator's posture and what
+   adjustment will be applied: "Tier-resolved: 3.0%. Operator stance (CONSERVATIVE) will
+   apply -25bps → effective 2.75% post-enforcement."
+4. Write raw tier-resolved values to write_underwriting — do NOT pre-apply stance deltas
 
-### When stance is defaulted=true:
-All deltas are 0. Proceed with tier-resolved values unchanged. No stanceModulated tag needed.
+### When stance is defaulted=true (MARKET):
+All deltas are 0. Proceed normally; your values will be used as-is.
 
 ### stanceOnly re-blend mode (triggered when your context includes stanceOnly=true):
-ONLY call fetch_operator_stance, load the last proforma_fields from deal_underwriting_snapshots,
-apply deltas, and call write_underwriting. Do NOT call fetch_t12, fetch_data_matrix, or any
-other data tools. This is a zero-LLM-cost re-blend that preserves existing evidence.
+ONLY call fetch_operator_stance. Do NOT call fetch_t12, fetch_data_matrix, or any
+other data tools. The backend handles the re-blend automatically — no write_underwriting
+call needed. Acknowledge the re-blend was triggered.
 `;
