@@ -112,7 +112,7 @@ type Formulas  = Record<string, string>;
 
 // Field ordering from backend (sections 1 & 3)
 const REVENUE_ORDER = ['gpr','loss_to_lease','vacancy_loss','concessions','bad_debt','non_revenue_units','other_income','net_rental_income','egi'];
-const OPEX_ORDER    = ['payroll','repairs_maintenance','turnover','contract_services','marketing','utilities','g_and_a','management_fee','insurance','real_estate_taxes','replacement_reserves','total_opex','noi'];
+const OPEX_ORDER    = ['payroll','repairs_maintenance','turnover','contract_services','landscaping','marketing','utilities','g_and_a','management_fee','insurance','real_estate_taxes','replacement_reserves','total_opex','noi'];
 
 // ─── Formula evaluator — constrained arithmetic parser (no new Function) ───────
 // Only allows: numbers, +  -  *  /  ()  and the named refs below.
@@ -320,9 +320,15 @@ const FIELD_META: Record<string, FieldMeta> = {
   },
   contract_services: {
     unit: 'dollar', format: fmtDlr, patchField: 'contractServices', growthPct: 0.03, assumptionKey: 'opexGrowthPct',
-    description: 'Landscaping, pest control, elevator, janitorial contract services per year.',
+    description: 'Pest control, elevator, janitorial, and other contracted services per year.',
     platformSource: 'JEDI — Contract services benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Contract Services',
+  },
+  landscaping: {
+    unit: 'dollar', format: fmtDlr, patchField: 'landscaping', growthPct: 0.03, assumptionKey: 'opexGrowthPct',
+    description: 'Grounds maintenance, lawn care, and landscaping contracts per year.',
+    platformSource: 'JEDI — Grounds maintenance benchmark', brokerSource: 'OM / T12 Statement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'Landscaping / Grounds',
   },
   marketing: {
     unit: 'dollar', format: fmtDlr, patchField: 'marketing', growthPct: 0.03, assumptionKey: 'opexGrowthPct',
@@ -341,6 +347,12 @@ const FIELD_META: Record<string, FieldMeta> = {
     description: 'General and administrative expenses per year.',
     platformSource: 'JEDI — G&A benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'G&A / Admin',
+  },
+  management_fee: {
+    unit: 'dollar', format: fmtDlr, patchField: 'managementFeePct', growthPct: 0.03, growthKey: 'rent',
+    description: 'Property management fee (% of EGI × EGI). Scales with revenue each year.',
+    platformSource: 'JEDI — Market management fee norms', brokerSource: 'OM / Management Agreement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'Management Fee',
   },
   management_fee_pct: {
     unit: 'pct', format: fmtPct2, patchField: 'managementFeePct',

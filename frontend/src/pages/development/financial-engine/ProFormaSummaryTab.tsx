@@ -149,11 +149,11 @@ const REVENUE_FIELDS = new Set([
   'other_income', 'egi',
 ]);
 const CTRL_OPEX_FIELDS = new Set([
-  'payroll', 'repairs_maintenance', 'turnover', 'contract_services',
+  'payroll', 'repairs_maintenance', 'turnover', 'contract_services', 'landscaping',
   'marketing', 'utilities', 'g_and_a',
 ]);
 const NCTRL_OPEX_FIELDS = new Set([
-  'management_fee', 'insurance', 'real_estate_taxes', 'replacement_reserves', 'total_opex',
+  'management_fee', 'insurance', 'real_estate_taxes', 'total_opex',
 ]);
 const SUBTOTALS = new Set(['gpr', 'net_rental_income', 'egi', 'total_opex', 'noi']);
 const PCT_FIELDS = new Set<string>();
@@ -665,6 +665,37 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   const capRate = data.assumptions.exitCap;
 
+  // ── Below-the-line: Replacement Reserves → NOI After Reserves ──────────────
+  const reservesRow      = byField['replacement_reserves'] ?? null;
+  const reservesResolved = reservesRow?.resolved ?? null;
+  const noiAfterReserves =
+    noiRow?.resolved != null && reservesResolved != null
+      ? Math.round(noiRow.resolved - Math.abs(reservesResolved))
+      : null;
+  const noiAfterReservesBroker =
+    noiRow?.broker != null && reservesRow?.broker != null
+      ? Math.round(noiRow.broker - Math.abs(reservesRow.broker))
+      : null;
+
+  // ── Debt Service (computed from capital stack — Year-1 snapshot) ─────────────
+  const cs = data.capitalStack;
+  const dsInterest: number | null =
+    cs.loanAmount != null && cs.loanAmount > 0 && cs.interestRate != null
+      ? Math.round(cs.loanAmount * cs.interestRate)
+      : null;
+  const dsPrincipal: number | null = (() => {
+    if (dsInterest == null || cs.loanAmount == null) return null;
+    if (cs.ioPeriodMonths != null && cs.ioPeriodMonths > 0) return 0;
+    if (!cs.amortizationYears || cs.amortizationYears <= 0 || !cs.interestRate || cs.interestRate <= 0) return null;
+    const r = cs.interestRate / 12;
+    const n = cs.amortizationYears * 12;
+    const monthlyPmt = cs.loanAmount * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    return Math.max(0, Math.round(monthlyPmt * 12 - dsInterest));
+  })();
+  const dsTotalService: number | null =
+    dsInterest != null ? dsInterest + (dsPrincipal ?? 0) : null;
+  const isIO = cs.ioPeriodMonths != null && cs.ioPeriodMonths > 0;
+
   return (
     <>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#0a0a0a', color: '#e2e8f0', fontFamily: LABEL }}>
@@ -1059,6 +1090,102 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 </td>
                 <td />
               </tr>
+            )}
+
+            {/* ── REPLACEMENT RESERVES (below-the-line) ─────────────────────── */}
+            {reservesRow && (
+              <tr style={{ background: '#0a0e14', borderTop: '1px solid #1e2a3a' }}>
+                <td style={{ padding: '4px 8px 4px 20px', fontSize: 9, color: '#94a3b8', fontFamily: MONO, position: 'sticky', left: 0, background: '#0a0e14' }}>
+                  <span style={{ color: '#475569', marginRight: 5 }}>−</span>Replacement Reserves
+                  <span style={{ color: '#334155', fontSize: 8, marginLeft: 6 }}>(below-the-line)</span>
+                </td>
+                <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#94a3b8', fontSize: 9 }}>{fmtFull$(reservesRow.broker)}</td>
+                {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(reservesRow.t12)}</td>}
+                {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(reservesRow.platform)}</td>}
+                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#94a3b8', fontWeight: 600 }}>{fmtFull$(reservesRow.resolved)}</td>
+                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
+                  {egiResolved && reservesRow.resolved ? `${((Math.abs(reservesRow.resolved) / egiResolved) * 100).toFixed(1)}%` : '—'}
+                </td>
+                <td style={{ padding: '4px 8px' }}><SourceBadge source={reservesRow.source} /></td>
+                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
+                  {reservesRow.perUnit != null ? `$${reservesRow.perUnit.toLocaleString()}/unit` : '—'}
+                </td>
+                <td />
+              </tr>
+            )}
+
+            {/* ── NOI AFTER RESERVES ────────────────────────────────────────── */}
+            {noiAfterReserves != null && (
+              <tr style={{ background: '#031a1a', borderTop: '1px solid #0e4040', borderBottom: '2px solid #0e4040' }}>
+                <td style={{ padding: '6px 8px', fontWeight: 700, color: '#67e8f9', fontFamily: LABEL, fontSize: 9, letterSpacing: '0.05em', position: 'sticky', left: 0, background: '#031a1a' }}>
+                  ═══ NOI AFTER RESERVES ═══
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#67e8f9', fontSize: 9, fontWeight: viewMode === 'BROKER_VIEW' ? 700 : 400 }}>
+                  {fmtFull$(noiAfterReservesBroker)}
+                </td>
+                {viewMode !== 'BROKER_VIEW' && <td colSpan={2} />}
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, fontSize: 11, color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#67e8f9', background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : undefined }}>
+                  {fmtFull$(noiAfterReserves)}
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: '#67e8f9', fontSize: 9 }}>
+                  {egiResolved && noiAfterReserves ? `${((noiAfterReserves / egiResolved) * 100).toFixed(1)}%` : '—'}
+                </td>
+                <td colSpan={3} />
+              </tr>
+            )}
+
+            {/* ── DEBT SERVICE SECTION ──────────────────────────────────────── */}
+            {dsInterest != null && (
+              <>
+                <tr style={{ background: '#0d0d1f', borderTop: '2px solid #1e1b4b' }}>
+                  <td colSpan={9} style={{ padding: '4px 12px', fontSize: 9, fontWeight: 700, color: '#818cf8', fontFamily: MONO, letterSpacing: '0.1em' }}>
+                    DEBT SERVICE
+                  </td>
+                </tr>
+                <tr style={{ background: '#0d0d1f' }}>
+                  <td style={{ padding: '3px 8px 3px 20px', fontSize: 9, color: '#818cf8', fontFamily: MONO, position: 'sticky', left: 0, background: '#0d0d1f' }}>
+                    Interest Expense
+                    <span style={{ color: '#475569', fontSize: 8, marginLeft: 6 }}>
+                      {cs.interestRate != null ? `${(cs.interestRate * 100).toFixed(2)}% × ${fmtFull$(cs.loanAmount)} loan` : ''}
+                    </span>
+                  </td>
+                  <td colSpan={viewMode === 'BROKER_VIEW' ? 1 : 3} />
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#818cf8', fontWeight: 600 }}>{fmtFull$(-dsInterest)}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
+                    {egiResolved && dsInterest ? `${((dsInterest / egiResolved) * 100).toFixed(1)}%` : '—'}
+                  </td>
+                  <td colSpan={3} />
+                </tr>
+                <tr style={{ background: '#0a0a1a' }}>
+                  <td style={{ padding: '3px 8px 3px 20px', fontSize: 9, color: '#818cf8', fontFamily: MONO, position: 'sticky', left: 0, background: '#0a0a1a' }}>
+                    Principal Amortization
+                    <span style={{ color: '#475569', fontSize: 8, marginLeft: 6 }}>
+                      {isIO ? `${cs.ioPeriodMonths}mo IO — no principal` : cs.amortizationYears ? `${cs.amortizationYears}yr amort` : ''}
+                    </span>
+                  </td>
+                  <td colSpan={viewMode === 'BROKER_VIEW' ? 1 : 3} />
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: isIO ? '#475569' : '#818cf8', fontWeight: 600 }}>
+                    {isIO ? '—' : dsPrincipal != null ? fmtFull$(-dsPrincipal) : '—'}
+                  </td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
+                    {!isIO && egiResolved && dsPrincipal ? `${((dsPrincipal / egiResolved) * 100).toFixed(1)}%` : '—'}
+                  </td>
+                  <td colSpan={3} />
+                </tr>
+                <tr style={{ background: '#0d0d1f', borderTop: '1px solid #312e81', borderBottom: '2px solid #312e81' }}>
+                  <td style={{ padding: '5px 8px', fontWeight: 700, color: '#c7d2fe', fontFamily: LABEL, fontSize: 9, letterSpacing: '0.05em', position: 'sticky', left: 0, background: '#0d0d1f' }}>
+                    ═══ TOTAL DEBT SERVICE ═══
+                  </td>
+                  <td colSpan={viewMode === 'BROKER_VIEW' ? 1 : 3} />
+                  <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: 11, color: '#c7d2fe' }}>
+                    {fmtFull$(dsTotalService != null ? -dsTotalService : null)}
+                  </td>
+                  <td style={{ padding: '5px 8px', textAlign: 'right', color: '#818cf8', fontSize: 9 }}>
+                    {egiResolved && dsTotalService ? `${((dsTotalService / egiResolved) * 100).toFixed(1)}%` : '—'}
+                  </td>
+                  <td colSpan={3} />
+                </tr>
+              </>
             )}
           </tbody>
         </table>
