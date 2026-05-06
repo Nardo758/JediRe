@@ -290,87 +290,91 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
   const stance: OperatorStance = operatorStance;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-      {/* ── Header ── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '8px 14px',
-        background: BT.bg.header,
-        borderBottom: `1px solid ${BT.border.subtle}`,
-        flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: AMBER, letterSpacing: 1 }}>
-            OPERATOR STANCE
-          </span>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-            meta-layer · 15 modulation rules
-          </span>
-          {saving && (
-            <span style={{ fontFamily: MONO, fontSize: 8, color: AMBER }}>SAVING...</span>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {stance.updatedAt && (
-            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-              {new Date(stance.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
-          <button
-            onClick={handleReset}
-            disabled={resetting || saving}
-            title="Reset all postures to MARKET defaults"
-            style={{
-              background: 'transparent',
-              border: `1px solid ${BT.border.medium}`,
-              color: BT.text.muted,
-              fontFamily: MONO, fontSize: 8, padding: '3px 8px',
-              cursor: resetting || saving ? 'default' : 'pointer',
-              borderRadius: 2, letterSpacing: 0.5,
-              opacity: resetting || saving ? 0.4 : 1,
-            }}
-          >
-            {resetting ? 'RESETTING...' : 'RESET TO MARKET'}
-          </button>
-        </div>
-      </div>
-
-      {/* ── Market default banner ── */}
-      {stance.defaulted && (
-        <div style={{
-          padding: '6px 14px',
-          background: `${AMBER}12`,
-          borderBottom: `1px solid ${AMBER}30`,
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}>
-          <span style={{ color: AMBER, fontSize: 10 }}>◈</span>
-          <span style={{ fontFamily: MONO, fontSize: 9, color: AMBER }}>
-            MARKET DEFAULTS ACTIVE — no manual stance applied
-          </span>
-        </div>
-      )}
-
-      {/* ── Save error ── */}
-      {saveError && (
-        <div style={{
-          padding: '5px 14px',
-          background: '#FF475720',
-          borderBottom: `1px solid #FF475740`,
-          fontFamily: MONO, fontSize: 9, color: '#FF4757',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <span>{saveError}</span>
-          <button
-            onClick={() => setSaveError(null)}
-            style={{ background: 'transparent', border: 'none', color: '#FF4757', cursor: 'pointer', fontSize: 11 }}
-          >✕</button>
-        </div>
-      )}
-
-      {/* ── Posture dials ── */}
+      {/* ── Fixed top section: header + banner + posture rows ──────────────
+          No overflow set here so absolutely-positioned dropdowns inside
+          PostureRow can render freely without being clipped.
+      ── */}
       <div style={{ flexShrink: 0 }}>
+
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 14px',
+          background: BT.bg.header,
+          borderBottom: `1px solid ${BT.border.subtle}`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: AMBER, letterSpacing: 1 }}>
+              OPERATOR STANCE
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+              meta-layer · 15 modulation rules
+            </span>
+            {saving && (
+              <span style={{ fontFamily: MONO, fontSize: 8, color: AMBER }}>SAVING...</span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {stance.updatedAt && (
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                {new Date(stance.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+            <button
+              onClick={handleReset}
+              disabled={resetting || saving}
+              title="Reset all postures to MARKET defaults"
+              style={{
+                background: 'transparent',
+                border: `1px solid ${BT.border.medium}`,
+                color: BT.text.muted,
+                fontFamily: MONO, fontSize: 8, padding: '3px 8px',
+                cursor: resetting || saving ? 'default' : 'pointer',
+                borderRadius: 2, letterSpacing: 0.5,
+                opacity: resetting || saving ? 0.4 : 1,
+              }}
+            >
+              {resetting ? 'RESETTING...' : 'RESET TO MARKET'}
+            </button>
+          </div>
+        </div>
+
+        {/* Market default banner */}
+        {stance.defaulted && (
+          <div style={{
+            padding: '6px 14px',
+            background: `${AMBER}12`,
+            borderBottom: `1px solid ${AMBER}30`,
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <span style={{ color: AMBER, fontSize: 10 }}>◈</span>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: AMBER }}>
+              MARKET DEFAULTS ACTIVE — no manual stance applied
+            </span>
+          </div>
+        )}
+
+        {/* Save error */}
+        {saveError && (
+          <div style={{
+            padding: '5px 14px',
+            background: '#FF475720',
+            borderBottom: `1px solid #FF475740`,
+            fontFamily: MONO, fontSize: 9, color: '#FF4757',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span>{saveError}</span>
+            <button
+              onClick={() => setSaveError(null)}
+              style={{ background: 'transparent', border: 'none', color: '#FF4757', cursor: 'pointer', fontSize: 11 }}
+            >✕</button>
+          </div>
+        )}
+
+        {/* Posture dials — dropdowns are position:absolute, need unconstrained ancestors */}
         <PostureRow<UnderwritingPosture>
           label="UNDERWRITING POSTURE"
           field="underwritingPosture"
@@ -403,23 +407,24 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
           onChange={v => handleChange({ expenseGrowthPosture: v })}
           saving={saving}
         />
+
+        {/* Divider */}
+        <div style={{ height: 1, background: BT.border.subtle }} />
       </div>
 
-      {/* ── Divider ── */}
-      <div style={{ height: 1, background: BT.border.subtle, flexShrink: 0 }} />
+      {/* ── Scrollable bottom section: affected fields + footer ─────────── */}
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        <AffectedFieldsPanel dealId={dealId} stanceUpdatedAt={stance.updatedAt} />
 
-      {/* ── Affected fields ── */}
-      <AffectedFieldsPanel dealId={dealId} stanceUpdatedAt={stance.updatedAt} />
-
-      {/* ── Footer note ── */}
-      <div style={{
-        padding: '8px 14px',
-        borderTop: `1px solid ${BT.border.subtle}`,
-        fontFamily: MONO, fontSize: 8, color: BT.text.muted,
-        marginTop: 'auto', flexShrink: 0,
-      }}>
-        Stance changes trigger a zero-LLM re-blend against the cached underwriting snapshot.
-        Re-run BUILD MODEL to apply to projections.
+        {/* Footer note */}
+        <div style={{
+          padding: '8px 14px',
+          borderTop: `1px solid ${BT.border.subtle}`,
+          fontFamily: MONO, fontSize: 8, color: BT.text.muted,
+        }}>
+          Stance changes trigger a zero-LLM re-blend against the cached underwriting snapshot.
+          Re-run BUILD MODEL to apply to projections.
+        </div>
       </div>
     </div>
   );
