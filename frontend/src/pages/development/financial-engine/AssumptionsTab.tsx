@@ -102,6 +102,19 @@ interface DealFinancials {
    *  `rationale:{field}:{year}` JSONB sibling keys (spec §9). */
   userOverrideRationales?: Record<string, Record<number, string>>;
   meta: { seeded: boolean; updatedAt: string|null };
+  /** Per-category ancillary income reconciliation (Task #612). */
+  otherIncomeBreakdown?: {
+    rows: Array<{
+      category: string;
+      rent_roll: number | null;
+      t12: number | null;
+      om: number | null;
+      resolved: number | null;
+      resolution: string;
+      conflict: boolean;
+    }>;
+    total: { rent_roll: number|null; t12: number|null; om: number|null; resolved: number };
+  } | null;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -1591,6 +1604,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   // are const bindings declared later in this function scope.
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
+  const [showAncillaryBreakdown, setShowAncillaryBreakdown] = useState(false);
 
   // ── Leasing sub-tab state ──────────────────────────────────────────────────
   // MAX 3 sub-tabs under Assumptions. Do not add a 4th.
@@ -3051,6 +3065,113 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                             </td>
                           </tr>
                         )}
+
+                        {/* ── Ancillary income per-category sub-rows (Task #612) ──
+                            Renders below `other_income` in Section 5B.
+                            Read-only projected rows derived from otherIncomeBreakdown.rows[i].resolved
+                            compounded forward at ancillaryGrowthPct. No backend PATCH needed —
+                            override of the parent `other_income` row controls the total. */}
+                        {rd.key === 'other_income' && financials?.otherIncomeBreakdown != null && (() => {
+                          const bkd = financials.otherIncomeBreakdown!;
+                          const rows = bkd.rows ?? [];
+                          if (rows.length === 0) return null;
+                          const g = financials.assumptions.ancillaryGrowthPct ?? 0.03;
+                          return (
+                            <>
+                              {/* Collapsible toggle header */}
+                              <tr
+                                onClick={() => setShowAncillaryBreakdown(v => !v)}
+                                style={{ background: '#0b141e', cursor: 'pointer', borderBottom: '1px solid #0e2030' }}
+                              >
+                                <td
+                                  colSpan={years.length + 2}
+                                  className="px-3 py-0.5 sticky left-0 bg-[#0b141e] border-r border-[#1e1e1e] z-10"
+                                  style={{ fontSize: 8, fontFamily: MONO, color: '#06b6d4', userSelect: 'none' }}
+                                >
+                                  {showAncillaryBreakdown ? '▾' : '▸'}{' '}
+                                  <span style={{ fontWeight: 700, letterSpacing: '0.06em' }}>ANCILLARY BREAKDOWN</span>
+                                  <span style={{ color: '#0e3a4a', marginLeft: 6 }}>
+                                    {rows.length} categories · growth {(g * 100).toFixed(1)}%/yr · read-only
+                                  </span>
+                                </td>
+                              </tr>
+
+                              {/* Per-category rows */}
+                              {showAncillaryBreakdown && rows.map(catRow => {
+                                const y1Val = catRow.resolved;
+                                return (
+                                  <tr
+                                    key={catRow.category}
+                                    className="border-b border-[#0e2030]/40 h-[22px]"
+                                    style={{ background: '#060f18', borderLeft: '3px solid #0e3347' }}
+                                  >
+                                    <td
+                                      className="px-3 py-0 sticky left-0 bg-[#060f18] border-r border-[#1e1e1e] z-10 min-w-[220px]"
+                                      style={{ fontSize: 9, color: '#38bdf8', fontFamily: MONO }}
+                                    >
+                                      <span style={{ color: '#0e3347', marginRight: 4 }}>↳</span>
+                                      {catRow.category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                      {catRow.conflict && (
+                                        <span style={{ marginLeft: 4, fontSize: 6, color: '#ef4444', border: '1px solid #7f1d1d', borderRadius: 2, padding: '0 2px' }}>!</span>
+                                      )}
+                                    </td>
+                                    {years.map(yr => {
+                                      const val = y1Val != null
+                                        ? (yr === 1 ? y1Val : Math.round(y1Val * Math.pow(1 + g, yr - 1)))
+                                        : null;
+                                      return (
+                                        <td
+                                          key={yr}
+                                          className="px-2 py-0 text-right border-r border-[#1e1e1e]"
+                                          style={{ fontFamily: MONO, fontSize: 9, color: '#22d3ee80' }}
+                                        >
+                                          {val != null ? '$' + Math.round(val).toLocaleString() : '—'}
+                                          {yr > 1 && val != null && (
+                                            <sup style={{ fontSize: 6, color: '#0e3347', marginLeft: 2 }}>+{(g * 100).toFixed(0)}%</sup>
+                                          )}
+                                        </td>
+                                      );
+                                    })}
+                                    {/* MODE col — locked (read-only derived) */}
+                                    <td className="px-0.5 py-0">
+                                      <span style={{ fontFamily: MONO, fontSize: 7, color: '#1e3347' }}>RO</span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+
+                              {/* Total row */}
+                              {showAncillaryBreakdown && (
+                                <tr
+                                  className="border-b border-[#0e2a3a] h-[22px]"
+                                  style={{ background: '#041018', borderLeft: '3px solid #06b6d4' }}
+                                >
+                                  <td
+                                    className="px-3 py-0 sticky left-0 bg-[#041018] border-r border-[#1e1e1e] z-10"
+                                    style={{ fontSize: 9, fontWeight: 700, color: '#22d3ee', fontFamily: MONO }}
+                                  >
+                                    TOTAL ANCILLARY (RESOLVED)
+                                  </td>
+                                  {years.map(yr => {
+                                    const total = bkd.total.resolved != null
+                                      ? (yr === 1 ? bkd.total.resolved : Math.round(bkd.total.resolved * Math.pow(1 + g, yr - 1)))
+                                      : null;
+                                    return (
+                                      <td
+                                        key={yr}
+                                        className="px-2 py-0 text-right border-r border-[#1e1e1e]"
+                                        style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#22d3ee' }}
+                                      >
+                                        {total != null ? '$' + Math.round(total).toLocaleString() : '—'}
+                                      </td>
+                                    );
+                                  })}
+                                  <td />
+                                </tr>
+                              )}
+                            </>
+                          );
+                        })()}
                         </React.Fragment>
                       );
                     })}

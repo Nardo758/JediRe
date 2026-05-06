@@ -159,6 +159,26 @@ const SUBTOTALS = new Set(['gpr', 'net_rental_income', 'egi', 'total_opex', 'noi
 const PCT_FIELDS = new Set<string>();
 const PER_UNIT_FIELDS = new Set<string>();
 
+// ─── Ancillary income category labels ─────────────────────────────────────────
+const ANCILLARY_CATEGORY_LABELS: Record<string, string> = {
+  parking:               'Parking / Garage',
+  garage:                'Parking / Garage',
+  utility_reimbursement: 'Utility Reimbursements (RUBS)',
+  rubs:                  'Utility Reimbursements (RUBS)',
+  valet_trash:           'Valet Trash',
+  cable_internet:        'Cable / Internet',
+  cable:                 'Cable / Internet',
+  internet:              'Cable / Internet',
+  washer_dryer:          'Washer / Dryer',
+  laundry:               'Washer / Dryer',
+  renters_insurance:     'Renters Insurance',
+  other:                 'Other',
+};
+function ancillaryLabel(cat: string): string {
+  return ANCILLARY_CATEGORY_LABELS[cat.toLowerCase()] ??
+    cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // ─── Formatting ───────────────────────────────────────────────────────────────
 function fmt$(n: number | null): string {
   if (n == null) return '—';
@@ -960,35 +980,164 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <SubtotalRow label="NET RENTAL INCOME" row={byField['net_rental_income']} color="#041a14" textColor="#34d399" egiResolved={egiResolved} />
             )}
 
-            {/* Other Income (with ancillary expansion) */}
-            {postNriRows.map((r, i) => (
-              <React.Fragment key={r.field}>
-                <DataRow row={r} isEven={i % 2 === 0} shade="blue"
-                  corrections={corrections} setCorrections={setCorrections}
-                  totalUnits={totalUnits} egiResolved={egiResolved}
-                  activePeriod={activePeriod}
-                  onSaveCorrection={handleSaveCorrection}
-                  onResetCorrection={handleResetCorrection}
-                  onToggleAncillary={() => setShowAncillary(v => !v)}
-                  ancillaryOpen={showAncillary}
-                  evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
-                  sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
-                />
-                {showAncillary && (
-                  <tr>
-                    <td colSpan={9} style={{ background: '#050d12', padding: 0, borderBottom: '1px solid #0e2030' }}>
-                      <AncillaryExpansionPanel
-                        totalUnits={totalUnits}
-                        dealId={dealId}
-                        breakdown={data?.otherIncomeBreakdown ?? null}
-                        userLines={data?.otherIncomeUserLines ?? []}
-                        onChange={load}
-                      />
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
+            {/* Other Income — inline ancillary breakdown (Task #612) */}
+            {postNriRows.map((r, i) => {
+              const breakdown  = data?.otherIncomeBreakdown ?? null;
+              const hasBreakdown = breakdown != null && breakdown.rows.length > 0;
+              const userLines  = data?.otherIncomeUserLines ?? [];
+              return (
+                <React.Fragment key={r.field}>
+                  <DataRow row={r} isEven={i % 2 === 0} shade="blue"
+                    corrections={corrections} setCorrections={setCorrections}
+                    totalUnits={totalUnits} egiResolved={egiResolved}
+                    activePeriod={activePeriod}
+                    onSaveCorrection={handleSaveCorrection}
+                    onResetCorrection={handleResetCorrection}
+                    onToggleAncillary={() => setShowAncillary(v => !v)}
+                    ancillaryOpen={showAncillary}
+                    evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
+                    sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
+                  />
+
+                  {/* ── No breakdown available chip ── */}
+                  {showAncillary && !hasBreakdown && (
+                    <tr style={{ background: '#050e16' }}>
+                      <td colSpan={9} style={{
+                        padding: '5px 8px 5px 28px', fontSize: 8, color: '#1e4a5f',
+                        fontFamily: MONO, borderLeft: '3px solid #0e3347',
+                        fontStyle: 'italic', borderBottom: '1px solid #071520',
+                      }}>
+                        No per-category breakdown available — upload a T-12 or rent roll to extract ancillary line items.
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* ── Inline per-category breakdown ── */}
+                  {showAncillary && hasBreakdown && (
+                    <>
+                      {/* Section header */}
+                      <tr style={{ background: '#030e14' }}>
+                        <td colSpan={9} style={{ padding: '3px 8px 3px 20px', borderBottom: '1px solid #0a2030' }}>
+                          <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#06b6d4', letterSpacing: '0.08em' }}>
+                            ANCILLARY INCOME BREAKDOWN
+                          </span>
+                          <span style={{ fontFamily: MONO, fontSize: 7, color: '#0e4a5a', marginLeft: 8 }}>
+                            Broker=OM · T-12=Trailing · Platform=Rent Roll · Resolved=Layered
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* Per-category rows */}
+                      {breakdown!.rows.map(row => {
+                        const pctEgi  = egiResolved != null && row.resolved != null && egiResolved !== 0
+                          ? row.resolved / egiResolved : null;
+                        const perUnit = totalUnits > 0 && row.resolved != null
+                          ? Math.round(row.resolved / totalUnits) : null;
+                        return (
+                          <tr key={row.category} style={{ background: '#050e16', borderLeft: '3px solid #0e3347' }}>
+                            <td style={{ padding: '3px 8px 3px 28px', fontSize: 9, color: '#38bdf8', fontFamily: MONO, position: 'sticky', left: 0, background: '#050e16' }}>
+                              <span style={{ color: '#0e4a5a', marginRight: 4 }}>↳</span>
+                              {ancillaryLabel(row.category)}
+                              {row.conflict && (
+                                <span style={{ marginLeft: 5, fontFamily: MONO, fontSize: 7, color: '#ef4444', background: '#2d0000', border: '1px solid #7f1d1d', borderRadius: 2, padding: '0 3px' }}>CONFLICT</span>
+                              )}
+                            </td>
+                            {/* Broker col → OM value */}
+                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#92714a', fontSize: 9, fontFamily: MONO }}>{fmtFull$(row.om)}</td>
+                            {/* T-period col → T-12 (hidden in BROKER_VIEW) */}
+                            {viewMode !== 'BROKER_VIEW' && (
+                              <td style={{ padding: '3px 8px', textAlign: 'right', color: '#64748b', fontSize: 9, fontFamily: MONO }}>{fmtFull$(row.t12)}</td>
+                            )}
+                            {/* Platform col → Rent Roll (hidden in BROKER_VIEW) */}
+                            {viewMode !== 'BROKER_VIEW' && (
+                              <td style={{ padding: '3px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9, fontFamily: MONO }}>{fmtFull$(row.rent_roll)}</td>
+                            )}
+                            {/* Resolved */}
+                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#38bdf8', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>{fmtFull$(row.resolved)}</td>
+                            {/* % EGI */}
+                            <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: 8, color: '#334155', fontFamily: MONO }}>
+                              {pctEgi != null ? (pctEgi * 100).toFixed(1) + '%' : '—'}
+                            </td>
+                            {/* Source */}
+                            <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                              <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: 2, fontFamily: MONO, fontSize: 7, color: '#22d3ee', background: '#051820' }}>
+                                {row.resolution?.split(':')[0] ?? '—'}
+                              </span>
+                            </td>
+                            {/* $/Unit */}
+                            <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: 8, color: '#475569', fontFamily: MONO }}>
+                              {perUnit != null ? `$${perUnit}` : '—'}
+                            </td>
+                            {/* Flag */}
+                            <td />
+                          </tr>
+                        );
+                      })}
+
+                      {/* User-added lines ("+") */}
+                      {userLines.map(ul => {
+                        const annual  = ul.monthly * 12;
+                        const pctEgi  = egiResolved != null && egiResolved !== 0 ? annual / egiResolved : null;
+                        const perUnit = totalUnits > 0 ? Math.round(annual / totalUnits) : null;
+                        return (
+                          <tr key={ul.id} style={{ background: '#050e16', borderLeft: '3px solid #164e2a' }}>
+                            <td style={{ padding: '3px 8px 3px 28px', fontSize: 9, color: '#10b981', fontFamily: MONO, position: 'sticky', left: 0, background: '#050e16' }}>
+                              <span style={{ color: '#064e24', marginRight: 4 }}>+</span>
+                              {ul.label}
+                              {ul.qty != null && ul.rate != null && (
+                                <span style={{ marginLeft: 5, color: '#064e24', fontSize: 7 }}>{ul.qty} × ${ul.rate}/mo</span>
+                              )}
+                            </td>
+                            {/* Broker → blank */}
+                            <td />
+                            {/* T-period → blank (hidden in BROKER_VIEW) */}
+                            {viewMode !== 'BROKER_VIEW' && <td />}
+                            {/* Platform → blank (hidden in BROKER_VIEW) */}
+                            {viewMode !== 'BROKER_VIEW' && <td />}
+                            {/* Resolved = annual */}
+                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#10b981', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>{fmtFull$(annual)}</td>
+                            <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: 8, color: '#334155', fontFamily: MONO }}>
+                              {pctEgi != null ? (pctEgi * 100).toFixed(1) + '%' : '—'}
+                            </td>
+                            <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                              <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: 2, fontFamily: MONO, fontSize: 7, color: '#10b981', background: '#0a2016' }}>USER</span>
+                            </td>
+                            <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: 8, color: '#475569', fontFamily: MONO }}>
+                              {perUnit != null ? `$${perUnit}` : '—'}
+                            </td>
+                            <td />
+                          </tr>
+                        );
+                      })}
+
+                      {/* Total Other Income subtotal */}
+                      <tr style={{ background: '#041018', borderTop: '1px solid #0e2a3a', borderLeft: '3px solid #06b6d4' }}>
+                        <td style={{ padding: '4px 8px 4px 28px', fontSize: 9, fontWeight: 700, color: '#38bdf8', fontFamily: MONO, position: 'sticky', left: 0, background: '#041018' }}>
+                          TOTAL OTHER INCOME
+                        </td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', color: '#92714a', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>
+                          {fmtFull$(breakdown!.total.om)}
+                        </td>
+                        {viewMode !== 'BROKER_VIEW' && (
+                          <td style={{ padding: '4px 8px', textAlign: 'right', color: '#64748b', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>
+                            {fmtFull$(breakdown!.total.t12)}
+                          </td>
+                        )}
+                        {viewMode !== 'BROKER_VIEW' && (
+                          <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>
+                            {fmtFull$(breakdown!.total.rent_roll)}
+                          </td>
+                        )}
+                        <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22d3ee', fontWeight: 700, fontSize: 10, fontFamily: MONO }}>
+                          {fmtFull$(breakdown!.total.resolved)}
+                        </td>
+                        <td colSpan={4} />
+                      </tr>
+                    </>
+                  )}
+                </React.Fragment>
+              );
+            })}
 
             {/* ── EGI SUBTOTAL ── */}
             {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} fullFormat />}
