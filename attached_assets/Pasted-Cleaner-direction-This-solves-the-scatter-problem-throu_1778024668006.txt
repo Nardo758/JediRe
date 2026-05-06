@@ -1,0 +1,29 @@
+Cleaner direction. This solves the scatter problem through visual hierarchy instead of structural consolidation — much lower risk, preserves all the work, and the Bloomberg aesthetic already supports color-coded grouping natively.
+Tab grouping
+Three clusters, adjacent in the F-key bar, each with its own underline color:
+ClusterColorPurposeTabsOverviewneutral whiteComposite landingOverviewOperatoramber T.amberWhere the operator decides thingsThesis, Assumptions, Taxes, Leasing, Debt, WaterfallEnginecyan T.cyanWhere the engine produces thingsPro Forma, Projections, Sensitivity, ReturnsAuditdim gray T.gray500Pipeline and provenanceSources
+Active tab still gets the bright amber accent regardless of cluster — the group color is just the cluster marker (small underline bar above or below the tab label). Bloomberg uses exactly this pattern: orange for commands, cyan for data displays.
+What's missing that needs to be added
+1. Thesis tab (new, in Operator cluster)
+This is where OperatorStance lives, plus the deal-thesis decisions that don't have a home today:
+
+Hold period
+Target unlevered/levered IRR
+Capital structure preference
+Exit cap stance
+OperatorStance dials (rate environment, cycle position, underwriting posture, stress overlays)
+
+Putting these on Assumptions would muddy it — Assumptions is the layered values ledger. Thesis is the operator's framing. They're sibling concepts, not the same job. Thesis answers "what's the deal thesis"; Assumptions answers "what numbers are we using and where did they come from."
+2. Sources tab (new, in Audit cluster)
+Document manifest, agent run history, cross-validation flags. Read-mostly. This was the "what's left over after folding provenance into rows" piece — keeping it as its own dim-gray tab keeps it discoverable for DD/lender handoff without polluting the Operator cluster.
+3. Per-row provenance drawers on Assumptions (enhancement, not new tab)
+Each LayeredValue row gets an expandable drawer showing the layer stack, source citations, and override entry. This is where "fold provenance in" actually lands — inside the existing Assumptions tab, not on Console.
+Within-tab color coding
+Extend the Excel-export convention you already have so it carries through the UI:
+ColorMeaningUseBlue T.blueHardcoded operator inputOverride values, stance dials, thesis decisionsWhite T.whiteComputed / engine-derivedFormula outputs, derived valuesGreen T.greenCross-tab referenceValues pulled from another tab/moduleYellow background T.yellow10Key assumption flagged for attentionStance-driven changes, agent-flagged overridesAmber T.amberActive selection / hoverStandard Bloomberg active state
+This makes any tab readable at a glance: blue dots = the operator did this, white = the engine did this, green = it came from somewhere else, yellow = pay attention.
+Final tab order
+[OVERVIEW] | [THESIS] [ASSUMPTIONS] [TAXES] [LEASING] [DEBT] [WATERFALL] | [PRO FORMA] [PROJECTIONS] [SENSITIVITY] [RETURNS] | [SOURCES]
+   white   |               amber cluster                                |              cyan cluster                  | gray
+Pipe characters are conceptual — visually it'd be a thin vertical divider or just the underline color shift between clusters.
+This way: nothing existing gets retired, the operator's eye learns the cluster colors after one session, OperatorStance gets a clean home in Thesis, and the per-row drawers solve the provenance question without needing a separate page for it.

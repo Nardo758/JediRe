@@ -1,0 +1,86 @@
+This is a real insight — the consolidation problem you've identified is structural, not cosmetic. Renaming alone fixes the symptom; what you actually need is a clear philosophical split between the three things currently bleeding into each other: decisions, derivations, and audit.
+The rename is correct, but with a sharper role
+Don't think of Control Center as "the page where inputs live." That's still scattered thinking — it just relocates the scatter. Think of it as the operator's cockpit — the place where you set the things only you can decide, and where you tell the agent how to think about everything else.
+Three input categories belong there:
+
+Hard operator decisions — hold period, target unlevered/levered IRR, capital structure preference, exit cap stance, deal-specific KPIs. These are not derivable. The agent cannot guess them. They are the deal thesis.
+Document-extracted inputs that matter at the decision layer — T12 NOI baseline, in-place rent, current occupancy. These exist in the LayeredValue stack already, but Control Center surfaces the ones that fundamentally change the model's character if they shift.
+Guidance inputs — the new construct you're describing. These are not values; they are stance.
+
+Don't fold Assumptions in. Split the roles cleanly.
+PageJobUser question it answersControl CenterWhere the operator drives the model"What do I want this model to do?"AssumptionsWhere every LayeredValue is auditable with full provenance"What is the model actually using, and where did each number come from?"
+Assumptions becomes a read-mostly provenance ledger — every line item, every layer (platform / t12 / rent_roll / tax_bill / override), badge-marked with source. It's what you hand to a lender, IC, or DD analyst. It doesn't disappear; it earns a more focused job.
+Control Center is what the operator touches 95% of the time. Assumptions is where you go when something looks wrong and you need to trace why.
+This also resolves a recurring pattern problem: today, an "override" on Assumptions and an "input" on Projections are the same operation routed through two different mental models. Splitting cockpit from ledger means there's exactly one place to change a value (Control Center) and exactly one place to inspect the full layered history (Assumptions). The dealStore stays the single message bus; the UI stops pretending otherwise.
+The guidance inputs concept — formalize it as OperatorStance
+You're right that this fits the agent architecture naturally. The Cashflow Agent spec already has tier-weighted derivation rules — OperatorStance is the meta-layer that adjusts the weights and floors/ceilings without touching individual assumptions.
+Proposed shape:
+tsinterface OperatorStance {
+  // Macro view
+  rateEnvironment: 'CUTTING' | 'NORMALIZING' | 'HIGHER_FOR_LONGER'
+  cyclePosition: 'EARLY' | 'MID' | 'LATE'
+  recessionProbability: number   // 0-1, modulates stress overlays
+
+  // Conservatism dial (overall)
+  underwritingPosture: 'CONSERVATIVE' | 'MARKET' | 'AGGRESSIVE'
+
+  // Per-driver stances (already exist in lease velocity spec)
+  concessionStrategy: 'CONSERVATIVE' | 'MARKET' | 'AGGRESSIVE'
+  marketingIntensity: 'LOW' | 'MARKET' | 'AGGRESSIVE'
+  expenseGrowthPosture: 'CONTAINED' | 'INFLATION' | 'STRESSED'
+
+  // Stress toggles
+  stressRentGrowthHaircut: number    // bps shaved off Y1-Y3
+  stressExitCapWiden: number          // bps added to exit cap
+  stressVacancyFloor: number          // floor pp added in vacancy
+}
+This is a sibling of LayeredValue, not a layer of it. LayeredValue says "what is this number?" OperatorStance says "how should the agent derive numbers when there's discretion?" The Cashflow Agent's derivation rules consume both — OperatorStance modulates the blend weights and adds floors/ceilings, then the result is written to the platform layer of the affected LayeredValues.
+Critical property: stance changes are cheap re-runs. Because DealContext caches the underlying data 24h, flipping rateEnvironment from NORMALIZING to HIGHER_FOR_LONGER shouldn't re-fetch FRED or comps — it should just re-blend cached inputs. That preserves your 60-70% credit savings on follow-up turns.
+Suggested Control Center sections
+Roughly in operator-priority order:
+
+Deal Thesis — hold period, target returns, capital structure preference, deal type confirmation (Existing/Development/Redevelopment per resolveProjectType())
+Operator Stance — the block above, with sensible defaults from market detection
+Capital Stack — sources, debt selection (links to F9 Debt tab for comparison), waterfall structure
+Mode & Timing — Stabilized / Lease-Up / Recovery (resolved automatically per Lease Velocity Engine spec, user can override), delivery month if applicable
+Stress & Scenarios — toggles for stress overlays, scenario versioning entry point
+Live Projection Preview — the existing operating statement view, recalculating as stance/inputs change. This is what makes Control Center the cockpit instead of just a form — you see the model respond.
+
+The "Financial Engine" subsection name probably retires here — it's just the engine, and Control Center is the operator interface to it.
+One naming pushback
+"Control Center" is clear but generic. Two alternatives worth considering:
+
+Console — fits Bloomberg Terminal aesthetic, short, terminal-y, also resonates with the Operator subscription tier
+Cockpit — more evocative of the cockpit/ledger split
+
+I'd lean Console for the F-key label (single word, terminal aesthetic, fits JetBrains Mono), with "Operator Console" as the long-form/tooltip name. But Control Center is fine if you want it to read clearly to chat-surface users who haven't internalized the Bloomberg metaphor yet.
+Want me to draft the JSX prototype for Console with the OperatorStance block wired to the projection preview, or spec the formal OperatorStance schema + dealStore integration first?You said: I like Console, but the one thing I'm trying to avoid is duplicate informationI like Console, but the one thing I'm trying to avoid is duplicate information6:27 PMClaude responded: You're right — my earlier split was hedging.Reconciled Console design with single-source-of-truth principleReconciled Console design with single-source-of-truth principleYou're right — my earlier split was hedging. If Console has the inputs, Assumptions can only show the same numbers with extra metadata. That's duplication, even if the metadata differs.
+The cleaner answer: fold provenance into Console as per-row drawers, and kill the Assumptions tab.
+The merger
+Each input row in Console is a LayeredValue<T>. Click (or arrow into) the row → drawer expands inline showing:
+
+Layers stack: platform / t12 / rent_roll / tax_bill / override — each with its raw value and source citation
+Active value with which layer won and why
+Agent derivation trace: if OperatorStance modulated this value, the rule that fired (e.g., "Y1 rent growth = owned-asset TTM × 0.7 + submarket × 0.3, posture=CONSERVATIVE applied -25bps haircut")
+Override entry point: type a new value here, and it writes to the override layer
+
+This is what Assumptions was trying to be. Inline drawers do it better because the value and its provenance are co-located — you don't tab away to inspect.
+What gets left over
+Folding Assumptions in eliminates duplication on the values themselves. But there's audit-layer information that has nothing to do with individual values:
+
+Document ingestion manifest — which T12, RR, tax bill, OM is loaded; parse confidence; cross-validation flags
+Agent run history — every Cashflow Agent invocation, the stance used, what changed turn-over-turn
+Cross-validation flags — where T12 says one thing and platform says another by >threshold
+Lender/IC export view — formatted snapshot of all assumptions for handoff
+
+This isn't duplicative of Console — it's about the data pipeline, not the values flowing through it.
+Two ways to home it:
+Option 1 (preferred): Bottom panel on Console. Bloomberg-style. Selecting any input row in the main area updates the bottom panel with that row's full audit trail. No separate page. Matches the terminal aesthetic — top-and-bottom split, never tab away to inspect context.
+Option 2: A new Sources tab. Document manifest + agent history + cross-validation flags. Distinct from Console because it's about the pipeline, not the assumptions. This avoids the duplication trap because Sources doesn't list values — it lists documents, runs, and flags.
+I'd start with Option 1 and only spin up a Sources tab if the bottom panel gets too dense (it probably won't, given the deal-level scope).
+One more duplication to check
+You'll also want to verify Pro Forma vs Console preview doesn't create the same problem. Right now both can show the operating statement.
+Resolution: Pro Forma becomes the export/share view — clean institutional 1-pager, IC-ready, no controls. Console preview is the live cockpit view — full detail with stance dials beside it. Same underlying data, but the framing is genuinely different (presentation vs operation). If that distinction feels too thin, you collapse Pro Forma into Console too and let users export from there directly.
+Updated tab structure
+A leaner shape:
+TabJobOverviewKPIs, S&U, AI insights — executive dashboardConsoleAll inputs + stance + live operating statement + per-row provenance drawers + bottom audit panelPro FormaExport-ready institutional summary (or fold into Console)DebtMulti-loan compareWaterfallLP/GP distributionSensitivityHeat mapsSources(Optional) document manifest + agent history if bottom panel isn't enough

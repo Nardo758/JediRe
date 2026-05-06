@@ -1,0 +1,27 @@
+Clarification first: the green is the within-tab T.green token for cross-references (values pulled from another tab — same convention as the Excel export spec). It's not replacing amber for the Console cluster. Amber stays the cluster color; green stays as one of the four within-tab semantic colors (blue input / white computed / green cross-ref / yellow flagged). So both are in play, just at different levels.
+The agent's read is solid across the board. A few specific reactions:
+On flattening AssumptionsHubTab
+This is the most important catch in the response. Three-level nesting (F9 → Console → Assumptions → INPUTS sub-section) would reproduce the scatter problem one layer deeper, which is exactly what we're trying to kill. Flattening AssumptionsHubTab's INPUTS / TAXES / LEASING children into peer Console sub-tabs is correct. Two-level max — Console is the parent, sub-tabs are the contents, no further nesting.
+The implication for migration: the existing AssumptionsHubTab shell is the component that gets retired in Phase 2. Its children get promoted to Console siblings. Anything currently importing AssumptionsHubTab directly needs to route through the Console sub-tab system instead. Worth flagging in the Phase 2 file manifest so this doesn't get missed.
+On two-row vs mode-based navigation
+Agree with (a) two-row for v1. The mode-based pattern is elegant once muscle memory exists, but during the transition phase operators need to see where they are without thinking. The two-row treatment can stay even at v2 — Bloomberg itself uses two-row in some screens (e.g., GP/EQS analytics), it's not exclusively <GO>-style.
+One refinement: when Console is active, the second row should sit directly under the top bar with no gap and the same dark background, separated only by a 1px amber underline beneath the active sub-tab. That keeps it visually as "one navigation chrome" rather than two stacked things.
+On Decision and Compare
+Without knowing exactly what's in the current activeTab === 6 and 7, my best read:
+Decision → fold into Overview. The Overview tab already carries "AI insights" per the framework v3.1 spec; Decision is presumably the formal IC recommendation view, which is the same job at higher fidelity. One tab for "here's what the model thinks," with an expand-to-full-decision-memo affordance.
+Compare → keep as a standalone cyan engine tab. Version comparison is its own workflow (cross-version diffing, side-by-side metrics, assumption deltas) and doesn't fit Sensitivity (which is single-version parametric heat maps). Worth flagging that Compare also belongs near Sources conceptually because it's about audit/diff rather than generation, but cyan keeps it grouped with engine outputs which is probably the more frequent use.
+So updated top bar:
+[OVERVIEW] [CONSOLE] [PRO FORMA] [PROJECTIONS] [SENSITIVITY] [RETURNS] [COMPARE] | [SOURCES]
+  neutral    amber                 cyan engine cluster                          gray
+8 top-level tabs. Still scannable.
+On F-key behavior
+The keyboard refinement is correct in spirit but the F-key naming needs adjustment — Console isn't a top-level F-key, it's a tab within F9. So the keyboard model is three-tiered:
+
+F-keys (F1-F12) → jump to top-level screen, always escapes current context
+Top-tab navigation within a screen → arrow keys or Cmd+1–Cmd+8 (Console, Pro Forma, etc.)
+Sub-tab navigation within Console → unmodified 1–6 (Thesis, Assumptions, Taxes, Leasing, Debt, Waterfall)
+
+Esc from a sub-tab returns to Console parent; Esc from Console returns to top-tab focus; F-key always escapes everything. Operator never feels trapped, three escape hatches.
+Recommended next move
+The agent's offer to draft the Phase 1 OperatorStance task spec is the right next step. Phase 1 is purely backend (schema + dealStore + Cashflow Agent integration) and is genuinely independent of every navigation question above. While Phase 1 is in flight, the navigation decisions can finish settling without blocking implementation.
+Tell the agent yes on Phase 1 spec. Phase 2 (Console shell) gets specced after Phase 1 lands.
