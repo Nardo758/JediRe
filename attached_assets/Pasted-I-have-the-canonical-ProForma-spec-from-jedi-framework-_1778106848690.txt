@@ -1,0 +1,66 @@
+I have the canonical ProForma spec from jedi-framework-v31.jsx and FEATURE_EXPANSION.md. I don't have visibility into your live frontend (Replit/repo state), so I can't see exactly what got modified. Let me give you the source-of-truth reference so you can diff against what's rendering.
+Canonical F9 Pro Forma — Line Items (per spec)
+REVENUE
+
+Gross Potential Rent
+Loss-to-Lease (Phase 2 — only if rent roll loaded)
+Vacancy Loss
+Concessions
+Bad Debt
+Non-Revenue Units (Phase 2)
+BASE RENTAL REVENUE (subtotal)
+Ancillary: Parking/Garage (P2)
+Ancillary: Utility Reimb (RUBS) (P2)
+Ancillary: Valet Trash (P2)
+Ancillary: Cable/Internet (P2)
+Ancillary: Washer/Dryer (P2)
+Ancillary: Renters Insurance (P2)
+Ancillary: Other
+TOTAL OTHER INCOME (subtotal)
+EFFECTIVE GROSS REVENUE (total, highlighted)
+
+EXPENSES — CONTROLLABLE
+
+Repair & Maintenance
+Contract Services
+Landscaping/Grounds
+Personnel
+Marketing/Advertising
+Administrative
+Turnover/Make-Ready
+CONTROLLABLE EXPENSES (subtotal)
+
+EXPENSES — NON-CONTROLLABLE
+
+Water & Sewer
+Electric
+Gas/Fuel
+Insurance
+Property Tax
+Management Fee (formula: EGR × mgmtFeePct)
+NON-CONTROLLABLE EXPENSES (subtotal)
+TOTAL OPERATING EXPENSES (total)
+
+NOI
+
+NET OPERATING INCOME (highlighted, blue)
+Replacement Reserves
+NOI AFTER RESERVES (subtotal)
+
+DEBT SERVICE
+
+Interest Expense
+Principal Amortization (=0 during IO period)
+TOTAL DEBT SERVICE (total)
+
+CASH FLOW (in Projections tab, not summary Pro Forma)
+
+Cash Flow Before Tax
+DSCR, CoC, DY, YOC, Expense Ratio, Occupancy
+
+
+Tab-level structure (what tabs should exist in F9)
+Per memory the model is 12 tabs: Pro Forma, Assumptions, Taxes, Sources & Uses, Debt, Capital & Waterfall, Projections, Returns, Sensitivity, Decision, Compare, Overview.
+Per the v31 prototype it shipped as 9 tabs: Overview, Pro Forma, Projections, Assumptions, Debt, Waterfall, Sensitivity, Decision, Compare. (Taxes / S&U / Returns were folded into Overview + Assumptions in v31.)
+
+To diagnose what's broken, I need one of these from you:One likely culprit worth flagging now: this fits the pattern of the 25 mock-data files in frontend/src/data/ intercepting live data. If a mockProforma.ts or similar shape changed (or a stale version got reverted), the categories array driving the render would shift — categories disappear, names change, ordering breaks. Worth checking that directory first while you decide how you want to share the broken state.
