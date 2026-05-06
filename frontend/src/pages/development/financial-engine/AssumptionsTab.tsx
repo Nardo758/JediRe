@@ -111,8 +111,8 @@ type Overrides = Record<string, Record<number, number|null>>;
 type Formulas  = Record<string, string>;
 
 // Field ordering from backend (sections 1 & 3)
-const REVENUE_ORDER = ['gpr','vacancy_pct','bad_debt_pct','non_revenue_units_pct','other_income_per_unit','net_rental_income','egi'];
-const OPEX_ORDER    = ['payroll','repairs_maintenance','turnover','contract_services','marketing','utilities','g_and_a','management_fee_pct','insurance','real_estate_tax','replacement_reserves','total_opex','noi'];
+const REVENUE_ORDER = ['gpr','vacancy_loss','bad_debt','non_revenue_units','other_income','net_rental_income','egi'];
+const OPEX_ORDER    = ['payroll','repairs_maintenance','turnover','contract_services','marketing','utilities','g_and_a','management_fee','insurance','real_estate_taxes','replacement_reserves','total_opex','noi'];
 
 // ─── Formula evaluator — constrained arithmetic parser (no new Function) ───────
 // Only allows: numbers, +  -  *  /  ()  and the named refs below.
@@ -251,37 +251,37 @@ const FIELD_META: Record<string, FieldMeta> = {
       return base != null ? Math.round(base * rentCompound(f, yr)) : null;
     },
   },
-  loss_to_lease_pct: {
-    unit: 'pct', format: fmtPct2, patchField: 'lossToLeasePct',
+  loss_to_lease: {
+    unit: 'dollar', format: fmtDlr, patchField: 'lossToLeasePct',
     description: 'Market rent minus in-place rent as % of market rent. Narrows as leases roll over hold period.',
     platformSource: 'JEDI — Submarket Avg Loss-to-Lease', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Loss-to-Lease',
   },
-  vacancy_pct: {
-    unit: 'pct', format: fmtPct2, patchField: 'vacancyPct',
+  vacancy_loss: {
+    unit: 'dollar', format: fmtDlr, patchField: 'vacancyPct',
     description: 'Physical vacancy & credit loss as % of GPR. M07 derives this from T-01×T-05 traffic equilibrium.',
     platformSource: 'M07 — T-01 × T-05 occupancy trajectory per year', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Vacancy & Credit Loss',
-    getYearNPlatform: (f, yr) => tyr(f, yr)?.vacancyPct ?? y1(f,'vacancy_pct')?.platform ?? null,
+    getYearNPlatform: (f, yr) => tyr(f, yr)?.vacancyPct ?? y1(f,'vacancy_loss')?.platform ?? null,
   },
-  concessions_pct: {
-    unit: 'pct', format: fmtPct2, patchField: 'concessionsPct',
+  concessions: {
+    unit: 'dollar', format: fmtDlr, patchField: 'concessionsPct',
     description: 'Free rent / net effective concessions as % of GPR. Declines as market tightens.',
     platformSource: 'M07 — Leasing velocity implies concession pressure', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Concessions',
   },
-  bad_debt_pct: {
-    unit: 'pct', format: fmtPct2, patchField: 'badDebtPct',
+  bad_debt: {
+    unit: 'dollar', format: fmtDlr, patchField: 'badDebtPct',
     description: 'Non-payment and collection losses as % of GPR.',
     platformSource: 'JEDI — Local collections data', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Collection Loss',
   },
-  non_revenue_units_pct: {
-    unit: 'pct', format: fmtPct2,
+  non_revenue_units: {
+    unit: 'dollar', format: fmtDlr,
     description: 'Manager/model units held offline as % of total unit count.',
     platformSource: 'JEDI — Submarket NRU norm', brokerSource: 'OM / Operating Assumptions',
   },
-  other_income_per_unit: {
+  other_income: {
     unit: 'dollar', format: fmtDlr, patchField: 'otherIncomePerUnit',
     description: 'Ancillary income (parking, storage, RUBS, pet fees) per unit per month.',
     platformSource: 'JEDI — Historical ancillary income by market', brokerSource: 'OM / T12 Other Income',
@@ -513,7 +513,7 @@ const STATIC_ROWS: RowDef[] = [
     isM07: true, format: fmtPct2, readonly: true,
     description: 'Read-only equilibrium vacancy from T-01×T-05 traffic model. Fallback to broker T12 vacancy when M07 offline.',
     platformSource: 'M07 — equilibrium vacancy from tours × conversion', brokerSource: 'OM / T12 vacancy_pct (broker fallback)',
-    getBroker: (f, _yr) => y1(f, 'vacancy_pct')?.broker ?? y1(f, 'vacancy_pct')?.t12 ?? null,
+    getBroker: (f, _yr) => y1(f, 'vacancy_loss')?.broker ?? y1(f, 'vacancy_loss')?.t12 ?? null,
     getPlatform: (f, yr) => {
       const t = tyr(f, yr);
       if (t?.vacancyPct != null) return t.vacancyPct;
@@ -528,7 +528,7 @@ const STATIC_ROWS: RowDef[] = [
     platformSource: 'M07 — occupancy trajectory per year', brokerSource: 'OM / Pro Forma Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Stabilized Occupancy',
     getBroker: (f, _yr) => {
-      const v = y1(f, 'vacancy_pct')?.broker ?? y1(f, 'vacancy_pct')?.t12;
+      const v = y1(f, 'vacancy_loss')?.broker ?? y1(f, 'vacancy_loss')?.t12;
       return v != null ? +(1 - v).toFixed(4) : null;
     },
     getPlatform: (f, yr) => {
@@ -611,8 +611,8 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Market rent minus in-place rent as % of market rent. Narrows as leases roll over hold period.',
     platformSource: 'JEDI — Submarket Avg Loss-to-Lease', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Loss-to-Lease',
-    getBroker:   (f, _yr) => y1(f, 'loss_to_lease_pct')?.broker ?? y1(f, 'loss_to_lease_pct')?.t12 ?? null,
-    getPlatform: (f, _yr) => y1(f, 'loss_to_lease_pct')?.platform ?? null,
+    getBroker:   (f, _yr) => y1(f, 'loss_to_lease')?.broker ?? y1(f, 'loss_to_lease')?.t12 ?? null,
+    getPlatform: (f, _yr) => y1(f, 'loss_to_lease')?.platform ?? null,
     getConfidence: _f => 60,
   },
   {
@@ -621,8 +621,8 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Free rent / net effective concessions as % of GPR. Declines as market tightens.',
     platformSource: 'M07 — Leasing velocity implies concession pressure', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Concessions',
-    getBroker:   (f, _yr) => y1(f, 'concessions_pct')?.broker ?? y1(f, 'concessions_pct')?.t12 ?? null,
-    getPlatform: (f, _yr) => y1(f, 'concessions_pct')?.platform ?? null,
+    getBroker:   (f, _yr) => y1(f, 'concessions')?.broker ?? y1(f, 'concessions')?.t12 ?? null,
+    getPlatform: (f, _yr) => y1(f, 'concessions')?.platform ?? null,
     getConfidence: _f => 60,
   },
 
