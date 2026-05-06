@@ -822,8 +822,23 @@ function EvidenceDrawer({ row, onClose }: { row: MetricStackRow; onClose: () => 
   );
 }
 
+function compEntriesToPoints(
+  comps: Array<{ address: string; rentPerUnit?: number; occupancy?: number; capitalPerUnit?: number; irr?: number; condition?: string }>,
+  mode: 'tradeArea' | 'likeKind',
+): Array<{ name: string; x: number; y: number; isSubject: boolean; annotation?: string }> {
+  return comps.map(c => ({
+    name: c.address,
+    x: mode === 'tradeArea' ? (c.rentPerUnit ?? 0) : (c.capitalPerUnit ?? 0),
+    y: mode === 'tradeArea'
+      ? (c.occupancy != null ? c.occupancy * 100 : 0)
+      : (c.irr != null ? c.irr * 100 : 0),
+    isSubject: false,
+    annotation: c.condition,
+  }));
+}
+
 function CompScatter({ points, title }: { points: Array<{ name: string; x: number; y: number; isSubject: boolean; annotation?: string }>; title: string }) {
-  if (!points || points.length === 0) return (
+  if (!Array.isArray(points) || points.length === 0) return (
     <div style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}`, padding: 16, textAlign: 'center', flex: 1 }}>
       <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>No comp data</span>
     </div>
@@ -996,8 +1011,8 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
                 <div style={{ margin: '0 8px 8px' }}>
                   <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>BLOCK C — COMP EVIDENCE</div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <CompScatter points={ev.compEvidence.tradeArea || []} title="TRADE-AREA COMPS" />
-                    <CompScatter points={ev.compEvidence.likeKind || []} title="LIKE-KIND COMPS" />
+                    <CompScatter points={compEntriesToPoints(ev.compEvidence.tradeArea?.comps ?? [], 'tradeArea')} title="TRADE-AREA COMPS" />
+                    <CompScatter points={compEntriesToPoints(ev.compEvidence.likeKind?.comps ?? [], 'likeKind')} title="LIKE-KIND COMPS" />
                   </div>
                 </div>
               </BlockErrorBoundary>

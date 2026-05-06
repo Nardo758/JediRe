@@ -98,15 +98,35 @@ export interface ThesisPrompt {
   aiCoordinatorContext: string;
 }
 
+export interface CompEntry {
+  address: string;
+  distance?: string;
+  rentPerUnit?: number;
+  occupancy?: number;
+  pricePerUnit?: number;
+  capRate?: number;
+  irr?: number;
+  holdMonths?: number;
+  capitalPerUnit?: number;
+  condition?: string;
+  sourceRef: string;
+  dataQuality: 'live' | 'synthetic_benchmark';
+}
+
+export interface CompEvidenceBucket {
+  selectionCriteria: string[];
+  comps: CompEntry[];
+  visualization: string;
+}
+
 export interface EvidenceReport {
   subStrategyKey: string;
   thesis: string;
   thesisPrompt: ThesisPrompt;
   metricStack: MetricStackRow[];
   compEvidence: {
-    tradeArea: CompPoint[];
-    likeKind: CompPoint[];
-    benchmarkLine?: number;
+    tradeArea: CompEvidenceBucket;
+    likeKind: CompEvidenceBucket;
   };
   mathTrail: MathTrailStep[];
   /**
