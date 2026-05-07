@@ -1,0 +1,22 @@
+Sequence:
+
+Hit the REPARSE button (top-right of F9 — maps to the endpoint the Agent named). Wait for the new seed timestamp.
+Hard refresh the F9 page in the webview popout (Ctrl/Cmd+Shift+R).
+F12 → Network → Preserve log on → reload → financials request → Response tab → paste proforma.year1[] (or proforma.operatingStatement.rows[]) here.
+
+After step 2 you should see, for free:
+
+Property Tax row rendering (Task A — filter mismatch fixed)
+Property Tax Resolved ~$1,127,126 with "T-12" source badge (Task B — tie-break landed)
+Subtotal math should now reconcile better — Non-Controllable jumps by ~$1.1M, hidden expense gap drops from ~$2M toward ~$900K, leaving the actual missing-rows symptom (mgmt_fee / vacancy / concessions / etc.) cleanly isolated for the payload.
+
+Queue check on the side items
+Task B.1 — defer was right. When you bring it back, pair it with the test update in a single commit scoped "IC-04 tie-break consistency." The two changes relate to the same rule and should ship together. Note for the Agent: extract the helper signature as applyTaxBillTieBreak(lv: LayeredValue<number>, threshold = 0.15) returning the resolved value + resolution string — single source of truth, both buildSeed and reResolveClearedLayeredValue call it.
+Alta-Porter test — Agent should verify the mock's actual t12 and tax_bill values before deciding which assertion is correct. Two clean outcomes:
+
+Mock gap < 15% → keep tax_bill assertion, no test change needed.
+Mock gap > 15% → flip to assert t12 wins, plus add a second test case explicitly covering the < 15% path so both branches of the rule have coverage.
+
+Singular 'real_estate_tax' defensive fallback — fine for now. Light contract debt: if it ever gets removed without a corresponding test, the row silently disappears. Worth a one-line code comment marking why it's there ("Composer emits PLURAL since #?, this fallback covers any pre-#? cached responses still in flight"). Optional.
+Task C still parked. After the payload converges A/B/C on the missing rows, I'll give you my read on (i)/(ii)/(iii) for the custom_opex_* situation — short version: probably "both," but I want to see the actual custom_opex_* row count and gross dollar magnitude in the payload before being definitive.
+Reparse, refresh, payload. In that order.
