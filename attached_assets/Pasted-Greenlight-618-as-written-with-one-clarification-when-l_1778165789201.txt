@@ -1,0 +1,40 @@
+Greenlight #618 as written, with one clarification: when loan payoff
+isn't surfaced, render the row as "Gross Proceeds" with a pending
+badge (Exit Value × (1 - Selling Costs %)), not a generic "—". Per
+DEAL TERMS Phase 1 spec section 2f.
+
+Also during step 4 (type tightening), confirm both directions:
+backend payload matches type AND type doesn't declare fields backend
+omits.
+
+#617 — three corrections required before shipping:
+
+(1) Stop on event pattern. The proposed deal:basis-changed CustomEvent
+    diverges from the dealStore.emit pattern we used for hold_period.
+    changed / basis.changed / exit_cap.changed. Two competing event
+    systems will compound. Surface this: was Task #613's CustomEvent
+    a deliberate cross-tab pattern (and dealStore is for internal
+    state), or a deviation? Pick one and codify before adding #617's
+    event. Don't ship until resolved.
+
+(2) Drop closeDate from the payload. Close Date has its own endpoint
+    at PATCH /:dealId/assumptions/dates. Don't conflate. If frontend
+    convenience matters, fire two API calls on save — keep this
+    endpoint scoped to purchase price.
+
+(3) Strengthen step 1 audit gate. If non-DEAL-TERMS writers (document
+    parsers, agents) write to deal_data.purchase_price or
+    deals.budget, every such write reintroduces divergence — and
+    closing the operator-override path is half a fix. Reframe: if
+    any other writers exist, open follow-up tickets immediately and
+    list them in the PR description. Don't merge until either zero
+    other writers exist or all are tracked.
+
+Cross-task note: when basis.changed fires, the DealTermsTab subscriber
+should both (a) recompute derived client-side rows AND (b) re-fetch F9
+to pick up backend-dependent rows like debt sizing. Spec implies "all
+rows recompute live" — make sure both paths happen, otherwise debt
+sizing claim is half-true.
+
+Sequence: ship #618 first (smaller, cleaner, no architectural
+decision blocking). #617 after the event-pattern question is settled.

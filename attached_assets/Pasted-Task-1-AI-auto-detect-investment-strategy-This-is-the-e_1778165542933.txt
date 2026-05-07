@@ -1,0 +1,43 @@
+Task 1 — AI auto-detect investment strategy
+This is the exact AI extraction step we explicitly deferred two turns ago when scoping the strategy fields work. The reason still applies: M08 Strategy Arbitrage is the canonical strategy detection module, currently mid-build per Task #176. Adding a thesis-doc classifier now creates a parallel write path that will collide with M08 when it lands.
+If you accept this, two non-negotiable conditions:
+
+It writes to the LV detected layer with source: 'thesis_doc', never to override
+It carries an explicit precedence rule (M08 wins when both detect — the more sophisticated classifier wins)
+
+That said, the right move is to decline this now and do it as part of M08's wiring when M08 lands. M08 is multi-signal (asset class + deal type + project strategy + sub-strategy from many inputs) — thesis-doc text is one input among several. Building it as a standalone classifier is a smaller, weaker version of what M08 will do anyway.
+Task 2 — Wire M08 panel to react live when strategy changes
+Conditional on M08 panel existing. Per project memory, M08 v2 backend is underway — but whether the frontend panel exists yet is unclear. If the panel doesn't exist, this is wiring a subscriber to a non-existent consumer. Confirm first.
+If the panel does exist: it's a small useful subscriber wire-up to the strategy.changed event the LV persistence task just emitted. ~30-minute task. Fine to ship.
+If the panel doesn't exist: skip until it does.
+Task 3 — Backfill Exit Strategy values for missing deals
+Probably the wrong framing. Backfilling asserts intent operators haven't expressed. It also masks the "needs operator attention" state — a deal with no exit strategy set should render "Not Set" in the UI so the operator notices, not silently assume "Sale."
+The right task here is the inverse: verify nullable handling is correct across consumers (composer, projections engine, Cashflow Agent prompt builder, UI). If null breaks anything downstream, fix the consumer to handle null gracefully — don't paper over it with a backfill.
+If you approve any version of Task 3, reframe to:
+
+"Audit all consumers of Exit Strategy for null-handling. Render 'Not Set' badge in UI. Fix any consumer that errors on null. No backfill."
+
+Recommended response to the agent
+Decline Task 1 — architectural concern. AI auto-detect overlaps with
+M08 Strategy Arbitrage (Task #176, mid-build). Building a parallel
+thesis-doc classifier now creates a dual-source write path that will
+collide with M08. Wait for M08, then add thesis-doc as a secondary
+signal that feeds the same LV detected layer with M08 winning
+precedence.
+
+Hold Task 2 pending verification — confirm M08 frontend panel exists
+today. If it does, ship the subscriber wire-up (~30 min). If it
+doesn't, defer until panel exists.
+
+Reframe Task 3. Don't backfill — backfilling asserts intent operators
+haven't expressed and masks "needs operator attention" state. Replace
+with: audit consumers (composer, projections, Cashflow Agent prompt,
+UI) for null-handling, render "Not Set" badge in UI for null fields,
+fix any consumer that errors on null.
+
+Better next picks from the established sequence:
+  - #3 (5 min): visual verify hold-period persistence on 464 Bishop
+  - #5 (2-3h): surface projections array on F9DealFinancials response
+  - #4 (2-3h): purchase price single-write-path endpoint
+Bigger picture
+These suggestion panels are a slot machine — they pick what looks adjacent to the work just shipped, not what's highest-leverage on your roadmap. The sequence we built last turn (#3 → #5 → #4 → OperatorStance) was based on dependency unblocking and UX-impact ranking. Don't let auto-suggested follow-ups override the sequence unless they're genuinely higher-priority on examination.

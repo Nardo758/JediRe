@@ -1,0 +1,113 @@
+A "command to fix all 6" undersells how different these are in shape. You've got one architectural project, two backend fixes, one in-flight task that doesn't need a prompt, one five-minute visual check, and a backlog. Let me sort them and give you the prompts where they're actually needed.
+#1 — OperatorStance Phase 1
+Doesn't need a new prompt. The full spec is already in the conversation above (the message starting "Here's the spec. This is the OperatorStance Phase 1 task that was greenlit on May 6 morning..."). Paste that to Claude Code on a fresh branch when you're ready. This is a multi-day project — Phase 1A audit alone is 2-3 hours; Phase 1B is the bulk of the work.
+Run it solo. Don't sequence this with #4 or #5 — schema-level migration plus agent prompt injection is enough cognitive load for one session.
+#2 — Investment Strategy + Exit Strategy bundled
+Don't send anything. Replit Agent is currently scoping per the directive you sent two turns ago. When the spec comes back, eyeball the storage location decision (push for deal_assumptions JSONB) and the enum enforcement (single types file, shared between backend Zod and frontend dropdown). Then greenlight.
+#3 — Hold Period chip persistence visual check
+Not a prompt — five-minute browser test. Open 464 Bishop F9 Projections tab. Click the 7-year hold chip. Hard refresh the page (Cmd+Shift+R). Confirm:
+
+The 7-year chip is still active (not reverted to default)
+F9 Projections render 7 columns, not the previous default
+DEAL TERMS Hold Period row shows 7
+Exit Date row shows Close Date + 7 years
+
+If all four pass, the post-merge persistence works. If any fails, reopen as a P1 — the hold-period write path didn't actually wire.
+#4 — Purchase Price single-write-path endpoint
+Send Claude Code this:
+Fix Purchase Price dual-source divergence (P1 in
+TODO_DEAL_TERMS_FOLLOWUP.md).
+
+Problem: deal_data.purchase_price shadows deals.budget on read; current
+override path PATCH /api/v1/deals/:id only writes deals.budget. When
+both fields are populated, operator override appears invisible because
+deal_data wins on read.
+
+Phase 1 (Plan, read-only):
+1. Confirm read priority by tracing capital-structure.routes.ts:500 and
+   composer fallback chain (deal_data.purchase_price → asking_price →
+   deals.budget per prior audit).
+2. Confirm write surface: which endpoints/services write each field
+   today? Specifically: does any agent or document parser write to
+   deal_data.purchase_price, or is it only set via deal creation?
+3. Decide write target: align write to read priority (deal_data wins,
+   so we write to deal_data) OR write both fields atomically.
+
+Phase 2 (Build, after Leon approval):
+1. New endpoint: PATCH /api/v1/deals/:id/purchase-price
+   Body: { purchasePrice: number, closeDate?: string }
+2. Atomic write to deal_data.purchase_price AND deals.budget (until a
+   migration deprecates one). Both fields stay in sync.
+3. Trigger downstream re-derivation: emit dealStore basis.changed
+   event so going-in cap, $/unit, $/SF, debt sizing recompute.
+4. Update DealTermsTab.tsx purchase-price write path to use new
+   endpoint instead of generic PATCH /deals/:id.
+
+Phase 3 (TODO):
+- Schema cleanup: deprecate one of deals.budget vs deal_data.purchase_price
+  in a future migration (separate task, decide later which one wins).
+
+Branch: claude/fix-purchase-price-dual-source from origin/master.
+One commit per phase. Phase 1 produces a doc, no code. Stop after
+Phase 1, wait for Leon approval.
+#5 — Projection feed (surface projections array on response)
+Send Claude Code this:
+Surface projections array on F9DealFinancials response. Currently
+buildProjectionsForExport runs in getDealFinancials handler at
+deal-assumptions.routes.ts:504 but the resulting projs array is local
+and only used for IRR. The frontend can't read year-by-year projection
+values, blocking three DEAL TERMS rows: Stabilized NOI at Exit,
+Exit Value, Net Sale Proceeds.
+
+Phase 1 (Plan, read-only):
+1. Inspect buildProjectionsForExport return shape. What's the typed
+   structure of projs? Year-indexed array of full projection rows?
+   Just NOI per year? Confirm.
+2. Identify any sensitive fields that shouldn't be exposed on response
+   (debt schedule details, internal-only diagnostics, etc.). Filter
+   from public response if needed.
+3. Confirm whether projs already includes loan balance per year (for
+   Net Sale Proceeds = Exit Value - Loan Payoff). If not, flag as a
+   READ_GAP that needs additional work.
+
+Phase 2 (Build, after Leon approval):
+1. Extend F9DealFinancials type at frontend/src/pages/development/
+   financial-engine/types.ts: add projections: ProjectionRow[] field.
+2. Backend: surface projs (or filtered subset) on response in
+   getDealFinancials handler.
+3. Frontend DealTermsTab.tsx: read projections[holdYear-1].noi for
+   Stabilized NOI at Exit. Compute Exit Value from that + Exit Cap.
+   Compute Net Sale Proceeds if loan balance is also surfaced.
+4. Remove the three "From F9 Pro Forma — not yet wired" placeholders
+   for those rows.
+
+Phase 3 (TODO):
+- If Phase 1 finds loan balance per year isn't computed today, log
+  to TODO_F9_DATA_FLOW.md as a separate task.
+
+Branch: claude/surface-projections-on-f9-response from origin/master.
+One commit per phase. Stop after Phase 1.
+#6 — Side debt cleanup
+You have three TODO files with maybe 15-20 entries between them. "Fix all" isn't a useful frame — these are individual scoped tasks that get picked up when there's slack.
+Worth picking up next session (small, low-risk):
+
+FinancialEnginePage.tsx:602-604 — replace .catch(() => {}) with .catch(err => console.error('F9 fetch failed:', err)). Five-line fix.
+tabProps memo at FinancialEnginePage.tsx:1284 — stabilize deps array, eliminate the 6-calls-in-6-seconds burst. Single-file fix, ~15 minutes.
+Singular 'real_estate_tax' defensive fallback comment at ProFormaSummaryTab.tsx:152-158 — add the // kept as fallback because... comment. Two-minute documentation fix.
+
+Not worth picking up now (blocked or architectural):
+
+Auto-build cost guard — needs a real cost-budget conversation
+Closing cost line items persistence — blocked on schema decision (5 separate columns vs sub-JSONB)
+LP-GP split — blocked on UI surface decision (DEAL TERMS §4 vs F9 Capital)
+P2-A unit-mix-as-GPR feature flag — needs migration audit first
+
+When you're ready to clean three or four small items, send Claude Code one prompt with the picks above bundled — one commit per fix, all on a claude/f9-side-debt-batch-1 branch. Saves you four separate session bootstraps.
+Recommended sequence
+
+Right now (5 min): #3 visual check on hold-period persistence. Closes a loop.
+Next session (2-3 hours): #5 projection feed. Highest-leverage small fix — unblocks three DEAL TERMS rows AND completes the data-flow Flow 3 read side.
+Following session (2-3 hours): #4 purchase-price single-write-path. Closes the highest-UX-impact divergence still open.
+In parallel whenever Replit comes back: #2 review + greenlight.
+Major project (multi-day): #1 OperatorStance Phase 1. Run solo.
+Slack time: #6 side-debt small picks, batched.
