@@ -636,10 +636,12 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
       ? grossProceedsDerived - loanPayoffAtExit
       : grossProceedsDerived;
 
-  // Purchase Price dual-source warning: deal_data.purchase_price shadows
-  // deals.budget on read; PATCH only updates budget. Detection is best-effort —
-  // we don't have the raw deal_data on this prop, so we rely on dealData
-  // when surfaced. See TODO entry "Purchase Price dual-source".
+  // Purchase Price dual-source warning: PATCH /purchase-price now dual-writes
+  // both deal_data.purchase_price (financial composer canonical) and deals.budget
+  // (pipeline column) atomically (Task #617). DUAL-SRC badge is shown for EXISTING
+  // deals where both columns are set but may have diverged from writes predating
+  // this fix. Detection is best-effort — we rely on deal_data via the deal prop.
+  // See TODO_DEAL_TERMS_FOLLOWUP.md item #11 for the full history.
   const dealData = (props.deal as Record<string, unknown> | undefined)?.['deal_data'] as
     Record<string, unknown> | undefined;
   const purchasePriceDualSource =

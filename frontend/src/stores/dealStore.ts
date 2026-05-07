@@ -1836,8 +1836,8 @@ export const useDealStore = create<DealStore>()(
 
     setPurchasePrice: async (dealId, price) => {
       await apiClient.patch(`/api/v1/deals/${dealId}/purchase-price`, { purchasePrice: price });
-      // Dispatch after confirmed server write so subscribers react to committed data.
-      window.dispatchEvent(new CustomEvent('basis.changed'));
+      // Re-use emitBasisChanged so the single dispatch location stays canonical.
+      get().emitBasisChanged();
     },
 
     emitExitCapChanged: () => {
