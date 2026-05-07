@@ -1,0 +1,71 @@
+New finding from Leon's DevTools after the reparse and hard-refresh:
+
+  Filter: Fetch/XHR (real API calls only, scripts hidden)
+  Result: ZERO requests. The F9 page is not calling /api/v1/deals/.../financials.
+
+Earlier in the same session (filter: All), `financialMockData.ts` showed
+up as a loaded script. That's the prime suspect for what's actually
+feeding ProFormaSummaryTab.
+
+This re-frames everything:
+  - Tasks A and B are still correct bug fixes.
+  - But the rendered view doesn't get them, because the frontend isn't
+    talking to the backend at all for this view.
+  - The "missing rows" symptom is a missing-fetch symptom upstream of any
+    composer / filter / payload concern.
+
+═══ TASK D — Data flow audit (Plan mode, READ-ONLY) ═══
+
+Do not edit anything. Report findings only.
+
+D.1  Trace every import of `frontend/src/data/financialMockData.ts`.
+     For each importer, state:
+       - Full file path
+       - Whether the import is active (used by render code) or dead
+         (imported but unused / behind a flag / dev-only export)
+       - If active, which component consumes it and what shape it expects
+
+D.2  Trace the data flow into `ProFormaSummaryTab.tsx`. Specifically the
+     `data` object referenced at lines ~597 (`const rows = data.proforma.year1`)
+     and ~455 (the comment "Always fetch the composer financials — this
+     populates data.proforma.year1"). Where does `data` come from?
+       - Is it a prop drilled from a parent?
+       - Is it from a context provider?
+       - Is it from a hook that's supposed to fetch but is short-circuited?
+     Find the call site that originates `data` and trace upward until
+     you hit either an `apiClient` / `fetch` / `axios` / `useQuery` call OR
+     a static import (mock).
+
+D.3  Specifically check `FinancialEnginePage.tsx` and any data provider
+     in `frontend/src/pages/development/financial-engine/` for:
+       - A real fetch call to `/api/v1/deals/:id/financials`
+       - A mock fallback or feature-flag guard around that call
+       - Any commented-out fetch logic or TODO markers near the data
+         hydration
+
+D.4  Check whether `apiClient.getDealFinancials(dealId)` (or equivalent)
+     exists in `frontend/src/services/api.client.ts`. If it does, find every
+     call site. If it doesn't, the wiring is genuinely missing.
+
+D.5  Report whether the mock data shape in `financialMockData.ts` even
+     matches the `proforma.year1[]` row schema (field, label, broker,
+     t12, platform, resolved, source, etc.). If the shape is different,
+     that's additional evidence the mock is feeding the page (because
+     the rendered view's structure tells us what shape the consumer
+     expects).
+
+═══ Expected branches ═══
+
+  (D-MOCK)    Mock is actively imported and consumed by F9 → fix is to
+              remove the mock dependency and wire the real fetch.
+              Scope: 1-3 file changes.
+
+  (D-DEAD)    Mock is imported but unused (dead code) → real fetch exists
+              but is failing silently. Find the failing fetch.
+              Scope: probably 1 file (the failing fetcher).
+
+  (D-MISSING) No fetch wiring exists at all → fetch needs to be built.
+              Scope: bigger — apiClient method + hook + provider wiring.
+
+Stay in Plan mode. Do not propose edits or fixes until I see the trace
+and pick a branch.

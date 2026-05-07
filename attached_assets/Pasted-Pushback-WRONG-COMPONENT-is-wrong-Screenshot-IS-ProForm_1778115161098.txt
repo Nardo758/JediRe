@@ -1,0 +1,46 @@
+Pushback: WRONG COMPONENT is wrong. Screenshot IS ProFormaSummaryTab.tsx.
+Verifiable by these strings, all unique to that file:
+
+  "AS-IS · BROKER LAYER"   (line 680)
+  "BUILD YOUR OWN"         (line 699)
+  "REPARSE"                (line 796)
+  "Tax-line assessor gap"  (rendered from integrityChecks pipeline)
+  9-column DataRow layout  (Broker / T-12 / Platform / Resolved / % of EGI /
+                            Source / $/Unit / Flag)
+
+ProFormaTab.tsx is a form-based input grid with no /financials fetch
+and no DataRow table — it cannot render the screenshot.
+
+D.1, D.2, D.4, D.5 stand. The label-similarity match against
+ProFormaTab.tsx's DEFAULT_EXPENSES was a methodology error: composer-
+emitted labels in OperatingStatementRow.label don't live in any frontend
+dictionary.
+
+Real anomaly to investigate: why does DevTools Network/Fetch-XHR show
+zero /financials calls when ProFormaSummaryTab.tsx:517 explicitly
+fetches in useEffect on mount?
+
+Hypotheses to check (Plan mode, read-only):
+
+  H1  Leon's DevTools captured before the F9 tab mounted. The fetch is
+      gated on activeTab === 2 (FinancialEnginePage:1659). If the page
+      defaults to a different tab and the user clicks into F9 after
+      DevTools is open with Preserve Log on, the request should appear
+      mid-session. Verify by checking which tab loads by default.
+
+  H2  Browser cache hit returning 200 from disk-cache, which Chrome
+      sometimes hides from the Network panel under specific config.
+      Disable cache + hard reload should force the request to appear.
+
+  H3  The fetch is failing silently before reaching the network layer
+      (e.g., axios interceptor short-circuiting on missing auth token,
+      thrown error caught by try/catch with no console output). Check
+      the auth interceptor at api.client.ts:12-23 and any try/catch
+      around the load() call at ProFormaSummaryTab.tsx:479-515.
+
+  H4  load() useCallback deps cause it to be redefined on every render
+      such that useEffect at line 517 sees a "stable" load reference
+      and skips re-firing. Standard useCallback / useEffect bug pattern.
+      Inspect the deps array on lines 479 and 517.
+
+Report what you find for each. Do not edit.
