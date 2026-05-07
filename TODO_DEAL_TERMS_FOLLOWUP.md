@@ -90,11 +90,14 @@ DealTermsTab. The read path works; only the write path is missing.
   - Projections engine selling cost bug fixed: hardcoded `0.015` replaced with `sellingCostsPct ?? 0.02` so Item 5's operator override flows all the way through to exit math. ✓
   - UPSTREAM `PendingBadge` removed; row now shows computed value when projections are seeded.
 
-### 9. Net Sale Proceeds → Gross Sale Proceeds (loan payoff missing)
+### 9. Net Sale Proceeds → Gross Sale Proceeds (loan payoff missing) ✅ FIXED (May 2026)
 
 - **Row:** "Gross Sale Proceeds" (renamed from "Net Sale Proceeds" per Phase 1 spec 2f).
-- **Gap:** Loan Payoff at Exit isn't surfaced on `F9DealFinancials.returns.debtMetrics.refi` in a "balance at hold-end" form — only `events[].payoff` arrays for refi events. Showing a partial Net would mislead.
-- **Fix:** Add `returns.debtMetrics.coverage.balanceAtExit` (or similar). Then DealTermsTab can compute a real Net Proceeds and rename the row back to "Net Sale Proceeds". Out of scope per the spec.
+- **Fix shipped:** `exitYearProj.loanPayoff` and `exitYearProj.netSaleProceeds` are already computed by
+  the projections engine. DealTermsTab now reads both:
+  - "Gross Sale Proceeds" row (Exit Value − Selling Costs, before loan payoff) — no badge.
+  - "Loan Payoff at Exit" sub-row (parenthesised deduction) — rendered only when debt schedule is present.
+  - "Net Sale Proceeds" row (Gross − Loan Payoff) — GROSS badge retained only when no debt schedule is available.
 
 ### 10. Investment Strategy
 

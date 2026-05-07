@@ -538,13 +538,22 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   // Exit Value — already computed by the projections engine as exitNoi / exitCap.
   const exitValueDerived: number | null = exitYearProj?.grossSaleValue ?? null;
 
-  // Gross Sale Proceeds = Exit Value − Selling Costs (no loan payoff — label says Gross, not Net).
+  // Gross Sale Proceeds = Exit Value − Selling Costs (before loan payoff).
   // Prefer projections-engine sellingCosts (which uses operator selling_costs_pct); fall back to
   // local decimal if projection isn't seeded yet.
   const grossProceedsDerived: number | null =
     exitValueDerived != null
       ? exitValueDerived - (exitYearProj?.sellingCosts ?? Math.round(exitValueDerived * sellingCostsDecimal))
       : null;
+
+  // Loan Payoff at Exit — outstanding mortgage balance in the exit year (from debt service schedule).
+  const loanPayoffAtExit: number | null = (exitYearProj as Record<string, unknown> | null)?.['loanPayoff'] as number ?? null;
+
+  // Net Sale Proceeds = Gross Proceeds − Loan Payoff at Exit.
+  const netSaleProceedsDerived: number | null =
+    grossProceedsDerived != null && loanPayoffAtExit != null
+      ? grossProceedsDerived - loanPayoffAtExit
+      : grossProceedsDerived;
 
   // Purchase Price dual-source warning: deal_data.purchase_price shadows
   // deals.budget on read; PATCH only updates budget. Detection is best-effort —
@@ -991,13 +1000,30 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               emphasis="total"
             />
             <LvRow label="Gross Sale Proceeds"
-              hint="Exit Value × (1 − Selling Costs). Loan payoff at exit pending — not Net."
+              hint="Exit Value − Selling Costs (before loan payoff)"
               operatorOnly
               override="" setOverride={() => {}}
               readOnly readOnlyValue={fmtDollar(grossProceedsDerived)}
               source="Computed"
               emphasis="subtotal"
-              flag={<PendingBadge label="GROSS" />}
+            />
+            {loanPayoffAtExit != null && (
+              <LvRow label="  Loan Payoff at Exit"
+                hint="Outstanding mortgage balance repaid from sale proceeds"
+                operatorOnly
+                override="" setOverride={() => {}}
+                readOnly readOnlyValue={`(${fmtDollar(loanPayoffAtExit)})`}
+                source="Debt Schedule"
+              />
+            )}
+            <LvRow label="Net Sale Proceeds"
+              hint={loanPayoffAtExit != null ? 'Gross Proceeds − Loan Payoff at Exit' : 'Gross Proceeds (no debt schedule — loan payoff not yet available)'}
+              operatorOnly
+              override="" setOverride={() => {}}
+              readOnly readOnlyValue={fmtDollar(netSaleProceedsDerived)}
+              source="Computed"
+              emphasis="total"
+              flag={loanPayoffAtExit == null ? <PendingBadge label="GROSS" /> : undefined}
             />
 
           </tbody>

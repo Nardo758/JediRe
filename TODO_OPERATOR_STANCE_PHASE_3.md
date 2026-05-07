@@ -6,21 +6,19 @@ scoped and approved.
 
 ---
 
-## P3-01 — m28_rate_environment bridge
+## P3-01 — m28_rate_environment bridge ✅ FIXED (May 2026)
 
 `m28_rate_environment.policy_stance` is a FRED-sourced string (e.g. "Neutral",
 "Hawkish") observed from market data. It could pre-populate `rateEnvironment`
 as a suggested default when an operator hasn't set a stance — giving the agent
 platform signal as a starting point without overriding operator choice.
 
-Current state: no bridge. `m28.policy_stance` and `OperatorStance.rateEnvironment`
-are entirely separate paths. The economic-context route exposes `policy_stance`
-but nothing reads it into stance.
-
-Fix: in `operatorStance.service.ts → getStance()`, when the persisted stance is
-null, check `m28_rate_environment` and map its `policy_stance` and
-`forward_direction` to `rateEnvironment` as a `setBy: 'platform_default'`
-suggestion (not an operator write).
+Fix shipped: `operatorStance.service.ts → getStanceForDeal()` now checks
+`m28_rate_environment` when the deal has no persisted stance, maps
+`policy_stance + forward_direction` to `RateEnvironment` via
+`mapM28ToRateEnvironment()` (easing/emergency → CUTTING, tightening →
+HIGHER_FOR_LONGER, neutral uses forward_direction as tiebreaker). Falls through
+to full platform defaults gracefully if m28 table is not yet seeded.
 
 ---
 
@@ -69,7 +67,7 @@ frontend type file and update `dealContext.types.ts` to re-export from it
 
 ---
 
-## P3-05 — Coordinator synthesize stance lens depth
+## P3-05 — Coordinator synthesize stance lens depth ✅ FIXED (May 2026)
 
 Phase 1B injects a one-sentence "OPERATOR THESIS LENS" into the Coordinator's
 synthesis and question prompts. This is a framing hint — it doesn't change
@@ -78,6 +76,11 @@ should receive the full computed `affectedFields` list (which fields stance
 actually modulated and by how much) so it can comment meaningfully on
 "management budgeted for a tighter market than the platform default".
 
-Fix (Phase 3): pass `GET /stance/affected-fields` output alongside the
-synthesize inputs. Extend `SYNTHESIS_PROMPT` to include a `{{stanceEffects}}`
-slot with the field-level deltas.
+Fix shipped:
+- `SYNTHESIS_PROMPT` now has a `{{stanceEffects}}` slot after the cashflow block.
+- `synthesize()` accepts optional `affectedFields: AffectedField[]`; renders a
+  "STANCE MODULATION ACTIVE" bullet list with fieldPath + deltaBps + trace.
+- `handleFullAnalysis` calls `computeAffectedFields(dealId, stance)` before
+  synthesis (non-fatal try/catch); passes result to `synthesize()`.
+- `handleQuestion` injects a compact `Stance-modulated fields: …` line into the
+  system context when the operator has a non-default stance.

@@ -29,6 +29,7 @@ import type {
   SubscriptionTier,
 } from '../../types/dealContext';
 import type { OperatorStance } from '../../types/operator-stance';
+import { computeAffectedFields, type AffectedField } from '../operatorStance.service';
 
 // ── Intent Types ───────────────────────────────────────────────
 
@@ -134,8 +135,7 @@ SUPPLY/MARKET ANALYSIS:
 {{supplyResult}}
 
 CASHFLOW ANALYSIS:
-{{cashflowResult}}
-
+{{cashflowResult}}{{stanceEffects}}
 Generate a comprehensive but concise investment recommendation. Include:
 1. A clear BUY / PASS / INVESTIGATE recommendation
 2. A JEDI Score from 0-100 (weighted: zoning 20%, market 30%, financial 50%)
@@ -338,7 +338,15 @@ export class AICoordinator {
       this.runCashflowAgent(context, dealContext, intent.price, dealId),
     ]);
 
-    // Step 4: Synthesize results
+    // Step 4: Compute stance-affected fields for synthesis depth (P3-05)
+    let affectedFields: AffectedField[] = [];
+    if (dealId && dealContext.operatorStance && !dealContext.operatorStance.defaulted) {
+      try {
+        affectedFields = await computeAffectedFields(dealId, dealContext.operatorStance);
+      } catch { /* non-fatal — synthesis proceeds without field-level stance detail */ }
+    }
+
+    // Step 5: Synthesize results
     context.operationType = 'coordinator_synthesis';
     const synthesis = await this.synthesize(
       context,
@@ -348,6 +356,7 @@ export class AICoordinator {
       supplyResult,
       cashflowResult,
       dealContext.operatorStance,
+      affectedFields,
     );
 
     // Track the deal in the session
@@ -564,6 +573,20 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
       systemContext += `\nJEDI Score: ${activeDeal.jediScore}/100`;
       // Inject operator thesis lens when operator has set a non-default stance
       systemContext += buildStanceThesisLens(activeDeal.dealContext?.operatorStance);
+      // P3-05: inject field-level stance deltas so the advisor knows exactly which
+      // numbers are modulated vs. market defaults
+      const activeStance = activeDeal.dealContext?.operatorStance;
+      if (activeDeal.dealId && activeStance && !activeStance.defaulted) {
+        try {
+          const fields = await computeAffectedFields(activeDeal.dealId, activeStance);
+          if (fields.length > 0) {
+            const fieldLines = fields
+              .map(f => `${f.fieldPath} ${f.deltaBps > 0 ? '+' : ''}${f.deltaBps}bps`)
+              .join(', ');
+            systemContext += `\nStance-modulated fields: ${fieldLines}`;
+          }
+        } catch { /* non-fatal */ }
+      }
     }
 
     const messages = session.conversationHistory.slice(-10).map((h) => ({
@@ -773,13 +796,23 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
     supply: SupplyResult,
     cashflow: CashflowResult,
     operatorStance?: OperatorStance | null,
+    affectedFields?: AffectedField[],
   ): Promise<{ jediScore: number; recommendation: 'BUY' | 'PASS' | 'INVESTIGATE'; summary: string }> {
+    let stanceEffectsBlock = '';
+    if (affectedFields && affectedFields.length > 0) {
+      const lines = affectedFields.map(f =>
+        `  • ${f.fieldPath}: ${f.deltaBps > 0 ? '+' : ''}${f.deltaBps}bps — ${f.trace}`
+      );
+      stanceEffectsBlock = `\n\nSTANCE MODULATION ACTIVE — operator thesis is adjusting these underwriting fields:\n${lines.join('\n')}\n`;
+    }
+
     const prompt = SYNTHESIS_PROMPT
       .replace('{{address}}', address)
       .replace('{{price}}', price ? `$${price.toLocaleString()}` : 'Not specified')
       .replace('{{zoningResult}}', JSON.stringify(zoning, null, 2))
       .replace('{{supplyResult}}', JSON.stringify(supply, null, 2))
-      .replace('{{cashflowResult}}', JSON.stringify(cashflow, null, 2));
+      .replace('{{cashflowResult}}', JSON.stringify(cashflow, null, 2))
+      .replace('{{stanceEffects}}', stanceEffectsBlock);
 
     const synthesisSystemPrompt =
       'You are a real estate investment analyst generating JEDI Scores.' +

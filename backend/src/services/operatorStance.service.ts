@@ -33,6 +33,7 @@ import {
   resolveStance,
   computeStanceDelta,
   buildStanceTrace,
+  type RateEnvironment,
 } from '../types/operator-stance';
 import { randomUUID } from 'crypto';
 
@@ -40,6 +41,23 @@ import { randomUUID } from 'crypto';
 
 function getDb(): Pool {
   return getPool();
+}
+
+/**
+ * P3-01: Map m28_rate_environment.policy_stance + forward_direction to
+ * the OperatorStance RateEnvironment enum. Used to seed a platform-default
+ * rateEnvironment when the operator has not set a stance yet.
+ */
+function mapM28ToRateEnvironment(
+  policyStance: string | null,
+  forwardDirection: string | null,
+): RateEnvironment {
+  if (policyStance === 'easing' || policyStance === 'emergency') return 'CUTTING';
+  if (policyStance === 'tightening') return 'HIGHER_FOR_LONGER';
+  // neutral — use forward_direction as secondary signal
+  if (forwardDirection === 'falling') return 'CUTTING';
+  if (forwardDirection === 'rising') return 'HIGHER_FOR_LONGER';
+  return 'NORMALIZING';
 }
 
 /**
@@ -89,6 +107,25 @@ export async function getStanceForDeal(
     throw new Error(`Deal ${dealId} not found or not accessible`);
   }
   const raw = res.rows[0].operator_stance;
+
+  // P3-01 bridge: when operator has not set a stance, seed rateEnvironment from
+  // live m28_rate_environment macro data so platform defaults reflect current
+  // monetary conditions rather than always defaulting to NORMALIZING.
+  if (!raw) {
+    try {
+      const m28 = await db.query(
+        `SELECT policy_stance, forward_direction FROM m28_rate_environment ORDER BY snapshot_date DESC LIMIT 1`,
+      );
+      if (m28.rows.length > 0) {
+        const { policy_stance, forward_direction } = m28.rows[0];
+        const rateEnvironment = mapM28ToRateEnvironment(policy_stance, forward_direction);
+        return resolveStance({ rateEnvironment });
+      }
+    } catch {
+      // m28 table not seeded yet — fall through to full platform defaults
+    }
+  }
+
   return resolveStance(raw);
 }
 
