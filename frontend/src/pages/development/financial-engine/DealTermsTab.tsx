@@ -545,7 +545,10 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if (num == null) return;
     if (num === purchasePriceResolved) return;
     try {
-      await apiClient.patch(`/api/v1/deals/${props.dealId}`, { budget: num });
+      // Writes deal_data.purchase_price — the canonical source for
+      // financials-composer.buildCapitalStack(). deals.budget is a
+      // pipeline-only column and does NOT affect the financial model.
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/purchase-price`, { purchasePrice: num });
       emitBasisChanged();
       props.onF9Refresh?.();
     } catch (e) {
@@ -583,12 +586,26 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     }
   }
 
-  // Hold-period quick-chip click: view-only refetch via parent. No persistence
-  // path today (PUT /assumptions is unsafe for partial payloads — wipes
-  // unit_mix). See TODO "Hold Period persistence path".
+  async function saveHoldPeriod(yr?: number) {
+    const parsed = yr ?? parseInt(holdYears, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) return;
+    if (parsed === holdYearsResolved) return;
+    try {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/hold-period`, {
+        holdPeriodYears: parsed,
+      });
+      emitHoldPeriodChanged(parsed);
+      props.onF9Refresh?.();
+    } catch (e) {
+      console.error('[DealTerms] Save hold period failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Hold-period quick-chip: persists immediately then triggers cross-tab
+  // refetch. onHoldChange is kept for ProjectionsTab view-sync.
   function pickHoldChip(yr: number) {
     setHoldYears(String(yr));
-    emitHoldPeriodChanged(yr);
+    void saveHoldPeriod(yr);
     props.onHoldChange?.(yr);
   }
 
@@ -809,10 +826,10 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               operatorOnly
               override={holdYears} setOverride={setHoldYears}
               overrideKind="number"
-              readOnly readOnlyValue={holdYearsResolved != null ? `${holdYearsResolved} yr` : '--'}
-              source={holdYearsResolved != null ? 'Computed' : 'Not Provided'}
-              derived={holdYearsResolved != null ? `view: use chips above` : undefined}
-              flag={<PendingBadge />}
+              onCommit={() => void saveHoldPeriod()}
+              resolved={holdYearsResolved != null ? `${holdYearsResolved} yr` : '--'}
+              source={holdYearsResolved != null ? 'Override' : 'Not Provided'}
+              derived={holdYearsResolved != null ? `use chips or type + Enter` : undefined}
             />
             <LvRow label="Target Levered IRR"
               operatorOnly

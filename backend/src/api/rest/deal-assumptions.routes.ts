@@ -583,6 +583,92 @@ router.patch('/:dealId/assumptions/dates', requireAuth, async (req: Authenticate
 });
 
 /**
+ * PATCH /:dealId/purchase-price
+ *
+ * Write purchase_price into deals.deal_data (JSONB merge).
+ * financials-composer reads deal_data.purchase_price as the canonical basis;
+ * writing to deals.budget (the pipeline column) does NOT affect the financial
+ * model. This endpoint is the single write path for the Deal Terms tab.
+ *
+ * Body: { purchasePrice: number }
+ */
+router.patch('/:dealId/purchase-price', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const { purchasePrice } = req.body as { purchasePrice: number };
+
+    if (typeof purchasePrice !== 'number' || purchasePrice <= 0 || !Number.isFinite(purchasePrice)) {
+      return res.status(400).json({ error: 'purchasePrice must be a positive finite number' });
+    }
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
+    await pool.query(
+      `UPDATE deals
+         SET deal_data  = COALESCE(deal_data, '{}'::jsonb) || jsonb_build_object('purchase_price', $2::numeric),
+             updated_at = NOW()
+       WHERE id = $1`,
+      [dealId, purchasePrice]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error patching purchase price:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /:dealId/assumptions/hold-period
+ *
+ * Surgical write for hold_period_years — avoids the bulk PUT which would
+ * set source_ref = NULL (no COALESCE on that column). Only touches the
+ * one column; all other deal_assumptions columns are preserved.
+ *
+ * Body: { holdPeriodYears: number }
+ */
+router.patch('/:dealId/assumptions/hold-period', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const { holdPeriodYears } = req.body as { holdPeriodYears: number };
+
+    if (typeof holdPeriodYears !== 'number' || holdPeriodYears < 1 || !Number.isInteger(holdPeriodYears)) {
+      return res.status(400).json({ error: 'holdPeriodYears must be a positive integer' });
+    }
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, hold_period_years, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET
+         hold_period_years = $2,
+         updated_at        = NOW()`,
+      [dealId, holdPeriodYears]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error patching hold period:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /:dealId/financials/reparse
  *
  * Force-rerun seedProFormaYear1 (re-ingests all extraction capsule signals),

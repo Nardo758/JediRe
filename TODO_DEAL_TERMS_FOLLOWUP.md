@@ -14,25 +14,17 @@ Reference: see Phase 1 audit table in the wiring PR.
 These rows render with the override disabled and a `PENDING` flag in
 DealTermsTab. The read path works; only the write path is missing.
 
-### 1. Hold Period — surgical PATCH path
+### 1. Hold Period — surgical PATCH path ✅ FIXED (May 2026)
 
 - **Row:** "Hold Period (years)" (Section 2)
-- **Gap:** No per-field PATCH for `deal_assumptions.hold_period_years`.
-  The bulk `PUT /api/v1/deals/:dealId/assumptions` route in
-  `backend/src/api/rest/deal-assumptions.routes.ts:194` is **unsafe for
-  partial payloads** — line 252 does
-  `JSON.stringify(input.unitMix || [])` and the COALESCE on line 226
-  prefers the non-null `'[]'` over the existing column, so any
-  hold-period-only PUT wipes the deal's unit_mix.
-- **Fix:** Add `holdPeriodYears` to `SCALAR_FIELD_MAP` in
-  `backend/src/services/proforma-adjustment.service.ts:3813` mapping to
-  column `hold_period_years`. Then DealTermsTab's row override can
-  call `PATCH /:dealId/financials/override field=holdPeriodYears`
-  exactly like Exit Cap Rate does today. The hold-period quick-chips
-  above the table will keep firing `onHoldChange` for view-only
-  refetches.
-- **Scope:** Backend touch — separate task.
-- **Bonus fix worth scoping at the same time:** the `JSON.stringify(input.unitMix || [])` bug in the bulk PUT silently wipes unit_mix on any partial payload from any caller. Should be fixed even if no DEAL TERMS row depends on it.
+- **Fix shipped:** Added `PATCH /:dealId/assumptions/hold-period` in
+  `deal-assumptions.routes.ts` — targeted INSERT … ON CONFLICT touching
+  only `hold_period_years`. `pickHoldChip` now calls `saveHoldPeriod(yr)`
+  before emitting cross-tab signals; the row's `onCommit` fires on manual
+  number entry + Enter. Persists across reload. ✓
+- **Also fixed:** `JSON.stringify(input.unitMix || [])` → null-guard
+  hotfix already shipped to master; bulk PUT is now safe for partial
+  payloads.
 
 ### 2. Closing Costs — 5 sub-rows
 
@@ -101,12 +93,17 @@ DealTermsTab. The read path works; only the write path is missing.
 
 ## Side-debt found during the audit (not DEAL TERMS rows)
 
-### 11. Purchase Price dual-source read divergence
+### 11. Purchase Price dual-source read divergence ✅ FIXED (May 2026)
 
-- **What:** `composeDealFinancials` and `getDealFinancials` both read purchase price as `deal_data.purchase_price` first, falling back to `deal_data.asking_price`, then `deals.budget` (`backend/src/services/proforma-adjustment.service.ts:2156-2159`).
-- **Bug:** `PATCH /api/v1/deals/:id` only writes `deals.budget`. If `deal_data.purchase_price` is already set, the PATCH override won't appear on the next read — silent shadowing.
-- **Fix options:** (a) align write target with read priority — PATCH should also update `deal_data.purchase_price` when present; (b) PATCH updates both fields; (c) deprecate one of the columns. Recommend (a) — least surprising.
-- **DealTermsTab mitigation today:** When `props.deal.deal_data.purchase_price` AND `props.deal.budget` are both populated, the row renders a `DUAL-SRC` flag. Best-effort; some upstream callers don't pass `props.deal`.
+- **What:** `financials-composer` reads `deal_data.purchase_price` (canonical);
+  old write path (`PATCH /deals/:id { budget }`) wrote to `deals.budget` only —
+  silent miss when `deal_data.purchase_price` is already populated.
+- **Fix shipped:** Added `PATCH /:dealId/purchase-price` in
+  `deal-assumptions.routes.ts` — JSONB merge `deal_data || jsonb_build_object(
+  'purchase_price', $2::numeric)`. `savePurchasePrice` in DealTermsTab now
+  calls this endpoint. Capital/S&U tabs pick up the new value on next
+  `onF9Refresh`. `DUAL-SRC` flag remains as a best-effort detector for deals
+  that still have a divergent `deals.budget` value from old writes.
 
 ### 12. Bulk PUT /assumptions clobbers unit_mix on partial payload
 
