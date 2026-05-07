@@ -53,7 +53,7 @@ DealTermsTab. The read path works; only the write path is missing.
 - **Superseded by Task #613 (May 2026):**
   - `exit_strategy TEXT` column **dropped**; replaced with `exit_strategy_lv JSONB` storing `{detected,override}` shape.
   - Old `PATCH /:dealId/assumptions/exit-strategy` **removed**; replaced by `PATCH /:dealId/assumptions/strategy` (serves both fields).
-  - F9 contract now returns `assumptions.exitStrategyLv = {detected,override,resolved}` instead of `assumptions.exitStrategy: string`.
+  - F9 contract now returns `assumptions.exitStrategy = {detected,override,resolved}` (full LV object) instead of the old flat `assumptions.exitStrategy: string`.
   - Source badge shows "Override" / "Detected" / "Not Provided" based on which slot is populated.
   - Existing values backfilled from old TEXT column into `override` slot via migration `20260508_strategy_fields_lv.sql`. ✓
 
@@ -108,7 +108,7 @@ DealTermsTab. The read path works; only the write path is missing.
   - `investment_strategy_lv JSONB` column added to `deal_assumptions` via migration `20260508_strategy_fields_lv.sql`.
   - Shape: `{detected:{value,confidence,source}|null, override:string|null}`. Resolved = `override ?? detected?.value ?? null`.
   - `PATCH /:dealId/assumptions/strategy` with `{investmentStrategy?: 'Build-to-Sell'|'Flip'|'Rental'|'Short-Term Rental'|null}` wires the operator override slot.
-  - F9 contract returns `assumptions.investmentStrategyLv = {detected,override,resolved}`.
+  - F9 contract returns `assumptions.investmentStrategy = {detected,override,resolved}` (full LV object).
   - DealTermsTab row: `UPSTREAM` badge removed; active dropdown with 4 options; persists across reload.
   - `detected` slot is held open (null in V1) for M08 Strategy Arbitrage to write into later without schema migration.
   - `deal:strategy-changed` CustomEvent dispatched after each save for non-F9 listeners (M08 panel, OperatorStance).
