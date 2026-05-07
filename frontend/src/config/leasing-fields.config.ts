@@ -362,6 +362,21 @@ const CAT_D: LeasingCategoryDef = {
       defaultSource: 'Platform 10% stabilized, 30% recovery',
       category: 'D',
     },
+    {
+      id: 'd_amortization_method',
+      label: 'Concession amortization method',
+      path: 'lease_velocity.inputs.concession_amortization_method',
+      type: 'enum',
+      tier: 'advanced',
+      modes: 'all',
+      enumValues: ['STRAIGHT_LINE', 'FRONT_LOADED', 'BACK_LOADED'],
+      platformDefault: 'STRAIGHT_LINE',
+      tooltip: 'How free-rent / abatement concessions are amortized over the lease term for NOI purposes. ' +
+        'STRAIGHT_LINE: equal monthly credit. FRONT_LOADED: credit taken in first months (accelerates NOI recovery). ' +
+        'BACK_LOADED: credit deferred to final months (conservative).',
+      defaultSource: 'Platform STRAIGHT_LINE',
+      category: 'D',
+    },
   ],
 };
 
@@ -443,6 +458,22 @@ const CAT_E: LeasingCategoryDef = {
       min: 6, max: 36,
       tooltip: 'Override the engine-detected stabilization month. Use when you have a contractual obligation that differs from the engine\'s estimate.',
       defaultSource: 'Engine-detected (no override)',
+      category: 'E',
+    },
+    {
+      id: 'e_absorption_type',
+      label: 'Absorption curve type',
+      path: 'lease_velocity.inputs.absorption_type',
+      type: 'enum',
+      tier: 'advanced',
+      modes: ['LEASE_UP_NEW_CONSTRUCTION'],
+      enumValues: ['LINEAR', 'FRONT_LOADED', 'S_CURVE'],
+      platformDefault: 'LINEAR',
+      tooltip: 'Shape of the monthly leasing absorption ramp from delivery to stabilization. ' +
+        'LINEAR: equal velocity each month. FRONT_LOADED: 60/30/10 weight toward early months ' +
+        '(aggressive opening). S_CURVE: sigmoid ramp — slow start, peak velocity mid-lease-up, ' +
+        'tapering to stabilization. S-curve reflects typical new-construction market dynamics.',
+      defaultSource: 'Platform LINEAR',
       category: 'E',
     },
   ],

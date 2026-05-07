@@ -548,8 +548,8 @@ const STATIC_ROWS: RowDef[] = [
   },
   {
     key: 'stabilizedOcc', label: 'Stabilized Occupancy Target', section: 5, unit: 'pct',
-    isM07: true, format: fmtPct2, patchField: 'vacancyPct',
-    description: 'Long-run stabilized occupancy target. Platform = M07 equilibrium. Broker fallback = 1 − T12 vacancy.',
+    isM07: true, format: fmtPct2, readonly: true,
+    description: 'Read-only mirror of the LEASING tab canonical value (Cat A — Target stabilized occupancy). To override, edit in INPUTS → LEASING → Cat A.',
     platformSource: 'M07 — occupancy trajectory per year', brokerSource: 'OM / Pro Forma Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Stabilized Occupancy',
     getBroker: (f, _yr) => {
@@ -573,8 +573,8 @@ const STATIC_ROWS: RowDef[] = [
   },
   {
     key: 'renovationLift', label: 'Renovation Traffic Lift %', section: 5, unit: 'pct',
-    isM07: true, format: fmtPct2,
-    description: 'Incremental rent lift from renovation/value-add scope, derived from M07 demand elasticity.',
+    isM07: true, format: fmtPct2, readonly: true,
+    description: 'Read-only M07 demand-elasticity estimate of rent uplift from the renovation program. Canonical inputs live in INPUTS → LEASING → Cat J (Renovation Assumptions).',
     platformSource: 'M07 — Demand elasticity × renovation scope model', brokerSource: 'OM / Value-Add Pro Forma',
     getBroker: (_f, _yr) => null,
     getPlatform: (f, yr) => {
@@ -598,8 +598,8 @@ const STATIC_ROWS: RowDef[] = [
   },
   {
     key: 'afterRepairRent', label: 'Target After-Repair Rent', section: 5, unit: 'dollar',
-    isM07: true, format: fmtDlr,
-    description: 'Target in-place rent post-renovation. Value-add strategy only.',
+    isM07: true, format: fmtDlr, readonly: true,
+    description: 'Read-only M07 after-repair rent estimate. Canonical rent target lives in INPUTS → LEASING → Cat J (after-repair rent target $/unit/mo).',
     platformSource: 'M07 — Rent trajectory + renovation premium model', brokerSource: 'OM / Value-Add Pro Forma',
     getBroker: (_f, _yr) => null,
     getPlatform: (f, yr) => {
@@ -632,8 +632,8 @@ const STATIC_ROWS: RowDef[] = [
   },
   {
     key: 'loss_to_lease_pct', label: 'Loss-to-Lease %', section: 5, unit: 'pct',
-    format: fmtPct2, patchField: 'lossToLeasePct',
-    description: 'Market rent minus in-place rent as % of market rent. Narrows as leases roll over hold period.',
+    format: fmtPct2, readonly: true,
+    description: 'Read-only mirror of the LEASING tab LTL driver (Cat C — Loss-to-lease %). The canonical % driver and LTL decay rate live in INPUTS → LEASING → Cat C.',
     platformSource: 'JEDI — Submarket Avg Loss-to-Lease', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Loss-to-Lease',
     getBroker:   (f, _yr) => y1(f, 'loss_to_lease_pct')?.broker ?? y1(f, 'loss_to_lease_pct')?.t12 ?? null,
@@ -642,8 +642,8 @@ const STATIC_ROWS: RowDef[] = [
   },
   {
     key: 'concessions_pct', label: 'Concession % of Rent', section: 5, unit: 'pct',
-    format: fmtPct2, patchField: 'concessionsPct',
-    description: 'Free rent / net effective concessions as % of GPR. Declines as market tightens.',
+    format: fmtPct2, readonly: true,
+    description: 'Read-only resolved concession rate derived from LEASING Cat D inputs (concession strategy, dollar amounts, and penetration rates). Edit concession assumptions in INPUTS → LEASING → Cat D.',
     platformSource: 'M07 — Leasing velocity implies concession pressure', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Concessions',
     getBroker:   (f, _yr) => y1(f, 'concessions_pct')?.broker ?? y1(f, 'concessions_pct')?.t12 ?? null,
@@ -870,6 +870,23 @@ const STATIC_ROWS: RowDef[] = [
     brokerPage: 'Growth Rate Assumptions', brokerLine: 'Capital Reserves',
     getBroker:   (_f, _yr) => _f.assumptions.reservesGrowthPct ?? 0.02,
     getPlatform: (_f, _yr) => 0.02,
+    getConfidence: _f => 75,
+  },
+
+  // ── Section 10 continued: CPI anchor ────────────────────────────────────────
+  // Long-run inflation anchor used by the layered OpEx growth model. Kept separate
+  // from growthOpexPct so operators can distinguish "CPI + spread" vs raw growth.
+  {
+    key: 'cpiAssumption', label: 'CPI Anchor % / yr', section: 10, unit: 'pct',
+    format: fmtPct2, patchField: 'cpiAssumption',
+    description: 'Long-run CPI anchor that underpins the layered OpEx growth model (see F9 Proforma Spec §7). ' +
+      'Platform default: 2.5%/yr (10-yr TIPS breakeven). Setting below OpEx growth implies cost pressure beyond inflation; ' +
+      'above implies an inflationary-environment underwrite.',
+    platformSource: 'JEDI — FRED 10-yr TIPS breakeven inflation',
+    brokerSource: 'OM / Growth Rate Assumptions',
+    brokerPage: 'Growth Rate Assumptions', brokerLine: 'CPI / Inflation',
+    getBroker:   (f, _yr) => (f.assumptions as any).cpiAssumption ?? 0.025,
+    getPlatform: (_f, _yr) => 0.025,
     getConfidence: _f => 75,
   },
 
