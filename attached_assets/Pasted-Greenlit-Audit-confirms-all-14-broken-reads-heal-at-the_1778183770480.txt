@@ -1,0 +1,44 @@
+Greenlit. Audit confirms all 14 broken reads heal at the two read
+boundaries. Three additions to the commit before merge:
+
+1. Commit message + PR description must call out:
+   - Excel export gross-sale-value was 100x understated for all
+     historical exports (line 214/220 / 5.5 vs / 0.055). Any LP
+     deliverables exported pre-fix should be regenerated.
+   - derivedVacancyPct was clamped at 30% on every deal due to
+     M05 equilibrium floor inversion. Every projection grid in
+     the system was using 30% vacancy. NOI projections downstream
+     of calibrated vacancy were systematically inflated.
+
+2. Add the storage convention comment at trafficToProFormaService:
+   713-716 AND at the new read boundaries:
+
+   // CONVENTION: calibrated.* values stored in percentage form
+   // (5.5 = 5.5%, NOT 0.055). Conversion to decimal happens at
+   // read boundaries: trafficToProFormaService.ts:979-981 and
+   // proforma-adjustment.service.ts:2072-2074. Writers MUST use
+   // percentage form. New consumers MUST read through these
+   // boundaries (or apply ÷100 at point of use).
+
+3. Append to TODO_F9_DATA_FLOW.md as a new entry:
+
+   POST-FIX: Audit Claude-generated narratives on recent deals
+   - Cashflow Agent prompts at deal-assumptions.routes.ts:108
+     received "350% rent growth" / "550% exit cap" inputs pre-fix
+   - AI Coordinator narratives at line :106 same
+   - Action: regenerate AI commentary on top-N most-viewed deals
+     post-fix to refresh corrupted narratives. Effort: S.
+   - Reference: Pct unit-break audit, May 2026.
+
+After commit, verification on 464 Bishop:
+- AI MARKET FINDINGS shows 3.5% / 5.0% / 5.5%
+- Blended Rent Growth row shows 3.00%
+- Pro Forma Year 1 vacancy_loss stays at ~$970K (no regression on
+  the y1-direct vacancy path)
+- Open the perYear vacancy grid — every cell should show real
+  per-year vacancy, NOT 30% (this is the regression that should
+  resolve, confirming the M05 floor inversion is fixed)
+- Export to Excel — gross-sale-value cell should now equal exitNoi
+  / 0.055 (not / 5.5)
+- Recheck IRR / EM / DSCR pills against expected values for the
+  deal — these depend on exit value math which was 100x wrong

@@ -75,3 +75,24 @@ Surface the following peer benchmark fields on the `trafficProjection` response:
 for these fields. Swap to `KpiChip` once on response.
 
 **Priority:** Defer until M07 backend has bandwidth. Frontend placeholders are in place.
+
+---
+
+## POST-FIX: Audit Claude-generated narratives on recent deals
+
+**Reference:** Pct unit-break audit, May 2026 (fix commit: replit/fix-projections-pct-formatting)
+**Effort:** S
+
+**Background:**
+`proforma_assumptions.vacancy_current`, `rent_growth_current`, and `exit_cap_current` are stored in percentage form (e.g. 5.5 for 5.5%). Before the fix, both read boundaries (`trafficToProFormaService.ts:979-981` primary path and `proforma-adjustment.service.ts:2072-2074` fallback path) passed these values straight through without ÷100, so every downstream consumer received 100× inflated values. Two high-severity side-effects beyond the display bug:
+
+1. **Excel export gross-sale-value was 100× understated** — `f9-financial-export.service.ts:214,220` computes `Math.round(exitNoi / exitCap)` using the raw calibrated exit cap. With `exitCap = 5.5` instead of `0.055`, gross sale proceeds were divided by 5.5 instead of 0.055, producing values ~1.8% of correct. Any LP deliverables exported pre-fix should be regenerated.
+
+2. **`derivedVacancyPct` was clamped at 30% on every deal** — `proforma-adjustment.service.ts:2016` uses `calibrated.vacancyPct` as the M05 equilibrium floor. With `vacancyPct = 5.0` instead of `0.05`, the floor exceeded the `Math.min(0.30, …)` ceiling on every deal, locking `derivedVacancyPct` at 30% regardless of actual M07 signals. Every projection grid (perYear vacancy column) in the system was using 30% vacancy, inflating vacancy loss and suppressing NOI projections systematically.
+
+**Required action:**
+- Cashflow Agent prompts at `deal-assumptions.routes.ts:108` received "350% rent growth" / "550% exit cap" / "500% vacancy" inputs pre-fix.
+- AI Coordinator narrative prompts at `deal-assumptions.routes.ts:106` same.
+- Regenerate AI commentary on the top-N most-viewed deals post-fix to flush corrupted narratives from the 24-hour in-memory `narrativeCache` (or restart the server, which clears it automatically).
+
+**Priority:** S — narrative cache auto-expires in 24 h; Excel regeneration requires explicit LP communication.

@@ -2065,7 +2065,13 @@ export async function getDealFinancials(
       yearly: [],
       leaseUp: null,
       calibrated: {
-        // DB stores in percentage form (e.g. 5.5 for 5.5%); normalise to decimal (0–1) here.
+        // READ BOUNDARY (fallback path — no traffic_projections row).
+        // CONVENTION: calibrated.* values stored in percentage form
+        // (5.5 = 5.5%, NOT 0.055). Conversion to decimal happens at
+        // read boundaries: trafficToProFormaService.ts:979-981 and
+        // proforma-adjustment.service.ts:2072-2074. Writers MUST use
+        // percentage form. New consumers MUST read through these boundaries
+        // (or apply ÷100 at point of use).
         vacancyPct:    pa.vacancy_current    != null ? +(parseFloat(pa.vacancy_current)    / 100).toFixed(4) : null,
         rentGrowthPct: pa.rent_growth_current != null ? +(parseFloat(pa.rent_growth_current) / 100).toFixed(4) : null,
         exitCap:       pa.exit_cap_current    != null ? +(parseFloat(pa.exit_cap_current)    / 100).toFixed(4) : null,

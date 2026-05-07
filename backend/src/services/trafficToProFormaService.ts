@@ -710,6 +710,12 @@ export class TrafficToProFormaService {
          WHERE deal_id = $1`,
         [
           dealId,
+          // CONVENTION: calibrated.* values are stored in percentage form
+          // (5.5 = 5.5%, NOT 0.055). Conversion to decimal happens at read
+          // boundaries: trafficToProFormaService.ts:979-981 and
+          // proforma-adjustment.service.ts:2072-2074. Writers MUST use
+          // percentage form. New consumers MUST read through these boundaries
+          // (or apply ÷100 at point of use).
           vacancy?.platform.values[0] ?? 5.5,
           rentGrowth?.platform.values[0] ?? 2.8,
           absorption?.platform.values[0] ?? 130,
@@ -970,9 +976,16 @@ export async function getTrafficProjection(
       weeksTo95: row.lease_up_weeks_to_95 ?? null,
     } : null,
     calibrated: {
-      // DB stores these in percentage form (e.g. 5.5 for 5.5%). Divide by 100 here so every
-      // downstream consumer receives decimal form (0–1), consistent with all formatters,
-      // blend arithmetic, and math that uses ?? 0.03 / Math.min(0.30, …) guards.
+      // READ BOUNDARY — see write-site convention comment at line ~713.
+      // DB stores in percentage form (5.5 = 5.5%). ÷100 here so every downstream
+      // consumer receives decimal form (0–1): formatters (×100), Math.min(0.30,…)
+      // clamps, blend arithmetic, and exitNoi/exitCap ratio all expect decimal.
+      // CONVENTION: calibrated.* values stored in percentage form
+      // (5.5 = 5.5%, NOT 0.055). Conversion to decimal happens at
+      // read boundaries: trafficToProFormaService.ts:979-981 and
+      // proforma-adjustment.service.ts:2072-2074. Writers MUST use
+      // percentage form. New consumers MUST read through these boundaries
+      // (or apply ÷100 at point of use).
       vacancyPct:    row.vacancy_current    != null ? +(parseFloat(row.vacancy_current)    / 100).toFixed(4) : null,
       rentGrowthPct: row.rent_growth_current != null ? +(parseFloat(row.rent_growth_current) / 100).toFixed(4) : null,
       exitCap:       row.exit_cap_current    != null ? +(parseFloat(row.exit_cap_current)    / 100).toFixed(4) : null,
