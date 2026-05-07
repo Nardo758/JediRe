@@ -1,0 +1,76 @@
+Build M07 Traffic Engine intelligence panel at top of LeasingAssumptions
+Tab.tsx. Readonly display surface. No new editable fields.
+
+PHASE 0 — Audit current M07 wiring (read-only)
+
+Inspect:
+1. Where does M07 output land in dealStore today? Reference earlier
+   audit: trafficProjection.leasingSignals.* and assumptions.exitCap
+   (M07-calibrated). Confirm full output shape.
+2. Is there a TrafficProjection type / interface defined? Path?
+3. Does M07 produce mode-specific outputs already (Stabilized vs
+   Lease-Up vs Redevelopment), or is it currently Stabilized-only?
+4. What signals are currently exposed: T-01 through T-10? Just T-01/
+   T-05/T-06 like in General Sec 5A? Confirm coverage.
+5. Calibration confidence — does the response include the asymmetric
+   percentile bands per TRAFFIC_ENGINE_CALIBRATION_SPEC.md? Or is
+   that backend-only today?
+6. Peer benchmark — sampleCount and nPeerProperties: surfaced today?
+
+Post findings before Phase 1.
+
+PHASE 1 — Build the M07 panel component (single commit)
+
+New component: M07IntelPanel.tsx in same directory as
+LeasingAssumptionsTab.tsx.
+
+Structure:
+- Top strip: compact horizontal grid of headline metrics
+  - Stabilized mode: T-01, T-05, T-06, Derived Vacancy, Weeks to 95%
+  - Lease-Up mode: pre-leased %, projected absorption rate (units/mo),
+    projected stab month
+  - Redevelopment mode: peak down-units, post-reno absorption lag
+
+- Below: 2-3 collapsible sub-panels (collapsed by default):
+  - Confidence — percentile bands per calibration spec
+  - Peer Benchmark — sample count, peer property count, time window
+  - Derived Projections — Lease-Up Velocity, Stabilization curve
+    summary
+
+Mount at top of LeasingAssumptionsTab.tsx, ABOVE the flat schedule
+of Cat A-J rows.
+
+Mode detection: read deal mode from dealStore (LeaseMode enum already
+exists). Render the mode-appropriate metric set.
+
+Visual style:
+- Match F9 sticky-summary pattern (compact KPI strip at top)
+- T-token system, no Tailwind colors
+- Max 2px border radius, no shadows
+- Collapsible sub-panels: minimal chrome (small chevron icon, T.text.
+  muted color) — these collapsibles are intentionally OK here because
+  the panel is read-only intel, not editable inputs
+
+If any field from Phase 0 audit isn't currently surfaced on
+trafficProjection (e.g., calibration percentiles aren't on the response
+today), render placeholder with a note ("Calibration confidence —
+pending M07 backend wiring") and log to TODO_F9_DATA_FLOW.md.
+
+Out of scope:
+- Don't change M07 backend service or compute logic
+- Don't change Cat A-J row rendering (that's the flat-schedule task)
+- Don't add an M07 surface elsewhere — this is the only frontend
+  M07 display point in F9 today
+- Don't move General Sec 5A here yet (that's part of the source-of-
+  truth cleanup task; will land separately)
+
+Acceptance:
+- Panel renders at top of Leasing tab
+- Mode switch (LEASE_UP/RECOVERY/STAB) updates the metric set
+- Collapsibles work (expand/collapse)
+- TypeScript clean
+- No console errors when trafficProjection is null on a deal that
+  hasn't been calibrated yet (graceful empty state)
+
+Branch: replit/leasing-tab-m07-intel-panel from origin/master.
+One commit.

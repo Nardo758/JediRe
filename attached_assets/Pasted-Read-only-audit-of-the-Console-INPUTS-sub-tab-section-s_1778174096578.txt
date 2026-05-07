@@ -1,0 +1,48 @@
+Read-only audit of the Console INPUTS sub-tab section structure. No
+code changes — produce an inventory document only.
+
+Locate the file (likely `frontend/src/pages/development/financial-
+engine/AssumptionsTab.tsx` or whichever component renders Console
+INPUTS sub-tab today — confirm the path).
+
+For every row in the General section AND every row in the Leasing
+section, fill this table:
+
+| Section | Row Label | Field Key | What it represents | Editable? | Notes |
+|---|---|---|---|---|---|
+
+- Section: "General" or "Leasing" (or other section name if more
+  exist — there may be a Growth section, an Expenses section, etc.
+  Inventory all of them, not just General + Leasing)
+- Row Label: the user-visible label
+- Field Key: the underlying field name (e.g. vacancy_pct, gpr,
+  rent_growth, mgmt_fee_pct). For derived rows, write "DERIVED:
+  formula"
+- What it represents: one-sentence description
+- Editable?: Y / N (or "broker-only", "operator-only", "LV with all
+  three layers")
+- Notes: anything unusual — duplicate of another row in different
+  section, derived from another field, etc.
+
+Then a separate "Suspected misplacements" section that flags:
+- Any row appearing in BOTH General and Leasing (duplicates)
+- Any row in General whose value depends on lease characteristics
+  (term, type, renewal vs new) — these probably belong in Leasing
+- Any row in Leasing that applies uniformly across the property
+  regardless of leasing dynamics — these probably belong in General
+- Any row labeled the same way as a row in the F9 Pro Forma view but
+  with a different definition or source
+
+Specifically check whether these rows exist and where they currently
+live: rent_growth, stabilized_occupancy, other_income_per_unit,
+vacancy_pct, bad_debt_pct, concessions_pct, loss_to_lease_pct,
+mgmt_fee_pct, expense_growth, cpi_assumption, replacement_reserves,
+lease_term, renewal_probability, concession_amortization_method,
+absorption_curve.
+
+Output as a markdown document. Save to docs/architecture/INPUTS_TAB_
+SECTION_AUDIT.md. Post the table in your reply so I can review
+inline without opening the file.
+
+Out of scope: don't propose moves yet, don't change any code, don't
+touch the F9 Pro Forma surface. Audit only.
