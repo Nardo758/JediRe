@@ -631,11 +631,13 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
       : null;
 
   // Loan Payoff at Exit — outstanding mortgage balance in the exit year (from debt service schedule).
-  // loanPayoff is typed as `number` (always set, zero when no loan) so we read it directly.
-  // We treat zero as "no loan / unset" for display purposes (hide the sub-row when zero).
-  const loanPayoffAtExit: number | null = exitYearProj != null
-    ? (exitYearProj.loanPayoff > 0 ? exitYearProj.loanPayoff : null)
-    : null;
+  // loanPayoff is typed as `number` (always set, zero when unlevered / fully amortised).
+  // null ONLY when projections aren't loaded (exitYearProj === null); 0 is a valid
+  // surfaced payoff meaning no debt — must not be treated as "unavailable" for the
+  // label-swap / fallback logic (see DEAL TERMS Phase 1 spec §2f).
+  const loanPayoffAtExit: number | null = exitYearProj != null ? exitYearProj.loanPayoff : null;
+  // Separate flag: whether the payoff sub-row has a meaningful dollar amount to show.
+  const hasLoanPayoff = loanPayoffAtExit != null && loanPayoffAtExit > 0;
 
   // Net Sale Proceeds = Gross Proceeds − Loan Payoff at Exit.
   const netSaleProceedsDerived: number | null =
@@ -1140,7 +1142,10 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               source="Computed"
               emphasis="subtotal"
             />
-            {loanPayoffAtExit != null && (
+            {/* Loan Payoff sub-row: show only when there is a non-zero balance to deduct.
+                0 means unlevered/fully amortised — no sub-row needed, but that is still
+                a valid surfaced state (not a "data missing" state). */}
+            {hasLoanPayoff && (
               <LvRow label="  Loan Payoff at Exit"
                 hint="Outstanding mortgage balance repaid from sale proceeds"
                 operatorOnly
@@ -1149,14 +1154,15 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
                 source="Debt Schedule"
               />
             )}
-            {/* Per DEAL TERMS Phase 1 spec §2f: label swaps to "Gross Proceeds" (with
-                PENDING badge) when loan payoff isn't available. Only show "Net Sale
-                Proceeds" when the debt schedule is present and the deduction is real. */}
+            {/* Per DEAL TERMS Phase 1 spec §2f: label swaps to "Gross Proceeds" + PENDING
+                badge ONLY when projections are not yet loaded (loanPayoffAtExit === null).
+                When projections are loaded and loanPayoff === 0 (no debt / fully amortised),
+                this is a valid surfaced state — show "Net Sale Proceeds" without the badge. */}
             <LvRow
               label={loanPayoffAtExit != null ? 'Net Sale Proceeds' : 'Gross Proceeds'}
               hint={loanPayoffAtExit != null
-                ? 'Gross Proceeds − Loan Payoff at Exit'
-                : 'Loan payoff unavailable — showing Gross Proceeds (Exit Value − Selling Costs)'}
+                ? (hasLoanPayoff ? 'Gross Proceeds − Loan Payoff at Exit' : 'No debt — full gross proceeds retained')
+                : 'Projections not loaded — showing Gross Proceeds estimate (Exit Value − Selling Costs)'}
               operatorOnly
               override="" setOverride={() => {}}
               readOnly readOnlyValue={fmtDollar(netSaleProceedsDerived)}
