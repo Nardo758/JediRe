@@ -1,0 +1,267 @@
+# F9 Data Flow Wiring — Audit & Reconciliation
+
+## Context
+
+The F9 Financial Engine has four critical data flows that need to be
+verified end-to-end. Multiple prior audits have surfaced partial breaks
+(unit_mix wipe, purchase price dual-source, projections array not
+surfaced on response). This task is the first comprehensive audit of
+all four flows together — not just per-row, but per-flow integrity.
+
+Existing TODO files to cross-reference (do not duplicate items already
+logged there):
+- `TODO_F9_SIDE_DEBT.md`
+- `TODO_DEAL_TERMS_FOLLOWUP.md`
+- `TODO_OPERATOR_STANCE_PHASE_3.md` (if it exists yet)
+
+## The four flows
+
+```
+Flow 1: Unit Mix tab          ──┐
+                                ├──▶  Pro Forma  ──┐
+Flow 2: Other Income (INPUTS) ──┘                  │
+                                                   │
+Flow 3: INPUTS (Leasing + ProForma Numbers)  ──────┤
+        + Pro Forma user overrides           ──────┤──▶  Projections
+                                                   │
+Flow 4: Deal cost / Partnership / Closing  ────────┴──▶  Capital + Returns
+```
+
+## Working principles (read first)
+
+1. **Phase 1 audit only — no fixes.** Trace each flow with file:line
+   evidence. Classify breaks. Stop and report.
+
+2. **Use real data, not source-code defaults.** The prior session
+   showed why this matters — query a live deal (suggest `3f32276f-
+   aacd-4da3-b306-317c5109b403`, the 464 Bishop deal we've been working
+   with) and verify the actual values flowing through, not the
+   theoretical defaults.
+
+3. **Cross-reference existing TODO files.** If a break is already
+   logged, note it and move on. Don't re-surface known-knowns.
+
+4. **Distinguish four break classes:**
+   - `DATA_NOT_FLOWING` — source has data, consumer doesn't read it
+   - `DATA_STALE` — consumer reads but cached/seeded value diverges
+     from current source
+   - `EVENTS_NOT_EMITTED` — change at source doesn't trigger consumer
+     re-fetch
+   - `CONSUMER_NOT_SUBSCRIBING` — events fire but consumer ignores
+
+## Phase 1 — Audit (Plan mode, read-only)
+
+For each flow below, produce a findings table with this format:
+
+| Step | Source File:Line | Consumer File:Line | Break Class | Notes |
+|---|---|---|---|---|
+
+Then a paragraph summarizing the flow's overall health: green (works
+end-to-end), yellow (works but with known limitations), red (broken).
+
+### Flow 1: Unit Mix → Pro Forma
+
+Trace the path of a unit_mix change to a Pro Forma render:
+
+1. Where is `unit_mix` stored on the deal? (`deal_assumptions.unit_mix`
+   JSONB confirmed from the wipe-bug hotfix)
+2. Where does the composer compute GPR from unit_mix? Or does the
+   composer use a standalone `gpr` field that's been pre-aggregated?
+   If the latter, what computes the standalone gpr — and is it kept
+   in sync with unit_mix on edit?
+3. When the user edits a unit_mix row, does the GPR row in Pro Forma
+   update? Trace the event chain: UnitMixTab edit → API write →
+   what event fires → does ProFormaSummaryTab re-fetch?
+4. If unit_mix changes and gpr is a stored standalone field, is there
+   a service that re-derives gpr on unit_mix change? Or does it
+   require a manual reparse?
+
+Specifically check: for 464 Bishop, is the rendered GPR ($4,901,400)
+equal to `sum(unit_mix[].count × unit_mix[].rent × 12)`? If the math
+doesn't tie, that's a `DATA_STALE` finding.
+
+### Flow 2: Other Income → Pro Forma
+
+The earlier missing-rows debugging surfaced that `other_income_per_unit`
+gets dollarized to `other_income` via the `toDollarRow` helper at
+`proforma-adjustment.service.ts:1817-1900` (now landed). So the basic
+read flow exists. Audit:
+
+1. Does `other_income` in the Pro Forma response equal
+   `other_income_per_unit × totalUnits × 12`? Verify on 464 Bishop.
+2. Are there other "other income" buckets (parking, RUBS, ancillary,
+   pet rent, application fees, late fees, vending) that exist in
+   T-12 / rent roll but never make it into the Pro Forma's
+   `other_income` line? Specifically check the year1 JSONB for fields
+   matching `parking_*`, `rubs_*`, `ancillary_*`, `pet_*`, `late_*`,
+   `vending_*`, `app_fee_*`. If any are populated but not consumed
+   by the composer, that's `DATA_NOT_FLOWING`.
+3. Are user edits to other-income components scattered across surfaces
+   (one tab edits `parking`, another edits `pet_rent`)? Or
+   consolidated in INPUTS / Other Income section?
+4. When other_income changes, does NRI / EGI / NOI re-derive in real
+   time, or only on full re-fetch?
+
+### Flow 3: INPUTS + Pro Forma overrides → Projections
+
+This is the most complex flow. The prior DEAL TERMS audit surfaced
+that `buildProjectionsForExport(data, holdYears)` is called at
+`deal-assumptions.routes.ts:504` but the resulting `projs` array is
+local to the handler and not surfaced on the F9DealFinancials response.
+Audit:
+
+1. Where does the projections engine live? (`buildProjectionsForExport`
+   per the prior audit — confirm or correct.) What inputs does it
+   consume?
+2. Does it read from year1 LV with overrides applied (resolved values),
+   or from raw seed values pre-override?
+3. Does it consume Leasing Assumptions (rent growth, vacancy growth,
+   concession burn-off) from INPUTS? File:line of those reads.
+4. Does it consume ProForma Numbers (OpEx growth assumptions,
+   inflation, expense escalators) from INPUTS? File:line.
+5. Are projections cached, or recomputed on every fetch? If cached,
+   what invalidates the cache?
+6. Critically: is there a path from the Projections tab UI back to
+   the projections engine, or does the Projections tab only render
+   what's in the static F9 response? If the latter, hold-period
+   changes from DEAL TERMS won't surface in Projections without a
+   refetch — which we already flagged as `Soft` in the prior PR review.
+7. The user-override → projection chain: trace one specific override
+   (e.g., user edits `payroll` to $400K). Does the projections array
+   reflect Year 2 = $400K × (1 + escalator)? Or stuck at platform-
+   default $250K × (1 + escalator)?
+
+### Flow 4: Deal cost / Partnership / Closing → Capital + Returns
+
+Per DEAL TERMS audit, this flow has known gaps:
+- Purchase Price dual-source divergence (logged P1)
+- 5 closing-cost sub-rows are `PERSISTENCE_GAP` (only aggregate
+  `su:closingCosts` writes)
+- Partnership/LP-GP split — never wired in DEAL TERMS
+
+Audit what's actually wired today:
+
+1. Purchase Price → All-in Basis → Equity Required: trace the path
+   from DEAL TERMS Purchase Price to Capital tab Sources & Uses to
+   Returns tab Equity Required. Where does the Capital tab read
+   purchase price from — `deal_data.purchase_price`, `deals.budget`,
+   `capitalStack.purchasePrice`, or somewhere else? Confirm whether
+   the dual-source bug bleeds into Capital tab today.
+2. Closing Costs → S&U: the aggregate `su:closingCosts` writes via
+   `/financials/override`. Does the Capital tab S&U section render
+   that single aggregate, or does it expect the 5 sub-rows
+   (broker fee / legal / lender / reserves / contingency) and show
+   "Not Provided" for them today?
+3. Partnership / LP-GP split: locate where this lives in the schema
+   and which tab reads it. The Returns tab's `lpNetIrr` and
+   `lpEquityMultiple` calculations imply a split exists somewhere —
+   trace the read source. If hardcoded to 90/10, that's a
+   `PERSISTENCE_GAP` worth flagging.
+4. Loan/debt terms → Capital tab: out of scope of DEAL TERMS, but
+   verify the existing F9 Capital tab reads debt assumptions
+   correctly. The prior reviewer noted `proforma_assumptions.user_exit_cap`
+   exists in capsule-bridge as a separate write path — confirm Capital
+   tab doesn't accidentally read from there too.
+
+## Phase 1 deliverable
+
+Post a single report with:
+
+1. Four flow tables (one per flow above)
+2. Four health summaries (green / yellow / red)
+3. A consolidated break list ranked by severity:
+   - **P0 blockers** — flows that don't work at all on a typical deal
+   - **P1 high impact** — flows that work but produce wrong numbers
+   - **P2 stale data** — flows that work but require manual refresh
+   - **P3 cosmetic** — flows that work but emit noisy events or
+     duplicate work
+4. Cross-reference with existing TODO files: which breaks are already
+   logged where, and which are new findings
+
+**Stop after the report. Do not fix anything in Phase 1.**
+
+## Phase 2 — Fix (Build mode, after Leon approves the audit)
+
+For each finding Leon greenlights, ship one scoped commit per fix.
+Suggested commit boundaries:
+
+- `fix(unit-mix): re-derive gpr on unit_mix change` (if Flow 1 finds
+  staleness)
+- `fix(other-income): consolidate parking/rubs/pet into other_income
+  composer pipeline` (if Flow 2 finds DATA_NOT_FLOWING)
+- `feat(projections): surface projs array on F9DealFinancials response`
+  (if Flow 3 confirms the local-handler issue)
+- `fix(projections): apply overrides before projection generation`
+  (if Flow 3 finds raw-seed read)
+- `feat(capital): read closing-cost sub-rows from deal_assumptions
+  when expanded` (if Flow 4 finds aggregate-only display)
+
+Hold scope per commit. Don't bundle. Each fix gets its own diff for
+clean revert if anything breaks.
+
+## Phase 3 — Side debt (log only)
+
+For each break that requires backend schema changes, new endpoints, new
+agent capabilities, or coordinated frontend+backend work — append to
+the appropriate TODO file (existing or new) with:
+- Flow it belongs to
+- Break class
+- Suggested fix scope
+- Estimated effort tier (S / M / L / XL)
+
+Do not fix Phase 3 items inline.
+
+## Out of scope
+
+- THESIS §1 Strategy detection wiring (separate task #607)
+- OperatorStance Phase 1 build (separate task — currently in flight)
+- F9 Pro Forma cull / display logic (already fixed in prior commit)
+- Tax service integration (separate task)
+- Any UI redesign — wiring only
+- Sub-tab visual styling — preserve as-is
+
+## Constraints
+
+- Use real data from the live DB. Suggested deal:
+  `3f32276f-aacd-4da3-b306-317c5109b403` (464 Bishop, 232 units).
+  We have known-good baseline numbers for this deal.
+- When in doubt about whether a break is real, run the actual API call
+  and compare response to source data. Don't infer from code.
+- Cross-check every finding against the three existing TODO files
+  before marking it as a new break.
+- One commit per fix in Phase 2.
+
+## Acceptance criteria
+
+After Phase 1:
+- All four flow tables populated with file:line evidence
+- All four health summaries with concrete justification
+- Consolidated break list with P0/P1/P2/P3 ranking
+- TODO file cross-reference complete
+
+After Phase 2 (per fix Leon approves):
+- The specific break the commit targets is verifiably resolved on
+  464 Bishop (or whatever test deal Leon designates)
+- TypeScript clean
+- No regression in unrelated F9 surfaces
+
+## Reporting
+
+**End of Phase 1**: Post the audit report. Wait for Leon's approval
+of which breaks to fix in Phase 2 and which to defer to Phase 3
+(side debt).
+
+**End of Phase 2**: PR per fix with description tying back to the
+specific finding from Phase 1. Screenshot of the affected surface
+showing the corrected behavior.
+
+**End of Phase 3**: Updated TODO files with new entries.
+
+## Working style
+
+Three-phase commit cadence:
+1. Phase 1 produces a doc, no commits
+2. Phase 2 produces N commits (one per approved fix)
+3. Phase 3 produces TODO file updates (one commit total)
+
+Branch: `claude/f9-data-flow-audit` from `origin/master`.
