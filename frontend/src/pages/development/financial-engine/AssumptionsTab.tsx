@@ -2537,6 +2537,10 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         ))}
       </div>
 
+      {/* ── Scrollable content area + FindingsRail ── */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 overflow-y-auto min-h-0">
+
       {/* ── LEASING sub-tab ────────────────────────────────────────────────── */}
       {activeSubTab === 'LEASING' && (
         <LeasingAssumptionsTab
@@ -2713,10 +2717,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         </div>
       </div>
 
-      {/* Grid + findings */}
-      <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 overflow-auto">
-          <table className="w-full border-collapse" style={{ fontFamily: MONO }}>
+      {/* Grid */}
+      <table className="w-full border-collapse" style={{ fontFamily: MONO }}>
             <thead className="sticky top-0 z-10 bg-[#111111]">
               <tr className="border-b border-[#1e1e1e]">
                 <th className="px-3 py-1.5 text-left text-[10px] font-bold text-slate-500 min-w-[220px] sticky left-0 bg-[#111111] z-20 border-r border-[#1e1e1e]">ASSUMPTION</th>
@@ -3250,12 +3252,13 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
               })}
             </tbody>
           </table>
-        </div>
-        <FindingsRail financials={financials} narrativeBlocks={narrativeBlocks} />
-      </div>
 
       {/* end GENERAL sub-tab */}
       </>}
+
+      </div>{/* end scroll pane */}
+      {activeSubTab === 'GENERAL' && <FindingsRail financials={financials} narrativeBlocks={narrativeBlocks} />}
+      </div>{/* end content area */}
 
       {/* Footer — always visible regardless of active sub-tab */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#0a0a0a] border-t border-[#1e1e1e] sticky bottom-0 z-20">
