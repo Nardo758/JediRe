@@ -1,0 +1,250 @@
+# Console — Repurpose Selected Tab as DEAL TERMS
+
+## What this is
+
+You're repurposing the tab Leon has selected with the Replit selection tool.
+The tab gets renamed and its content replaced. The output is a new sub-tab
+inside the Console page (the F9 page formerly known as Control Center).
+
+The Console already contains four working sub-tabs: STANCE, INPUTS (formerly
+Assumptions), UNIT MIX, TAX. The selected tab will become a fifth sub-tab
+called **DEAL TERMS** that consolidates four operator-decision input groups
+that today are scattered across F9: Acquisition, Hold & Targets, Exit, and
+(optionally) Capital Structure.
+
+## Scope discipline — read this twice
+
+This task is **STRUCTURE ONLY**. Build the visual scaffold, the row
+structure, the input fields, and the section layouts. Do **NOT** wire any
+of the inputs to backend services, the dealStore, the LayeredValue store,
+or any API endpoint. Claude Code will do data wiring in a follow-up task
+once the structure is approved.
+
+That means specifically:
+- Use placeholder values in every cell (e.g. `--`, `$0`, "Not Provided")
+- No `useEffect` calls that fetch
+- No `apiClient` imports
+- No `dealStore` reads or writes
+- No event emissions
+- Local component `useState` is fine for the dropdowns/inputs to work
+  visually, but those values reset on unmount — that's correct
+- All `LayeredValue` columns render as static badges, not live data
+
+## Visual contract — match the other Console sub-tabs
+
+Before writing any JSX, **read all four existing Console sub-tab files
+(STANCE, INPUTS, UNIT MIX, TAX)** to align with their:
+
+- Color tokens (T system — strict — no Tailwind color classes)
+- Font usage (JetBrains Mono primary, IBM Plex Sans secondary)
+- Border radii (max 2px, no shadows, no gradients)
+- Section header style
+- Row height and column gap
+- Source badge appearance and label set
+- Editable-input border color (teal-400 was the established convention
+  per the "Add missing user inputs + teal cell coloring" commit)
+- Subtotal / Total row treatment
+- Spacer row treatment
+- "Not Provided" badge styling
+
+If the four existing tabs disagree on any of these, ask Leon — do not pick
+a winner unilaterally. The DEAL TERMS tab must be visually indistinguishable
+from a sibling that's been there from day one.
+
+## Section structure
+
+The tab has three required sections plus one optional. Render them
+top-to-bottom with the existing Console section-header pattern. Each row
+uses the same column structure as the INPUTS sub-tab.
+
+### Column structure (every row, every section)
+
+```
+| Line Item | Broker | Platform | User Override | Resolved | Source | Derived | Flag |
+```
+
+- **Line Item** — left-aligned label, sticky-left
+- **Broker** — LV layer 1 (from OM extraction). Null = `--`
+- **Platform** — LV layer 2 (from agent / computed). Null = `--`
+- **User Override** — LV layer 3 (editable). Empty = passthrough.
+  Teal-400 border on the input
+- **Resolved** — current effective value (the one the model uses).
+  Highlighted column
+- **Source** — badge ('Override', 'Platform', 'OM Narrative', 'Computed',
+  'Not Provided' — match the badge set in INPUTS)
+- **Derived** — for rows where a per-unit / per-SF / pct-of-X derived
+  value is meaningful (e.g. Purchase Price → $/unit). Else blank
+- **Flag** — collision indicator (broker vs platform divergence >threshold)
+  or integrity warning. Else blank
+
+For pure-operator rows (e.g. Hold Period), Broker and Platform render `--`
+or `N/A` styling (slightly muted), Override is the only meaningful column,
+Source shows 'Override'.
+
+### SECTION 1 — ACQUISITION / ENTRY
+
+Header: amber accent (T.text.amber), label "ACQUISITION / ENTRY"
+
+Rows:
+
+```
+Purchase Price                   [LV cols]   $/unit, $/SF derived
+Closing Costs — Broker Fee       [LV cols]
+Closing Costs — Legal & DD       [LV cols]
+Closing Costs — Lender / Orig    [LV cols]
+Closing Costs — Reserves         [LV cols]
+Closing Costs — Other / Cont.    [LV cols]
+─── TOTAL CLOSING COSTS ───      [subtotal: sum of above]
+═══ ALL-IN BASIS ═══             [total: Purchase + Closing]
+                                 [spacer row]
+Going-in Cap Rate                [LV cols]   "T12 NOI / Purchase" hint
+Stabilized Cap Rate              [LV cols]   "Estimate at stabilization" hint
+Close Date                       [date input]
+```
+
+### SECTION 2 — HOLD & TARGETS
+
+Header: cyan accent (T.text.cyan), label "HOLD & TARGETS"
+
+Rows:
+
+```
+Hold Period (years)              [number input — also offer 3/5/7/10
+                                  quick-select chips above the column]
+Target Levered IRR               [pct input]
+Target Equity Multiple           [number input, format "1.85x"]
+Target Cash-on-Cash (Y1)         [pct input]
+Investment Strategy              [read-only — placeholder text
+                                  "From THESIS §1 — not yet wired"]
+```
+
+For this section, render Broker and Platform columns as `N/A` styling
+(these are operator decisions, not extracted values). Source badge for
+each row is `Override` when filled, `Not Provided` when empty.
+
+### SECTION 3 — EXIT / DISPOSITION
+
+Header: green accent (T.text.green), label "EXIT / DISPOSITION"
+
+Rows:
+
+```
+Exit Strategy                    [dropdown: Sale / Refinance / Hold]
+Exit Cap Rate                    [LV cols]
+Selling Costs %                  [LV cols, default platform = 2.0%]
+                                 [spacer row]
+Exit Date                        [derived: Close Date + Hold Period —
+                                  read-only]
+Stabilized NOI at Exit           [read-only — placeholder
+                                  "From F9 Pro Forma Y[hold] — not wired"]
+Exit Value                       [derived: Exit NOI / Exit Cap —
+                                  read-only, large display]
+Net Sale Proceeds                [derived: Exit Value × (1 - Selling Costs)
+                                  − Loan Payoff — read-only]
+```
+
+### SECTION 4 — CAPITAL STRUCTURE  (FLAG FOR LEON BEFORE BUILDING)
+
+This section is OPTIONAL. F9 already has a Capital tab. Building Capital
+Structure here as well duplicates the surface and creates two places to
+edit the same fields.
+
+**Do not build this section without explicit approval from Leon.** Add a
+TODO comment at the bottom of the file:
+
+```tsx
+// TODO: Section 4 (Capital Structure) deliberately omitted pending
+// Leon's decision on duplication with F9 Capital tab. See thread.
+```
+
+If Leon confirms he wants it here, the rows would be: Loan Amount, LTV,
+LTC, Interest Rate, Loan Term, IO Period, Amortization, Origination Fee %,
+Equity Required, LP/GP Split, Preferred Return.
+
+## Tab strip integration
+
+If the selected tab is already in the Console tab strip, just relabel it
+to "DEAL TERMS" with the appropriate Console sub-tab styling.
+
+If you need to add a new tab to the strip:
+- Match the existing Console tab strip widget (same component, same color
+  conventions)
+- Place it after STANCE, before INPUTS — the sequence reads:
+  THESIS (when built) → STANCE → DEAL TERMS → INPUTS → UNIT MIX → TAX
+- Keep the active-tab indicator behavior consistent with siblings
+
+## Header strip on the tab itself
+
+Match the existing Console sub-tab header pattern. Suggested:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  DEAL TERMS · 464 Bishop · 232 Units · At-Acquisition Snapshot │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+If the other Console sub-tabs render KPI pills in the header (IRR / EM /
+DSCR), include the same pill set here for consistency. Use placeholder
+values — `--` is fine since nothing is wired.
+
+## Out of scope — DO NOT TOUCH
+
+- Any other Console sub-tab file (STANCE, INPUTS, UNIT MIX, TAX)
+- The Console tab strip widget itself, beyond adding the new tab entry
+  if needed
+- F9 Pro Forma, Projections, Capital, Returns, Sensitivity, Compare —
+  all unaffected
+- `dealStore`, `LayeredValue<T>` definitions, any Zustand store
+- `api.client.ts`, any service file, any backend file
+- Mock data files — even if a placeholder mock exists, don't import it
+- THESIS tab — separate scoped work, not in this commit
+
+## File manifest
+
+The work touches exactly:
+
+1. The single tab file Leon selected with the selection tool
+2. (Conditional) the Console tab strip definition file, if a new tab
+   entry is needed
+
+That's it. If you find yourself needing to edit a third file, stop and
+ask. Most likely you've drifted into wiring or a shared component change
+that belongs in the next task.
+
+## Acceptance criteria
+
+- TypeScript clean (`tsc --strict` passes — only pre-existing config-
+  deprecation warnings allowed)
+- Tab renders without console errors
+- Visual fidelity to STANCE / INPUTS / UNIT MIX / TAX is high enough that
+  a screenshot of DEAL TERMS placed next to a screenshot of any sibling
+  is indistinguishable in styling, font, color, spacing, badge treatment
+- All three required sections render with the row structure above
+- All inputs are visually wired (typing into Override updates Resolved
+  via local state) — no live data required
+- Section 4 NOT built; TODO comment present
+
+## Reporting
+
+When done, push to a feature branch (suggested:
+`replit/console-deal-terms-structure`). Comment on the PR with:
+
+1. The exact path of the file modified
+2. Whether the tab strip needed a new entry (and the file touched)
+3. A screenshot of the rendered tab
+4. Confirmation that no out-of-scope files were modified
+5. The TODO comment for Section 4
+
+Leon will review and either approve the structure (handoff to Claude Code
+for data wiring) or request changes before merge.
+
+## Working style
+
+One commit. Don't bundle the relabel + content replacement + tab strip
+addition into separate commits — they're all one logical change. Commit
+message: `feat(console): repurpose <selected-tab> as DEAL TERMS — structure
+only, no data wiring`.
+
+If you find scope creep tempting you ("while I'm in here, I'll also fix
+X"), stop. Add it to a TODO_DEAL_TERMS_FOLLOWUP.md file at repo root and
+keep moving.
