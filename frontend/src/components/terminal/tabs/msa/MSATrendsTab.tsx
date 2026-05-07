@@ -125,6 +125,8 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [supplyPipeline, setSupplyPipeline] = useState<SupplyPipelineSubmarket[]>([]);
   const [supplyPipelineTotal, setSupplyPipelineTotal] = useState<number | null>(null);
   const msaName = msa?.name || msaId || 'Atlanta';
+  const msaCity = (msa?.city || msa?.name || 'Atlanta').split(',')[0].trim();
+  const msaState = msa?.state || 'GA';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
@@ -187,11 +189,11 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
 
   useEffect(() => {
     setRentByClassLoading(true);
-    apiClient.get<RentByClassResponse>('/georgia/analytics/rent-by-class?city=Atlanta&state=GA')
+    apiClient.get<RentByClassResponse>(`/georgia/analytics/rent-by-class?city=${encodeURIComponent(msaCity)}&state=${encodeURIComponent(msaState)}`)
       .then((res: RentByClassResponse) => setRentByClass(res?.classes || []))
       .catch(() => setRentByClass([]))
       .finally(() => setRentByClassLoading(false));
-  }, []);
+  }, [msaCity, msaState]);
 
   useEffect(() => {
     apiClient.get<SupplyPipelineResponse>('/georgia/supply/pipeline?state=GA&limit=8')
@@ -567,7 +569,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                     ))}
                   </div>
                   <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 14, borderTop: `1px solid ${BT.border.subtle}`, paddingTop: 8 }}>
-                    Source: Apartment Locator AI · Atlanta metro
+                    Source: Apartment Locator AI · {msaCity} metro
                   </div>
                 </>
               );
