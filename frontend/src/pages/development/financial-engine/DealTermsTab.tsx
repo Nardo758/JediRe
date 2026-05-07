@@ -613,8 +613,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     ? fin.projections[holdIndex]
     : null;
 
-  // Stabilized NOI at Exit — forward NOI at hold year from the F9 projections engine.
-  const stabilizedNoiAtExit: number | null = exitYearProj?.exitNoi ?? null;
+  // Stabilized NOI at Exit — the exit year's actual NOI from the projections engine.
+  // Spec requires projections[holdYear-1].noi, NOT exitNoi. exitNoi is a one-year
+  // forward NOI grown beyond the hold period (used as the numerator for the exit
+  // cap calc) — using it here would overstate the in-place stabilized income metric.
+  const stabilizedNoiAtExit: number | null = exitYearProj?.noi ?? null;
 
   // Exit Value — already computed by the projections engine as exitNoi / exitCap.
   const exitValueDerived: number | null = exitYearProj?.grossSaleValue ?? null;
@@ -1115,7 +1118,7 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               source="Computed"
             />
             <LvRow label="Stabilized NOI at Exit"
-              hint="Forward NOI at hold year from F9 projections engine (exitNoi)"
+              hint="projections[holdYear-1].noi — in-place NOI at the exit year"
               operatorOnly
               override="" setOverride={() => {}}
               readOnly readOnlyValue={fmtDollar(stabilizedNoiAtExit)}
@@ -1146,14 +1149,20 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
                 source="Debt Schedule"
               />
             )}
-            <LvRow label="Net Sale Proceeds"
-              hint={loanPayoffAtExit != null ? 'Gross Proceeds − Loan Payoff at Exit' : 'Gross Proceeds (no debt schedule — loan payoff not yet available)'}
+            {/* Per DEAL TERMS Phase 1 spec §2f: label swaps to "Gross Proceeds" (with
+                PENDING badge) when loan payoff isn't available. Only show "Net Sale
+                Proceeds" when the debt schedule is present and the deduction is real. */}
+            <LvRow
+              label={loanPayoffAtExit != null ? 'Net Sale Proceeds' : 'Gross Proceeds'}
+              hint={loanPayoffAtExit != null
+                ? 'Gross Proceeds − Loan Payoff at Exit'
+                : 'Loan payoff unavailable — showing Gross Proceeds (Exit Value − Selling Costs)'}
               operatorOnly
               override="" setOverride={() => {}}
               readOnly readOnlyValue={fmtDollar(netSaleProceedsDerived)}
               source="Computed"
               emphasis="total"
-              flag={loanPayoffAtExit == null ? <PendingBadge label="GROSS" /> : undefined}
+              flag={loanPayoffAtExit == null ? <PendingBadge label="PENDING" /> : undefined}
             />
 
           </tbody>
