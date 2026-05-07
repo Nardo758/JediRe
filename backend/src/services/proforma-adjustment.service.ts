@@ -3347,8 +3347,10 @@ export async function getDealFinancials(
       const exitCapRate = pv?.exitCapIfLastYear ?? trafficProjectionOut?.calibrated?.exitCap ?? assumptions.exitCap ?? 0.055;
       const exitNoi = isSaleYear ? Math.round(noi * (1 + (rentGrowthPct ?? 0.03))) : null;
       const grossSaleValue = isSaleYear && exitCapRate > 0 && exitNoi != null ? Math.round(exitNoi / exitCapRate) : null;
-      // Selling costs: 1.5% of gross sale value (industry standard; surfaced in drilldown as EST)
-      const sellingCosts   = grossSaleValue != null ? Math.round(grossSaleValue * 0.015) : null;
+      // Selling costs: use operator-set selling_costs_pct from deal_assumptions if present,
+      // else fall back to the 2% platform default. (sellingCostsPct is declared above the IIFE.)
+      const effSellingCostsPct = sellingCostsPct ?? 0.02;
+      const sellingCosts   = grossSaleValue != null ? Math.round(grossSaleValue * effSellingCostsPct) : null;
       const loanPayoff     = Math.round(projBalance);
       // Implied cap rate from current-year NOI and sale value (sale year only)
       const capRatePct     = grossSaleValue != null && grossSaleValue > 0 ? +(noi / grossSaleValue).toFixed(4) : null;

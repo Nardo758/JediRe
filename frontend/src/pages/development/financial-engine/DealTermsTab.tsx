@@ -525,19 +525,25 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     [closeDateResolved, holdYearsResolved],
   );
 
-  // Stabilized NOI at Exit — out of scope per Phase 1 (READ_GAP, see TODO).
-  // Without it, Exit Value can't be computed honestly — render `--`.
-  const stabilizedNoiAtExit: number | null = null;
-  const exitValueDerived: number | null =
-    stabilizedNoiAtExit != null && exitCapResolved != null && exitCapResolved > 0
-      ? Math.round(stabilizedNoiAtExit / exitCapResolved)
-      : null;
+  // Exit-year projections row — index into fin.projections by the resolved hold period.
+  // projections is 0-indexed and always holdYears long when seeded.
+  const holdIndex = (holdYearsResolved ?? 10) - 1;
+  const exitYearProj = (fin?.projections && holdIndex >= 0 && holdIndex < fin.projections.length)
+    ? fin.projections[holdIndex]
+    : null;
 
-  // Loan Payoff at Exit isn't surfaced on F9DealFinancials; show GROSS proceeds
-  // per Phase 1 spec 2f, never a partial Net.
+  // Stabilized NOI at Exit — forward NOI at hold year from the F9 projections engine.
+  const stabilizedNoiAtExit: number | null = exitYearProj?.exitNoi ?? null;
+
+  // Exit Value — already computed by the projections engine as exitNoi / exitCap.
+  const exitValueDerived: number | null = exitYearProj?.grossSaleValue ?? null;
+
+  // Gross Sale Proceeds = Exit Value − Selling Costs (no loan payoff — label says Gross, not Net).
+  // Prefer projections-engine sellingCosts (which uses operator selling_costs_pct); fall back to
+  // local decimal if projection isn't seeded yet.
   const grossProceedsDerived: number | null =
     exitValueDerived != null
-      ? Math.round(exitValueDerived * (1 - sellingCostsDecimal))
+      ? exitValueDerived - (exitYearProj?.sellingCosts ?? Math.round(exitValueDerived * sellingCostsDecimal))
       : null;
 
   // Purchase Price dual-source warning: deal_data.purchase_price shadows
@@ -970,12 +976,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               source="Computed"
             />
             <LvRow label="Stabilized NOI at Exit"
-              hint="From F9 Pro Forma Y[hold] — not yet wired"
+              hint="Forward NOI at hold year from F9 projections engine (exitNoi)"
               operatorOnly
               override="" setOverride={() => {}}
-              readOnly readOnlyValue="--"
-              source="Not Provided"
-              flag={<PendingBadge label="UPSTREAM" />}
+              readOnly readOnlyValue={fmtDollar(stabilizedNoiAtExit)}
+              source={stabilizedNoiAtExit != null ? 'Computed' : 'Not Provided'}
             />
             <LvRow label="Exit Value"
               hint="Exit NOI / Exit Cap"

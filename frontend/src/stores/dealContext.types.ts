@@ -748,39 +748,20 @@ type DevelopmentEnvelope = {
   impact_fee_credit_units: number;
 };
 
-// ── OperatorStance (frontend mirror of backend/src/types/operator-stance.ts) ──
-// Defined here rather than imported to avoid cross-package coupling.
-// Keep in sync with backend OperatorStance type.
-
-export type RateEnvironment = 'CUTTING' | 'NORMALIZING' | 'HIGHER_FOR_LONGER';
-export type CyclePosition = 'EARLY' | 'MID' | 'LATE';
-export type UnderwritingPosture = 'CONSERVATIVE' | 'MARKET' | 'AGGRESSIVE';
-export type ConcessionStrategy = 'CONSERVATIVE' | 'MARKET' | 'AGGRESSIVE';
-export type MarketingIntensity = 'LOW' | 'MARKET' | 'AGGRESSIVE';
-export type ExpenseGrowthPosture = 'CONTAINED' | 'INFLATION' | 'STRESSED';
-
-export interface OperatorStance {
-  rateEnvironment: RateEnvironment;
-  cyclePosition: CyclePosition;
-  recessionProbability: number;
-  underwritingPosture: UnderwritingPosture;
-  concessionStrategy: ConcessionStrategy;
-  marketingIntensity: MarketingIntensity;
-  expenseGrowthPosture: ExpenseGrowthPosture;
-  stressRentGrowthHaircut: number;
-  stressExitCapWiden: number;
-  stressVacancyFloor: number;
-  defaulted: boolean;
-  updatedAt: string;
-}
-
-export type OperatorStancePatch = Partial<Omit<OperatorStance, 'defaulted' | 'updatedAt'>>;
-
-export interface AffectedStanceField {
-  fieldPath: string;
-  deltaBps: number;
-  trace: string;
-}
+// ── OperatorStance — re-exported from the canonical frontend type file ────────
+// Source of truth: frontend/src/types/operator-stance.ts
+// (Previously defined inline here; extracted to enable clean imports.)
+export type {
+  RateEnvironment,
+  CyclePosition,
+  UnderwritingPosture,
+  ConcessionStrategy,
+  MarketingIntensity,
+  ExpenseGrowthPosture,
+  OperatorStance,
+  OperatorStancePatch,
+  AffectedStanceField,
+} from '../types/operator-stance';
 
 interface DealContextBase {
   identity: DealIdentity;

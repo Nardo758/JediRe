@@ -80,12 +80,15 @@ DealTermsTab. The read path works; only the write path is missing.
 
 ## Read gaps — placeholder rows awaiting upstream feeds
 
-### 8. Stabilized NOI at Exit
+### 8. Stabilized NOI at Exit ✅ FIXED (May 2026)
 
 - **Row:** Section 3, "Stabilized NOI at Exit" (Exit Math derivations).
-- **Gap:** F9 projection-engine year-N output isn't surfaced on `F9DealFinancials` today. `getDealFinancials` calls `buildProjectionsForExport(data, holdYears)` (`deal-assumptions.routes.ts:504`) for IRR cashflows, but the projections array is local to the handler and not put on the response.
-- **Fix:** Surface `proforma.projections: { year: number; noi: number | null; … }[]` (or just `proforma.year[hold].noi`) on the F9 contract. Out of scope per the spec.
-- **Effect downstream:** Without this, Exit Value derives to `--` because the dividend is null. Exit Date and Gross Sale Proceeds are similarly affected by the missing input.
+- **Fix shipped:**
+  - `DealFinancials.projections` was already populated by `getDealFinancials` with `exitNoi`, `grossSaleValue`, and `sellingCosts` per year — no backend change needed.
+  - DealTermsTab now reads `fin.projections[holdIndex]` (0-indexed by resolved hold period) to hydrate `stabilizedNoiAtExit`, `exitValueDerived`, and `grossProceedsDerived`.
+  - `grossProceedsDerived` prefers projections-engine `sellingCosts` (which now respects operator `selling_costs_pct`) over local decimal fallback.
+  - Projections engine selling cost bug fixed: hardcoded `0.015` replaced with `sellingCostsPct ?? 0.02` so Item 5's operator override flows all the way through to exit math. ✓
+  - UPSTREAM `PendingBadge` removed; row now shows computed value when projections are seeded.
 
 ### 9. Net Sale Proceeds → Gross Sale Proceeds (loan payoff missing)
 
@@ -114,9 +117,9 @@ DealTermsTab. The read path works; only the write path is missing.
   `onF9Refresh`. `DUAL-SRC` flag remains as a best-effort detector for deals
   that still have a divergent `deals.budget` value from old writes.
 
-### 12. Bulk PUT /assumptions clobbers unit_mix on partial payload
+### 12. Bulk PUT /assumptions clobbers unit_mix on partial payload ✅ ALREADY FIXED
 
-- See item 1 above. Standalone bug — affects any caller that sends a partial payload.
+- See item 1 above. The fix was shipped alongside item 1: line 252 of `deal-assumptions.routes.ts` reads `input.unitMix != null ? JSON.stringify(input.unitMix) : null`, and the ON CONFLICT clause uses `COALESCE($13, deal_assumptions.unit_mix)` — so a missing `unitMix` in a partial payload sends `null` which COALESCE ignores, preserving the stored value.
 
 ---
 
