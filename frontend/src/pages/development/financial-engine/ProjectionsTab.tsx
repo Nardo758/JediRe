@@ -896,15 +896,29 @@ function fmtFunnel(v: number | null, cadence: FunnelCadence): string {
     : scaled.toFixed(1) + CADENCE_SUFFIX[cadence];
 }
 
+function relativeCalibrationDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  const days = Math.floor(ms / 86_400_000);
+  if (days < 1)  return 'today';
+  if (days === 1) return '1d ago';
+  if (days < 30)  return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}yr ago`;
+}
+
 interface TrafficFunnelPanelProps {
   yearly: F9TrafficYear[];
   holdYears: number;
   isOffline?: boolean;
   expanded: boolean;
   onToggle: () => void;
+  leasingSignals?: { confidence: number|null; t01WeeklyTours: number|null; t05ClosingRatio: number|null; t06WeeklyLeases: number|null; t07LeaseUpWeeksTo95: number|null; stabilizedOccupancyPct: number|null } | null;
+  calibrated?: { vacancyPct: number|null; rentGrowthPct: number|null; exitCap: number|null; lastCalibrated: string|null } | null;
 }
 
-function TrafficFunnelPanel({ yearly, holdYears, isOffline, expanded, onToggle }: TrafficFunnelPanelProps) {
+function TrafficFunnelPanel({ yearly, holdYears, isOffline, expanded, onToggle, leasingSignals, calibrated }: TrafficFunnelPanelProps) {
   const [cadence, setCadence] = useState<FunnelCadence>('W');
 
   const years = Array.from({ length: holdYears }, (_, i) => i + 1);
@@ -949,6 +963,34 @@ function TrafficFunnelPanel({ yearly, holdYears, isOffline, expanded, onToggle }
       </div>
 
       {expanded && (
+        <>
+        {/* ── Confidence header strip ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '3px 8px',
+          background: BT.bg.panel,
+          borderBottom: `1px solid ${BT.border.subtle}`,
+        }}>
+          {leasingSignals?.confidence != null ? (
+            <>
+              <span style={{ fontFamily: MONO, fontSize: 7, color: BT.met.physTraffic, fontWeight: 700, letterSpacing: 0.5 }}>
+                M07 CALIBRATION
+              </span>
+              <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.primary }}>
+                {(leasingSignals.confidence * 100).toFixed(0)}% confidence
+              </span>
+              {calibrated?.lastCalibrated && (
+                <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+                  · calibrated {relativeCalibrationDate(calibrated.lastCalibrated)}
+                </span>
+              )}
+            </>
+          ) : (
+            <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, fontStyle: 'italic' }}>
+              M07: Not yet calibrated
+            </span>
+          )}
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <colgroup>
@@ -1001,6 +1043,41 @@ function TrafficFunnelPanel({ yearly, holdYears, isOffline, expanded, onToggle }
                   );
                 })
               )}
+              {/* ── Projection output rows: vacancy, rent, rent growth ── */}
+              {hasAnyData && (() => {
+                const PROJ_ROWS: { key: keyof F9TrafficYear; label: string; fmt: (v: number) => string }[] = [
+                  { key: 'vacancyPct',   label: 'Vacancy %',    fmt: v => (v * 100).toFixed(1) + '%' },
+                  { key: 'effRent',      label: 'Eff. Rent',    fmt: v => '$' + Math.round(v).toLocaleString() },
+                  { key: 'rentGrowthPct',label: 'Rent Growth',  fmt: v => (v * 100).toFixed(1) + '% /yr' },
+                ];
+                return (
+                  <>
+                    <tr>
+                      <td colSpan={years.length + 1} style={{ padding: 0, borderTop: `1px solid ${BT.border.medium}` }} />
+                    </tr>
+                    {PROJ_ROWS.map((row, ri) => {
+                      const rowBg = ri % 2 === 0 ? BT.bg.panel : BT.bg.terminal;
+                      return (
+                        <tr key={row.key} style={{ background: rowBg, borderBottom: `1px solid ${BT.border.subtle}` }}>
+                          <td style={{ padding: '3px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.secondary, position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
+                            {row.label}
+                            <span style={{ marginLeft: 4, fontFamily: MONO, fontSize: 6, color: BT.text.muted, letterSpacing: 0.3 }}>M07</span>
+                          </td>
+                          {years.map(yr => {
+                            const tv = yearly.find(y => y.year === yr);
+                            const val = tv ? (tv[row.key] as number | null) : null;
+                            return (
+                              <td key={yr} style={{ padding: '3px 6px', textAlign: 'right', fontFamily: MONO, fontSize: 8, color: val != null ? BT.text.primary : BT.text.muted }}>
+                                {val != null ? row.fmt(val) : '—'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </>
+                );
+              })()}
               {/* Conversion efficiency footnote row */}
               {hasAnyData && (() => {
                 const yr1 = yearly.find(y => y.year === 1);
@@ -1018,6 +1095,21 @@ function TrafficFunnelPanel({ yearly, holdYears, isOffline, expanded, onToggle }
             </tbody>
           </table>
         </div>
+        {/* ── Calibration Confidence Bands placeholder ── */}
+        <div style={{
+          borderTop: `1px solid ${BT.border.subtle}`,
+          padding: '6px 8px',
+          background: BT.bg.header,
+        }}>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.met.physTraffic, fontWeight: 700, letterSpacing: 0.8, marginBottom: 3 }}>
+            CALIBRATION CONFIDENCE BANDS
+          </div>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, fontStyle: 'italic' }}>
+            Pending M07 backend wiring — asymmetric percentile bands (P10/P25/P75/P90) not yet surfaced on response.
+            See <span style={{ color: BT.text.secondary }}>TODO_F9_DATA_FLOW.md</span> for backend scope.
+          </div>
+        </div>
+        </>
       )}
     </div>
   );
@@ -1619,6 +1711,8 @@ export function ProjectionsTab({
                       isOffline={!financials.trafficProjection}
                       expanded={expandedSections.has('traffic-funnel')}
                       onToggle={() => toggleSection('traffic-funnel')}
+                      leasingSignals={financials.trafficProjection?.leasingSignals}
+                      calibrated={financials.trafficProjection?.calibrated}
                     />
                   </td>
                 </tr>

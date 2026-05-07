@@ -1,0 +1,88 @@
+Read-only audit of the Projections Traffic Engine UI. Inventory the
+current rendering and field bindings so a follow-on build task
+(confidence bands + time-series table) can be scoped without conflict
+with the new LEASING M07 panel build.
+
+PHASE 0 — Locate the surface
+
+Find the Projections Traffic Engine component file path. Likely
+candidates: TrafficProjectionTab.tsx, ProjectionsTrafficEngine.tsx,
+or a section/sub-component inside ProjectionsHubTab.tsx. Confirm the
+exact path and post it.
+
+If multiple Traffic Engine surfaces exist in Projections, list all of
+them.
+
+AUDIT — Inventory
+
+Produce this report:
+
+1. Component structure
+   - File path
+   - Top-level layout (graph + horizontal outputs + what else?)
+   - Any sub-panels, tabs, or collapsibles
+   - Approximate line count and last-touched commit hash
+
+2. The graph
+   - Which library (Recharts, D3, Plotly, custom SVG)?
+   - X-axis: what's plotted (month, year, calendar date, hold period
+     index)?
+   - Y-axis: what's plotted (occupancy %, traffic index, absorption
+     rate, multiple)?
+   - Series rendered: list each line/area/bar with its data binding
+   - Are confidence bands rendered today? If yes, which percentiles?
+     If no, is there confidence data on the source object being
+     ignored?
+   - Mode-aware? Does the graph reshape for Stabilized vs Lease-Up
+     vs Redevelopment, or is it one shape regardless?
+
+3. The horizontal outputs (the most important question)
+   - List every value displayed in the horizontal output strip with
+     its label and field binding (e.g., "T-01 Walk-Ins/Week" →
+     trafficProjection.leasingSignals.t01WeeklyTours)
+   - Classify each value as POINT_IN_TIME (current snapshot) or
+     TIME_SERIES (year-by-year or month-by-month)
+   - For TIME_SERIES values, which time period is shown — Y1, Yn,
+     stabilization year, all years?
+
+4. Data bindings
+   - Which dealStore field(s) does this surface read?
+   - Does it have its own fetch logic or consume parent props?
+   - Is the trafficProjection object surfaced on F9DealFinancials
+     today, or fetched separately?
+
+5. Operator interactions
+   - Any inputs / dropdowns / toggles?
+   - Any cell-level edits, or fully read-only?
+   - Mode switcher present, or mode derived from elsewhere?
+
+6. Cross-reference with new LEASING M07 panel scope
+   - Of the values inventoried in #3, which would duplicate the
+     LEASING M07 panel's headline metrics (T-01, T-05, T-06,
+     derivedVacancy, weeks-to-95, lease-up velocity)?
+   - Of the duplicates, classify each as:
+     - "POINT_IN_TIME — should move to LEASING, remove from here"
+     - "TIME_SERIES — stays here, LEASING panel doesn't conflict"
+     - "AMBIGUOUS — judgment call, flag for review"
+
+DELIVERABLE
+
+Markdown report. Save to docs/architecture/PROJECTIONS_TRAFFIC_
+ENGINE_AUDIT.md (Build mode required for the file write — if you're
+in Plan mode, post inline and queue the file save as a one-step
+follow-up task).
+
+Out of scope:
+- No code changes
+- Don't touch the new LEASING M07 panel work (separate task)
+- Don't propose builds yet — just inventory
+- Don't audit other Projections sub-sections (only the Traffic
+  Engine UI)
+
+The cross-reference in #6 is the critical part. Spend time there.
+The whole point of this audit is determining whether the existing
+horizontal outputs are point-in-time signals (which means they
+should migrate to LEASING and the Projections build is "replace
+with time-series table") or time-series outputs (which means they
+stay and the build is "enhance with confidence bands and richer
+table").

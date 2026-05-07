@@ -1,0 +1,93 @@
+Corrected Phase 1 build prompt
+Here's the build prompt that replaces my earlier draft, calibrated to what the audit actually returned:
+Enrich the Projections Traffic Engine UI (TrafficFunnelPanel in
+ProjectionsTab.tsx:877-1024). The audit at PROJECTIONS_TRAFFIC_
+ENGINE_AUDIT.md confirms the current surface is a time-series table —
+correct shape for its role. Build is enhancement, not restructure.
+
+PHASE 1 — Surface unused yearly fields (one commit)
+
+Add three new rows to the funnel table, all binding to existing
+yearly[*] data:
+
+1. Vacancy % per year — bind to trafficProjection.yearly[yr].vacancyPct
+2. Effective Rent per year — bind to trafficProjection.yearly[yr].effRent
+3. Rent Growth % per year — bind to trafficProjection.yearly[yr].rentGrowthPct
+
+Place these BELOW the existing 4 funnel rows (Walk-Ins / Tours / Apps
+/ Leases) and ABOVE the conversion footnote. Visual separation:
+small spacer or subdued divider — these are projection outputs
+distinct from the funnel itself.
+
+PHASE 2 — Add confidence header strip (same commit or follow-up)
+
+Above the funnel table, add a compact one-line strip showing:
+
+  [leasingSignals.confidence as percentage] · M07 Calibration · 
+  [calibrated.lastCalibrated as relative date]
+
+If leasingSignals.confidence is null on a deal that hasn't been
+calibrated, render placeholder "M07: Not yet calibrated".
+
+This is NOT confidence bands on a graph — those require asymmetric
+percentile data not yet on the response. This is a single confidence
+value as a header element, ship-able today with existing data.
+
+PHASE 3 — Confidence bands placeholder (same commit)
+
+Add a sub-panel below the funnel table titled "Calibration Confidence
+Bands" that renders "Pending M07 backend wiring — asymmetric
+percentile bands not yet surfaced on response" with a subdued
+treatment.
+
+Log to TODO_F9_DATA_FLOW.md:
+  - M07 backend: surface asymmetric percentile bands (P10/P25/P75/P90)
+    on trafficProjection.yearly[*] for projection visualization. Per
+    TRAFFIC_ENGINE_CALIBRATION_SPEC.md.
+
+Out of scope:
+- DO NOT add a graph (Recharts/D3/etc.) yet — bands placeholder is
+  enough for Phase 1
+- DO NOT change cadence toggle behavior (W/M/Y stays)
+- DO NOT change the conversion footnote
+- DO NOT touch the LEASING M07 panel work (separate task #630)
+- DO NOT add scenario toggle (Phase 2 of the broader roadmap, gated
+  on OperatorStance Phase 1)
+- DO NOT add peer overlay or M22 actuals (Phase 3-4 of broader
+  roadmap, gated on data layer)
+
+Ambiguous-field-resolution note for the agent:
+
+Per the audit, "lease velocity" appears in both this surface (Y1
+column of Leases row × cadence) and the new LEASING M07 panel
+(point-in-time leasing_signals.t06WeeklyLeases). Resolution:
+- LEASING panel labels its value "Current Lease Velocity"
+- Projections Y1 column stays as the per-year projection
+- No code change needed in either surface — just consistent labeling.
+- If the LEASING panel build hasn't shipped yet, flag this in the PR
+  description so the LEASING build inherits the labeling rule.
+
+Acceptance:
+- Three new rows render with real data on a calibrated deal
+- Confidence header shows on calibrated deals, placeholder on
+  uncalibrated
+- Bands sub-panel renders the placeholder cleanly
+- Cadence toggle (W/M/Y) still works on the new rows where applicable
+  (effRent and vacancyPct don't transform; rentGrowthPct stays
+  annual; only Walk-Ins/Tours/Apps/Leases transform per cadence)
+- TypeScript clean
+- No regression in existing 4 funnel rows
+- TODO entry logged
+
+Branch: replit/projections-traffic-engine-enrich from origin/master.
+One commit (or two if Phase 3 placeholder splits cleanly).
+Sequencing across the three Traffic Engine related tasks
+You now have three connected pieces of work:
+
+LEASING M07 panel (Task #630) — point-in-time intel at top of LEASING tab
+Projections Traffic Engine enrichment (the prompt above) — surface unused yearly fields + confidence header
+Backend M07 enhancement (TODO logged) — asymmetric percentile bands for full graph view
+
+Order: ship 1 and 2 in either sequence (they touch different files, no conflict), defer 3 until M07 backend has bandwidth.
+If you ship #2 first, the LEASING panel build inherits the "Current vs Projected Y1" labeling convention with a known reference point. If you ship #1 first, the Projections enrichment can reference the LEASING panel as "see leasing tab for current values" if helpful. Either order works; neither blocks.
+Don't bundle #1 and #2 into one PR — they touch different files, different surfaces, different test concerns. Keep the commits scoped.
