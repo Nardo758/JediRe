@@ -628,7 +628,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
       : null;
 
   // Loan Payoff at Exit — outstanding mortgage balance in the exit year (from debt service schedule).
-  const loanPayoffAtExit: number | null = (exitYearProj as Record<string, unknown> | null)?.['loanPayoff'] as number ?? null;
+  // loanPayoff is typed as `number` (always set, zero when no loan) so we read it directly.
+  // We treat zero as "no loan / unset" for display purposes (hide the sub-row when zero).
+  const loanPayoffAtExit: number | null = exitYearProj != null
+    ? (exitYearProj.loanPayoff > 0 ? exitYearProj.loanPayoff : null)
+    : null;
 
   // Net Sale Proceeds = Gross Proceeds − Loan Payoff at Exit.
   const netSaleProceedsDerived: number | null =

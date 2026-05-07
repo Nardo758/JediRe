@@ -365,7 +365,15 @@ export interface F9DealFinancials {
     };
     userOverrides: { lpShare: number | null; gpShare: number | null; prefRate: number | null };
   } | null;
-  /** Server-side per-year projections — authoritative operating statement resolving all upstream tabs */
+  /**
+   * Server-side per-year projections from buildProjectionsForExport.
+   * Shape mirrors ProjYearExport exactly (backend/src/services/f9-financial-export.service.ts).
+   * cfads is aliased from cfbt (cash flow after debt service) at the handler layer.
+   * Removed from earlier draft: cfads (now aliased), depreciation, taxableIncome, taxPayable,
+   * afterTaxCfads, effectiveTaxRate, rentGrowthPct, opexRatioPct, noiMarginPct, capRatePct,
+   * dispositionDocStamps, dispositionTaxPayable, reTaxSource, debtSource — none of these
+   * are emitted by buildProjectionsForExport today.
+   */
   projections: Array<{
     year: number;
     gpr: number; vacancyLoss: number; lossToLease: number; concessions: number; badDebt: number; nru: number;
@@ -375,20 +383,15 @@ export interface F9DealFinancials {
     insurance: number; reTaxes: number; reserves: number;
     totalOpex: number; noi: number;
     opMargin: number | null; noiPerUnit: number | null;
-    interest: number; principal: number; annualDS: number; outstandingBalance: number;
-    cfbt: number; cfads: number;
-    depreciation: number | null; taxableIncome: number | null; taxPayable: number | null;
-    afterTaxCfads: number | null; effectiveTaxRate: number | null;
+    interest: number; principal: number; annualDS: number;
+    capexDraw: number;
+    cfbt: number; cfads: number; netCF: number;
     coc: number | null; dscr: number | null; debtYield: number | null;
-    occupancy: number | null; rentGrowthPct: number | null;
-    opexRatioPct: number | null; noiMarginPct: number | null; capRatePct: number | null;
-    cumulativeEM: number | null;
+    occupancy: number | null;
     exitNoi: number | null; exitCap: number | null; grossSaleValue: number | null;
-    sellingCosts: number | null; dispositionDocStamps: number | null;
-    dispositionTaxPayable: number | null;
-    loanPayoff: number | null; netSaleProceeds: number | null;
-    reTaxSource: 'taxes_tab' | 'proforma' | 'estimate';
-    debtSource: 'debt_tab' | 'capital_stack' | 'estimate';
+    sellingCosts: number | null; loanPayoff: number; netSaleProceeds: number | null;
+    outstandingBalance: number;
+    cumulativeEM: number | null;
   }> | null;
   /** Capital tranche configuration + server-side computed distribution schedule */
   capital: {

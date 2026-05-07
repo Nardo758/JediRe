@@ -536,7 +536,14 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       // Non-fatal — stance modulation failure must not block financials response
     }
 
-    res.json({ success: true, data: { ...data, returns, closeDate, saleDate }, stanceModulations, stanceDefaulted });
+    // Surface per-year projections so the frontend can read exit-year values
+    // (Stabilized NOI at Exit, Exit Value, Net Sale Proceeds) without a
+    // separate round-trip.  cfads is aliased from cfbt (= cash flow after
+    // debt service in this model) so existing ReturnsTab / FinancialEnginePage
+    // consumers that read r.cfads keep working.
+    const projectionsForResponse = projs.map(p => ({ ...p, cfads: p.cfbt }));
+
+    res.json({ success: true, data: { ...data, returns, closeDate, saleDate, projections: projectionsForResponse }, stanceModulations, stanceDefaulted });
   } catch (error: any) {
     logger.error('Error fetching deal financials:', error);
     const status = (error as Error).message?.includes('not found') ? 404 : 500;
