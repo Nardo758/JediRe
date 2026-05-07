@@ -1,0 +1,18 @@
+Three things to do right now in your browser to actually verify the fix before moving on:
+Browser verification on 464 Bishop (10 minutes)
+
+Hard refresh the F9 Projections page. AI MARKET FINDINGS cards should show 3.5%/yr · 5.0% · 5.5%. If still 350/500/550, the deploy hasn't propagated — wait or kick.
+Scroll to Occupancy & Leasing assumptions. Blended Rent Growth row should show 3.00%. The PEER SET column is still going to be -- because that's the separate M07-not-calibrated issue, not this fix.
+Open the perYear projection grid. This is the platform-wide reliability win. Every cell in the vacancy row should show a real per-deal value, NOT 30% across all 5 hold years. That single change moves NOI projections by a meaningful amount on every deal, so the surface should look noticeably different than it has been.
+Pro Forma Year 1 vacancy_loss should still show ~$970K. This is the regression check — Year 1 reads vacancy from y1 directly (the 0.198 we've seen), not from calibratedVacancyPct. If Year 1 vacancy_loss has changed magnitude, something else is wrong.
+Export to Excel. Open the gross-sale-value cell. Should equal exitNoi / 0.055. If your hold year exitNoi is roughly $1M, the cell should show ~$18M, not ~$180K.
+
+If all five pass, the fix is live and the chapter closes.
+What's worth flagging beyond the verification
+The 30% vacancy clamp finding has implications for any historical deal screenshots, exports, or LP deliverables you've sent. Anything that referenced projection-year vacancy or projection-year NOI was wrong. The Excel exports specifically — the exitNoi / 5.5 bug means gross sale value was 100x understated, which is materially wrong for any LP deliverable.
+Two practical follow-ups depending on your operator audience:
+
+If LP deliverables are in circulation pre-fix: worth a heads-up to recipients that exits were materially understated and updated versions are coming. The exact comms is your call, but doing nothing risks an LP catching the discrepancy on their own and asking why they weren't told.
+For deals you haven't deeply analyzed yet: the post-fix projections are now actually meaningful. Worth a sweep through the deal pipeline to see whether anything that looked marginal pre-fix now looks viable (or vice versa). The 30% vacancy clamp was making every deal look worse than it was; some of those "no" decisions might want re-examination.
+
+That's a separate workstream from this engineering chapter, but worth noting before context fades.
