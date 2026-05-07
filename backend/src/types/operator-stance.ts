@@ -37,6 +37,25 @@ export type MarketingIntensity = z.infer<typeof MarketingIntensitySchema>;
 export const ExpenseGrowthPostureSchema = z.enum(['CONTAINED', 'INFLATION', 'STRESSED']);
 export type ExpenseGrowthPosture = z.infer<typeof ExpenseGrowthPostureSchema>;
 
+/**
+ * How lease-up costs (concessions, marketing, locator fees) are treated
+ * for accounting purposes. Governs both P&L recognition and S&U capital flow.
+ *
+ * OPERATING:    Full amount expensed in period incurred. All governed categories on P&L.
+ * CAPITALIZED:  All governed categories (concessions + marketing + locator fees) route
+ *               to capitalized_lease_up_total → equity_required (S&U). Zero on P&L.
+ * HYBRID:       One-time costs (free-rent, one-time concessions, marketing, locator fees)
+ *               capitalized; ongoing abatement stays on P&L.
+ *
+ * Out of scope by design: make-ready / turn cost (always P&L), TI allowances (separate).
+ * Cash invariant: total cash outflow is identical across all three modes — only the
+ * P&L vs. capital split changes.
+ *
+ * See docs/architecture/OPERATOR_STANCE_PHASE1_SPEC.md for full decision record.
+ */
+export const LeasingCostTreatmentSchema = z.enum(['OPERATING', 'CAPITALIZED', 'HYBRID']);
+export type LeasingCostTreatment = z.infer<typeof LeasingCostTreatmentSchema>;
+
 /** Provenance of the current stance values. */
 export const SetBySchema = z.enum(['operator', 'platform_default', 'agent_inferred']);
 export type SetBy = z.infer<typeof SetBySchema>;
@@ -67,6 +86,14 @@ export const OperatorStanceSchema = z.object({
   marketingIntensity: MarketingIntensitySchema.default('MARKET'),
   /** Controllable expense growth — independent of insurance/tax which use jurisdiction models. */
   expenseGrowthPosture: ExpenseGrowthPostureSchema.default('INFLATION'),
+  /**
+   * Accounting treatment for lease-up costs (concessions, marketing, locator fees).
+   * Governs both the P&L concessions line and capital flow into equity_required.
+   * OPERATING = expense in period; CAPITALIZED = route to S&U; HYBRID = split by cost type.
+   * See docs/architecture/OPERATOR_STANCE_PHASE1_SPEC.md for full decision record.
+   * Phase 2 wiring (End 1 + End 2) is tracked in Task #639.
+   */
+  leasingCostTreatment: LeasingCostTreatmentSchema.default('OPERATING'),
 
   // ── Stress dials (explicit overrides, applied on top of posture) ──
   /** Additional haircut on rent growth Y1-Y3, in basis points (e.g. 25 = -0.25%). */
@@ -111,6 +138,7 @@ export const PLATFORM_STANCE_DEFAULTS: OperatorStance = {
   concessionStrategy: 'MARKET',
   marketingIntensity: 'MARKET',
   expenseGrowthPosture: 'INFLATION',
+  leasingCostTreatment: 'OPERATING',
   stressRentGrowthHaircut: 0,
   stressExitCapWiden: 0,
   stressVacancyFloor: 0,

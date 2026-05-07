@@ -1,0 +1,49 @@
+Architecture update — LEASING COST toggle moves to STANCE, not
+treated as readonly mirror of AssumptionsTab.
+
+Updated Phase 2 treatment for LEASING COST:
+
+1. Add a new row to the STANCE sub-tab in Console (file:
+   StanceTab.tsx or equivalent — find the file in Phase 0).
+   - Label: "Leasing Cost Treatment"
+   - Three-option toggle: OPERATING / CAPITALIZED / HYBRID
+   - Default: OPERATING (matches current default)
+   - Reads from deal.deal_data.leasing_cost_treatment
+   - Writes via the existing PATCH /api/v1/deals/:dealId/context
+     handler at AssumptionsTab.tsx:1756-1768 — extract this handler
+     into a shared service/hook so STANCE and any future consumer
+     can call it without duplication. Suggested location:
+     frontend/src/services/leasingCostTreatment.ts (or in dealStore
+     if that's the established pattern for context fields).
+
+2. REMOVE the toggle from AssumptionsTab.tsx:2519 entirely. Don't
+   make it readonly — remove. STANCE becomes the sole canonical
+   write surface. AssumptionsTab is property-level inputs, not
+   posture decisions.
+
+3. Projections header LEASING COST toggle becomes preview-toggleable
+   + persistence-link as previously specified, but the link now
+   points to STANCE (not ASSUMPTIONS). Indicator copy: "Previewing
+   — set in STANCE".
+
+4. Visual placement in STANCE: alongside underwriting posture and
+   expense stance dials (these are conceptually adjacent — all
+   posture/treatment choices). If STANCE has section groupings,
+   place under "Modeling Conventions" or similar; if flat, place
+   between concession stance and expense stance.
+
+Out of scope for this PR:
+- Storage migration to operator_stance JSONB column. That's
+  OperatorStance Phase 1 work. Storage stays at
+  deal.deal_data.leasing_cost_treatment for now. The OperatorStance
+  Phase 1 spec will be updated separately to include this field
+  in its schema migration.
+- Removing the dealStore event "leasing_cost_treatment.changed" —
+  keep it; it remains correct semantically.
+
+Acceptance update:
+- STANCE sub-tab has new LEASING COST row, fully functional
+- AssumptionsTab.tsx:2519 toggle gone; no orphaned imports
+- Projections header still has preview-toggle, link points to STANCE
+- TypeScript clean, no console errors, no regression in
+  leasing_cost_treatment write/read elsewhere

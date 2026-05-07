@@ -1,0 +1,110 @@
+Confirm (b) — broaden the wiring. Update #638 with this scoping decision.
+The reasoning is sound, particularly the "the LV engine already made this decision" point. Building per-category toggles now would mean the codebase encodes one model and the UI encodes another — exactly the kind of split that compounds.
+Two refinements before #638 gets updated:
+1. The scope table is the keystone artifact — make it the canonical reference. Pin it as the first thing in the spec doc's "Decision" section, before any prose. When future contributors ask "is X governed by leasing_cost_treatment?" the table answers definitively without anyone re-reading the rationale. Format:
+markdown## Decision
+
+`leasing_cost_treatment` (OPERATING / CAPITALIZED / HYBRID) governs
+the accounting treatment of lease-up cost categories listed below.
+
+### Governed cost categories
+
+| Category | LV engine field(s) | Governed by toggle? | Engine of record |
+|---|---|---|---|
+| Free-rent concessions (one-time) | nlcOT, rcOT | Yes | concession-amortization engine |
+| Ongoing rent abatement | ongoing_monthly | Yes (HYBRID branch differs) | LV engine |
+| Marketing spend | ms (marketing_per_lease, marketing_base_monthly) | Yes | LV engine |
+| Locator / broker fees | lf (locator_fee_pct_of_rent) | Yes | LV engine |
+
+### Out of scope by design
+
+| Category | Why not | Treatment |
+|---|---|---|
+| Make-ready / turn cost | Ongoing maintenance, not deal-initiation cost | Always P&L |
+| TI allowances (Sec 7) | Structurally different category — landlord capex, not leasing incentive | Separate toggle if needed (future) |
+
+### Capital flow when CAPITALIZED
+
+The capitalized portion accrues to `capitalized_lease_up_total`
+(financials-composer.service.ts:873). That total MUST flow into
+backend `equity_required` via capital-structure-adapter.ts:71 —
+this is End 2 of the wiring gap fix.
+2. The HYBRID branch is the trickiest part of Phase 2 — call out what's already decided vs what isn't. From your audit:
+
+LV engine HYBRID is decided (Convention 1 variant: ongoing abatements stay P&L, one-time concessions excluded — out of P&L, into capital flow)
+Amortization engine HYBRID is undefined (falls through to OPERATING today — there's no distinct schedule)
+
+When Phase 2 implements the amortization HYBRID branch, the rule has to align with the LV engine's choice. So:
+markdown### HYBRID rule (canonical)
+
+Both engines must implement HYBRID identically:
+
+- One-time concessions (nlcOT, rcOT) + marketing + locator fees → 
+  capitalized (treated identically to CAPITALIZED for these fields)
+- Ongoing rent abatement → P&L (treated identically to OPERATING for 
+  this field)
+
+Today the LV engine implements this rule (lease-velocity-engine.ts:87-91).
+The concession-amortization engine has no HYBRID branch — Phase 2 must
+add one that processes one-time fields through the schedule and skips
+ongoing fields entirely.
+This eliminates the "what does HYBRID actually mean" question that would otherwise re-surface in Phase 2.
+Send the agent this update
+Confirm (b) BROADEN. Update #638's plan with the scoping decision
+captured below.
+
+Add to Phase 1 spec doc Step 4:
+
+1. The scope table — pin as the first artifact in the spec's
+   "Decision" section. Format per the conversation; categories
+   governed by leasing_cost_treatment are concessions (one-time
+   and ongoing), marketing, and locator fees. Out of scope by
+   design: make-ready (always P&L), TI allowances (separate
+   toggle if needed in future).
+
+2. HYBRID canonical rule — explicit in the spec, both engines
+   align:
+   - One-time concessions + marketing + locator fees → capitalized
+   - Ongoing rent abatement → P&L
+   - LV engine implements this today; amortization engine must add
+     a HYBRID branch in Phase 2
+
+3. Capital flow path — capitalized_lease_up_total must flow into
+   backend equity_required via capital-structure-adapter.ts:71 in
+   Phase 2. The S&U frontend display injection alone is insufficient
+   (today's PARTIALLY_WIRED state).
+
+4. Phase 2 brief (Task #639 scope when greenlit):
+   - End 1 fix: financials-composer.service.ts:1501 reads
+     leasing_cost_treatment, zero/partial concessions on P&L per
+     OPERATING/CAPITALIZED/HYBRID
+   - End 2a fix: capital-structure-adapter.ts:71 sums
+     capitalized_lease_up_total into equity_required
+   - End 2b: Add HYBRID branch to concession-amortization/index.ts
+     that processes one-time fields through schedule, skips ongoing
+   - Extend wiring to marketing and locator fees per the scope table
+     (LV engine already branches; verify capital flow into
+     capitalized_lease_up_total covers all four categories, not just
+     concessions)
+
+5. Out of scope for Phase 2:
+   - Make-ready / TI toggles (separate decision, separate task)
+   - UI changes beyond the existing toggle (toggle stays in STANCE
+     after the architectural move discussed earlier)
+   - Renaming the field (BROADEN means keep the name, extend the
+     wiring; rename would be a deprecation cycle)
+
+Acceptance for the spec doc:
+- Scope table is the first artifact in the Decision section
+- HYBRID rule explicit and identical across both engines
+- Phase 2 brief lists every End 1, End 2a, End 2b file:line touch
+  point so #639 can be scoped without re-discovery
+- Make-ready and TI marked out-of-scope by design (not omission)
+- Capital flow diagram or prose: capitalized_lease_up_total →
+  equity_required path
+
+Ship the spec doc as part of Task #638. Phase 2 build (Task #639)
+greenlight is separate, after Leon reviews the spec doc.
+Why this lands cleanly
+The audit found four things tangled in one toggle: P&L line behavior, S&U display, capital flow into equity_required, and amortization schedule semantics. By broadening the spec's scope explicitly, you're choosing to fix all four together rather than half-wire one. The cost is a meaningfully larger Phase 2 build; the benefit is the toggle does what its name says, in every code path that touches it.
+Send the update. Once #638 ships with the scoping baked in, #639 (the actual wiring build) is a clean greenlight when you're ready.

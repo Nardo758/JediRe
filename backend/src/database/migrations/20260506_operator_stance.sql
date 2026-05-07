@@ -14,5 +14,8 @@ ALTER TABLE deals
 COMMENT ON COLUMN deals.operator_stance IS
   'OperatorStance blob: { rateEnvironment, cyclePosition, recessionProbability, '
   'underwritingPosture, concessionStrategy, marketingIntensity, expenseGrowthPosture, '
+  'leasingCostTreatment, '
   'stressRentGrowthHaircut, stressExitCapWiden, stressVacancyFloor, defaulted, updatedAt }. '
-  'NULL = platform MARKET defaults apply.';
+  'NULL = platform MARKET defaults apply. '
+  'leasingCostTreatment: OPERATING | CAPITALIZED | HYBRID — governs how lease-up costs '
+  '(concessions, marketing, locator fees) split between P&L and capitalized_lease_up_total.';

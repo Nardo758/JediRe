@@ -1,0 +1,170 @@
+Yes, draft them. Pattern from existing audit docs (F9_DATA_FLOW_AUDIT_PHASE1.md, PROJECTIONS_TRAFFIC_ENGINE_AUDIT.md) is the right shape.
+Three notes before sending the task:
+1. Combining vs separating Strategy LV + M08 forward-compat. Your list separates them, but they're really one decision — adopting LV with detected/override layers IS the M08 forward-compat mechanism. The forward-compat property is a consequence of the LV choice, not a separate decision. I'd combine them into one ADR titled "Strategy Fields LV Pattern (with detection-layer forward-compatibility)". You get 3 ADRs instead of 4, and they read more cleanly. But if you'd rather preserve your original framing as 4 docs, that works too — just mention which way at the top of the task.
+2. Naming convention. Match the existing docs/architecture/ pattern (UPPER_SNAKE_CASE descriptive names) rather than introducing a numbered ADR scheme. So:
+
+docs/architecture/STRATEGY_FIELDS_LV_PATTERN.md
+docs/architecture/CROSS_TAB_EVENT_PATTERN.md
+docs/architecture/INPUTS_SOURCE_OF_TRUTH.md
+
+Adding numbered ADR ceremony (ADR-0001-…) is overhead for a project with only 3-4 decisions to document. If you want numbered ADRs later, you can rename then.
+3. Source material. Most of this lives in conversation context, not in code comments. The agent will need to extract from current threads — the strategy LV decision is in the Investment/Exit Strategy bundling discussion (around Task #613-619), the event pattern decision is in the #617 grep finding, and the INPUTS source-of-truth principle is from yesterday's #628 cleanup conversation. Include these references in the task prompt so the agent knows where to draw from.
+Send the agent this
+Task: Write 3 architecture decision record (ADR) docs for
+shipped-but-undocumented patterns. Match the format and tone of
+existing docs in docs/architecture/ (F9_DATA_FLOW_AUDIT_PHASE1.md,
+PROJECTIONS_TRAFFIC_ENGINE_AUDIT.md, INPUTS_TAB_SECTION_AUDIT.md).
+
+Build mode required (file writes). One commit, three new files.
+
+DELIVERABLES — three files in docs/architecture/
+
+1. STRATEGY_FIELDS_LV_PATTERN.md
+2. CROSS_TAB_EVENT_PATTERN.md
+3. INPUTS_SOURCE_OF_TRUTH.md
+
+STRUCTURE — each file follows this template
+
+# [Decision Title]
+
+**Status:** Accepted · Implemented [Month Year]
+**Last touched commit:** [hash if relevant, otherwise omit]
+
+## Context
+What problem prompted this decision? What were we doing before?
+What pain or risk drove the change?
+
+## Decision
+What we decided. Be specific. Include code patterns or schema
+shapes where the decision is structural.
+
+## Consequences
+What this changes:
+- Code paths affected
+- New patterns enforced
+- Patterns deprecated
+- Migration / cleanup work outstanding (if any)
+
+## Implementation
+File:line references where the pattern lives today. The audit-doc
+pattern of using exact file paths is the standard — readers should
+be able to grep into the codebase from the doc.
+
+## Open follow-ups
+Anything anticipated or known-incomplete. Cross-reference TODO files
+where relevant (TODO_F9_DATA_FLOW.md, TODO_DEAL_TERMS_FOLLOWUP.md,
+TODO_OPERATOR_STANCE_PHASE_3.md).
+
+## Related decisions
+Other ADRs in docs/architecture/ that connect to this one.
+
+CONTENT — what goes in each
+
+1. STRATEGY_FIELDS_LV_PATTERN.md
+   - Context: Investment Strategy and Exit Strategy were originally
+     placed as flat enum fields. Risk: M08 Strategy Arbitrage (mid-
+     build per project memory) would later write to the same fields,
+     creating dual-source conflict (same shape as Purchase Price bug).
+   - Decision: Store both as LayeredValue<T> with two layers —
+     `detected: { value, confidence, source } | null` (M08 writes here
+     when it ships) and `override: enum-value | null` (operator dropdown).
+     Resolved = override ?? detected?.value ?? null. M08 forward-compat
+     is a consequence of this shape, not a separate decision.
+   - Consequences: Operator override always wins. M08 plugs in later
+     with no schema migration. Consistent with every LV field in y1.
+   - Implementation: Reference the LV schema in deal_assumptions JSONB
+     (find file:line in proforma-adjustment.service.ts where
+     investmentStrategyLv is defined and consumed). Reference the
+     dropdown component file:line. Reference the read paths in
+     DealTermsTab.
+   - Source material in conversation: tasks #613, #619, #620; the
+     "Investment Strategy + Exit Strategy bundling" discussion that
+     led to the unified LV pattern.
+
+2. CROSS_TAB_EVENT_PATTERN.md
+   - Context: Two competing event mechanisms existed (dealStore.emit
+     for some events, DOM CustomEvent for others — discovered when
+     scoping #617 Purchase Price). Without a canonical pattern, every
+     future cross-tab notification would have two valid choices.
+   - Decision: dealStore is the canonical event bus. DOM CustomEvent
+     is not used for state propagation. Event naming convention:
+     snake_case dotted, past tense (e.g., basis.changed, hold_period
+     .changed, exit_cap.changed). Subscribers use dealStore selectors
+     or subscribe API; never import other tabs directly.
+   - Consequences: TypeScript-safe payloads. Backend agents don't need
+     DOM. Test setup simpler. Existing #613 deal:strategy-changed
+     CustomEvent should migrate to dealStore (open follow-up).
+   - Implementation: List the existing dealStore events with file:line
+     in stores/dealStore.ts. Confirmed events: lease_velocity.output
+     .updated, leasing_cost_treatment.changed, hold_period.changed,
+     basis.changed, exit_cap.changed.
+   - Open follow-up: Migrate Task #613's deal:strategy-changed
+     CustomEvent to dealStore strategy.changed event. Small task,
+     not yet done.
+   - Source material in conversation: #617 grep finding ("basis.changed
+     already exists at dealStore.ts:1827"), the full event-pattern-
+     decision discussion in this thread.
+
+3. INPUTS_SOURCE_OF_TRUTH.md
+   - Context: INPUTS tab had triple-home duplicates — stabilizedOcc,
+     loss_to_lease_pct, concessions_pct each editable in 3 surfaces
+     (General Sec 5A, Sec 5B, Leasing Cat C/D). Created silent
+     shadowing similar to Purchase Price bug.
+   - Decision: For leasing-related fields, LEASING owns the editable
+     driver; GENERAL displays resolved Pro Forma Year 1 outputs as
+     readonly. Single editable surface per concept. Readonly mirrors
+     in other surfaces use the cross-reference pattern: "Edit in
+     LEASING Cat X" link beside the readonly value.
+   - Categorization principle: Leasing-driven fields → LEASING
+     (vacancy, LTL, concessions, stabilized occupancy, renewal rate).
+     Macro escalators → GENERAL (CPI, expense growth). Deal facts →
+     DEAL TERMS.
+   - Consequences: One write path per field. No silent shadowing.
+     Visual cross-references make navigation explicit. Future fields
+     follow the same placement principle.
+   - Implementation: Tasks #628 + #629. Reference the read-only
+     cross-reference rows in AssumptionsTab.tsx (file:line). Reference
+     leasing-fields.config.ts header comment that documents the
+     principle inline.
+   - Source material in conversation: yesterday's #628/#629 cleanup
+     discussion, the General-vs-Leasing inventory audit
+     (INPUTS_TAB_SECTION_AUDIT.md if it exists).
+
+WORKING NOTES
+
+- Strategy LV and M08 forward-compat are combined into one ADR
+  per the architectural reasoning that forward-compat is a
+  consequence of the LV shape, not a separate decision. If Leon
+  prefers four separate docs, push back and confirm before
+  splitting.
+- All three ADRs are retrospective — they document decisions
+  already made and shipped. Status is "Implemented" not "Proposed."
+- Don't fabricate file:line references. Where the implementation
+  details aren't available without grep, mark "[grep TBD]" and
+  flag in PR description for Leon to fill in.
+- Format pass: match the existing audit-doc tone. Headers in
+  Title Case. Code blocks for schema shapes. Markdown tables when
+  comparing patterns.
+
+Out of scope:
+- OperatorStance Phase 1 spec (separate task #638, forward-looking
+  spec rather than retrospective ADR)
+- New decisions or new patterns — these docs only retrospectively
+  capture what's already shipped
+- Code changes — pure documentation work
+
+Acceptance:
+- Three new files in docs/architecture/
+- Each follows the template structure
+- Each has at minimum: Context, Decision, Consequences, Implementation,
+  Related decisions
+- Cross-references between the three ADRs where applicable
+- Markdown lints clean (no broken links, no malformed tables)
+
+Branch: replit/architecture-decision-records from origin/master.
+One commit: docs(architecture): retrospective ADRs for shipped
+patterns.
+Why this is worth doing now
+These four decisions all got made in the last 48 hours of debugging — they're fresh in conversation context but not yet stable in the codebase's documented memory. Once a few weeks pass, the reasoning gets harder to reconstruct ("why did we use LV for strategy when other enums are flat?"). The cheapest moment to write these is now, while you can still see the bugs they were responding to.
+Plus — the closure value is real. Three docs in docs/architecture/ close a hygiene gap that's been quietly accumulating since the platform's INPUTS tab restructure started.
+Send the prompt. Quick task, clean win.

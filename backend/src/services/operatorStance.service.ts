@@ -166,6 +166,7 @@ export async function saveStance(
     dealId,
     underwritingPosture: parsed.data.underwritingPosture,
     cyclePosition: parsed.data.cyclePosition,
+    leasingCostTreatment: parsed.data.leasingCostTreatment,
   });
 
   // Background reblend from baseline — does not block the REST response
