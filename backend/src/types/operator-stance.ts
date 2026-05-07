@@ -37,6 +37,10 @@ export type MarketingIntensity = z.infer<typeof MarketingIntensitySchema>;
 export const ExpenseGrowthPostureSchema = z.enum(['CONTAINED', 'INFLATION', 'STRESSED']);
 export type ExpenseGrowthPosture = z.infer<typeof ExpenseGrowthPostureSchema>;
 
+/** Provenance of the current stance values. */
+export const SetBySchema = z.enum(['operator', 'platform_default', 'agent_inferred']);
+export type SetBy = z.infer<typeof SetBySchema>;
+
 // ── OperatorStance schema ──────────────────────────────────────────────────
 
 export const OperatorStanceSchema = z.object({
@@ -75,15 +79,24 @@ export const OperatorStanceSchema = z.object({
   // ── Provenance ─────────────────────────────────────────────────
   /** True when all values are platform-derived defaults (operator has not touched this deal). */
   defaulted: z.boolean().default(true),
+  /**
+   * Provenance of these stance values.
+   *   operator         — operator explicitly chose these values via the Stance tab.
+   *   platform_default — no data yet; using hardcoded MARKET defaults.
+   *   agent_inferred   — Cashflow Agent observed market signals and suggested these
+   *                      values; operator has not confirmed them (defaulted still true).
+   */
+  setBy: SetBySchema.optional(),
   /** ISO timestamp of last operator edit. */
   updatedAt: z.string().default(() => new Date().toISOString()),
 });
 
 export type OperatorStance = z.infer<typeof OperatorStanceSchema>;
 
-/** Partial input for PUT /stance — any subset of fields can be provided. */
+/** Partial input for PUT /stance — any subset of fields can be provided.
+ *  setBy is excluded — it is always computed server-side from context. */
 export const OperatorStancePatchSchema = OperatorStanceSchema
-  .omit({ defaulted: true, updatedAt: true })
+  .omit({ defaulted: true, updatedAt: true, setBy: true })
   .partial();
 
 export type OperatorStancePatch = z.infer<typeof OperatorStancePatchSchema>;
@@ -102,6 +115,7 @@ export const PLATFORM_STANCE_DEFAULTS: OperatorStance = {
   stressExitCapWiden: 0,
   stressVacancyFloor: 0,
   defaulted: true,
+  setBy: 'platform_default',
   updatedAt: new Date().toISOString(),
 };
 
@@ -111,10 +125,15 @@ export const PLATFORM_STANCE_DEFAULTS: OperatorStance = {
  */
 export function resolveStance(persisted: Partial<OperatorStance> | null | undefined): OperatorStance {
   if (!persisted) return { ...PLATFORM_STANCE_DEFAULTS, updatedAt: new Date().toISOString() };
+  const defaulted = persisted.defaulted ?? false;
+  // Infer setBy from context when not explicitly stored
+  const setBy: SetBy = persisted.setBy
+    ?? (defaulted ? 'platform_default' : 'operator');
   return {
     ...PLATFORM_STANCE_DEFAULTS,
     ...persisted,
-    defaulted: persisted.defaulted ?? false,
+    defaulted,
+    setBy,
   };
 }
 

@@ -148,6 +148,7 @@ export async function saveStance(
     ...existing,
     ...patch,
     defaulted: false,
+    setBy: 'operator',
     updatedAt: new Date().toISOString(),
   };
 
@@ -213,6 +214,69 @@ export async function resetStance(
   });
 
   return defaults;
+}
+
+// ── Agent-inferred stance suggestion ────────────────────────────────────────
+
+/**
+ * P3-03: Write agent-observed market signals as an `agent_inferred` stance
+ * suggestion. Only writes when the operator has not yet set a stance
+ * (defaulted = true). Never clobbers an operator's explicit choices.
+ *
+ * Unlike saveStance(), this does NOT:
+ *   - set defaulted = false (operator still hasn't confirmed)
+ *   - trigger a background reblend (suggestion only — no model re-run)
+ */
+export async function suggestAgentInferredStance(
+  dealId: string,
+  suggestion: Partial<import('../types/operator-stance').OperatorStancePatch>,
+): Promise<void> {
+  const db = getDb();
+
+  // Read current persisted stance directly (bypass getStanceForDeal to avoid
+  // m28 enrichment — we need the raw DB value to check defaulted status)
+  const res = await db.query(
+    `SELECT operator_stance FROM deals WHERE id = $1 LIMIT 1`,
+    [dealId],
+  );
+  if (res.rows.length === 0) return;
+
+  const raw = res.rows[0].operator_stance;
+  // If operator has explicitly set stance, do not overwrite
+  if (raw && raw.defaulted === false) {
+    logger.debug('[OperatorStance] agent_inferred suggestion skipped — operator has set stance', { dealId });
+    return;
+  }
+
+  const existing = resolveStance(raw);
+  const inferred: OperatorStance = {
+    ...existing,
+    ...suggestion,
+    defaulted: true,        // still a platform default — operator hasn't confirmed
+    setBy: 'agent_inferred',
+    updatedAt: new Date().toISOString(),
+  };
+
+  const parsed = OperatorStanceSchema.safeParse(inferred);
+  if (!parsed.success) {
+    logger.warn('[OperatorStance] agent_inferred stance invalid — suggestion dropped', {
+      dealId, errors: parsed.error.message,
+    });
+    return;
+  }
+
+  await db.query(
+    `UPDATE deals SET operator_stance = $1::jsonb WHERE id = $2`,
+    [JSON.stringify(parsed.data), dealId],
+  );
+
+  logger.info('[OperatorStance] agent_inferred stance suggestion written', {
+    dealId,
+    suggestion: Object.keys(suggestion),
+    cyclePosition: parsed.data.cyclePosition,
+    underwritingPosture: parsed.data.underwritingPosture,
+    stressVacancyFloor: parsed.data.stressVacancyFloor,
+  });
 }
 
 // ── Affected fields ───────────────────────────────────────────────────────────

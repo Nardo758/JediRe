@@ -10,7 +10,8 @@
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
-import { getStanceForDeal, applyStanceToProformaFields, applyStanceReblend } from '../services/operatorStance.service';
+import { getStanceForDeal, applyStanceToProformaFields, applyStanceReblend, suggestAgentInferredStance } from '../services/operatorStance.service';
+import type { OperatorStancePatch } from '../types/operator-stance';
 
 interface FieldOutput {
   value: unknown;
@@ -90,6 +91,23 @@ export async function cashflowPostProcess(
               });
             });
           });
+        }
+
+        // P3-03: Agent-inferred stance suggestion — detect market signals from
+        // what the agent just observed and write them back as a platform suggestion
+        // when the operator has not yet set a stance. Never overwrites operator choice.
+        if (stance.defaulted) {
+          const signals = inferStanceSignals(proformaFields);
+          if (signals) {
+            setImmediate(() => {
+              suggestAgentInferredStance(ctx.dealId!, signals).catch(err => {
+                logger.warn('[CashflowPostProcess] Agent-inferred stance suggestion failed (non-fatal)', {
+                  dealId: ctx.dealId,
+                  err: err instanceof Error ? err.message : String(err),
+                });
+              });
+            });
+          }
         }
       } catch (err) {
         // Non-fatal: stance lookup failure must never block agent output
@@ -273,6 +291,48 @@ async function aggregateFromToolCalls(
     output.tier_distribution = tiers;
     logger.info(`[CashflowPostProcess] Aggregated tier_distribution: ${JSON.stringify(tiers)}`);
   }
+}
+
+/**
+ * P3-03: Scan agent-written proforma_fields for market signals that justify
+ * a non-MARKET stance. Returns a partial stance patch when signals are found,
+ * or null when market conditions look normal.
+ *
+ * Signal thresholds:
+ *   vacancy > 0.08 pp       → cyclePosition: LATE
+ *   vacancy > 0.07 pp       → stressVacancyFloor bump (1–5 pp)
+ *   rent_growth < 0.02 /yr  → underwritingPosture: CONSERVATIVE
+ */
+function inferStanceSignals(
+  proformaFields: Record<string, any>,
+): OperatorStancePatch | null {
+  const vacancyField = proformaFields['vacancy'];
+  const rentGrowthField = proformaFields['rentGrowth'] ?? proformaFields['rent_growth'];
+
+  const vacancy: number | null = typeof vacancyField?.value === 'number' ? vacancyField.value : null;
+  const rentGrowth: number | null = typeof rentGrowthField?.value === 'number' ? rentGrowthField.value : null;
+
+  const signals: OperatorStancePatch = {};
+  let hasSignal = false;
+
+  if (vacancy != null && vacancy > 0.08) {
+    signals.cyclePosition = 'LATE';
+    hasSignal = true;
+  }
+
+  if (vacancy != null && vacancy > 0.07) {
+    // Express excess vacancy above typical 5% floor as an explicit stress dial (1–5 pp)
+    const impliedFloor = Math.round((vacancy - 0.05) * 100); // pp as integer
+    signals.stressVacancyFloor = Math.min(5, Math.max(1, impliedFloor));
+    hasSignal = true;
+  }
+
+  if (rentGrowth != null && rentGrowth < 0.02) {
+    signals.underwritingPosture = 'CONSERVATIVE';
+    hasSignal = true;
+  }
+
+  return hasSignal ? signals : null;
 }
 
 async function countToolCalls(runId: string, toolName: string): Promise<number> {

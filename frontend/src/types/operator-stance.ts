@@ -16,6 +16,9 @@ export type ConcessionStrategy = 'CONSERVATIVE' | 'MARKET' | 'AGGRESSIVE';
 export type MarketingIntensity = 'LOW' | 'MARKET' | 'AGGRESSIVE';
 export type ExpenseGrowthPosture = 'CONTAINED' | 'INFLATION' | 'STRESSED';
 
+/** Provenance of the current stance values. */
+export type SetBy = 'operator' | 'platform_default' | 'agent_inferred';
+
 export interface OperatorStance {
   /** Federal Reserve rate trajectory — modulates exit cap and opex growth. */
   rateEnvironment: RateEnvironment;
@@ -39,6 +42,11 @@ export interface OperatorStance {
   stressVacancyFloor: number;
   /** True when all values are platform-derived defaults (operator has not touched this deal). */
   defaulted: boolean;
+  /**
+   * Provenance: operator = explicit choice, platform_default = no data,
+   * agent_inferred = Cashflow Agent observed signals and suggested these values.
+   */
+  setBy?: SetBy;
   /** ISO timestamp of last operator edit. */
   updatedAt: string;
 }

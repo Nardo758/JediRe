@@ -22,34 +22,47 @@ to full platform defaults gracefully if m28 table is not yet seeded.
 
 ---
 
-## P3-02 — Vacancy projection hardcodes
+## P3-02 — Vacancy projection hardcodes ✅ FIXED (May 2026)
 
 Service-layer math functions that hardcode a vacancy assumption bypass
 `stressVacancyFloor` modulation. These need to be audited and refactored to
 consult stance before Phase 3 math hooks are wired.
 
-Files to audit:
-- `backend/src/services/proforma/` — check for hardcoded vacancy percentages
-- `backend/src/agents/cashflow.postprocess.ts` — `stressVacancyFloor` is checked
-  post-process but only for validation; actual projection math may not use it
-- Any function that returns a fixed `0.05` or `0.07` vacancy default
-
-Fix (Phase 3): refactor projection functions to accept `OperatorStance` and
-call `computeStanceDelta(stance, 'vacancy')` to derive the floor.
+Audit results:
+- `proforma-projection.service.ts`: no hardcoded vacancy values. ✅
+- `applyStanceToFinancials` (live F9 path): correctly applies `computeStanceDelta
+  ('vacancy')` which converts `stressVacancyFloor` pp → bps, added to all
+  `perYear[].vacancyPct`. ✅
+- `applyStanceToProformaFields` (cashflow agent path): correctly applies stance
+  delta to `proformaFields.vacancy.value`. ✅
+- `getProFormaComputed` (proforma.routes.ts bridge): had `vacancyY1: vac + 0.05`
+  hardcoded. Fixed to query `deals.operator_stance.stressVacancyFloor` and use
+  `Math.max(0.05, stressVacancyFloor)` as the year-1 absorption premium. ✅
 
 ---
 
-## P3-03 — Agent-inferred stance write-back
+## P3-03 — Agent-inferred stance write-back ✅ FIXED (May 2026)
 
 The spec mentions `setBy: 'agent_inferred'` as a valid provenance value. The
 live schema uses `defaulted: boolean` (operator-set vs platform-default, no
 agent-inferred state). There is no path for the Cashflow Agent to write back a
 stance suggestion after observing the deal's data patterns.
 
-Fix (Phase 3): add `setBy: 'operator' | 'platform_default' | 'agent_inferred'`
-to `OperatorStance`. Wire `cashflow.postprocess.ts` to optionally write an
-`agent_inferred` stance when it detects signals (late-cycle submarket, rising
-vacancy trend, etc.) that justify a non-MARKET default.
+Fix shipped:
+- `SetBySchema` added to `operator-stance.ts`: `'operator' | 'platform_default' |
+  'agent_inferred'`. Optional field — backward-compatible with existing JSONB rows.
+- `resolveStance()` infers `setBy` from `defaulted` when not present in persisted data.
+- `saveStance()` now writes `setBy: 'operator'` on every explicit operator save.
+- `PLATFORM_STANCE_DEFAULTS` carries `setBy: 'platform_default'`.
+- `suggestAgentInferredStance(dealId, signals)` added to `operatorStance.service.ts`:
+  writes `setBy: 'agent_inferred'`, `defaulted: true` — never overwrites an operator's
+  explicit choice (`defaulted = false`), never triggers a background reblend.
+- `inferStanceSignals(proformaFields)` added to `cashflow.postprocess.ts`:
+  detects vacancy > 0.08 → `cyclePosition: LATE`; vacancy > 0.07 → `stressVacancyFloor`
+  bump; rent_growth < 0.02 → `underwritingPosture: CONSERVATIVE`.
+- Called via `setImmediate` in the postprocess pipeline after stance modulation,
+  only when operator stance is still `defaulted = true`.
+- Frontend `SetBy` type added to `frontend/src/types/operator-stance.ts`.
 
 ---
 

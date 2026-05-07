@@ -150,11 +150,25 @@ export class ProFormaAdjustmentService {
     const og = parseFloat(proforma.opexGrowth.effective) || 0.03;
     const ec = parseFloat(proforma.exitCap.effective) || 0.0625;
 
+    // P3-02: use stressVacancyFloor from persisted stance to modulate year-1
+    // absorption premium instead of a flat hardcoded 0.05.
+    let vacancyY1Premium = 0.05;
+    try {
+      const stanceRow = await query(
+        `SELECT operator_stance FROM deals WHERE id = $1 LIMIT 1`,
+        [dealId],
+      );
+      const sf = stanceRow.rows[0]?.operator_stance?.stressVacancyFloor;
+      if (typeof sf === 'number' && sf > 0) {
+        vacancyY1Premium = Math.max(0.05, sf);
+      }
+    } catch { /* non-fatal — keep default 0.05 */ }
+
     const { runModel } = require('./deterministic/deterministic-model-runner');
     const modelAssumptions = {
       purchasePrice: 50000000, units: 232, marketRent: 1850,
       rentGrowth: Array(10).fill(rg),
-      lossToLease: 0.03, vacancyY1: vac + 0.05, vacancyStab: vac,
+      lossToLease: 0.03, vacancyY1: vac + vacancyY1Premium, vacancyStab: vac,
       concessions: 0.02, badDebt: 0.005, otherIncomePerUnit: 500,
       expenseGrowth: og, loanAmount: 35000000, rate: 0.055,
       term: 360, amort: 360, ioPeriod: 0, holdYears: 5,
