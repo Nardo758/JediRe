@@ -474,8 +474,8 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if ((fin.assumptions as any)?.targetEm != null)        setTargetEm(String((fin.assumptions as any).targetEm));
     if ((fin.assumptions as any)?.targetCoc != null)       setTargetCoc(((fin.assumptions as any).targetCoc * 100).toFixed(2));
     // Strategy LV fields — hydrate from resolved scalar
-    const exitStrategyLvH    = (fin.assumptions as any)?.exitStrategyLv    ?? null;
-    const investStrategyLvH  = (fin.assumptions as any)?.investmentStrategyLv ?? null;
+    const exitStrategyLvH    = (fin.assumptions as any)?.exitStrategy    ?? null;
+    const investStrategyLvH  = (fin.assumptions as any)?.investmentStrategy ?? null;
     if (exitStrategyLvH?.resolved != null)   setExitStrategy(exitStrategyLvH.resolved);
     if (investStrategyLvH?.resolved != null) setInvestmentStrategy(investStrategyLvH.resolved);
     if ((fin.assumptions as any)?.sellingCostsPct != null) setSellingCosts(((fin.assumptions as any).sellingCostsPct * 100).toFixed(2));
@@ -503,8 +503,8 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const targetEmResolved        = (fin?.assumptions as any)?.targetEm        ?? null;
   const targetCocResolved       = (fin?.assumptions as any)?.targetCoc       ?? null;
   // Strategy LV resolved objects — full shape for badge logic + downstream consumers
-  const exitStrategyLv         = (fin?.assumptions as any)?.exitStrategyLv         ?? null;
-  const investmentStrategyLv   = (fin?.assumptions as any)?.investmentStrategyLv   ?? null;
+  const exitStrategyLv         = (fin?.assumptions as any)?.exitStrategy         ?? null;
+  const investmentStrategyLv   = (fin?.assumptions as any)?.investmentStrategy   ?? null;
   const exitStrategyResolved   = exitStrategyLv?.resolved        ?? null;
   const investStrategyResolved = investmentStrategyLv?.resolved  ?? null;
   const sellingCostsPctResolved = (fin?.assumptions as any)?.sellingCostsPct ?? null;

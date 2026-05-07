@@ -2203,8 +2203,8 @@ export async function getDealFinancials(
     targetEm,
     targetCoc,
     // Operator strategy fields — full LV objects (M08 writes detected slot later)
-    exitStrategyLv,
-    investmentStrategyLv,
+    exitStrategy: exitStrategyLv,
+    investmentStrategy: investmentStrategyLv,
     sellingCostsPct,
   };
 
