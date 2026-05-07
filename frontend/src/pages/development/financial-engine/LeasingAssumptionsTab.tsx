@@ -16,6 +16,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronRight, Lock, Info } from 'lucide-react';
+import { M07IntelPanel } from './M07IntelPanel';
 import {
   LEASING_CATEGORIES,
   LEASING_TIER_PREFS_KEY,
@@ -702,6 +703,9 @@ export function LeasingAssumptionsTab({
           </>
         )}
       </div>
+
+      {/* ── M07 Traffic Engine Intel Panel ── always above ANNUAL / SCHEDULE content ── */}
+      <M07IntelPanel financials={financials} />
 
       {/* ── SCHEDULE view: monthly timeline grid ──────────────────────────────── */}
       {viewMode === 'SCHEDULE' && onMonthlyChange && (() => {

@@ -39,3 +39,39 @@ interface F9TrafficYear {
 **Frontend placeholder:** The "Calibration Confidence Bands" sub-panel inside `TrafficFunnelPanel` currently renders a "Pending M07 backend wiring" message. Once the bands are on the response, the placeholder swaps to a rendered band visualization (no graph library needed — an inline range bar suffices).
 
 **Priority:** Defer until M07 backend has bandwidth. Frontend placeholder is in place.
+
+---
+
+## M07 — Peer benchmark data for LEASING Intel Panel
+
+**Requested by:** Task #630 (Add M07 intel panel to Leasing tab)
+**Blocking:** "Peer Benchmark" sub-panel in `M07IntelPanel.tsx` (LEASING sub-tab)
+**Spec reference:** `docs/architecture/traffic_engine_v2_leasing_prediction.md`
+
+**Required backend change:**
+Surface the following peer benchmark fields on the `trafficProjection` response:
+- `nPeerProperties` — number of peer properties in calibration sample
+- `submarketPercentile` — subject property's percentile position within peer set (vacancy, rent, lease velocity)
+- Peer distribution: vacancy %, effective rent, lease velocity at P25/P50/P75
+
+**Frontend placeholder:** The "Peer Benchmark" collapsible in `M07IntelPanel.tsx` currently renders
+"pending M07 backend wiring" notes for all three sub-fields. Once available, swap for rendered rows.
+
+**Priority:** Defer until M07 backend has bandwidth. Frontend placeholder is in place.
+
+---
+
+## M07 — Pre-leased % and reno metrics for LEASING Intel Panel (Lease-Up / Reno modes)
+
+**Requested by:** Task #630 (Add M07 intel panel to Leasing tab)
+**Blocking:** Lease-Up KPI chip "PRE-LEASED %" and Value-Add/Reno chip "RENO METRICS" in `M07IntelPanel.tsx`
+
+**Required backend change:**
+- `leasingSignals.preLeasedPct` — current pre-leased percentage (Lease-Up mode only)
+- `leasingSignals.peakDownUnits` — peak units offline during renovation (VALUE_ADD/REDEVELOPMENT)
+- `leasingSignals.postRenoAbsorptionLagWks` — weeks of absorption lag post-renovation
+
+**Frontend placeholder:** Dashed-border placeholder chips are rendered in `M07IntelPanel.tsx`
+for these fields. Swap to `KpiChip` once on response.
+
+**Priority:** Defer until M07 backend has bandwidth. Frontend placeholders are in place.
