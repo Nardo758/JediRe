@@ -712,20 +712,40 @@ router.patch('/:dealId/assumptions/targets', requireAuth, async (req: Authentica
 });
 
 /**
- * PATCH /:dealId/assumptions/exit-strategy
+ * PATCH /:dealId/assumptions/strategy
  *
- * Surgical write for exit strategy (Item 4 — DealTermsTab).
- * Body: { exitStrategy: 'Sale' | 'Refinance' | 'Hold' | null }
+ * Unified surgical write for both Investment Strategy and Exit Strategy.
+ * Both fields are stored as LV-shaped JSONB so M08 can later write the
+ * `detected` slot without a schema migration.
+ *
+ * Body (both optional — partial payloads safe):
+ *   { exitStrategy?: 'Sale' | 'Refinance' | 'Hold' | null,
+ *     investmentStrategy?: 'Build-to-Sell' | 'Flip' | 'Rental' | 'Short-Term Rental' | null }
+ *
+ * Null clears the operator override; detected slot is always preserved.
+ * Shape per field: { detected: {value,confidence,source}|null, override: string|null }
+ *
+ * Supersedes: PATCH /:dealId/assumptions/exit-strategy (flat TEXT, removed May 2026)
+ * Task #613 — Strategy fields LV persistence
+ *
+ * Emits: deal:strategy-changed CustomEvent (frontend only, after F9 refresh)
  */
-router.patch('/:dealId/assumptions/exit-strategy', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.patch('/:dealId/assumptions/strategy', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
     const userId = req.user?.userId;
-    const { exitStrategy } = req.body as { exitStrategy: string | null };
+    const body = req.body as { exitStrategy?: string | null; investmentStrategy?: string | null };
 
-    const VALID = ['Sale', 'Refinance', 'Hold'];
-    if (exitStrategy !== null && !VALID.includes(exitStrategy)) {
-      return res.status(400).json({ error: `exitStrategy must be one of: ${VALID.join(', ')}` });
+    const EXIT_VALID = ['Sale', 'Refinance', 'Hold'];
+    const INV_VALID  = ['Build-to-Sell', 'Flip', 'Rental', 'Short-Term Rental'];
+
+    if ('exitStrategy' in body && body.exitStrategy !== null && body.exitStrategy !== undefined
+        && !EXIT_VALID.includes(body.exitStrategy)) {
+      return res.status(400).json({ error: `exitStrategy must be one of: ${EXIT_VALID.join(', ')}` });
+    }
+    if ('investmentStrategy' in body && body.investmentStrategy !== null && body.investmentStrategy !== undefined
+        && !INV_VALID.includes(body.investmentStrategy)) {
+      return res.status(400).json({ error: `investmentStrategy must be one of: ${INV_VALID.join(', ')}` });
     }
 
     const own = await pool.query(
@@ -736,18 +756,49 @@ router.patch('/:dealId/assumptions/exit-strategy', requireAuth, async (req: Auth
       return res.status(403).json({ error: 'Not authorized for this deal' });
     }
 
+    // Ensure the deal_assumptions row exists before patching.
     await pool.query(
-      `INSERT INTO deal_assumptions (deal_id, exit_strategy, updated_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (deal_id) DO UPDATE SET
-         exit_strategy = $2,
-         updated_at    = NOW()`,
-      [dealId, exitStrategy]
+      `INSERT INTO deal_assumptions (deal_id, updated_at) VALUES ($1, NOW())
+       ON CONFLICT (deal_id) DO NOTHING`,
+      [dealId]
     );
+
+    // Build update expression dynamically — only touch fields that were provided.
+    // Each field updates only the `override` slot; the `detected` slot is preserved
+    // so a future M08 write is not overwritten.
+    const sets: string[] = ['updated_at = NOW()'];
+    const params: unknown[] = [dealId];
+
+    if ('exitStrategy' in body) {
+      const val = body.exitStrategy ?? null;
+      params.push(val);
+      sets.push(
+        `exit_strategy_lv =
+           COALESCE(exit_strategy_lv, '{"detected":null}'::jsonb)
+           || jsonb_build_object('override', $${params.length}::text)`
+      );
+    }
+
+    if ('investmentStrategy' in body) {
+      const val = body.investmentStrategy ?? null;
+      params.push(val);
+      sets.push(
+        `investment_strategy_lv =
+           COALESCE(investment_strategy_lv, '{"detected":null}'::jsonb)
+           || jsonb_build_object('override', $${params.length}::text)`
+      );
+    }
+
+    if (sets.length > 1) {
+      await pool.query(
+        `UPDATE deal_assumptions SET ${sets.join(', ')} WHERE deal_id = $1`,
+        params
+      );
+    }
 
     res.json({ success: true });
   } catch (error: any) {
-    logger.error('Error patching exit strategy:', error);
+    logger.error('Error patching strategy fields:', error);
     res.status(500).json({ error: error.message });
   }
 });

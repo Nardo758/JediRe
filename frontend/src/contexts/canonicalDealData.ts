@@ -179,7 +179,7 @@ export function parseDealInputs(deal: any): CanonicalDealInputs {
     targetUnits: deal.targetUnits || deal.target_units || null,
     strategyName: deal.strategyName || deal.strategy_name || null,
     holdPeriod: deal.holdPeriod || deal.hold_period || null,
-    exitStrategy: deal.exitStrategy || deal.exit_strategy || null,
+    exitStrategy: deal.exitStrategy || null,
     expectedCloseDate: deal.expectedCloseDate || deal.expected_close_date || null,
     constructionStart: deal.constructionStart || deal.construction_start || null,
     stabilizationDate: deal.stabilizationDate || deal.stabilization_date || null,

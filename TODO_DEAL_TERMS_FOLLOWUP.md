@@ -46,14 +46,16 @@ DealTermsTab. The read path works; only the write path is missing.
   - `getDealFinancials` SELECT extended; `assumptions.targetIrr/Em/Coc` on the F9 contract.
   - DealTermsTab: `saveTargetIrr/Em/Coc` save functions wired; rows hydrate on load; `PendingBadge` removed; source badge flips Override ↔ Not Provided. ✓
 
-### 4. Exit Strategy ✅ FIXED (May 2026)
+### 4. Exit Strategy ✅ SUPERSEDED (May 2026 → Task #613)
 
 - **Row:** "Exit Strategy" (Sale / Refinance / Hold)
-- **Fix shipped:**
-  - Migration added `exit_strategy TEXT` to `deal_assumptions`.
-  - `PATCH /:dealId/assumptions/exit-strategy` — validates against `['Sale','Refinance','Hold']`; null clears the field.
-  - `getDealFinancials` SELECT extended; `assumptions.exitStrategy` on the F9 contract.
-  - DealTermsTab: `saveExitStrategy` wired to dropdown `onCommit`; row hydrates on load; `PendingBadge` removed. ✓
+- **Initial fix (May 2026):** Migration added `exit_strategy TEXT`; `PATCH /exit-strategy` endpoint; flat scalar on F9 contract.
+- **Superseded by Task #613 (May 2026):**
+  - `exit_strategy TEXT` column **dropped**; replaced with `exit_strategy_lv JSONB` storing `{detected,override}` shape.
+  - Old `PATCH /:dealId/assumptions/exit-strategy` **removed**; replaced by `PATCH /:dealId/assumptions/strategy` (serves both fields).
+  - F9 contract now returns `assumptions.exitStrategyLv = {detected,override,resolved}` instead of `assumptions.exitStrategy: string`.
+  - Source badge shows "Override" / "Detected" / "Not Provided" based on which slot is populated.
+  - Existing values backfilled from old TEXT column into `override` slot via migration `20260508_strategy_fields_lv.sql`. ✓
 
 ### 5. Selling Costs % ✅ FIXED (May 2026)
 
@@ -99,10 +101,18 @@ DealTermsTab. The read path works; only the write path is missing.
   - "Loan Payoff at Exit" sub-row (parenthesised deduction) — rendered only when debt schedule is present.
   - "Net Sale Proceeds" row (Gross − Loan Payoff) — GROSS badge retained only when no debt schedule is available.
 
-### 10. Investment Strategy
+### 10. Investment Strategy ✅ FIXED (Task #613, May 2026)
 
-- **Row:** "Investment Strategy" (Section 2, "From THESIS §1 — not yet wired").
-- **Gap:** Ticket #607 — THESIS §1 strategy detection. Out of scope per the spec.
+- **Row:** "Investment Strategy" (Section 2).
+- **Fix shipped (Task #613):**
+  - `investment_strategy_lv JSONB` column added to `deal_assumptions` via migration `20260508_strategy_fields_lv.sql`.
+  - Shape: `{detected:{value,confidence,source}|null, override:string|null}`. Resolved = `override ?? detected?.value ?? null`.
+  - `PATCH /:dealId/assumptions/strategy` with `{investmentStrategy?: 'Build-to-Sell'|'Flip'|'Rental'|'Short-Term Rental'|null}` wires the operator override slot.
+  - F9 contract returns `assumptions.investmentStrategyLv = {detected,override,resolved}`.
+  - DealTermsTab row: `UPSTREAM` badge removed; active dropdown with 4 options; persists across reload.
+  - `detected` slot is held open (null in V1) for M08 Strategy Arbitrage to write into later without schema migration.
+  - `deal:strategy-changed` CustomEvent dispatched after each save for non-F9 listeners (M08 panel, OperatorStance).
+- **Still out of scope:** AI extraction / THESIS §1 UI (#607); M08 wiring of detected slot (separate task). ✓
 
 ---
 

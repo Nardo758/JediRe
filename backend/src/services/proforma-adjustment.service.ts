@@ -1729,7 +1729,9 @@ export async function getDealFinancials(
               interest_rate, ltc, avg_lease_term_months, per_year_overrides,
               io_period_months, amortization_years, dscr_min, origination_fee_pct,
               unit_mix, unit_mix_overrides, avg_rent_per_unit, vacancy_pct,
-              target_irr, target_em, target_coc, exit_strategy, selling_costs_pct
+              target_irr, target_em, target_coc,
+              investment_strategy_lv, exit_strategy_lv,
+              selling_costs_pct
          FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     ),
@@ -2161,8 +2163,28 @@ export async function getDealFinancials(
   const targetIrr: number | null = assumptionsRow?.target_irr != null ? +parseFloat(assumptionsRow.target_irr).toFixed(4) : null;
   const targetEm: number | null = assumptionsRow?.target_em != null ? +parseFloat(assumptionsRow.target_em).toFixed(4) : null;
   const targetCoc: number | null = assumptionsRow?.target_coc != null ? +parseFloat(assumptionsRow.target_coc).toFixed(4) : null;
-  const exitStrategy: string | null = assumptionsRow?.exit_strategy ?? null;
   const sellingCostsPct: number | null = assumptionsRow?.selling_costs_pct != null ? +parseFloat(assumptionsRow.selling_costs_pct).toFixed(4) : null;
+
+  // ── Strategy LV fields (Task #613) ────────────────────────────────────────────
+  // Shape: { detected: {value,confidence,source}|null, override: string|null }
+  // Resolved = override ?? detected?.value ?? null
+  // M08 writes detected slot in a separate task; this composer only reads + resolves.
+  type StrategyDetected = { value: string; confidence: number; source: string } | null;
+  type StrategyLv = { detected: StrategyDetected; override: string | null };
+
+  const exitStrategyRaw = (assumptionsRow?.exit_strategy_lv ?? null) as StrategyLv | null;
+  const exitStrategyLv = {
+    detected: exitStrategyRaw?.detected ?? null,
+    override:  exitStrategyRaw?.override  ?? null,
+    resolved:  exitStrategyRaw?.override  ?? exitStrategyRaw?.detected?.value ?? null,
+  };
+
+  const investmentStrategyRaw = (assumptionsRow?.investment_strategy_lv ?? null) as StrategyLv | null;
+  const investmentStrategyLv = {
+    detected: investmentStrategyRaw?.detected ?? null,
+    override:  investmentStrategyRaw?.override  ?? null,
+    resolved:  investmentStrategyRaw?.override  ?? investmentStrategyRaw?.detected?.value ?? null,
+  };
 
   const assumptions = {
     holdYears,
@@ -2180,8 +2202,9 @@ export async function getDealFinancials(
     targetIrr,
     targetEm,
     targetCoc,
-    // Operator exit & disposition
-    exitStrategy,
+    // Operator strategy fields — full LV objects (M08 writes detected slot later)
+    exitStrategyLv,
+    investmentStrategyLv,
     sellingCostsPct,
   };
 

@@ -75,6 +75,15 @@ Preferred communication style: Simple, everyday language.
 -   **API Route Ordering:** Be mindful of Express route mounting order, especially with catch-all middleware (`requireAuth`) or parameterized routes, to avoid unintended 401/404 errors.
 -   **Cloudflare WAF:** Cloudflare Browser Rendering (CBR) cannot bypass Cloudflare's own WAF/Managed Challenge, blocking access to sites like qPublic, Accela, and fultonassessor.org for automated scraping.
 
+## Cross-tab Events
+
+Custom DOM events dispatched by the F9 financial engine for non-F9 listeners
+(M08 panel, OperatorStance reblend, etc.). Subscribe via `window.addEventListener`.
+
+| Event name | Detail shape | When fired |
+|---|---|---|
+| `deal:strategy-changed` | `{ dealId, field: 'investmentStrategy'\|'exitStrategy', value: string\|null }` | After operator saves either strategy field in Deal Terms |
+
 ## Pointers
 
 -   **Docs/Architecture:** `docs/architecture/` directory for detailed specifications and gap analyses.

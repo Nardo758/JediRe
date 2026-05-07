@@ -450,6 +450,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const [targetEm,       setTargetEm]           = useState('');
   const [targetCoc,      setTargetCoc]          = useState('');
 
+  // ── STRATEGY FIELDS ─────────────────────────────────────────────────────────
+  const [investmentStrategy, setInvestmentStrategy] = useState('');
+
   // ── EXIT / DISPOSITION ─────────────────────────────────────────────────────
   const [exitStrategy,   setExitStrategy]       = useState('');
   const [exitCap,        setExitCap]            = useState('');
@@ -470,7 +473,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if ((fin.assumptions as any)?.targetIrr != null)       setTargetIrr(((fin.assumptions as any).targetIrr * 100).toFixed(2));
     if ((fin.assumptions as any)?.targetEm != null)        setTargetEm(String((fin.assumptions as any).targetEm));
     if ((fin.assumptions as any)?.targetCoc != null)       setTargetCoc(((fin.assumptions as any).targetCoc * 100).toFixed(2));
-    if ((fin.assumptions as any)?.exitStrategy != null)    setExitStrategy((fin.assumptions as any).exitStrategy);
+    // Strategy LV fields — hydrate from resolved scalar
+    const exitStrategyLvH    = (fin.assumptions as any)?.exitStrategyLv    ?? null;
+    const investStrategyLvH  = (fin.assumptions as any)?.investmentStrategyLv ?? null;
+    if (exitStrategyLvH?.resolved != null)   setExitStrategy(exitStrategyLvH.resolved);
+    if (investStrategyLvH?.resolved != null) setInvestmentStrategy(investStrategyLvH.resolved);
     if ((fin.assumptions as any)?.sellingCostsPct != null) setSellingCosts(((fin.assumptions as any).sellingCostsPct * 100).toFixed(2));
     // Closing cost sub-lines
     const uovr = (fin.sourcesUses?.userOverrides ?? {}) as Record<string, number | null>;
@@ -495,7 +502,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const targetIrrResolved       = (fin?.assumptions as any)?.targetIrr       ?? null;
   const targetEmResolved        = (fin?.assumptions as any)?.targetEm        ?? null;
   const targetCocResolved       = (fin?.assumptions as any)?.targetCoc       ?? null;
-  const exitStrategyResolved    = (fin?.assumptions as any)?.exitStrategy    ?? null;
+  // Strategy LV resolved objects — full shape for badge logic + downstream consumers
+  const exitStrategyLv         = (fin?.assumptions as any)?.exitStrategyLv         ?? null;
+  const investmentStrategyLv   = (fin?.assumptions as any)?.investmentStrategyLv   ?? null;
+  const exitStrategyResolved   = exitStrategyLv?.resolved        ?? null;
+  const investStrategyResolved = investmentStrategyLv?.resolved  ?? null;
   const sellingCostsPctResolved = (fin?.assumptions as any)?.sellingCostsPct ?? null;
 
   // Closing costs — sub-line overrides (5 keys)
@@ -680,11 +691,27 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     }
   }
 
+  async function saveInvestmentStrategy() {
+    const val = investmentStrategy || null;
+    try {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/strategy`, { investmentStrategy: val });
+      props.onF9Refresh?.();
+      window.dispatchEvent(new CustomEvent('deal:strategy-changed', {
+        detail: { dealId: props.dealId, field: 'investmentStrategy', value: val },
+      }));
+    } catch (e) {
+      console.error('[DealTerms] Save investment strategy failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
   async function saveExitStrategy() {
     const val = exitStrategy || null;
     try {
-      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/exit-strategy`, { exitStrategy: val });
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/strategy`, { exitStrategy: val });
       props.onF9Refresh?.();
+      window.dispatchEvent(new CustomEvent('deal:strategy-changed', {
+        detail: { dealId: props.dealId, field: 'exitStrategy', value: val },
+      }));
     } catch (e) {
       console.error('[DealTerms] Save exit strategy failed:', e instanceof Error ? e.message : e);
     }
@@ -965,10 +992,15 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
             />
             <LvRow label="Investment Strategy"
               operatorOnly
-              override="" setOverride={() => {}}
-              readOnly readOnlyValue="From THESIS §1 — not yet wired"
-              source="Not Provided"
-              flag={<PendingBadge label="UPSTREAM" />}
+              override={investmentStrategy} setOverride={setInvestmentStrategy}
+              overrideOptions={['Build-to-Sell', 'Flip', 'Rental', 'Short-Term Rental']}
+              onCommit={() => void saveInvestmentStrategy()}
+              resolved={investStrategyResolved ?? '--'}
+              source={
+                investmentStrategyLv?.override != null ? 'Override'
+                : investmentStrategyLv?.detected != null ? 'Detected'
+                : 'Not Provided'
+              }
             />
 
             {/* ════════════ SECTION 3 — EXIT / DISPOSITION ════════════ */}
@@ -980,7 +1012,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               overrideOptions={['Sale', 'Refinance', 'Hold']}
               onCommit={() => void saveExitStrategy()}
               resolved={exitStrategyResolved ?? '--'}
-              source={exitStrategyResolved != null ? 'Override' : 'Not Provided'}
+              source={
+                exitStrategyLv?.override != null ? 'Override'
+                : exitStrategyLv?.detected != null ? 'Detected'
+                : 'Not Provided'
+              }
             />
             <LvRow label="Exit Cap Rate"
               broker={undefined}
