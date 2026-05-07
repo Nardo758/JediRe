@@ -31,6 +31,7 @@
 import React, { useMemo, useState } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps } from './types';
+import { SourceBadge } from './SourceBadge';
 
 const MONO  = BT.font.mono;
 const TEAL  = BT.text.teal;
@@ -38,31 +39,16 @@ const AMBER = BT.text.amber;
 const CYAN  = BT.text.cyan;
 const GREEN = BT.text.green;
 
-// ─── Source badge ──────────────────────────────────────────────────────────────
-
+// Existing labels mapped to the canonical SourceBadge source strings.
 type SourceKind = 'Override' | 'Platform' | 'OM Narrative' | 'Computed' | 'Not Provided';
 
-const SOURCE_COLOR: Record<SourceKind, string> = {
-  'Override':      BT.accent.user,    // amber
-  'Platform':      BT.accent.agent,   // teal
-  'OM Narrative':  BT.accent.doc,     // cyan
-  'Computed':      BT.text.purple,
-  'Not Provided':  BT.text.muted,
+const SOURCE_KIND_TO_BADGE: Record<SourceKind, string | null> = {
+  'Override':     'override',
+  'Platform':     'platform',
+  'OM Narrative': 'om',
+  'Computed':     'computed',
+  'Not Provided': null,
 };
-
-function SourceBadge({ kind }: { kind: SourceKind }) {
-  const c = SOURCE_COLOR[kind];
-  return (
-    <span style={{
-      fontFamily: MONO, fontSize: 8, fontWeight: 700, color: c,
-      background: `${c}18`, border: `1px solid ${c}44`,
-      padding: '1px 5px', letterSpacing: 0.5,
-      whiteSpace: 'nowrap',
-    }}>
-      {kind.toUpperCase()}
-    </span>
-  );
-}
 
 // ─── LV cell — placeholder rendering for Broker / Platform / Resolved cols ────
 
@@ -294,7 +280,7 @@ function LvRow({
 
       {/* Source */}
       <td style={td()}>
-        <SourceBadge kind={source} />
+        <SourceBadge source={SOURCE_KIND_TO_BADGE[source]} />
       </td>
 
       {/* Derived */}
