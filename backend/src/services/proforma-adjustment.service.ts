@@ -3275,24 +3275,48 @@ export async function getDealFinancials(
     const projEquity = capitalStackWithOverrides.equityAtClose ?? 0;
     const rows: NonNullable<DealFinancials['projections']> = [];
 
+    // Running effective bases — one per projected field.
+    // Rule (a): when an operator override exists at year Y for field F, that overridden
+    // value becomes the new compounding base for year Y+1 onward. This prevents
+    // discontinuities: e.g., payroll overridden to $300K at yr3 → yr4 = $300K × (1+g),
+    // not the formula-derived yr3 value × (1+g). Both the inline F9 projections and
+    // Excel export now read the same resolved series.
+    let runGpr        = gprY1;
+    let runOtherIncPU = otherIncPU;
+    let runPayroll    = payrollY1;
+    let runRepairs    = repairsY1;
+    let runTurnover   = turnoverY1;
+    let runContract   = contractY1;
+    let runMarketing  = marketingY1;
+    let runUtilities  = utilitiesY1;
+    let runGAndA      = gAndAY1;
+    let runInsurance  = insuranceY1;
+    let runReserves   = reservesY1;
+
     for (let yr = 1; yr <= holdYears; yr++) {
       const pv = assumptions.perYear.find(p => p.year === yr);
       const tv = trafficProjectionOut?.yearly?.find(t => t.year === yr);
-
-      // Rent growth multiplier (compound from Y1)
-      let rentMult = 1;
-      for (let y = 1; y < yr; y++) {
-        const g = assumptions.perYear.find(p => p.year === y)?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
-        rentMult *= 1 + (g ?? 0.03);
-      }
       const thisYrGrowth = pv?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
-      // opexGrowthRate sourced from proforma_assumptions.opex_growth_current (default 3%)
-      // insMult uses insurance industry standard 3.5% escalation (same assumption as Pro Forma tab)
-      const opexMult = Math.pow(1 + opexGrowthRate, yr - 1);
-      const insMult  = Math.pow(1.035, yr - 1);
 
-      // Revenue
-      const gpr         = Math.round(gprY1 * rentMult);
+      // Growth step applied TO this year: uses the prior year's per-year growth rate.
+      // opexGrowthRate sourced from proforma_assumptions.opex_growth_current (default 3%).
+      // Insurance uses 3.5% industry standard. No growth at yr=1 (Y1 seeds are the base).
+      const prevPv         = yr > 1 ? assumptions.perYear.find(p => p.year === yr - 1) : null;
+      const rentGrowthStep = yr === 1 ? 0 : (prevPv?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03);
+      const opexGrowthStep = yr === 1 ? 0 : opexGrowthRate;
+      const insGrowthStep  = yr === 1 ? 0 : 0.035;
+
+      // Per-year override resolver: returns the operator-set dollar value for field F at
+      // year yr (from per_year_overrides), or null if no override (formula applies).
+      const projPyOvr = (field: string): number | null => {
+        const entry = (allPyOverrides as Record<string, { value?: number | null } | null>)[`${field}:yr${yr}`];
+        return entry?.value != null ? Number(entry.value) : null;
+      };
+
+      // Revenue — override-aware running-base compounding
+      const gprOvr      = projPyOvr('gpr');
+      const gpr         = gprOvr != null ? Math.round(gprOvr) : Math.round(runGpr * (1 + rentGrowthStep));
+      runGpr            = gpr;
       const vacPct      = tv?.vacancyPct ?? pv?.vacancyPct ?? ry1('vacancy_pct') ?? 0.05;
       const vacancyLoss = Math.round(gpr * vacPct);
       const lossToLease = Math.round(gpr * lossToLeasePct);
@@ -3300,19 +3324,41 @@ export async function getDealFinancials(
       const badDebt     = Math.round(gpr * badDebtPct);
       const nru         = Math.round(gpr * nruPct);
       const nri         = gpr - vacancyLoss - lossToLease - concessions - badDebt - nru;
-      const otherIncome = Math.round(otherIncPU * rentMult * totalUnits * 12);
+      const otherIncOvr = projPyOvr('other_income');
+      const otherIncome = otherIncOvr != null
+        ? Math.round(otherIncOvr)
+        : Math.round(runOtherIncPU * (1 + rentGrowthStep) * totalUnits * 12);
+      runOtherIncPU     = otherIncOvr != null
+        ? otherIncOvr / Math.max(1, totalUnits * 12)
+        : runOtherIncPU * (1 + rentGrowthStep);
       const egi         = nri + otherIncome;
 
-      // Expenses
-      const payroll    = Math.round(payrollY1   * opexMult);
-      const repairs    = Math.round(repairsY1   * opexMult);
-      const turnover   = Math.round(turnoverY1  * opexMult);
-      const contractSvc = Math.round(contractY1 * opexMult);
-      const marketing  = Math.round(marketingY1 * opexMult);
-      const utilities  = Math.round(utilitiesY1 * opexMult);
-      const gAndA      = Math.round(gAndAY1     * opexMult);
-      const mgmtFee    = Math.round(egi          * mgmtFeePct);
-      const insurance  = Math.round(insuranceY1  * insMult);
+      // Expenses — override-aware running-base compounding
+      const payrollOvr   = projPyOvr('payroll');
+      const payroll      = payrollOvr   != null ? Math.round(payrollOvr)   : Math.round(runPayroll   * (1 + opexGrowthStep));
+      runPayroll         = payroll;
+      const repairsOvr   = projPyOvr('repairs_maintenance');
+      const repairs      = repairsOvr   != null ? Math.round(repairsOvr)   : Math.round(runRepairs   * (1 + opexGrowthStep));
+      runRepairs         = repairs;
+      const turnoverOvr  = projPyOvr('turnover');
+      const turnover     = turnoverOvr  != null ? Math.round(turnoverOvr)  : Math.round(runTurnover  * (1 + opexGrowthStep));
+      runTurnover        = turnover;
+      const contractOvr  = projPyOvr('contract_services');
+      const contractSvc  = contractOvr  != null ? Math.round(contractOvr)  : Math.round(runContract  * (1 + opexGrowthStep));
+      runContract        = contractSvc;
+      const marketingOvr = projPyOvr('marketing');
+      const marketing    = marketingOvr != null ? Math.round(marketingOvr) : Math.round(runMarketing * (1 + opexGrowthStep));
+      runMarketing       = marketing;
+      const utilitiesOvr = projPyOvr('utilities');
+      const utilities    = utilitiesOvr != null ? Math.round(utilitiesOvr) : Math.round(runUtilities * (1 + opexGrowthStep));
+      runUtilities       = utilities;
+      const gAndAOvr     = projPyOvr('g_and_a');
+      const gAndA        = gAndAOvr    != null ? Math.round(gAndAOvr)    : Math.round(runGAndA    * (1 + opexGrowthStep));
+      runGAndA           = gAndA;
+      const mgmtFee      = Math.round(egi * mgmtFeePct);
+      const insuranceOvr = projPyOvr('insurance');
+      const insurance    = insuranceOvr != null ? Math.round(insuranceOvr) : Math.round(runInsurance * (1 + insGrowthStep));
+      runInsurance       = insurance;
 
       // RE Taxes: prefer taxes tab perYear, else compound Y1 seed
       let reTaxes = 0;
@@ -3321,10 +3367,13 @@ export async function getDealFinancials(
       if (taxYr?.taxAmount != null && taxYr.taxAmount > 0) {
         reTaxes = Math.round(taxYr.taxAmount); reTaxSource = 'taxes_tab';
       } else if (reTaxY1Base > 0) {
-        reTaxes = Math.round(reTaxY1Base * opexMult); reTaxSource = 'proforma';
+        reTaxes = Math.round(reTaxY1Base * Math.pow(1 + opexGrowthRate, yr - 1));
+        reTaxSource = 'proforma';
       }
 
-      const reserves   = Math.round(reservesY1 * opexMult);
+      const reservesOvr = projPyOvr('replacement_reserves');
+      const reserves    = reservesOvr != null ? Math.round(reservesOvr) : Math.round(runReserves * (1 + opexGrowthStep));
+      runReserves       = reserves;
       const totalOpex  = payroll + repairs + turnover + contractSvc + marketing + utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
       const noi        = egi - totalOpex;
 

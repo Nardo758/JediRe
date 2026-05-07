@@ -1,0 +1,42 @@
+Yes — scope it. Three corrections to the framing before you write the spec:
+
+1) Bundle Investment Strategy with Exit Strategy. Per the prior DEAL
+   TERMS Phase 1 audit, Exit Strategy is also PERSISTENCE_GAP and
+   needs the same manual-dropdown-with-storage pattern. Build once,
+   use twice. Single commit, single PATCH endpoint, single dropdown
+   component shape.
+
+2) Drop the AI extraction step from initial scope. The thesis-doc
+   classifier you described overlaps with M08 Strategy Arbitrage,
+   which is the canonical detection module for asset class + deal
+   type + project strategy + sub-strategy. Building a parallel
+   classifier now risks creating a dual-source write path that
+   conflicts with M08 when it lands. Manual dropdown only for V1.
+   Add AI extraction as a follow-up task once M08 wires its output
+   into the same field.
+
+3) Use LayeredValue<T> shape, not flat string. Both fields stored as:
+
+     {
+       detected: { value, confidence, source } | null,  // M08 writes here later
+       override: <enum-value> | null                     // operator dropdown writes
+     }
+
+   Resolved = override ?? detected?.value ?? null. This is the same
+   pattern every other LV field in year1 uses. M08 plugs in later
+   without schema migration or dual-source hazards.
+
+Spec scope: schema (LV-shaped JSONB on deal_assumptions or new
+columns — your call, justify in spec), PATCH endpoint, dealStore
+slice, dropdown component (reusable for both fields), Deal Terms
+row hydration for both rows, hold-the-shape-for-future-M08-write.
+
+Out of scope: AI extraction (defer to follow-up after M08), THESIS §1
+UI (separate ticket #607), M08 wiring itself (separate task).
+
+Acceptance: both Investment Strategy and Exit Strategy rows on Deal
+Terms move from PERSISTENCE_GAP to READY. Operator can pick from
+dropdown, value persists across reload, dealStore emits a 'targets.
+changed' or 'strategy.changed' event for downstream consumers.
+
+Post the spec, I'll review before you start building.

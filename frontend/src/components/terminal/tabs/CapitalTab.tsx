@@ -81,15 +81,32 @@ export const CapitalTab: React.FC<CapitalTabProps> = ({ dealId, deal }) => {
     const model = deal?.model || deal?.latestModel || {};
     const su = model._sourcesAndUses || {};
     const selectedLoanData = loans.find(l => l.id === selectedLoan);
-    const purchasePrice = deal?.budget || model?.acquisition?.purchasePrice || 45000000;
-    const closingCosts = purchasePrice * 0.02;
-    const capex = 1500000;
+
+    // Purchase price: prefer F9 S&U output → capitalStack → deal.budget.
+    // Never fall back to a hardcoded dollar amount — show zero if unset so the
+    // operator knows to wire the deal rather than seeing a fictitious number.
+    const purchasePrice: number =
+      su.uses?.['Purchase Price'] ??
+      su.purchasePrice ??
+      model?.capitalStack?.purchasePrice ??
+      model?.acquisition?.purchasePrice ??
+      deal?.budget ??
+      0;
+
+    // Closing costs: prefer F9 S&U output → 2% estimate only when purchase price
+    // is known from a real source (not zero).
+    const closingCosts: number =
+      su.uses?.['Closing Costs'] ??
+      su.closingCosts ??
+      (purchasePrice > 0 ? Math.round(purchasePrice * 0.02) : 0);
+
+    const capex = su.uses?.['Renovation Budget'] ?? 1500000;
     const totalUses = purchasePrice + closingCosts + capex;
     const equity = totalUses - (selectedLoanData?.proceeds || 0);
 
     return {
       sources: su.sources || {
-        'Senior Debt': selectedLoanData?.proceeds || 29250000,
+        'Senior Debt': selectedLoanData?.proceeds || 0,
         'LP Equity': equity * 0.9,
         'GP Equity': equity * 0.1,
       },

@@ -1,0 +1,73 @@
+Greenlight P1-A and P1-B/C. Defer P2-A, P2-B, P3-A to TODO files.
+
+P1-A — Projections per-year override fix
+
+Before coding, confirm and document the override propagation rule:
+
+  When per_year_overrides has a value for field F at year Y, and year
+  Y+1 is NOT overridden for F, should Y+1 grow from:
+    (a) the operator-overridden Y value, or
+    (b) the formula-derived Y value (ignoring override)?
+
+Default answer (a) — operator edit becomes the new base. Otherwise
+overrides cause discontinuities. State this explicitly as a code
+comment at the loop site so it's not an undocumented behavior.
+
+Scope: single file change at proforma-adjustment.service.ts:3307 (or
+wherever the projection loop is — file:line from the audit). Plus a
+test that:
+  1. Sets payroll = $300K override on Y2
+  2. Fetches projections
+  3. Asserts Y2 payroll = $300K (not formula-derived)
+  4. Asserts Y3 payroll = $300K × (1 + escalator)
+  5. Repeats with multiple field overrides on different years
+
+Branch: claude/fix-projections-honor-overrides from origin/master.
+Commit: fix(projections): apply per_year_overrides before growth math
+
+P1-B/C — Terminal CapitalTab hardcoded values
+
+Before fixing, answer one question: is Terminal CapitalTab.tsx mounted
+in any active route, or is it dead code?
+
+  - If active: replace the $45M / 2% hardcoded values with reads from
+    the same source F9 Capital reads from. Probably useDealFinancials
+    or whatever the parent owns. Single-commit fix.
+  - If dead code: delete the file. Cleaner than fixing.
+
+If active, branch: claude/fix-terminal-capitaltab-hardcoded-fallbacks
+Commit: fix(capital-tab): read live values instead of hardcoded fallbacks
+
+If dead, branch: claude/remove-dead-terminal-capitaltab
+Commit: chore: remove unused Terminal CapitalTab component
+
+Either way, post the answer (active vs dead) before opening a branch.
+
+DEFER to TODO files
+
+Append to TODO_F9_SIDE_DEBT.md (or create TODO_F9_DATA_FLOW.md if more
+appropriate for these grouped findings):
+
+P2-A: Unit-mix-as-GPR-source feature flag activation
+  - Effort: M (needs migration audit of existing deals)
+  - Blocker: must reconcile deals where stored gpr ≠ sum(unit_mix)
+  - Decision needed: per-deal flip vs global flip vs operator opt-in
+
+P2-B: LP-GP split user-facing write path
+  - Effort: S backend, M frontend (needs UI surface)
+  - Blocker: which surface owns the dial — F9 Capital or DEAL TERMS §4?
+  - Cross-ref: DEAL TERMS Section 4 (Capital Structure) was deliberately
+    deferred; this would unblock part of that scope
+
+P3-A: Ancillary breakdown → other_income_per_unit rollup verification
+  - Effort: S (read-only audit)
+  - Action: trace one deal end-to-end, confirm parking/rubs/pet
+    eventually land in other_income_per_unit seed
+
+One commit per fix in P1. Side-debt commit goes last and stands alone.
+
+Phase 2 work order:
+  1. Answer Terminal CapitalTab active/dead question (no commit, just a reply)
+  2. Land P1-A fix (one commit)
+  3. Land P1-B/C fix or deletion (one commit, depending on #1 answer)
+  4. Land side-debt log (one commit)
