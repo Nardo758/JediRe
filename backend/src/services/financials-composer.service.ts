@@ -976,7 +976,7 @@ async function loadDealScopedPeerPosteriors(
   return {};
 }
 
-function composeOtherIncomeBreakdown(
+export function composeOtherIncomeBreakdown(
   dealData: Record<string, any>,
   year1Data: Record<string, any> | null
 ): OtherIncomeBreakdownPayload | null {

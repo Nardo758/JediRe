@@ -20,6 +20,7 @@ import { deriveCounty } from './tax/resolver';
 import { kafkaProducer } from './kafka/kafka-producer.service';
 import { KAFKA_TOPICS } from './kafka/event-schemas';
 import { buildTaxContext } from './tax/compositeResolver';
+import { composeOtherIncomeBreakdown } from './financials-composer.service';
 
 // ============================================================================
 // Types
@@ -3407,6 +3408,22 @@ export async function getDealFinancials(
     assumptions,
     userOverrides,
     userOverrideRationales,
+    // Ancillary income breakdown — sourced from the same composer helper used by
+    // composeDealFinancials so the live route (UnitMixTab AncillaryPanel + EGI
+    // Waterfall) stays in parity with the inline-deals path. Without this the
+    // assembler's response was missing the keys entirely, which left
+    // `data?.otherIncomeBreakdown` null on the frontend and hid the panel /
+    // forced the EGI Waterfall to render "no rent roll" even when the rent
+    // roll had populated other_income_monthly.
+    otherIncomeBreakdown: composeOtherIncomeBreakdown(
+      (deal.deal_data ?? {}) as Record<string, any>,
+      year1Seed as Record<string, any>
+    ),
+    otherIncomeUserLines: Array.isArray((year1Seed as Record<string, unknown>).other_income_user_lines)
+      ? ((year1Seed as Record<string, unknown>).other_income_user_lines as Array<{
+          id: string; label: string; monthly: number; source?: string;
+        }>)
+      : [],
     meta: {
       seeded: Object.keys(year1Seed).length > 0,
       updatedAt: assumptionsRow?.updated_at?.toISOString?.() ?? null,
