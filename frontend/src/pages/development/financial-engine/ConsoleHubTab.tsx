@@ -26,12 +26,13 @@ import { AssumptionsTab } from './AssumptionsTab';
 import { UnitMixTab } from '../../../components/deal/sections/UnitMixTab';
 import { TaxesTab } from './TaxesTab';
 import { StanceTab } from './StanceTab';
+import { DealTermsTab } from './DealTermsTab';
 import type { FinancialEngineTabProps } from './types';
 
 const MONO = BT.font.mono;
 const AMBER = BT.text.amber;
 
-type SubTab = 'stance' | 'inputs' | 'unitmix' | 'tax';
+type SubTab = 'stance' | 'deal-terms' | 'inputs' | 'unitmix' | 'tax';
 
 interface SubTabDef {
   id: SubTab;
@@ -40,10 +41,11 @@ interface SubTabDef {
 }
 
 const SUB_TABS: SubTabDef[] = [
-  { id: 'stance',  label: 'STANCE',   icon: '◈' },
-  { id: 'inputs',  label: 'INPUTS',   icon: '⊕' },
-  { id: 'unitmix', label: 'UNIT MIX', icon: '⊞' },
-  { id: 'tax',     label: 'TAX',      icon: '$' },
+  { id: 'stance',     label: 'STANCE',     icon: '◈' },
+  { id: 'deal-terms', label: 'DEAL TERMS', icon: '◇' },
+  { id: 'inputs',     label: 'INPUTS',     icon: '⊕' },
+  { id: 'unitmix',    label: 'UNIT MIX',   icon: '⊞' },
+  { id: 'tax',        label: 'TAX',        icon: '$' },
 ];
 
 export function ConsoleHubTab(props: FinancialEngineTabProps) {
@@ -100,10 +102,11 @@ export function ConsoleHubTab(props: FinancialEngineTabProps) {
 
       {/* ── Sub-tab content ── */}
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {subTab === 'stance'  && <StanceTab dealId={props.dealId} />}
-        {subTab === 'inputs'  && <AssumptionsTab {...props} />}
-        {subTab === 'unitmix' && <UnitMixTab {...props} />}
-        {subTab === 'tax'     && <TaxesTab {...props} />}
+        {subTab === 'stance'     && <StanceTab dealId={props.dealId} />}
+        {subTab === 'deal-terms' && <DealTermsTab {...props} />}
+        {subTab === 'inputs'     && <AssumptionsTab {...props} />}
+        {subTab === 'unitmix'    && <UnitMixTab {...props} />}
+        {subTab === 'tax'        && <TaxesTab {...props} />}
       </div>
     </div>
   );
