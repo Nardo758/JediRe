@@ -399,6 +399,13 @@ interface DealStoreActions {
    */
   emitBasisChanged: () => void;
   /**
+   * Persist a new purchase price to the backend (dual-writes
+   * deal_data.purchase_price + deals.budget atomically) and dispatches
+   * the existing `basis.changed` window event so all subscribers
+   * (S&U tab, debt sizing, going-in cap) reflow in the same session.
+   */
+  setPurchasePrice: (dealId: string, price: number) => Promise<void>;
+  /**
    * Dispatch `exit_cap.changed` on the shared window event bus.
    * Fires when Exit Cap Rate or Selling Costs % change. Returns,
    * net-sale-proceeds derivation, and exit-value strip all reflow.
@@ -1824,6 +1831,12 @@ export const useDealStore = create<DealStore>()(
     },
 
     emitBasisChanged: () => {
+      window.dispatchEvent(new CustomEvent('basis.changed'));
+    },
+
+    setPurchasePrice: async (dealId, price) => {
+      await apiClient.patch(`/api/v1/deals/${dealId}/purchase-price`, { purchasePrice: price });
+      // Dispatch after confirmed server write so subscribers react to committed data.
       window.dispatchEvent(new CustomEvent('basis.changed'));
     },
 

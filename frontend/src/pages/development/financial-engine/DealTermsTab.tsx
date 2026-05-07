@@ -441,11 +441,11 @@ const QUICK_HOLD_CHIPS = [3, 5, 7, 10];
 export function DealTermsTab(props: FinancialEngineTabProps) {
   const fin = props.f9Financials ?? null;
 
-  // dealStore emit hooks — additive cross-tab signals; parent's onF9Refresh
-  // continues to be the canonical refetch trigger.
+  // dealStore hooks — emit-only signals fire cross-tab; setPurchasePrice
+  // encapsulates the API call + basis.changed dispatch in one action.
   const emitHoldPeriodChanged = useDealStore(s => s.emitHoldPeriodChanged);
-  const emitBasisChanged      = useDealStore(s => s.emitBasisChanged);
   const emitExitCapChanged    = useDealStore(s => s.emitExitCapChanged);
+  const setPurchasePriceStore = useDealStore(s => s.setPurchasePrice);
 
   // Header context
   const dealName = fin?.dealName
@@ -509,6 +509,35 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if (uovr.closingCostsReserves   != null) setCloseReserves(String(Math.round(uovr.closingCostsReserves)));
     if (uovr.closingCostsOther      != null) setCloseOther(String(Math.round(uovr.closingCostsOther)));
   }, [props.dealId, fin]);
+
+  // ── basis.changed subscriber ─────────────────────────────────────────────
+  // Subscribes to the dealStore event bus so that any source that changes the
+  // acquisition basis (Purchase Price today; Closing Costs overrides in future)
+  // causes this tab to refresh even if the mutation originated cross-tab.
+  //
+  // Must do BOTH:
+  //   (a) React immediately re-renders with current local state — all locally-
+  //       derivable rows ($/unit chip, All-In Basis, Gross Proceeds) update
+  //       from the draft `purchasePrice` state value without waiting for F9.
+  //   (b) props.onF9Refresh() re-fetches the full F9 model for backend-
+  //       dependent rows: debt sizing (LTV, DSCR), capital stack composition,
+  //       going-in cap (requires T-12 NOI from the financial composer), and
+  //       the projections-engine exit math. These cannot be derived locally.
+  //
+  // A subscriber that only does (a) leaves debt sizing and the projections
+  // strip stale; one that only does (b) introduces a brief lag before local
+  // rows update. Both branches must run on every basis.changed event.
+  useEffect(() => {
+    function handleBasisChanged() {
+      // (a) — React re-renders automatically; local derived values update from
+      //        draft state immediately (e.g. parsePositiveDollar(purchasePrice)
+      //        / totalUnits for the $/unit chip, allInBasis, grossProceedsDerived).
+      // (b) — Trigger F9 for backend-dependent rows (debt sizing, cap rate, etc.)
+      props.onF9Refresh?.();
+    }
+    window.addEventListener('basis.changed', handleBasisChanged);
+    return () => window.removeEventListener('basis.changed', handleBasisChanged);
+  }, [props.onF9Refresh]);
 
   // ── Resolved values (server side of truth) ─────────────────────────────────
   const purchasePriceResolved = fin?.capitalStack?.purchasePrice ?? null;
@@ -624,12 +653,12 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if (num == null) return;
     if (num === purchasePriceResolved) return;
     try {
-      // Writes deal_data.purchase_price — the canonical source for
-      // financials-composer.buildCapitalStack(). deals.budget is a
-      // pipeline-only column and does NOT affect the financial model.
-      await apiClient.patch(`/api/v1/deals/${props.dealId}/purchase-price`, { purchasePrice: num });
-      emitBasisChanged();
-      props.onF9Refresh?.();
+      // Routes through the dealStore action which dual-writes both
+      // deal_data.purchase_price (financial composer) and deals.budget
+      // (pipeline views) in a single atomic UPDATE, then dispatches
+      // `basis.changed`. The basis.changed subscriber below handles the
+      // F9 refresh — no direct onF9Refresh call needed here.
+      await setPurchasePriceStore(props.dealId, num);
     } catch (e) {
       console.error('[DealTerms] Save purchase price failed:', e instanceof Error ? e.message : e);
     }

@@ -585,10 +585,20 @@ router.patch('/:dealId/assumptions/dates', requireAuth, async (req: Authenticate
 /**
  * PATCH /:dealId/purchase-price
  *
- * Write purchase_price into deals.deal_data (JSONB merge).
- * financials-composer reads deal_data.purchase_price as the canonical basis;
- * writing to deals.budget (the pipeline column) does NOT affect the financial
- * model. This endpoint is the single write path for the Deal Terms tab.
+ * Dual-write purchase_price into BOTH deal_data (JSONB, canonical for the
+ * financial composer) AND deals.budget (pipeline column used by map, deal
+ * cards, and list views) in a single atomic UPDATE.
+ *
+ * Background: financials-composer (proforma-adjustment.service.ts:2212-2218)
+ * reads deal_data.purchase_price first, falling back to deal_data.asking_price
+ * and then deals.budget. Pipeline views read deals.budget directly. Writing
+ * only one column causes divergence visible to operators comparing the F9
+ * model against the deal list. Both columns are kept in sync here until a
+ * future schema migration decides which is the sole canonical column.
+ *
+ * Remaining one-sided writers (see TODO_DEAL_TERMS_FOLLOWUP.md #15/#16):
+ *   - Deal creation (inline-deals.routes.ts POST /) — writes budget only
+ *   - Deal update  (inline-deals.routes.ts PATCH /:id) — writes budget only
  *
  * Body: { purchasePrice: number }
  */
@@ -610,9 +620,13 @@ router.patch('/:dealId/purchase-price', requireAuth, async (req: AuthenticatedRe
       return res.status(403).json({ error: 'Not authorized for this deal' });
     }
 
+    // Atomic dual-write: deal_data.purchase_price (financial composer source)
+    // + deals.budget (pipeline view source). Both must stay in sync until a
+    // future schema migration picks one as the sole canonical column.
     await pool.query(
       `UPDATE deals
          SET deal_data  = COALESCE(deal_data, '{}'::jsonb) || jsonb_build_object('purchase_price', $2::numeric),
+             budget     = $2,
              updated_at = NOW()
        WHERE id = $1`,
       [dealId, purchasePrice]

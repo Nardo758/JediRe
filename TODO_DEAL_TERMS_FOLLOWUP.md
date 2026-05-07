@@ -118,17 +118,66 @@ DealTermsTab. The read path works; only the write path is missing.
 
 ## Side-debt found during the audit (not DEAL TERMS rows)
 
-### 11. Purchase Price dual-source read divergence ✅ FIXED (May 2026)
+### 15. Deal creation one-sided writer — `inline-deals.routes.ts POST /` ⚠ OPEN
+
+- **What:** When a deal is created via `inline-deals.routes.ts` (POST /), the
+  `budget` field from the form is written to `deals.budget` only. The
+  `deal_data.purchase_price` JSONB key is NOT set at creation time.
+- **Impact:** For newly created deals (no prior DEAL TERMS edit), the financial
+  composer falls back correctly to `deals.budget` (its third priority in
+  `proforma-adjustment.service.ts:2215`). No immediate model divergence — but
+  any subsequent PATCH to only `deal_data.purchase_price` (now fixed) or only
+  `deals.budget` would cause divergence against the creation value.
+- **Fix needed:** `inline-deals.routes.ts POST /` should also merge
+  `deal_data = deal_data || jsonb_build_object('purchase_price', budget)` when
+  `budget` is non-null. Tracked as Task #623.
+- **File:** `backend/src/api/rest/inline-deals.routes.ts:334-358`
+
+---
+
+### 16. Deal update one-sided writer — `inline-deals.routes.ts PATCH /:id` ⚠ OPEN
+
+- **What:** The PATCH /:id endpoint on inline-deals accepts a `budget` field in
+  `allowedFields` and writes it to `deals.budget`. It does NOT also update
+  `deal_data.purchase_price`. This is a legacy update path used by the deal
+  edit form (not the DEAL TERMS tab).
+- **Impact:** If an operator edits the deal budget via this path AFTER a
+  `deal_data.purchase_price` has already been set by the DEAL TERMS endpoint,
+  the financial model will continue to show the DEAL TERMS value while the
+  pipeline view shows the new budget — visible divergence.
+- **Fix needed:** When `budget` is in the PATCH body, also merge it into
+  `deal_data.purchase_price`. Tracked as Task #624.
+- **File:** `backend/src/api/rest/inline-deals.routes.ts:510-554`
+
+---
+
+### 11. Purchase Price dual-source read divergence ✅ FIXED (Task #617, May 2026)
 
 - **What:** `financials-composer` reads `deal_data.purchase_price` (canonical);
-  old write path (`PATCH /deals/:id { budget }`) wrote to `deals.budget` only —
-  silent miss when `deal_data.purchase_price` is already populated.
-- **Fix shipped:** Added `PATCH /:dealId/purchase-price` in
-  `deal-assumptions.routes.ts` — JSONB merge `deal_data || jsonb_build_object(
-  'purchase_price', $2::numeric)`. `savePurchasePrice` in DealTermsTab now
-  calls this endpoint. Capital/S&U tabs pick up the new value on next
-  `onF9Refresh`. `DUAL-SRC` flag remains as a best-effort detector for deals
-  that still have a divergent `deals.budget` value from old writes.
+  old write path wrote to `deals.budget` only — pipeline views showed stale
+  budget while the F9 model used the correct value.
+- **Fix shipped (Task #617):**
+  - `PATCH /:dealId/purchase-price` now dual-writes both
+    `deal_data.purchase_price` (JSONB merge) AND `deals.budget` in a single
+    atomic UPDATE. Both columns stay in sync until a future schema migration
+    decides the canonical column.
+  - `dealStore.setPurchasePrice(dealId, price)` action added — encapsulates
+    the API call + `basis.changed` event dispatch. DealTermsTab now routes
+    `savePurchasePrice` through this action instead of calling `apiClient`
+    directly.
+  - `DealTermsTab` subscribes to `basis.changed` via `useEffect`; subscriber
+    does both (a) local re-render from draft state AND (b) `onF9Refresh()` for
+    backend-dependent rows (debt sizing, capital stack, going-in cap). Both
+    branches run on every event.
+  - `replit.md` Cross-tab Events table extended with all three dealStore
+    events (`basis.changed`, `hold_period.changed`, `exit_cap.changed`) plus a
+    note about the `deal:strategy-changed` deviation from Task #613.
+  - `DUAL-SRC` badge on the Purchase Price row remains as a best-effort
+    detector for deals with pre-existing divergence (budget ≠ deal_data
+    purchase_price from writes before this fix).
+- **Remaining one-sided writers (tracked separately):**
+  - Deal creation → Task #623 (see item #15 above)
+  - Deal update via budget field → Task #624 (see item #16 above)
 
 ### 12. Bulk PUT /assumptions clobbers unit_mix on partial payload ✅ ALREADY FIXED
 
