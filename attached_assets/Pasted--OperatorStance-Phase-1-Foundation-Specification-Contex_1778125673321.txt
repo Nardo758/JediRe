@@ -1,0 +1,427 @@
+# OperatorStance — Phase 1 Foundation Specification
+
+## Context
+
+Yesterday morning (May 6) we agreed that operator inputs split into two
+mechanisms by how they reach the agent layer:
+
+- **Hard constraints** (hold period, target IRR, exit strategy, purchase
+  price) — already partly wired through DEAL TERMS tab. The Cashflow
+  Agent's ProForma generation respects these as inputs.
+- **Stance modulation** (rate environment, cycle position, underwriting
+  posture, concession/marketing/expense stances, stress overlays) —
+  has zero backend wiring today. STANCE sub-tab dials don't persist.
+  DealContext doesn't carry stance. Agent prompts don't inject it.
+
+This spec defines the foundation for stance modulation. UI wiring of
+the existing STANCE sub-tab dials is Phase 2 — out of scope here.
+Service-layer math hooks (rateForecast, vacancyProjection consulting
+stance directly) are Phase 3 — also out of scope.
+
+## The IC analogy (working framing)
+
+The investment committee doesn't argue every cell — it argues the
+thesis ("we think this is late-cycle, conservative on rents, stress
+the exit"). The associate propagates that thesis through 200 cells.
+**Operator Stance is the thesis. The Cashflow Agent is the associate.**
+
+Phase 1's job: get the thesis from the operator into the agent's prompt,
+plus persist it durably so it survives reload and propagates to every
+agent invocation on the deal.
+
+## Working principles (read first)
+
+1. **Phase 1 audit first.** Don't write a migration before tracing the
+   existing Cashflow Agent invocation path and the Research Agent's
+   DealContext assembler. Stop after the audit and post findings.
+
+2. **Reuse over invent.** Existing patterns: LayeredValue<T> for layered
+   provenance, JSONB columns on deal_assumptions for typed-but-flexible
+   storage, dealStore slice pattern for frontend state, system-prompt
+   injection for agent context. Match these.
+
+3. **Default cascade matters.** Three valid states: no stance set
+   (agent uses platform defaults), partial stance (operator overrides
+   for some dials, defaults for others), full stance (everything from
+   operator). The cascade should be obvious from the implementation,
+   not buried in conditional logic.
+
+## Phase 1A — Audit (Plan mode, read-only)
+
+Before any code change, post a findings report covering:
+
+### A1. Cashflow Agent invocation path
+
+Where is the Cashflow Agent's system prompt assembled today? What
+function builds it, what file:line, what does the current prompt
+include? Specifically:
+
+- Is there a `prompt-builder` or `system-prompt.ts` or similar?
+- Where does the ProForma generation prompt currently inject deal data?
+- What's the existing pattern for context injection (template
+  literal, structured object, JSON.stringify)?
+- Is the Cashflow Agent's prompt versioned / templated, or inline?
+
+### A2. Research Agent DealContext assembler
+
+Where is `DealContext` constructed? What's its current type? What
+fields does it carry today? Specifically:
+
+- The 24h cached JSON — where is it written, where read?
+- Is there a typed interface for `DealContext`, or is it loosely shaped?
+- How would adding an `operatorStance` field propagate to consumers?
+
+### A3. AI Coordinator (chat surface)
+
+Same questions as A1 but for the Coordinator that handles WhatsApp /
+Telegram message synthesis. Where is its prompt assembled? What gets
+injected today?
+
+### A4. STANCE sub-tab UI inventory
+
+The STANCE sub-tab in Console already exists with dials. Read the
+file. List every dial / control with its current local-state shape.
+We need to know what fields the operator already sees so the schema
+matches.
+
+### A5. Existing schema for related concepts
+
+Are there partial precedents we should align with?
+- `m28_rate_environment.policy_stance` (per the macro cycle module)
+- M08 strategy detection output
+- Stress overlay fields anywhere in the year1 JSONB
+
+### A6. Default-cascade precedents
+
+How does the codebase currently handle "operator-set vs
+platform-default" elsewhere? LayeredValue<T> is the obvious pattern,
+but for a structured config object (vs. per-field LV), what's the
+existing convention?
+
+**Stop after the audit. Post findings as a structured report. Wait
+for Leon's approval before Phase 1B.**
+
+## Phase 1B — Implementation (Build mode, post-approval)
+
+### B1. Schema + migration
+
+Add one JSONB column to `deal_assumptions`:
+
+```sql
+ALTER TABLE deal_assumptions
+  ADD COLUMN operator_stance JSONB DEFAULT NULL;
+
+COMMENT ON COLUMN deal_assumptions.operator_stance IS
+  'Operator thesis modulation. Null = use platform defaults. See
+   OperatorStance type definition. Phase 1 of operator-stance build,
+   May 2026.';
+```
+
+Default `NULL`. Operator-set state. Do not initialize with platform
+defaults — null means "operator hasn't decided yet" which is
+semantically distinct from "operator decided neutral."
+
+### B2. Type definition
+
+Create `backend/src/types/operator-stance.ts`. Proposed shape (refine
+based on Phase 1A finding A4 — the existing STANCE sub-tab dials):
+
+```typescript
+export type RateEnvironment =
+  | 'easing'
+  | 'neutral'
+  | 'tightening'
+  | 'higher_for_longer';
+
+export type CyclePosition =
+  | 'recovery'
+  | 'early_expansion'
+  | 'mid_expansion'
+  | 'late_expansion'
+  | 'recession';
+
+export type UnderwritingPosture =
+  | 'aggressive'
+  | 'base'
+  | 'conservative';
+
+export type ConcessionsStance =
+  | 'minimal'
+  | 'market'
+  | 'aggressive_burn';
+
+export type MarketingStance =
+  | 'lean'
+  | 'standard'
+  | 'heavy_lease_up';
+
+export type ExpenseStance =
+  | 'tight'
+  | 'realistic'
+  | 'cushioned';
+
+export interface StressOverlays {
+  rentHaircut?: number;          // % reduction (0-1)
+  exitCapWiden?: number;         // bps added to exit cap
+  vacancyFloor?: number;         // minimum vacancy % (0-1)
+  recessionProbability?: number; // 0-1
+}
+
+export interface OperatorStance {
+  // Macro context
+  rateEnvironment: RateEnvironment | null;
+  cyclePosition: CyclePosition | null;
+
+  // Underwriting posture
+  underwritingPosture: UnderwritingPosture | null;
+
+  // Specific dials
+  concessionsStance: ConcessionsStance | null;
+  marketingStance: MarketingStance | null;
+  expenseStance: ExpenseStance | null;
+
+  // Stress overlays
+  stressOverlays: StressOverlays;
+
+  // Provenance
+  setBy: 'operator' | 'platform_default' | 'agent_inferred';
+  setAt: string;
+  notes?: string | null;
+}
+```
+
+Every field is nullable inside the object (partial stance is valid).
+The object itself can be `null` on the column (no stance set at all).
+
+Add a Zod schema for runtime validation at API boundaries. Mirror the
+type to `frontend/src/types/operator-stance.ts`.
+
+### B3. Persistence — extend the assumptions endpoint
+
+Don't create a new endpoint. The existing `PUT
+/api/v1/deals/:dealId/assumptions` (the bulk path that already gets
+the unit_mix wipe hotfix from yesterday) should accept
+`operator_stance` as a top-level field:
+
+```ts
+{
+  hold_period_years?: number;
+  exit_cap?: number;
+  // ... existing fields
+  operator_stance?: OperatorStance | null;  // NEW
+}
+```
+
+In the route handler, COALESCE-merge the same way other fields work:
+omitted = preserve, explicit null = clear. Treat the JSONB the same
+as `unit_mix` (post-hotfix pattern: pass JS null directly to pg, not
+JSON.stringify(null)).
+
+Add `operator_stance` field to the GET response (`/financials` route)
+under `assumptions.operatorStance` so the frontend can hydrate.
+
+### B4. dealStore slice
+
+Add to `frontend/src/stores/dealStore.ts`:
+
+```ts
+interface DealStoreState {
+  // ... existing
+  operatorStance: OperatorStance | null;
+  setOperatorStance: (stance: OperatorStance | null) => Promise<void>;
+  patchOperatorStance: (partial: Partial<OperatorStance>) => Promise<void>;
+}
+```
+
+`setOperatorStance` replaces; `patchOperatorStance` shallow-merges.
+Both call the existing assumptions PUT and emit a new event:
+
+```
+dealStore.emit('operator_stance.changed', { stance })
+```
+
+This event has no consumers in Phase 1 — it's published for Phase 3
+service-layer hooks to subscribe.
+
+### B5. DealContext extension
+
+Find the Research Agent's DealContext assembler (per Phase 1A finding
+A2). Add `operatorStance: OperatorStance | null` to the cached JSON.
+The assembler reads from `deal_assumptions.operator_stance`.
+
+Cache invalidation: `operator_stance.changed` event invalidates the
+24h cache for that deal so the next agent invocation picks up the new
+stance. Don't wait 24h for the IC's thesis change to propagate.
+
+### B6. Cashflow Agent prompt injection
+
+This is the highest-value behavior change in Phase 1.
+
+When the Cashflow Agent runs ProForma generation, inject stance into
+the system prompt. Append a structured block:
+
+```
+OPERATOR STANCE FOR THIS DEAL
+
+Macro context:
+- Rate environment: {rateEnvironment or "not set"}
+- Cycle position:   {cyclePosition or "not set"}
+
+Underwriting:
+- Posture: {underwritingPosture or "base"}
+- Concessions stance: {concessionsStance or "market"}
+- Marketing stance:   {marketingStance or "standard"}
+- Expense stance:     {expenseStance or "realistic"}
+
+Stress overlays (apply if set):
+- Rent haircut:          {rentHaircut * 100}%
+- Exit cap widening:     {exitCapWiden} bps
+- Vacancy floor:         {vacancyFloor * 100}%
+- Recession probability: {recessionProbability * 100}%
+
+DEFAULT CALIBRATION RULES:
+- Conservative posture → use 75th-percentile values for vacancy, bad
+  debt, expense growth. Use 25th-percentile values for rent growth.
+- Aggressive posture → invert. 25th for vacancy/bad debt/expenses,
+  75th for rent growth.
+- Base posture → median.
+- Higher-for-longer rate environment → exit cap +25bps from market
+  median, terminal value DCF reweighted.
+- Late expansion / recession cycle → recession probability ≥ 30%
+  unless operator overrides.
+- Stress overlays: apply ON TOP of posture defaults, not instead of.
+```
+
+The exact rule set above is the starting point. Refine based on what
+the Cashflow Agent's existing prompt expects. The constraint is that
+the rules must be deterministic — same stance + same data → same
+ProForma.
+
+If stance is null on the deal, omit the block entirely. Don't inject
+"stance: null" — that confuses the model.
+
+### B7. AI Coordinator prompt injection
+
+Same pattern, simpler block. Coordinator doesn't generate ProFormas;
+it frames synthesis. Inject:
+
+```
+OPERATOR THESIS LENS
+
+This operator's worldview:
+{one-sentence summary derived from rateEnvironment + cyclePosition
+ + underwritingPosture}
+
+Frame your recommendations and summaries through this lens. When the
+operator's thesis differs from market consensus, lead with their lens
+but acknowledge the consensus position.
+```
+
+The one-sentence summary generation can be a small lookup table
+(rateEnvironment × cyclePosition × posture → sentence) or a tiny
+LLM call. Lookup table is fine for Phase 1.
+
+### B8. Default cascade
+
+For every consumer (Cashflow Agent, Coordinator, future hooks), the
+cascade is:
+
+1. If `dealAssumptions.operator_stance` is null → no stance, agent
+   uses platform defaults
+2. If a specific field within stance is null → use that field's
+   platform default
+3. Otherwise use operator value
+
+Encode the cascade in one place — a `resolveStance(stance, defaults)`
+helper that merges. Don't scatter null-checks across consumers.
+
+## Phase 1C — Side debt (do NOT fix, log only)
+
+If the audit surfaces:
+- Service-layer math services that hardcode defaults the stance
+  should modulate (e.g., a vacancy projection function that always
+  uses 5%) — log to `TODO_OPERATOR_STANCE_PHASE_3.md`
+- Coordinator prompts that don't have a clean injection point — log
+- Existing m28_rate_environment data we should pull from instead of
+  asking operator — log
+
+Do not fix any of these in Phase 1.
+
+## File manifest
+
+Backend:
+1. New migration: `backend/src/migrations/XXXX_add_operator_stance.sql`
+2. New types: `backend/src/types/operator-stance.ts`
+3. Edit `backend/src/api/rest/deal-assumptions.routes.ts` —
+   accept `operator_stance` in PUT, return in GET response
+4. Edit Research Agent's DealContext assembler (file path from A2)
+5. Edit Cashflow Agent's prompt builder (file path from A1)
+6. Edit Coordinator's prompt builder (file path from A3)
+7. New helper: `backend/src/services/operator-stance/resolve.ts`
+   (the default cascade)
+
+Frontend:
+8. New types: `frontend/src/types/operator-stance.ts`
+9. Edit `frontend/src/stores/dealStore.ts` — add slice + event
+
+Tests:
+10. `backend/src/services/__tests__/operator-stance-resolve.spec.ts`
+11. `backend/src/services/cashflow-agent/__tests__/prompt-builder-stance.spec.ts`
+12. Integration test: deal with conservative stance produces
+    different ProForma than same deal with no stance
+
+## Out of scope (Phase 2 / Phase 3)
+
+- STANCE sub-tab UI wiring to backend (Phase 2)
+- Service-layer math hooks for individual modules (Phase 3)
+- Stress overlay propagation through F9 Pro Forma projections
+  (depends on F9 projection feed work that's also queued)
+- New agents that consume stance (out — only the existing two)
+- Stance versioning / history tracking (defer)
+
+## Acceptance criteria
+
+After Phase 1B:
+- Migration applied; `deal_assumptions.operator_stance` column
+  exists, defaults to null
+- PUT /assumptions accepts `operator_stance`, persists correctly,
+  doesn't trip the unit_mix wipe pattern
+- GET /financials returns `assumptions.operatorStance` populated
+- dealStore `operatorStance` slice reads/writes/emits event
+- Research Agent's DealContext includes `operatorStance` field
+- Cashflow Agent ProForma generation prompt injects stance block
+  when stance is non-null, omits when null
+- Coordinator prompt injects thesis lens when stance is non-null
+- Integration test passes: same deal, stance toggled aggressive vs
+  conservative, ProForma vacancy and rent-growth assumptions move
+  in expected directions
+- TypeScript clean; no console errors; no regression in F9 surfaces
+
+## Reporting
+
+**End of Phase 1A**: Audit findings report (no code). Wait for Leon
+approval before Phase 1B.
+
+**End of Phase 1B**: PR with the file manifest above. Description
+includes:
+1. Audit findings table from Phase 1A
+2. Schema migration + diff
+3. The exact stance-injection block sent to Cashflow Agent (verbatim)
+4. The thesis-lens block sent to Coordinator (verbatim)
+5. Integration test output showing different ProForma for different
+   stance values on the same deal
+6. List of `TODO_OPERATOR_STANCE_PHASE_3.md` entries created
+
+**End of Phase 1C**: Link to the TODO file for follow-up.
+
+## Working style
+
+Three commits, in order:
+1. `feat(stance): schema + types + assumptions endpoint extension`
+2. `feat(stance): dealStore slice + DealContext + agent prompt injection`
+3. `chore(stance): log Phase 3 service-layer hook tasks`
+
+Branch: `claude/operator-stance-phase-1` from `origin/master`.
+
+If you find adjacent bugs while tracing — log to TODO file, do not
+fix inline.

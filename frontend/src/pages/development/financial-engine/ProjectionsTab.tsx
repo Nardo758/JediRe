@@ -8,6 +8,7 @@ import type {
 import { fmt$, fmtPct } from './types';
 import { ConcessionDrilldownModal, aggregateConcessionDetail } from './ConcessionDrilldownModal';
 import type { AggregatedConcessionDetail } from './ConcessionDrilldownModal';
+import { LeasingCostTreatmentToggle } from './LeaseVelocitySection';
 import { apiClient } from '../../../services/api.client';
 import { useDealStore } from '../../../stores/dealStore';
 import {
@@ -1183,6 +1184,7 @@ export function ProjectionsTab({
   onHoldChange,
   onF9Refresh,
   lvCostTreatmentView,
+  onLvTreatmentViewChange,
 }: FinancialEngineTabProps) {
   const [timeline, setTimeline] = useState<TimelineOption>(5);
 
@@ -1523,6 +1525,15 @@ export function ProjectionsTab({
               padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
             }}>SUBJ·{financials.subjectHistory.tier}</button>
           )}
+
+          <div style={{ width: 1, height: 14, background: BT.border.medium }} />
+
+          {/* LEASING COST treatment — view-only signal; persisted via AssumptionsTab Location A */}
+          <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#475569', letterSpacing: '0.07em' }}>LEASING COST:</span>
+          <LeasingCostTreatmentToggle
+            value={lvCostTreatmentView ?? 'OPERATING'}
+            onChange={onLvTreatmentViewChange ?? (() => {})}
+          />
 
           <div style={{ flex: 1 }} />
 
