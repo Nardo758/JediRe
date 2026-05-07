@@ -28,6 +28,7 @@ import type {
   CashflowResult,
   SubscriptionTier,
 } from '../../types/dealContext';
+import type { OperatorStance } from '../../types/operator-stance';
 
 // ── Intent Types ───────────────────────────────────────────────
 
@@ -46,6 +47,50 @@ interface ExtractedIntent {
   compareAddresses?: string[];
   reportType?: 'pdf' | 'deal_bible';
   question?: string;
+}
+
+// ── Operator Stance Thesis Lens ────────────────────────────────
+
+/**
+ * Build a one-paragraph "OPERATOR THESIS LENS" block for injection into
+ * the Coordinator's system prompt. Returns empty string when stance is null
+ * or at MARKET defaults (no active thesis to frame).
+ *
+ * The lookup table covers the three dials that most strongly shape the thesis:
+ * rateEnvironment × cyclePosition × underwritingPosture.
+ */
+function buildStanceThesisLens(stance: OperatorStance | null | undefined): string {
+  if (!stance || stance.defaulted) return '';
+
+  const RATE_LABEL: Record<string, string> = {
+    CUTTING:          'rates falling (Fed easing)',
+    NORMALIZING:      'rates normalizing',
+    HIGHER_FOR_LONGER:'rates staying elevated (higher-for-longer)',
+  };
+  const CYCLE_LABEL: Record<string, string> = {
+    EARLY: 'early-cycle recovery',
+    MID:   'mid-cycle expansion',
+    LATE:  'late-cycle with supply risk',
+  };
+  const POSTURE_LABEL: Record<string, string> = {
+    CONSERVATIVE: 'conservative underwriting (wider caps, lower rent growth, higher vacancy floors)',
+    MARKET:       'market-rate underwriting',
+    AGGRESSIVE:   'aggressive underwriting (tighter caps, optimistic rent growth)',
+  };
+
+  const rateTxt    = RATE_LABEL[stance.rateEnvironment]    ?? stance.rateEnvironment;
+  const cycleTxt   = CYCLE_LABEL[stance.cyclePosition]     ?? stance.cyclePosition;
+  const postureTxt = POSTURE_LABEL[stance.underwritingPosture] ?? stance.underwritingPosture;
+
+  const recessionNote = stance.recessionProbability >= 0.4
+    ? ` Operator flags a ${Math.round(stance.recessionProbability * 100)}% recession probability — stress overlays are active.`
+    : '';
+
+  return `\n\nOPERATOR THESIS LENS\n` +
+    `This operator's worldview: ${rateTxt}, ${cycleTxt}, ${postureTxt}.${recessionNote}\n` +
+    `Frame your recommendations and summaries through this lens. When the operator's ` +
+    `thesis differs from market consensus, lead with their perspective but acknowledge ` +
+    `the consensus position briefly.`;
 }
 
 // ── JEDI Score Weights ─────────────────────────────────────────
@@ -301,7 +346,8 @@ export class AICoordinator {
       intent.price,
       zoningResult,
       supplyResult,
-      cashflowResult
+      cashflowResult,
+      dealContext.operatorStance,
     );
 
     // Track the deal in the session
@@ -377,7 +423,8 @@ export class AICoordinator {
       intent.price,
       activeDeal.agentResults?.zoning || this.defaultZoningResult(),
       activeDeal.agentResults?.supply || this.defaultSupplyResult(),
-      cashflowResult
+      cashflowResult,
+      activeDeal.dealContext?.operatorStance,
     );
 
     // Update the deal
@@ -515,6 +562,8 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
     if (activeDeal) {
       systemContext += `\n\nCurrent active deal: ${activeDeal.address}`;
       systemContext += `\nJEDI Score: ${activeDeal.jediScore}/100`;
+      // Inject operator thesis lens when operator has set a non-default stance
+      systemContext += buildStanceThesisLens(activeDeal.dealContext?.operatorStance);
     }
 
     const messages = session.conversationHistory.slice(-10).map((h) => ({
@@ -722,7 +771,8 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
     price: number | undefined,
     zoning: ZoningResult,
     supply: SupplyResult,
-    cashflow: CashflowResult
+    cashflow: CashflowResult,
+    operatorStance?: OperatorStance | null,
   ): Promise<{ jediScore: number; recommendation: 'BUY' | 'PASS' | 'INVESTIGATE'; summary: string }> {
     const prompt = SYNTHESIS_PROMPT
       .replace('{{address}}', address)
@@ -731,10 +781,14 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
       .replace('{{supplyResult}}', JSON.stringify(supply, null, 2))
       .replace('{{cashflowResult}}', JSON.stringify(cashflow, null, 2));
 
+    const synthesisSystemPrompt =
+      'You are a real estate investment analyst generating JEDI Scores.' +
+      buildStanceThesisLens(operatorStance);
+
     try {
       const response = await this.aiService.generate(
         context,
-        'You are a real estate investment analyst generating JEDI Scores.',
+        synthesisSystemPrompt,
         [{ role: 'user', content: prompt }],
         { maxTokens: 1024, temperature: 0 }
       );

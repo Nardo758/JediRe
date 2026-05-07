@@ -26,6 +26,7 @@ import { query } from '../database/connection';
 import { researchRuntime, type ResearchOutput } from './research.config';
 import type { RunContext } from './runtime/types';
 import type { DealContext } from '../types/dealContext';
+import { resolveStance } from '../types/operator-stance';
 
 export interface ResearchInput {
   address: string;
@@ -121,10 +122,31 @@ export class ResearchAgent {
         }
       }
 
+      // Attach OperatorStance from deals.operator_stance so downstream
+      // consumers (Coordinator synthesis, Supply Agent) have the operator's
+      // thesis without a separate DB round-trip.
+      try {
+        const stanceRes = await query(
+          `SELECT operator_stance FROM deals WHERE id = $1`,
+          [input.dealId]
+        );
+        ctx2.operatorStance = stanceRes.rows[0]?.operator_stance
+          ? resolveStance(stanceRes.rows[0].operator_stance as Record<string, unknown>)
+          : null;
+      } catch (stanceErr) {
+        // Non-fatal — Cashflow Agent fetches stance independently via tool.
+        logger.warn('[ResearchAgent] failed to attach operatorStance (non-fatal)', {
+          dealId: input.dealId,
+          err: stanceErr instanceof Error ? stanceErr.message : String(stanceErr),
+        });
+        ctx2.operatorStance = null;
+      }
+
       logger.info('[ResearchAgent] execute() completed via AgentRuntime', {
         dealId: input.dealId,
         confidenceScore: output.confidence_score,
         fieldsWritten: output.fields_written?.length ?? 0,
+        stanceAttached: ctx2.operatorStance !== null,
       });
 
       return ctx2;
@@ -198,6 +220,7 @@ export class ResearchAgent {
         dataFreshnessHours: 0,
         confidenceScore: 0,
       },
+      operatorStance: null,
     };
   }
 }

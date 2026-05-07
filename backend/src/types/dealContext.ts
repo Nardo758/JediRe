@@ -4,6 +4,8 @@
  * Single source of truth consumed by Zoning, Supply, and Cashflow agents.
  */
 
+import type { OperatorStance } from './operator-stance';
+
 // ── Shared Layer Types (aligned with frontend dealContext.types.ts) ──
 
 export type DataSourceLayer = 'broker' | 'platform' | 'user' | 'agent' | 'computed';
@@ -203,6 +205,11 @@ export interface ResearchAgentContext {
 
   // ── Assembly Metadata ──
   meta: AssemblyMeta;
+
+  // ── Operator Stance ──
+  // Null = operator hasn't set a stance; backend resolves MARKET defaults when consuming.
+  // Populated by ResearchAgent.execute() from deals.operator_stance after context assembly.
+  operatorStance: OperatorStance | null;
 }
 
 // ── Sub-interfaces ──────────────────────────────────────────────
