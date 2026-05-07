@@ -37,23 +37,32 @@ DealTermsTab. The read path works; only the write path is missing.
   Recommend option (a) since the scaffold's row breakdown matches the way analysts think about closing costs in OMs.
 - **Note on row Lender / Orig:** overlaps with `debt:senior:origFee` from F9 Capital. Either (a) link to that field or (b) keep them separate and document the double-count rule.
 
-### 3. Targets — IRR · EM · CoC
+### 3. Targets — IRR · EM · CoC ✅ FIXED (May 2026)
 
 - **Rows:** Target Levered IRR · Target Equity Multiple · Target Cash-on-Cash (Y1)
-- **Gap:** No deal-level persistence for operator return targets. M36 Sigma plausibility tier comparisons may want these, and they appear in the M08 strategy seed JSONB (`139_m08_strategy_arbitrage.sql`) as scenario inputs but never on the deal record.
-- **Fix:** Either (a) extend `deal_assumptions` with three nullable numeric columns plus 3 `SCALAR_FIELD_MAP` entries, or (b) park them under `per_year_overrides` with a `target:*` prefix. Option (b) is cheaper and follows the existing prefix family.
+- **Fix shipped:**
+  - Migration `20260507_deal_assumptions_targets.sql` added `target_irr`, `target_em`, `target_coc` (nullable NUMERIC) to `deal_assumptions`.
+  - `PATCH /:dealId/assumptions/targets` — single endpoint for all three; COALESCE-safe upsert so partial payloads don't clobber sibling fields.
+  - `getDealFinancials` SELECT extended; `assumptions.targetIrr/Em/Coc` on the F9 contract.
+  - DealTermsTab: `saveTargetIrr/Em/Coc` save functions wired; rows hydrate on load; `PendingBadge` removed; source badge flips Override ↔ Not Provided. ✓
 
-### 4. Exit Strategy
+### 4. Exit Strategy ✅ FIXED (May 2026)
 
 - **Row:** "Exit Strategy" (Sale / Refinance / Hold)
-- **Gap:** Same as Targets — no deal column or JSONB key. Appears only as M08 scenario seed input.
-- **Fix:** Add `deal_assumptions.exit_strategy text` (or `target:exit_strategy` per_year_override key) and a string-field PATCH route. The existing override endpoint takes `value: number | string | boolean | null`, so a string path can ride on the same handler with a small validator.
+- **Fix shipped:**
+  - Migration added `exit_strategy TEXT` to `deal_assumptions`.
+  - `PATCH /:dealId/assumptions/exit-strategy` — validates against `['Sale','Refinance','Hold']`; null clears the field.
+  - `getDealFinancials` SELECT extended; `assumptions.exitStrategy` on the F9 contract.
+  - DealTermsTab: `saveExitStrategy` wired to dropdown `onCommit`; row hydrates on load; `PendingBadge` removed. ✓
 
-### 5. Selling Costs %
+### 5. Selling Costs % ✅ FIXED (May 2026)
 
 - **Row:** "Selling Costs %"
-- **Gap:** `financials-composer.service.ts:2362-2366` reads `y1.sellingCosts` defaulting to 2 % when the property is missing. There's no FIELD_MAP entry, no `deal_assumptions` column, and the field is not surfaced on `F9DealFinancials`.
-- **Fix:** Add `sellingCostsPct` to `FIELD_MAP` (storing under `y1.selling_costs` LayeredValue) and surface it on the F9 contract so `f9Financials.assumptions` carries the resolved value back. The composer already has the consumption point.
+- **Fix shipped:**
+  - Migration added `selling_costs_pct NUMERIC` to `deal_assumptions`.
+  - `PATCH /:dealId/assumptions/selling-costs` — validates 0–1 decimal range; null resets to platform 2% default.
+  - `getDealFinancials` SELECT extended; `assumptions.sellingCostsPct` on the F9 contract.
+  - DealTermsTab: `saveSellingCosts` wired; `sellingCostsDecimal` now prefers resolved DB value over draft input, so exit math (Gross Sale Proceeds) updates immediately after save; `PendingBadge` removed; source badge flips Override ↔ Platform. ✓
 
 ### 6. Going-in Cap Rate — operator override
 

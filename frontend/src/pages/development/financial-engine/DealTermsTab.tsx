@@ -466,6 +466,12 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if (fin.assumptions?.holdYears != null)      setHoldYears(String(fin.assumptions.holdYears));
     if (fin.assumptions?.exitCap != null)        setExitCap((fin.assumptions.exitCap * 100).toFixed(2));
     if (fin.closeDate)                           setCloseDate(fin.closeDate);
+    // Items 3/4/5 — return hurdles & disposition
+    if ((fin.assumptions as any)?.targetIrr != null)       setTargetIrr(((fin.assumptions as any).targetIrr * 100).toFixed(2));
+    if ((fin.assumptions as any)?.targetEm != null)        setTargetEm(String((fin.assumptions as any).targetEm));
+    if ((fin.assumptions as any)?.targetCoc != null)       setTargetCoc(((fin.assumptions as any).targetCoc * 100).toFixed(2));
+    if ((fin.assumptions as any)?.exitStrategy != null)    setExitStrategy((fin.assumptions as any).exitStrategy);
+    if ((fin.assumptions as any)?.sellingCostsPct != null) setSellingCosts(((fin.assumptions as any).sellingCostsPct * 100).toFixed(2));
   }, [props.dealId, fin]);
 
   // ── Resolved values (server side of truth) ─────────────────────────────────
@@ -478,6 +484,12 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const goingInCapResolved    = fin?.proforma?.valuationSnapshot?.goingInCapT12
     ?? fin?.returns?.valuation?.multiples?.capRate?.goingIn ?? null;
   const stabilizedCapResolved = fin?.returns?.valuation?.multiples?.capRate?.stabilized ?? null;
+  // Items 3/4/5 resolved from server
+  const targetIrrResolved       = (fin?.assumptions as any)?.targetIrr       ?? null;
+  const targetEmResolved        = (fin?.assumptions as any)?.targetEm        ?? null;
+  const targetCocResolved       = (fin?.assumptions as any)?.targetCoc       ?? null;
+  const exitStrategyResolved    = (fin?.assumptions as any)?.exitStrategy    ?? null;
+  const sellingCostsPctResolved = (fin?.assumptions as any)?.sellingCostsPct ?? null;
 
   // Total closing costs = explicit override (su:closingCosts) ?? benchmarks.closingCostsPct × basis
   const closingCostsOverride  = fin?.sourcesUses?.userOverrides?.closingCosts ?? null;
@@ -499,8 +511,8 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
       ? purchasePriceResolved + totalClosingCosts
       : null;
 
-  // Selling Costs default (composer hard-codes 2%; no persistence path yet)
-  const sellingCostsDecimal = parsePctDecimal(sellingCosts) ?? 0.02;
+  // Selling Costs: prefer persisted operator value from DB, then local draft input, then 2% platform default
+  const sellingCostsDecimal = sellingCostsPctResolved ?? parsePctDecimal(sellingCosts) ?? 0.02;
 
   // Returns / KPI strip — null until model has been built
   const irrPct  = fin?.returns?.lpNetIrr ?? fin?.returns?.irr ?? null;
@@ -598,6 +610,60 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
       props.onF9Refresh?.();
     } catch (e) {
       console.error('[DealTerms] Save hold period failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  async function saveTargetIrr() {
+    const dec = parsePctDecimal(targetIrr);
+    if (dec == null) return;
+    try {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/targets`, { targetIrr: dec });
+      props.onF9Refresh?.();
+    } catch (e) {
+      console.error('[DealTerms] Save target IRR failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  async function saveTargetEm() {
+    const val = parseFloat(targetEm);
+    if (!Number.isFinite(val) || val <= 0) return;
+    try {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/targets`, { targetEm: val });
+      props.onF9Refresh?.();
+    } catch (e) {
+      console.error('[DealTerms] Save target EM failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  async function saveTargetCoc() {
+    const dec = parsePctDecimal(targetCoc);
+    if (dec == null) return;
+    try {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/targets`, { targetCoc: dec });
+      props.onF9Refresh?.();
+    } catch (e) {
+      console.error('[DealTerms] Save target CoC failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  async function saveExitStrategy() {
+    const val = exitStrategy || null;
+    try {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/exit-strategy`, { exitStrategy: val });
+      props.onF9Refresh?.();
+    } catch (e) {
+      console.error('[DealTerms] Save exit strategy failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  async function saveSellingCosts() {
+    const dec = parsePctDecimal(sellingCosts);
+    if (dec == null) return;
+    try {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/selling-costs`, { sellingCostsPct: dec });
+      props.onF9Refresh?.();
+    } catch (e) {
+      console.error('[DealTerms] Save selling costs failed:', e instanceof Error ? e.message : e);
     }
   }
 
@@ -835,25 +901,25 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               operatorOnly
               override={targetIrr} setOverride={setTargetIrr}
               overrideKind="pct"
-              readOnly readOnlyValue="--"
-              source="Not Provided"
-              flag={<PendingBadge />}
+              onCommit={() => void saveTargetIrr()}
+              resolved={targetIrrResolved != null ? `${(targetIrrResolved * 100).toFixed(1)}%` : '--'}
+              source={targetIrrResolved != null ? 'Override' : 'Not Provided'}
             />
             <LvRow label="Target Equity Multiple"
               operatorOnly
               override={targetEm} setOverride={setTargetEm}
               overrideKind="number"
-              readOnly readOnlyValue="--"
-              source="Not Provided"
-              flag={<PendingBadge />}
+              onCommit={() => void saveTargetEm()}
+              resolved={targetEmResolved != null ? `${targetEmResolved.toFixed(2)}x` : '--'}
+              source={targetEmResolved != null ? 'Override' : 'Not Provided'}
             />
             <LvRow label="Target Cash-on-Cash (Y1)"
               operatorOnly
               override={targetCoc} setOverride={setTargetCoc}
               overrideKind="pct"
-              readOnly readOnlyValue="--"
-              source="Not Provided"
-              flag={<PendingBadge />}
+              onCommit={() => void saveTargetCoc()}
+              resolved={targetCocResolved != null ? `${(targetCocResolved * 100).toFixed(1)}%` : '--'}
+              source={targetCocResolved != null ? 'Override' : 'Not Provided'}
             />
             <LvRow label="Investment Strategy"
               operatorOnly
@@ -870,9 +936,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               operatorOnly
               override={exitStrategy} setOverride={setExitStrategy}
               overrideOptions={['Sale', 'Refinance', 'Hold']}
-              readOnly readOnlyValue="--"
-              source="Not Provided"
-              flag={<PendingBadge />}
+              onCommit={() => void saveExitStrategy()}
+              resolved={exitStrategyResolved ?? '--'}
+              source={exitStrategyResolved != null ? 'Override' : 'Not Provided'}
             />
             <LvRow label="Exit Cap Rate"
               broker={undefined}
@@ -889,9 +955,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               broker={undefined} platform="2.00%"
               override={sellingCosts} setOverride={setSellingCosts}
               overrideKind="pct"
-              readOnly readOnlyValue="2.00%"
-              source="Platform"
-              flag={<PendingBadge />}
+              onCommit={() => void saveSellingCosts()}
+              resolved={sellingCostsPctResolved != null ? `${(sellingCostsPctResolved * 100).toFixed(2)}%` : '2.00%'}
+              source={sellingCostsPctResolved != null ? 'Override' : 'Platform'}
             />
 
             <SpacerRow />

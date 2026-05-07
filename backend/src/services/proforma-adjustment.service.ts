@@ -1709,7 +1709,8 @@ export async function getDealFinancials(
               exit_cap, rent_growth_yr1, rent_growth_stabilized, hold_period_years,
               interest_rate, ltc, avg_lease_term_months, per_year_overrides,
               io_period_months, amortization_years, dscr_min, origination_fee_pct,
-              unit_mix, unit_mix_overrides, avg_rent_per_unit, vacancy_pct
+              unit_mix, unit_mix_overrides, avg_rent_per_unit, vacancy_pct,
+              target_irr, target_em, target_coc, exit_strategy, selling_costs_pct
          FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     ),
@@ -2137,6 +2138,13 @@ export async function getDealFinancials(
     if (parts.length > 0) narrative = parts.join(' · ');
   }
 
+  // ── Operator return hurdles & disposition settings (Items 3/4/5 — DealTermsTab) ─
+  const targetIrr: number | null = assumptionsRow?.target_irr != null ? +parseFloat(assumptionsRow.target_irr).toFixed(4) : null;
+  const targetEm: number | null = assumptionsRow?.target_em != null ? +parseFloat(assumptionsRow.target_em).toFixed(4) : null;
+  const targetCoc: number | null = assumptionsRow?.target_coc != null ? +parseFloat(assumptionsRow.target_coc).toFixed(4) : null;
+  const exitStrategy: string | null = assumptionsRow?.exit_strategy ?? null;
+  const sellingCostsPct: number | null = assumptionsRow?.selling_costs_pct != null ? +parseFloat(assumptionsRow.selling_costs_pct).toFixed(4) : null;
+
   const assumptions = {
     holdYears,
     exitCap,
@@ -2149,6 +2157,13 @@ export async function getDealFinancials(
       ? gprDecomposition
       : null,
     narrative,
+    // Operator-set return hurdles — null when not yet configured
+    targetIrr,
+    targetEm,
+    targetCoc,
+    // Operator exit & disposition
+    exitStrategy,
+    sellingCostsPct,
   };
 
   // ── Capital Stack assembly ──────────────────────────────────────────────────

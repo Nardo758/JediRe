@@ -669,6 +669,131 @@ router.patch('/:dealId/assumptions/hold-period', requireAuth, async (req: Authen
 });
 
 /**
+ * PATCH /:dealId/assumptions/targets
+ *
+ * Surgical write for operator return hurdles (Item 3 — DealTermsTab).
+ * Accepts any subset of { targetIrr, targetEm, targetCoc }; null clears the field.
+ * Body: { targetIrr?: number | null, targetEm?: number | null, targetCoc?: number | null }
+ */
+router.patch('/:dealId/assumptions/targets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const { targetIrr, targetEm, targetCoc } = req.body as {
+      targetIrr?: number | null;
+      targetEm?: number | null;
+      targetCoc?: number | null;
+    };
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, target_irr, target_em, target_coc, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET
+         target_irr  = COALESCE($2, deal_assumptions.target_irr),
+         target_em   = COALESCE($3, deal_assumptions.target_em),
+         target_coc  = COALESCE($4, deal_assumptions.target_coc),
+         updated_at  = NOW()`,
+      [dealId, targetIrr ?? null, targetEm ?? null, targetCoc ?? null]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error patching return targets:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /:dealId/assumptions/exit-strategy
+ *
+ * Surgical write for exit strategy (Item 4 — DealTermsTab).
+ * Body: { exitStrategy: 'Sale' | 'Refinance' | 'Hold' | null }
+ */
+router.patch('/:dealId/assumptions/exit-strategy', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const { exitStrategy } = req.body as { exitStrategy: string | null };
+
+    const VALID = ['Sale', 'Refinance', 'Hold'];
+    if (exitStrategy !== null && !VALID.includes(exitStrategy)) {
+      return res.status(400).json({ error: `exitStrategy must be one of: ${VALID.join(', ')}` });
+    }
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, exit_strategy, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET
+         exit_strategy = $2,
+         updated_at    = NOW()`,
+      [dealId, exitStrategy]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error patching exit strategy:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /:dealId/assumptions/selling-costs
+ *
+ * Surgical write for selling/disposition cost % (Item 5 — DealTermsTab).
+ * Stored as decimal (0.02 = 2%). Null resets to platform default (2%).
+ * Body: { sellingCostsPct: number | null }
+ */
+router.patch('/:dealId/assumptions/selling-costs', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const { sellingCostsPct } = req.body as { sellingCostsPct: number | null };
+
+    if (sellingCostsPct !== null && (typeof sellingCostsPct !== 'number' || sellingCostsPct < 0 || sellingCostsPct > 1)) {
+      return res.status(400).json({ error: 'sellingCostsPct must be a decimal between 0 and 1 (e.g. 0.02 for 2%)' });
+    }
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, selling_costs_pct, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET
+         selling_costs_pct = $2,
+         updated_at        = NOW()`,
+      [dealId, sellingCostsPct]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error patching selling costs:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /:dealId/financials/reparse
  *
  * Force-rerun seedProFormaYear1 (re-ingests all extraction capsule signals),
