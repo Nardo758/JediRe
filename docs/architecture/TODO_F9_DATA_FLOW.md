@@ -93,6 +93,25 @@ for these fields. Swap to `KpiChip` once on response.
 **Required action:**
 - Cashflow Agent prompts at `deal-assumptions.routes.ts:108` received "350% rent growth" / "550% exit cap" / "500% vacancy" inputs pre-fix.
 - AI Coordinator narrative prompts at `deal-assumptions.routes.ts:106` same.
-- Regenerate AI commentary on the top-N most-viewed deals post-fix to flush corrupted narratives from the 24-hour in-memory `narrativeCache` (or restart the server, which clears it automatically).
+- Regenerate AI commentary on all deals matching: `last_viewed_at > 2026-04-01 AND last_ai_narrative_at < <fix_deploy_timestamp>` (commit b86c537, May 2026). In-memory `narrativeCache` auto-expires in 24 h from server restart; any cached narrative generated before the restart is already stale. If total deal volume is small (< 50), regenerate all regardless of last_viewed_at.
+- Done criteria: no deal in the target set has a `narrativeCache` entry older than the fix deploy timestamp.
 
-**Priority:** S — narrative cache auto-expires in 24 h; Excel regeneration requires explicit LP communication.
+**Priority:** S — narrative cache cleared automatically on server restart (already done). Explicit re-generation sweep only needed if stale narratives were persisted to `deals.ai_narrative` column; check whether that column is written post-generation before scheduling a sweep job.
+
+---
+
+## POST-FIX: LP deliverable audit — Excel exports pre-fix had 100× understated gross-sale-value
+
+**Reference:** Pct unit-break audit, May 2026 (fix commit: b86c537)
+**Effort:** XS (audit) — variable (comms + re-export)
+
+POST-FIX: LP deliverable audit — any Excel exports sent pre-fix (commit
+b86c537, May 2026) had gross-sale-value 100× understated (`exitNoi / 5.5`
+instead of `exitNoi / 0.055`, f9-financial-export.service.ts:220`). Sweep
+the export audit log / sales pipeline for affected recipients. If LP
+deliverables are in circulation: communicate correction and re-send updated
+workbook. If platform is pre-revenue or no LP exports have been sent, mark
+this entry resolved immediately.
+
+**Done criteria:** Export audit confirmed clean, or affected recipients
+notified and updated workbooks sent.

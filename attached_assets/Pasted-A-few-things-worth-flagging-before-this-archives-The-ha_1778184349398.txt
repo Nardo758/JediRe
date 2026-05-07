@@ -1,0 +1,14 @@
+A few things worth flagging before this archives:
+The has_tp = null data state is the common case, not the edge. 464 Bishop has no traffic_projections row, so the fallback path at proforma-adjustment.service.ts:2072-2074 is what fires. Most deals in the system are probably in this state — full M07 calibration only happens for deals that have run the engine. So the fallback path being correct matters more than the primary path for current production traffic. Worth knowing for future debugging — defaults and fallbacks aren't edge cases here, they're hot paths.
+Browser verification still needs to happen even though the mechanical proof is tight. The agent can't auth, so the agent's confidence stops at "the data and math are correct on the server side." The visual contract on the rendered page is yours to confirm. The five-step check should still happen — just for completeness, not because the fix is suspect.
+If you can pull up F9 Projections on 464 Bishop right now, run the five and post results. If you're heading out and would rather do it next session, that's fine — the verification is logically the close-out of this chapter, but the chapter is already substantively done.
+Two things to commit before context fades:
+
+The narrative regeneration TODO entry should specify which deals. "Top-N most-viewed" was my suggested framing but vague. Specify the criteria explicitly (e.g., "all deals with last_viewed_at > 2026-04-01 AND last_ai_narrative_at < <fix_deploy_time>"), or scope to "all deals" if the volume is small. Otherwise the entry sits in the TODO file and nobody knows when "regenerate narratives" is actually done.
+The LP deliverable concern from my earlier note isn't logged anywhere yet. The TODO_F9_DATA_FLOW.md entry covers narrative regeneration but not LP-facing exports. If any LP has received an Excel export pre-fix with the 100x understated gross sale value, that's a different audience and a different communication. Worth a separate one-line entry:
+
+POST-FIX: LP deliverable audit — any Excel exports sent pre-fix (commit
+<hash>, May 2026) had gross-sale-value 100x understated. Sweep export
+audit log / sales pipeline for affected recipients. Communicate
+correction or re-send updated workbook.
+If no LP exports have happened yet (i.e., platform is pre-revenue or pre-launch on the Bloomberg surface), this is a non-issue and the entry can be omitted. Your call based on actual operator usage.
