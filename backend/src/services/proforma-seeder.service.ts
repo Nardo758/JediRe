@@ -578,6 +578,21 @@ function buildSeed(
         ? `Tax bill under appeal. Base case $${Math.round(billCurrent).toLocaleString()}; downside if lost: $${Math.round(billUnappealed).toLocaleString()}.`
         : undefined,
     });
+    // IC-04 tie-break: when |t12 − tax_bill| / tax_bill > 0.15, prefer T-12.
+    // Override always wins (already handled inside resolve()), so only apply
+    // when current resolution is 'tax_bill'. The assessor bill is often a
+    // pre-reassessment figure that understates true carry; T-12 reflects what
+    // the seller actually paid.
+    if (
+      realEstateTax.resolution === 'tax_bill' &&
+      realEstateTax.t12 != null &&
+      realEstateTax.tax_bill != null &&
+      realEstateTax.tax_bill !== 0 &&
+      Math.abs((realEstateTax.t12 - realEstateTax.tax_bill) / realEstateTax.tax_bill) > 0.15
+    ) {
+      realEstateTax.resolved = realEstateTax.t12;
+      realEstateTax.resolution = 't12';
+    }
   } else {
     realEstateTax = opexFromT12('real_estate_tax', 'real_estate_tax', null);
   }

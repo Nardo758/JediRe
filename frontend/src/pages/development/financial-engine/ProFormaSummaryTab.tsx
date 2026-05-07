@@ -154,7 +154,7 @@ const CTRL_OPEX_FIELDS = new Set([
   'marketing', 'utilities', 'g_and_a',
 ]);
 const NCTRL_OPEX_FIELDS = new Set([
-  'management_fee', 'insurance', 'real_estate_tax', 'total_opex',
+  'management_fee', 'insurance', 'real_estate_tax', 'real_estate_taxes', 'total_opex',
 ]);
 const SUBTOTALS = new Set(['gpr', 'net_rental_income', 'egi', 'total_opex', 'noi']);
 const PCT_FIELDS = new Set<string>();

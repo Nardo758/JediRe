@@ -1,0 +1,92 @@
+STOP. The previous pass introduced a regression AND didn't address the
+symptom. Do not write any more rendering-layer code until you've completed
+the payload step below.
+
+═══ Evidence the previous pass made things worse ═══
+
+Before:                          After your alias pass:
+  Utilities row rendering ✓      Utilities row VANISHED ✗
+  Property Tax absent ✗          Property Tax present, but wrong value ✗
+  Ctrl $791,134, NCtrl ~$46K     Ctrl $604,840, NCtrl $67,131
+  Hidden expenses ~$1.83M        Hidden expenses ~$2.00M
+
+The hidden-expense number got worse. Total OpEx $2,671,053 minus visible
+lines $671,971 = $1,999,082 of opex still not rendering as line items.
+Renaming the labels did not unlock the data.
+
+═══ TASK 1 — Revert the Utilities regression ═══
+
+Whatever rename/alias work removed `utilities` from the rendering set,
+undo it. The row was rendering against composer-emitted field
+`utilities` with label "Utilities" before this pass. Restore that.
+Verify in webview before doing anything else.
+
+Do not bundle this revert with any other change. One commit, one purpose.
+
+═══ TASK 2 — Network tab payload, no exceptions ═══
+
+This is the same step from the previous prompt. It was skipped. Do it now,
+in this order, before writing any more code:
+
+  1. Open the F9 page in the popout webview tab (not the embedded one).
+  2. F12 → Network tab → Preserve log → reload the page.
+  3. Find the financials request (filter: "financial" or "proforma").
+  4. Click it → Response tab → expand `proforma.year1`.
+  5. Paste the raw JSON of that array into the next message. Raw, not
+     summarized, not "I see X rows", actual JSON.
+
+For each of the following fields, state in your reply:
+PRESENT_WITH_VALUE / PRESENT_ALL_NULL / ABSENT.
+
+  vacancy_loss           loss_to_lease       concessions
+  bad_debt               non_revenue_units   other_income
+  management_fee         real_estate_taxes   utilities
+
+Branch on the result before any code:
+  - ABSENT             → backend addRow path issue (composer or seeder)
+  - PRESENT_ALL_NULL   → lv() lookup keys vs y1 JSON shape mismatch
+  - PRESENT_WITH_VALUE → frontend filter culling them
+                         (ProFormaSummaryTab.tsx:633, evidenceFilter)
+
+═══ TASK 3 — Property Tax resolution bug (separate scoped item) ═══
+
+DO NOT FIX THIS YET. Logging it as a separate task to address after the
+missing-rows symptom is solved.
+
+Currently the Property Tax row is rendering with Resolved = $20,731.2
+(the tax_bill value) while T-12 column shows $1.13M. IC-04 already flags
+a 5336.9% gap between these — threshold is 15% per
+proforma-adjustment.service.ts:1899-1913.
+
+Spec: when |t12 - tax_bill| / tax_bill > 0.15, the resolved real_estate_tax
+value should prefer t12 over tax_bill. The current resolution logic does
+the opposite. The result is that Resolved = $20K (implausibly low) while
+TOTAL OPEX = $2.67M (correctly using a larger tax figure internally) — the
+displayed line and the displayed total do not reconcile, and a deal user
+reading this thinks taxes are $20K.
+
+This gets its own task with file manifest:
+  - Where is the resolved-value selection for real_estate_tax? Likely in
+    proforma-seeder.service.ts or financials-composer.service.ts:1548
+    (addExpenseRow flow that calls lv('real_estate_tax')).
+  - Resolution rule: t12 > tax_bill IF gap exceeds IC-04 threshold (0.15).
+  - Source badge should reflect the choice ("T-12" not "County Assessor").
+
+═══ HARD GUARDRAIL ═══
+
+Until Task 2 produces a payload classification, do not:
+  - Rename fields
+  - Add alias layers
+  - Add naming-normalization at any boundary
+  - Touch CTRL_OPEX_FIELDS / NCTRL_OPEX_FIELDS / REVENUE_FIELDS sets
+  - Modify financials-composer.service.ts
+  - "Switch to Build mode for a 30-second fix"
+
+The previous pass made changes in 3 of those categories without inspecting
+the payload. The result is in the screenshot. Don't repeat the pattern.
+
+Reply order required:
+  1. Confirmation that Utilities row is restored (Task 1).
+  2. Raw JSON of proforma.year1[] (Task 2).
+  3. Per-field classification table (Task 2).
+  4. Then we discuss the fix.
