@@ -2065,9 +2065,10 @@ export async function getDealFinancials(
       yearly: [],
       leaseUp: null,
       calibrated: {
-        vacancyPct: pa.vacancy_current != null ? +parseFloat(pa.vacancy_current).toFixed(2) : null,
-        rentGrowthPct: pa.rent_growth_current != null ? +parseFloat(pa.rent_growth_current).toFixed(3) : null,
-        exitCap: pa.exit_cap_current != null ? +parseFloat(pa.exit_cap_current).toFixed(3) : null,
+        // DB stores in percentage form (e.g. 5.5 for 5.5%); normalise to decimal (0–1) here.
+        vacancyPct:    pa.vacancy_current    != null ? +(parseFloat(pa.vacancy_current)    / 100).toFixed(4) : null,
+        rentGrowthPct: pa.rent_growth_current != null ? +(parseFloat(pa.rent_growth_current) / 100).toFixed(4) : null,
+        exitCap:       pa.exit_cap_current    != null ? +(parseFloat(pa.exit_cap_current)    / 100).toFixed(4) : null,
         lastCalibrated: pa.last_recalculation?.toISOString?.() ?? null,
       },
       leasingSignals: null,

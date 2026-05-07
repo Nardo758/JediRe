@@ -970,9 +970,12 @@ export async function getTrafficProjection(
       weeksTo95: row.lease_up_weeks_to_95 ?? null,
     } : null,
     calibrated: {
-      vacancyPct: row.vacancy_current != null ? +parseFloat(row.vacancy_current).toFixed(4) : null,
-      rentGrowthPct: row.rent_growth_current != null ? +parseFloat(row.rent_growth_current).toFixed(4) : null,
-      exitCap: row.exit_cap_current != null ? +parseFloat(row.exit_cap_current).toFixed(4) : null,
+      // DB stores these in percentage form (e.g. 5.5 for 5.5%). Divide by 100 here so every
+      // downstream consumer receives decimal form (0–1), consistent with all formatters,
+      // blend arithmetic, and math that uses ?? 0.03 / Math.min(0.30, …) guards.
+      vacancyPct:    row.vacancy_current    != null ? +(parseFloat(row.vacancy_current)    / 100).toFixed(4) : null,
+      rentGrowthPct: row.rent_growth_current != null ? +(parseFloat(row.rent_growth_current) / 100).toFixed(4) : null,
+      exitCap:       row.exit_cap_current    != null ? +(parseFloat(row.exit_cap_current)    / 100).toFixed(4) : null,
       lastCalibrated: row.pa_updated_at ?? row.projection_date ?? null,
     },
     avgLeaseTerm,
