@@ -538,7 +538,7 @@ const STATIC_ROWS: RowDef[] = [
     isM07: true, format: fmtPct2, readonly: true,
     description: 'Read-only equilibrium vacancy from T-01×T-05 traffic model. Fallback to broker T12 vacancy when M07 offline.',
     platformSource: 'M07 — equilibrium vacancy from tours × conversion', brokerSource: 'OM / T12 vacancy_pct (broker fallback)',
-    getBroker: (f, _yr) => y1(f, 'vacancy_loss')?.broker ?? y1(f, 'vacancy_loss')?.t12 ?? null,
+    getBroker: (f, _yr) => y1(f, 'vacancy_pct')?.broker ?? y1(f, 'vacancy_pct')?.t12 ?? null,
     getPlatform: (f, yr) => {
       const t = tyr(f, yr);
       if (t?.vacancyPct != null) return t.vacancyPct;
@@ -553,7 +553,7 @@ const STATIC_ROWS: RowDef[] = [
     platformSource: 'M07 — occupancy trajectory per year', brokerSource: 'OM / Pro Forma Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Stabilized Occupancy',
     getBroker: (f, _yr) => {
-      const v = y1(f, 'vacancy_loss')?.broker ?? y1(f, 'vacancy_loss')?.t12;
+      const v = y1(f, 'vacancy_pct')?.broker ?? y1(f, 'vacancy_pct')?.t12;
       return v != null ? +(1 - v).toFixed(4) : null;
     },
     getPlatform: (f, yr) => {
@@ -636,8 +636,8 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Market rent minus in-place rent as % of market rent. Narrows as leases roll over hold period.',
     platformSource: 'JEDI — Submarket Avg Loss-to-Lease', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Loss-to-Lease',
-    getBroker:   (f, _yr) => y1(f, 'loss_to_lease')?.broker ?? y1(f, 'loss_to_lease')?.t12 ?? null,
-    getPlatform: (f, _yr) => y1(f, 'loss_to_lease')?.platform ?? null,
+    getBroker:   (f, _yr) => y1(f, 'loss_to_lease_pct')?.broker ?? y1(f, 'loss_to_lease_pct')?.t12 ?? null,
+    getPlatform: (f, _yr) => y1(f, 'loss_to_lease_pct')?.platform ?? null,
     getConfidence: _f => 60,
   },
   {
@@ -646,8 +646,8 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Free rent / net effective concessions as % of GPR. Declines as market tightens.',
     platformSource: 'M07 — Leasing velocity implies concession pressure', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Concessions',
-    getBroker:   (f, _yr) => y1(f, 'concessions')?.broker ?? y1(f, 'concessions')?.t12 ?? null,
-    getPlatform: (f, _yr) => y1(f, 'concessions')?.platform ?? null,
+    getBroker:   (f, _yr) => y1(f, 'concessions_pct')?.broker ?? y1(f, 'concessions_pct')?.t12 ?? null,
+    getPlatform: (f, _yr) => y1(f, 'concessions_pct')?.platform ?? null,
     getConfidence: _f => 60,
   },
 

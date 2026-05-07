@@ -1846,9 +1846,68 @@ export async function getDealFinancials(
     };
   }
 
+  // Canonical $-denominated row built from a percentage- or per-unit-based seed
+  // field. ProFormaSummaryTab filters rows by canonical names (vacancy_loss,
+  // loss_to_lease, concessions, bad_debt, non_revenue_units, other_income,
+  // management_fee) and renders all values as dollars; the legacy `_pct`/`_per_unit`
+  // rows are kept alongside for AssumptionsTab and any other consumers that
+  // still expect raw percentages.
+  function toDollarRow(
+    srcKey: string,
+    outField: string,
+    label: string,
+    multiplier: number | null,
+  ): OperatingStatementRow {
+    const field = lv(year1Seed, srcKey);
+    const mul = (n: number | null): number | null =>
+      n != null && multiplier != null ? n * multiplier : null;
+    const resolved = mul(resolvedNum(field));
+    const resolution = field ? (field.resolution as string | null) ?? null : null;
+    const platformVal = mul(layerNum(field, 'platform'));
+
+    let benchmarkPosition: 'above' | 'below' | 'within' | null = null;
+    if (resolved != null && platformVal != null && platformVal !== 0) {
+      const ratio = resolved / platformVal;
+      if (ratio > 1.05) benchmarkPosition = 'above';
+      else if (ratio < 0.95) benchmarkPosition = 'below';
+      else benchmarkPosition = 'within';
+    }
+
+    return {
+      field: outField,
+      label,
+      broker: mul(layerNum(field, 'om') ?? layerNum(field, 'broker')),
+      platform: platformVal,
+      t12: mul(layerNum(field, 't12')),
+      rentRoll: mul(layerNum(field, 'rent_roll')),
+      taxBill: mul(layerNum(field, 'tax_bill')),
+      resolved,
+      resolution,
+      perUnit: resolved != null && totalUnits > 0 ? Math.round(resolved / totalUnits) : null,
+      source: resolution,
+      confidence: resolution ? (SOURCE_CONFIDENCE[resolution] ?? null) : null,
+      benchmarkPosition,
+    };
+  }
+
+  // Multipliers for $ conversion of pct/per-unit fields. GPR drives revenue
+  // deductions; EGI drives management fee; units × 12 drives other_income.
+  const _gprForDollars = resolvedNum(lv(year1Seed, 'gpr'));
+  const _egiForDollars = resolvedNum(lv(year1Seed, 'egi'));
+  const _otherIncMul   = totalUnits > 0 ? totalUnits * 12 : null;
+
   const year1Rows = [
     ...REVENUE_FIELDS.map(([k, _l]) => toRow(k, _l)),
+    // Canonical $-denominated revenue deductions (consumed by ProFormaSummaryTab).
+    toDollarRow('loss_to_lease_pct',     'loss_to_lease',     'Loss to Lease',         _gprForDollars),
+    toDollarRow('vacancy_pct',           'vacancy_loss',      'Vacancy & Credit Loss', _gprForDollars),
+    toDollarRow('concessions_pct',       'concessions',       'Concessions',           _gprForDollars),
+    toDollarRow('bad_debt_pct',          'bad_debt',          'Bad Debt',              _gprForDollars),
+    toDollarRow('non_revenue_units_pct', 'non_revenue_units', 'Non-Revenue Units',     _gprForDollars),
+    toDollarRow('other_income_per_unit', 'other_income',      'Other Income',          _otherIncMul),
     ...OPEX_FIELDS.map(([k, _l]) => toRow(k, _l)),
+    // Canonical $-denominated management fee (consumed by ProFormaSummaryTab).
+    toDollarRow('management_fee_pct',    'management_fee',    'Management Fee',        _egiForDollars),
     ...NOI_FIELDS.map(([k, _l]) => toRow(k, _l)),
   ];
 
