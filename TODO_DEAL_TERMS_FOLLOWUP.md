@@ -166,6 +166,52 @@ DealTermsTab. The read path works; only the write path is missing.
 
 ---
 
+### 14. Investment Strategy null-handling audit ✅ FIXED (Task #620, May 2026)
+
+- **What:** Task #620 extended the #619 audit pattern to Investment Strategy
+  (`investment_strategy_lv JSONB`), which was newly added in Task #613.
+- **Audit results — all clean:**
+  - `proforma-adjustment.service.ts:2182-2187` — LV resolver returns null when
+    both slots are null. No silent default. ✅
+  - `cashflow.agent.ts` + all prompt variants (`system.ts`, `value-add.ts`,
+    `existing.ts`, `lease-up.ts`, `development.ts`, `redevelopment.ts`) — **Zero
+    references** to `investmentStrategy`. Null cannot reach the Cashflow Agent
+    prompt builder today. ✅
+  - `fetch_assumptions.ts` — Output schema does not include investment strategy.
+    Cashflow Agent never receives the value. ✅
+  - `jedi-score.service.ts` — Scoring weights (`demand:0.30, supply:0.25,
+    momentum:0.20, position:0.15, risk:0.10`) are **hardcoded constants**, not
+    varying by strategy family. Zero reads of the LV field. ✅
+  - `fetch_archive_assumption_distribution.ts:24,57` — Accepts `strategy` as
+    `z.string().optional()`. When null, bucket waterfall widens to
+    `strategy IS NULL`. No silent default. ✅
+  - `operatorStance.service.ts` / `fetch_operator_stance.ts` — **Zero references.**
+    OperatorStance Phase 1 cross-reference: no current touchpoint on
+    `investmentStrategyLv`. When Phase 1 ships, the natural integration point
+    would be `cashflow.agent.ts` (currently zero references there too). ✅
+  - `m08-strategies.service.ts` / `strategy-arbitrage-engine.ts` — Zero
+    references. No default-returning stub. ✅
+  - `context-fragments.ts:114` — Generic advisor template, not reading the LV
+    value. ✅
+  - `deals.service.ts:886 getInvestmentStrategyOverview()` — Reads
+    `development_type` from `deals` table, NOT the LV field. Separate system. ✅
+  - `dataLibrary.service.ts`, `agent-chat.service.ts`, `plan-formulator.service.ts`,
+    `commentary.agent.ts`, `sigma-variable-registry.ts`, `sigma-mu-plausibility.ts`,
+    `formula-engine.ts`, all module-wiring adapters — Zero references. ✅
+  - Sub-strategy library: No sub-strategy library selection code exists in the
+    live codebase today. ✅
+- **Fix shipped:**
+  - `NotSetBadge` component in `DealTermsTab.tsx` updated to accept optional
+    `label` and `title` props (was hardcoded strings).
+  - Investment Strategy LvRow: `flag={<NotSetBadge title="No investment strategy set — operator attention required" />}`
+    when both `investmentStrategyLv.override` and `investmentStrategyLv.detected`
+    are null.
+  - `replit.md` Gotcha extended to cover both fields and summarises the consumer
+    audit finding for future implementors.
+  - No database backfill performed. ✓
+
+---
+
 ## Notes for the next pass
 
 - DealTermsTab keeps a `SourceKind` thin-mapping layer (`SOURCE_KIND_TO_BADGE`) so the scaffold's row-level label vocabulary survives. If a future pass replaces all rows with explicit canonical source strings (e.g. `t12`, `override`, `platform`), the mapping can be deleted entirely.

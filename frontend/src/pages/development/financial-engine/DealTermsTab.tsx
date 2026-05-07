@@ -96,10 +96,13 @@ function addYearsToDate(closeIso: string | null | undefined, holdYears: number |
 
 // ─── Not-Set badge — for operator-required fields with no value in either LV slot ──
 
-function NotSetBadge() {
+function NotSetBadge({
+  label = 'NOT SET',
+  title = 'Field not set — operator attention required',
+}: { label?: string; title?: string } = {}) {
   return (
     <span
-      title="No exit strategy set — operator attention required"
+      title={title}
       style={{
         display: 'inline-block', padding: '0 4px', borderRadius: 2,
         fontFamily: MONO, fontSize: 7, fontWeight: 700,
@@ -108,7 +111,7 @@ function NotSetBadge() {
         letterSpacing: 0.5,
       }}
     >
-      NOT SET
+      {label}
     </span>
   );
 }
@@ -1019,6 +1022,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
                 investmentStrategyLv?.override != null ? 'Override'
                 : investmentStrategyLv?.detected != null ? 'Detected'
                 : 'Not Provided'
+              }
+              flag={
+                investmentStrategyLv?.override == null && investmentStrategyLv?.detected == null
+                  ? <NotSetBadge label="NOT SET" title="No investment strategy set — operator attention required" />
+                  : undefined
               }
             />
 
