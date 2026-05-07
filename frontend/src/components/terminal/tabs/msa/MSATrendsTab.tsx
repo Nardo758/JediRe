@@ -96,6 +96,19 @@ interface RentByClassResponse {
   classes: RentByClassEntry[];
 }
 
+interface RentByClassHistoryEntry {
+  snapshot_date: string;
+  classes: RentByClassEntry[];
+}
+
+interface RentByClassHistoryResponse {
+  success: boolean;
+  city: string;
+  state: string;
+  count: number;
+  history: RentByClassHistoryEntry[];
+}
+
 interface SupplyPipelineSubmarket {
   name: string;
   units: number;
@@ -122,6 +135,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [rentByClass, setRentByClass] = useState<RentByClassEntry[]>([]);
   const [rentByClassLoading, setRentByClassLoading] = useState(true);
+  const [rentByClassHistory, setRentByClassHistory] = useState<RentByClassHistoryEntry[]>([]);
   const [supplyPipeline, setSupplyPipeline] = useState<SupplyPipelineSubmarket[]>([]);
   const [supplyPipelineTotal, setSupplyPipelineTotal] = useState<number | null>(null);
   const msaName = msa?.name || msaId || 'Atlanta';
@@ -189,9 +203,17 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
 
   useEffect(() => {
     setRentByClassLoading(true);
-    apiClient.get<RentByClassResponse>(`/georgia/analytics/rent-by-class?city=${encodeURIComponent(msaCity)}&state=${encodeURIComponent(msaState)}`)
-      .then((res: RentByClassResponse) => setRentByClass(res?.classes || []))
-      .catch(() => setRentByClass([]))
+    const qs = `city=${encodeURIComponent(msaCity)}&state=${encodeURIComponent(msaState)}`;
+    Promise.all([
+      apiClient.get<RentByClassResponse>(`/georgia/analytics/rent-by-class?${qs}`)
+        .catch(() => ({ classes: [] } as RentByClassResponse)),
+      apiClient.get<RentByClassHistoryResponse>(`/georgia/analytics/rent-by-class?${qs}&history=true&limit=12`)
+        .catch(() => ({ history: [] } as unknown as RentByClassHistoryResponse)),
+    ])
+      .then(([snap, hist]) => {
+        setRentByClass(snap?.classes || []);
+        setRentByClassHistory(hist?.history || []);
+      })
       .finally(() => setRentByClassLoading(false));
   }, [msaCity, msaState]);
 
@@ -524,21 +546,66 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
               }}>MARKET BENCHMARK</span>
             )}
           </div>
-          {rentByClassLoading ? (
-            <div style={{ fontSize: 11, color: BT.text.muted, textAlign: 'center', padding: 20 }}>
-              Loading rent data...
-            </div>
-          ) : rentByClass.length > 0 ? (
-            (() => {
-              const CLASS_COLORS: Record<string, string> = { A: '#22c55e', B: '#3b82f6', C: '#f59e0b' };
-              const CLASS_LABELS: Record<string, string> = {
-                A: 'Class A (2010+)',
-                B: 'Class B (1995–2009)',
-                C: 'Class C (pre-1995)',
-              };
+          {(() => {
+            // Task #353: build trend chart independently of the current
+            // snapshot so it shows whenever we have >= 2 historical points,
+            // even if today's snapshot query returned 0 rows.
+            const CLASS_COLORS: Record<string, string> = { A: '#22c55e', B: '#3b82f6', C: '#f59e0b' };
+            const CLASS_LABELS: Record<string, string> = {
+              A: 'Class A (2010+)',
+              B: 'Class B (1995–2009)',
+              C: 'Class C (pre-1995)',
+            };
+            const trendData: ChartDataPoint[] = rentByClassHistory.map(h => {
+              // Year-aware compact label (e.g. "26-05-08") so multi-year
+              // ranges stay unambiguous.
+              const iso = h.snapshot_date.slice(0, 10);
+              const point: ChartDataPoint = { date: iso.slice(2) };
+              for (const c of h.classes) {
+                if (c.avg_rent != null) point[`class${c.asset_class}`] = c.avg_rent;
+              }
+              return point;
+            });
+            const trendSeries: ChartSeries[] = ['A', 'B', 'C']
+              .filter(cls => trendData.some(d => typeof d[`class${cls}`] === 'number'))
+              .map(cls => ({
+                key: `class${cls}`,
+                name: CLASS_LABELS[cls] || `Class ${cls}`,
+                color: CLASS_COLORS[cls] || BT.accent.blue,
+                data: [],
+              }));
+            const showTrend = trendData.length >= 2 && trendSeries.length > 0;
+            const trendBlock = showTrend ? (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{
+                  fontSize: 10, color: BT.text.muted, fontWeight: 600,
+                  letterSpacing: 1, marginBottom: 6,
+                }}>
+                  TREND · LAST {trendData.length} SNAPSHOTS
+                </div>
+                <TerminalChart
+                  data={trendData}
+                  series={trendSeries}
+                  timeRanges={[]}
+                  height={180}
+                  showLegend={false}
+                  valueFormatter={(v) => `$${Math.round(v).toLocaleString()}`}
+                />
+              </div>
+            ) : null;
+
+            if (rentByClassLoading) {
+              return (
+                <div style={{ fontSize: 11, color: BT.text.muted, textAlign: 'center', padding: 20 }}>
+                  Loading rent data...
+                </div>
+              );
+            }
+            if (rentByClass.length > 0) {
               const maxRent = Math.max(...rentByClass.map(c => c.avg_rent || 0), 1);
               return (
                 <>
+                  {trendBlock}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {rentByClass.map((c, i) => (
                       <div key={i}>
@@ -573,48 +640,51 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                   </div>
                 </>
               );
-            })()
-          ) : (
-            (() => {
-              const last = RENT_VINTAGE_DATA[RENT_VINTAGE_DATA.length - 1];
-              const CLASS_COLORS = ['#22c55e', '#3b82f6', '#f97316', '#f59e0b', '#a78bfa'];
-              const entries = [
-                { label: 'Class A+ (2015+)', value: last.aPlus, color: CLASS_COLORS[0] },
-                { label: 'Class A (2010–2014)', value: last.a, color: CLASS_COLORS[1] },
-                { label: 'Class B+ (2000–2009)', value: last.bPlus, color: CLASS_COLORS[2] },
-                { label: 'Class B (1990–1999)', value: last.b, color: CLASS_COLORS[3] },
-                { label: 'Class C (pre-1990)', value: last.c, color: CLASS_COLORS[4] },
-              ];
-              const maxRent = Math.max(...entries.map(e => e.value), 1);
-              return (
-                <>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {entries.map((e, i) => (
-                      <div key={i}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span style={{ fontSize: 11, color: e.color, fontWeight: 600 }}>{e.label}</span>
-                          <span style={{ fontSize: 11, color: BT.text.secondary }}>${e.value.toLocaleString()}</span>
-                        </div>
-                        <div style={{ height: 10, background: BT.bg.elevated, borderRadius: 0, position: 'relative' }}>
-                          <div style={{
-                            position: 'absolute', left: 0, top: 0,
-                            width: `${(e.value / maxRent) * 100}%`,
-                            height: '100%',
-                            background: e.color,
-                            opacity: 0.7,
-                            borderRadius: 0,
-                          }} />
-                        </div>
+            }
+            // Fallback: no current snapshot rows. Still show the trend
+            // chart on top if we have history; otherwise render the
+            // static market-benchmark vintage table.
+            const last = RENT_VINTAGE_DATA[RENT_VINTAGE_DATA.length - 1];
+            const FB_CLASS_COLORS = ['#22c55e', '#3b82f6', '#f97316', '#f59e0b', '#a78bfa'];
+            const entries = [
+              { label: 'Class A+ (2015+)', value: last.aPlus, color: FB_CLASS_COLORS[0] },
+              { label: 'Class A (2010–2014)', value: last.a, color: FB_CLASS_COLORS[1] },
+              { label: 'Class B+ (2000–2009)', value: last.bPlus, color: FB_CLASS_COLORS[2] },
+              { label: 'Class B (1990–1999)', value: last.b, color: FB_CLASS_COLORS[3] },
+              { label: 'Class C (pre-1990)', value: last.c, color: FB_CLASS_COLORS[4] },
+            ];
+            const maxRent = Math.max(...entries.map(e => e.value), 1);
+            return (
+              <>
+                {trendBlock}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {entries.map((e, i) => (
+                    <div key={i}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: e.color, fontWeight: 600 }}>{e.label}</span>
+                        <span style={{ fontSize: 11, color: BT.text.secondary }}>${e.value.toLocaleString()}</span>
                       </div>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 14, borderTop: `1px solid ${BT.border.subtle}`, paddingTop: 8 }}>
-                    Static benchmark — {last.quarter} · Connect Apt Locator sync for live data
-                  </div>
-                </>
-              );
-            })()
-          )}
+                      <div style={{ height: 10, background: BT.bg.elevated, borderRadius: 0, position: 'relative' }}>
+                        <div style={{
+                          position: 'absolute', left: 0, top: 0,
+                          width: `${(e.value / maxRent) * 100}%`,
+                          height: '100%',
+                          background: e.color,
+                          opacity: 0.7,
+                          borderRadius: 0,
+                        }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 14, borderTop: `1px solid ${BT.border.subtle}`, paddingTop: 8 }}>
+                  {showTrend
+                    ? `Trend from Apt Locator history · vintage breakdown is static benchmark (${last.quarter})`
+                    : `Static benchmark — ${last.quarter} · Connect Apt Locator sync for live data`}
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         {/* JEDI Score History */}

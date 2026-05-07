@@ -395,6 +395,56 @@ export class ApartmentLocatorSyncService {
       }
       logger.info('apartment_locator_properties synced', { alpInserted, city, state });
 
+      // Task #353: capture today's class-level rent aggregates so the
+      // MSATrendsTab can show trends over time (not just today's snapshot).
+      let classSnapshotsInserted = 0;
+      try {
+        const classAgg = await pool.query(`
+          SELECT
+            CASE
+              WHEN year_built >= 2010 THEN 'A'
+              WHEN year_built >= 1995 THEN 'B'
+              ELSE 'C'
+            END AS asset_class,
+            COUNT(*)::int                                AS property_count,
+            ROUND(AVG(avg_asking_rent)::numeric, 2)      AS avg_rent,
+            ROUND(MIN(avg_asking_rent)::numeric, 2)      AS min_rent,
+            ROUND(MAX(avg_asking_rent)::numeric, 2)      AS max_rent
+          FROM apartment_locator_properties
+          WHERE city ILIKE $1
+            AND state = $2
+            AND avg_asking_rent IS NOT NULL
+            AND avg_asking_rent > 0
+          GROUP BY asset_class
+        `, [city, state]);
+
+        for (const row of classAgg.rows) {
+          await pool.query(`
+            INSERT INTO apartment_class_rent_snapshots (
+              city, state, asset_class, snapshot_date,
+              property_count, avg_rent, min_rent, max_rent, source
+            ) VALUES ($1, $2, $3, CURRENT_DATE, $4, $5, $6, $7, 'apartment_locator_ai')
+            ON CONFLICT (city, state, asset_class, snapshot_date) DO UPDATE SET
+              property_count = EXCLUDED.property_count,
+              avg_rent       = EXCLUDED.avg_rent,
+              min_rent       = EXCLUDED.min_rent,
+              max_rent       = EXCLUDED.max_rent,
+              updated_at     = NOW()
+          `, [
+            city, state, row.asset_class,
+            row.property_count, row.avg_rent, row.min_rent, row.max_rent,
+          ]);
+          classSnapshotsInserted++;
+        }
+        logger.info('apartment_class_rent_snapshots written', {
+          city, state, classSnapshotsInserted,
+        });
+      } catch (err: any) {
+        logger.warn('Failed to write apartment_class_rent_snapshots', {
+          city, state, err: err.message,
+        });
+      }
+
       return {
         success: true,
         stats: {
@@ -405,6 +455,7 @@ export class ApartmentLocatorSyncService {
           total_properties: supplyProps.length,
           supply_pipeline_inserted: supplyInserted,
           apt_locator_properties_synced: alpInserted,
+          class_snapshots_inserted: classSnapshotsInserted,
           forecast: marketData.forecast,
         }
       };

@@ -523,6 +523,74 @@ router.get('/analytics/rent-by-class', requireAuth, async (req: Request, res: Re
     const city = (req.query.city as string) || 'Atlanta';
     const state = (req.query.state as string) || 'GA';
     const pool = getPool();
+
+    // Task #353: optional ?history=true returns the last N snapshots from
+    // apartment_class_rent_snapshots so the frontend can chart trends.
+    const historyFlag = String(req.query.history || '').toLowerCase();
+    if (historyFlag === 'true' || historyFlag === '1') {
+      const limitRaw = parseInt(String(req.query.limit || '12'), 10);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 365
+        ? limitRaw
+        : 12;
+
+      // Pull the most-recent N distinct snapshot dates, then return the
+      // class rows for those dates.
+      const datesResult = await pool.query(`
+        SELECT DISTINCT snapshot_date
+        FROM apartment_class_rent_snapshots
+        WHERE city ILIKE $1 AND state = $2
+        ORDER BY snapshot_date DESC
+        LIMIT $3
+      `, [city, state, limit]);
+
+      const dates = datesResult.rows.map((r: any) => r.snapshot_date);
+      if (dates.length === 0) {
+        return res.json({ success: true, city, state, count: 0, history: [] });
+      }
+
+      const rowsResult = await pool.query(`
+        SELECT
+          snapshot_date,
+          asset_class,
+          property_count,
+          avg_rent,
+          min_rent,
+          max_rent
+        FROM apartment_class_rent_snapshots
+        WHERE city ILIKE $1
+          AND state = $2
+          AND snapshot_date = ANY($3::date[])
+        ORDER BY snapshot_date ASC, asset_class ASC
+      `, [city, state, dates]);
+
+      // Group rows by snapshot_date so the frontend can render a series.
+      const byDate = new Map<string, any>();
+      for (const r of rowsResult.rows) {
+        const dateStr = r.snapshot_date instanceof Date
+          ? r.snapshot_date.toISOString().slice(0, 10)
+          : String(r.snapshot_date).slice(0, 10);
+        if (!byDate.has(dateStr)) {
+          byDate.set(dateStr, { snapshot_date: dateStr, classes: [] });
+        }
+        byDate.get(dateStr).classes.push({
+          asset_class: r.asset_class,
+          property_count: r.property_count,
+          avg_rent: r.avg_rent != null ? Number(r.avg_rent) : null,
+          min_rent: r.min_rent != null ? Number(r.min_rent) : null,
+          max_rent: r.max_rent != null ? Number(r.max_rent) : null,
+        });
+      }
+
+      const history = Array.from(byDate.values());
+      return res.json({
+        success: true,
+        city,
+        state,
+        count: history.length,
+        history,
+      });
+    }
+
     const result = await pool.query(`
       SELECT
         CASE
