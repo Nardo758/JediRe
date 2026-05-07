@@ -94,6 +94,25 @@ function addYearsToDate(closeIso: string | null | undefined, holdYears: number |
   return d.toISOString().slice(0, 10);
 }
 
+// ─── Not-Set badge — for operator-required fields with no value in either LV slot ──
+
+function NotSetBadge() {
+  return (
+    <span
+      title="No exit strategy set — operator attention required"
+      style={{
+        display: 'inline-block', padding: '0 4px', borderRadius: 2,
+        fontFamily: MONO, fontSize: 7, fontWeight: 700,
+        color: AMBER, background: `${AMBER}18`,
+        border: `1px solid ${AMBER}55`,
+        letterSpacing: 0.5,
+      }}
+    >
+      NOT SET
+    </span>
+  );
+}
+
 // ─── Pending badge — for rows whose persistence path doesn't exist yet ────────
 
 function PendingBadge({ label = 'PENDING' }: { label?: string }) {
@@ -1016,6 +1035,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
                 exitStrategyLv?.override != null ? 'Override'
                 : exitStrategyLv?.detected != null ? 'Detected'
                 : 'Not Provided'
+              }
+              flag={
+                exitStrategyLv?.override == null && exitStrategyLv?.detected == null
+                  ? <NotSetBadge />
+                  : undefined
               }
             />
             <LvRow label="Exit Cap Rate"

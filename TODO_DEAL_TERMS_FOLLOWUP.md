@@ -136,6 +136,36 @@ DealTermsTab. The read path works; only the write path is missing.
 
 ---
 
+### 13. Exit Strategy null-handling audit ✅ FIXED (Task #619, May 2026)
+
+- **What:** After Task #613 replaced `exit_strategy TEXT` with `exit_strategy_lv JSONB`,
+  deals with no operator-set strategy resolve to `null`. A full consumer audit
+  was performed to confirm no silent default to "Sale" exists anywhere in the
+  read path.
+- **Audit results:**
+  - `proforma-adjustment.service.ts` — LV resolver correctly returns null when both
+    slots are null. No silent default. ✅
+  - `deal-assumptions.routes.ts` — no legacy `exit_strategy TEXT` reads remain. ✅
+  - `canonicalDealData.ts` — reads `deal.exitStrategy || null`; old TEXT column is
+    gone so this safely returns null (type already `string | null`). ✅
+  - `M08StrategyControlPanel.tsx` — reads `execution_profile?.exit_strategy`, a
+    completely separate M08-owned field; not affected by LV change. ✅
+  - `InvestmentStrategySection.tsx`, `CapitalStructureSection.tsx`, `DebtTab.tsx` —
+    all reference mock/template data, not the live LV field. ✅
+  - AI agent tools (`backend/src/agents/`) — zero references to exit strategy. ✅
+  - `coordinator/personas/index.ts`, `orchestrator/intent-classifier.ts` — keyword
+    routing only, no value consumption. ✅
+- **Fix shipped:**
+  - Added `NotSetBadge` component (amber-tone, tooltip: "No exit strategy set —
+    operator attention required") to `DealTermsTab.tsx`.
+  - Exit Strategy LvRow now passes `flag={<NotSetBadge />}` when both
+    `exitStrategyLv.override` and `exitStrategyLv.detected` are null.
+  - `replit.md` Gotchas section updated: "Exit Strategy is intentionally nullable"
+    contract note added for future implementors.
+  - No database backfill performed. ✓
+
+---
+
 ## Notes for the next pass
 
 - DealTermsTab keeps a `SourceKind` thin-mapping layer (`SOURCE_KIND_TO_BADGE`) so the scaffold's row-level label vocabulary survives. If a future pass replaces all rows with explicit canonical source strings (e.g. `t12`, `override`, `platform`), the mapping can be deleted entirely.

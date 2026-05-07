@@ -74,6 +74,7 @@ Preferred communication style: Simple, everyday language.
 -   **Database Column Types:** PostgreSQL `NUMERIC` columns are returned as strings; use `safeFloat()` or `parseFloat()` for numeric operations to prevent type-related bugs.
 -   **API Route Ordering:** Be mindful of Express route mounting order, especially with catch-all middleware (`requireAuth`) or parameterized routes, to avoid unintended 401/404 errors.
 -   **Cloudflare WAF:** Cloudflare Browser Rendering (CBR) cannot bypass Cloudflare's own WAF/Managed Challenge, blocking access to sites like qPublic, Accela, and fultonassessor.org for automated scraping.
+-   **Exit Strategy is intentionally nullable:** `deal_assumptions.exit_strategy_lv` has no default value. When both `detected` and `override` slots are null, `resolved` is also null. All downstream consumers (proforma composer, projections engine, AI prompt builders, UI rows) must handle null explicitly — never silently default to `"Sale"` or any other value. The DEAL TERMS tab renders a visible `NOT SET` badge (amber-tone) in this state so the operator notices. No backfill should ever be performed.
 
 ## Cross-tab Events
 
