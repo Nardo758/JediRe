@@ -2112,37 +2112,37 @@ export function ProjectionsTab({
               <div>Run <strong style={{ color: BT.text.secondary }}>REPARSE</strong> from the Pro Forma tab to seed Year 1 data.</div>
             </div>
           )}
+
+          {/* ── Lease Velocity Engine (§12) ─────────────────────────────────────
+               Placement: BELOW the projections grid, inside the scrollable area.
+               Moved inside flex:1 overflow:auto wrapper so it scrolls with the
+               operating-statement table rather than competing for fixed height. */}
+          {!!dealId && (
+            <LeaseVelocitySection
+              result={lvResult}
+              loading={lvLoading}
+              inputs={lvInputs}
+              onInputsChange={setLvInputs}
+              onRun={() => void runLvEngine(lvInputs, true)}
+              showConfig={lvShowConfig}
+              onToggleConfig={() => setLvShowConfig(v => !v)}
+              runError={lvError}
+              resolvedMode={lvResolvedMode}
+              leaseOverride={
+                (deal?.['deal_data'] as Record<string, unknown> | null | undefined)
+                  ?.['lease_mode_override'] as LeaseMode | null | undefined
+              }
+              onModeOverride={handleModeOverride}
+              onClearOverride={handleClearModeOverride}
+            />
+          )}
+
+          {/* ── GPR Decomposition ────────────────────────────────────────────── */}
+          {showGprDecomp && hasGprDecomp && (
+            <GprDecompPanel decomp={financials!.assumptions.gprDecomposition!} totalUnits={financials!.totalUnits} />
+          )}
+
         </div>
-
-        {/* ── Lease Velocity Engine (§12) ─────────────────────────────────────
-             Placement: BELOW the projections grid, ABOVE GPR Decomposition.
-             Always shown when dealId is present so users can see / configure
-             the panel immediately — it renders a pending/empty state while the
-             engine is running on first mount. */}
-        {!!dealId && (
-          <LeaseVelocitySection
-            result={lvResult}
-            loading={lvLoading}
-            inputs={lvInputs}
-            onInputsChange={setLvInputs}
-            onRun={() => void runLvEngine(lvInputs, true)}
-            showConfig={lvShowConfig}
-            onToggleConfig={() => setLvShowConfig(v => !v)}
-            runError={lvError}
-            resolvedMode={lvResolvedMode}
-            leaseOverride={
-              (deal?.['deal_data'] as Record<string, unknown> | null | undefined)
-                ?.['lease_mode_override'] as LeaseMode | null | undefined
-            }
-            onModeOverride={handleModeOverride}
-            onClearOverride={handleClearModeOverride}
-          />
-        )}
-
-        {/* ── GPR Decomposition ──────────────────────────────────────────────── */}
-        {showGprDecomp && hasGprDecomp && (
-          <GprDecompPanel decomp={financials!.assumptions.gprDecomposition!} totalUnits={financials!.totalUnits} />
-        )}
 
       </div>
 
