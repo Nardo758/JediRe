@@ -26,16 +26,16 @@ DealTermsTab. The read path works; only the write path is missing.
   hotfix already shipped to master; bulk PUT is now safe for partial
   payloads.
 
-### 2. Closing Costs — 5 sub-rows
+### 2. Closing Costs — 5 sub-rows ✅ FIXED (May 2026)
 
 - **Rows:** Broker Fee · Legal & DD · Lender / Orig · Reserves · Other / Cont.
-- **Gap:** No per-sub-line storage — the platform tracks only the aggregate `f9Financials.sourcesUses.userOverrides.closingCosts` (writable via `su:closingCosts` override) and the benchmark percentage `sourcesUses.benchmarks.closingCostsPct`.
-- **Fix options:**
-  (a) Add 5 keys to the `su:` JSONB family (`su:closingCostsBrokerFee`, `:legalDD`, `:lenderOrig`, `:reserves`, `:other`) and have the composer roll them up into the aggregate.
-  (b) Make this a single-input row that sets `su:closingCosts` and remove the sub-rows from the scaffold.
-  (c) Keep sub-rows view-only and only allow editing the aggregate.
-  Recommend option (a) since the scaffold's row breakdown matches the way analysts think about closing costs in OMs.
-- **Note on row Lender / Orig:** overlaps with `debt:senior:origFee` from F9 Capital. Either (a) link to that field or (b) keep them separate and document the double-count rule.
+- **Fix shipped (option a):**
+  - 5 new `su:` keys added: `su:closingCostsBrokerFee`, `su:closingCostsLegalDD`, `su:closingCostsLenderOrig`, `su:closingCostsReserves`, `su:closingCostsOther` — stored as `{"value": N}` entries in `deal_assumptions.per_year_overrides`.
+  - `PATCH /:dealId/assumptions/closing-costs` endpoint: accepts `{ brokerFee?, legalDD?, lenderOrig?, reserves?, other? }`, dynamically builds JSONB merge/remove expression — null clears the key, number merges it in.
+  - Composer (`getProFormaComputed`): reads all 5 sub-keys; when any are set, sums them as `suClosingCosts` (overriding both the aggregate `su:closingCosts` override and the 2% estimate). Falls back gracefully when none are set.
+  - Type definition (`DealFinancials.sourcesUses.userOverrides`) extended with all 5 keys.
+  - DealTermsTab: sub-line resolved values hydrated from `fin.sourcesUses.userOverrides`; state populated on load; `saveClosingCosts(field, raw)` wired to each row's `onCommit`; source badge flips Override ↔ Not Provided; `PendingBadge` removed from all 5 rows.
+  - **Lender / Orig note:** treated as a separate line item from `debt:senior:origFee` (two independent entries, no cross-link). Analyst should populate only one or the other to avoid double-counting in S&U.
 
 ### 3. Targets — IRR · EM · CoC ✅ FIXED (May 2026)
 
@@ -64,17 +64,17 @@ DealTermsTab. The read path works; only the write path is missing.
   - `getDealFinancials` SELECT extended; `assumptions.sellingCostsPct` on the F9 contract.
   - DealTermsTab: `saveSellingCosts` wired; `sellingCostsDecimal` now prefers resolved DB value over draft input, so exit math (Gross Sale Proceeds) updates immediately after save; `PendingBadge` removed; source badge flips Override ↔ Platform. ✓
 
-### 6. Going-in Cap Rate — operator override
+### 6. Going-in Cap Rate — locked as derived ✅ FIXED (May 2026)
 
 - **Row:** "Going-in Cap Rate"
-- **Gap:** Read works (`proforma.valuationSnapshot.goingInCapT12`). No override path — the rate is purely derived from T-12 NOI ÷ Purchase Price.
-- **Fix:** Either (a) add a `da:going_in_cap_override` flag that, when set, replaces the derivation in the composer, or (b) document that this row is by definition derived and should never be operator-overrideable.
+- **Decision:** Row is by definition derived (T-12 NOI ÷ Purchase Price) and must not be operator-overrideable — overriding it would silently break the valuation chain.
+- **Fix shipped:** `PendingBadge` replaced with `PendingBadge label="DERIVED"`; override input removed (`override=""`, `setOverride={() => {}}`); source badge stays "Computed". Row is clearly read-only with no teal edit border.
 
-### 7. Stabilized Cap Rate — operator override
+### 7. Stabilized Cap Rate — locked as derived ✅ FIXED (May 2026)
 
 - **Row:** "Stabilized Cap Rate"
-- **Gap:** Same as Going-in Cap. Read works (`returns.valuation.multiples.capRate.stabilized`). No override path.
-- **Fix:** Same options as Going-in Cap.
+- **Decision:** Same as Going-in Cap — derived from Peak NOI ÷ Purchase Price; locking prevents contradictory operator inputs.
+- **Fix shipped:** Same treatment as item 6 — `PendingBadge label="DERIVED"`, override input removed, source stays "Computed".
 
 ---
 

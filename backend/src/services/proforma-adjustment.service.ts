@@ -1472,6 +1472,11 @@ export interface DealFinancials {
     };
     userOverrides: {
       closingCosts: number | null;
+      closingCostsBrokerFee:  number | null;
+      closingCostsLegalDD:    number | null;
+      closingCostsLenderOrig: number | null;
+      closingCostsReserves:   number | null;
+      closingCostsOther:      number | null;
       capexTotal: number | null;
       workingCapital: number | null;
       preopeningCosts: number | null;
@@ -2815,10 +2820,19 @@ export async function getDealFinancials(
   const suMezzLoan = debtOvr('mezz', 'loanAmount') ?? 0;
   const suPurchasePrice = purchasePrice ?? 0;
 
-  // Closing costs: user override first, else estimate ~2% of purchase price (title, legal, survey)
-  const suClosingCostsOvr = suOvr('closingCosts');
-  const suClosingCosts = suClosingCostsOvr != null
-    ? suClosingCostsOvr
+  // Closing costs: sub-line overrides sum first, then aggregate override, then 2% estimate
+  const suClosingCostsOvr  = suOvr('closingCosts');
+  const suCcBrokerFee      = suOvr('closingCostsBrokerFee');
+  const suCcLegalDD        = suOvr('closingCostsLegalDD');
+  const suCcLenderOrig     = suOvr('closingCostsLenderOrig');
+  const suCcReserves       = suOvr('closingCostsReserves');
+  const suCcOther          = suOvr('closingCostsOther');
+  const suCcSubLineAny     = suCcBrokerFee != null || suCcLegalDD != null || suCcLenderOrig != null || suCcReserves != null || suCcOther != null;
+  const suCcSubLineTotal   = suCcSubLineAny
+    ? (suCcBrokerFee ?? 0) + (suCcLegalDD ?? 0) + (suCcLenderOrig ?? 0) + (suCcReserves ?? 0) + (suCcOther ?? 0)
+    : null;
+  const suClosingCosts = suCcSubLineTotal != null ? suCcSubLineTotal
+    : suClosingCostsOvr != null ? suClosingCostsOvr
     : suPurchasePrice > 0 ? Math.round(suPurchasePrice * 0.02) : 0;
 
   const suTransferTax = taxForecast.transferTax.totalTransferTax ?? 0;
@@ -2905,6 +2919,11 @@ export async function getDealFinancials(
     },
     userOverrides: {
       closingCosts: suOvr('closingCosts'),
+      closingCostsBrokerFee:  suCcBrokerFee,
+      closingCostsLegalDD:    suCcLegalDD,
+      closingCostsLenderOrig: suCcLenderOrig,
+      closingCostsReserves:   suCcReserves,
+      closingCostsOther:      suCcOther,
       capexTotal: suOvr('capexTotal'),
       workingCapital: suOvr('workingCapital'),
       preopeningCosts: suOvr('preopeningCosts'),

@@ -794,6 +794,93 @@ router.patch('/:dealId/assumptions/selling-costs', requireAuth, async (req: Auth
 });
 
 /**
+ * PATCH /:dealId/assumptions/closing-costs
+ *
+ * Surgical write for closing cost sub-line overrides (Item 2 — DealTermsTab).
+ * Stores each provided sub-line as its own su: key in per_year_overrides.
+ * The composer sums any set sub-lines to derive suClosingCosts; existing
+ * aggregate su:closingCosts override is used only when no sub-lines are set.
+ * Pass null for a field to clear its override (reverts to platform estimate share).
+ * Body: { brokerFee?, legalDD?, lenderOrig?, reserves?, other? }  — all optional
+ */
+router.patch('/:dealId/assumptions/closing-costs', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const { brokerFee, legalDD, lenderOrig, reserves, other } = req.body as {
+      brokerFee?:  number | null;
+      legalDD?:    number | null;
+      lenderOrig?: number | null;
+      reserves?:   number | null;
+      other?:      number | null;
+    };
+
+    const fields: Record<string, number | null | undefined> = { brokerFee, legalDD, lenderOrig, reserves, other };
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined && v !== null && (typeof v !== 'number' || v < 0)) {
+        return res.status(400).json({ error: `${k} must be a non-negative number or null` });
+      }
+    }
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId],
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
+    const suMap: Array<[string, string]> = [
+      ['brokerFee',  'closingCostsBrokerFee'],
+      ['legalDD',    'closingCostsLegalDD'],
+      ['lenderOrig', 'closingCostsLenderOrig'],
+      ['reserves',   'closingCostsReserves'],
+      ['other',      'closingCostsOther'],
+    ];
+
+    // Build a dynamic JSONB expression that merges/removes sub-line keys
+    const params: unknown[] = [dealId];
+    let pyrExpr = `COALESCE(deal_assumptions.per_year_overrides, '{}'::jsonb)`;
+    let anyField = false;
+
+    for (const [field, suKey] of suMap) {
+      const val = fields[field];
+      if (val === undefined) continue; // not in body — leave untouched
+      anyField = true;
+      if (val === null) {
+        // Remove the key
+        pyrExpr = `(${pyrExpr} - 'su:${suKey}')`;
+      } else {
+        params.push(val);
+        pyrExpr = `(${pyrExpr} || jsonb_build_object('su:${suKey}', jsonb_build_object('value', $${params.length}::numeric)))`;
+      }
+    }
+
+    if (!anyField) return res.json({ success: true });
+
+    // INSERT uses '{}' as the starting point when the row doesn't exist yet
+    const insertExpr = pyrExpr.replace(
+      `COALESCE(deal_assumptions.per_year_overrides, '{}'::jsonb)`,
+      `'{}'::jsonb`,
+    );
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, per_year_overrides, updated_at)
+       VALUES ($1, ${insertExpr}, NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET
+         per_year_overrides = ${pyrExpr},
+         updated_at         = NOW()`,
+      params,
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error patching closing costs:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /:dealId/financials/reparse
  *
  * Force-rerun seedProFormaYear1 (re-ingests all extraction capsule signals),

@@ -472,6 +472,13 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if ((fin.assumptions as any)?.targetCoc != null)       setTargetCoc(((fin.assumptions as any).targetCoc * 100).toFixed(2));
     if ((fin.assumptions as any)?.exitStrategy != null)    setExitStrategy((fin.assumptions as any).exitStrategy);
     if ((fin.assumptions as any)?.sellingCostsPct != null) setSellingCosts(((fin.assumptions as any).sellingCostsPct * 100).toFixed(2));
+    // Closing cost sub-lines
+    const uovr = (fin.sourcesUses?.userOverrides ?? {}) as Record<string, number | null>;
+    if (uovr.closingCostsBrokerFee  != null) setCloseBrokerFee(String(Math.round(uovr.closingCostsBrokerFee)));
+    if (uovr.closingCostsLegalDD    != null) setCloseLegalDD(String(Math.round(uovr.closingCostsLegalDD)));
+    if (uovr.closingCostsLenderOrig != null) setCloseLender(String(Math.round(uovr.closingCostsLenderOrig)));
+    if (uovr.closingCostsReserves   != null) setCloseReserves(String(Math.round(uovr.closingCostsReserves)));
+    if (uovr.closingCostsOther      != null) setCloseOther(String(Math.round(uovr.closingCostsOther)));
   }, [props.dealId, fin]);
 
   // ── Resolved values (server side of truth) ─────────────────────────────────
@@ -491,17 +498,29 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const exitStrategyResolved    = (fin?.assumptions as any)?.exitStrategy    ?? null;
   const sellingCostsPctResolved = (fin?.assumptions as any)?.sellingCostsPct ?? null;
 
-  // Total closing costs = explicit override (su:closingCosts) ?? benchmarks.closingCostsPct × basis
-  const closingCostsOverride  = fin?.sourcesUses?.userOverrides?.closingCosts ?? null;
+  // Closing costs — sub-line overrides (5 keys)
+  const ovr = (fin?.sourcesUses?.userOverrides ?? {}) as Record<string, number | null>;
+  const ccBrokerFeeResolved   = ovr.closingCostsBrokerFee   ?? null;
+  const ccLegalDDResolved     = ovr.closingCostsLegalDD     ?? null;
+  const ccLenderOrigResolved  = ovr.closingCostsLenderOrig  ?? null;
+  const ccReservesResolved    = ovr.closingCostsReserves    ?? null;
+  const ccOtherResolved       = ovr.closingCostsOther       ?? null;
+  const ccSubLineAny = ccBrokerFeeResolved != null || ccLegalDDResolved != null
+    || ccLenderOrigResolved != null || ccReservesResolved != null || ccOtherResolved != null;
+
+  // Total closing costs = sub-line sum (if any set) ?? aggregate override ?? benchmarks.closingCostsPct × basis
+  const closingCostsOverride  = ovr.closingCosts ?? null;
   const closingCostsPctBench  = fin?.sourcesUses?.benchmarks?.closingCostsPct ?? null;
-  const totalClosingCosts: number | null =
-    closingCostsOverride != null
+  const totalClosingCosts: number | null = ccSubLineAny
+    ? (ccBrokerFeeResolved ?? 0) + (ccLegalDDResolved ?? 0) + (ccLenderOrigResolved ?? 0)
+      + (ccReservesResolved ?? 0) + (ccOtherResolved ?? 0)
+    : closingCostsOverride != null
       ? closingCostsOverride
       : (purchasePriceResolved != null && closingCostsPctBench != null
          ? Math.round(purchasePriceResolved * closingCostsPctBench)
          : null);
   const closingCostsSource: SourceKind =
-    closingCostsOverride != null ? 'Override'
+    ccSubLineAny || closingCostsOverride != null ? 'Override'
       : closingCostsPctBench != null ? 'Platform'
       : 'Not Provided';
 
@@ -671,6 +690,16 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     }
   }
 
+  async function saveClosingCosts(field: 'brokerFee' | 'legalDD' | 'lenderOrig' | 'reserves' | 'other', raw: string) {
+    const val = parsePositiveDollar(raw);
+    try {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/closing-costs`, { [field]: val });
+      props.onF9Refresh?.();
+    } catch (e) {
+      console.error('[DealTerms] Save closing cost sub-line failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
   async function saveSellingCosts() {
     const dec = parsePctDecimal(sellingCosts);
     if (dec == null) return;
@@ -813,37 +842,37 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
             <LvRow label="Closing Costs — Broker Fee"
               broker={undefined} platform={undefined}
               override={closeBrokerFee} setOverride={setCloseBrokerFee}
-              readOnly readOnlyValue="--"
-              source="Not Provided"
-              flag={<PendingBadge />}
+              onCommit={() => saveClosingCosts('brokerFee', closeBrokerFee)}
+              resolved={ccBrokerFeeResolved != null ? fmtDollar(ccBrokerFeeResolved) : '--'}
+              source={ccBrokerFeeResolved != null ? 'Override' : 'Not Provided'}
             />
             <LvRow label="Closing Costs — Legal & DD"
               broker={undefined} platform={undefined}
               override={closeLegalDD} setOverride={setCloseLegalDD}
-              readOnly readOnlyValue="--"
-              source="Not Provided"
-              flag={<PendingBadge />}
+              onCommit={() => saveClosingCosts('legalDD', closeLegalDD)}
+              resolved={ccLegalDDResolved != null ? fmtDollar(ccLegalDDResolved) : '--'}
+              source={ccLegalDDResolved != null ? 'Override' : 'Not Provided'}
             />
             <LvRow label="Closing Costs — Lender / Orig"
               broker={undefined} platform={undefined}
               override={closeLender} setOverride={setCloseLender}
-              readOnly readOnlyValue="--"
-              source="Not Provided"
-              flag={<PendingBadge />}
+              onCommit={() => saveClosingCosts('lenderOrig', closeLender)}
+              resolved={ccLenderOrigResolved != null ? fmtDollar(ccLenderOrigResolved) : '--'}
+              source={ccLenderOrigResolved != null ? 'Override' : 'Not Provided'}
             />
             <LvRow label="Closing Costs — Reserves"
               broker={undefined} platform={undefined}
               override={closeReserves} setOverride={setCloseReserves}
-              readOnly readOnlyValue="--"
-              source="Not Provided"
-              flag={<PendingBadge />}
+              onCommit={() => saveClosingCosts('reserves', closeReserves)}
+              resolved={ccReservesResolved != null ? fmtDollar(ccReservesResolved) : '--'}
+              source={ccReservesResolved != null ? 'Override' : 'Not Provided'}
             />
             <LvRow label="Closing Costs — Other / Cont."
               broker={undefined} platform={undefined}
               override={closeOther} setOverride={setCloseOther}
-              readOnly readOnlyValue="--"
-              source="Not Provided"
-              flag={<PendingBadge />}
+              onCommit={() => saveClosingCosts('other', closeOther)}
+              resolved={ccOtherResolved != null ? fmtDollar(ccOtherResolved) : '--'}
+              source={ccOtherResolved != null ? 'Override' : 'Not Provided'}
             />
 
             <LvRow label="─── TOTAL CLOSING COSTS ───"
@@ -875,21 +904,19 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               hint="T12 NOI / Purchase"
               broker={undefined}
               platform={fmtPct(goingInCapResolved)}
-              override={goingInCap} setOverride={setGoingInCap}
-              overrideKind="pct"
+              override="" setOverride={() => {}}
               readOnly readOnlyValue={fmtPct(goingInCapResolved)}
               source={goingInCapResolved != null ? 'Computed' : 'Not Provided'}
-              flag={<PendingBadge />}
+              flag={<PendingBadge label="DERIVED" />}
             />
             <LvRow label="Stabilized Cap Rate"
               hint="Peak NOI / Purchase"
               broker={undefined}
               platform={fmtPct(stabilizedCapResolved)}
-              override={stabilizedCap} setOverride={setStabilizedCap}
-              overrideKind="pct"
+              override="" setOverride={() => {}}
               readOnly readOnlyValue={fmtPct(stabilizedCapResolved)}
               source={stabilizedCapResolved != null ? 'Computed' : 'Not Provided'}
-              flag={<PendingBadge />}
+              flag={<PendingBadge label="DERIVED" />}
             />
             <LvRow label="Close Date"
               broker={undefined} platform={undefined}
