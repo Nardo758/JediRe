@@ -606,6 +606,19 @@ router.patch('/:dealId/purchase-price', requireAuth, async (req: AuthenticatedRe
   try {
     const { dealId } = req.params;
     const userId = req.user?.userId;
+
+    // Strict payload contract: exactly one field (`purchasePrice`) is allowed.
+    // Reject extra keys — e.g. closeDate belongs to PATCH /:dealId/assumptions/dates,
+    // not here. Silently ignoring extras would let scope creep in and muddy
+    // the endpoint's single responsibility.
+    const bodyKeys = Object.keys(req.body ?? {});
+    const unknownKeys = bodyKeys.filter(k => k !== 'purchasePrice');
+    if (unknownKeys.length > 0) {
+      return res.status(400).json({
+        error: `Unexpected field(s): ${unknownKeys.join(', ')}. Only purchasePrice is accepted.`,
+      });
+    }
+
     const { purchasePrice } = req.body as { purchasePrice: number };
 
     if (typeof purchasePrice !== 'number' || purchasePrice <= 0 || !Number.isFinite(purchasePrice)) {
