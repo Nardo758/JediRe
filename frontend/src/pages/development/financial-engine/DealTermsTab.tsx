@@ -28,8 +28,10 @@
 //     purple=Computed, muted=Not Provided.
 // ============================================================================
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
+import { apiClient } from '../../../services/api.client';
+import { useDealStore } from '../../../stores/dealStore';
 import type { FinancialEngineTabProps } from './types';
 import { SourceBadge } from './SourceBadge';
 
@@ -49,6 +51,67 @@ const SOURCE_KIND_TO_BADGE: Record<SourceKind, string | null> = {
   'Computed':     'computed',
   'Not Provided': null,
 };
+
+// ─── Formatters / parsers ─────────────────────────────────────────────────────
+
+function fmtDollar(n: number | null | undefined): string {
+  return n != null && Number.isFinite(n) ? `$${Math.round(n).toLocaleString()}` : '--';
+}
+function fmtDollarShort(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '--';
+  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(n) >= 1_000)     return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${Math.round(n)}`;
+}
+function fmtPct(n: number | null | undefined, digits = 2): string {
+  return n != null && Number.isFinite(n) ? `${(n * 100).toFixed(digits)}%` : '--';
+}
+function fmtMultiple(n: number | null | undefined): string {
+  return n != null && Number.isFinite(n) ? `${n.toFixed(2)}x` : '--';
+}
+
+/** Parse a user-typed dollar string. Strips commas, spaces, $. Returns null if non-positive or NaN. */
+function parsePositiveDollar(s: string): number | null {
+  if (!s) return null;
+  const cleaned = s.replace(/[$,\s]/g, '');
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+/** Parse a user-typed percentage string. "5.5" or "5.5%" → 0.055. Returns null if non-positive or NaN. */
+function parsePctDecimal(s: string): number | null {
+  if (!s) return null;
+  const cleaned = s.replace(/[%,\s]/g, '');
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) && n >= 0 ? n / 100 : null;
+}
+
+/** Add N years to a YYYY-MM-DD date string. Returns null if either input is missing. */
+function addYearsToDate(closeIso: string | null | undefined, holdYears: number | null): string | null {
+  if (!closeIso || holdYears == null || !Number.isFinite(holdYears)) return null;
+  const d = new Date(`${closeIso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCFullYear(d.getUTCFullYear() + holdYears);
+  return d.toISOString().slice(0, 10);
+}
+
+// ─── Pending badge — for rows whose persistence path doesn't exist yet ────────
+
+function PendingBadge({ label = 'PENDING' }: { label?: string }) {
+  return (
+    <span
+      title="Override has no persistence path — see TODO_DEAL_TERMS_FOLLOWUP.md"
+      style={{
+        display: 'inline-block', padding: '0 4px', borderRadius: 2,
+        fontFamily: MONO, fontSize: 7, fontWeight: 700,
+        color: BT.text.muted, background: `${BT.text.muted}18`,
+        border: `1px solid ${BT.text.muted}44`,
+        letterSpacing: 0.5,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
 
 // ─── LV cell — placeholder rendering for Broker / Platform / Resolved cols ────
 
@@ -85,10 +148,11 @@ function NaCell() {
 // ─── Editable override input — teal border per spec ───────────────────────────
 
 function OverrideInput({
-  value, onChange, placeholder = '--', width = 96, type = 'text',
+  value, onChange, onCommit, placeholder = '--', width = 96, type = 'text',
 }: {
   value: string;
   onChange: (v: string) => void;
+  onCommit?: () => void;
   placeholder?: string;
   width?: number;
   type?: 'text' | 'number' | 'date';
@@ -98,6 +162,8 @@ function OverrideInput({
       type={type}
       value={value}
       onChange={e => onChange(e.target.value)}
+      onBlur={() => onCommit?.()}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
       placeholder={placeholder}
       style={{
         fontFamily: MONO, fontSize: 9, fontWeight: 600,
@@ -191,6 +257,8 @@ interface LvRowProps {
   platform?: string;
   override: string;         // local state
   setOverride: (v: string) => void;
+  /** Optional commit handler — fires on input blur / Enter. */
+  onCommit?: () => void;
   resolved?: string;        // null → renders '--' (resolution unwired)
   source: SourceKind;
   derived?: string;
@@ -208,7 +276,7 @@ interface LvRowProps {
 }
 
 function LvRow({
-  label, hint, broker, platform, override, setOverride, resolved, source,
+  label, hint, broker, platform, override, setOverride, onCommit, resolved, source,
   derived, flag, operatorOnly = false, overrideKind = 'text', overrideOptions,
   readOnly = false, readOnlyValue,
   emphasis = null,
@@ -257,15 +325,15 @@ function LvRow({
         {readOnly ? (
           <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>—</span>
         ) : overrideKind === 'date' ? (
-          <OverrideInput value={override} onChange={setOverride} type="date" width={120} />
+          <OverrideInput value={override} onChange={setOverride} onCommit={onCommit} type="date" width={120} />
         ) : overrideOptions ? (
-          <DropdownSelect value={override} options={overrideOptions} onChange={setOverride} />
+          <DropdownSelect value={override} options={overrideOptions} onChange={(v) => { setOverride(v); onCommit?.(); }} />
         ) : overrideKind === 'pct' ? (
-          <OverrideInput value={override} onChange={setOverride} placeholder="--%" />
+          <OverrideInput value={override} onChange={setOverride} onCommit={onCommit} placeholder="--%" />
         ) : overrideKind === 'number' ? (
-          <OverrideInput value={override} onChange={setOverride} type="number" />
+          <OverrideInput value={override} onChange={setOverride} onCommit={onCommit} type="number" />
         ) : (
-          <OverrideInput value={override} onChange={setOverride} />
+          <OverrideInput value={override} onChange={setOverride} onCommit={onCommit} />
         )}
       </td>
 
@@ -349,17 +417,23 @@ function ColumnHeader() {
 const QUICK_HOLD_CHIPS = [3, 5, 7, 10];
 
 export function DealTermsTab(props: FinancialEngineTabProps) {
-  // Header context — values left placeholder per scope rules. We do read
-  // dealName / totalUnits from props if they happen to be present, since
-  // those are passive prop reads (not fetches / not store writes).
-  const dealName = (props.f9Financials?.dealName)
+  const fin = props.f9Financials ?? null;
+
+  // dealStore emit hooks — additive cross-tab signals; parent's onF9Refresh
+  // continues to be the canonical refetch trigger.
+  const emitHoldPeriodChanged = useDealStore(s => s.emitHoldPeriodChanged);
+  const emitBasisChanged      = useDealStore(s => s.emitBasisChanged);
+  const emitExitCapChanged    = useDealStore(s => s.emitExitCapChanged);
+
+  // Header context
+  const dealName = fin?.dealName
     ?? (props.assumptions?.dealInfo?.dealName as string | undefined)
     ?? '—';
-  const totalUnits = (props.f9Financials?.totalUnits)
+  const totalUnits = fin?.totalUnits
     ?? (props.assumptions?.dealInfo?.totalUnits as number | undefined)
     ?? null;
 
-  // ── ACQUISITION / ENTRY local state ─────────────────────────────────────────
+  // ── ACQUISITION / ENTRY local draft state ───────────────────────────────────
   const [purchasePrice, setPurchasePrice]       = useState('');
   const [closeBrokerFee, setCloseBrokerFee]     = useState('');
   const [closeLegalDD,   setCloseLegalDD]       = useState('');
@@ -381,12 +455,142 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const [exitCap,        setExitCap]            = useState('');
   const [sellingCosts,   setSellingCosts]       = useState('');
 
-  // Derived (read-only display) — Exit Date + Exit Value + Net Proceeds.
-  // Formulas intentionally not implemented (no wiring); values stay '--'.
-  // The frame is here so the data-wiring task can drop computations in.
-  const exitDateDerived  = useMemo(() => '--', [closeDate, holdYears]);
-  const exitValueDerived = '--';
-  const netProceedsDerived = '--';
+  // Hydrate draft state once per dealId. Re-fetches won't clobber an in-flight
+  // edit; onF9Refresh handlers below trigger a manual sync after a successful
+  // save by stashing the new server value into local state directly.
+  const hydratedDealId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!fin || hydratedDealId.current === props.dealId) return;
+    hydratedDealId.current = props.dealId;
+    if (fin.capitalStack?.purchasePrice != null) setPurchasePrice(String(fin.capitalStack.purchasePrice));
+    if (fin.assumptions?.holdYears != null)      setHoldYears(String(fin.assumptions.holdYears));
+    if (fin.assumptions?.exitCap != null)        setExitCap((fin.assumptions.exitCap * 100).toFixed(2));
+    if (fin.closeDate)                           setCloseDate(fin.closeDate);
+  }, [props.dealId, fin]);
+
+  // ── Resolved values (server side of truth) ─────────────────────────────────
+  const purchasePriceResolved = fin?.capitalStack?.purchasePrice ?? null;
+  const pricePerUnitResolved  = fin?.capitalStack?.pricePerUnit ?? null;
+  const exitCapResolved       = fin?.assumptions?.exitCap ?? null;
+  const platformExitCap       = fin?.trafficProjection?.calibrated?.exitCap ?? null;
+  const holdYearsResolved     = fin?.assumptions?.holdYears ?? null;
+  const closeDateResolved     = fin?.closeDate ?? null;
+  const goingInCapResolved    = fin?.proforma?.valuationSnapshot?.goingInCapT12
+    ?? fin?.returns?.valuation?.multiples?.capRate?.goingIn ?? null;
+  const stabilizedCapResolved = fin?.returns?.valuation?.multiples?.capRate?.stabilized ?? null;
+
+  // Total closing costs = explicit override (su:closingCosts) ?? benchmarks.closingCostsPct × basis
+  const closingCostsOverride  = fin?.sourcesUses?.userOverrides?.closingCosts ?? null;
+  const closingCostsPctBench  = fin?.sourcesUses?.benchmarks?.closingCostsPct ?? null;
+  const totalClosingCosts: number | null =
+    closingCostsOverride != null
+      ? closingCostsOverride
+      : (purchasePriceResolved != null && closingCostsPctBench != null
+         ? Math.round(purchasePriceResolved * closingCostsPctBench)
+         : null);
+  const closingCostsSource: SourceKind =
+    closingCostsOverride != null ? 'Override'
+      : closingCostsPctBench != null ? 'Platform'
+      : 'Not Provided';
+
+  // All-In Basis — derived
+  const allInBasis: number | null =
+    purchasePriceResolved != null && totalClosingCosts != null
+      ? purchasePriceResolved + totalClosingCosts
+      : null;
+
+  // Selling Costs default (composer hard-codes 2%; no persistence path yet)
+  const sellingCostsDecimal = parsePctDecimal(sellingCosts) ?? 0.02;
+
+  // Returns / KPI strip — null until model has been built
+  const irrPct  = fin?.returns?.lpNetIrr ?? fin?.returns?.irr ?? null;
+  const emValue = fin?.returns?.lpEquityMultiple ?? fin?.returns?.equityMultiple ?? null;
+  const dscrY1  = fin?.returns?.debtMetrics?.coverage?.dscrY1 ?? null;
+
+  // Derived: Exit Date = Close Date + Hold Years
+  const exitDateDerived = useMemo(
+    () => addYearsToDate(closeDateResolved, holdYearsResolved),
+    [closeDateResolved, holdYearsResolved],
+  );
+
+  // Stabilized NOI at Exit — out of scope per Phase 1 (READ_GAP, see TODO).
+  // Without it, Exit Value can't be computed honestly — render `--`.
+  const stabilizedNoiAtExit: number | null = null;
+  const exitValueDerived: number | null =
+    stabilizedNoiAtExit != null && exitCapResolved != null && exitCapResolved > 0
+      ? Math.round(stabilizedNoiAtExit / exitCapResolved)
+      : null;
+
+  // Loan Payoff at Exit isn't surfaced on F9DealFinancials; show GROSS proceeds
+  // per Phase 1 spec 2f, never a partial Net.
+  const grossProceedsDerived: number | null =
+    exitValueDerived != null
+      ? Math.round(exitValueDerived * (1 - sellingCostsDecimal))
+      : null;
+
+  // Purchase Price dual-source warning: deal_data.purchase_price shadows
+  // deals.budget on read; PATCH only updates budget. Detection is best-effort —
+  // we don't have the raw deal_data on this prop, so we rely on dealData
+  // when surfaced. See TODO entry "Purchase Price dual-source".
+  const dealData = (props.deal as Record<string, unknown> | undefined)?.['deal_data'] as
+    Record<string, unknown> | undefined;
+  const purchasePriceDualSource =
+    dealData?.purchase_price != null
+    && (props.deal as Record<string, unknown> | undefined)?.['budget'] != null;
+
+  // ── Save handlers ───────────────────────────────────────────────────────────
+
+  async function savePurchasePrice() {
+    const num = parsePositiveDollar(purchasePrice);
+    if (num == null) return;
+    if (num === purchasePriceResolved) return;
+    try {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}`, { budget: num });
+      emitBasisChanged();
+      props.onF9Refresh?.();
+    } catch (e) {
+      console.error('[DealTerms] Save purchase price failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  async function saveCloseDate() {
+    const next = closeDate || null;
+    if (next === closeDateResolved) return;
+    try {
+      // Preserve saleDate — the route nullifies any field not in the body.
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/dates`, {
+        closeDate: next,
+        saleDate:  fin?.saleDate ?? null,
+      });
+      props.onF9Refresh?.();
+    } catch (e) {
+      console.error('[DealTerms] Save close date failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  async function saveExitCap() {
+    const dec = parsePctDecimal(exitCap);
+    if (dec == null) return;
+    if (exitCapResolved != null && Math.abs(dec - exitCapResolved) < 1e-6) return;
+    try {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/financials/override`, {
+        field: 'exitCapRate', year: null, value: dec,
+      });
+      emitExitCapChanged();
+      props.onF9Refresh?.();
+    } catch (e) {
+      console.error('[DealTerms] Save exit cap failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Hold-period quick-chip click: view-only refetch via parent. No persistence
+  // path today (PUT /assumptions is unsafe for partial payloads — wipes
+  // unit_mix). See TODO "Hold Period persistence path".
+  function pickHoldChip(yr: number) {
+    setHoldYears(String(yr));
+    emitHoldPeriodChanged(yr);
+    props.onHoldChange?.(yr);
+  }
 
   return (
     <div style={{
@@ -421,12 +625,12 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
           At-Acquisition Snapshot
         </span>
 
-        {/* KPI pill set — placeholder values per spec */}
+        {/* KPI pill set — populated from f9Financials.returns when present */}
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
           {[
-            { label: 'IRR',  v: '--' },
-            { label: 'EM',   v: '--' },
-            { label: 'DSCR', v: '--' },
+            { label: 'IRR',  v: fmtPct(irrPct, 1) },
+            { label: 'EM',   v: fmtMultiple(emValue) },
+            { label: 'DSCR', v: dscrY1 != null ? dscrY1.toFixed(2) : '--' },
           ].map(p => (
             <div key={p.label} style={{
               display: 'flex', alignItems: 'baseline', gap: 4,
@@ -464,7 +668,7 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
           return (
             <button
               key={yr}
-              onClick={() => setHoldYears(String(yr))}
+              onClick={() => pickHoldChip(yr)}
               style={{
                 fontFamily: MONO, fontSize: 9, fontWeight: 700,
                 color: active ? CYAN : BT.text.muted,
@@ -496,56 +700,74 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
             <SectionHeader label="ACQUISITION / ENTRY" accent={AMBER} sub="Going-in basis & cap rate" />
 
             <LvRow label="Purchase Price"
-              broker="--" platform="--"
+              broker={undefined} platform={undefined}
               override={purchasePrice} setOverride={setPurchasePrice}
-              resolved="--"
-              source={purchasePrice ? 'Override' : 'Not Provided'}
-              derived="-- $/unit · -- $/SF"
+              onCommit={savePurchasePrice}
+              resolved={fmtDollar(purchasePriceResolved)}
+              source={purchasePriceResolved != null ? 'Override' : 'Not Provided'}
+              derived={
+                purchasePriceResolved != null && totalUnits != null && totalUnits > 0
+                  ? `${fmtDollarShort(pricePerUnitResolved ?? Math.round(purchasePriceResolved / totalUnits))}/unit`
+                  : undefined
+              }
+              flag={purchasePriceDualSource ? <PendingBadge label="DUAL-SRC" /> : undefined}
             />
             <LvRow label="Closing Costs — Broker Fee"
-              broker="--" platform="--"
+              broker={undefined} platform={undefined}
               override={closeBrokerFee} setOverride={setCloseBrokerFee}
-              resolved="--"
-              source={closeBrokerFee ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue="--"
+              source="Not Provided"
+              flag={<PendingBadge />}
             />
             <LvRow label="Closing Costs — Legal & DD"
-              broker="--" platform="--"
+              broker={undefined} platform={undefined}
               override={closeLegalDD} setOverride={setCloseLegalDD}
-              resolved="--"
-              source={closeLegalDD ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue="--"
+              source="Not Provided"
+              flag={<PendingBadge />}
             />
             <LvRow label="Closing Costs — Lender / Orig"
-              broker="--" platform="--"
+              broker={undefined} platform={undefined}
               override={closeLender} setOverride={setCloseLender}
-              resolved="--"
-              source={closeLender ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue="--"
+              source="Not Provided"
+              flag={<PendingBadge />}
             />
             <LvRow label="Closing Costs — Reserves"
-              broker="--" platform="--"
+              broker={undefined} platform={undefined}
               override={closeReserves} setOverride={setCloseReserves}
-              resolved="--"
-              source={closeReserves ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue="--"
+              source="Not Provided"
+              flag={<PendingBadge />}
             />
             <LvRow label="Closing Costs — Other / Cont."
-              broker="--" platform="--"
+              broker={undefined} platform={undefined}
               override={closeOther} setOverride={setCloseOther}
-              resolved="--"
-              source={closeOther ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue="--"
+              source="Not Provided"
+              flag={<PendingBadge />}
             />
 
             <LvRow label="─── TOTAL CLOSING COSTS ───"
-              broker="--" platform="--"
+              broker={undefined}
+              platform={closingCostsPctBench != null && purchasePriceResolved != null
+                ? fmtDollar(Math.round(purchasePriceResolved * closingCostsPctBench))
+                : undefined}
               override="" setOverride={() => {}}
-              readOnly readOnlyValue="--"
-              source="Computed"
+              readOnly readOnlyValue={fmtDollar(totalClosingCosts)}
+              source={closingCostsSource}
               emphasis="subtotal"
             />
             <LvRow label="═══ ALL-IN BASIS ═══"
-              broker="--" platform="--"
+              broker={undefined} platform={undefined}
               override="" setOverride={() => {}}
-              readOnly readOnlyValue="--"
+              readOnly readOnlyValue={fmtDollar(allInBasis)}
               source="Computed"
-              derived="-- $/unit · -- $/SF"
+              derived={
+                allInBasis != null && totalUnits != null && totalUnits > 0
+                  ? `${fmtDollarShort(Math.round(allInBasis / totalUnits))}/unit`
+                  : undefined
+              }
               emphasis="total"
             />
 
@@ -553,26 +775,31 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
 
             <LvRow label="Going-in Cap Rate"
               hint="T12 NOI / Purchase"
-              broker="--" platform="--"
+              broker={undefined}
+              platform={fmtPct(goingInCapResolved)}
               override={goingInCap} setOverride={setGoingInCap}
               overrideKind="pct"
-              resolved="--"
-              source={goingInCap ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue={fmtPct(goingInCapResolved)}
+              source={goingInCapResolved != null ? 'Computed' : 'Not Provided'}
+              flag={<PendingBadge />}
             />
             <LvRow label="Stabilized Cap Rate"
-              hint="Estimate at stabilization"
-              broker="--" platform="--"
+              hint="Peak NOI / Purchase"
+              broker={undefined}
+              platform={fmtPct(stabilizedCapResolved)}
               override={stabilizedCap} setOverride={setStabilizedCap}
               overrideKind="pct"
-              resolved="--"
-              source={stabilizedCap ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue={fmtPct(stabilizedCapResolved)}
+              source={stabilizedCapResolved != null ? 'Computed' : 'Not Provided'}
+              flag={<PendingBadge />}
             />
             <LvRow label="Close Date"
-              broker="--" platform="--"
+              broker={undefined} platform={undefined}
               override={closeDate} setOverride={setCloseDate}
+              onCommit={saveCloseDate}
               overrideKind="date"
-              resolved={closeDate || '--'}
-              source={closeDate ? 'Override' : 'Not Provided'}
+              resolved={closeDateResolved ?? '--'}
+              source={closeDateResolved != null ? 'Override' : 'Not Provided'}
             />
 
             {/* ════════════ SECTION 2 — HOLD & TARGETS ════════════ */}
@@ -582,36 +809,41 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               operatorOnly
               override={holdYears} setOverride={setHoldYears}
               overrideKind="number"
-              resolved={holdYears || '--'}
-              source={holdYears ? 'Override' : 'Not Provided'}
-              derived={holdYears ? `${holdYears} yr` : undefined}
+              readOnly readOnlyValue={holdYearsResolved != null ? `${holdYearsResolved} yr` : '--'}
+              source={holdYearsResolved != null ? 'Computed' : 'Not Provided'}
+              derived={holdYearsResolved != null ? `view: use chips above` : undefined}
+              flag={<PendingBadge />}
             />
             <LvRow label="Target Levered IRR"
               operatorOnly
               override={targetIrr} setOverride={setTargetIrr}
               overrideKind="pct"
-              resolved={targetIrr ? `${targetIrr}%` : '--'}
-              source={targetIrr ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue="--"
+              source="Not Provided"
+              flag={<PendingBadge />}
             />
             <LvRow label="Target Equity Multiple"
               operatorOnly
               override={targetEm} setOverride={setTargetEm}
               overrideKind="number"
-              resolved={targetEm ? `${targetEm}x` : '--'}
-              source={targetEm ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue="--"
+              source="Not Provided"
+              flag={<PendingBadge />}
             />
             <LvRow label="Target Cash-on-Cash (Y1)"
               operatorOnly
               override={targetCoc} setOverride={setTargetCoc}
               overrideKind="pct"
-              resolved={targetCoc ? `${targetCoc}%` : '--'}
-              source={targetCoc ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue="--"
+              source="Not Provided"
+              flag={<PendingBadge />}
             />
             <LvRow label="Investment Strategy"
               operatorOnly
               override="" setOverride={() => {}}
               readOnly readOnlyValue="From THESIS §1 — not yet wired"
               source="Not Provided"
+              flag={<PendingBadge label="UPSTREAM" />}
             />
 
             {/* ════════════ SECTION 3 — EXIT / DISPOSITION ════════════ */}
@@ -621,22 +853,28 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               operatorOnly
               override={exitStrategy} setOverride={setExitStrategy}
               overrideOptions={['Sale', 'Refinance', 'Hold']}
-              resolved={exitStrategy || '--'}
-              source={exitStrategy ? 'Override' : 'Not Provided'}
+              readOnly readOnlyValue="--"
+              source="Not Provided"
+              flag={<PendingBadge />}
             />
             <LvRow label="Exit Cap Rate"
-              broker="--" platform="--"
+              broker={undefined}
+              platform={fmtPct(platformExitCap)}
               override={exitCap} setOverride={setExitCap}
+              onCommit={saveExitCap}
               overrideKind="pct"
-              resolved={exitCap ? `${exitCap}%` : '--'}
-              source={exitCap ? 'Override' : 'Not Provided'}
+              resolved={fmtPct(exitCapResolved)}
+              source={exitCapResolved != null
+                ? (exitCapResolved !== platformExitCap ? 'Override' : 'Platform')
+                : 'Not Provided'}
             />
             <LvRow label="Selling Costs %"
-              broker="--" platform="2.00%"
+              broker={undefined} platform="2.00%"
               override={sellingCosts} setOverride={setSellingCosts}
               overrideKind="pct"
-              resolved={sellingCosts ? `${sellingCosts}%` : '2.00%'}
-              source={sellingCosts ? 'Override' : 'Platform'}
+              readOnly readOnlyValue="2.00%"
+              source="Platform"
+              flag={<PendingBadge />}
             />
 
             <SpacerRow />
@@ -645,31 +883,33 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               hint="Close Date + Hold Period"
               operatorOnly
               override="" setOverride={() => {}}
-              readOnly readOnlyValue={exitDateDerived}
+              readOnly readOnlyValue={exitDateDerived ?? '--'}
               source="Computed"
             />
             <LvRow label="Stabilized NOI at Exit"
-              hint="From F9 Pro Forma Y[hold] — not wired"
+              hint="From F9 Pro Forma Y[hold] — not yet wired"
               operatorOnly
               override="" setOverride={() => {}}
               readOnly readOnlyValue="--"
               source="Not Provided"
+              flag={<PendingBadge label="UPSTREAM" />}
             />
             <LvRow label="Exit Value"
               hint="Exit NOI / Exit Cap"
               operatorOnly
               override="" setOverride={() => {}}
-              readOnly readOnlyValue={exitValueDerived}
+              readOnly readOnlyValue={fmtDollar(exitValueDerived)}
               source="Computed"
               emphasis="total"
             />
-            <LvRow label="Net Sale Proceeds"
-              hint="Exit Value × (1 − Selling Costs) − Loan Payoff"
+            <LvRow label="Gross Sale Proceeds"
+              hint="Exit Value × (1 − Selling Costs). Loan payoff at exit pending — not Net."
               operatorOnly
               override="" setOverride={() => {}}
-              readOnly readOnlyValue={netProceedsDerived}
+              readOnly readOnlyValue={fmtDollar(grossProceedsDerived)}
               source="Computed"
               emphasis="subtotal"
+              flag={<PendingBadge label="GROSS" />}
             />
 
           </tbody>
@@ -681,8 +921,8 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
           fontFamily: MONO, fontSize: 8, color: BT.text.muted,
           letterSpacing: 0.5, lineHeight: 1.5,
         }}>
-          STRUCTURE-ONLY SCAFFOLD · No backend wiring · Local state only ·
-          Resolution column shows '--' until data wiring task lands.
+          Resolved values from F9 /financials · PENDING badges mark rows whose
+          override has no persistence path yet (see TODO_DEAL_TERMS_FOLLOWUP.md).
         </div>
       </div>
 

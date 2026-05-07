@@ -384,6 +384,26 @@ interface DealStoreActions {
    * all F9 consumers re-fetch /financials with the new treatment parameter.
    */
   emitLeasingCostTreatmentChanged: (treatment: string) => void;
+  /**
+   * Dispatch `hold_period.changed` on the shared window event bus.
+   * Fires when the operator changes hold years (DealTermsTab quick-chips
+   * or row override). Sibling tabs whose calculations depend on the hold
+   * horizon (Projections, Returns) can subscribe to refresh independent of
+   * the parent's f9 refetch.
+   */
+  emitHoldPeriodChanged: (holdYears: number) => void;
+  /**
+   * Dispatch `basis.changed` on the shared window event bus.
+   * Fires when Purchase Price or Closing Costs change. Sources & Uses,
+   * debt sizing, and going-in cap rate all derive from basis.
+   */
+  emitBasisChanged: () => void;
+  /**
+   * Dispatch `exit_cap.changed` on the shared window event bus.
+   * Fires when Exit Cap Rate or Selling Costs % change. Returns,
+   * net-sale-proceeds derivation, and exit-value strip all reflow.
+   */
+  emitExitCapChanged: () => void;
 
   // ─── OPERATOR STANCE ──────────────────────────────────────────────────────
   /** Fetch the current OperatorStance for a deal from the backend. */
@@ -1797,6 +1817,18 @@ export const useDealStore = create<DealStore>()(
 
     emitLeasingCostTreatmentChanged: (treatment) => {
       window.dispatchEvent(new CustomEvent('leasing_cost_treatment.changed', { detail: { treatment } }));
+    },
+
+    emitHoldPeriodChanged: (holdYears) => {
+      window.dispatchEvent(new CustomEvent('hold_period.changed', { detail: { holdYears } }));
+    },
+
+    emitBasisChanged: () => {
+      window.dispatchEvent(new CustomEvent('basis.changed'));
+    },
+
+    emitExitCapChanged: () => {
+      window.dispatchEvent(new CustomEvent('exit_cap.changed'));
     },
 
     // ─── OPERATOR STANCE implementation ─────────────────────────────────────
