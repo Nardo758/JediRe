@@ -1,0 +1,79 @@
+Pre-merge review back. One hard blocker, four soft verifications, one
+critical hotfix to ship before this branch merges.
+
+HARD BLOCKER — answer before merge
+
+Q1: Does the Hold Period chip click (and the override input on the Hold
+    Period row if it accepts input) write to the DB, not just emit a
+    dealStore event?
+
+  - If yes: show file:line of the PATCH/PUT call that persists to
+    deal_assumptions.hold_period_years.
+  - If no: wire it. Use bulk PUT /api/v1/deals/:dealId/assumptions
+    with { hold_period_years: <value> } per the Phase 1 plan. Before
+    relying on it, verify the COALESCE-merge handler treats omitted
+    fields as preserve-existing rather than null-clobber.
+
+Q2: Does emitHoldPeriodChanged also trigger onF9Refresh? Without an F9
+    re-fetch, Projections tab still shows the old hold-year projection
+    horizon. Confirm with file:line.
+
+VERIFY — answer in PR comment
+
+1. Exit Cap write used path 1 (PATCH /financials/override field=exitCap),
+   NOT path 2 (capsule-bridge.routes.ts:518 → proforma_assumptions).
+   Path 2 writes to a different table and creates a third
+   source-of-truth divergence. File:line of the call.
+
+2. useEffect hydration deps array is [dealId] only, NOT
+   [dealId, f9Financials]. The latter clobbers in-progress user edits
+   on every parent re-render. File:line.
+
+3. KPI null-guard: confirm IRR / EM / DSCR render '--' (not 'null' or
+   '0') when f9Financials.returns is null. Show the format helper
+   file:line.
+
+4. SourceBadge.tsx prop interface: typed SourceKind union or
+   string | null? Pick ONE and apply consistently:
+     - Typed (DealTerms style): ProFormaSummaryTab needs a tiny
+       mapping helper at the callsite where it currently passes
+       backend strings. Safer long term.
+     - string | null: DealTermsTab's mapping layer becomes redundant
+       and should be deleted.
+   Recommend typed. State which you picked and update both callsites.
+
+TODO REORDER — apply in a separate small commit on the same branch
+
+Re-rank TODO_DEAL_TERMS_FOLLOWUP.md:
+  P1: Purchase Price dual-source single-write-path endpoint
+      (currently the override is invisible on Capital / S&U tabs
+       until re-seed — high UX impact)
+  P2: Closing cost line items persistence
+  [keep rest of order]
+
+CRITICAL HOTFIX — separate branch from origin/master, ship BEFORE
+merging deal-terms
+
+Pre-existing data-loss bug at PUT /api/v1/deals/:dealId/assumptions
+line 226 + 252 region:
+
+  Current:  JSON.stringify(input.unitMix || [])
+  Fix:      JSON.stringify(input.unitMix ?? null)
+
+When input.unitMix is undefined, current code produces '[]', which
+COALESCE prefers over the stored value, wiping unit_mix on every
+assumptions write that doesn't explicitly include unitMix.
+
+Why now: if Q1 above is resolved by wiring hold-period persistence
+through the bulk /assumptions PUT, every deal-terms hold-period
+change will wipe unit_mix. The deal-terms work doesn't cause this
+bug — but it activates it.
+
+Branch: claude/fix-unit-mix-wipe-on-assumptions-put
+Commit: fix(assumptions): preserve unit_mix when not in input payload
+One-line change. Ship to master first, then deal-terms merge becomes
+safe.
+
+Once Q1/Q2 are resolved, the four verifications come back clean, the
+TODO reorder lands, and the unit_mix hotfix is on master — deal-terms
+is approved to merge.

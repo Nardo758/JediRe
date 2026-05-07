@@ -249,7 +249,7 @@ router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
       input.stories,
       input.constructionType,
       input.parkingType,
-      JSON.stringify(input.unitMix || []),
+      input.unitMix != null ? JSON.stringify(input.unitMix) : null,
       input.avgRentPerUnit,
       input.vacancyPct,
       input.opexRatio,
