@@ -1538,7 +1538,7 @@ function KeystonePanel({
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResults, onAssumptionsChange, onTabChange, onF9Refresh, onLvTreatmentViewChange }: FinancialEngineTabProps) {
+export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResults, onAssumptionsChange, onTabChange, onF9Refresh, onLvTreatmentViewChange, f9Financials }: FinancialEngineTabProps) {
   const setConfidenceBands = useDealStore(s => s.setConfidenceBands);
   const classifyFieldOverride = useDealStore(s => s.classifyFieldOverride);
   const upsertValidationFlag = useDealStore(s => s.upsertValidationFlag);
@@ -1578,7 +1578,12 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     ioPeriodMonths: string; amortizationYears: string; originationFeePct: string;
   }>({ purchasePrice: '', ltcPct: '', interestRate: '', ioPeriodMonths: '', amortizationYears: '', originationFeePct: '' });
 
-  const [financials, setFinancials]     = useState<DealFinancials|null>(null);
+  // Seed from the parent's already-fetched f9Financials so the INPUTS form renders
+  // immediately on first mount (no 1-2 s blank while the own fetch completes).
+  // Own fetchFinancials() still runs and will overwrite with fresh data once done.
+  const [financials, setFinancials]     = useState<DealFinancials|null>(
+    f9Financials ? (f9Financials as unknown as DealFinancials) : null
+  );
   const [loading, setLoading]           = useState(false);
   const [holdTab, setHoldTab]           = useState<'5 YR'|'7 YR'|'10 YR'|null>(null);
   const [narrativeBlocks, setNarrativeBlocks] = useState<F9NarrativeBlock[]>([]);
@@ -1778,6 +1783,15 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   // racing with debounced PATCH writes from enqueuePatch.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchFinancials(); }, [dealId]);
+  // When the parent re-fetches f9Financials (e.g. after a PATCH) and the own
+  // fetch hasn't completed yet, promote the parent data so the form stays visible.
+  // Only updates financials when the parent has data AND own fetch is still loading
+  // (loading=true) to avoid clobbering a fresher result from fetchFinancials.
+  useEffect(() => {
+    if (f9Financials && loading) {
+      setFinancials(f9Financials as unknown as DealFinancials);
+    }
+  }, [f9Financials, loading]);
   useEffect(() => { loadNarrativeBlocks(); }, [loadNarrativeBlocks]);
   // Hold-tab toggle: explicitly passes the new holdYears so this is the
   // only call site that should refire on tab change. Excluded from deps
