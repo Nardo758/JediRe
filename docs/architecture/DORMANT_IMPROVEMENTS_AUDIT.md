@@ -56,22 +56,60 @@ opex — the commit message cites "$43M on a $6M GPR property" — and negative 
 `EXCLUDE_FROM_CUSTOM_OPEX` regex array added (30 patterns) to filter before
 `custom_opex_*` accumulation.
 
-**Backfill evidence:** None found. No backfill script, no reparse mention in commit.
-Any deal seeded between initial creation (Apr 12) and Apr 20 with T12 custom line
-items may carry inflated opex in `year1.total_opex_resolved`.
+**Qualifying SQL run: 2026-05-08 — SMALL_BACKFILL_NEEDED**
 
-**Current DB state (both live deals):** `total_opex_resolved` is null at the top level
-of `year1` JSONB — this field may be computed at query time rather than stored as a
-top-level key, or both deals were reseeded after Apr 20. Task #435 (Apr 28) triggered
-a reparse of 464 Bishop; Sentosa Epperson's reseed path is unconfirmed.
+Both deals with extraction data (`year1 IS NOT NULL`) carry `custom_opex_*` keys that
+should have been excluded by the `e0258abb` filter but weren't. Root cause: the regex
+patterns have coverage gaps — they miss "rental revenue" labels (only "rental income"
+patterns covered), "net loss/profit" P&L rollups, income-suffix labels
+(`administrative_income`, `storage_income`), and "reserve replacement" (only matches
+"replacement reserve" word order).
 
-**Classification: BACKFILL_NEEDED (VERIFY)**
+**464 Bishop — filter-gap keys and values:**
 
-Qualifying criteria: any deal with T12 custom line items that was first seeded before
-Apr 20 2026 and not explicitly reseeded since. Heuristic: look for `custom_opex_*`
-keys in `year1` JSONB whose labels match the now-excluded patterns. Effort: **S**
-(add `EXCLUDE_FROM_CUSTOM_OPEX` filter to forceReseed path; run
-`reseed-deal.ts` per affected deal).
+| Key | Value | Why excluded |
+|---|---|---|
+| `custom_opex_multifamily_rental_revenue_net` | +$1,156,521 | Revenue line (rental revenue) |
+| `custom_opex_net_loss_profit` | -$615,852 | P&L rollup |
+| `custom_opex_water_sewer_occupied_income` | +$27,543 | Income / reimbursement |
+| `custom_opex_cable_satellite_tv_income` | +$16,738 | Income |
+| `custom_opex_administrative_income` | +$12,050 | Income |
+| `custom_opex_trash_occupied_income` | +$11,839 | Income |
+| `custom_opex_reserve_replacement` | +$31,900 | Below-the-line (reserves) |
+| `custom_opex_valet_trash_income` | +$3,564 | Income |
+| `custom_opex_other_misc_income` | +$2,428 | Income |
+| `custom_opex_storage_income_multifamily_only` | +$972 | Income |
+| **Net filter-gap inflation** | **+$647,703** | |
+
+**Impact on 464 Bishop:**
+- Current `noi_resolved` = **-$161,598** (negative NOI — clearly wrong for a 232-unit multifamily)
+- Corrected NOI estimate (removing $647K of non-opex from total_opex $3,777,447): **≈ +$486,105**
+- Opex ratio at current values: 77% of GPR — pathological. Corrected: ~64% — plausible for lease-up.
+
+**Sentosa Epperson — filter-gap keys:**
+
+All `custom_opex_441*` / `custom_opex_442*` revenue lines are **negative** (loss-to-lease,
+employee discounts, concessions). Additionally, `custom_opex_500*_capital_expenses_*`
+items total +$20,559 (capital items that slipped through). Net: revenue items
+reduce total opex by -$1,355,167; capital items add +$20,559 → net -$1,334,608.
+
+**Impact on Sentosa Epperson:**
+- Current `noi_resolved` = $2,407,073 — **overstated by ~$1,334,608**
+- Revenue items in opex bucket as negatives artificially reduce total opex, inflating NOI
+- Corrected NOI estimate: **≈ +$1,072,465** (~16.3% of GPR vs. current 36.5%)
+
+**Classification: SMALL_BACKFILL_NEEDED**
+
+Deals affected: **2 of 2** deals with extraction data. Both have material NOI errors.
+464 Bishop severity: BLOCKING (negative NOI). Sentosa Epperson: HIGH (NOI 2.25× overstated).
+
+Fix scope (Phase 1):
+1. Patch `EXCLUDE_FROM_CUSTOM_OPEX` regex to cover: `rental.*revenue`, `net.*loss`,
+   `net.*profit`, `income$` suffix, `reserve.*replacement` word order variant
+2. `forceReseed` both deals after regex patch
+3. Add invariant test: `custom_opex_*` keys must not contain "revenue", "income", or
+   "net_loss_profit" pattern after reseed
+4. Effort: **S**
 
 ---
 
@@ -135,21 +173,36 @@ for: `vacancy_pct`, `loss_to_lease_pct`, `concessions_pct`, `bad_debt_pct`,
 **Backfill evidence:** Includes a new `backend/src/scripts/reseed-deal.ts` script
 as part of the commit — this is the mechanism for re-applying. Not confirmed run.
 
-**Classification: VERIFY_NEEDED**
+**Qualifying SQL run: 2026-05-08**
 
-Impact only materializes if `bpCapsule` has data for a deal that was seeded before
-this commit. If no OM capsule was uploaded for existing deals at original seed time,
-resolved values are unchanged. `replacement_reserves` field would be null in any
-`year1` seeded before May 4.
+The seeder reads capsules from `deals.deal_data` (not `deal_capsules`). Queried
+`deals.deal_data ? 'extraction_om'` and `deals.deal_data->'broker_claims' ? 'proforma'`
+across all 27 deals:
 
-Current DB state: `repl_reserves_raw` is null for both live deals — confirms
-`replacement_reserves` was not populated by the original seed. If OM data exists,
-forceReseed would populate it.
+| Deal | has_extraction_om | has_broker_claims | has_bp_proforma |
+|---|---|---|---|
+| 464 Bishop | **true** | **true** | **true** |
+| Sentosa Epperson | false | false | — |
+| All other 25 deals | false | false | — |
 
-Recommended action: verify whether any live deal has an OM capsule in
-`deal_capsules` (type = `'om'` or `'broker_proforma'`). If yes → BACKFILL_NEEDED.
-If no → dormant but harmless until OM capsule is uploaded (new-deal path handles
-it automatically).
+Only 464 Bishop has OM capsule data. `replacement_reserves` is currently null in its
+`year1` JSONB — confirming the `bpCapsule` layer was not applied at the time of its
+last reseed. Note: `deal_assumptions.updated_at = 2026-05-08` for 464 Bishop, but
+this timestamp reflects the May 8 narrative clear (`narrative_text = NULL`), not a
+forceReseed.
+
+**Classification: ZERO_AFFECTED (25 deals) / VERIFY_NEEDED (1 deal — 464 Bishop)**
+
+25 of 27 deals: no OM capsule data — dormant but harmless. New-deal path handles this
+automatically when OM is uploaded.
+
+464 Bishop: has OM + bpProforma data that was ignored at last reseed (pre-May 4).
+If 464 Bishop is reseeded as part of the S1-01 custom opex fix (recommended), the
+broker OM layer will be applied automatically in the same pass — no independent
+backfill needed. The two fixes collapse into one reseed operation.
+
+Effective overall classification: **ZERO_AFFECTED** (folds into S1-01 reseed for
+464 Bishop).
 
 ---
 
@@ -298,62 +351,59 @@ be "wrong" after a fix — it caches the raw fetch result, not a computed output
 
 ## Section 3 — Recommended Actions (Ranked by Severity)
 
-### Priority 1 — VERIFY (blocking for data quality)
+### Summary of qualifying SQL verdicts (2026-05-08)
 
-**S1-01 — Custom opex filter (e0258abb, Apr 20)**
-
-Run this query to detect any live deal that may still carry pre-fix inflated opex:
-
-```sql
-SELECT d.name, da.deal_id,
-       jsonb_object_keys(da.year1) AS year1_key
-FROM deal_assumptions da
-JOIN deals d ON d.id = da.deal_id
-WHERE da.year1 IS NOT NULL
-  AND jsonb_object_keys(da.year1) LIKE 'custom_opex_%'
-```
-
-If any `custom_opex_*` keys exist whose labels match the exclusion patterns (revenue
-lines, rollup rows, below-the-line items), that deal carries pre-fix opex. Reseed
-via `forceReseed=true`.
-
-Effort: **S** — query + targeted `reseed-deal.ts` run per affected deal.
+| Finding | SQL run | Deals affected | Classification |
+|---|---|---|---|
+| S1-01 Custom opex filter gap | ✓ | **2 / 2** (all with extraction data) | SMALL_BACKFILL_NEEDED |
+| S1-04 Broker OM layer | ✓ | 1 / 27 (464 Bishop only, folds into S1-01) | ZERO_AFFECTED |
+| S1-03 GPR priority | DB spot-check | 0 / 2 (both show correct state) | VERIFY_NEEDED (low) |
+| S1-05 IC-04 tax tie-break | DB spot-check | 0 / 2 (both resolve to t12) | MONITOR |
 
 ---
 
-### Priority 2 — VERIFY (data quality, non-blocking)
+### Priority 1 — SMALL_BACKFILL_NEEDED (blocking)
 
-**S1-04 — Broker OM layer / replacement reserves (0af3c1c7, May 4)**
+**S1-01 — Custom opex filter gap (e0258abb + regex patch needed)**
 
-Check whether any live deal has an OM capsule:
+Qualifying SQL confirmed: **both** deals with extraction data carry filter-gap
+`custom_opex_*` keys. NOI errors are material:
+- 464 Bishop: NOI -$161,598 → should be ≈ +$486K (filter inflating opex by $647K)
+- Sentosa Epperson: NOI $2,407K → should be ≈ $1,072K (revenue negatives deflating opex by $1.33M)
 
-```sql
-SELECT deal_id, capsule_type, created_at
-FROM deal_capsules
-WHERE capsule_type IN ('om', 'broker_proforma', 'offering_memorandum')
-```
-
-If results exist → BACKFILL_NEEDED: run `reseed-deal.ts` for those deal IDs to
-populate `replacement_reserves` and OM-layer field overrides.
-
-If no results → dormant but harmless. New deals with OM capsules get this
-automatically.
-
-Effort: **S** — one query to qualify, then targeted reseed per affected deal.
+Phase 1 fix plan:
+1. **Patch `EXCLUDE_FROM_CUSTOM_OPEX` regex** in `proforma-seeder.service.ts` to
+   cover the gaps identified:
+   - Add `/\brental\s+revenue\b/i` (catches "multifamily rental revenue net")
+   - Add `/\bnet\s+(loss|profit)\b/i` (catches "net loss/profit" P&L rollup)
+   - Add `/_income$/i` as a suffix catch (catches "administrative_income",
+     "storage_income", "valet_trash_income", etc. from the sanitized key)
+   - Add `/\breserve[\s_-]+replacement\b/i` (catches "reserve replacement" word order)
+2. **`forceReseed` 464 Bishop** — also picks up S1-04 broker OM layer in the same pass
+3. **`forceReseed` Sentosa Epperson**
+4. **Invariant test**: after reseed, assert no `custom_opex_*` key in `year1` contains
+   `rental_revenue`, `net_loss`, `net_profit`, `_income` suffix, or `reserve_replacement`
+5. Effort: **S** (~2h — regex patch + 2× reseed + 1 test)
 
 ---
+
+### Priority 2 — VERIFY_NEEDED (data quality, low urgency)
 
 **S1-03 — GPR priority fix (7afb5a20, Apr 28)**
 
-Both live deals show correct T12-priority GPR in DB. Confirm Sentosa Epperson was
-explicitly reseeded (not just incidentally correct). If reseed is confirmed → close.
-If uncertain → run `reseed-deal.ts` for Sentosa Epperson as a precaution.
+Both live deals show correct T12-priority GPR. No action required unless a new deal
+is added with a lease-up profile and only rent roll data — in that case GPR would
+be 0 until reseeded. Self-healing on first `forceReseed`. Close unless new deal
+surfaces the issue.
 
-Effort: **XS** — one reseed call.
+**S1-04 — Broker OM layer (0af3c1c7, May 4) — FOLDS INTO S1-01**
+
+464 Bishop has OM + bpProforma data. Resolved as part of S1-01's `forceReseed` —
+no independent action needed. All other 25 deals have no OM capsule data.
 
 ---
 
-### Priority 3 — MONITOR (low urgency, self-healing for new deals)
+### Priority 3 — MONITOR (self-healing for new deals)
 
 **S1-05 — IC-04 tax tie-break (c9f56327, May 7)**
 
