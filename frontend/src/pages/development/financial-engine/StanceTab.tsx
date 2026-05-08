@@ -34,6 +34,7 @@ import type {
   AffectedStanceField,
 } from '../../../stores/dealContext.types';
 import { LeasingCostTreatmentToggle, type LeasingCostTreatment } from './LeaseVelocitySection';
+import { useLeasingCostTreatment } from '../../../hooks/useLeasingCostTreatment';
 import type { FinancialEngineTabProps } from './types';
 
 const MONO = BT.font.mono;
@@ -485,6 +486,9 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
   const saveStance     = useDealStore(s => s.saveOperatorStance);
   const resetStance    = useDealStore(s => s.resetOperatorStance);
 
+  // Shared hook — single write surface for leasingCostTreatment across consumers.
+  const lct = useLeasingCostTreatment(dealId);
+
   const [saving, setSaving]       = useState(false);
   const [resetting, setResetting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -688,16 +692,16 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
                 LEASING COST TREATMENT
               </div>
               <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
-                {s.leasingCostTreatment === 'CAPITALIZED'
+                {lct.treatment === 'CAPITALIZED'
                   ? 'All lease-up concessions bypass P&L → equity reserve (S&U)'
-                  : s.leasingCostTreatment === 'HYBRID'
+                  : lct.treatment === 'HYBRID'
                     ? 'One-time lease-up → capital · ongoing rent abatement → P&L'
                     : 'All concessions recognized on P&L — conservative default'}
               </div>
             </div>
             <LeasingCostTreatmentToggle
-              value={s.leasingCostTreatment ?? 'OPERATING'}
-              onChange={(v: LeasingCostTreatment) => handleChange({ leasingCostTreatment: v })}
+              value={lct.treatment}
+              onChange={(v: LeasingCostTreatment) => { void lct.setTreatment(v); }}
             />
           </div>
         </div>

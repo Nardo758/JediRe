@@ -1636,7 +1636,7 @@ export function ProjectionsTab({
               {lvCostTreatmentView ?? 'OPERATING'}
             </span>
             <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: '0.05em' }}>
-              set in STANCE →
+              Previewing — set in STANCE
             </span>
           </button>
 
