@@ -820,6 +820,28 @@ export interface LeasingSignals {
   postRenoAbsorptionLagWks: number | null;
 }
 
+export interface PeerBenchmark {
+  /** Number of peer properties in the comparison sample (from deal_market_data comp_count
+   *  when available, otherwise apartment_market_snapshots.total_properties for the deal's city). */
+  nPeerProperties: number | null;
+  /** Percentile position within the peer set for key metrics.
+   *  rent comes from deal_market_data.rent_percentile when available; others pending true distribution. */
+  submarketPercentile: {
+    vacancy: number | null;
+    rent: number | null;
+    leaseVelocity: number | null;
+  } | null;
+  /** P25/P50/P75 distribution bands. P50 is derived from market averages; P25/P75 require
+   *  a true per-property distribution and are null until that data is available. */
+  peerDistribution: {
+    vacancy:       { p25: number | null; p50: number | null; p75: number | null };
+    rent:          { p25: number | null; p50: number | null; p75: number | null };
+    leaseVelocity: { p25: number | null; p50: number | null; p75: number | null };
+  } | null;
+  /** Which table provided the benchmark data — 'deal_market_data' | 'apartment_market_snapshots' | null */
+  dataSource: string | null;
+}
+
 export interface TrafficProjectionResult {
   dealId: string;
   holdYears: number;
@@ -837,6 +859,7 @@ export interface TrafficProjectionResult {
   };
   avgLeaseTerm: number;
   leasingSignals: LeasingSignals | null;
+  peerBenchmark: PeerBenchmark | null;
 }
 
 /**
@@ -857,10 +880,28 @@ export async function getTrafficProjection(
     pool.query(
       `SELECT tp.*, pa.vacancy_current, pa.rent_growth_current, pa.exit_cap_current,
               pa.updated_at AS pa_updated_at, da.avg_lease_term_months,
-              da.per_year_overrides, da.total_units AS da_total_units
+              da.per_year_overrides, da.total_units AS da_total_units,
+              d.city AS deal_city,
+              mkt.total_properties AS mkt_n_peers,
+              mkt.avg_occupancy    AS mkt_avg_occ,
+              mkt.avg_rent         AS mkt_avg_rent,
+              mkt.avg_days_to_lease AS mkt_avg_days_to_lease,
+              dmd.comp_count        AS dmd_comp_count,
+              dmd.comp_avg_occupancy AS dmd_comp_avg_occ,
+              dmd.comp_avg_rent      AS dmd_comp_avg_rent,
+              dmd.rent_percentile    AS dmd_rent_percentile
        FROM traffic_projections tp
        LEFT JOIN proforma_assumptions pa ON pa.deal_id = tp.deal_id
        LEFT JOIN deal_assumptions da ON da.deal_id = tp.deal_id
+       LEFT JOIN deals d ON d.id = tp.deal_id
+       LEFT JOIN LATERAL (
+         SELECT total_properties, avg_occupancy, avg_rent, avg_days_to_lease
+         FROM apartment_market_snapshots
+         WHERE d.city IS NOT NULL AND LOWER(city) = LOWER(d.city)
+         ORDER BY snapshot_date DESC
+         LIMIT 1
+       ) mkt ON TRUE
+       LEFT JOIN deal_market_data dmd ON dmd.deal_id = tp.deal_id
        WHERE tp.deal_id = $1
        ORDER BY tp.projection_date DESC
        LIMIT 1`,
@@ -935,6 +976,43 @@ export async function getTrafficProjection(
   const absLagRaw = pyOvs['reno.assumptions.absorption_lag_days:yr0']?.value;
   const absLagDays = absLagRaw != null && !isNaN(Number(absLagRaw)) ? Number(absLagRaw) : null;
   const postRenoAbsorptionLagWks = absLagDays != null ? +(absLagDays / 7).toFixed(1) : null;
+
+  // ── Peer benchmark from apartment_market_snapshots / deal_market_data ────────
+  // Priority: deal_market_data (analyst-entered comps) > apartment_market_snapshots (city aggregate)
+  const dmdCompCount    = row.dmd_comp_count    != null ? Number(row.dmd_comp_count)    : null;
+  const dmdCompAvgOcc   = row.dmd_comp_avg_occ  != null ? Number(row.dmd_comp_avg_occ)  : null; // stored as pct (87.5)
+  const dmdCompAvgRent  = row.dmd_comp_avg_rent  != null ? Number(row.dmd_comp_avg_rent)  : null;
+  const dmdRentPctile   = row.dmd_rent_percentile!= null ? Number(row.dmd_rent_percentile): null;
+  const mktNPeers       = row.mkt_n_peers        != null ? Number(row.mkt_n_peers)        : null;
+  const mktAvgOcc       = row.mkt_avg_occ        != null ? Number(row.mkt_avg_occ)        : null; // stored as proportion (0–1)
+  const mktAvgRent      = row.mkt_avg_rent       != null ? Number(row.mkt_avg_rent)       : null;
+  const mktDaysToLease  = row.mkt_avg_days_to_lease != null ? Number(row.mkt_avg_days_to_lease) : null;
+
+  const nPeerProperties = dmdCompCount ?? mktNPeers;
+
+  // Effective rent P50: prefer deal_market_data comp avg, else market snapshot avg
+  const rentP50    = dmdCompAvgRent ?? mktAvgRent;
+  // Effective vacancy P50: prefer deal_market_data comp avg occupancy (pct → decimal), else market snapshot proportion
+  const occP50Raw  = dmdCompAvgOcc != null ? dmdCompAvgOcc / 100 : mktAvgOcc;
+  const vacancyP50 = occP50Raw != null ? +(1 - occP50Raw).toFixed(4) : null;
+  // Lease velocity P50: 7 / avg_days_to_lease (weekly leases per available unit)
+  const leaseVelP50 = mktDaysToLease != null && mktDaysToLease > 0 ? +(7 / mktDaysToLease).toFixed(3) : null;
+
+  const hasAnyBenchmark = nPeerProperties != null || rentP50 != null || vacancyP50 != null;
+  const peerBenchmark: PeerBenchmark | null = hasAnyBenchmark ? {
+    nPeerProperties,
+    submarketPercentile: dmdRentPctile != null ? {
+      vacancy: null,      // requires true per-property distribution
+      rent: dmdRentPctile,
+      leaseVelocity: null,
+    } : null,
+    peerDistribution: (rentP50 != null || vacancyP50 != null || leaseVelP50 != null) ? {
+      vacancy:       { p25: null, p50: vacancyP50,  p75: null },
+      rent:          { p25: null, p50: rentP50,      p75: null },
+      leaseVelocity: { p25: null, p50: leaseVelP50,  p75: null },
+    } : null,
+    dataSource: dmdCompCount != null ? 'deal_market_data' : mktAvgRent != null ? 'apartment_market_snapshots' : null,
+  } : null;
 
   // Gate: produce leasingSignals when traffic-learned signals exist OR when any
   // override-derived metric is available (user entered leasing assumptions on a
@@ -1034,5 +1112,6 @@ export async function getTrafficProjection(
     },
     avgLeaseTerm,
     leasingSignals,
+    peerBenchmark,
   };
 }

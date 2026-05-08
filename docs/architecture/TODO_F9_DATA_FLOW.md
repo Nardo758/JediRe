@@ -45,19 +45,20 @@ interface F9TrafficYear {
 ## M07 — Peer benchmark data for LEASING Intel Panel
 
 **Requested by:** Task #630 (Add M07 intel panel to Leasing tab)
-**Blocking:** "Peer Benchmark" sub-panel in `M07IntelPanel.tsx` (LEASING sub-tab)
-**Spec reference:** `docs/architecture/traffic_engine_v2_leasing_prediction.md`
+**Resolved by:** Task #648
 
-**Required backend change:**
-Surface the following peer benchmark fields on the `trafficProjection` response:
-- `nPeerProperties` — number of peer properties in calibration sample
-- `submarketPercentile` — subject property's percentile position within peer set (vacancy, rent, lease velocity)
-- Peer distribution: vacancy %, effective rent, lease velocity at P25/P50/P75
+**Fields added to `TrafficProjectionResult.peerBenchmark`:**
+- `nPeerProperties` — from `deal_market_data.comp_count` when populated; falls back to `apartment_market_snapshots.total_properties` for deal city
+- `submarketPercentile.rent` — from `deal_market_data.rent_percentile` (integer); vacancy/leaseVelocity null until true per-property distribution available
+- `peerDistribution.{vacancy,rent,leaseVelocity}.p50` — derived from market averages (comp avg or city avg); P25/P75 null until seeded
+- `dataSource` — `'deal_market_data'` | `'apartment_market_snapshots'` | null
 
-**Frontend placeholder:** The "Peer Benchmark" collapsible in `M07IntelPanel.tsx` currently renders
-"pending M07 backend wiring" notes for all three sub-fields. Once available, swap for rendered rows.
+**SQL joins added to `getTrafficProjection`:**
+- `LEFT JOIN deals d ON d.id = tp.deal_id` (city lookup)
+- `LEFT JOIN LATERAL (apartment_market_snapshots WHERE LOWER(city)=LOWER(d.city) ORDER BY snapshot_date DESC LIMIT 1) mkt ON TRUE`
+- `LEFT JOIN deal_market_data dmd ON dmd.deal_id = tp.deal_id`
 
-**Priority:** Defer until M07 backend has bandwidth. Frontend placeholder is in place.
+**Status:** RESOLVED — backend wired in `trafficToProFormaService.ts`, frontend panel in `M07IntelPanel.tsx` renders real rows. All fields show `—` gracefully when source data is absent. P25/P75 distribution bands pending per-property data seeding.
 
 ---
 

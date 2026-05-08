@@ -308,6 +308,19 @@ export interface F9DealFinancials {
     /** traffic.mode.effective — the authoritative five-mode deal mode from the traffic engine.
      *  Preferred over leaseVelocity.resolvedMode for mode-conditional rendering. */
     mode?: { effective: string; raw: string } | null;
+    /** Peer/submarket benchmark data derived from deal_market_data (comp-set) or
+     *  apartment_market_snapshots (city aggregate). All distribution fields except P50 are
+     *  null until per-property distribution data is available. */
+    peerBenchmark?: {
+      nPeerProperties: number|null;
+      submarketPercentile: { vacancy: number|null; rent: number|null; leaseVelocity: number|null }|null;
+      peerDistribution: {
+        vacancy:       { p25: number|null; p50: number|null; p75: number|null };
+        rent:          { p25: number|null; p50: number|null; p75: number|null };
+        leaseVelocity: { p25: number|null; p50: number|null; p75: number|null };
+      }|null;
+      dataSource: string|null;
+    }|null;
   }|null;
   assumptions: {
     holdYears: number; exitCap: number|null; rentGrowthYr1: number|null;

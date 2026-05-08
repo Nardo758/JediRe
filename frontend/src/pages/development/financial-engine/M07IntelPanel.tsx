@@ -9,10 +9,10 @@
 //   - MODE RESOLUTION: trafficProjection.mode.effective → leaseVelocity.resolvedMode
 //     (matches precedence in AssumptionsTab.tsx:resolveLeaseMode).
 //   - STYLE: raw hex only — matches LeasingAssumptionsTab palette, no BT tokens.
-//   - PENDING DATA: asymmetric percentile bands + peer benchmark counts are NOT
-//     yet on the response. Placeholder rendered; see TODO_F9_DATA_FLOW.md.
 //   - LABELING: T-06 here = "Current Lease Velocity" (point-in-time leasingSignals).
 //     Projections tab Y1 Leases column = per-year projection. Different time slices.
+//   - PEER BENCHMARK: peerBenchmark.peerDistribution P50 = city market avg; P25/P75
+//     are null until per-property distribution data is seeded. Chips show '—' gracefully.
 // ============================================================================
 
 import React, { useState } from 'react';
@@ -248,10 +248,11 @@ export function M07IntelPanel({ financials }: Props) {
     );
   }
 
-  const sig       = tp.leasingSignals;
-  const calibrated = tp.calibrated;
-  const leaseUp   = tp.leaseUp;
-  const yr1       = tp.yearly[0] ?? null;
+  const sig          = tp.leasingSignals;
+  const calibrated   = tp.calibrated;
+  const leaseUp      = tp.leaseUp;
+  const yr1          = tp.yearly[0] ?? null;
+  const peerBenchmark = (tp as any).peerBenchmark ?? null;
   const confPct   = sig?.confidence != null ? Math.round(sig.confidence * 100) : null;
   const confColor = confPct == null ? P.textMuted : confPct >= 75 ? P.green : confPct >= 50 ? P.amber : P.red;
 
@@ -364,16 +365,95 @@ export function M07IntelPanel({ financials }: Props) {
         </div>
       </CollapsiblePanel>
 
-      {/* Peer Benchmark — placeholder */}
+      {/* Peer Benchmark */}
       <CollapsiblePanel title="PEER BENCHMARK">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <PendingNote field="Peer sample count (nPeerProperties)" />
-          <PendingNote field="Submarket percentile position" />
-          <PendingNote field="Peer vacancy / rent / lease-velocity distribution" />
-          <div style={{ marginTop: 2, paddingTop: 4, borderTop: `1px solid ${P.borderSub}` }}>
-            <span style={{ fontFamily: MONO, fontSize: 7, color: P.textMuted, fontStyle: 'italic' }}>
-              See docs/architecture/TODO_F9_DATA_FLOW.md for backend scope
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {/* Peer count row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: P.textSec }}>Peer Properties (n)</span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: peerBenchmark?.nPeerProperties != null ? P.textPrim : P.textMuted }}>
+              {peerBenchmark?.nPeerProperties != null ? peerBenchmark.nPeerProperties + ' props' : '—'}
             </span>
+          </div>
+
+          {/* Submarket percentile — rent */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: P.textSec }}>Rent Percentile</span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: peerBenchmark?.submarketPercentile?.rent != null ? P.traffic : P.textMuted }}>
+              {peerBenchmark?.submarketPercentile?.rent != null ? 'P' + peerBenchmark.submarketPercentile.rent : '—'}
+            </span>
+          </div>
+
+          {/* Distribution header */}
+          <div style={{ marginTop: 3, paddingTop: 4, borderTop: `1px solid ${P.borderSub}` }}>
+            <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: P.textSec, letterSpacing: 0.4 }}>
+              MARKET DISTRIBUTION (P25 · P50 · P75)
+            </span>
+          </div>
+
+          {/* Vacancy distribution */}
+          {(() => {
+            const d = peerBenchmark?.peerDistribution?.vacancy;
+            const p25 = d?.p25 != null ? fmtPct(d.p25)  : '—';
+            const p50 = d?.p50 != null ? fmtPct(d.p50)  : '—';
+            const p75 = d?.p75 != null ? fmtPct(d.p75)  : '—';
+            const hasData = p25 !== '—' || p50 !== '—' || p75 !== '—';
+            return (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: P.textSec }}>Vacancy %</span>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: hasData ? P.textPrim : P.textMuted }}>
+                  {p25} · {p50} · {p75}
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* Rent distribution */}
+          {(() => {
+            const d = peerBenchmark?.peerDistribution?.rent;
+            const p25 = d?.p25 != null ? fmtDlr(d.p25)  : '—';
+            const p50 = d?.p50 != null ? fmtDlr(d.p50)  : '—';
+            const p75 = d?.p75 != null ? fmtDlr(d.p75)  : '—';
+            const hasData = p25 !== '—' || p50 !== '—' || p75 !== '—';
+            return (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: P.textSec }}>Eff. Rent</span>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: hasData ? P.textPrim : P.textMuted }}>
+                  {p25} · {p50} · {p75}
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* Lease velocity distribution */}
+          {(() => {
+            const d = peerBenchmark?.peerDistribution?.leaseVelocity;
+            const fmt = (v: number|null|undefined) => v != null ? fmtNum(v, 2) + '/wk' : '—';
+            const p25 = fmt(d?.p25);
+            const p50 = fmt(d?.p50);
+            const p75 = fmt(d?.p75);
+            const hasData = p25 !== '—' || p50 !== '—' || p75 !== '—';
+            return (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: P.textSec }}>Lease Velocity</span>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: hasData ? P.textPrim : P.textMuted }}>
+                  {p25} · {p50} · {p75}
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* Data source / no-data note */}
+          <div style={{ marginTop: 2, paddingTop: 4, borderTop: `1px solid ${P.borderSub}` }}>
+            {peerBenchmark == null ? (
+              <span style={{ fontFamily: MONO, fontSize: 7, color: P.textMuted, fontStyle: 'italic' }}>
+                No market snapshot for this deal's city — enter deal city or seed deal_market_data
+              </span>
+            ) : (
+              <span style={{ fontFamily: MONO, fontSize: 7, color: P.textMuted }}>
+                Source: {peerBenchmark.dataSource ?? 'unknown'} · P25/P75 pending per-property distribution
+              </span>
+            )}
           </div>
         </div>
       </CollapsiblePanel>
