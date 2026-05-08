@@ -105,13 +105,13 @@ cover the full governed category set (marketing + locator fees), not just conces
 No DDL change required — the column already exists. The migration comment was
 updated in Phase 1 to include `leasingCostTreatment` in the field listing.
 
-**Transition path:** `deal_data.leasing_cost_treatment` (current write surface via
-`PATCH /api/v1/deals/:id/context`) → `operator_stance.leasingCostTreatment`
-(new canonical location, written via StanceTab after Task #639 ships).
+**Transition path (complete as of Task #639):** `deal_data.leasing_cost_treatment`
+(legacy write surface via `PATCH /api/v1/deals/:id/context`) →
+`operator_stance.leasingCostTreatment` (canonical location, written via StanceTab).
 
-Until Task #639 ships, `deal_data.leasing_cost_treatment` remains the operative
-field for the financials composer. After #639 ships, the composer must be updated
-to read from `operator_stance.leasingCostTreatment` instead.
+The financials composer now reads from `operator_stance.leasingCostTreatment` first,
+falling back to `deal_data.leasing_cost_treatment` for legacy deals that predate the
+migration. The fallback will be removed after the backfill in Task #645 is complete.
 
 ---
 
@@ -133,6 +133,10 @@ OperatorStance service have zero reads of `deal_data.leasing_cost_treatment`
 ---
 
 ## Wiring Gap Record
+
+> **Historical snapshot — pre-Phase-2 audit only.** This table reflects the wiring state
+> before Task #639 shipped. End 1 and End 2b are now wired; End 2a (equity_required) remains
+> open in Task #641. Do not read this table as the current implementation state.
 
 Audit performed on 464 Bishop (`3f32276f-aacd-4da3-b306-317c5109b403`) before Phase 1.
 
