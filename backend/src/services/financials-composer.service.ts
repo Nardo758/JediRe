@@ -910,9 +910,15 @@ async function computeConcessionRecognition(
 
     // ── Write-through cache: persist to deal_data ──────────────────────────
     // Non-fatal — cache write failure doesn't break the financials response.
-    // _treatment is stored alongside _cache_key so getDealFinancials can
-    // validate the cache was computed under the current leasingCostTreatment
-    // without re-parsing the full fingerprint string.
+    //
+    // Cache-stamp pattern: _treatment is load-bearing — do NOT remove it.
+    // PUT /stance updates operator_stance.leasingCostTreatment without calling
+    // composeDealFinancials, so the cache and the current treatment can diverge.
+    // getDealFinancials reads _treatment on every call and, when it doesn't match
+    // effectiveLct, inline-recomputes via amortizeConcessions (pure fn, no DB calls)
+    // rather than serving a stale capitalized_lease_up_total.  The stamp makes the
+    // cache self-correcting with zero race conditions and no manual invalidation step.
+    // See getDealFinancials in proforma-adjustment.service.ts for the read-side logic.
     const cachePayload = { ...result, _cache_key: cacheKey, _treatment: treatment };
     try {
       await pool.query(

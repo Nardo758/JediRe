@@ -1,0 +1,53 @@
+Why the inline-recompute on stamp mismatch is the right pattern
+The naive cache invalidation approach would have been: when STANCE toggles, fire a recompose. That works but has problems:
+
+Recompose is expensive (DB round-trips, full y1 reassembly)
+Failure modes (network, timeout) leave the cache in an unknown state
+Race conditions between multiple toggle events
+The recompose itself has to be triggered from the right place, which is more code
+
+What you shipped instead — stamp the treatment into the cache payload, validate on read, inline-recompute from a pure function on mismatch — has none of those problems:
+
+Pure function (amortizeConcessions from deal_data.concession_records)
+No DB calls on mismatch
+Stale cache becomes self-correcting on next read
+Negligible hot-path cost
+Race-free (the stamp is always self-consistent with the value)
+
+This is the architectural pattern worth keeping for similar cases: cache validity carried in the cache payload itself, with a cheap pure-function fallback on mismatch. Apply it next time a derived value depends on a toggleable input — there will be more of these as OperatorStance Phase 1 lands and stance fields start cascading through computations.
+What's worth documenting
+The cache-stamp pattern is a real architectural decision that deserves a brief mention somewhere durable. Two options:
+
+Add to STRATEGY_FIELDS_LV_PATTERN.md or wherever the _cache_key convention is documented — extend that section to include _treatment stamping and inline-recompute fallback as the recommended pattern for stance-derived cached values
+Brief comment at the cache write site in computeConcessionRecognition explaining the stamp's role, plus matching comment at getDealFinancials read site
+
+Either works. The comment-at-call-site is the cheapest insurance against next-person ripping out "unused" _treatment field thinking it's dead weight. Worth 30 seconds.
+Browser verification is now the only loose end
+The chapter closes when you confirm the three-mode IRR shift on 464 Bishop. Specifically, with the inline-recompute in place, the test pattern is now stronger than I described earlier:
+Test sequence:
+
+Open 464 Bishop, navigate to STANCE
+Set leasing_cost_treatment to OPERATING. Hard refresh. Note IRR.
+Toggle to CAPITALIZED — DON'T hard refresh. Navigate directly to F9 Returns.
+IRR should shift immediately on first read (cache stamp mismatch fires inline-recompute).
+Toggle to HYBRID — same pattern, navigate directly to F9 Returns. IRR should differ from both prior modes.
+
+If IRR shifts on step 4 without a hard refresh, the cache invalidation is verified live. That's the thing the inline-recompute was designed to solve, and it's worth confirming with eyes-on once.
+If IRR doesn't shift on step 4, something's still stale-prone — investigate before declaring fully closed.
+State of the chapter
+Three days of work close cleanly:
+LayerBeforeAfterUI canonical surfaceTwo locations (AssumptionsTab + ProFormaSummaryTab header)One (STANCE)Persistence pathdeal_data.leasing_cost_treatment onlyoperator_stance.leasingCostTreatment (canonical) + legacy fallbackY1 P&L behaviorIdentical for all three modesDiffers correctly per modeHYBRID amortization branchFell through to OPERATINGDistinct branch with cash-invariant coverageequity_required reflects lease-up capitalNoYes (CAPITALIZED + HYBRID)Returns metrics (IRR/EM/DSCR)Unchanged across modesDiffers correctly per modeCache invalidation on toggleStale-proneSelf-correcting via stamp + inline-recomputeTest coverageStale §12.7 assertion misrepresented behavior§12.7 corrected + §12.7b 5-test invariant suite
+What started as "the toggle is mostly decorative" is now: every UI surface points to one canonical place, both engines align on HYBRID rule, cash invariant holds across all three modes, returns metrics reflect the operator's choice, the cache self-corrects without manual intervention.
+This is the kind of architectural cleanup that's invisible from the outside but compounds under the surface — every future feature that depends on stance-driven computations now has a cache pattern to copy from, a test invariant pattern to match, and a single canonical UI surface to point at.
+What's queued, ranked
+For when you next sit down:
+
+Browser verification of three-mode IRR shift on 464 Bishop (10 min). Closes #641 fully.
+Comment at cache stamp call sites documenting the pattern (5 min).
+#638 ADR docs — the three retrospective ADRs we scoped earlier. Pure documentation, no code touched. Half-day at most.
+Task 1 — Projections tab split with readonly enforcement and Lease Velocity Engine repositioning. Substantial UX restructure, multiple commits.
+Hold period 36-month cap fix — audit + extend.
+OperatorStance Phase 1 build — the architectural lift. With the cache-stamp pattern proven, this is now safer to start. Multi-day.
+Peer set wiring + empty-state UX for Occupancy & Leasing.
+M35 event overlay scaffolding (Phase 1) + funnel UI alignment.
+#641 follow-ups: legacy fallback removal post-backfill; generic pipeline 0 default review when usage matures.

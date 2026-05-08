@@ -2250,12 +2250,14 @@ export async function getDealFinancials(
         ? (dealData as any).leasing_cost_treatment as 'OPERATING' | 'CAPITALIZED' | 'HYBRID'
         : 'OPERATING';
   const _cachedConcRec = (dealData.concession_recognition ?? {}) as Record<string, unknown>;
-  // Task #641 cache validation: the cached concession_recognition may have been written by
-  // a prior composeDealFinancials run under a DIFFERENT leasingCostTreatment (e.g. the
-  // operator just toggled STANCE without triggering a full recompose).  We detect this via
-  // the _treatment stamp added by computeConcessionRecognition.  On a treatment mismatch,
-  // inline-recompute from deal_data.concession_records — amortizeConcessions is a pure
-  // function (no DB calls) so the hot path is not meaningfully affected.
+  // Cache-stamp pattern (Task #641): PUT /stance fires applyStanceReblend (underwriting
+  // snapshot path) but does NOT call composeDealFinancials.  That means
+  // deal_data.concession_recognition can carry a capitalized_lease_up_total computed under
+  // a different leasingCostTreatment.  computeConcessionRecognition stamps _treatment into
+  // the cache payload precisely so we can detect this here without re-parsing the fingerprint.
+  // On mismatch, inline-recompute via amortizeConcessions from deal_data.concession_records —
+  // a pure function with no DB calls, negligible hot-path cost, and no race conditions.
+  // Write-side: computeConcessionRecognition in financials-composer.service.ts.
   let capitalizedLeaseUpTotal = 0;
   if (effectiveLct === 'CAPITALIZED' || effectiveLct === 'HYBRID') {
     const cacheMatchesTreatment = _cachedConcRec._treatment === effectiveLct;
