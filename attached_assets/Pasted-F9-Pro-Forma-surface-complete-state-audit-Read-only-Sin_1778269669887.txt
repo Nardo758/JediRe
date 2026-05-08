@@ -1,0 +1,150 @@
+F9 Pro Forma surface — complete state audit.
+
+Read-only. Single deliverable: docs/architecture/PROFORMA_SURFACE_
+AUDIT.md. Format matches existing audit docs (F9_DATA_FLOW_AUDIT_
+PHASE1.md, INPUTS_TAB_SECTION_AUDIT.md, DORMANT_IMPROVEMENTS_AUDIT
+.md).
+
+PHASE 0 — Locate the surface
+
+The Pro Forma view is rendered by ProFormaSummaryTab.tsx (line range
+known from prior audits). Confirm the path. Identify any sibling
+components that contribute to the visible Pro Forma surface
+(SourceBadge, F9SummaryBar, evidenceFilter logic, etc.).
+
+INVENTORY — for every visible cell
+
+For each row in the rendered Pro Forma, fill this table:
+
+| Section | Row Label | Field Key | Layer | Source Status | Render Status | Notes |
+
+Layer = which LayeredValue layer is being shown (broker / t12 /
+rent_roll / tax_bill / om_narrative / platform / override / computed
+/ derived).
+
+Source Status (per layer that should populate):
+  - WIRED_AND_POPULATED — read path works, cell has a value
+  - WIRED_AND_NULL — read path works, source returned null (legitimate
+    empty state)
+  - WIRED_BUT_BLANK — read path works, source has a value, cell shows
+    blank (rendering bug)
+  - NOT_WIRED — no read path exists at all
+  - PARTIALLY_WIRED — works for some deals/conditions but not others
+  - DUPLICATE_SOURCE — multiple write paths to same field
+
+Render Status:
+  - RENDERS_CORRECTLY — value displays accurately
+  - RENDERS_PLACEHOLDER — shows '--', 'Not Provided', 'Pending'
+  - RENDERS_INCORRECTLY — shows a value but it's wrong
+  - DOESN'T_RENDER — row hidden when it should be visible
+  - SHOULD_NOT_RENDER — row showing when it shouldn't
+
+For each row, audit ALL THREE primary layers (broker / platform /
+override) plus any specialized layers (t12, rent_roll, tax_bill,
+om_narrative, unit_mix). Note which are wired, which are dark,
+which have data flowing.
+
+INVENTORY SCOPE — every section
+
+Walk the entire surface top to bottom. Don't skip subsections that
+seem obvious. Sections to cover:
+
+1. Header strip — HOLD chips, VIEW toggle, GPR DECOMP / FINDINGS
+   toggles, LEASING COST toggle, EXPORT button, deal name strip
+2. AI MARKET FINDINGS cards — rent growth, vacancy, exit cap
+3. Pro Forma warnings — IC-04 + any other validators
+4. OPERATING STATEMENT header strip
+5. AS-IS · BROKER LAYER section (if visible)
+6. REVENUE rows — GPR, vacancy_loss, loss_to_lease, concessions,
+   bad_debt, non_revenue_units, NRI subtotal, other_income, EGI
+7. CONTROLLABLE OPEX rows — payroll, repairs_maintenance, turnover,
+   contract_services, marketing, utilities, g_and_a
+8. NON-CONTROLLABLE OPEX rows — management_fee, insurance,
+   real_estate_taxes
+9. CapEx & Reserves rows — replacement_reserves, capex_per_unit,
+   capex_year_draw, ti_per_sf, lc_pct
+10. Subtotals — total_opex, NOI, NOI margin
+11. Custom OpEx rows (the 15 custom_opex_* entries from earlier work
+    on 464 Bishop)
+12. Below-the-line / disposition rows if present
+
+For each, check both the row itself AND any sub-row breakdowns
+(e.g., the closing costs sub-rows under Acquisition).
+
+CROSS-REFERENCE — known state from prior audits
+
+The audit should reference findings already documented:
+
+- toDollarRow helper landed (proforma-adjustment.service.ts:1817-1900)
+  for percentage → dollar conversion
+- IC-04 tax tie-break is wired
+- real_estate_taxes is in NCTRL_OPEX_FIELDS (plural)
+- evidenceFilter at line 633 is the cull logic
+- Custom opex filter regex patterns recently expanded (S1-01 fix)
+- LV layered values flow through the standard resolvedNum() path
+- Per-year overrides honored in projections (P1-A fix)
+
+For any row whose state contradicts these prior findings, flag as
+high-priority discrepancy.
+
+CROSS-REFERENCE — visible blank patterns
+
+Use 464 Bishop and Sentosa Epperson as the test deals. For each row
+where any layer renders blank:
+
+- Confirm via DB query whether the underlying source has a value
+  (i.e., is it a legitimate null or a wiring bug?)
+- For broker layer specifically, check whether the deal has any
+  extraction capsule (extraction_om, broker_claims) that should
+  populate that layer
+- For platform layer, identify which module/source SHOULD provide
+  the value (per the methodology documented or implied in the
+  service code)
+
+DELIVERABLE STRUCTURE
+
+The audit doc should produce three sections:
+
+Section 1: Inventory table (the full row-by-row classification)
+
+Section 2: Identified gaps grouped by category:
+  - WIRED_BUT_BLANK gaps (rendering bugs — fix on the read/display
+    side)
+  - NOT_WIRED gaps (write path missing — fix on the source side)
+  - PARTIALLY_WIRED gaps (works conditionally — needs scope investigation)
+  - DUPLICATE_SOURCE gaps (multiple write paths to same field —
+    same-shape problem as Purchase Price dual-source)
+
+Section 3: Recommended priorities by impact:
+  - P0: gaps where wrong number is silently shown to operator
+  - P1: gaps where missing number prevents IRR/EM/CoC computation
+  - P2: gaps where missing number degrades narrative/decision support
+  - P3: cosmetic gaps (wrong placeholder text, missing badge, etc.)
+
+NOT IN SCOPE for Phase 0
+
+- Don't fix anything found
+- Don't propose architectural changes
+- Don't audit Projections, Capital, Returns, or any other tab —
+  Pro Forma surface only
+- Don't redesign LV column structure or layer definitions
+- Don't audit AssumptionsTab / INPUTS sub-tab — that's a separate
+  source-of-truth question already partially documented
+
+ACCEPTANCE
+
+- Inventory table complete for every visible cell on the Pro Forma
+  surface
+- Every WIRED_BUT_BLANK and NOT_WIRED finding has file:line evidence
+- Test deals (464 Bishop, Sentosa Epperson) used as live examples
+  for at least 80% of findings
+- Cross-reference against prior audit findings explicit (no
+  rediscovery)
+- Section 3 priority ranking grounded in operator-impact (not
+  developer-effort)
+
+Phase 1 (build / fix any findings) is separate greenlight after this
+audit lands.
+
+Branch: claude/proforma-surface-audit-phase-0. One commit (the
+audit doc).

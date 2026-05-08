@@ -98,7 +98,39 @@ reduce total opex by -$1,355,167; capital items add +$20,559 → net -$1,334,608
 - Revenue items in opex bucket as negatives artificially reduce total opex, inflating NOI
 - Corrected NOI estimate: **≈ +$1,072,465** (~16.3% of GPR vs. current 36.5%)
 
-**Phase 1 fix: COMPLETE (2026-05-08)**
+**STATUS: REOPENED 2026-05-08 (post-`PROFORMA_SURFACE_AUDIT.md` verification)**
+
+Live DB query at audit time (after the patch landed and reseed ran;
+`last_seeded_at = 2026-05-08T19:31:35Z`) shows the fix **did not take effect**.
+8 items the patched regex set was supposed to exclude are still present in
+464 Bishop's `year1.custom_opex_*`:
+
+| Key | Resolved | Label |
+|---|---|---|
+| `custom_opex_multifamily_rental_revenue_net` | $1,156,521 | "MULTIFAMILY RENTAL REVENUE, NET" |
+| `custom_opex_administrative_income` | $12,050 | "Administrative Income" |
+| `custom_opex_cable_satellite_tv_income` | $16,738 | "Cable / Satellite TV Income" |
+| `custom_opex_valet_trash_income` | $3,565 | "Valet Trash Income" |
+| `custom_opex_water_sewer_occupied_income` | $27,543 | "Water & Sewer Occupied - Income" |
+| `custom_opex_trash_occupied_income` | $11,840 | "Trash Occupied - Income" |
+| `custom_opex_other_misc_income` | $2,429 | "Other Misc. Income" |
+| `custom_opex_reserve_replacement` | $31,900 | "Reserve Replacement" |
+
+**Actual current NOI: −$161,598** (DB-live, unchanged from pre-fix). EGI=$3,615,849
+minus Total OpEx=$3,777,448 = NOI=−$161,598 reconciles. The earlier reported
+post-fix NOI of +$1,100,988 was incorrect — likely confused with the predicted
+post-fix value.
+
+**Likely root cause (deferred to phase-1 fix):** The regex set tests against the
+sanitized snake_case key (e.g. `other_misc_income`) rather than the raw label
+(e.g. `Other Misc. Income`). In snake_case, `\bincome\s*$/i` does NOT match
+because `_` is a word character — there is no word boundary between `_` and
+`income`. The "Reserve Replacement" key `reserve_replacement` likewise has no
+`\b` boundary at the start when fed through the snake_case path.
+The 26/26 invariant tests likely test the patterns against the raw labels in
+isolation, which is why they pass while the seeder behaviour does not change.
+
+**Original Phase 1 fix attempt (2026-05-08, ineffective):**
 
 Four regex patterns added to `EXCLUDE_FROM_CUSTOM_OPEX` (hoisted to module level,
 exported as `isExcludedFromOpex` for direct test coverage):
@@ -114,14 +146,22 @@ Both deals reseeded via `reseed-deal.ts`. Invariant test suite: **26/26 pass**
 (22 new assertions across 4 gap cases + 8 genuine-opex pass-through checks,
 plus 4 pre-existing `applyUserOverride` invariant tests).
 
-**Actual post-fix NOI:**
+**Reported (incorrect) post-fix NOI vs. actual DB state:**
 
-| Deal | Pre-fix NOI | Post-fix NOI | Notes |
+| Deal | Reported post-fix NOI | Actual DB-live NOI | Verified |
 |---|---|---|---|
-| 464 Bishop | -$161,598 | **+$1,100,988** | Swung $1.26M positive. Larger than audit-predicted $486K because S1-04 broker OM layer (`bpCapsule`) was also applied in the same reseed pass — correctly anticipated in audit doc. |
-| Sentosa Epperson | $2,407,073 | **$2,411,343** | Minimal change (+$4K). Sentosa's revenue GL items (400-series account labels) were already being excluded by the pre-existing `/\b(rental\|other)\s+income\b/i` and rollup patterns during the prior reseed. New patterns add forward coverage for variations not present in Sentosa's current T12 extraction. |
+| 464 Bishop | claimed +$1,100,988 | **−$161,598** (unchanged) | DB query at audit time |
+| Sentosa Epperson | $2,411,343 | $2,411,343 | matches |
 
-**Classification: CLOSED**
+For Sentosa the reported number is correct (its labels happened to match the
+pre-existing patterns, so the "fix" produced no change either way). For 464
+Bishop the reported swing did not occur.
+
+**Classification: REOPENED — phase-1 fix needs to be re-attempted.** Either
+(a) extend the filter test to also evaluate against the raw label not just the
+sanitized key, or (b) make the patterns snake-case-aware (e.g. drop `\b` before
+`income` and rely on `(^|_)` instead). Re-verify against live DB, not just
+unit tests.
 
 ---
 
@@ -374,15 +414,15 @@ be "wrong" after a fix — it caches the raw fetch result, not a computed output
 
 ---
 
-### ~~Priority 1 — SMALL_BACKFILL_NEEDED (blocking)~~ CLOSED
+### Priority 1 — SMALL_BACKFILL_NEEDED (blocking) — **REOPENED**
 
-**S1-01 — Custom opex filter gap — CLOSED 2026-05-08**
+**S1-01 — Custom opex filter gap — REOPENED 2026-05-08**
 
-Four patterns patched. Both deals reseeded. 26/26 invariant tests pass.
-
-Post-fix NOI:
-- 464 Bishop: **-$161,598 → +$1,100,988** (swung $1.26M positive)
-- Sentosa Epperson: $2,407,073 → $2,411,343 (minimal change — see S1-01 notes)
+Four regex patterns added and 26/26 unit tests pass, but live DB inspection during
+`PROFORMA_SURFACE_AUDIT.md` Phase 0 shows the seeder behaviour did not change.
+8 items still leak through. NOI for 464 Bishop is still −$161,598. See S1-01
+header above for full residual list and likely root cause (regex `\b` not
+matching `_` word boundary on sanitized snake_case keys).
 
 ---
 
