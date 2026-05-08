@@ -758,6 +758,7 @@ export type {
   ConcessionStrategy,
   MarketingIntensity,
   ExpenseGrowthPosture,
+  LeasingCostTreatment,
   OperatorStance,
   OperatorStancePatch,
   AffectedStanceField,

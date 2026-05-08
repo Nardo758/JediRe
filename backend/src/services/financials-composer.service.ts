@@ -183,7 +183,7 @@ export async function composeDealFinancials(
 ): Promise<{ success: boolean; data: ComposedFinancials }> {
   // 1. Load deal row
   const dealRes = await pool.query(
-    `SELECT id, name, deal_data, project_type, target_units,
+    `SELECT id, name, deal_data, operator_stance, project_type, target_units,
             unit_count, city, state_code AS state,
             deal_data->>'submarketId'   AS submarket_id,
             deal_data->>'property_class' AS property_class,
@@ -197,6 +197,21 @@ export async function composeDealFinancials(
     throw new Error(`Deal ${dealId} not found or not accessible by user`);
   }
   const dealData = typeof deal.deal_data === 'object' && deal.deal_data ? deal.deal_data : {};
+  // ── Operator Stance: leasingCostTreatment wins over legacy deal_data field ──
+  // operator_stance is the canonical write location (StanceTab → PUT /stance).
+  // deal_data.leasing_cost_treatment is the legacy field; kept as fallback only.
+  const _dealOperatorStance = typeof deal.operator_stance === 'object' && deal.operator_stance
+    ? deal.operator_stance as Record<string, any>
+    : {} as Record<string, any>;
+  const _VALID_LCT = ['OPERATING', 'CAPITALIZED', 'HYBRID'] as const;
+  const effectiveLct: 'OPERATING' | 'CAPITALIZED' | 'HYBRID' =
+    _VALID_LCT.includes(_dealOperatorStance?.leasingCostTreatment)
+      ? _dealOperatorStance.leasingCostTreatment as 'OPERATING' | 'CAPITALIZED' | 'HYBRID'
+      : _VALID_LCT.includes((dealData as any)?.leasing_cost_treatment)
+        ? (dealData as any).leasing_cost_treatment as 'OPERATING' | 'CAPITALIZED' | 'HYBRID'
+        : 'OPERATING';
+  // Inject into dealData so computeConcessionRecognition reads the correct source.
+  (dealData as any).leasing_cost_treatment = effectiveLct;
   const totalUnits = deal.target_units || deal.unit_count || (dealData?.units) || 0;
   const purchasePrice = dealData?.purchase_price || dealData?.asking_price || null;
   const brokerClaims = dealData?.broker_claims && typeof dealData.broker_claims === 'object' ? dealData.broker_claims as Record<string, any> : {};
@@ -458,6 +473,25 @@ export async function composeDealFinancials(
   }
 
   const concessionRecognition = await computeConcessionRecognition(pool, dealId, dealData);
+
+  // End 1 — P&L concessions line responds to leasingCostTreatment (operator-stance phase 2).
+  // When CAPITALIZED: all lease-up concessions bypass P&L → 0 on operating statement.
+  // When HYBRID: P&L portion = resolved total minus the capitalized lease-up amount.
+  // OPERATING: no change (default path, concessions already resolved from year1Data).
+  if (effectiveLct === 'CAPITALIZED' || effectiveLct === 'HYBRID') {
+    const concRow = year1Rows.find(r => r.field === 'concessions');
+    if (concRow) {
+      if (effectiveLct === 'CAPITALIZED') {
+        concRow.resolved = 0;
+      } else {
+        // HYBRID: subtract capitalized one-time concessions from the P&L line.
+        const capitalized = concessionRecognition?.capitalized_lease_up_total ?? 0;
+        concRow.resolved = Math.max(0, (concRow.resolved ?? 0) - capitalized);
+      }
+      concRow.resolution = 'treatment_adjusted';
+      concRow.source = 'stance';
+    }
+  }
 
   // M38: record non-blocking calibration predictions for Year-1 NOI, occupancy,
   // and rent growth after every successful compose. Fire-and-forget — never

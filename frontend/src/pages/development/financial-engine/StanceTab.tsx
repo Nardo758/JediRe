@@ -33,6 +33,7 @@ import type {
   ExpenseGrowthPosture,
   AffectedStanceField,
 } from '../../../stores/dealContext.types';
+import { LeasingCostTreatmentToggle, type LeasingCostTreatment } from './LeaseVelocitySection';
 import type { FinancialEngineTabProps } from './types';
 
 const MONO = BT.font.mono;
@@ -550,7 +551,7 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
               OPERATOR STANCE
             </span>
             <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-              15 modulation rules · 10 fields
+              15 modulation rules · 11 fields
             </span>
             {saving && (
               <span style={{ fontFamily: MONO, fontSize: 8, color: CYAN }}>SAVING...</span>
@@ -678,7 +679,30 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
           saving={saving}
         />
 
-        {/* ── Section 4: STRESS OVERLAYS ── */}
+        {/* ── Section 4: COST RECOGNITION ── */}
+        <SectionHeader label="COST RECOGNITION" sub="how lease-up concessions flow through the financials pipeline" />
+        <div style={{ borderBottom: `1px solid ${BT.border.subtle}`, padding: '9px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 1, marginBottom: 2 }}>
+                LEASING COST TREATMENT
+              </div>
+              <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
+                {s.leasingCostTreatment === 'CAPITALIZED'
+                  ? 'All lease-up concessions bypass P&L → equity reserve (S&U)'
+                  : s.leasingCostTreatment === 'HYBRID'
+                    ? 'One-time lease-up → capital · ongoing rent abatement → P&L'
+                    : 'All concessions recognized on P&L — conservative default'}
+              </div>
+            </div>
+            <LeasingCostTreatmentToggle
+              value={s.leasingCostTreatment ?? 'OPERATING'}
+              onChange={(v: LeasingCostTreatment) => handleChange({ leasingCostTreatment: v })}
+            />
+          </div>
+        </div>
+
+        {/* ── Section 5: STRESS OVERLAYS ── */}
         <SectionHeader label="STRESS OVERLAYS" sub="explicit haircuts stacked on top of posture-derived modulation" />
         <StressRow
           label="RENT GROWTH HAIRCUT"
@@ -726,7 +750,7 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
           saving={saving}
         />
 
-        {/* ── Section 5: BASE VALUES ── */}
+        {/* ── Section 6: BASE VALUES ── */}
         <SectionHeader
           label="BASE VALUES"
           sub="direct inputs for exit cap rate and rent growth — stance modulates on top of these"

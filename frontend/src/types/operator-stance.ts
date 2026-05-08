@@ -19,6 +19,8 @@ export type ExpenseGrowthPosture = 'CONTAINED' | 'INFLATION' | 'STRESSED';
 /** Provenance of the current stance values. */
 export type SetBy = 'operator' | 'platform_default' | 'agent_inferred';
 
+export type LeasingCostTreatment = 'OPERATING' | 'CAPITALIZED' | 'HYBRID';
+
 export interface OperatorStance {
   /** Federal Reserve rate trajectory — modulates exit cap and opex growth. */
   rateEnvironment: RateEnvironment;
@@ -34,6 +36,13 @@ export interface OperatorStance {
   marketingIntensity: MarketingIntensity;
   /** Controllable expense growth — independent of insurance/tax jurisdiction models. */
   expenseGrowthPosture: ExpenseGrowthPosture;
+  /**
+   * How lease-up concessions are treated in the financials pipeline.
+   *   OPERATING   — all concessions recognized on P&L (default, conservative)
+   *   CAPITALIZED — all lease-up concessions bypass P&L → equity reserve (S&U)
+   *   HYBRID      — one-time lease-up → capital; ongoing rent abatement → P&L
+   */
+  leasingCostTreatment: LeasingCostTreatment;
   /** Additional haircut on rent growth Y1-Y3, in basis points (e.g. 25 = -0.25%). */
   stressRentGrowthHaircut: number;
   /** Additional widening of exit cap rate, in basis points (e.g. 50 = +0.50%). */

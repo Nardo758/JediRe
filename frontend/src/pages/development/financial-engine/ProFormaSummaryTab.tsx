@@ -7,7 +7,7 @@ import { ConcessionDrilldownModal, aggregateConcessionDetail } from './Concessio
 import { CommentaryPanel } from './CommentaryPanel';
 import { SourceBadge } from './SourceBadge';
 import { useDealStore, PlatformColSource } from '../../../stores/dealStore';
-import { LeasingCostTreatmentToggle, type LeasingCostTreatment } from './LeaseVelocitySection';
+import type { LeasingCostTreatment } from './LeaseVelocitySection';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -743,19 +743,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               </button>
             ))}
           </div>
-          {/* Location B — LeasingCostTreatmentToggle: view-state only, does NOT write deal field.
-              Shows VIEW↑ indicator when overriding the persisted deal default. */}
-          <div style={{ width: 1, height: 14, background: '#2a2a2a' }} />
-          <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>LEASING:</span>
-          <LeasingCostTreatmentToggle
-            value={lvTreatmentView}
-            onChange={handleLvTreatmentViewChange}
-            dealDefault={
-              (deal?.['deal_data'] as Record<string, unknown> | null | undefined)
-                ?.['leasing_cost_treatment'] as LeasingCostTreatment | undefined
-              ?? 'OPERATING'
-            }
-          />
         </div>
 
         {/* KPI pills */}

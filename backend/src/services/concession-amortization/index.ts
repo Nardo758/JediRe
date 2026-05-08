@@ -189,6 +189,31 @@ function processRecord(
     };
   }
 
+  // ── HYBRID treatment (§6-HYBRID): lease-up-period → capital, ongoing → P&L ─
+  // One-time lease-up concessions (is_lease_up_period=true) follow the same
+  // capitalized path as CAPITALIZED treatment.  Ongoing rent-abatement records
+  // (is_lease_up_period=false) fall through to the OPERATING recognition path.
+  // Cash-invariant assertion at assertCrossTreatmentInvariant covers HYBRID
+  // because recognized + capitalized always sums to total cash_value.
+  if (runtimeTreatment === 'HYBRID' && record.is_lease_up_period) {
+    const schedule: ConcessionAmortizationSchedule = {
+      concession_id: record.id,
+      lease_id: record.lease_id,
+      method: record.amortization_method,
+      treatment: runtimeTreatment,
+      is_lease_up_period: true,
+      monthly_entries: [],
+      write_offs: [],
+      truncated_recognition_post_horizon: 0,
+    };
+    return {
+      schedule,
+      recognized: 0,
+      capitalized: roundCents(record.cash_value),
+      truncated: 0,
+    };
+  }
+
   // ── §7.9: inferred zero-value skip ────────────────────────────────────────
   if (record.inferred_from_rent_roll && record.cash_value === 0) {
     console.warn(

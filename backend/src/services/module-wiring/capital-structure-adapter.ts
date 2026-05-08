@@ -68,6 +68,11 @@ export async function wireCapitalStack(
       wacc: stack.metrics.weightedAvgCostOfCapital,
       total_debt: stack.metrics.totalDebt,
       total_equity: stack.metrics.totalEquity,
+      // TODO (Task #639 End 2a): When leasingCostTreatment is CAPITALIZED or HYBRID,
+      // equity_required should be augmented by deal_data.concession_recognition
+      // .capitalized_lease_up_total (written by computeConcessionRecognition).
+      // wireCapitalStack does not currently receive deal_data; that thread-through
+      // is a follow-up to this adapter's call-sites.
       equity_required: stack.metrics.equityRequired,
       coc_return: stack.metrics.cocReturn,
       capital_risk_score: stack.metrics.capitalRiskScore,
