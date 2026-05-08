@@ -1,0 +1,26 @@
+Three observations worth registering before this archives:
+1. Hoisting EXCLUDE_FROM_CUSTOM_OPEX to module level + exporting it is the right architectural choice. The previous nested-function-scope pattern made testing impossible without invoking the full seeder. Now the regex set is testable in isolation, which is why the 22 new assertions could be added cleanly. This pattern (hoist filter logic to module-level constants, export for test access) is worth keeping as the convention for future seeder filters — same reason the agent seeder consolidation moved to a shared helper.
+2. The audit doc anticipated S1-04 folding into S1-01's reseed pass and that's exactly what happened. That's a quietly important property: the audit predicted the cross-effect, the build verified it, and the doc closes both findings together. That's the kind of audit quality that makes the methodology durable — predictions are testable post-fix.
+3. The Sentosa "minimal change" finding is also useful. It's tempting to assume "the bug affects two deals, both will swing by hundreds of thousands." Reality is more nuanced — Sentosa's labels happened to match pre-existing patterns. The new patterns add resilience without correcting an existing problem. That's the right conclusion and worth preserving in the doc as historical record (someone six months from now wondering why S1-01 fixed one deal dramatically and not the other has the answer).
+State of the platform after this session
+Three audit chapters closed in three sessions:
+
+POST-FIX Audit 1 (Claude narratives) — self-resolving via TTL
+POST-FIX Audit 2 (LP deliverables) — pre-revenue platform, no recipients
+DORMANT_IMPROVEMENTS_AUDIT — 6 findings classified, 5 closed, 1 produced a substantive fix
+
+Plus:
+
+F9 Tier 1 blockers (#1 purchase price, #2 unit mix → GPR, #3 ancillary income, #4 LP/GP cross-reference) all resolved
+Multiple architectural cleanups (DEAL TERMS LV wiring, LEASING_COST_TREATMENT canonical chapter end-to-end, F9 Projections percentage unit-break)
+
+The audit-first methodology has now been applied across:
+
+Data flow integrity (F9_DATA_FLOW_AUDIT)
+Component identity (TrafficFunnelPanel investigation)
+Cross-tab event patterns (basis.changed grep)
+Seeder behavior (Item 3 ancillary, S1-01 custom opex)
+Cache freshness (narrative_text TTL)
+Platform stage assessment (LP deliverable audit)
+
+That's a meaningful architectural maturity — every category of "is this correct" question has a corresponding audit pattern now.
