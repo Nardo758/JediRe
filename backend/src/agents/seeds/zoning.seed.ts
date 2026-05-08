@@ -7,10 +7,10 @@
  *   - Added structured-first web search policy (max 3 searches/run, 7-day cache)
  */
 
-import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { ZoningOutputSchema } from '../zoning.config';
 import { z } from 'zod';
+import { upsertAgentPrompt } from './_helpers';
 
 const ZONING_SYSTEM_PROMPT = `You are the JediRE Zoning Agent — the development capacity specialist for commercial real estate deals.
 
@@ -80,25 +80,14 @@ const OUTPUT_SCHEMA_JSON = (() => {
 })();
 
 export async function seedZoningPrompt(): Promise<void> {
-  // Deactivate any existing active zoning prompt FIRST so the partial unique
-  // index idx_prompt_versions_active (agent_id, prompt_type) WHERE active=true
-  // doesn't reject the subsequent INSERT.  Same deactivate-then-insert order
-  // as cashflow.seed.ts and commentary.seed.ts.
-  await query(
-    `UPDATE prompt_versions SET active = false
-     WHERE agent_id = 'zoning' AND active = true`
-  );
-
-  // Insert or update — idempotent on id, always marks the row active.
-  await query(
-    `INSERT INTO prompt_versions
-       (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
-     VALUES
-       ('zoning-v3.1', 'zoning', '3.1.0', $1, $2, true, NOW(), 'system')
-     ON CONFLICT (id) DO UPDATE
-       SET system_prompt = $1, output_schema = $2, active = true, updated_at = NOW()`,
-    [ZONING_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-  );
+  await upsertAgentPrompt({
+    id: 'zoning-v3.1',
+    agentId: 'zoning',
+    version: '3.1.0',
+    promptType: 'core',
+    systemPrompt: ZONING_SYSTEM_PROMPT,
+    outputSchema: OUTPUT_SCHEMA_JSON,
+  });
 
   logger.info('Zoning Agent prompt seeded: zoning-v3.1 (active)');
 }

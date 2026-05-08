@@ -10,7 +10,6 @@
  * active row per (agent_id, prompt_type), enabling multi-variant prompts.
  */
 
-import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { CashflowOutputSchema } from '../cashflow.config';
 import { CASHFLOW_SYSTEM_PROMPT } from '../prompts/cashflow/system';
@@ -21,6 +20,7 @@ import { CASHFLOW_VARIANT_LEASE_UP } from '../prompts/cashflow/variants/lease-up
 import { CASHFLOW_VARIANT_DEVELOPMENT } from '../prompts/cashflow/variants/development';
 import { CASHFLOW_VARIANT_REDEVELOPMENT } from '../prompts/cashflow/variants/redevelopment';
 import { z } from 'zod';
+import { upsertAgentPrompt } from './_helpers';
 
 const LEGACY_OUTPUT_SCHEMA_JSON = (() => {
   return z.toJSONSchema(CashflowOutputSchema) as Record<string, unknown>;
@@ -71,38 +71,19 @@ const EVIDENCE_PROMPTS: Array<{
 ];
 
 export async function seedCashflowPrompt(): Promise<void> {
-  const upcomingIds = EVIDENCE_PROMPTS.map(p => p.id);
-
   for (const p of EVIDENCE_PROMPTS) {
-    // Deactivate any existing active row for this (agent_id, prompt_type) so the
-    // partial unique index idx_prompt_versions_active doesn't reject the new insert.
-    await query(
-      `UPDATE prompt_versions SET active = false
-       WHERE agent_id = 'cashflow' AND prompt_type = $1 AND active = true`,
-      [p.promptType]
-    );
-
-    // Insert new row — existing rows are preserved for operator rollback
-    await query(
-      `INSERT INTO prompt_versions
-         (id, agent_id, version, prompt_type, system_prompt, output_schema, tools, active, created_at, created_by)
-       VALUES
-         ($1, 'cashflow', $2, $3, $4, $5, '[]'::jsonb, true, NOW(), 'system')
-       ON CONFLICT (id) DO NOTHING`,
-      [
-        p.id,
-        p.version,
-        p.promptType,
-        p.systemPrompt,
-        JSON.stringify(
-          p.promptType === 'core' ? CASHFLOW_OUTPUT_SCHEMA : LEGACY_OUTPUT_SCHEMA_JSON
-        ),
-      ]
-    );
+    await upsertAgentPrompt({
+      id: p.id,
+      agentId: 'cashflow',
+      version: p.version,
+      promptType: p.promptType,
+      systemPrompt: p.systemPrompt,
+      outputSchema: p.promptType === 'core' ? CASHFLOW_OUTPUT_SCHEMA : LEGACY_OUTPUT_SCHEMA_JSON,
+    });
   }
 
   logger.info('CashFlow Agent prompts seeded (v7.1 — fetch_data_matrix-first guidance)', {
     count: EVIDENCE_PROMPTS.length,
-    ids: upcomingIds,
+    ids: EVIDENCE_PROMPTS.map(p => p.id),
   });
 }

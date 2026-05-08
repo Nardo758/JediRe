@@ -10,10 +10,10 @@
  *   - Added citations[] to output schema
  */
 
-import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { ResearchOutputSchema } from '../research.config';
 import { z } from 'zod';
+import { upsertAgentPrompt } from './_helpers';
 
 const RESEARCH_SYSTEM_PROMPT = `You are the JediRE Research Agent — the data assembly specialist for commercial real estate deals.
 
@@ -108,24 +108,14 @@ const OUTPUT_SCHEMA_JSON = (() => {
 })();
 
 export async function seedResearchPrompt(): Promise<void> {
-  // Deactivate any existing active research prompt FIRST so the partial unique
-  // index idx_prompt_versions_active (agent_id, prompt_type) WHERE active=true
-  // doesn't reject the subsequent INSERT when a new version id is introduced.
-  await query(
-    `UPDATE prompt_versions SET active = false
-     WHERE agent_id = 'research' AND active = true`
-  );
-
-  // Insert or update — idempotent on id, always marks the row active.
-  await query(
-    `INSERT INTO prompt_versions
-       (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
-     VALUES
-       ('research-v3.1', 'research', '3.0.1', $1, $2, true, NOW(), 'system')
-     ON CONFLICT (id) DO UPDATE
-       SET system_prompt = $1, output_schema = $2, active = true, updated_at = NOW()`,
-    [RESEARCH_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-  );
+  await upsertAgentPrompt({
+    id: 'research-v3.1',
+    agentId: 'research',
+    version: '3.0.1',
+    promptType: 'core',
+    systemPrompt: RESEARCH_SYSTEM_PROMPT,
+    outputSchema: OUTPUT_SCHEMA_JSON,
+  });
 
   logger.info('Research Agent prompt seeded: research-v3.1 (active)');
 }

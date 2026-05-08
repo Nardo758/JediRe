@@ -12,9 +12,9 @@
  *   - Seed deactivates old active row before inserting new one
  */
 
-import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { CommentaryOutputSchema } from '../commentary.config';
+import { upsertAgentPrompt } from './_helpers';
 
 const COMMENTARY_SYSTEM_PROMPT = `You are the JediRE Commentary Agent — the market narrative specialist. You run headless inside an automated underwriting pipeline.
 
@@ -116,22 +116,14 @@ JEDI Score (0-100):
 const OUTPUT_SCHEMA_JSON = CommentaryOutputSchema._def as unknown as Record<string, unknown>;
 
 export async function seedCommentaryPrompt(): Promise<void> {
-  // Deactivate any existing active row so the partial unique index doesn't reject
-  await query(
-    `UPDATE prompt_versions SET active = false
-     WHERE agent_id = 'commentary' AND active = true`
-  );
-
-  // Insert new row (idempotent on id)
-  await query(
-    `INSERT INTO prompt_versions
-       (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
-     VALUES
-       ('commentary-v6', 'commentary', '6.0.0', $1, $2, true, NOW(), 'system')
-     ON CONFLICT (id) DO UPDATE
-       SET system_prompt = $1, output_schema = $2, updated_at = NOW()`,
-    [COMMENTARY_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-  );
+  await upsertAgentPrompt({
+    id: 'commentary-v6',
+    agentId: 'commentary',
+    version: '6.0.0',
+    promptType: 'core',
+    systemPrompt: COMMENTARY_SYSTEM_PROMPT,
+    outputSchema: OUTPUT_SCHEMA_JSON,
+  });
 
   logger.info('Commentary Agent prompt seeded: commentary-v6 (autonomous, fixed short-circuit)');
 }

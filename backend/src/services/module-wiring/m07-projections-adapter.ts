@@ -143,7 +143,7 @@ export class M07ProjectionsAdapter {
   // ── Public interface ────────────────────────────────────────────────────
 
   build(ctx: ProjectionsDealContext): ProjectionsOutput {
-    const holdYears     = Math.max(1, Math.min(30, ctx.hold_years));
+    const holdYears     = Math.max(1, Math.min(36, ctx.hold_years));
     const resolvedMode  = this.normalizeMode(ctx);
     const modeAutoResolved = this.modeAutoResolvedFrom(ctx);
 

@@ -3,10 +3,10 @@
  * Seeds the supply agent's active system prompt into prompt_versions.
  */
 
-import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { SupplyOutputSchema } from '../supply.config';
 import { z } from 'zod';
+import { upsertAgentPrompt } from './_helpers';
 
 const SUPPLY_SYSTEM_PROMPT = `You are the JediRE Supply Agent — the market supply analyst for commercial real estate deals.
 
@@ -156,24 +156,14 @@ const OUTPUT_SCHEMA_JSON = (() => {
 })();
 
 export async function seedSupplyPrompt(): Promise<void> {
-  // Deactivate any existing active supply prompt FIRST so the partial unique
-  // index idx_prompt_versions_active (agent_id, prompt_type) WHERE active=true
-  // doesn't reject the subsequent INSERT when a new version id is introduced.
-  await query(
-    `UPDATE prompt_versions SET active = false
-     WHERE agent_id = 'supply' AND active = true`
-  );
-
-  // Insert or update — idempotent on id, always marks the row active.
-  await query(
-    `INSERT INTO prompt_versions
-       (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
-     VALUES
-       ('supply-v4', 'supply', '4.0.0', $1, $2, true, NOW(), 'system')
-     ON CONFLICT (id) DO UPDATE
-       SET system_prompt = $1, output_schema = $2, active = true, updated_at = NOW()`,
-    [SUPPLY_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-  );
+  await upsertAgentPrompt({
+    id: 'supply-v4',
+    agentId: 'supply',
+    version: '4.0.0',
+    promptType: 'core',
+    systemPrompt: SUPPLY_SYSTEM_PROMPT,
+    outputSchema: OUTPUT_SCHEMA_JSON,
+  });
 
   logger.info('Supply Agent prompt seeded: supply-v4 (active)');
 }

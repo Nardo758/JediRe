@@ -483,7 +483,7 @@ router.get('/:dealId/full-context', requireAuth, async (req: AuthenticatedReques
 router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 30);
+    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 36);
     const runSeed = req.query.seed === 'true';
 
     if (runSeed) {
@@ -500,7 +500,29 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
     const closeDate: string | null = dateRes.rows[0]?.close_date ?? null;
     const saleDate: string | null  = dateRes.rows[0]?.sale_date  ?? null;
 
-    // Compute hold-period returns from F9 projection engine
+    // ── In-place stance modulation ──────────────────────────────────────────
+    // MUST run BEFORE buildProjectionsForExport: applyStanceToFinancials
+    // mutates data.assumptions.perYear (rentGrowthPct, vacancyPct, exitCap)
+    // which buildProjectionsForExport reads to derive per-year cash flows.
+    // Running modulation first means the returned projections, NOI, and IRR
+    // all reflect the operator's current stance — not just the assumptions panel.
+    // stanceModulations provides per-field trace for UI amber markers.
+    let stanceModulations: StanceModulation[] = [];
+    let stanceDefaulted = true;
+    try {
+      const userId = req.user!.userId;
+      const stance = await getStanceForDeal(dealId, userId);
+      stanceDefaulted = stance.defaulted ?? true;
+      if (!stance.defaulted && data.assumptions) {
+        stanceModulations = applyStanceToFinancials(data, stance);
+      }
+    } catch (_stanceErr) {
+      // Non-fatal — stance modulation failure must not block financials response
+    }
+
+    // Compute hold-period returns from F9 projection engine.
+    // Called AFTER applyStanceToFinancials so modulated perYear assumptions
+    // (rentGrowthPct, vacancyPct, exitCap) flow into the projection recomputation.
     const projs = buildProjectionsForExport(data, holdYears);
     const equity = data.capitalStack.equityAtClose ?? 0;
     let returns: typeof data.returns = null;
@@ -516,24 +538,6 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       const equityMultiple = lastProj.cumulativeEM ?? null;
       const cashOnCash = projs.length > 0 ? (projs[0].coc ?? null) : null;
       returns = { irr, equityMultiple, cashOnCash } as any;
-    }
-
-    // ── In-place stance modulation ──────────────────────────────────────────
-    // Apply stance deltas directly to data.assumptions values so that the
-    // returned financial payload reflects the operator's current stance.
-    // This ensures PUT /stance → GET /financials shows modulated numbers.
-    // stanceModulations provides per-field trace for UI yellow markers.
-    let stanceModulations: StanceModulation[] = [];
-    let stanceDefaulted = true;
-    try {
-      const userId = req.user!.userId;
-      const stance = await getStanceForDeal(dealId, userId);
-      stanceDefaulted = stance.defaulted ?? true;
-      if (!stance.defaulted && data.assumptions) {
-        stanceModulations = applyStanceToFinancials(data, stance);
-      }
-    } catch (_stanceErr) {
-      // Non-fatal — stance modulation failure must not block financials response
     }
 
     // Surface per-year projections so the frontend can read exit-year values
@@ -674,8 +678,8 @@ router.patch('/:dealId/assumptions/hold-period', requireAuth, async (req: Authen
     const userId = req.user?.userId;
     const { holdPeriodYears } = req.body as { holdPeriodYears: number };
 
-    if (typeof holdPeriodYears !== 'number' || holdPeriodYears < 1 || !Number.isInteger(holdPeriodYears)) {
-      return res.status(400).json({ error: 'holdPeriodYears must be a positive integer' });
+    if (typeof holdPeriodYears !== 'number' || holdPeriodYears < 1 || holdPeriodYears > 36 || !Number.isInteger(holdPeriodYears)) {
+      return res.status(400).json({ error: 'holdPeriodYears must be an integer between 1 and 36' });
     }
 
     const own = await pool.query(
@@ -974,7 +978,7 @@ router.patch('/:dealId/assumptions/closing-costs', requireAuth, async (req: Auth
 router.post('/:dealId/financials/reparse', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 30);
+    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 36);
     await seedProFormaYear1(pool, dealId);
     const data = await getDealFinancials(pool, dealId, holdYears);
     res.json({ success: true, data });
@@ -1682,7 +1686,7 @@ router.get('/:dealId/financials/narrative', requireAuth, async (req: Authenticat
 router.get('/:dealId/financials/export', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 30);
+    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 36);
 
     const data = await getDealFinancials(pool, dealId, holdYears);
     const wb   = buildF9Workbook(data, holdYears);

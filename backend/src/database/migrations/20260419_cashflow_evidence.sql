@@ -49,6 +49,14 @@ ALTER TABLE prompt_versions
 -- Drop the old unique index that prevented multiple active rows per agent
 DROP INDEX IF EXISTS idx_prompt_versions_active;
 
--- New unique index — allows one active row per (agent_id, prompt_type) pair
+-- LOAD-BEARING: this partial unique index enforces the invariant that at most
+-- one prompt_versions row is active per (agent_id, prompt_type) at any time.
+-- The agent runtime queries WHERE active = true and assumes exactly one result.
+-- Removing this index would allow silent data corruption if seeders or operator
+-- rollback tooling ever write two active rows simultaneously (e.g. INSERT before
+-- deactivate — the operation-order bug that caused the zoning seeder crash,
+-- May 2026).
+-- See: TODO_F9_SIDE_DEBT.md SDB-02, backend/src/agents/seeds/_helpers.ts,
+--      docs/architecture/ADR-003-cache-stamp-pattern.md.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_prompt_versions_active
   ON prompt_versions(agent_id, prompt_type) WHERE (active = true);

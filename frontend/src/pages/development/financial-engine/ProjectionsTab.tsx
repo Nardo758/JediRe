@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { BT, Bd } from '../../../components/deal/bloomberg-ui';
 import type {
   FinancialEngineTabProps, F9NarrativeBlock,
@@ -9,13 +9,6 @@ import { fmt$, fmtPct } from './types';
 import { ConcessionDrilldownModal, aggregateConcessionDetail } from './ConcessionDrilldownModal';
 import type { AggregatedConcessionDetail } from './ConcessionDrilldownModal';
 import { apiClient } from '../../../services/api.client';
-import { useDealStore } from '../../../stores/dealStore';
-import {
-  LeaseVelocitySection,
-  type LVInputs,
-  type LeaseVelocityResult,
-  type LeaseMode,
-} from './LeaseVelocitySection';
 import { InlineAssumptionBlock } from '../../../components/InlineAssumptionBlock';
 import type { AssumptionFieldDef, CollisionEntry } from '../../../components/InlineAssumptionBlock';
 
@@ -1292,138 +1285,6 @@ export function ProjectionsTab({
   const [showFindings,         setShowFindings]          = useState(true);
   const [showSubjectHistory,   setShowSubjectHistory]    = useState(true);
 
-  // ── Lease Velocity Engine state ──────────────────────────────────────────
-  const DEFAULT_LV_INPUTS: LVInputs = {
-    total_units: 100,
-    target_occupancy: 0.95,
-    current_occupancy: 0,
-    mode: 'LEASE_UP_NEW_CONSTRUCTION' as LeaseMode,
-    avg_market_rent: 1500,
-    avg_in_place_rent: 1500,
-    property_class: 'B',
-    time_horizon_months: 36,
-    concession_strategy: 'MARKET',
-    marketing_intensity: 'MARKET',
-    pre_leased_count: 0,
-    leasing_cost_treatment: 'OPERATING',
-  };
-  const [lvInputs,     setLvInputs]     = useState<LVInputs>(DEFAULT_LV_INPUTS);
-  const [lvResult,     setLvResult]     = useState<LeaseVelocityResult | null>(null);
-  const [lvLoading,    setLvLoading]    = useState(false);
-  const [lvError,      setLvError]      = useState<string | null>(null);
-  const [lvShowConfig, setLvShowConfig] = useState(false);
-  /** Auto-detected mode from deal data — used to show MODE OVERRIDDEN badge */
-  const [lvResolvedMode, setLvResolvedMode] = useState<LeaseMode>('LEASE_UP_NEW_CONSTRUCTION');
-  /**
-   * Track the last f9Financials reference we seeded from so we can re-run the
-   * LV engine whenever the parent refreshes financials (e.g., after a treatment
-   * change).  We intentionally use object-identity (ref) not deal-ID so that
-   * a treatment toggle → onF9Refresh → new f9Financials object triggers a
-   * re-run even within the same deal.
-   */
-  const lvLastSeedRef = useRef<typeof f9Financials>(null);
-
-  // Core engine runner — accepts inputs directly (no closure over stale state)
-  // emitEvent=true only for user-triggered runs (mode override, clear override, manual Run
-  // button).  The auto-seed effect passes false (default) to avoid an infinite loop:
-  //   auto-seed → emit → fetchF9Financials → new f9Financials ref → auto-seed → …
-  const runLvEngine = useCallback(async (inputs: LVInputs, emitEvent = false) => {
-    if (!dealId) return;
-    setLvLoading(true);
-    setLvError(null);
-    try {
-      const resp = await apiClient.post<{ success: boolean; data: LeaseVelocityResult; error?: string }>(
-        '/api/v1/lease-velocity/run',
-        { inputs },
-      );
-      if (resp.data?.success) {
-        setLvResult(resp.data.data);
-        if (emitEvent) {
-          // Notify downstream F9 consumers (S&U reserve, Returns IRR, JEDI Position
-          // sub-score) via the dealStore event bus so they re-fetch /financials.
-          // Only fired for user-triggered runs to prevent f9Financials→LV feedback loop.
-          useDealStore.getState().emitLeaseVelocityUpdated();
-        }
-      } else {
-        setLvError(resp.data?.error ?? 'Engine returned an error');
-      }
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } }; message?: string })
-        ?.response?.data?.error
-        ?? (err as { message?: string }).message
-        ?? 'Request failed';
-      setLvError(msg);
-    } finally {
-      setLvLoading(false);
-    }
-  }, [dealId]);
-
-  // Re-seed and re-run the LV engine whenever f9Financials is a new object
-  // (including after onF9Refresh / treatment changes), not just on deal-ID change.
-  // Using object-identity avoids the one-shot anti-pattern that prevented re-runs
-  // after upstream refreshes.
-  useEffect(() => {
-    if (!f9Financials || !dealId) return;
-    // Skip if we already processed this exact reference (prevents double-fire
-    // in React StrictMode double-invoke without blocking legitimate re-fetches).
-    if (lvLastSeedRef.current === f9Financials) return;
-    lvLastSeedRef.current = f9Financials;
-
-    const occ = f9Financials.rentRollSummary?.weightedOccupancyPct ?? null;
-    const autoMode: LeaseMode =
-      occ == null || occ < 0.5  ? 'LEASE_UP_NEW_CONSTRUCTION'
-      : occ < 0.85              ? 'OCCUPANCY_RECOVERY'
-      :                           'STABILIZED_MAINTENANCE';
-    const gprRow = f9Financials.proforma?.year1?.find((r: { field: string }) => r.field === 'gpr');
-    const autoMktRent = gprRow?.resolved != null && f9Financials.totalUnits > 0
-      ? Math.round(gprRow.resolved / f9Financials.totalUnits / 12)
-      : 1500;
-
-    const seedInputs: LVInputs = {
-      ...DEFAULT_LV_INPUTS,
-      total_units:           f9Financials.totalUnits || DEFAULT_LV_INPUTS.total_units,
-      avg_market_rent:       autoMktRent,
-      avg_in_place_rent:     Math.round(f9Financials.rentRollSummary?.avgInPlaceRent ?? autoMktRent),
-      current_occupancy:     occ ?? 0,
-      mode:                  autoMode,
-      // Inherit the shared top-bar treatment so the LV engine uses the same
-      // classification as the Pro Forma / Projections numbers.
-      leasing_cost_treatment: lvCostTreatmentView ?? DEFAULT_LV_INPUTS.leasing_cost_treatment,
-    };
-    setLvResolvedMode(autoMode);
-    setLvInputs(seedInputs);
-    void runLvEngine(seedInputs);
-  }, [f9Financials, dealId, runLvEngine]);
-
-  // Mode override: user changes mode in the panel → write deal.lease_mode_override + re-run engine
-  const handleModeOverride = useCallback(async (mode: LeaseMode) => {
-    const next = { ...lvInputs, mode };
-    setLvInputs(next);
-    if (dealId) {
-      try {
-        await apiClient.patch(`/api/v1/deals/${dealId}/context`, { lease_mode_override: mode });
-      } catch (err) {
-        console.error('[LV] Failed to save lease_mode_override:', err);
-      }
-    }
-    void runLvEngine(next, true); // user-triggered: emit event to refresh F9 consumers
-  }, [lvInputs, dealId, runLvEngine]);
-
-  // Clear override: resets deal.lease_mode_override to null → engine returns to
-  // auto-detected mode (heuristic from occupancy in lvResolvedMode).
-  const handleClearModeOverride = useCallback(async () => {
-    const next = { ...lvInputs, mode: lvResolvedMode };
-    setLvInputs(next);
-    if (dealId) {
-      try {
-        await apiClient.patch(`/api/v1/deals/${dealId}/context`, { lease_mode_override: null });
-      } catch (err) {
-        console.error('[LV] Failed to clear lease_mode_override:', err);
-      }
-    }
-    void runLvEngine(next, true); // user-triggered: emit event to refresh F9 consumers
-  }, [lvInputs, lvResolvedMode, dealId, runLvEngine]);
-
   const [narrative,        setNarrative]       = useState<string | null>(null);
   const [narrativeBlocks,  setNarrativeBlocks] = useState<F9NarrativeBlock[]>([]);
   const [narrativeLoading, setNarrativeLoading]= useState(false);
@@ -2124,30 +1985,6 @@ export function ProjectionsTab({
               <div style={{ marginBottom: 8 }}>No projection data available for this deal.</div>
               <div>Run <strong style={{ color: BT.text.secondary }}>REPARSE</strong> from the Pro Forma tab to seed Year 1 data.</div>
             </div>
-          )}
-
-          {/* ── Lease Velocity Engine (§12) ─────────────────────────────────────
-               Placement: BELOW the projections grid, inside the scrollable area.
-               Moved inside flex:1 overflow:auto wrapper so it scrolls with the
-               operating-statement table rather than competing for fixed height. */}
-          {!!dealId && (
-            <LeaseVelocitySection
-              result={lvResult}
-              loading={lvLoading}
-              inputs={lvInputs}
-              onInputsChange={setLvInputs}
-              onRun={() => void runLvEngine(lvInputs, true)}
-              showConfig={lvShowConfig}
-              onToggleConfig={() => setLvShowConfig(v => !v)}
-              runError={lvError}
-              resolvedMode={lvResolvedMode}
-              leaseOverride={
-                (deal?.['deal_data'] as Record<string, unknown> | null | undefined)
-                  ?.['lease_mode_override'] as LeaseMode | null | undefined
-              }
-              onModeOverride={handleModeOverride}
-              onClearOverride={handleClearModeOverride}
-            />
           )}
 
           {/* ── GPR Decomposition ────────────────────────────────────────────── */}
