@@ -936,7 +936,11 @@ export async function getTrafficProjection(
   const absLagDays = absLagRaw != null && !isNaN(Number(absLagRaw)) ? Number(absLagRaw) : null;
   const postRenoAbsorptionLagWks = absLagDays != null ? +(absLagDays / 7).toFixed(1) : null;
 
-  const leasingSignals: LeasingSignals | null = (t01 != null || t05 != null) ? {
+  // Gate: produce leasingSignals when traffic-learned signals exist OR when any
+  // override-derived metric is available (user entered leasing assumptions on a
+  // deal not yet calibrated by the traffic engine).
+  const leasingSignals: LeasingSignals | null =
+    (t01 != null || t05 != null || preLeasedPct != null || peakDownUnits != null || postRenoAbsorptionLagWks != null) ? {
     t01WeeklyTours: t01,
     t05ClosingRatio: t05 != null ? +t05.toFixed(4) : null,
     t06WeeklyLeases: t06,
