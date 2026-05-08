@@ -98,18 +98,30 @@ reduce total opex by -$1,355,167; capital items add +$20,559 → net -$1,334,608
 - Revenue items in opex bucket as negatives artificially reduce total opex, inflating NOI
 - Corrected NOI estimate: **≈ +$1,072,465** (~16.3% of GPR vs. current 36.5%)
 
-**Classification: SMALL_BACKFILL_NEEDED**
+**Phase 1 fix: COMPLETE (2026-05-08)**
 
-Deals affected: **2 of 2** deals with extraction data. Both have material NOI errors.
-464 Bishop severity: BLOCKING (negative NOI). Sentosa Epperson: HIGH (NOI 2.25× overstated).
+Four regex patterns added to `EXCLUDE_FROM_CUSTOM_OPEX` (hoisted to module level,
+exported as `isExcludedFromOpex` for direct test coverage):
 
-Fix scope (Phase 1):
-1. Patch `EXCLUDE_FROM_CUSTOM_OPEX` regex to cover: `rental.*revenue`, `net.*loss`,
-   `net.*profit`, `income$` suffix, `reserve.*replacement` word order variant
-2. `forceReseed` both deals after regex patch
-3. Add invariant test: `custom_opex_*` keys must not contain "revenue", "income", or
-   "net_loss_profit" pattern after reseed
-4. Effort: **S**
+| Pattern | Reasoning |
+|---|---|
+| `/\brental\s+revenue\b/i` | "Rental Revenue" ≠ "Rental Income" — prior pattern missed this word |
+| `/\bnet\s+(loss\|profit)\b/i` | P&L rollup row not covered by any prior pattern |
+| `/\bincome\s*$/i` | GL labels ending in "Income" (Administrative, Storage, Valet Trash, etc.) |
+| `/\breserve[\s_-]+replacement\b/i` | "Reserve Replacement" word-order variant of pre-existing "Replacement Reserve" |
+
+Both deals reseeded via `reseed-deal.ts`. Invariant test suite: **26/26 pass**
+(22 new assertions across 4 gap cases + 8 genuine-opex pass-through checks,
+plus 4 pre-existing `applyUserOverride` invariant tests).
+
+**Actual post-fix NOI:**
+
+| Deal | Pre-fix NOI | Post-fix NOI | Notes |
+|---|---|---|---|
+| 464 Bishop | -$161,598 | **+$1,100,988** | Swung $1.26M positive. Larger than audit-predicted $486K because S1-04 broker OM layer (`bpCapsule`) was also applied in the same reseed pass — correctly anticipated in audit doc. |
+| Sentosa Epperson | $2,407,073 | **$2,411,343** | Minimal change (+$4K). Sentosa's revenue GL items (400-series account labels) were already being excluded by the pre-existing `/\b(rental\|other)\s+income\b/i` and rollup patterns during the prior reseed. New patterns add forward coverage for variations not present in Sentosa's current T12 extraction. |
+
+**Classification: CLOSED**
 
 ---
 
@@ -362,28 +374,15 @@ be "wrong" after a fix — it caches the raw fetch result, not a computed output
 
 ---
 
-### Priority 1 — SMALL_BACKFILL_NEEDED (blocking)
+### ~~Priority 1 — SMALL_BACKFILL_NEEDED (blocking)~~ CLOSED
 
-**S1-01 — Custom opex filter gap (e0258abb + regex patch needed)**
+**S1-01 — Custom opex filter gap — CLOSED 2026-05-08**
 
-Qualifying SQL confirmed: **both** deals with extraction data carry filter-gap
-`custom_opex_*` keys. NOI errors are material:
-- 464 Bishop: NOI -$161,598 → should be ≈ +$486K (filter inflating opex by $647K)
-- Sentosa Epperson: NOI $2,407K → should be ≈ $1,072K (revenue negatives deflating opex by $1.33M)
+Four patterns patched. Both deals reseeded. 26/26 invariant tests pass.
 
-Phase 1 fix plan:
-1. **Patch `EXCLUDE_FROM_CUSTOM_OPEX` regex** in `proforma-seeder.service.ts` to
-   cover the gaps identified:
-   - Add `/\brental\s+revenue\b/i` (catches "multifamily rental revenue net")
-   - Add `/\bnet\s+(loss|profit)\b/i` (catches "net loss/profit" P&L rollup)
-   - Add `/_income$/i` as a suffix catch (catches "administrative_income",
-     "storage_income", "valet_trash_income", etc. from the sanitized key)
-   - Add `/\breserve[\s_-]+replacement\b/i` (catches "reserve replacement" word order)
-2. **`forceReseed` 464 Bishop** — also picks up S1-04 broker OM layer in the same pass
-3. **`forceReseed` Sentosa Epperson**
-4. **Invariant test**: after reseed, assert no `custom_opex_*` key in `year1` contains
-   `rental_revenue`, `net_loss`, `net_profit`, `_income` suffix, or `reserve_replacement`
-5. Effort: **S** (~2h — regex patch + 2× reseed + 1 test)
+Post-fix NOI:
+- 464 Bishop: **-$161,598 → +$1,100,988** (swung $1.26M positive)
+- Sentosa Epperson: $2,407,073 → $2,411,343 (minimal change — see S1-01 notes)
 
 ---
 

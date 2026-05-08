@@ -1,0 +1,54 @@
+Greenlight S1-01 Phase 1 fix per DORMANT_IMPROVEMENTS_AUDIT.md.
+
+Build scope:
+
+1. Patch the four regex coverage gaps in the custom opex filter
+   (file:line per the audit doc — likely seeder-related). Ensure
+   the patterns:
+   - /\brental\s+revenue\b/i
+   - /\bnet\s+(loss|profit)\b/i  
+   - /_income$/i
+   - /\breserve[\s_-]+replacement\b/i
+
+2. Run the existing forceReseed mechanism (from Item 3 Part A) on
+   both affected deals: 464 Bishop and Sentosa Epperson. Confirm
+   reseed completes and check both deals' year1 reflects the
+   corrected calculations.
+
+3. Add an invariant test that catches future regressions: feed
+   the seeder a synthetic GL line set including one example from
+   each of the four patterns above, assert each is correctly
+   classified as non-opex (excluded from the custom_opex_*
+   bucket).
+
+Verification on each deal post-fix:
+
+464 Bishop:
+  - total_opex should drop by ~$647K
+  - NOI should swing from -$161K to ~+$486K
+  - Returns metrics (IRR/EM/CoC) recompute against corrected NOI
+
+Sentosa Epperson:
+  - total_opex should rise by ~$1.33M (revenue lines no longer
+    deflating)
+  - NOI should drop from $2.4M to ~$1.07M
+  - Returns metrics recompute against corrected NOI
+
+PR description must explicitly call out:
+  - Pre-fix vs post-fix NOI on both deals (the magnitude is
+    significant enough that anyone reviewing the change should
+    understand the impact)
+  - The four filter patterns added with one-line reasoning each
+  - Confirmation that the invariant test passes
+  - The forceReseed completion log for both deals
+
+Out of scope:
+  - Any other finding from the audit doc (separate greenlight)
+  - General refactor of the custom opex filter logic — only the
+    4 regex patterns
+  - UI changes (the corrected values flow through to existing UI
+    automatically)
+
+Branch: claude/fix-custom-opex-filter-gap-s1-01.
+One commit. Acceptance: both deals' NOI numbers match the
+audit doc's predicted post-fix values within ±1%.

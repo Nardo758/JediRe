@@ -23,7 +23,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { applyUserOverride } from '../services/proforma-seeder.service';
+import { applyUserOverride, isExcludedFromOpex } from '../services/proforma-seeder.service';
 
 // Minimal LayeredValue structure matching the seeder's internal shape
 function makeLv(override: number | null, resolved: number, resolution: string) {
@@ -88,6 +88,98 @@ function makeYear1(vacancyOverride: number, oipuOverride: number) {
     noi:               makeLv(null, 0, 'platform_fallback'),
   };
 }
+
+/**
+ * S1-01 custom opex filter — regression guard for the four gap patterns
+ * added 2026-05-08.
+ *
+ * Each test feeds isExcludedFromOpex() one real-world GL label that slipped
+ * through EXCLUDE_FROM_CUSTOM_OPEX before the patch and asserts it is now
+ * correctly classified as non-opex.  A final set of assertions confirms that
+ * genuine opex labels still pass through (are NOT excluded).
+ */
+describe('isExcludedFromOpex — S1-01 gap patterns', () => {
+  describe('gap 1: rental revenue (≠ rental income)', () => {
+    it('excludes "Multifamily Rental Revenue Net"', () => {
+      expect(isExcludedFromOpex('Multifamily Rental Revenue Net')).toBe(true);
+    });
+    it('excludes "Rental Revenue"', () => {
+      expect(isExcludedFromOpex('Rental Revenue')).toBe(true);
+    });
+    it('excludes "Gross Rental Revenue"', () => {
+      expect(isExcludedFromOpex('Gross Rental Revenue')).toBe(true);
+    });
+  });
+
+  describe('gap 2: net loss/profit P&L rollup', () => {
+    it('excludes "Net Loss/Profit"', () => {
+      expect(isExcludedFromOpex('Net Loss/Profit')).toBe(true);
+    });
+    it('excludes "Net Loss"', () => {
+      expect(isExcludedFromOpex('Net Loss')).toBe(true);
+    });
+    it('excludes "Net Profit"', () => {
+      expect(isExcludedFromOpex('Net Profit')).toBe(true);
+    });
+  });
+
+  describe('gap 3: GL labels ending with "Income"', () => {
+    it('excludes "Administrative Income"', () => {
+      expect(isExcludedFromOpex('Administrative Income')).toBe(true);
+    });
+    it('excludes "Storage Income"', () => {
+      expect(isExcludedFromOpex('Storage Income')).toBe(true);
+    });
+    it('excludes "Valet Trash Income"', () => {
+      expect(isExcludedFromOpex('Valet Trash Income')).toBe(true);
+    });
+    it('excludes "Water/Sewer Occupied Income"', () => {
+      expect(isExcludedFromOpex('Water/Sewer Occupied Income')).toBe(true);
+    });
+    it('excludes "Cable/Satellite TV Income"', () => {
+      expect(isExcludedFromOpex('Cable/Satellite TV Income')).toBe(true);
+    });
+  });
+
+  describe('gap 4: reserve replacement word-order variant', () => {
+    it('excludes "Reserve Replacement"', () => {
+      expect(isExcludedFromOpex('Reserve Replacement')).toBe(true);
+    });
+    it('excludes "Reserve_Replacement" (underscore separator)', () => {
+      expect(isExcludedFromOpex('Reserve_Replacement')).toBe(true);
+    });
+    it('still excludes "Replacement Reserve" (original word order)', () => {
+      expect(isExcludedFromOpex('Replacement Reserve')).toBe(true);
+    });
+  });
+
+  describe('genuine opex labels must NOT be excluded', () => {
+    it('passes through "Payroll & Benefits"', () => {
+      expect(isExcludedFromOpex('Payroll & Benefits')).toBe(false);
+    });
+    it('passes through "Repairs & Maintenance"', () => {
+      expect(isExcludedFromOpex('Repairs & Maintenance')).toBe(false);
+    });
+    it('passes through "Contract Services"', () => {
+      expect(isExcludedFromOpex('Contract Services')).toBe(false);
+    });
+    it('passes through "Utilities"', () => {
+      expect(isExcludedFromOpex('Utilities')).toBe(false);
+    });
+    it('passes through "Property Insurance"', () => {
+      expect(isExcludedFromOpex('Property Insurance')).toBe(false);
+    });
+    it('passes through "Marketing & Advertising"', () => {
+      expect(isExcludedFromOpex('Marketing & Advertising')).toBe(false);
+    });
+    it('passes through "Grounds Maintenance"', () => {
+      expect(isExcludedFromOpex('Grounds Maintenance')).toBe(false);
+    });
+    it('passes through "Turnover/Make-Ready"', () => {
+      expect(isExcludedFromOpex('Turnover/Make-Ready')).toBe(false);
+    });
+  });
+});
 
 describe('applyUserOverride invariant — no forceReseed on override saves', () => {
   const DEAL_ID = 'test-deal-invariant-001';

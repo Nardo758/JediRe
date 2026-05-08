@@ -57,6 +57,61 @@ interface DealRow {
 const now = () => new Date().toISOString();
 
 /**
+ * Patterns that identify GL labels which must NOT be summed into custom opex.
+ * Covers: revenue lines, rollup/subtotal rows, and below-the-line items.
+ * Hoisted to module level so the invariant test suite can import and exercise
+ * it directly without mocking the full seed pipeline.
+ *
+ * S1-01 gap patches (2026-05-08):
+ *   /\brental\s+revenue\b/i       — "Multifamily Rental Revenue Net" missed by
+ *                                    prior /rental\s+income/ pattern
+ *   /\bnet\s+(loss|profit)\b/i    — "Net Loss/Profit" P&L rollup row
+ *   /\bincome\s*$/i               — any GL label ending with "Income"
+ *                                    (Administrative Income, Storage Income, etc.)
+ *   /\breserve[\s_-]+replacement\b/i — "Reserve Replacement" word-order variant;
+ *                                    prior pattern only matched "Replacement Reserve"
+ */
+export const EXCLUDE_FROM_CUSTOM_OPEX: RegExp[] = [
+  // Revenue lines
+  /\b(gross\s+potential|gross\s+scheduled|market)\s+rent\b/i,
+  /\b(effective\s+gross|collected)\s+(income|rent|revenue)\b/i,
+  /\b(rental|other)\s+income\b/i,
+  /\brental\s+revenue\b/i,
+  /\b(net\s+rental|nri)\b/i,
+  /\bloss\s+to\s+lease\b/i,
+  /\bvacancy\s+(loss)?\b/i,
+  /\bconcession/i,
+  /\bbad\s+debt\b/i,
+  /\bincome\s*$/i,
+  // Rollup / subtotal rows
+  /^total\s+/i,
+  /\btotal\s+(income|revenue|expenses?|opex|operating)\b/i,
+  /\b(net\s+)?operating\s+income/i,
+  /\bnoi\b/i,
+  /\bcontrollable\s+operating/i,
+  /\b(sub)?total\b/i,
+  /\bnet\s+(loss|profit)\b/i,
+  // Below-the-line (non-operating)
+  /\bdebt\s+service/i,
+  /\binterest\s+expense/i,
+  /\bmortgage\b/i,
+  /\bloan\s+(payment|principal)/i,
+  /\bdepreciation\b/i,
+  /\bamortization\b/i,
+  /\bcapital\s+(expenditure|reserve|improvement)/i,
+  /\bcapex\b/i,
+  /\breplacement\s+reserve/i,
+  /\breserve[\s_-]+replacement\b/i,
+  /\bnon[\s-]?operating/i,
+  /\bcash\s+flow/i,
+  /\b(before|after)\s+tax/i,
+];
+
+/** Returns true when a raw GL label should be excluded from the custom opex bucket. */
+export const isExcludedFromOpex = (label: string): boolean =>
+  EXCLUDE_FROM_CUSTOM_OPEX.some(pattern => pattern.test(label));
+
+/**
  * Field-name → priority map shared between the initial seed (`resolve()` inside
  * `buildSeed`) and the override-clear fallback (`applyUserOverride`). Keep
  * these in one place so the two code paths can never drift apart.
@@ -473,43 +528,6 @@ function buildSeed(
   const rawCustomItems = (t12Opex?.custom_line_items ?? {}) as Record<string, number>;
   const sanitizeKey = (label: string) =>
     'custom_opex_' + label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);
-  
-  // Patterns to EXCLUDE from custom opex (revenue, rollups, below-the-line)
-  const EXCLUDE_FROM_CUSTOM_OPEX: RegExp[] = [
-    // Revenue lines and rollups
-    /\b(gross\s+potential|gross\s+scheduled|market)\s+rent\b/i,
-    /\b(effective\s+gross|collected)\s+(income|rent|revenue)\b/i,
-    /\b(rental|other)\s+income\b/i,
-    /\b(net\s+rental|nri)\b/i,
-    /\bloss\s+to\s+lease\b/i,
-    /\bvacancy\s+(loss)?\b/i,
-    /\bconcession/i,
-    /\bbad\s+debt\b/i,
-    // Rollup/subtotal rows
-    /^total\s+/i,
-    /\btotal\s+(income|revenue|expenses?|opex|operating)\b/i,
-    /\b(net\s+)?operating\s+income/i,
-    /\bnoi\b/i,
-    /\bcontrollable\s+operating/i,
-    /\b(sub)?total\b/i,
-    // Below-the-line (non-operating)
-    /\bdebt\s+service/i,
-    /\binterest\s+expense/i,
-    /\bmortgage\b/i,
-    /\bloan\s+(payment|principal)/i,
-    /\bdepreciation\b/i,
-    /\bamortization\b/i,
-    /\bcapital\s+(expenditure|reserve|improvement)/i,
-    /\bcapex\b/i,
-    /\breplacement\s+reserve/i,
-    /\bnon[\s-]?operating/i,
-    /\bcash\s+flow/i,
-    /\b(before|after)\s+tax/i,
-  ];
-  
-  const isExcludedFromOpex = (label: string): boolean => {
-    return EXCLUDE_FROM_CUSTOM_OPEX.some(pattern => pattern.test(label));
-  };
   
   const customOpexItems: Record<string, LayeredValue<number>> = {};
   let excludedCustomTotal = 0;
