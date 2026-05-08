@@ -1,0 +1,53 @@
+Show more12:05 AMClaude responded: Solid close-out.Solid close-out. Five things worth registering before this archives:
+1. Reading capitalized_lease_up_total from the cached deal_data.concession_recognition object is a clever architectural choice, but the cache invalidation matters. The cache is written by computeConcessionRecognition on first financials compose. If an operator changes leasingCostTreatment after that first compose, the cached value reflects the old treatment until the next recompose. Worth verifying:
+
+Does changing the toggle in STANCE invalidate the cache?
+Or is the cache keyed by treatment so cache miss → recompute → new cached value?
+Or is there a stale-cache risk where equity_required doesn't update until something else triggers a recompose?
+
+If the cache is properly invalidated/keyed, no issue. If it's stale-prone, then End 2a is silently broken in a way that's hard to spot — operator toggles, sees nothing change for the next several minutes/hours, blames the toggle.
+2. The "default to 0 for the generic pipeline caller (no deal context available there)" is a meaningful semantic. It means the generic pipeline computation doesn't know about lease-up capital flow. That's fine in most cases but worth noting: anywhere the generic pipeline is used as a basis for analysis (multi-deal aggregation, peer benchmarking, screening), equity_required will systematically understate for CAPITALIZED/HYBRID deals.
+If that's the intended semantic (generic pipeline is screening-grade, deal-specific context applies for accurate equity), document it as such. If it's an oversight, it's a follow-up task.
+3. The corrected stale §12.7 HYBRID assertion is a real find. The fact that an existing test was misrepresenting what the engine actually does means anyone using that test as documentation was getting wrong information. Worth a brief PR note: "§12.7 corrected — the prior assertion misrepresented HYBRID lease-up record behavior; reserve is never 0 for lease-up under HYBRID."
+This is a small detail but it's the kind of thing that compounds: bad tests are worse than no tests because they confidently assert wrong things. Catching one means there might be others. Worth a future task to audit the rest of the engine tests for similar misrepresentations.
+4. §12.7b Equity wire invariant is a strong durable test. Five tests covering all three treatment modes with clear arithmetic assertions — that's the right shape. If any future change breaks the invariant (someone adds a new code path that bypasses wireCapitalStack, someone changes the augmentation order), these tests fire immediately and loud.
+The cash-invariant assertion I mentioned earlier is now operational at the test layer: total cost = total P&L + total capital, regardless of treatment. That's the most important architectural property of this whole feature.
+5. Three TODO entries to revisit:
+
+Cache invalidation behavior for capitalized_lease_up_total from deal_data.concession_recognition — verify or document
+Generic pipeline caller defaulting to 0 — confirm intended semantic, document if so
+Legacy deal_data.leasing_cost_treatment fallback path — should be removed once a backfill migration completes (this was already on the list but worth restating now that operator_stance is the canonical source)
+
+What you should run next
+Before this thread fully archives, two more browser checks while you're in 464 Bishop:
+(a) Three-mode IRR/EM verification. Open Console > STANCE on 464 Bishop. Toggle leasing_cost_treatment through OPERATING / CAPITALIZED / HYBRID. After each toggle:
+
+Hard refresh
+Open F9 Returns tab
+Note IRR / EM / DSCR values
+
+Expected: IRR/EM/DSCR should now CHANGE between OPERATING and CAPITALIZED (since equity_required now includes the lease-up capital). The shift should be modest but meaningful — operator capitalizing lease-up costs increases the equity base, which lowers IRR (more equity invested for same returns) and lowers EM (same returns over larger denominator).
+If the values are identical across all three modes, End 2a didn't actually wire — investigate before declaring #641 closed.
+If values differ as expected: End 2a is fully verified live, and the chapter closes.
+(b) Test the cache invalidation question. Easiest path: pick a deal where you've never set leasing_cost_treatment. Set it to CAPITALIZED in STANCE. Immediately go to F9 Returns and check IRR. If IRR shifts from baseline, the cache is invalidating correctly. If IRR doesn't shift, the cache is stale-prone and the system needs a manual recompose trigger.
+If stale-prone, that's a real bug to file — not in #641's scope, but a follow-up task because it makes the toggle feel broken to operators.
+State of the leasing_cost_treatment chapter
+Live on master after #641:
+
+Canonical UI surface: STANCE (#638)
+Storage: operator_stance.leasingCostTreatment with legacy fallback (#639 + #641)
+Y1 P&L concessions line responds to all three modes (#639)
+HYBRID branch in amortization engine (#639)
+Backend equity_required includes capitalized lease-up under CAPITALIZED/HYBRID (#641)
+IRR/EM/DSCR/CoC reflect the capital change (#641)
+Cash invariant test asserts the full arithmetic (#641 §12.7b)
+
+Open follow-ups:
+
+Browser verification of three-mode IRR shift on 464 Bishop
+Cache invalidation behavior verification
+Generic pipeline caller's 0 default semantic — document or fix
+Legacy deal_data.leasing_cost_treatment fallback removal (post-backfill)
+
+That's a clean architectural close. The toggle now does what its name says, in every code path, in every UI surface, with test coverage that catches regression. Three days ago this was a half-broken view-state mirror that operators couldn't trust.
+Run the three-mode IRR check when you have a moment. Once that confirms, the leasing_cost_treatment chapter is fully done.
