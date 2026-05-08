@@ -1,7 +1,7 @@
 # OperatorStance Phase 1 — leasingCostTreatment Decision Record
 
-**Status:** Accepted · Implemented May 2026  
-**Task:** #638 (Phase 1 type extension) · #639 (Phase 2 wiring build, pending greenlight)  
+**Status:** Accepted · Phase 1 implemented May 2026 · Phase 2 (Task #639) shipped May 2026  
+**Task:** #638 (Phase 1 type extension) · #639 (Phase 2 wiring build — complete)  
 **Storage:** `deals.operator_stance` JSONB — existing column from migration `20260506_operator_stance.sql`
 
 ---
@@ -62,11 +62,11 @@ pnl = nlcOG + rcOG + ms + mk + bd;   // ongoing abatements on P&L
 cap = LURB;                            // only lease-up reserve to S&U
 ```
 
-**Amortization engine — no HYBRID branch today** (`concession-amortization/index.ts`):
-Phase 2 must add a branch inside `processRecord()` that routes one-time records
-through the CAPITALIZED path and leaves ongoing-abatement records on the OPERATING
-path. The existing cross-treatment cash invariant assert (`index.ts:342–360`) must
-continue to hold.
+**Amortization engine — HYBRID branch added in Task #639** (`concession-amortization/index.ts`):
+A branch was added inside `processRecord()` at lines 192–215 that routes
+`is_lease_up_period=true` records through the CAPITALIZED path and leaves
+ongoing-abatement records on the OPERATING path. The cross-treatment cash invariant
+assert (`index.ts:342–360`) continues to hold across all three treatments.
 
 ---
 
@@ -119,15 +119,15 @@ to read from `operator_stance.leasingCostTreatment` instead.
 
 Callers that currently read `deal_data.leasing_cost_treatment`:
 
-| File:line | Role | Migration timing |
+| File:line | Role | Status |
 |---|---|---|
-| `financials-composer.service.ts:811` | Reads treatment for amortization engine | After Task #639 ships — switch to `operator_stance.leasingCostTreatment` |
-| `financials-composer.service.ts:823` | Part of cache fingerprint | Same — must use stance field so cache invalidates on stance change |
-| `frontend/src/pages/development/financial-engine/AssumptionsTab.tsx:1759` | Write handler for PATCH /context | Removed in Task #639 (write moves to StanceTab) |
-| `frontend/src/pages/development/financial-engine/ProFormaSummaryTab.tsx:746–758` | View-state read only (no write) | Removed in Task #639 (toggle moves to StanceTab) |
+| `financials-composer.service.ts:200–214` | Reads from `operator_stance.leasingCostTreatment` first, falls back to `deal_data.leasing_cost_treatment` | **Migrated in Task #639** |
+| `financials-composer.service.ts` (cache fingerprint) | Uses `effectiveLct` (resolved from stance) for cache key | **Migrated in Task #639** |
+| `frontend/src/pages/development/financial-engine/AssumptionsTab.tsx` | Write handler for PATCH /context | **Removed in Task #639** (write moved to StanceTab) |
+| `frontend/src/pages/development/financial-engine/ProFormaSummaryTab.tsx` | View-state read only (no write) | **Removed in Task #639** (toggle moved to StanceTab) |
 
 The Cashflow Agent prompt builder, JEDI Score weights, sub-strategy library, and
-OperatorStance service currently have zero reads of `deal_data.leasing_cost_treatment`
+OperatorStance service have zero reads of `deal_data.leasing_cost_treatment`
 — they are not affected by the migration.
 
 ---
@@ -161,44 +161,45 @@ HYBRID falls through identically to OPERATING.
 
 ---
 
-## Phase 2 Build Brief (Task #639)
+## Phase 2 Build Brief (Task #639) — Status
 
-### End 1 — P&L concessions line responds to treatment
+Task #639 shipped May 2026. Summary of what was built vs. deferred:
 
-**File:line:** `financials-composer.service.ts:1501`
+### ✅ End 1 — P&L concessions line responds to treatment
 
-Under CAPITALIZED, lease-up-period concessions must be zeroed out of the
-concessions P&L row. Under HYBRID, only ongoing-abatement concessions appear.
+**File:line:** `financials-composer.service.ts:480–497`
 
-### End 2a — equity_required reflects capitalized amount
+Post-processing added: CAPITALIZED → concessions row resolved = 0;
+HYBRID → concessions row = max(0, original − capitalized_lease_up_total).
+
+### ⚠️ End 2a — equity_required reflects capitalized amount (DEFERRED)
 
 **File:line:** `capital-structure-adapter.ts:71`
 
-`equity_required: stack.metrics.equityRequired` must be augmented by
-`capitalized_lease_up_total` when treatment is CAPITALIZED or HYBRID.
+TODO comment added at line 71. `wireCapitalStack` does not receive `deal_data`,
+so threading `capitalized_lease_up_total` requires call-site changes across the
+module wiring system. Tracked in Task #641.
 
-### End 2b — amortization engine HYBRID branch
+### ✅ End 2b — amortization engine HYBRID branch
 
-**File:** `backend/src/services/concession-amortization/index.ts`
+**File:** `backend/src/services/concession-amortization/index.ts:192–215`
 
-Add HYBRID branch inside `processRecord()` after the CAPITALIZED branch.
-One-time records → `lease_up_reserve_required`. Ongoing-abatement records →
-normal schedule generator. Cash invariant assert at `index.ts:342–360` must
-still hold across all three treatments.
+HYBRID branch added inside `processRecord()`. `is_lease_up_period=true` records
+→ `lease_up_reserve_required` (same as CAPITALIZED). Ongoing-abatement records
+fall through to OPERATING path. Cash invariant assert continues to hold.
 
-### LV engine verification
+### ✅ Read source migration
 
-**File:** `backend/src/services/lease-velocity-engine.ts:77–91`
+**File:line:** `financials-composer.service.ts:200–214`
 
-Verify CAPITALIZED `cap` output feeds `capitalized_lease_up_total` in the
-composer response (not just `total_capitalized` in the monthly row).
+`operator_stance.leasingCostTreatment` is now the primary read source.
+`deal_data.leasing_cost_treatment` is kept as a fallback for legacy deals.
 
-### Read source migration
+### ✅ StanceTab UI + toggle removal
 
-After End 1 and End 2 are wired, update `financials-composer.service.ts:811`
-to read `leasingCostTreatment` from `operator_stance` (joined from `deals`)
-rather than `deal_data.leasing_cost_treatment`. Update cache fingerprint at
-`financials-composer.service.ts:823` accordingly.
+StanceTab: new COST RECOGNITION section with `LeasingCostTreatmentToggle`.
+AssumptionsTab: Location A toggle removed. ProFormaSummaryTab: Location B
+toggle removed.
 
 ---
 
@@ -217,13 +218,15 @@ automatically — no structural changes required.
 
 ## Open Follow-Ups
 
-- **Task #639** — Phase 2 wiring build: End 1, End 2a, End 2b, StanceTab UI row,
-  AssumptionsTab/ProFormaSummaryTab toggle removal, read source migration.
-- **Backfill** — after Task #639 ships, existing `deal_data.leasing_cost_treatment`
-  values should be migrated to `operator_stance.leasingCostTreatment` for deals
-  that already have a treatment set. No backfill in Phase 1 or Phase 2.
-- **TODO_OPERATOR_STANCE_PHASE_3.md** — if created, track the backfill and
-  any per-category expansion (TI allowances, future toggles).
+- **Task #641** — End 2a: wire `capitalized_lease_up_total` into `equity_required`
+  in `capital-structure-adapter.ts`. Requires threading the value through
+  `wireCapitalStack` call-sites in the module wiring system.
+- **Backfill** — existing `deal_data.leasing_cost_treatment` values should be
+  migrated to `operator_stance.leasingCostTreatment` for deals that already have
+  a treatment set. No backfill was performed in Phase 1 or Phase 2.
+- **Cash invariant extension** — Phase 2 spec called for extending the
+  cross-treatment assert to cover marketing + locator fees beyond concessions.
+  Not yet implemented in `concession-amortization/index.ts:342–360`.
 
 ## Related Decisions
 
