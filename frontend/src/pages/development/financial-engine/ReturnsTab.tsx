@@ -618,7 +618,16 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
           <SectionHeader label="§ 4  GP RETURNS" color={BT.text.amber} />
           <KvRow label="GP Co-Invest IRR"    value={fmtIrr(ret?.gpCoInvestIrr ?? null)} bold color={BT.text.amber} />
           <KvRow label="GP Co-Invest EM"     value={fmtEm(ret?.gpCoInvestEm ?? null)} bold />
+          <KvRow label="LP Equity Share"     value={wf?.lpShare != null ? `${(wf.lpShare * 100).toFixed(0)}%` : '—'} />
           <KvRow label="GP Equity Share"     value={wf?.gpShare != null ? `${(wf.gpShare * 100).toFixed(0)}%` : '—'} />
+          <div style={{ padding: '2px 10px 4px', borderBottom: `1px solid ${BT.border.subtle}`, textAlign: 'right' }}>
+            <span
+              style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, cursor: 'pointer', letterSpacing: 0.3 }}
+              onClick={() => onTabChange?.(4)}
+            >
+              Edit in WATERFALL →
+            </span>
+          </div>
           <KvRow label="Preferred Return"    value={prefRate != null ? `${(prefRate * 100).toFixed(1)}%` : '—'} indent />
           <KvRow label="Total GP Fees"       value={ret?.totalGpFees != null ? fmt$(ret.totalGpFees) : '—'} bold />
           <KvRow label="  Acq. Fee"

@@ -1,0 +1,114 @@
+Greenlight three of four Tier 1 items. One needs further audit, one
+needs architectural decision (resolved below).
+
+ITEM 1 — Purchase price write on creation/update — SHIP
+
+Two surgical fixes per the audit findings:
+
+1. inline-deals.routes.ts:348 (POST handler, post-INSERT)
+   Add JSONB merge:
+   UPDATE deals SET deal_data = COALESCE(deal_data, '{}') ||
+     jsonb_build_object('purchase_price', $budget)
+   WHERE id = $newId AND $budget IS NOT NULL
+   
+   Or inline as a CTE per the audit suggestion.
+
+2. inline-deals.routes.ts:684 (PATCH handler)
+   When budget is in the PATCH body, extend the SET clause:
+   deal_data = COALESCE(deal_data, '{}') ||
+     jsonb_build_object('purchase_price', $budget)
+   
+   IMPORTANT: only write deal_data.purchase_price when budget is
+   in the body. Do NOT unconditionally write on every PATCH —
+   that would erase values set by the #617 dual-write endpoint.
+
+Verification on 464 Bishop after fix:
+   - Set budget via PATCH (or create a new test deal with budget)
+   - Confirm both deals.budget AND deal_data.purchase_price are
+     populated
+   - Confirm IRR/EM/CoC compute (no longer null) on the next
+     /financials fetch
+
+Branch: replit/fix-creation-purchase-price-dual-write
+One commit. Acceptance: 464 Bishop produces non-null IRR after
+running the fix and setting a budget value.
+
+ITEM 2 — Unit mix → GPR flag UI — SHIP
+
+Add a UI toggle in UnitMixTab (or its header) that fires:
+   apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
+     field: 'da:use_unit_mix_for_gpr', value: toggleState
+   });
+
+Add a source badge on the GPR row showing "Extraction" or "Unit Mix"
+based on the resolved value's resolution field.
+
+After toggle, fire onF9Refresh() to pull the recomputed model.
+
+DO NOT auto-flip the flag for existing deals. Per-deal opt-in only.
+The single existing deal with unit_mix populated has no stored GPR;
+no reconciliation needed.
+
+Branch: replit/fix-unit-mix-gpr-flag-toggle
+One commit. Acceptance: toggle persists, GPR row updates to reflect
+unit-mix-derived value, source badge changes.
+
+ITEM 3 — Ancillary income deeper audit — Phase 0b before fix
+
+The 464 Bishop arithmetic doesn't close (75.34 actual vs 25.35
+manual reconstruction). Don't fix until the unit-of-measure question
+is resolved.
+
+Phase 0b audit:
+   - Find a deal with all three: RR has non-zero parking/RUBS/pet,
+     OM has same categories, T-12 has clean aggregate
+     other_income.total
+   - Trace each value from extraction JSON → seeder oiAnnual()/
+     annualRR() → breakdownSum → dollarized pro forma line
+   - Verify unit of measure at EVERY multiplication step
+   - Resolve the three open questions:
+     (a) Is other_income_monthly actually monthly, or pre-annualized?
+     (b) Is months = 12 in seeder context for this deal?
+     (c) Are concession write-offs merged into income bucket?
+
+Deliverable: appended section in F9_TIER1_BLOCKERS_AUDIT.md
+documenting the resolution of all three questions with file:line
+evidence and arithmetic. After audit lands, fix scope can be defined.
+
+Branch: claude/ancillary-rollup-audit-phase-0b
+No code changes. Audit doc commit only.
+
+ITEM 4 — LP/GP split discovery — DECISION + SHIP
+
+Decision: tranche-derived path stays canonical. WaterfallTab is the
+sole write surface. Don't add a duplicate dial.
+
+Add cross-reference readonly displays in two places:
+   - Deal Terms: new readonly row showing current LP/GP %, with
+     "Edit in WATERFALL" link
+   - Returns tab: confirm existing readonly display, add the same
+     "Edit in WATERFALL" link if missing
+
+Match the cross-reference pattern from #628 (read-only with link
+to canonical edit surface).
+
+Branch: replit/lpgp-split-cross-reference-displays
+One commit. Acceptance: both Deal Terms and Returns show LP/GP
+with link to WaterfallTab; WaterfallTab remains the only write
+path.
+
+OUT OF SCOPE for this batch:
+- Don't reactivate Deal Terms §4 Capital Structure (still deferred
+  per TODO_DEAL_TERMS_FOLLOWUP.md:267)
+- Don't change tranche editor UX
+- Don't modify WaterfallTab read or write logic
+- Don't touch backend wfOvr() or proforma-adjustment.service.ts:3049
+
+Sequence:
+1. Item 1 (smallest, highest impact — most affected deals)
+2. Item 2 (next smallest, next highest impact)
+3. Item 4 (small, requires no audit)
+4. Item 3 audit Phase 0b (separate, can run parallel)
+
+Items 1, 2, 4 can ship in three separate small commits this session.
+Item 3 audit doc lands separately; fix is held until audit resolves.

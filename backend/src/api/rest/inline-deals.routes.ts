@@ -358,6 +358,20 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
 
     const row = result.rows[0];
 
+    // Task #623 — Dual-write purchase_price into deal_data so the proforma
+    // fallback chain (deal_data.purchase_price → deal_data.asking_price →
+    // deals.budget) finds a value immediately. Without this write the chain
+    // produces null for deals created before the #617 Deal Terms save runs,
+    // making IRR/EM/CoC blank for newly created deals with a budget.
+    if (budget) {
+      await client.query(
+        `UPDATE deals
+         SET deal_data = COALESCE(deal_data, '{}') || jsonb_build_object('purchase_price', $1::numeric)
+         WHERE id = $2`,
+        [budget, row.id]
+      );
+    }
+
     autoDiscoverComps(row.id).catch(err => {
       console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
     });
@@ -552,6 +566,19 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
       `UPDATE deals SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
       values
     );
+
+    // Task #624 — Dual-write purchase_price to deal_data when budget is
+    // explicitly in the PATCH body. Guard: only fires when budget is present
+    // AND non-null — do NOT write unconditionally or we would clobber the
+    // value set by the #617 dedicated dual-write endpoint.
+    if (updates.budget !== undefined && updates.budget != null) {
+      await client.query(
+        `UPDATE deals
+         SET deal_data = COALESCE(deal_data, '{}') || jsonb_build_object('purchase_price', $1::numeric)
+         WHERE id = $2`,
+        [updates.budget, dealId]
+      );
+    }
 
     // Trigger agent system on status change
     if (statusChanged) {

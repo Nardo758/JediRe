@@ -940,6 +940,8 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   // Which floor plan rows are expanded into per-unit drilldowns. Keyed by
   // floor-plan slug so multiple can be open at once and survive re-sorts.
   const [expandedFloorPlans, setExpandedFloorPlans] = useState<Set<string>>(new Set());
+  const [useUnitMixForGpr, setUseUnitMixForGpr] = useState<boolean>(false);
+  const [togglingUnitMixGpr, setTogglingUnitMixGpr] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -1005,6 +1007,28 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   const resetRentEdit = useCallback((rowIdx: number, kind: 'inPlace' | 'market', unitType: string) => {
     void commitRentEdit(rowIdx, kind, null, unitType);
   }, [commitRentEdit]);
+
+  useEffect(() => {
+    setUseUnitMixForGpr(data?.rentRollSummary?.useUnitMixForGpr ?? false);
+  }, [data?.rentRollSummary?.useUnitMixForGpr]);
+
+  const handleToggleUnitMixForGpr = useCallback(async () => {
+    const next = !useUnitMixForGpr;
+    setUseUnitMixForGpr(next);
+    setTogglingUnitMixGpr(true);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
+        field: 'da:use_unit_mix_for_gpr',
+        value: next,
+      });
+      onF9Refresh?.();
+      await load();
+    } catch {
+      setUseUnitMixForGpr(!next);
+    } finally {
+      setTogglingUnitMixGpr(false);
+    }
+  }, [dealId, useUnitMixForGpr, onF9Refresh, load]);
 
   const unitMix = data?.rentRollSummary?.unitMix ?? [];
   const totalUnits = data?.totalUnits ?? 0;
@@ -1273,11 +1297,40 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
         {/* ── LEFT: floor plan table + ancillary panel ── */}
         <div>
           {/* GPR Feed Banner */}
-          <div style={{ background: C.greenDim, border: `1px solid ${C.green}33`, borderRadius: 6, padding: '8px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <TrendingUp size={13} color={C.green} />
-            <span style={{ fontFamily: LABEL, fontSize: 9, color: C.green }}>
-              THIS TABLE IS THE SINGLE SOURCE OF TRUTH FOR PROFORMA GPR — edits here propagate to the Financial Engine (F9)
-            </span>
+          <div style={{ background: C.greenDim, border: `1px solid ${C.green}33`, borderRadius: 6, padding: '8px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <TrendingUp size={13} color={C.green} />
+              <span style={{ fontFamily: LABEL, fontSize: 9, color: C.green }}>
+                THIS TABLE IS THE SINGLE SOURCE OF TRUTH FOR PROFORMA GPR — edits here propagate to the Financial Engine (F9)
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span style={{
+                fontFamily: LABEL, fontSize: 8, letterSpacing: '0.05em',
+                padding: '2px 6px', borderRadius: 3,
+                background: useUnitMixForGpr ? C.cyanDim : `${C.green}22`,
+                color: useUnitMixForGpr ? C.cyan : C.green,
+                border: `1px solid ${useUnitMixForGpr ? C.cyan : C.green}44`,
+              }}>
+                GPR: {useUnitMixForGpr ? 'UNIT MIX' : 'EXTRACTION'}
+              </span>
+              <button
+                onClick={handleToggleUnitMixForGpr}
+                disabled={togglingUnitMixGpr || unitMix.length === 0}
+                title={unitMix.length === 0 ? 'No unit mix data to derive GPR from' : (useUnitMixForGpr ? 'Switch GPR source back to extraction data' : 'Derive GPR from this unit mix table')}
+                style={{
+                  fontFamily: LABEL, fontSize: 8,
+                  cursor: (togglingUnitMixGpr || unitMix.length === 0) ? 'not-allowed' : 'pointer',
+                  padding: '2px 8px', borderRadius: 3,
+                  background: useUnitMixForGpr ? C.dim : C.cyan,
+                  color: useUnitMixForGpr ? C.text : C.bg,
+                  border: 'none', opacity: togglingUnitMixGpr ? 0.6 : 1,
+                  letterSpacing: '0.04em', fontWeight: 700,
+                }}
+              >
+                {togglingUnitMixGpr ? '…' : useUnitMixForGpr ? 'USE EXTRACTION' : 'USE UNIT MIX'}
+              </button>
+            </div>
           </div>
 
           {unitMix.length === 0 ? (

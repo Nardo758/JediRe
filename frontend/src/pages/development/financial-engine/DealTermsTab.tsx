@@ -1185,11 +1185,43 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
         </div>
       </div>
 
-      {/* TODO: Section 4 (Capital Structure) deliberately omitted pending
-          Leon's decision on duplication with F9 Capital tab. See thread.
-          If approved, rows: Loan Amount, LTV, LTC, Interest Rate, Loan Term,
-          IO Period, Amortization, Origination Fee %, Equity Required,
-          LP/GP Split, Preferred Return. */}
+      {/* § 4 — LP / GP SPLIT cross-reference (read-only; canonical edit surface is WATERFALL tab) */}
+      <div style={{
+        margin: '0 14px 16px',
+        border: `1px solid ${BT.border.subtle}`,
+        borderRadius: 4,
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '5px 10px',
+          background: `${BT.text.cyan}12`,
+          borderLeft: `3px solid ${BT.text.cyan}`,
+          borderBottom: `1px solid ${BT.text.cyan}30`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan, letterSpacing: 0.8 }}>
+            § 4  LP / GP SPLIT
+          </span>
+          <span
+            style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, cursor: 'pointer', letterSpacing: 0.3 }}
+            onClick={() => props.onTabChange?.(4)}
+          >
+            Edit in WATERFALL →
+          </span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>LP Equity Share</span>
+          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: BT.text.primary }}>
+            {fin?.waterfall?.lpShare != null ? `${(fin.waterfall.lpShare * 100).toFixed(0)}%` : '—'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 10px' }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>GP Equity Share</span>
+          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: BT.text.primary }}>
+            {fin?.waterfall?.gpShare != null ? `${(fin.waterfall.gpShare * 100).toFixed(0)}%` : '—'}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

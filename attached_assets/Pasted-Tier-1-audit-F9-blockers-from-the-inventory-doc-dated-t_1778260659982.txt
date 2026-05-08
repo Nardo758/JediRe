@@ -1,0 +1,68 @@
+Tier 1 audit — F9 blockers from the inventory doc dated [today].
+
+Phase 0 audit, read-only. No fixes. Audit findings format identical
+to F9_DATA_FLOW_AUDIT_PHASE1.md and PROJECTIONS_TRAFFIC_ENGINE_AUDIT
+.md.
+
+For each of the four Tier 1 items, produce file:line evidence and a
+Status classification:
+
+  - READY_TO_FIX (gap is clear, fix scope is small, no decisions
+    needed)
+  - DECISION_BLOCKED (gap is clear but fix requires architectural
+    decision before scoping)
+  - PARTIALLY_RESOLVED (work since list was written has improved or
+    closed the gap; remaining scope smaller than originally listed)
+  - REQUIRES_DEEPER_AUDIT (one or more questions can't be answered
+    without further investigation)
+
+ITEM 1 — Purchase price write on deal creation (Task #623/#624)
+
+Trace path: deal-creation form submit → backend handler → SQL.
+Specifically:
+
+  - Does the handler write deal_data.purchase_price, or only
+    deals.budget?
+  - If only budget, does the read fallback chain in
+    capital-structure.routes.ts:500 catch this case?
+  - What's the actual symptom on 464 Bishop today — does its IRR
+    return blank, or does the budget→deal_data fallback save it?
+
+Cross-reference: #617 shipped the dual-write PATCH endpoint. Confirm
+whether deal-creation needs the same dual-write or whether the
+existing endpoint covers it.
+
+ITEM 2 — Unit mix edits → GPR (P2-A)
+
+Trace:
+  - File:line where da:use_unit_mix_for_gpr is read
+  - What composer behavior differs when flag is on vs off
+  - Existing deals: query deal_assumptions where gpr is stored AND
+    unit_mix is populated. For each, compute sum(unit_mix.count *
+    unit_mix.rent * 12). How many diverge from stored gpr by >1%?
+    By >10%?
+
+The migration risk assessment matters more than the fix. If 90% of
+deals have matching values, the flag flip is low-risk. If 50%
+diverge significantly, per-deal review is needed.
+
+ITEM 3 — Ancillary rollup confirmation
+
+End-to-end trace on one specific deal that has parking, RUBS, and
+pet rent populated in the rent roll JSONB:
+
+  - Where do those values land in the seed extraction?
+  - Do they accumulate into other_income_per_unit or are they
+    discarded?
+  - Composer: where does other_income_per_unit get dollarized to
+    other_income line?
+  - Does the dollarized value match (parking + RUBS + pet) × units
+    × 12, or some subset?
+
+Pick a deal with non-zero values for all three categories. Trace
+each from rent roll → seed → composer → response.
+
+ITEM 4 — LP/GP split write path (P2-B)
+
+Investigation:
+  - Where in the s
