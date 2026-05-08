@@ -1,0 +1,102 @@
+POST-FIX: Dormant seeder improvements audit (from Item 3 finding).
+
+Background: Item 3 found that proforma-seeder.service.ts is a
+write-once cache — ensureDealAssumptionsSeeded is a no-op when
+year1 already exists. Task #519's breakdown override fix didn't
+propagate to existing deals because of this. Item 3 shipped a
+forceReseed mechanism + backfill script; this audit checks
+whether OTHER seeder improvements have the same dormant problem.
+
+Scope expansion from earlier framing: this audit also covers any
+DB-PERSISTED DERIVED VALUE with a TTL gate. The narrative_text
+audit revealed that pattern (TTL-gated derived value with explicit
+freshness check). Same audit shape — find code paths where
+"improvement shipped to compute logic, but cached/persisted values
+from before the improvement still exist in DB."
+
+PHASE 0 — Audit (read-only, ~30-45 min)
+
+1. Seeder logic improvements:
+   git log --follow backend/src/services/proforma-seeder.service.ts
+   For each commit that touches seeder logic, classify:
+   - "NEW DEAL ONLY BY DESIGN" — operator-set fields, deal-creation-
+     time defaults, etc.
+   - "SHOULD APPLY TO EXISTING DEALS" — bug fix, derived value
+     computation correction, schema interpretation fix
+   - "AMBIGUOUS" — needs Leon's judgment
+
+   For each "SHOULD APPLY" commit:
+   - File:line of the affected logic
+   - What did the commit change?
+   - Is there evidence the change propagated to existing deals
+     (e.g., a backfill ran, or seeder was forceReseed'd at the time)?
+   - If no evidence of propagation, this is a candidate dormant
+     improvement.
+
+2. Other DB-persisted derived values with cache patterns:
+   Search for columns with naming patterns suggesting cached
+   derivation:
+     grep -rn "_at\b\|_cached\b\|_resolved\b\|_computed\b" \
+       backend/src/services/ backend/migrations/
+   And in DB:
+     SELECT table_name, column_name FROM information_schema.columns
+     WHERE column_name LIKE '%_generated_at%'
+        OR column_name LIKE '%_computed_at%'
+        OR column_name LIKE '%_cached_at%'
+        OR column_name LIKE '%_resolved_at%'
+        OR column_name LIKE '%_recomputed_at%';
+
+   For each finding:
+   - What field is it caching?
+   - What's the freshness gate (TTL, version stamp, etc.)?
+   - Has the input logic changed since values were last cached?
+
+3. Cross-reference Task history:
+   Look for tasks that shipped fixes/improvements without an
+   explicit backfill. Common signal: PR description says "fixes X"
+   or "corrects Y" but the PR doesn't include a migration script
+   or backfill mention.
+
+PHASE 0 DELIVERABLE
+
+Single audit doc: docs/architecture/DORMANT_IMPROVEMENTS_AUDIT.md.
+Format matches existing audit docs. Three sections:
+
+Section 1 — Seeder dormant improvements
+Section 2 — Other DB-persisted derived values with stale risk
+Section 3 — Recommended actions
+
+For each finding, classify:
+- BACKFILL_NEEDED — improvement is dormant, needs targeted reseed
+  or backfill script (similar pattern to Item 3 Part B)
+- NATURAL_INVALIDATION_OK — TTL gate or other mechanism means
+  values will refresh organically (similar to narrative_text)
+- VERIFY_NEEDED — Leon's judgment required on whether improvement
+  applies to existing deals
+
+For each BACKFILL_NEEDED finding, sketch the fix scope:
+- What's the qualifying criteria (which deals need reseed)?
+- Heuristic for stale detection (like the 12x error pattern in
+  Item 3)?
+- Effort tier (S/M/L)
+
+Acceptance:
+- Every git commit that touched seeder logic since project start
+  is classified
+- Every DB-persisted derived value with cache/TTL pattern is
+  documented
+- Findings ranked by severity (blocking > silent-data-quality >
+  cosmetic)
+- For each BACKFILL_NEEDED finding, a self-contained fix plan
+  exists (so future Phase 1 builds don't re-investigate)
+
+Out of scope for Phase 0:
+- Building backfill scripts for found dormant improvements
+- Modifying seeder or any service code
+- Triggering forceReseed for any deal
+
+Phase 1 (build backfills for found items) is separate greenlight
+after Phase 0 audit lands. Don't proceed without Leon's review.
+
+Branch: claude/dormant-seeder-improvements-audit. One commit
+(audit doc).

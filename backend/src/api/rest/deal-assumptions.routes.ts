@@ -1707,6 +1707,21 @@ router.get('/:dealId/financials/export', requireAuth, async (req: AuthenticatedR
     );
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Cache-Control', 'no-store');
+
+    // Audit trail — fire-and-forget; never blocks the download
+    pool.query(
+      `INSERT INTO activity_log
+         (id, deal_id, user_id, user_name, user_email, action, entity_type, entity_id, metadata, created_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $3, 'financials.export', 'deal', $4, $5, NOW())`,
+      [
+        dealId,
+        req.user!.userId,
+        req.user!.email,
+        dealId,
+        JSON.stringify({ hold_years: holdYears, filename, deal_name: data.dealName }),
+      ],
+    ).catch((err: unknown) => logger.warn('Export audit log failed (non-fatal):', err));
+
     res.send(buffer);
   } catch (error: unknown) {
     logger.error('Error exporting deal financials XLSX:', error);
