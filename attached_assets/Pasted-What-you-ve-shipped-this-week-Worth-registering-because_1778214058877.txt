@@ -1,0 +1,48 @@
+What you've shipped this week
+Worth registering, because it's substantial:
+Reliability fixes:
+
+F9 Pro Forma missing rows fix (toDollarRow helper)
+IC-04 tax tie-break in seeder
+unit_mix wipe data-loss bug
+Percent unit-break (4 broken displays + perYear vacancy 30% clamp on every deal + Excel exports 100x understated + AI narratives corrupted)
+Projections per-year override fix (P1-A) — operator edits stopped silently reverting
+Terminal CapitalTab hardcoded fallback (P1-B/C)
+
+Architecture cleanups:
+
+DEAL TERMS tab structure + LV wiring + dealStore propagation
+Strategy Fields LV pattern (Investment + Exit) with M08 forward-compat
+Cross-tab event pattern resolution (dealStore canonical)
+INPUTS source-of-truth principle (Leasing owns drivers)
+Three-tab triple-home duplicates resolved
+INPUTS tab restructure (5 read-only cross-refs + 4 new fields)
+LEASING_COST_TREATMENT canonical chapter — STANCE as canonical UI, both engines aligned on HYBRID, equity_required wired, cache stamp pattern, full invariant coverage
+Source-of-truth applied across multiple surfaces (Purchase Price single-write-path, leasing cost treatment single canonical surface, etc.)
+
+Patterns established (worth ADR-ing):
+
+LayeredValue<T> with detected/override layers
+dealStore as canonical event bus
+Cache-stamp + inline-recompute fallback for stance-derived values
+Cross-reference readonly pattern ("Edit in [SECTION] [Cat X]")
+Audit-first/fix-second/log-rest task structure
+
+Open follow-ups tracked properly:
+
+TODO_F9_DATA_FLOW.md, TODO_DEAL_TERMS_FOLLOWUP.md, TODO_F9_SIDE_DEBT.md, TODO_OPERATOR_STANCE_PHASE_3.md
+Each entry has done-criteria, file:line refs, effort tier
+Three retrospective ADRs queued (#638)
+Legacy fallback removal post-backfill, generic pipeline 0-default review, narrative regeneration sweep, LP deliverable audit — all entered with explicit close-out conditions
+
+Methodology proven:
+
+Three-phase pattern (audit / build / log) caught real bugs before they shipped (the AI MARKET FINDINGS prediction with fabricated platform defaults; the JSON.stringify null trap; the WRONG COMPONENT call before it became a wrong fix)
+Cash invariant testing for engines
+File:line evidence required in audit findings
+Push-back-on-scope-creep discipline held throughout (water_sewer/electric/gas_fuel revert; AI auto-detect deferral; Section 4 Capital Structure deferral)
+
+That's a lot of compounding architectural work. The platform's reliability and consistency are materially better than they were Monday morning.
+Run the browser verification when you have a moment
+The three-mode IRR check is the last open action item from this entire session. Cache-stamp inline-recompute should make it visible on first navigation — no hard refresh needed between toggles, which is the test that the cache invalidation actually works.
+If it works as expected, the chapter is fully closed and you can pick up #638 (ADR docs) next session as a soft-restart task. If anything misbehaves, flag it and we scope a fix.

@@ -156,23 +156,23 @@ const OUTPUT_SCHEMA_JSON = (() => {
 })();
 
 export async function seedSupplyPrompt(): Promise<void> {
-  // ON CONFLICT DO NOTHING: existing prompt rows are never overwritten on restart.
-  // Preserves any operator rollback (active-flag flip) across process restarts.
+  // Deactivate any existing active supply prompt FIRST so the partial unique
+  // index idx_prompt_versions_active (agent_id, prompt_type) WHERE active=true
+  // doesn't reject the subsequent INSERT when a new version id is introduced.
+  await query(
+    `UPDATE prompt_versions SET active = false
+     WHERE agent_id = 'supply' AND active = true`
+  );
+
+  // Insert or update — idempotent on id, always marks the row active.
   await query(
     `INSERT INTO prompt_versions
        (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
      VALUES
        ('supply-v4', 'supply', '4.0.0', $1, $2, true, NOW(), 'system')
      ON CONFLICT (id) DO UPDATE
-       SET system_prompt = $1, output_schema = $2, updated_at = NOW()
-       WHERE prompt_versions.id = 'supply-v4'`,
+       SET system_prompt = $1, output_schema = $2, active = true, updated_at = NOW()`,
     [SUPPLY_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-  );
-
-  // Deactivate old prompts so runtime picks supply-v4
-  await query(
-    `UPDATE prompt_versions SET active = false
-     WHERE agent_id = 'supply' AND id != 'supply-v4' AND active = true`
   );
 
   logger.info('Supply Agent prompt seeded: supply-v4 (active)');

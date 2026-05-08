@@ -80,23 +80,24 @@ const OUTPUT_SCHEMA_JSON = (() => {
 })();
 
 export async function seedZoningPrompt(): Promise<void> {
-  // ON CONFLICT DO NOTHING: existing prompt rows are never overwritten on restart.
-  // Preserves any operator rollback (active-flag flip) across process restarts.
+  // Deactivate any existing active zoning prompt FIRST so the partial unique
+  // index idx_prompt_versions_active (agent_id, prompt_type) WHERE active=true
+  // doesn't reject the subsequent INSERT.  Same deactivate-then-insert order
+  // as cashflow.seed.ts and commentary.seed.ts.
+  await query(
+    `UPDATE prompt_versions SET active = false
+     WHERE agent_id = 'zoning' AND active = true`
+  );
+
+  // Insert or update — idempotent on id, always marks the row active.
   await query(
     `INSERT INTO prompt_versions
        (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
      VALUES
        ('zoning-v3.1', 'zoning', '3.1.0', $1, $2, true, NOW(), 'system')
      ON CONFLICT (id) DO UPDATE
-       SET system_prompt = $1, output_schema = $2, updated_at = NOW()
-       WHERE prompt_versions.id = 'zoning-v3.1'`,
+       SET system_prompt = $1, output_schema = $2, active = true, updated_at = NOW()`,
     [ZONING_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-  );
-
-  // Deactivate older zoning prompts so the runtime picks zoning-v3.1
-  await query(
-    `UPDATE prompt_versions SET active = false
-     WHERE agent_id = 'zoning' AND id != 'zoning-v3.1' AND active = true`
   );
 
   logger.info('Zoning Agent prompt seeded: zoning-v3.1 (active)');
