@@ -1013,7 +1013,11 @@ export async function getTrafficProjection(
       rent:          { p25: null, p50: rentP50,      p75: null },
       leaseVelocity: { p25: null, p50: leaseVelP50,  p75: null },
     } : null,
-    dataSource: dmdCompCount != null ? 'deal_market_data' : mktAvgRent != null ? 'apartment_market_snapshots' : null,
+    dataSource: (dmdCompCount != null || dmdCompAvgRent != null || dmdCompAvgOcc != null || dmdRentPctile != null)
+      ? 'deal_market_data'
+      : (mktNPeers != null || mktAvgRent != null || mktAvgOcc != null || mktDaysToLease != null)
+      ? 'apartment_market_snapshots'
+      : null,
   } : null;
 
   // Gate: produce leasingSignals when traffic-learned signals exist OR when any
