@@ -1,0 +1,166 @@
+Item 3 from F9 Tier 1 audit — Ancillary income rollup fix.
+Two parts in one PR:
+  Part A — extraction pipeline forceReseed hook
+  Part B — one-time backfill script for pre-Task-#519 deals
+
+Build order: Part B FIRST (with --dry-run), validate on a known-
+broken deal, THEN Part A. This way the script's logic is verified
+before any production reseed fires.
+
+PHASE 0 — Verify audit findings still hold (read-only, ~15 min)
+
+The audit doc at docs/architecture/F9_TIER1_BLOCKERS_AUDIT.md
+documented:
+  - Seeder is write-once cache (ensureDealAssumptionsSeeded no-op
+    when year1 exists)
+  - Task #519 breakdown override is correct in code but doesn't
+    propagate to existing deals
+  - 464 Bishop's other_income_per_unit shows 75.34, manual
+    reconstruction = 25.35 (3x error)
+
+Confirm by re-running the manual reconstruction on 464 Bishop today.
+If the actual value has changed since the audit ran, recalibrate
+expectations before proceeding.
+
+PHASE 1 — Backfill script (Part B)
+
+File: backend/scripts/reseed-other-income.ts
+
+Follow the existing convention from other backend/scripts/ tools:
+  - --dry-run flag (default: dry-run mode)
+  - --dealId <uuid> flag to target a single deal
+  - --batch-size <n> flag for production runs
+  - Per-deal commit (one transaction per deal, not one transaction
+    for all deals)
+  - Logs each deal's before/after state to stdout
+  - Counts and reports failures separately from successes
+
+Selection criteria (per audit Part B):
+  Three qualifiers (deal must match ALL three):
+    1. Has existing year1 seed (deal_assumptions.year1 IS NOT NULL)
+    2. Has at least one extraction capsule (extraction_t12 OR
+       extraction_rent_roll OR extraction_om present)
+    3. Either:
+       (a) other_income_per_unit.updated_at predates Task #519
+           merge timestamp, OR
+       (b) Heuristic match for 12x error pattern: existing
+           other_income_per_unit.resolved is approximately 12x the
+           manually-reconstructed breakdown sum (within 10%
+           tolerance to allow for rounding/categorization differences)
+
+The 12x heuristic catches deals where updated_at is ambiguous
+(e.g., reseeded for unrelated reasons after Task #519 but before
+the breakdown override fix actually fired).
+
+Reseed action:
+  Call ensureDealAssumptionsSeeded with forceReseed: true (the
+  parameter to be added in Part A — for Part B alone, call the
+  underlying seeder logic directly, bypassing the no-op guard).
+  
+  CRITICAL invariant: only update other_income_per_unit. Do NOT
+  clobber operator-set overrides on other fields. The reseed
+  should only refresh fields whose resolution is not 'override'.
+
+Acceptance for Part B:
+  - --dry-run on 464 Bishop produces a clear before/after report
+    showing the expected correction (75.34 → ~25.35)
+  - --dry-run with no --dealId reports the count of qualifying
+    deals platform-wide
+  - --dry-run does not modify any data
+  - Production run (--no-dry-run) commits per-deal with explicit
+    confirmation log per deal
+  - Operator overrides on unrelated fields are preserved
+
+Branch: claude/fix-ancillary-rollup-parts-ab from origin/master.
+Commit Part B as: feat(scripts): reseed-other-income backfill
+script with dry-run
+
+PHASE 2 — Extraction pipeline hook (Part A)
+
+After Part B's dry-run validates correctly, build the hook.
+
+File: locate the extraction pipeline write site (the audit doc
+should reference; if not, grep for capsule writers — likely
+backend/src/services/document-extraction/ or similar).
+
+Add forceReseed: true parameter to ensureDealAssumptionsSeeded
+signature. When called from extraction pipeline writers
+(extraction_t12, extraction_rent_roll, extraction_om), pass
+forceReseed: true. All other call sites continue with the existing
+no-op-when-year1-exists behavior.
+
+Trigger rules per the audit:
+  - Fire after: extraction pipeline writes any capsule
+  - Never fire on: every /financials fetch
+  - Never fire on: operator override saves
+  - Never fire on: manual-admin-only triggers (those use the
+    backfill script)
+
+When forceReseed: true is set and year1 exists, recompute
+other_income_per_unit (and any other fields downstream of
+extraction data) while PRESERVING operator overrides on layers
+where resolution = 'override'.
+
+Acceptance for Part A:
+  - Uploading a new T-12 to a deal with existing year1 triggers
+    reseed
+  - Reseed updates other_income_per_unit correctly
+  - Reseed does NOT clobber operator-set vacancy_pct, gpr override,
+    or any field where resolution = 'override'
+  - /financials fetches still hit the cache (no reseed on read)
+  - Operator overrides on unrelated fields trigger no reseed
+
+Branch: same as Part B (squash on merge or commit separately).
+Commit Part A as: feat(seeder): forceReseed hook on extraction
+pipeline writes
+
+PHASE 3 — Invariant test (same PR)
+
+Add a test that fires the failure mode the rule prevents:
+  - Set up a deal with year1 seeded and an operator override on
+    field X (e.g., vacancy_pct.override = 0.10)
+  - Trigger an extraction pipeline write
+  - Assert: forceReseed fires, other_income_per_unit refreshes,
+    AND vacancy_pct.override remains = 0.10 (operator override
+    preserved)
+
+This invariant test is the regression protection against the
+"forceReseed clobbers overrides" failure mode.
+
+PHASE 4 — Side debt log
+
+After Parts A+B ship, append to TODO_F9_DATA_FLOW.md (or wherever
+appropriate):
+
+  POST-FIX: Verify other seeder logic improvements aren't sitting
+  dormant.
+  - The seeder being write-once cache means any past Task that
+    improved seeder logic may not have propagated to pre-existing
+    deals
+  - Audit: grep for write-time logic in proforma-seeder.service.ts;
+    cross-reference against task history for "seeder improvement"
+    tasks shipped before forceReseed mechanism existed
+  - For each finding, decide: backfill script needed, or
+    new-deal-only by design
+  - Effort: M (depends on findings)
+
+OUT OF SCOPE for this PR:
+  - General seeder consolidation refactor (separate task)
+  - Other field-specific backfill scripts (one per task)
+  - Changes to the extraction pipeline itself beyond the
+    forceReseed call
+  - UI surface for backfill (admin-only, runs from CLI)
+
+Acceptance for the full PR:
+  - Part B script ships and dry-runs cleanly on 464 Bishop
+  - Part A hook ships with invariant test
+  - Production backfill run on at least one deal verifies the
+    end-to-end fix
+  - Operator overrides on unrelated fields preserved through
+    reseed
+
+Reporting:
+  - PR description includes the dry-run output for 464 Bishop
+    (before/after)
+  - Count of deals platform-wide that match the qualifying criteria
+  - Confirmation that the invariant test passes

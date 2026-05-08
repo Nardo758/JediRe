@@ -113,3 +113,36 @@ this entry resolved immediately.
 
 **Done criteria:** Export audit confirmed clean, or affected recipients
 notified and updated workbooks sent.
+
+---
+
+## POST-FIX: Audit for other dormant seeder improvements (Item 3 Phase 4)
+
+**Reference:** F9 Tier 1 Item 3 fix (extraction hook + backfill script, May 2026)
+**Effort:** M (depends on findings)
+
+The seeder is a write-once cache — any seeder logic improvement shipped before
+the `forceReseed` mechanism existed may not have propagated to pre-existing deals.
+After Parts A+B of Item 3 ship:
+
+1. Grep for write-time logic in `backend/src/services/proforma-seeder.service.ts`
+   that depends on extraction data (fields computed from t12/rr/om capsules).
+2. Cross-reference against task history for any "seeder improvement" tasks shipped
+   before the `forceReseed` extraction hook (Part A, Item 3).
+3. For each finding, decide:
+   - **Backfill needed**: diverges for existing deals in the same pattern as
+     `other_income_per_unit` (reseed script, same structure as
+     `backend/scripts/reseed-other-income.ts`)
+   - **New-deal-only by design**: logic only applies to deals created after the fix
+     (no backfill required)
+
+**Done criteria:** All pre-existing seeder improvements confirmed propagated to live
+deals, or each finding documented as new-deal-only with rationale.
+
+**Phase 0 correction (May 2026):** The initial audit query for `other_income_per_unit`
+used only `other_income_breakdown` keys in the "expected" formula and missed
+`other_income_user_lines`. 464 Bishop was incorrectly flagged as stale (75.34 vs
+expected 25.34); the stored 75.34 is correct once the $11,600/month Cable user line
+is included: (70,560 + 139,200) / 232 / 12 = 75.34. Both live deals confirmed
+correctly seeded after the Item 3 backfill script was corrected to include user lines.
+**Future validation queries for other_income_per_unit must sum breakdown + user lines.**

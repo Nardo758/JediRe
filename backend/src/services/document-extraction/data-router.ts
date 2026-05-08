@@ -6,7 +6,7 @@ import { buildOmKgEventData } from './om-distribution.service';
 import { getGraphIngestionListener } from '../neural-network/graph-ingestion-listener';
 import type { OmGeoTags } from './om-geo';
 import { computeAndPersistTrafficSnapshot } from '../traffic-analytics.service';
-import { seedProFormaYear1 } from '../proforma-seeder.service';
+import { seedProFormaYear1, ensureDealAssumptionsSeeded } from '../proforma-seeder.service';
 import { runCrossValidation } from '../multi-doc-cross-validation.service';
 
 interface RouteContext {
@@ -1261,6 +1261,33 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
        WHERE id = $1`,
       [dealId, JSON.stringify(merged)]
     );
+
+    // Part A — Item 3: forceReseed when income-relevant capsules are written.
+    // Model: "extraction changed → derived values recompute."
+    //
+    // TRIGGER RULES (per docs/architecture/F9_TIER1_BLOCKERS_AUDIT.md):
+    //   ✓ Fire after: extraction_t12, extraction_rent_roll, extraction_om writes
+    //   ✗ Never on: every /financials fetch (defeats cache)
+    //   ✗ Never on: operator override saves (applyUserOverride handles those;
+    //     forceReseed there would clobber unrelated override layers)
+    //
+    // ensureDealAssumptionsSeeded with forceReseed=true skips the
+    // "year1 already exists" guard and calls seedProFormaYear1, which reads the
+    // existing year1 first — preserving all operator override layers (resolution
+    // = 'override') before recomputing extraction-derived values.
+    const INCOME_CAPSULE_KEYS = ['extraction_t12', 'extraction_rent_roll', 'extraction_om'];
+    const hasIncomeCapsule = INCOME_CAPSULE_KEYS.some(k => k in capsulePayload);
+    if (hasIncomeCapsule) {
+      try {
+        await ensureDealAssumptionsSeeded(pool, dealId, { forceReseed: true });
+      } catch (err) {
+        // Non-fatal: capsule write already committed. Log and continue.
+        console.warn(
+          `[data-router] forceReseed after capsule write failed for ${dealId}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
   }
 }
 
