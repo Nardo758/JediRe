@@ -384,6 +384,23 @@ show 12× or otherwise incorrect other income figures.
 
 ### Fix scope for next session
 
+#### Recommended build order within this single PR
+
+Parts A and B ship together in one PR — the extraction hook prevents new
+occurrences, the backfill closes existing ones. Splitting them would leave one
+without the other.
+
+**Order within the PR:**
+
+1. **Ship the backfill script first** (`backend/scripts/reseed-other-income.ts`)
+   with `--dry-run` mode wired from the start.
+2. **Run dry-run on a known-broken deal** (464 Bishop:
+   `3f32276f-aacd-4da3-b306-317c5109b403`) and confirm the plan shows
+   `other_income_per_unit.resolved: 75.34 → 25.35`.
+3. **Then add the extraction pipeline hook** (Part A). This sequence means
+   the script's logic is verified before any production reseed fires, and the
+   backfill can be run once with confidence before the hook is live.
+
 #### Part A — forceReseed trigger (extraction pipeline only)
 
 **Where to fire `forceReseed: true`:** In the extraction pipeline after any
@@ -396,10 +413,26 @@ model is "extraction changed → derived values recompute."
 | Caller | Why not |
 |---|---|
 | Every `/financials` fetch | Defeats the cache; re-running the seeder on every request causes unnecessary DB writes and latency |
-| Operator override handler | `applyUserOverride` mutates the LayeredValue in-place on top of the existing seed. forceReseed would clobber all other layers, discarding the user's carefully set overrides on unrelated fields |
+| **Operator override saves** | **INVARIANT — see below** |
 | Manual admin trigger only | Leaves the system in an inconsistent state on any extraction re-run — the seeder cache silently diverges from extraction data |
 
-Implementation sketch:
+> ⚠️ **INVARIANT: forceReseed MUST NOT fire on operator override saves.**
+>
+> `applyUserOverride` (`proforma-seeder.service.ts`) mutates the LayeredValue
+> in-place on top of the existing seed. If forceReseed ran on every override,
+> it would clobber all other layers on unrelated fields across the entire deal —
+> exactly the dual-source failure mode the LayeredValue system exists to prevent.
+> An operator editing `payroll` would silently reset `other_income_per_unit` back
+> to the extraction-derived value, discarding any prior override on that field.
+>
+> **Invariant test (include in same PR):** Call `applyUserOverride` for field X
+> on a deal where field Y already has a user override. Assert that field Y's
+> LayeredValue (resolution = `'override'`, resolved value) is unchanged after
+> the save. This is a cheap unit test against the seeder service and guards
+> against any future caller accidentally passing `forceReseed: true` from the
+> override path.
+
+Implementation sketch for the extraction hook:
 
 ```typescript
 // At the END of processDealDocuments, after writing extraction capsule(s):

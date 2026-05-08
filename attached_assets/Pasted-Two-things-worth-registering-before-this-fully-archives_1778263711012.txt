@@ -1,0 +1,23 @@
+Two things worth registering before this fully archives:
+1. The "Items 1+2 of Item 3 as a single task" framing is correct. Splitting Part A (extraction hook) from Part B (backfill script) into separate commits would orphan one without the other — the hook prevents new occurrences, the backfill closes existing ones. They ship together or not at all. Your sequencing has it right.
+When the agent picks this up, the build order within that single PR matters: ship the backfill script first as a dry-run, validate it produces the expected reseed plan on a known-broken deal, THEN ship the extraction hook. That order means you can verify the script's logic before any production reseed fires, and you can run the backfill once with confidence.
+2. The forceReseed "never fire on operator override saves" rule is critical and worth flagging visibly in the audit doc. It's the kind of constraint that reads as obvious in context but easy to miss when implementing. If forceReseed fires on every override, every operator edit silently clobbers other layers on unrelated fields — exactly the dual-source failure mode we've spent the week eliminating.
+Worth a one-line invariant test in the same PR: "operator override on field X does NOT trigger forceReseed; field Y on the same deal preserves its layered value after the override save." Cheap insurance against regression.
+State going into next session
+Three concrete starting points, in suggested order of when energy aligns:
+Quick warm-ups (under an hour each):
+
+Browser verification of Item 1 on a new test deal (create with budget, confirm IRR computes)
+Three-mode IRR shift on 464 Bishop (still open from #641 — closes that chapter)
+#638 retrospective ADRs (three docs, pure documentation)
+
+Substantial single-PR work (half-day each):
+
+Item 3 Parts A+B together (extraction hook + backfill script)
+F9 blockers Tier 2 lead item: #6 M07 → Projections wiring
+
+Multi-day architectural lift:
+
+OperatorStance Phase 1 (the original architectural lift — cache-stamp pattern is now proven, safer to start)
+
+The Tier 2 chapter starts with #6 once you're ready. Given the dependency chain (#6 unblocks #7's confidence band data, helps #11 and #12), it's the right lead
