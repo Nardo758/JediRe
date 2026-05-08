@@ -809,6 +809,15 @@ export interface LeasingSignals {
   t07LeaseUpWeeksTo95: number | null;
   stabilizedOccupancyPct: number | null;
   confidence: number | null;
+  /** Fraction of total units pre-leased at delivery (Lease-Up mode). Derived from
+   *  deal_assumptions.per_year_overrides['lease_velocity.inputs.pre_leased_count:yr0'] / total_units. */
+  preLeasedPct: number | null;
+  /** Peak units offline during renovation program (VALUE_ADD / REDEVELOPMENT). Derived from
+   *  pct_of_units_to_renovate × total_units, sourced from per_year_overrides. */
+  peakDownUnits: number | null;
+  /** Weeks of absorption lag after renovation completes (VALUE_ADD / REDEVELOPMENT). Derived from
+   *  reno.assumptions.absorption_lag_days / 7, sourced from per_year_overrides. */
+  postRenoAbsorptionLagWks: number | null;
 }
 
 export interface TrafficProjectionResult {
@@ -847,7 +856,8 @@ export async function getTrafficProjection(
   const [tpRes, lrRes, predRes] = await Promise.all([
     pool.query(
       `SELECT tp.*, pa.vacancy_current, pa.rent_growth_current, pa.exit_cap_current,
-              pa.updated_at AS pa_updated_at, da.avg_lease_term_months
+              pa.updated_at AS pa_updated_at, da.avg_lease_term_months,
+              da.per_year_overrides, da.total_units AS da_total_units
        FROM traffic_projections tp
        LEFT JOIN proforma_assumptions pa ON pa.deal_id = tp.deal_id
        LEFT JOIN deal_assumptions da ON da.deal_id = tp.deal_id
@@ -902,6 +912,30 @@ export async function getTrafficProjection(
   const t07 = row.lease_up_weeks_to_95 ?? null;
   const stabilizedOccupancyPct = lr?.stabilized_occupancy != null ? Number(lr.stabilized_occupancy) / 100 : null;
 
+  // ── Leasing assumption overrides from per_year_overrides (year-0 sentinel) ──
+  // Stored by enqueuePatch(path, 0, value) → PATCH /financials/override → key `${path}:yr0`.
+  const pyOvs: Record<string, { value?: unknown }> = row.per_year_overrides ?? {};
+  const daTotalUnits = row.da_total_units != null ? Number(row.da_total_units) : null;
+
+  // preLeasedPct (Lease-Up mode): pre_leased_count / total_units
+  const preLeasedCountRaw = pyOvs['lease_velocity.inputs.pre_leased_count:yr0']?.value;
+  const preLeasedCount = preLeasedCountRaw != null && !isNaN(Number(preLeasedCountRaw)) ? Number(preLeasedCountRaw) : null;
+  const preLeasedPct = preLeasedCount != null && daTotalUnits != null && daTotalUnits > 0
+    ? +(preLeasedCount / daTotalUnits).toFixed(4)
+    : null;
+
+  // peakDownUnits (Value-Add / Reno): pct_of_units_to_renovate × total_units
+  const pctRenoRaw = pyOvs['reno.assumptions.pct_of_units_to_renovate:yr0']?.value;
+  const pctReno = pctRenoRaw != null && !isNaN(Number(pctRenoRaw)) ? Number(pctRenoRaw) : null;
+  const peakDownUnits = pctReno != null && daTotalUnits != null
+    ? Math.round(pctReno * daTotalUnits)
+    : null;
+
+  // postRenoAbsorptionLagWks (Value-Add / Reno): absorption_lag_days / 7
+  const absLagRaw = pyOvs['reno.assumptions.absorption_lag_days:yr0']?.value;
+  const absLagDays = absLagRaw != null && !isNaN(Number(absLagRaw)) ? Number(absLagRaw) : null;
+  const postRenoAbsorptionLagWks = absLagDays != null ? +(absLagDays / 7).toFixed(1) : null;
+
   const leasingSignals: LeasingSignals | null = (t01 != null || t05 != null) ? {
     t01WeeklyTours: t01,
     t05ClosingRatio: t05 != null ? +t05.toFixed(4) : null,
@@ -909,6 +943,9 @@ export async function getTrafficProjection(
     t07LeaseUpWeeksTo95: t07,
     stabilizedOccupancyPct,
     confidence: lr?.confidence_level != null ? Number(lr.confidence_level) : null,
+    preLeasedPct,
+    peakDownUnits,
+    postRenoAbsorptionLagWks,
   } : null;
 
   // Build per-year trajectory from occupancy_trajectory / effective_rent_trajectory

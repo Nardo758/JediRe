@@ -64,17 +64,14 @@ Surface the following peer benchmark fields on the `trafficProjection` response:
 ## M07 — Pre-leased % and reno metrics for LEASING Intel Panel (Lease-Up / Reno modes)
 
 **Requested by:** Task #630 (Add M07 intel panel to Leasing tab)
-**Blocking:** Lease-Up KPI chip "PRE-LEASED %" and Value-Add/Reno chip "RENO METRICS" in `M07IntelPanel.tsx`
+**Resolved by:** Task #649
 
-**Required backend change:**
-- `leasingSignals.preLeasedPct` — current pre-leased percentage (Lease-Up mode only)
-- `leasingSignals.peakDownUnits` — peak units offline during renovation (VALUE_ADD/REDEVELOPMENT)
-- `leasingSignals.postRenoAbsorptionLagWks` — weeks of absorption lag post-renovation
+**Fields added to `LeasingSignals`:**
+- `preLeasedPct` — derived from `per_year_overrides['lease_velocity.inputs.pre_leased_count:yr0'] / da.total_units`
+- `peakDownUnits` — derived from `per_year_overrides['reno.assumptions.pct_of_units_to_renovate:yr0'] × da.total_units`
+- `postRenoAbsorptionLagWks` — derived from `per_year_overrides['reno.assumptions.absorption_lag_days:yr0'] / 7`
 
-**Frontend placeholder:** Dashed-border placeholder chips are rendered in `M07IntelPanel.tsx`
-for these fields. Swap to `KpiChip` once on response.
-
-**Priority:** Defer until M07 backend has bandwidth. Frontend placeholders are in place.
+**Status:** RESOLVED — backend wired in `trafficToProFormaService.ts`, frontend chips live in `M07IntelPanel.tsx` (`LeaseUpKpis` and `ValueAddKpis`). Chips show `—` gracefully when the user hasn't entered the source assumptions yet.
 
 ---
 

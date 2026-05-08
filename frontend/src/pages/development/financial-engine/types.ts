@@ -304,7 +304,7 @@ export interface F9DealFinancials {
     yearly: F9TrafficYear[];
     leaseUp: { weeksTo90: number|null; weeksTo93: number|null; weeksTo95: number|null }|null;
     calibrated: { vacancyPct: number|null; rentGrowthPct: number|null; exitCap: number|null; lastCalibrated: string|null };
-    leasingSignals: { t01WeeklyTours: number|null; t05ClosingRatio: number|null; t06WeeklyLeases: number|null; t07LeaseUpWeeksTo95: number|null; stabilizedOccupancyPct: number|null; confidence: number|null }|null;
+    leasingSignals: { t01WeeklyTours: number|null; t05ClosingRatio: number|null; t06WeeklyLeases: number|null; t07LeaseUpWeeksTo95: number|null; stabilizedOccupancyPct: number|null; confidence: number|null; preLeasedPct?: number|null; peakDownUnits?: number|null; postRenoAbsorptionLagWks?: number|null }|null;
     /** traffic.mode.effective — the authoritative five-mode deal mode from the traffic engine.
      *  Preferred over leaseVelocity.resolvedMode for mode-conditional rendering. */
     mode?: { effective: string; raw: string } | null;

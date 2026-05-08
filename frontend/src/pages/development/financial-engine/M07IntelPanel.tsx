@@ -202,17 +202,7 @@ function LeaseUpKpis({
       <KpiChip label="Wks to 90% Occ" value={fmtWks(leaseUp?.weeksTo90)} accent={P.blue} />
       <KpiChip label="Wks to 95% Stab" value={fmtWks(leaseUp?.weeksTo95 ?? sig?.t07LeaseUpWeeksTo95)} accent={P.blue} />
       <KpiChip label="Stab Occ Target" value={fmtPct(sig?.stabilizedOccupancyPct)} />
-      {/* Pre-leased % not yet on response — placeholder chip */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 1,
-        padding: '4px 10px',
-        background: P.bgPanel,
-        border: `1px dashed ${P.border}`,
-        borderRadius: 2, minWidth: 80, opacity: 0.5,
-      }}>
-        <span style={{ fontFamily: MONO, fontSize: 6, color: P.textMuted, letterSpacing: 0.6 }}>PRE-LEASED %</span>
-        <span style={{ fontFamily: MONO, fontSize: 7, color: P.textMuted, fontStyle: 'italic' }}>pending</span>
-      </div>
+      <KpiChip label="Pre-Leased %" value={fmtPct(sig?.preLeasedPct)} accent={P.blue} />
     </>
   );
 }
@@ -226,17 +216,8 @@ function ValueAddKpis({
     <>
       <KpiChip label="T-06 Curr Lease Vel" value={sig?.t06WeeklyLeases != null ? fmtNum(sig.t06WeeklyLeases) + '/wk' : '—'} accent={P.purple} />
       <KpiChip label="Stab Occ Target" value={fmtPct(sig?.stabilizedOccupancyPct)} accent={P.purple} />
-      {/* Peak down-units & post-reno lag not yet on response */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 1,
-        padding: '4px 10px',
-        background: P.bgPanel,
-        border: `1px dashed ${P.border}`,
-        borderRadius: 2, minWidth: 100, opacity: 0.5,
-      }}>
-        <span style={{ fontFamily: MONO, fontSize: 6, color: P.textMuted, letterSpacing: 0.6 }}>RENO METRICS</span>
-        <span style={{ fontFamily: MONO, fontSize: 7, color: P.textMuted, fontStyle: 'italic' }}>pending backend</span>
-      </div>
+      <KpiChip label="Peak Down Units" value={sig?.peakDownUnits != null ? String(sig.peakDownUnits) + ' units' : '—'} accent={P.purple} />
+      <KpiChip label="Post-Reno Lag" value={sig?.postRenoAbsorptionLagWks != null ? fmtNum(sig.postRenoAbsorptionLagWks, 1) + ' wks' : '—'} accent={P.amber} />
     </>
   );
 }
