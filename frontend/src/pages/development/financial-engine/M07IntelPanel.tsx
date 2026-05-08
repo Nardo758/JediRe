@@ -252,7 +252,7 @@ export function M07IntelPanel({ financials }: Props) {
   const calibrated   = tp.calibrated;
   const leaseUp      = tp.leaseUp;
   const yr1          = tp.yearly[0] ?? null;
-  const peerBenchmark = (tp as any).peerBenchmark ?? null;
+  const peerBenchmark = tp.peerBenchmark ?? null;
   const confPct   = sig?.confidence != null ? Math.round(sig.confidence * 100) : null;
   const confColor = confPct == null ? P.textMuted : confPct >= 75 ? P.green : confPct >= 50 ? P.amber : P.red;
 

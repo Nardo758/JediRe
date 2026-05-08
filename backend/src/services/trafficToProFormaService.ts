@@ -998,7 +998,9 @@ export async function getTrafficProjection(
   // Lease velocity P50: 7 / avg_days_to_lease (weekly leases per available unit)
   const leaseVelP50 = mktDaysToLease != null && mktDaysToLease > 0 ? +(7 / mktDaysToLease).toFixed(3) : null;
 
-  const hasAnyBenchmark = nPeerProperties != null || rentP50 != null || vacancyP50 != null;
+  const hasAnyBenchmark =
+    nPeerProperties != null || rentP50 != null || vacancyP50 != null ||
+    dmdRentPctile != null || leaseVelP50 != null;
   const peerBenchmark: PeerBenchmark | null = hasAnyBenchmark ? {
     nPeerProperties,
     submarketPercentile: dmdRentPctile != null ? {
