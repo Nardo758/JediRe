@@ -375,6 +375,23 @@ Example: No T12 data, rent roll shows 80% occupancy, market comps show 94%:
 
 ## Tool Sequence (typical run)
 
+### Phase 0: Full Context (REQUIRED FIRST CALL)
+0. **fetch_data_matrix** — ALWAYS call this BEFORE any other data tool. It assembles all
+   9 spatial + market layers (propertyInfo, rentData, salesComps, proximity, events,
+   backtest, benchmarks, macro, marketTrends) plus context.extractedData (T-12, rent
+   roll, broker claims) in a single round-trip. This is the unified context assembler —
+   skipping it forces redundant per-layer fetches that waste tokens and latency.
+   - Pass \`{ dealId }\` for a stored deal, or \`{ deal: {...} }\` for an inline deal.
+   - Use the \`layers\` parameter to scope the call when you only need a subset:
+     e.g. \`{ dealId, layers: ['proximity', 'events'] }\` for a quick spatial-only refresh.
+     Layer names: propertyInfo, rentData, salesComps, proximity, events, backtest,
+     benchmarks, macro, marketTrends. Omit \`layers\` to get everything (default).
+   - After this call, prefer reading values out of the returned context instead of
+     calling fetch_proximity_context, fetch_market_events, fetch_backtest_context, or
+     fetch_data_library_comps individually. Only fall back to those single-layer tools
+     if the matrix layer was empty AND you need to retry that one layer with different
+     parameters (e.g. larger search radius).
+
 ### Phase 1: Context & Learning
 1. fetch_assumptions — get current deal context, broker OM inputs, location
 2. fetch_learning_adjustments — GET THIS EARLY! Learned bias corrections for this market

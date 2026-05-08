@@ -18,9 +18,15 @@ Your mission is to analyze zoning regulations and compute the maximum buildable 
 
 ## Tool Use Policy
 
-**Structured tools are always preferred over web search.**
+**Always start with fetch_data_matrix.** It is the unified context assembler that returns
+property info, proximity, market events, and other layers in a single call. Skipping it
+forces redundant per-layer fetches. Pass the dealId (or inline deal). For zoning work the
+most useful layers are propertyInfo and proximity — you may scope with
+\`{ dealId, layers: ['propertyInfo', 'proximity', 'events'] }\` to reduce latency.
 
-Use fetch_zoning_code, fetch_municode, and fetch_parcel as your primary data sources. Use web_search ONLY when:
+After fetch_data_matrix, **structured zoning tools are always preferred over web search.**
+
+Use fetch_zoning_code, fetch_municode, and fetch_parcel for zoning-specific data. Use web_search ONLY when:
 - The structured tools return no result for the zoning classification, AND
 - The question requires current regulatory information (recent zoning amendments, ordinance text)
 
@@ -31,12 +37,13 @@ Do NOT use web_search for general commentary, market data, or non-regulatory sou
 ## Workflow
 
 For each deal, execute this zoning analysis sequence:
-1. **Parcel data** — use fetch_parcel to retrieve lot size, address, and property type
-2. **Zoning code** — use fetch_zoning_code to retrieve the current zoning classification, FAR, height limit, setbacks, and permitted uses
-3. **Ordinance text** — use fetch_municode to retrieve the verbatim municipal code for the zoning designation (use for precise regulatory language)
-4. **Web search (fallback)** — if fetch_zoning_code and fetch_municode return no data, use web_search with a gov-domain query (e.g. "site:miami.gov zoning code R-4 FAR requirements")
-5. **Buildable envelope** — use compute_envelope to calculate maximum GFA and unit capacity from lot size + zoning parameters
-6. **Persist** — use write_zoning_analysis to save all findings to the deal
+1. **Full context (REQUIRED FIRST)** — call fetch_data_matrix with the dealId. Read context.propertyInfo for parcel/zoning hints, context.proximity for location grades, and context.events for nearby supply pipeline. Skip individual fetch_proximity_context / fetch_market_events calls — they're already covered.
+2. **Parcel data** — use fetch_parcel only if context.propertyInfo was empty or missing parcelId / lot size
+3. **Zoning code** — use fetch_zoning_code to retrieve the current zoning classification, FAR, height limit, setbacks, and permitted uses
+4. **Ordinance text** — use fetch_municode to retrieve the verbatim municipal code for the zoning designation (use for precise regulatory language)
+5. **Web search (fallback)** — if fetch_zoning_code and fetch_municode return no data, use web_search with a gov-domain query (e.g. "site:miami.gov zoning code R-4 FAR requirements")
+6. **Buildable envelope** — use compute_envelope to calculate maximum GFA and unit capacity from lot size + zoning parameters
+7. **Persist** — use write_zoning_analysis to save all findings to the deal
 
 ## Entitlement risk assessment
 
@@ -79,10 +86,18 @@ export async function seedZoningPrompt(): Promise<void> {
     `INSERT INTO prompt_versions
        (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
      VALUES
-       ('zoning-v3', 'zoning', '3.0.0', $1, $2, true, NOW(), 'system')
-     ON CONFLICT (id) DO NOTHING`,
+       ('zoning-v3.1', 'zoning', '3.1.0', $1, $2, true, NOW(), 'system')
+     ON CONFLICT (id) DO UPDATE
+       SET system_prompt = $1, output_schema = $2, updated_at = NOW()
+       WHERE prompt_versions.id = 'zoning-v3.1'`,
     [ZONING_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
   );
 
-  logger.info('Zoning Agent prompt seeded: zoning-v3 (active)');
+  // Deactivate older zoning prompts so the runtime picks zoning-v3.1
+  await query(
+    `UPDATE prompt_versions SET active = false
+     WHERE agent_id = 'zoning' AND id != 'zoning-v3.1' AND active = true`
+  );
+
+  logger.info('Zoning Agent prompt seeded: zoning-v3.1 (active)');
 }

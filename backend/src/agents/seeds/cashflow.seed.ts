@@ -33,39 +33,39 @@ const EVIDENCE_PROMPTS: Array<{
   systemPrompt: string;
 }> = [
   {
-    id: 'cashflow-v7-core',
+    id: 'cashflow-v7.1-core',
     promptType: 'core',
-    version: '4.0.0',
+    version: '4.1.0',
     systemPrompt: CASHFLOW_SYSTEM_PROMPT,
   },
   {
-    id: 'cashflow-v7-variant-existing',
+    id: 'cashflow-v7.1-variant-existing',
     promptType: 'variant:existing',
-    version: '4.0.0',
+    version: '4.1.0',
     systemPrompt: CASHFLOW_VARIANT_EXISTING,
   },
   {
-    id: 'cashflow-v7-variant-value-add',
+    id: 'cashflow-v7.1-variant-value-add',
     promptType: 'variant:value-add',
-    version: '4.0.0',
+    version: '4.1.0',
     systemPrompt: CASHFLOW_VARIANT_VALUE_ADD,
   },
   {
-    id: 'cashflow-v7-variant-lease-up',
+    id: 'cashflow-v7.1-variant-lease-up',
     promptType: 'variant:lease-up',
-    version: '4.0.0',
+    version: '4.1.0',
     systemPrompt: CASHFLOW_VARIANT_LEASE_UP,
   },
   {
-    id: 'cashflow-v7-variant-development',
+    id: 'cashflow-v7.1-variant-development',
     promptType: 'variant:development',
-    version: '4.0.0',
+    version: '4.1.0',
     systemPrompt: CASHFLOW_VARIANT_DEVELOPMENT,
   },
   {
-    id: 'cashflow-v7-variant-redevelopment',
+    id: 'cashflow-v7.1-variant-redevelopment',
     promptType: 'variant:redevelopment',
-    version: '4.0.0',
+    version: '4.1.0',
     systemPrompt: CASHFLOW_VARIANT_REDEVELOPMENT,
   },
 ];
@@ -101,7 +101,7 @@ export async function seedCashflowPrompt(): Promise<void> {
     );
   }
 
-  logger.info('CashFlow Agent prompts seeded (v6 — JSON skeleton)', {
+  logger.info('CashFlow Agent prompts seeded (v7.1 — fetch_data_matrix-first guidance)', {
     count: EVIDENCE_PROMPTS.length,
     ids: upcomingIds,
   });
