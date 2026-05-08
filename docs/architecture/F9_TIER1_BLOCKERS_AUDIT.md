@@ -382,23 +382,60 @@ show 12× or otherwise incorrect other income figures.
 
 ---
 
-### Open questions for fix scope
+### Fix scope for next session
 
-1. **Seeder invalidation mechanism:** `ensureDealAssumptionsSeeded` needs a
-   `forceReseed` caller path for when extraction data changes or when seeder
-   code is updated. Currently `forceReseed: true` exists in the signature
-   (`seeder:856`) but no production call site uses it.
+#### Part A — forceReseed trigger (extraction pipeline only)
 
-2. **One-time backfill:** Existing deals with stale year1 seeds need a
-   targeted re-seed. The safe operation: run `seedProFormaYear1(pool, dealId)`
-   with `forceReseed: true` for deals where `year1.other_income_per_unit.updated_at`
-   predates the Task #519 merge date. This is a data migration script, not a
-   schema migration.
+**Where to fire `forceReseed: true`:** In the extraction pipeline after any
+capsule is written — `processDealDocuments` (or equivalent) after it persists
+`deal_data.extraction_t12`, `extraction_rent_roll`, or `extraction_om`. The
+model is "extraction changed → derived values recompute."
 
-3. **Seeder trigger on extraction update:** The extraction pipeline
-   (`processDealDocuments`) should call `ensureDealAssumptionsSeeded(pool, dealId,
-   { forceReseed: true })` after any extraction capsule update, so the year1 seed
-   stays current with new document uploads.
+**Where NOT to fire it:**
+
+| Caller | Why not |
+|---|---|
+| Every `/financials` fetch | Defeats the cache; re-running the seeder on every request causes unnecessary DB writes and latency |
+| Operator override handler | `applyUserOverride` mutates the LayeredValue in-place on top of the existing seed. forceReseed would clobber all other layers, discarding the user's carefully set overrides on unrelated fields |
+| Manual admin trigger only | Leaves the system in an inconsistent state on any extraction re-run — the seeder cache silently diverges from extraction data |
+
+Implementation sketch:
+
+```typescript
+// At the END of processDealDocuments, after writing extraction capsule(s):
+await ensureDealAssumptionsSeeded(pool, dealId, { forceReseed: true });
+```
+
+This is safe because extraction updates are infrequent (document upload /
+re-processing events), and `forceReseed` only skips the `hasExistingSeed`
+guard — it still applies all user overrides on top via the existing
+`applyUserOverride` mechanism after re-seeding.
+
+#### Part B — one-time backfill script (pre-Task-#519 deals)
+
+**Scope:** Deals where `year1` was seeded before Task #519 merged and where
+`other_income_per_unit` is therefore stale.
+
+**Criteria for "needs reseed"** — a deal qualifies if ALL of the following are true:
+
+1. `deal_assumptions.year1 IS NOT NULL` (has a seed to compare against)
+2. `(deal_data->'extraction_rent_roll') IS NOT NULL OR (deal_data->'extraction_om') IS NOT NULL`
+   (has ancillary source data — otherwise there is nothing to recompute)
+3. `(deal_assumptions.year1->'other_income_per_unit'->>'updated_at') < '<Task-#519-merge-timestamp>'`
+   OR the `resolution` is `'rent_roll'` or `'om'` with a `resolved` value that
+   is a whole-number multiple of `12` of the expected monthly value (heuristic
+   for the 12× error pattern)
+
+**Safe execution:** The backfill script should call `seedProFormaYear1(pool,
+dealId)` with `forceReseed: true` for each qualifying deal, log before/after
+values for `other_income_per_unit.resolved`, and commit per-deal so a failure
+mid-run does not block others.
+
+**This is a data migration script, not a schema migration.** It lives in
+`backend/scripts/` alongside `enrich-property-proximity.ts`, follows the same
+`--dry-run` / `--dealId` flag pattern, and is re-runnable (idempotent after the
+first run because the extraction pipeline forceReseed keeps things current
+going forward).
 
 ---
 
