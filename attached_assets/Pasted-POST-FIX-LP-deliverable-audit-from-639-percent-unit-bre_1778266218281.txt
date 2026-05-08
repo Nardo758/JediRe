@@ -1,0 +1,67 @@
+POST-FIX: LP deliverable audit (from #639 percent unit-break fix).
+
+Background: f9-financial-export.service.ts:214,220 had exitNoi /
+exitCap with exitCap in percentage form (5.5) instead of decimal
+(0.055), making gross-sale-value 100x understated in every Excel
+export pre-fix.
+
+If any Excel exports went to external LP recipients pre-fix, those
+deliverables need correction or re-issue.
+
+If no external recipients exist yet (pre-revenue platform), the
+TODO closes immediately.
+
+Audit task (read-only, ~15-20 min):
+
+1. Determine how Excel exports are generated and tracked. Search:
+     grep -rn "f9-financial-export\|export_log\|deal_export\|
+       exportFinancials" backend/src/
+     grep -rn "audit_log\|activity_log" backend/src/
+   
+   Check for audit/tracking tables in DB schema:
+     SELECT table_name FROM information_schema.tables
+     WHERE table_name LIKE '%export%' OR table_name LIKE '%audit%'
+       OR table_name LIKE '%activity%' OR table_name LIKE '%share%';
+
+2. Identify the export endpoint and any logging:
+   - Where does the GET /export route live?
+   - Does the route log to a table when an export happens?
+   - Are there per-export user records?
+
+3. Check fix deploy timestamp window:
+   - Find commit hash of #639 percent unit-break fix
+   - Find commit timestamp of f9-financial-export.service.ts touch
+     pre-fix
+   - This defines the "exposure window" — exports between those
+     two timestamps had the 100x bug
+
+4. If tracking table exists:
+   - Query for export events in the exposure window
+   - Filter to external recipients (non-internal user IDs or
+     email domains outside the org)
+   - Report count and breakdown
+
+5. If no tracking exists:
+   - Note this as a separate concern (no audit trail for exports
+     means no way to determine impact retrospectively)
+   - Check platform stage indicators:
+     * Active user count
+     * Whether multi-user / multi-org features are in production
+     * Subscription / billing flags suggesting paying customers
+     * Whether the platform is gated behind invite-only or open
+       signup
+
+Classify finding:
+  - EXTERNAL_RECIPIENTS_CONFIRMED → scope re-issue/communication
+    task with recipient count
+  - NO_EXTERNAL_RECIPIENTS_LIKELY → close TODO entry. Document
+    pre-revenue / private-beta state in the close note.
+  - NO_AUDIT_TRAIL_INDETERMINATE → flag the audit-trail gap as a
+    separate concern; close current TODO entry if platform stage
+    indicators support pre-revenue, otherwise escalate
+
+Report back with:
+  - File:line evidence for export route and any logging
+  - DB schema findings for export-related tables
+  - Platform-stage assessment (which indicators were used)
+  - Classification with reasoning
