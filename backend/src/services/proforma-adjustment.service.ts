@@ -2250,12 +2250,41 @@ export async function getDealFinancials(
         ? (dealData as any).leasing_cost_treatment as 'OPERATING' | 'CAPITALIZED' | 'HYBRID'
         : 'OPERATING';
   const _cachedConcRec = (dealData.concession_recognition ?? {}) as Record<string, unknown>;
-  const capitalizedLeaseUpTotal: number =
-    (effectiveLct === 'CAPITALIZED' || effectiveLct === 'HYBRID')
-      ? (typeof _cachedConcRec.capitalized_lease_up_total === 'number'
-          ? _cachedConcRec.capitalized_lease_up_total
-          : 0)
-      : 0;
+  // Task #641 cache validation: the cached concession_recognition may have been written by
+  // a prior composeDealFinancials run under a DIFFERENT leasingCostTreatment (e.g. the
+  // operator just toggled STANCE without triggering a full recompose).  We detect this via
+  // the _treatment stamp added by computeConcessionRecognition.  On a treatment mismatch,
+  // inline-recompute from deal_data.concession_records — amortizeConcessions is a pure
+  // function (no DB calls) so the hot path is not meaningfully affected.
+  let capitalizedLeaseUpTotal = 0;
+  if (effectiveLct === 'CAPITALIZED' || effectiveLct === 'HYBRID') {
+    const cacheMatchesTreatment = _cachedConcRec._treatment === effectiveLct;
+    if (cacheMatchesTreatment && typeof _cachedConcRec.capitalized_lease_up_total === 'number') {
+      // Cache is fresh and was computed under the current treatment — use it.
+      capitalizedLeaseUpTotal = _cachedConcRec.capitalized_lease_up_total;
+    } else {
+      // Cache is absent or stale (treatment toggled since last recompose).
+      // Inline-recompute from the canonical concession_records already in deal_data.
+      const concRecords = Array.isArray(dealData.concession_records)
+        ? dealData.concession_records
+        : [];
+      if (concRecords.length > 0) {
+        try {
+          const { amortizeConcessions } = await import('./concession-amortization');
+          const fiscalStart = typeof dealData.fiscal_year_start_month === 'number'
+            ? dealData.fiscal_year_start_month : 1;
+          const engineOut = amortizeConcessions({
+            records: concRecords as any,
+            leasing_cost_treatment: effectiveLct,
+            fiscal_year_start_month: fiscalStart,
+          });
+          capitalizedLeaseUpTotal = engineOut.lease_up_reserve_required;
+        } catch {
+          capitalizedLeaseUpTotal = 0;
+        }
+      }
+    }
+  }
 
   const purchasePrice: number | null =
     (dealData.purchase_price != null ? +dealData.purchase_price : null) ??

@@ -910,7 +910,10 @@ async function computeConcessionRecognition(
 
     // ── Write-through cache: persist to deal_data ──────────────────────────
     // Non-fatal — cache write failure doesn't break the financials response.
-    const cachePayload = { ...result, _cache_key: cacheKey };
+    // _treatment is stored alongside _cache_key so getDealFinancials can
+    // validate the cache was computed under the current leasingCostTreatment
+    // without re-parsing the full fingerprint string.
+    const cachePayload = { ...result, _cache_key: cacheKey, _treatment: treatment };
     try {
       await pool.query(
         `UPDATE deals
