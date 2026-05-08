@@ -693,11 +693,11 @@ router.post('/wire/subscriptions/all/setup', (_req: Request, res: Response) => {
 /** POST /wiring/capital-structure/stack - Wire full capital stack */
 router.post('/wiring/capital-structure/stack', async (req: Request, res: Response) => {
   try {
-    const { dealId, strategy, layers, uses, noi, propertyValue } = req.body;
+    const { dealId, strategy, layers, uses, noi, propertyValue, capitalizedLeaseUpTotal } = req.body;
     if (!dealId || !strategy || !layers || !uses) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    await wireCapitalStack(dealId, strategy, layers, uses, noi || 0, propertyValue || 0);
+    await wireCapitalStack(dealId, strategy, layers, uses, noi || 0, propertyValue || 0, capitalizedLeaseUpTotal ?? 0);
     res.json({ status: 'Capital stack wired', dealId });
   } catch (error: any) {
     res.status(500).json({ error: 'Capital stack wiring failed', detail: error.message });

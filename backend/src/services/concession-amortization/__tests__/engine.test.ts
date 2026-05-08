@@ -373,11 +373,13 @@ describe('§12.7 Cash invariant across treatments', () => {
     expect(output.lease_up_reserve_required).toBe(3600);
   });
 
-  it('HYBRID: all cash flows to monthly_recognition (amortized)', () => {
+  it('HYBRID: lease-up record goes to reserve (same as CAPITALIZED for is_lease_up_period records)', () => {
+    // Under HYBRID, is_lease_up_period records are capitalized → reserve, not P&L.
+    // Only non-lease-up concessions stay on the operating statement.
     const output = amortizeConcessions(makeInput([baseRecord], { leasing_cost_treatment: 'HYBRID' }));
     const total = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
-    expect(Math.abs(total - 3600)).toBeLessThanOrEqual(0.02);
-    expect(output.lease_up_reserve_required).toBe(0);
+    expect(total).toBe(0);
+    expect(output.lease_up_reserve_required).toBe(3600);
   });
 
   it('No CashInvariantError for any treatment', () => {
@@ -412,6 +414,112 @@ describe('§12.7 Cash invariant across treatments', () => {
     const output = amortizeConcessions(makeInput([record], { leasing_cost_treatment: 'CAPITALIZED' }));
     // schedule.treatment must be the RUNTIME treatment (CAPITALIZED), not OPERATING
     expect(output.schedules[0].treatment).toBe('CAPITALIZED');
+  });
+});
+
+// ─── §12.7b Equity wire invariant (Task #641) ─────────────────────────────────
+// Verifies that lease_up_reserve_required is the exact component that must be
+// added to equity_required when treatment is CAPITALIZED or HYBRID, and that
+// recognized (P&L) + reserved (equity wire) = total cash_value across all modes.
+//
+// This section documents the invariant that wireCapitalStack must satisfy:
+//   equity_required = base_equity + lease_up_reserve_required
+//
+// For OPERATING:  all concession cost flows through P&L → recognized == cash_value,
+//                 reserve == 0,  equity_required augment == 0.
+// For CAPITALIZED: all lease-up cost capitalized → recognized == 0,
+//                  reserve == cash_value, equity_required augment == cash_value.
+// For HYBRID:      operating concessions on P&L + lease-up reserve capitalized;
+//                  recognized + reserve == cash_value.
+
+describe('§12.7b Equity wire invariant (Task #641)', () => {
+  const CASH_VALUE = 5000;
+  const BASE_EQUITY = 200_000;
+
+  // One lease-up record (is_lease_up_period: true) — this is the component
+  // that flows to equity_required under CAPITALIZED/HYBRID.
+  const leaseUpRecord = makeRecord({
+    id: 'rec-lu-001',
+    cash_value: CASH_VALUE,
+    lease_term_months: 12,
+    is_lease_up_period: true,
+    amortization_method: 'STRAIGHT_LINE_GAAP',
+  });
+
+  // One ordinary (non-lease-up) operating concession.
+  const operatingRecord = makeRecord({
+    id: 'rec-op-001',
+    cash_value: 1200,
+    lease_term_months: 12,
+    is_lease_up_period: false,
+    amortization_method: 'STRAIGHT_LINE_GAAP',
+  });
+
+  it('OPERATING: reserve is 0, recognized = cash_value, equity augment = 0', () => {
+    const output = amortizeConcessions(
+      makeInput([leaseUpRecord], { leasing_cost_treatment: 'OPERATING' }),
+    );
+    const recognized = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    expect(output.lease_up_reserve_required).toBe(0);
+    expect(Math.abs(recognized - CASH_VALUE)).toBeLessThanOrEqual(0.02);
+    // equity_required augment: 0 (no capitalized component)
+    const effectiveEquity = BASE_EQUITY + output.lease_up_reserve_required;
+    expect(effectiveEquity).toBe(BASE_EQUITY);
+  });
+
+  it('CAPITALIZED: reserve = cash_value, recognized = 0, equity augment = cash_value', () => {
+    const output = amortizeConcessions(
+      makeInput([leaseUpRecord], { leasing_cost_treatment: 'CAPITALIZED' }),
+    );
+    const recognized = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    expect(recognized).toBe(0);
+    expect(output.lease_up_reserve_required).toBe(CASH_VALUE);
+    // equity_required augment: full cash_value
+    const effectiveEquity = BASE_EQUITY + output.lease_up_reserve_required;
+    expect(effectiveEquity).toBe(BASE_EQUITY + CASH_VALUE);
+  });
+
+  it('HYBRID: lease-up goes to reserve; operating concession stays on P&L', () => {
+    const output = amortizeConcessions(
+      makeInput([leaseUpRecord, operatingRecord], { leasing_cost_treatment: 'HYBRID' }),
+    );
+    const recognized = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+    const reserve = output.lease_up_reserve_required;
+    // Under HYBRID the lease-up record routes to reserve; the operating record stays on P&L.
+    expect(reserve).toBe(CASH_VALUE);
+    expect(Math.abs(recognized - 1200)).toBeLessThanOrEqual(0.02);
+    // Cross-treatment invariant: recognized + reserve = total cost of all records
+    expect(Math.abs(recognized + reserve - (CASH_VALUE + 1200))).toBeLessThanOrEqual(0.02);
+    // equity_required augment: only the lease-up reserve component
+    const effectiveEquity = BASE_EQUITY + reserve;
+    expect(effectiveEquity).toBe(BASE_EQUITY + CASH_VALUE);
+  });
+
+  it('equity augment is 0 for OPERATING regardless of is_lease_up_period flag', () => {
+    // Even if a record has is_lease_up_period: true, OPERATING treatment never capitalizes it.
+    const output = amortizeConcessions(
+      makeInput([leaseUpRecord], { leasing_cost_treatment: 'OPERATING' }),
+    );
+    expect(output.lease_up_reserve_required).toBe(0);
+    const effectiveEquity = BASE_EQUITY + output.lease_up_reserve_required;
+    expect(effectiveEquity).toBe(BASE_EQUITY);
+  });
+
+  it('equity wire preserves cross-treatment cash invariant: P&L + capital == total', () => {
+    const totalCash = CASH_VALUE + 1200;
+    for (const t of ['OPERATING', 'CAPITALIZED', 'HYBRID'] as const) {
+      const output = amortizeConcessions(
+        makeInput([leaseUpRecord, operatingRecord], { leasing_cost_treatment: t }),
+      );
+      const recognized = Object.values(output.monthly_recognition).reduce((s, v) => s + v, 0);
+      const reserve = output.lease_up_reserve_required;
+      expect(Math.abs(recognized + reserve - totalCash)).toBeLessThanOrEqual(0.02);
+      // Effective equity for each treatment
+      const effectiveEquity = BASE_EQUITY + reserve;
+      if (t === 'OPERATING') expect(effectiveEquity).toBe(BASE_EQUITY);
+      if (t === 'CAPITALIZED') expect(effectiveEquity).toBe(BASE_EQUITY + CASH_VALUE);
+      if (t === 'HYBRID') expect(effectiveEquity).toBe(BASE_EQUITY + CASH_VALUE);
+    }
   });
 });
 

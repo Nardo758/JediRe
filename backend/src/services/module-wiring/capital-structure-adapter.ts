@@ -51,6 +51,13 @@ export async function wireCapitalStack(
   },
   noi: number,
   propertyValue: number,
+  /**
+   * Task #641 (End 2a): When leasingCostTreatment is CAPITALIZED or HYBRID,
+   * callers must pass the capitalized_lease_up_total from
+   * deal_data.concession_recognition so equity_required reflects the full
+   * capital outlay at close.  Zero / undefined → no augmentation (OPERATING path).
+   */
+  capitalizedLeaseUpTotal?: number,
 ): Promise<void> {
   try {
     logger.info('[CapStructure Wiring] Building capital stack', { dealId, strategy, layerCount: layers.length });
@@ -68,12 +75,10 @@ export async function wireCapitalStack(
       wacc: stack.metrics.weightedAvgCostOfCapital,
       total_debt: stack.metrics.totalDebt,
       total_equity: stack.metrics.totalEquity,
-      // TODO (Task #639 End 2a): When leasingCostTreatment is CAPITALIZED or HYBRID,
-      // equity_required should be augmented by deal_data.concession_recognition
-      // .capitalized_lease_up_total (written by computeConcessionRecognition).
-      // wireCapitalStack does not currently receive deal_data; that thread-through
-      // is a follow-up to this adapter's call-sites.
-      equity_required: stack.metrics.equityRequired,
+      // Task #641 (End 2a resolved): equity_required is augmented by capitalizedLeaseUpTotal
+      // when leasingCostTreatment is CAPITALIZED or HYBRID.  Callers supply the value from
+      // deal_data.concession_recognition.capitalized_lease_up_total; defaults to 0 (OPERATING).
+      equity_required: (parseFloat(stack.metrics.equityRequired) + (capitalizedLeaseUpTotal ?? 0)).toFixed(2),
       coc_return: stack.metrics.cocReturn,
       capital_risk_score: stack.metrics.capitalRiskScore,
       is_balanced: stack.isBalanced,
@@ -427,6 +432,8 @@ export async function wireCapitalStructurePipeline(
     }
 
     // Step 1: Capital Stack
+    // Pipeline callers do not carry deal-level concession data; capitalizedLeaseUpTotal
+    // defaults to undefined (treated as 0) — correct for the generic pipeline path.
     await wireCapitalStack(
       dealId,
       params.strategy,
@@ -435,6 +442,8 @@ export async function wireCapitalStructurePipeline(
       params.noi,
       params.propertyValue,
     );
+    // Note: deal-aware callers that have concession recognition data should call
+    // wireCapitalStack directly and pass capitalizedLeaseUpTotal explicitly.
 
     // Step 2: Waterfall (if config provided)
     if (params.waterfallConfig && params.exitProceeds) {

@@ -1733,7 +1733,7 @@ export async function getDealFinancials(
 
   const [dealRes, assumptionsRes, proformaAssumRes, trafficProjection] = await Promise.all([
     pool.query(
-      'SELECT id, name, city, state_code, target_units, budget, deal_data, timeline_start FROM deals WHERE id = $1',
+      'SELECT id, name, city, state_code, target_units, budget, deal_data, operator_stance, timeline_start FROM deals WHERE id = $1',
       [dealId]
     ),
     pool.query(
@@ -2233,13 +2233,41 @@ export async function getDealFinancials(
   // ── Capital Stack assembly ──────────────────────────────────────────────────
   // Purchase price: prefer deal_data.purchase_price, fallback to budget column
   const dealData = (deal.deal_data ?? {}) as Record<string, unknown>;
+
+  // ── Task #641 (End 2a): Resolve effective leasing cost treatment & capitalized lease-up total ──
+  // operator_stance.leasingCostTreatment is canonical; deal_data.leasing_cost_treatment is legacy fallback.
+  // capitalized_lease_up_total is written by computeConcessionRecognition() in financials-composer and
+  // cached in deal_data.concession_recognition.  Read from cache here; defaults to 0 when absent
+  // (OPERATING path, or financials-composer not yet run for this deal).
+  const _dealOperatorStance = (typeof deal.operator_stance === 'object' && deal.operator_stance
+    ? deal.operator_stance
+    : {}) as Record<string, any>;
+  const _VALID_LCT = ['OPERATING', 'CAPITALIZED', 'HYBRID'] as const;
+  const effectiveLct: 'OPERATING' | 'CAPITALIZED' | 'HYBRID' =
+    _VALID_LCT.includes(_dealOperatorStance?.leasingCostTreatment)
+      ? _dealOperatorStance.leasingCostTreatment as 'OPERATING' | 'CAPITALIZED' | 'HYBRID'
+      : _VALID_LCT.includes((dealData as any)?.leasing_cost_treatment)
+        ? (dealData as any).leasing_cost_treatment as 'OPERATING' | 'CAPITALIZED' | 'HYBRID'
+        : 'OPERATING';
+  const _cachedConcRec = (dealData.concession_recognition ?? {}) as Record<string, unknown>;
+  const capitalizedLeaseUpTotal: number =
+    (effectiveLct === 'CAPITALIZED' || effectiveLct === 'HYBRID')
+      ? (typeof _cachedConcRec.capitalized_lease_up_total === 'number'
+          ? _cachedConcRec.capitalized_lease_up_total
+          : 0)
+      : 0;
+
   const purchasePrice: number | null =
     (dealData.purchase_price != null ? +dealData.purchase_price : null) ??
     (dealData.asking_price  != null ? +dealData.asking_price  : null) ??
     (deal.budget            != null ? +deal.budget             : null);
   const ltcPct: number | null = assumptionsRow?.ltc != null ? +parseFloat(assumptionsRow.ltc).toFixed(4) : null;
   const loanAmount  = purchasePrice != null && ltcPct != null ? Math.round(purchasePrice * ltcPct) : null;
-  const equityAtClose = purchasePrice != null && loanAmount != null ? purchasePrice - loanAmount : null;
+  // For CAPITALIZED or HYBRID treatments, equity at close must include the lease-up reserve
+  // (capitalized_lease_up_total) that is funded from equity, not from the senior loan.
+  const equityAtClose = purchasePrice != null && loanAmount != null
+    ? purchasePrice - loanAmount + capitalizedLeaseUpTotal
+    : null;
   const interestRate: number | null = assumptionsRow?.interest_rate != null ? +parseFloat(assumptionsRow.interest_rate).toFixed(4) : null;
   const ioPeriodMonths: number | null = assumptionsRow?.io_period_months ?? null;
   const amortizationYears: number | null = assumptionsRow?.amortization_years ?? null;
@@ -2903,9 +2931,11 @@ export async function getDealFinancials(
   const suOtherUses = suOvr('otherUses') ?? 0;
   const suSellerFinancing = suOvr('sellerFinancing') ?? 0;
 
-  // Total debt for equity computation
+  // Total debt for equity computation.
+  // capitalizedLeaseUpTotal is added to equity for CAPITALIZED/HYBRID treatments: the
+  // lease-up reserve is funded from equity (not debt), so equity_required grows by that amount.
   const suTotalDebt = suSeniorLoan + suMezzLoan;
-  const suEquity = Math.max(0, suPurchasePrice - suTotalDebt);
+  const suEquity = Math.max(0, suPurchasePrice - suTotalDebt + capitalizedLeaseUpTotal);
   const suLpShare = 0.90;
   const suGpShare = 0.10;
 
