@@ -480,14 +480,25 @@ function AffectedFieldsPanel({ dealId, stanceUpdatedAt }: AffectedFieldsProps) {
 
 // ─── Main StanceTab ────────────────────────────────────────────────────────────
 
-export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
+export function StanceTab({
+  dealId,
+  lvCostTreatmentView,
+  onLvTreatmentViewChange,
+}: Pick<FinancialEngineTabProps, 'dealId' | 'lvCostTreatmentView' | 'onLvTreatmentViewChange'>) {
   const operatorStance = useDealStore(s => s.operatorStance);
   const fetchStance    = useDealStore(s => s.fetchOperatorStance);
   const saveStance     = useDealStore(s => s.saveOperatorStance);
   const resetStance    = useDealStore(s => s.resetOperatorStance);
 
-  // Shared hook — single write surface for leasingCostTreatment across consumers.
-  const lct = useLeasingCostTreatment(dealId);
+  // Shared hook — single write surface for leasingCostTreatment.
+  // PATCH /context → deal_data.leasing_cost_treatment; onSaved drives the
+  // parent's handleLvTreatmentViewChange which emits leasing_cost_treatment.changed
+  // so Projections/ProForma re-fetch with the new value.
+  const lct = useLeasingCostTreatment(
+    dealId,
+    lvCostTreatmentView ?? 'OPERATING',
+    onLvTreatmentViewChange ?? (() => {}),
+  );
 
   const [saving, setSaving]       = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -675,16 +686,7 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
           onChange={v => handleChange({ marketingIntensity: v })}
           saving={saving}
         />
-        <PostureRow<ExpenseGrowthPosture>
-          label="EXPENSE GROWTH"
-          value={s.expenseGrowthPosture}
-          options={EXPENSE_OPTS}
-          onChange={v => handleChange({ expenseGrowthPosture: v })}
-          saving={saving}
-        />
-
-        {/* ── Section 4: COST RECOGNITION ── */}
-        <SectionHeader label="COST RECOGNITION" sub="how lease-up concessions flow through the financials pipeline" />
+        {/* ── LEASING COST TREATMENT — per-driver, between concession strategy and expense growth ── */}
         <div style={{ borderBottom: `1px solid ${BT.border.subtle}`, padding: '9px 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ minWidth: 0 }}>
@@ -706,7 +708,15 @@ export function StanceTab({ dealId }: Pick<FinancialEngineTabProps, 'dealId'>) {
           </div>
         </div>
 
-        {/* ── Section 5: STRESS OVERLAYS ── */}
+        <PostureRow<ExpenseGrowthPosture>
+          label="EXPENSE GROWTH"
+          value={s.expenseGrowthPosture}
+          options={EXPENSE_OPTS}
+          onChange={v => handleChange({ expenseGrowthPosture: v })}
+          saving={saving}
+        />
+
+        {/* ── Section 4: STRESS OVERLAYS ── */}
         <SectionHeader label="STRESS OVERLAYS" sub="explicit haircuts stacked on top of posture-derived modulation" />
         <StressRow
           label="RENT GROWTH HAIRCUT"

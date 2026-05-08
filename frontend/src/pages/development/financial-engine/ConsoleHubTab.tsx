@@ -102,7 +102,13 @@ export function ConsoleHubTab(props: FinancialEngineTabProps) {
 
       {/* ── Sub-tab content ── */}
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {subTab === 'stance'     && <StanceTab dealId={props.dealId} />}
+        {subTab === 'stance'     && (
+          <StanceTab
+            dealId={props.dealId}
+            lvCostTreatmentView={props.lvCostTreatmentView}
+            onLvTreatmentViewChange={props.onLvTreatmentViewChange}
+          />
+        )}
         {subTab === 'deal-terms' && <DealTermsTab {...props} />}
         {subTab === 'inputs'     && <AssumptionsTab {...props} />}
         {subTab === 'unitmix'    && <UnitMixTab {...props} />}

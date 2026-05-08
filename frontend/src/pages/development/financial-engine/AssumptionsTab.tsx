@@ -1613,10 +1613,10 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
 
   // ── Financial Treatment (Location A) was removed in Task #639 ────────────
-  // leasingCostTreatment is now canonical in operator_stance (StanceTab →
-  // PUT /stance). The legacy deal_data.leasing_cost_treatment write path and
-  // its local toggle have been removed. The backend reads operator_stance first
-  // and falls back to deal_data for backward compatibility.
+  // LEASING COST TREATMENT toggle moved to StanceTab (PER-DRIVER section).
+  // Canonical storage: deal_data.leasing_cost_treatment via PATCH /context.
+  // View-state is managed in FinancialEnginePage (lvCostTreatmentView) and
+  // passed down to consumers that need it (ProjectionsTab, ProFormaSummaryTab).
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
   const [showAncillaryBreakdown, setShowAncillaryBreakdown] = useState(false);
