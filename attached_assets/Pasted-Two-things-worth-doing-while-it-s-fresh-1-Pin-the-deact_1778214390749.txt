@@ -1,0 +1,39 @@
+Two things worth doing while it's fresh
+1. Pin the deactivate-first pattern as a convention. The seeders all share the same upsert shape but differ in operation order. Worth a short comment block in each seeder's header pointing to the canonical pattern, OR — better — a shared helper function that all five seeders call:
+ts// All agent seeders use the deactivate-first pattern via this helper.
+// See ARCH_DECISIONS or AGENT_SEED_PATTERN.md for rationale.
+async function upsertAgentPrompt(client, params) {
+  await client.query('UPDATE ... SET active = false WHERE ...');
+  await client.query('INSERT ... ON CONFLICT (id) DO UPDATE SET active = true ...');
+}
+The five-seeder pattern divergence wouldn't have happened if there was one shared function. Five separate hand-written queries with one inverted operation order is the structural cause; refactoring to a single helper closes that gap.
+This is low-priority but worth a TODO entry — "consolidate agent seeders to shared helper to prevent operation-order drift."
+2. Document the partial unique index as the enforcement layer. The reason these crashes happened at all is that idx_prompt_versions_active is a partial unique index on (agent_id, prompt_type) WHERE active = true. That's actually the right enforcement — the database refuses to let two prompts be active for the same agent simultaneously. Worth documenting somewhere that this index is load-bearing, so nobody removes it as "cleanup" later.
+Either as a comment on the migration that created it, or in the new ADR docs from #638. The partial index is doing the work of preventing silent data corruption — even when seeders are buggy, the DB stops them.
+On the seeder bug as a class of issues
+Reflecting on the past week: bugs caused by similar functions diverging in subtle ways is the dominant failure mode you've been catching. Not novel logic errors. Not architectural mistakes. Just five-things-that-should-be-the-same drifting apart over time as one gets touched and the others don't:
+
+INPUTS triple-home duplicates (same field editable in three places)
+LEASING_COST_TREATMENT existing in two write surfaces
+Purchase Price dual-source (write to one column, read from another)
+DEAL TERMS strategy field PERSISTENCE_GAP (placeholder UI without canonical write surface)
+Now: agent seeders with three correct, two inverted
+
+Common shape: convention enforced by manual copying instead of structural enforcement. The cleanup pattern that works is the same in each case — pick one canonical path, enforce structurally (shared helper, single file, single endpoint), document the convention, audit for drift.
+The audit-first methodology you've been running this week is strong. Worth keeping. The seeder consolidation is one more entry on the queue when you next have slack — same shape as the work you've been doing.
+Browser verification still open
+The three-mode IRR check on 464 Bishop is the only thing left from #641. With the backend up and the app authenticated, run it now or whenever you have 10 minutes. Cache-stamp inline-recompute should show IRR shift on first navigation between toggles without needing a hard refresh.
+If it works: chapter fully closes, the leasing_cost_treatment work is end-to-end verified.
+If it doesn't: flag the symptom and we'll trace which layer is staling.
+Add to TODO_F9_SIDE_DEBT.md before archiving
+- Consolidate agent seeders to shared upsertAgentPrompt helper.
+  Five seeders (cashflow, commentary, research, supply, zoning) hand-write
+  the deactivate-then-insert pattern. Three were buggy (inverted order)
+  before May 2026 fix; pattern enforcement should be structural, not
+  convention. Effort: S. Reference: zoning seeder crash, May 2026.
+
+- Document idx_prompt_versions_active as load-bearing.
+  Partial unique index on (agent_id, prompt_type) WHERE active = true
+  is what prevented silent data corruption during seeder bugs. Ensure
+  index is referenced in agent prompt versioning ADR or migration
+  comment so it's not removed as "cleanup." Effort: S.
