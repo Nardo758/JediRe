@@ -4,7 +4,7 @@
  * Architecture: pure presentational/input components.
  * All API calls and state management live in ProjectionsTab (the parent).
  * This file exports:
- *   - LeasingCostTreatmentToggle  (used in two locations per spec)
+ *   - LeasingCostTreatmentToggle  (used in StanceTab — canonical write surface)
  *   - LeaseVelocitySection        (main container, accepts result + callbacks as props)
  *   - LVInputs / LeaseVelocityResult types
  */
@@ -121,9 +121,8 @@ export const lvFmt$ = (v: number) => {
 };
 
 // ─── LeasingCostTreatmentToggle ───────────────────────────────────────────────
-// Exported — used in two locations:
-//   Location A (Projections header): writes deal.leasing_cost_treatment via PATCH
-//   Location B (ProForma header):    local view-state only
+// Exported — canonical write location is StanceTab (PUT /stance).
+// Projections header shows a read-only badge that links to STANCE tab.
 
 export function LeasingCostTreatmentToggle({
   value,

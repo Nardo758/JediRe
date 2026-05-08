@@ -7,7 +7,6 @@ import { ConcessionDrilldownModal, aggregateConcessionDetail } from './Concessio
 import { CommentaryPanel } from './CommentaryPanel';
 import { SourceBadge } from './SourceBadge';
 import { useDealStore, PlatformColSource } from '../../../stores/dealStore';
-import type { LeasingCostTreatment } from './LeaseVelocitySection';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -425,15 +424,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     });
   }, [data]);
 
-  // Location B — LeasingCostTreatmentToggle.
-  // The active treatment is owned by the parent (lvCostTreatmentView prop) and
-  // shared with every sibling tab.  When the user toggles here, we call
-  // onLvTreatmentViewChange which updates parent state → triggers a single shared
-  // fetchF9Financials with the new treatment param — no local re-fetch needed.
-  const lvTreatmentView = lvCostTreatmentView ?? 'OPERATING';
-  const handleLvTreatmentViewChange = useCallback((t: LeasingCostTreatment) => {
-    onLvTreatmentViewChange?.(t);
-  }, [onLvTreatmentViewChange]);
+  // lvCostTreatmentView prop drives the leasing_cost_treatment URL param on load().
+  // The write surface moved to StanceTab (PUT /stance). No local toggle here.
 
   // Prefer model results from the build pipeline; fall back to composer fetch.
   const modelData = modelResults ?? null;

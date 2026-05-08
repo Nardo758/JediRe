@@ -8,7 +8,6 @@ import type {
 import { fmt$, fmtPct } from './types';
 import { ConcessionDrilldownModal, aggregateConcessionDetail } from './ConcessionDrilldownModal';
 import type { AggregatedConcessionDetail } from './ConcessionDrilldownModal';
-import { LeasingCostTreatmentToggle } from './LeaseVelocitySection';
 import { apiClient } from '../../../services/api.client';
 import { useDealStore } from '../../../stores/dealStore';
 import {
@@ -1620,12 +1619,26 @@ export function ProjectionsTab({
 
           <div style={{ width: 1, height: 14, background: BT.border.medium }} />
 
-          {/* LEASING COST treatment — view-only signal; persisted via AssumptionsTab Location A */}
+          {/* LEASING COST — read-only badge; canonical write is STANCE tab (index 1) */}
           <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#475569', letterSpacing: '0.07em' }}>LEASING COST:</span>
-          <LeasingCostTreatmentToggle
-            value={lvCostTreatmentView ?? 'OPERATING'}
-            onChange={onLvTreatmentViewChange ?? (() => {})}
-          />
+          <button
+            onClick={() => onTabChange?.(1)}
+            title="Set in STANCE tab"
+            style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', border: 'none', padding: 0, cursor: onTabChange ? 'pointer' : 'default' }}
+          >
+            <span style={{
+              fontFamily: MONO, fontSize: 8,
+              background: `${BT.met.occupancy}20`,
+              color: BT.met.occupancy,
+              border: `1px solid ${BT.met.occupancy}55`,
+              padding: '2px 7px', borderRadius: 2,
+            }}>
+              {lvCostTreatmentView ?? 'OPERATING'}
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: '0.05em' }}>
+              set in STANCE →
+            </span>
+          </button>
 
           <div style={{ flex: 1 }} />
 
