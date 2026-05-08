@@ -425,7 +425,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   }, [data]);
 
   // lvCostTreatmentView prop drives the leasing_cost_treatment URL param on load().
-  // The write surface moved to StanceTab (PUT /stance). No local toggle here.
+  // The write surface moved to StanceTab (PATCH /context → deal_data.leasing_cost_treatment). No local toggle here.
 
   // Prefer model results from the build pipeline; fall back to composer fetch.
   const modelData = modelResults ?? null;

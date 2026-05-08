@@ -121,7 +121,7 @@ export const lvFmt$ = (v: number) => {
 };
 
 // ─── LeasingCostTreatmentToggle ───────────────────────────────────────────────
-// Exported — canonical write location is StanceTab (PUT /stance).
+// Exported — canonical write location is StanceTab (PATCH /context → deal_data.leasing_cost_treatment).
 // Projections header shows a read-only badge that links to STANCE tab.
 
 export function LeasingCostTreatmentToggle({
