@@ -798,12 +798,25 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
 //   deal_assumptions.avg_rent_per_unit (calibrates rent projection)
 // ============================================================================
 
+export interface AptLocatorDiscoveryResultComp {
+  name: string;
+  address: string;
+  city: string | null;
+  state: string | null;
+  avg_asking_rent: number | null;
+  distance_miles: number | null;
+  match_score: number | null;
+  year_built: number | null;
+  total_units: number | null;
+}
+
 export interface AptLocatorDiscoveryResult {
   inserted_competitive_sets: number;
   inserted_deal_comp_sets: number;
   median_rent: number | null;
   rent_updated: boolean;
   comp_count: number;
+  comps: AptLocatorDiscoveryResultComp[];
 }
 
 export async function discoverFromAptLocator(
@@ -930,7 +943,7 @@ export async function discoverFromAptLocator(
     rows = cityFallback.rows;
     if (rows.length === 0) {
       logger.info('[discoverFromAptLocator] No apt locator properties found at all', { dealId });
-      return { inserted_competitive_sets: 0, inserted_deal_comp_sets: 0, median_rent: null, rent_updated: false, comp_count: 0 };
+      return { inserted_competitive_sets: 0, inserted_deal_comp_sets: 0, median_rent: null, rent_updated: false, comp_count: 0, comps: [] };
     }
     logger.info('[discoverFromAptLocator] City-level fallback found properties', { dealId, count: rows.length, dealCity, dealStateCode });
   }
@@ -1113,6 +1126,20 @@ export async function discoverFromAptLocator(
     logger.info('[discoverFromAptLocator] calibrated market rent', { dealId, medianRent, compCount: rents.length, rentUpdated });
   }
 
+  // Build the inline comps list returned to the UI so analysts can see *which*
+  // apartments drove the calibrated market rent.
+  const compsList: AptLocatorDiscoveryResultComp[] = topComps.map((c: any) => ({
+    name: c.property_name || c.address,
+    address: c.address,
+    city: c.city ?? null,
+    state: c.state ?? null,
+    avg_asking_rent: c.avg_asking_rent != null ? parseFloat(c.avg_asking_rent) : null,
+    distance_miles: c.distance_miles != null ? Number(c.distance_miles) : null,
+    match_score: c.match_score != null ? Number(c.match_score) : null,
+    year_built: c.year_built ?? null,
+    total_units: c.total_units ?? null,
+  }));
+
   logger.info('[discoverFromAptLocator] complete', { dealId, insertedCS, insertedDCS, medianRent });
   return {
     inserted_competitive_sets: insertedCS,
@@ -1120,5 +1147,6 @@ export async function discoverFromAptLocator(
     median_rent: medianRent,
     rent_updated: rentUpdated,
     comp_count: topComps.length,
+    comps: compsList,
   };
 }

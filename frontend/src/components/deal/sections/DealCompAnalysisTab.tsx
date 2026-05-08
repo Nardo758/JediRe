@@ -366,9 +366,25 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
   });
   const [rentalDiscovery, setRentalDiscovery] = useState<{
     loading: boolean;
-    result: { median_rent: number | null; comp_count: number; rent_updated: boolean } | null;
+    result: {
+      median_rent: number | null;
+      comp_count: number;
+      rent_updated: boolean;
+      comps: Array<{
+        name: string;
+        address: string;
+        city: string | null;
+        state: string | null;
+        avg_asking_rent: number | null;
+        distance_miles: number | null;
+        match_score: number | null;
+        year_built: number | null;
+        total_units: number | null;
+      }>;
+    } | null;
     error: string | null;
   }>({ loading: false, result: null, error: null });
+  const [showAllRentalComps, setShowAllRentalComps] = useState(false);
   const [marketRent, setMarketRent] = useState<{
     value: number | null;
     sourceType: string | null;
@@ -488,9 +504,11 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
           median_rent: res?.median_rent ?? null,
           comp_count: compCount,
           rent_updated: res?.rent_updated ?? false,
+          comps: Array.isArray(res?.comps) ? res.comps : [],
         },
         error: null,
       });
+      setShowAllRentalComps(false);
       await fetchMarketRent();
       await fetchTieredComps();
       window.dispatchEvent(new CustomEvent('assumptions:rent-updated', { detail: { dealId, compCount } }));
@@ -540,40 +558,99 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
       )}
 
       {/* Rental discovery result banner */}
-      {rentalDiscovery.result && (
-        <div style={{
-          padding: '6px 10px', marginBottom: 6,
-          background: rentalDiscovery.result.rent_updated ? 'rgba(0,210,106,0.08)' : 'rgba(0,188,212,0.08)',
-          border: `1px solid ${rentalDiscovery.result.rent_updated ? '#00D26A40' : '#00BCD440'}`,
-          borderRadius: 4, display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <TrendingUp style={{ width: 12, height: 12, color: rentalDiscovery.result.rent_updated ? '#00D26A' : '#00BCD4', flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            {rentalDiscovery.result.rent_updated && rentalDiscovery.result.median_rent != null ? (
-              <span style={{ fontSize: 10, color: BT2.text.primary, fontFamily: mono }}>
-                Market rent calibrated:{' '}
-                <strong style={{ color: '#00D26A' }}>${rentalDiscovery.result.median_rent.toLocaleString()}/mo</strong>
-                {' '}from <strong>{rentalDiscovery.result.comp_count}</strong> apt locator comps — saved to assumptions
-              </span>
-            ) : rentalDiscovery.result.median_rent != null ? (
-              <span style={{ fontSize: 10, color: BT2.text.secondary, fontFamily: mono }}>
-                Market estimate:{' '}
-                <strong style={{ color: '#00BCD4' }}>${rentalDiscovery.result.median_rent.toLocaleString()}/mo</strong>
-                {' '}from <strong>{rentalDiscovery.result.comp_count}</strong> comps
-                {' '}· <span style={{ color: BT2.text.muted }}>existing assumption preserved (user-set)</span>
-              </span>
-            ) : (
-              <span style={{ fontSize: 10, color: BT2.text.muted }}>
-                No rental comps found within 3 mi — check property coordinates
-              </span>
+      {rentalDiscovery.result && (() => {
+        const r = rentalDiscovery.result;
+        const accent = r.rent_updated ? '#00D26A' : '#00BCD4';
+        const comps = r.comps || [];
+        const visibleComps = showAllRentalComps ? comps : comps.slice(0, 5);
+        return (
+          <div style={{
+            padding: '6px 10px', marginBottom: 6,
+            background: r.rent_updated ? 'rgba(0,210,106,0.08)' : 'rgba(0,188,212,0.08)',
+            border: `1px solid ${r.rent_updated ? '#00D26A40' : '#00BCD440'}`,
+            borderRadius: 4,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <TrendingUp style={{ width: 12, height: 12, color: accent, flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                {r.rent_updated && r.median_rent != null ? (
+                  <span style={{ fontSize: 10, color: BT2.text.primary, fontFamily: mono }}>
+                    Market rent calibrated:{' '}
+                    <strong style={{ color: '#00D26A' }}>${r.median_rent.toLocaleString()}/mo</strong>
+                    {' '}from <strong>{r.comp_count}</strong> apt locator comps — saved to assumptions
+                  </span>
+                ) : r.median_rent != null ? (
+                  <span style={{ fontSize: 10, color: BT2.text.secondary, fontFamily: mono }}>
+                    Market estimate:{' '}
+                    <strong style={{ color: '#00BCD4' }}>${r.median_rent.toLocaleString()}/mo</strong>
+                    {' '}from <strong>{r.comp_count}</strong> comps
+                    {' '}· <span style={{ color: BT2.text.muted }}>existing assumption preserved (user-set)</span>
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 10, color: BT2.text.muted }}>
+                    No rental comps found within 3 mi — check property coordinates
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => { setRentalDiscovery({ loading: false, result: null, error: null }); setShowAllRentalComps(false); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: BT2.text.muted, fontSize: 10, padding: 0 }}
+              >×</button>
+            </div>
+            {comps.length > 0 && (
+              <div style={{ marginTop: 6, borderTop: `1px solid ${accent}30`, paddingTop: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 8, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, color: BT2.text.muted }}>
+                    COMPS USED ({comps.length})
+                  </span>
+                  {comps.length > 5 && (
+                    <button
+                      onClick={() => setShowAllRentalComps(s => !s)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: accent, fontSize: 8, fontFamily: mono, fontWeight: 700, padding: 0, letterSpacing: 0.5 }}
+                    >
+                      {showAllRentalComps ? `SHOW TOP 5 ▲` : `SHOW ALL ${comps.length} ▼`}
+                    </button>
+                  )}
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 9 }}>
+                    <thead>
+                      <tr style={{ color: BT2.text.muted, textAlign: 'left' }}>
+                        <th style={{ padding: '2px 6px 2px 0', fontWeight: 600, fontSize: 8 }}>#</th>
+                        <th style={{ padding: '2px 6px', fontWeight: 600, fontSize: 8 }}>NAME</th>
+                        <th style={{ padding: '2px 6px', fontWeight: 600, fontSize: 8 }}>ADDRESS</th>
+                        <th style={{ padding: '2px 6px', fontWeight: 600, fontSize: 8, textAlign: 'right' }}>RENT/MO</th>
+                        <th style={{ padding: '2px 6px', fontWeight: 600, fontSize: 8, textAlign: 'right' }}>DIST</th>
+                        <th style={{ padding: '2px 0 2px 6px', fontWeight: 600, fontSize: 8, textAlign: 'right' }}>MATCH</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleComps.map((c, i) => (
+                        <tr key={`${c.address}-${i}`} style={{ borderTop: `1px solid ${BT2.border.subtle}` }}>
+                          <td style={{ padding: '2px 6px 2px 0', color: BT2.text.muted }}>{i + 1}</td>
+                          <td style={{ padding: '2px 6px', color: BT2.text.primary, fontWeight: 600, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.name}>{c.name}</td>
+                          <td style={{ padding: '2px 6px', color: BT2.text.secondary, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={[c.address, c.city, c.state].filter(Boolean).join(', ')}>
+                            {c.address}{c.city ? `, ${c.city}` : ''}{c.state ? `, ${c.state}` : ''}
+                          </td>
+                          <td style={{ padding: '2px 6px', textAlign: 'right', color: c.avg_asking_rent != null ? '#00D26A' : BT2.text.muted, fontWeight: 700 }}>
+                            {c.avg_asking_rent != null ? `$${Math.round(c.avg_asking_rent).toLocaleString()}` : '—'}
+                          </td>
+                          <td style={{ padding: '2px 6px', textAlign: 'right', color: BT2.text.secondary }}>
+                            {c.distance_miles != null ? `${c.distance_miles.toFixed(2)}mi` : '—'}
+                          </td>
+                          <td style={{ padding: '2px 0 2px 6px', textAlign: 'right', color: BT2.text.primary }}>
+                            {c.match_score != null ? Math.round(c.match_score) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
-          <button
-            onClick={() => setRentalDiscovery({ loading: false, result: null, error: null })}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: BT2.text.muted, fontSize: 10, padding: 0 }}
-          >×</button>
-        </div>
-      )}
+        );
+      })()}
       {rentalDiscovery.error && (
         <div style={{ padding: '4px 10px', marginBottom: 6, background: '#FF47570A', border: `1px solid #FF475730`, borderRadius: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
           <AlertCircle style={{ width: 10, height: 10, color: '#FF4757' }} />
