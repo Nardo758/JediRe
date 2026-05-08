@@ -149,6 +149,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const lastAppliedDesign3DTimestamp = useRef(0);
   const [designSource, setDesignSource] = useState<string | null>(null);
   const [rentSourceType, setRentSourceType] = useState<string | null>(null);
+  const [marketEstRent, setMarketEstRent] = useState<number | null>(null);
   const [modelType, setModelType] = useState<'existing' | 'development'>(defaultModelType);
   const [holdPeriod, setHoldPeriod] = useState(5);
   const [loading, setLoading] = useState(true);
@@ -273,6 +274,9 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       const res: any = await apiClient.get(`/api/v1/deals/${id}/assumptions`);
       const d = res?.data?.data || res?.data;
       setRentSourceType(d?.source_type || null);
+      const rentRaw = d?.avg_rent_per_unit ?? d?.avgRentPerUnit ?? null;
+      const rentNum = rentRaw != null ? Number(rentRaw) : NaN;
+      setMarketEstRent(Number.isFinite(rentNum) && rentNum > 0 ? rentNum : null);
     } catch {
       // non-blocking
     }
@@ -1133,7 +1137,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                           </div>
                         );
                       })()}
-                      <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} rentSourceType={rentSourceType} />
+                      <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} rentSourceType={rentSourceType} marketEstRent={marketEstRent} />
                     </>
                   )}
                   {section.id === 'acquisition' && modelType === 'existing' && (
@@ -1293,7 +1297,7 @@ const DealInfoSection: React.FC<any> = ({ dealName, setDealName, totalUnits, set
   </div>
 );
 
-const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixRow[]) => void; platformData: any; rentSourceType?: string | null }> = ({ unitMix, setUnitMix, platformData, rentSourceType }) => {
+const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixRow[]) => void; platformData: any; rentSourceType?: string | null; marketEstRent?: number | null }> = ({ unitMix, setUnitMix, platformData, rentSourceType, marketEstRent }) => {
   const updateRow = (index: number, field: keyof UnitMixRow, value: any) => {
     const updated = [...unitMix];
     (updated[index] as any)[field] = value;
@@ -1333,13 +1337,23 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
               <th className="text-right py-2 px-2 font-medium">Vac</th>
               <th className="text-right py-2 px-2 font-medium">
                 <span>Market Rent</span>
-                {rentSourceType === 'apt_locator' && (
-                  <span style={{
-                    marginLeft: 4, fontSize: 8, fontWeight: 700, letterSpacing: 1,
-                    color: '#22c55e', background: 'rgba(34,197,94,0.12)',
-                    border: '1px solid rgba(34,197,94,0.3)',
-                    padding: '1px 5px', borderRadius: 2, verticalAlign: 'middle',
-                  }}>MARKET EST</span>
+                {rentSourceType === 'apt_locator' && marketEstRent != null && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUnitMix(unitMix.map(r => ({ ...r, marketRent: Math.round(marketEstRent) })));
+                    }}
+                    title="Click to auto-fill all unit rents to this calibrated market estimate"
+                    style={{
+                      marginLeft: 4, fontSize: 8, fontWeight: 700, letterSpacing: 1,
+                      color: '#22c55e', background: 'rgba(34,197,94,0.12)',
+                      border: '1px solid rgba(34,197,94,0.3)',
+                      padding: '1px 5px', borderRadius: 2, verticalAlign: 'middle',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    MARKET EST: ${Math.round(marketEstRent).toLocaleString()}/mo
+                  </button>
                 )}
               </th>
               <th className="text-right py-2 px-2 font-medium">Rent/SF</th>
