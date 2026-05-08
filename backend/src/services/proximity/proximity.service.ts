@@ -41,6 +41,13 @@ export class ProximityService {
       address?: string;
       propertyId?: string;
       parcelId?: string;
+      city?: string;
+      state?: string;
+      county?: string;
+      zip?: string;
+      crimeIndexOverride?: number;
+      violentCrimeIndexOverride?: number;
+      propertyCrimeIndexOverride?: number;
       saveToDb?: boolean;
     } = {}
   ): Promise<ProximityScores> {
@@ -67,6 +74,35 @@ export class ProximityService {
     ]);
     
     dataSources.push('poi_database');
+
+    // Resolve crime indices: explicit override wins, otherwise look up by ZIP
+    let crimeIndex: number | undefined = options.crimeIndexOverride;
+    let violentCrimeIndex: number | undefined = options.violentCrimeIndexOverride;
+    let propertyCrimeIndex: number | undefined = options.propertyCrimeIndexOverride;
+    if (crimeIndex !== undefined) {
+      dataSources.push('crime_index_override');
+    }
+    if (crimeIndex === undefined && options.zip) {
+      try {
+        const crimeRes = await this.pool.query(
+          `SELECT crime_index, violent_crime_index, property_crime_index
+           FROM crime_statistics
+           WHERE zip_code = $1
+           ORDER BY period_end DESC
+           LIMIT 1`,
+          [options.zip]
+        );
+        if (crimeRes.rows.length > 0) {
+          const r = crimeRes.rows[0];
+          crimeIndex = r.crime_index !== null ? parseFloat(r.crime_index) : undefined;
+          violentCrimeIndex = r.violent_crime_index !== null ? parseFloat(r.violent_crime_index) : undefined;
+          propertyCrimeIndex = r.property_crime_index !== null ? parseFloat(r.property_crime_index) : undefined;
+          dataSources.push('crime_statistics');
+        }
+      } catch (err) {
+        console.warn(`[Proximity] crime_statistics lookup failed for zip ${options.zip}:`, err);
+      }
+    }
     
     // Compute transit scores
     const nearestTransit = transitPOIs.find(p => p.poiType === 'transit_station');
@@ -99,10 +135,13 @@ export class ProximityService {
     const urgentCares = healthcarePOIs.filter(p => p.poiType === 'urgent_care' && p.distanceMiles <= 3);
     
     // Build scores object
-    const scores: ProximityScores = {
+    const scores: ProximityScores & { city?: string; state?: string; county?: string } = {
       propertyId: options.propertyId,
       parcelId: options.parcelId,
       address: options.address || '',
+      city: options.city,
+      state: options.state,
+      county: options.county,
       latitude,
       longitude,
       
@@ -165,9 +204,9 @@ export class ProximityService {
       },
       
       safety: {
-        crimeIndex: undefined, // Would need crime API
-        violentCrimeIndex: undefined,
-        propertyCrimeIndex: undefined,
+        crimeIndex,
+        violentCrimeIndex,
+        propertyCrimeIndex,
         crimeTrend: undefined,
       },
       
@@ -183,7 +222,7 @@ export class ProximityService {
         groceryDistance: nearestGrocery?.distanceMiles,
         schoolRating: nearestElementary?.schoolRating,
         beltlineDistance: beltlineAccess?.distanceMiles,
-        crimeIndex: undefined,
+        crimeIndex,
       }),
       
       computedAt: new Date(),
@@ -341,10 +380,12 @@ export class ProximityService {
   /**
    * Save proximity scores to database
    */
-  private async saveProximityScores(scores: ProximityScores): Promise<void> {
+  private async saveProximityScores(
+    scores: ProximityScores & { city?: string; state?: string; county?: string }
+  ): Promise<void> {
     await this.pool.query(`
       INSERT INTO property_proximity (
-        property_id, parcel_id, address, latitude, longitude,
+        property_id, parcel_id, address, city, county, state, latitude, longitude,
         nearest_rail_station_name, nearest_rail_station_type, nearest_rail_station_miles,
         nearest_bus_stop_miles, transit_routes_within_quarter_mile,
         nearest_grocery_name, nearest_grocery_type, nearest_grocery_miles,
@@ -357,34 +398,45 @@ export class ProximityService {
         nearest_high_school, nearest_high_rating,
         school_district, universities_within_5_miles,
         nearest_park_miles, parks_within_1_mile, beltline_miles,
+        crime_index, violent_crime_index, property_crime_index,
         transit_score,
         estimated_transit_premium_pct, estimated_amenity_premium_pct, estimated_school_premium_pct,
         computed_at, data_sources
       ) VALUES (
-        $1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15,
-        $16, $17, $18, $19, $20,
-        $21, $22, $23,
-        $24, $25, $26, $27, $28, $29, $30, $31,
-        $32, $33, $34,
-        $35,
-        $36, $37, $38,
-        $39, $40
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13,
+        $14, $15, $16, $17, $18,
+        $19, $20, $21, $22, $23,
+        $24, $25, $26,
+        $27, $28, $29, $30, $31, $32, $33, $34,
+        $35, $36, $37,
+        $38, $39, $40,
+        $41,
+        $42, $43, $44,
+        $45, $46
       )
       ON CONFLICT (property_id) DO UPDATE SET
         address = EXCLUDED.address,
+        city = EXCLUDED.city,
+        county = EXCLUDED.county,
+        state = EXCLUDED.state,
         nearest_rail_station_name = EXCLUDED.nearest_rail_station_name,
         nearest_rail_station_miles = EXCLUDED.nearest_rail_station_miles,
         nearest_grocery_name = EXCLUDED.nearest_grocery_name,
         nearest_grocery_miles = EXCLUDED.nearest_grocery_miles,
         major_employers_within_5_miles = EXCLUDED.major_employers_within_5_miles,
+        crime_index = EXCLUDED.crime_index,
+        violent_crime_index = EXCLUDED.violent_crime_index,
+        property_crime_index = EXCLUDED.property_crime_index,
         transit_score = EXCLUDED.transit_score,
         estimated_transit_premium_pct = EXCLUDED.estimated_transit_premium_pct,
+        estimated_amenity_premium_pct = EXCLUDED.estimated_amenity_premium_pct,
+        estimated_school_premium_pct = EXCLUDED.estimated_school_premium_pct,
+        data_sources = EXCLUDED.data_sources,
         computed_at = EXCLUDED.computed_at,
         updated_at = NOW()
     `, [
-      scores.propertyId, scores.parcelId, scores.address, scores.latitude, scores.longitude,
+      scores.propertyId, scores.parcelId, scores.address, scores.city, scores.county, scores.state, scores.latitude, scores.longitude,
       scores.transit.nearestStationName, scores.transit.nearestStationType, scores.transit.nearestStationMiles,
       scores.transit.nearestBusStopMiles, scores.transit.routesWithinQuarterMile,
       scores.grocery.nearestName, scores.grocery.nearestType, scores.grocery.nearestMiles,
@@ -397,6 +449,7 @@ export class ProximityService {
       scores.schools.highName, scores.schools.highRating,
       scores.schools.districtName, scores.schools.universitiesWithin5Miles,
       scores.parks.nearestParkMiles, scores.parks.parksWithin1Mile, scores.parks.beltlineMiles,
+      scores.safety.crimeIndex, scores.safety.violentCrimeIndex, scores.safety.propertyCrimeIndex,
       scores.scores.transitScore,
       scores.estimatedPremiums.transitPremiumPct, scores.estimatedPremiums.amenityPremiumPct, scores.estimatedPremiums.schoolPremiumPct,
       scores.computedAt, scores.dataSources
@@ -529,7 +582,17 @@ export class ProximityService {
    * Batch compute proximity for multiple properties
    */
   async batchComputeProximity(
-    properties: Array<{ id: string; latitude: number; longitude: number; address?: string }>
+    properties: Array<{
+      id: string;
+      latitude: number;
+      longitude: number;
+      address?: string;
+      city?: string;
+      state?: string;
+      county?: string;
+      zip?: string;
+      parcelId?: string;
+    }>
   ): Promise<Map<string, ProximityScores>> {
     const results = new Map<string, ProximityScores>();
     
@@ -538,7 +601,16 @@ export class ProximityService {
         const scores = await this.computeProximityScores(
           prop.latitude,
           prop.longitude,
-          { propertyId: prop.id, address: prop.address, saveToDb: true }
+          {
+            propertyId: prop.id,
+            parcelId: prop.parcelId,
+            address: prop.address,
+            city: prop.city,
+            state: prop.state,
+            county: prop.county,
+            zip: prop.zip,
+            saveToDb: true,
+          }
         );
         results.set(prop.id, scores);
         
