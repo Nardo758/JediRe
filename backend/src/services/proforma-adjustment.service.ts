@@ -1339,6 +1339,19 @@ export interface DealFinancials {
       t07LeaseUpWeeksTo95: number | null;
       stabilizedOccupancyPct: number | null;
       confidence: number | null;
+      preLeasedPct?: number | null;
+      peakDownUnits?: number | null;
+      postRenoAbsorptionLagWks?: number | null;
+    } | null;
+    peerBenchmark?: {
+      nPeerProperties: number | null;
+      submarketPercentile: { vacancy: number | null; rent: number | null; leaseVelocity: number | null } | null;
+      peerDistribution: {
+        vacancy:       { p25: number | null; p50: number | null; p75: number | null };
+        rent:          { p25: number | null; p50: number | null; p75: number | null };
+        leaseVelocity: { p25: number | null; p50: number | null; p75: number | null };
+      } | null;
+      dataSource: string | null;
     } | null;
   } | null;
   assumptions: {
@@ -2058,6 +2071,7 @@ export async function getDealFinancials(
     leaseUp: trafficProjection.leaseUp,
     calibrated: trafficProjection.calibrated,
     leasingSignals: trafficProjection.leasingSignals,
+    peerBenchmark: trafficProjection.peerBenchmark ?? null,
   } : proformaAssumRes.rows.length > 0 ? (() => {
     // No traffic projection but we have M07-calibrated scalars
     const pa = proformaAssumRes.rows[0];
@@ -2078,6 +2092,7 @@ export async function getDealFinancials(
         lastCalibrated: pa.last_recalculation?.toISOString?.() ?? null,
       },
       leasingSignals: null,
+      peerBenchmark: null,
     };
   })() : null;
 
