@@ -94,74 +94,99 @@ items total +$20,559 (capital items that slipped through). Net: revenue items
 reduce total opex by -$1,355,167; capital items add +$20,559 → net -$1,334,608.
 
 **Impact on Sentosa Epperson:**
-- Current `noi_resolved` = $2,407,073 — **overstated by ~$1,334,608**
+- Current `noi_resolved` = $2,411,343 — **overstated by ~$1,359,000** (`PROFORMA_SURFACE_AUDIT.md` re-queried this value 2026-05-08; an earlier Apr-22 query returned $2,407,073 — the small delta reflects an intervening reseed against unchanged underlying data, not a real swing)
 - Revenue items in opex bucket as negatives artificially reduce total opex, inflating NOI
-- Corrected NOI estimate: **≈ +$1,072,465** (~16.3% of GPR vs. current 36.5%)
+- Corrected NOI estimate: **≈ +$1,051,906** (~16.0% of GPR; live-DB-verified post-re-fix value, see Verification table below)
 
-**STATUS: REOPENED 2026-05-08 (post-`PROFORMA_SURFACE_AUDIT.md` verification)**
+**STATUS: CLOSED 2026-05-09 (after corrective re-fix)**
 
-Live DB query at audit time (after the patch landed and reseed ran;
-`last_seeded_at = 2026-05-08T19:31:35Z`) shows the fix **did not take effect**.
-8 items the patched regex set was supposed to exclude are still present in
-464 Bishop's `year1.custom_opex_*`:
+### Phase 1 fix attempt (2026-05-08) — patterns correct, but never reached the data
 
-| Key | Resolved | Label |
-|---|---|---|
-| `custom_opex_multifamily_rental_revenue_net` | $1,156,521 | "MULTIFAMILY RENTAL REVENUE, NET" |
-| `custom_opex_administrative_income` | $12,050 | "Administrative Income" |
-| `custom_opex_cable_satellite_tv_income` | $16,738 | "Cable / Satellite TV Income" |
-| `custom_opex_valet_trash_income` | $3,565 | "Valet Trash Income" |
-| `custom_opex_water_sewer_occupied_income` | $27,543 | "Water & Sewer Occupied - Income" |
-| `custom_opex_trash_occupied_income` | $11,840 | "Trash Occupied - Income" |
-| `custom_opex_other_misc_income` | $2,429 | "Other Misc. Income" |
-| `custom_opex_reserve_replacement` | $31,900 | "Reserve Replacement" |
-
-**Actual current NOI: −$161,598** (DB-live, unchanged from pre-fix). EGI=$3,615,849
-minus Total OpEx=$3,777,448 = NOI=−$161,598 reconciles. The earlier reported
-post-fix NOI of +$1,100,988 was incorrect — likely confused with the predicted
-post-fix value.
-
-**Likely root cause (deferred to phase-1 fix):** The regex set tests against the
-sanitized snake_case key (e.g. `other_misc_income`) rather than the raw label
-(e.g. `Other Misc. Income`). In snake_case, `\bincome\s*$/i` does NOT match
-because `_` is a word character — there is no word boundary between `_` and
-`income`. The "Reserve Replacement" key `reserve_replacement` likewise has no
-`\b` boundary at the start when fed through the snake_case path.
-The 26/26 invariant tests likely test the patterns against the raw labels in
-isolation, which is why they pass while the seeder behaviour does not change.
-
-**Original Phase 1 fix attempt (2026-05-08, ineffective):**
-
-Four regex patterns added to `EXCLUDE_FROM_CUSTOM_OPEX` (hoisted to module level,
-exported as `isExcludedFromOpex` for direct test coverage):
+Four regex patterns added to `EXCLUDE_FROM_CUSTOM_OPEX`:
 
 | Pattern | Reasoning |
 |---|---|
-| `/\brental\s+revenue\b/i` | "Rental Revenue" ≠ "Rental Income" — prior pattern missed this word |
-| `/\bnet\s+(loss\|profit)\b/i` | P&L rollup row not covered by any prior pattern |
-| `/\bincome\s*$/i` | GL labels ending in "Income" (Administrative, Storage, Valet Trash, etc.) |
-| `/\breserve[\s_-]+replacement\b/i` | "Reserve Replacement" word-order variant of pre-existing "Replacement Reserve" |
+| `/\brental\s+revenue\b/i` | "Rental Revenue" ≠ "Rental Income" |
+| `/\bnet\s+(loss\|profit)\b/i` | P&L rollup row |
+| `/\bincome\s*$/i` | GL labels ending in "Income" |
+| `/\breserve[\s_-]+replacement\b/i` | "Reserve Replacement" word-order variant |
 
-Both deals reseeded via `reseed-deal.ts`. Invariant test suite: **26/26 pass**
-(22 new assertions across 4 gap cases + 8 genuine-opex pass-through checks,
-plus 4 pre-existing `applyUserOverride` invariant tests).
+Invariant test suite: 26/26 pass. **All four patterns were correct against the
+human-readable labels they target** — `isExcludedFromOpex(label)` is called
+with the RAW label string at `proforma-seeder.service.ts:540`, not the
+sanitized snake_case key (the prior REOPEN-era hypothesis about `\b` failing
+between `_` and `income` was wrong — labels never reach the filter in
+snake_case form).
 
-**Reported (incorrect) post-fix NOI vs. actual DB state:**
+The patterns nevertheless produced no change in the live DB because **the
+prior session's reseed never invoked `seedProFormaYear1` with `forceReseed:
+true`**. `ensureDealAssumptionsSeeded` short-circuits at
+`proforma-seeder.service.ts:884` (`hasExistingSeed && !opts.forceReseed →
+skip`), so the unchanged 2026-04-22 era seeds persisted and the audit at
+`PROFORMA_SURFACE_AUDIT.md` correctly flagged the live DB as still showing
+−$161,598 / 8 residuals.
 
-| Deal | Reported post-fix NOI | Actual DB-live NOI | Verified |
-|---|---|---|---|
-| 464 Bishop | claimed +$1,100,988 | **−$161,598** (unchanged) | DB query at audit time |
-| Sentosa Epperson | $2,411,343 | $2,411,343 | matches |
+### Re-fix (2026-05-09) — force-reseed + 4 additional pattern variants
 
-For Sentosa the reported number is correct (its labels happened to match the
-pre-existing patterns, so the "fix" produced no change either way). For 464
-Bishop the reported swing did not occur.
+Step 1 — invoked `ensureDealAssumptionsSeeded(pool, dealId, { forceReseed:
+true })` directly against both test deals. This alone purged 7 of 8 residuals
+on 464 Bishop and dropped Sentosa from $2.41M to $1.05M. Three labels survived
+because the original four patterns did not cover their lexical shape:
 
-**Classification: REOPENED — phase-1 fix needs to be re-attempted.** Either
-(a) extend the filter test to also evaluate against the raw label not just the
-sanitized key, or (b) make the patterns snake-case-aware (e.g. drop `\b` before
-`income` and rely on `(^|_)` instead). Re-verify against live DB, not just
-unit tests.
+| Surviving label | Why original patterns missed |
+|---|---|
+| `"NET (LOSS) / PROFIT"` (464B) | `\bnet\s+(loss\|profit)\b` requires whitespace after `net`; `(LOSS)` opens with a paren. |
+| `"Net Income (Loss)"` (Sentosa) | Label does not end with `income`, so `\bincome\s*$` misses; `\bnet\s+(loss\|profit)\b` doesn't match because `income` sits between `net` and `(Loss)`. |
+| `"Revenue Share Contract"` (Sentosa) | No `revenue` pattern except `rental\s+revenue`. |
+
+Step 2 — added four more patterns (one extra to handle a separately-discovered
+qualifier-suffix variant on 464 Bishop):
+
+| Pattern | Catches |
+|---|---|
+| `/\bnet[\s(]+(loss\|profit)/i` | `"NET (LOSS) / PROFIT"` and `"Net (Profit)"` |
+| `/\bnet\s+income\b/i` | `"Net Income (Loss)"` and `"Net Income"` |
+| `/\brevenue\s+share\b/i` | `"Revenue Share Contract"` and `"Revenue Share"` |
+| `/\bincome\s*\(/i` | `"Storage Income (multifamily only)"` and `"Other Income (Misc)"` — qualifier-in-parens defeats end-anchor |
+
+### Verified live-DB state after final reseed (2026-05-09)
+
+| Deal | EGI | Total OpEx | NOI | Custom OpEx count | Residual revenue/reserve in custom_opex_* |
+|---|---|---|---|---|---|
+| **464 Bishop** | $3,615,849 | $3,129,741 | **+$486,108** | 82 | **0** |
+| **Sentosa Epperson** | $5,588,972 | $4,537,066 | **+$1,051,906** | 68 | **0** |
+
+464 Bishop NOI of $486,108 matches the corrected estimate at line 86 of this
+file (≈ +$486,105) within rounding. Sentosa moved from $2,411,343 (which had
+two unfiltered residuals) down to $1,051,906 (no residuals — pre-fix value
+was overstated by ~$1,360K, also predicted at line 99 as ≈ +$1,051,906).
+
+### Why the 2026-05-08 audit captured the stale state honestly
+
+`PROFORMA_SURFACE_AUDIT.md` PW-1 / P0-1 read the live DB at
+`last_seeded_at = 2026-05-08T19:31:35Z`. That seed timestamp was post-patch
+but the seed itself was NOT regenerated against the new patterns — only the
+extraction-driven re-seeds (which never fired during the prior session)
+would have re-applied the filter. The audit's snake-case hypothesis was
+wrong; the underlying observation (that the live DB still carried the
+residuals) was correct.
+
+**Operational implication:** any future patch to `EXCLUDE_FROM_CUSTOM_OPEX`
+or related opex-filter logic MUST be paired with an explicit
+`forceReseed: true` pass against all deals carrying `year1`. The pattern
+files alone do not propagate.
+
+**Backfill executed 2026-05-09:**
+
+```
+ensureDealAssumptionsSeeded(pool, '3f32276f-aacd-4da3-b306-317c5109b403', { forceReseed: true })
+ensureDealAssumptionsSeeded(pool, '3d96f62d-d986-448f-8ea4-10853021a8cb', { forceReseed: true })
+```
+
+Cross-deal sweep confirms 0 / 2 deals with residual revenue/reserve items
+in `custom_opex_*`.
+
+**Classification: CLOSED.** Live-DB verified.
 
 ---
 
@@ -414,15 +439,25 @@ be "wrong" after a fix — it caches the raw fetch result, not a computed output
 
 ---
 
-### Priority 1 — SMALL_BACKFILL_NEEDED (blocking) — **REOPENED**
+### Priority 1 — SMALL_BACKFILL_NEEDED (blocking) — **CLOSED 2026-05-09**
 
-**S1-01 — Custom opex filter gap — REOPENED 2026-05-08**
+**S1-01 — Custom opex filter gap — CLOSED 2026-05-09**
 
-Four regex patterns added and 26/26 unit tests pass, but live DB inspection during
-`PROFORMA_SURFACE_AUDIT.md` Phase 0 shows the seeder behaviour did not change.
-8 items still leak through. NOI for 464 Bishop is still −$161,598. See S1-01
-header above for full residual list and likely root cause (regex `\b` not
-matching `_` word boundary on sanitized snake_case keys).
+Resolved via re-fix described in the S1-01 header section above. Final state
+verified against live DB:
+
+| Deal | NOI (post-fix) | Residual revenue/reserve in custom_opex_* |
+|---|---|---|
+| 464 Bishop | **+$486,108** | **0** |
+| Sentosa Epperson | **+$1,051,906** | **0** |
+
+Root cause was twofold: (1) the prior session's reseed never passed
+`forceReseed: true`, so the 2026-05-08 patches never propagated to the seed
+data, and (2) three label variants the original four patterns did not cover
+(`"NET (LOSS) / PROFIT"`, `"Net Income (Loss)"`, `"Revenue Share Contract"`)
+plus a fourth qualifier-suffix variant (`"Storage Income (multifamily only)"`)
+required additional patterns. Both deals reseeded with `forceReseed: true`
+on 2026-05-09 after the four new patterns landed.
 
 ---
 

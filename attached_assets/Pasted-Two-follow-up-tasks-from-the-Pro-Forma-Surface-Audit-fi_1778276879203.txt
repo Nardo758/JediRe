@@ -1,0 +1,94 @@
+Two follow-up tasks from the Pro Forma Surface Audit findings:
+
+TASK A — Correct S1-01 (the fix didn't actually work)
+
+Phase 0 verification first:
+
+1. Query the live DB on 464 Bishop. List all 8 residual GL labels
+   that are still leaking into custom_opex_* despite S1-01's
+   regex patches. Report the snake_case form (the actual stored
+   key), not the human-readable label.
+
+2. For each residual:
+   - Which of the 4 new patterns SHOULD have matched it?
+   - Why didn't it match? (likely: word boundary issue with _)
+   - What pattern variation WOULD match the snake_case form?
+
+3. Confirm Sentosa Epperson's actual NOI in DB (the prior session
+   reported $2.4M → $2.41M, but if the regex didn't fire, this
+   number may also be stale).
+
+4. Confirm whether any OTHER deal in the system has the same leak
+   pattern (likely none beyond the 2 test deals, but verify).
+
+Phase 1 fix (only after Phase 0 verifies the issue):
+
+The fix is normalization-first, filter-second:
+
+- Before applying EXCLUDE_FROM_CUSTOM_OPEX patterns, normalize
+  the input by replacing `_` with space. This way the existing
+  patterns work for both human-readable labels and snake_case keys.
+- File: wherever the EXCLUDE_FROM_CUSTOM_OPEX patterns are applied
+  (find from S1-01's previous patch site).
+- Update invariant tests to feed BOTH forms (e.g.,
+  "Administrative Income" AND "administrative_income") as inputs;
+  assert both are excluded.
+
+After fix:
+- Re-run reseed on 464 Bishop. Verify the 8 residuals are now
+  excluded.
+- Verify NOI moves to the predicted ~$486K (NOT $1.1M, since
+  $1.1M was the wrong number from the prior session).
+- Re-run reseed on Sentosa Epperson. Note any movement.
+- Update DORMANT_IMPROVEMENTS_AUDIT.md and PROFORMA_SURFACE_AUDIT.md
+  with the corrected post-fix state. Replace the prior incorrect
+  numbers with verified DB queries.
+
+CRITICAL — do not report success without DB verification. After
+the reseed, run an explicit query against the live DB and paste
+the result. If the numbers don't match the expected, report the
+gap, don't hand-wave.
+
+Branch: claude/fix-s1-01-correctly. One commit. Acceptance: live
+DB query confirms 0 residual revenue/reserve items in custom_opex_*
+on both deals.
+
+TASK B — Verify other recently-shipped work is actually live
+
+Three "shipped" items from earlier sessions need DB-level
+verification (not unit-test-level):
+
+1. Item 1 (#623) — Purchase price dual-write on creation/PATCH
+   - Create a synthetic test deal via the inline-deals POST
+     endpoint with budget = $5M
+   - Query the resulting row: confirm both deals.budget = $5M
+     AND deal_data.purchase_price = $5M
+   - PATCH the deal with budget = $6M; confirm both columns
+     update
+   - Report findings; flag if dual-write doesn't actually fire
+
+2. Item 2 (#P2-A) — Unit mix → GPR toggle
+   - On 464 Bishop or any test deal, set the toggle on
+   - Query deal_assumptions: confirm year1.gpr.resolution =
+     'unit_mix' and resolved value = sum(unit_mix.count × rent × 12)
+   - Toggle off; confirm reverts
+   - Report findings
+
+3. Item 3 (Part A forceReseed) — extraction pipeline hook
+   - Trigger an extraction capsule write on a test deal (or simulate)
+   - Confirm forceReseed fires and other_income_per_unit refreshes
+   - Confirm operator overrides on unrelated fields are preserved
+   - Report findings
+
+For each, classify:
+   - VERIFIED_LIVE — DB state matches what the prior session
+     reported
+   - DIVERGED — DB state doesn't match; describe the gap
+   - INCONCLUSIVE — couldn't fully verify; describe what would
+     close the gap
+
+This is read-mostly with light synthetic writes for verification.
+No fixes — if any item has DIVERGED, scope a separate fix task.
+
+Branch: claude/verify-shipped-work-live-state. Single commit
+(verification report appended to relevant audit docs).

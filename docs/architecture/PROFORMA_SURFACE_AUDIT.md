@@ -52,8 +52,8 @@ guards at lines 887, 888, 1027, 1031, 1097, 1125, 1130, 1203, 1204, 1225, 1226, 
 | **GPR FROM UNIT MIX pill** | 744–782 | `data.rentRollSummary.useUnitMixForGpr` | PARTIALLY_WIRED | RENDERS_CORRECTLY when conditions met; **hidden** when `!hasUnitMix && !useUM` | 464 Bishop: `unit_mix={}` empty → **pill hidden**; consistent with `F9_DATA_FLOW_AUDIT_PHASE1.md` Flow 1 (P2-A flag activation gap) |
 | KPI pill: GPR | 784 | `byField['gpr'].resolved` | WIRED_AND_POPULATED | RENDERS_CORRECTLY | 464B $4.90M; Sentosa $6.59M |
 | KPI pill: EGI | 785 | `egiResolved` (computed) | WIRED_AND_POPULATED | RENDERS_CORRECTLY | 464B $3.62M; Sentosa $5.59M |
-| KPI pill: NOI | 786 | `noiRow.resolved` | WIRED_AND_POPULATED | **RENDERS_INCORRECTLY** for 464 Bishop (see PW-1) | 464B **−$161,598** (DB confirmed; residuals not purged); Sentosa $2,411,343 |
-| KPI pill: NOI/Unit | 787 | `noiRow.resolved / totalUnits` | WIRED_AND_POPULATED | inherits NOI correctness | 464B −$696/unit; Sentosa $7,932/unit |
+| KPI pill: NOI | 786 | `noiRow.resolved` | WIRED_AND_POPULATED | RENDERS_CORRECTLY (post-PW-1 re-fix 2026-05-09) | 464B **+$486,108**; Sentosa **+$1,051,906** (live-DB after `forceReseed:true`; pre-fix values were 464B −$161,598 / Sentosa $2,411,343) |
+| KPI pill: NOI/Unit | 787 | `noiRow.resolved / totalUnits` | WIRED_AND_POPULATED | inherits NOI correctness | 464B $2,096/unit; Sentosa $3,460/unit |
 | Integrity check chips (IC-01…IC-09) | 798–806 | `checks[]` from `useIntegrityChecks` | WIRED_AND_POPULATED | RENDERS_CORRECTLY | green ✓ for OK, amber ⚠ for warn |
 | REPARSE button | 807–820 | `handleReparse` triggers ingestion re-run | WIRED_AND_POPULATED | RENDERS_CORRECTLY | functional |
 
@@ -146,8 +146,8 @@ Platform as fallback, OM as optional.
 | Row Label | Field Key | Source | Source Status | Render Status | 464 Bishop evidence | Sentosa evidence |
 |---|---|---|---|---|---|---|
 | TOTAL OPEX | `total_opex` | derived (sum of controllable + non-controllable + custom) | WIRED_AND_POPULATED | RENDERS_CORRECTLY | resolution=`platform_fallback`, resolved=$3.78M | resolved=$3.18M |
-| **NET OPERATING INCOME** | `noi` | derived (`egi − total_opex`) | WIRED_AND_POPULATED | **RENDERS_INCORRECTLY** for 464 Bishop — see PW-1 | resolution=`platform_fallback`, om=$3.0M (broker NOI), **resolved=−$161,598** (DB live; arithmetic checks: $3,615,849 − $3,777,448 = −$161,598 ✓) | resolved=$2,411,343 |
-| NOI per Unit | `noi_per_unit` | derived | WIRED_AND_POPULATED | inherits NOI correctness | −$696 (464B) | $7,932 (Sentosa) |
+| **NET OPERATING INCOME** | `noi` | derived (`egi − total_opex`) | WIRED_AND_POPULATED | RENDERS_CORRECTLY (post-PW-1 re-fix 2026-05-09) | resolution=`platform_fallback`, om=$3.0M (broker NOI), **resolved=+$486,108** (live-DB after `forceReseed:true`; arithmetic checks: $3,615,849 − $3,129,741 = $486,108 ✓; pre-fix was −$161,598) | resolved=**$1,051,906** (pre-fix was $2,411,343 — overstated by ~$1.36M from two unfiltered residuals) |
+| NOI per Unit | `noi_per_unit` | derived | WIRED_AND_POPULATED | inherits NOI correctness | $2,096 (464B) | $3,460 (Sentosa) |
 | **NOI Margin** | `noi_margin` | not seeded as a `year1` key | NOT_WIRED | n/a — appears computed at render time as `noi/egi` | **field absent from year1** for both deals | absent |
 
 ### 1I — CapEx & Reserves block (line 1321–1415)
@@ -210,7 +210,7 @@ text from `narrative_text` table (TTL-cached, post-fix from prior session).
 
 | ID | Row / Field | Condition | File:Line |
 |---|---|---|---|
-| **PW-1** | Custom OpEx filter — **S1-01 fix DID NOT TAKE EFFECT on live DB** (CONFIRMED) | Re-queried 464 Bishop live DB at audit time (`last_seeded_at = 2026-05-08T19:31:35Z`, after the patch). **8 items remain that the patched regex set should have excluded:** `custom_opex_multifamily_rental_revenue_net` ($1,156,521), `custom_opex_net_loss_profit` (−$615,852, missing from this run but seen earlier), `custom_opex_administrative_income` ($12,050), `custom_opex_cable_satellite_tv_income` ($16,738), `custom_opex_valet_trash_income` ($3,565), `custom_opex_water_sewer_occupied_income` ($27,543), `custom_opex_trash_occupied_income` ($11,840), `custom_opex_other_misc_income` ($2,429), `custom_opex_reserve_replacement` ($31,900). **Net effect: NOI shown to operator is −$161,598 instead of corrected ≈ +$1.10M.** Likely root cause (out-of-scope for Phase 0): regex tested against snake_case key, not raw label, so `\bincome\s*$` doesn't match `..._income` (no word boundary before `income` when preceded by `_`). DORMANT S1-01 should be **REOPENED**. | `proforma-seeder.service.ts` `EXCLUDE_FROM_CUSTOM_OPEX` + `isExcludedFromOpex` |
+| **PW-1** | Custom OpEx filter — **CLOSED 2026-05-09 (corrective re-fix)** | Phase 0 hypothesis (snake_case `\b` boundary issue) was wrong. Actual root cause was that the prior session's reseed never passed `forceReseed: true`, so the 2026-05-08 patterns never propagated. After running `ensureDealAssumptionsSeeded(..., {forceReseed: true})` on both deals, 7 of 8 residuals on 464 Bishop and the Sentosa residuals were purged. Three additional label variants (`"NET (LOSS) / PROFIT"` paren-after-net, `"Net Income (Loss)"` net-income mid-label, `"Revenue Share Contract"` revenue-share line) plus a fourth (`"Storage Income (multifamily only)"` qualifier-in-parens) required four new patterns added 2026-05-09. **Final live-DB state (verified):** 464 Bishop NOI = **+$486,108** with 0 residuals; Sentosa NOI = **+$1,051,906** with 0 residuals. Cross-deal sweep confirms 0/2 affected deals. See `DORMANT_IMPROVEMENTS_AUDIT.md` S1-01 (CLOSED) for full pattern list and operational implication. | `proforma-seeder.service.ts` lines 87–115 (patterns 90–117), 884 (`forceReseed` guard) |
 | **PW-2** | (consolidated into WBB-1 — divergence badge missing) | — | — |
 | **PW-3** | Insurance T12 layer null (464 Bishop) — **extraction-coverage gap** | t12=null, om=$46,400, override=$46,400. T12 PDF has insurance lines but extraction missed them. No integrity check fires when t12 is null but other layers populate. **Reclassified from WBB-1 in earlier draft** — this is upstream extraction gap, not render bug. | `proforma-seeder.service.ts:570–577`; `useIntegrityChecks` |
 | **PW-4** | GPR FROM UNIT MIX pill | Visible only when `hasUnitMix \|\| useUnitMixForGpr`. 464 Bishop has empty `unit_mix` → pill hidden, with no UI affordance to populate the unit mix from this surface. Reproduces the F9 Phase 1 audit P2-A finding. | `ProFormaSummaryTab.tsx:744–782` |
@@ -240,7 +240,7 @@ Ranked by **operator-impact** (what the user sees, not what's hardest to build).
 
 | ID | Finding | Why P0 | Recommended phase-1 action |
 |---|---|---|---|
-| **P0-1** | **PW-1 S1-01 fix did not take effect — CONFIRMED LIVE.** 464 Bishop NOI displayed to operator is **−$161,598** (DB live). 8 residual revenue/reserve items remain in `custom_opex_*` despite the patch landing. Total distortion ≈ $1.26M of negative NOI vs. corrected ≈ +$1.10M. | The single highest-impact silent error on the surface. Distorts NOI, NOI/Unit KPI pill, NOI Bridge, Going-In Cap, every cap-stack-derived metric, and downstream IRR. | **Reopen DORMANT S1-01.** Investigate whether (a) regex tests against snake_case keys instead of raw labels (no `\b` boundary before `_income`), or (b) reseed didn't reload patterns. Re-verify against live DB after refix. |
+| **P0-1** | **PW-1 S1-01 — RESOLVED 2026-05-09.** 464 Bishop NOI now **+$486,108** (verified live-DB). Sentosa NOI corrected to **+$1,051,906** (was overstated at $2,411,343). 0 residual revenue/reserve items in `custom_opex_*` on both deals. Phase 0 snake_case hypothesis was wrong — actual root cause was `forceReseed: true` never being passed, plus 4 additional label variants needing patterns. See `DORMANT_IMPROVEMENTS_AUDIT.md` S1-01 (CLOSED). | Was the single highest-impact silent error; resolved. | **Action complete.** Operational implication: any future patch to `EXCLUDE_FROM_CUSTOM_OPEX` must be paired with explicit `forceReseed:true` against all `year1`-bearing deals — pattern files alone do not propagate. |
 | **P0-2** | **WBB-1 Replacement Reserves divergence** (464 Bishop): OM=$46,400 vs override=$250, no badge. Operator sees $250 with no indication the OM said two orders of magnitude higher. If $250 is a fat-finger override, the deal is silently being underwritten with no reserves. | Operator-confidence-killing silent error. Reserves directly affect NOI After Reserves and IRR. | Add divergence badge when `Math.abs(override - om) / om > 0.5`. |
 
 ### P1 — Missing number prevents IRR/EM/CoC computation or core deal-screening number
@@ -278,7 +278,7 @@ Findings in this audit consistent with prior audit docs:
 
 | Finding here | Prior audit reference |
 |---|---|
-| **PW-1 Custom OpEx residual** | `DORMANT_IMPROVEMENTS_AUDIT.md` S1-01 — **was marked CLOSED 2026-05-08 but this audit's live-DB verification shows the fix did not take effect; recommend REOPEN.** Concrete evidence: 8 items still present, NOI unchanged at −$161,598. |
+| **PW-1 Custom OpEx residual** | `DORMANT_IMPROVEMENTS_AUDIT.md` S1-01 — REOPENED 2026-05-08 then **CLOSED 2026-05-09** after corrective re-fix (4 new patterns + `forceReseed:true` against both test deals). Live-DB confirms 0 residuals on both deals; 464B NOI = $486,108, Sentosa NOI = $1,051,906. |
 | WBB-1, PW-3, PW-7 (T12 extraction-coverage gaps + missing divergence badge) | `DORMANT_IMPROVEMENTS_AUDIT.md` S1-04 OM layer gap (CLOSED — folded into S1-01 reseed pass) |
 | Real Estate Taxes resolution to t12 over tax_bill | `DORMANT_IMPROVEMENTS_AUDIT.md` S1-05 IC-04 tax tie-break (MONITOR; both deals resolve to t12 as expected) |
 | DS-2 GPR triple-source | `F9_DATA_FLOW_AUDIT_PHASE1.md` Flow 1 P2-A; F9 Tier 1 Blockers |
@@ -303,7 +303,7 @@ Of 22 distinct findings (Section 2), evidence drawn from test deals:
 | WBB-2 (other income sub-rows) | both | both |
 | NW-1 through NW-5 | both | both |
 | NW-6 (Sentosa reserves no-fallback) | n/a | ✓ primary |
-| PW-1 (S1-01 residuals confirmed live) | ✓ primary (8 items, $1.26M distortion) | partial (Sentosa had fewer affected labels) |
+| PW-1 (S1-01 residuals — CLOSED 2026-05-09 with 0 residuals) | ✓ primary (8 → 0; NOI −$161K → +$486K) | ✓ confirmed (2 → 0; NOI $2.41M → $1.05M) |
 | PW-3 (Insurance T12 extraction gap) | ✓ primary | n/a |
 | PW-4 (GPR FROM UNIT MIX hidden) | ✓ primary | partial |
 | PW-5 (BROKER VIEW empty for no-OM deal) | n/a | ✓ primary |

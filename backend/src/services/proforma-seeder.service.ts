@@ -70,6 +70,19 @@ const now = () => new Date().toISOString();
  *                                    (Administrative Income, Storage Income, etc.)
  *   /\breserve[\s_-]+replacement\b/i — "Reserve Replacement" word-order variant;
  *                                    prior pattern only matched "Replacement Reserve"
+ *
+ * S1-01 follow-up patches (2026-05-09 — verified live-DB residuals after
+ * forceReseed:true exposed three remaining label variants the original
+ * patterns could not match):
+ *   /\bnet[\s(]+(loss|profit)/i   — "NET (LOSS) / PROFIT" — open-paren
+ *                                    separator after "net" defeated \s+ (LOSS)
+ *   /\bnet\s+income\b/i           — "Net Income (Loss)" — does not end with
+ *                                    "income" so \bincome\s*$ misses it
+ *   /\brevenue\s+share\b/i        — "Revenue Share Contract" — revenue-side
+ *                                    item in property GLs; exclude by name
+ *   /\bincome\s*\(/i              — "Storage Income (multifamily only)" —
+ *                                    parenthesized qualifier after "income"
+ *                                    defeats the end-anchored \bincome\s*$
  */
 export const EXCLUDE_FROM_CUSTOM_OPEX: RegExp[] = [
   // Revenue lines
@@ -77,12 +90,15 @@ export const EXCLUDE_FROM_CUSTOM_OPEX: RegExp[] = [
   /\b(effective\s+gross|collected)\s+(income|rent|revenue)\b/i,
   /\b(rental|other)\s+income\b/i,
   /\brental\s+revenue\b/i,
+  /\brevenue\s+share\b/i,
   /\b(net\s+rental|nri)\b/i,
   /\bloss\s+to\s+lease\b/i,
   /\bvacancy\s+(loss)?\b/i,
   /\bconcession/i,
   /\bbad\s+debt\b/i,
   /\bincome\s*$/i,
+  /\bincome\s*\(/i,
+  /\bnet\s+income\b/i,
   // Rollup / subtotal rows
   /^total\s+/i,
   /\btotal\s+(income|revenue|expenses?|opex|operating)\b/i,
@@ -91,6 +107,7 @@ export const EXCLUDE_FROM_CUSTOM_OPEX: RegExp[] = [
   /\bcontrollable\s+operating/i,
   /\b(sub)?total\b/i,
   /\bnet\s+(loss|profit)\b/i,
+  /\bnet[\s(]+(loss|profit)/i,
   // Below-the-line (non-operating)
   /\bdebt\s+service/i,
   /\binterest\s+expense/i,

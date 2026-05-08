@@ -153,6 +153,33 @@ describe('isExcludedFromOpex — S1-01 gap patterns', () => {
     });
   });
 
+  describe('S1-01 follow-up gaps (live-DB residuals after forceReseed:true)', () => {
+    it('excludes "NET (LOSS) / PROFIT" — open-paren after net', () => {
+      expect(isExcludedFromOpex('NET (LOSS) / PROFIT')).toBe(true);
+    });
+    it('excludes "Net (Profit)" — paren-wrapped profit', () => {
+      expect(isExcludedFromOpex('Net (Profit)')).toBe(true);
+    });
+    it('excludes "Net Income (Loss)" — net-income mid-label', () => {
+      expect(isExcludedFromOpex('Net Income (Loss)')).toBe(true);
+    });
+    it('excludes "Net Income" alone', () => {
+      expect(isExcludedFromOpex('Net Income')).toBe(true);
+    });
+    it('excludes "Revenue Share Contract"', () => {
+      expect(isExcludedFromOpex('Revenue Share Contract')).toBe(true);
+    });
+    it('excludes "Revenue Share"', () => {
+      expect(isExcludedFromOpex('Revenue Share')).toBe(true);
+    });
+    it('excludes "Storage Income (multifamily only)" — qualifier suffix', () => {
+      expect(isExcludedFromOpex('Storage Income (multifamily only)')).toBe(true);
+    });
+    it('excludes "Other Income (Misc)" — generic qualifier suffix', () => {
+      expect(isExcludedFromOpex('Other Income (Misc)')).toBe(true);
+    });
+  });
+
   describe('genuine opex labels must NOT be excluded', () => {
     it('passes through "Payroll & Benefits"', () => {
       expect(isExcludedFromOpex('Payroll & Benefits')).toBe(false);
