@@ -10,6 +10,7 @@ import { useDealMode } from '../../../hooks/useDealMode';
 import { CompetitionSection } from './CompetitionSection';
 import { SupplySection } from './SupplySection';
 import { MarketSection } from './MarketSection';
+import { DealNewsEventsPanel } from './DealNewsEventsPanel';
 
 interface MarketIntelligenceSectionProps {
   deal: Deal;
@@ -21,7 +22,7 @@ export const MarketIntelligenceSection: React.FC<MarketIntelligenceSectionProps>
   isPremium = false 
 }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
-  const [activeTab, setActiveTab] = useState<'overview' | 'competition' | 'supply' | 'market'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'competition' | 'supply' | 'market' | 'news'>('overview');
 
   return (
     <div className="space-y-6">
@@ -57,6 +58,12 @@ export const MarketIntelligenceSection: React.FC<MarketIntelligenceSectionProps>
               icon="📈"
               label="Market Trends & Demographics"
             />
+            <TabButton
+              active={activeTab === 'news'}
+              onClick={() => setActiveTab('news')}
+              icon="📰"
+              label="Market News"
+            />
           </nav>
         </div>
 
@@ -66,6 +73,7 @@ export const MarketIntelligenceSection: React.FC<MarketIntelligenceSectionProps>
           {activeTab === 'competition' && <CompetitionSection deal={deal} />}
           {activeTab === 'supply' && <SupplySection deal={deal} />}
           {activeTab === 'market' && <MarketSection deal={deal} />}
+          {activeTab === 'news' && <DealNewsEventsPanel dealId={deal.id} />}
         </div>
       </div>
 

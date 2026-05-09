@@ -177,6 +177,114 @@ router.get('/events/upcoming/:submarket', async (req: Request, res: Response) =>
 });
 
 /**
+ * GET /api/v1/proximity/events/news/by-deal/:dealId
+ * Get news-sourced market events near a deal's location
+ *
+ * Resolves the deal's coordinates from (in order):
+ *   1. deals.deal_data->'coordinates' { lat, lng }
+ *   2. A deterministic city centroid for known metro areas (fallback)
+ *
+ * Returns events where source_type='news', sorted by effective_date DESC,
+ * capped at 10 by default.
+ */
+router.get('/events/news/by-deal/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { radius, limit } = req.query;
+    const parsedRadius = parseFloat(radius as string);
+    const radiusMiles = Number.isFinite(parsedRadius) && parsedRadius > 0
+      ? Math.min(parsedRadius, 50)
+      : 3.0;
+    const parsedLimit = parseInt(limit as string);
+    const eventLimit = Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(parsedLimit, 50)
+      : 10;
+
+    const dealRes = await pool.query(
+      `SELECT id, name, address, city, state,
+              deal_data->'coordinates' AS coordinates
+       FROM deals
+       WHERE id = $1
+       LIMIT 1`,
+      [dealId]
+    );
+
+    if (dealRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    const deal = dealRes.rows[0];
+
+    // Resolve coordinates
+    let lat: number | null = null;
+    let lng: number | null = null;
+    let coordSource: 'deal' | 'city_centroid' | null = null;
+
+    const coords = deal.coordinates;
+    if (coords && typeof coords === 'object') {
+      const cLat = parseFloat(coords.lat);
+      const cLng = parseFloat(coords.lng);
+      if (Number.isFinite(cLat) && Number.isFinite(cLng) && (cLat !== 0 || cLng !== 0)) {
+        lat = cLat;
+        lng = cLng;
+        coordSource = 'deal';
+      }
+    }
+
+    if (lat === null || lng === null) {
+      // Fallback to city centroid for known metros (matches data-matrix.service.ts)
+      const cityCentroids: Record<string, { lat: number; lng: number }> = {
+        'atlanta': { lat: 33.7490, lng: -84.3880 },
+        'midtown': { lat: 33.7870, lng: -84.3833 },
+        'buckhead': { lat: 33.8400, lng: -84.3800 },
+        'sandy springs': { lat: 33.9243, lng: -84.3788 },
+        'marietta': { lat: 33.9526, lng: -84.5499 },
+        'decatur': { lat: 33.7748, lng: -84.2963 },
+        'alpharetta': { lat: 34.0754, lng: -84.2941 },
+        'roswell': { lat: 34.0232, lng: -84.3616 },
+        'dunwoody': { lat: 33.9462, lng: -84.3346 },
+      };
+      const cityKey = (deal.city || '').toLowerCase().trim();
+      const centroid = cityCentroids[cityKey];
+      if (centroid) {
+        lat = centroid.lat;
+        lng = centroid.lng;
+        coordSource = 'city_centroid';
+      }
+    }
+
+    if (lat === null || lng === null) {
+      return res.json({
+        dealId,
+        coordSource: null,
+        radiusMiles,
+        count: 0,
+        events: [],
+        message: 'No coordinates resolved for this deal',
+      });
+    }
+
+    const service = getMarketEventsService(pool);
+    const events = await service.getEventsNearLocation(lat, lng, radiusMiles, {
+      sourceTypes: ['news'],
+      limit: eventLimit,
+      orderBy: 'effective_date_desc',
+    });
+
+    res.json({
+      dealId,
+      coordSource,
+      radiusMiles,
+      count: events.length,
+      events,
+    });
+  } catch (error) {
+    console.error('[Proximity] news/by-deal error:', error);
+    res.status(500).json({ error: 'Failed to get news events for deal' });
+  }
+});
+
+/**
  * GET /api/v1/proximity/events/:eventId
  * Get event with outcomes
  */

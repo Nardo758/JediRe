@@ -28,6 +28,8 @@ export class MarketEventsService {
       startDate?: Date;
       endDate?: Date;
       limit?: number;
+      sourceTypes?: string[];
+      orderBy?: 'proximity_to_today' | 'effective_date_desc';
     } = {}
   ): Promise<MarketEvent[]> {
     const params: any[] = [longitude, latitude, radiusMiles];
@@ -75,7 +77,19 @@ export class MarketEventsService {
       paramIndex++;
     }
     
+    if (options.sourceTypes && options.sourceTypes.length > 0) {
+      whereClause += ` AND me.source_type = ANY($${paramIndex})`;
+      params.push(options.sourceTypes);
+      paramIndex++;
+    }
+    
     const limit = options.limit || 50;
+    
+    const orderClause = options.orderBy === 'effective_date_desc'
+      ? 'ORDER BY me.effective_date DESC NULLS LAST'
+      : `ORDER BY 
+        CASE WHEN me.effective_date > CURRENT_DATE THEN 0 ELSE 1 END,
+        ABS(me.effective_date - CURRENT_DATE)`;
     
     const result = await this.pool.query(`
       SELECT 
@@ -86,9 +100,7 @@ export class MarketEventsService {
         ) / 1609.34 AS distance_miles
       FROM market_events me
       ${whereClause}
-      ORDER BY 
-        CASE WHEN me.effective_date > CURRENT_DATE THEN 0 ELSE 1 END,
-        ABS(me.effective_date - CURRENT_DATE)
+      ${orderClause}
       LIMIT ${limit}
     `, params);
     
