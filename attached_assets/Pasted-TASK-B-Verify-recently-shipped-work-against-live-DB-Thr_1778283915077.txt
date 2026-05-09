@@ -1,0 +1,59 @@
+TASK B — Verify recently-shipped work against live DB
+
+Three "shipped" items from earlier sessions need DB-level
+verification (not unit-test level), since the prior S1-01 finding
+proved unit tests can pass while live behavior doesn't change:
+
+1. Item 1 (#623) — Purchase price dual-write on creation/PATCH
+   - Create a synthetic test deal via inline-deals POST with
+     budget = $5M
+   - Query the resulting row: confirm BOTH deals.budget = $5M
+     AND deal_data.purchase_price = $5M
+   - PATCH the deal with budget = $6M; confirm both columns
+     update
+   - Report findings; flag if dual-write doesn't actually fire
+   - Acceptance: live DB row shows both columns populated after
+     create AND after PATCH
+
+2. Item 2 (#P2-A) — Unit mix → GPR toggle
+   - On any test deal with unit_mix populated, set the toggle on
+     via the UI or the underlying PATCH endpoint
+   - Query deal_assumptions: confirm year1.gpr.resolution =
+     'unit_mix' and year1.gpr.resolved =
+     sum(unit_mix.count × rent × 12)
+   - Toggle off; confirm reverts to the prior resolution layer
+   - Report findings
+
+3. Item 3 (Part A forceReseed) — extraction pipeline hook
+   - Trigger an extraction capsule write on a test deal (re-upload
+     a T-12, OM, or rent roll)
+   - Confirm forceReseed fires from the extraction pipeline (log
+     line, DB updated_at delta, or seeder execution trace)
+   - Confirm other_income_per_unit refreshes to the post-#519
+     correct value
+   - Confirm operator overrides on unrelated fields (e.g.,
+     vacancy_pct.override) are preserved through the reseed
+   - Report findings
+
+For each item, classify:
+   - VERIFIED_LIVE — DB state matches what the prior session
+     reported
+   - DIVERGED — DB state doesn't match; describe the gap with
+     specific numbers
+   - INCONCLUSIVE — couldn't fully verify; describe what would
+     close the gap
+
+CRITICAL: DB-level evidence required, not unit-test or code-
+inspection evidence. After every claimed verification, paste the
+actual query result.
+
+Read-mostly with light synthetic writes (one new deal for Item 1,
+one toggle test for Item 2, one capsule write for Item 3). No
+production data modifications beyond synthetic test deals.
+
+If any item is DIVERGED, do NOT fix in this task. Report the gap
+and exit. Fix is separate greenlight.
+
+Branch: claude/verify-shipped-work-live-state. Append findings as
+new section in DORMANT_IMPROVEMENTS_AUDIT.md or as its own doc
+docs/architecture/SHIPPED_WORK_VERIFICATION.md.
