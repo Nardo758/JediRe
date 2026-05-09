@@ -448,21 +448,24 @@ function buildSeed(
     const v = bpCapsule?.[k];
     return typeof v === 'number' && isFinite(v) ? v : null;
   };
-  const bpVacPct   = bpNum('stabilizedVacancy');
-  const bpLtlPct   = bpNum('lossToLease');
-  const bpConcPct  = bpNum('concessionsPct');
-  const bpBdPct    = bpNum('badDebtPct');
-  const bpMgmtPct  = bpNum('managementFeePct');
-  const bpResPerUt = bpNum('replacementReservesPerUnit');
-  const bpNOI      = bpNum('yearOneNOI') ?? bpNum('stabilizedNOI');
-  const bpPayroll  = bpNum('payrollAnnual');
-  const bpInsur    = bpNum('insuranceAnnual');
-  const bpUtils    = bpNum('utilitiesAnnual');
-  const bpRM       = bpNum('repairsMaintenanceAnnual');
-  const bpTurnover = bpNum('turnoverAnnual');
-  const bpMktg     = bpNum('marketingAnnual');
-  const bpGA       = bpNum('gAndAAnnual');
-  const bpReserves = bpResPerUt != null && totalUnits > 0 ? bpResPerUt * totalUnits : null;
+  const bpVacPct    = bpNum('stabilizedVacancy');
+  const bpLtlPct    = bpNum('lossToLease');
+  const bpConcPct   = bpNum('concessionsPct');
+  const bpBdPct     = bpNum('badDebtPct');
+  const bpMgmtPct   = bpNum('managementFeePct');
+  const bpResPerUt  = bpNum('replacementReservesPerUnit');
+  const bpNOI       = bpNum('yearOneNOI') ?? bpNum('stabilizedNOI');
+  const bpGpr       = bpNum('stabilizedGpr');
+  const bpPayroll   = bpNum('payrollAnnual');
+  const bpInsur     = bpNum('insuranceAnnual');
+  const bpUtils     = bpNum('utilitiesAnnual');
+  const bpRM        = bpNum('repairsMaintenanceAnnual');
+  const bpTurnover  = bpNum('turnoverAnnual');
+  const bpMktg      = bpNum('marketingAnnual');
+  const bpGA        = bpNum('gAndAAnnual');
+  const bpContract  = bpNum('contractServicesAnnual');
+  const bpTax       = bpNum('realEstateTaxesAnnual');
+  const bpReserves  = bpResPerUt != null && totalUnits > 0 ? bpResPerUt * totalUnits : null;
   const getOverride = (fieldName: string): number | null => {
     const parts = fieldName.split('.');
     let current: unknown = ex;
@@ -490,7 +493,7 @@ function buildSeed(
   // stay in lockstep. T12 wins over rent roll for GPR because rent rolls often
   // report gpr_monthly=0 for lease-up properties even when T12 has real GPR.
   const gpr = resolve('gpr', gpr_platform, {
-    t12: gpr_t12, rent_roll: gpr_rr,
+    t12: gpr_t12, rent_roll: gpr_rr, om: bpGpr,
     existingOverride: getOverride('gpr'),
   });
 
@@ -692,7 +695,7 @@ function buildSeed(
   const repairsMaintenance = opexFromT12('r_and_m', 'repairs_maintenance', platformOpEx(platform.opex_per_unit_annual.r_and_m), bpRM);
   const turnover = opexFromT12('turnover', 'turnover', platformOpEx(platform.opex_per_unit_annual.turnover), bpTurnover);
   const amenities = opexFromT12('amenities', 'amenities', null);
-  const contractServices = opexFromT12('contract', 'contract_services', platformOpEx(platform.opex_per_unit_annual.contract_services));
+  const contractServices = opexFromT12('contract', 'contract_services', platformOpEx(platform.opex_per_unit_annual.contract_services), bpContract);
   const marketing = opexFromT12('marketing', 'marketing', platformOpEx(platform.opex_per_unit_annual.marketing), bpMktg);
   const office = opexFromT12('office', 'office', null);
   const gAndA = opexFromT12('g_and_a', 'g_and_a', platformOpEx(platform.opex_per_unit_annual.g_and_a), bpGA);
@@ -782,6 +785,7 @@ function buildSeed(
     realEstateTax = resolve('real_estate_tax', null, {
       tax_bill: billCurrent,
       t12: num(t12Opex, 'real_estate_tax'),
+      om: bpTax,
       existingOverride: getOverride('real_estate_tax'),
       scenarios,
       warning: appealStatus === 'pending'
@@ -804,7 +808,7 @@ function buildSeed(
       realEstateTax.resolution = 't12';
     }
   } else {
-    realEstateTax = opexFromT12('real_estate_tax', 'real_estate_tax', null);
+    realEstateTax = opexFromT12('real_estate_tax', 'real_estate_tax', null, bpTax);
   }
 
   // ───────── DERIVED FIELDS ─────────

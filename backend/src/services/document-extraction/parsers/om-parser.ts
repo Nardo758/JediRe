@@ -103,6 +103,10 @@ export interface OMBrokerProforma {
   targetIRR: number | null;
   stabilizedNOI: number | null;
   yearOneNOI: number | null;
+  // Revenue totals from the broker's stabilized pro-forma income statement
+  stabilizedGpr: number | null;
+  stabilizedEgi: number | null;
+  stabilizedOtherIncomeAnnual: number | null;
   // Per-expense-line annual dollar amounts from the broker's pro-forma statement
   payrollAnnual: number | null;
   insuranceAnnual: number | null;
@@ -328,6 +332,10 @@ Return ONLY valid JSON matching this schema:
     "targetIRR": "decimal or null",
     "stabilizedNOI": "number or null",
     "yearOneNOI": "number or null",
+    "_income_comment": "Revenue totals from the broker's stabilized pro-forma income statement. Annual total dollars. Only populate what the OM explicitly states — leave null if not shown.",
+    "stabilizedGpr": "total stabilized gross potential rent (GPR) annual $ from broker pro-forma income statement, or null",
+    "stabilizedEgi": "total stabilized effective gross income (EGI) annual $ from broker pro-forma income statement, or null",
+    "stabilizedOtherIncomeAnnual": "total stabilized other / ancillary income annual $ from broker pro-forma income statement, or null",
     "_opex_comment": "Per-line annual expense amounts from the broker's stabilized pro-forma. Annual total dollars. Only populate what the OM explicitly states — leave null if not shown.",
     "payrollAnnual": "annual payroll / personnel expense from broker pro-forma, or null",
     "insuranceAnnual": "annual property insurance expense from broker pro-forma, or null",
@@ -634,6 +642,9 @@ function normalizeExtraction(raw: any, textLength: number): OMExtraction {
       targetIRR: raw.brokerProforma?.targetIRR ?? null,
       stabilizedNOI: raw.brokerProforma?.stabilizedNOI ?? null,
       yearOneNOI: raw.brokerProforma?.yearOneNOI ?? null,
+      stabilizedGpr: typeof raw.brokerProforma?.stabilizedGpr === 'number' ? raw.brokerProforma.stabilizedGpr : null,
+      stabilizedEgi: typeof raw.brokerProforma?.stabilizedEgi === 'number' ? raw.brokerProforma.stabilizedEgi : null,
+      stabilizedOtherIncomeAnnual: typeof raw.brokerProforma?.stabilizedOtherIncomeAnnual === 'number' ? raw.brokerProforma.stabilizedOtherIncomeAnnual : null,
       payrollAnnual: typeof raw.brokerProforma?.payrollAnnual === 'number' ? raw.brokerProforma.payrollAnnual : null,
       insuranceAnnual: typeof raw.brokerProforma?.insuranceAnnual === 'number' ? raw.brokerProforma.insuranceAnnual : null,
       utilitiesAnnual: typeof raw.brokerProforma?.utilitiesAnnual === 'number' ? raw.brokerProforma.utilitiesAnnual : null,
