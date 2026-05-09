@@ -192,6 +192,24 @@ function fmtFull$(n: number | null): string {
   return `$${Math.round(n).toLocaleString()}`;
 }
 
+/**
+ * Computes the relative gap between a broker (OM) value and an operator
+ * override.  Returns null whenever either input is absent or broker is zero
+ * (avoids div-by-zero; reserves are never legitimately 0 with a broker layer
+ * present).  Exported so it can be tested in isolation without rendering the
+ * full component.
+ *
+ * Phase 2 note: helper is intentionally generic so it can be reused on other
+ * LV rows (PW-3 insurance, PW-7 reserves T12 layer, DS-7 management fee).
+ */
+export function computeDivergenceRatio(
+  broker: number | null | undefined,
+  override: number | null | undefined,
+): number | null {
+  if (broker == null || override == null || broker === 0) return null;
+  return Math.abs(override - broker) / Math.abs(broker);
+}
+
 function fmtPct(n: number | null): string {
   if (n == null) return '—';
   return `${(n * 100).toFixed(1)}%`;
@@ -672,6 +690,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   // ── Below-the-line: Replacement Reserves → NOI After Reserves ──────────────
   const reservesRow      = byField['replacement_reserves'] ?? null;
   const reservesResolved = reservesRow?.resolved ?? null;
+  // WBB-1: divergence badge — broker (OM) vs operator override only.
+  // The 'override' layer surfaces as resolved when resolution === 'override'.
+  const _reservesOverrideVal = reservesRow?.resolution === 'override' ? reservesRow.resolved : null;
+  const _reservesDivergence  = computeDivergenceRatio(reservesRow?.broker, _reservesOverrideVal);
+  const showReservesDivergenceBadge = _reservesDivergence !== null && _reservesDivergence > 0.5;
   const noiAfterReserves =
     noiRow?.resolved != null && reservesResolved != null
       ? Math.round(noiRow.resolved - Math.abs(reservesResolved))
@@ -1325,7 +1348,29 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   <span style={{ color: '#475569', marginRight: 5 }}>−</span>Replacement Reserves
                   <span style={{ color: '#334155', fontSize: 8, marginLeft: 6 }}>(below-the-line)</span>
                 </td>
-                <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#94a3b8', fontSize: 9 }}>{fmtFull$(reservesRow.broker)}</td>
+                <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#94a3b8', fontSize: 9 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                    {fmtFull$(reservesRow.broker)}
+                    {showReservesDivergenceBadge && (
+                      <span
+                        title={`OM: ${fmtFull$(reservesRow.broker)} | Override: ${fmtFull$(reservesRow.resolved)} | gap: ${Math.round((_reservesDivergence ?? 0) * 100)}%`}
+                        style={{
+                          background: 'rgba(245,166,35,0.10)',
+                          color: BT.text.amber,
+                          padding: '1px 3px',
+                          borderRadius: 2,
+                          fontSize: 8,
+                          fontFamily: MONO,
+                          fontWeight: 700,
+                          letterSpacing: '0.04em',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        DIVERGE
+                      </span>
+                    )}
+                  </span>
+                </td>
                 {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(reservesRow.t12)}</td>}
                 {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(reservesRow.platform)}</td>}
                 <td style={{ padding: '4px 8px', textAlign: 'right', color: '#94a3b8', fontWeight: 600 }}>{fmtFull$(reservesRow.resolved)}</td>

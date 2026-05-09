@@ -1,0 +1,136 @@
+TASK — Phase 1 fix: WBB-1 Replacement Reserves divergence badge
+
+CONTEXT
+
+P0-2 from PROFORMA_SURFACE_AUDIT, only open P0. P0-1 (PW-1, custom 
+opex filter) closed by S1-01.
+
+Symptom: 464 Bishop OM = $46,400, operator override = $250. Operator 
+sees $250 with no indication the OM said two orders of magnitude 
+higher. If $250 is a fat-finger override, the deal is silently being 
+underwritten with no reserves. Operator-confidence-killing silent 
+error — reserves directly affect NOI After Reserves and IRR.
+
+Drift check status: VALID. File:line evidence intact at 
+ProFormaSummaryTab.tsx:1322–1340.
+
+FIX SCOPE — frontend only
+
+File: frontend/src/pages/development/financial-engine/ProFormaSummaryTab.tsx
+Block: lines 1322–1340 (Replacement Reserves row render)
+Broker cell: line 1328 ({fmtFull$(reservesRow.broker)})
+
+Add divergence badge adjacent to the broker cell when broker AND 
+override are both present, broker is non-zero, and relative gap > 0.5.
+
+LOGIC
+
+Extract a small helper (top of file or colocated util — NOT in 
+proforma-adjustment.service.ts; this is frontend display logic):
+
+  function computeDivergenceRatio(
+    broker: number | null | undefined,
+    override: number | null | undefined
+  ): number | null {
+    if (broker == null || override == null || broker === 0) return null;
+    return Math.abs(override - broker) / Math.abs(broker);
+  }
+
+Call site:
+  const divergence = computeDivergenceRatio(reservesRow.broker, reservesRow.override);
+  const showBadge = divergence !== null && divergence > 0.5;
+
+Helper is intentionally generic so Phase 2 can reuse on other rows 
+(PW-3 insurance, PW-7 reserves T12 layer, DS-7 management fee). Do 
+NOT generalize the row rendering this PR — only Replacement Reserves.
+
+UI / STYLE
+
+Match existing F9 Bloomberg conventions — search the file (and 
+sibling files in financial-engine/) for existing divergence or 
+benchmark-divergence badge patterns. Reuse the same token / styling 
+rather than introducing a new visual treatment.
+
+If no existing pattern, use:
+  Background: rgba(244,67,54,0.08)
+  Text color: T.text.red (or T.text.amber if existing F9 benchmark
+              divergences use amber — match what's there)
+  Padding: 2px
+  Border radius: 2px
+  Font: 8px uppercase JetBrains Mono
+  Label: search for an existing label first; if none, use "DIVERGE"
+
+No Tailwind color classes. No shadows. No new third-party imports.
+
+TOOLTIP
+
+Hover tooltip on the badge:
+  "OM: ${fmtFull$(broker)} | Override: ${fmtFull$(override)} | gap: ${pct}%"
+where pct = Math.round(divergence * 100).
+
+Use whatever tooltip mechanism is already in the file (title 
+attribute, existing tooltip component, etc.). Do not add a new 
+tooltip library.
+
+EDGE CASES (all enforced by helper)
+
+  broker null/undefined        → no badge
+  override null/undefined      → no badge
+  broker === 0                 → no badge (avoid div-by-zero; 
+                                  reserves are never legitimately 0 
+                                  with broker layer present)
+  ratio between 0 and 0.5      → no badge
+  ratio > 0.5                  → badge renders
+  broker === override exactly  → ratio = 0, no badge
+
+TESTS
+
+Add to ProFormaSummaryTab.test.tsx (create if absent):
+
+  describe("computeDivergenceRatio", () => {
+    it("returns null when broker is null", ...)
+    it("returns null when override is null", ...)
+    it("returns null when broker = 0", ...)
+    it("returns 0 when broker = override", ...)
+    it("returns 0.995 for broker=46400, override=250", ...)
+    it("returns 0.5 exactly for broker=100, override=150", ...)
+  });
+
+  describe("Replacement Reserves row — divergence badge", () => {
+    it("renders badge when override is 99% below broker (Bishop case)", ...)
+    it("renders badge when override is 100% above broker", ...)
+    it("does not render badge when broker null (Sentosa case)", ...)
+    it("does not render badge when ratio is exactly 0.5", ...)
+    it("does not render badge when ratio < 0.5 (e.g. 0.3)", ...)
+  });
+
+VERIFICATION
+
+After fix:
+  - 464 Bishop → F9 → Pro Forma → Replacement Reserves row shows 
+    badge. Tooltip displays "OM: $46,400 | Override: $250 | gap: 99%".
+  - Sentosa Epperson → same row → no badge (broker layer null per NW-6).
+
+PR description includes a screenshot of 464 Bishop with the badge 
+visible, plus pre/post line count for ProFormaSummaryTab.tsx.
+
+OUT OF SCOPE
+
+  - Generalizing the helper to other LV rows (separate Phase 2)
+  - Backend changes (proforma-adjustment.service.ts, seeder)
+  - Reconciliation/auto-fix logic — badge only flags; operator decides
+  - Configurable threshold (hardcode 0.5; revisit in Phase 2)
+  - NW-6 / fixing the Sentosa reserves null extraction gap
+  - DS-1 / replacement_reserves ↔ reserves_per_unit_per_year reconciliation
+  - Any UI work on rows other than Replacement Reserves
+
+Branch: claude/wbb-1-reserves-divergence-badge from origin/master.
+One commit: feat(f9): WBB-1 divergence badge on Replacement Reserves row.
+
+ACCEPTANCE
+
+  - Single-file frontend change (+ one test file)
+  - Badge visible on 464 Bishop, hidden on Sentosa
+  - All 11 unit tests pass
+  - Existing F9 tests still pass (no regression)
+  - PR description: screenshot + helper-reuse note for Phase 2
