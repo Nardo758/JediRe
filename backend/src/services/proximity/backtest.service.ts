@@ -231,6 +231,273 @@ export class BacktestService {
   }
   
   /**
+   * Validate event-impact predictions against ground-truth outcomes.
+   *
+   * For each row in `event_outcomes`, this:
+   *  1. Pulls the parent `market_events` row (event_type, magnitude, jobs_affected, ...)
+   *  2. Joins the closest `market_snapshots` row at the outcome's
+   *     measurement_start_date for the same geography to recover the
+   *     market-baseline rent_growth_yoy at event time.
+   *  3. Generates a "what the engine would have predicted" rent_change_pct
+   *     using the same heuristic the correlation engine uses for forward
+   *     event impact (see `predictEventImpact`), additively combined with
+   *     the baseline market growth recovered from the snapshot.
+   *  4. Compares to the actual `rent_change_pct` and reports MAE, RMSE,
+   *     direction accuracy, and a 0-100 calibration score per event_type
+   *     and overall.
+   *
+   * Scoring semantics (heuristic, not formal statistical calibration):
+   *  - `mae` and `rmse` are in percentage points of rent change.
+   *  - `directionAccuracyPct` is the share of rows whose predicted sign
+   *    matches the actual sign (predicted >= 0 ↔ actual >= 0).
+   *  - `calibrationScore` = mean of (a) `max(0, 100 - mae*10)` and
+   *    (b) `directionAccuracyPct`, bounded to [0,100]. It is meant as a
+   *    quick-glance trustworthiness signal, NOT a Brier/reliability score.
+   *
+   * Baseline fallback:
+   *  - If no `market_snapshots` row exists within ±180 days of the
+   *    outcome's `measurement_start_date` for the same geography, the
+   *    baseline rent_growth_yoy is treated as 0 and reported as
+   *    `baselineRentGrowthYoy: null` in the per-row trace, so callers
+   *    can tell when the baseline term was unavailable.
+   *
+   * Zero-LLM, deterministic.
+   */
+  async validateEventOutcomes(opts: {
+    geographyType?: 'msa' | 'submarket';
+    geographyId?: string;
+    measurementPeriod?: '6mo' | '12mo' | '24mo';
+  } = {}): Promise<{
+    overall: {
+      sampleSize: number;
+      mae: number;
+      rmse: number;
+      directionAccuracyPct: number;
+      calibrationScore: number;
+    };
+    perEventType: Array<{
+      eventType: string;
+      sampleSize: number;
+      mae: number;
+      rmse: number;
+      directionAccuracyPct: number;
+      calibrationScore: number;
+      avgAttributionConfidence: number;
+    }>;
+    predictions: Array<{
+      eventId: string;
+      eventName: string;
+      eventType: string;
+      geographyType: string;
+      geographyId: string;
+      measurementPeriod: string;
+      measurementStartDate: string;
+      predicted: number;
+      actual: number;
+      baselineRentGrowthYoy: number | null;
+      error: number;
+      attributionConfidence: number | null;
+    }>;
+  }> {
+    const filters: string[] = [];
+    const params: any[] = [];
+    let p = 1;
+
+    if (opts.geographyType) {
+      filters.push(`eo.geography_type = $${p++}`);
+      params.push(opts.geographyType);
+    }
+    if (opts.geographyId) {
+      filters.push(`eo.geography_id = $${p++}`);
+      params.push(opts.geographyId);
+    }
+    if (opts.measurementPeriod) {
+      filters.push(`eo.measurement_period = $${p++}`);
+      params.push(opts.measurementPeriod);
+    }
+
+    const whereClause = filters.length > 0
+      ? `AND ${filters.join(' AND ')}`
+      : '';
+
+    // For each outcome, pick the market_snapshots row in the same geography
+    // closest in time to measurement_start_date (within +/- 180 days) to use
+    // as the market baseline. LATERAL keeps it one-row-per-outcome.
+    const rows = await this.pool.query(
+      `
+      SELECT
+        eo.event_id,
+        eo.measurement_period,
+        eo.measurement_start_date,
+        eo.measurement_end_date,
+        eo.geography_type,
+        eo.geography_id,
+        eo.rent_change_pct AS actual_rent_change,
+        eo.attribution_confidence,
+        me.event_type,
+        me.event_name,
+        me.expected_impact_magnitude,
+        me.expected_impact_direction,
+        me.jobs_affected,
+        ms.rent_growth_yoy AS baseline_rent_growth_yoy
+      FROM event_outcomes eo
+      JOIN market_events me ON me.id = eo.event_id
+      LEFT JOIN LATERAL (
+        SELECT rent_growth_yoy
+        FROM market_snapshots
+        WHERE geography_type = eo.geography_type
+          AND geography_id = eo.geography_id
+          AND snapshot_date BETWEEN
+            (eo.measurement_start_date - INTERVAL '180 days')
+            AND
+            (eo.measurement_start_date + INTERVAL '180 days')
+        ORDER BY ABS(snapshot_date - eo.measurement_start_date)
+        LIMIT 1
+      ) ms ON TRUE
+      WHERE eo.rent_change_pct IS NOT NULL
+        ${whereClause}
+      ORDER BY eo.measurement_start_date
+      `,
+      params
+    );
+
+    interface PredRow {
+      eventId: string;
+      eventName: string;
+      eventType: string;
+      geographyType: string;
+      geographyId: string;
+      measurementPeriod: string;
+      measurementStartDate: string;
+      predicted: number;
+      actual: number;
+      baselineRentGrowthYoy: number | null;
+      error: number;
+      attributionConfidence: number | null;
+    }
+
+    const predictions: PredRow[] = [];
+
+    for (const row of rows.rows) {
+      const baseline = row.baseline_rent_growth_yoy != null
+        ? parseFloat(row.baseline_rent_growth_yoy)
+        : null;
+
+      // Engine prediction = event-attributable lift + market baseline growth
+      // (same shape as a forward forecast: trend + event uplift).
+      const eventLift = this.predictEventImpact({
+        event_type: row.event_type,
+        expected_impact_magnitude: row.expected_impact_magnitude,
+        jobs_affected: row.jobs_affected
+      });
+      const predicted = eventLift + (baseline ?? 0);
+      const actual = parseFloat(row.actual_rent_change) || 0;
+
+      predictions.push({
+        eventId: row.event_id,
+        eventName: row.event_name,
+        eventType: row.event_type,
+        geographyType: row.geography_type,
+        geographyId: row.geography_id,
+        measurementPeriod: row.measurement_period,
+        measurementStartDate: new Date(row.measurement_start_date)
+          .toISOString().slice(0, 10),
+        predicted,
+        actual,
+        baselineRentGrowthYoy: baseline,
+        error: predicted - actual,
+        attributionConfidence: row.attribution_confidence != null
+          ? parseFloat(row.attribution_confidence)
+          : null
+      });
+    }
+
+    const summarize = (rowsIn: PredRow[]) => {
+      const n = rowsIn.length;
+      if (n === 0) {
+        return {
+          sampleSize: 0,
+          mae: 0,
+          rmse: 0,
+          directionAccuracyPct: 0,
+          calibrationScore: 0,
+          avgAttributionConfidence: 0
+        };
+      }
+      let sumAbs = 0;
+      let sumSq = 0;
+      let correctDir = 0;
+      let confSum = 0;
+      let confN = 0;
+      for (const r of rowsIn) {
+        sumAbs += Math.abs(r.error);
+        sumSq += r.error * r.error;
+        const samePos = r.predicted >= 0 && r.actual >= 0;
+        const sameNeg = r.predicted < 0 && r.actual < 0;
+        if (samePos || sameNeg) correctDir++;
+        if (r.attributionConfidence != null) {
+          confSum += r.attributionConfidence;
+          confN++;
+        }
+      }
+      const mae = sumAbs / n;
+      const rmse = Math.sqrt(sumSq / n);
+      const directionAccuracyPct = (correctDir / n) * 100;
+      // Calibration: 100 when MAE = 0, decays linearly to 0 by MAE = 10pp,
+      // then averaged 50/50 with direction accuracy. Bounded [0,100].
+      const maeScore = Math.max(0, 100 - mae * 10);
+      const calibrationScore = Math.max(
+        0,
+        Math.min(100, (maeScore + directionAccuracyPct) / 2)
+      );
+      return {
+        sampleSize: n,
+        mae,
+        rmse,
+        directionAccuracyPct,
+        calibrationScore,
+        avgAttributionConfidence: confN > 0 ? confSum / confN : 0
+      };
+    };
+
+    const overallSummary = summarize(predictions);
+
+    const byType = new Map<string, PredRow[]>();
+    for (const r of predictions) {
+      const arr = byType.get(r.eventType) ?? [];
+      arr.push(r);
+      byType.set(r.eventType, arr);
+    }
+
+    const perEventType = Array.from(byType.entries())
+      .map(([eventType, rs]) => {
+        const s = summarize(rs);
+        return {
+          eventType,
+          sampleSize: s.sampleSize,
+          mae: s.mae,
+          rmse: s.rmse,
+          directionAccuracyPct: s.directionAccuracyPct,
+          calibrationScore: s.calibrationScore,
+          avgAttributionConfidence: s.avgAttributionConfidence
+        };
+      })
+      .sort((a, b) => b.sampleSize - a.sampleSize);
+
+    return {
+      overall: {
+        sampleSize: overallSummary.sampleSize,
+        mae: overallSummary.mae,
+        rmse: overallSummary.rmse,
+        directionAccuracyPct: overallSummary.directionAccuracyPct,
+        calibrationScore: overallSummary.calibrationScore
+      },
+      perEventType,
+      predictions
+    };
+  }
+
+  /**
    * Get similar historical deals for comparison
    */
   async getSimilarDealsPerformance(params: {

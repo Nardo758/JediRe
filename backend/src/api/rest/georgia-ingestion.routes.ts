@@ -22,6 +22,7 @@ import { geocodingService } from '../../services/geocoding.service';
 import { syncMartaGtfs } from '../../services/real-data/marta-gtfs.service';
 import { syncOsmPois } from '../../services/real-data/osm-overpass.service';
 import { syncAtlantaPdCrime } from '../../services/real-data/atlanta-pd-crime.service';
+import { BacktestService } from '../../services/proximity/backtest.service';
 
 const router = Router();
 const orchestrator = getGeorgiaIngestionOrchestrator();
@@ -1601,6 +1602,64 @@ router.get('/proximity/poi-counts', requireAuth, async (_req: Request, res: Resp
   } catch (error) {
     console.error('[API] /georgia/proximity/poi-counts error:', error);
     res.status(500).json({ error: 'Failed to get POI counts', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+/**
+ * GET /api/v1/georgia/backtest/accuracy
+ * Validates the correlation engine's event-impact predictions against the
+ * seeded `event_outcomes` ground-truth, joined to `market_snapshots` for
+ * baseline market growth at event time.
+ *
+ * Query params (all optional):
+ *   geographyType    'msa' | 'submarket'
+ *   geographyId      e.g. 'atlanta', 'midtown'
+ *   measurementPeriod '6mo' | '12mo' | '24mo'
+ *
+ * Returns overall + per-event-type MAE / RMSE / direction accuracy /
+ * 0-100 calibration score, plus the per-row prediction trace.
+ */
+router.get('/backtest/accuracy', async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+    const service = new BacktestService(pool);
+
+    const geographyTypeRaw = typeof req.query.geographyType === 'string'
+      ? req.query.geographyType
+      : undefined;
+    const geographyType = geographyTypeRaw === 'msa' || geographyTypeRaw === 'submarket'
+      ? geographyTypeRaw
+      : undefined;
+
+    const geographyId = typeof req.query.geographyId === 'string'
+      ? req.query.geographyId
+      : undefined;
+
+    const periodRaw = typeof req.query.measurementPeriod === 'string'
+      ? req.query.measurementPeriod
+      : undefined;
+    const measurementPeriod =
+      periodRaw === '6mo' || periodRaw === '12mo' || periodRaw === '24mo'
+        ? periodRaw
+        : undefined;
+
+    const result = await service.validateEventOutcomes({
+      geographyType,
+      geographyId,
+      measurementPeriod,
+    });
+
+    res.json({
+      success: true,
+      filters: { geographyType, geographyId, measurementPeriod },
+      ...result,
+    });
+  } catch (error) {
+    console.error('[API] /georgia/backtest/accuracy error:', error);
+    res.status(500).json({
+      error: 'Failed to compute event-outcome backtest accuracy',
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 
