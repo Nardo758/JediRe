@@ -513,9 +513,10 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   const handleSaveCorrection = useCallback(async (field: string, value: number | null, original: number | null) => {
     try {
-      // management_fee is stored as management_fee_pct; value is already a decimal (0.025 = 2.5%).
       // Translate to the camelCase field name the override endpoint expects.
-      const apiField = field === 'management_fee' ? 'managementFeePct' : field;
+      const apiField = field === 'management_fee' ? 'managementFeePct'
+        : field === 'replacement_reserves' ? 'replacementReserves'
+        : field;
       await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
         field: apiField,
         year: null,
@@ -576,7 +577,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   // Clears a user override on the backend (value: null = revert to ingested)
   const handleResetCorrection = useCallback(async (field: string) => {
     try {
-      const apiField = field === 'management_fee' ? 'managementFeePct' : field;
+      const apiField = field === 'management_fee' ? 'managementFeePct'
+        : field === 'replacement_reserves' ? 'replacementReserves'
+        : field;
       await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
         field: apiField,
         year: null,
@@ -1373,7 +1376,65 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 </td>
                 {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(reservesRow.t12)}</td>}
                 {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(reservesRow.platform)}</td>}
-                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#94a3b8', fontWeight: 600 }}>{fmtFull$(reservesRow.resolved)}</td>
+                <td style={{ padding: '4px 4px', textAlign: 'right' }}>
+                  {corrections['replacement_reserves']?.editing ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <input
+                        autoFocus
+                        type="number"
+                        value={corrections['replacement_reserves'].draft}
+                        onChange={e => setCorrections(prev => ({ ...prev, replacement_reserves: { ...prev.replacement_reserves, draft: e.target.value } }))}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            const v = parseFloat(corrections['replacement_reserves'].draft);
+                            handleSaveCorrection('replacement_reserves', isNaN(v) ? null : v, corrections['replacement_reserves'].original);
+                          }
+                          if (e.key === 'Escape') setCorrections(prev => ({ ...prev, replacement_reserves: { ...prev.replacement_reserves, editing: false } }));
+                        }}
+                        style={{ width: 80, background: '#0f172a', border: '1px solid #06b6d4', color: '#f8fafc', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, textAlign: 'right' }}
+                      />
+                      <button
+                        onMouseDown={e => {
+                          e.preventDefault();
+                          const v = parseFloat(corrections['replacement_reserves']?.draft ?? '');
+                          handleSaveCorrection('replacement_reserves', isNaN(v) ? null : v, corrections['replacement_reserves']?.original ?? null);
+                        }}
+                        style={{ background: '#0f2d1a', border: '1px solid #16a34a', borderRadius: 2, color: '#4ade80', fontFamily: MONO, fontSize: 9, padding: '1px 4px', cursor: 'pointer', lineHeight: 1, fontWeight: 700 }}
+                      >✓</button>
+                      <button
+                        onClick={() => setCorrections(prev => ({ ...prev, replacement_reserves: { ...prev.replacement_reserves, editing: false } }))}
+                        style={{ background: '#2d0000', border: '1px solid #7f1d1d', borderRadius: 2, color: '#f87171', fontFamily: MONO, fontSize: 9, padding: '1px 4px', cursor: 'pointer', lineHeight: 1 }}
+                      >✕</button>
+                    </span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                      <span style={{ color: '#94a3b8', fontWeight: 600, fontSize: 9, fontFamily: MONO }}>{fmtFull$(reservesRow.resolved)}</span>
+                      <button
+                        title="Override replacement reserves"
+                        onClick={() => setCorrections(prev => ({
+                          ...prev,
+                          replacement_reserves: {
+                            editing: true,
+                            original: reservesRow.resolved,
+                            draft: reservesRow.resolved != null ? String(Math.round(reservesRow.resolved)) : '',
+                          },
+                        }))}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#334155', padding: '1px 2px' }}
+                      >
+                        <Pencil size={9} />
+                      </button>
+                      {corrections['replacement_reserves']?.savedAt && (
+                        <button
+                          title="Reset to ingested value"
+                          onClick={() => handleResetCorrection('replacement_reserves')}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: BT.text.amber, padding: '1px 2px' }}
+                        >
+                          <RotateCcw size={9} />
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </td>
                 <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
                   {egiResolved && reservesRow.resolved ? `${((Math.abs(reservesRow.resolved) / egiResolved) * 100).toFixed(1)}%` : '—'}
                 </td>
