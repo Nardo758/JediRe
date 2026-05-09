@@ -1,0 +1,82 @@
+Two follow-up tasks from the unit_mix investigation:
+
+TASK 1 — Option A: GPR toggle fallback (immediate fix)
+
+Fix scope per the investigation report:
+
+1. In proforma-adjustment.service.ts lines 1779-1793 (the toggle
+   block), add a floor_plan_mix fallback when
+   deal_assumptions.unit_mix is null/empty.
+
+2. Pattern: near-copy of the Rent Roll Summary fallback at lines
+   2336-2352. rrCapsule should already be in scope at that point
+   in the function — verify and use the same conversion logic.
+
+3. Conversion: floor_plan_mix is a keyed object; unit_mix is an
+   array. Convert each floor plan to an array entry with the same
+   shape (count, in_place_rent, etc.) that the toggle's GPR
+   computation expects.
+
+4. Behavior:
+   - When deal_assumptions.unit_mix is populated → use it (current
+     behavior unchanged)
+   - When unit_mix is null but floor_plan_mix has data → use
+     floor_plan_mix
+   - When both are null → toggle is no-op (current behavior, but
+     log a debug line so future debugging surfaces this state)
+
+5. Add an invariant test: feed the toggle block a deal with
+   unit_mix = null and floor_plan_mix populated. Assert
+   gprFromUnitMix = sum(count × rent × 12) per the floor_plan_mix
+   data.
+
+Verification:
+   - Run forceReseed against 464 Bishop with use_unit_mix_for_gpr
+     toggle on
+   - Confirm year1.gpr.resolution = 'unit_mix'
+   - Confirm year1.gpr.resolved ≈ $4,849,260 (within rounding,
+     per the investigation's predicted figure)
+   - Same for Sentosa Epperson with predicted ≈ $6,578,604
+   - Toggle off; confirm reverts to t12-derived value
+
+CRITICAL: live DB verification required. After the fix and reseed,
+query deal_assumptions.year1.gpr on both deals and paste results.
+
+Branch: claude/unit-mix-toggle-floor-plan-fallback. One commit.
+Acceptance: both deals' GPR values match predicted figures within
+±2% when toggle is on.
+
+TASK 2 — Architectural follow-up: unit_mix 5-service divergence
+
+This is documentation, not a fix. Scope: produce a doc that
+inventories the five write paths to "unit_mix"-related storage
+and proposes the canonical resolution.
+
+Deliverable: docs/architecture/UNIT_MIX_STORAGE_DIVERGENCE.md.
+
+Content:
+   - Inventory table (already produced in the investigation):
+     5 services, 5 write locations
+   - For each service, document:
+     * What it writes
+     * What downstream consumer reads it
+     * Whether the consumer pattern matches any other consumer's
+       pattern
+   - Proposed canonical resolution (likely:
+     deal_assumptions.unit_mix as the canonical source, with
+     extraction pipeline writing to it via forceReseed conversion
+     from floor_plan_mix; other services either route through it
+     or are documented as legitimately separate concepts)
+   - Migration path: what's required to consolidate the 5 services
+     to a single canonical write path
+   - Effort estimate per service touched
+
+Out of scope:
+   - Don't propose new schema migrations — document the proposal
+     for Leon's review
+   - Don't refactor any of the 5 services — investigation only
+   - Don't deprecate any services — document their current purpose
+     even if it overlaps
+
+Branch: claude/unit-mix-divergence-doc. One commit. This is a
+queued architectural concern, not blocking any active work.

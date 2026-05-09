@@ -1776,8 +1776,31 @@ export async function getDealFinancials(
   const _useUnitMixFlagEntry = _rawPyOvsForFlag['da:use_unit_mix_for_gpr'];
   const useUnitMixForGpr: boolean = _useUnitMixFlagEntry?.value === true;
 
-  const _rawUnitMixForGpr: Array<Record<string, unknown>> | null =
-    Array.isArray(assumptionsRes.rows[0]?.unit_mix) ? (assumptionsRes.rows[0]!.unit_mix as Array<Record<string, unknown>>) : null;
+  // Source 1: deal_assumptions.unit_mix column (array — populated by manual program
+  //   entry via PUT /assumptions, or by any future extraction-seeder conversion).
+  // Source 2 (fallback): extraction_rent_roll.floor_plan_mix (object keyed by plan
+  //   name — identical fallback to the Rent Roll Summary at line ~2336-2352).
+  //   rrCapsule is already in scope from line 1761.
+  let _rawUnitMixForGpr: Array<Record<string, unknown>> | null = null;
+  const _umColumn = assumptionsRes.rows[0]?.unit_mix;
+  if (Array.isArray(_umColumn) && _umColumn.length > 0) {
+    _rawUnitMixForGpr = _umColumn as Array<Record<string, unknown>>;
+  } else {
+    const _fpm = rrCapsule?.floor_plan_mix as Record<string, unknown> | undefined;
+    if (_fpm && typeof _fpm === 'object' && Object.keys(_fpm).length > 0) {
+      _rawUnitMixForGpr = Object.entries(_fpm).map(([planName, v]) => {
+        const d = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
+        return {
+          type:          planName,
+          count:         d.count ?? 0,
+          in_place_rent: d.avg_effective_rent ?? null,
+          market_rent:   (d.avg_market_rent != null && +(d.avg_market_rent as number) > 0) ? d.avg_market_rent : null,
+        } as Record<string, unknown>;
+      });
+    } else if (useUnitMixForGpr) {
+      console.debug(`[proforma] unit_mix toggle ON for deal ${dealId} but no unit_mix data available (column=null, floor_plan_mix=empty) — toggle is no-op`);
+    }
+  }
   let gprFromUnitMix: number | null = null;
   if (_rawUnitMixForGpr && _rawUnitMixForGpr.length > 0) {
     let sum = 0;
