@@ -144,3 +144,143 @@ Every synthetic deal created during this verification was deleted in the
 `extraction_rent_roll` capsule was snapshotted before being temporarily
 overwritten and restored verbatim afterward; a final `forceReseed` then
 reconciled `year1` against the restored capsule.
+
+---
+
+## Unit Mix Population Pipeline — Investigation (2026-05-09)
+
+**Trigger:** TASK B caveat — 0 deals in production have `deal_assumptions.unit_mix`
+populated, so the `da:use_unit_mix_for_gpr` toggle is perpetually dormant for all
+real acquisition deals.
+
+### (a) What is supposed to write to `deal_assumptions.unit_mix`?
+
+**Nothing automatic.** There is exactly **one write path** to
+`deal_assumptions.unit_mix` in the entire codebase:
+
+```
+PUT /api/v1/deals/:dealId/assumptions   (deal-assumptions.routes.ts:194)
+```
+
+This is a manual bulk-update endpoint used by the development/greenfield flow.
+`unit_mix` is position `$13` in the INSERT; it is only written when the caller
+explicitly includes it in the request body. No extraction pipeline, no seeder,
+no Inngest job, and no data-router hook ever calls this endpoint or writes
+to the `unit_mix` column directly.
+
+The one deal that does have `unit_mix` populated — **Jaguar Redevelopment** —
+was set via a manual call to this endpoint on 2026-04-30
+(`source_type = 'manual'`, no extraction capsules of any kind).
+
+Other services that touch something called "unit_mix" are writing to
+**different locations**:
+
+| Service | What it writes | Where |
+|---|---|---|
+| `capsule-bridge.routes.ts:299` | `deal_data.unit_mix` | `deals` JSONB, NOT `deal_assumptions` |
+| `unit-mix-propagation.service.ts` | `financial_models`, `deals.module_outputs`, `deals.target_units` | Greenfield dev path; sources from `module_outputs.unitMix` (AI) |
+| `data-router.ts` (extraction) | `deals.deal_data.extraction_rent_roll.floor_plan_mix` | Object keyed by plan name, NOT `deal_assumptions.unit_mix` |
+| `inline-deals.routes.ts` unit_mix handler | `deal_assumptions.per_year_overrides['da:unit_mix:N:field']` | Rent overrides only, not the base array |
+| `operations.routes.ts:1329-1333` | `unit_mix` table (separate table) | Not `deal_assumptions.unit_mix` column |
+
+### (b) Does the pipeline exist?
+
+**No.** There is no code path that converts extracted rent roll data
+into `deal_assumptions.unit_mix`. The extraction pipeline ends at
+`deals.deal_data.extraction_rent_roll.floor_plan_mix` — an object keyed
+by plan name — and nothing converts it to the array format the toggle
+expects.
+
+### (c) Why hasn't it fired on deals with full extraction data?
+
+Two compounding reasons:
+
+**Reason 1 — No write path.** The extraction pipeline (data-router +
+proforma-seeder) never writes to `deal_assumptions.unit_mix`. After a rent
+roll is extracted, the floor plan data lands in
+`deals.deal_data.extraction_rent_roll.floor_plan_mix` and stops there.
+
+**Reason 2 — The GPR toggle has no fallback.** The toggle computation
+(proforma-adjustment.service.ts lines 1779-1793) reads
+`deal_assumptions.unit_mix` exclusively:
+
+```ts
+const _rawUnitMixForGpr: Array<...> | null =
+  Array.isArray(assumptionsRes.rows[0]?.unit_mix) ? ... : null;
+```
+
+If that column is `null` (which it is for every acquisition deal),
+`gprFromUnitMix = null` and the toggle is silently inert — no error,
+no warning, the UI toggle just does nothing.
+
+By contrast, the **Rent Roll Summary** section (lines 2320-2354 in the
+same file) has a correct two-step fallback:
+
+```
+1. deal_assumptions.unit_mix (column)
+2. extraction_rent_roll.floor_plan_mix (object → converted to array on-read)
+```
+
+The toggle was shipped with the column read but without the fallback that
+already exists eight hundred lines below it in the same function.
+
+### Live data proof
+
+Both deals with full extraction capsules have rich `floor_plan_mix` but
+`deal_assumptions.unit_mix = NULL`:
+
+| Deal | `unit_mix` column | `floor_plan_mix` plans | Units | GPR from fpm (effective rent) | Capsule GPR (annualized) |
+|---|---|---|---|---|---|
+| 464 Bishop | NULL | 7 plans | 232 | $4,849,260 | $4,932,300 |
+| Sentosa Epperson | NULL | 8 plans | 304 | $6,578,604 | $6,636,888 |
+
+The fpm-derived figures are within 1.7% of the capsule totals, confirming
+the data is coherent and usable. The toggle simply cannot reach it.
+
+### Fix options (not implemented here — logging for follow-up)
+
+**Option A (preferred) — Extend the GPR toggle fallback.**
+In `proforma-adjustment.service.ts` lines 1779-1793, mirror the fallback
+already written at lines 2336-2352. When `deal_assumptions.unit_mix` is
+null, read `rrCapsule?.floor_plan_mix`, convert from the object format to
+an array using `avg_effective_rent` as `in_place_rent`, and continue.
+`rrCapsule` is already in scope at this point in the function.
+Estimated change: ~15 lines. Risk: low — the fallback logic is a copy of
+existing code.
+
+**Option B — Populate `unit_mix` from `floor_plan_mix` during forceReseed.**
+In `proforma-seeder.service.ts` (the `forceReseed` path), read
+`extraction_rent_roll.floor_plan_mix` and write the converted array to
+`deal_assumptions.unit_mix`. This normalises the data into a canonical
+location and makes it available to all consumers.
+Estimated change: ~25 lines + one DB upsert per forceReseed.
+Risk: low. Would immediately fix all deals re-seeded after the change.
+
+Option A fixes the symptom with minimal blast radius. Option B is
+architecturally cleaner (single canonical location for the data).
+Both are needed if the `unit_mix` column is also used by other consumers
+beyond the toggle (currently: Rent Roll Summary display already has its
+own fallback, so it doesn't block on the column).
+
+### Correction to TASK B verdict
+
+The original TASK B probe query for detecting unit_mix presence was:
+
+```sql
+-- WRONG (checks year1 JSONB key, not the column)
+SELECT count(*) FROM deal_assumptions WHERE year1 ? 'unit_mix'  → 0
+```
+
+The correct query is:
+
+```sql
+-- CORRECT
+SELECT count(*) FROM deal_assumptions
+WHERE unit_mix IS NOT NULL AND unit_mix::text NOT IN ('null','[]','{}')  → 1
+```
+
+The TASK B conclusion "0 deals in production have unit_mix populated"
+was directionally correct for acquisition deals but technically wrong —
+one development deal (Jaguar Redevelopment) does have it populated via
+a manual write. The core finding stands: no acquisition deal fed by
+extraction has `unit_mix` populated, and the toggle is dormant for them.
