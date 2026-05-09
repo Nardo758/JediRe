@@ -339,7 +339,11 @@ class SnapshotCaptureService {
     const plannedUnits24mo = this.i(evtResult.rows[0]?.planned_24mo);
 
     // ── Data completeness score ─────────────────────────────────────────────
+    // total_properties is included so that a submarket with zero nearby
+    // properties (proximity filter found nothing) scores meaningfully lower
+    // than one with a real property cohort backing its rent figure.
     const completenessFields: (number | null)[] = [
+      this.i(alpRow?.total_properties),
       avgAskingRent,
       avgEffectiveRent,
       avgOccupancyPct,
