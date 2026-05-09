@@ -1,0 +1,183 @@
+TASK — Pro Forma math audit + Projections Y1 reconciliation (Phase 0)
+
+Read-only audit. No code changes. Output is a single Markdown audit doc.
+
+SCOPE
+
+Two questions to answer with file:line evidence and live-DB values:
+
+  Q1 — Is the math on the Pro Forma tab correct?
+       Formulas, subtotals, unit conventions, input sources, all
+       traced and verified per line item.
+
+  Q2 — Does Projections Y1 equal Pro Forma for every shared line?
+       Per architectural contract: Pro Forma = AS-IS broker reality;
+       Projections Y1 = Pro Forma base + any Y1 assumption overrides.
+       Y1 should equal Pro Forma exactly when no Y1 override exists.
+
+TEST DEALS
+
+  464 Bishop       — 3f32276f-aacd-4da3-b306-317c5109b403
+                     (full capsule set: OM + bpProforma + T12 + rent roll)
+  Sentosa Epperson — 3d96f62d-d986-448f-8ea4-10853021a8cb
+                     (T12 + rent roll only, no OM — represents
+                      sparse-capsule shape)
+
+PHASE 0a — PRO FORMA MATH AUDIT
+
+For every line item rendered on the Pro Forma tab, document:
+
+  1. Display value          (UI render)
+  2. DB value               (deals.assumptions / deal_data)
+  3. Resolution path        (which LV layer wins; fallback chain)
+  4. Formula                (if computed, e.g. NOI = EGI − Total OpEx)
+  5. Input sources          (per-input source citation)
+  6. Unit convention        (decimal? whole-percent? dollars per unit?)
+  7. First-principles check (recompute from authoritative inputs;
+                             does it match display?)
+
+Group by section:
+  Section 1 — Revenue (GPR, Loss to Lease, Vacancy, Concessions,
+              Bad Debt, Net Rental Income, Other Income, EGI)
+  Section 2 — Operating Expenses (each named category + custom_opex)
+  Section 3 — NOI bridge (Total OpEx, NOI, Replacement Reserves,
+              NOI After Reserves)
+  Section 4 — Capital metrics (Debt Service, CF, DSCR, Cap Rate,
+              Yield on Cost, Cash on Cash where rendered)
+
+Per-line classification:
+
+  ✓ MATH_OK      — formula correct, inputs traced, units consistent,
+                   first-principles recompute matches display
+  ⚠ UNIT_DRIFT   — formula correct but stored unit differs from
+                   platform convention (Bishop's opexGrowthPct = 2.8
+                   instead of 0.028 is the canonical example)
+  ⚠ STALE_CACHE  — display value differs from first-principles
+                   recompute, but matches a prior seed; forceReseed
+                   would close the gap
+  ✗ MATH_BUG     — formula wrong, subtotal doesn't add, or input
+                   pulled from wrong source
+  ✗ GROWTH_LEAK  — Pro Forma value has forward growth applied where
+                   it shouldn't (Pro Forma is AS-IS, not Y1-projected)
+  ? UNCLEAR      — couldn't resolve without further investigation
+
+Each finding cites:
+  - ProFormaSummaryTab.tsx (display location)
+  - proforma-adjustment.service.ts (resolution + toDollarRow)
+  - proforma-seeder.service.ts (seed compute)
+  - DB column where value is persisted
+
+PHASE 0b — Y1 RECONCILIATION
+
+For every line item appearing on BOTH Pro Forma AND Projections Y1,
+build a comparison table:
+
+  | Line | Pro Forma | Projections Y1 | Match | Path |
+
+Where Match = Y, document the resolution path producing the
+identical value (e.g., "both resolve via gpr LV broker layer").
+
+Where Match = N, classify the divergence:
+
+  INTENTIONAL    — explicit Y1 user override or M07-derived value
+                   patches the Y1 cell; provenance traceable
+  COMPUTE_DRIFT  — same inputs, different code paths producing
+                   different values (bug)
+  SOURCE_DRIFT   — Pro Forma reads from one LV layer, Projections
+                   Y1 reads from another (architecture question:
+                   which is source of truth?)
+  GROWTH_BUG     — Projections Y1 has growth applied that shouldn't
+                   apply ("Y1 = this year," growth begins Y2)
+  ROUNDING       — values differ by < 0.5%, likely order-of-
+                   operations rounding
+
+For every divergence, cite the code path that computes Projections
+Y1 and the path that computes Pro Forma; identify the divergence
+point.
+
+PHASE 0c — UNIT NORMALIZATION SWEEP
+
+This audit doubles as the catalog for the open
+ASSUMPTION_UNIT_NORMALIZATION concern.
+
+Scan deals.assumptions on both deals for every percent-typed field
+(any key ending in _pct, _percent, _rate, or matching known growth /
+yield / vacancy fields). For each field, classify:
+
+  DECIMAL       — stored value < 1 (e.g., 0.03 for 3%)
+  WHOLE_PERCENT — stored value > 1 (e.g., 2.8 for 2.8%)
+  ZERO_OR_NULL  — not stored
+  AMBIGUOUS     — can't tell (e.g., a value of 1.0 could be either
+                  "1%" or "100%")
+
+Known instances on Bishop: opexGrowthPct = 2.8, rentGrowthYr1 = 3.
+Catalog every other instance on either deal.
+
+Output a single table:
+
+  | Deal | Field | Stored | Convention | Consumers |
+
+Where Consumers = list of code paths that read this field and how
+they interpret it (multiplied by 100? divided by 100? raw?).
+
+This output feeds the future ASSUMPTION_UNIT_NORMALIZATION
+migration; the audit catalogs but does not fix.
+
+PHASE 0d — REGRESSION CHECKS
+
+Targeted checks for known-issue patterns that should be CLOSED but
+worth verifying haven't regressed:
+
+  1. Custom OpEx leak: confirm 0 residual revenue/reserve items
+     in custom_opex_* on both deals (S1-01 closure check).
+  2. Reserves Y1 propagation: confirm Y1 reserves on Projections
+     reflects the Pro Forma override (not a stale layer).
+  3. Purchase price dual-write: confirm deals.budget and
+     deals.deal_data.purchase_price match on both deals (#623
+     closure check).
+
+Each check returns PASS / FAIL / N/A with evidence.
+
+OUTPUT
+
+Single Markdown doc at docs/architecture/PROFORMA_MATH_AUDIT.md
+matching the structure conventions of PROFORMA_SURFACE_AUDIT:
+
+  ## Header — date, scope, methodology, test deals, source files
+  ## Section 1 — Revenue line audit (table per line, both deals)
+  ## Section 2 — OpEx line audit
+  ## Section 3 — NOI bridge audit
+  ## Section 4 — Capital metrics audit
+  ## Section 5 — Y1 reconciliation table (both deals)
+  ## Section 6 — Unit normalization catalog
+  ## Section 7 — Regression check results
+  ## Section 8 — Inventory of findings (priority-ranked, with IDs:
+                 MATH-1, RECON-1, UNIT-1, etc.)
+  ## Section 9 — Recommended Phase 1 fixes (priority-ranked)
+
+Every finding has: ID, classification, file:line evidence, deal
+specificity (Bishop / Sentosa / both), and recommended action with
+effort estimate.
+
+OUT OF SCOPE
+
+  - Any code changes or fixes (separate Phase 1 prompts)
+  - Visual / layout audit (PROFORMA_SURFACE_AUDIT covers that)
+  - LV layer architecture redesign
+  - Adding new line items or new OpEx categories
+  - M07 → Projections wiring questions (separate chapter)
+  - Cap rate methodology debates — verify the formula matches the
+    code, do not opine on whether it should
+  - Unit normalization migration itself (this audit catalogs;
+    fix is a separate ticket)
+
+ACCEPTANCE
+
+PROFORMA_MATH_AUDIT.md committed to docs/architecture/, file:line
+evidence throughout, both test deals covered exhaustively across
+all line items, inventory of findings with priority ranking, and
+the agent surfaces the audit doc back in chat for Phase 1 scoping.
+
+Branch: claude/proforma-math-audit-phase-0 from origin/master.
+One commit: docs(architecture): Pro Forma math audit Phase 0 +
+Projections Y1 reconciliation + unit normalization catalog.
