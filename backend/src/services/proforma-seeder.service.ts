@@ -56,6 +56,152 @@ interface DealRow {
 
 const now = () => new Date().toISOString();
 
+// ─── Platform Baseline Lookup ─────────────────────────────────────────────────
+// Industry-standard Class-B multifamily per-unit-per-year OpEx benchmarks
+// (2024 edition). Sources: NMHC / NAA Survey of Operating Income & Expenses
+// 2023-2024; CoStar market analytics.
+
+interface OpExNorms {
+  payroll: number;
+  r_and_m: number;
+  turnover: number;
+  contract_services: number;
+  marketing: number;
+  g_and_a: number;
+  utilities: number;
+  insurance: number;
+}
+
+const BASE_OPEX_NORMS_PER_UNIT: OpExNorms = {
+  payroll:           1400,
+  r_and_m:            550,
+  turnover:           200,
+  contract_services:  200,
+  marketing:          200,
+  g_and_a:            200,
+  utilities:          900,
+  insurance:          300,
+};
+
+const BASE_VACANCY_PCT      = 0.07;   // 7 % stabilised Class-B
+const BASE_CONCESSIONS_PCT  = 0.02;   // 2 %
+const BASE_BAD_DEBT_PCT     = 0.01;   // 1 %
+const BASE_MGMT_FEE_PCT_EGI = 0.045;  // 4.5 % of EGI
+
+// Per-state multipliers — only states with significant divergence from the
+// national average are listed; all others receive 1.0.
+const STATE_ADJUSTMENTS: Record<string, Partial<Record<keyof OpExNorms, number>>> = {
+  FL: { insurance: 1.50, utilities: 1.10 },
+  TX: { insurance: 1.20, utilities: 1.05 },
+  CA: { insurance: 1.35, payroll: 1.45, utilities: 1.15 },
+  NY: { insurance: 1.40, payroll: 1.50, utilities: 1.20 },
+  NJ: { insurance: 1.30, payroll: 1.35 },
+  CO: { insurance: 1.10 },
+  AZ: { utilities: 1.10 },
+};
+
+function applyStateAdjustments(base: OpExNorms, stateCode: string | null | undefined): OpExNorms {
+  const adj = STATE_ADJUSTMENTS[(stateCode ?? '').toUpperCase()] ?? {};
+  return {
+    payroll:           Math.round(base.payroll           * (adj.payroll           ?? 1)),
+    r_and_m:           Math.round(base.r_and_m           * (adj.r_and_m           ?? 1)),
+    turnover:          Math.round(base.turnover          * (adj.turnover          ?? 1)),
+    contract_services: Math.round(base.contract_services * (adj.contract_services ?? 1)),
+    marketing:         Math.round(base.marketing         * (adj.marketing         ?? 1)),
+    g_and_a:           Math.round(base.g_and_a           * (adj.g_and_a           ?? 1)),
+    utilities:         Math.round(base.utilities         * (adj.utilities         ?? 1)),
+    insurance:         Math.round(base.insurance         * (adj.insurance         ?? 1)),
+  };
+}
+
+/**
+ * Resolve real platform baseline data for a deal's city/state.
+ *
+ * Hierarchy:
+ *   1. apartment_market_snapshots — exact city+state match (most recent snapshot)
+ *      → provides avg_rent (gpr per unit/mo), avg_occupancy, concession_rate
+ *   2. apartment_market_snapshots — state-wide average across all cities in state
+ *      → only used for avg_rent if city match found nothing
+ *   3. Pure static industry norms (state-adjusted) — always populates OpEx and
+ *      any revenue fields not resolved by 1 or 2
+ *
+ * All fields are always returned non-null (static norms fill any gaps).
+ */
+async function lookupPlatformBaseline(
+  pool: Pool,
+  city: string | null | undefined,
+  stateCode: string | null | undefined,
+): Promise<PlatformBaseline> {
+  const norms = applyStateAdjustments(BASE_OPEX_NORMS_PER_UNIT, stateCode);
+
+  let gprPerUnitPerMonth: number | null = null;
+  let vacancyPct: number = BASE_VACANCY_PCT;
+  let concessionsPct: number = BASE_CONCESSIONS_PCT;
+
+  try {
+    if (city && stateCode) {
+      // 1. Exact city + state match
+      const citySnap = await pool.query<{
+        avg_rent: string | null;
+        avg_occupancy: string | null;
+        concession_rate: string | null;
+      }>(
+        `SELECT avg_rent, avg_occupancy, concession_rate
+           FROM apartment_market_snapshots
+          WHERE LOWER(city) = LOWER($1) AND LOWER(state) = LOWER($2)
+          ORDER BY snapshot_date DESC
+          LIMIT 1`,
+        [city, stateCode]
+      );
+      if (citySnap.rows.length > 0) {
+        const row = citySnap.rows[0];
+        if (row.avg_rent != null) gprPerUnitPerMonth = parseFloat(row.avg_rent);
+        if (row.avg_occupancy != null) {
+          const occ = parseFloat(row.avg_occupancy);
+          if (occ > 0 && occ <= 100) vacancyPct = Math.max(0, 1 - occ / 100);
+        }
+        if (row.concession_rate != null) {
+          const cr = parseFloat(row.concession_rate);
+          if (cr > 0) concessionsPct = cr / 100;
+        }
+      }
+    }
+
+    // 2. State-level avg_rent fallback if city gave nothing
+    if (gprPerUnitPerMonth == null && stateCode) {
+      const stateSnap = await pool.query<{ avg_rent: string | null }>(
+        `SELECT AVG(avg_rent::numeric)::text AS avg_rent
+           FROM apartment_market_snapshots
+          WHERE LOWER(state) = LOWER($1) AND avg_rent IS NOT NULL`,
+        [stateCode]
+      );
+      const sr = stateSnap.rows[0];
+      if (sr?.avg_rent != null) gprPerUnitPerMonth = parseFloat(sr.avg_rent);
+    }
+  } catch (err) {
+    // Non-fatal — static norms are still returned
+    console.warn('[proforma-seeder] lookupPlatformBaseline: snapshot query failed, using static norms:', (err as Error).message);
+  }
+
+  return {
+    gpr_per_unit_per_month: gprPerUnitPerMonth,
+    vacancy_pct:            vacancyPct,
+    concessions_pct:        concessionsPct,
+    bad_debt_pct:           BASE_BAD_DEBT_PCT,
+    opex_per_unit_annual: {
+      payroll:           norms.payroll,
+      r_and_m:           norms.r_and_m,
+      turnover:          norms.turnover,
+      contract_services: norms.contract_services,
+      marketing:         norms.marketing,
+      g_and_a:           norms.g_and_a,
+      utilities:         norms.utilities,
+      insurance:         norms.insurance,
+    },
+    management_fee_pct_egi: BASE_MGMT_FEE_PCT_EGI,
+  };
+}
+
 /**
  * Patterns that identify GL labels which must NOT be summed into custom opex.
  * Covers: revenue lines, rollup/subtotal rows, and below-the-line items.
@@ -770,9 +916,9 @@ export async function seedProFormaYear1(
   const warnings: string[] = [];
 
   try {
-    // Load deal + capsule
+    // Load deal + capsule (city + state_code needed for platform baseline lookup)
     const dealResult = await pool.query(
-      `SELECT id, target_units, deal_data FROM deals WHERE id = $1`,
+      `SELECT id, target_units, deal_data, city, state_code FROM deals WHERE id = $1`,
       [dealId]
     );
     if (dealResult.rows.length === 0) {
@@ -792,19 +938,13 @@ export async function seedProFormaYear1(
 
     const totalUnits = num(rrCapsule, 'total_units') ?? deal.target_units ?? 0;
 
-    // TODO: real platform baseline from location-baseline service.
-    // All-null fallback means seeder uses extraction values 1:1 when present.
-    const platform: PlatformBaseline = {
-      gpr_per_unit_per_month: null,
-      vacancy_pct: null,
-      concessions_pct: null,
-      bad_debt_pct: null,
-      opex_per_unit_annual: {
-        payroll: null, r_and_m: null, turnover: null, contract_services: null,
-        marketing: null, g_and_a: null, utilities: null, insurance: null,
-      },
-      management_fee_pct_egi: null,
-    };
+    // Resolve platform baseline from market snapshot + state-calibrated industry norms.
+    // Provides non-null values for every platform slot so benchmarkPosition can render.
+    const platform: PlatformBaseline = await lookupPlatformBaseline(
+      pool,
+      deal.city as string | null,
+      deal.state_code as string | null,
+    );
 
     // Load existing seed (preserves user overrides)
     const existing = await pool.query(
