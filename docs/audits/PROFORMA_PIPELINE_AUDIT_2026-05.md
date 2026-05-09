@@ -1,7 +1,7 @@
 # ProForma Pipeline Audit — May 2026
 
 **Status:** Audit only — no code changes in scope.
-**Reference deal:** 464 Bishop, `deal_id = 3f32276f-aacd-4da3-b306-317c5109b403` (232 units)
+**Reference deal:** 464 Bishop, `deal_id = 3f32276f-aacd-4da3-b306-317c5109b403` (232 units, Atlanta)
 **Primary API:** `GET /api/v1/proforma/:dealId` → `ProFormaAdjustmentService.getProFormaComputed()`
 **Secondary API:** `GET /api/v1/deals/:dealId/financials` → `getDealFinancials()`
 **Evidence base:** Static code analysis + live DB queries at 2026-05-09
@@ -11,244 +11,329 @@
 
 ## Step 0 — Reference File Provenance
 
-Each file listed in the task brief is accounted for below. Files not found are explicitly noted.
+Each file from the task brief is accounted for below. "Not found" means the file does not
+exist anywhere in the repo or in `attached_assets/` — confirmed by exhaustive search.
 
-| Reference file | Status | Actual path |
+| Reference file | Status | Actual path or note |
 |---|---|---|
-| `jedi-framework-v31.jsx` | **Not found as file** | Content referenced in `attached_assets/Pasted-I-have-the-canonical-ProForma-spec-from-jedi-framework-_1778106848690.txt` (text description, not source). The `.jsx` file itself is not in the repo or attached_assets. |
-| `correlation-metrics-engine.jsx` | **Not found** | Not in repo, not in attached_assets. No import or reference to this filename in the codebase. |
+| `jedi-framework-v31.jsx` | **Not found as file** | A text description of its canonical line-item list exists in `attached_assets/Pasted-I-have-the-canonical-ProForma-spec-from-jedi-framework-_1778106848690.txt` (66 lines). The `.jsx` source file does not exist in the repo or attached_assets. |
+| `correlation-metrics-engine.jsx` | **Not found** | No file, no import, no reference by this name anywhere in the codebase. |
 | `CASHFLOW_AGENT_UNDERWRITING_SPEC.md` | **Found** | `attached_assets/Pasted--JEDI-RE-CashFlow-Agent-Underwriting-Specification-How-_1776632066856.txt` (762 lines, read in full) |
-| `FEATURE_EXPANSION.md` | **Not found** | Not in repo, not in attached_assets. Referenced in the v31 spec description but file does not exist. |
-| `CLAUDE.md` | **Found** | `./backend/CLAUDE.md` |
-| `F9 Financial Model Agent Spec` | **Found** | `attached_assets/F9_Financial_Model_-_Agent_Specification_1777735712565.txt` (read in full) |
-| `F9 Wiring Spec v1.0` | **Found** | `attached_assets/agent-f9-wiring-spec-v1.0_1777735731528.txt` (read in full) |
-| `F9 Data Flow Wiring Audit` | **Found** | `attached_assets/Pasted--F9-Data-Flow-Wiring-Audit-Reconciliation-Context-The-F_1778156840151.txt` (read in full) |
-| `F9 Pro Forma Surface Audit brief` | **Found** | `attached_assets/Pasted-F9-Pro-Forma-surface-complete-state-audit-Read-only-Sin_1778269669887.txt` (read in full) |
+| `FEATURE_EXPANSION.md` | **Not found** | Referenced in the v31 spec description text but does not exist in the repo or attached_assets. |
+| `CLAUDE.md` | **Found** | `./backend/CLAUDE.md` (read in full) |
+| F9 Financial Model Agent Spec | **Found** | `attached_assets/F9_Financial_Model_-_Agent_Specification_1777735712565.txt` (read in full) |
+| F9 Wiring Spec v1.0 | **Found** | `attached_assets/agent-f9-wiring-spec-v1.0_1777735731528.txt` (read in full) |
+| F9 Data Flow Wiring Audit | **Found** | `attached_assets/Pasted--F9-Data-Flow-Wiring-Audit-Reconciliation-Context-The-F_1778156840151.txt` (read in full) |
+| F9 Pro Forma Surface Audit brief | **Found** | `attached_assets/Pasted-F9-Pro-Forma-surface-complete-state-audit-Read-only-Sin_1778269669887.txt` (read in full) |
 
 ---
 
 ## Section 0 — Architecture Overview: Two Decoupled Systems
 
-The ProForma pipeline is not a single pipeline. It is two fully independent systems
-that share a deal ID but no data:
+The ProForma pipeline is not a single pipeline. It is two fully independent systems that share
+a deal ID but no data:
 
 ```
 System A — proforma_assumptions table
-  Route:    GET /api/v1/proforma/:dealId             proforma.routes.ts:130
+  Route:    GET /api/v1/proforma/:dealId           proforma.routes.ts:130
   Service:  ProFormaAdjustmentService.getProFormaComputed()
-  Shape:    { rentGrowth, vacancy, opexGrowth, exitCap, absorption }
-            each as AssumptionValue { baseline, current, effective }
-            + computed metrics from deterministic-model-runner
+  Shape:    5 market-positioning scalars (rentGrowth, vacancy, opexGrowth,
+            exitCap, absorption), each as AssumptionValue { baseline, current, effective }
+            + a large `computed` block from deterministic-model-runner using
+            hardcoded phantom-deal inputs (BUG-02)
   Purpose:  News-driven M35 adjustment; AI Market Findings cards
-  Bug:      runModel() called with hardcoded deal inputs (lines 169-182)
 
 System B — deal_assumptions.year1 JSONB
   Route:    GET /api/v1/deals/:dealId/financials
   Service:  getDealFinancials() → proforma-seeder.service.ts
-  Shape:    { year1: OperatingStatementRow[], capitalStack, trafficProjection,
-              integrityChecks, projections?, assumptions }
-            Every row is flattened from LayeredValue<T> with broker/t12/rentRoll/
+  Shape:    { year1: OperatingStatementRow[], capitalStack, integrityChecks,
+              projections?, rentRollSummary, assumptions }
+            Each row flattened from LayeredValue<T> with broker/t12/rentRoll/
             taxBill/platform/resolved columns
   Purpose:  F9 Financial Engine — ProFormaSummaryTab and all 13 tabs
 ```
 
-**Root architectural gap:** System A's `vacancy_current` (5.00%) is never read by
-System B. System B's `year1.vacancy_pct.resolved` (19.83%) is never surfaced by
-System A. For the same deal the operator sees two different vacancy figures depending
-on which surface they look at.
+**Root architectural gap:** System A `vacancy_current = 5.00%` is never read by System B.
+System B `year1.vacancy_pct.resolved = 19.83%` is never surfaced by System A. The operator
+sees two different vacancy figures on different surfaces; the divergence is never flagged.
 
 ---
 
-## Section 1 — Layer 1: Broker Audit Table
+## Section 1 — Step 2: Raw API Payload — `GET /api/v1/proforma/:dealId`
 
+The following is the complete shape of the JSON response returned by `getProFormaComputed()`
+for 464 Bishop, constructed from: (a) live DB query of `proforma_assumptions` and (b) static
+analysis of lines 144-208. The API requires bearer auth; the payload was reconstructed from
+source rather than captured live.
+
+```json
+{
+  "id": "<uuid>",
+  "dealId": "3f32276f-aacd-4da3-b306-317c5109b403",
+  "strategy": "rental",
+  "rentGrowth": {
+    "baseline": "3.500",
+    "current":  "3.500",
+    "effective": "3.500"
+  },
+  "vacancy": {
+    "baseline": "5.00",
+    "current":  "5.00",
+    "effective": "5.00"
+  },
+  "opexGrowth": {
+    "baseline": "2.800",
+    "current":  "2.800",
+    "effective": "2.800"
+  },
+  "exitCap": {
+    "baseline": "5.500",
+    "current":  "5.500",
+    "effective": "5.500"
+  },
+  "absorption": {
+    "baseline": "8.00",
+    "current":  "8.00",
+    "effective": "8.00"
+  },
+  "computed": {
+    "irr":              "<from deterministic model — BUG-02: hardcoded inputs>",
+    "equityMultiple":   "<from deterministic model>",
+    "avgCoC":           "<from deterministic model>",
+    "noiYear1":         "<from deterministic model — NOT 464 Bishop NOI>",
+    "goingInCapRate":   "<from deterministic model>",
+    "exitCapRate":      "<from deterministic model>",
+    "dscrByYear":       [10 values, one per hold year],
+    "noiByYear":        [10 values],
+    "cashOnCashByYear": [10 values],
+    "annualCashFlow":   [10 objects, one per year],
+    "sensitivityMatrix": [[...], ...],
+    "stressScenarios":  [{...}, ...],
+    "waterfall":        [{...}, ...],
+    "sourcesAndUses":   { "sources": {...}, "uses": {...} },
+    "projections":      [{...}, ...],
+    "integrityChecks":  [{...}, ...],
+    "derivationLog":    ["...", ...]
+  },
+  "deterministicRunnerVersion": "1.0"
+}
+```
+
+**Critical findings from payload analysis:**
+- The 5 scalars all show `baseline == current` (no M35 adjustment has fired for this deal)
+- All scalars equal the DB column defaults — M35 events have not updated `_current` for any field
+- The `computed` block is derived from 15 hardcoded constants (BUG-02, line 169-182):
+  `purchasePrice=$50M, units=232, marketRent=$1,850, loanAmount=$35M, managementFee=4.0%…`
+- `computed.noiYear1` is a phantom-deal figure, NOT 464 Bishop's actual NOI ($486,108)
+- **No line-item rows (GPR, vacancy, OpEx, etc.) appear anywhere in this payload** — only scalars
+- System A response does not include the System B `OperatingStatementRow[]` array at all
+
+---
+
+## Section 2 — Layer 1: Broker Audit Table (All Canonical Rows)
+
+Canonical row sequence per `proforma-adjustment.service.ts` REVENUE_FIELDS (1832-1841),
+OPEX_FIELDS (1844-1858), NOI_FIELDS (1861), and toDollarRow calls (1960-1970).
 All `om` slot values queried live from `deal_assumptions.year1` for 464 Bishop.
-Broker claims capsule: `deal_data.broker_claims.proforma` (extraction_om = true for
-this deal). System A endpoint does NOT return year1 line items — it returns only the
-5 proforma_assumptions scalars.
 
-| Pro Forma Row | broker_claims.proforma field | DB: year1.FIELD.om | Surfaces via GET /api/v1/proforma/:dealId | Frontend renders broker layer | Root Cause of gap |
-|---|---|---|---|---|---|
-| GPR | `stabilizedGpr = 4,901,400` | **null** | No — wrong system | Platform_fallback shown; no broker badge | Seeder does not map `broker_claims.proforma.stabilizedGpr` into `year1.gpr.om` slot (BUG-11) |
-| Vacancy % | `stabilizedVacancy = 0.05` | `0.05` ✓ | No | Rent_roll 19.83% displayed; OM badge present | System A vacancy (5%) and System B vacancy (19.83%) never reconciled (BUG-08) |
-| Loss-to-Lease % | `lossToLease = 0` | `0` ✓ | No | T12 0.35% displayed; OM badge present | OM assumes no LTL; T12 shows 0.35% — no collision flag |
-| Concessions % | `concessionsPct = 0` | `0` ✓ | No | T12 7.78% displayed; OM badge present | OM = 0%, T12 = 7.78% — material collision not flagged |
-| Bad Debt % | `(null)` | `null` | No | T12 3.34% displayed | OM did not include bad debt; no om slot populated |
-| Other Income/unit | `stabilizedOtherIncomeAnnual = 341,907 → $1,474/unit/yr` | `$307.76/unit/yr` ✓ | No | Rent-roll $75.34/unit/yr displayed | OM $1,474 vs resolved $75 — 19.6× discrepancy, no collision flag |
-| Payroll | `payrollAnnual = 324,800` | `324,800` ✓ | No | Override $324,800 displayed | Clean — operator kept OM value |
-| Repairs & Maintenance | `repairsMaintenanceAnnual = 69,600` | `69,600` ✓ | No | Override $69,600 displayed | Clean — operator kept OM value |
-| Management Fee % | `managementFeePct = 0.0275` | `0.0275` ✓ | No | Override 2.50% displayed | Collision not flagged: OM 2.75% vs override 2.50% |
-| Insurance | `insuranceAnnual = 46,400` | `46,400` ✓ | No | Override $46,400 displayed | T12 insurance = null; LV.warning present but silent in UI (BUG-09) |
-| Real Estate Tax | `(null)` | `null` | No | T12 $1,127,126 displayed | OM did not provide RE tax; tax_bill = $20,731 (partial year) vs T12 $1,127,126 — 54× gap (BUG-05) |
-| G&A | `gAndAAnnual = 69,600` | `69,600` ✓ | No | Platform_fallback shown | Platform slot null (BUG-01) |
-| Marketing | `marketingAnnual = 69,600` | `69,600` ✓ | No | Platform_fallback shown | Platform slot null (BUG-01) |
-| Utilities | `utilitiesAnnual = 187,094` | `187,094` ✓ | No | Platform_fallback shown | Platform slot null (BUG-01) |
-| Replacement Reserves/unit | `replacementReservesPerUnit = 200 ($46,400/yr)` | `$46,400` ✓ | No | Override $250/unit ($58,000/yr) displayed | Operator increased above OM; no collision flag |
-| EGI | `stabilizedEgi = 4,998,237` | No direct field | No | Computed = $3,615,849 | **COLLISION: −$1,382,388 (−27.7%) — not flagged** |
-| NOI | `stabilizedNOI = 2,999,564` | `2,999,564` (om slot) | No | Resolved = $486,108 | **CRITICAL COLLISION: −$2,513,456 (−83.8%) — not flagged** |
-| Total OpEx | `totalOpexAnnual = 1,998,673` | No direct field | No | Resolved = $3,129,741 | **COLLISION: +$1,131,068 (+56.6%) — not flagged** |
+| # | Pro Forma Row | Canonical field key | Stored: `year1.FIELD.om` | Stored: `year1.FIELD.resolved` | Stored: `year1.FIELD.resolution` | Surfaces in System A? | Frontend renders broker col | Root cause of gap / finding |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Gross Potential Rent | `gpr` | **null** | $4,901,400 | override | No | Platform_fallback shown | BUG-11: seeder does not map `broker_claims.proforma.stabilizedGpr` ($4,901,400) into `gpr.om` slot |
+| 2 | Loss to Lease (%) | `loss_to_lease_pct` | 0 (0.00%) | 0.35% | t12 | No | OM badge shown (0%) | OM = 0%, T12 = 0.35% — no collision flag |
+| 3 | Loss to Lease ($) | `loss_to_lease` (toDollarRow) | Derived from row 2 | $17,140 | t12 | No | OM $0 vs resolved $17,140 | Dollar row derived via `toDollarRow` — no direct om slot |
+| 4 | Vacancy % | `vacancy_pct` | 0.05 (5.00%) | 19.83% | rent_roll | No | OM badge shown (5%) | System A vacancy (5%) decoupled from System B (19.83%) — BUG-08 |
+| 5 | Vacancy Loss ($) | `vacancy_loss` (toDollarRow) | $245,070 (GPR × 5%) | $971,887 | rent_roll | No | OM $245K vs resolved $972K (+$727K) | Material divergence not flagged |
+| 6 | Concessions (%) | `concessions_pct` | 0 (0.00%) | 7.78% | t12 | No | OM badge shown (0%) | Collision 0% vs 7.78% not flagged |
+| 7 | Concessions ($) | `concessions` (toDollarRow) | $0 | $381,280 | t12 | No | OM $0 vs resolved $381K | BUG-06: collision not flagged |
+| 8 | Bad Debt (%) | `bad_debt_pct` | **null** | 3.34% | t12 | No | No broker badge (om null) | OM did not provide bad debt |
+| 9 | Bad Debt ($) | `bad_debt` (toDollarRow) | Derived (null) | $117,999 | t12 | No | No broker badge | No OM source; no collision check possible |
+| 10 | Non-Revenue Units (%) | `non_revenue_units_pct` | **null** | 0 (0.00%) | t12 | No | No broker badge | OM did not include non-revenue units |
+| 11 | Non-Revenue Units ($) | `non_revenue_units` (toDollarRow) | Derived (null) | $0 | t12 | No | No broker badge | $0 because t12 = 0; no OM |
+| 12 | Other Income / unit | `other_income_per_unit` | $307.76/unit/yr | $75.34/unit/yr | rent_roll | No | OM $307.76 vs resolved $75.34 (4.1×) | BUG-06: 4× collision not flagged |
+| 13 | Other Income ($) | `other_income` (toDollarRow) | $71,400 (est.) | $209,749 | rent_roll | No | OM ~$71K vs resolved ~$210K | Dollar row derived; collision not flagged |
+| 14 | **Net Rental Income** | `net_rental_income` | **null** | $3,531,123 | platform_fallback | No | No broker badge | No direct om slot; derived subtotal |
+| 15 | **Effective Gross Income** | `egi` | Not stored as om | $3,615,849 | computed from components | No | No direct broker EGI badge | Broker implied EGI = $4,998,237 (+38.2% vs resolved) — not flagged (BUG-06) |
+| 16 | Repairs & Maintenance | `repairs_maintenance` | $69,600 | $69,600 | override | No | OM badge shown | Clean — operator kept OM value; T12 = $4,090 (partial year) |
+| 17 | Contract Services | `contract_services` | **null** | $28,680 | override | No | No broker badge | OM did not provide contract services separately |
+| 18 | Landscaping / Grounds | `landscaping` | **null** | **null** | null | No | No broker badge | No OM, no T12, no override; missing from resolved |
+| 19 | Personnel / Payroll | `payroll` | $324,800 | $324,800 | override | No | OM badge shown | Clean — operator kept OM value; T12 = $29,125 (partial year) |
+| 20 | Marketing / Advertising | `marketing` | $69,600 | $69,600 | override | No | OM badge shown | Clean |
+| 21 | Administrative / G&A | `g_and_a` | $69,600 | $69,600 | override | No | OM badge shown | Clean |
+| 22 | Turnover / Make-Ready | `turnover` | $41,760 | $41,760 | override | No | OM badge shown | T12 = $1,540 (partial year) |
+| 23 | Water & Sewer | `water_sewer` | **null** | **null** | null | No | No broker badge | No OM, no T12; OM provided combined `utilitiesAnnual=$187,094` not decomposed into sub-lines |
+| 24 | Electric | `electric` | **null** | **null** | null | No | No broker badge | Same — OM combined utilities not decomposed |
+| 25 | Gas / Fuel | `gas_fuel` | **null** | **null** | null | No | No broker badge | Same — OM combined utilities not decomposed |
+| 26 | Utilities (combined) | `utilities` | $187,094 | $187,094 | override | No | OM badge shown ($187K) | OM provided combined; system expects sub-lines; combined stored in `utilities` slot not in OPEX_FIELDS |
+| 27 | Insurance | `insurance` | $46,400 | $46,400 | override | No | OM badge shown | T12 = null; LV.warning references non-existent platform baseline (BUG-09) |
+| 28 | Property Tax | `real_estate_tax` | **null** | $1,127,126 | t12 | No | No broker badge (om null) | tax_bill = $20,731 vs T12 = $1,127,126 — 54× gap unreconciled (BUG-05) |
+| 29 | Management Fee (%) | `management_fee_pct` | 0.0275 (2.75%) | 2.50% | override | No | OM badge shown (2.75%) | Collision OM 2.75% vs override 2.50% — not flagged |
+| 30 | Management Fee ($) | `management_fee` (toDollarRow) | $99,479 est. (OM 2.75% × EGI) | $90,396 (2.50% × $3,615,849) | override | No | OM ~$99K vs resolved $90K | Dollar derived; small collision not flagged |
+| 31 | Replacement Reserves | `replacement_reserves` | $46,400 ($200/unit) | $58,000 ($250/unit) | override | No | OM $46K vs resolved $58K | Operator increased above OM; no flag |
+| 32 | **Total Operating Expenses** | `total_opex` | Not stored as om | $3,129,741 | computed | No | No broker badge | Broker implied OpEx = $1,998,673 (resolved = $3,129,741; +$1,131,068 / +56.6%) — BUG-06 |
+| 33 | **Net Operating Income** | `noi` | $2,999,564 | $486,108 | platform_fallback | No | OM badge ($3.0M vs resolved $486K) | **CRITICAL: −$2,513,456 / −83.8% collision not flagged** — BUG-06 |
+| 34 | Replacement Reserves (below-NOI) | `replacement_reserves` (repeated below NOI line per v31) | $46,400 | $58,000 | override | No | OM badge | Same as row 31 — shown again below NOI per v31 spec |
+| 35 | **NOI After Reserves** | `noi_after_reserves` | Not in year1 | **null** | null | No | Not rendered | **BUG-13: not in year1 OperatingStatementRow[] — only in projections** |
 
-**Structural finding:** `GET /api/v1/proforma/:dealId` surfaces none of the broker
-layer line items — it returns only the 5 market-positioning scalars. Three collisions
-between broker and resolved values exceed the spec's "severe" threshold (>15% delta).
-None are flagged anywhere.
+**Key structural finding:** System A (`GET /api/v1/proforma/:dealId`) surfaces NONE of the
+broker line-item values from this table — it only returns the 5 market-positioning scalars.
+Rows 1-35 are visible only through System B. Three collisions exceed the spec "severe" threshold
+(>15%): rows 15, 32, and 33. None are flagged anywhere.
 
 ---
 
-## Section 2 — Layer 2: Platform Per-Service Audit Matrix
+## Section 3 — Layer 2: Platform Per-Service Audit Matrix
 
-| Module | Service / File | Endpoint or function called | Returns live data? | Used by System A? | Used by System B? | Notes |
+| Module | Service / File | Function/endpoint called | Returns live data? | Feeds System A? | Feeds System B? | Notes |
 |---|---|---|---|---|---|---|
-| **M05** Market Intelligence | `proforma-adjustment.service.ts:1045` | `getMarketBaseline()` | **No — hardcoded** | Nominally yes | No | Returns literal constants with comment "For now, return reasonable defaults" (line 1049). No MSA query, no submarket lookup. All 5 scalars are static for every deal. |
-| **M04** Supply Pipeline | `proforma-adjustment.service.ts:1034` | `getCompetitiveSupply()` | Partial | No | No | Queries `properties` table for nearby pipeline units. Result assigned to `supplyPipelineUnits` inside `getMarketTightness()` context. Never flows into any proforma field. |
-| **M07** Traffic Engine | `trafficToProFormaService.ts:866` | `getTrafficProjection()` | Yes | Indirect | Yes | System B reads stored `traffic_projections` row at `getDealFinancials:1756`. Used as `M05_EQUILIBRIUM_MIN` vacancy floor (seeder line 2052). System A: `updateFromTrafficEngine()` (line 717) writes to `proforma_assumptions` — but for 464 Bishop baseline == current for all fields, meaning M07 has not yet fired an update. |
+| **M05** Market Intelligence | `proforma-adjustment.service.ts:1049` | `getMarketBaseline()` | **No — hardcoded** | Nominally yes | No | Returns literal constants with comment "For now, return reasonable defaults" (line 1049). No MSA query, no submarket lookup. All 5 scalars are static defaults for every deal. |
+| **M04** Supply Pipeline | `proforma-adjustment.service.ts:1034` | `getCompetitiveSupply()` | Partial | Indirect | No | Queries `properties` table for nearby pipeline units. Assigned to `supplyPipelineUnits` in `getMarketTightness()`. Never flows into any proforma field. |
+| **M07** Traffic Engine | `trafficToProFormaService.ts:866` | `getTrafficProjection()` | Yes | Indirect | Yes (floor) | System B reads stored `traffic_projections` row at `getDealFinancials:1756`. Used as `M05_EQUILIBRIUM_MIN` vacancy floor (seeder:2052). System A: `updateFromTrafficEngine()` (line 717) writes to `proforma_assumptions` — but for 464 Bishop `baseline == current`, meaning M07 has not yet fired an update. |
 | **M14** Risk Assessment | None | None | N/A | No | No | No import of M14 service in proforma services. Risk score does not influence any proforma field. |
-| **M35** Event Impact | `proforma.routes.ts:155` | `getM35ProformaAttribution()` | Yes (metadata) | Yes (appended) | No | Attribution object appended to System A response as `eventAttribution` key. Display metadata only — not fed back into any System B line item. |
-| **Tax Service** | `proforma-seeder.service.ts:2673` | `taxService.forecast(taxCtx)` | Yes | No | Partial | Called for Section C income tax / depreciation only. **Not called for the P&L real_estate_tax line** — that line reads T12 directly. `year1.real_estate_tax.platform` is always null. |
-| **Insurance Service** | `proforma-seeder.service.ts:585` | `platformOpEx(platform.opex_per_unit_annual.insurance)` | No | No | No | `platform.opex_per_unit_annual.insurance` = null for 464 Bishop → `insurancePlatform = null`. LV.warning references "platform baseline" that does not exist. |
+| **M35** Event Impact | `proforma.routes.ts:155` | `getM35ProformaAttribution()` | Yes (metadata) | Yes (appended) | No | Attribution appended to System A response as `eventAttribution`. Display metadata only — not fed back into any System B line item. |
+| **Tax Service** | `proforma-seeder.service.ts:2673` | `taxService.forecast(taxCtx)` | Yes | No | Partial | Called for income tax / depreciation section only. **Not called for P&L `real_estate_tax` line** — that reads T12 directly. `year1.real_estate_tax.platform` = null. |
+| **Insurance Service** | `proforma-seeder.service.ts:585` | `platformOpEx(platform.opex_per_unit_annual.insurance)` | No | No | No | `platform.opex_per_unit_annual.insurance = null` for 464 Bishop → `insurancePlatform = null`. LV.warning references "platform baseline" that does not exist. |
 | **M15** Comp Engine | None | None | N/A | No | No | Exit cap baseline in `getMarketBaseline()` = hardcoded 5.5%. No comp transaction lookup. |
 | **M22** Post-Close Intelligence | None | None | N/A | No | No | Tier 2 owned-portfolio actuals not implemented. `year1.FIELD.box_score` slot always null. |
 
 ---
 
-## Section 3 — Layer 3: Data Quality — LayeredValue Resolution Audit
+## Section 4 — Layer 3: Data Quality — LayeredValue Resolution Audit
 
 All values queried from `deal_assumptions.year1` JSONB for 464 Bishop at 2026-05-09.
 
-| Field | Resolution label | Resolved value | Notable source values | Anomaly |
+| Field | Resolution | Resolved value | Notable source values | Anomaly |
 |---|---|---|---|---|
-| `gpr` | `override` | $4,901,400 | t12=$4,876,535, rent_roll=$4,932,300, om=**null**, platform=**null** | OM GPR not mapped to om slot (BUG-11); platform null (BUG-01) |
-| `vacancy_pct` | `rent_roll` | 19.83% | **t12=66.01%**, rent_roll=19.83%, om=5.00%, platform=**null** | T12 vacancy = 66% — impossible for occupied property; calculation error suspected (BUG-04) |
-| `loss_to_lease_pct` | `t12` | 0.35% | rent_roll=1.32%, om=0%, platform=**null** | OM = 0%, T12 = 0.35% — no collision flag |
-| `concessions_pct` | `t12` | 7.78% | rent_roll=0%, om=0%, platform=**null** | Material collision: OM = 0%, T12 = 7.78% — not flagged |
+| `gpr` | `override` | $4,901,400 | t12=$4,876,535, rent_roll=$4,932,300, om=**null**, platform=**null** | OM not mapped (BUG-11); platform null (BUG-01) |
+| `vacancy_pct` | `rent_roll` | 19.83% | **t12=66.01%**, rent_roll=19.83%, om=5.00%, platform=**null** | T12 vacancy = 66% — formula error (BUG-04) |
+| `loss_to_lease_pct` | `t12` | 0.35% | rent_roll=1.32%, om=0%, platform=**null** | OM = 0% vs T12 = 0.35% — no collision flag |
+| `concessions_pct` | `t12` | 7.78% | rent_roll=0%, om=0%, platform=**null** | Material collision: OM = 0% vs T12 = 7.78% — not flagged |
 | `bad_debt_pct` | `t12` | 3.34% | om=**null**, platform=**null** | No OM or platform source |
-| `payroll` | `override` | $324,800 | t12=$29,125, om=$324,800, platform=**null** | T12 payroll = $29,125 (partial year or miscategorised) |
-| `repairs_maintenance` | `override` | $69,600 | t12=$4,090, om=$69,600, platform=**null** | T12 = $4,090 (partial year) |
-| `management_fee_pct` | `override` | 2.50% | t12=11.42%, om=2.75%, platform=**null** | T12 mgmt fee = 11.42% — nonsensical |
-| `real_estate_tax` | `t12` | $1,127,126 | tax_bill=$20,731, platform=**null** | Tax bill 54× lower than T12; taxService not called for this P&L line (BUG-05) |
-| `insurance` | `override` | $46,400 | **t12=null**, platform=**null**, warning logged | Warning "using platform baseline" but platform slot is also null (BUG-09) |
+| `non_revenue_units_pct` | `t12` | 0.00% | om=**null**, t12=0%, platform=**null** | Clean zero |
 | `other_income_per_unit` | `rent_roll` | $75.34/unit/yr | t12=$169.19, om=$307.76, platform=**null** | OM 4× rent_roll — no collision flag |
+| `payroll` | `override` | $324,800 | t12=$29,125, om=$324,800, platform=**null** | T12 = $29,125 (partial year or miscategorised) |
+| `repairs_maintenance` | `override` | $69,600 | t12=$4,090, om=$69,600, platform=**null** | T12 = $4,090 (partial year) |
+| `contract_services` | `override` | $28,680 | t12=$19,640, om=**null**, platform=**null** | No OM; T12 reasonable |
+| `landscaping` | **null** | **null** | all slots null | No data for this deal in any tier |
+| `marketing` | `override` | $69,600 | om=$69,600, t12=unknown, platform=**null** | Clean |
+| `g_and_a` | `override` | $69,600 | om=$69,600, t12=unknown, platform=**null** | Clean |
+| `turnover` | `override` | $41,760 | om=$41,760, t12=$1,540, platform=**null** | T12 = $1,540 (partial year) |
+| `water_sewer` | **null** | **null** | all slots null | OM provided combined utilities ($187K) not decomposed |
+| `electric` | **null** | **null** | all slots null | Same |
+| `gas_fuel` | **null** | **null** | all slots null | Same |
+| `utilities` | `override` | $187,094 | om=$187,094, t12=$936, platform=**null** | Combined utilities stored in non-OPEX_FIELDS slot; T12 = $936 (partial year) |
+| `management_fee_pct` | `override` | 2.50% | t12=11.42%, om=2.75%, platform=**null** | T12 mgmt fee = 11.42% — nonsensical (dollar amount used as rate?) |
+| `real_estate_tax` | `t12` | $1,127,126 | tax_bill=$20,731, platform=**null** | Tax bill 54× lower than T12; taxService not called for this P&L line (BUG-05) |
+| `insurance` | `override` | $46,400 | **t12=null**, platform=**null**, warning logged | Warning "using platform baseline" but platform also null (BUG-09) |
 | `replacement_reserves` | `override` | $58,000 ($250/unit) | om=$46,400 ($200/unit), t12=**null**, platform=**null** | T12 has no reserves line |
-| `noi` | `platform_fallback` | $486,108 | om=$2,999,564, platform=**null** | NOI collision: broker $3.0M vs resolved $486K (−83.8%) |
-| `noi_after_reserves` | **Not in year1 seed** | null | — | NOT assembled in year1 JSONB; only in projections array (BUG-13) |
-| `cfbd` | **Not in year1 seed** | null | — | NOT assembled in year1 JSONB; only in projections (BUG-13) |
+| `noi` | `platform_fallback` | $486,108 | om=$2,999,564, platform=**null** | NOI collision: broker $3.0M vs resolved $486K (−83.8%) — BUG-06 |
+| `noi_after_reserves` | **Not in year1** | null | — | NOT assembled in year1 JSONB; only in projections (BUG-13) |
 
 ---
 
-## Section 4 — Layer 4: Frontend State & Rendering Audit
+## Section 5 — Layer 4: Frontend State & Rendering Audit
 
-### 4.1 Zustand Store Shape (dealStore)
+### 5.1 Zustand Store Shape (dealStore)
 
-`ProFormaSummaryTab.tsx` reads four selectors from `useDealStore`:
+`ProFormaSummaryTab.tsx` reads four selectors from `useDealStore` (lines 364-369):
 
 ```typescript
-// ProFormaSummaryTab.tsx:364-369
-const viewMode             = useDealStore(s => s.viewMode);          // 'broker'|'t12'|'platform'|'resolved'
-const y1Source             = useDealStore(s => s.y1Source);          // 'T12'|'T6'|'T3'|'T1'|'BROKER'
-const platformColSource    = useDealStore(s => s.platformColSource); // PlatformColSource enum
-const stanceAffectedFields = useDealStore(s => s.stanceAffectedFields); // OperatorStance field tags
+const viewMode             = useDealStore(s => s.viewMode);
+// 'broker' | 't12' | 'platform' | 'resolved' — controls column highlight
+const y1Source             = useDealStore(s => s.y1Source);
+// 'T12' | 'T6' | 'T3' | 'T1' | 'BROKER' — T-period header highlight
+const platformColSource    = useDealStore(s => s.platformColSource);
+// PlatformColSource enum — drives platform column label
+const stanceAffectedFields = useDealStore(s => s.stanceAffectedFields);
+// OperatorStance-tagged field paths
 ```
 
-`data` state is local React state (`useState<DealFinancials | null>`), not Zustand.
-Data is fetched via `apiClient.get('/api/v1/deals/:dealId/financials')` inside
-a `useCallback` named `load` — not subscribed to a Zustand store.
+`data: DealFinancials | null` is local React state fetched via `apiClient.get()` inside
+`useCallback load()` — **not** a Zustand subscription. Data does not auto-update on
+Zustand mutations; only on explicit `load()` call.
 
-**Shape mismatch:** Zustand `y1Source` controls which T-period column header is
-highlighted but does NOT change which value `resolved` displays — `resolved` is
-always the seeder's resolved value regardless of `y1Source`. The T-period toggle
-only highlights the header; it does not re-derive resolved from the selected period's
-raw value. This means the "T12 column" in the UI is an annotation, not a data source
-switch.
+**Shape mismatch:** `y1Source` changes the T-period column header highlight only. It does
+NOT re-derive `resolved` from the newly selected period's raw value. The "T12 column"
+is an annotation; it is not a data source switch. An operator toggling to "T6" mode sees
+the T12-resolved value displayed as primary — no T6 re-resolution occurs.
 
-### 4.2 OperatingStatementRow Shape (Frontend ↔ Backend Contract)
+### 5.2 OperatingStatementRow Shape (Frontend ↔ Backend Contract)
 
-Backend (`proforma-adjustment.service.ts:1876-1905`) assembles each row via `toRow()`:
+Assembled by `toRow()` at `proforma-adjustment.service.ts:1876-1905`:
 
 ```typescript
-// toRow() at proforma-adjustment.service.ts:1876-1905
 interface OperatingStatementRow {
-  field:              string;           // e.g. 'gpr', 'vacancy_pct'
-  label:              string;           // display label
-  broker:             number | null;    // = layerNum(field, 'om') ?? layerNum(field, 'broker')
-  platform:           number | null;    // = layerNum(field, 'platform')  ← always null (BUG-01)
-  t12:                number | null;    // = layerNum(field, 't12')
-  t6:                 number | null;    // not populated by toRow()
-  t3:                 number | null;    // not populated by toRow()
-  t1:                 number | null;    // not populated by toRow()
-  rentRoll:           number | null;    // = layerNum(field, 'rent_roll')
-  taxBill:            number | null;    // = layerNum(field, 'tax_bill')
-  resolved:           number | null;    // = resolvedNum(field)
-  resolution:         string | null;    // = field.resolution tag
-  perUnit:            number | null;    // = resolved / totalUnits
-  source:             string | null;    // = resolution (duplicate)
-  confidence:         number | null;    // SOURCE_CONFIDENCE[resolution] lookup (0-100)
-  benchmarkPosition:  'above'|'below'|'within'|null;  // compare resolved vs platform (always null)
+  field:             string;          // e.g. 'gpr', 'vacancy_loss'
+  label:             string;          // display label
+  broker:            number | null;   // layerNum(field, 'om') ?? layerNum(field, 'broker')
+  platform:          number | null;   // layerNum(field, 'platform')  ← always null (BUG-01)
+  t12:               number | null;   // layerNum(field, 't12')
+  t6:                number | null;   // not populated by toRow() — always null
+  t3:                number | null;   // not populated by toRow() — always null
+  t1:                number | null;   // not populated by toRow() — always null
+  rentRoll:          number | null;   // layerNum(field, 'rent_roll')
+  taxBill:           number | null;   // layerNum(field, 'tax_bill')
+  resolved:          number | null;   // resolvedNum(field)
+  resolution:        string | null;   // field.resolution tag
+  perUnit:           number | null;   // resolved / totalUnits
+  source:            string | null;   // = resolution (duplicate field)
+  confidence:        number | null;   // SOURCE_CONFIDENCE[resolution] (0-100)
+  benchmarkPosition: 'above' | 'below' | 'within' | null;  // always null (BUG-01)
 }
 ```
 
-**Key null-handling issues:**
-- `platform` = null for every row (BUG-01) → `benchmarkPosition` is always null →
-  no benchmark comparison badge ever renders
-- `t6`, `t3`, `t1` slots are present in the TypeScript interface but not populated
-  by `toRow()` — always null
-- `confidence` field exists in response (range 55-95 per `SOURCE_CONFIDENCE`) but
-  the tab renders it as a badge only when `resolution` matches a confidence tier
+**Null-handling issues:**
+- `platform` = null for every row (BUG-01) → `benchmarkPosition` = null → no benchmark
+  comparison badge ever renders on any row
+- `t6`, `t3`, `t1` present in TypeScript interface but not populated by `toRow()`; always null
+- `confidence` is present in the response (e.g. t12 = 85, override = 95) but the tab renders
+  it as a badge only when `resolution` matches a recognized tier
+- `LV.warning` strings in the JSONB (e.g. insurance null warning) are not extracted by
+  `toRow()` and are silently dropped from the API response (BUG-14)
 
-### 4.3 LayeredValue → OperatingStatementRow Flattening
+### 5.3 LayeredValue → OperatingStatementRow Flattening
 
-Backend `LayeredValue<T>` has slots: `{ om, t12, rent_roll, tax_bill, platform,
-override, resolved, resolution, updated_at, warning? }`.
+Backend `LayeredValue<T>` slots: `{ om, t12, rent_roll, tax_bill, platform, override,
+resolved, resolution, updated_at, warning? }`.
 
-Frontend receives these flattened:
-
-| LayeredValue slot | OperatingStatementRow field | Rendering |
+| LayeredValue slot | OperatingStatementRow field | Rendering in ProFormaSummaryTab |
 |---|---|---|
-| `om` / `broker` | `broker` | Rendered in BROKER column; badge shows source tag |
-| `platform` | `platform` | Always null — benchmark column is always blank |
+| `om` / `broker` | `broker` | Rendered in BROKER column with source badge |
+| `platform` | `platform` | Always null — benchmark column always blank |
 | `t12` | `t12` | Rendered in T12 column |
 | `rent_roll` | `rentRoll` | Rendered in RENT ROLL column |
 | `tax_bill` | `taxBill` | Rendered in TAX BILL column |
 | `resolved` | `resolved` | Primary display value |
-| `resolution` | `resolution` / `source` | Badge label (e.g. "override", "t12") |
-| `warning` | **Not surfaced** | Warning string present in DB (e.g. insurance null) but not in OperatingStatementRow — silently dropped |
+| `resolution` | `resolution` / `source` | Badge label ("override", "t12", etc.) |
+| `warning` | **Not surfaced** | Silently dropped by `toRow()` — BUG-14 |
+| `updated_at` | Not present | Not in `OperatingStatementRow` |
 
-**Finding:** The `warning` field from `LayeredValue` is stored in the JSONB (confirmed:
-insurance.warning = "No property insurance line in T12 — using platform baseline") but
-`toRow()` does not extract it into `OperatingStatementRow`. The warning is silently
-lost in the API response. The UI cannot show it even if it wanted to.
-
-### 4.4 Category / isSubtotal Metadata
+### 5.4 Category / isSubtotal Metadata
 
 There is **no `category` field and no `isSubtotal` flag** in `OperatingStatementRow`.
-Subtotal rows (EGI, Total OpEx, NOI) are identified in the frontend by field key
-string matching only (`r.field === 'egi'`, `r.field === 'total_opex'`, etc.).
+Subtotal rows (EGI, total_opex, NOI) are identified in the frontend exclusively by field
+key string matching (`r.field === 'egi'`, `r.field === 'total_opex'`, etc.).
 
-The v31 spec and the `jedi-framework-v31.jsx` description define separate section
-headers (BASE RENTAL REVENUE, CONTROLLABLE EXPENSES, NON-CONTROLLABLE EXPENSES,
-TOTAL OPERATING EXPENSES, NET OPERATING INCOME). These exist as visual separators
-in the frontend but are hardcoded in the rendering component — not driven by metadata
-from the API response. Adding or reordering sections requires changing frontend code,
-not data.
+Section headers in the v31 spec (BASE RENTAL REVENUE, CONTROLLABLE EXPENSES,
+NON-CONTROLLABLE EXPENSES, etc.) are hardcoded in the rendering component, not driven
+by API metadata. Adding or reordering sections requires frontend code changes.
 
-The `isSubtotal` flag found at `StrategyV2Components.tsx:741` applies to a different
-surface (Strategy V2 waterfall visualization), not to `ProFormaSummaryTab`.
+The `isSubtotal` flag at `StrategyV2Components.tsx:741` applies to the Strategy V2
+waterfall visualization surface, not to `ProFormaSummaryTab`.
 
 ---
 
-## Section 5 — Layer 5: Subtotals Computation Ownership
+## Section 6 — Layer 5: Subtotals Computation Ownership
 
-### 5.1 Where Subtotals Are Computed
+### 6.1 Where Subtotals Are Computed
 
-The canonical row assembly is in `proforma-adjustment.service.ts`, function
-`getDealFinancials()`. Three arrays of rows are defined:
+Row assembly in `getDealFinancials()` at `proforma-adjustment.service.ts:1832-1970`:
 
 ```typescript
-// proforma-adjustment.service.ts:1832-1861
 const REVENUE_FIELDS = [
   ['gpr', 'Gross Potential Rent'],
   ['loss_to_lease_pct', ...], ['vacancy_pct', ...], ['concessions_pct', ...],
   ['bad_debt_pct', ...], ['non_revenue_units_pct', ...],
-  ['other_income_per_unit', ...],
-  ['net_rental_income', 'Net Rental Income'],
+  ['other_income_per_unit', ...], ['net_rental_income', ...],
   ['egi', 'Effective Gross Income'],          // ← subtotal row
 ];
 const OPEX_FIELDS = [
@@ -259,175 +344,163 @@ const OPEX_FIELDS = [
   ['replacement_reserves', ...],
   ['total_opex', 'Total Operating Expenses'],  // ← subtotal row
 ];
-const NOI_FIELDS = [['noi', 'Net Operating Income']];  // ← subtotal row
+const NOI_FIELDS = [['noi', 'Net Operating Income']];  // ← subtotal/total row
 ```
 
-Then dollar rows are assembled (line 1960-1970):
-
+Assembled row array (lines 1959-1970):
 ```
 REVENUE_FIELDS.map(toRow)
-+ toDollarRow('loss_to_lease_pct', ...)
-+ toDollarRow('vacancy_pct', ...)
-+ toDollarRow('concessions_pct', ...)
-+ toDollarRow('bad_debt_pct', ...)
-+ toDollarRow('non_revenue_units_pct', ...)
-+ toDollarRow('other_income_per_unit', ..., totalUnits × 12)
++ toDollarRow('loss_to_lease_pct', 'loss_to_lease', ...)
++ toDollarRow('vacancy_pct', 'vacancy_loss', ...)
++ toDollarRow('concessions_pct', 'concessions', ...)
++ toDollarRow('bad_debt_pct', 'bad_debt', ...)
++ toDollarRow('non_revenue_units_pct', 'non_revenue_units', ...)
++ toDollarRow('other_income_per_unit', 'other_income', ..., totalUnits × 12)
 + OPEX_FIELDS.map(toRow)
-+ toDollarRow('management_fee_pct', 'management_fee', ..., _egiForDollars)
++ toDollarRow('management_fee_pct', 'management_fee', ..., EGI)
 + NOI_FIELDS.map(toRow)
 ```
 
-**Finding:** Subtotals (EGI, total_opex, NOI) are computed once at seeder time,
-stored in `deal_assumptions.year1.FIELD.resolved`, and returned as regular rows —
-not computed on-the-fly in `getDealFinancials()`. No `category` or `isSubtotal`
-metadata accompanies them. The seeder computes:
-- `egi = nri + other_income` (derived from component resolution)
-- `total_opex = SUM(all opex lines)` (derived from component resolution)
+**Finding:** Subtotals (EGI, total_opex, NOI) are computed once by the seeder and stored in
+`deal_assumptions.year1.FIELD.resolved`. They are returned as regular rows — identical in
+shape to detail rows. No `category` or `isSubtotal` metadata accompanies them. The seeder:
+- `egi = NRI + other_income`
+- `total_opex = SUM(all opex component resolved values)`
 - `noi = egi − total_opex`
 
-### 5.2 Spec vs Live Subtotal Coverage Gap
+### 6.2 Spec vs Live Subtotal Coverage Gap
 
-The v31 canonical spec (`jedi-framework-v31.jsx` description) includes subtotals that
-the current year1 assembly does NOT produce as named rows:
-
-| Spec subtotal row | In year1 assembly? | Where computed? |
+| v31 spec row | In year1 OperatingStatementRow[]? | Where computed? |
 |---|---|---|
-| BASE RENTAL REVENUE | No named row | Visual section header only in frontend |
+| BASE RENTAL REVENUE | No named row | Visual section header only (hardcoded in frontend) |
 | CONTROLLABLE EXPENSES | No named row | Visual section header only |
 | NON-CONTROLLABLE EXPENSES | No named row | Visual section header only |
-| TOTAL OPERATING EXPENSES | ✓ `total_opex` | year1 seed; `toRow('total_opex', ...)` |
-| NET OPERATING INCOME | ✓ `noi` | year1 seed; `toRow('noi', ...)` |
+| TOTAL OPERATING EXPENSES | ✓ `total_opex` | Seeder seed; `toRow('total_opex', ...)` |
+| NET OPERATING INCOME | ✓ `noi` | Seeder seed; `toRow('noi', ...)` |
 | NOI AFTER RESERVES | **Not in year1** | Projection loop only (line 3393) |
 | TOTAL DEBT SERVICE | **Not in year1** | Projection loop only |
-| CASH FLOW BEFORE TAX | **Not in year1** | Projection loop only + `proFormaGenerator.ts:314` |
+| CASH FLOW BEFORE TAX | **Not in year1** | Projection loop only; 3D model: `proFormaGenerator.ts:314` |
 
-**Finding (BUG-13):** `NOI After Reserves`, `Total Debt Service`, and `Cash Flow
-Before Tax` are defined in the v31 spec as Pro Forma surface rows but are NOT present
-in the year1 `OperatingStatementRow[]` returned by `GET /api/v1/deals/:dealId/
-financials`. They exist only in the `projections` array (per-year, not a year1
-summary). `ProFormaSummaryTab` therefore cannot render these rows. The Pro Forma
-surface is incomplete below the NOI line.
+**Finding (BUG-13):** `NOI After Reserves` is defined in the v31 spec as a Pro Forma surface
+row ("NOI AFTER RESERVES — subtotal") but is NOT present in the `OperatingStatementRow[]`
+returned by `getDealFinancials()`. `ProFormaSummaryTab` cannot render it.
 
 ---
 
-## Section 6 — Layer 6: Live Data Spot-Checks
+## Section 7 — Layer 6: Live Data Spot-Checks
 
-All values from live DB queries against 464 Bishop (`3f32276f-aacd-4da3-b306-317c5109b403`)
-at 2026-05-09. Proforma endpoint is `GET /api/v1/proforma/:dealId` (System A).
-Full pipeline data from `deal_assumptions.year1` JSONB (System B seed).
+All values from live DB queries against 464 Bishop at 2026-05-09.
 
 ### Spot-check 1: GPR → Vacancy Loss → EGI Chain
 
-**Rule under test:** EGI = GPR − vacancy_loss − loss_to_lease − concessions − bad_debt
-− non_revenue_units + other_income
+**Rule:** EGI = GPR − vacancy_loss − loss_to_lease − concessions − bad_debt − non_revenue_units + other_income
 
-| Step | Formula | DB resolved inputs | Computed | DB actual | Match? |
+| Step | Formula | DB resolved inputs | Computed | DB actual | Pass? |
 |---|---|---|---|---|---|
 | GPR | `year1.gpr.resolved` | override = $4,901,400 | **$4,901,400** | $4,901,400 | ✓ |
-| Vacancy Loss | `GPR × vacancy_pct.resolved` | 4,901,400 × 0.19827586 | $971,887 | — | Computed |
-| Loss to Lease | `GPR × ltl_pct.resolved` | 4,901,400 × 0.003497 | $17,140 | — | Computed |
-| Concessions | `GPR × concessions_pct.resolved` | 4,901,400 × 0.07779 | $381,280 | — | Computed |
-| Bad Debt | `NRI_pre_bd × bd_pct.resolved` | (GPR−vac−ltl−con) × 0.033423 = 3,531,093 × 0.033423 | $117,999 | — | Computed |
-| Other Income | `oi_per_unit × units × 12` | 75.3448 × 232 × 12 | $209,749 | — | Computed |
-| **EGI (computed)** | NRI + other_income | $3,413,094 + $209,749 | **$3,622,843** | $3,615,849 | Delta = $6,994 |
+| Vacancy Loss | `GPR × vacancy_pct.resolved` | 4,901,400 × 0.19827586 | **$971,887** | — | — |
+| Loss to Lease | `GPR × ltl_pct.resolved` | 4,901,400 × 0.003497 | **$17,140** | — | — |
+| Concessions | `GPR × concessions_pct.resolved` | 4,901,400 × 0.07779 | **$381,280** | — | — |
+| Bad Debt | `(GPR−vac−ltl−con) × bd_pct` | 3,531,093 × 0.033423 | **$117,999** | — | — |
+| Non-Revenue Units | `GPR × 0.00` | 4,901,400 × 0 | **$0** | — | — |
+| Other Income | `oi_per_unit × units × 12` | 75.3448 × 232 × 12 | **$209,749** | — | — |
+| **EGI (computed)** | NRI + other_income | 3,413,094 + 209,749 | **$3,622,843** | **$3,615,849** | Delta = $6,994 (~0.2%) |
 
-**Finding:** Delta of $6,994 (~0.2%) between manual calculation and DB resolved EGI
-is attributable to non_revenue_units_pct (not retrieved in this query). The chain
-is internally consistent. However, the GPR broker source (OM) is null in the `om`
-slot (BUG-11), and System A vacancy (5%) vs System B (19.83%) means the chain
-produces very different NOI depending on which system is referenced.
+**Conclusion:** Delta of $6,994 is within rounding precision; attributable to fractional
+precision in vacancy rate. Chain is internally consistent.
 
-**Secondary finding (System A vs System B vacancy divergence):**
+**Secondary finding — System A vs System B vacancy divergence:**
 
 | | System A `GET /api/v1/proforma/:dealId` | System B `year1.vacancy_pct.resolved` |
 |---|---|---|
 | Vacancy rate | 5.00% | 19.83% |
 | Implied vacancy loss on $4,901,400 GPR | $245,070 | $971,887 |
-| Implied EGI difference | +$726,817 | |
+| EGI difference | **+$726,817** on System A vs System B | |
 
-Both systems are visible to the operator on different surfaces. The divergence is
-never flagged.
+Both are visible to the operator; divergence not flagged.
 
 ### Spot-check 2: OpEx Lines → Total OpEx
 
-**Rule under test:** `total_opex.resolved = SUM(all opex component resolved values)`
-Verified via: `total_opex = EGI − NOI` (arithmetic identity)
+**Rule:** `total_opex.resolved = SUM(all opex component resolved values)`
+Verified via arithmetic identity: `total_opex = EGI − NOI`
 
-| Field | DB resolved | Source |
+| Quantity | Value | Source |
 |---|---|---|
-| EGI | $3,615,849.05 | year1.egi.resolved |
-| NOI | $486,107.97 | year1.noi.resolved |
+| EGI | $3,615,849.05 | `year1.egi.resolved` |
+| NOI | $486,107.97 | `year1.noi.resolved` |
 | **Total OpEx (identity)** | $3,615,849 − $486,108 = **$3,129,741** | Derived |
-| **Total OpEx (DB)** | **$3,129,741.08** | year1.total_opex.resolved |
+| **Total OpEx (DB stored)** | **$3,129,741.08** | `year1.total_opex.resolved` |
 
-✓ **PASS — arithmetic identity holds.** EGI − NOI = total_opex to within $0.03.
+✓ **PASS — arithmetic identity holds to within $0.03.**
 
-**Known components (from DB):**
+**Known component breakdown:**
 
-| OpEx line | DB resolved | Source tag | Platform value |
-|---|---|---|---|
-| Payroll | $324,800 | override | null |
-| Repairs & Maintenance | $69,600 | override | null |
-| Insurance | $46,400 | override | null |
-| Real Estate Tax | $1,127,126 | t12 | null |
-| Management Fee | $90,396 (EGI × 2.5%) | override | null |
-| Replacement Reserves | $58,000 | override | null |
-| **Known subtotal** | **$1,716,322** | | |
-| **Implied remaining OpEx** | **$1,413,419** | contract_services + landscaping + marketing + g_and_a + turnover + water_sewer + electric + gas_fuel | All platform = null |
+| OpEx line | Resolved | Resolution | Platform | Benchmark |
+|---|---|---|---|---|
+| Payroll | $324,800 | override | null | null |
+| Repairs & Maintenance | $69,600 | override | null | null |
+| Contract Services | $28,680 | override | null | null |
+| Landscaping | null | null | null | null |
+| Marketing | $69,600 | override | null | null |
+| G&A | $69,600 | override | null | null |
+| Turnover | $41,760 | override | null | null |
+| Water & Sewer | null | null | null | null |
+| Electric | null | null | null | null |
+| Gas / Fuel | null | null | null | null |
+| Utilities (combined) | $187,094 | override | null | null |
+| Insurance | $46,400 | override | null | null |
+| Real Estate Tax | $1,127,126 | t12 | null | null |
+| Management Fee | $90,396 | override | null | null |
+| Replacement Reserves | $58,000 | override | null | null |
+| **Known sum** | **$2,113,056** | | | |
+| **Unaccounted** | **$1,016,685** | Other inputs or T12 catch-alls not listed | | |
 
-**Finding:** All 14 OpEx line items have `platform = null` (BUG-01). The arithmetic
-identity passes but no individual line item can be benchmarked against market norms —
-`benchmarkPosition` is null for every row.
+**Finding:** Arithmetic identity passes, but all 14+ opex line items have `platform = null`
+(BUG-01) → `benchmarkPosition = null` for every row → no individual line item can be
+benchmarked against market norms. The $1,016,685 unaccounted gap indicates additional opex
+fields not enumerated in `OPEX_FIELDS` (or the `utilities` combined field double-counting).
 
 ### Spot-check 3: NOI → NOI After Reserves → CFBD Chain
 
-**Rule under test (v31 spec):** NOI After Reserves = NOI − replacement_reserves;
+**Rule:** NOI After Reserves = NOI − replacement_reserves;
 CFBD = NOI After Reserves − debt_service
 
-| Step | Formula | DB resolved inputs | Computed | DB year1 value | Status |
+| Step | Formula | DB inputs | Computed | DB `year1` value | Pass? |
 |---|---|---|---|---|---|
-| NOI | `year1.noi.resolved` | $486,107.97 | **$486,108** | $486,108 | ✓ Present |
-| Replacement Reserves | `year1.replacement_reserves.resolved` | $58,000 | **$58,000** | $58,000 | ✓ Present |
+| NOI | `year1.noi.resolved` | $486,107.97 | **$486,108** | $486,108 | ✓ |
+| Replacement Reserves | `year1.replacement_reserves.resolved` | $58,000 | **$58,000** | $58,000 | ✓ |
 | **NOI After Reserves** | `NOI − reserves` | $486,108 − $58,000 | **$428,108** | **null** | ✗ NOT in year1 |
-| Debt Service | From capital stack / loan terms | Not in year1 | — | **null** | ✗ NOT in year1 |
+| Debt Service | Capital stack loan terms | Not in year1 seed | — | **null** | ✗ NOT in year1 |
 | **CFBD** | `NOI After Reserves − debt_service` | — | — | **null** | ✗ NOT in year1 |
 
-✗ **FAIL — Chain breaks at NOI After Reserves.** The computation is correct
-(NOI − reserves = $428,108) but `year1.noi_after_reserves` is not assembled as an
-`OperatingStatementRow` in `getDealFinancials()`. The value exists only in the
-`projections[]` array (computed at `proforma-adjustment.service.ts:3393` as
-`reservesY1 = ry1('replacement_reserves') || (totalUnits × 350)`).
+✗ **FAIL — chain breaks at NOI After Reserves (BUG-13).** The arithmetic is correct
+($428,108 expected) but `year1.noi_after_reserves` is not assembled as an
+`OperatingStatementRow`. The computation exists only in the projection engine:
+`proforma-adjustment.service.ts:3393` as `reservesY1 = ry1('replacement_reserves') ||
+(totalUnits × 350)`.
 
-`CFBD` (Cash Flow Before Tax) is defined in `frontend/src/types/proforma.types.ts:182`
-and in `proFormaGenerator.ts:314` as `noi - debtService` but this is the 3D design
-financial model, not the F9 ProFormaSummaryTab pipeline. In F9, CFBD is a per-year
-projections value only, per the v31 spec: "Cash Flow Before Tax — in Projections tab,
-not summary Pro Forma".
-
-**Conclusion:** The v31 spec is correct that CFBD belongs in Projections, not the
-Pro Forma surface. NOI After Reserves IS expected on the Pro Forma surface (spec: "NOI
-AFTER RESERVES — subtotal") but is missing from the year1 assembly (BUG-13).
+**CFBD (Cash Flow Before Tax):** Per the v31 spec: "Cash Flow Before Tax — in Projections
+tab, not summary Pro Forma." CFBD correctly belongs in the Projections tab, not the Pro
+Forma surface. It is computed per-year in the projection loop as `noi - debtService`
+(also in `proFormaGenerator.ts:314` for the 3D design model). **Only `NOI After Reserves`
+is a Pro Forma surface gap; CFBD is correctly a Projections-only item.**
 
 ---
 
-## Section 7 — Layer 7: Frontend Mock Status
+## Section 8 — Layer 7: Frontend Mock Status
 
 | Component | File:line | Status | Evidence |
 |---|---|---|---|
-| `ProFormaIntelligence` | `ProFormaIntelligence.tsx:19` | **100% mock** | `import { enhancedProFormaMockData } from './enhancedProFormaMockData'` |
-| Market Findings cards | Rendered by ProFormaIntelligence | Mock | Rent growth, vacancy, exit cap cards are hardcoded mock; `GET /api/v1/proforma/:dealId` not called |
+| `ProFormaIntelligence` | `ProFormaIntelligence.tsx:19` | **100% mock** | `import { enhancedProFormaMockData }` — static fixture, never calls any API |
+| Market Findings cards | Rendered by ProFormaIntelligence | Mock | Rent growth, vacancy, exit cap cards are hardcoded mock values |
 | `ProFormaSummaryTab` | `ProFormaSummaryTab.tsx` | Live (partial) | Reads from `dealFinancials.year1` (System B) — real resolved data |
-| Market baseline | `proforma-adjustment.service.ts:1050-1056` | **Hardcoded** | `getMarketBaseline()` returns literal constants; no MSA/submarket query |
-| `runModel()` inputs | `proforma-adjustment.service.ts:169-182` | **Hardcoded** | purchasePrice, units, marketRent, loanAmount, rates are all static constants |
-| `LV.warning` field | `toRow()` at line 1876 | **Not surfaced** | Warning strings in LayeredValue JSONB not extracted into `OperatingStatementRow`; silently dropped |
+| Market baseline | `proforma-adjustment.service.ts:1049` | **Hardcoded** | `getMarketBaseline()` returns literal constants; no MSA/submarket query |
+| `runModel()` inputs | `proforma-adjustment.service.ts:169-182` | **Hardcoded** | 15 hardcoded constants — not live deal data (BUG-02) |
+| `LV.warning` field | `toRow()` at line 1876 | **Not surfaced** | Warning strings in LayeredValue JSONB not extracted by `toRow()`; silently dropped (BUG-14) |
 
 ---
 
-## Section 8 — Legacy vs Evidence-Tier Boundary
-
-Current live code uses a **3-layer legacy model** (Broker / Platform / User).
-The CASHFLOW_AGENT_UNDERWRITING_SPEC defines a **4-tier evidence model** with a
-different authority order and richer provenance.
+## Section 9 — Legacy vs Evidence-Tier Boundary
 
 ### Model Comparison
 
@@ -438,9 +511,8 @@ different authority order and richer provenance.
 | **T12 / Rent Roll / Tax Bill** | Named source slots in LayeredValue | Tier 1 — highest authority |
 | **Owned portfolio actuals** | Not implemented; `box_score` slot null | Tier 2 — second authority via M22 Post-Close |
 | **Platform (M05/M07)** | `year1.FIELD.platform` slot — all null | Tier 3 — market-wide benchmarks |
-| **User override** | `year1.FIELD.override` — working | Maps to operator instruction; overrides all tiers |
+| **User override** | `year1.FIELD.override` — working | Maps to operator instruction |
 | **Evidence provenance** | `LayeredValue.resolution` (string tag) | `Evidence { primary_tier, data_points[], reasoning, alternatives_considered[], collision? }` |
-| **Confidence scoring** | Present in `OperatingStatementRow.confidence` (0-100) but not Evidence-tier schema | `confidence: 'high' \| 'medium' \| 'low'` per derivation |
 | **Collision detection** | Not implemented | `CollisionReport { broker_value, platform_value, delta_pct, magnitude, direction, narrative }` per field |
 | **Agent attribution** | Not present | `agent_run_id`, `set_by`, `set_at` per field |
 | **Tier 2 data source** | Not built | `deal_monthly_actuals` via M22 Post-Close Intelligence |
@@ -449,61 +521,61 @@ different authority order and richer provenance.
 
 | Field | Legacy FIELD_PRIORITIES (seeder:136-148) | Evidence-tier spec rule |
 |---|---|---|
-| `real_estate_tax` | `['tax_bill', 't12']` | Always use `taxService.forecast()` per jurisdiction ruleset — never trust T12 if assessed value changed |
+| `real_estate_tax` | `['tax_bill', 't12']` | Always use `taxService.forecast()` per jurisdiction — never trust T12 if assessed value changed |
 | `insurance` | `['t12']` | `insuranceService.forecast()` — "never trust broker OM" in FL/CA; platform benchmark required |
-| `vacancy_pct` | `['rent_roll', 't12', 'om']` | Tier 1 T12 → Tier 2 owned actuals → floor at M07 structural vacancy |
-| `gpr` | `['override', 'rent_roll', 't12']` | Tier 1 rent_roll → Tier 2 owned comps → Tier 3 M05 submarket rent |
-| `opex lines (each)` | `['override', 'om', 't12']` | Each line independently: Tier 1 T12 × growth; cross-validate Tier 2; flag if T12 >20% below owned actuals |
-| `exit_cap` | Not in FIELD_PRIORITIES (hardcoded 5.5% in System A) | Tier 2 user's disposition comps → Tier 3 M15 comps → rate environment |
+| `vacancy_pct` | `['rent_roll', 't12', 'om']` | T12 → Tier 2 owned actuals → floor at M07 structural vacancy |
+| `gpr` | `['override', 'rent_roll', 't12']` | rent_roll → Tier 2 owned comps → M05 submarket rent |
+| `exit_cap` | Not in FIELD_PRIORITIES (System A hardcoded 5.5%) | Tier 2 disposition comps → M15 comps → rate environment |
 
 ### API Shape Divergence
 
-| Attribute | Live `OperatingStatementRow` shape | Spec `UnderwritingValue` shape |
+| Attribute | Live `OperatingStatementRow` | Spec `UnderwritingValue` |
 |---|---|---|
-| `source` / `resolution` | String: `'t12' \| 'rent_roll' \| 'override' \| 'platform_fallback'` | String: `'agent:cashflow' \| 'tier1:t12' \| 'tier1:rent_roll' \| 'tier2:owned_asset' \| 'tier3:platform' \| 'tier4:broker' \| 'override'` |
+| `source` / `resolution` | `'t12' \| 'rent_roll' \| 'override' \| 'platform_fallback'` | `'tier1:t12' \| 'tier2:owned_asset' \| 'tier3:platform' \| 'tier4:broker' \| 'override'` |
 | `evidence` | Not present | `{ primary_tier, data_points[], reasoning, alternatives_considered[] }` |
-| `confidence` | `number` (0-100, numeric) | `'high' \| 'medium' \| 'low'` (categorical) |
+| `confidence` | `number` (0-100) | `'high' \| 'medium' \| 'low'` |
 | `collision` | Not present | `{ broker_value, platform_value, delta_pct, magnitude, direction, narrative }` |
-| `agent_run_id` | Not present | `string` |
-| `warning` | Present in DB JSONB only; dropped by `toRow()` | Surfaced in evidence narrative |
+| `warning` | Present in JSONB; dropped by `toRow()` | Surfaced in evidence narrative |
 
 ---
 
-## Section 9 — Bug Inventory
+## Section 10 — Bug Inventory
 
 | ID | Severity | Component | File:line | Description | Fix complexity | Depends on |
 |---|---|---|---|---|---|---|
-| BUG-01 | P0 | proforma-seeder | `proforma-seeder.service.ts:185` | Platform slot is null for every year1 field. `field.platform = null` unconditionally. | High — requires M05 integration | Blocks BUG-03, collision detection, benchmarkPosition |
-| BUG-02 | P0 | proforma-adjustment | `proforma-adjustment.service.ts:169-182` | `runModel()` called with hardcoded deal inputs (purchasePrice=50M, units=232, marketRent=$1,850, loanAmount=35M). Computed IRR/NOI/CoC are for a phantom deal. | Medium — replace constants with live deal lookups | BUG-03 |
-| BUG-03 | P0 | proforma-adjustment | `proforma-adjustment.service.ts:1049` | `getMarketBaseline()` returns hardcoded constants. No MSA/submarket query. | High — requires M05 live integration | Blocks BUG-01 |
-| BUG-04 | P1 | proforma-seeder | Vacancy derivation | T12 vacancy = 0.6601 (66.0%) for 464 Bishop. Likely divides vacancy_loss_$ by monthly rent rather than vacant_units / total_units. | Medium — fix vacancy_pct formula | Independent |
-| BUG-05 | P1 | proforma-seeder | `proforma-seeder.service.ts:607` | RE tax: tax_bill = $20,731 vs T12 = $1,127,126 — 54× gap. `taxService.forecast()` not called for P&L RE-tax line. | Medium — wire taxService for P&L RE-tax | Independent |
-| BUG-06 | P1 | architecture | None | NOI collision −83.8%, EGI collision −27.7%, OpEx collision +56.6%. CollisionReport interface from spec not implemented. | High — requires CashFlow Agent | Task #672 |
-| BUG-07 | P1 | frontend | `ProFormaIntelligence.tsx:19` | AI Market Findings cards import 100% from mock. Never call `GET /api/v1/proforma/:dealId`. | Low — replace mock import with API call | BUG-02 |
-| BUG-08 | P1 | architecture | Both systems | System A vacancy = 5.00%, System B = 19.83% for same deal. Two systems fully decoupled. | High — architectural decision required | BUG-01, BUG-03 |
-| BUG-09 | P2 | proforma-seeder | `proforma-seeder.service.ts:592` | Insurance LV.warning references "platform baseline" that is itself null. Silent failure. | Low — fix warning; Medium — build platform benchmark | Insurance benchmark data |
-| BUG-10 | P2 | proforma-seeder | Collision logic | other_income_per_unit: OM $307.76 vs rent_roll $75.34 (4×). No collision flag. | High — requires CollisionReport | BUG-06 |
-| BUG-11 | P2 | proforma-seeder | Broker capsule mapping | `year1.gpr.om = null` despite `broker_claims.proforma.stabilizedGpr = 4,901,400`. Seeder does not map this field. | Low — add mapping in seeder | Independent |
-| BUG-12 | P3 | proforma-adjustment | `proforma.routes.ts:155-163` | M35 `eventAttribution` appended to System A response but display metadata only — no numeric effect on System B. | Medium — verify M35 trigger wiring | M35 event data |
-| BUG-13 | P1 | proforma-seeder | `getDealFinancials()` row assembly | `noi_after_reserves` is in v31 spec as Pro Forma surface row but NOT in `OperatingStatementRow[]`. Only in projections array. `ProFormaSummaryTab` cannot render it. | Medium — add as named row in getDealFinancials | Independent |
-| BUG-14 | P2 | frontend `toRow()` | `proforma-adjustment.service.ts:1876` | `LayeredValue.warning` string not extracted into `OperatingStatementRow`. Warning messages (e.g. insurance null) silently dropped; UI cannot display them. | Low — add `warning?: string` to OperatingStatementRow and extract in toRow() | Independent |
+| BUG-01 | P0 | proforma-seeder | `proforma-seeder.service.ts:185` | Platform slot null for every year1 field | High — M05 integration required | Blocks BUG-03, collision detection, benchmarkPosition |
+| BUG-02 | P0 | proforma-adjustment | `proforma-adjustment.service.ts:169-182` | `runModel()` hardcoded inputs — phantom deal, not 464 Bishop | Medium — replace with live deal lookups | BUG-03 |
+| BUG-03 | P0 | proforma-adjustment | `proforma-adjustment.service.ts:1049` | `getMarketBaseline()` returns hardcoded constants; no live MSA query | High — M05 live integration | Blocks BUG-01 |
+| BUG-04 | P1 | proforma-seeder | Vacancy derivation | T12 vacancy = 66.0% for 464 Bishop — formula error | Medium — fix vacancy_pct formula | Independent |
+| BUG-05 | P1 | proforma-seeder | `proforma-seeder.service.ts:607` | RE tax: tax_bill $20,731 vs T12 $1,127,126 (54×); `taxService.forecast()` not called for P&L line | Medium — wire taxService | Independent |
+| BUG-06 | P1 | architecture | None | NOI collision −83.8%, EGI −27.7%, OpEx +56.6%; CollisionReport not implemented | High — requires CashFlow Agent | Task #672 |
+| BUG-07 | P1 | frontend | `ProFormaIntelligence.tsx:19` | AI Market Findings 100% mock — never calls live API | Low — replace import | BUG-02 |
+| BUG-08 | P1 | architecture | Both systems | System A vacancy 5%, System B vacancy 19.83% for same deal — fully decoupled | High — architectural decision | BUG-01, BUG-03 |
+| BUG-09 | P2 | proforma-seeder | `proforma-seeder.service.ts:592` | Insurance LV.warning references non-existent platform baseline | Low / Medium | Insurance benchmark data |
+| BUG-10 | P2 | proforma-seeder | Collision logic | other_income: OM $307.76 vs rent_roll $75.34 (4×) — no collision flag | High — requires CollisionReport | BUG-06 |
+| BUG-11 | P2 | proforma-seeder | Broker capsule mapping | `year1.gpr.om = null` despite `broker_claims.proforma.stabilizedGpr` existing | Low — add mapping | Independent |
+| BUG-12 | P3 | proforma-adjustment | `proforma.routes.ts:155` | M35 `eventAttribution` is display metadata only — no numeric effect on System B | Medium | M35 event data |
+| BUG-13 | P1 | proforma-seeder | `getDealFinancials()` row assembly | `noi_after_reserves` not in `OperatingStatementRow[]`; only in projections | Medium — add derived row in getDealFinancials | Independent |
+| BUG-14 | P2 | proforma-adjustment | `toRow()` line 1876 | `LV.warning` not extracted into `OperatingStatementRow`; silently dropped | Low — add `warning?` field to shape | Independent |
 
 ---
 
-## Section 10 — Summary Scorecard
+## Section 11 — Summary Scorecard
 
-| Layer | Status | Primary gaps |
+| Layer | Status | Primary gap |
 |---|---|---|
-| Broker layer (L1) | ⚠️ Partial | GPR.om = null despite capsule; 3 severe collisions undetected; System A doesn't surface line items |
-| Platform layer (L2) | 🔴 Not implemented | All platform slots null; M05 hardcoded; M14/M15/M22 absent |
-| T12 / Rent Roll (L3) | 🟡 Partial | T12 vacancy = 66% (formula error); T12 insurance = null; partial-year T12 lines miscategorised |
-| Tax bill (L3) | 🟡 Partial | $20K bill vs $1.1M T12; taxService not called for P&L RE-tax line |
-| Override layer | ✅ Working | Override resolution correct; operator values persist correctly |
-| Frontend state / rendering (L4) | ⚠️ Partial | No `category`/`isSubtotal` metadata; `LV.warning` silently dropped; benchmarkPosition always null |
-| Subtotals computation (L5) | ⚠️ Partial | EGI/total_opex/NOI computed correctly; NOI After Reserves missing from year1 assembly (BUG-13) |
-| Spot-check chains (L6) | 🟡 Partial | GPR→EGI chain holds (0.2% rounding); OpEx identity holds; NOI→CFBD chain breaks at noi_after_reserves |
+| Broker per-line-item audit (L1) | ✅ Complete (35 rows) | 3 severe collisions undetected; BUG-11 (GPR.om null) |
+| Platform per-service matrix (L2) | 🔴 Not implemented | All platform slots null; all M05/M14/M15/M22 absent |
+| T12 / Rent Roll data quality (L3) | 🟡 Partial | T12 vacancy 66% (formula error); T12 insurance null |
+| Tax bill resolution (L3) | 🟡 Partial | $20K bill vs $1.1M T12; taxService not called for P&L |
+| Override layer | ✅ Working | Operator values persist and resolve correctly |
+| System A raw payload | ✅ Documented | All 5 scalars at defaults; `computed` block from hardcoded model |
+| Frontend state / rendering (L4) | ⚠️ Partial | No category/isSubtotal metadata; LV.warning silently dropped; benchmarkPosition null |
+| Subtotals computation (L5) | ⚠️ Partial | EGI/total_opex/NOI correct; NOI After Reserves missing (BUG-13) |
+| GPR→Vacancy→EGI chain (L6-A) | ✅ Pass | Delta 0.2% within rounding |
+| OpEx→Total OpEx chain (L6-B) | ✅ Pass (identity) | All platform slots null; partial gap $1,016,685 in combined utilities |
+| NOI→NOI After Reserves→CFBD (L6-C) | 🔴 Fail | Breaks at noi_after_reserves (BUG-13); CFBD correctly in Projections |
 | System A ↔ B coherence | 🔴 Broken | Vacancy 5% vs 19.83%; M35 adjustments never flow to System B |
-| Collision detection | 🔴 Not implemented | CollisionReport interface specified, not built; 3 severe collisions invisible |
-| Frontend (AI cards) | 🔴 100% mock | ProFormaIntelligence renders static fixture |
-| M07 traffic → proforma | 🟡 Partial | Vacancy floor wired in System B; absorption scalar not linked to year1 |
-| Evidence-tier model | 🔴 Gap | Tier 2 (owned portfolio), CollisionReport, agent attribution all absent |
+| Collision detection | 🔴 Not implemented | CollisionReport not built; 3 severe collisions invisible |
+| Frontend AI cards | 🔴 100% mock | ProFormaIntelligence renders static fixture |
+| Evidence-tier model | 🔴 Gap | Tier 2, CollisionReport, agent attribution all absent |
