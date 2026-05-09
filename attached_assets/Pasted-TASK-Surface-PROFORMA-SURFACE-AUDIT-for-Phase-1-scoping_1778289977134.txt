@@ -1,0 +1,82 @@
+TASK — Surface PROFORMA_SURFACE_AUDIT for Phase 1 scoping
+
+Read-only. No code changes, no new commits, no branch needed.
+
+STEP 1 — Locate the audit doc.
+
+Find PROFORMA_SURFACE_AUDIT.md in the repo. Likely paths:
+  docs/architecture/PROFORMA_SURFACE_AUDIT.md
+  docs/audits/PROFORMA_SURFACE_AUDIT.md
+  audits/PROFORMA_SURFACE_AUDIT.md
+
+If not found, grep the repo for "PROFORMA_SURFACE_AUDIT" or
+"22 findings" and report what turns up. If the doc doesn't
+exist anywhere, report and exit.
+
+STEP 2 — Post the doc contents.
+
+If the doc is ≤300 lines, paste the full contents in your reply.
+
+If >300 lines, paste:
+  - The header/intro (purpose, methodology, classification scheme)
+  - The complete inventory table (all 22 findings, one row each:
+    ID, priority, classification bucket, one-line description)
+  - The full body of every P0-ranked finding (no truncation)
+  - The full body of every finding marked DUPLICATE_SOURCE
+    regardless of priority (these tend to be the highest-leverage
+    fixes once surfaced)
+
+STEP 3 — Bucket distribution.
+
+Report counts across the four classification buckets:
+  WIRED_BUT_BLANK: N
+  NOT_WIRED:       N
+  PARTIALLY_WIRED: N
+  DUPLICATE_SOURCE: N
+
+And across priority bands:
+  P0: N    P1: N    P2: N    P3: N
+
+STEP 4 — Drift check on P0 findings only.
+
+For each P0 finding that cites file:line evidence, verify:
+  - File still exists at cited path
+  - Line range still contains code matching the described pattern
+    (broker number missing, hardcoded value, duplicate source path, etc.)
+  - If the file has shifted lines since the audit was committed,
+    capture the new line range
+
+Per P0, classify status:
+  VALID         — file:line still matches audit description
+  LINE_SHIFTED  — file exists, code present at different lines (give new range)
+  CODE_CHANGED  — file exists but code at cited line no longer matches
+  FILE_MISSING  — file no longer at cited path
+
+STEP 5 — Output format.
+
+A single Markdown post with these sections in order:
+
+  ## Audit doc contents
+  [full doc or summary per Step 2]
+
+  ## Bucket + priority distribution
+  [counts per Step 3]
+
+  ## P0 drift check
+  | Finding ID | Status | File:Line (current) | Notes |
+
+  ## Ready for Phase 1 scoping?
+  Y — if all P0s are VALID or LINE_SHIFTED with new ranges captured
+  N — if any P0 is CODE_CHANGED or FILE_MISSING; list which findings
+       need audit refresh before fix scoping
+
+OUT OF SCOPE
+  - Any P1/P2/P3 drift checks (Phase 1 only handles P0)
+  - Any fix work or code changes
+  - New audit findings beyond what's in the doc
+  - Restating findings in your own words — paste them verbatim
+    so Leon can scope from the original framing
+
+ACCEPTANCE
+  Single Markdown post with all five sections. Leon copies the
+  post into chat to begin Phase 1 fix prompt scoping.
