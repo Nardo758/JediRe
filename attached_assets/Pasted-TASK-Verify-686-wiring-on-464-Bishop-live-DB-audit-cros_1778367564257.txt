@@ -1,0 +1,65 @@
+TASK — Verify #686 wiring on 464 Bishop (live DB) + audit cross-reference
+
+Read-only diagnostic. No code changes.
+
+PHASE 1 — DB verification
+
+Query deal_assumptions.year1 on 464 Bishop 
+(id 3f32276f-aacd-4da3-b306-317c5109b403). Paste raw output for:
+
+  year1.gpr.om
+  year1.contract_services.om
+  year1.real_estate_tax.om
+  year1.loss_to_lease.om
+  year1.bad_debt.om
+  year1.concessions.om
+  year1.non_revenue_units.om
+  year1.base_rental_revenue.om   (if rendered as subtotal)
+  year1.egi.om                    (if rendered as subtotal)
+  year1.other_income.om
+
+For each, report: VALUE_PRESENT / NULL / FIELD_MISSING_FROM_SCHEMA.
+
+PHASE 2 — Audit cross-reference
+
+Open docs/architecture/OM_EXTRACTION_COVERAGE_AUDIT.md. For every 
+Broker-layer field that returned NULL or FIELD_MISSING in Phase 1, 
+report the audit's classification:
+
+  NOT_IN_OM        — legitimate absence, OM doesn't have this line
+  PARSER_MISS      — line in OM but parser didn't catch it
+  PARSER_FOUND_NULL — parser ran, returned null
+  MAPPING_GAP      — value extracted but not mapped to display field
+  NOT_CATALOGUED   — not in the audit doc at all
+
+PHASE 3 — Display path verification (if Phase 1 shows the three #686 
+slots ARE populated)
+
+Trace the Pro Forma display path for the Broker column on the GPR 
+row. Specifically:
+  - ProFormaSummaryTab.tsx — which field on reservesRow / gprRow / 
+    similar is rendered as the Broker cell?
+  - proforma-adjustment.service.ts — does that field resolve from 
+    year1.gpr.om, or from deal_data.bpProforma.stabilizedGpr 
+    directly, or from another path?
+
+If the display reads from a path other than year1.*.om, that's 
+the divergence. Report the read path and the path the seeder 
+writes to.
+
+PHASE 4 — Confidence threshold check
+
+Search the codebase for any threshold gating on extraction 
+confidence (broker_claims.extraction_confidence or similar). 
+If a threshold exists and Bishop's confidence (0.46) falls 
+below it, that's the gate. Report the threshold value and 
+the gate location.
+
+OUTPUT
+
+Single Markdown post with all four phases. No fixes proposed; 
+this is diagnostic only. Phase 1 results determine whether the 
+fix shipped or didn't; Phase 2 explains what's expected vs not; 
+Phases 3-4 are conditional on Phase 1 results.
+
+Branch: not needed (read-only).
