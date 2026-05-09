@@ -2122,13 +2122,14 @@ export async function getDealFinancials(
   // ── Assumptions scalar + per-year grid seeded from platform findings ────────
   const assumptionsRow = assumptionsRes.rows[0];
   const exitCap = assumptionsRow?.exit_cap != null ? +parseFloat(assumptionsRow.exit_cap).toFixed(3) : null;
-  const rentGrowthYr1 = assumptionsRow?.rent_growth_yr1 != null ? +parseFloat(assumptionsRow.rent_growth_yr1).toFixed(3) : null;
-  const rentGrowthStab = assumptionsRow?.rent_growth_stabilized != null ? +parseFloat(assumptionsRow.rent_growth_stabilized).toFixed(3) : null;
+  const rentGrowthYr1 = assumptionsRow?.rent_growth_yr1 != null ? +(parseFloat(assumptionsRow.rent_growth_yr1) / 100).toFixed(4) : null;
+  const rentGrowthStab = assumptionsRow?.rent_growth_stabilized != null ? +(parseFloat(assumptionsRow.rent_growth_stabilized) / 100).toFixed(4) : null;
   const calibVacancy = trafficProjection?.calibrated.vacancyPct ?? null;
   const calibRentGrowth = trafficProjection?.calibrated.rentGrowthPct ?? null;
-  // Opex growth: source from proforma_assumptions.opex_growth_current if available, else default 3%
+  // Opex growth: source from proforma_assumptions.opex_growth_current if available, else default 3%.
+  // Stored as whole-percent (e.g. 2.8 = 2.8%); divide by 100 at read boundary.
   const opexGrowthRate: number = proformaAssumRes.rows[0]?.opex_growth_current != null
-    ? +parseFloat(proformaAssumRes.rows[0].opex_growth_current).toFixed(3)
+    ? +(parseFloat(proformaAssumRes.rows[0].opex_growth_current) / 100).toFixed(4)
     : 0.03;
 
   // concessionBurnOffPct: read from per_year_overrides['concessionBurnOffPct:yr1'] (flat-mode
