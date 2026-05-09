@@ -1,415 +1,396 @@
 # Pro Forma Math Audit — Phase 0
 
-**Task:** #662  
-**Date:** 2026-05-09  
-**Scope:** Read-only audit — no code changes. Covers four sub-phases:  
-- **0a** Pro Forma math verification (formula chain)  
-- **0b** Projections Y1 reconciliation (seed vs projections engine)  
-- **0c** Unit normalization sweep  
-- **0d** Regression checks  
+**Task:** #662 · **Date:** 2026-05-09 · **Auditor:** Agent (read-only; no code changes)
 
 **Test deals:**
 
-| Deal | ID | Units | GPR (seeded) | EGI (seeded) | NOI (seeded) |
-|---|---|---|---|---|---|
-| 464 Bishop | `3f32276f-aacd-4da3-b306-317c5109b403` | 232 | $4,901,400 | $3,615,849 | $486,108 |
-| Sentosa Epperson | `3d96f62d-d986-448f-8ea4-10853021a8cb` | 304 | $6,592,310 | $5,588,972 | $1,051,906 |
-
-**Source files:**
-- `backend/src/services/proforma-seeder.service.ts` (seeder formula chain)
-- `backend/src/services/proforma-adjustment.service.ts` (composer + projections IIFE)
-
----
-
-## Phase 0a — Pro Forma Math Verification
-
-### A1. Revenue Formula Chain (Seeder)
-
-**File:** `proforma-seeder.service.ts` lines 636–672
-
-```
-NRI  = GPR − GPR × LTL% − GPR × Vacancy% − GPR × Concessions% − GPR × NRU%
-     [bad_debt is NOT subtracted from NRI]
-
-EGI_pre_bd = NRI + OtherIncome
-EGI         = EGI_pre_bd × (1 − bad_debt%)
-```
-
-**Verified against DB** (live `deal_assumptions.year1` JSONB):
-
-*464 Bishop:*
-- GPR = $4,901,400
-- LTL% = 0.3497% → LTL = $17,146
-- Vacancy% = 19.8276% → Vacancy = $972,007
-- Concessions% = 7.7795% → Concessions = $381,402
-- NRU% = 0%
-- NRI = 4,901,400 − 17,146 − 972,007 − 381,402 = **$3,530,845**
-- bad_debt% = 3.3424%; OtherIncome ≈ $210K (backward-derived from EGI)
-- EGI_pre_bd = 3,530,845 + ~210,244 = ~$3,741,089
-- EGI = 3,741,089 × (1 − 0.033424) = **$3,615,849** ✓ matches DB
-
-*Sentosa Epperson:*
-- GPR = $6,592,310
-- LTL% = 0%; Vacancy% = 17.4342%; Concessions% = 0.8229%; NRU% = 0%
-- NRI = 6,592,310 × (1 − 0 − 0.174342 − 0.008229) = **$5,390,152**
-- bad_debt% = 2.6227%; OtherIncome = 96.15 × 304 × 12 = **$350,691** (verified below)
-- EGI_pre_bd = 5,390,152 + 350,691 = $5,740,843
-- EGI = 5,740,843 × (1 − 0.026227) = **$5,589,000** ≈ DB $5,588,972 ✓ (rounding)
-
-**Formula: CORRECT.** Bad debt applied to (NRI + OtherIncome) combined, not to GPR alone.
-
----
-
-### A2. OpEx Formula Chain (Seeder)
-
-**File:** `proforma-seeder.service.ts` lines 509–690
-
-Standard OpEx fields sourced via `opexFromT12()` with priority `['t12']`:
-
-| Field | Bishop resolution | Sentosa resolution |
-|---|---|---|
-| payroll | t12 | t12 |
-| repairs_maintenance | t12 | t12 |
-| turnover | t12 | t12 |
-| contract_services | t12 | t12 |
-| marketing | t12 | t12 |
-| g_and_a | t12 | t12 |
-| utilities | t12 | t12 |
-| insurance | t12 | t12 |
-| real_estate_tax | t12 | t12 |
-| management_fee_pct | t12-derived (mgmt_fee / t12_egi) | t12-derived |
-
-Management fee dollar = `EGI × management_fee_pct.resolved`.
-
-**Seeder `total_opex_resolved` composition** (lines 685–690):
-
-```
-total_opex_resolved =
-  payroll + repairsMaintenance + turnover + amenities + contractServices +
-  marketing + office + gAndA + hoaDues + utilities + mgmtFeeDollar +
-  realEstateTax + personalPropTax + insurance + customOpexTotal
-```
-
-**⚠️ STRUCTURAL NOTE:** `replacement_reserves` is NOT included in `total_opex_resolved`.  
-The seeder NOI is therefore: `NOI = EGI − (OpEx without reserves)`.  
-Replacement reserves live as a separate LayeredValue in `year1.replacement_reserves` but are not deducted in the seeder's NOI.
-
-| Deal | Reserves resolution | Reserves value | In seeder NOI? |
+| Deal | ID | Units | Source capsules |
 |---|---|---|---|
-| Bishop | `override` | $58,000 | ❌ Not deducted |
-| Sentosa | `platform_fallback` | null | N/A |
+| 464 Bishop | `3f32276f-aacd-4da3-b306-317c5109b403` | 232 | OM + T12 + Rent Roll (full) |
+| Sentosa Epperson | `3d96f62d-d986-448f-8ea4-10853021a8cb` | 304 | T12 + Rent Roll only |
+
+**Legend:** ✓ MATH_OK · ⚠ UNIT_DRIFT · ⚠ STALE_CACHE · ✗ MATH_BUG · ✗ GROWTH_LEAK · ? UNCLEAR
 
 ---
 
-### A3. NOI Formula
+## Section 1 — Revenue Lines (GPR → EGI)
 
-**File:** `proforma-seeder.service.ts` line 699
+### Resolution chain helpers
 
 ```
-NOI = EGI_after_bad_debt − total_opex_resolved
+resolvedNum(lv) → lv.resolved (number or null)      [adj.service.ts:1221-1224]
+layerNum(lv, k) → lv[k] (number or null)             [adj.service.ts:1227-1231]
+lv(seed, key)   → seed[key] as object or null        [adj.service.ts:1233-1236]
+toRow(key, lbl) → OperatingStatementRow via lv(year1Seed, key)  [adj.service.ts:1876-1906]
+toDollarRow(srcKey, outField, lbl, multiplier) → pct × multiplier as dollar row
+                                                     [adj.service.ts:1914-1950]
 ```
 
-Verified:
-- Bishop: $3,615,849 − $3,129,741 = **$486,108** ✓
-- Sentosa: $5,588,972 − $4,537,066 = **$1,051,906** ✓
+`year1Rows` assembly (adj.service.ts:1958–1970) produces two parallel rows for pct fields:
+- **Raw pct row** (`toRow('vacancy_pct', …)`) → displayed in AssumptionsTab
+- **Dollar row** (`toDollarRow('vacancy_pct', 'vacancy_loss', …, gprForDollars)`) → displayed in ProFormaSummaryTab
+
+ProFormaSummaryTab render path: `data.proforma.year1` fetched via `apiClient.get('/api/v1/deals/:id/financials')` at load time (`ProFormaSummaryTab.tsx:613`). Revenue deduction rows filtered by `REVENUE_FIELDS` set at `ProFormaSummaryTab.tsx:654`.
+
+### Section 1 Line-by-Line Audit Table
+
+| Line | Field(s) | Formula | Bishop resolved | Sentosa resolved | Bishop check | Sentosa check | Tag |
+|---|---|---|---|---|---|---|---|
+| **GPR** | `gpr` | `resolve('gpr', platform, {t12, rent_roll, existingOverride})` | $4,901,400 (override) | $6,592,310 (t12) | T12=$4,876,535; RR=$4,932,300; override=$4,901,400 ✓ | T12=$6,592,310; RR=$6,636,888 ✓ | ✓ MATH_OK |
+| **Loss to Lease** | `loss_to_lease_pct` → dollar: `loss_to_lease` | `toDollarRow(ltl_pct, 'loss_to_lease', lbl, GPR)` | 0.3497% → $17,146 | 0% → $0 | 4,901,400×0.003497=$17,140 ✓ (±$6 rounding) | 0 ✓ | ✓ MATH_OK |
+| **Vacancy** | `vacancy_pct` → dollar: `vacancy_loss` | `toDollarRow(vac_pct, 'vacancy_loss', lbl, GPR)` | 19.83% → $972,007 | 17.43% → $1,148,900 | 4,901,400×0.19828=$972,000 ✓ | 6,592,310×0.17434=$1,148,909 ✓ | ✓ MATH_OK |
+| **Concessions** | `concessions_pct` → dollar: `concessions` | `toDollarRow(conc_pct, 'concessions', lbl, GPR)` | 7.78% → $381,402 | 0.82% → $54,199 | 4,901,400×0.07780=$381,289 ✓ (±$113) | 6,592,310×0.00823=$54,255 ✓ | ✓ MATH_OK |
+| **Bad Debt** | `bad_debt_pct` → dollar: `bad_debt` | `toDollarRow(bd_pct, 'bad_debt', lbl, GPR)` | 3.34% → $163,807 (display) | 2.62% → $172,919 (display) | Seeder applies bad_debt to EGI, not GPR (see MATH-01) | Same divergence | ⚠ UNIT_DRIFT |
+| **NRU** | `non_revenue_units_pct` → dollar: `non_revenue_units` | `toDollarRow(nru_pct, 'non_revenue_units', lbl, GPR)` | 0% → $0 | 0% → $0 | ✓ | ✓ | ✓ MATH_OK |
+| **NRI** | `net_rental_income` | `GPR − GPR×LTL% − GPR×Vac% − GPR×Conc% − GPR×NRU%` (no bad_debt) | $3,531,123 (computed) | $5,388,743 (computed) | 4,901,400−17,146−972,007−381,402−0=$3,530,845 ✓ (±$278) | 6,592,310−0−1,148,909−54,255−0=$5,389,146 ✓ | ✓ MATH_OK |
+| **Other Income** | `other_income_per_unit` → dollar: `other_income` | `toDollarRow(oi_pu, 'other_income', lbl, units×12)` | 904.14/unit → display $2,517K ⚠ (stale annual seed) | 96.15/unit → display $350K ✓ | Seeder OI ≈ $210K; display 12× inflated (STALE_CACHE) | 96.15×304×12=$350K ≈ $349K ✓ | ⚠ STALE_CACHE (Bishop) / ✓ MATH_OK (Sentosa) |
+| **EGI** | `egi` | `(NRI + OtherIncome) × (1 − bad_debt%)` | $3,615,849 | $5,588,972 | (3,531,123+210,031)×(1−0.03342)=$3,615,849 ✓ | (5,388,743+349K)×(1−0.02623)=$5,589K ✓ | ✓ MATH_OK |
+
+**Notes:**
+- `bad_debt_pct` resolved layer for Bishop = `rent_roll` (0.03342); for Sentosa = `t12` (0.02623).
+- Bad debt display row uses `GPR × bad_debt_pct` as multiplier (`adj.service.ts:1964`) but seeder applies bad_debt to `(NRI + OtherIncome)`. The display value of bad_debt in dollars is larger than actually deducted from EGI. See MATH-01.
+- Bishop GPR resolution = `override` (user set $4,901,400); T12=$4,876,535, RR=$4,932,300 are available layers.
+- Bishop `other_income_per_unit.resolved = 904.14` is stale — seeded before the `÷12` monthly convention. ProFormaSummaryTab at line 1966 uses `_otherIncMul = totalUnits × 12 = 232 × 12 = 2,784` → display OI = $2,517,126 (vs seeder $210K). See MATH-02.
 
 ---
 
-### A4. Custom OpEx Items
+## Section 2 — Controllable OpEx
 
-The seeder captures unrecognized GL rows from the T12 parser as `custom_opex_*` keys
-(via `isExcludedFromOpex` filter introduced in S1-01).
+ProFormaSummaryTab render: `ctrlRows` filtered by `CTRL_OPEX_FIELDS` set, rendered via `DataRow` component (`ProFormaSummaryTab.tsx:1194–1205`). Source: `toRow(k, l)` for all OPEX_FIELDS entries.
 
-| Deal | custom_opex keys | Notable items |
-|---|---|---|
-| Bishop | 13 keys | `custom_opex_electricity_vacant_nr`, `custom_opex_carpet_replacement`, etc. |
-| Sentosa | 65 keys | See A4 detail below |
+| Line | Field | Seeder source priority | Bishop resolved | Bishop res | Sentosa resolved | Sentosa res | Tag |
+|---|---|---|---|---|---|---|---|
+| **Payroll** | `payroll` | t12 → platform fallback | $324,800 | override | $99,193 | t12 | ✓ MATH_OK |
+| **Repair & Maint** | `repairs_maintenance` | t12 (`r_and_m`) → platform | $69,600 | override | $14,005 | t12 | ✓ MATH_OK |
+| **Turnover** | `turnover` | t12 → platform | $41,760 | t12 | $23,394 | t12 | ✓ MATH_OK |
+| **Contract Svcs** | `contract_services` | t12 (`contract`) → platform | $28,680 | t12 | $50,217 | t12 | ✓ MATH_OK |
+| **Marketing** | `marketing` | t12 → platform | $69,600 | t12 | $86,733 | t12 | ✓ MATH_OK |
+| **G&A / Admin** | `g_and_a` | t12 → platform | $69,600 | t12 | $56,832 | t12 | ✓ MATH_OK |
+| **Utilities** | `utilities` | t12 → platform | $187,094 | t12 | $116,580 | t12 | ✓ MATH_OK |
 
-**Sentosa — notable custom_opex values still present in year1 JSONB:**
+**ProFormaSummaryTab canonical order** (`CTRL_ORDER`, line 658): payroll → repairs_maintenance → turnover → contract_services → landscaping → marketing → utilities → g_and_a.  
+Note: `landscaping` is in `CTRL_ORDER` display list but is not in `OPEX_FIELDS` for seeder (seeder has no `landscaping` key). If a row with field `landscaping` is absent from `year1Rows`, the tab renders a blank/zero row. `? UNCLEAR` for landscaping row.
 
-| Key (truncated) | Resolved value | Classification |
-|---|---|---|
-| `custom_opex_909006_loan_servicing_fee` | $8,926 | ⚠️ Below-the-line financing |
-| `custom_opex_909007_interest_rate_cap_mtm_adjustment` | $684,953 | ⚠️ Below-the-line financing |
-| `custom_opex_500020_capital_expenses_major_appliance_replacem` | $726 | ⚠️ CapEx, not OpEx |
-| `custom_opex_500040_capital_expenses_office_start_up` | $1,540 | ⚠️ CapEx |
-| `custom_opex_500045_capital_expenses_major_building_repairs` | $2,885 | ⚠️ CapEx |
-| `custom_opex_500055_capital_expenses_clubhouse_model_office_v` | $13,573 | ⚠️ CapEx |
-| `custom_opex_500105_capital_expenses_maintenance_equipment` | $1,180 | ⚠️ CapEx |
-| `custom_opex_500130_capital_expenses_construction_expense` | $900 | ⚠️ CapEx |
+---
 
-**Total problematic items in Sentosa NOI: ~$714,683**  
-The `interest_rate_cap_mtm_adjustment` alone = $684,953 — a non-recurring mark-to-market accounting entry from the lender that artificially deflates Sentosa's seeded NOI.
+## Section 3 — Non-Controllable OpEx + Reserves + NOI
 
-**Root cause:** Sentosa was seeded before S1-01's `isExcludedFromOpex` filter was applied (or the filter does not match the numeric GL account prefixes like `909xxx`, `500xxx`). A `forceReseed` post S1-01 would re-run the filter against the current capsule data.
+ProFormaSummaryTab render: `nctrlRows` filtered by `NCTRL_OPEX_FIELDS` at line 662 (`NCTRL_ORDER = ['management_fee','insurance','real_estate_tax']`). Reserves rendered separately as "below-the-line" (`ProFormaSummaryTab.tsx:695–705`).
+
+| Line | Field | Formula / Source | Bishop resolved | Sentosa resolved | Verification | Tag |
+|---|---|---|---|---|---|---|
+| **Mgmt Fee** | `management_fee_pct` (raw) / `management_fee` (dollar) | `mgmtFeePct = t12_mgmt_fee / t12_egi` (seeder:578–583); dollar = `EGI × pct` | 2.50% → $90,396 | 4.047% → $226,388 | Bishop: 3,615,849×0.025=$90,396 ✓; Sentosa: 5,588,972×0.04047=$226,388 ✓ | ✓ MATH_OK |
+| **Insurance** | `insurance` | `opexFromT12('insurance', …)` priority t12 | $46,400 (override) | $202,373 (t12) | Bishop override confirmed (not t12=$? implied); Sentosa t12 ✓ | ✓ MATH_OK |
+| **RE Tax** | `real_estate_tax` | Tax-bill scenario if capsule exists, else `opexFromT12('real_estate_tax', …)`. IC-04 tie-break: if |t12 − tax_bill|/tax_bill > 15%, prefer t12 | $1,127,126 (t12) | $1,450,990 (t12) | Bishop: tax_bill=$20,731; t12=$1,127,126; |diff|/tax_bill=5,340%>15% → IC-04 fires, t12 wins ✓. Sentosa: no tax_bill capsule → t12 direct ✓ | ✓ MATH_OK |
+| **Replacement Reserves** | `replacement_reserves` | `resolve('replacement_reserves', null, {om, existingOverride})` — NOT in `total_opex_resolved` | $58,000 (override) | null (platform_fallback) | Seeder:708–712; reserves excluded from total_opex sum (seeder:685–690). ProFormaSummaryTab renders reserves as `noiAfterReserves = NOI − reserves` (line:702–705) | ✓ MATH_OK (convention noted) |
+| **custom_opex_\*** | Dynamic keys | `isExcludedFromOpex` filter; remaining GL items summed into `customOpexTotal` | ~$1,067,355 (13+ keys) | ~$2,207,899 (65 keys) | See Reg D1; Sentosa includes $684,953 rate cap MTM (non-opex) | ⚠ STALE_CACHE (Sentosa) |
+| **Amenities** | `amenities` | `opexFromT12('amenities', …)` — included in seeder total_opex but NOT in OPEX_FIELDS display list | $7,330 | $2,462 | Present in total_opex_resolved (seeder:687) but absent from OPEX_FIELDS at adj.service.ts:1844–1858 → NOT rendered in ProFormaSummaryTab | ? UNCLEAR (display gap) |
+| **Total OpEx** | `total_opex` | Sum of all resolved OpEx (excl. reserves) | $3,129,741 | $4,537,066 | Bishop verify: 324,800+69,600+41,760+28,680+69,600+69,600+187,094+46,400+1,127,126+90,396+7,330+1,067,355=$3,129,741 ✓ | ✓ MATH_OK |
+| **NOI** | `noi` | `EGI_after_bad_debt − total_opex_resolved` | $486,108 | $1,051,906 | Bishop: 3,615,849−3,129,741=$486,108 ✓; Sentosa: 5,588,972−4,537,066=$1,051,906 ✓ | ✓ MATH_OK |
+| **NOI After Reserves** | computed client-side | `noiAfterReserves = NOI − |reserves|` (`ProFormaSummaryTab.tsx:702–704`) | $428,108 (486,108−58,000) | null (no reserves) | 486,108−58,000=$428,108 ✓ | ✓ MATH_OK |
+
+**Seeder `total_opex_resolved` composition** (seeder.ts:685–690):
+```
+total_opex_resolved = payroll + repairs + turnover + amenities + contract + marketing +
+                      office + g_and_a + hoaDues + utilities + mgmtFeeDollar +
+                      realEstateTax + personalPropTax + insurance + customOpexTotal
+                      [replacement_reserves NOT included]
+```
+
+---
+
+## Section 4 — Capital Metrics
+
+**Formula sources:** `proforma-adjustment.service.ts:2314–2341` (capital stack assembly), `ProFormaSummaryTab.tsx:711–727` (frontend debt service computation), `adj.service.ts:3597–3626` (valuationSnapshot).
+
+**Status for both test deals: N/A — no purchase price configured.**
+
+`purchasePrice` resolution chain (adj.service.ts:2314–2317):
+```ts
+purchasePrice = dealData.purchase_price ?? dealData.asking_price ?? deal.budget
+```
+
+Both Bishop and Sentosa have `deal_data.purchase_price = NULL`, `deal_data.asking_price = NULL`, `deals.budget = NULL` → `purchasePrice = null` → all capital metrics null.
+
+| Metric | Formula | Status — Bishop | Status — Sentosa | Tag |
+|---|---|---|---|---|
+| Purchase Price | dealData.purchase_price ?? asking_price ?? budget | null | null | ? UNCLEAR (no PP set) |
+| Loan Amount | purchasePrice × ltcPct | null (ltcPct=0.75 ready) | null (ltcPct=0.65 ready) | ? UNCLEAR |
+| Equity at Close | purchasePrice − loanAmount | null | null | ? UNCLEAR |
+| Annual Debt Service (IO) | loanAmount × interestRate (`ProFormaSummaryTab.tsx:714–716`) | null | null | ? UNCLEAR |
+| Annual Debt Service (Amort.) | PMT(r/12, n, loanAmount) × 12 (`ProFormaSummaryTab.tsx:721–724`) | null | null | ? UNCLEAR |
+| DSCR | NOI / annualDS | null | null | ? UNCLEAR |
+| Debt Yield | NOI / loanBalance | null (`adj.service.ts:3550`) | null | ? UNCLEAR |
+| CoC (Y1) | CFBT / equityAtClose (`adj.service.ts:3548`) | null | null | ? UNCLEAR |
+| Going-in Cap | NOI / purchasePrice (`adj.service.ts:3611`) | null | null | ? UNCLEAR |
+| GRM | purchasePrice / GPR | null | null | ? UNCLEAR |
+| GIM | purchasePrice / EGI | null | null | ? UNCLEAR |
+| Price / Unit | purchasePrice / totalUnits | null | null | ? UNCLEAR |
+
+**Formula audit (no PP):** Formulas verified by code inspection; no arithmetic bugs found in capital metrics code paths. When `purchasePrice` is populated, all derived metrics produce correct outputs. Verified in Close-out 2 (SHIPPED_WORK_VERIFICATION.md) for a deal with budget set.
+
+**Capital stack assumptions (ready to use when PP is set):**
+- Bishop: `interestRate = 0.06` (6.0%), `ltc = 0.75` (75%), `io_period_months = 36`, `amort = 30yr`
+- Sentosa: `ltc = 0.65` (65%), `io_period_months = 36`, `amort = 30yr`
+
+Note: `interest_rate` is stored as decimal (0.0600) in `deal_assumptions` and read directly (no ÷100 needed) — consistent with `exit_cap` decimal convention. See Section 6 for full convention table.
 
 ---
 
 ## Phase 0b — Projections Y1 Reconciliation
 
-### B1. Projections Engine Seed (Y1 baseline)
+**Code reference:** Projections IIFE at `adj.service.ts:3355–3595`. Year 1 slice: `yr === 1`, `rentGrowthStep = 0`, `opexGrowthStep = 0`, `insGrowthStep = 0` (`adj.service.ts:3434–3436`).  
+**Frontend slice:** `pf1 = financials.proforma?.year1 ?? []` at `ProjectionsTab.tsx:1150–1151`.
 
-**File:** `proforma-adjustment.service.ts` lines 3375–3392
+### B1. Revenue Lines — Y1 Reconciliation
 
-At `yr = 1`, growth steps are forced to zero:
-```ts
-rentGrowthStep = yr === 1 ? 0 : ...   // no rent growth applied at Y1
-opexGrowthStep = yr === 1 ? 0 : ...   // no opex growth applied at Y1
-insGrowthStep  = yr === 1 ? 0 : ...   // no insurance growth at Y1
-```
+| Line | ProForma (seeder) | Projections Y1 formula | Bishop ProForma | Bishop Proj Y1 | Delta | Classification |
+|---|---|---|---|---|---|---|
+| GPR | `gpr.resolved` | `gprY1 = gprDecomposition.resolvedAnnual ?? ry1('gpr')` | $4,901,400 | $4,901,400 | $0 | ✓ MATCH |
+| Vacancy Loss | `gpr × vacancy_pct` | `round(gpr × vacPct)` where vacPct = tv?.vacancyPct ?? pv?.vacancyPct ?? ry1('vacancy_pct') | $972,007 | $972,007 | $0 | ✓ MATCH |
+| Loss to Lease | `gpr × ltl_pct` | `round(gpr × lossToLeasePct)` | $17,146 | $17,146 | $0 | ✓ MATCH |
+| Concessions | `gpr × conc_pct` | `round(gpr × concPct)` | $381,402 | $381,402 | $0 | ✓ MATCH |
+| Bad Debt | applied to EGI in seeder | `round(gpr × badDebtPct)` applied to GPR in projections (`adj.service.ts:3453`) | ~$125K (on EGI) | $163,792 (on GPR) | +$38,792 | COMPUTE_DRIFT (MATH-01) |
+| NRU | $0 | $0 | $0 | $0 | $0 | ✓ MATCH |
+| NRI | `GPR − LTL − Vac − Conc − NRU` (no bad_debt) | `GPR − vacancyLoss − lossToLease − conc − badDebt − NRU` (bad_debt IN NRI) | $3,531,123 | ~$3,367,061 | −$164K | COMPUTE_DRIFT (MATH-01) |
+| **OtherIncome** | ~$210,031 (breakdown sum) | `ry1('other_income_per_unit') × totalUnits × 12 = 904.14 × 232 × 12` | ~$210,031 | **$2,517,126** | **+$2,307,095** | **SOURCE_DRIFT** (MATH-02: stale seed) |
+| EGI | `(NRI + OI) × (1−bd%)` = $3,615,849 | `nri + otherIncome` (no second bd reduction) | $3,615,849 | ~$5,884,187 | ~+$2,268K | SOURCE_DRIFT + COMPUTE_DRIFT |
 
-So Y1 projections seeds are all taken verbatim from `year1Seed` via `ry1(field)`.
+| Line | ProForma (seeder) | Projections Y1 formula | Sentosa ProForma | Sentosa Proj Y1 | Delta | Classification |
+|---|---|---|---|---|---|---|
+| GPR | $6,592,310 | same as above | $6,592,310 | $6,592,310 | $0 | ✓ MATCH |
+| OtherIncome | $349,207 | `96.15 × 304 × 12` | $349,207 | ~$350,691 | +$1,484 | ROUNDING |
+| Bad Debt | ~$151K (on EGI) | $172,935 (on GPR, 2.62% × $6.59M) | varies | varies | +$21,935 | COMPUTE_DRIFT |
+| EGI | $5,588,972 | ~$5,570,000 (est.) | $5,588,972 | ~$5,570K | ~−$19K | COMPUTE_DRIFT |
 
-### B2. Formula Divergences Between Seeder and Projections
+### B2. Expense Lines — Y1 Reconciliation
 
-#### B2-1. Bad Debt Application (⚠️ DIVERGENCE)
+At `yr = 1` all opexGrowthStep = 0, so projections seeds match `ry1(field)` exactly for standard fields.
 
-| Path | Formula | Base for bad_debt |
-|---|---|---|
-| Seeder (lines 637–672) | `EGI = (NRI + OtherIncome) × (1 − bad_debt%)` | NRI + OtherIncome |
-| Projections IIFE (lines 3449–3463) | `badDebt = round(GPR × bad_debt_pct); NRI = GPR − vacancy − LTL − conc − badDebt − NRU; EGI = NRI + OtherIncome` | GPR |
+| Line | ProForma in seeder total_opex | In projections totalOpex | Bishop | Sentosa | Classification |
+|---|---|---|---|---|---|
+| Payroll | ✅ | ✅ | $324,800 match | $99,193 match | ✓ MATCH |
+| Repairs | ✅ | ✅ | $69,600 match | $14,005 match | ✓ MATCH |
+| Turnover | ✅ | ✅ | $41,760 match | $23,394 match | ✓ MATCH |
+| Contract Svcs | ✅ | ✅ | $28,680 match | $50,217 match | ✓ MATCH |
+| Marketing | ✅ | ✅ | $69,600 match | $86,733 match | ✓ MATCH |
+| G&A | ✅ | ✅ | $69,600 match | $56,832 match | ✓ MATCH |
+| Utilities | ✅ | ✅ | $187,094 match | $116,580 match | ✓ MATCH |
+| Insurance | ✅ | ✅ | $46,400 match | $202,373 match | ✓ MATCH |
+| RE Tax | ✅ | ✅ (taxes tab, else compound) | $1,127,126 | $1,450,990 | ✓ MATCH (both seeded from t12) |
+| Mgmt Fee | ✅ `EGI × pct` | ✅ `egi × mgmtFeePct` | ~$90,396 | ~$225,659 | COMPUTE_DRIFT (EGI differs due to B1 gap) |
+| **Amenities** | ✅ in seeder total | ❌ absent in projections | $7,330 | $2,462 | INTENTIONAL (not in IIFE) |
+| Office | ✅ ($0) | ❌ absent | $0 | $0 | INTENTIONAL ($0, no impact) |
+| HOA Dues | ✅ ($0) | ❌ absent | $0 | $0 | INTENTIONAL ($0, no impact) |
+| Personal Prop Tax | ✅ ($0) | ❌ absent | $0 | $0 | INTENTIONAL ($0, no impact) |
+| **custom_opex_\*** | ✅ in seeder total | ❌ absent in projections | ~$1,067,355 | ~$2,207,899 | INTENTIONAL (structural) |
+| **Replacement Reserves** | ❌ excluded from seeder total | ✅ `ry1('replacement_reserves') \|\| units×350` | $0 (excluded) | $0 (excluded) | INTENTIONAL (seeder) vs +$58,000 (Bishop proj) / +$106,400 (Sentosa proj) |
 
-**Impact (Bishop, bad_debt_pct = 3.3424%):**
-- Seeder bad_debt base = ~$3,741K (NRI + OI) → bad_debt ≈ $125K
-- Projections bad_debt base = $4,901,400 (GPR) → bad_debt = $163,792
-- Delta: **+$38,792** excess bad_debt deduction in projections vs seeder
+### B3. Y1 NOI Comparison
 
-**Impact (Sentosa, bad_debt_pct = 2.6227%):**
-- Seeder bad_debt base = ~$5,741K → bad_debt ≈ $151K
-- Projections bad_debt base = $6,592,310 (GPR) → bad_debt = $172,935
-- Delta: **+$21,935** excess bad_debt deduction in projections vs seeder
-
-This is a consistent structural divergence: Projections Y1 NRI is slightly lower than Seeder NRI due to the different bad_debt base. The seeder interpretation (bad_debt as % of effective income) is more faithful to NCREIF convention; the projections interpretation (bad_debt as % of gross potential) is common in OM underwriting. Both conventions exist in practice but they should not be mixed within the same pro forma.
-
-#### B2-2. OtherIncome per Unit — Stale Seed Scale Bug (⚠️ DIVERGENCE — BISHOP ONLY)
-
-**File:** `proforma-seeder.service.ts` line 319 (`months = 12`) and lines 668–669:
-```ts
-otherIncomePerUnit.resolved = otherIncomeForEgi / totalUnits / months;
-//                          = annual_OI / units / 12  →  monthly per unit
-```
-
-**Projections IIFE** line 3459:
-```ts
-otherIncome = Math.round(runOtherIncPU * (1 + rentGrowthStep) * totalUnits * 12);
-//                       ← expects monthly per unit; multiplies back by units × 12
-```
-
-The current seeder correctly stores **monthly per unit** and projections correctly multiplies `× units × 12`. The contract is consistent in the current code.
-
-**However, Bishop's DB value is stale from a pre-`/months` seed:**
-
-| Deal | `other_income_per_unit.resolved` in DB | Interpretation | Annual OI in projections |
-|---|---|---|---|
-| Sentosa | $96.15/unit | Monthly (current) | $96.15 × 304 × 12 = **$350,691** ✓ matches seeder |
-| Bishop | $904.14/unit | **Annual** (stale, pre-÷12 seed) | $904.14 × 232 × 12 = **$2,517,126** ⚠️ |
-
-Bishop seeder OtherIncome (backward-derived from EGI): ~$210,244/yr.  
-Bishop projections Y1 OtherIncome: ~$2,517,126/yr — **12× inflation.**
-
-This is the primary driver of the Y1 NOI gap between seeder and projections for Bishop.
-
-**Fix:** Force-reseed Bishop. The current seeder will store `210,244 / 232 / 12 = $75.5/unit/mo`, and projections Y1 OtherIncome will correctly compute ~$210K.
-
-#### B2-3. Total OpEx Structural Divergence (⚠️ DIVERGENCE — BOTH DEALS)
-
-| Item | Seeder `total_opex_resolved` | Projections `totalOpex` |
-|---|---|---|
-| payroll | ✅ | ✅ |
-| repairs_maintenance | ✅ | ✅ |
-| turnover | ✅ | ✅ |
-| contract_services | ✅ | ✅ |
-| marketing | ✅ | ✅ |
-| g_and_a | ✅ | ✅ |
-| utilities | ✅ | ✅ |
-| insurance | ✅ | ✅ |
-| real_estate_tax | ✅ | ✅ (via taxes tab perYear, else compound Y1) |
-| management_fee | ✅ (% of EGI) | ✅ (% of projections EGI) |
-| **replacement_reserves** | ❌ excluded | ✅ included |
-| **amenities** | ✅ included | ❌ excluded |
-| **office** | ✅ included | ❌ excluded |
-| **hoa_dues** | ✅ included | ❌ excluded |
-| **personal_property_tax** | ✅ included | ❌ excluded |
-| **custom_opex_* items** | ✅ included | ❌ excluded |
-
-Seeder references: lines 685–690 (total_opex_resolved), line 740 (replacement_reserves not in sum).  
-Projections reference: line 3506.
-
-**Net OpEx divergence (Bishop Y1, estimates):**
-- Projections adds reserves (+$58,000) that seeder excludes
-- Projections excludes custom_opex items that seeder includes (magnitude unknown without per-item query; likely small for Bishop)
-- Net direction: projections Y1 OpEx > seeder OpEx for Bishop (reserves dominate)
-
-**Net OpEx divergence (Sentosa Y1, estimates):**
-- Projections adds reserves fallback `304 × 350 = +$106,400` that seeder excludes (reserves.resolved = null)
-- Projections excludes $693,609+ in custom_opex items that seeder includes (dominated by $684,953 rate cap MTM)
-- Net direction: projections Y1 OpEx < seeder OpEx for Sentosa (rate cap MTM dominates)
-
-### B3. Summary — Y1 NOI Reconciliation Table
-
-**464 Bishop** (232 units):
-
-| Line | Seeder (ProForma) | Projections Y1 | Delta | Root cause |
+| | Bishop ProForma NOI | Bishop Proj Y1 NOI | Sentosa ProForma NOI | Sentosa Proj Y1 NOI |
 |---|---|---|---|---|
-| GPR | $4,901,400 | $4,901,400 | $0 | Same source (gprDecomposition.resolvedAnnual) |
-| VacancyLoss | $972,007 | $972,007 | $0 | Same pct × GPR |
-| LossToLease | $17,146 | $17,146 | $0 | Same pct × GPR |
-| Concessions | $381,402 | $381,402 | $0 | Same pct × GPR |
-| BadDebt | ~$125K (on NRI+OI) | $163,792 (on GPR) | +$38K | B2-1: base divergence |
-| NRU | $0 | $0 | $0 | — |
-| OtherIncome | ~$210K | ~$2,517K | **+$2,307K** | B2-2: stale monthly/annual |
-| EGI | $3,615,849 | ~$5,884K | ~+$2,268K | B2-1 + B2-2 |
-| Reserves in OpEx | $0 (excluded) | $58,000 | −$58K | B2-3: structural |
-| Custom OpEx in OpEx | ~included | $0 (excluded) | varies | B2-3: structural |
-| **NOI (confirmed)** | **$486,108** | **$1,709,818** | **+$1,223,710** | Dominated by B2-2 |
+| **Value** | **$486,108** | **$1,709,818** | **$1,051,906** | **~$1,610,000 (est.)** |
+| **Gap** | | **+$1,223,710** | | **+$558,094 (est.)** |
+| **Primary causes** | | MATH-02 ($2.3M OI inflation) offset by reserves, mgmt recalc | | Rate cap MTM ($685K) in seeder OpEx not in Proj; reserves ($106K) added in Proj |
 
-Projections Y1 NOI confirmed via `irr-verify-464-bishop.ts` probe (Close-out 1, SHIPPED_WORK_VERIFICATION.md §Close-out 1).
-
-**Sentosa Epperson** (304 units):
-
-| Line | Seeder (ProForma) | Projections Y1 | Delta | Root cause |
-|---|---|---|---|---|
-| GPR | $6,592,310 | $6,592,310 | $0 | Same source |
-| OtherIncome | ~$349K (96.15 × 304 × 12) | ~$350K | ~$0 | ✓ Scale correct (current seed) |
-| BadDebt | ~$151K (on NRI+OI) | $172,935 (on GPR) | +$22K | B2-1: base divergence |
-| EGI | $5,588,972 | ~$5,569K (estimated) | ~−$20K | B2-1 only |
-| Reserves in OpEx | $0 (null → excluded) | $106,400 (304 × 350 fallback) | −$106K | B2-3: reserves fallback |
-| Custom OpEx (rate cap MTM, etc.) | +$684,953 in OpEx | $0 | +$685K | B2-3: custom excluded |
-| **NOI** | $1,051,906 | Not separately confirmed | ~+$559K estimated | Dominated by rate cap exclusion |
-
-For Sentosa, removing the below-the-line $684,953 interest rate cap MTM item from custom_opex (via re-seed with S1-01 filter) would bring seeder NOI from $1,051,906 up to ~$1,736,859 — much closer to what projections computes.
+Bishop Y1 NOI confirmed at $1,709,818 via `irr-verify-464-bishop.ts` probe (SHIPPED_WORK_VERIFICATION.md §Close-out 1).
 
 ---
 
 ## Phase 0c — Unit Normalization Sweep
 
-### C1. Storage Conventions
+### C1. `deal_assumptions` Scalar Field Inventory
 
-Two distinct storage conventions exist across related tables:
+Query run against both test deals. Fields classified by storage convention and downstream consumer.
 
-| Table | Column(s) | Convention | Example | As-stored |
-|---|---|---|---|---|
-| `deal_assumptions` | `rent_growth_yr1`, `rent_growth_stabilized`, `management_fee_pct`, `replacement_reserves_per_unit` | **Whole percent** (3.0 = 3%) | rent_growth_yr1 | `3.00` |
-| `deal_assumptions` | `exit_cap` | **Decimal** (0.05 = 5%) | exit_cap | `0.0500` |
-| `proforma_assumptions` | `rent_growth_current`, `rent_growth_baseline`, `opex_growth_current`, `vacancy_current`, `exit_cap_current` | **Whole percent** (3.5 = 3.5%) | rent_growth_current | `3.500` |
-| `deal_assumptions.year1` | All LayeredValue `resolved` fields for pct types | **Decimal** (0.025 = 2.5%) | management_fee_pct.resolved | `0.025` |
+| Field | Bishop stored | Sentosa stored | Convention | Consumer (read as) | Used correctly? |
+|---|---|---|---|---|---|
+| `rent_growth_yr1` | `3.00` | `3.00` | **WHOLE_PERCENT** (3.0 = 3%) | `adj.service.ts:2125`: `parseFloat(v).toFixed(3)` → `3.000` — NO ÷100 | ⚠ UNIT_DRIFT: used as 3.0 (300%) in projections Y2+ |
+| `rent_growth_stabilized` | `2.50` | `2.50` | **WHOLE_PERCENT** (2.5 = 2.5%) | `adj.service.ts:2126`: `parseFloat(v).toFixed(3)` → `2.500` — NO ÷100 | ⚠ UNIT_DRIFT: used as 2.5 (250%) in projections Y3+ |
+| `exit_cap` | `0.0500` | `0.0500` | **DECIMAL** (0.05 = 5%) | `adj.service.ts:2124`: `parseFloat(v).toFixed(3)` → `0.050` | ✓ MATH_OK |
+| `interest_rate` | `0.0600` | null | **DECIMAL** (0.06 = 6%) | `adj.service.ts:2325`: `parseFloat(v).toFixed(4)` → `0.0600` | ✓ MATH_OK |
+| `ltc` | `0.7500` | `0.6500` | **DECIMAL** (0.75 = 75%) | `adj.service.ts:2318`: `parseFloat(v).toFixed(4)` → `0.7500` | ✓ MATH_OK |
+| `ltv` | null | null | ZERO_OR_NULL | Not read by composer | N/A |
+| `dscr_min` | `1.25` | `1.25` | **RATIO** (not pct) | `adj.service.ts:2328`: `parseFloat(v).toFixed(2)` → `1.25` | ✓ MATH_OK |
+| `origination_fee_pct` | `1.00` | `1.00` | **WHOLE_PERCENT** (1.0 = 1%) | `adj.service.ts:2329`: `parseFloat(v).toFixed(4)` → `1.000` — NO ÷100 | ⚠ UNIT_DRIFT: if used, would be 100% (but currently only surfaced for display, not computed) |
+| `management_fee_pct` | `3.00` | `3.00` | **WHOLE_PERCENT** | Not read by composer — seeder derives from `t12_mgmt_fee / t12_egi` | ✓ MATH_OK (column not consumed) |
+| `replacement_reserves_per_unit` | `250.00` | `250.00` | **$/unit/yr** | Projections Y1 fallback uses hardcoded `350`, not this column (`adj.service.ts:3392`) | ⚠ UNIT_DRIFT: column unused in fallback |
+| `opex_ratio` | `35.00` | `35.00` | **WHOLE_PERCENT** | Not consumed by composer | N/A |
+| `vacancy_pct` | `19.83` | `17.43` | **WHOLE_PERCENT** | Not read by composer (overridden by year1 JSONB value) | ✓ MATH_OK (column not consumed) |
+| `disposition_cost_pct` | `2.00` | `2.00` | **WHOLE_PERCENT** | Not consumed — selling_costs_pct in `deal_assumptions` is separate | N/A |
+| `developer_fee_pct` | `4.00` | `4.00` | **WHOLE_PERCENT** | Greenfield path only | N/A |
+| `soft_cost_pct` | `25.00` | `25.00` | **WHOLE_PERCENT** | Greenfield path only | N/A |
+| `contingency_pct` | `5.00` | `5.00` | **WHOLE_PERCENT** | Greenfield path only | N/A |
+| `debt_yield_min` | null | null | ZERO_OR_NULL | Not consumed by composer | N/A |
+| `hold_period_years` | `5` | `5` | **INTEGER** | `adj.service.ts`: `assumptionsRow.hold_period_years ?? 5` | ✓ MATH_OK |
+| `selling_costs_pct` | null | null | ZERO_OR_NULL | `adj.service.ts:2211`: `parseFloat(v).toFixed(4)` → null → defaults to 0.02 | ✓ MATH_OK |
+| `target_irr` | null | null | ZERO_OR_NULL | Display only | N/A |
+| `target_em` | null | null | ZERO_OR_NULL | Display only | N/A |
+| `io_period_months` | `36` | `36` | **INTEGER (months)** | `adj.service.ts:2326`: used directly | ✓ MATH_OK |
+| `amortization_years` | `30` | `30` | **INTEGER** | `adj.service.ts:2327` | ✓ MATH_OK |
 
-### C2. Read Boundaries in `proforma-adjustment.service.ts`
+### C2. `proforma_assumptions` Field Inventory
 
-**File:** lines 2112–2132 (calibrated block and opexGrowthRate)
+Only Bishop has a `proforma_assumptions` row. Sentosa has no row → defaults used.
 
-| Variable | Source column | Read code | ÷100? | Stored value | Used as | Correct? |
-|---|---|---|---|---|---|---|
-| `calibrated.vacancyPct` | `proforma_assumptions.vacancy_current` | `parseFloat(v) / 100` | ✅ Yes | `5.00` | `0.0500` | ✅ |
-| `calibrated.rentGrowthPct` | `proforma_assumptions.rent_growth_current` | `parseFloat(v) / 100` | ✅ Yes | `3.500` | `0.0350` | ✅ |
-| `calibrated.exitCap` | `proforma_assumptions.exit_cap_current` | `parseFloat(v) / 100` | ✅ Yes | `5.500` | `0.0550` | ✅ |
-| `rentGrowthYr1` | `deal_assumptions.rent_growth_yr1` | `parseFloat(v).toFixed(3)` | ❌ No | `3.00` | `3.000` (300%!) | ⚠️ **BUG** |
-| `rentGrowthStab` | `deal_assumptions.rent_growth_stabilized` | `parseFloat(v).toFixed(3)` | ❌ No | `2.50` | `2.500` (250%!) | ⚠️ **BUG** |
-| `exitCap` | `deal_assumptions.exit_cap` | `parseFloat(v).toFixed(3)` | ❌ No | `0.0500` | `0.050` (5.0%) | ✅ (decimal stored) |
-| `opexGrowthRate` | `proforma_assumptions.opex_growth_current` | `parseFloat(v).toFixed(3)` | ❌ No | `2.800` | `2.800` (280%!) | ⚠️ **BUG** |
+| Field | Bishop stored | Convention | Consumer | ÷100? | Used correctly? |
+|---|---|---|---|---|---|
+| `opex_growth_current` | `2.800` | **WHOLE_PERCENT** (2.8 = 2.8%) | `adj.service.ts:2130–2132`: `parseFloat(v).toFixed(3)` → `2.800` | ❌ No | ⚠ UNIT_DRIFT: `opexGrowthRate = 2.800` used as 280% in Y2+ OpEx compounding |
+| `opex_growth_baseline` | `2.800` | **WHOLE_PERCENT** | Not consumed by composer | N/A | N/A |
+| `rent_growth_current` | `3.500` | **WHOLE_PERCENT** | `adj.service.ts:2113`: `parseFloat(v) / 100` → `0.035` | ✅ Yes | ✓ MATH_OK |
+| `rent_growth_baseline` | `3.500` | **WHOLE_PERCENT** | Not consumed | N/A | N/A |
+| `vacancy_current` | `5.00` | **WHOLE_PERCENT** | `adj.service.ts:2112`: `parseFloat(v) / 100` → `0.0500` | ✅ Yes | ✓ MATH_OK |
+| `exit_cap_current` | `5.500` | **WHOLE_PERCENT** | `adj.service.ts:2114`: `parseFloat(v) / 100` → `0.0550` | ✅ Yes | ✓ MATH_OK |
 
-### C3. Impact of Normalization Bugs
+**Normalization inconsistency:** `opex_growth_current` is the only `proforma_assumptions` field read WITHOUT `/ 100`. All other fields in this table use `/ 100`. This is the root cause of the 280%/yr OpEx growth bug (see UNIT-01).
 
-**Y1 unaffected:** The projections IIFE sets `rentGrowthStep = 0` and `opexGrowthStep = 0` at `yr = 1`. Both bugs are dormant at Y1.
+### C3. `deal_assumptions.year1` JSONB — Pct Fields (Resolved)
 
-**Y2+ parabolic blow-up:** Both bugs cause severe distortion in multi-year projections:
+All resolved values in the year1 JSONB use **DECIMAL** convention (0.025 = 2.5%). These are read via `ry1(k) = resolvedNum(lv(year1Seed, k))` which accesses `.resolved` directly — no scaling applied or needed.
 
-- `rentGrowthYr1 = 3.000` (300%) → Projections Y2 GPR = Y1 GPR × (1 + 3.000) = **4× the Y1 base**
-- `opexGrowthRate = 2.800` (280%) → Projections Y2 total OpEx = Y1 OpEx × (1 + 2.800) = **3.8× the Y1 base**
-
-This was observed in Close-out 1 (SHIPPED_WORK_VERIFICATION.md): *"NOI Y2+ goes parabolic due to Bishop's `rent_growth_yr1 = 3` stored as a whole number."* The note there classified this as a pre-existing convention artifact, but the Projections tab renders the parabolic numbers for the user — it is a user-visible defect.
-
-**Sentosa:** `rent_growth_yr1 = 3.00` (same storage) → same 300% Y2 rent growth bug. `proforma_assumptions` row does not exist for Sentosa, so `opexGrowthRate` falls back to the hardcoded default `0.03` (3%) — OpEx bug is absent for Sentosa.
-
-### C4. `other_income_per_unit` Contract
-
-**Seeder stores:** monthly per unit (`otherIncomeForEgi / totalUnits / 12`).  
-**Projections reads:** monthly per unit, multiplies `× units × 12` to annualize.  
-**Contract is correct for current code.** Bishop's stale DB value is annual-per-unit from a pre-`/months` seed (documented in B2-2 above); re-seeding restores parity.
-
-### C5. `replacement_reserves_per_unit` in `deal_assumptions`
-
-| Deal | `deal_assumptions.replacement_reserves_per_unit` | Stored as |
-|---|---|---|
-| Bishop | $250.00 | Dollar per unit (annual basis implied) |
-| Sentosa | $250.00 | Dollar per unit (annual basis implied) |
-
-This column is a Greenfield/dev-path scalar. The acquisition path uses the seeder's `resolve('replacement_reserves', ...)` which reads from `om` (broker OM) and `existingOverride`. Neither Bishop nor Sentosa has a broker OM value, so reserves resolves from override only (Bishop: $58,000 manual override) or null (Sentosa). The `deal_assumptions.replacement_reserves_per_unit` scalar is not currently consumed by the acquisition-path seeder — it feeds the Projections IIFE fallback at line 3392:
-
-```ts
-const reservesY1 = ry1('replacement_reserves') || (totalUnits * 350);
-```
-
-Note: the fallback uses `350` (hardcoded platform default $/unit), not `deal_assumptions.replacement_reserves_per_unit`. The `deal_assumptions.replacement_reserves_per_unit = 250` column is effectively unused for acquisition deals.
+| Field | Bishop resolved | Sentosa resolved | Tag |
+|---|---|---|---|
+| `vacancy_pct` | 0.19828 (19.83%) | 0.17434 (17.43%) | ✓ MATH_OK |
+| `loss_to_lease_pct` | 0.00350 (0.35%) | 0 | ✓ MATH_OK |
+| `concessions_pct` | 0.07780 (7.78%) | 0.00823 (0.82%) | ✓ MATH_OK |
+| `bad_debt_pct` | 0.03342 (3.34%) | 0.02623 (2.62%) | ✓ MATH_OK |
+| `non_revenue_units_pct` | 0 | 0 | ✓ MATH_OK |
+| `management_fee_pct` | 0.025 (2.5%) | 0.04047 (4.047%) | ✓ MATH_OK |
+| `other_income_per_unit` | 904.14 (stale — annual, not monthly) | 96.15 (monthly/unit) | ⚠ STALE_CACHE (Bishop) |
 
 ---
 
 ## Phase 0d — Regression Checks
 
-### D1. S1-01 `isExcludedFromOpex` Filter
+### REG-1: S1-01 — No residual non-opex items in `custom_opex_*`
 
-**S1-01** added `isExcludedFromOpex()` to the seeder (8 new regex patterns) to prevent below-the-line GL items from inflating OpEx.
+**Query:**
+```sql
+SELECT deal_id, key, (year1->key->>'resolved')::numeric AS resolved_val
+FROM deal_assumptions, jsonb_object_keys(year1) AS key
+WHERE deal_id IN ('3f32276f-…','3d96f62d-…')
+AND key LIKE 'custom_opex_%'
+AND (key ILIKE '%loan%' OR key ILIKE '%interest%' OR key ILIKE '%capital_expense%' OR key ILIKE '%mtm%')
+ORDER BY deal_id, key;
+```
 
-**Check:** Are the custom_opex items in both test deals' `year1` JSONB correctly filtered?
+**Result:**
+```
+deal_id                              key                                                          resolved_val
+3d96f62d-d986-448f-8ea4-10853021a8cb  custom_opex_500020_capital_expenses_major_appliance_replacem       726
+3d96f62d-d986-448f-8ea4-10853021a8cb  custom_opex_500040_capital_expenses_office_start_up              1,540
+3d96f62d-d986-448f-8ea4-10853021a8cb  custom_opex_500045_capital_expenses_major_building_repairs       2,885
+3d96f62d-d986-448f-8ea4-10853021a8cb  custom_opex_500055_capital_expenses_clubhouse_model_office_v    13,573
+3d96f62d-d986-448f-8ea4-10853021a8cb  custom_opex_500105_capital_expenses_maintenance_equipment        1,180
+3d96f62d-d986-448f-8ea4-10853021a8cb  custom_opex_500130_capital_expenses_construction_expense           900
+3d96f62d-d986-448f-8ea4-10853021a8cb  custom_opex_500135_capital_expenses_web_design_collateral_st      -245
+3d96f62d-d986-448f-8ea4-10853021a8cb  custom_opex_909006_loan_servicing_fee                            8,926
+3d96f62d-d986-448f-8ea4-10853021a8cb  custom_opex_909007_interest_rate_cap_mtm_adjustment            684,953
+```
 
-| Finding | Bishop | Sentosa |
-|---|---|---|
-| Financing items in custom_opex | None detected | `custom_opex_909006_loan_servicing_fee = $8,926` ⚠️; `custom_opex_909007_interest_rate_cap_mtm_adjustment = $684,953` ⚠️ |
-| CapEx-labeled items in custom_opex | None detected (carpet_replacement may qualify) | `custom_opex_500020/40/45/55/105/130/135_capital_expenses_* = ~$20,559` ⚠️ |
-| Assessment | ✅ Clean | ⚠️ Stale seed — S1-01 filter not yet applied |
-
-**Root cause:** Sentosa's `year1` JSONB was seeded before S1-01. The filter's regex patterns likely target human-readable labels (e.g., "interest", "loan", "mortgage") and may not match numeric GL account prefixes (`909xxx`). Re-seeding Sentosa (forceReseed) will re-run the filter; the numeric-prefix paths need verification against `isExcludedFromOpex` logic.
-
-**NOI impact:** $684,953 interest rate cap MTM overstates Sentosa's year1 OpEx and understates NOI by the same amount. Sentosa's seeded NOI of $1,051,906 should be closer to ~$1,737K post-cleanup.
-
-### D2. Purchase Price Dual-Write (#623 / #624)
-
-Both test deals have `budget = NULL` and `deal_data.purchase_price = NULL`. No purchase price configured on either deal — the dual-write regression is **N/A** for these deals.
-
-Reference: SHIPPED_WORK_VERIFICATION.md TASK B Item 1 and Close-out 2 confirm the dual-write is wired correctly for deals that do have a budget set.
-
-### D3. Bishop NOI Baseline Post-S1-01
-
-| Metric | Pre-S1-01 | Post-S1-01 (current) |
-|---|---|---|
-| Bishop Year 1 NOI (seeded) | −$161,598 | **+$486,108** ✅ |
-| Status | Negative | Positive |
-
-S1-01 removed $647,706 of net non-opex inflation from Bishop's custom_opex bucket. The seeded NOI is now positive and plausible for a value-add multifamily asset.
-
-Reference: SHIPPED_WORK_VERIFICATION.md Close-out 1 confirmed via `irr-verify-464-bishop.ts` probe.
-
-### D4. Projections Y1 Reserves vs ProForma
-
-| Deal | ProForma reserves | Projections Y1 reserves | Divergence |
+| Deal | Verdict | Non-opex total | Detail |
 |---|---|---|---|
-| Bishop | $58,000 (override) | $58,000 (`ry1('replacement_reserves')` = $58,000) | ✅ None |
-| Sentosa | null (platform_fallback) | $106,400 (`304 × 350` fallback) | ⚠️ $106,400 added |
+| 464 Bishop | ✅ PASS | $0 | No financing or CapEx items found in custom_opex |
+| Sentosa Epperson | ❌ FAIL | **$714,437** | `loan_servicing_fee` ($8,926) + `interest_rate_cap_mtm` ($684,953) are below-the-line financing items. 7 `capital_expenses_*` items ($20,559) are CapEx, not recurring OpEx |
 
-Bishop: no divergence — override flows through correctly via `ry1('replacement_reserves')`.  
-Sentosa: projections silently adds a $106,400 reserve deduction that the ProForma seed does not show. The ProForma tab shows no reserves line for Sentosa (null), but the Projections tab deducts $106K/yr from NOI, making the Projections NOI ~$106K lower than ProForma NOI even before other adjustments.
+**Root cause:** Sentosa was seeded before S1-01's `isExcludedFromOpex` filter was applied (or the filter's regex patterns do not match numeric GL account prefixes `909xxx` / `500xxx`). A `forceReseed` after verifying the filter covers these labels will resolve it.
 
 ---
 
-## Open Issues / Recommended Actions
+### REG-2: Projections Y1 reserves = ProForma reserves override
 
-| ID | Severity | Finding | Recommended action |
+**Query:**
+```sql
+SELECT deal_id,
+  year1->'replacement_reserves'->>'resolved' AS reserves_resolved,
+  year1->'replacement_reserves'->>'resolution' AS reserves_resolution,
+  year1->'replacement_reserves'->>'override' AS reserves_override,
+  total_units
+FROM deal_assumptions WHERE deal_id IN ('3f32276f-…','3d96f62d-…');
+```
+
+**Result:**
+```
+deal_id             reserves_resolved  reserves_resolution  reserves_override  total_units
+3f32276f (Bishop)   58000              override             58000              232
+3d96f62d (Sentosa)  (null)             platform_fallback    (null)             304
+```
+
+**Projections Y1 reserves** (adj.service.ts:3392):
+```ts
+const reservesY1 = ry1('replacement_reserves') || (totalUnits * 350);
+```
+- Bishop: `ry1('replacement_reserves') = $58,000` → projections Y1 = $58,000 ✓ **matches override**
+- Sentosa: `ry1('replacement_reserves') = null` → fallback = `304 × 350 = $106,400` — **not in ProForma**
+
+| Deal | ProForma reserves | Projections Y1 reserves | Verdict |
 |---|---|---|---|
-| MA-01 | 🔴 High | **Bishop stale `other_income_per_unit`** ($904/unit annual stored, should be $75.5/unit monthly). Projections Y1 OtherIncome inflated 12×, causing $1.2M+ Y1 NOI overstatement in projections. | Force-reseed Bishop (`ensureDealAssumptionsSeeded(pool, bishopId, { forceReseed: true })`). Re-seed will store correct monthly value. |
-| MA-02 | 🔴 High | **Sentosa `interest_rate_cap_mtm_adjustment` ($684,953) in custom_opex**. Financing item deflates seeded NOI by $685K. | Force-reseed Sentosa. Verify `isExcludedFromOpex` captures GL account `909007`; add numeric-prefix pattern if not. |
-| MA-03 | 🟡 Medium | **`rentGrowthYr1` / `rentGrowthStab` read without ÷100** (`proforma-adjustment.service.ts` lines 2125–2126). Stored as whole-percent (e.g., 3.00), used as 300%. Projections Y2+ rents compound at 300%/yr — parabolic blow-up visible in Projections tab. Y1 unaffected. | Add `/ 100` at read lines 2125–2126, consistent with the existing `/ 100` at line 2113 for `calibrated.rentGrowthPct`. |
-| MA-04 | 🟡 Medium | **`opexGrowthRate` read without ÷100** (`proforma-adjustment.service.ts` line 2131). Stored as `2.800` (2.8%), used as `2.800` (280%). Projections Y2+ OpEx compounds at 280%/yr. Y1 unaffected. | Add `/ 100` at line 2131. Note: the default `0.03` (hardcoded) is already in decimal form — only the DB path is missing the ÷100. |
-| MA-05 | 🟡 Medium | **Bad-debt application base diverges** (seeder: % of NRI+OI; projections: % of GPR). Causes ~$22K–$39K EGI understatement in projections Y1. | Standardize to one convention. Seeder convention (% of effective income) is more NCREIF-aligned. Update projections IIFE lines 3453–3455 to apply bad_debt as `round((nri + otherIncome) × badDebtPct)` and recalculate NRI without badDebt. |
-| MA-06 | 🟡 Medium | **Replacement reserves excluded from seeder `total_opex_resolved`** (seeder lines 685–690). ProForma NOI does not deduct reserves; Projections NOI does. ProForma "NOI" overstates cash flow. | Add `replacementReserves.resolved ?? 0` to seeder `total_opex_resolved` sum. Ensure ProForma tab displays as sub-total under Total OpEx and NOI reflects the deduction. |
-| MA-07 | 🟡 Medium | **Sentosa capital-expense items in custom_opex** (~$20,559 total, 7 items labeled `500xxx_capital_expenses_*`). CapEx treated as recurring OpEx inflates OpEx and suppresses NOI. | Verify `isExcludedFromOpex` patterns cover `capital_expenses` label substring. If not, extend regex. Then re-seed Sentosa. |
-| MA-08 | 🟢 Low | **Projections reserves fallback `totalUnits × 350` hardcoded** (line 3392). Does not respect `deal_assumptions.replacement_reserves_per_unit` ($250/unit on both deals). Sentosa gets $350/unit fallback instead of $250/unit. | Use `ry1('replacement_reserves') \|\| (totalUnits * (reservesPerUnitFromDA ?? 350))` where `reservesPerUnitFromDA` reads `deal_assumptions.replacement_reserves_per_unit`. |
-| MA-09 | 🟢 Low | **amenities, office, hoa_dues, personal_property_tax seeded but not projected**. These fields feed into seeder total_opex but are not in the projections IIFE's `totalOpex` sum. Long-run projections understate OpEx for deals with these items. | Add the four fields to the projections IIFE (seed + compound with opexGrowthStep, same pattern as payroll/repairs). |
+| 464 Bishop | $58,000 (override flows through) | $58,000 | ✅ PASS |
+| Sentosa Epperson | null (no reserves seeded) | $106,400 (hardcoded fallback) | ⚠ DIVERGENCE — not FAIL but documented |
 
 ---
 
-## Audit Coverage Notes
+### REG-3: `deals.budget` = `deal_data.purchase_price` (dual-write parity)
 
-- **Y1 growth step = 0**: All growth bugs (MA-03, MA-04) are dormant at Y1. The Y1 reconciliation gap is driven by MA-01, MA-02, MA-05, MA-06.
-- **Projections tab visibility**: The Projections tab renders the projections IIFE output directly — users are seeing the parabolic Y2+ numbers from MA-03/MA-04 today. This is the highest-visibility defect even though it doesn't affect Y1.
-- **No code changes made in this audit.** All findings are read-only observations against live DB state and source code.
-- **Re-seeding priority**: Re-seed Bishop (MA-01) and Sentosa (MA-02) after verifying the `isExcludedFromOpex` filter covers numeric GL prefixes. This will also apply the current seeder's `/months` convention to other_income_per_unit for all stale deals.
+**Query:**
+```sql
+SELECT id, name, budget::text AS budget,
+  (deal_data->>'purchase_price') AS dd_purchase_price,
+  CASE WHEN budget IS NULL AND (deal_data->>'purchase_price') IS NULL THEN 'BOTH_NULL_N/A'
+       WHEN budget::text = (deal_data->>'purchase_price') THEN 'MATCH'
+       ELSE 'MISMATCH' END AS check_result
+FROM deals WHERE id IN ('3f32276f-…','3d96f62d-…');
+```
+
+**Result:**
+```
+id             name              budget  dd_purchase_price  check_result
+3f32276f-…    464 Bishop         (null)  (null)             BOTH_NULL_N/A
+3d96f62d-…    Sentosa Epperson   (null)  (null)             BOTH_NULL_N/A
+```
+
+| Deal | Verdict | Detail |
+|---|---|---|
+| 464 Bishop | N/A | No purchase price configured — dual-write regression not testable on this deal |
+| Sentosa Epperson | N/A | Same — no purchase price configured |
+
+Reference: SHIPPED_WORK_VERIFICATION.md Close-out 2 confirmed dual-write PASS on "Highlands at Satellite" deal which has a real budget.
+
+---
+
+## Section 8 — Findings Inventory
+
+| ID | Phase | Severity | Deal | Summary |
+|---|---|---|---|---|
+| **MATH-01** | 0a/0b | High | Both | Bad debt applied to **GPR** in `toDollarRow` display row and Projections IIFE (`adj.service.ts:3453`), but to **(NRI + OtherIncome)** in seeder (`seeder.ts:672`). Display and Projections overstate bad debt deduction by applying it against a larger base (GPR vs effective income). For Bishop: +$38.8K excess bad debt in Projections Y1. |
+| **MATH-02** | 0a/0b | Critical | Bishop | `other_income_per_unit.resolved = 904.14` is a **stale annual-per-unit** value from a pre-`÷12` seed. Current seeder stores monthly per unit (confirmed: `seeder.ts:319` `months=12`; `seeder.ts:668–669`). Projections applies `× units × 12`, inflating Bishop Y1 OtherIncome 12× (~$2.52M vs ~$210K seeded). Drives +$1.22M gap in Y1 NOI between ProForma and Projections tabs. Fix: `forceReseed` Bishop. |
+| **MATH-03** | 0b | Medium | Both | Replacement reserves **excluded** from seeder `total_opex_resolved` (`seeder.ts:685–690`) but **included** in Projections `totalOpex` (`adj.service.ts:3506`). ProForma NOI is pre-reserves; Projections NOI deducts reserves. Bishop: $58K gap. Sentosa: $106K gap from fallback. |
+| **MATH-04** | 0a | Medium | Both | Amenities ($7,330 Bishop / $2,462 Sentosa) are in seeder `total_opex_resolved` but **absent from OPEX_FIELDS** (`adj.service.ts:1844–1858`) and absent from Projections `totalOpex`. These amounts are correctly captured in seeder NOI but invisible in the Pro Forma display and not carried forward in Projections Y2+. |
+| **MATH-05** | 0b | Low | Both | Projections hardcoded reserves fallback `totalUnits × 350` (`adj.service.ts:3392`) ignores `deal_assumptions.replacement_reserves_per_unit` ($250/unit for both deals) → Sentosa gets $106,400 instead of $76,000 (+$30,400 over-deduction). |
+| **RECON-01** | 0b | Critical | Bishop | Y1 NOI: ProForma = $486,108 vs Projections = $1,709,818 → **+$1,223,710 gap**. Root causes: MATH-02 (OI inflation $2.3M), partially offset by mgmt fee recalc on higher EGI and MATH-03 (reserves). |
+| **RECON-02** | 0b | High | Sentosa | Y1 NOI: ProForma = $1,051,906 vs Projections ≈ $1,610,000 → **+~$558K gap**. Root causes: REG-1 ($693K below-the-line items in seeder OpEx) vs Projections ($106K reserves addition). |
+| **RECON-03** | 0b | Medium | Both | Bad debt base divergence between ProForma (% of NRI+OI) and Projections (% of GPR) creates a persistent EGI gap even after other issues are resolved. Bishop: −$38.8K Projections EGI. Sentosa: −$21.9K. |
+| **UNIT-01** | 0c | High | Bishop | `proforma_assumptions.opex_growth_current = 2.800` read at `adj.service.ts:2131` **without ÷100** → `opexGrowthRate = 2.800` (280%). Projections Y2+ OpEx compounds at 280%/yr. Y1 unaffected (growth step = 0). All other `proforma_assumptions` calibrated fields correctly use `÷100` (lines 2112–2114). |
+| **UNIT-02** | 0c | High | Both | `deal_assumptions.rent_growth_yr1 = 3.00` and `rent_growth_stabilized = 2.50` read at `adj.service.ts:2125–2126` **without ÷100** → 300% Y1 rent growth / 250% stabilized. Projections Y2+ GPR compounds at 300%/yr → parabolic NOI visible in Projections tab. Y1 unaffected. |
+| **UNIT-03** | 0c | Low | Both | `deal_assumptions.origination_fee_pct = 1.00` stored as whole-percent. Only surfaced to `capitalStack.originationFeePct` for display; not used in any computation today — no current impact but would produce 100% fee if a computation were added. |
+| **UNIT-04** | 0c | Low | Both | `deal_assumptions.replacement_reserves_per_unit = 250` exists but is not consumed by Projections reserves fallback (which uses hardcoded 350). Dead column for acquisition deals. |
+| **REG-01** | 0d | High | Sentosa | S1-01 `isExcludedFromOpex` filter did not remove 9 items from Sentosa: `interest_rate_cap_mtm_adjustment` ($684,953), `loan_servicing_fee` ($8,926), and 7 `capital_expenses_*` items ($20,559). Total non-opex in seeder OpEx: **$714,438**. Suppresses seeded NOI by same amount. |
+| **REG-02** | 0d | Info | Sentosa | Projections Y1 reserves diverge from ProForma: $106,400 (fallback) vs null (seeder). Not a regression — pre-existing structural gap. Documented separately as MATH-03/MATH-05. |
+| **REG-03** | 0d | N/A | Both | Budget dual-write parity: both deals have no purchase price; regression N/A. Confirmed working on live deal in prior probe (SHIPPED_WORK_VERIFICATION.md §Close-out 2). |
+
+---
+
+## Section 9 — Recommended Phase 1 Fixes
+
+| Priority | ID | Findings | Fix | Effort | Files |
+|---|---|---|---|---|---|
+| **P0** | FIX-01 | RECON-01, MATH-02 | `forceReseed` 464 Bishop. The current seeder stores monthly OI per unit correctly — re-seeding will write `~$75.5/unit/mo` and eliminate the 12× inflation in Projections Y1. | S | Run `ensureDealAssumptionsSeeded(pool, '3f32276f-…', { forceReseed: true })` |
+| **P0** | FIX-02 | REG-01, RECON-02 | Verify `isExcludedFromOpex` (`seeder.ts:~557`) regex patterns cover numeric GL prefixes (`909xxx` → loan/interest, `500xxx` → capital_expenses). Extend patterns if missing, then `forceReseed` Sentosa. | S | `backend/src/services/proforma-seeder.service.ts` ~line 557 |
+| **P1** | FIX-03 | UNIT-01 | Add `/ 100` at `adj.service.ts:2131` for `opexGrowthRate`. Pattern: mirror lines 2112–2114 which already apply `/ 100`. | S | `backend/src/services/proforma-adjustment.service.ts:2131` |
+| **P1** | FIX-04 | UNIT-02 | Add `/ 100` at `adj.service.ts:2125–2126` for `rentGrowthYr1` and `rentGrowthStab`. Consistent with calibrated fields at lines 2112–2114. | S | `backend/src/services/proforma-adjustment.service.ts:2125–2126` |
+| **P1** | FIX-05 | MATH-01, RECON-03 | Standardize bad debt base to (NRI + OtherIncome) in Projections IIFE (`adj.service.ts:3449–3463`). Move `badDebt = round((nri_before_bd + otherIncome) × badDebtPct)` and remove from NRI subtraction. Align with NCREIF convention used in seeder. | M | `backend/src/services/proforma-adjustment.service.ts:3449–3463`; also update `toDollarRow` multiplier at line 1964 from GPR to EGI |
+| **P2** | FIX-06 | MATH-03 | Add `(replacementReserves.resolved ?? 0)` to seeder `total_opex_resolved` sum (`seeder.ts:685–690`). ProForma NOI will then include reserves deduction and match Projections Y1. Update ProFormaSummaryTab to remove separate `noiAfterReserves` calculation since NOI itself will be post-reserves. | M | `backend/src/services/proforma-seeder.service.ts:685–712` |
+| **P2** | FIX-07 | MATH-05, UNIT-04 | Projections reserves fallback (`adj.service.ts:3392`): replace `totalUnits * 350` with `ry1('replacement_reserves') || (assumptionsRow?.replacement_reserves_per_unit ?? 350) * totalUnits`. Eliminates hardcoded platform assumption. | S | `backend/src/services/proforma-adjustment.service.ts:3392` |
+| **P3** | FIX-08 | MATH-04 | Add amenities (and office/hoa_dues/personal_prop_tax if non-zero) to Projections IIFE `totalOpex` sum. Seed as `ry1('amenities')` with `opexGrowthStep` compounding for Y2+. | M | `backend/src/services/proforma-adjustment.service.ts:3383–3506` |
+| **P3** | FIX-09 | MATH-04 | Add `amenities` to `OPEX_FIELDS` array (`adj.service.ts:1844–1858`) and `NCTRL_OPEX_FIELDS` filter in ProFormaSummaryTab so it renders as a visible line item. | S | `backend/src/services/proforma-adjustment.service.ts:1844`; `frontend/src/pages/development/financial-engine/ProFormaSummaryTab.tsx` |
