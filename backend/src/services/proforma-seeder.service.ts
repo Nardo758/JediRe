@@ -88,6 +88,10 @@ const BASE_CONCESSIONS_PCT  = 0.02;   // 2 %
 const BASE_BAD_DEBT_PCT     = 0.01;   // 1 %
 const BASE_MGMT_FEE_PCT_EGI = 0.045;  // 4.5 % of EGI
 
+// National median rent fallback (Class B, 2024) used when no snapshot data
+// exists for the deal's city or state.
+const NATIONAL_MEDIAN_RENT_PER_UNIT_PER_MONTH = 1400;
+
 // Per-state multipliers — only states with significant divergence from the
 // national average are listed; all others receive 1.0.
 const STATE_ADJUSTMENTS: Record<string, Partial<Record<keyof OpExNorms, number>>> = {
@@ -158,11 +162,14 @@ async function lookupPlatformBaseline(
         if (row.avg_rent != null) gprPerUnitPerMonth = parseFloat(row.avg_rent);
         if (row.avg_occupancy != null) {
           const occ = parseFloat(row.avg_occupancy);
-          if (occ > 0 && occ <= 100) vacancyPct = Math.max(0, 1 - occ / 100);
+          // avg_occupancy is stored as a proportion (0–1, e.g. 0.94 = 94%)
+          // Guard against percentage-scale values from other data sources.
+          if (occ > 0) vacancyPct = Math.max(0, occ > 1 ? 1 - occ / 100 : 1 - occ);
         }
         if (row.concession_rate != null) {
           const cr = parseFloat(row.concession_rate);
-          if (cr > 0) concessionsPct = cr / 100;
+          // concession_rate stored as proportion (0–1); guard against %-scale
+          if (cr > 0) concessionsPct = cr > 1 ? cr / 100 : cr;
         }
       }
     }
@@ -177,6 +184,11 @@ async function lookupPlatformBaseline(
       );
       const sr = stateSnap.rows[0];
       if (sr?.avg_rent != null) gprPerUnitPerMonth = parseFloat(sr.avg_rent);
+    }
+
+    // 3. National median fallback — ensures gpr_per_unit_per_month is never null
+    if (gprPerUnitPerMonth == null) {
+      gprPerUnitPerMonth = NATIONAL_MEDIAN_RENT_PER_UNIT_PER_MONTH;
     }
   } catch (err) {
     // Non-fatal — static norms are still returned
@@ -786,8 +798,20 @@ function buildSeed(
     - gprResolved * (concessionsPct.resolved ?? 0)
     - gprResolved * (nonRevenueUnitsPct.resolved ?? 0);
 
+  // Platform computation for derived rows — mirrors the resolved formula but
+  // uses the .platform slot from each component. Null-coalesces to 0 so that
+  // partially-populated baselines still produce a meaningful aggregate.
+  const gprPlatform = gpr.platform ?? 0;
+  const nri_platform = gprPlatform > 0
+    ? gprPlatform
+      - gprPlatform * (lossToLeasePct.platform ?? 0)
+      - gprPlatform * (vacancyPct.platform ?? 0)
+      - gprPlatform * (concessionsPct.platform ?? 0)
+      - gprPlatform * (nonRevenueUnitsPct.platform ?? 0)
+    : null;
+
   const netRentalIncome: LayeredValue<number> = {
-    platform: null, override: null,
+    platform: nri_platform, override: null,
     resolved: nri_resolved,
     resolution: 'platform_fallback',
     updated_at: now(),
@@ -817,8 +841,14 @@ function buildSeed(
   }
   const egi_after_bad_debt = egi_resolved * (1 - (badDebtPct.resolved ?? 0));
 
+  // Platform EGI: NRI_platform + other income platform (other income has no
+  // platform baseline so we treat it as zero to keep the aggregate conservative).
+  const egi_platform = nri_platform != null
+    ? nri_platform * (1 - (badDebtPct.platform ?? 0))
+    : null;
+
   const egi: LayeredValue<number> = {
-    platform: null, override: null,
+    platform: egi_platform, override: null,
     resolved: egi_after_bad_debt,
     resolution: 'platform_fallback',
     updated_at: now(),
@@ -835,16 +865,34 @@ function buildSeed(
     (utilities.resolved ?? 0) + mgmtFeeDollar + (realEstateTax.resolved ?? 0) +
     (personalPropTax.resolved ?? 0) + (insurance.resolved ?? 0) + customOpexTotal;
 
+  // Platform total_opex: sum of per-line platform slots.
+  // Management fee platform = egi_platform × mgmtFeePct.platform.
+  // Custom opex lines have no platform, so excluded.
+  const mgmtFeeDollarPlatform = egi_platform != null
+    ? egi_platform * (mgmtFeePct.platform ?? 0)
+    : 0;
+  const total_opex_platform = (
+    (payroll.platform ?? 0) + (repairsMaintenance.platform ?? 0) + (turnover.platform ?? 0) +
+    (amenities.platform ?? 0) + (contractServices.platform ?? 0) + (marketing.platform ?? 0) +
+    (office.platform ?? 0) + (gAndA.platform ?? 0) + (hoaDues.platform ?? 0) +
+    (utilities.platform ?? 0) + mgmtFeeDollarPlatform + (realEstateTax.platform ?? 0) +
+    (personalPropTax.platform ?? 0) + (insurance.platform ?? 0)
+  ) || null;
+
   const totalOpex: LayeredValue<number> = {
-    platform: null, override: null,
+    platform: total_opex_platform, override: null,
     resolved: total_opex_resolved,
     resolution: 'platform_fallback',
     updated_at: now(),
   };
 
   const noi_resolved = egi_after_bad_debt - total_opex_resolved;
+  const noi_platform = egi_platform != null && total_opex_platform != null
+    ? egi_platform - total_opex_platform
+    : null;
+
   const noi: LayeredValue<number> = {
-    platform: null, override: null,
+    platform: noi_platform, override: null,
     om: bpNOI,
     resolved: noi_resolved,
     resolution: 'platform_fallback',
@@ -887,7 +935,8 @@ function buildSeed(
     total_opex: totalOpex,
     noi,
     noi_per_unit: {
-      platform: null, override: null,
+      platform: noi_platform != null && totalUnits > 0 ? noi_platform / totalUnits : null,
+      override: null,
       resolved: totalUnits > 0 ? noi_resolved / totalUnits : null,
       resolution: 'platform_fallback',
       updated_at: now(),
