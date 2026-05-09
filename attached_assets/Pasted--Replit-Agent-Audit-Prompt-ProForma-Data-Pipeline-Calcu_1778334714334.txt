@@ -1,0 +1,340 @@
+# Replit Agent — Audit Prompt: ProForma Data Pipeline + Calculation Template
+
+## What's Broken (User-Visible Symptoms)
+
+The F9 ProForma (M09) page in the Bloomberg Terminal frontend has three failures:
+
+1. **Broker column has missing values.** Some line items show data, many are blank. The broker layer is supposed to come from the OM-extracted assumptions. It's partial.
+2. **Platform column is completely empty.** Every row shows nothing for the Platform layer. The platform layer is supposed to come from the proforma engine running its full chain (M05 market data → M07 traffic → M14 risk → tax service → insurance service → proforma-adjustment.service.ts).
+3. **Subtotals are wrong or not computing.** Row-level subtotals (Total Revenue, Total OpEx, NOI, NOI After Reserves, Cash Flow Before Distributions, etc.) are either missing, wrong, or not summing the line items above them.
+
+This is not a single bug. This is a chain of failures along the data pipeline from broker OM extraction → proforma-adjustment.service → API → frontend → calculation engine → render. We need to walk the entire chain end-to-end to find every break.
+
+## Your Job — Two Outputs
+
+### Output 1: A Pipeline Audit Report
+
+Walk the data path end-to-end and produce a written report identifying every break. Do NOT fix anything yet. Audit first, fix in a follow-up task.
+
+### Output 2: A ProForma Calculation Template
+
+Build a single canonical reference doc (or code constants file) that defines exactly how every line item, subtotal, and total in the ProForma is calculated. This is the spec the calculation engine is supposed to follow. We're going to use it to verify the engine actually does what the template says.
+
+---
+
+## Critical Context Before You Start
+
+**Read these files end-to-end before touching anything:**
+
+1. `CASHFLOW_AGENT_UNDERWRITING_SPEC.md` — the new architecture for how underwriting is supposed to work, including the three-tier evidence hierarchy and `UnderwritingValue<T>` pattern. The current ProForma page is the legacy implementation; the new spec is the target. Your audit needs to reference both: what's broken in the legacy code AND what the new spec requires.
+2. `CLAUDE.md` — repo structure, mounted routes, mock data files, wiring blockers, conventions
+3. `FEATURE_EXPANSION.md` — F6 ProForma section specifically (the 3-layer model with Broker / Platform / User columns)
+4. `jedi-framework-v31.jsx` — has the canonical line item structure: Revenue (GPR through EGR), Expenses (controllable, non-controllable, total), NOI, Reserves, NOI After Reserves, Debt Service, Cash Flow Before Distributions, Operating Metrics. Use this as the authoritative line item list.
+5. `correlation-metrics-engine.jsx` — has the canonical formulas for individual metrics (NOI = EGI − OpEx, NOI Margin = NOI / EGI, Economic Occupancy, etc.)
+
+**Key existing services/files to inspect:**
+
+- `backend/src/services/proforma-adjustment.service.ts` (1,110 lines)
+- `backend/src/services/proforma-generator.service.ts` (367 lines)
+- `backend/src/api/rest/proforma.routes.ts` — endpoints for `GET /:dealId`, `POST /:dealId/initialize`, `POST /:dealId/recalculate`, `PATCH /:dealId/override`, `GET /:dealId/comparison`
+- `backend/src/services/module-wiring/p1-service-adapters.ts` (Market→ProForma chain adapter)
+- `backend/src/services/module-wiring/formula-engine.ts` (1,681 lines — F-prefixed formulas)
+- `backend/src/services/module-wiring/capital-structure-adapter.ts` (M09↔M11 circular dependency resolver)
+- `frontend/src/services/api.client.ts` — check whether typed methods exist for proforma; per CLAUDE.md they don't yet
+- `frontend/src/components/deal/sections/ProFormaIntelligence.tsx` — the F9 ProForma page consumer
+- `frontend/src/data/enhancedProFormaMockData.ts` — mock data file that may still be intercepting
+
+**Conventions to respect:**
+
+- Backend → frontend: snake_case → camelCase via `transformDeal()` pattern
+- Mutable fields wrapped in `LayeredValue<T>` with resolution order: `broker > platform > user` (legacy) or per the new evidence-tier pattern in `CASHFLOW_AGENT_UNDERWRITING_SPEC.md` (target)
+- Module wiring uses `dealStore.ts` as message bus; modules subscribe to slices, no direct cross-module imports
+- DealContext has a 24-hour cache TTL — stale cache could be a contributor to empty platform values
+
+---
+
+## Output 1: The Pipeline Audit Report
+
+Walk the data path in this exact order. For each layer, document what you found.
+
+### Layer 1 — Broker OM Extraction
+
+The broker column is supposed to come from extracting assumptions from the uploaded OM (or T12 / rent roll if those are uploaded instead).
+
+**Verify:**
+- Does an OM extraction service exist? If yes, where does it write extracted broker values?
+- Are the broker values stored as `LayeredValue<T>` with `source: 'broker'` or `source: 'tier4:broker'`?
+- Which line items have a broker extraction path implemented, and which don't?
+- For line items missing broker values, is it because (a) the OM didn't have that data point, (b) the extractor doesn't extract that field, (c) the field exists in the DB but the API doesn't return it, or (d) the API returns it but the frontend doesn't render it?
+
+**Report format:**
+
+```
+| Line Item             | Extracted? | DB Stored? | API Returns? | Frontend Renders? | Root Cause |
+|-----------------------|------------|------------|--------------|-------------------|------------|
+| Gross Potential Rent  | Yes        | Yes        | Yes          | Yes               | OK         |
+| Vacancy Loss          | No         | N/A        | N/A          | Empty             | Extractor doesn't parse this field |
+| Effective Gross Rev   | No         | N/A        | N/A          | Empty             | Computed downstream of vacancy, falls through |
+| ...                   |            |            |              |                   |            |
+```
+
+Walk every line item. Do not summarize.
+
+### Layer 2 — Platform Layer Calculation
+
+The platform column is supposed to come from `proforma-adjustment.service.ts` running its full pipeline: pull market data from M05, supply pressure from M04, traffic absorption from M07 (if available), risk from M14, tax forecast from the tax ruleset service (if it exists), insurance forecast from insurance ruleset, then apply the formulas to produce platform-derived values for every line item.
+
+**Verify:**
+- Is the proforma backend route mounted? Per CLAUDE.md, the route exists but `api.client.ts` may not have typed methods for it.
+- When `GET /api/v1/proforma/:dealId` is hit for a real deal, what does it return? Run it manually with curl or a test client. Capture the full response payload.
+- Inside `proforma-adjustment.service.ts`, trace the function that's supposed to populate the platform layer. Does it actually call M05/M04/M07/M14? Does it call the tax service (which may not exist yet — task #240 in the backlog)? Does it call the insurance service?
+- Are the upstream services even returning data? If M05 returns empty, the platform layer is empty downstream regardless of the proforma service.
+- Is the response shape what the frontend expects? Frontend may be looking for `platform_value` while backend returns `platformValue` or vice versa.
+
+**Report format — diagnose each upstream dependency:**
+
+```
+| Upstream Service       | Endpoint                          | Returns Data? | Used By ProForma? | Status |
+|------------------------|-----------------------------------|---------------|-------------------|--------|
+| M05 Market Intel       | /api/v1/market/:id/summary        | ?             | ?                 |        |
+| M04 Supply             | /api/v1/supply/trade-area/:id     | ?             | ?                 |        |
+| M07 Traffic            | /api/v1/traffic-data/context/:id  | ?             | ?                 |        |
+| M14 Risk               | /api/v1/risk/...                  | ?             | ?                 |        |
+| Tax Service            | (does this exist? task #240)      | ?             | ?                 |        |
+| Insurance Service      | (does this exist?)                | ?             | ?                 |        |
+| proforma.service       | /api/v1/proforma/:dealId          | ?             | -                 |        |
+```
+
+For any service that returns empty or fails, note specifically why.
+
+### Layer 3 — API Client → Frontend
+
+Per CLAUDE.md, typed methods for proforma may be missing in `api.client.ts`. If the frontend is calling the proforma endpoint via untyped fetch (or worse, falling back to mock data when the call fails), that's a known issue.
+
+**Verify:**
+- Is there a typed method like `api.proforma.get(dealId)` in `api.client.ts`?
+- Does `ProFormaIntelligence.tsx` use the typed client, or does it import from `enhancedProFormaMockData.ts`?
+- What does the network tab show when the F9 page loads? Is the proforma endpoint even being called? If yes, what status code and payload?
+- If the frontend is using mock data, identify which mock file and which import path. That mock file needs to be retired as part of the fix (per CLAUDE.md, this is the wiring blocker for 25 mock files).
+
+### Layer 4 — Frontend State + Rendering
+
+Even if the API returns correct data, the frontend may be misrendering it.
+
+**Verify:**
+- Is there a Zustand store that holds proforma data (e.g., `proformaStore.ts`)? If yes, how does it ingest the API response?
+- Does the rendering component map the response shape correctly? A common bug: backend returns `{broker: {...}, platform: {...}, user: {...}}` but frontend expects `{layers: [...]}`.
+- Do the cell renderers correctly read from `LayeredValue<T>` wrappers? They may be reading `.value` correctly for some fields but not others.
+- Are there fields where the backend returns `null` and the frontend renders empty string vs. "—" vs. crash?
+
+### Layer 5 — Subtotal Calculation
+
+The subtotal failures are a separate problem from the column population, even though they share symptoms.
+
+**Verify which side is computing subtotals:**
+- Are subtotals computed on the backend (engine returns Total OpEx as a field) or on the frontend (UI sums the line items above)?
+- If backend: is the engine actually summing correctly? Check `proforma-generator.service.ts` and `formula-engine.ts` for subtotal implementations.
+- If frontend: is the UI doing `lineItems.filter(...).reduce(...)` correctly? Common bugs: filtering by category that doesn't match line item metadata, summing wrong sign (forgetting that vacancy is negative), missing a line item that should be included, including a subtotal in the next subtotal (double-counting).
+- Are there line items missing the `category` or `isSubtotal` metadata fields that subtotal logic depends on?
+- Subtotals will obviously fail if the underlying values are missing — confirm whether subtotal failures are downstream of column-population failures, or independent.
+
+### Layer 6 — Calculation Correctness
+
+Even when values populate and subtotals compute, the math may be wrong.
+
+**Spot-check at least three cases against the calculation template (Output 2):**
+- Gross Potential Rent → Vacancy Loss → Concessions → Bad Debt → Effective Gross Rent
+- All Operating Expense lines → Total OpEx
+- EGR − Total OpEx → NOI; NOI − Reserves → NOI After Reserves
+- NOI After Reserves − Debt Service → Cash Flow Before Distributions
+
+For each, manually compute the expected value from the underlying inputs, compare to what the engine produces, and document the delta.
+
+### Audit Report Final Section — Root Cause Summary
+
+After walking the chain, produce a prioritized list of root causes. Each entry should specify:
+
+- **Issue** (one sentence)
+- **Layer** (1-6 from above)
+- **Files affected**
+- **Severity** (critical = blocks page entirely, high = blocks half the data, medium = breaks specific lines, low = cosmetic)
+- **Fix complexity estimate** (S / M / L / XL)
+- **Dependencies** (does fixing this require task #240 tax service? task #242 evidence system? Or is it self-contained?)
+
+---
+
+## Output 2: The ProForma Calculation Template
+
+This is a canonical reference document that defines every line item, subtotal, and total. We need this for two reasons:
+
+1. **Verification** — the audit can compare engine behavior against this template. If the engine doesn't match the template, that's a bug.
+2. **Future-proofing** — when the CashFlow Agent (task #242) writes underwriting outputs, it produces values that conform to this structure. The template is the contract.
+
+Build the template at `docs/specs/PROFORMA_CALCULATION_TEMPLATE.md` (markdown is fine; if you want it queryable from code, also produce a typed constant at `backend/src/services/proforma/proforma-template.ts`).
+
+### Required Structure
+
+For every line item in the ProForma, document:
+
+```markdown
+## [LINE ITEM NAME]
+
+- **ID:** Stable machine identifier (e.g., `rev_gpr`, `opex_taxes`, `subtotal_egr`)
+- **Display Label:** What the user sees (e.g., "Gross Potential Rent")
+- **Category:** revenue | other_revenue | controllable_opex | non_controllable_opex | non_operating | reserves | debt | distributions | metrics
+- **Type:** lineItem | subtotal | total | metric
+- **Calculation:** The exact formula (in plain language and pseudocode)
+- **Inputs:** Which other line items, assumptions, or external data this depends on
+- **Source Tier (for the agent):** tier1 | tier2 | tier3 | derived
+- **Display Format:** currency | percent | multiple | months
+- **Sign Convention:** positive | negative (e.g., vacancy is negative — explicitly note this)
+- **Notes:** Edge cases, growth rate application, year-specific behavior
+```
+
+### Authoritative Line Item Sequence
+
+Use the structure from `jedi-framework-v31.jsx`. The full sequence:
+
+**Revenue Section**
+- Gross Potential Rent (GPR)
+- Loss to Lease
+- Vacancy Loss (negative)
+- Concessions (negative)
+- Bad Debt (negative)
+- **Net Rental Income** (subtotal)
+- Other Income — Application Fees
+- Other Income — Pet Fees
+- Other Income — Storage / Parking
+- Other Income — Late Fees
+- Other Income — Utility Reimbursements
+- Other Income — Misc Ancillary
+- **Total Other Income** (subtotal)
+- **EFFECTIVE GROSS REVENUE** (total: Net Rental Income + Total Other Income)
+
+**Operating Expenses Section — Controllable**
+- Repair & Maintenance
+- Contract Services
+- Landscaping / Grounds
+- Personnel / Payroll
+- Marketing / Advertising
+- Administrative
+- Turnover / Make-Ready
+- **Controllable Expenses** (subtotal)
+
+**Operating Expenses Section — Non-Controllable**
+- Water & Sewer
+- Electric
+- Gas / Fuel
+- Insurance
+- Property Tax
+- Management Fee (formula: EGR × mgmtFeePct)
+- **Non-Controllable Expenses** (subtotal)
+
+- **TOTAL OPERATING EXPENSES** (total)
+
+**NOI Section**
+- **NET OPERATING INCOME** (total: EGR − Total OpEx)
+- Replacement Reserves (units × reservePerUnit)
+- **NOI AFTER RESERVES** (subtotal: NOI − Reserves)
+
+**Debt Service Section**
+- Interest Expense
+- Principal Amortization (0 during IO, P&I − interest after)
+- **TOTAL DEBT SERVICE** (total)
+
+**Cash Flow Section**
+- **CASH FLOW BEFORE DISTRIBUTIONS** (total: NOI After Reserves − Debt Service)
+- Partnership / Fund Expenses
+- LP Distributions (Preferred)
+- GP Promote
+- **NET CASH FLOW TO PARTNERS** (total)
+
+**Operating Metrics Section** (computed, displayed at bottom)
+- DSCR (NOI After Reserves ÷ |Debt Service|)
+- Cash-on-Cash Return (Net CF ÷ Total Equity)
+- Debt Yield (NOI ÷ Loan Balance)
+- Yield on Cost (NOI ÷ Total Basis)
+- Occupancy (1 − vacancy_rate)
+- Expense Ratio (OpEx ÷ EGR)
+- NOI Margin (NOI ÷ EGR)
+- Revenue per Unit (EGR ÷ units)
+- Expense per Unit (OpEx ÷ units)
+
+**Exit / Disposition (final year column only)**
+- Exit NOI (forward 12-mo)
+- Exit Cap Rate
+- Gross Sale Price (Exit NOI ÷ Exit Cap)
+- Selling Costs (Gross Sale × sellingCostsPct)
+- Loan Payoff (remaining balance at exit month)
+- **NET DISPOSITION PROCEEDS** (total)
+- Total Equity Invested
+- Total Distributions + Proceeds
+- Net Profit
+- IRR (Newton-Raphson on full CF vector)
+- Equity Multiple (Total Distributions ÷ Equity)
+
+### Phase Awareness
+
+Flag every line item with `phase: 1` or `phase: 2`:
+
+- **Phase 1** = current implementation. Single Operating Expense line if needed; aggregate Other Income.
+- **Phase 2** = full institutional detail. All 13 individual ancillary line items, all 13 individual expense line items.
+
+The template should support both. The current bug may be that the engine is producing Phase 1 output but the UI expects Phase 2 line items, or vice versa.
+
+### Sign Convention — Explicitly Document
+
+Every revenue offset (Vacancy Loss, Concessions, Bad Debt, Loss to Lease) is **negative**. Every expense is **positive** (subtracted from EGR to compute NOI). Every selling cost is **negative**. Every debt service line is **negative** when it appears in cash flow context.
+
+Sign convention bugs are a top-three source of subtotal errors. Be explicit.
+
+### Subtotal Definitions — Be Explicit
+
+For every subtotal and total, document:
+
+```markdown
+**Subtotal: Total Other Income**
+- Sums: app_fees + pet_fees + storage_parking + late_fees + utility_reimb + misc_ancillary
+- Does NOT include: Loss to Lease, Vacancy Loss, Concessions, Bad Debt
+- Sign: positive
+- Aggregation rule: simple sum of category=other_revenue rows
+```
+
+This is the level of explicitness needed. "Sum the rows above" is what the current engine probably does, and it's where bugs live.
+
+### Three-Layer Application
+
+For every line item, document how the three layers (Broker / Platform / User) populate it:
+
+- **Broker layer:** Where in the OM extraction does this come from? (e.g., "Year 1 GPR comes from OM page 12, 'Pro Forma Operating Statement' table, row 'Gross Potential Rent'")
+- **Platform layer:** Which service computes this? With what inputs? (e.g., "Y1 GPR = unit_count × avg_unit_rent × 12, where avg_unit_rent comes from M05 submarket median for matching class+vintage")
+- **User layer:** Override mechanism (any user input via PATCH `/api/v1/proforma/:dealId/override`)
+
+If a line item has no platform calculation method, that's part of why the platform column is empty. Document the gap.
+
+---
+
+## Deliverables Checklist
+
+By end of this task, the following must exist:
+
+- [ ] `docs/audits/PROFORMA_PIPELINE_AUDIT_<date>.md` — full audit report (Output 1) with the line-item table for every layer
+- [ ] `docs/specs/PROFORMA_CALCULATION_TEMPLATE.md` — calculation template (Output 2) with full line-item structure
+- [ ] (Optional) `backend/src/services/proforma/proforma-template.ts` — typed constant version of the template, importable in tests
+- [ ] A prioritized fix list at the end of the audit report with severity, complexity, and dependencies for each issue
+- [ ] No code changes to fix the issues — fixes happen in a follow-up task once the audit is reviewed
+
+## What NOT to Do in This Task
+
+- **Do not start fixing things.** This is audit-only. Fixes come next, scoped from the audit findings.
+- **Do not assume the proforma service is the only broken layer.** The pipeline has six layers; symptoms in the UI can come from any of them.
+- **Do not skip line items in the template.** "And so on for the remaining lines" is not acceptable. Every line item gets full template treatment.
+- **Do not invent line items not in `jedi-framework-v31.jsx`.** Use that as the authoritative source. If you think a line item is missing, flag it as an open question; don't add it silently.
+- **Do not silently merge the legacy three-layer model with the new evidence-tier model from `CASHFLOW_AGENT_UNDERWRITING_SPEC.md`.** Document where they overlap and where they differ. The target is the new model; the current code is the legacy model. The audit makes that delta visible.
+- **Do not claim "the fix is straightforward" until you've walked all six layers.** Most ProForma bugs that look like one issue are three issues stacked.
+
+## First Action
+
+Read the five reference files listed under "Critical Context Before You Start." Then run a real GET against `/api/v1/proforma/:dealId` for a deal in the system and capture the response. Then start the layer-by-layer audit. Produce a written plan before doing the deep dive — what deal you're using as the test case, what tools you're using to inspect each layer, and any assumptions you're making.
+
+Do not produce the calculation template until the audit is at least 50% done — you'll find structural questions during the audit that should inform the template.
