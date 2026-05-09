@@ -204,10 +204,29 @@ rent roll rows are not backed by the legacy `rent_roll` SQL table.
 | F9 proforma (general) | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ |
 | Design / AI dev path | ✗ | ✗ | ✓ | ✗ | ✓ | ✗ |
 
-**Observation:** Locations 3, 4, and 5 are islands — they are written
-but not read by any F9 financial computation. Locations 1 and 2 are
-the two sources the proforma actually uses, and they serve different
-deal types (development vs. acquisition).
+**Observation:** Locations 3, 4, and 5 are islands relative to the F9
+proforma — they are written but not read by any F9 financial
+computation. Locations 1 and 2 are the two sources the proforma
+actually uses, and they serve different deal types (development vs.
+acquisition).
+
+> **Decision gate — verify before migrating:**
+> The "islands" label is only correct if these locations have no active
+> consumers on *other* surfaces. Before proposing any cleanup or
+> migration for Locations 3, 4, and 5, confirm one of the following
+> for each:
+>
+> | Location | Candidate outcome |
+> |---|---|
+> | **Loc 3** `deal_data.unit_mix` (capsule-bridge) | (a) Consumed by a non-F9 surface (e.g. deal capsule export, Deal Card render) → leave as-is, document the consumer. (b) Dead write path → remove. |
+> | **Loc 4** `unit_mix` table (operations.routes) | (a) Consumed by day-to-day operations module, leasing panel, or M07 → leave as a separate operational store, explicitly document it does not feed F9. (b) Dead → remove table and route. |
+> | **Loc 5** `module_outputs.unitMix` (unit-mix-propagation) | (a) Consumed by a planned module (M03 Site Solver, multifamily massing) that hasn't been built yet → correctly orphaned for now; annotate with the planned consumer. (b) Dead → deprecate. |
+>
+> If any of Loc 3/4/5 serves a different surface, the canonical
+> resolution below (route everything through `deal_assumptions.unit_mix`)
+> needs to become surface-specific: F9 reads Location 1, M03 reads
+> Location 5, and the open question is whether they should ever diverge
+> for the same deal.
 
 ---
 

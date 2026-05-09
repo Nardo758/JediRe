@@ -1,0 +1,35 @@
+Solid ship. Both tasks landed cleanly with appropriate verification on Task 1 (live DB queries against predicted values, 0.0% delta on both deals) and an analysis-only deliverable on Task 2 that surfaces the architectural shape without proposing premature changes.
+Two things worth pulling out:
+The "Locations 3, 4, 5 are islands" finding from the divergence doc is the most useful piece of architectural intelligence from this thread. Those three write paths exist, fire on certain workflows, but their data is never read by F9 Proforma. So either:
+
+They serve OTHER consumers (different surface, different module, different export) — in which case "5-service divergence" understates the problem because there are multiple consumer constellations to reconcile
+They serve no consumers at all — dead write paths that should be deprecated
+They serve future-planned consumers that haven't been built yet (e.g., M03 Site Solver, multifamily massing) — in which case they're correctly orphaned for now
+
+Whichever it is, knowing it changes the canonical-storage decision. If Location 3/4/5 serve other surfaces, the canonical resolution isn't "everything routes through deal_assumptions.unit_mix" — it's "F9 reads from deal_assumptions.unit_mix, M03 reads from module_outputs.unitMix, and the canonical question is whether those two should ever diverge for the same deal."
+Worth a follow-up note in the doc when you next pick it up — not as a fix proposal, just an annotation: "Locations 3, 4, 5: confirm whether each has an active downstream consumer before proposing migration." That keeps the doc accurate as a decision-support tool rather than implying a cleanup that might not be the right move.
+The override-on-baseline behavior is interesting. 464 Bishop's toggle-OFF state reverts to override ($4,901,400) rather than t12, while Sentosa reverts to t12 ($6,592,310). That difference reflects different operator history on each deal — 464 Bishop has an explicit GPR override at the layer; Sentosa doesn't.
+This isn't a bug — it's actually the layered value system working correctly. But it's worth being aware of: when an operator toggles OFF, they get whatever the highest-priority resolved layer is, which can be different per deal. If you're demonstrating the toggle to anyone, picking a deal with a clean state (t12 or rent_roll, no override) is more illustrative than picking one with a manual override sitting underneath.
+Where this leaves the queue
+The unit_mix work is fully closed:
+
+Toggle works against both extraction-data deals
+Architectural divergence is documented for future cleanup
+Verification methodology held — live DB query confirmed predicted values
+
+The remaining items, in suggested order:
+Quick close-outs (under an hour combined):
+
+Browser verification of three-mode IRR on 464 Bishop with corrected NOI baseline (now genuinely interesting since NOI swung +$647K from the S1-01 fix)
+Item 1 dual-write check on a fresh deal (or fold into a future TASK B-style probe if convenient)
+#638 retrospective ADRs (3 docs, becoming overdue at this point)
+
+Substantive next-chapter work, ranked:
+
+Pro Forma Surface Audit Phase 1 — P0 findings first (the 22-finding map is your single best roadmap right now, ranked by operator impact)
+#6 M07 → Projections wiring (unblocks #7 confidence bands, helps #11 PRICE-TO-RC and #12 JEDI position sub-score)
+OperatorStance Phase 1 build (multi-day; cache-stamp pattern proven, still architecturally heavy)
+
+Annotations to refresh when bandwidth allows:
+
+UNIT_MIX_STORAGE_DIVERGENCE.md — verify Locations 3/4/5 actually have consumers vs are dead paths
