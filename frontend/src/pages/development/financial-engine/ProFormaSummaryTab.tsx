@@ -391,6 +391,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const [error, setError] = useState<string | null>(null);
   const [reparsing, setReparsing] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionState>({});
+  const [reservesPuDraft, setReservesPuDraft] = useState<string | null>(null);
   const [sigmaField, setSigmaField] = useState<{ tier: 'REALISTIC' | 'AGGRESSIVE' | 'HEROIC'; field: string; dScore: number } | null>(null);
   useEffect(() => {
     if (!sigmaField) return;
@@ -1439,8 +1440,53 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   {egiResolved && reservesRow.resolved ? `${((Math.abs(reservesRow.resolved) / egiResolved) * 100).toFixed(1)}%` : '—'}
                 </td>
                 <td style={{ padding: '4px 8px' }}><SourceBadge source={reservesRow.source} /></td>
-                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
-                  {reservesRow.perUnit != null ? `$${reservesRow.perUnit.toLocaleString()}/unit` : '—'}
+                <td style={{ padding: '4px 4px', textAlign: 'right' }}>
+                  {reservesPuDraft !== null ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <input
+                        autoFocus
+                        type="number"
+                        placeholder="$/unit"
+                        value={reservesPuDraft}
+                        onChange={e => setReservesPuDraft(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            const pu = parseFloat(reservesPuDraft);
+                            if (!isNaN(pu) && totalUnits > 0) {
+                              handleSaveCorrection('replacement_reserves', Math.round(pu * totalUnits), reservesRow.resolved);
+                            }
+                            setReservesPuDraft(null);
+                          }
+                          if (e.key === 'Escape') setReservesPuDraft(null);
+                        }}
+                        style={{ width: 56, background: '#0f172a', border: '1px solid #06b6d4', color: '#f8fafc', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, textAlign: 'right' }}
+                      />
+                      <span style={{ color: '#475569', fontSize: 8, fontFamily: MONO }}>/unit</span>
+                      <button
+                        onMouseDown={e => {
+                          e.preventDefault();
+                          const pu = parseFloat(reservesPuDraft ?? '');
+                          if (!isNaN(pu) && totalUnits > 0) {
+                            handleSaveCorrection('replacement_reserves', Math.round(pu * totalUnits), reservesRow.resolved);
+                          }
+                          setReservesPuDraft(null);
+                        }}
+                        style={{ background: '#0f2d1a', border: '1px solid #16a34a', borderRadius: 2, color: '#4ade80', fontFamily: MONO, fontSize: 9, padding: '1px 4px', cursor: 'pointer', lineHeight: 1, fontWeight: 700 }}
+                      >✓</button>
+                      <button
+                        onClick={() => setReservesPuDraft(null)}
+                        style={{ background: '#2d0000', border: '1px solid #7f1d1d', borderRadius: 2, color: '#f87171', fontFamily: MONO, fontSize: 9, padding: '1px 4px', cursor: 'pointer', lineHeight: 1 }}
+                      >✕</button>
+                    </span>
+                  ) : (
+                    <span
+                      onClick={() => setReservesPuDraft(reservesRow.perUnit != null ? String(reservesRow.perUnit) : '')}
+                      title="Click to set $/unit — saves as total annual reserves ($/unit × units)"
+                      style={{ color: '#475569', fontSize: 9, fontFamily: MONO, borderBottom: '1px dotted #334155', cursor: 'pointer', padding: '0 2px' }}
+                    >
+                      {reservesRow.perUnit != null ? `$${reservesRow.perUnit.toLocaleString()}/unit` : '—'}
+                    </span>
+                  )}
                 </td>
                 <td />
               </tr>
