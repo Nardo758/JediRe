@@ -186,13 +186,15 @@ async function lookupPlatformBaseline(
       if (sr?.avg_rent != null) gprPerUnitPerMonth = parseFloat(sr.avg_rent);
     }
 
-    // 3. National median fallback — ensures gpr_per_unit_per_month is never null
-    if (gprPerUnitPerMonth == null) {
-      gprPerUnitPerMonth = NATIONAL_MEDIAN_RENT_PER_UNIT_PER_MONTH;
-    }
   } catch (err) {
     // Non-fatal — static norms are still returned
     console.warn('[proforma-seeder] lookupPlatformBaseline: snapshot query failed, using static norms:', (err as Error).message);
+  }
+
+  // National median fallback — outside try/catch so it fires even on query
+  // failure and guarantees gpr_per_unit_per_month is never null.
+  if (gprPerUnitPerMonth == null) {
+    gprPerUnitPerMonth = NATIONAL_MEDIAN_RENT_PER_UNIT_PER_MONTH;
   }
 
   return {
