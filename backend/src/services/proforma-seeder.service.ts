@@ -877,11 +877,18 @@ function buildSeed(
   const customOpexTotal = Object.values(customOpexItems).reduce((s, lv) => s + (lv.resolved ?? 0), 0);
 
   // Utility contribution: when any sub-line (water_sewer/electric/gas_fuel) has
-  // a resolved value, use their sum in place of the compound `utilities` field
-  // so user-level splits flow into NOI. Fall back to `utilities` (T12 aggregate)
-  // when sub-lines are all null. Task #672.
-  const utilSubTotal = (waterSewer.resolved ?? 0) + (electric.resolved ?? 0) + (gasFuel.resolved ?? 0);
-  const utilContrib = utilSubTotal > 0 ? utilSubTotal : (utilities.resolved ?? 0);
+  // been explicitly resolved (non-null), use their sum in place of the compound
+  // `utilities` field so user-level splits flow into NOI.
+  // Null-check (not > 0) so an explicit override of $0 still takes effect.
+  // Fall back to `utilities` (T12 aggregate) only when all sub-lines are null.
+  // Task #672.
+  const anyUtilSubResolved =
+    waterSewer.resolved != null ||
+    electric.resolved   != null ||
+    gasFuel.resolved    != null;
+  const utilContrib = anyUtilSubResolved
+    ? (waterSewer.resolved ?? 0) + (electric.resolved ?? 0) + (gasFuel.resolved ?? 0)
+    : (utilities.resolved ?? 0);
 
   const total_opex_resolved =
     (payroll.resolved ?? 0) + (repairsMaintenance.resolved ?? 0) + (turnover.resolved ?? 0) +
@@ -1265,11 +1272,19 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
     }
   }
 
-  // Utility contribution: sub-lines replace compound `utilities` when any
-  // sub-line has been resolved (e.g. user override). Task #672.
-  const s = seed as any;
-  const utilSubTotal = r(s.water_sewer) + r(s.electric) + r(s.gas_fuel);
-  const utilContrib = utilSubTotal > 0 ? utilSubTotal : r(seed.utilities);
+  // Utility contribution: when any sub-line (water_sewer/electric/gas_fuel) has
+  // been explicitly resolved (non-null), use their sum in place of the compound
+  // `utilities` field. Null-check (not > 0) so an explicit override of $0 still
+  // takes effect. Falls back to compound `utilities` only when all sub-lines are
+  // null. ProFormaYear1Seed already declares these as optional LayeredValues so
+  // no cast is needed. Task #672.
+  const anyUtilSubResolved =
+    seed.water_sewer?.resolved != null ||
+    seed.electric?.resolved    != null ||
+    seed.gas_fuel?.resolved    != null;
+  const utilContrib = anyUtilSubResolved
+    ? r(seed.water_sewer) + r(seed.electric) + r(seed.gas_fuel)
+    : r(seed.utilities);
 
   const opex =
     r(seed.payroll) + r(seed.repairs_maintenance) +
@@ -1279,7 +1294,7 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
     r(seed.hoa_dues) + utilContrib +
     mgmtDollar + r(seed.real_estate_tax) +
     r(seed.personal_property_tax) + r(seed.insurance) +
-    r(s.landscaping) + customOpex;
+    r(seed.landscaping) + customOpex;
 
   const ts = new Date().toISOString();
   seed.net_rental_income.resolved = nri;
