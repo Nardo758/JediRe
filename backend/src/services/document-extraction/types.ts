@@ -400,6 +400,16 @@ export interface ProFormaYear1Seed {
   g_and_a: LayeredValue<number>;
   hoa_dues: LayeredValue<number>;
   utilities: LayeredValue<number>;
+  /** Utility sub-lines — sub-components of the compound `utilities` field.
+   *  Null from T12 today (parser aggregates to `utilities`); available for
+   *  user override. When any sub-line is resolved, total_opex uses their sum
+   *  in place of `utilities`. Task #672. */
+  water_sewer?: LayeredValue<number>;
+  electric?: LayeredValue<number>;
+  gas_fuel?: LayeredValue<number>;
+  /** Landscaping / grounds — parser rolls this into contract_services from T12;
+   *  available as a standalone line for user override. Task #672. */
+  landscaping?: LayeredValue<number>;
   management_fee_pct: LayeredValue<number>;
   insurance: LayeredValue<number>;
   real_estate_tax: LayeredValue<number>;

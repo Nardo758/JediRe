@@ -528,7 +528,10 @@ function buildSeed(
   const t12egi = num(t12Capsule, 'egi') ?? 0;
   const bdObj = obj(t12Capsule, 'bad_debt');
   const bdRaw = bdObj ? (num(bdObj, 'net') ?? 0) : (num(t12Capsule, 'bad_debt') ?? 0);
-  const bd_t12 = t12egi > 0 ? Math.abs(bdRaw) / t12egi : null;
+  // v31 spec: bad debt is a deduction from rental income (GPR), not from EGI.
+  // Use GPR as the basis so the rate represents "% of gross rent uncollected".
+  // Task #672.
+  const bd_t12 = t12gpr > 0 ? Math.abs(bdRaw) / t12gpr : null;
   const badDebtPct = resolve('bad_debt_pct', platform.bad_debt_pct, {
     t12: bd_t12,
     om: bpBdPct,
@@ -695,6 +698,18 @@ function buildSeed(
   const gAndA = opexFromT12('g_and_a', 'g_and_a', platformOpEx(platform.opex_per_unit_annual.g_and_a), bpGA);
   const hoaDues = opexFromT12('hoa_dues', 'hoa_dues', null);
   const utilities = opexFromT12('utilities', 'utilities', platformOpEx(platform.opex_per_unit_annual.utilities), bpUtils);
+
+  // Utility sub-lines — T12 parser aggregates all utilities into the compound
+  // `utilities` field, so these are null from T12 today. They exist so users
+  // can override individual utility types; when any has a resolved value,
+  // total_opex uses their sum instead of the compound field. Task #672.
+  const waterSewer = opexFromT12('water_sewer', 'water_sewer', null);
+  const electric   = opexFromT12('electric',    'electric',    null);
+  const gasFuel    = opexFromT12('gas_fuel',    'gas_fuel',    null);
+  // Landscaping — T12 parser maps this to contract_services; null from T12.
+  // Seeded so users can split it out manually. Task #672.
+  const landscaping = opexFromT12('landscaping', 'landscaping', null);
+
   const personalPropTax = opexFromT12('personal_property_tax', 'personal_property_tax', null);
 
   // ───────── CUSTOM LINE ITEMS (unrecognized GL rows captured by parser) ─────────
@@ -793,12 +808,16 @@ function buildSeed(
   }
 
   // ───────── DERIVED FIELDS ─────────
+  // v31 spec: bad debt is deducted from gross rental income, not from EGI.
+  // NRI = GPR × (1 − ltl − vacancy − concessions − nru − bad_debt).
+  // EGI = NRI + Other Income (no further bad-debt adjustment). Task #672.
   const gprResolved = gpr.resolved ?? 0;
   const nri_resolved = gprResolved
     - gprResolved * (lossToLeasePct.resolved ?? 0)
     - gprResolved * (vacancyPct.resolved ?? 0)
     - gprResolved * (concessionsPct.resolved ?? 0)
-    - gprResolved * (nonRevenueUnitsPct.resolved ?? 0);
+    - gprResolved * (nonRevenueUnitsPct.resolved ?? 0)
+    - gprResolved * (badDebtPct.resolved ?? 0);
 
   // Platform computation for derived rows — mirrors the resolved formula but
   // uses the .platform slot from each component. Null-coalesces to 0 so that
@@ -810,6 +829,7 @@ function buildSeed(
       - gprPlatform * (vacancyPct.platform ?? 0)
       - gprPlatform * (concessionsPct.platform ?? 0)
       - gprPlatform * (nonRevenueUnitsPct.platform ?? 0)
+      - gprPlatform * (badDebtPct.platform ?? BASE_BAD_DEBT_PCT)
     : null;
 
   const netRentalIncome: LayeredValue<number> = {
@@ -841,35 +861,40 @@ function buildSeed(
     otherIncomePerUnit.resolved = otherIncomeForEgi / totalUnits / months;
     otherIncomePerUnit.updated_at = now();
   }
-  const egi_after_bad_debt = egi_resolved * (1 - (badDebtPct.resolved ?? 0));
-
-  // Platform EGI: NRI_platform + other income platform (other income has no
-  // platform baseline so we treat it as zero to keep the aggregate conservative).
-  const egi_platform = nri_platform != null
-    ? nri_platform * (1 - (badDebtPct.platform ?? 0))
-    : null;
+  // Bad debt is now applied to NRI (not EGI), so EGI = NRI + Other Income.
+  // No further bad-debt deduction here. Task #672.
+  const egi_platform = nri_platform;
 
   const egi: LayeredValue<number> = {
     platform: egi_platform, override: null,
-    resolved: egi_after_bad_debt,
+    resolved: egi_resolved,
     resolution: 'platform_fallback',
     updated_at: now(),
   };
 
-  const mgmtFeeDollar = egi_after_bad_debt * (mgmtFeePct.resolved ?? 0);
+  const mgmtFeeDollar = egi_resolved * (mgmtFeePct.resolved ?? 0);
 
   const customOpexTotal = Object.values(customOpexItems).reduce((s, lv) => s + (lv.resolved ?? 0), 0);
+
+  // Utility contribution: when any sub-line (water_sewer/electric/gas_fuel) has
+  // a resolved value, use their sum in place of the compound `utilities` field
+  // so user-level splits flow into NOI. Fall back to `utilities` (T12 aggregate)
+  // when sub-lines are all null. Task #672.
+  const utilSubTotal = (waterSewer.resolved ?? 0) + (electric.resolved ?? 0) + (gasFuel.resolved ?? 0);
+  const utilContrib = utilSubTotal > 0 ? utilSubTotal : (utilities.resolved ?? 0);
 
   const total_opex_resolved =
     (payroll.resolved ?? 0) + (repairsMaintenance.resolved ?? 0) + (turnover.resolved ?? 0) +
     (amenities.resolved ?? 0) + (contractServices.resolved ?? 0) + (marketing.resolved ?? 0) +
     (office.resolved ?? 0) + (gAndA.resolved ?? 0) + (hoaDues.resolved ?? 0) +
-    (utilities.resolved ?? 0) + mgmtFeeDollar + (realEstateTax.resolved ?? 0) +
-    (personalPropTax.resolved ?? 0) + (insurance.resolved ?? 0) + customOpexTotal;
+    utilContrib + mgmtFeeDollar + (realEstateTax.resolved ?? 0) +
+    (personalPropTax.resolved ?? 0) + (insurance.resolved ?? 0) +
+    (landscaping.resolved ?? 0) + customOpexTotal;
 
   // Platform total_opex: sum of per-line platform slots.
   // Management fee platform = egi_platform × mgmtFeePct.platform.
-  // Custom opex lines have no platform, so excluded.
+  // Custom opex lines and utility sub-lines have no platform baseline;
+  // compound utilities platform is used as the proxy. Task #672.
   const mgmtFeeDollarPlatform = egi_platform != null
     ? egi_platform * (mgmtFeePct.platform ?? 0)
     : 0;
@@ -888,7 +913,7 @@ function buildSeed(
     updated_at: now(),
   };
 
-  const noi_resolved = egi_after_bad_debt - total_opex_resolved;
+  const noi_resolved = egi_resolved - total_opex_resolved;
   const noi_platform = egi_platform != null && total_opex_platform != null
     ? egi_platform - total_opex_platform
     : null;
@@ -902,6 +927,7 @@ function buildSeed(
   };
 
   const replacementReserves: LayeredValue<number> = resolve('replacement_reserves', null, {
+    t12: num(t12Opex, 'replacement_reserves'),
     om: bpReserves,
     existingOverride: getOverride('replacement_reserves'),
     priority: ['t12', 'om'],
@@ -929,6 +955,10 @@ function buildSeed(
     g_and_a: gAndA,
     hoa_dues: hoaDues,
     utilities,
+    water_sewer: waterSewer,
+    electric,
+    gas_fuel: gasFuel,
+    landscaping,
     management_fee_pct: mgmtFeePct,
     insurance,
     real_estate_tax: realEstateTax,
@@ -1216,9 +1246,11 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
     .reduce((s, l) => s + (Number.isFinite(l.monthly) ? l.monthly * 12 : 0), 0);
   const otherIncome = breakdownSum + userLinesAnnual;
 
-  const nri = gpr - gpr * ltl - gpr * vac - gpr * conc - gpr * nru;
-  const egi_pre_bd = nri + otherIncome;
-  const egi = egi_pre_bd * (1 - bd);
+  // v31 spec: bad debt folds into NRI (deducted from GPR), not from EGI.
+  // NRI = GPR × (1 − ltl − vacancy − concessions − nru − bad_debt).
+  // EGI = NRI + Other Income. Task #672.
+  const nri = gpr - gpr * ltl - gpr * vac - gpr * conc - gpr * nru - gpr * bd;
+  const egi = nri + otherIncome;
   const mgmtPct = r(seed.management_fee_pct);
   const mgmtDollar = egi * mgmtPct;
 
@@ -1233,15 +1265,21 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
     }
   }
 
+  // Utility contribution: sub-lines replace compound `utilities` when any
+  // sub-line has been resolved (e.g. user override). Task #672.
+  const s = seed as any;
+  const utilSubTotal = r(s.water_sewer) + r(s.electric) + r(s.gas_fuel);
+  const utilContrib = utilSubTotal > 0 ? utilSubTotal : r(seed.utilities);
+
   const opex =
     r(seed.payroll) + r(seed.repairs_maintenance) +
     r(seed.turnover) + r(seed.amenities) +
     r(seed.contract_services) + r(seed.marketing) +
     r(seed.office) + r(seed.g_and_a) +
-    r(seed.hoa_dues) + r(seed.utilities) +
+    r(seed.hoa_dues) + utilContrib +
     mgmtDollar + r(seed.real_estate_tax) +
     r(seed.personal_property_tax) + r(seed.insurance) +
-    customOpex;
+    r(s.landscaping) + customOpex;
 
   const ts = new Date().toISOString();
   seed.net_rental_income.resolved = nri;

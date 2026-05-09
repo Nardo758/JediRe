@@ -2006,16 +2006,27 @@ export async function getDealFinancials(
     });
   }
 
-  // IC-03: Canonical OpEx source completeness (all 7 controllable opex fields must be non-null)
-  const CONTROLLABLE_OPEX = ['payroll', 'repairs_maintenance', 'turnover', 'contract_services', 'marketing', 'utilities', 'g_and_a'];
-  const missingOpex = CONTROLLABLE_OPEX.filter(k => resolvedNum(lv(year1Seed, k)) == null);
+  // IC-03: Canonical OpEx source completeness.
+  // Check 6 non-utility controllable fields + require at least one utility field
+  // (compound `utilities` OR any of water_sewer / electric / gas_fuel). Task #672.
+  const CONTROLLABLE_OPEX_BASE = ['payroll', 'repairs_maintenance', 'turnover', 'contract_services', 'marketing', 'g_and_a'];
+  const missingBase = CONTROLLABLE_OPEX_BASE.filter(k => resolvedNum(lv(year1Seed, k)) == null);
+  const hasUtilityData =
+    resolvedNum(lv(year1Seed, 'utilities'))   != null ||
+    resolvedNum(lv(year1Seed, 'water_sewer')) != null ||
+    resolvedNum(lv(year1Seed, 'electric'))    != null ||
+    resolvedNum(lv(year1Seed, 'gas_fuel'))    != null;
+  const missingOpex = [
+    ...missingBase,
+    ...(hasUtilityData ? [] : ['water_sewer / electric / gas_fuel / utilities']),
+  ];
   checks.push({
     id: 'IC-03',
     status: missingOpex.length > 0 ? 'warn' : 'ok',
     message: missingOpex.length > 0
       ? `Incomplete OpEx sources: ${missingOpex.join(', ')} have no resolved value — upload T-12 or enter manually`
       : 'All 7 controllable OpEx fields sourced',
-    detail: { missing: missingOpex, total: CONTROLLABLE_OPEX.length },
+    detail: { missing: missingOpex, total: CONTROLLABLE_OPEX_BASE.length + 1 },
   });
 
   // IC-04: Tax-line assessor match (seed.real_estate_tax.t12 vs .tax_bill within 15%)
