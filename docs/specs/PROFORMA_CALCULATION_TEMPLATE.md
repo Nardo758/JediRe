@@ -24,7 +24,7 @@ Each row describes one Pro Forma line item. Every entry uses the same schema:
 - **Source tier** — evidence priority order; live FIELD_PRIORITIES where applicable
 - **Display format** — UI number formatting
 - **Sign convention** — `+` = income or additive; `−` = cost or deduction
-- **Phase flag** — `ALL`, `EXISTING`, `LEASE_UP`, or `DEVELOPMENT`
+- **Phase flag** — `ALL`, `EXISTING`, `LEASE_UP`, or `DEVELOPMENT` (see Phase 1/2 mapping below)
 - **Broker path** — how broker/OM value reaches `year1.FIELD.om`; live value for 464 Bishop noted
 - **Platform path** — how platform value reaches `year1.FIELD.platform`; all are null (BUG-01)
 - **User path** — how operator override reaches `year1.FIELD.override`; live value noted
@@ -32,6 +32,25 @@ Each row describes one Pro Forma line item. Every entry uses the same schema:
 All subtotals are stored as regular LayeredValue rows in `deal_assumptions.year1` JSONB and
 returned as `OperatingStatementRow` objects. There is **no `isSubtotal` metadata flag** —
 subtotals are identified by field key only.
+
+### Phase 1 / Phase 2 Mapping
+
+The jedi-framework-v31.jsx spec distinguishes Phase 1 (shipped in v31) from Phase 2 (planned
+feature expansion). The `Phase flag` column in each row uses this mapping:
+
+| Phase flag | Phase 1 or 2? | Meaning |
+|---|---|---|
+| `ALL` | Phase 1 | Line item is active and computed for every deal strategy |
+| `EXISTING` | Phase 1 | Active only for existing-asset underwriting (rental, value-add); not development |
+| `LEASE_UP` | Phase 1 | Active only when deal is in a lease-up or stabilization scenario |
+| `DEVELOPMENT` | Phase 1 | Active only for ground-up or redevelopment deals (capex draw, absorption) |
+| `ALL` + note "Phase 2" | Phase 2 | Spec'd but not yet rendered; examples: LTL (data gating), Non-Revenue Units (needs rent-roll decomposition), anchored ancillary lines (parking, RUBS, valet trash, cable, W/D) |
+
+Per v31 prototype spec: all revenue deductions (REV-001 through REV-007) and all operating
+expense lines (CTRLL-001 through NCTRL-006) are Phase 1. The sub-line ancillary income
+breakdown (parking/RUBS/valet/cable/W-D) is Phase 2. Loss to Lease and Non-Revenue Units
+are Phase 2 in that full T12/rent-roll decomposition is gated on data availability, though
+the field slots exist in Phase 1.
 
 ---
 

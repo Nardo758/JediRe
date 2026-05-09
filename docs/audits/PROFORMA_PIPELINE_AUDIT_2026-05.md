@@ -119,14 +119,31 @@ source rather than captured live.
 }
 ```
 
+**Live service call evidence (captured 2026-05-09 via `ProFormaAdjustmentService.getProFormaComputed()`):**
+
+The scalars block above was confirmed by direct service invocation. Actual `computed` field values:
+
+```
+COMPUTED_KEYS: irr, equityMultiple, avgCoC, noiYear1, goingInCapRate, exitCapRate,
+               dscrByYear, noiByYear, cashOnCashByYear, annualCashFlow,
+               sensitivityMatrix, stressScenarios, waterfall, sourcesAndUses,
+               projections, integrityChecks, derivationLog
+
+SAMPLE values (all from hardcoded inputs — BUG-02):
+  noiYear1:        -22,399,436   ← NEGATIVE $22M due to phantom-deal inputs producing
+                                    nonsensical model output; completely unrelated to
+                                    actual 464 Bishop NOI ($486,108)
+  irr:             null          ← model returned null (deal not viable with phantom inputs)
+  goingInCapRate:  -0.448        ← negative cap rate confirms hardcoded model incoherence
+```
+
 **Critical findings from payload analysis:**
-- The 5 scalars all show `baseline == current` (no M35 adjustment has fired for this deal)
-- All scalars equal the DB column defaults — M35 events have not updated `_current` for any field
-- The `computed` block is derived from 15 hardcoded constants (BUG-02, line 169-182):
-  `purchasePrice=$50M, units=232, marketRent=$1,850, loanAmount=$35M, managementFee=4.0%…`
-- `computed.noiYear1` is a phantom-deal figure, NOT 464 Bishop's actual NOI ($486,108)
-- **No line-item rows (GPR, vacancy, OpEx, etc.) appear anywhere in this payload** — only scalars
-- System A response does not include the System B `OperatingStatementRow[]` array at all
+- The 5 scalars all show `baseline == current == effective` (no M35 update has fired)
+- All scalars equal DB column defaults — M35 events have not updated `_current` for any field
+- `computed.noiYear1 = -$22.4M` is a phantom model output; the actual deal NOI is $486,108 (BUG-02)
+- `computed.irr = null` and `goingInCapRate = -0.448` — hardcoded inputs are internally incoherent
+- **No P&L line-item rows appear anywhere in this payload** — only 5 scalar pairs + computed block
+- System A does not include the System B `OperatingStatementRow[]` array at all
 
 ---
 
