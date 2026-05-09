@@ -508,8 +508,8 @@ is a Pro Forma surface gap; CFBD is correctly a Projections-only item.**
 
 | Component | File:line | Status | Evidence |
 |---|---|---|---|
-| `ProFormaIntelligence` | `ProFormaIntelligence.tsx:19` | **100% mock** | `import { enhancedProFormaMockData }` — static fixture, never calls any API |
-| Market Findings cards | Rendered by ProFormaIntelligence | Mock | Rent growth, vacancy, exit cap cards are hardcoded mock values |
+| `ProFormaIntelligence` | ~~`ProFormaIntelligence.tsx:19`~~ | ✅ **Deleted** | Component was orphaned (never imported anywhere); deleted along with `enhancedProFormaMockData.ts` — Task #671. M09 label in navigation routes to F9 Financial Engine (live data). |
+| Market Findings cards | ~~Rendered by ProFormaIntelligence~~ | ✅ **Deleted** | Removed with component — BUG-07 resolved via deprecation path |
 | `ProFormaSummaryTab` | `ProFormaSummaryTab.tsx` | Live (partial) | Reads from `dealFinancials.year1` (System B) — real resolved data |
 | Market baseline | `proforma-adjustment.service.ts:1049` | **Hardcoded** | `getMarketBaseline()` returns literal constants; no MSA/submarket query |
 | `runModel()` inputs | `proforma-adjustment.service.ts:169-182` | **Hardcoded** | 15 hardcoded constants — not live deal data (BUG-02) |
@@ -566,7 +566,7 @@ is a Pro Forma surface gap; CFBD is correctly a Projections-only item.**
 | BUG-04 | P1 | proforma-seeder | Vacancy derivation | T12 vacancy = 66.0% for 464 Bishop — formula error | Medium — fix vacancy_pct formula | Independent |
 | BUG-05 | P1 | proforma-seeder | `proforma-seeder.service.ts:607` | RE tax: tax_bill $20,731 vs T12 $1,127,126 (54×); `taxService.forecast()` not called for P&L line | Medium — wire taxService | Independent |
 | BUG-06 | P1 | architecture | None | NOI collision −83.8%, EGI −27.7%, OpEx +56.6%; CollisionReport not implemented | High — requires CashFlow Agent | Task #672 |
-| BUG-07 | P1 | frontend | `ProFormaIntelligence.tsx:19` | AI Market Findings 100% mock — never calls live API | Low — replace import | BUG-02 |
+| ~~BUG-07~~ | ~~P1~~ | ~~frontend~~ | ~~`ProFormaIntelligence.tsx:19`~~ | ~~AI Market Findings 100% mock — never calls live API~~ | ✅ **RESOLVED Task #671** — component deleted (was orphaned/unreachable); `enhancedProFormaMockData.ts` also deleted | — |
 | BUG-08 | P1 | architecture | Both systems | System A vacancy 5%, System B vacancy 19.83% for same deal — fully decoupled | High — architectural decision | BUG-01, BUG-03 |
 | BUG-09 | P2 | proforma-seeder | `proforma-seeder.service.ts:592` | Insurance LV.warning references non-existent platform baseline | Low / Medium | Insurance benchmark data |
 | BUG-10 | P2 | proforma-seeder | Collision logic | other_income: OM $307.76 vs rent_roll $75.34 (4×) — no collision flag | High — requires CollisionReport | BUG-06 |
