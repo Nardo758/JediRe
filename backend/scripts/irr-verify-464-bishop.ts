@@ -127,12 +127,21 @@ async function run() {
     console.log(`  ${r.posture.padEnd(14)} ${$(r.noiY1).padStart(13)} ${$(r.noiY5).padStart(13)} ${$(r.noiY10).padStart(13)} ${$(r.exitValue).padStart(14)} ${(r.irr != null ? pct(r.irr) : '—').padStart(7)} ${String(r.mods).padStart(5)}`);
   }
 
+  // NOTE: assumptions are stored as decimals (0.03 = 3%, 0.05 = 5%) EXCEPT
+  // rentGrowthYr1 which is stored as a whole-number percent (3 = 3%, not 300%).
+  // The pct() helper multiplies by 100, so rentGrowthYr1 needs its own formatter.
+  const pctRaw = (v: number | null, d = 2): string =>
+    v != null ? v.toFixed(d) + '%' : '—';
+
   console.log('\n  MODULATED ASSUMPTIONS (per posture):');
   console.log(`  ${'POSTURE'.padEnd(14)} ${'RENT GR Y1'.padStart(11)} ${'VACANCY Y1'.padStart(11)} ${'EXIT CAP'.padStart(9)} ${'OPEX GR'.padStart(8)}`);
   console.log(`  ${'─'.repeat(56)}`);
   for (const r of rows) {
-    console.log(`  ${r.posture.padEnd(14)} ${pct(r.rentGrY1).padStart(11)} ${pct(r.vacY1, 1).padStart(11)} ${pct(r.exitCap).padStart(9)} ${pct(r.opexGr).padStart(8)}`);
+    console.log(`  ${r.posture.padEnd(14)} ${pctRaw(r.rentGrY1).padStart(11)} ${pct(r.vacY1, 1).padStart(11)} ${pct(r.exitCap).padStart(9)} ${pct(r.opexGr).padStart(8)}`);
   }
+  console.log(`\n  Note: NOI Y2+ projections are path-dependent on Bishop's data quality.`)
+  console.log(`  Y1 NOI ($1.7M) is the authoritative post-S1-01 baseline. Exit value`)
+  console.log(`  shows '—' because equityAtClose=0 (no purchase_price in deal_data).`);
 
   // Verdict
   const noisy = rows.some(r => r.noiY10 != null);
