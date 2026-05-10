@@ -9,6 +9,15 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// ─── Module-level pool intercept ──────────────────────────────────────────────
+// routeExtractionResult calls getPool() internally (data-router.ts:89).
+// We intercept it here so block (a) tests never hit the real DB.
+let _activePool: { query: ReturnType<typeof vi.fn> } | null = null;
+
+vi.mock('../database/connection', () => ({
+  getPool: vi.fn(() => _activePool!),
+}));
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Builds a minimal mock pg Pool that captures every SQL call and param set. */
@@ -43,16 +52,22 @@ function makeMockPool(overrides: Partial<Record<string, unknown>> = {}): {
         return { rows: [{ year1: null }] };
       }
       if (sql.includes('SELECT id,') && sql.includes('has_t12')) {
-        return { rows: [{ id: 'deal-1', has_t12: true, has_rr: false, has_tax: false }] };
+        return { rows: [{ id: 'a0000000-0000-0000-0000-000000000001', has_t12: true, has_rr: false, has_tax: false }] };
       }
       if (sql.includes('SELECT') && sql.includes('deals') && sql.includes('city')) {
         return {
           rows: [{
-            id: 'deal-1', target_units: 232,
+            id: 'a0000000-0000-0000-0000-000000000001', target_units: 232,
             deal_data: dealData,
             city: 'Atlanta', state_code: 'GA',
           }],
         };
+      }
+      if (sql.includes('deal_properties')) {
+        return { rows: [{ property_id: 'b0000000-0000-0000-0000-000000000001' }] };
+      }
+      if (sql.includes('financial_data') || sql.includes('t12_monthly')) {
+        return { rows: [], rowCount: 0 };
       }
       if (sql.includes('platform_market_snapshots') || sql.includes('platform_norms')) {
         return { rows: [] };
@@ -70,10 +85,14 @@ function makeMockPool(overrides: Partial<Record<string, unknown>> = {}): {
 // ─── Block (a): broker_claims preservation ────────────────────────────────────
 
 describe('updateDealCapsule — atomic JSONB write (broker_claims preservation)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
   it('T12 capsule write uses top-level || merge, not full-replace', async () => {
     const { pool, calls } = makeMockPool();
+    _activePool = pool;
 
-    // Import the module under test (updateDealCapsule is called inside routeExtractionResult)
     const { routeExtractionResult } = await import('../services/document-extraction/data-router');
 
     const extractionResult = {
@@ -113,7 +132,7 @@ describe('updateDealCapsule — atomic JSONB write (broker_claims preservation)'
     };
 
     await routeExtractionResult(extractionResult as never, {
-      dealId: 'deal-1',
+      dealId: 'a0000000-0000-0000-0000-000000000001',
       filename: 'test-t12.pdf',
       uploadedBy: 'user-1',
       pool: pool as never,
@@ -137,6 +156,8 @@ describe('updateDealCapsule — atomic JSONB write (broker_claims preservation)'
 
   it('OTHER_INCOME capsule write uses broker_claims sub-merge SQL', async () => {
     const { pool, calls } = makeMockPool();
+    _activePool = pool;
+
     const { routeExtractionResult } = await import('../services/document-extraction/data-router');
 
     const extractionResult = {
@@ -144,6 +165,7 @@ describe('updateDealCapsule — atomic JSONB write (broker_claims preservation)'
       documentType: 'OTHER_INCOME' as const,
       data: {
         rows: [],
+        categories: [],
         summary: { totalAnnual: 240_000, categoryCount: 3 },
       },
       summary: {},
@@ -152,7 +174,7 @@ describe('updateDealCapsule — atomic JSONB write (broker_claims preservation)'
     };
 
     await routeExtractionResult(extractionResult as never, {
-      dealId: 'deal-1',
+      dealId: 'a0000000-0000-0000-0000-000000000001',
       filename: 'test-other-income.pdf',
       uploadedBy: 'user-1',
       pool: pool as never,
@@ -171,6 +193,8 @@ describe('updateDealCapsule — atomic JSONB write (broker_claims preservation)'
 
   it('OM path does not issue a capsule UPDATE (routeOM owns the write)', async () => {
     const { pool, calls } = makeMockPool();
+    _activePool = pool;
+
     const { routeExtractionResult } = await import('../services/document-extraction/data-router');
 
     const extractionResult = {
@@ -186,9 +210,11 @@ describe('updateDealCapsule — atomic JSONB write (broker_claims preservation)'
         },
         unitMix: [],
         otherIncome: null,
-        replacementCost: null,
-        capitalPlan: null,
+        replacementCost: {},
+        capitalPlan: {},
         debtAssumptions: null,
+        keyEvents: {},
+        marketComps: { rentComps: [], saleComps: [] },
         investmentHighlights: [],
         investmentThesis: null,
         metadata: { askingPrice: null },
@@ -199,7 +225,7 @@ describe('updateDealCapsule — atomic JSONB write (broker_claims preservation)'
     };
 
     await routeExtractionResult(extractionResult as never, {
-      dealId: 'deal-1',
+      dealId: 'a0000000-0000-0000-0000-000000000001',
       filename: 'test-om.pdf',
       uploadedBy: 'user-1',
       pool: pool as never,
@@ -393,9 +419,20 @@ describe('seed observability log', () => {
     expect(gapFields).toContain('gpr.om');
   });
 
-  it('omits expected_vs_actual_gaps when all source slots are populated', async () => {
+  it('omits expected_vs_actual_gaps when all tracked t12 slots are populated', async () => {
+    // The seeder reads opex fields from t12Capsule.opex.* sub-object.
+    // vacancy_pct.t12 = vacancy_loss / gpr (computed, not a direct field).
+    // Provide a fully-populated extraction_t12 with the nested opex structure.
     const pool = makePoolWithCapsule({
-      extraction_t12: { gpr: 4_800_000, real_estate_tax: 960_000, payroll: 280_000, noi: 2_704_000 },
+      extraction_t12: {
+        gpr: 4_800_000,
+        vacancy_loss: 192_000,
+        opex: {
+          real_estate_tax: 960_000,
+          payroll:         280_000,
+          contract:        80_000,
+        },
+      },
     });
 
     const { seedProFormaYear1 } = await import('../services/proforma-seeder.service');
@@ -407,7 +444,7 @@ describe('seed observability log', () => {
 
     const seedLog = logCalls.find((l: Record<string, unknown>) => l.event === 'seed.complete');
     expect(seedLog).toBeDefined();
-    // Only T12 uploaded — gpr.t12 is populated, so no gap for t12.gpr
+    // Only T12 uploaded and all tracked t12 slots should be populated → no gaps
     expect(seedLog.expected_vs_actual_gaps).toBeUndefined();
   });
 });
