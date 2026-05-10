@@ -730,17 +730,25 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   const egiRow       = byField['egi'];
   const totalOpexRow = byField['total_opex'];
+  const aggSlot = (rs: OperatingStatementRow[], key: keyof OperatingStatementRow) =>
+    rs.every(r => r[key] == null) ? null : rs.reduce((s, r) => s + ((r[key] as number | null) ?? 0), 0);
   const ctrlSubtotalRow  = {
     resolved: ctrlRows.reduce((s, r) => s + (r.resolved ?? 0), 0),
-    broker:   ctrlRows.every(r => r.broker == null) ? null : ctrlRows.reduce((s, r) => s + (r.broker ?? 0), 0),
-    t12:      ctrlRows.every(r => r.t12 == null)    ? null : ctrlRows.reduce((s, r) => s + (r.t12 ?? 0), 0),
-    platform: ctrlRows.every(r => r.platform == null) ? null : ctrlRows.reduce((s, r) => s + (r.platform ?? 0), 0),
+    broker:   aggSlot(ctrlRows, 'broker'),
+    t12:      aggSlot(ctrlRows, 't12'),
+    t6:       aggSlot(ctrlRows, 't6'),
+    t3:       aggSlot(ctrlRows, 't3'),
+    t1:       aggSlot(ctrlRows, 't1'),
+    platform: aggSlot(ctrlRows, 'platform'),
   };
   const nctrlSubtotalRow = {
     resolved: nctrlRows.reduce((s, r) => s + (r.resolved ?? 0), 0),
-    broker:   nctrlRows.every(r => r.broker == null) ? null : nctrlRows.reduce((s, r) => s + (r.broker ?? 0), 0),
-    t12:      nctrlRows.every(r => r.t12 == null)    ? null : nctrlRows.reduce((s, r) => s + (r.t12 ?? 0), 0),
-    platform: nctrlRows.every(r => r.platform == null) ? null : nctrlRows.reduce((s, r) => s + (r.platform ?? 0), 0),
+    broker:   aggSlot(nctrlRows, 'broker'),
+    t12:      aggSlot(nctrlRows, 't12'),
+    t6:       aggSlot(nctrlRows, 't6'),
+    t3:       aggSlot(nctrlRows, 't3'),
+    t1:       aggSlot(nctrlRows, 't1'),
+    platform: aggSlot(nctrlRows, 'platform'),
   };
 
   const egiResolved = egiRow?.resolved ?? null;
@@ -1349,7 +1357,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             <tr style={{ background: '#1a110a' }}>
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#1a110a' }}>─── CONTROLLABLE OPEX ───</td>
               <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#fb923c', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.broker)}</td>
-              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.t12)}</td>}
+              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(pickY1ColValue(ctrlSubtotalRow as unknown as OperatingStatementRow, activePeriod))}</td>}
               {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.platform)}</td>}
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#fb923c', fontWeight: 700, background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : 'rgba(0,0,0,0.3)' }}>
                 {fmtFull$(ctrlSubtotalRow.resolved || null)}
@@ -1379,7 +1387,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             <tr style={{ background: '#0d0a14' }}>
               <td style={{ padding: '4px 8px', color: '#c084fc', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#0d0a14' }}>─── NON-CONTROLLABLE OPEX ───</td>
               <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#c084fc', fontSize: 9 }}>{fmtFull$(nctrlSubtotalRow.broker)}</td>
-              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(nctrlSubtotalRow.t12)}</td>}
+              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(pickY1ColValue(nctrlSubtotalRow as unknown as OperatingStatementRow, activePeriod))}</td>}
               {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(nctrlSubtotalRow.platform)}</td>}
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#c084fc', fontWeight: 700, background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : 'rgba(0,0,0,0.3)' }}>
                 {fmtFull$(nctrlSubtotalRow.resolved || null)}

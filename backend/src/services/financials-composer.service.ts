@@ -1210,7 +1210,7 @@ const TRAILING_FIELD_COL: Record<string, string> = {
   repairs_maintenance: 'repairs_maintenance',
   turnover:            'turnover_costs',     // actual column; NOT make_ready
   insurance:           'insurance',
-  real_estate_taxes:   'real_estate_taxes',
+  real_estate_tax:     'real_estate_taxes',   // key = OSRow field name; value = DB column name
   total_opex:          'total_opex',         // actual column; NOT total_operating_expenses
   noi:                 'noi',
 };
