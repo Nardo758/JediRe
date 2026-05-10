@@ -1983,8 +1983,8 @@ export async function getDealFinancials(
       id: 'IC-01',
       status: gapDollars > 1000 ? 'warn' : 'ok',
       message: gapDollars > 1000
-        ? `T-12 NOI reconciliation gap $${gapDollars.toLocaleString()} (resolved $${noiResolved.toLocaleString()} vs T-12 $${noiT12.toLocaleString()}) — threshold $1,000`
-        : `T-12 NOI reconciled within $1,000 (gap $${gapDollars.toLocaleString()})`,
+        ? `T-12 NOI reconciliation gap $${Math.round(gapDollars).toLocaleString()} (resolved $${Math.round(noiResolved).toLocaleString()} vs T-12 $${Math.round(noiT12).toLocaleString()}) — threshold $1,000`
+        : `T-12 NOI reconciled within $1,000 (gap $${Math.round(gapDollars).toLocaleString()})`,
       detail: { noiResolved, noiT12, gapDollars },
     });
   }
@@ -2000,7 +2000,7 @@ export async function getDealFinancials(
       id: 'IC-02',
       status: delta > 0.03 ? 'warn' : 'ok',
       message: delta > 0.03
-        ? `GPR mismatch: rent roll $${gprRentRoll.toLocaleString()} vs T-12 $${gprT12.toLocaleString()} (${(delta * 100).toFixed(1)}% — threshold 3%)`
+        ? `GPR mismatch: rent roll $${Math.round(gprRentRoll).toLocaleString()} vs T-12 $${Math.round(gprT12).toLocaleString()} (${(delta * 100).toFixed(1)}% — threshold 3%)`
         : `GPR: rent roll and T-12 within 3% (gap ${(delta * 100).toFixed(1)}%)`,
       detail: { gprRentRoll, gprT12, deltaPct: +(delta * 100).toFixed(2) },
     });
@@ -2039,7 +2039,7 @@ export async function getDealFinancials(
       id: 'IC-04',
       status: delta > 0.15 ? 'warn' : 'ok',
       message: delta > 0.15
-        ? `Tax-line assessor gap: T-12 $${taxT12.toLocaleString()} vs tax bill $${taxBill.toLocaleString()} (${(delta * 100).toFixed(1)}% — threshold 15%)`
+        ? `Tax-line assessor gap: T-12 $${Math.round(taxT12).toLocaleString()} vs tax bill $${Math.round(taxBill).toLocaleString()} (${(delta * 100).toFixed(1)}% — threshold 15%)`
         : `Real estate tax confirmed within 15% of assessor bill`,
       detail: { taxT12, taxBill, deltaPct: +(delta * 100).toFixed(2) },
     });

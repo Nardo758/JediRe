@@ -184,8 +184,8 @@ function ancillaryLabel(cat: string): string {
 function fmt$(n: number | null): string {
   if (n == null) return '—';
   if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(n) >= 1_000) return `$${n.toLocaleString()}`;
-  return `$${n}`;
+  if (Math.abs(n) >= 1_000) return `$${Math.round(n).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  return `$${Math.round(n)}`;
 }
 function fmtFull$(n: number | null): string {
   if (n == null) return '—';
