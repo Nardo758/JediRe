@@ -9,12 +9,24 @@
  *  (e) buildUserPrompt — "Absent-field candidates" section presence/absence
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   SEVERITY_MAP,
   DqaClassification,
   runDataQualityAgent,
 } from '../services/data-quality-agent.service';
+
+// Silence the dqa.complete JSON console.log emitted by runDataQualityAgent so
+// test output stays readable.  console.error is also suppressed to avoid noise
+// from any caught internal errors inside the service.
+const _consoleSpy = {
+  log:   vi.spyOn(console, 'log').mockImplementation(() => {}),
+  error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+};
+afterEach(() => {
+  _consoleSpy.log.mockClear();
+  _consoleSpy.error.mockClear();
+});
 
 // ─── Anthropic mock ────────────────────────────────────────────────────────────
 // vi.hoisted ensures the mock fn is available before module resolution.
