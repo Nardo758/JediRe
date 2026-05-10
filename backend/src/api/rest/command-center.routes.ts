@@ -203,18 +203,36 @@ router.get('/dqa/reliability', async (req: AuthenticatedRequest, res: Response) 
       severity: string;
       finding_count: string;
       deal_count: string;
+      total_deals_for_doctype: string;
+      hit_rate_pct: string | null;
     }>(
-      `SELECT   document_type,
-                proforma_row,
-                classification,
-                severity,
-                COUNT(*)::text              AS finding_count,
-                COUNT(DISTINCT deal_id)::text AS deal_count
-         FROM   data_quality_alerts
-        WHERE   status    != 'dismissed'
-          AND   created_at >= $1
-          AND   created_at <= $2
-        GROUP BY document_type, proforma_row, classification, severity
+      `WITH totals AS (
+         SELECT document_type,
+                COUNT(DISTINCT deal_id) AS total_deals
+           FROM data_quality_alerts
+          WHERE status    != 'dismissed'
+            AND created_at >= $1
+            AND created_at <= $2
+          GROUP BY document_type
+       )
+       SELECT  a.document_type,
+               a.proforma_row,
+               a.classification,
+               a.severity,
+               COUNT(*)::text                    AS finding_count,
+               COUNT(DISTINCT a.deal_id)::text   AS deal_count,
+               t.total_deals::text               AS total_deals_for_doctype,
+               ROUND(
+                 COUNT(DISTINCT a.deal_id)::numeric
+                 / NULLIF(t.total_deals, 0) * 100,
+                 1
+               )::text                           AS hit_rate_pct
+         FROM  data_quality_alerts a
+         JOIN  totals t ON t.document_type = a.document_type
+        WHERE  a.status    != 'dismissed'
+          AND  a.created_at >= $1
+          AND  a.created_at <= $2
+        GROUP BY a.document_type, a.proforma_row, a.classification, a.severity, t.total_deals
         ORDER BY finding_count::int DESC`,
       [fromDate.toISOString(), toDate.toISOString()]
     );
@@ -227,12 +245,14 @@ router.get('/dqa/reliability', async (req: AuthenticatedRequest, res: Response) 
       },
       total: result.rows.length,
       rows: result.rows.map(r => ({
-        document_type:  r.document_type,
-        proforma_row:   r.proforma_row,
-        classification: r.classification,
-        severity:       r.severity,
-        finding_count:  parseInt(r.finding_count, 10),
-        deal_count:     parseInt(r.deal_count, 10),
+        document_type:           r.document_type,
+        proforma_row:            r.proforma_row,
+        classification:          r.classification,
+        severity:                r.severity,
+        finding_count:           parseInt(r.finding_count, 10),
+        deal_count:              parseInt(r.deal_count, 10),
+        total_deals_for_doctype: parseInt(r.total_deals_for_doctype, 10),
+        hit_rate_pct:            r.hit_rate_pct !== null ? parseFloat(r.hit_rate_pct) : null,
       })),
     });
   } catch (error: any) {

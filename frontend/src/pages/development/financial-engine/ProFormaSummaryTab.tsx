@@ -386,9 +386,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const y1IsBroker   = y1Source === 'BROKER';
   const y1IsTperiod  = (T_PERIODS as readonly string[]).includes(y1Source);
 
-  // Staleness threshold — matches backend DQA_STALENESS_HOURS env var default (Task #707)
-  const DQA_STALENESS_HOURS = 24;
-
   // Data Quality Alerts (Task #691)
   interface DqaAlert {
     id: string;
@@ -569,22 +566,30 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   // Load DQA alerts on mount and refresh after the main data loads
   useEffect(() => { loadDqaAlerts(); }, [loadDqaAlerts]);
 
-  // Staleness check (Task #707): if the newest finding is older than 24 h, trigger a
-  // background re-audit once per page session.  The backend rate-limits to once/hour
-  // so the POST is a no-op if the user refreshes the page within the cooldown window.
+  // Staleness check (Task #707): ask the server whether this deal's DQA findings are
+  // stale (or have never been run).  Server controls the threshold (DQA_STALENESS_HOURS
+  // env var, default 24 h) and handles the zero-alerts case.  Fires once per page session;
+  // backend rate-limits the actual re-audit to once per deal per hour.
   useEffect(() => {
-    if (!dealId || dqaAlerts.length === 0 || dqaRefreshedThisSession.current) return;
-    const newestMs = Math.max(...dqaAlerts.map(a => new Date(a.created_at).getTime()));
-    const ageHours = (Date.now() - newestMs) / (1000 * 60 * 60);
-    if (ageHours > DQA_STALENESS_HOURS) {
-      dqaRefreshedThisSession.current = true;
-      apiClient
-        .post(`/api/v1/deals/${dealId}/data-quality-alerts/refresh`)
-        .then(() => { setTimeout(() => loadDqaAlerts(), 5000); })
-        .catch(() => {});
-    }
+    if (!dealId || dqaRefreshedThisSession.current) return;
+    apiClient
+      .get<{ success: boolean; isStale: boolean; hasAlerts: boolean }>(
+        `/api/v1/deals/${dealId}/data-quality-alerts/staleness`
+      )
+      .then(res => {
+        const { isStale, hasAlerts } = res.data ?? {};
+        if (isStale || !hasAlerts) {
+          dqaRefreshedThisSession.current = true;
+          apiClient
+            .post(`/api/v1/deals/${dealId}/data-quality-alerts/refresh`)
+            .then(() => { setTimeout(() => loadDqaAlerts(), 5000); })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
+  // Run once on mount per dealId — loadDqaAlerts is a stable useCallback reference
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dqaAlerts, dealId]);
+  }, [dealId]);
 
   // Reactive wiring: re-fetch when concession recognition is recomputed on the backend.
   // The amortization engine fires 'concession_recognition.updated' on the window event bus

@@ -83,6 +83,8 @@ interface DqaReliabilityRow {
   severity: string;
   finding_count: number;
   deal_count: number;
+  total_deals_for_doctype: number;
+  hit_rate_pct: number | null;
 }
 
 const DQA_STALENESS_HOURS = 24;
@@ -553,6 +555,9 @@ export function CommandCenterPage() {
                       </span>
                     </th>
                     <th className="text-right px-4 py-3 font-medium text-gray-700">Deals Affected</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-700" title="% of deals audited for this document type that received this finding">
+                      Hit Rate
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -586,7 +591,23 @@ export function CommandCenterPage() {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{row.finding_count}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-600">{row.deal_count}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-600">
+                          {row.deal_count}
+                          <span className="text-xs text-gray-400 ml-1">/ {row.total_deals_for_doctype}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          {row.hit_rate_pct !== null ? (
+                            <span className={`font-medium ${
+                              row.hit_rate_pct >= 50 ? 'text-red-600' :
+                              row.hit_rate_pct >= 20 ? 'text-yellow-600' :
+                              'text-green-600'
+                            }`}>
+                              {row.hit_rate_pct}%
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                 </tbody>
