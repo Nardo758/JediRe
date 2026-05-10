@@ -1001,6 +1001,13 @@ function buildSeed(
  * Emit a structured JSON log after seedProFormaYear1 completes.
  * Stdout-only — no DB write. Consumed by the Data Quality Agent (Task #691)
  * as the primary signal for SEED_PLUMBING findings.
+ *
+ * Opex field naming note: extraction_t12.opex uses abbreviated keys that map to
+ * ProFormaYear1Seed fields as follows:
+ *   opex.contract       → contract_services.t12
+ *   opex.r_and_m        → repairs_maintenance.t12
+ *   opex.mgmt_fee       → management_fee_pct.t12 (as % of EGI)
+ *   opex.real_estate_tax → real_estate_tax.t12
  */
 function emitSeedObservabilityLog(
   dealId: string,

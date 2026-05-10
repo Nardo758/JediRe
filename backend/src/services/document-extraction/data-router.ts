@@ -1326,7 +1326,10 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
     // "year1 already exists" guard and calls seedProFormaYear1, which reads the
     // existing year1 first — preserving all operator override layers (resolution
     // = 'override') before recomputing extraction-derived values.
-    const INCOME_CAPSULE_KEYS = ['extraction_t12', 'extraction_rent_roll', 'extraction_om'];
+    // extraction_tax_bill triggers reseed so real_estate_tax.tax_bill slot is
+    // populated; without it a tax-bill upload would write the capsule but the
+    // seeder would never fire and year1.real_estate_tax.tax_bill stays null.
+    const INCOME_CAPSULE_KEYS = ['extraction_t12', 'extraction_rent_roll', 'extraction_om', 'extraction_tax_bill'];
     const hasIncomeCapsule = INCOME_CAPSULE_KEYS.some(k => k in capsulePayload);
     if (hasIncomeCapsule) {
       try {
