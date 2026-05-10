@@ -1970,6 +1970,100 @@ export async function getDealFinancials(
     ...NOI_FIELDS.map(([k, _l]) => toRow(k, _l)),
   ];
 
+  // ── Back-fill broker/t12 slots for computed subtotal rows ─────────────────
+  // EGI, net_rental_income, total_opex, and NOI are derived rows — the year1
+  // seed stores no om/t12 layers for them (they are computed, not extracted
+  // from a document).  We aggregate from the component rows toRow() /
+  // toDollarRow() already built above so ProFormaSummaryTab can render all
+  // four columns (Broker · Trailing · Platform · Resolved) for each subtotal.
+  //
+  // Broker column: the seed's `gpr.om` slot is often null (broker claims
+  // land as stabilizedGpr / stabilizedNOI in deal_data, not as per-field LV
+  // om layers). We therefore read the raw broker proforma from deal_data and
+  // derive broker subtotals here the same way financials-composer does.
+  {
+    const _byField = (f: string) => year1Rows.find(r => r.field === f);
+    const _revDedFields = ['vacancy_loss', 'loss_to_lease', 'concessions', 'bad_debt', 'non_revenue_units'];
+
+    // ── Broker proforma helpers ───────────────────────────────────────────
+    const _dealData = (deal.deal_data ?? {}) as Record<string, any>;
+    const _bpProforma = (_dealData.broker_claims?.proforma ?? {}) as Record<string, any>;
+    const _bpNum = (k: string): number | null => {
+      const v = _bpProforma[k];
+      return typeof v === 'number' && isFinite(v) ? v : null;
+    };
+
+    // GPR: prefer line-item slot, fall back to overall stabilized GPR
+    const _bpGprRaw = _bpNum('stabilizedGpr') ?? _bpNum('gpr') ?? _bpNum('grossPotentialRent');
+    // Use unit-mix GPR from the already-built gpr row when available (handles
+    // the da:use_unit_mix_for_gpr override), otherwise fall back to broker claim.
+    const _gprRow    = _byField('gpr');
+    const _bpGpr     = _gprRow?.broker ?? _bpGprRaw;
+    const _bpVacPct  = _bpNum('stabilizedVacancy') ?? _bpNum('vacancyPct');
+    const _bpVacLoss = _bpGpr != null && _bpVacPct != null ? _bpGpr * _bpVacPct : (_byField('vacancy_loss')?.broker ?? null);
+    const _bpLtl     = _byField('loss_to_lease')?.broker  ?? 0;
+    const _bpConc    = _byField('concessions')?.broker     ?? 0;
+    const _bpBd      = _byField('bad_debt')?.broker        ?? 0;
+    const _bpNru     = _byField('non_revenue_units')?.broker ?? 0;
+    const _bpOi      = _byField('other_income')?.broker   ?? _bpNum('otherIncome') ?? _bpNum('stabilizedOtherIncome') ?? 0;
+    // Broker NOI: seed stores this as noi.om (seeder writes bpNOI there)
+    const _seedNoi   = _byField('noi');
+    const _bpNoi     = _seedNoi?.broker ?? _bpNum('stabilizedNOI') ?? _bpNum('yearOneNOI');
+
+    // Derive broker NRI → EGI
+    const _bpNri = _bpGpr != null
+      ? _bpGpr - (_bpVacLoss ?? 0) - _bpLtl - _bpConc - _bpBd - _bpNru
+      : null;
+    const _bpEgi = _bpNri != null ? _bpNri + (_bpOi ?? 0) : null;
+    // Derive broker total_opex = EGI − NOI (standard underwriting identity)
+    const _bpTotalOpex = _bpEgi != null && _bpNoi != null ? _bpEgi - _bpNoi : null;
+
+    // Net Rental Income broker / t12
+    const _nriRow = _byField('net_rental_income');
+    if (_nriRow) {
+      if (_bpNri != null) _nriRow.broker = Math.round(_bpNri);
+      const _gT = _gprRow?.t12;
+      if (_gT != null) {
+        _nriRow.t12 = Math.round(_gT - _revDedFields.reduce((s, f) => s + (_byField(f)?.t12 ?? 0), 0));
+      }
+    }
+
+    // EGI broker / t12 = NRI + other_income
+    const _egiRow = _byField('egi');
+    if (_egiRow) {
+      if (_bpEgi != null) _egiRow.broker = Math.round(_bpEgi);
+      const _nriT = _byField('net_rental_income')?.t12;
+      const _oiT  = _byField('other_income')?.t12;
+      if (_nriT != null) _egiRow.t12 = Math.round(_nriT + (_oiT ?? 0));
+    }
+
+    // Total OpEx broker / t12 — broker derived from EGI−NOI identity;
+    // t12 is the sum of the expense component rows' t12 slots.
+    const _opexComponents = [
+      'payroll', 'repairs_maintenance', 'turnover', 'contract_services',
+      'marketing', 'utilities', 'g_and_a', 'insurance', 'real_estate_tax',
+      'replacement_reserves', 'management_fee', 'landscaping',
+    ];
+    const _topexRow = _byField('total_opex');
+    if (_topexRow) {
+      if (_bpTotalOpex != null) _topexRow.broker = Math.round(_bpTotalOpex);
+      const _hasT12 = _opexComponents.some(f => (_byField(f)?.t12 ?? null) != null);
+      if (_hasT12) {
+        _topexRow.t12 = Math.round(_opexComponents.reduce((s, f) => s + (_byField(f)?.t12 ?? 0), 0));
+      }
+    }
+
+    // NOI t12 = EGI t12 − total_opex t12
+    // NOI broker is already in the seed (noi.om = stabilizedNOI written by
+    // the seeder); recompute only as fallback when the seed slot was null.
+    if (_seedNoi) {
+      const _eT = _byField('egi')?.t12;
+      const _oT = _byField('total_opex')?.t12;
+      if (_seedNoi.broker == null && _bpNoi != null) _seedNoi.broker = Math.round(_bpNoi);
+      if (_eT != null && _oT != null) _seedNoi.t12 = Math.round(_eT - _oT);
+    }
+  }
+
   // ── Integrity checks ────────────────────────────────────────────────────────
   const checks: IntegrityCheck[] = [];
 

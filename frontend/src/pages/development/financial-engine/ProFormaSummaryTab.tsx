@@ -1078,7 +1078,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
             {/* NRI — broker vs platform comparison after deductions */}
             {byField['net_rental_income'] && (
-              <SubtotalRow label="BASE RENTAL REVENUE" row={byField['net_rental_income']} color="#041a14" textColor="#34d399" egiResolved={egiResolved} />
+              <SubtotalRow label="BASE RENTAL REVENUE" row={byField['net_rental_income']} color="#041a14" textColor="#34d399" egiResolved={egiResolved} activePeriod={activePeriod} />
             )}
 
             {/* Other Income — inline ancillary breakdown (Task #612) */}
@@ -1285,7 +1285,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             })}
 
             {/* ── EGI SUBTOTAL ── */}
-            {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} fullFormat />}
+            {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} fullFormat activePeriod={activePeriod} />}
 
             {/* ── CONTROLLABLE EXPENSES ── */}
             <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
@@ -1397,7 +1397,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 <td style={{ padding: '5px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#c4b5fd', fontSize: 9, fontWeight: viewMode === 'BROKER_VIEW' ? 700 : 400 }}>
                   {fmtFull$(totalOpexRow.broker)}
                 </td>
-                {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '5px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(totalOpexRow.t12)}</td>}
+                {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '5px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(pickY1ColValue(totalOpexRow, activePeriod))}</td>}
                 {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '5px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(pickPlatformValue(totalOpexRow, platformColSource))}</td>}
                 <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: 11,
                   background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : undefined,
@@ -1425,7 +1425,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#86efac', fontWeight: viewMode === 'BROKER_VIEW' ? 700 : 400 }}>{fmtFull$(noiRow.broker)}</td>
                 {viewMode !== 'BROKER_VIEW' && (
                   <>
-                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmtFull$(noiRow.t12)}</td>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmtFull$(pickY1ColValue(noiRow, activePeriod))}</td>
                     <td style={{ padding: '7px 8px', textAlign: 'right', color: '#06b6d4' }}>{fmtFull$(pickPlatformValue(noiRow, platformColSource))}</td>
                   </>
                 )}
@@ -2081,8 +2081,8 @@ function SectionHeader({ label, accentColor, bg, cols = 9 }: { label: string; ac
   );
 }
 
-function SubtotalRow({ label, row, color, textColor, egiResolved, fullFormat }: {
-  label: string; row: OperatingStatementRow; color: string; textColor: string; egiResolved: number | null; fullFormat?: boolean;
+function SubtotalRow({ label, row, color, textColor, egiResolved, fullFormat, activePeriod }: {
+  label: string; row: OperatingStatementRow; color: string; textColor: string; egiResolved: number | null; fullFormat?: boolean; activePeriod?: 'T12' | 'T6' | 'T3' | 'T1';
 }) {
   const viewMode          = useDealStore(s => s.viewMode);
   const platformColSource = useDealStore(s => s.platformColSource);
@@ -2090,13 +2090,14 @@ function SubtotalRow({ label, row, color, textColor, egiResolved, fullFormat }: 
   const displayResolved = isBroker ? (row.broker ?? row.resolved) : row.resolved;
   const egiPct = egiResolved && displayResolved ? (displayResolved / egiResolved) * 100 : null;
   const f = fullFormat ? fmtFull$ : fmt$;
+  const trailingVal = pickY1ColValue(row, activePeriod ?? 'T12');
   return (
     <tr style={{ background: color }}>
       <td style={{ padding: '4px 8px', fontWeight: 700, color: '#cbd5e1', fontFamily: 'Inter, sans-serif', fontSize: 9, position: 'sticky', left: 0, background: color }}>
         ─── {label} ───
       </td>
       <td style={{ padding: '4px 8px', textAlign: 'right', color: isBroker ? '#fcd34d' : textColor, fontSize: 9, fontWeight: isBroker ? 700 : 400 }}>{f(row.broker)}</td>
-      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{f(row.t12)}</td>}
+      {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{f(trailingVal)}</td>}
       {!isBroker && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{f(pickPlatformValue(row, platformColSource))}</td>}
       <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700,
         color: isBroker ? '#fcd34d' : textColor,

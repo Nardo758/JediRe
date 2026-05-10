@@ -702,7 +702,6 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
                     display: 'flex', 
                     justifyContent: 'space-between', 
                     alignItems: 'center', 
-                    padding: '8px 0',
                     borderBottom: row.bold ? 'none' : `1px solid ${T.border.subtle}`,
                     marginTop: row.bold ? 8 : 0,
                     background: row.bold ? T.bg.active : 'transparent',
