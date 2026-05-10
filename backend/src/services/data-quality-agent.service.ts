@@ -18,10 +18,12 @@ import { Pool } from 'pg';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
-// Phase 2 (Task #698): field-level write-time helpers replace the coarse
-// deals.updated_at proxy used in Phase 1 for WRITE_RACE vs STALE_SEED
-// timestamp classification. Import is wired here; call sites are marked with
-// "Phase 2 TODO" comments. Task #696 activates the full classification logic.
+// Phase 2 (Task #698): field-level write-time helpers supply per-field source
+// timestamps from extraction_events. runDataQualityAgentAfterReseed annotates
+// each SeedGap with phase2Class (SEED_PLUMBING_WRITE_RACE | SEED_PLUMBING_STALE_SEED)
+// derived from classifyTimestampDelta(). callAgent then promotes any SEED_PLUMBING
+// finding to that specific sub-type, making the signed-delta classification
+// authoritative in the persisted data_quality_alerts row.
 import { fetchFieldWriteTimes, classifyTimestampDelta, computeDeltaSeconds } from './extraction-events.service';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -32,6 +34,12 @@ export type DqaClassification =
   | 'RANGE_ANOMALY'
   | 'INCONSISTENCY'
   | 'SEED_PLUMBING'
+  /** Phase 2 (Task #698): source written ≤ 300 s before seed — concurrent write
+   *  caused seed to land before extraction had a chance to propagate. */
+  | 'SEED_PLUMBING_WRITE_RACE'
+  /** Phase 2 (Task #698): seed was written before (or long before) the source
+   *  extraction event — stale seed, re-seed required. */
+  | 'SEED_PLUMBING_STALE_SEED'
   | 'CROSS_DOC_VARIANCE'
   | 'LOW_CONFIDENCE_EXTRACTION';
 
@@ -69,13 +77,15 @@ const PARSER_VERSION = '1.0.0';
 const MIN_CONFIDENCE = 0.6;
 
 const SEVERITY_MAP: Record<DqaClassification, DqaSeverity> = {
-  PARSER_MISS:               'warning',
-  PARSER_INCORRECT:          'critical',
-  RANGE_ANOMALY:             'warning',
-  INCONSISTENCY:             'warning',
-  SEED_PLUMBING:             'warning',
-  CROSS_DOC_VARIANCE:        'info',
-  LOW_CONFIDENCE_EXTRACTION: 'info',
+  PARSER_MISS:                  'warning',
+  PARSER_INCORRECT:             'critical',
+  RANGE_ANOMALY:                'warning',
+  INCONSISTENCY:                'warning',
+  SEED_PLUMBING:                'warning',
+  SEED_PLUMBING_WRITE_RACE:     'warning',  // timing artifact — retry usually self-heals
+  SEED_PLUMBING_STALE_SEED:     'critical', // seed pre-dates source — explicit re-seed needed
+  CROSS_DOC_VARIANCE:           'info',
+  LOW_CONFIDENCE_EXTRACTION:    'info',
 };
 
 // Proforma rows audited per document type.
@@ -149,7 +159,9 @@ Classification rules:
 - PARSER_INCORRECT: The extracted value differs from the source document value by >5%.
 - RANGE_ANOMALY: The extracted value is technically present but implausible (e.g. NOI/unit > $30,000/year or < $500/year for multifamily).
 - INCONSISTENCY: Internal contradiction within the same document (e.g. stated NOI ≠ Revenue − Expenses).
-- SEED_PLUMBING: A value was extracted and stored but did not propagate to the Pro Forma year1 slot.
+- SEED_PLUMBING: A value was extracted and stored but did not propagate to the Pro Forma year1 slot. Use this when no timestamp data is available. When "likely=" hint is provided in the gap list, prefer the more specific sub-type instead:
+  - SEED_PLUMBING_WRITE_RACE: Gap hint says SEED_PLUMBING_WRITE_RACE — source was written within 300 s of the seed; a concurrent race condition caused the slot to be null at seed time. Retry usually self-heals.
+  - SEED_PLUMBING_STALE_SEED: Gap hint says SEED_PLUMBING_STALE_SEED — seed predates the source extraction; an explicit re-seed is required.
 - CROSS_DOC_VARIANCE: Value differs materially from another uploaded document's data for the same field.
 - LOW_CONFIDENCE_EXTRACTION: Extracted value present but the document text is ambiguous or unclear.
 
@@ -217,7 +229,7 @@ async function callAgent(
             type: 'object',
             required: ['classification', 'proforma_column', 'proforma_row', 'source_evidence', 'reasoning', 'extracted_value', 'expected_value', 'confidence', 'recommended_action'],
             properties: {
-              classification:     { type: 'string', enum: ['PARSER_MISS', 'PARSER_INCORRECT', 'RANGE_ANOMALY', 'INCONSISTENCY', 'SEED_PLUMBING', 'CROSS_DOC_VARIANCE', 'LOW_CONFIDENCE_EXTRACTION'] },
+              classification:     { type: 'string', enum: ['PARSER_MISS', 'PARSER_INCORRECT', 'RANGE_ANOMALY', 'INCONSISTENCY', 'SEED_PLUMBING', 'SEED_PLUMBING_WRITE_RACE', 'SEED_PLUMBING_STALE_SEED', 'CROSS_DOC_VARIANCE', 'LOW_CONFIDENCE_EXTRACTION'] },
               proforma_column:    { type: 'string' },
               proforma_row:       { type: 'string' },
               source_evidence:    {
@@ -264,11 +276,44 @@ async function callAgent(
   if (!toolUse || toolUse.type !== 'tool_use') return [];
 
   const input = (toolUse as unknown as { input: { findings?: DqaFinding[] } }).input;
-  const findings = input?.findings ?? [];
+  const rawFindings = input?.findings ?? [];
 
-  return findings
+  // Allowlist of all valid classifications (including Phase 2 sub-types).
+  const VALID_CLASSIFICATIONS = new Set<string>([
+    'PARSER_MISS', 'PARSER_INCORRECT', 'RANGE_ANOMALY', 'INCONSISTENCY',
+    'SEED_PLUMBING', 'SEED_PLUMBING_WRITE_RACE', 'SEED_PLUMBING_STALE_SEED',
+    'CROSS_DOC_VARIANCE', 'LOW_CONFIDENCE_EXTRACTION',
+  ]);
+
+  // Build a lookup map: proforma_row → phase2Class from annotated gaps.
+  // This makes signed-delta classification authoritative — regardless of what
+  // Claude output, any SEED_PLUMBING finding with extraction_events data is
+  // promoted to the deterministic sub-type derived in runDataQualityAgentAfterReseed.
+  const gapPhase2Map = new Map<string, 'SEED_PLUMBING_WRITE_RACE' | 'SEED_PLUMBING_STALE_SEED'>();
+  if (seedGaps) {
+    for (const g of seedGaps) {
+      gapPhase2Map.set(g.field, g.phase2Class);
+    }
+  }
+
+  const findings = rawFindings
     .filter((f: DqaFinding) => f.confidence >= MIN_CONFIDENCE)
-    .filter((f: DqaFinding) => ['PARSER_MISS', 'PARSER_INCORRECT', 'RANGE_ANOMALY', 'INCONSISTENCY', 'SEED_PLUMBING', 'CROSS_DOC_VARIANCE', 'LOW_CONFIDENCE_EXTRACTION'].includes(f.classification));
+    .filter((f: DqaFinding) => VALID_CLASSIFICATIONS.has(f.classification))
+    .map((f: DqaFinding): DqaFinding => {
+      // Deterministic promotion: if Claude classified as any SEED_PLUMBING variant
+      // and we have a signed-delta phase2Class for this field, override it.
+      if (
+        (f.classification === 'SEED_PLUMBING' ||
+         f.classification === 'SEED_PLUMBING_WRITE_RACE' ||
+         f.classification === 'SEED_PLUMBING_STALE_SEED') &&
+        gapPhase2Map.has(f.proforma_row)
+      ) {
+        return { ...f, classification: gapPhase2Map.get(f.proforma_row)! };
+      }
+      return f;
+    });
+
+  return findings;
 }
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
