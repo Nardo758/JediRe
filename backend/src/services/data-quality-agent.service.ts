@@ -76,7 +76,7 @@ interface AgentRunResult {
 const PARSER_VERSION = '1.0.0';
 const MIN_CONFIDENCE = 0.6;
 
-const SEVERITY_MAP: Record<DqaClassification, DqaSeverity> = {
+export const SEVERITY_MAP: Record<DqaClassification, DqaSeverity> = {
   PARSER_MISS:                  'warning',
   PARSER_INCORRECT:             'critical',
   RANGE_ANOMALY:                'warning',
