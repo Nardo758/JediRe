@@ -108,6 +108,12 @@ unambiguous from source code alone.
 | `MC` | MISCLASSIFIED — code exists but reads wrong schema |
 | `n/a` | Not this module's primary or secondary channel per spec |
 
+**"Same D-fields as X.Y" shorthand:** Where a NOT_WIRED cell shares an identical 3-field
+evidence block with a previously documented cell (same missing import, same missing call,
+same wiring description), this document uses the shorthand "Same D-fields as Section X.Y"
+to satisfy the per-cell evidence requirement (Supplementary D) without verbatim repetition.
+The referenced section contains the complete 3-field block.
+
 ---
 
 ### 3.1 — `employer_expansion`
@@ -1028,42 +1034,12 @@ today. This is a gap (CE-01) but not a duplicate-injection risk.
 
 ## Section 11 — Phase 1 Fix Sequence
 
-Ordered by **leverage per file changed** (most matrix cells flipped per file touched),
-per Supplementary G.
+Ordered strictly by **leverage per file changed** (matrix cells flipped ÷ files touched),
+descending, per Supplementary G. Cell counts use one-cell-per-(subtype, module) logic.
 
 ---
 
-### Fix 1 — Wire `m35TrafficApiService` into `trafficPredictionEngine.ts`
-
-**Finding:** EP-01
-**Files:** `backend/src/services/trafficPredictionEngine.ts` (primary) · `backend/src/jobs/trafficCalibrationJob.ts` (secondary)
-**Line ranges:** `trafficPredictionEngine.ts:11–25` (imports) · trajectory calculation section (location: wherever the 5 existing components are weighted) · `trafficCalibrationJob.ts` (baseline window exclusion call site)
-
-**Expected change shape:**
-```typescript
-// trafficPredictionEngine.ts
-import { m35TrafficApiService } from './m35-traffic-api.service';
-
-// In predict():
-const pipelineSignal = await m35TrafficApiService.computeEventPipelineSignal({
-  submarketId: property.submarket_id,
-  msaId: property.msa_id,
-  horizonMonths: 18,
-});
-// Add as 6th weighted component (weight: 0.15)
-trajectory = (existingWeightedSum × 0.85) + (pipelineSignal × 0.15);
-
-// trafficCalibrationJob.ts
-const exclusionWindows = await m35TrafficApiService.getActiveEvents({ … });
-// Filter calibration observations outside exclusion windows
-```
-
-**Matrix cells flipped:** 10 (all M07 NOT_WIRED cells for M07-primary subtypes)
-**Leverage:** 10 cells / 2 files = 5.0
-
----
-
-### Fix 2 — Repoint `fetch_m35_event_forecast.ts` from `demand_events` to `key_events + event_forecasts`
+### Fix 1 — Repoint `fetch_m35_event_forecast.ts` from `demand_events` to `key_events + event_forecasts`
 
 **Finding:** EP-02
 **File:** `backend/src/agents/tools/fetch_m35_event_forecast.ts`
@@ -1097,20 +1073,20 @@ m35_available    ← true (when rows > 0)
 
 Tool name, input/output schema, and agent registration unchanged.
 
-**Matrix cells flipped:** 16 (all CA MISCLASSIFIED cells → WIRED)
-**Leverage:** 16 cells / 1 file = 16.0
+**Matrix cells flipped:** 16 (all 16 CA MISCLASSIFIED cells → WIRED)
+**Leverage:** 16 cells / 1 file = **16.0**
 
 ---
 
-### Fix 3 — Add `window_months → hold_year` bridge + wire M35 signal into `trajectory-engine.ts`
+### Fix 2 — Add `window_months → hold_year` bridge + wire M35 signal into `trajectory-engine.ts`
 
 **Finding:** EP-03, TM-03, FA-02
 **Files:** `backend/src/services/lius/trajectory-engine.ts` · new utility `backend/src/services/lius/m35-bridge.ts`
-**Line ranges:** `trajectory-engine.ts:84–87` (exit cap constant) · `trajectory-engine.ts:generateProjections()` (Year 1 spike injection site)
+**Line ranges:** `trajectory-engine.ts:84–87` (exit cap constant `−0.0025`) · `trajectory-engine.ts:generateProjections()` (Year 1 absorption spike injection site)
 
 **Expected change shape:**
 ```typescript
-// m35-bridge.ts (new)
+// m35-bridge.ts (new — resolves TM-03)
 export function windowToHoldYear(windowMonths: number): number {
   return Math.round(windowMonths / 12);  // 3→0(Y1), 12→1, 24→2, 36→3
 }
@@ -1119,19 +1095,53 @@ export function windowToHoldYear(windowMonths: number): number {
 import { m35TrafficApiService } from '../m35-traffic-api.service';
 import { windowToHoldYear } from './m35-bridge';
 
-// Replace hardcoded exit_cap_trajectory:
+// Replace hardcoded exit_cap_trajectory (line 84):
 const pipelineSignal = await m35TrafficApiService.computeEventPipelineSignal(location);
 const exitCapAdj = pipelineSignal * 0.0010;  // 100bps max swing from −1..+1 signal
-// Emit rate_delta primitive on exitCapRate line item
+// Emit rate_delta primitive on exitCapRate line item for affected hold years
 
-// For leaseUpAbsorption Year 1 spike:
-const deliveryEvents = await m35TrafficApiService.getActiveEvents({ subtype: 'multifamily_delivery' });
-const competingUnits = sum(deliveryEvents.map(e => e.magnitudeValue ?? 0));
-// Apply discrete_spike reduction proportional to competing units / subject units
+// For leaseUpAbsorption Year 1 discrete_spike (currently value: null):
+const deliveryEvents = await m35TrafficApiService.getActiveEvents({
+  subtype: 'multifamily_delivery', submarketId: deal.submarket_id,
+});
+const competingUnits = deliveryEvents.reduce((s, e) => s + (e.magnitudeValue ?? 0), 0);
+// Apply discrete_spike reduction proportional to competingUnits / subject.totalUnits
 ```
 
-**Matrix cells flipped:** 16 (all LIUS NOT_WIRED cells)
-**Leverage:** 16 cells / 2 files = 8.0
+**Matrix cells flipped:** 16 (all 16 LIUS NOT_WIRED cells — one per subtype)
+**Leverage:** 16 cells / 2 files = **8.0**
+
+---
+
+### Fix 3 — Wire `m35TrafficApiService` into `trafficPredictionEngine.ts` and `trafficCalibrationJob.ts`
+
+**Finding:** EP-01
+**Files:** `backend/src/services/trafficPredictionEngine.ts` (primary) · `backend/src/jobs/trafficCalibrationJob.ts` (secondary)
+**Line ranges:** `trafficPredictionEngine.ts:11–25` (add import) · trajectory calculation section (add 6th weighted component) · `trafficCalibrationJob.ts` (add baseline exclusion window call)
+
+**Expected change shape:**
+```typescript
+// trafficPredictionEngine.ts
+import { m35TrafficApiService } from './m35-traffic-api.service';
+
+// In predict():
+const pipelineSignal = await m35TrafficApiService.computeEventPipelineSignal({
+  submarketId: property.submarket_id,
+  msaId: property.msa_id,
+  horizonMonths: 18,
+});
+// Inject as 6th weighted component (weight: 0.15, per spec §3.1)
+trajectory = (existingWeightedSum × 0.85) + (pipelineSignal × 0.15);
+
+// trafficCalibrationJob.ts — Mechanism A: baseline exclusion
+const exclusionWindows = await m35TrafficApiService.getActiveEvents({
+  submarketId: submarket.id, status: ['in_progress', 'materialized'],
+});
+// Exclude calibration observations that fall within event materialization windows
+```
+
+**Matrix cells flipped:** 10 (all 10 M07 NOT_WIRED cells — one per M07-primary subtype)
+**Leverage:** 10 cells / 2 files = **5.0**
 
 ---
 
@@ -1139,11 +1149,11 @@ const competingUnits = sum(deliveryEvents.map(e => e.magnitudeValue ?? 0));
 
 **Finding:** EP-04
 **File:** `backend/src/services/proforma-adjustment.service.ts`
-**Line range:** Add M35 event lookups in the main `adjustmentPipeline()` or equivalent entry point
+**Line range:** Main adjustment pipeline entry point (before assumption finalization)
 
 **Expected change shape:**
 ```typescript
-// In proforma-adjustment.service.ts adjustment pipeline:
+// In proforma-adjustment.service.ts:
 const rentControlEvents = await pool.query(`
   SELECT magnitude_value, materialization_date, completion_date
   FROM key_events
@@ -1153,50 +1163,22 @@ const rentControlEvents = await pool.query(`
 `);
 if (rentControlEvents.rows.length > 0) {
   const maxAllowedGrowth = rentControlEvents.rows[0].magnitude_value;
-  // Apply level_reset: cap rent_growth assumption at maxAllowedGrowth
+  // level_reset: cap rent_growth assumption at legislated maximum
   assumptions.rentGrowth = Math.min(assumptions.rentGrowth, maxAllowedGrowth);
 }
 
 // Similar block for tax_abatement → opex_property_tax time-bounded reduction
+// using (completion_date − materialization_date) as abatement duration
 ```
 
-**Matrix cells flipped:** 4 (`rent_control_passage` M09 and `tax_abatement` M09 from PW → WIRED; + LIUS cells for same 2 subtypes if trajectory-engine.ts also updated)
-**Leverage:** 4 cells / 1 file = 4.0
+**Matrix cells flipped:** 4 — `rent_control_passage × M09` and `tax_abatement × M09`
+(PW → WIRED, 2 cells); `rent_control_passage × LIUS` and `tax_abatement × LIUS`
+(NW → WIRED, 2 cells — if `trajectory-engine.ts` is updated in tandem with Fix 2)
+**Leverage:** 4 cells / 1 file = **4.0**
 
 ---
 
-### Fix 5 — Wire M14 for `rate_move`, `recession_indicator`, multi-channel M14 pathways
-
-**Finding:** EP-05
-**File:** `backend/src/services/debt-advisor/rate-environment.service.ts` · `backend/src/services/cycle-intelligence.service.ts`
-**Line ranges:** Rate curve construction function · Phase determination function
-
-**Expected change shape:**
-```typescript
-// rate-environment.service.ts: after FRED curve fetch
-const rateMoveEvents = await pool.query(`
-  SELECT magnitude_value, materialization_date
-  FROM key_events
-  WHERE subtype = 'rate_move' AND status IN ('announced','in_progress')
-    AND msa_id = $msaId
-`);
-// Apply announced basis-point overlay to forward rate curve
-
-// cycle-intelligence.service.ts: phase override
-const recessionEvents = await pool.query(`
-  SELECT confidence FROM key_events
-  WHERE subtype = 'recession_indicator' AND status IN ('announced','in_progress','materialized')
-    AND msa_id = $msaId AND confidence >= 0.6
-`);
-if (recessionEvents.rows.length > 0) phase = 'Contraction';
-```
-
-**Matrix cells flipped:** 8 (`rate_move` M14, `recession_indicator` M14, `major_relocation_announcement` M14-pathway, `regional_shock` M14-pathway — each × 2 for the two M14 files)
-**Leverage:** 8 cells / 2 files = 4.0
-
----
-
-### Fix 6 — Wire M25 supply score from `event_forecasts` for supply subtypes
+### Fix 5 — Wire M25 supply score from `event_forecasts` for supply subtypes
 
 **Finding:** EP-07, FA-01
 **File:** `backend/src/services/jedi-score.service.ts`
@@ -1204,7 +1186,7 @@ if (recessionEvents.rows.length > 0) phase = 'Contraction';
 
 **Expected change shape:**
 ```typescript
-// Supplement existing news_events query with event_forecasts query:
+// Supplement the existing news_events query with an event_forecasts query:
 const m35Supply = await pool.query(`
   SELECT SUM(ef.point_estimate) as m35_units
   FROM event_forecasts ef
@@ -1214,26 +1196,33 @@ const m35Supply = await pool.query(`
     AND ef.metric_key IN ('deliveries','permits_issued','net_absorption_units')
     AND ef.status = 'active' AND ef.window_months = 12
 `);
-const m35Demolition = await pool.query(`…ke.subtype IN ('demolition','conversion')…`);
+const m35Demolition = await pool.query(`
+  SELECT SUM(ef.point_estimate) as m35_units
+  FROM event_forecasts ef JOIN key_events ke ON ke.id = ef.event_id
+  WHERE ke.subtype IN ('demolition','conversion')
+    AND ke.submarket_id = $submarket AND ef.status = 'active' AND ef.window_months = 12
+`);
+// Net pipeline: existing news_events count + M35 deliveries/permits − M35 demolitions
 const pipelineUnits = (supply.total_units || 0)
-  + (m35Supply.rows[0].m35_units || 0)
-  - (m35Demolition.rows[0].m35_units || 0);
+  + (parseFloat(m35Supply.rows[0].m35_units) || 0)
+  - (parseFloat(m35Demolition.rows[0].m35_units) || 0);
 ```
 
-**Matrix cells flipped:** 4 (`multifamily_delivery`, `multifamily_permit`, `demolition`, `conversion` × M25 — NW → WIRED)
-**Leverage:** 4 cells / 1 file = 4.0
+**Matrix cells flipped:** 4 — `multifamily_delivery × M25`, `multifamily_permit × M25`,
+`demolition × M25`, `conversion × M25` (all NW → WIRED)
+**Leverage:** 4 cells / 1 file = **4.0**
 
 ---
 
-### Fix 7 — Wire M03 for `entitlement_approval`, `zoning_upzoning`, `multifamily_permit`
+### Fix 6 — Wire M03 for `entitlement_approval`, `zoning_upzoning`, `multifamily_permit`
 
 **Finding:** EP-06
-**Files:** `backend/src/services/entitlement.service.ts` · `backend/src/services/zoning-recommendation-orchestrator.service.ts` (or equivalent)
-**Line ranges:** Feasibility pipeline entry points
+**Files:** `backend/src/services/entitlement.service.ts` · `backend/src/services/zoning-recommendation-orchestrator.service.ts`
+**Line ranges:** Feasibility pipeline entry point in each file
 
 **Expected change shape:**
 ```typescript
-// entitlement.service.ts: add competitive supply lookup
+// entitlement.service.ts — competitive supply from approved entitlements + permits
 const competitiveApprovals = await pool.query(`
   SELECT magnitude_value FROM key_events
   WHERE subtype IN ('entitlement_approval','multifamily_permit')
@@ -1242,30 +1231,72 @@ const competitiveApprovals = await pool.query(`
 `);
 // Pass sum(magnitude_value) as competitive_pipeline_units to envelope calculation
 
-// zoning-recommendation-orchestrator.service.ts: add upzoning lookup
+// zoning-recommendation-orchestrator.service.ts — upzoning density uplift
 const upzoningEvents = await pool.query(`
   SELECT magnitude_score FROM key_events
   WHERE subtype = 'zoning_upzoning' AND submarket_id = $submarket
+    AND status NOT IN ('draft','cancelled')
 `);
-// Pass magnitude_score as density_uplift_signal to HBU analysis
+// Pass magnitude_score (FAR delta) as density_uplift_signal to HBU analysis
 ```
 
-**Matrix cells flipped:** 6 (`entitlement_approval`, `zoning_upzoning`, `multifamily_permit` × M03 — NW → WIRED)
-**Leverage:** 6 cells / 2 files = 3.0
+**Matrix cells flipped:** 6 — `entitlement_approval × M03`, `zoning_upzoning × M03`,
+`multifamily_permit × M03` (all NW → WIRED, each counted once per subtype)
+**Leverage:** 6 cells / 2 files = **3.0**
+
+---
+
+### Fix 7 — Wire M14 for `rate_move`, `recession_indicator`, and M14 pathways of multi-channel subtypes
+
+**Finding:** EP-05
+**Files:** `backend/src/services/debt-advisor/rate-environment.service.ts` · `backend/src/services/cycle-intelligence.service.ts`
+**Line ranges:** Rate curve construction function in `rate-environment.service.ts` · Phase determination function in `cycle-intelligence.service.ts`
+
+**Expected change shape:**
+```typescript
+// rate-environment.service.ts — forward overlay for announced rate moves
+const rateMoveEvents = await pool.query(`
+  SELECT magnitude_value, materialization_date
+  FROM key_events
+  WHERE subtype = 'rate_move' AND status IN ('announced','in_progress')
+    AND msa_id = $msaId
+  ORDER BY materialization_date
+`);
+// Apply magnitude_value (basis points) as forward overlay on FRED rate curve
+// keyed to materialization_date
+
+// cycle-intelligence.service.ts — recession regime override
+const recessionEvents = await pool.query(`
+  SELECT confidence FROM key_events
+  WHERE subtype = 'recession_indicator'
+    AND status IN ('announced','in_progress','materialized')
+    AND msa_id = $msaId AND confidence >= 0.6
+  LIMIT 1
+`);
+if (recessionEvents.rows.length > 0) phase = 'Contraction';
+// Also apply major_relocation_announcement cap rate compression signal
+// and regional_shock insurance spread in their respective sub-functions
+```
+
+**Matrix cells flipped:** 4 — `rate_move × M14`, `recession_indicator × M14`,
+`major_relocation_announcement × M14` (M14 pathway), `regional_shock × M14` (M14 pathway)
+**Leverage:** 4 cells / 2 files = **2.0**
 
 ---
 
 ### Fix Sequence Summary
 
-| Fix | Finding(s) | Files | Cells flipped | Leverage |
-|---|---|---|---|---|
-| Fix 2 | EP-02 | 1 | 16 (CA: MC→WIRED) | **16.0** |
-| Fix 1 | EP-01 | 2 | 10 (M07: NW→WIRED) | 5.0 |
-| Fix 3 | EP-03, TM-03, FA-02 | 2 | 16 (LIUS: NW→WIRED) | 8.0 |
-| Fix 4 | EP-04 | 1 | 4 (M09: PW→WIRED) | 4.0 |
-| Fix 5 | EP-05 | 2 | 8 (M14: NW→WIRED) | 4.0 |
-| Fix 6 | EP-07, FA-01 | 1 | 4 (M25 supply: NW→WIRED) | 4.0 |
-| Fix 7 | EP-06 | 2 | 6 (M03: NW→WIRED) | 3.0 |
+| Rank | Fix | Finding(s) | Files | Cells flipped | Leverage |
+|---|---|---|---|---|---|
+| 1 | Fix 1 — CA schema repoint | EP-02 | 1 | 16 (CA: MC→WIRED) | **16.0** |
+| 2 | Fix 2 — LIUS M35 bridge | EP-03, TM-03, FA-02 | 2 | 16 (LIUS: NW→WIRED) | **8.0** |
+| 3 | Fix 3 — M07 wiring | EP-01 | 2 | 10 (M07: NW→WIRED) | **5.0** |
+| 4 | Fix 4 — M09 mutation | EP-04 | 1 | 4 (M09: PW→WIRED) | **4.0** |
+| 5 | Fix 5 — M25 supply score | EP-07, FA-01 | 1 | 4 (M25: NW→WIRED) | **4.0** |
+| 6 | Fix 6 — M03 devcap | EP-06 | 2 | 6 (M03: NW→WIRED) | **3.0** |
+| 7 | Fix 7 — M14 macro | EP-05 | 2 | 4 (M14: NW→WIRED) | **2.0** |
 
 **Total cell flips if all 7 fixes land:** 64 of 66 NOT_WIRED/MISCLASSIFIED cells.
-The remaining 2 are TM-01 (decay on JEDI M25 weight) and CS-02 (directionality in contraction weight) — both minor and handled as P2/P3 follow-up improvements.
+The remaining 2 are TM-01 (temporal decay on JEDI M25 weight — P2) and CS-02
+(directionality loss in employer_contraction weight override — P3); both are
+improvement-class findings addressed as follow-on items after the primary wiring fixes.
