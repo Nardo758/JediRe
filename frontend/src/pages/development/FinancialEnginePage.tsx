@@ -626,14 +626,17 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   }, []);
 
   // ── Deal Journey — DQA finding count for State A ─────────────────────────
+  // Endpoint: GET /api/v1/deals/:dealId/data-quality-alerts
+  // Default query already filters status != 'dismissed' server-side.
   useEffect(() => {
     if (!resolvedDealId) return;
-    apiClient.get<{ alerts: Array<{ status: string }> }>(
-      `/api/v1/deals/${resolvedDealId}/dqa/alerts?limit=1000`
+    apiClient.get<{ success: boolean; total: number; alerts: Array<{ id: string; status: string }> }>(
+      `/api/v1/deals/${resolvedDealId}/data-quality-alerts`
     )
       .then((res) => {
-        const alerts = res.data?.alerts ?? [];
-        setJourneyDqaCount(alerts.filter(a => a.status !== 'dismissed').length);
+        // Use server-provided total (pre-filtered) when available; fall back to counting.
+        const total = res.data?.total ?? (res.data?.alerts ?? []).length;
+        setJourneyDqaCount(total);
       })
       .catch(() => {});
   }, [resolvedDealId]);
@@ -646,6 +649,11 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const dealJourney = useDealJourney(
     dealStoreCtx.identity?.id === resolvedDealId ? dealStoreCtx : null,
     journeyDqaCount,
+    // Pass F9 per-year projections so path.yearByYear is composed from real model
+    // outputs (LOCKED) rather than synthetic assumption extrapolation.
+    (mergedFinancials ?? f9Financials)?.projections ?? null,
+    // Pass M07 traffic projection for leaseUpTimeline and effRentPerUnit enrichment.
+    (mergedFinancials ?? f9Financials)?.trafficProjection ?? null,
   );
 
   // ── Evidence Summary — fetch collision/confidence/tier stats ─────────────

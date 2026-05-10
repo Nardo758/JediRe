@@ -42,14 +42,15 @@ function deepLinkToTab(tabIndex: number, onClose: () => void): void {
 }
 
 function deepLinkToAssumptionsField(
-  fieldPath: string,
-  fieldLabel: string,
+  _fieldPath: string,
+  _fieldLabel: string,
   onClose: () => void,
 ): void {
+  // Navigate to the CONSOLE tab (Assumptions) where this lever lives.
+  // Field-level highlight within ConsoleHubTab is a Phase 2 addition (requires
+  // ConsoleHubTab to subscribe to a new custom event); for now, landing on the
+  // tab is the correct Phase 1 behaviour.
   window.dispatchEvent(new CustomEvent('fe-tab-change', { detail: TAB_CONSOLE }));
-  window.dispatchEvent(new CustomEvent('fe-evidence-click', {
-    detail: { path: fieldPath, label: fieldLabel },
-  }));
   onClose();
 }
 

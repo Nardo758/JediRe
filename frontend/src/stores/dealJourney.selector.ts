@@ -2,9 +2,9 @@
 // JEDI RE — dealJourney.selector.ts
 // ============================================================================
 //
-// `useDealJourney(ctx, dqaCount)` — React hook that composes a DealJourney
-// from an existing DealContext. Pure derived selector: no network calls, no
-// persistence.
+// `useDealJourney(ctx, dqaCount, projections?, trafficProjection?)` — React
+// hook that composes a DealJourney from an existing DealContext plus optional
+// per-year projection data from the F9 financial engine.
 //
 // `computeJourneyGap(stateA, stateB)` — pure function exported for unit tests.
 //
@@ -16,7 +16,11 @@
 //   stateB.targetNoi     = financial.outputs.noi (stabilized proforma build output)
 //                        | computed estimate as fallback (no build yet)
 //   stateB.exitCapRate   = financial.assumptions.exitCapRate.value
-//   path.yearByYear      = estimated from assumptions per year (M07 PENDING)
+//   stateB.yearOfStabilization = first year where projections[y].occupancy >= targetOccupancy
+//                              | heuristic from holdPeriod when projections absent
+//   path.yearByYear      = mapped from F9 projections when available (LOCKED)
+//                        | estimated from assumptions when projections absent
+//   path.leaseUpTimeline = from trafficProjection.leaseUp when available (M07)
 //
 // See docs/architecture/deal-journey-framework.md for the full spec.
 // ============================================================================
@@ -45,6 +49,37 @@ import type {
 } from './dealJourney.types';
 
 // ---------------------------------------------------------------------------
+// Minimal slice types for F9 projection data
+// (Avoids importing from financial-engine/types.ts to keep dependency clean)
+// ---------------------------------------------------------------------------
+
+/** Minimal per-year projection slice from F9DealFinancials.projections */
+export type ProjectionSlice = {
+  year: number;
+  noi: number;
+  occupancy: number | null;
+  /** Effective Gross Income — used to compute effRentPerUnit */
+  egi: number;
+  gpr: number;
+};
+
+/** Minimal traffic projection slice from F9DealFinancials.trafficProjection */
+export type TrafficProjectionSlice = {
+  yearly: Array<{
+    year: number;
+    vacancyPct: number | null;
+    occupancyPct: number | null;
+    effRent: number | null;
+    rentGrowthPct: number | null;
+  }>;
+  leaseUp: {
+    weeksTo90: number | null;
+    weeksTo93: number | null;
+    weeksTo95: number | null;
+  } | null;
+};
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
@@ -55,7 +90,7 @@ function safePct(num: number, den: number): number {
 
 /**
  * Derive which M-module contributed the platform layer for a lever, based on
- * the LayeredValue's source tag. Falls back to the provided default module.
+ * the LayeredValue's source tag.
  */
 function deriveEvidence(
   lv: LayeredValue<number>,
@@ -95,20 +130,18 @@ function weightedAvgRent(
   if (!existing || existing.unitMixProgram.length === 0) return marketRent;
   const totalUnits = existing.unitMixProgram.reduce((s, r) => s + r.count, 0);
   if (totalUnits === 0) return marketRent;
-  const totalRent = existing.unitMixProgram.reduce((s, r) => s + r.targetRent.value * r.count, 0);
+  const totalRent = existing.unitMixProgram.reduce(
+    (s, r) => s + r.targetRent.value * r.count, 0,
+  );
   return totalRent / totalUnits;
 }
 
 /** Detect whether a given source layer is present by scanning LayeredValue sources. */
-function detectSourceLayer(
-  lv: LayeredValue<number>,
-  tag: string,
-): boolean {
+function detectSourceLayer(lv: LayeredValue<number>, tag: string): boolean {
   if ((lv.source ?? '').toLowerCase().includes(tag)) return true;
   if ((lv.resolvedFrom ?? '').toLowerCase().includes(tag)) return true;
   const layers = lv.layers;
   if (!layers) return false;
-  // broker layer present implies broker source exists
   if (tag === 'broker' && layers.broker != null) return true;
   return false;
 }
@@ -127,6 +160,29 @@ function detectSourceLayers(
   };
 }
 
+/**
+ * Find the first projection year where occupancy reaches the stabilization
+ * target. Returns the last projection year if never reached.
+ * Falls back to a holdPeriod-derived heuristic when projections are absent.
+ */
+function findStabilizationYear(
+  projections: ProjectionSlice[] | null | undefined,
+  targetOccupancy: number,
+  holdPeriod: number,
+): number {
+  if (projections && projections.length > 0) {
+    for (const p of projections) {
+      if (p.occupancy != null && p.occupancy >= targetOccupancy) {
+        return p.year;
+      }
+    }
+    // Never reached threshold — return last year
+    return projections[projections.length - 1].year;
+  }
+  // Heuristic: typical lease-up is ~25% of hold period, bounded [1, 4]
+  return Math.min(Math.max(1, Math.ceil(holdPeriod * 0.25)), 4);
+}
+
 // ---------------------------------------------------------------------------
 // State A composer — current financial reality, source-document-grounded
 // ---------------------------------------------------------------------------
@@ -136,8 +192,8 @@ function composeStateA(ctx: DealContext, dqaFindingCount: number): JourneyStateA
     ? ctx.existingProperty
     : null;
 
-  // In-place NOI: from existing property docs or redevelopment delta — NOT the proforma build.
-  // Ground-up development deals start at NOI=0 (greenfield).
+  // In-place NOI: from existing property docs or redevelopment existing NOI.
+  // NOT the proforma build output. Ground-up development deals start at NOI=0.
   let noi = 0;
   if (isRedevelopmentDeal(ctx) && ctx.redevelopment?.existingNOI?.value != null) {
     noi = ctx.redevelopment.existingNOI.value;
@@ -149,7 +205,6 @@ function composeStateA(ctx: DealContext, dqaFindingCount: number): JourneyStateA
   const marketRent = ctx.market.avgRent.value ?? 0;
   const inPlaceRentPerUnit = weightedAvgRent(existing, marketRent);
 
-  // Expense ratio estimate from NOI/EGI — fallback to 40% when NOI is zero
   const totalUnits = ctx.totalUnits ?? 0;
   const estimatedGoi = totalUnits > 0
     ? inPlaceRentPerUnit * totalUnits * occupancy * 12
@@ -158,7 +213,6 @@ function composeStateA(ctx: DealContext, dqaFindingCount: number): JourneyStateA
     ? 1 - safePct(noi, estimatedGoi)
     : 0.40;
 
-  // CapEx backlog = capexPerUnit × totalUnits
   const capexLv: LayeredValue<number> = {
     ...ctx.financial.assumptions.capexPerUnit,
     value: ctx.financial.assumptions.capexPerUnit.value * totalUnits,
@@ -183,31 +237,37 @@ function composeStateA(ctx: DealContext, dqaFindingCount: number): JourneyStateA
 // State B composer — stabilized underwriting target
 // ---------------------------------------------------------------------------
 
-function composeStateB(ctx: DealContext): JourneyStateB {
+function composeStateB(
+  ctx: DealContext,
+  projections: ProjectionSlice[] | null | undefined,
+): JourneyStateB {
   const a = ctx.financial.assumptions;
+  const vacancyPct = a.vacancy.value ?? 0.05;
+  const targetOccupancy = 1 - vacancyPct;
+  const holdPeriod = a.holdPeriod.value ?? 10;
 
-  // Year of stabilization: estimated from hold period (no M07 in DealContext for Phase 1)
-  // When M07 is wired, this should read from ctx.traffic.trafficProjection.leaseUp.weeksTo95
-  const yearOfStabilization = 2; // conservative default; M07 fills this in Phase 3
+  // yearOfStabilization: first year projections reach targetOccupancy.
+  // When projections are absent, use holdPeriod-derived heuristic.
+  const yearOfStabilization = findStabilizationYear(
+    projections,
+    targetOccupancy,
+    holdPeriod,
+  );
 
   // Stabilized target rent = market rent grown to stabilization year
   const marketRent = ctx.market.avgRent.value ?? 0;
   const rentGrowth = a.rentGrowth.value ?? 0;
   const targetRentPerUnit = marketRent * Math.pow(1 + rentGrowth, yearOfStabilization);
 
-  const targetOccupancy = a.vacancy.value != null ? 1 - a.vacancy.value : 0.95;
-
-  // Target NOI: canonical source is financial.outputs.noi (the stabilized proforma build result).
+  // Target NOI: canonical source is financial.outputs.noi (the stabilized proforma build).
   // When the model hasn't been built yet, estimate from unit mix + assumptions.
   let targetNoi: number;
   if (ctx.financial.outputs?.noi != null && ctx.financial.outputs.noi > 0) {
-    // The build model output IS the stabilized NOI — use it directly.
     targetNoi = ctx.financial.outputs.noi;
   } else {
-    // Fallback: estimate from unit mix and assumptions (pre-build state)
     const totalUnits = ctx.totalUnits ?? 0;
     const managementFee = a.managementFee.value ?? 0.04;
-    const estimatedOpexRatio = managementFee + 0.28; // mgmt + typical fixed opex
+    const estimatedOpexRatio = managementFee + 0.28;
     const estimatedEgi = totalUnits * targetRentPerUnit * targetOccupancy * 12;
     targetNoi = estimatedEgi * (1 - estimatedOpexRatio);
   }
@@ -222,7 +282,7 @@ function composeStateB(ctx: DealContext): JourneyStateB {
     targetRentPerUnit,
     targetExpenseRatio,
     exitCapRate: a.exitCapRate.value ?? 0.055,
-    holdPeriodYears: a.holdPeriod.value ?? 10,
+    holdPeriodYears: holdPeriod,
     yearOfStabilization,
   };
 }
@@ -256,46 +316,84 @@ export function computeJourneyGap(
 }
 
 // ---------------------------------------------------------------------------
-// Path composer — year-by-year trajectory (Phase 1: assumptions-based estimates)
+// Path composer — year-by-year trajectory
+// LOCKED: maps from F9 projections when available.
+// Fallback: estimates from assumptions when projections are absent.
 // ---------------------------------------------------------------------------
 
-function composePath(ctx: DealContext): JourneyPath {
+function composePath(
+  ctx: DealContext,
+  projections: ProjectionSlice[] | null | undefined,
+  trafficProjection: TrafficProjectionSlice | null | undefined,
+): JourneyPath {
   const holdPeriod = ctx.financial.assumptions.holdPeriod.value ?? 10;
   const vacancyPct = ctx.financial.assumptions.vacancy.value ?? 0.05;
   const rentGrowth = ctx.financial.assumptions.rentGrowth.value ?? 0;
   const expenseGrowth = ctx.financial.assumptions.expenseGrowth.value ?? 0;
+  const totalUnits = ctx.totalUnits ?? 1;
   const marketRent = ctx.market.avgRent.value ?? 0;
 
-  // Year 1 NOI from the proforma build output; 0 if not yet built.
-  const noiY1 = ctx.financial.outputs?.noi ?? 0;
+  let yearly: JourneyPathYear[];
 
-  const yearly: JourneyPathYear[] = [];
-  for (let y = 1; y <= Math.max(1, holdPeriod); y++) {
-    const effRentPerUnit = marketRent * Math.pow(1 + rentGrowth, y);
-    const occupancy = 1 - vacancyPct;
-    // Project NOI forward from Y1 using a rent-growth / expense-growth blend
-    const noiAtYear = noiY1 > 0
-      ? noiY1 * Math.pow(1 + rentGrowth - expenseGrowth * 0.5, y - 1)
-      : 0;
+  if (projections && projections.length > 0) {
+    // LOCKED path: compose from existing F9 per-year projection outputs.
+    // Trim to holdPeriod years.
+    const trafficByYear = new Map(
+      (trafficProjection?.yearly ?? []).map(ty => [ty.year, ty]),
+    );
 
-    yearly.push({
-      year: y,
-      noi: noiAtYear,
-      occupancy,
-      effRentPerUnit,
-      rentGrowthPct: rentGrowth,
-      vacancyPct,
-      // confidenceBand: undefined — PENDING M07 percentile output
-    });
+    yearly = projections
+      .filter(p => p.year <= Math.max(1, holdPeriod))
+      .map(p => {
+        const traffic = trafficByYear.get(p.year);
+        // effRentPerUnit: use M07 effRent when available; compute from EGI fallback.
+        const effRentPerUnit = traffic?.effRent != null
+          ? traffic.effRent
+          : (totalUnits > 0 && p.egi > 0 ? p.egi / (totalUnits * 12) : marketRent);
+        const rentGrowthPct = traffic?.rentGrowthPct ?? rentGrowth;
+        const vacPct = traffic?.vacancyPct ?? vacancyPct;
+
+        return {
+          year: p.year,
+          noi: p.noi,
+          occupancy: p.occupancy ?? (1 - vacPct),
+          effRentPerUnit,
+          rentGrowthPct,
+          vacancyPct: vacPct,
+          // confidenceBand: undefined — PENDING M07 percentile output
+        };
+      });
+  } else {
+    // Fallback: synthetic path from assumptions + NOI output.
+    const noiY1 = ctx.financial.outputs?.noi ?? 0;
+    yearly = [];
+    for (let y = 1; y <= Math.max(1, holdPeriod); y++) {
+      const effRentPerUnit = marketRent * Math.pow(1 + rentGrowth, y);
+      const occupancy = 1 - vacancyPct;
+      const noiAtYear = noiY1 > 0
+        ? noiY1 * Math.pow(1 + rentGrowth - expenseGrowth * 0.5, y - 1)
+        : 0;
+      yearly.push({
+        year: y,
+        noi: noiAtYear,
+        occupancy,
+        effRentPerUnit,
+        rentGrowthPct: rentGrowth,
+        vacancyPct,
+        // confidenceBand: undefined — PENDING M07 percentile output
+      });
+    }
   }
+
+  // Lease-up timeline: from M07 trafficProjection.leaseUp when available.
+  const leaseUp = trafficProjection?.leaseUp ?? null;
 
   return {
     yearByYear: yearly,
     leaseUpTimeline: {
-      // PENDING: M07 backend wiring; null until that ships
-      weeksTo90: null,
-      weeksTo93: null,
-      weeksTo95: null,
+      weeksTo90: leaseUp?.weeksTo90 ?? null,
+      weeksTo93: leaseUp?.weeksTo93 ?? null,
+      weeksTo95: leaseUp?.weeksTo95 ?? null,
     },
     // eventAdjustedTrajectory: undefined — PENDING M35 integration
     // pathConfidence: undefined — PENDING M38 build
@@ -378,26 +476,34 @@ function composeScoreTrajectory(ctx: DealContext): JourneyScoreTrajectory {
 /**
  * Compose a DealJourney from an existing DealContext.
  *
- * @param ctx  DealContext from useDealStore (null = not yet loaded or deal
- *             identity doesn't match resolvedDealId)
+ * @param ctx  DealContext from useDealStore. null = not yet loaded or deal
+ *             identity doesn't match resolvedDealId.
  * @param dqaFindingCount  Count of active (non-dismissed) DQA alerts on State A
- *   inputs, fetched from /api/v1/deals/:id/dqa/alerts by the caller. Pass 0
- *   when not yet loaded.
+ *   inputs, fetched from /api/v1/deals/:id/data-quality-alerts by the caller.
+ *   Pass 0 when not yet loaded.
+ * @param projections  Optional per-year projection array from
+ *   F9DealFinancials.projections (mergedFinancials or f9Financials). When
+ *   provided, path.yearByYear is composed from real model outputs (LOCKED).
+ *   When absent, falls back to synthetic assumption extrapolation.
+ * @param trafficProjection  Optional M07 traffic projection from
+ *   F9DealFinancials.trafficProjection. When provided, leaseUpTimeline and
+ *   effRentPerUnit in path.yearByYear are enriched with M07 data.
  *
- * @returns Memoized DealJourney — recomputed only when ctx or dqaFindingCount
- *   changes. Returns null when ctx is null.
+ * @returns Memoized DealJourney — null when ctx is null.
  */
 export function useDealJourney(
   ctx: DealContext | null,
   dqaFindingCount: number = 0,
+  projections?: ProjectionSlice[] | null,
+  trafficProjection?: TrafficProjectionSlice | null,
 ): DealJourney | null {
   return useMemo(() => {
     if (!ctx) return null;
 
     const stateA = composeStateA(ctx, dqaFindingCount);
-    const stateB = composeStateB(ctx);
+    const stateB = composeStateB(ctx, projections);
     const gap = computeJourneyGap(stateA, stateB);
-    const path = composePath(ctx);
+    const path = composePath(ctx, projections, trafficProjection);
     const levers = composeLevers(ctx);
     const strategyFrame = composeStrategyFrame(ctx);
     const scoreTrajectory = composeScoreTrajectory(ctx);
@@ -415,5 +521,5 @@ export function useDealJourney(
     };
 
     return journey;
-  }, [ctx, dqaFindingCount]);
+  }, [ctx, dqaFindingCount, projections, trafficProjection]);
 }
