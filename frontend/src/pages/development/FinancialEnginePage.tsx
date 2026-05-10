@@ -628,18 +628,21 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   // ── Deal Journey — DQA finding count for State A ─────────────────────────
   useEffect(() => {
     if (!resolvedDealId) return;
-    apiClient.get(`/api/v1/deals/${resolvedDealId}/dqa/alerts?limit=1000`)
-      .then((res: any) => {
-        const alerts: any[] = res?.data?.alerts ?? [];
-        setJourneyDqaCount(alerts.filter((a: any) => a.status !== 'dismissed').length);
+    apiClient.get<{ alerts: Array<{ status: string }> }>(
+      `/api/v1/deals/${resolvedDealId}/dqa/alerts?limit=1000`
+    )
+      .then((res) => {
+        const alerts = res.data?.alerts ?? [];
+        setJourneyDqaCount(alerts.filter(a => a.status !== 'dismissed').length);
       })
       .catch(() => {});
   }, [resolvedDealId]);
 
   // ── Deal Journey — compose from dealStore context ─────────────────────────
-  // The dealStore state IS the DealContext (INITIAL_CONTEXT: DealContext in dealStore.ts).
-  // We cast to DealContext so useDealJourney can compose the journey view.
-  const dealStoreCtx = useDealStore(s => s as unknown as DealContext);
+  // The Zustand store state IS typed as DealContext (INITIAL_CONTEXT: DealContext).
+  // DealContext & DealStoreActions is a structural supertype of DealContext,
+  // so the single-level cast is always safe — no unknown intermediary needed.
+  const dealStoreCtx = useDealStore(s => s as DealContext);
   const dealJourney = useDealJourney(
     dealStoreCtx.identity?.id === resolvedDealId ? dealStoreCtx : null,
     journeyDqaCount,

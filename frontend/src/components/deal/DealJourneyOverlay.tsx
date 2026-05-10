@@ -5,23 +5,53 @@
 // Journey overlay surface — Phase 1 UI.
 //
 // Three sections:
-//  1. State A → State B summary card — "the bet" in one frame
-//  2. Path table — year-by-year trajectory
-//  3. Levers panel — assumption set with evidence provenance + stance modulators
+//  1. The Bet — State A → State B summary card
+//  2. Path — year-by-year trajectory table
+//  3. Levers — assumption set with evidence provenance + stance modulators
 //
-// PENDING slots show a "calibration in progress" chip rather than
-// hiding the section — so the operator can see what's coming.
+// Deep-links:
+//  - Lever row click → CONSOLE tab (index 1) + fe-evidence-click for field focus
+//  - Strategy frame click → OVERVIEW tab (index 0)
+//  - Path year row click → PROJECTIONS tab (index 3)
 //
-// Architecture:
-//  - Receives a computed DealJourney (from useDealJourney selector)
-//  - No own data fetching — parent passes the journey
-//  - Bloomberg-style dark terminal aesthetic (BT tokens)
+// PENDING slots show a "calibration in progress" chip.
+//
+// Bloomberg-style dark terminal aesthetic (BT tokens).
 // ============================================================================
 
 import React, { useState, useCallback } from 'react';
 import { BT, MONO, Bd } from './bloomberg-ui';
-import type { DealJourney, JourneyLevers } from '../../stores/dealJourney.types';
+import type { DealJourney } from '../../stores/dealJourney.types';
 import type { FinancialContext } from '../../stores/dealContext.types';
+
+// ---------------------------------------------------------------------------
+// Tab index constants (must match FinancialEnginePage BUILTIN_TAB_LABELS order)
+// ---------------------------------------------------------------------------
+
+const TAB_OVERVIEW = 0;
+const TAB_CONSOLE = 1;   // Assumptions / Deal Terms
+const TAB_PROJECTIONS = 3;
+
+// ---------------------------------------------------------------------------
+// Deep-link helpers — dispatch events already wired in FinancialEnginePage
+// ---------------------------------------------------------------------------
+
+function deepLinkToTab(tabIndex: number, onClose: () => void): void {
+  window.dispatchEvent(new CustomEvent('fe-tab-change', { detail: tabIndex }));
+  onClose();
+}
+
+function deepLinkToAssumptionsField(
+  fieldPath: string,
+  fieldLabel: string,
+  onClose: () => void,
+): void {
+  window.dispatchEvent(new CustomEvent('fe-tab-change', { detail: TAB_CONSOLE }));
+  window.dispatchEvent(new CustomEvent('fe-evidence-click', {
+    detail: { path: fieldPath, label: fieldLabel },
+  }));
+  onClose();
+}
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -37,15 +67,9 @@ function fmtPct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
 }
 
-function fmtPp(n: number): string {
-  return `${n >= 0 ? '+' : ''}${n.toFixed(1)}pp`;
-}
-
-function fmtDelta(n: number, type: 'dollar' | 'pct' | 'pp'): string {
+function fmtDelta(n: number, type: 'dollar' | 'pp'): string {
   const sign = n >= 0 ? '+' : '';
-  if (type === 'dollar') return `${sign}${fmt$(n)}`;
-  if (type === 'pct') return `${sign}${(n * 100).toFixed(1)}%`;
-  return `${sign}${n.toFixed(1)}pp`;
+  return type === 'dollar' ? `${sign}${fmt$(n)}` : `${sign}${n.toFixed(1)}pp`;
 }
 
 function gapColor(n: number): string {
@@ -55,7 +79,7 @@ function gapColor(n: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Calibration pending chip
+// Small shared components
 // ---------------------------------------------------------------------------
 
 function PendingChip({ label }: { label: string }) {
@@ -71,10 +95,6 @@ function PendingChip({ label }: { label: string }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// DQA badge
-// ---------------------------------------------------------------------------
-
 function DqaBadge({ count }: { count: number }) {
   if (count === 0) return null;
   return (
@@ -87,10 +107,6 @@ function DqaBadge({ count }: { count: number }) {
     </span>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Section header
-// ---------------------------------------------------------------------------
 
 function SectionHeader({ title, sub }: { title: string; sub?: string }) {
   return (
@@ -145,9 +161,7 @@ function MetricRow({
       <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, color: BT.text.primary }}>
         {aVal}
       </span>
-      <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, textAlign: 'center' }}>
-        →
-      </span>
+      <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, textAlign: 'center' }}>→</span>
       <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.amber }}>
         {bVal}
       </span>
@@ -159,23 +173,54 @@ function MetricRow({
 }
 
 // ---------------------------------------------------------------------------
-// Section 1 — State A → State B card
+// Section 1 — The Bet: State A → State B
 // ---------------------------------------------------------------------------
 
-function StateBetCard({ journey }: { journey: DealJourney }) {
+function StateBetCard({
+  journey,
+  onClose,
+}: {
+  journey: DealJourney;
+  onClose: () => void;
+}) {
   const { stateA, stateB, gap } = journey;
-
   const dqaCount = stateA.dataQualityFindings;
   const strategyLabel = journey.strategyFrame.detectedStrategy
     ? journey.strategyFrame.detectedStrategy.replace(/_/g, ' ').toUpperCase()
     : 'UNSET';
 
+  const handleStrategyClick = useCallback(() => {
+    deepLinkToTab(TAB_OVERVIEW, onClose);
+  }, [onClose]);
+
   return (
     <div>
       <SectionHeader
         title="THE BET — STATE A → STATE B"
-        sub={`Strategy: ${strategyLabel} · Hold: ${stateB.holdPeriodYears}yr · Stab: Y${stateB.yearOfStabilization}`}
+        sub={`Hold: ${stateB.holdPeriodYears}yr · Stab: Y${stateB.yearOfStabilization}`}
       />
+
+      {/* Strategy frame — clickable deep-link to OVERVIEW tab */}
+      <div
+        onClick={handleStrategyClick}
+        title="Click to open Strategy tab"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '5px 14px',
+          background: BT.bg.panel,
+          borderBottom: `1px solid ${BT.border.subtle}`,
+          cursor: 'pointer',
+        }}
+      >
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>STRATEGY FRAME:</span>
+        <Bd c={BT.met.financial}>{strategyLabel}</Bd>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+          ARB GAP {journey.strategyFrame.arbitrageGap.toFixed(1)}pts
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginLeft: 'auto' }}>
+          → open strategy overview
+        </span>
+      </div>
 
       {/* DQA alert banner */}
       {dqaCount > 0 && (
@@ -196,8 +241,7 @@ function StateBetCard({ journey }: { journey: DealJourney }) {
       <div style={{
         display: 'grid',
         gridTemplateColumns: '160px 1fr 32px 1fr 80px',
-        padding: '3px 14px',
-        gap: 8,
+        padding: '3px 14px', gap: 8,
         background: BT.bg.panel,
       }}>
         {['METRIC', 'STATE A', '', 'STATE B', 'GAP'].map((h, i) => (
@@ -218,7 +262,7 @@ function StateBetCard({ journey }: { journey: DealJourney }) {
         label="OCCUPANCY"
         aVal={fmtPct(stateA.occupancy)}
         bVal={fmtPct(stateB.targetOccupancy)}
-        delta={fmtPp(gap.occupancyUplift.points)}
+        delta={fmtDelta(gap.occupancyUplift.points, 'pp')}
         deltaColor={gapColor(gap.occupancyUplift.points)}
       />
       <MetricRow
@@ -233,7 +277,7 @@ function StateBetCard({ journey }: { journey: DealJourney }) {
         label="EXPENSE RATIO"
         aVal={fmtPct(stateA.expenseRatio)}
         bVal={fmtPct(stateB.targetExpenseRatio)}
-        delta={fmtPp(gap.expenseRatioChange.points)}
+        delta={fmtDelta(gap.expenseRatioChange.points, 'pp')}
         deltaColor={gapColor(-gap.expenseRatioChange.points)}
       />
       <MetricRow
@@ -261,20 +305,19 @@ function StateBetCard({ journey }: { journey: DealJourney }) {
             ? <Bd key={l} c={BT.accent.doc}>{l.toUpperCase()}</Bd>
             : <Bd key={l} c={BT.border.medium}>{l.toUpperCase()}</Bd>
         ))}
-        {stateA.propertyClass && (
-          <Bd c={BT.text.muted}>CLASS {stateA.propertyClass.toUpperCase()}</Bd>
-        )}
+        {stateA.propertyClass && <Bd c={BT.text.muted}>CLASS {stateA.propertyClass.toUpperCase()}</Bd>}
         {stateA.yearBuilt && (
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-            BUILT {stateA.yearBuilt}
-          </span>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>BUILT {stateA.yearBuilt}</span>
         )}
       </div>
 
       {/* Aggressiveness PENDING slot */}
       <div style={{ padding: '4px 14px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>AGGRESSIVENESS:</span>
-        <PendingChip label="M36 CALIBRATION IN PROGRESS" />
+        {journey.aggressiveness
+          ? <Bd c={BT.text.amber}>{journey.aggressiveness.band}</Bd>
+          : <PendingChip label="M36 CALIBRATION IN PROGRESS" />
+        }
       </div>
     </div>
   );
@@ -284,26 +327,34 @@ function StateBetCard({ journey }: { journey: DealJourney }) {
 // Section 2 — Path table
 // ---------------------------------------------------------------------------
 
-function PathTable({ journey }: { journey: DealJourney }) {
+function PathTable({
+  journey,
+  onClose,
+}: {
+  journey: DealJourney;
+  onClose: () => void;
+}) {
   const years = journey.path.yearByYear;
   const hasConfidenceBands = years.some(y => y.confidenceBand != null);
   const stabilizationYear = journey.stateB.yearOfStabilization;
-
   const leaseUp = journey.path.leaseUpTimeline;
   const hasLeaseUp = leaseUp.weeksTo90 != null || leaseUp.weeksTo93 != null || leaseUp.weeksTo95 != null;
+
+  const handleYearClick = useCallback(() => {
+    deepLinkToTab(TAB_PROJECTIONS, onClose);
+  }, [onClose]);
 
   return (
     <div>
       <SectionHeader
         title="PATH — YEAR-BY-YEAR TRAJECTORY"
-        sub={hasConfidenceBands ? 'with confidence bands' : ''}
+        sub={hasConfidenceBands ? 'with M07 confidence bands' : 'click row to open Projections tab'}
       />
 
-      {/* Lease-up timeline */}
+      {/* Lease-up timeline from M07 */}
       {hasLeaseUp && (
         <div style={{
-          padding: '5px 14px',
-          background: BT.bg.panel,
+          padding: '5px 14px', background: BT.bg.panel,
           borderBottom: `1px solid ${BT.border.subtle}`,
           display: 'flex', gap: 16, alignItems: 'center',
         }}>
@@ -330,8 +381,7 @@ function PathTable({ journey }: { journey: DealJourney }) {
       <div style={{
         display: 'grid',
         gridTemplateColumns: '40px 90px 80px 90px 70px 70px',
-        padding: '3px 14px',
-        gap: 8,
+        padding: '3px 14px', gap: 8,
         background: BT.bg.panel,
         borderBottom: `1px solid ${BT.border.subtle}`,
       }}>
@@ -347,16 +397,22 @@ function PathTable({ journey }: { journey: DealJourney }) {
       ) : years.map(y => (
         <div
           key={y.year}
+          onClick={handleYearClick}
+          title="Click to open Projections tab"
           style={{
             display: 'grid',
             gridTemplateColumns: '40px 90px 80px 90px 70px 70px',
-            padding: '4px 14px',
-            gap: 8,
+            padding: '4px 14px', gap: 8,
             borderBottom: `1px solid ${BT.border.subtle}`,
             background: y.year === stabilizationYear ? BT.bg.active : 'transparent',
+            cursor: 'pointer',
           }}
         >
-          <span style={{ fontFamily: MONO, fontSize: 9, color: y.year === stabilizationYear ? BT.text.teal : BT.text.muted, fontWeight: y.year === stabilizationYear ? 700 : 400 }}>
+          <span style={{
+            fontFamily: MONO, fontSize: 9,
+            color: y.year === stabilizationYear ? BT.text.teal : BT.text.muted,
+            fontWeight: y.year === stabilizationYear ? 700 : 400,
+          }}>
             Y{y.year}{y.year === stabilizationYear ? '★' : ''}
           </span>
           <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>{fmt$(y.noi)}</span>
@@ -373,7 +429,7 @@ function PathTable({ journey }: { journey: DealJourney }) {
         </div>
       ))}
 
-      {/* Confidence bands PENDING slot */}
+      {/* M07 confidence bands PENDING slot */}
       {!hasConfidenceBands && (
         <div style={{ padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>CONFIDENCE BANDS:</span>
@@ -397,21 +453,22 @@ function PathTable({ journey }: { journey: DealJourney }) {
 // Section 3 — Levers panel
 // ---------------------------------------------------------------------------
 
-type LeverKey = keyof FinancialContext['assumptions'];
-
-const LEVER_CONFIG: Array<{
-  key: LeverKey;
+// Lever config — each entry drives one row in the panel
+type LeverCfg = {
+  key: keyof FinancialContext['assumptions'];
   label: string;
   fmt: (v: number) => string;
-  goodDirection: 'high' | 'low' | 'neutral';
-}> = [
-  { key: 'rentGrowth', label: 'RENT GROWTH', fmt: (v) => fmtPct(v), goodDirection: 'high' },
-  { key: 'expenseGrowth', label: 'EXPENSE GROWTH', fmt: (v) => fmtPct(v), goodDirection: 'low' },
-  { key: 'vacancy', label: 'VACANCY', fmt: (v) => fmtPct(v), goodDirection: 'low' },
-  { key: 'exitCapRate', label: 'EXIT CAP RATE', fmt: (v) => fmtPct(v), goodDirection: 'low' },
-  { key: 'holdPeriod', label: 'HOLD PERIOD', fmt: (v) => `${v}yr`, goodDirection: 'neutral' },
-  { key: 'capexPerUnit', label: 'CAPEX / UNIT', fmt: (v) => fmt$(v), goodDirection: 'low' },
-  { key: 'managementFee', label: 'MGMT FEE', fmt: (v) => fmtPct(v), goodDirection: 'low' },
+  fieldPath: string;
+};
+
+const LEVER_CONFIG: LeverCfg[] = [
+  { key: 'rentGrowth', label: 'RENT GROWTH', fmt: fmtPct, fieldPath: 'financial.assumptions.rentGrowth' },
+  { key: 'expenseGrowth', label: 'EXPENSE GROWTH', fmt: fmtPct, fieldPath: 'financial.assumptions.expenseGrowth' },
+  { key: 'vacancy', label: 'VACANCY', fmt: fmtPct, fieldPath: 'financial.assumptions.vacancy' },
+  { key: 'exitCapRate', label: 'EXIT CAP RATE', fmt: fmtPct, fieldPath: 'financial.assumptions.exitCapRate' },
+  { key: 'holdPeriod', label: 'HOLD PERIOD', fmt: (v) => `${v}yr`, fieldPath: 'financial.assumptions.holdPeriod' },
+  { key: 'capexPerUnit', label: 'CAPEX / UNIT', fmt: fmt$, fieldPath: 'financial.assumptions.capexPerUnit' },
+  { key: 'managementFee', label: 'MGMT FEE', fmt: fmtPct, fieldPath: 'financial.assumptions.managementFee' },
 ];
 
 const EVIDENCE_COLORS: Record<string, string> = {
@@ -423,7 +480,18 @@ const EVIDENCE_COLORS: Record<string, string> = {
   platform_default: BT.text.muted,
 };
 
-function LeversPanel({ journey }: { journey: DealJourney }) {
+type JourneyLeverAssumptionKey = keyof Pick<
+  DealJourney['levers'],
+  'rentGrowth' | 'expenseGrowth' | 'vacancy' | 'exitCapRate' | 'holdPeriod' | 'capexPerUnit' | 'managementFee'
+>;
+
+function LeversPanel({
+  journey,
+  onClose,
+}: {
+  journey: DealJourney;
+  onClose: () => void;
+}) {
   const { levers } = journey;
   const stance = levers.stanceModulators;
 
@@ -431,15 +499,14 @@ function LeversPanel({ journey }: { journey: DealJourney }) {
     <div>
       <SectionHeader
         title="LEVERS — ASSUMPTION SET"
-        sub={stance ? `STANCE ACTIVE · ${stance.concessionStrategy} CONCESSIONS` : 'NO STANCE APPLIED'}
+        sub={stance ? `STANCE ACTIVE · ${stance.concessionStrategy} CONCESSIONS · click row to focus field` : 'click row to focus field in assumptions'}
       />
 
       {/* Column headers */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: '160px 80px 60px 80px 80px',
-        padding: '3px 14px',
-        gap: 8,
+        padding: '3px 14px', gap: 8,
         background: BT.bg.panel,
         borderBottom: `1px solid ${BT.border.subtle}`,
       }}>
@@ -448,9 +515,10 @@ function LeversPanel({ journey }: { journey: DealJourney }) {
         ))}
       </div>
 
-      {LEVER_CONFIG.map(({ key, label, fmt }) => {
-        const lv = levers[key as keyof typeof levers] as any;
-        if (!lv || lv.value == null) return null;
+      {LEVER_CONFIG.map(({ key, label, fmt, fieldPath }) => {
+        const lv = levers[key as JourneyLeverAssumptionKey];
+        if (lv.value == null) return null;
+
         const evidence = levers.perLeverEvidence[key];
         const resolvedLayer = lv.resolvedFrom ?? lv.source ?? 'platform';
         const layerColor = resolvedLayer === 'user' ? BT.accent.user
@@ -459,17 +527,20 @@ function LeversPanel({ journey }: { journey: DealJourney }) {
         const evidenceColor = evidence
           ? (EVIDENCE_COLORS[evidence.sourceModule] ?? BT.text.muted)
           : BT.text.muted;
+        const confidence = evidence?.sourceConfidence ?? lv.confidence ?? 0.5;
 
         return (
           <div
             key={key}
+            onClick={() => deepLinkToAssumptionsField(fieldPath, label, onClose)}
+            title={`Click to focus ${label} in Assumptions`}
             style={{
               display: 'grid',
               gridTemplateColumns: '160px 80px 60px 80px 80px',
-              padding: '5px 14px',
-              gap: 8,
+              padding: '5px 14px', gap: 8,
               borderBottom: `1px solid ${BT.border.subtle}`,
               alignItems: 'center',
+              cursor: 'pointer',
             }}
           >
             <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.4 }}>{label}</span>
@@ -483,20 +554,15 @@ function LeversPanel({ journey }: { journey: DealJourney }) {
               {evidence?.sourceModule ?? '—'}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div style={{
-                flex: 1, height: 3, borderRadius: 1,
-                background: BT.bg.terminal,
-                position: 'relative',
-              }}>
+              <div style={{ flex: 1, height: 3, borderRadius: 1, background: BT.bg.terminal, position: 'relative' }}>
                 <div style={{
                   position: 'absolute', left: 0, top: 0, bottom: 0,
-                  width: `${((evidence?.sourceConfidence ?? 0.5) * 100).toFixed(0)}%`,
-                  background: evidenceColor,
-                  borderRadius: 1,
+                  width: `${(confidence * 100).toFixed(0)}%`,
+                  background: evidenceColor, borderRadius: 1,
                 }} />
               </div>
               <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, minWidth: 28 }}>
-                {evidence ? `${((evidence.sourceConfidence) * 100).toFixed(0)}%` : '—'}
+                {`${(confidence * 100).toFixed(0)}%`}
               </span>
             </div>
           </div>
@@ -549,12 +615,11 @@ function LeversPanel({ journey }: { journey: DealJourney }) {
 }
 
 // ---------------------------------------------------------------------------
-// Journey Score bar
+// JEDI Score bar — always visible
 // ---------------------------------------------------------------------------
 
 function JourneyScoreBar({ journey }: { journey: DealJourney }) {
   const s = journey.scoreTrajectory;
-  const verdict = journey.strategyFrame.verdict;
   const score = s.scoreAtA;
   const scoreColor = score >= 70 ? BT.text.green : score >= 50 ? BT.text.amber : BT.text.red;
 
@@ -572,23 +637,23 @@ function JourneyScoreBar({ journey }: { journey: DealJourney }) {
         </span>
       </div>
       <div style={{ width: 1, height: 20, background: BT.border.medium }} />
-      <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5 }}>SCORE AT B</span>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginLeft: 6 }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
           {s.scoreAtB != null ? s.scoreAtB.toFixed(0) : '—'}
         </span>
         {s.scoreAtB == null && <PendingChip label="M25 EXTENSION" />}
       </div>
       <div style={{ flex: 1 }} />
       <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, fontStyle: 'italic' }}>
-        {verdict}
+        {journey.strategyFrame.verdict}
       </span>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Main component
+// Main exported component
 // ---------------------------------------------------------------------------
 
 export interface DealJourneyOverlayProps {
@@ -603,7 +668,11 @@ export function DealJourneyOverlay({ journey, onClose }: DealJourneyOverlayProps
     if (e.target === e.currentTarget) onClose();
   }, [onClose]);
 
-  const tabs = ['THE BET', 'PATH', 'LEVERS'];
+  const tabs: Array<{ label: string }> = [
+    { label: 'THE BET' },
+    { label: 'PATH' },
+    { label: 'LEVERS' },
+  ];
 
   return (
     <div
@@ -644,24 +713,21 @@ export function DealJourneyOverlay({ journey, onClose }: DealJourneyOverlayProps
           </span>
           <div style={{ flex: 1 }} />
 
-          {/* Section tabs */}
-          <div style={{ display: 'flex', gap: 2 }}>
-            {tabs.map((t, i) => (
-              <button
-                key={t}
-                onClick={() => setActiveSection(i as 0 | 1 | 2)}
-                style={{
-                  background: activeSection === i ? BT.bg.active : 'transparent',
-                  border: `1px solid ${activeSection === i ? BT.border.bright : BT.border.subtle}`,
-                  color: activeSection === i ? BT.text.white : BT.text.muted,
-                  fontFamily: MONO, fontSize: 9, fontWeight: activeSection === i ? 700 : 400,
-                  padding: '2px 10px', cursor: 'pointer', borderRadius: 2, letterSpacing: 0.5,
-                }}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+          {tabs.map(({ label }, i) => (
+            <button
+              key={label}
+              onClick={() => setActiveSection(i as 0 | 1 | 2)}
+              style={{
+                background: activeSection === i ? BT.bg.active : 'transparent',
+                border: `1px solid ${activeSection === i ? BT.border.bright : BT.border.subtle}`,
+                color: activeSection === i ? BT.text.white : BT.text.muted,
+                fontFamily: MONO, fontSize: 9, fontWeight: activeSection === i ? 700 : 400,
+                padding: '2px 10px', cursor: 'pointer', borderRadius: 2, letterSpacing: 0.5,
+              }}
+            >
+              {label}
+            </button>
+          ))}
 
           <div style={{ width: 1, height: 14, background: BT.border.medium, marginLeft: 4 }} />
 
@@ -681,9 +747,9 @@ export function DealJourneyOverlay({ journey, onClose }: DealJourneyOverlayProps
 
         {/* Scrollable body */}
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-          {activeSection === 0 && <StateBetCard journey={journey} />}
-          {activeSection === 1 && <PathTable journey={journey} />}
-          {activeSection === 2 && <LeversPanel journey={journey} />}
+          {activeSection === 0 && <StateBetCard journey={journey} onClose={onClose} />}
+          {activeSection === 1 && <PathTable journey={journey} onClose={onClose} />}
+          {activeSection === 2 && <LeversPanel journey={journey} onClose={onClose} />}
         </div>
 
         {/* Footer */}
