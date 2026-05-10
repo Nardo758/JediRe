@@ -1352,6 +1352,12 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
           err instanceof Error ? err.message : err
         );
       }
+      // Phase 2 DQA (Task #698): after reseed, auto-discover null year1 slots
+      // and classify any gaps as SEED_PLUMBING_WRITE_RACE or SEED_PLUMBING_STALE_SEED
+      // using per-field extraction_events timestamps. Fire-and-forget.
+      setImmediate(() => {
+        runDataQualityAgentAfterReseed(pool, dealId).catch(() => {});
+      });
     }
   }
 }

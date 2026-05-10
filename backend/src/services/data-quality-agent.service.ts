@@ -549,28 +549,31 @@ export async function runDataQualityAgent(
 }
 
 /**
- * Trigger the agent after a reseed, using the seed observability log's gap list
- * to focus on SEED_PLUMBING findings.
+ * Trigger the agent after a reseed to surface SEED_PLUMBING findings.
  *
- * Phase 2 active (Task #698): fetches per-field source write timestamps from
- * extraction_events and the seed write timestamp from deal_assumptions.updated_at,
- * then annotates each gap with sourceWriteTime, seedWriteTime, deltaSeconds, and
- * phase2Class before passing to runDataQualityAgent.  buildUserPrompt() renders
- * all four fields so Claude sees precise timing context when deciding SEED_PLUMBING
- * vs its WRITE_RACE / STALE_SEED sub-intent.  Task #696 will promote phase2Class
- * into a first-class classification enum value once the taxonomy ships.
+ * Phase 2 active (Task #698): callable with or without a pre-computed gap list.
+ *
+ * - When `knownGaps` is provided (caller has already identified null slots), it
+ *   is used directly.
+ * - When omitted (e.g. called from the post-reseed hook in data-router.ts), the
+ *   function auto-discovers gaps by comparing extraction capsule values against
+ *   the year1 slot for each AUDIT_ROWS_BY_DOCTYPE entry.
+ *
+ * In both cases, each gap is annotated with per-field extraction_events
+ * timestamps and a deterministic phase2Class (WRITE_RACE | STALE_SEED) before
+ * being passed to runDataQualityAgent, making the signed-delta classification
+ * authoritative in the persisted data_quality_alerts row.
  */
 export async function runDataQualityAgentAfterReseed(
   pool: Pool,
   dealId: string,
-  seedGaps: Array<{ field: string; slot: string }>
+  knownGaps?: Array<{ field: string; slot: string }>
 ): Promise<void> {
-  if (seedGaps.length === 0) return;
-
   const uploadedTypes = await detectUploadedDocumentTypes(pool, dealId);
+  if (uploadedTypes.length === 0) return;
 
-  // Fetch seed write time once (deal_assumptions.updated_at is the closest
-  // per-deal timestamp for when the seed pipeline last ran).
+  // Fetch seed write time once — deal_assumptions.updated_at is the closest
+  // per-deal timestamp for when the seed pipeline last ran.
   let seedWrittenAt: Date | null = null;
   try {
     const seedRes = await pool.query<{ updated_at: Date }>(
@@ -583,15 +586,23 @@ export async function runDataQualityAgentAfterReseed(
   }
 
   for (const documentType of uploadedTypes) {
-    const baseGaps = seedGaps.filter(g => {
-      const col = COLUMN_BY_DOCTYPE[documentType];
-      return col && g.slot === col;
-    });
+    const col = COLUMN_BY_DOCTYPE[documentType];
+    if (!col) continue;
+
+    // Determine the base gap list: use caller-supplied list if available,
+    // otherwise auto-discover by querying extraction capsule vs year1 slots.
+    let baseGaps: Array<{ field: string; slot: string }>;
+    if (knownGaps) {
+      baseGaps = knownGaps.filter(g => g.slot === col);
+    } else {
+      // Auto-discover: fields present in the extraction capsule whose year1 slot is null.
+      baseGaps = await discoverSeedGaps(pool, dealId, documentType);
+    }
     if (baseGaps.length === 0) continue;
 
     // Fetch per-field source write times from extraction_events (Phase 2).
     const fieldNames = baseGaps.map(g => g.field);
-    let writeTimes: Record<string, Date> = {};
+    let writeTimes: Record<string, Date | null> = {};
     try {
       writeTimes = await fetchFieldWriteTimes(pool, dealId, documentType, fieldNames);
     } catch {
@@ -604,7 +615,7 @@ export async function runDataQualityAgentAfterReseed(
       return {
         field:           g.field,
         slot:            g.slot,
-        sourceWriteTime: sourceDate   ? sourceDate.toISOString()   : null,
+        sourceWriteTime: sourceDate    ? sourceDate.toISOString()    : null,
         seedWriteTime:   seedWrittenAt ? seedWrittenAt.toISOString() : null,
         deltaSeconds:    delta,
         phase2Class:     classifyTimestampDelta(sourceDate, seedWrittenAt),
@@ -614,6 +625,79 @@ export async function runDataQualityAgentAfterReseed(
     setImmediate(() => {
       runDataQualityAgent(pool, { dealId, documentType, seedGaps: annotatedGaps }).catch(() => {});
     });
+  }
+}
+
+/**
+ * Auto-discover seed gaps for a document type: fields present in the extraction
+ * capsule whose corresponding year1 slot is null.  Used when no pre-computed
+ * gap list is available (post-reseed callsite in data-router.ts).
+ */
+async function discoverSeedGaps(
+  pool: Pool,
+  dealId: string,
+  documentType: string
+): Promise<Array<{ field: string; slot: string }>> {
+  const col  = COLUMN_BY_DOCTYPE[documentType];
+  const rows = AUDIT_ROWS_BY_DOCTYPE[documentType] ?? [];
+  if (!col || rows.length === 0) return [];
+
+  try {
+    const res = await pool.query<{ deal_data: Record<string, unknown>; year1: Record<string, unknown> | null }>(
+      `SELECT d.deal_data, da.year1
+         FROM deals d
+         LEFT JOIN deal_assumptions da ON da.deal_id = d.id
+        WHERE d.id = $1`,
+      [dealId]
+    );
+    if (res.rows.length === 0) return [];
+
+    const dealData = res.rows[0].deal_data ?? {};
+    const year1    = res.rows[0].year1    ?? {};
+
+    const capsuleKey = `extraction_${documentType.toLowerCase().replace(/_/g, '')}`;
+    const capsule    = (dealData[capsuleKey] as Record<string, unknown> | null) ?? {};
+    const brokerClaims = documentType === 'OM'
+      ? ((dealData.broker_claims as Record<string, unknown> | null) ?? {})
+      : {};
+    const proforma = (brokerClaims.proforma as Record<string, unknown> | null) ?? {};
+
+    const CAPSULE_KEY_MAP: Record<string, string[]> = {
+      gpr:                ['stabilizedGpr'],
+      vacancy_pct:        ['stabilizedVacancy'],
+      real_estate_tax:    ['realEstateTaxesAnnual', 'realEstateTax'],
+      contract_services:  ['contractServicesAnnual', 'contractServices'],
+      payroll:            ['payrollAnnual', 'payroll'],
+      repairs_maintenance: ['repairsMaintenanceAnnual', 'repairsMaintenance'],
+      turnover:           ['turnoverAnnual', 'turnover'],
+      marketing:          ['marketingAnnual', 'marketing'],
+      utilities:          ['utilitiesAnnual', 'utilities'],
+      insurance:          ['insuranceAnnual', 'insurance'],
+      management_fee_pct: ['managementFeePct'],
+      noi:                ['yearOneNOI', 'noi'],
+      other_income_total: ['otherIncomeTotal'],
+    };
+
+    const gaps: Array<{ field: string; slot: string }> = [];
+    for (const field of rows) {
+      // Check if extraction capsule or proforma has a value for this field.
+      const candidateKeys = CAPSULE_KEY_MAP[field] ?? [field];
+      const extractedValue = candidateKeys.reduce<unknown>(
+        (acc, k) => acc ?? capsule[k] ?? proforma[k],
+        undefined
+      );
+      if (extractedValue === null || extractedValue === undefined) continue;
+
+      // Check if the year1 slot is null (gap exists).
+      const year1Col = (year1 as Record<string, unknown>)[col] as Record<string, unknown> | null | undefined;
+      const slotValue = year1Col?.[field];
+      if (slotValue === null || slotValue === undefined) {
+        gaps.push({ field, slot: col });
+      }
+    }
+    return gaps;
+  } catch {
+    return [];
   }
 }
 

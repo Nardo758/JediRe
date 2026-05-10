@@ -201,16 +201,19 @@ export function classifyTimestampDelta(
     return 'SEED_PLUMBING_STALE_SEED';
   }
 
-  const seedMs   = seedWrittenAt.getTime();
-  const sourceMs = sourceWrittenAt.getTime();
+  const deltaSeconds = (seedWrittenAt.getTime() - sourceWrittenAt.getTime()) / 1000;
 
-  if (seedMs >= sourceMs) {
-    // Source was already written when seed ran — value should have been present.
-    // Pipeline dropped or failed to propagate it: WRITE_RACE.
+  // WRITE_RACE tolerance window: if seed and source were written within
+  // WRITE_RACE_WINDOW_SECONDS of each other (in either direction), treat as a
+  // concurrent-write race — the seeder may have snapshotted a null because the
+  // extraction transaction had not yet committed.
+  if (Math.abs(deltaSeconds) <= WRITE_RACE_WINDOW_SECONDS) {
     return 'SEED_PLUMBING_WRITE_RACE';
   }
 
-  // Seed ran before source was written — seeder couldn't find the value yet.
+  // Outside the window: seed ran well before or well after source.
+  // In both cases the seeder had a clear opportunity to read the value and
+  // failed to propagate it — an explicit re-seed is needed.
   return 'SEED_PLUMBING_STALE_SEED';
 }
 

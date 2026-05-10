@@ -168,6 +168,8 @@ ORDER BY agreement DESC, dqa.created_at DESC
 LIMIT 50;
 ```
 
-A low `MISMATCH` rate (< 5%) confirms Phase 1 proxy was acceptable. A high rate
-motivates wiring Phase 2 `fetchFieldWriteTimes()` into the DQA timestamp lookup
-(currently a Phase 2 TODO in `data-quality-agent.service.ts`).
+A low `MISMATCH` rate (< 5%) confirms the Phase 1 proxy was acceptable. A high rate
+indicates the signed-delta classification is meaningfully different from the proxy.
+Phase 2 field-level timestamps are now active (Task #698): `fetchFieldWriteTimes()`
+is wired into `runDataQualityAgentAfterReseed()` and all new findings are persisted
+with `SEED_PLUMBING_WRITE_RACE` or `SEED_PLUMBING_STALE_SEED` as appropriate.
