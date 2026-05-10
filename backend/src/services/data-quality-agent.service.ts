@@ -488,8 +488,9 @@ export interface SeedGap {
   /** Signed delta in seconds: positive = seed after source (WRITE_RACE territory),
    *  negative = seed before source (STALE_SEED territory). null when either timestamp unknown. */
   deltaSeconds:    number | null;
-  /** Pre-computed Phase 2 signed-delta classification. Passed as context to Claude;
-   *  Claude uses SEED_PLUMBING until Task #696 activates the specific sub-types. */
+  /** Pre-computed Phase 2 signed-delta classification (Task #698).
+   *  Passed to Claude as a hint; callAgent deterministically overrides any
+   *  SEED_PLUMBING* Claude output with this value via gapPhase2Map. */
   phase2Class:     'SEED_PLUMBING_WRITE_RACE' | 'SEED_PLUMBING_STALE_SEED';
 }
 
@@ -628,9 +629,21 @@ export async function runDataQualityAgentAfterReseed(
 }
 
 /**
- * Auto-discover seed gaps for a document type: fields present in the extraction
- * capsule whose corresponding year1 slot is null.  Used when no pre-computed
- * gap list is available (post-reseed callsite in data-router.ts).
+ * Auto-discover seed gaps for a document type: fields with an extraction_events
+ * row (source was written) whose corresponding year1 slot is null.  Used when
+ * no pre-computed gap list is available (post-reseed callsite in data-router.ts).
+ *
+ * Uses `extraction_events` as the "source present" oracle rather than the
+ * deals.deal_data capsule, which avoids per-doctype capsule key shape
+ * assumptions: OM capsules use camelCase parser keys (stabilizedGpr, etc.)
+ * while T12/RENT_ROLL/TAX_BILL capsules use normalized snake_case field names.
+ * extraction_events always uses the canonical snake_case field names that match
+ * AUDIT_ROWS_BY_DOCTYPE, making it safe across all four document types.
+ *
+ * Write-path note: deals.deal_data.broker_claims.proforma is the only
+ * broker-claims slot and is exclusively written by routeOM (data-router.ts).
+ * No GraphQL resolvers or manual-override REST endpoints write this path.
+ * Future manual-save UI routes MUST call emitExtractionEvents after writing.
  */
 async function discoverSeedGaps(
   pool: Pool,
@@ -642,65 +655,32 @@ async function discoverSeedGaps(
   if (!col || rows.length === 0) return [];
 
   try {
-    const res = await pool.query<{ deal_data: Record<string, unknown>; year1: Record<string, unknown> | null }>(
-      `SELECT d.deal_data, da.year1
-         FROM deals d
-         LEFT JOIN deal_assumptions da ON da.deal_id = d.id
-        WHERE d.id = $1`,
-      [dealId]
-    );
-    if (res.rows.length === 0) return [];
+    // Parallel: (1) fields that have been extracted for this doc type,
+    //           (2) current year1 snapshot from deal_assumptions.
+    const [eventsRes, assumptionsRes] = await Promise.all([
+      pool.query<{ field_name: string }>(
+        `SELECT DISTINCT field_name
+           FROM extraction_events
+          WHERE deal_id = $1 AND source_type = $2`,
+        [dealId, documentType]
+      ),
+      pool.query<{ year1: Record<string, unknown> | null }>(
+        `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+        [dealId]
+      ),
+    ]);
 
-    const dealData = res.rows[0].deal_data ?? {};
-    const year1    = res.rows[0].year1    ?? {};
-
-    // Static map keeps capsule keys aligned with deals.deal_data shape written
-    // by data-router.ts (extraction_t12, extraction_rent_roll, extraction_tax_bill,
-    // extraction_om). Do NOT use a replace() transform — it corrupts multi-word types.
-    const CAPSULE_KEY_BY_DOCTYPE: Record<string, string> = {
-      OM:        'extraction_om',
-      T12:       'extraction_t12',
-      RENT_ROLL: 'extraction_rent_roll',
-      TAX_BILL:  'extraction_tax_bill',
-    };
-    const capsuleKey = CAPSULE_KEY_BY_DOCTYPE[documentType] ?? `extraction_${documentType.toLowerCase()}`;
-    const capsule    = (dealData[capsuleKey] as Record<string, unknown> | null) ?? {};
-    const brokerClaims = documentType === 'OM'
-      ? ((dealData.broker_claims as Record<string, unknown> | null) ?? {})
-      : {};
-    const proforma = (brokerClaims.proforma as Record<string, unknown> | null) ?? {};
-
-    const CAPSULE_KEY_MAP: Record<string, string[]> = {
-      gpr:                ['stabilizedGpr'],
-      vacancy_pct:        ['stabilizedVacancy'],
-      real_estate_tax:    ['realEstateTaxesAnnual', 'realEstateTax'],
-      contract_services:  ['contractServicesAnnual', 'contractServices'],
-      payroll:            ['payrollAnnual', 'payroll'],
-      repairs_maintenance: ['repairsMaintenanceAnnual', 'repairsMaintenance'],
-      turnover:           ['turnoverAnnual', 'turnover'],
-      marketing:          ['marketingAnnual', 'marketing'],
-      utilities:          ['utilitiesAnnual', 'utilities'],
-      insurance:          ['insuranceAnnual', 'insurance'],
-      management_fee_pct: ['managementFeePct'],
-      noi:                ['yearOneNOI', 'noi'],
-      other_income_total: ['otherIncomeTotal'],
-    };
+    // Only consider fields that have a confirmed extraction_events row.
+    const fieldsWithSource = new Set(eventsRes.rows.map(r => r.field_name));
+    // year1 shape: { [field]: { [column]: value } }  e.g. year1.gpr.broker
+    // (confirmed by fetchProformaRowData: year1[row]?.[column])
+    const year1 = (assumptionsRes.rows[0]?.year1 ?? {}) as Record<string, unknown>;
 
     const gaps: Array<{ field: string; slot: string }> = [];
     for (const field of rows) {
-      // Check if extraction capsule or proforma has a value for this field.
-      const candidateKeys = CAPSULE_KEY_MAP[field] ?? [field];
-      const extractedValue = candidateKeys.reduce<unknown>(
-        (acc, k) => acc ?? capsule[k] ?? proforma[k],
-        undefined
-      );
-      if (extractedValue === null || extractedValue === undefined) continue;
-
-      // Check if the year1 slot is null (gap exists).
-      // year1 shape: { [field]: { [column]: value } }  e.g. year1.gpr.broker
-      // (confirmed by fetchProformaRowData line: year1[row]?.[column])
-      const year1Field = (year1 as Record<string, unknown>)[field] as Record<string, unknown> | null | undefined;
-      const slotValue = year1Field?.[col];
+      if (!fieldsWithSource.has(field)) continue; // no event → source not present for this doctype
+      const year1Field = year1[field] as Record<string, unknown> | null | undefined;
+      const slotValue  = year1Field?.[col];
       if (slotValue === null || slotValue === undefined) {
         gaps.push({ field, slot: col });
       }

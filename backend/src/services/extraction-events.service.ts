@@ -3,7 +3,7 @@
  *
  * Records per-field write timestamps in `extraction_events` so the Data Quality
  * Agent can use precise, field-level source-write times when classifying
- * SEED_PLUMBING_WRITE_RACE vs SEED_PLUMBING_STALE_SEED findings (Task #696).
+ * SEED_PLUMBING_WRITE_RACE vs SEED_PLUMBING_STALE_SEED findings (Task #698).
  *
  * Phase 1 used `deals.updated_at` as a coarse proxy — it fires on any deal edit,
  * not specifically on extraction writes. Phase 2 replaces that proxy with this

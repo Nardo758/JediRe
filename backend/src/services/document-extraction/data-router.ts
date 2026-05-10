@@ -757,8 +757,8 @@ async function routeOM(
   // precise field-level write timestamps instead of the coarse deals.updated_at
   // proxy. Fire-and-forget — errors must not block the extraction pipeline.
   // These events are consumed by fetchFieldWriteTimes() in extraction-events.service.ts,
-  // which replaces the deals.updated_at proxy in the DQA timestamp lookup once
-  // Task #696 wires the WRITE_RACE vs STALE_SEED classification into the service.
+  // which replaces the deals.updated_at proxy. discoverSeedGaps() uses the
+  // extraction_events table directly as the "source present" oracle (Task #698).
   setImmediate(() => {
     emitOmProformaEvents(pool, dealId, data.brokerProforma as Record<string, unknown>)
       .catch((err: unknown) => console.error('[ExtractionEvents] OM emit error:', err instanceof Error ? err.message : err));
