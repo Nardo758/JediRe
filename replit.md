@@ -40,6 +40,7 @@ JEDI RE is an AI-powered B2B real estate intelligence platform designed for inve
 -   **Deal Capsule Blueprint:** `docs/architecture/deal-capsule-blueprint.md`
 -   **F9 Proforma Spec:** `docs/architecture/f9-proforma-spec.md`
 -   **Rent Roll Analytics Framework Spec:** `docs/architecture/RENT_ROLL_ANALYTICS_FRAMEWORK.md`
+-   **Deal Journey Framework:** `docs/architecture/deal-journey-framework.md` — A→B semantic model composing DealContext fields into `DealJourney`. Types: `frontend/src/stores/dealJourney.types.ts`. Selector: `frontend/src/stores/dealJourney.selector.ts`. UI: `frontend/src/components/deal/DealJourneyOverlay.tsx` (JOURNEY button in Financial Engine header). Phase 1 LOCKED; PENDING: M36 aggressiveness, M07 confidence bands, M35 event path, M38 calibration.
 
 ## Architecture decisions
 

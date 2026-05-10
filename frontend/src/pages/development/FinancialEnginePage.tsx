@@ -21,6 +21,9 @@ import { apiClient } from '../../services/api.client';
 import { useDealStore } from '../../stores/dealStore';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
+import { useDealJourney } from '../../stores/dealJourney.selector';
+import { DealJourneyOverlay } from '../../components/deal/DealJourneyOverlay';
+import type { DealContext } from '../../stores/dealContext.types';
 
 // ── Safe array coercion — guards against the API returning objects/nulls ──────
 function toArr<T>(v: unknown): T[] {
@@ -409,6 +412,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const resolvedDealType: DealType = (propDealType as DealType) || 'existing';
 
   const [activeTab, setActiveTab] = useState(0);
+  const [showJourneyOverlay, setShowJourneyOverlay] = useState(false);
+  const [journeyDqaCount, setJourneyDqaCount] = useState(0);
   const [kpiLoading, setKpiLoading] = useState(false);
   const [building, setBuilding] = useState(false);
   const [assumptions, setAssumptions] = useState<ModelAssumptions | null>(null);
@@ -619,6 +624,26 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     // Route through dealStore event bus (consistent with assumption:changed pattern)
     useDealStore.getState().emitLeasingCostTreatmentChanged(t);
   }, []);
+
+  // ── Deal Journey — DQA finding count for State A ─────────────────────────
+  useEffect(() => {
+    if (!resolvedDealId) return;
+    apiClient.get(`/api/v1/deals/${resolvedDealId}/dqa/alerts?limit=1000`)
+      .then((res: any) => {
+        const alerts: any[] = res?.data?.alerts ?? [];
+        setJourneyDqaCount(alerts.filter((a: any) => a.status !== 'dismissed').length);
+      })
+      .catch(() => {});
+  }, [resolvedDealId]);
+
+  // ── Deal Journey — compose from dealStore context ─────────────────────────
+  // The dealStore state IS the DealContext (INITIAL_CONTEXT: DealContext in dealStore.ts).
+  // We cast to DealContext so useDealJourney can compose the journey view.
+  const dealStoreCtx = useDealStore(s => s as unknown as DealContext);
+  const dealJourney = useDealJourney(
+    dealStoreCtx.identity?.id === resolvedDealId ? dealStoreCtx : null,
+    journeyDqaCount,
+  );
 
   // ── Evidence Summary — fetch collision/confidence/tier stats ─────────────
   useEffect(() => {
@@ -1392,6 +1417,19 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
             fontFamily: MONO, fontSize: 9, padding: '2px 8px', cursor: 'pointer', borderRadius: 2,
           }}>EXPORT XLSX</button>
 
+          <button
+            onClick={() => setShowJourneyOverlay(true)}
+            disabled={!dealJourney}
+            title={dealJourney ? 'Open Deal Journey overlay (A→B framework)' : 'Loading deal context…'}
+            style={{
+              background: showJourneyOverlay ? '#00E5A020' : 'transparent',
+              border: `1px solid ${showJourneyOverlay ? '#00E5A0' : BT.border.medium}`,
+              color: showJourneyOverlay ? '#00E5A0' : dealJourney ? BT.text.secondary : BT.text.muted,
+              fontFamily: MONO, fontSize: 9, padding: '2px 8px', cursor: dealJourney ? 'pointer' : 'default',
+              borderRadius: 2, letterSpacing: 0.5, opacity: !dealJourney ? 0.4 : 1,
+            }}
+          >JOURNEY</button>
+
           <button onClick={handleBuildModel} disabled={building || !assumptions} style={{
             background: building ? BT.bg.active : BT.met.financial,
             border: 'none', color: building ? BT.text.muted : BT.bg.terminal,
@@ -1708,6 +1746,14 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       <style>{`
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
       `}</style>
+
+      {/* Deal Journey Overlay */}
+      {showJourneyOverlay && dealJourney && (
+        <DealJourneyOverlay
+          journey={dealJourney}
+          onClose={() => setShowJourneyOverlay(false)}
+        />
+      )}
     </div>
   );
 }
