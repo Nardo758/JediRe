@@ -1,0 +1,535 @@
+# Deal Journey Framework — Architecture Spec
+
+**Status:** Draft architecture spec — implementation contract for future build sessions
+**Owner:** Leon / JEDI RE
+**Pairs with:** `dealContext.types.ts` (existing Deal Capsule), `OPERATOR_STANCE_PHASE1_SPEC.md`, `ROADMAP_M36_M38.md`, `TRAFFIC_ENGINE_CALIBRATION_SPEC.md`, `Event_Impact_Engine_Spec.md`, `DATA_QUALITY_AGENT_SPEC.md`
+
+---
+
+## 1. Purpose
+
+The platform has substantial infrastructure for analyzing deals — Pro Forma columns (broker / T-12 / rent roll / platform), Assumptions (forward-looking levers), Year 1 (resolved first-year snapshot), Projections (multi-year forecast), Strategy Arbitrage (M08), JEDI Score (M25), Risk (M14), OperatorStance (meta-layer modulating Cashflow Agent discretion), and the in-progress M36 plausibility / M37 analog / M38 calibration stack.
+
+What's missing is a **unified semantic model** that names the underwriter's actual mental task: "this deal is at point A today; my thesis says it gets to point B; here's the path; here are the levers; here's how aggressive my path is." The data exists across modules; the framework that names and integrates it does not.
+
+This spec defines that framework. It introduces:
+
+- A **vocabulary** (State A, State B, Gap, Path, Levers, Aggressiveness, Strategy Frame, Calibration Confidence)
+- A **`DealJourney` unified object** that composes from existing `DealContext` fields
+- A **module contribution map** showing which existing modules fill which slots
+- **LOCKED / PENDING / NEW markers** so build work can be sequenced cleanly
+- **Calibration contracts** for M07 and M35 — what they must produce to fill PENDING slots
+
+The framework is primarily a documentation and integration layer. ~70% of the data already exists in the platform; the framework names and binds it together.
+
+---
+
+## 2. The Vocabulary
+
+Seven concepts, each defined against existing platform infrastructure.
+
+### State A — Current Financial Reality
+
+The AS-IS snapshot of the deal at acquisition (or the moment of analysis).
+
+- **What it is:** observed, measurable, source-document-grounded
+- **Defined by:** Pro Forma column values (Broker / T-12 / Rent Roll layers of `LayeredValue<T>`), DQA-protected for accuracy
+- **Characterized by metrics:** in-place NOI, occupancy, in-place rent vs market rent gap, expense ratios, deferred CapEx, age, condition class
+- **Existing source:** `FinancialContext.outputs` (when those outputs are computed from broker/T-12 layers without forward growth applied), `ExistingPropertyContext` (yearBuilt, totalUnits, occupancy, currentNOI, askingPrice, propertyClass), `MarketContext` (avgRent, avgOccupancy as the market reference for State A)
+
+### State B — Stabilized Underwriting Target
+
+The "to be" projection at stabilization — what the deal *becomes* if the thesis works.
+
+- **What it is:** assumed, forward-looking, the underwriter's commitment
+- **Defined by:** target stabilized assumption set + the resulting metric vector (target NOI, market rent achieved, normalized occupancy, normalized expenses, exit cap, hold period)
+- **Existing source:** `FinancialContext.assumptions` (the levers that *get to* B) + `FinancialContext.outputs` when computed forward at stabilization year. The platform already has primitive State A / State B in `RedevelopmentContext.existingNOI` and `projectedNOI`; the framework generalizes that pair to all deal types.
+
+### Gap (Δ)
+
+Quantified delta between A and B per metric. The size of the *bet* the underwriter is making.
+
+- **Examples:** "Rent +$300/unit (+17%)", "Occupancy +20pts (75% → 95%)", "$3M CapEx required to support B"
+- **Existing source:** *no first-class object today* — derivable from State A and State B but not surfaced as its own structure
+- **Status:** NEW. The `Gap` object is computed and surfaced for the first time in this framework.
+
+### Path — Year 1 through Year N
+
+The trajectory between A and B, year by year. The *shape* of how A becomes B over the hold period.
+
+- **What it is:** the multi-year time series of every projected metric, with confidence bands where calibrated
+- **Existing source:**
+  - `FinancialContext.outputs` per-year projections (Year 1, Year 2, ... Year N)
+  - `M07 trafficProjection.yearly[*]` (occupancy, walk-ins, tours, apps, leases per week, vacancyPct, effRent, rentGrowthPct per year)
+  - `M07 leaseUp.weeksTo90/93/95` (timeline of A→B for occupancy specifically)
+  - `M07 leasingSignals.confidence` (single confidence value today; asymmetric percentile bands PENDING per `PROJECTIONS_TRAFFIC_ENGINE_AUDIT.md`)
+- **Status:** Mostly LOCKED at the data level (per-year values exist), confidence bands PENDING
+
+### Levers — Assumptions
+
+The variables the underwriter moves to shape the path. Each lever has source layers (LayeredValue), platform default, evidence, and (after M36) an aggressiveness contribution.
+
+- **Existing source:** `FinancialContext.assumptions` exhaustively typed:
+  - `rentGrowth`, `expenseGrowth`, `vacancy`, `exitCapRate`, `holdPeriod`, `capexPerUnit`, `managementFee` — all `LayeredValue<number>`
+  - Plus deal-type-specific levers via `DevelopmentPath`, `RedevelopmentContext.delta`, `UnitMixRow.targetRent`
+- **Per-lever evidence:** sourced from M05 (Market) for rent growth, M07 (Traffic) for occupancy ramp, M04 (Supply) for vacancy adjustments, M26 (Tax) for tax assessment growth, etc.
+- **Status:** LOCKED at the data level (all levers exist as `LayeredValue<T>`), evidence-source provenance PENDING (per-lever `evidenceSourceModule` field is NEW)
+
+### Aggressiveness — Mahalanobis Score
+
+How "stretch" is the assumption set, given historical covariance? Quantifies the size of the bet.
+
+- **What it is:** scalar `d²` from M36 plausibility scoring (Mahalanobis distance from historical mean), with per-variable contribution decomposition
+- **Existing source:** M36 Σ engine — Phase A (heuristic Σ with hand-calibrated values) is in progress per `ROADMAP_M36_M38.md`. Phase B (empirical Σ from historical data) is sequenced next.
+- **Status:** PENDING M36 Phase A completion; the framework defines the slot, M36 fills it.
+
+### Strategy Frame — M08 Classification
+
+Which strategy archetype best matches this A→B path? Core / Core-Plus / Value-Add / Deep Value-Add / Distressed / Lease-Up / Ground-Up Dev / Redevelopment.
+
+- **Existing source:** `StrategyContext.selectedStrategy`, `scores` (per-strategy scoring), `arbitrageGap`, `verdict` — all live in `dealContext.types.ts`
+- **Status:** LOCKED. The framework names what already exists.
+
+### Calibration Confidence — M38 Reliability
+
+How accurately have the platform's predictions about paths like this one matched realized outcomes historically? The confidence the platform's path predictions deserve.
+
+- **Existing source:** M38 Calibration Ledger — not started per `ROADMAP_M36_M38.md` Phase E
+- **Status:** PENDING M38 build. Framework defines the slot.
+
+---
+
+## 3. Architectural Position
+
+```
+                ┌────────────────────────────────────────────────────────┐
+                │                  EXISTING DEAL CAPSULE                  │
+                │            (frontend/src/stores/dealContext.types.ts)   │
+                │                                                         │
+                │  DealContextBase: identity, productType, site, zoning,  │
+                │    operatorStance, market, supply, financial, capital,  │
+                │    strategy, scores, risk + 33 typed LayeredValue<T>    │
+                │    fields                                               │
+                │                                                         │
+                │  ExistingDealContext / DevelopmentDealContext /         │
+                │  RedevelopmentDealContext extend the base              │
+                └────────────────────────┬───────────────────────────────┘
+                                         │ source for journey composition
+                                         │
+                ┌────────────────────────▼───────────────────────────────┐
+                │              DEAL JOURNEY FRAMEWORK                     │
+                │                                                         │
+                │  DealJourney {                                          │
+                │    stateA       — composed from existing fields        │
+                │    stateB       — composed from assumptions + outputs  │
+                │    gap          — NEW: derived A↔B delta object        │
+                │    path         — yearly projections + M07 trajectory  │
+                │    levers       — FinancialContext.assumptions + meta  │
+                │    aggressiveness — PENDING M36                        │
+                │    strategyFrame  — StrategyContext (existing)         │
+                │    calibration  — PENDING M38                          │
+                │  }                                                      │
+                └────────────────────────┬───────────────────────────────┘
+                                         │ consumed by
+                                         │
+                ┌────────────────────────┼───────────────────────────────┐
+                │                        │                                │
+   ┌────────────▼────────────┐  ┌────────▼─────────┐  ┌──────────────────▼──┐
+   │  UI — Journey Overlay   │  │  CASHFLOW AGENT  │  │  RESEARCH AGENT     │
+   │  (NEW: cross-tab        │  │  (reads journey  │  │  (composes journey  │
+   │  surfacing of A→B)      │  │  vocabulary in   │  │  into DealContext   │
+   │                         │  │  prompts; goal-  │  │  cache; emits to    │
+   │                         │  │  seeks within    │  │  downstream agents) │
+   │                         │  │  journey space)  │  │                     │
+   └─────────────────────────┘  └──────────────────┘  └─────────────────────┘
+```
+
+The framework does not replace any existing module. It composes existing fields under named slots, adds the `Gap` derivation as new, and identifies PENDING slots that M36 / M37 / M38 / M07 / M35 calibration work fills.
+
+---
+
+## 4. The DealJourney Unified Object
+
+```typescript
+// frontend/src/stores/dealJourney.types.ts (NEW)
+
+import type {
+  FinancialContext,
+  StrategyContext,
+  JEDIScoreContext,
+  RiskContext,
+  ExistingPropertyContext,
+  MarketContext,
+  RedevelopmentContext,
+  LayeredValue,
+} from './dealContext.types';
+import type { OperatorStance } from '../types/operator-stance';
+
+/**
+ * The Deal Journey is a derived view over DealContext that names what
+ * the underwriter is actually thinking about: where the deal is today,
+ * where it goes, the gap, the path, the levers, and how aggressive the
+ * thesis is. Composed from existing DealContext fields; not a parallel
+ * storage layer.
+ */
+export interface DealJourney {
+  /** State A — current financial reality, source-document-grounded. */
+  stateA: {
+    asOf: string;                       // ISO timestamp; when State A was sampled
+    noi: number;                        // in-place NOI
+    occupancy: number;                  // current occupancy %
+    inPlaceRentPerUnit: number;         // weighted-average rent across rent roll
+    marketRentPerUnit: number;          // M05-derived market reference
+    expenseRatio: number;               // OpEx / EGI
+    propertyClass: ExistingPropertyContext['propertyClass']['value'] | null;
+    yearBuilt: number | null;
+    capexBacklog: LayeredValue<number>; // deferred CapEx estimate
+    sourceLayers: {                     // which Pro Forma layers populated State A
+      broker: 'present' | 'absent';
+      t12: 'present' | 'absent';
+      rentRoll: 'present' | 'absent';
+      taxBill: 'present' | 'absent';
+    };
+    /** DQA-protected — finding count from data_quality_alerts on State A inputs. */
+    dataQualityFindings: number;
+  };
+
+  /** State B — stabilized underwriting target. */
+  stateB: {
+    targetNoi: number;                  // stabilized NOI
+    targetOccupancy: number;            // assumed stabilized occupancy
+    targetRentPerUnit: number;          // achieved market rent at stabilization
+    targetExpenseRatio: number;         // normalized expense ratio
+    exitCapRate: number;                // terminal cap rate
+    holdPeriodYears: number;            // years to hold
+    yearOfStabilization: number;        // which year the path reaches B (1, 2, 3, ...)
+  };
+
+  /** Gap — quantified delta between A and B per metric. */
+  gap: {
+    noiUplift: { absolute: number; percent: number };
+    occupancyUplift: { points: number };
+    rentUplift: { perUnit: number; percent: number };
+    expenseRatioChange: { points: number };
+    capexRequired: number;              // dollar capex to bridge A → B
+    /** Per-metric "lift required" expressed as σ from historical typical lifts (M36 dependency). */
+    liftAggressiveness?: Record<string, number>;
+  };
+
+  /** Path — year-by-year trajectory between A and B. */
+  path: {
+    yearByYear: Array<{
+      year: number;                     // 1-indexed
+      noi: number;
+      occupancy: number;
+      effRentPerUnit: number;
+      rentGrowthPct: number;
+      vacancyPct: number;
+      /** Confidence band — populated from M07 percentile output once calibrated. PENDING. */
+      confidenceBand?: {
+        p10: number;
+        p25: number;
+        median: number;
+        p75: number;
+        p90: number;
+      };
+    }>;
+    /** Lease-up timeline from M07. */
+    leaseUpTimeline: {
+      weeksTo90: number | null;
+      weeksTo93: number | null;
+      weeksTo95: number | null;
+    };
+    /** Event-adjusted trajectory from M35 — same shape as yearByYear, with event impacts overlaid. PENDING M35 integration. */
+    eventAdjustedTrajectory?: Array<{ year: number; deltas: Record<string, number>; eventIds: string[] }>;
+    /** Calibration confidence per year, from M38. PENDING. */
+    pathConfidence?: Array<{ year: number; calibratedCi: { lo: number; hi: number } }>;
+  };
+
+  /** Levers — the assumption set that drives A → B. */
+  levers: {
+    rentGrowth: LayeredValue<number>;
+    expenseGrowth: LayeredValue<number>;
+    vacancy: LayeredValue<number>;
+    exitCapRate: LayeredValue<number>;
+    holdPeriod: LayeredValue<number>;
+    capexPerUnit: LayeredValue<number>;
+    managementFee: LayeredValue<number>;
+    /** Per-lever evidence source — which module's data populated the platform layer. NEW. */
+    perLeverEvidence: Record<keyof Omit<FinancialContext['assumptions'], never>, {
+      sourceModule: 'M05' | 'M07' | 'M04' | 'M26' | 'M37' | 'platform_default';
+      sourceConfidence: number;         // 0-1
+      lastCalibrated: string | null;    // ISO timestamp
+    }>;
+    /** OperatorStance modulators applied. */
+    stanceModulators: {
+      stressRentGrowthHaircut: number;  // bps
+      stressExitCapWiden: number;       // bps
+      stressVacancyFloor: number;       // pp
+      concessionStrategy: OperatorStance['concessionStrategy'];
+      leasingCostTreatment: OperatorStance['leasingCostTreatment'];
+    } | null;
+  };
+
+  /** Aggressiveness — M36 plausibility scoring of the assumption set. PENDING M36 Phase A. */
+  aggressiveness?: {
+    mahalanobisD: number;               // d² from historical center
+    band: 'Realistic' | 'Stretch' | 'Aggressive' | 'Heroic';
+    perVariableContribution: Array<{
+      variable: string;
+      contribution: number;             // d² contribution
+      direction: 'aggressive' | 'conservative';
+    }>;
+    /** Pareto frontier from M36 goal-seek if user requested target IRR. */
+    paretoFrontier?: Array<{ targetIrr: number; achievedAtD: number; xStar: Record<string, number> }>;
+  };
+
+  /** Strategy Frame — M08 classification. LOCKED. */
+  strategyFrame: {
+    detectedStrategy: StrategyContext['selectedStrategy']['value'];
+    arbitrageGap: number;
+    verdict: string;
+  };
+
+  /** Calibration Confidence — M38 reliability. PENDING M38 build. */
+  calibration?: {
+    pathPredictionReliability: number;  // 0-1, historical accuracy of similar paths
+    ciWideningFactor: number;           // multiplier on CI width
+    driftStatus: 'stable' | 'drift_detected' | 'no_data';
+  };
+
+  /** JEDI Score trajectory — A → B for the platform's composite score. */
+  scoreTrajectory: {
+    scoreAtA: number;                   // current JEDI Score (from JEDIScoreContext.overall)
+    scoreAtB: number | null;            // projected stabilized score; PENDING — no current code computes this
+    subScoreDeltas: {
+      demand: number;
+      supply: number;
+      momentum: number;
+      position: number;
+      risk: number;
+    } | null;
+  };
+}
+```
+
+The interface composes from existing `DealContext` fields. The runtime construction is a derived selector — `useDealJourney(dealContext)` — rather than a new persisted entity. State A and State B are computed views over the same underlying `LayeredValue<T>` data the rest of the platform reads.
+
+---
+
+## 5. Module Contribution Map
+
+For each `DealJourney` slot, the module that populates it and where in code that already happens.
+
+| Journey slot | Source module | File / type reference | Status |
+|---|---|---|---|
+| `stateA.noi` | M09 | `FinancialContext.outputs.noi` (computed from broker/T-12 layers without growth) | LOCKED |
+| `stateA.occupancy` | M07 / rent roll | `ExistingPropertyContext.occupancy.value` + `extraction_rent_roll` | LOCKED |
+| `stateA.inPlaceRentPerUnit` | rent roll | `extraction_rent_roll`, weighted by unit | LOCKED |
+| `stateA.marketRentPerUnit` | M05 | `MarketContext.avgRent.value` | LOCKED |
+| `stateA.sourceLayers` | composer | `financials-composer.ts` — checks which extraction objects exist | LOCKED |
+| `stateA.dataQualityFindings` | DQA | `data_quality_alerts` table count for State A inputs | LOCKED (DQA spec done; build pending) |
+| `stateB.targetNoi` | M09 | `FinancialContext.outputs.noi` at stabilization year | LOCKED |
+| `stateB.targetOccupancy` | M07 / OperatorStance | `M07 leaseUp.weeksTo95` produces stabilization year; occupancy assumption | LOCKED |
+| `stateB.exitCapRate` | M09 / M05 | `FinancialContext.assumptions.exitCapRate` | LOCKED |
+| `stateB.yearOfStabilization` | M07 | `M07 leaseUp.weeksTo95` / 52, rounded | LOCKED |
+| `gap.*` | derived | NEW computed object — `computeJourneyGap(stateA, stateB)` | NEW |
+| `path.yearByYear[*].noi` | M09 | per-year projection output | LOCKED |
+| `path.yearByYear[*].occupancy` | M07 | `trafficProjection.yearly[*].occupancyPct` | LOCKED |
+| `path.yearByYear[*].rentGrowthPct` | M07 / M05 | `trafficProjection.yearly[*].rentGrowthPct` (already on response) | LOCKED |
+| `path.yearByYear[*].confidenceBand` | M07 | `leasingSignals.confidence` exists but only as scalar; asymmetric percentiles PENDING per `PROJECTIONS_TRAFFIC_ENGINE_AUDIT.md` | PENDING M07 backend wiring |
+| `path.leaseUpTimeline` | M07 | `trafficProjection.leaseUp.weeksTo90/93/95` | LOCKED (data exists, surfacing varies) |
+| `path.eventAdjustedTrajectory` | M35 | Event Impact Engine spec exists; integration with M07 path PENDING per `CLAUDE.md` Section 2.3 note | PENDING M35 integration |
+| `path.pathConfidence` | M38 | Calibration Ledger not started per `ROADMAP_M36_M38.md` Phase E | PENDING M38 build |
+| `levers.*` (assumption layers) | M09 | `FinancialContext.assumptions.*` (all `LayeredValue<T>`) | LOCKED |
+| `levers.perLeverEvidence` | per-lever modules | M05 for rent growth, M07 for occupancy, M04 for vacancy, M26 for tax, M37 for analog priors | NEW (per-lever provenance field) |
+| `levers.stanceModulators` | OperatorStance | `frontend/src/types/operator-stance.ts:24` | LOCKED |
+| `aggressiveness.*` | M36 | Phase A (heuristic Σ) in progress per `ROADMAP_M36_M38.md` | PENDING M36 Phase A |
+| `strategyFrame.*` | M08 | `StrategyContext` in `dealContext.types.ts` | LOCKED |
+| `calibration.*` | M38 | Not started | PENDING M38 build |
+| `scoreTrajectory.scoreAtA` | M25 | `JEDIScoreContext.overall` | LOCKED |
+| `scoreTrajectory.scoreAtB` | M25 | No current code projects forward score | NEW (M25 extension) |
+
+**Distribution:** 16 LOCKED slots, 5 PENDING slots, 4 NEW slots. ~70% of the journey is composable from existing infrastructure today.
+
+---
+
+## 6. Calibration Contracts (the PENDING slots' assignments)
+
+The framework converts vague calibration goals into concrete output contracts. Each PENDING slot is what the relevant module-calibration work must produce.
+
+### 6.1 M07 Confidence Band Contract
+
+`path.yearByYear[*].confidenceBand` requires M07 to produce, per year:
+
+```typescript
+{
+  p10: number,      // pessimistic
+  p25: number,
+  median: number,
+  p75: number,
+  p90: number       // optimistic
+}
+```
+
+Asymmetric bands per `TRAFFIC_ENGINE_CALIBRATION_SPEC.md` Section 1.5 — right-tail uncertainty on lease-up absorption is wider than left-tail. The current `leasingSignals.confidence` scalar is insufficient.
+
+**Calibration target:** residuals between predicted percentiles and historical realized values on comparable properties (matched on submarket, class, vintage, unit count) must satisfy reliability — actual realizations should fall below P25 ~25% of the time, above P75 ~25% of the time, with RMSE on the median of < X (X to be calibrated empirically).
+
+**Backend deliverable:** `M07 trafficProjection` response object extends `yearly[*]` with `confidenceBand` field per the schema above.
+
+### 6.2 M35 Event-Adjusted Trajectory Contract
+
+`path.eventAdjustedTrajectory` requires M35 to produce, per year, a list of event impacts overlaid on the baseline path:
+
+```typescript
+Array<{
+  year: number,
+  deltas: {
+    noi?: number,                  // dollar delta vs baseline
+    occupancy?: number,            // pp delta
+    rentGrowthPct?: number,        // pp delta
+    exitCapRate?: number           // bps delta
+  },
+  eventIds: string[]               // which events drove the deltas
+}>
+```
+
+Per `Event_Impact_Engine_Spec.md`, M35 owns the event taxonomy and the per-subtype playbook. Calibration means correlating event-class to path-parameter shifts at submarket granularity.
+
+**Calibration target:** for each event subtype, the predicted delta distribution must match observed deltas on historical realizations (M35 spec Phase 5 backtest framework). This is M38's job once it ships; until then, M35 emits its own backtest scores.
+
+**Backend deliverable:** `M35.computeEventImpacts(dealId, pathBaseline)` returns the array above. Integration with M07 must respect `CLAUDE.md` Section 2.3 — events excluded from baseline calibration before being attributed forward.
+
+### 6.3 M36 Aggressiveness Contract
+
+`aggressiveness.*` requires M36 Phase A heuristic Σ to produce, per assumption set:
+
+- `mahalanobisD: number` — d² from historical center (or hand-calibrated heuristic Σ at Phase A)
+- `band: 'Realistic' | 'Stretch' | 'Aggressive' | 'Heroic'` — per `M36_Joint_Distribution_Engine_Spec.md` Section 4.4 thresholds (≤1, ≤2, ≤3, >3)
+- `perVariableContribution: Array<{ variable, contribution, direction }>` — from the d² decomposition formula in the spec
+- `paretoFrontier?: Array<...>` — optional, populated only when Cashflow Agent runs goal-seek
+
+**Calibration target:** Phase A uses hand-calibrated covariance values (from market data range observations); Phase B replaces with empirical Σ once historical data is aggregated.
+
+**Backend deliverable:** `POST /api/sigma/plausibility` and `POST /api/sigma/goal-seek` per `ROADMAP_M36_M38.md` Phase A scope.
+
+### 6.4 M38 Calibration Contract
+
+`calibration.*` requires M38 Calibration Ledger to produce, per `(asset_class, regime, market_tier)` stratum:
+
+- `pathPredictionReliability: number` — 0-1, fraction of historical predictions where the median fell within the realized range
+- `ciWideningFactor: number` — multiplier to widen CIs to achieve target reliability (typically ≥1.0)
+- `driftStatus: 'stable' | 'drift_detected' | 'no_data'` — from drift detection on rolling reliability scores
+
+**Calibration target:** per `M35_Calibration_Ledger_Addendum.md`, the Ledger backtests every prediction the platform emits, accumulating reliability statistics that feed CI widening. This is the final piece in the M36 → M37 → M38 reasoning loop.
+
+**Backend deliverable:** `predictions` and `realizations` tables, pairing engine, reliability stats per stratum, drift detection per `ROADMAP_M36_M38.md` Phase E.
+
+---
+
+## 7. UI Implications
+
+The F-key tab structure (F1 Overview / F2 Zoning / F3 Market / F4 Supply / F5 Strategy / F6 Traffic / F8 Debt / F9 ProForma / F10 Risk / F11 Tools per `f9-proforma-spec.md` Section 1) is full and load-bearing. The Journey framework should NOT introduce a new top-level F-tab.
+
+**Recommended surface:** a Journey overlay accessible via a button or pill in the deal-level header, rendering the journey as a single-page narrative. Three sections:
+
+1. **State A → State B summary card** — shows the bet in one frame: NOI uplift, occupancy uplift, rent uplift, capex required, hold period, exit cap. Each metric shows source and DQA finding count if any.
+2. **Path visualization** — year-by-year trajectory with confidence bands (when M07 calibration ships), strategy frame label, aggressiveness badge (when M36 ships), event impact overlays (when M35 integration ships).
+3. **Levers panel** — the assumption set with per-lever evidence source, OperatorStance modulators applied, and `liftAggressiveness` decomposition (when M36 ships).
+
+The overlay cross-references existing tabs rather than duplicating them — clicking any lever opens F9 Assumptions tab focused on that field; clicking Strategy Frame opens F5; clicking the path opens F9 Projections.
+
+**Phase 1 surface:** static rendering with LOCKED slots filled and PENDING slots showing graceful "calibration in progress" placeholders. No new tabs, no new persistent storage, no migration risk.
+
+---
+
+## 8. Agent Integration
+
+Five agents per `CLAUDE.md` Section "Layer 1 — Agents". Each integrates with the journey framework as follows:
+
+| Agent | Role in journey | Reads | Writes |
+|---|---|---|---|
+| **research** | Composes journey into DealContext cache | All `DealContext` fields | `deal_context` (the cached Deal Capsule); `DealJourney` view computed at read time |
+| **cashflow** | Goal-seeks within journey space; reasons about A → B levers | Journey `levers`, `aggressiveness` (M36), `path` | LayeredValue overrides on `levers.*` (agent layer); proposes assumption sets ranked by aggressiveness |
+| **commentary** | Produces narrative around the journey | All journey slots | `market_commentary` outputs that reference journey vocabulary |
+| **zoning** | Constrains feasible State B for development/redevelopment paths | `zoning` field + `developmentPaths` | `zoning_analysis` output |
+| **supply** | Identifies headwinds against the path | `supply` field + `path.yearByYear[*].vacancyPct` | `supply_analysis` output |
+
+The Cashflow Agent is the highest-value integration. Its prompts should reason in journey terms: "Given State A {...}, target State B {...}, find a lever set that achieves target IRR with minimum aggressiveness." That's the formal version of what `ROADMAP_M36_M38.md` Phase A1 already calls "Cashflow Agent prompt augmentation" — the journey vocabulary makes those prompts more grounded.
+
+**Agent prompt update guidance:** when a journey-aware agent prompt is written, it must follow `CLAUDE.md` Constraint 5 — prompts versioned in `prompt_versions` table, no inline strings.
+
+---
+
+## 9. Phasing
+
+| Phase | What ships | Dependencies | Effort |
+|---|---|---|---|
+| **0 — Spec** | This document committed; vocabulary anchored | None | 1 day |
+| **1 — Composed views** | `useDealJourney(dealContext)` selector returning a `DealJourney` from existing fields. Phase 1 fills LOCKED slots only; PENDING slots return undefined. Renders State A / State B / Gap / Path / Levers / Strategy Frame in a Journey overlay UI surface. | LOCKED slots only — no other dependencies | 1 sprint |
+| **2 — DQA-grounded State A** | `stateA.dataQualityFindings` populates from `data_quality_alerts` (after DQA Phase 1 ships). State A's data integrity is visible. | DATA_QUALITY_AGENT_SPEC Phase 1 build | 0.5 sprint after DQA |
+| **3 — M36 Aggressiveness slot fills** | `aggressiveness.*` populates from M36 Phase A heuristic Σ. `paretoFrontier` populates when Cashflow Agent goal-seek is invoked. | M36 Phase A complete (in progress) | 0.5 sprint after M36 Phase A |
+| **4 — M07 confidence bands** | `path.yearByYear[*].confidenceBand` populates from asymmetric percentile output. Path becomes risk-adjusted at the visualization level. | M07 backend wires percentile payload (currently scalar `leasingSignals.confidence`) | 1 sprint after M07 backend |
+| **5 — M35 event-adjusted path** | `path.eventAdjustedTrajectory` populates from M35 event impact computation. Event banners on the deal page become path-attached. | M35 Section 2.3 event-aware calibration spec drafted; M35 → M07 integration | 2 sprints after M35 spec |
+| **6 — M38 calibration** | `calibration.*` populates as M38 Calibration Ledger accumulates reliability data. CI widening becomes empirically grounded. | M38 Phase E build (~14 sessions per roadmap) | 4+ sprints after M38 ships |
+
+**Phases 1-2 are achievable in the next quarter.** Phases 3-4 follow as M36 Phase A and M07 backend wiring complete. Phases 5-6 are longer arcs aligned with `ROADMAP_M36_M38.md`.
+
+---
+
+## 10. Out of Scope
+
+- **Replacing existing modules.** The framework consumes M07 / M08 / M09 / M11 / M14 / M25 / M35 / M36 / M37 / M38 outputs; it does not redesign any of them.
+- **New persistent storage.** `DealJourney` is a derived view. The persistent storage is the existing `DealContext` and the modules' own tables. The framework adds at most a few computed columns (e.g., `levers.perLeverEvidence` provenance) and possibly `data_quality_alerts` cross-reference.
+- **F-key tab changes.** F1-F11 remain. Journey is an overlay or a deal-header surface, not a new tab.
+- **Agent runtime changes.** The Coordinator / Layer 1 agents architecture per `CLAUDE.md` is unchanged. Journey is a vocabulary they reason in, not new infrastructure.
+- **OperatorStance redesign.** OperatorStance is already the meta-layer modulating Cashflow Agent discretion (per `OPERATOR_STANCE_PHASE1_SPEC.md`). The framework positions it as the user's "how aggressive on the journey" knob, not a replacement.
+- **Direct user-facing edit of `stateB`.** State B is computed from levers + assumption set. Users edit levers; State B updates. No separate "edit State B" surface.
+- **Backfilling journey data on existing deals.** Phase 1 computes journey at read time from current `DealContext`. No migration needed.
+
+---
+
+## 11. Open Questions
+
+1. **State A `asOf` semantics.** Is State A always "at acquisition" (frozen at deal creation) or "current observed state" (recomputed as new data arrives)? Recommendation: current observed state. Acquisition snapshot is a distinct concept (M22 Post-Close concern) and shouldn't conflate.
+2. **Per-lever evidence provenance — where stored?** `levers.perLeverEvidence` is NEW. Options: (a) computed at read time by inspecting which `LayeredValue<T>` source layer wins; (b) persisted as a dedicated column. Recommend (a) for Phase 1 — derived from existing `LayeredValueSource` data — to avoid migration. Promote to (b) only if performance requires.
+3. **Score trajectory `scoreAtB`.** No current code projects JEDI Score forward. Phase 1 leaves this null; M25 extension to compute projected stabilized score is a separate ticket.
+4. **Gap aggressiveness vs assumption aggressiveness.** Both are M36-driven but at different levels of granularity. `gap.liftAggressiveness` (per-metric) vs `aggressiveness.perVariableContribution` (per-lever). The first is a derived view; the second is the M36 native output. Reconcile in the spec or treat as two complementary slices? Recommend complementary slices — they answer different questions ("how stretch is this lift?" vs "how stretch is this assumption?").
+5. **Multi-strategy journeys.** A development deal may have multiple `developmentPaths` per `dealContext.types.ts`. Does each path get its own `DealJourney`, or does the journey aggregate? Recommend: one `DealJourney` per `selectedDevelopmentPathId`. Switching paths recomputes the journey.
+6. **Confidence threshold for surfacing.** When to render a `PENDING` slot's placeholder vs hide it entirely? UX decision; flag for design review at Phase 1 build.
+
+---
+
+## 12. Implementation Contract
+
+When Phase 1 moves to a build session, the dispatch should include:
+
+- This spec as the architectural anchor
+- `frontend/src/stores/dealContext.types.ts` as the source-of-truth for existing context shapes
+- The module contribution map (Section 5) as the data flow contract
+- The `DealJourney` interface (Section 4) as the type contract
+- Phase 1 scope explicitly: LOCKED slots only, derived selector, overlay UI surface
+- Pointer to the open questions (Section 11) requiring decisions before code
+
+**Expected output of Phase 1:**
+
+- `frontend/src/stores/dealJourney.types.ts` — the `DealJourney` interface
+- `frontend/src/stores/dealJourney.selector.ts` — `useDealJourney(dealContext)` selector
+- `frontend/src/components/deal/DealJourneyOverlay.tsx` — Phase 1 UI surface
+- Tests: composing journey from a known `DealContext` produces correct State A / State B / Gap / Path / Levers
+- DOC: this spec re-baselined to mark Phase 1 slots as "Built" once the build lands
+
+No backend changes in Phase 1. No new tables. No migration.
+
+---
+
+## 13. Why This Matters
+
+The platform has been building empirical infrastructure (M07 calibration, M35 events, M36 plausibility, M37 analogs, M38 calibration) for months. Each module produces real signal. But until they're integrated under a unified vocabulary, they remain pieces the underwriter has to mentally stitch together.
+
+The Journey framework names the stitching. State A is the deal today. State B is the thesis. The Gap is the bet. The Path is the trajectory. The Levers are the choices. Aggressiveness is the size of the bet. Strategy Frame is the archetype. Calibration is how much to trust the platform's predictions.
+
+Every existing module fills one or more of those slots. Every existing tab surfaces one or more of those concepts. Every existing agent reasons about some piece of it. The framework is what makes them legible as a system — to the underwriter, to the agents, and to the platform itself as it accumulates calibration data.
+
+It's also the architecture that makes M37 and M38 worth building. M37's analog forecasts populate `levers.perLeverEvidence` with evidence-based priors. M38's calibration data populates `path.pathConfidence` with empirically-grounded confidence bands. Without the framework, those modules produce signal that has nowhere to land. With the framework, they fill the slots that the underwriter is already trying to reason about.

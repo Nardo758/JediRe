@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { getPool } from '../../database/connection';
 import { requireAuth, requireAuthOrApiKey, AuthenticatedRequest } from '../../middleware/auth';
+import { refreshAllDqaAlerts } from '../../services/data-quality-agent.service';
 import { validate, createDealSchema, updateDealSchema } from './validation';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
 import { processDocument, processDealDocuments } from '../../services/document-extraction/extraction-pipeline';
@@ -2077,6 +2078,90 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
 });
 
 // ── Data Quality Alerts ───────────────────────────────────────────────────────
+
+/**
+ * In-memory rate-limit guard for DQA refresh: max 1 refresh per deal per hour.
+ * Keyed by dealId → last successful refresh timestamp (ms).
+ */
+const dqaRefreshLastRun = new Map<string, number>();
+const DQA_REFRESH_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+const DQA_STALENESS_HOURS = parseInt(process.env.DQA_STALENESS_HOURS ?? '24', 10);
+
+/**
+ * GET /:dealId/data-quality-alerts/staleness
+ * Returns the age of the newest finding for this deal and whether it exceeds
+ * the configured staleness threshold (DQA_STALENESS_HOURS env var, default 24).
+ */
+router.get('/:dealId/data-quality-alerts/staleness', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { dealId } = req.params;
+  try {
+    const result = await pool.query<{ newest_at: string; oldest_at: string; total: string }>(
+      `SELECT MAX(created_at) AS newest_at,
+              MIN(created_at) AS oldest_at,
+              COUNT(*)::text  AS total
+         FROM data_quality_alerts
+        WHERE deal_id = $1
+          AND superseded_by IS NULL
+          AND status != 'dismissed'`,
+      [dealId]
+    );
+    const row = result.rows[0];
+    if (!row || row.newest_at == null) {
+      return res.json({
+        success: true,
+        dealId,
+        hasAlerts: false,
+        newestAlertAt: null,
+        ageHours: null,
+        isStale: false,
+        thresholdHours: DQA_STALENESS_HOURS,
+      });
+    }
+    const newestAt = new Date(row.newest_at);
+    const ageHours = (Date.now() - newestAt.getTime()) / (1000 * 60 * 60);
+    res.json({
+      success: true,
+      dealId,
+      hasAlerts: true,
+      newestAlertAt: newestAt.toISOString(),
+      oldestAlertAt: row.oldest_at ? new Date(row.oldest_at).toISOString() : null,
+      ageHours: Math.round(ageHours * 10) / 10,
+      isStale: ageHours > DQA_STALENESS_HOURS,
+      thresholdHours: DQA_STALENESS_HOURS,
+      totalAlerts: parseInt(row.total, 10),
+    });
+  } catch (err: any) {
+    console.error('[data-quality-alerts staleness]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /:dealId/data-quality-alerts/refresh
+ * Triggers a background re-audit for all uploaded documents on the deal.
+ * Rate-limited: one refresh per deal per hour (returns 429 if called too soon).
+ * The agent's cache layer means this is cheap when document/parser are unchanged.
+ */
+router.post('/:dealId/data-quality-alerts/refresh', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { dealId } = req.params;
+  const now = Date.now();
+  const lastRun = dqaRefreshLastRun.get(dealId) ?? 0;
+  if (now - lastRun < DQA_REFRESH_COOLDOWN_MS) {
+    const waitMinutes = Math.ceil((DQA_REFRESH_COOLDOWN_MS - (now - lastRun)) / 60000);
+    return res.status(429).json({
+      success: false,
+      error: `Rate limited — next refresh available in ${waitMinutes} minute(s)`,
+    });
+  }
+  dqaRefreshLastRun.set(dealId, now);
+  // Fire-and-forget: do not await so the response is immediate (202 Accepted)
+  refreshAllDqaAlerts(pool, dealId).catch(() => {});
+  res.status(202).json({
+    success: true,
+    dealId,
+    message: 'DQA refresh queued — findings will update shortly',
+  });
+});
 
 /**
  * GET /:dealId/data-quality-alerts

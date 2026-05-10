@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle, ChevronDown, ChevronRight, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
@@ -386,6 +386,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const y1IsBroker   = y1Source === 'BROKER';
   const y1IsTperiod  = (T_PERIODS as readonly string[]).includes(y1Source);
 
+  // Staleness threshold — matches backend DQA_STALENESS_HOURS env var default (Task #707)
+  const DQA_STALENESS_HOURS = 24;
+
   // Data Quality Alerts (Task #691)
   interface DqaAlert {
     id: string;
@@ -402,10 +405,13 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       source_evidence?: { page?: number | null; section?: string | null; snippet?: string | null };
     };
     status: string;
+    created_at: string;
   }
   const [dqaAlerts, setDqaAlerts]     = useState<DqaAlert[]>([]);
   const [dqaLoading, setDqaLoading]   = useState(false);
   const [dqaDrawer, setDqaDrawer]     = useState<DqaAlert | null>(null);
+  // Prevents firing more than one background refresh per page session (Task #707)
+  const dqaRefreshedThisSession = useRef(false);
   // "Show absences" toggle — NOT_IN_DOC findings hidden by default (Task #696)
   const [showAbsences, setShowAbsences] = useState(false);
 
@@ -562,6 +568,23 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   // Load DQA alerts on mount and refresh after the main data loads
   useEffect(() => { loadDqaAlerts(); }, [loadDqaAlerts]);
+
+  // Staleness check (Task #707): if the newest finding is older than 24 h, trigger a
+  // background re-audit once per page session.  The backend rate-limits to once/hour
+  // so the POST is a no-op if the user refreshes the page within the cooldown window.
+  useEffect(() => {
+    if (!dealId || dqaAlerts.length === 0 || dqaRefreshedThisSession.current) return;
+    const newestMs = Math.max(...dqaAlerts.map(a => new Date(a.created_at).getTime()));
+    const ageHours = (Date.now() - newestMs) / (1000 * 60 * 60);
+    if (ageHours > DQA_STALENESS_HOURS) {
+      dqaRefreshedThisSession.current = true;
+      apiClient
+        .post(`/api/v1/deals/${dealId}/data-quality-alerts/refresh`)
+        .then(() => { setTimeout(() => loadDqaAlerts(), 5000); })
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dqaAlerts, dealId]);
 
   // Reactive wiring: re-fetch when concession recognition is recomputed on the backend.
   // The amortization engine fires 'concession_recognition.updated' on the window event bus

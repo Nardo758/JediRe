@@ -7,6 +7,7 @@ import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { commandCenterService } from '../../services/command-center.service';
 import { logger } from '../../utils/logger';
+import { getPool } from '../../database/connection';
 
 const router = Router();
 
@@ -173,6 +174,70 @@ router.get('/jobs/history', async (req: AuthenticatedRequest, res: Response) => 
       success: false,
       error: 'Failed to get job history'
     });
+  }
+});
+
+/**
+ * GET /api/v1/command-center/dqa/reliability
+ * Cross-deal DQA reliability breakdown: counts of each finding type grouped by
+ * document_type × proforma_row × classification, optionally filtered by date range.
+ *
+ * Query params:
+ *   from  — ISO date string (inclusive), defaults to 30 days ago
+ *   to    — ISO date string (inclusive), defaults to now
+ */
+router.get('/dqa/reliability', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const toDate   = req.query.to   ? new Date(req.query.to as string)   : new Date();
+    const fromDate = req.query.from ? new Date(req.query.from as string) : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+      return res.status(400).json({ success: false, error: 'Invalid from/to date parameters' });
+    }
+
+    const result = await pool.query<{
+      document_type: string;
+      proforma_row: string;
+      classification: string;
+      severity: string;
+      finding_count: string;
+      deal_count: string;
+    }>(
+      `SELECT   document_type,
+                proforma_row,
+                classification,
+                severity,
+                COUNT(*)::text              AS finding_count,
+                COUNT(DISTINCT deal_id)::text AS deal_count
+         FROM   data_quality_alerts
+        WHERE   status    != 'dismissed'
+          AND   created_at >= $1
+          AND   created_at <= $2
+        GROUP BY document_type, proforma_row, classification, severity
+        ORDER BY finding_count::int DESC`,
+      [fromDate.toISOString(), toDate.toISOString()]
+    );
+
+    res.json({
+      success: true,
+      dateRange: {
+        from: fromDate.toISOString(),
+        to:   toDate.toISOString(),
+      },
+      total: result.rows.length,
+      rows: result.rows.map(r => ({
+        document_type:  r.document_type,
+        proforma_row:   r.proforma_row,
+        classification: r.classification,
+        severity:       r.severity,
+        finding_count:  parseInt(r.finding_count, 10),
+        deal_count:     parseInt(r.deal_count, 10),
+      })),
+    });
+  } catch (error: any) {
+    logger.error('DQA reliability query failed', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

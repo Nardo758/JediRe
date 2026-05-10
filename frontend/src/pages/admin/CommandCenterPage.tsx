@@ -15,7 +15,10 @@ import {
   TrendingUp,
   Map,
   Building2,
-  DollarSign
+  DollarSign,
+  ShieldAlert,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 
@@ -73,6 +76,17 @@ interface DataQuality {
   pct_with_age: number;
 }
 
+interface DqaReliabilityRow {
+  document_type: string;
+  proforma_row: string;
+  classification: string;
+  severity: string;
+  finding_count: number;
+  deal_count: number;
+}
+
+const DQA_STALENESS_HOURS = 24;
+
 export function CommandCenterPage() {
   const [loading, setLoading] = useState(true);
   const [dataStatus, setDataStatus] = useState<DataStatus | null>(null);
@@ -81,6 +95,18 @@ export function CommandCenterPage() {
   const [activeJobs, setActiveJobs] = useState<Job[]>([]);
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
   const [syncing, setSyncing] = useState(false);
+
+  // DQA Reliability section (Task #707)
+  const [dqaRows, setDqaRows] = useState<DqaReliabilityRow[]>([]);
+  const [dqaLoading, setDqaLoading] = useState(false);
+  const [dqaError, setDqaError] = useState<string | null>(null);
+  const [dqaFrom, setDqaFrom] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [dqaTo, setDqaTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [dqaSortAsc, setDqaSortAsc] = useState(false);
   
   useEffect(() => {
     fetchStatus();
@@ -103,6 +129,32 @@ export function CommandCenterPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [activeJobs.length]);
+
+  const fetchDqaReliability = async (from: string, to: string) => {
+    setDqaLoading(true);
+    setDqaError(null);
+    try {
+      const response = await apiClient.get<{
+        success: boolean;
+        rows: DqaReliabilityRow[];
+        error?: string;
+      }>(`/api/v1/command-center/dqa/reliability?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+      if (response.data.success) {
+        setDqaRows(response.data.rows);
+      } else {
+        setDqaError(response.data.error ?? 'Failed to load reliability data');
+      }
+    } catch (err: any) {
+      setDqaError(err?.message ?? 'Network error');
+    } finally {
+      setDqaLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDqaReliability(dqaFrom, dqaTo);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   const fetchStatus = async () => {
     try {
@@ -428,6 +480,120 @@ export function CommandCenterPage() {
             </div>
           </div>
         )}
+
+        {/* DQA Reliability Dashboard (Task #707) */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-indigo-600" />
+              DQA Parser Reliability
+            </h2>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-600">From</label>
+              <input
+                type="date"
+                value={dqaFrom}
+                onChange={e => setDqaFrom(e.target.value)}
+                className="text-sm border border-gray-300 rounded px-2 py-1"
+              />
+              <label className="text-sm text-gray-600">To</label>
+              <input
+                type="date"
+                value={dqaTo}
+                onChange={e => setDqaTo(e.target.value)}
+                className="text-sm border border-gray-300 rounded px-2 py-1"
+              />
+              <button
+                onClick={() => fetchDqaReliability(dqaFrom, dqaTo)}
+                disabled={dqaLoading}
+                className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:bg-gray-400 transition-colors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${dqaLoading ? 'animate-spin' : ''}`} />
+                Load
+              </button>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 mb-4">
+            Cross-deal breakdown of non-dismissed DQA findings grouped by document type, proforma row, and classification.
+            Staleness threshold: {DQA_STALENESS_HOURS}h. Findings older than this trigger a silent background re-audit on page load.
+          </p>
+
+          {dqaError && (
+            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3 mb-4">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {dqaError}
+            </div>
+          )}
+
+          {dqaLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
+            </div>
+          ) : dqaRows.length === 0 ? (
+            <div className="text-center py-8 text-gray-500 text-sm">
+              No findings in this date range.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-medium text-gray-700">Doc Type</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-700">Proforma Row</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-700">Classification</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-700">Severity</th>
+                    <th
+                      className="text-right px-4 py-3 font-medium text-gray-700 cursor-pointer select-none hover:text-indigo-700"
+                      onClick={() => setDqaSortAsc(v => !v)}
+                    >
+                      <span className="flex items-center justify-end gap-1">
+                        Findings
+                        {dqaSortAsc ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </span>
+                    </th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-700">Deals Affected</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {[...dqaRows]
+                    .sort((a, b) => dqaSortAsc
+                      ? a.finding_count - b.finding_count
+                      : b.finding_count - a.finding_count)
+                    .map((row, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5 font-mono text-xs text-gray-800">{row.document_type}</td>
+                        <td className="px-4 py-2.5 text-gray-700">{row.proforma_row}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                            row.classification === 'PARSER_INCORRECT' ? 'bg-red-100 text-red-700' :
+                            row.classification === 'PARSER_MISS'      ? 'bg-orange-100 text-orange-700' :
+                            row.classification === 'RANGE_ANOMALY'    ? 'bg-yellow-100 text-yellow-700' :
+                            row.classification === 'INCONSISTENCY'    ? 'bg-purple-100 text-purple-700' :
+                            row.classification.startsWith('SEED_')    ? 'bg-blue-100 text-blue-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {row.classification}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                            row.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                            row.severity === 'warning'  ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {row.severity}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{row.finding_count}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-600">{row.deal_count}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

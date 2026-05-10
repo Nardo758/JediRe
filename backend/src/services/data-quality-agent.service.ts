@@ -778,7 +778,7 @@ async function discoverSeedGaps(
   }
 }
 
-async function detectUploadedDocumentTypes(pool: Pool, dealId: string): Promise<string[]> {
+export async function detectUploadedDocumentTypes(pool: Pool, dealId: string): Promise<string[]> {
   const res = await pool.query(
     `SELECT deal_data FROM deals WHERE id = $1`,
     [dealId]
@@ -791,4 +791,18 @@ async function detectUploadedDocumentTypes(pool: Pool, dealId: string): Promise<
   if (dd.extraction_rent_roll) types.push('RENT_ROLL');
   if (dd.extraction_tax_bill)  types.push('TAX_BILL');
   return types;
+}
+
+/**
+ * Re-run the Data Quality Agent for every uploaded document on a deal.
+ * Safe to call at any time — the agent's cache layer prevents redundant
+ * Claude API calls when the document hash + parser version are unchanged.
+ * Returns the list of document types that were queued for re-audit.
+ */
+export async function refreshAllDqaAlerts(pool: Pool, dealId: string): Promise<string[]> {
+  const uploadedTypes = await detectUploadedDocumentTypes(pool, dealId);
+  for (const documentType of uploadedTypes) {
+    runDataQualityAgent(pool, { dealId, documentType }).catch(() => {});
+  }
+  return uploadedTypes;
 }
