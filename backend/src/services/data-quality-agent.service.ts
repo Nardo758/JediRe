@@ -18,12 +18,11 @@ import { Pool } from 'pg';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
-// Phase 2 (Task #698): field-level write-time helpers supply per-field source
-// timestamps from extraction_events. runDataQualityAgentAfterReseed annotates
-// each SeedGap with phase2Class (SEED_PLUMBING_WRITE_RACE | SEED_PLUMBING_STALE_SEED)
-// derived from classifyTimestampDelta(). callAgent then promotes any SEED_PLUMBING
-// finding to that specific sub-type, making the signed-delta classification
-// authoritative in the persisted data_quality_alerts row.
+// Phase 2 (Task #698) — active.
+// fetchFieldWriteTimes: per-field source write timestamps from extraction_events.
+// classifyTimestampDelta: signed-delta (seed>=source → WRITE_RACE; seed<source
+//   beyond tolerance → STALE_SEED). Drives deterministic post-promotion in callAgent.
+// computeDeltaSeconds: signed integer delta passed to buildUserPrompt context.
 import { fetchFieldWriteTimes, classifyTimestampDelta, computeDeltaSeconds } from './extraction-events.service';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -689,8 +688,10 @@ async function discoverSeedGaps(
       if (extractedValue === null || extractedValue === undefined) continue;
 
       // Check if the year1 slot is null (gap exists).
-      const year1Col = (year1 as Record<string, unknown>)[col] as Record<string, unknown> | null | undefined;
-      const slotValue = year1Col?.[field];
+      // year1 shape: { [field]: { [column]: value } }  e.g. year1.gpr.broker
+      // (confirmed by fetchProformaRowData line: year1[row]?.[column])
+      const year1Field = (year1 as Record<string, unknown>)[field] as Record<string, unknown> | null | undefined;
+      const slotValue = year1Field?.[col];
       if (slotValue === null || slotValue === undefined) {
         gaps.push({ field, slot: col });
       }

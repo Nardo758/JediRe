@@ -203,17 +203,22 @@ export function classifyTimestampDelta(
 
   const deltaSeconds = (seedWrittenAt.getTime() - sourceWrittenAt.getTime()) / 1000;
 
-  // WRITE_RACE tolerance window: if seed and source were written within
-  // WRITE_RACE_WINDOW_SECONDS of each other (in either direction), treat as a
-  // concurrent-write race — the seeder may have snapshotted a null because the
-  // extraction transaction had not yet committed.
+  if (deltaSeconds >= 0) {
+    // Seed ran at or after source write — source was available when seed ran
+    // but the slot is still null.  Pipeline dropped or failed to propagate:
+    // treat as a concurrent-write WRITE_RACE regardless of elapsed time.
+    return 'SEED_PLUMBING_WRITE_RACE';
+  }
+
+  // Seed ran before source was written (negative delta).
+  // If the gap is small enough to be a clock-skew / transaction-commit edge
+  // case (|delta| within tolerance), still treat as WRITE_RACE.
   if (Math.abs(deltaSeconds) <= WRITE_RACE_WINDOW_SECONDS) {
     return 'SEED_PLUMBING_WRITE_RACE';
   }
 
-  // Outside the window: seed ran well before or well after source.
-  // In both cases the seeder had a clear opportunity to read the value and
-  // failed to propagate it — an explicit re-seed is needed.
+  // Seed clearly predated the source by more than the tolerance window —
+  // an explicit re-seed is required.
   return 'SEED_PLUMBING_STALE_SEED';
 }
 
