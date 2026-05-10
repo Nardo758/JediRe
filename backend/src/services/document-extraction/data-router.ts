@@ -9,6 +9,7 @@ import { computeAndPersistTrafficSnapshot } from '../traffic-analytics.service';
 import { seedProFormaYear1, ensureDealAssumptionsSeeded } from '../proforma-seeder.service';
 import { runCrossValidation } from '../multi-doc-cross-validation.service';
 import { runDataQualityAgent, runDataQualityAgentAfterReseed } from '../data-quality-agent.service';
+import { emitOmProformaEvents } from '../extraction-events.service';
 
 interface RouteContext {
   dealId: string;
@@ -678,6 +679,17 @@ async function routeOM(
       },
     })]
   );
+
+  // Phase 2 (Task #698): emit per-field extraction events so the DQA can use
+  // precise field-level write timestamps instead of the coarse deals.updated_at
+  // proxy. Fire-and-forget — errors must not block the extraction pipeline.
+  // These events are consumed by fetchFieldWriteTimes() in extraction-events.service.ts,
+  // which replaces the deals.updated_at proxy in the DQA timestamp lookup once
+  // Task #696 wires the WRITE_RACE vs STALE_SEED classification into the service.
+  setImmediate(() => {
+    emitOmProformaEvents(pool, dealId, data.brokerProforma as Record<string, unknown>)
+      .catch((err: unknown) => console.error('[ExtractionEvents] OM emit error:', err instanceof Error ? err.message : err));
+  });
 
   // Update deal metadata from OM if not already set
   const dealUpdate: string[] = [];

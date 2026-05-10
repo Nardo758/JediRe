@@ -18,6 +18,11 @@ import { Pool } from 'pg';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
+// Phase 2 (Task #698): field-level write-time helpers replace the coarse
+// deals.updated_at proxy used in Phase 1 for WRITE_RACE vs STALE_SEED
+// timestamp classification. Import is wired here; call sites are marked with
+// "Phase 2 TODO" comments. Task #696 activates the full classification logic.
+import { fetchFieldWriteTimes, classifyTimestampDelta, computeDeltaSeconds } from './extraction-events.service';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -475,6 +480,32 @@ export async function runDataQualityAgent(
 /**
  * Trigger the agent after a reseed, using the seed observability log's gap list
  * to focus on SEED_PLUMBING findings.
+ *
+ * Phase 1 timestamp proxy (Task #696): uses deals.updated_at as a coarse proxy
+ * for "when source data was last written." This fires on any deal edit, not
+ * specifically on extraction writes, so it can misclassify STALE_SEED as WRITE_RACE
+ * when an unrelated edit (e.g. deal rename) happens after seeding.
+ *
+ * Phase 2 TODO (Task #698 — active after Task #696 ships):
+ *   Replace the deals.updated_at proxy with per-field extraction event timestamps:
+ *
+ *   const fieldNames = relevantGaps.map(g => g.field);
+ *   const writeTimes = await fetchFieldWriteTimes(pool, dealId, documentType, fieldNames);
+ *   const seedWrittenAt = ... (deal_assumptions.updated_at for this deal);
+ *
+ *   Then annotate each gap with:
+ *     sourceWriteTime: writeTimes[g.field]?.toISOString() ?? null,
+ *     seedWriteTime:   seedWrittenAt?.toISOString() ?? null,
+ *     deltaSeconds:    computeDeltaSeconds(writeTimes[g.field] ?? null, seedWrittenAt ?? null),
+ *     classification:  classifyTimestampDelta(writeTimes[g.field] ?? null, seedWrittenAt ?? null),
+ *
+ *   Pass the annotated gaps to runDataQualityAgent so buildUserPrompt() can include
+ *   timing context for Claude's WRITE_RACE vs STALE_SEED decision.
+ *
+ *   Imports (fetchFieldWriteTimes, classifyTimestampDelta, computeDeltaSeconds)
+ *   are already imported from extraction-events.service.ts at the top of this file.
+ *   extraction_events rows are populated by emitOmProformaEvents() in routeOM()
+ *   (data-router.ts) from Task #698.
  */
 export async function runDataQualityAgentAfterReseed(
   pool: Pool,
