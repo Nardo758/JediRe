@@ -622,9 +622,13 @@ export async function runDataQualityAgentAfterReseed(
       };
     });
 
-    setImmediate(() => {
+    // Delay slightly before firing DQA so that the fire-and-forget extraction_events
+    // writes (emitted via setImmediate in data-router.ts) have time to commit.
+    // Without this, discoverSeedGaps() could query extraction_events before the
+    // emitter rows are visible, defaulting all timestamps to null → STALE_SEED.
+    setTimeout(() => {
       runDataQualityAgent(pool, { dealId, documentType, seedGaps: annotatedGaps }).catch(() => {});
-    });
+    }, 3000);
   }
 }
 

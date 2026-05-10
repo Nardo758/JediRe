@@ -52,9 +52,14 @@ GROUP BY 1, 2
 ORDER BY 1, 2;
 ```
 
-**Expected post-Phase 2 deploy:** OM rows (gpr, vacancy_pct, real_estate_tax,
-contract_services, payroll, insurance, management_fee_pct, noi) should appear within
-minutes of any OM document upload.
+**Expected post-Phase 2 deploy (Task #698):** All four source types are wired.
+Rows should appear within minutes of document upload:
+- **OM** — gpr, vacancy_pct, real_estate_tax, contract_services, payroll,
+  repairs_maintenance, turnover, marketing, utilities, insurance,
+  management_fee_pct, noi, other_income_total
+- **T12** — same 12 fields (annualized from deal_monthly_actuals)
+- **RENT_ROLL** — gpr, vacancy_pct
+- **TAX_BILL** — real_estate_tax
 
 ```sql
 -- Check a specific deal's extraction event timeline

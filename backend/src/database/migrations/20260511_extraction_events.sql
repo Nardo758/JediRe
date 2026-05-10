@@ -6,11 +6,12 @@
 -- deals.updated_at proxy used in Phase 1 (Task #696) for WRITE_RACE vs STALE_SEED
 -- timestamp classification.
 --
--- The primary write site is routeOM (data-router.ts): each non-null field in
--- brokerProforma emits one row. T12/RENT_ROLL/TAX_BILL write to dedicated tables
--- (deal_monthly_actuals, deal_lease_transactions, deal_assumptions) rather than
--- broker_claims.proforma, so Phase 2 scopes to OM initially; other source types
--- can be added when field-level provenance is needed for their write paths.
+-- Write sites (all four source types wired in data-router.ts, Task #698):
+--   OM        — emitOmProformaEvents() after broker_claims.proforma write
+--   T12       — emitExtractionEvents() after deal_monthly_actuals write (12 fields)
+--   RENT_ROLL — emitExtractionEvents() after deal_lease_transactions write (gpr, vacancy_pct)
+--   TAX_BILL  — emitExtractionEvents() after deal_assumptions write (real_estate_tax)
+-- Future manual-save UI routes MUST call emitExtractionEvents after writing audited fields.
 --
 -- Phase 2 signed-delta semantics (implemented in extraction-events.service.ts):
 --   seed_written_at >= source_written_at  → SEED_PLUMBING_WRITE_RACE
