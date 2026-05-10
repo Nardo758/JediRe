@@ -20,7 +20,7 @@
 //     are promoted to peer Console sub-tabs alongside STANCE.
 // ============================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { AssumptionsTab } from './AssumptionsTab';
 import { UnitMixTab } from '../../../components/deal/sections/UnitMixTab';
@@ -50,6 +50,21 @@ const SUB_TABS: SubTabDef[] = [
 
 export function ConsoleHubTab(props: FinancialEngineTabProps) {
   const [subTab, setSubTab] = useState<SubTab>('stance');
+
+  // Listen for deep-link requests from the Deal Journey overlay.
+  // Dispatched by deepLinkToAssumptionsField in DealJourneyOverlay.tsx when a
+  // lever row is clicked, switching to the INPUTS sub-tab so the user lands on
+  // the right assumptions panel.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const payload = (e as CustomEvent<{ subTab: SubTab }>).detail;
+      if (payload?.subTab && SUB_TABS.some(t => t.id === payload.subTab)) {
+        setSubTab(payload.subTab);
+      }
+    };
+    window.addEventListener('fe-console-subtab', handler);
+    return () => window.removeEventListener('fe-console-subtab', handler);
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>

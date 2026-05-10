@@ -21,9 +21,6 @@ import { apiClient } from '../../services/api.client';
 import { useDealStore } from '../../stores/dealStore';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
-import { useDealJourney } from '../../stores/dealJourney.selector';
-import { DealJourneyOverlay } from '../../components/deal/DealJourneyOverlay';
-import type { DealContext } from '../../stores/dealContext.types';
 
 // ── Safe array coercion — guards against the API returning objects/nulls ──────
 function toArr<T>(v: unknown): T[] {
@@ -412,8 +409,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const resolvedDealType: DealType = (propDealType as DealType) || 'existing';
 
   const [activeTab, setActiveTab] = useState(0);
-  const [showJourneyOverlay, setShowJourneyOverlay] = useState(false);
-  const [journeyDqaCount, setJourneyDqaCount] = useState(0);
   const [kpiLoading, setKpiLoading] = useState(false);
   const [building, setBuilding] = useState(false);
   const [assumptions, setAssumptions] = useState<ModelAssumptions | null>(null);
@@ -624,37 +619,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     // Route through dealStore event bus (consistent with assumption:changed pattern)
     useDealStore.getState().emitLeasingCostTreatmentChanged(t);
   }, []);
-
-  // ── Deal Journey — DQA finding count for State A ─────────────────────────
-  // Endpoint: GET /api/v1/deals/:dealId/data-quality-alerts
-  // Default query already filters status != 'dismissed' server-side.
-  useEffect(() => {
-    if (!resolvedDealId) return;
-    apiClient.get<{ success: boolean; total: number; alerts: Array<{ id: string; status: string }> }>(
-      `/api/v1/deals/${resolvedDealId}/data-quality-alerts`
-    )
-      .then((res) => {
-        // Use server-provided total (pre-filtered) when available; fall back to counting.
-        const total = res.data?.total ?? (res.data?.alerts ?? []).length;
-        setJourneyDqaCount(total);
-      })
-      .catch(() => {});
-  }, [resolvedDealId]);
-
-  // ── Deal Journey — compose from dealStore context ─────────────────────────
-  // The Zustand store state IS typed as DealContext (INITIAL_CONTEXT: DealContext).
-  // DealContext & DealStoreActions is a structural supertype of DealContext,
-  // so the single-level cast is always safe — no unknown intermediary needed.
-  const dealStoreCtx = useDealStore(s => s as DealContext);
-  const dealJourney = useDealJourney(
-    dealStoreCtx.identity?.id === resolvedDealId ? dealStoreCtx : null,
-    journeyDqaCount,
-    // Pass F9 per-year projections so path.yearByYear is composed from real model
-    // outputs (LOCKED) rather than synthetic assumption extrapolation.
-    (mergedFinancials ?? f9Financials)?.projections ?? null,
-    // Pass M07 traffic projection for leaseUpTimeline and effRentPerUnit enrichment.
-    (mergedFinancials ?? f9Financials)?.trafficProjection ?? null,
-  );
 
   // ── Evidence Summary — fetch collision/confidence/tier stats ─────────────
   useEffect(() => {
@@ -1428,19 +1392,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
             fontFamily: MONO, fontSize: 9, padding: '2px 8px', cursor: 'pointer', borderRadius: 2,
           }}>EXPORT XLSX</button>
 
-          <button
-            onClick={() => setShowJourneyOverlay(true)}
-            disabled={!dealJourney}
-            title={dealJourney ? 'Open Deal Journey overlay (A→B framework)' : 'Loading deal context…'}
-            style={{
-              background: showJourneyOverlay ? '#00E5A020' : 'transparent',
-              border: `1px solid ${showJourneyOverlay ? '#00E5A0' : BT.border.medium}`,
-              color: showJourneyOverlay ? '#00E5A0' : dealJourney ? BT.text.secondary : BT.text.muted,
-              fontFamily: MONO, fontSize: 9, padding: '2px 8px', cursor: dealJourney ? 'pointer' : 'default',
-              borderRadius: 2, letterSpacing: 0.5, opacity: !dealJourney ? 0.4 : 1,
-            }}
-          >JOURNEY</button>
-
           <button onClick={handleBuildModel} disabled={building || !assumptions} style={{
             background: building ? BT.bg.active : BT.met.financial,
             border: 'none', color: building ? BT.text.muted : BT.bg.terminal,
@@ -1757,14 +1708,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       <style>{`
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
       `}</style>
-
-      {/* Deal Journey Overlay */}
-      {showJourneyOverlay && dealJourney && (
-        <DealJourneyOverlay
-          journey={dealJourney}
-          onClose={() => setShowJourneyOverlay(false)}
-        />
-      )}
     </div>
   );
 }

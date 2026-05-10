@@ -42,6 +42,9 @@ import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
 import { apiClient } from '../services/api.client';
 import { useDealStore, useDealTypeConfig, useDealType } from '../stores/dealStore';
+import { useDealJourney } from '../stores/dealJourney.selector';
+import { DealJourneyOverlay } from '../components/deal/DealJourneyOverlay';
+import type { DealContext } from '../stores/dealContext.types';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -484,6 +487,15 @@ const DealDetailPage: React.FC = () => {
 
   const [showCloseDealModal, setShowCloseDealModal] = useState(false);
   const [closingDeal, setClosingDeal] = useState(false);
+
+  // ── Deal Journey — accessible from all F-key screens via the shared header ─
+  const [showJourneyOverlay, setShowJourneyOverlay] = useState(false);
+  const [journeyDqaCount, setJourneyDqaCount] = useState(0);
+  const dealStoreCtx = useDealStore(s => s as DealContext);
+  const dealJourney = useDealJourney(
+    dealStoreCtx.identity?.id === dealId ? dealStoreCtx : null,
+    journeyDqaCount,
+  );
   const [closeDealSuccess, setCloseDealSuccess] = useState(false);
   const [gapsDropdownOpen, setGapsDropdownOpen] = useState(false);
   const [gapsDropdownPos, setGapsDropdownPos] = useState<{ top: number; right: number } | null>(null);
@@ -749,6 +761,19 @@ const DealDetailPage: React.FC = () => {
     window.addEventListener('deal-tab-change', handleNavTabChange);
     return () => window.removeEventListener('deal-tab-change', handleNavTabChange);
   }, []);
+
+  // ── Deal Journey — DQA count for State A ─────────────────────────────────
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get<{ success: boolean; total: number; alerts: Array<{ id: string; status: string }> }>(
+      `/api/v1/deals/${dealId}/data-quality-alerts`
+    )
+      .then((res) => {
+        const total = res.data?.total ?? (res.data?.alerts ?? []).length;
+        setJourneyDqaCount(total);
+      })
+      .catch(() => {});
+  }, [dealId]);
 
   useEffect(() => {
     const handleOpenTradeAreaPanel = () => setShowTradeAreaPanel(true);
@@ -1275,8 +1300,29 @@ const DealDetailPage: React.FC = () => {
             );
           })}
 
-          {/* Right side: search */}
+          {/* Right side: JOURNEY + search */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
+            {/* JOURNEY — A→B deal framework overlay, accessible from all F-key screens */}
+            <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', padding: '0 10px' }}>
+              <button
+                onClick={() => setShowJourneyOverlay(true)}
+                disabled={!dealJourney}
+                title={dealJourney ? 'Open Deal Journey overlay (A→B framework)' : 'Loading deal context…'}
+                style={{
+                  fontFamily: MONO, fontSize: 9, fontWeight: 600,
+                  padding: '2px 8px', letterSpacing: 0.6,
+                  background: showJourneyOverlay ? '#00E5A020' : 'transparent',
+                  border: `1px solid ${showJourneyOverlay ? '#00E5A0' : BORDER}`,
+                  color: showJourneyOverlay ? '#00E5A0' : dealJourney ? TEXT_MID : TEXT_DIM,
+                  cursor: dealJourney ? 'pointer' : 'default',
+                  borderRadius: 2,
+                  opacity: !dealJourney ? 0.4 : 1,
+                  transition: 'color 0.1s, border-color 0.1s',
+                }}
+              >
+                JOURNEY
+              </button>
+            </div>
             {/* Search bar */}
             <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', padding: '0 10px' }}>
               <input
@@ -1545,6 +1591,13 @@ const DealDetailPage: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+      {/* Deal Journey Overlay — A→B framework, accessible from all F-key screens */}
+      {showJourneyOverlay && dealJourney && (
+        <DealJourneyOverlay
+          journey={dealJourney}
+          onClose={() => setShowJourneyOverlay(false)}
+        />
       )}
     </DealModuleProvider>
   );

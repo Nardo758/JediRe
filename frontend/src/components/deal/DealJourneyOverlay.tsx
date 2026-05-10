@@ -42,15 +42,22 @@ function deepLinkToTab(tabIndex: number, onClose: () => void): void {
 }
 
 function deepLinkToAssumptionsField(
-  _fieldPath: string,
+  fieldPath: string,
   _fieldLabel: string,
   onClose: () => void,
 ): void {
-  // Navigate to the CONSOLE tab (Assumptions) where this lever lives.
-  // Field-level highlight within ConsoleHubTab is a Phase 2 addition (requires
-  // ConsoleHubTab to subscribe to a new custom event); for now, landing on the
-  // tab is the correct Phase 1 behaviour.
+  // 1. Navigate to the CONSOLE tab (index 1) within the Financial Engine.
   window.dispatchEvent(new CustomEvent('fe-tab-change', { detail: TAB_CONSOLE }));
+  // 2. Switch ConsoleHubTab to INPUTS sub-tab where lever assumption fields live.
+  window.dispatchEvent(new CustomEvent('fe-console-subtab', { detail: { subTab: 'inputs' } }));
+  // 3. Best-effort field scroll: attempt after React re-renders the sub-tab.
+  //    Succeeds when the target element has a matching [data-field-path] attribute.
+  if (fieldPath) {
+    setTimeout(() => {
+      const el = document.querySelector(`[data-field-path="${fieldPath}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+  }
   onClose();
 }
 
@@ -191,7 +198,10 @@ function StateBetCard({
     : 'UNSET';
 
   const handleStrategyClick = useCallback(() => {
-    deepLinkToTab(TAB_OVERVIEW, onClose);
+    // Navigate to F5 Strategy screen in DealDetailPage.
+    // DealDetailPage listens for 'deal-tab-change' and calls setActiveTab('strategy').
+    window.dispatchEvent(new CustomEvent('deal-tab-change', { detail: 'strategy' }));
+    onClose();
   }, [onClose]);
 
   return (
