@@ -654,7 +654,16 @@ async function discoverSeedGaps(
     const dealData = res.rows[0].deal_data ?? {};
     const year1    = res.rows[0].year1    ?? {};
 
-    const capsuleKey = `extraction_${documentType.toLowerCase().replace(/_/g, '')}`;
+    // Static map keeps capsule keys aligned with deals.deal_data shape written
+    // by data-router.ts (extraction_t12, extraction_rent_roll, extraction_tax_bill,
+    // extraction_om). Do NOT use a replace() transform — it corrupts multi-word types.
+    const CAPSULE_KEY_BY_DOCTYPE: Record<string, string> = {
+      OM:        'extraction_om',
+      T12:       'extraction_t12',
+      RENT_ROLL: 'extraction_rent_roll',
+      TAX_BILL:  'extraction_tax_bill',
+    };
+    const capsuleKey = CAPSULE_KEY_BY_DOCTYPE[documentType] ?? `extraction_${documentType.toLowerCase()}`;
     const capsule    = (dealData[capsuleKey] as Record<string, unknown> | null) ?? {};
     const brokerClaims = documentType === 'OM'
       ? ((dealData.broker_claims as Record<string, unknown> | null) ?? {})

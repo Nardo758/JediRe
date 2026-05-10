@@ -9,7 +9,7 @@ import { computeAndPersistTrafficSnapshot } from '../traffic-analytics.service';
 import { seedProFormaYear1, ensureDealAssumptionsSeeded } from '../proforma-seeder.service';
 import { runCrossValidation } from '../multi-doc-cross-validation.service';
 import { runDataQualityAgent, runDataQualityAgentAfterReseed } from '../data-quality-agent.service';
-import { emitOmProformaEvents } from '../extraction-events.service';
+import { emitExtractionEvents, emitOmProformaEvents } from '../extraction-events.service';
 
 interface RouteContext {
   dealId: string;
@@ -266,6 +266,46 @@ async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: s
     );
     count++;
   }
+
+  // Phase 2 DQA (Task #698): emit per-field extraction events using annualized
+  // totals so the DQA timestamp lookup has field-level write times for T12.
+  if (data.months.length > 0) {
+    const sum = (fn: (m: typeof data.months[0]) => number | null | undefined) =>
+      data.months.reduce<number | null>((acc, m) => {
+        const v = fn(m);
+        return v != null ? (acc ?? 0) + v : acc;
+      }, null);
+    const totalGpr = sum(m => m.grossPotentialRent);
+    const totalVacLoss = sum(m => m.vacancyLoss);
+    const vacancyPct = totalGpr && totalGpr > 0 && totalVacLoss != null
+      ? totalVacLoss / totalGpr : null;
+    const totalEgi = sum(m => m.effectiveGrossIncome);
+    const totalMgmtFee = sum(m => m.managementFee);
+    const managementFeePct = totalEgi && totalEgi > 0 && totalMgmtFee != null
+      ? totalMgmtFee / totalEgi : null;
+
+    setImmediate(() => {
+      emitExtractionEvents(pool, {
+        dealId,
+        sourceType: 'T12',
+        fields: {
+          gpr:                 totalGpr,
+          vacancy_pct:         vacancyPct,
+          real_estate_tax:     sum(m => m.propertyTax),
+          contract_services:   sum(m => m.contractServices),
+          payroll:             sum(m => m.payroll),
+          repairs_maintenance: sum(m => m.repairsMaintenance),
+          turnover:            sum(m => m.turnoverCosts),
+          marketing:           sum(m => m.marketing),
+          utilities:           sum(m => m.utilities),
+          insurance:           sum(m => m.insurance),
+          management_fee_pct:  managementFeePct,
+          noi:                 sum(m => m.noi),
+        },
+      }).catch(() => {});
+    });
+  }
+
   return count;
 }
 
@@ -303,6 +343,28 @@ async function routeRentRoll(pool: Pool, data: RentRollData, dealId: string, sou
     );
     count++;
   }
+
+  // Phase 2 DQA (Task #698): emit per-field extraction events for RENT_ROLL.
+  if (data.units.length > 0) {
+    const totalUnits   = data.units.length;
+    const vacantCount  = data.units.filter(u => u.status === 'vacant').length;
+    const totalGprMonthly = data.units.reduce<number | null>((acc, u) => {
+      return u.marketRent != null ? (acc ?? 0) + u.marketRent : acc;
+    }, null);
+    const vacancyPct = totalUnits > 0 ? vacantCount / totalUnits : null;
+
+    setImmediate(() => {
+      emitExtractionEvents(pool, {
+        dealId,
+        sourceType: 'RENT_ROLL',
+        fields: {
+          gpr:        totalGprMonthly,   // monthly total; seeder annualizes
+          vacancy_pct: vacancyPct,
+        },
+      }).catch(() => {});
+    });
+  }
+
   return count;
 }
 
@@ -583,6 +645,17 @@ async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourc
         }, 'TAX_BILL', sourceRef);
       }
     }
+  }
+
+  // Phase 2 DQA (Task #698): emit per-field extraction event for TAX_BILL.
+  if (data.totalAnnualTax != null) {
+    setImmediate(() => {
+      emitExtractionEvents(pool, {
+        dealId,
+        sourceType: 'TAX_BILL',
+        fields: { real_estate_tax: data.totalAnnualTax ?? null },
+      }).catch(() => {});
+    });
   }
 
   return 1;
