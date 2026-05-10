@@ -8,6 +8,7 @@ import type { OmGeoTags } from './om-geo';
 import { computeAndPersistTrafficSnapshot } from '../traffic-analytics.service';
 import { seedProFormaYear1, ensureDealAssumptionsSeeded } from '../proforma-seeder.service';
 import { runCrossValidation } from '../multi-doc-cross-validation.service';
+import { runDataQualityAgent, runDataQualityAgentAfterReseed } from '../data-quality-agent.service';
 
 interface RouteContext {
   dealId: string;
@@ -214,6 +215,22 @@ export async function routeExtractionResult(
       }
     } catch (err) {
       alerts.push(`[xval] failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+
+    // Task #691 — Data Quality Agent (fire-and-forget, never blocks extraction response)
+    // Maps extraction documentType to the DQA's canonical DOCTYPE enum.
+    const DQA_DOCTYPE_MAP: Record<string, string> = {
+      OM: 'OM', T12: 'T12', RENT_ROLL: 'RENT_ROLL', TAX_BILL: 'TAX_BILL',
+    };
+    const dqaDocType = DQA_DOCTYPE_MAP[result.documentType];
+    if (dqaDocType) {
+      setImmediate(() => {
+        runDataQualityAgent(pool, {
+          dealId: ctx.dealId,
+          documentType: dqaDocType,
+          filePath: ctx.filePath,
+        }).catch(() => {});
+      });
     }
   }
 
@@ -1232,37 +1249,71 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
   }
 
   if (Object.keys(capsulePayload).length > 0) {
-    const existingResult = await pool.query(
-      `SELECT COALESCE(deal_data, '{}'::jsonb) as deal_data FROM deals WHERE id = $1`,
-      [dealId]
-    );
-    const existingData = existingResult.rows[0]?.deal_data || {};
-    // Extraction capsules must be fully replaced (not deep-merged) so that a
-    // re-processed document never inherits floor_plan_mix / other arrays from a
-    // previous extraction of a different document file for the same type.
-    const REPLACE_CAPSULE_KEYS = [
-      'extraction_rent_roll', 'extraction_t12', 'extraction_aged_receivables',
-      'extraction_box_score', 'extraction_concession_burnoff', 'extraction_lto',
-      'extraction_tax_bill',
-      // Task #519: OM capsule now carries `other_income_monthly` (per-category
-      // ancillary recipe). Full-replace ensures stale category keys from an
-      // earlier OM parse don't leak into the 3-source resolver.
-      'extraction_om',
-    ];
-    const baseForMerge = { ...existingData };
-    for (const key of REPLACE_CAPSULE_KEYS) {
-      if (key in capsulePayload) delete baseForMerge[key];
-    }
-    const merged = deepMergeJsonb(baseForMerge, capsulePayload);
-    await pool.query(
-      `UPDATE deals SET
-         deal_data = $2::jsonb,
-         updated_at = NOW()
-       WHERE id = $1`,
-      [dealId, JSON.stringify(merged)]
-    );
+    // Separate broker_claims subkey updates (OTHER_INCOME path) from top-level
+    // capsule keys (extraction_t12, extraction_rent_roll, etc.). The two sets
+    // need different SQL merge semantics.
+    //
+    // WRITE-RACE FIX (Task #690): The previous implementation read existingData
+    // then issued SET deal_data = $2::jsonb (full-replace). Under concurrent
+    // document extraction — e.g. a background OM extraction committing
+    // broker_claims via JSONB merge (line 641) while a T12 capsule write was in
+    // flight — the T12 full-replace could overwrite broker_claims with the stale
+    // pre-OM state read at the top of this function. The seeder then found no
+    // broker_claims and wrote year1.gpr.om = null.
+    //
+    // Fix: use atomic JSONB || at the DB level so no read is needed.
+    //   - Capsule keys (extraction_t12, extraction_rent_roll, extraction_tax_bill,
+    //     etc.): top-level || REPLACES the matching key atomically, preserving all
+    //     sibling keys including broker_claims. This achieves the REPLACE_CAPSULE_KEYS
+    //     semantics (stale floor_plan_mix / array data is overwritten by the
+    //     right-hand side) without a prior read.
+    //   - broker_claims subkeys (OTHER_INCOME only): SQL jsonb_build_object
+    //     deep-merges just the sub-keys (other_income, other_income_variance)
+    //     into the existing broker_claims object, preserving proforma written
+    //     by routeOM's own JSONB merge at line 641.
+    const { broker_claims: brokerClaimsUpdate, ...capsuleKeys } = capsulePayload;
+    const hasCapsuleKeys  = Object.keys(capsuleKeys).length > 0;
+    const hasBrokerClaims = brokerClaimsUpdate != null && Object.keys(brokerClaimsUpdate as Record<string, unknown>).length > 0;
 
-    // Part A — Item 3: forceReseed when income-relevant capsules are written.
+    if (hasCapsuleKeys && hasBrokerClaims) {
+      // Both capsule keys and broker_claims in one pass — currently unreachable
+      // (no document type produces both) but guarded for future-proofing.
+      await pool.query(
+        `UPDATE deals SET
+           deal_data = (COALESCE(deal_data, '{}'::jsonb) || $2::jsonb) ||
+             jsonb_build_object('broker_claims',
+               COALESCE(deal_data->'broker_claims', '{}'::jsonb) || $3::jsonb
+             ),
+           updated_at = NOW()
+         WHERE id = $1`,
+        [dealId, JSON.stringify(capsuleKeys), JSON.stringify(brokerClaimsUpdate)]
+      );
+    } else if (hasBrokerClaims) {
+      // OTHER_INCOME: only broker_claims subkeys — sub-merge preserves proforma
+      await pool.query(
+        `UPDATE deals SET
+           deal_data = COALESCE(deal_data, '{}'::jsonb) ||
+             jsonb_build_object('broker_claims',
+               COALESCE(deal_data->'broker_claims', '{}'::jsonb) || $2::jsonb
+             ),
+           updated_at = NOW()
+         WHERE id = $1`,
+        [dealId, JSON.stringify(brokerClaimsUpdate)]
+      );
+    } else {
+      // Typical path: extraction_t12 / extraction_rent_roll / extraction_tax_bill
+      // etc. Top-level || atomically replaces each capsule key while preserving
+      // all sibling keys (including broker_claims) without a prior SELECT.
+      await pool.query(
+        `UPDATE deals SET
+           deal_data = COALESCE(deal_data, '{}'::jsonb) || $2::jsonb,
+           updated_at = NOW()
+         WHERE id = $1`,
+        [dealId, JSON.stringify(capsuleKeys)]
+      );
+    }
+
+    // forceReseed when income-relevant capsules are written.
     // Model: "extraction changed → derived values recompute."
     //
     // TRIGGER RULES (per docs/architecture/F9_TIER1_BLOCKERS_AUDIT.md):
@@ -1281,7 +1332,6 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
       try {
         await ensureDealAssumptionsSeeded(pool, dealId, { forceReseed: true });
       } catch (err) {
-        // Non-fatal: capsule write already committed. Log and continue.
         console.warn(
           `[data-router] forceReseed after capsule write failed for ${dealId}:`,
           err instanceof Error ? err.message : err
@@ -1308,21 +1358,3 @@ async function persistAlert(
   );
 }
 
-function deepMergeJsonb(target: Record<string, any>, source: Record<string, any>): Record<string, any> {
-  const result = { ...target };
-  for (const key of Object.keys(source)) {
-    if (
-      result[key] &&
-      typeof result[key] === 'object' &&
-      !Array.isArray(result[key]) &&
-      typeof source[key] === 'object' &&
-      !Array.isArray(source[key]) &&
-      source[key] !== null
-    ) {
-      result[key] = deepMergeJsonb(result[key], source[key]);
-    } else {
-      result[key] = source[key];
-    }
-  }
-  return result;
-}

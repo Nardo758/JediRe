@@ -998,6 +998,89 @@ function buildSeed(
 }
 
 /**
+ * Emit a structured JSON log after seedProFormaYear1 completes.
+ * Stdout-only — no DB write. Consumed by the Data Quality Agent (Task #691)
+ * as the primary signal for SEED_PLUMBING findings.
+ */
+function emitSeedObservabilityLog(
+  dealId: string,
+  capsule: Capsule,
+  seed: ProFormaYear1Seed
+): void {
+  const uploaded_sources: string[] = [];
+  if (capsule.extraction_om)        uploaded_sources.push('om');
+  if (capsule.extraction_t12)       uploaded_sources.push('t12');
+  if (capsule.extraction_rent_roll) uploaded_sources.push('rent_roll');
+  if (capsule.extraction_tax_bill)  uploaded_sources.push('tax_bill');
+
+  type TrackedField = { field: keyof ProFormaYear1Seed; slots: string[] };
+  const TRACKED: TrackedField[] = [
+    { field: 'gpr',             slots: ['om', 't12', 'rent_roll', 'platform'] },
+    { field: 'real_estate_tax', slots: ['om', 't12', 'tax_bill',  'platform'] },
+    { field: 'contract_services', slots: ['om', 't12', 'platform'] },
+    { field: 'vacancy_pct',     slots: ['t12', 'rent_roll', 'platform'] },
+    { field: 'payroll',         slots: ['t12', 'platform'] },
+  ];
+
+  const SOURCE_SLOT_MAP: Record<string, Array<{ field: string; slot: string }>> = {
+    om: [
+      { field: 'gpr',             slot: 'om' },
+      { field: 'real_estate_tax', slot: 'om' },
+      { field: 'contract_services', slot: 'om' },
+    ],
+    t12: [
+      { field: 'gpr',             slot: 't12' },
+      { field: 'real_estate_tax', slot: 't12' },
+      { field: 'contract_services', slot: 't12' },
+      { field: 'vacancy_pct',     slot: 't12' },
+      { field: 'payroll',         slot: 't12' },
+    ],
+    rent_roll: [
+      { field: 'gpr',         slot: 'rent_roll' },
+      { field: 'vacancy_pct', slot: 'rent_roll' },
+    ],
+    tax_bill: [
+      { field: 'real_estate_tax', slot: 'tax_bill' },
+    ],
+  };
+
+  const year1_slot_population: Record<string, Record<string, string>> = {};
+  for (const { field, slots } of TRACKED) {
+    const lv = seed[field] as (LayeredValue<number> & Record<string, unknown>) | undefined;
+    if (!lv) continue;
+    year1_slot_population[field as string] = {};
+    for (const slot of slots) {
+      const val = lv[slot] as number | null | undefined;
+      year1_slot_population[field as string][slot] = val != null ? 'populated' : 'null';
+    }
+  }
+
+  type Gap = { field: string; slot: string; expected: string; actual: string; uploaded_source: string };
+  const expected_vs_actual_gaps: Gap[] = [];
+  for (const source of uploaded_sources) {
+    for (const { field, slot } of (SOURCE_SLOT_MAP[source] ?? [])) {
+      if (year1_slot_population[field]?.[slot] === 'null') {
+        expected_vs_actual_gaps.push({
+          field, slot, expected: 'populated', actual: 'null', uploaded_source: source,
+        });
+      }
+    }
+  }
+
+  const entry: Record<string, unknown> = {
+    event: 'seed.complete',
+    deal_id: dealId,
+    timestamp: new Date().toISOString(),
+    uploaded_sources,
+    year1_slot_population,
+  };
+  if (expected_vs_actual_gaps.length > 0) {
+    entry.expected_vs_actual_gaps = expected_vs_actual_gaps;
+  }
+  console.log(JSON.stringify(entry));
+}
+
+/**
  * Public entry point: re-seed the deal's ProForma Year-1 assumptions.
  * Called by data-router after every successful extraction.
  */
@@ -1090,6 +1173,11 @@ export async function seedProFormaYear1(
     const fieldsSeeded = Object.values(seed).filter(
       (v: unknown) => v && typeof v === 'object' && 'resolved' in v && (v as LayeredValue<number>).resolved != null
     ).length;
+
+    // Structured observability log — stdout only, no DB write.
+    // Consumed by the Data Quality Agent (Task #691) as the primary signal
+    // for SEED_PLUMBING findings (source uploaded but slot null).
+    emitSeedObservabilityLog(dealId, capsule, seed);
 
     return {
       seeded: true,

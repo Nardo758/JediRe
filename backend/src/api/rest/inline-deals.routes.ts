@@ -2076,4 +2076,102 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
   }
 });
 
+// ── Data Quality Alerts ───────────────────────────────────────────────────────
+
+/**
+ * GET /:dealId/data-quality-alerts
+ * Returns all open (non-superseded) data quality findings for a deal.
+ * Optionally filtered by ?documentType= or ?proformaRow=.
+ */
+router.get('/:dealId/data-quality-alerts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { dealId } = req.params;
+  const { documentType, proformaRow, status } = req.query as Record<string, string | undefined>;
+  try {
+    const conditions: string[] = [
+      'deal_id = $1',
+      'superseded_by IS NULL',
+    ];
+    const params: unknown[] = [dealId];
+
+    if (status) {
+      params.push(status);
+      conditions.push(`status = $${params.length}`);
+    } else {
+      conditions.push("status != 'dismissed'");
+    }
+    if (documentType) {
+      params.push(documentType.toUpperCase());
+      conditions.push(`document_type = $${params.length}`);
+    }
+    if (proformaRow) {
+      params.push(proformaRow);
+      conditions.push(`proforma_row = $${params.length}`);
+    }
+
+    const result = await pool.query(
+      `SELECT id, document_type, proforma_column, proforma_row,
+              classification, severity, agent_finding,
+              status, dismissed_at, dismissal_reason,
+              created_at, updated_at
+         FROM data_quality_alerts
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY
+          CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+          created_at DESC`,
+      params
+    );
+
+    // Group by proforma_row for convenient front-end consumption
+    const byRow: Record<string, unknown[]> = {};
+    for (const row of result.rows) {
+      if (!byRow[row.proforma_row]) byRow[row.proforma_row] = [];
+      byRow[row.proforma_row].push(row);
+    }
+
+    res.json({ success: true, alerts: result.rows, byRow, total: result.rows.length });
+  } catch (err: any) {
+    console.error('[data-quality-alerts GET]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * PATCH /data-quality-alerts/:id
+ * Update the status of a data quality alert.
+ * Body: { status: 'dismissed' | 'acknowledged' | 'fixed', dismissalReason?: string }
+ */
+router.patch('/data-quality-alerts/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { id } = req.params;
+  const userId = req.user?.userId ?? 'unknown';
+  const { status, dismissalReason } = req.body as { status?: string; dismissalReason?: string };
+
+  const VALID_STATUSES = ['dismissed', 'acknowledged', 'fixed', 'open'];
+  if (!status || !VALID_STATUSES.includes(status)) {
+    return res.status(400).json({ success: false, error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE data_quality_alerts
+          SET status          = $2,
+              dismissed_at    = CASE WHEN $2 = 'dismissed' THEN NOW() ELSE dismissed_at END,
+              dismissed_by    = CASE WHEN $2 = 'dismissed' THEN $3 ELSE dismissed_by END,
+              dismissal_reason = CASE WHEN $2 = 'dismissed' THEN $4 ELSE dismissal_reason END,
+              updated_at      = NOW()
+        WHERE id = $1
+        RETURNING id, status, updated_at`,
+      [id, status, userId, dismissalReason ?? null]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Alert not found' });
+    }
+
+    res.json({ success: true, alert: result.rows[0] });
+  } catch (err: any) {
+    console.error('[data-quality-alerts PATCH]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;

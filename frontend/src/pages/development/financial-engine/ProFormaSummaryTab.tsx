@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle, ChevronDown, ChevronRight, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps, EvidenceFieldMeta, F9ConcessionMonthlyDetail } from './types';
@@ -386,6 +386,68 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const y1IsBroker   = y1Source === 'BROKER';
   const y1IsTperiod  = (T_PERIODS as readonly string[]).includes(y1Source);
 
+  // Data Quality Alerts (Task #691)
+  interface DqaAlert {
+    id: string;
+    document_type: string;
+    proforma_column: string;
+    proforma_row: string;
+    classification: string;
+    severity: 'critical' | 'warning' | 'info';
+    agent_finding: {
+      reasoning: string;
+      extracted_value?: string | number | null;
+      expected_value?: string | number | null;
+      recommended_action?: string;
+      source_evidence?: { page?: number | null; section?: string | null; snippet?: string | null };
+    };
+    status: string;
+  }
+  const [dqaAlerts, setDqaAlerts]     = useState<DqaAlert[]>([]);
+  const [dqaLoading, setDqaLoading]   = useState(false);
+  const [dqaDrawer, setDqaDrawer]     = useState<DqaAlert | null>(null);
+
+  // Keyed by proforma_row for O(1) DataRow lookup
+  const dqaByRow = useMemo<Record<string, DqaAlert[]>>(() => {
+    const m: Record<string, DqaAlert[]> = {};
+    for (const a of dqaAlerts) {
+      if (!m[a.proforma_row]) m[a.proforma_row] = [];
+      m[a.proforma_row].push(a);
+    }
+    return m;
+  }, [dqaAlerts]);
+
+  const dqaCriticalCount = dqaAlerts.filter(a => a.severity === 'critical').length;
+  const dqaWarningCount  = dqaAlerts.filter(a => a.severity === 'warning').length;
+
+  const loadDqaAlerts = useCallback(async () => {
+    if (!dealId) return;
+    setDqaLoading(true);
+    try {
+      const res = await apiClient.get<{ success: boolean; alerts: DqaAlert[] }>(
+        `/api/v1/deals/${dealId}/data-quality-alerts`
+      );
+      setDqaAlerts(res.data?.alerts ?? []);
+    } catch {
+      // Non-fatal — DQA is a layer on top of the Pro Forma
+    } finally {
+      setDqaLoading(false);
+    }
+  }, [dealId]);
+
+  const dismissDqaAlert = useCallback(async (id: string, reason?: string) => {
+    try {
+      await apiClient.patch(`/api/v1/deals/data-quality-alerts/${id}`, {
+        status: 'dismissed',
+        dismissalReason: reason,
+      });
+      setDqaAlerts(prev => prev.filter(a => a.id !== id));
+      setDqaDrawer(null);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -488,6 +550,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   }, [dealId, onIntegrityChange, onF9Refresh, lvCostTreatmentView]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load DQA alerts on mount and refresh after the main data loads
+  useEffect(() => { loadDqaAlerts(); }, [loadDqaAlerts]);
 
   // Reactive wiring: re-fetch when concession recognition is recomputed on the backend.
   // The amortization engine fires 'concession_recognition.updated' on the window event bus
@@ -746,6 +811,33 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             <span style={{ fontFamily: LABEL, fontSize: 9, color: '#64748b' }}>{totalUnits} Units</span>
           )}
           <span style={{ fontFamily: LABEL, fontSize: 9, color: '#475569' }}>At-Acquisition Snapshot</span>
+          {/* DQA aggregate badge — shows when agent has found issues */}
+          {(dqaCriticalCount > 0 || dqaWarningCount > 0) && (
+            <button
+              title={`Data Quality: ${dqaCriticalCount} critical, ${dqaWarningCount} warning`}
+              onClick={() => loadDqaAlerts()}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                background: dqaCriticalCount > 0 ? '#1c0a0a' : '#1a1200',
+                border: `1px solid ${dqaCriticalCount > 0 ? '#ef4444' : '#f59e0b'}`,
+                borderRadius: 2, padding: '1px 6px', cursor: 'pointer',
+                fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
+                color: dqaCriticalCount > 0 ? '#f87171' : '#fcd34d',
+              }}
+            >
+              <ShieldAlert size={8} />
+              DQA{dqaCriticalCount > 0 ? ` · ${dqaCriticalCount} CRIT` : ''}
+              {dqaWarningCount > 0 ? ` · ${dqaWarningCount} WARN` : ''}
+            </button>
+          )}
+          {dqaAlerts.length === 0 && !dqaLoading && (
+            <span
+              title="Data Quality Agent: no issues found"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 8, color: '#22c55e', fontFamily: LABEL }}
+            >
+              <ShieldCheck size={8} />
+            </span>
+          )}
         </div>
 
         {/* ── View mode + Y1 source controls ── */}
@@ -934,6 +1026,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 onResetCorrection={handleResetCorrection}
                 evidenceResolved={resolveEvidence('gpr', evidenceFieldMap)}
                 sigmaTier={sigmaField?.field === 'gpr' ? sigmaField.tier : null}
+                dqaAlerts={dqaByRow['gpr']}
+                onDqaClick={setDqaDrawer}
               />
             )}
 
@@ -963,6 +1057,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
                     stanceModulated={r.field === 'vacancy_loss' && !!(stanceByPath['vacancy'])}
                     stanceTrace={r.field === 'vacancy_loss' ? stanceByPath['vacancy']?.trace : undefined}
+                    dqaAlerts={dqaByRow[r.field]}
+                    onDqaClick={setDqaDrawer}
                   />
                   {isConcessionsOverridden && (
                     <tr style={{ background: '#110e00' }}>
@@ -1002,6 +1098,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     ancillaryOpen={showAncillary}
                     evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                     sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
+                    dqaAlerts={dqaByRow[r.field]}
+                    onDqaClick={setDqaDrawer}
                   />
 
                   {/* ── No breakdown available chip ── */}
@@ -1202,7 +1300,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                   sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
                   stanceModulated={!!(stanceByPath['expenseGrowth'])}
-                  stanceTrace={stanceByPath['expenseGrowth']?.trace} />
+                  stanceTrace={stanceByPath['expenseGrowth']?.trace}
+                  dqaAlerts={dqaByRow[r.field]}
+                  onDqaClick={setDqaDrawer} />
                 {r.field === 'utilities' && (() => {
                   const waterSewer = byField['water_sewer'];
                   const electric   = byField['electric'];
@@ -1272,7 +1372,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                 sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
                 stanceModulated={!!(stanceByPath['expenseGrowth'])}
-                stanceTrace={stanceByPath['expenseGrowth']?.trace} />
+                stanceTrace={stanceByPath['expenseGrowth']?.trace}
+                dqaAlerts={dqaByRow[r.field]}
+                onDqaClick={setDqaDrawer} />
             ))}
             <tr style={{ background: '#0d0a14' }}>
               <td style={{ padding: '4px 8px', color: '#c084fc', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#0d0a14' }}>─── NON-CONTROLLABLE OPEX ───</td>
@@ -1624,6 +1726,132 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       calendarYearTotal={conDrill.calendarYearTotal}
       fiscalYearTotal={conDrill.fiscalYearTotal}
     />
+
+    {/* ── Data Quality Alert drawer (Task #691) ── */}
+    {dqaDrawer && (
+      <div
+        onClick={() => setDqaDrawer(null)}
+        style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+          zIndex: 9000, display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
+        }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            width: 420, height: '100%', background: '#0f1117',
+            borderLeft: `3px solid ${dqaDrawer.severity === 'critical' ? '#ef4444' : dqaDrawer.severity === 'warning' ? '#f59e0b' : '#475569'}`,
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}
+        >
+          {/* Header */}
+          <div style={{
+            padding: '10px 14px', background: '#111827', borderBottom: '1px solid #1e293b',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
+          }}>
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+                color: dqaDrawer.severity === 'critical' ? '#f87171' : dqaDrawer.severity === 'warning' ? '#fcd34d' : '#94a3b8' }}>
+                {dqaDrawer.classification.replace(/_/g, ' ')} · {dqaDrawer.severity.toUpperCase()}
+              </div>
+              <div style={{ fontFamily: MONO, fontSize: 10, color: '#e2e8f0', marginTop: 3 }}>
+                {dqaDrawer.proforma_row.replace(/_/g, ' ').toUpperCase()} · {dqaDrawer.proforma_column.toUpperCase()} column
+              </div>
+              <div style={{ fontFamily: LABEL, fontSize: 8, color: '#475569', marginTop: 2 }}>
+                {dqaDrawer.document_type} · {dqaDrawer.status.toUpperCase()}
+              </div>
+            </div>
+            <button onClick={() => setDqaDrawer(null)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 14, padding: '2px 4px' }}>✕</button>
+          </div>
+
+          {/* Body */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Reasoning */}
+            <div>
+              <div style={{ fontFamily: LABEL, fontSize: 8, color: '#475569', letterSpacing: '0.06em', marginBottom: 4 }}>FINDING</div>
+              <p style={{ fontFamily: LABEL, fontSize: 10, color: '#cbd5e1', lineHeight: 1.5, margin: 0 }}>
+                {dqaDrawer.agent_finding.reasoning}
+              </p>
+            </div>
+
+            {/* Values */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {dqaDrawer.agent_finding.extracted_value != null && (
+                <div style={{ background: '#1e293b', borderRadius: 3, padding: '8px 10px' }}>
+                  <div style={{ fontFamily: LABEL, fontSize: 7, color: '#475569', letterSpacing: '0.06em', marginBottom: 3 }}>EXTRACTED VALUE</div>
+                  <div style={{ fontFamily: MONO, fontSize: 10, color: '#f87171' }}>{String(dqaDrawer.agent_finding.extracted_value)}</div>
+                </div>
+              )}
+              {dqaDrawer.agent_finding.expected_value != null && (
+                <div style={{ background: '#1e293b', borderRadius: 3, padding: '8px 10px' }}>
+                  <div style={{ fontFamily: LABEL, fontSize: 7, color: '#475569', letterSpacing: '0.06em', marginBottom: 3 }}>EXPECTED VALUE</div>
+                  <div style={{ fontFamily: MONO, fontSize: 10, color: '#34d399' }}>{String(dqaDrawer.agent_finding.expected_value)}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Source evidence */}
+            {dqaDrawer.agent_finding.source_evidence?.snippet && (
+              <div>
+                <div style={{ fontFamily: LABEL, fontSize: 8, color: '#475569', letterSpacing: '0.06em', marginBottom: 4 }}>
+                  SOURCE EVIDENCE
+                  {dqaDrawer.agent_finding.source_evidence.page && <span style={{ color: '#334155' }}> · p.{dqaDrawer.agent_finding.source_evidence.page}</span>}
+                  {dqaDrawer.agent_finding.source_evidence.section && <span style={{ color: '#334155' }}> · {dqaDrawer.agent_finding.source_evidence.section}</span>}
+                </div>
+                <div style={{
+                  fontFamily: MONO, fontSize: 8.5, color: '#64748b',
+                  background: '#0f172a', borderRadius: 3, padding: '8px 10px',
+                  borderLeft: '2px solid #1e293b', lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                }}>
+                  {dqaDrawer.agent_finding.source_evidence.snippet}
+                </div>
+              </div>
+            )}
+
+            {/* Recommended action */}
+            {dqaDrawer.agent_finding.recommended_action && (
+              <div style={{ background: '#0c1a2a', borderRadius: 3, padding: '8px 10px', borderLeft: '2px solid #1d4ed8' }}>
+                <div style={{ fontFamily: LABEL, fontSize: 7, color: '#3b82f6', letterSpacing: '0.06em', marginBottom: 3 }}>RECOMMENDED ACTION</div>
+                <p style={{ fontFamily: LABEL, fontSize: 9, color: '#93c5fd', lineHeight: 1.5, margin: 0 }}>
+                  {dqaDrawer.agent_finding.recommended_action}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer actions */}
+          <div style={{ padding: '10px 14px', borderTop: '1px solid #1e293b', display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => dismissDqaAlert(dqaDrawer.id, 'Dismissed by operator')}
+              style={{
+                flex: 1, padding: '6px', background: '#1c1917', border: '1px solid #292524',
+                borderRadius: 2, color: '#78716c', cursor: 'pointer',
+                fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.06em',
+              }}
+            >
+              DISMISS
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  await apiClient.patch(`/api/v1/deals/data-quality-alerts/${dqaDrawer.id}`, { status: 'acknowledged' });
+                  setDqaAlerts(prev => prev.map(a => a.id === dqaDrawer.id ? { ...a, status: 'acknowledged' } : a));
+                  setDqaDrawer(null);
+                } catch { /* ignore */ }
+              }}
+              style={{
+                flex: 1, padding: '6px', background: '#1a1200', border: '1px solid #2a1e00',
+                borderRadius: 2, color: '#fcd34d', cursor: 'pointer',
+                fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.06em',
+              }}
+            >
+              ACKNOWLEDGE
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }
@@ -2318,7 +2546,24 @@ const COLLISION_COLOR: Record<string, string> = {
   minor:    '#94a3b8',
 };
 
-function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved, onRowClick, sigmaTier, stanceModulated, stanceTrace }: {
+interface DqaAlertShape {
+  id: string;
+  document_type: string;
+  proforma_column: string;
+  proforma_row: string;
+  classification: string;
+  severity: 'critical' | 'warning' | 'info';
+  agent_finding: {
+    reasoning: string;
+    extracted_value?: string | number | null;
+    expected_value?: string | number | null;
+    recommended_action?: string;
+    source_evidence?: { page?: number | null; section?: string | null; snippet?: string | null };
+  };
+  status: string;
+}
+
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved, onRowClick, sigmaTier, stanceModulated, stanceTrace, dqaAlerts, onDqaClick }: {
   row: OperatingStatementRow;
   isEven: boolean;
   shade?: 'blue' | 'warm' | 'purple';
@@ -2341,6 +2586,10 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   stanceModulated?: boolean;
   /** Human-readable trace of which stance rules fired. */
   stanceTrace?: string;
+  /** Data Quality Agent alerts for this row (Task #691) */
+  dqaAlerts?: DqaAlertShape[];
+  /** Called when user clicks a DQA icon to open the detail drawer */
+  onDqaClick?: (alert: DqaAlertShape) => void;
 }) {
   const viewMode          = useDealStore(s => s.viewMode);
   const platformColSource = useDealStore(s => s.platformColSource);
@@ -2668,6 +2917,21 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
       {/* FLAG + ACTIONS */}
       <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* DQA icons — one per finding, most severe first */}
+          {dqaAlerts && dqaAlerts.length > 0 && dqaAlerts.slice(0, 2).map(a => (
+            <button
+              key={a.id}
+              title={`${a.classification} · ${a.agent_finding.reasoning?.slice(0, 120) ?? ''}${a.agent_finding.reasoning?.length > 120 ? '…' : ''} · Click for detail`}
+              onClick={() => onDqaClick?.(a)}
+              style={{
+                background: 'none', border: 'none', padding: '1px 2px', cursor: 'pointer',
+                color: a.severity === 'critical' ? '#ef4444' : a.severity === 'warning' ? '#f59e0b' : '#64748b',
+                display: 'inline-flex', alignItems: 'center',
+              }}
+            >
+              <ShieldAlert size={9} />
+            </button>
+          ))}
           {evidenceResolved?.meta.has_collision && (
             <span
               title={`Collision · Agent vs Broker OM${evidenceResolved.meta.collision_magnitude ? ` (${evidenceResolved.meta.collision_magnitude})` : ''} · Click badge to see detail`}
