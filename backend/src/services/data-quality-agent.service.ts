@@ -108,9 +108,12 @@ const AUDIT_ROWS_BY_DOCTYPE: Record<string, string[]> = {
   ],
 };
 
-// Proforma column that a document type populates
+// Proforma column that a document type populates.
+// Must match the key used in deal_assumptions.year1[row] (e.g. year1.gpr.om = 4901400).
+// NOTE: OM uses 'om', NOT 'broker' — broker_claims is the extraction source but the
+//       year1 slot key seeded from it is 'om'.
 const COLUMN_BY_DOCTYPE: Record<string, string> = {
-  OM:        'broker',
+  OM:        'om',
   T12:       't12',
   RENT_ROLL: 'rent_roll',
   TAX_BILL:  'tax_bill',
@@ -275,7 +278,7 @@ async function callAgent(
   });
 
   const response = await anthropic.messages.create({
-    model: 'claude-3-5-haiku-20241022',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 2048,
     system: buildSystemPrompt(),
     messages,
@@ -326,6 +329,19 @@ async function callAgent(
         return { ...f, classification: gapPhase2Map.get(f.proforma_row)! };
       }
       return f;
+    })
+    // Normalise proforma_row and proforma_column deterministically.
+    // Claude sometimes returns the display label ("Contract Services") instead of
+    // the snake_case key ("contract_services"), and always returns an unreliable
+    // proforma_column value. Both are corrected here from the source-of-truth maps.
+    .map(f => {
+      const labelToKey = new Map(proformaRows.map(r => [r.label.toLowerCase(), r.row]));
+      const normRow = labelToKey.get(f.proforma_row.toLowerCase()) ?? f.proforma_row;
+      return {
+        ...f,
+        proforma_row:    normRow,
+        proforma_column: COLUMN_BY_DOCTYPE[documentType] ?? f.proforma_column,
+      };
     });
 
   return findings;
@@ -447,12 +463,14 @@ async function fetchProformaRowData(
   };
 
   const PROFORMA_KEY_MAP: Record<string, string> = {
-    gpr:               'stabilizedGpr',
-    real_estate_tax:   'realEstateTaxesAnnual',
-    contract_services: 'contractServicesAnnual',
-    payroll:           'payrollAnnual',
-    insurance:         'insuranceAnnual',
-    noi:               'yearOneNOI',
+    gpr:                'stabilizedGpr',
+    vacancy_pct:        'stabilizedVacancy',   // broker_claims.proforma uses camelCase
+    real_estate_tax:    'realEstateTaxesAnnual',
+    contract_services:  'contractServicesAnnual',
+    payroll:            'payrollAnnual',
+    insurance:          'insuranceAnnual',
+    management_fee_pct: 'managementFeePct',    // broker_claims.proforma uses camelCase
+    noi:                'yearOneNOI',
   };
 
   return rows.map(row => {
