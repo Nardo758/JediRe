@@ -1,0 +1,14 @@
+A few small things worth noticing on this final pass:
+The compile-time enforcement note in Step 2 is a nice touch. Calling out that Record<DqaClassification, DqaSeverity> will fail TypeScript compilation if the retired key is present or a new key is missing makes the retirement self-enforcing rather than relying on grep. That's the right pattern — types as the contract, not docs.
+Step 5's code-comment requirement. The task explicitly says "Add a code comment at the callsite documenting the proxy limitation and the Phase 2 field-level audit-table path." Good — that means future engineers reading the code see the limitation in context, not just in a task description that may be hard to find later. Worth confirming the comment lands, since it's the documented hand-off to whoever does the Phase 2 audit-table work.
+The Bishop verification's "no new SEED_PLUMBING findings appear" check is the cleanest validation of the post-call filter. If a single legacy SEED_PLUMBING string makes it through to a new finding post-deploy, the filter regression is immediately visible. That's a stronger signal than just "filter unit test passes."
+One minor observation — not a change, just noting. The prompt copy now includes both numeric thresholds (deltaSeconds < 300, deltaSeconds >= 300) AND the "5 minutes" verbal description. Good redundancy — Claude can anchor on either. Worth keeping both phrasings; LLM classification is more robust when the rule is stated in two consistent ways.
+Ship it.
+Once #696 is merged and Bishop verification confirms, the closing arc of this chapter is:
+
+Re-baseline DATA_QUALITY_AGENT_SPEC.md Section 5 to match the new taxonomy (the spec-vs-code drift hygiene). Five-minute commit.
+Add the Phase 2 audit-table path (field-level write tracking) to the backlog with a pointer to #696's known limitation section. That's the next architectural piece if production false-classification rates exceed comfort threshold over the 4-week monitoring window.
+The signed-delta refinement stays in the parking lot until/unless monitoring data motivates it.
+
+The chapter that started with "Broker column is missing values" has now produced: Ticket A (write-race fix), the opex back-fill (protects Scenario B), DQA taxonomy expansion (#696, classifies all three scenarios), an updated spec, and a documented Phase 2 path for finer-grained timestamps. That's a clean architectural arc — the original symptom drove understanding of the underlying class of bugs, and the platform's diagnostic capabilities improved at every layer.
+Worth noting in whatever methodology / architecture log you maintain — this is a good case study of how an operator-visible symptom (one missing cell) cascaded into surfacing a real bug, a real architectural seam (write-race between data-router and seeder), a real classification gap (DQA collapsing three scenarios), and a real future architectural need (field-level write tracking). All from "the Broker column is empty.

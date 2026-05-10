@@ -1,0 +1,26 @@
+Task is solid. Faithful translation of the delta — change inventory matches, all four design decisions resolved correctly, prompt copy verbatim, acceptance criteria clean, coordination with Ticket A specified. Ready to dispatch with three additions and one verification recommendation.
+1. Flag the deals.updated_at proxy limitation explicitly. Step 5 says: "The caller computes these by comparing deal_assumptions.updated_at (seed time) to deals.updated_at (last deal edit)." Acceptable for Phase 1 but the proxy is coarse — deals.updated_at fires on any edit to the deal record, not specifically on changes to the source field. If an underwriter renames the deal at 14:00 but broker_claims.proforma.stabilizedGpr was last written at 13:43:25, the proxy says "source written at 14:00" when the relevant write was 30 minutes earlier.
+For Bishop's specific case the proxy worked because the diagnostic reasoning didn't depend on field-level write times — contract services was null on both sides. But for cases where source IS populated and we need true field-level write semantics, this proxy will misclassify some fraction of findings.
+Add to the task as an explicit known limitation with a forward note: "Phase 2 may introduce field-level write tracking via an extraction events audit table. Until then, false STALE_SEED classifications are possible when an unrelated deal edit happens after seeding. Misclassification rate should be monitored once Phase 1 has 4+ weeks of production data."
+This is the load-bearing assumption that determines whether timestamp-based classification works at all. Worth surfacing rather than burying.
+2. Tighten NOT_IN_DOC verification semantics in Step 7. Current phrasing: Claude "uses [absentFields] to emit NOT_IN_DOC findings for confirmed absences." Ambiguous on whether absentFields is required (Claude MUST emit NOT_IN_DOC for each) or candidate (Claude verifies absence in the source document before emitting).
+Recommended phrasing: "The absentFields list identifies candidates meeting the curated criterion (at least one other source on this deal has the field). Claude must verify absence in the source document before emitting NOT_IN_DOC. If the relevant document section is unreadable, classify as LOW_CONFIDENCE_EXTRACTION instead. If the field IS visible in the source despite year1 being null, classify as PARSER_MISS — absentFields membership is necessary but not sufficient."
+This prevents NOT_IN_DOC from misfiring when the parser actually missed a field that's in the document; the agent distinguishes "we looked and it's not there" from "we couldn't tell because the document section was unreadable" from "the parser dropped a field that was right there."
+3. Add explicit test coverage in the Steps section. Currently implicit in normal PR practice but worth enumerating given the lockstep nature of the changes:
+
+Compile-time check: TypeScript fails when any reference to SEED_PLUMBING (the retired tag) remains in the service
+SEVERITY_MAP unit tests: returns warning for both SEED_PLUMBING_* variants, info for NOT_IN_DOC
+Tool-use schema + post-call allowlist tests: hallucinated SEED_PLUMBING (legacy tag) from the LLM gets dropped by the post-call filter
+buildUserPrompt snapshot test: seedGaps array with timestamps produces expected multi-line format including source-write, seed-write, delta
+Curated NOT_IN_DOC test: when no other source has the field, NOT_IN_DOC is NOT in the absentFields list passed to buildUserPrompt
+Frontend tests: "Show absences" toggle off hides NOT_IN_DOC findings AND increments the footnote; on shows them inline; detail-drawer copy renders correct recommended action per classification
+
+Verification recommendation — Bishop as the canonical test deal. Add to the acceptance criteria:
+
+New DQA run on Bishop classifies contract_services.om as NOT_IN_DOC (OM doesn't have it; T-12 does, so curated criterion met) — info severity, hidden by default, countable via "N absences verified" footnote
+gpr.om already populated; no DQA finding expected on this row
+Any existing legacy SEED_PLUMBING records on Bishop stay as-is until naturally superseded by the next per-reseed trigger
+Confirm via DB query: SELECT classification, COUNT(*) FROM data_quality_alerts WHERE deal_id = '3f32276f-...' GROUP BY classification — post-deploy state should show new classifications appearing for newer findings
+
+Minor — signed vs unsigned delta. The deltaSeconds comparison currently treats absolute delta. If source is written 30 seconds after seed (slow stale-seed pattern), |delta| < 300 → WRITE_RACE, but it's structurally a stale-seed case. Misclassification is recoverable in both directions (WRITE_RACE → engineering noise; STALE_SEED → harmless reseed) so acceptable for Phase 1. Phase 2 could refine to signed deltas if production false-classification rates exceed comfort threshold. Worth a backlog note rather than a #696 change.
+Ship as is with the three additions inline and the Bishop verification in the acceptance section. The signed-delta refinement is parking-lot material.

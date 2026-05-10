@@ -1,0 +1,87 @@
+Delta below. Point 3 isn't a separate classification — it's the architectural outcome of points 1 + 2 working together. "Source-extracted-then-lost" splits into SEED_PLUMBING_WRITE_RACE and SEED_PLUMBING_STALE_SEED based on timing; "source-never-had-it" surfaces as NOT_IN_DOC. Existing classifications (PARSER_MISS for "extraction failed entirely," PARSER_INCORRECT for "wrong value extracted") cover the remaining scenarios. No new tag for point 3 specifically.
+Inventory of changes:
+ActionClassificationSeverityRationaleAddSEED_PLUMBING_WRITE_RACEwarningScenario A — data lost in pipeline write raceAddSEED_PLUMBING_STALE_SEEDwarningScenario B — data added after seed creationAddNOT_IN_DOCinfoScenario C — data never existed in sourceRetireSEED_PLUMBING—Replaced by the two specific variantsKeepPARSER_MISSwarningExtraction failed on field present in sourceKeepPARSER_INCORRECTcriticalExtraction got the value wrongKeepRANGE_ANOMALYwarningValue implausibleKeepINCONSISTENCYwarningInternal document contradictionKeepCROSS_DOC_VARIANCEinfoCross-document field divergenceKeepLOW_CONFIDENCE_EXTRACTIONinfoExtraction confidence below threshold
+Touchpoint 1 — DqaClassification type union (line 24-31):
+typescriptexport type DqaClassification =
+  | 'PARSER_MISS'
+  | 'PARSER_INCORRECT'
+  | 'RANGE_ANOMALY'
+  | 'INCONSISTENCY'
+  | 'SEED_PLUMBING_WRITE_RACE'
+  | 'SEED_PLUMBING_STALE_SEED'
+  | 'NOT_IN_DOC'
+  | 'CROSS_DOC_VARIANCE'
+  | 'LOW_CONFIDENCE_EXTRACTION';
+Touchpoint 2 — SEVERITY_MAP (line 66-74):
+typescriptconst SEVERITY_MAP: Record<DqaClassification, DqaSeverity> = {
+  PARSER_MISS:               'warning',
+  PARSER_INCORRECT:          'critical',
+  RANGE_ANOMALY:             'warning',
+  INCONSISTENCY:             'warning',
+  SEED_PLUMBING_WRITE_RACE:  'warning',
+  SEED_PLUMBING_STALE_SEED:  'warning',
+  NOT_IN_DOC:                'info',
+  CROSS_DOC_VARIANCE:        'info',
+  LOW_CONFIDENCE_EXTRACTION: 'info',
+};
+Touchpoint 3 — buildSystemPrompt() classification rules (line 142-149):
+- PARSER_MISS: The document clearly contains a value for this row but the extracted value is null/zero.
+- PARSER_INCORRECT: The extracted value differs from the source document value by >5%.
+- RANGE_ANOMALY: The extracted value is technically present but implausible (e.g. NOI/unit > $30,000/year or < $500/year for multifamily).
+- INCONSISTENCY: Internal contradiction within the same document (e.g. stated NOI ≠ Revenue − Expenses).
+- SEED_PLUMBING_WRITE_RACE: A value was extracted and stored in broker_claims but did not propagate to the Pro Forma year1 slot. Source-write and seed-write timestamps are within 5 minutes of each other, suggesting a pipeline write-race issue between routeOM and routeExtractionResult.
+- SEED_PLUMBING_STALE_SEED: A value exists in broker_claims now, but the seed was written significantly earlier (>5 minutes before the source-write timestamp). The seeder ran when the value was not yet present; broker data was entered or extraction completed after seed creation.
+- NOT_IN_DOC: The document was checked but genuinely does not contain a value for this row. Surface this as an info-level finding so the user knows the column was verified absent rather than skipped. This is positive information: confirmation that the field was looked for and not found.
+- CROSS_DOC_VARIANCE: Value differs materially from another uploaded document's data for the same field.
+- LOW_CONFIDENCE_EXTRACTION: Extracted value present but the document text is ambiguous or unclear.
+
+The user prompt will indicate, per detected seed gap, the source-write timestamp and the seed-write timestamp. Use the timestamp delta to choose between SEED_PLUMBING_WRITE_RACE and SEED_PLUMBING_STALE_SEED. Where timestamps are unknown (legacy data), default to SEED_PLUMBING_STALE_SEED as the more common case.
+
+NEVER flag EXTRACTION_OK — only surface genuine problems or verified absences (NOT_IN_DOC).
+Touchpoint 4 — tool-use schema enum + post-call allowlist (lines 205, 256):
+typescript['PARSER_MISS', 'PARSER_INCORRECT', 'RANGE_ANOMALY', 'INCONSISTENCY',
+ 'SEED_PLUMBING_WRITE_RACE', 'SEED_PLUMBING_STALE_SEED', 'NOT_IN_DOC',
+ 'CROSS_DOC_VARIANCE', 'LOW_CONFIDENCE_EXTRACTION']
+Update both the schema enum AND the post-call filter in lockstep. Both must list the full new set or hallucinated classifications get dropped silently.
+Touchpoint 5 — buildUserPrompt() seed-gap injection (lines 167-169):
+The existing flat list needs timestamp metadata so Claude can disambiguate WRITE_RACE from STALE_SEED:
+typescriptconst gapsNote = seedGaps && seedGaps.length > 0
+  ? `\nSeed plumbing gaps detected (source uploaded but year1 slot is null):\n`
+    + seedGaps.map(g =>
+        `  ${g.field}.${g.slot}\n` +
+        `    source-write: ${g.sourceWriteTime ?? 'unknown'}\n` +
+        `    seed-write:   ${g.seedWriteTime ?? 'unknown'}\n` +
+        `    delta:        ${g.deltaSeconds != null ? `${g.deltaSeconds}s` : 'unknown'}`
+      ).join('\n\n')
+  : '';
+The seedGaps array shape (passed in from the caller) needs three new fields: sourceWriteTime, seedWriteTime, deltaSeconds.
+Coordination with Ticket A. Ticket A's seed.complete log emits expected_vs_actual_gaps but doesn't currently include source-write timestamps. Two options:
+
+(a) Extend Ticket A's log shape to include source-write timestamp per gap. DQA reads from the log directly.
+(b) DQA queries deals.deal_data field-write history independently when processing per-reseed triggers. Ticket A's log only signals gaps exist; DQA does its own timestamp lookup.
+
+Option (b) is more decoupled (Ticket A doesn't need to know about timing semantics) but adds DB queries to DQA's hot path. Option (a) is tighter integration but couples the two services. Recommendation: (b) for clean separation. Ticket A's log says "these slots are null"; DQA decides what null means.
+Migration considerations:
+Existing SEED_PLUMBING records in data_quality_alerts need handling. Three options:
+
+Option A — Backfill migration. Query each affected deal, run timestamp comparison, reclassify to either _WRITE_RACE or _STALE_SEED. Cleanest final state; operational cost moderate.
+Option B — Leave legacy + UI badge. Records keep classification = 'SEED_PLUMBING'; UI shows "legacy classification" badge. Existing alerts get superseded naturally by new runs as deals get reseeded.
+Option C — Bulk reclassify as SEED_PLUMBING_STALE_SEED. Statistical guess (stale-seed is the more common case). Wrong for the minority that's write-race, but cheap.
+
+Recommendation: Option B. Existing alerts age out within ~30 days as deals get re-touched and supersede fires. Cheapest path, no backfill batch job.
+UI / copy implications:
+Detail drawer copy needs distinct recommended actions per classification:
+
+SEED_PLUMBING_WRITE_RACE: "Pipeline issue. Engineering ticket recommended; back-fill displays correct value temporarily but year1 stays stale until pipeline fix."
+SEED_PLUMBING_STALE_SEED: "Trigger a reseed to refresh year1 from current source data. Back-fill protects display in the meantime."
+NOT_IN_DOC: "Verified — document does not contain this field. Informational; no action required."
+
+NOT_IN_DOC adds a "Show absences" toggle (default off) on the deal-level alert filter — see open question 1.
+Open questions for #696 to resolve:
+
+NOT_IN_DOC scope. All checked-but-absent fields, or only fields where another uploaded document on this deal does have the value? The first is exhaustive but noisy (50+ findings per deal); the second is curated but more compute. Recommend curated for MVP — surface NOT_IN_DOC only when at least one other source on this deal has the field. Reduces noise, raises signal density.
+WRITE_RACE vs STALE_SEED threshold. 5 minutes is the recommended default. Could be tighter (1 minute = same pipeline run only) or looser (1 hour = roughly contemporaneous). Should be a configurable constant rather than a magic number; param name suggestion: WRITE_RACE_WINDOW_SECONDS, default 300.
+Coordination with Ticket A. Option (a) extend log vs option (b) independent timestamp lookup. Recommend (b) for clean separation.
+Migration approach. Option B (leave legacy + badge) recommended over backfill. Confirm before writing the task.
+
+When you've decided on those four, expanding #696 from one-point to three-point is a small add — same five touchpoints, just with two more classifications and the seed-gap shape extension. The bulk of the work is the system prompt copy and the migration UX, not the type-system plumbing.
