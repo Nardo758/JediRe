@@ -406,19 +406,28 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const [dqaAlerts, setDqaAlerts]     = useState<DqaAlert[]>([]);
   const [dqaLoading, setDqaLoading]   = useState(false);
   const [dqaDrawer, setDqaDrawer]     = useState<DqaAlert | null>(null);
+  // "Show absences" toggle — NOT_IN_DOC findings hidden by default (Task #696)
+  const [showAbsences, setShowAbsences] = useState(false);
 
-  // Keyed by proforma_row for O(1) DataRow lookup
+  // NOT_IN_DOC findings are info-severity verified absences; hidden by default.
+  const dqaAbsenceCount = useMemo(() => dqaAlerts.filter(a => a.classification === 'NOT_IN_DOC').length, [dqaAlerts]);
+  const visibleDqaAlerts = useMemo(
+    () => showAbsences ? dqaAlerts : dqaAlerts.filter(a => a.classification !== 'NOT_IN_DOC'),
+    [dqaAlerts, showAbsences]
+  );
+
+  // Keyed by proforma_row for O(1) DataRow lookup (uses filtered visible set)
   const dqaByRow = useMemo<Record<string, DqaAlert[]>>(() => {
     const m: Record<string, DqaAlert[]> = {};
-    for (const a of dqaAlerts) {
+    for (const a of visibleDqaAlerts) {
       if (!m[a.proforma_row]) m[a.proforma_row] = [];
       m[a.proforma_row].push(a);
     }
     return m;
-  }, [dqaAlerts]);
+  }, [visibleDqaAlerts]);
 
   const dqaCriticalCount = dqaAlerts.filter(a => a.severity === 'critical').length;
-  const dqaWarningCount  = dqaAlerts.filter(a => a.severity === 'warning').length;
+  const dqaWarningCount  = dqaAlerts.filter(a => a.severity === 'warning' && a.classification !== 'NOT_IN_DOC').length;
 
   const loadDqaAlerts = useCallback(async () => {
     if (!dealId) return;
@@ -836,6 +845,23 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <ShieldAlert size={8} />
               DQA{dqaCriticalCount > 0 ? ` · ${dqaCriticalCount} CRIT` : ''}
               {dqaWarningCount > 0 ? ` · ${dqaWarningCount} WARN` : ''}
+            </button>
+          )}
+          {/* "Show absences" toggle — revealed only when NOT_IN_DOC findings exist */}
+          {dqaAbsenceCount > 0 && (
+            <button
+              title={showAbsences ? 'Hide verified-absence findings' : `Show ${dqaAbsenceCount} verified absence${dqaAbsenceCount !== 1 ? 's' : ''}`}
+              onClick={() => setShowAbsences(v => !v)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                background: showAbsences ? '#0c1a2a' : 'transparent',
+                border: `1px solid ${showAbsences ? '#3b82f6' : '#334155'}`,
+                borderRadius: 2, padding: '1px 6px', cursor: 'pointer',
+                fontFamily: MONO, fontSize: 7, fontWeight: 600, letterSpacing: '0.05em',
+                color: showAbsences ? '#93c5fd' : '#475569',
+              }}
+            >
+              {showAbsences ? `HIDE ABSENCES` : `${dqaAbsenceCount} ABSENCE${dqaAbsenceCount !== 1 ? 'S' : ''}`}
             </button>
           )}
           {dqaAlerts.length === 0 && !dqaLoading && (
@@ -1817,15 +1843,25 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               </div>
             )}
 
-            {/* Recommended action */}
-            {dqaDrawer.agent_finding.recommended_action && (
-              <div style={{ background: '#0c1a2a', borderRadius: 3, padding: '8px 10px', borderLeft: '2px solid #1d4ed8' }}>
-                <div style={{ fontFamily: LABEL, fontSize: 7, color: '#3b82f6', letterSpacing: '0.06em', marginBottom: 3 }}>RECOMMENDED ACTION</div>
-                <p style={{ fontFamily: LABEL, fontSize: 9, color: '#93c5fd', lineHeight: 1.5, margin: 0 }}>
-                  {dqaDrawer.agent_finding.recommended_action}
-                </p>
-              </div>
-            )}
+            {/* Recommended action — canonical copy for taxonomy classes; Claude text otherwise */}
+            {(() => {
+              const canonicalCopy: Record<string, string> = {
+                SEED_PLUMBING_WRITE_RACE: 'Pipeline issue — engineering ticket recommended. Back-fill displays correct value temporarily; year1 stays stale until fix.',
+                SEED_PLUMBING_STALE_SEED: 'Trigger a reseed to refresh year1 from current source data. Back-fill protects display in the meantime.',
+                NOT_IN_DOC:               'Verified — document does not contain this field. No action required.',
+              };
+              const text = canonicalCopy[dqaDrawer.classification] ?? dqaDrawer.agent_finding.recommended_action;
+              if (!text) return null;
+              const isAbsence = dqaDrawer.classification === 'NOT_IN_DOC';
+              return (
+                <div style={{ background: isAbsence ? '#0a1a0a' : '#0c1a2a', borderRadius: 3, padding: '8px 10px', borderLeft: `2px solid ${isAbsence ? '#16a34a' : '#1d4ed8'}` }}>
+                  <div style={{ fontFamily: LABEL, fontSize: 7, color: isAbsence ? '#22c55e' : '#3b82f6', letterSpacing: '0.06em', marginBottom: 3 }}>RECOMMENDED ACTION</div>
+                  <p style={{ fontFamily: LABEL, fontSize: 9, color: isAbsence ? '#86efac' : '#93c5fd', lineHeight: 1.5, margin: 0 }}>
+                    {text}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Footer actions */}

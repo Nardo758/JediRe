@@ -32,13 +32,14 @@ export type DqaClassification =
   | 'PARSER_INCORRECT'
   | 'RANGE_ANOMALY'
   | 'INCONSISTENCY'
-  | 'SEED_PLUMBING'
-  /** Phase 2 (Task #698): source written ≤ 300 s before seed — concurrent write
-   *  caused seed to land before extraction had a chance to propagate. */
+  /** Task #698: source written ≤ 300 s before seed — concurrent write-race. */
   | 'SEED_PLUMBING_WRITE_RACE'
-  /** Phase 2 (Task #698): seed was written before (or long before) the source
-   *  extraction event — stale seed, re-seed required. */
+  /** Task #698: seed predates source extraction — explicit re-seed required. */
   | 'SEED_PLUMBING_STALE_SEED'
+  /** Task #696: document was checked and genuinely does not contain this field.
+   *  Curated: only surfaced when another source on this deal has a value.
+   *  Severity: info. Hidden by default behind the "Show absences" toggle. */
+  | 'NOT_IN_DOC'
   | 'CROSS_DOC_VARIANCE'
   | 'LOW_CONFIDENCE_EXTRACTION';
 
@@ -80,9 +81,9 @@ const SEVERITY_MAP: Record<DqaClassification, DqaSeverity> = {
   PARSER_INCORRECT:             'critical',
   RANGE_ANOMALY:                'warning',
   INCONSISTENCY:                'warning',
-  SEED_PLUMBING:                'warning',
   SEED_PLUMBING_WRITE_RACE:     'warning',  // timing artifact — retry usually self-heals
-  SEED_PLUMBING_STALE_SEED:     'critical', // seed pre-dates source — explicit re-seed needed
+  SEED_PLUMBING_STALE_SEED:     'warning',  // seed pre-dates source — reseed prompt
+  NOT_IN_DOC:                   'info',     // verified absence — no action needed
   CROSS_DOC_VARIANCE:           'info',
   LOW_CONFIDENCE_EXTRACTION:    'info',
 };
@@ -151,16 +152,16 @@ function buildSystemPrompt(): string {
 Your job:
 1. For each proforma row listed, check whether the extracted value (from the document) matches what the parser recorded.
 2. Flag discrepancies as specific finding classifications.
-3. NEVER flag EXTRACTION_OK or NOT_IN_DOC findings — only surface genuine problems.
+3. NEVER flag EXTRACTION_OK — only surface genuine problems or verified absences.
 
 Classification rules:
 - PARSER_MISS: The document clearly contains a value for this row but the extracted value is null/zero.
 - PARSER_INCORRECT: The extracted value differs from the source document value by >5%.
 - RANGE_ANOMALY: The extracted value is technically present but implausible (e.g. NOI/unit > $30,000/year or < $500/year for multifamily).
 - INCONSISTENCY: Internal contradiction within the same document (e.g. stated NOI ≠ Revenue − Expenses).
-- SEED_PLUMBING: A value was extracted and stored but did not propagate to the Pro Forma year1 slot. Use this when no timestamp data is available. When "likely=" hint is provided in the gap list, prefer the more specific sub-type instead:
-  - SEED_PLUMBING_WRITE_RACE: Gap hint says SEED_PLUMBING_WRITE_RACE — source was written within 300 s of the seed; a concurrent race condition caused the slot to be null at seed time. Retry usually self-heals.
-  - SEED_PLUMBING_STALE_SEED: Gap hint says SEED_PLUMBING_STALE_SEED — seed predates the source extraction; an explicit re-seed is required.
+- SEED_PLUMBING_WRITE_RACE: A value was extracted and stored in broker_claims but did not propagate to the Pro Forma year1 slot. Source-write and seed-write timestamps are within 5 minutes of each other (deltaSeconds < 300), suggesting a pipeline write-race between routeOM and routeExtractionResult.
+- SEED_PLUMBING_STALE_SEED: A value exists in broker_claims now, but the seed was written significantly earlier (deltaSeconds >= 300 or unknown). The seeder ran when the value was not yet present; broker data was entered or extraction completed after seed creation. Where timestamps are unknown, default to this classification.
+- NOT_IN_DOC: The document was checked for this field and it is genuinely absent. You must verify absence by scanning the relevant section of the source document before emitting this. If the section is unreadable, use LOW_CONFIDENCE_EXTRACTION. If the field IS visible in the source despite year1 being null, use PARSER_MISS. absentFields membership is a candidate signal, not a guarantee. Surface only when at least one other uploaded document for this deal contains the field (curated scope). Severity: info. No remediation needed.
 - CROSS_DOC_VARIANCE: Value differs materially from another uploaded document's data for the same field.
 - LOW_CONFIDENCE_EXTRACTION: Extracted value present but the document text is ambiguous or unclear.
 
@@ -174,7 +175,8 @@ function buildUserPrompt(
   documentType: string,
   proformaRows: Array<{ row: string; column: string; extractedValue: unknown; year1SlotValue: unknown; label: string }>,
   documentExcerpt: string,
-  seedGaps: SeedGap[] | null
+  seedGaps: SeedGap[] | null,
+  absentFields: Array<{ field: string; label: string }> | null
 ): string {
   const rowsTable = proformaRows.map(r =>
     `  ${r.row} (${r.label}): extracted=${JSON.stringify(r.extractedValue)}, year1_slot=${JSON.stringify(r.year1SlotValue)}`
@@ -190,15 +192,26 @@ function buildUserPrompt(
       return `  ${g.field}.${g.slot}  source-write=${g.sourceWriteTime ?? 'unknown'}  seed-write=${g.seedWriteTime ?? 'unknown'}  delta=${delta} ${sign}  likely=${g.phase2Class}`;
     });
     gapsNote = `\nSeed plumbing gaps (source present but year1 slot is null):\n${gapLines.join('\n')}\n`
-      + `Use the delta and likely classification as evidence when choosing SEED_PLUMBING. `
-      + `Where timestamps are unknown, default to classifying the gap as a stale-seed scenario.`;
+      + `Use the delta and likely classification as evidence when choosing SEED_PLUMBING_WRITE_RACE vs SEED_PLUMBING_STALE_SEED. `
+      + `Where timestamps are unknown, default to SEED_PLUMBING_STALE_SEED.`;
+  }
+
+  let absentNote = '';
+  if (absentFields && absentFields.length > 0) {
+    const fieldList = absentFields.map(f => `  ${f.field} (${f.label})`).join('\n');
+    absentNote = `\nAbsent-field candidates (year1 slot null; at least one other source on this deal has a value):\n${fieldList}\n`
+      + `For each candidate: scan the relevant section of the source document and verify the field is genuinely absent.\n`
+      + `  → If absent and verified → NOT_IN_DOC\n`
+      + `  → If visible in source but not extracted → PARSER_MISS\n`
+      + `  → If the section is unreadable → LOW_CONFIDENCE_EXTRACTION\n`
+      + `absentFields membership is a candidate signal only — do not emit NOT_IN_DOC without verifying absence.`;
   }
 
   return `Document type: ${documentType}
 
 Proforma rows to audit (extracted value vs year1 slot):
 ${rowsTable}
-${gapsNote}
+${gapsNote}${absentNote}
 
 Relevant document excerpt (operating statement section):
 ---
@@ -214,7 +227,8 @@ async function callAgent(
   documentType: string,
   proformaRows: Array<{ row: string; column: string; extractedValue: unknown; year1SlotValue: unknown; label: string }>,
   documentExcerpt: string,
-  seedGaps: SeedGap[] | null
+  seedGaps: SeedGap[] | null,
+  absentFields: Array<{ field: string; label: string }> | null
 ): Promise<DqaFinding[]> {
   const reportTool = {
     name: 'report_findings',
@@ -228,7 +242,7 @@ async function callAgent(
             type: 'object',
             required: ['classification', 'proforma_column', 'proforma_row', 'source_evidence', 'reasoning', 'extracted_value', 'expected_value', 'confidence', 'recommended_action'],
             properties: {
-              classification:     { type: 'string', enum: ['PARSER_MISS', 'PARSER_INCORRECT', 'RANGE_ANOMALY', 'INCONSISTENCY', 'SEED_PLUMBING', 'SEED_PLUMBING_WRITE_RACE', 'SEED_PLUMBING_STALE_SEED', 'CROSS_DOC_VARIANCE', 'LOW_CONFIDENCE_EXTRACTION'] },
+              classification:     { type: 'string', enum: ['PARSER_MISS', 'PARSER_INCORRECT', 'RANGE_ANOMALY', 'INCONSISTENCY', 'SEED_PLUMBING_WRITE_RACE', 'SEED_PLUMBING_STALE_SEED', 'NOT_IN_DOC', 'CROSS_DOC_VARIANCE', 'LOW_CONFIDENCE_EXTRACTION'] },
               proforma_column:    { type: 'string' },
               proforma_row:       { type: 'string' },
               source_evidence:    {
@@ -251,7 +265,7 @@ async function callAgent(
   const messages = [
     {
       role: 'user' as const,
-      content: buildUserPrompt(documentType, proformaRows, documentExcerpt, seedGaps),
+      content: buildUserPrompt(documentType, proformaRows, documentExcerpt, seedGaps, absentFields),
     },
   ];
 
@@ -277,10 +291,11 @@ async function callAgent(
   const input = (toolUse as unknown as { input: { findings?: DqaFinding[] } }).input;
   const rawFindings = input?.findings ?? [];
 
-  // Allowlist of all valid classifications (including Phase 2 sub-types).
+  // Allowlist of all valid classifications (Task #696: SEED_PLUMBING retired;
+  // NOT_IN_DOC added; legacy 'SEED_PLUMBING' strings emitted by LLM are dropped).
   const VALID_CLASSIFICATIONS = new Set<string>([
     'PARSER_MISS', 'PARSER_INCORRECT', 'RANGE_ANOMALY', 'INCONSISTENCY',
-    'SEED_PLUMBING', 'SEED_PLUMBING_WRITE_RACE', 'SEED_PLUMBING_STALE_SEED',
+    'SEED_PLUMBING_WRITE_RACE', 'SEED_PLUMBING_STALE_SEED', 'NOT_IN_DOC',
     'CROSS_DOC_VARIANCE', 'LOW_CONFIDENCE_EXTRACTION',
   ]);
 
@@ -299,11 +314,12 @@ async function callAgent(
     .filter((f: DqaFinding) => f.confidence >= MIN_CONFIDENCE)
     .filter((f: DqaFinding) => VALID_CLASSIFICATIONS.has(f.classification))
     .map((f: DqaFinding): DqaFinding => {
-      // Deterministic promotion: if Claude classified as any SEED_PLUMBING variant
+      // Deterministic promotion: if Claude classified as a SEED_PLUMBING variant
       // and we have a signed-delta phase2Class for this field, override it.
+      // Note: bare 'SEED_PLUMBING' is no longer in the schema enum so Claude
+      // shouldn't emit it, but the allowlist filter above drops it if it does.
       if (
-        (f.classification === 'SEED_PLUMBING' ||
-         f.classification === 'SEED_PLUMBING_WRITE_RACE' ||
+        (f.classification === 'SEED_PLUMBING_WRITE_RACE' ||
          f.classification === 'SEED_PLUMBING_STALE_SEED') &&
         gapPhase2Map.has(f.proforma_row)
       ) {
@@ -460,6 +476,47 @@ async function fetchProformaRowData(
   });
 }
 
+// ── Absent-field candidate computation ───────────────────────────────────────
+
+/**
+ * Returns fields where:
+ *   (a) the current document's year1 slot is null, AND
+ *   (b) at least one OTHER source column in year1 has a non-null value.
+ *
+ * This implements the "curated" criterion for NOT_IN_DOC (Task #696):
+ * only surface when another source on the deal already has the field.
+ * Claude must still verify absence in the source document before emitting
+ * NOT_IN_DOC — this list is a candidate signal, not a guarantee.
+ */
+async function computeAbsentFields(
+  pool: Pool,
+  dealId: string,
+  thisColumn: string,
+  candidateRows: Array<{ row: string; label: string; year1SlotValue: unknown }>
+): Promise<Array<{ field: string; label: string }>> {
+  const nullSlotRows = candidateRows.filter(r => r.year1SlotValue === null || r.year1SlotValue === undefined);
+  if (nullSlotRows.length === 0) return [];
+
+  try {
+    const res = await pool.query<{ year1: Record<string, unknown> | null }>(
+      `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+      [dealId]
+    );
+    const year1 = (res.rows[0]?.year1 ?? {}) as Record<string, Record<string, unknown> | null>;
+
+    return nullSlotRows.filter(r => {
+      const year1Field = year1[r.row] as Record<string, unknown> | null | undefined;
+      if (!year1Field) return false;
+      // Another source has a value → curated criterion met
+      return Object.entries(year1Field).some(
+        ([col, val]) => col !== thisColumn && val !== null && val !== undefined
+      );
+    }).map(r => ({ field: r.row, label: r.label }));
+  } catch {
+    return [];
+  }
+}
+
 // ── Document excerpt extractor ────────────────────────────────────────────────
 
 function extractDocumentExcerpt(filePath: string): string {
@@ -524,10 +581,14 @@ export async function runDataQualityAgent(
       return { findings: cached, fromCache: true, parserVersion: PARSER_VERSION, documentHash };
     }
 
-    const proformaRows   = await fetchProformaRowData(pool, dealId, documentType);
+    const proformaRows    = await fetchProformaRowData(pool, dealId, documentType);
     const documentExcerpt = extractDocumentExcerpt(filePath ?? '');
 
-    const findings = await callAgent(documentType, proformaRows, documentExcerpt, seedGaps ?? null);
+    // Build the absent-field candidate list for NOT_IN_DOC curated detection.
+    const thisColumn   = COLUMN_BY_DOCTYPE[documentType] ?? 'broker';
+    const absentFields = await computeAbsentFields(pool, dealId, thisColumn, proformaRows);
+
+    const findings = await callAgent(documentType, proformaRows, documentExcerpt, seedGaps ?? null, absentFields);
 
     await writeFindings(pool, dealId, documentType, findings, documentHash, PARSER_VERSION);
 
