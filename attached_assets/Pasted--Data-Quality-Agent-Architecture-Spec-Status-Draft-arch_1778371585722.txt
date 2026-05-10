@@ -1,0 +1,336 @@
+# Data Quality Agent — Architecture Spec
+
+**Status:** Draft architecture spec — implementation contract for future build session
+**Owner:** Leon / JEDI RE
+**Pairs with:** Ticket A (write-race fix). Ticket A is independent plumbing; this agent consumes the post-seed observability log Ticket A emits.
+
+---
+
+## 1. Purpose
+
+Validate that what the user sees in the Pro Forma columns matches what's actually in the source documents they uploaded.
+
+The Pro Forma is the staging ground where the underwriter forms their view of the deal before pushing decisions to the Assumptions page. The data flow:
+
+```
+  Pro Forma  →  Assumptions  →  Year 1  →  Projections
+```
+
+Each Pro Forma column is a decision-support viewpoint:
+
+- **Broker (om)** — what the seller is claiming
+- **T-12** — what the actual trailing 12 shows
+- **Rent Roll** — what current in-place reality shows
+- **Platform** — what market benchmarks predict
+
+If any of these columns reflect inaccurate or incomplete extraction of the source documents, the underwriter is forming their view on bad data, and any modifications they push to Assumptions inherit that error from the start.
+
+The Data Quality Agent's job: read the source documents, read the extracted output, compare them, and surface any discrepancies as user-visible alerts on the deal page **before** the underwriter starts modifying numbers and pushing to Assumptions.
+
+This is upstream of the seeder/year1/Projections concerns. The agent protects the user's *input* to their underwriting decision, not the *output*.
+
+---
+
+## 2. Architectural Position
+
+```
+              ┌────────────────────────────────────────────────┐
+              │      Document upload (OM, T-12, rent roll,     │
+              │      tax bill)                                 │
+              └─────────────────────┬──────────────────────────┘
+                                    │
+                        ┌───────────▼─────────────┐
+                        │  Parsers extract        │
+                        │  → broker_claims        │
+                        │  → extraction_t12       │
+                        │  → extraction_rent_roll │
+                        │  → extraction_tax_bill  │
+                        └───────────┬─────────────┘
+                                    │
+              ┌─────────────────────┼─────────────────────────────┐
+              │                     │                             │
+   ┌──────────▼──────────┐  ┌───────▼────────────┐  ┌─────────────▼─────────────┐
+   │  Pro Forma display  │  │ Seeder writes      │  │  DATA QUALITY AGENT       │
+   │  (live read from    │  │ deal_assumptions.  │  │                           │
+   │  extraction outputs)│  │ year1 JSONB        │  │  Reads:                   │
+   └──────────┬──────────┘  └────────────────────┘  │  - source documents       │
+              │                                     │  - extraction outputs     │
+              │                                     │  - Pro Forma column values│
+              ▼                                     │  - prior extraction history│
+   ┌─────────────────────┐                          │                           │
+   │  User reviews,      │                          │  Writes:                  │
+   │  modifies, pushes   │                          │  - data_quality_alerts    │
+   │  to Assumptions     │                          │    keyed to (deal_id,     │
+   └─────────┬───────────┘                          │     document_type,        │
+             │                                      │     column, row)          │
+             ▼                                      └────────┬──────────────────┘
+   ┌─────────────────────┐                                   │
+   │ Year 1 → Projections│ ◄─── alerts surface to UI ───────┘
+   └─────────────────────┘
+```
+
+The agent sits *parallel* to the Pro Forma display path, not in it. It does NOT block extraction, seeding, or display. It runs asynchronously and surfaces findings as alerts the user can see, dismiss, or act on.
+
+---
+
+## 3. What It Reads
+
+For each evaluation, the agent has access to:
+
+1. **The source document** (PDF or spreadsheet) from the deal's document archive
+2. **The extracted output** for that document (`broker_claims` for OM, `extraction_t12`, `extraction_rent_roll`, `extraction_tax_bill`)
+3. **The Pro Forma column values** that will render for each row — these are the values the user is about to see and act on
+4. **The deal context** — asset class, submarket, vintage, unit count
+5. **Prior extraction history** — for similar documents (same source format, similar vintage), what fields were typically populated; aggregate parser reliability data
+6. **The post-seed observability log** (from Ticket A) — gaps already detected by deterministic plumbing checks (acts as a hint to investigate, not the validation target)
+
+---
+
+## 4. What It Writes
+
+```sql
+CREATE TABLE data_quality_alerts (
+  id UUID PRIMARY KEY,
+  deal_id UUID NOT NULL REFERENCES deals(id),
+
+  -- What the alert is about
+  document_type TEXT NOT NULL,         -- 'om' | 't12' | 'rent_roll' | 'tax_bill'
+  proforma_column TEXT NOT NULL,       -- 'broker' | 't12' | 'rent_roll' | 'platform'
+  proforma_row TEXT NOT NULL,          -- 'gpr' | 'vacancy_pct' | 'contract_services' | etc.
+
+  -- Classification (see Section 5)
+  classification TEXT NOT NULL,
+  severity TEXT NOT NULL,              -- 'info' | 'warning' | 'critical'
+
+  -- Agent reasoning
+  agent_finding JSONB NOT NULL,
+  -- {
+  --   reasoning: "OM page 14 shows Contract Services: $28,680...",
+  --   source_evidence: { page: 14, snippet: "...", section: "Operating Expenses" },
+  --   extracted_value: null,
+  --   expected_value: 28680,
+  --   confidence: 0.92,
+  --   recommended_action: "Verify manually or re-extract"
+  -- }
+
+  created_at TIMESTAMPTZ DEFAULT now(),
+
+  -- User interaction
+  status TEXT DEFAULT 'open',          -- 'open' | 'dismissed' | 'acknowledged' | 'fixed'
+  dismissed_by UUID,
+  dismissed_at TIMESTAMPTZ,
+  dismissal_reason TEXT,
+
+  -- Lifecycle
+  superseded_by UUID,                  -- newer run's finding replaces this one
+  resolved_at TIMESTAMPTZ,
+
+  CONSTRAINT alert_unique_per_run UNIQUE (deal_id, document_type, proforma_column, proforma_row, created_at)
+);
+
+CREATE INDEX idx_alerts_deal_open ON data_quality_alerts (deal_id) WHERE status = 'open';
+CREATE INDEX idx_alerts_classification ON data_quality_alerts (classification) WHERE status = 'open';
+```
+
+---
+
+## 5. Classification Taxonomy
+
+| Classification | Meaning | Severity | Surface |
+|---|---|---|---|
+| `EXTRACTION_OK` | Value matches source; no finding needed | (not stored) | (not surfaced) |
+| `PARSER_MISS` | Field is in source document but extraction returned null | Warning | Yes |
+| `PARSER_INCORRECT` | Extracted value doesn't match source document | Critical | Yes |
+| `RANGE_ANOMALY` | Value outside expected sanity bounds for field type | Warning | Yes |
+| `INCONSISTENCY` | Value contradicts another extracted field (Total OpEx ≠ sum of components) | Warning | Yes |
+| `CROSS_DOC_VARIANCE` | Same conceptual field differs significantly across documents (T-12 GPR vs OM stabilized GPR > 30% variance) | Info | Yes |
+| `SEED_PLUMBING` | Extraction succeeded but value didn't propagate to Pro Forma display | Warning | Yes (also fires Ticket A's logging) |
+| `NOT_IN_DOC` | Value null because document genuinely doesn't have field | (not stored) | (not surfaced) |
+| `LOW_CONFIDENCE_EXTRACTION` | Extraction confidence below threshold | Info | Yes (paired with existing extraction confidence display) |
+
+Severity drives UI urgency: critical findings sort first, info is collapsed by default.
+
+---
+
+## 6. Trigger Conditions
+
+Three trigger types, each with different cost/cadence trade-offs:
+
+**Per-extraction trigger.** Fires after every parser invocation. Runs the extraction QA pass: compare source document to extracted output to intended Pro Forma column values. Highest signal value, highest cost (involves re-reading the source PDF).
+
+**Per-reseed trigger.** Fires after the seeder completes. Compares extracted outputs to what the Pro Forma columns will display (using `year1` slot population from Ticket A's observability log as a secondary signal). Lower cost than per-extraction (no PDF re-reading); catches plumbing bugs where extraction succeeded but the value didn't reach the user-facing surface.
+
+**Per-deal-page-load trigger.** *Deferred to Phase 2.* Fires when a deal page is opened and findings haven't been refreshed in N hours. Useful for keeping alerts current as platform baselines and parser prompts evolve. Skipped at MVP to limit cost.
+
+**MVP triggers (Phase 1):** per-extraction + per-reseed only. Cache by `(document_hash, parser_version)` to avoid re-reading PDFs unnecessarily.
+
+---
+
+## 7. Agent Prompt Design
+
+The agent runs as a Claude API call with structured input and output. Outline:
+
+```
+SYSTEM
+You are a data quality auditor for a real estate investment intelligence
+platform. Your job is to verify that financial values extracted from
+source documents accurately reflect those documents' content.
+
+You read three things:
+1. The source document (PDF or spreadsheet)
+2. The structured extraction output (JSON of fields the parser produced)
+3. The list of Pro Forma column row values that will be displayed to
+   the user
+
+Your output is a structured list of findings, classified using this
+taxonomy:
+  PARSER_MISS, PARSER_INCORRECT, RANGE_ANOMALY, INCONSISTENCY,
+  CROSS_DOC_VARIANCE, NOT_IN_DOC, LOW_CONFIDENCE_EXTRACTION
+
+For each finding, provide:
+  - Classification (one from the taxonomy)
+  - Source evidence (page number, row reference, or snippet)
+  - Reasoning (one paragraph)
+  - Recommended action (verify manually, re-extract, accept as-is, etc.)
+  - Confidence in your finding (0-1)
+
+Do not surface NOT_IN_DOC findings or EXTRACTION_OK; these are implied
+by absence.
+
+USER
+Document type: {document_type}
+Document content: {pdf_text or spreadsheet_data}
+Extraction output: {json}
+Pro Forma column values to validate: {list of (column, row, value)}
+Prior extraction history for similar documents: {aggregated reliability}
+```
+
+Output schema is enforced via Claude's structured-output / tool-use feature. JSON schema specifies the finding array shape.
+
+**Cost containment:**
+- Cache by `(document_hash, parser_version)` — re-extract only if either changes
+- Limit to relevant pages of the document (for OM, focus on the operating statement section using the existing parser's section markers)
+- Batch all rows for a single document into one Claude call (not one call per row)
+- Skip the agent entirely on documents the parser already flagged as low-confidence beyond a threshold (those need human review, not LLM second-guessing)
+
+---
+
+## 8. Surface Integration
+
+Alerts surface in the Pro Forma tab at the row level:
+
+- **Row-level indicator.** Small icon (color-coded by severity) appears in the row when at least one finding exists for any column on that row. Hovering shows a summary; clicking opens a detail drawer.
+- **Column-level indicator.** Within a row, the specific column with a finding gets an underline or border highlight. Visual pattern matches the existing `IC-04` cross-doc integrity check (visible at the top of the Bishop screenshot in `PROFORMA_SURFACE_AUDIT.md`).
+- **Detail drawer.** Shows all findings for the row: classification, agent reasoning, source evidence (with link to the document page), recommended action, and dismiss/acknowledge/mark-fixed buttons.
+- **Aggregate count.** Alert count appears in the deal-level header alongside other quality signals (extraction confidence, integrity check status).
+
+**Dismissal semantics:**
+
+- `dismissed` — underwriter has reviewed and chosen to ignore. Alert hidden but not deleted; remains in audit log.
+- `acknowledged` — underwriter has reviewed and is aware. Alert reduced to subtle indicator instead of prominent one.
+- `fixed` — underwriter has corrected the underlying issue (e.g., manually entered the missing value via override). Alert deletes when next agent run confirms resolution.
+
+If a later agent run on the same deal/document supersedes an earlier finding, the earlier finding gets `superseded_by` set and is hidden from the active view.
+
+---
+
+## 9. Dependency Boundary
+
+This agent is **NOT** responsible for:
+
+- Fixing the issues it surfaces — the underwriter overrides, or engineering improves parsers
+- Modifying parsers, seeders, or any platform code automatically (Phase 3+ may *propose* changes; only with human approval)
+- Replacing the existing extraction confidence scoring (a per-document-type confidence number from the extraction layer); this agent is finer-grained, per-field
+- Replacing IC-04 cross-doc integrity checks; the IC checks are deterministic rules, this agent is LLM-driven and looks at a different set of patterns
+- Validating year1 directly — year1 is downstream; the agent validates Pro Forma column accuracy. Year1 issues that surface (via Ticket A's log) are signals to investigate, not the validation target
+
+**Boundary with extraction confidence:**
+- Extraction confidence = "how sure is the parser that it parsed this document correctly?" (document-level)
+- Data quality agent finding = "for this specific field on this specific row, here's what we observe vs the source" (field-level)
+
+The two compose. A document can have high extraction confidence overall AND specific field-level findings (e.g., "OM is well-parsed but the contract services line specifically was missed").
+
+---
+
+## 10. Phased Build
+
+| Phase | What ships | Cost | Trust required |
+|---|---|---|---|
+| 1 | Per-extraction + per-reseed validation, alerts written and surfaced on deal page | Low | Read-only |
+| 2 | Cross-deal pattern aggregation, internal metric dashboard for engineering | Medium | Read-only across deals |
+| 3 | Pattern surfacing as engineering tickets; agent-suggested parser prompt improvements (human-reviewed) | Medium | Human approval per change |
+| 4 | A/B-tested prompt updates with regression metrics on a holdout deal set | High | Holdout + rollback infrastructure |
+| 5 | Closed-loop self-improvement (rare; very high trust threshold) | Very high | Mandatory human approval, full auditability |
+
+---
+
+## 11. MVP Scope (Phase 1 + Phase 2 readiness)
+
+**Phase 1 ships:**
+
+- `data_quality_alerts` table and schema (Section 4)
+- Agent runner triggered per-extraction and per-reseed (caching on `document_hash`)
+- Pro Forma row indicator + column highlight + detail drawer
+- Dismiss / acknowledge / mark-fixed UI semantics
+- Aggregate count in deal-level header
+- Five surfaced classifications: `PARSER_MISS`, `PARSER_INCORRECT`, `RANGE_ANOMALY`, `INCONSISTENCY`, `SEED_PLUMBING`
+- Two info-level classifications: `CROSS_DOC_VARIANCE`, `LOW_CONFIDENCE_EXTRACTION`
+
+**Phase 2 readiness (built in but not user-facing):**
+
+- Schema supports cross-deal aggregation queries (indexes on classification, deal characteristics)
+- Logging captures the data needed for Phase 2 dashboards (parser reliability metrics keyed by document format / vintage / source)
+
+**Phases 3+ are explicitly out of MVP scope.** They become their own architecture chapters once Phase 1 has produced enough data to motivate them (typically 6+ weeks of production data).
+
+---
+
+## 12. Out of Scope
+
+- Building Phase 3+ capabilities (deferred until Phase 1 + 2 produce sufficient signal)
+- The write-race fix from Ticket A (independent; this agent consumes its observability log but doesn't fix the bug)
+- Modifying parser prompts or seeder code automatically
+- Real-time per-keystroke validation as user types overrides
+- Predictive validation ("the user is about to enter X; is that reasonable?") — this is a future Cashflow Agent capability, not data quality
+- Document re-parsing or OCR
+- Field-level confidence scoring as a *replacement* for parser-level confidence (these compose, not replace)
+- Validation of platform baselines themselves (the `platform` column's source) — that's a separate concern about benchmark data quality
+
+---
+
+## 13. Open Questions for Implementation
+
+1. **Caching strategy details.** When does cached agent output expire? When parser version changes (clear), when document is re-uploaded (clear), when N days pass (configurable)?
+2. **PDF passing strategy.** Pass the whole PDF to Claude every time, or extract relevant pages first via the existing parser's section markers? Cost vs. accuracy trade-off.
+3. **Confidence threshold for surfacing.** Findings below confidence X are not surfaced (default-collapsed)? Suppressed entirely? Configurable per deal?
+4. **Backfill on existing deals.** Do we run the agent retroactively on all existing deals, or only on new uploads going forward? Operational + cost decision.
+5. **Multi-tenant considerations.** When findings are dismissed by one user, do they hide for others on the same deal? (Probably yes — alerts are per-deal, not per-user.)
+6. **Alerts on subtotal rows.** Pro Forma has computed subtotals (Total OpEx, NOI, EGI). These don't have a single source. Recommendation: surface findings only on inputs; subtotals get findings only when the sum doesn't match source-claimed subtotals (the `INCONSISTENCY` classification).
+7. **Agent prompt versioning.** As the platform iterates on the agent's prompt, how is the `agent_finding` output schema versioned to allow future migration?
+8. **Cost cap per deal.** What's the budget envelope for agent calls per deal per day? Hard cap with alerting, or soft target?
+
+---
+
+## 14. Implementation Contract
+
+When this spec moves to a build session, the dispatch should include:
+
+- This spec as the architectural anchor
+- A reference to Ticket A's seed observability log structure (the agent's input feed for the per-reseed trigger)
+- The `data_quality_alerts` schema (Section 4) as the data contract
+- The classification taxonomy (Section 5) as the output contract
+- The trigger conditions (Section 6) as the lifecycle contract
+- The phased build plan with explicit MVP scope (Section 10 + 11)
+- A pointer to the open questions (Section 13) requiring decisions before code is written
+
+**Expected output of the build session:** Phase 1 ships in a single PR (or a small sequence of coordinated PRs), with the schema, agent runner, alert surfacing, and basic dismissal/acknowledge UX. No Phase 2+ work in the same build session.
+
+---
+
+## 15. Why This Matters
+
+The platform's audit-and-fix loop has been working — every Bishop-shape bug eventually gets caught, traced, and fixed. But the discovery mechanism is "an underwriter or operator notices something looks wrong, reports it, audit follows." That's reactive and lossy: any bug that doesn't happen to be looked at remains invisible.
+
+The Data Quality Agent breaks the loop. Every extraction gets audited before the user sees the result. Every Pro Forma column gets validated against its source before it's used as input to underwriting decisions. Findings surface at the deal level as the user is forming their view, not weeks later when a discrepancy is noticed.
+
+This is the architectural answer to "how do we stop discovering these bugs by accident." It's also the foundation for everything in Phase 3+: the agent can only propose parser improvements once it has accumulated systematic data on what parsers miss, where, and why.

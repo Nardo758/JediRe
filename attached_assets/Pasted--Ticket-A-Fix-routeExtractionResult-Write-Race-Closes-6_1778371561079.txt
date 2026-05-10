@@ -1,0 +1,230 @@
+# Ticket A — Fix routeExtractionResult Write Race (Closes #686 Dormancy)
+
+**Dispatch target:** DeepSeek
+**Status:** Ready to ship
+**Pairs with:** Data Quality Agent spec (separate document; this fix emits the observability log that agent consumes)
+
+---
+
+## What & Why
+
+#686 wired `bpGpr`, `bpContract`, `bpTax` into the seeder correctly, but `year1.gpr.om` / `year1.contract_services.om` / `year1.real_estate_tax.om` are still null after a clean re-extraction on 464 Bishop. Live-DB diagnostic confirmed: the seeder code is correct; the bug is one layer up in `data-router.ts`.
+
+`routeOM` does its own `UPDATE deals SET deal_data = ...` at line 641 to write `broker_claims.proforma`. Then `routeExtractionResult` does another merged `UPDATE` at line 1257 with `capsulePayload`. If `capsulePayload` is assembled before line 641 fires (or doesn't include the latest `broker_claims`), the second `UPDATE` clobbers the first. The seeder then reads the post-clobber `deal_data`, gets null for the broker_claims fields, and writes null to `year1.*.om`.
+
+This fix preserves `broker_claims` through the data-router write sequence so both consumers see the actual extracted values:
+- Pro Forma display reads live `broker_claims` (the Broker column in the UI)
+- Seeder writes `year1.*.om` (consumed by the Assumptions tab and downstream)
+
+---
+
+## Data Flow and Purpose of the Column Layers
+
+The flow is:
+
+```
+  Pro Forma  →  Assumptions  →  Year 1  →  Projections
+```
+
+- **Pro Forma:** AS-IS source view. Columns rendered live from each extraction source (`broker_claims`, `extraction_t12`, `extraction_rent_roll`, `extraction_tax_bill`, plus platform benchmark)
+- **Assumptions:** Forward-looking decision layer. Underwriter reviews source values and sets overrides. Resolves to Year 1.
+- **Year 1:** `deal_assumptions.year1` JSONB. The resolved assumption set Projections consumes.
+- **Projections:** Multi-year cash flow forecast built from Year 1.
+
+The `om` / `t12` / `rent_roll` / `platform` / `override` slots are **decision-support viewpoints**, not just storage. They surface on TWO surfaces:
+
+- **Pro Forma tab:** Live comparison columns. Underwriter scans for broker puffing, market dislocation, in-place degradation.
+- **Assumptions tab:** Source layers preserved in the year1 snapshot alongside the override field. Resolved value flows to Projections.
+
+Grouped:
+
+```
+SOURCE LAYERS (decision-support viewpoints)
+  Broker (om)    what the seller claims
+  T-12           what the actual trailing 12 shows
+  Rent Roll      what current in-place reality shows
+  Platform       what market benchmarks predict
+
+USER INPUT
+  Override       the underwriter's committed judgment
+                 (always wins when present)
+
+OUTPUT
+  Resolved       the value Projections actually uses — equals
+                 Override if set, otherwise walks the source
+                 priority chain for that field
+                 (e.g., GPR: t12 → rent_roll → platform;
+                  OM is recorded as a viewpoint but not in
+                  GPR's priority walk)
+```
+
+When `broker_claims` is clobbered by the data-router write race, BOTH surfaces lose the broker viewpoint at once:
+- Pro Forma reads live `broker_claims`, shows "—" in the Broker column
+- Seeder reads the same clobbered `broker_claims`, writes null to `year1.*.om`
+- Underwriter loses a comparison axis on Pro Forma AND a source layer on the Assumptions snapshot
+
+**Acceptable solutions** preserve `broker_claims` through the data-router write sequence so both the live Pro Forma read and the seeder's read get the data extracted by the OM parser.
+
+**Unacceptable solutions:** hide the column when null, fall back silently, or "simplify away" the slot. These mask a degraded decision-support state rather than fixing it.
+
+---
+
+## Done Looks Like
+
+After dispatch, on a fresh re-extraction of 464 Bishop:
+
+- `year1.gpr.om` = $4,901,400 (matches `broker_claims.proforma.stabilizedGpr`)
+- `year1.real_estate_tax.om` = $977,287 (matches `realEstateTaxesAnnual`)
+- `year1.contract_services.om` = the value extracted, OR null if the parser returned null on this run (extraction quality issue, not write race — caught by the Data Quality Agent in a future ticket)
+- Sentosa Epperson `year1.*.om` slots remain null (no OM uploaded; expected)
+- Pro Forma display on Bishop shows real values in the Broker column for these three rows
+- Post-seed observability log emits a structured slot-population summary
+
+---
+
+## Out of Scope
+
+- The `contractServicesAnnual` extraction returning null on the new run (extraction quality issue, separate from write race; will be caught by the Data Quality Agent once that ships)
+- Backfilling `year1.*.om` slots on existing deals (separate operational decision after fix is verified)
+- Building the Data Quality Agent (separate spec)
+- Changing the priority walk for any field
+- Any architectural changes to the LV resolution
+- Any changes to the Pro Forma display path (it's already correct; only the seeder/year1 path is broken)
+
+---
+
+## Steps
+
+### Phase 0 — Confirm the failure mode
+
+In `data-router.ts` `routeExtractionResult`, trace what's in `capsulePayload` at line 1257 when the OM path is taken:
+
+- Does `capsulePayload.deal_data` include `broker_claims` at all?
+- If yes, is it the SAME `broker_claims` that `routeOM` wrote at line 641, or a stale/empty version assembled earlier in `routeExtractionResult`?
+- Is the second UPDATE using a full-replace `SET deal_data = $1` pattern, or a JSONB merge operator (`deal_data = deal_data || $1`)?
+
+Report findings before writing the fix. This confirms whether the failure is **deterministic** (`capsulePayload` always missing the fresh `broker_claims`) or **racy** (sometimes ordering wins). The fix shape depends on which.
+
+### Phase 1 — Apply the fix
+
+Based on Phase 0 findings:
+
+**If deterministic and `capsulePayload` doesn't include `broker_claims`:**
+- Either include `broker_claims` in `capsulePayload` assembly *after* `routeOM` completes, OR
+- Change line 1257 to use JSONB merge operator so existing keys aren't clobbered
+
+**If the second UPDATE uses full-replace:**
+- Convert to JSONB merge: `UPDATE deals SET deal_data = deal_data || $1::jsonb WHERE id = $2`
+
+**If race condition:**
+- Use a transaction wrapping both writes, or restructure so only one UPDATE happens per pipeline run
+
+### Phase 2 — Add observability log
+
+After `ensureDealAssumptionsSeeded` completes, emit a structured log entry to stdout / structured logger:
+
+```json
+{
+  "event": "seed.complete",
+  "deal_id": "...",
+  "timestamp": "...",
+  "uploaded_sources": ["om", "t12", "rent_roll"],
+  "year1_slot_population": {
+    "gpr": {
+      "om": "populated",
+      "t12": "populated",
+      "rent_roll": "populated",
+      "platform": "populated"
+    },
+    "real_estate_tax": {
+      "om": "null",
+      "t12": "populated",
+      "tax_bill": "null",
+      "platform": "populated"
+    }
+  },
+  "expected_vs_actual_gaps": [
+    {
+      "field": "real_estate_tax",
+      "slot": "tax_bill",
+      "expected": "populated",
+      "actual": "null",
+      "uploaded_source": "tax_bill"
+    }
+  ]
+}
+```
+
+`uploaded_sources` is detected from `deal_data` (which top-level extraction objects exist).
+`expected_vs_actual_gaps` lists slots that should be populated based on uploaded sources but came back null.
+
+This log is the input to the Data Quality Agent (separate ticket). It also serves as a regression check on this fix in the meantime — if a gap appears post-fix on a deal where the source was uploaded, the fix didn't fully close the bug class.
+
+No new database table needed; structured stdout logging is sufficient.
+
+### Phase 3 — Tests
+
+```typescript
+describe("routeExtractionResult — broker_claims preservation", () => {
+  it("preserves broker_claims through capsulePayload write when OM is processed", ...);
+  it("survives a subsequent routeT12 in the same pipeline", ...);
+  it("does not clobber broker_claims when capsulePayload is empty", ...);
+});
+
+describe("seedProFormaYear1 — om slot population", () => {
+  it("writes year1.gpr.om = stabilizedGpr when broker_claims has it", ...);
+  it("writes year1.real_estate_tax.om = realEstateTaxesAnnual when present", ...);
+  it("writes year1.gpr.om = null when broker_claims has no proforma", ...);
+});
+
+describe("seed observability log", () => {
+  it("emits seed.complete event with correct shape after seeder runs", ...);
+  it("includes expected_vs_actual_gaps when source was uploaded but slot is null", ...);
+  it("omits expected_vs_actual_gaps when no gaps exist", ...);
+});
+```
+
+---
+
+## Verification
+
+1. Re-extract 464 Bishop OM
+2. Query `deal_assumptions.year1` directly:
+   - `year1.gpr.om` should equal `stabilizedGpr` ($4,901,400 on current Bishop data)
+   - `year1.real_estate_tax.om` should equal `realEstateTaxesAnnual` ($977,287)
+   - `year1.contract_services.om` should equal `contractServicesAnnual`, or null if extraction returned null this run
+3. Paste raw query output in PR description
+4. Hard-refresh Bishop in the UI; confirm Pro Forma shows non-null Broker column values on those rows. Screenshot in PR.
+5. Confirm Sentosa Epperson `year1.*.om` slots remain null (no OM, no `broker_claims`)
+6. Confirm post-seed log entry is emitted with the expected structure (paste sample log line in PR)
+
+---
+
+## Acceptance
+
+- All 6 verification points pass
+- All 9 tests pass
+- Existing tests still pass (no regression)
+- PR description: pre/post DB query output, Pro Forma screenshot, post-seed log sample
+- One commit
+- Branch: `claude/fix-route-extraction-write-race`
+- Commit message: `fix(data-router): preserve broker_claims through capsulePayload merge + emit seed observability log`
+
+---
+
+## Relevant Files
+
+- `backend/src/services/data-router.ts:641` (routeOM `broker_claims` write)
+- `backend/src/services/data-router.ts:1257` (routeExtractionResult merged UPDATE — primary fix site)
+- `backend/src/services/proforma-seeder.service.ts` (post-seed log emission)
+- `backend/src/services/financials-composer.ts:1454` (display read path; verify still correct after fix)
+- `frontend/src/pages/development/financial-engine/ProFormaSummaryTab.tsx` (display surface; should now render non-null Broker values)
+- `docs/architecture/PROFORMA_SURFACE_AUDIT.md` (background)
+- `docs/architecture/OM_EXTRACTION_COVERAGE_AUDIT.md` (background)
+
+---
+
+## Test Deals
+
+- **464 Bishop** — `3f32276f-aacd-4da3-b306-317c5109b403` (full capsule set: OM + bpProforma + T-12 + rent roll)
+- **Sentosa Epperson** — `3d96f62d-d986-448f-8ea4-10853021a8cb` (T-12 + rent roll only, no OM — regression check that fix doesn't accidentally populate from a fallback source)
