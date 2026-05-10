@@ -2091,6 +2091,31 @@ export async function getDealFinancials(
       if (_seedNoi.broker == null && _bpNoi != null) _seedNoi.broker = Math.round(_bpNoi);
       if (_eT != null && _oT != null) _seedNoi.t12 = Math.round(_eT - _oT);
     }
+
+    // Individual opex broker fallback — seed.om may be null when broker
+    // proforma data was entered after the seed was first created (the seeder
+    // only runs once; subsequent broker_claims edits are not back-propagated
+    // into the JSONB om layer).  Mirror the NOI fallback above: read the
+    // live broker proforma key and populate the row's broker slot only when
+    // the seed slot is still empty.
+    const _bpOpexMap: Array<[string, string]> = [
+      ['contractServicesAnnual',      'contract_services'],
+      ['payrollAnnual',               'payroll'],
+      ['repairsMaintenanceAnnual',    'repairs_maintenance'],
+      ['turnoverAnnual',              'turnover'],
+      ['marketingAnnual',             'marketing'],
+      ['gAndAAnnual',                 'g_and_a'],
+      ['utilitiesAnnual',             'utilities'],
+      ['insuranceAnnual',             'insurance'],
+      ['realEstateTaxesAnnual',       'real_estate_tax'],
+    ];
+    for (const [bpKey, rowField] of _bpOpexMap) {
+      const _r = _byField(rowField);
+      if (_r && _r.broker == null) {
+        const _v = _bpNum(bpKey);
+        if (_v != null) _r.broker = Math.round(_v);
+      }
+    }
   }
 
   // ── Populate T-6 / T-3 / T-1 trailing actuals ─────────────────────────────
