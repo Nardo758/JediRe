@@ -20,7 +20,7 @@ import { deriveCounty } from './tax/resolver';
 import { kafkaProducer } from './kafka/kafka-producer.service';
 import { KAFKA_TOPICS } from './kafka/event-schemas';
 import { buildTaxContext } from './tax/compositeResolver';
-import { composeOtherIncomeBreakdown } from './financials-composer.service';
+import { composeOtherIncomeBreakdown, loadTrailingActualsMap } from './financials-composer.service';
 
 // ============================================================================
 // Types
@@ -1241,6 +1241,9 @@ export interface OperatingStatementRow {
   broker: number | null;
   platform: number | null;
   t12: number | null;
+  t6: number | null;
+  t3: number | null;
+  t1: number | null;
   rentRoll: number | null;
   taxBill: number | null;
   resolved: number | null;
@@ -1894,6 +1897,9 @@ export async function getDealFinancials(
       broker: layerNum(field, 'om') ?? layerNum(field, 'broker'),
       platform: platformVal,
       t12: layerNum(field, 't12'),
+      t6: null,
+      t3: null,
+      t1: null,
       rentRoll: layerNum(field, 'rent_roll'),
       taxBill: layerNum(field, 'tax_bill'),
       resolved,
@@ -1938,6 +1944,9 @@ export async function getDealFinancials(
       broker: mul(layerNum(field, 'om') ?? layerNum(field, 'broker')),
       platform: platformVal,
       t12: mul(layerNum(field, 't12')),
+      t6: null,
+      t3: null,
+      t1: null,
       rentRoll: mul(layerNum(field, 'rent_roll')),
       taxBill: mul(layerNum(field, 'tax_bill')),
       resolved,
@@ -2061,6 +2070,23 @@ export async function getDealFinancials(
       const _oT = _byField('total_opex')?.t12;
       if (_seedNoi.broker == null && _bpNoi != null) _seedNoi.broker = Math.round(_bpNoi);
       if (_eT != null && _oT != null) _seedNoi.t12 = Math.round(_eT - _oT);
+    }
+  }
+
+  // ── Populate T-6 / T-3 / T-1 trailing actuals ─────────────────────────────
+  // Mirrors composeDealFinancials lines 363–373. Subtotal rows (egi,
+  // net_rental_income, total_opex, noi) are mapped directly to their own DB
+  // columns in deal_monthly_actuals, so they get actuals without any component
+  // aggregation. Falls back gracefully (rows unchanged) when no actuals exist.
+  {
+    const trailingMap = await loadTrailingActualsMap(pool, dealId);
+    for (const row of year1Rows) {
+      const ta = trailingMap[row.field];
+      if (ta) {
+        row.t6 = ta.t6;
+        row.t3 = ta.t3;
+        row.t1 = ta.t1;
+      }
     }
   }
 

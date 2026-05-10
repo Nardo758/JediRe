@@ -1221,8 +1221,11 @@ const TRAILING_FIELD_COL: Record<string, string> = {
  * Column names are verified against the live deal_monthly_actuals schema.
  * Logs a warning and returns {} on any query failure so upstream rows are
  * untouched (t6/t3/t1 stay null) rather than crashing the financials response.
+ *
+ * Exported so getDealFinancials in proforma-adjustment.service.ts can reuse
+ * the same trailing-actuals enrichment without duplicating the query logic.
  */
-async function loadTrailingActualsMap(
+export async function loadTrailingActualsMap(
   pool: Pool,
   dealId: string,
 ): Promise<Record<string, { t6: number | null; t3: number | null; t1: number | null }>> {
