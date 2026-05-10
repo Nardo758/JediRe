@@ -33,11 +33,33 @@ const TAB_CONSOLE = 1;   // Assumptions / Deal Terms
 const TAB_PROJECTIONS = 3;
 
 // ---------------------------------------------------------------------------
-// Deep-link helpers — dispatch events already wired in FinancialEnginePage
+// Deep-link helpers
+// ---------------------------------------------------------------------------
+// All navigation to F9-internal tabs dispatches deal-tab-change → 'proforma'
+// FIRST so that FinancialEnginePage mounts and registers its fe-tab-change /
+// fe-console-subtab listeners before those events are fired.  A 400 ms delay
+// gives React one render cycle plus margin for async mount effects to settle.
 // ---------------------------------------------------------------------------
 
+// Maps DealJourney lever field keys to the corresponding AssumptionsTab rd.key
+// values so [data-field-path] queries always land on a real table row.
+const LEVER_TO_ASMTAB_KEY: Record<string, string> = {
+  rentGrowth:    'growthRentPct',
+  expenseGrowth: 'growthOpexPct',
+  vacancy:       'stabilizedOcc',
+  exitCapRate:   'exitCapRate',
+  holdPeriod:    'saleYear',
+  capexPerUnit:  'capexPerUnit',
+  managementFee: 'management_fee_pct',
+};
+
 function deepLinkToTab(tabIndex: number, onClose: () => void): void {
-  window.dispatchEvent(new CustomEvent('fe-tab-change', { detail: tabIndex }));
+  // Step 1: ensure F9 (FinancialEnginePage) is mounted in DealDetailPage.
+  window.dispatchEvent(new CustomEvent('deal-tab-change', { detail: 'proforma' }));
+  // Step 2: once the fe-tab-change listener is live, switch to the target tab.
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('fe-tab-change', { detail: tabIndex }));
+  }, 400);
   onClose();
 }
 
@@ -46,17 +68,22 @@ function deepLinkToAssumptionsField(
   _fieldLabel: string,
   onClose: () => void,
 ): void {
-  // 1. Navigate to the CONSOLE tab (index 1) within the Financial Engine.
-  window.dispatchEvent(new CustomEvent('fe-tab-change', { detail: TAB_CONSOLE }));
-  // 2. Switch ConsoleHubTab to INPUTS sub-tab where lever assumption fields live.
-  window.dispatchEvent(new CustomEvent('fe-console-subtab', { detail: { subTab: 'inputs' } }));
-  // 3. Best-effort field scroll: attempt after React re-renders the sub-tab.
-  //    Succeeds when the target element has a matching [data-field-path] attribute.
+  // Step 1: ensure F9 (FinancialEnginePage) is mounted in DealDetailPage.
+  window.dispatchEvent(new CustomEvent('deal-tab-change', { detail: 'proforma' }));
+  // Step 2: switch to CONSOLE tab and select the INPUTS sub-tab.
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('fe-tab-change', { detail: TAB_CONSOLE }));
+    window.dispatchEvent(new CustomEvent('fe-console-subtab', { detail: { subTab: 'inputs' } }));
+  }, 400);
+  // Step 3: scroll to the target row. AssumptionsTab rows carry
+  //         data-field-path={rd.key}; LEVER_TO_ASMTAB_KEY maps lever field
+  //         names to rd.key values so the querySelector hits a real element.
   if (fieldPath) {
+    const asmKey = LEVER_TO_ASMTAB_KEY[fieldPath] ?? fieldPath;
     setTimeout(() => {
-      const el = document.querySelector(`[data-field-path="${fieldPath}"]`);
+      const el = document.querySelector(`[data-field-path="${asmKey}"]`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 200);
+    }, 700);
   }
   onClose();
 }

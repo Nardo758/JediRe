@@ -2954,7 +2954,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                       const mode = getMode(rd.key);
                       return (
                         <React.Fragment key={rd.key}>
-                        <tr className="border-b border-[#1e1e1e]/40 hover:bg-[#0f0f0f] h-[26px]">
+                        <tr data-field-path={rd.key} className="border-b border-[#1e1e1e]/40 hover:bg-[#0f0f0f] h-[26px]">
                           <td className="px-3 py-0.5 text-[11px] text-slate-400 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 min-w-[220px]">
                             <span className="flex items-center gap-1.5 truncate">
                               {rd.readonly && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
