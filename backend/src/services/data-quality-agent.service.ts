@@ -661,7 +661,8 @@ async function discoverSeedGaps(
       pool.query<{ field_name: string }>(
         `SELECT DISTINCT field_name
            FROM extraction_events
-          WHERE deal_id = $1 AND source_type = $2`,
+          WHERE deal_id = $1 AND source_type = $2
+            AND field_value IS NOT NULL`,
         [dealId, documentType]
       ),
       pool.query<{ year1: Record<string, unknown> | null }>(
@@ -670,7 +671,10 @@ async function discoverSeedGaps(
       ),
     ]);
 
-    // Only consider fields that have a confirmed extraction_events row.
+    // Only fields where extraction produced a non-null value (field_value IS NOT NULL
+    // in the query above). Rows with null field_value mean the extractor ran but
+    // found no data — those must NOT register as "source present" or they would
+    // generate false SEED_PLUMBING_* alerts.
     const fieldsWithSource = new Set(eventsRes.rows.map(r => r.field_name));
     // year1 shape: { [field]: { [column]: value } }  e.g. year1.gpr.broker
     // (confirmed by fetchProformaRowData: year1[row]?.[column])
