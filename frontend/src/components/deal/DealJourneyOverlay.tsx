@@ -41,16 +41,17 @@ const TAB_PROJECTIONS = 3;
 // gives React one render cycle plus margin for async mount effects to settle.
 // ---------------------------------------------------------------------------
 
-// Maps DealJourney lever field keys to the corresponding AssumptionsTab rd.key
-// values so [data-field-path] queries always land on a real table row.
-const LEVER_TO_ASMTAB_KEY: Record<string, string> = {
-  rentGrowth:    'growthRentPct',
-  expenseGrowth: 'growthOpexPct',
-  vacancy:       'stabilizedOcc',
-  exitCapRate:   'exitCapRate',
-  holdPeriod:    'saleYear',
-  capexPerUnit:  'capexPerUnit',
-  managementFee: 'management_fee_pct',
+// Maps LEVER_CONFIG fieldPath values (dotted, e.g. 'financial.assumptions.rentGrowth')
+// to AssumptionsTab rd.key values so [data-field-path] queries hit real rows.
+// Exported for testing.
+export const LEVER_TO_ASMTAB_KEY: Record<string, string> = {
+  'financial.assumptions.rentGrowth':    'growthRentPct',
+  'financial.assumptions.expenseGrowth': 'growthOpexPct',
+  'financial.assumptions.vacancy':       'stabilizedOcc',
+  'financial.assumptions.exitCapRate':   'exitCapRate',
+  'financial.assumptions.holdPeriod':    'saleYear',
+  'financial.assumptions.capexPerUnit':  'capexPerUnit',
+  'financial.assumptions.managementFee': 'management_fee_pct',
 };
 
 function deepLinkToTab(tabIndex: number, onClose: () => void): void {
