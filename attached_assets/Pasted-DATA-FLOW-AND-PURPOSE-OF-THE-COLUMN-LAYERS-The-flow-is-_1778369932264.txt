@@ -1,0 +1,48 @@
+DATA FLOW AND PURPOSE OF THE COLUMN LAYERS
+
+The flow is:
+
+  Pro Forma  →  Assumptions  →  Year 1  →  Projections
+
+  - Pro Forma:    AS-IS source view, columns rendered live from each 
+                  extraction source (broker_claims, T-12, rent roll, 
+                  tax bill, platform benchmark)
+  - Assumptions:  forward-looking decision layer; underwriter reviews 
+                  source values, sets overrides; resolves to Year 1
+  - Year 1:       deal_assumptions.year1 JSONB; the resolved 
+                  assumption set Projections consumes
+  - Projections:  multi-year cash flow forecast built from Year 1
+
+The om/t12/rent_roll/platform/override slots are decision-support 
+viewpoints, not just storage:
+
+  Broker (om)    what the seller is claiming
+  T-12           what the actual trailing 12 shows
+  Rent Roll      what current in-place reality shows
+  Platform       what market benchmarks predict
+  Override       what the underwriter believes
+  Resolved       the value Projections uses
+
+These viewpoints surface on TWO surfaces, not one:
+
+  - Pro Forma tab — live comparison columns; underwriter scans for 
+    broker puffing, market dislocation, in-place degradation
+  - Assumptions tab — source layers preserved in the year1 snapshot 
+    alongside the override field; resolved value flows to Projections
+
+WHY THIS FIX MATTERS
+
+When broker_claims is clobbered by the data-router write race, BOTH 
+surfaces lose the broker viewpoint at once:
+  - Pro Forma reads live broker_claims, shows "—" in Broker column
+  - Seeder reads the same clobbered broker_claims, writes null to 
+    year1.*.om
+  - Underwriter loses a comparison axis on Pro Forma and a source 
+    layer on the Assumptions snapshot
+
+Acceptable solutions preserve broker_claims through the data-router 
+write sequence so both the live Pro Forma read and the seeder's read 
+get the data extracted by the OM parser. Solutions that hide the 
+column when null, fall back silently, or "simplify away" the slot 
+are not acceptable — they mask a degraded decision-support state 
+rather than fixing it.
