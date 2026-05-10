@@ -864,6 +864,12 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               {showAbsences ? `HIDE ABSENCES` : `${dqaAbsenceCount} ABSENCE${dqaAbsenceCount !== 1 ? 'S' : ''}`}
             </button>
           )}
+          {/* Footnote: count of hidden NOT_IN_DOC findings when toggle is off */}
+          {dqaAbsenceCount > 0 && !showAbsences && (
+            <span style={{ fontFamily: LABEL, fontSize: 7, color: '#334155', fontStyle: 'italic' }}>
+              {dqaAbsenceCount} absence{dqaAbsenceCount !== 1 ? 's' : ''} verified — hidden
+            </span>
+          )}
           {dqaAlerts.length === 0 && !dqaLoading && (
             <span
               title="Data Quality Agent: no issues found"

@@ -23,7 +23,7 @@ import Anthropic from '@anthropic-ai/sdk';
 // classifyTimestampDelta: signed-delta (seed>=source → WRITE_RACE; seed<source
 //   beyond tolerance → STALE_SEED). Drives deterministic post-promotion in callAgent.
 // computeDeltaSeconds: signed integer delta passed to buildUserPrompt context.
-import { fetchFieldWriteTimes, classifyTimestampDelta, computeDeltaSeconds } from './extraction-events.service';
+import { fetchFieldWriteTimes, classifyTimestampDelta, computeDeltaSeconds, WRITE_RACE_WINDOW_SECONDS } from './extraction-events.service';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -159,8 +159,8 @@ Classification rules:
 - PARSER_INCORRECT: The extracted value differs from the source document value by >5%.
 - RANGE_ANOMALY: The extracted value is technically present but implausible (e.g. NOI/unit > $30,000/year or < $500/year for multifamily).
 - INCONSISTENCY: Internal contradiction within the same document (e.g. stated NOI ≠ Revenue − Expenses).
-- SEED_PLUMBING_WRITE_RACE: A value was extracted and stored in broker_claims but did not propagate to the Pro Forma year1 slot. Source-write and seed-write timestamps are within 5 minutes of each other (deltaSeconds < 300), suggesting a pipeline write-race between routeOM and routeExtractionResult.
-- SEED_PLUMBING_STALE_SEED: A value exists in broker_claims now, but the seed was written significantly earlier (deltaSeconds >= 300 or unknown). The seeder ran when the value was not yet present; broker data was entered or extraction completed after seed creation. Where timestamps are unknown, default to this classification.
+- SEED_PLUMBING_WRITE_RACE: A value was extracted and stored in broker_claims but did not propagate to the Pro Forma year1 slot. Source-write and seed-write timestamps are within ${WRITE_RACE_WINDOW_SECONDS} seconds of each other (deltaSeconds < ${WRITE_RACE_WINDOW_SECONDS}), suggesting a pipeline write-race between routeOM and routeExtractionResult.
+- SEED_PLUMBING_STALE_SEED: A value exists in broker_claims now, but the seed was written significantly earlier (deltaSeconds >= ${WRITE_RACE_WINDOW_SECONDS} or unknown). The seeder ran when the value was not yet present; broker data was entered or extraction completed after seed creation. Where timestamps are unknown, default to this classification.
 - NOT_IN_DOC: The document was checked for this field and it is genuinely absent. You must verify absence by scanning the relevant section of the source document before emitting this. If the section is unreadable, use LOW_CONFIDENCE_EXTRACTION. If the field IS visible in the source despite year1 being null, use PARSER_MISS. absentFields membership is a candidate signal, not a guarantee. Surface only when at least one other uploaded document for this deal contains the field (curated scope). Severity: info. No remediation needed.
 - CROSS_DOC_VARIANCE: Value differs materially from another uploaded document's data for the same field.
 - LOW_CONFIDENCE_EXTRACTION: Extracted value present but the document text is ambiguous or unclear.
