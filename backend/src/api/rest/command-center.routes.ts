@@ -189,6 +189,10 @@ router.get('/jobs/history', async (req: AuthenticatedRequest, res: Response) => 
 router.get('/dqa/reliability', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const pool = getPool();
+    const userRole = (req.user as any)?.role ?? 'user';
+    if (userRole !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
     const toDate   = req.query.to   ? new Date(req.query.to as string)   : new Date();
     const fromDate = req.query.from ? new Date(req.query.from as string) : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
 
@@ -207,11 +211,15 @@ router.get('/dqa/reliability', async (req: AuthenticatedRequest, res: Response) 
       hit_rate_pct: string | null;
     }>(
       `WITH totals AS (
+         -- Denominator: ALL deals that have ANY finding (any status, including superseded)
+         -- for a given document_type in the date range.  This is the closest approximation
+         -- to "total deals audited" given there is no separate audit-run log table.
+         -- Deals audited with a perfect EXTRACTION_OK result (zero rows written) are not
+         -- captured; this is a known limitation until a run-ledger table is added.
          SELECT document_type,
                 COUNT(DISTINCT deal_id) AS total_deals
            FROM data_quality_alerts
-          WHERE status    != 'dismissed'
-            AND created_at >= $1
+          WHERE created_at >= $1
             AND created_at <= $2
           GROUP BY document_type
        )

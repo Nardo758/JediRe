@@ -568,25 +568,52 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   // Staleness check (Task #707): ask the server whether this deal's DQA findings are
   // stale (or have never been run).  Server controls the threshold (DQA_STALENESS_HOURS
-  // env var, default 24 h) and handles the zero-alerts case.  Fires once per page session;
-  // backend rate-limits the actual re-audit to once per deal per hour.
+  // env var) and handles the zero-alerts case.  Fires once per page session; backend
+  // rate-limits the actual re-audit to once per deal per hour.
+  // After triggering a refresh, polls the staleness endpoint every 3 s (up to 5 times)
+  // and calls loadDqaAlerts() as soon as newestAlertAt changes, giving the user fresh
+  // findings as soon as the background agent run completes.
   useEffect(() => {
     if (!dealId || dqaRefreshedThisSession.current) return;
+    let cancelled = false;
+
+    const pollForFreshAlerts = (remainingPolls: number, prevNewestAt: string | null) => {
+      if (remainingPolls <= 0 || cancelled) {
+        if (!cancelled) loadDqaAlerts();
+        return;
+      }
+      setTimeout(async () => {
+        if (cancelled) return;
+        try {
+          const poll = await apiClient.get<{ success: boolean; newestAlertAt: string | null }>(
+            `/api/v1/deals/${dealId}/data-quality-alerts/staleness`
+          );
+          if ((poll.data?.newestAlertAt ?? null) !== prevNewestAt) {
+            if (!cancelled) loadDqaAlerts();
+            return;
+          }
+        } catch { /* ignore network errors during poll */ }
+        pollForFreshAlerts(remainingPolls - 1, prevNewestAt);
+      }, 3000);
+    };
+
     apiClient
-      .get<{ success: boolean; isStale: boolean; hasAlerts: boolean }>(
+      .get<{ success: boolean; isStale: boolean; hasAlerts: boolean; newestAlertAt: string | null }>(
         `/api/v1/deals/${dealId}/data-quality-alerts/staleness`
       )
       .then(res => {
-        const { isStale, hasAlerts } = res.data ?? {};
+        const { isStale, hasAlerts, newestAlertAt } = res.data ?? {};
         if (isStale || !hasAlerts) {
           dqaRefreshedThisSession.current = true;
           apiClient
             .post(`/api/v1/deals/${dealId}/data-quality-alerts/refresh`)
-            .then(() => { setTimeout(() => loadDqaAlerts(), 5000); })
+            .then(() => { pollForFreshAlerts(5, newestAlertAt ?? null); })
             .catch(() => {});
         }
       })
       .catch(() => {});
+
+    return () => { cancelled = true; };
   // Run once on mount per dealId — loadDqaAlerts is a stable useCallback reference
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
