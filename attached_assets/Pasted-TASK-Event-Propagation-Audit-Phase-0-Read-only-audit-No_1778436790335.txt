@@ -1,0 +1,396 @@
+TASK — Event Propagation Audit (Phase 0)
+
+Read-only audit. No code changes, no commits. Output is a single
+Markdown doc at docs/architecture/EVENT_PROPAGATION_AUDIT.md.
+
+SCOPE
+
+Two questions to answer with file:line evidence and live-DB traces:
+
+  Q1 — For each event subtype declared in EVENT_SUBTYPE_REGISTRY
+       (backend/src/services/sigma/causal-discipline-engine.ts:114-138),
+       does its primary_channel module actually consume the event
+       and apply it to assumptions/state? Or is it only surfaced
+       for display/agent prompts?
+
+  Q2 — Are there any duplicate injection paths (the failure mode
+       Causal_Discipline_Addendum.md §1 calls out) — same event
+       fanning out to multiple modules independently rather than
+       flowing through the single primary channel?
+
+The Pro Forma columns (Broker/T-12/Rent Roll/Platform) are the
+staging ground for the underwriter's view. Events should flow
+into the Platform column through their primary channel and into
+the path/trajectory of Year 2+. This audit catalogs which
+event→assumption pathways are WIRED end-to-end vs PARTIALLY_WIRED
+(display only) vs NOT_WIRED.
+
+REFERENCE DOCUMENTS
+
+Read these first to understand the architectural intent:
+  - backend/docs/Causal_Discipline_Addendum.md (channel routing
+    invariants; the canonical wiring contract)
+  - attached_assets/Pasted--Event-Impact-Engine-Key-Event-Capture-
+    Metric-Response-_1776295874035.txt (M35 spec)
+  - ROADMAP_M36_M38.md (broader prediction infrastructure)
+  - docs/architecture/module_wiring_map.md (existing wiring map
+    — verify event consumers against this)
+  - CLAUDE.md "M07 Traffic Engine — Current State" section
+    (M07/M35 integration status)
+
+CANONICAL EVENT TAXONOMY (from causal-discipline-engine.ts)
+
+  Subtype                            Primary Channel       Per spec
+  ─────────────────────────────────  ──────────────────    ────────
+  employer_expansion                 M07_traffic
+  employer_contraction               M07_traffic
+  major_relocation_announcement      multi_channel (M07 + M14)
+  in_migration_driver                M07_traffic
+  demographic_shift                  M07_traffic
+  multifamily_delivery               M07_traffic
+  multifamily_permit                 M07_traffic (M03 reads only)
+  demolition                         M07_traffic
+  conversion                         M07_traffic
+  rent_control_passage               M09_proforma_direct
+  tax_abatement                      M09_proforma_direct
+  entitlement_approval               M03_devcap
+  zoning_upzoning                    M03_devcap
+  rate_move                          M14_macro
+  recession_indicator                M14_macro
+  regional_shock                     multi_channel (M07 + M14)
+
+CONSUMING MODULES TO TRACE (verify each one independently)
+
+  M07 Traffic Engine
+    - backend/src/jobs/trafficCalibrationJob.ts
+    - backend/src/services/trafficPredictionEngine.ts
+    - backend/src/services/traffic-calibration.service.ts
+    - backend/src/services/m35-traffic-api.service.ts (the contract)
+
+  M09 ProForma Engine
+    - backend/src/services/proforma-adjustment.service.ts
+    - backend/src/services/financials-composer.service.ts
+    - backend/src/api/rest/proforma.routes.ts (esp. getM35ProformaAttribution)
+    - backend/src/services/proforma-seeder.service.ts
+
+  M03 Dev Capacity
+    - backend/src/services/property-enrichment/* (where dev cap lives)
+
+  M14 Risk
+    - backend/src/services/risk/* and any risk score consumers
+
+  M08 Strategy Builder
+    - backend/src/services/m08-strategies.service.ts
+    - backend/src/services/sigma/causal-discipline-engine.ts (canonical)
+
+  M25 JEDI Score
+    - backend/src/services/jedi-score.service.ts (esp. lines 286-291
+      for pipeline_units consumption)
+
+  Exit Cap Rate trajectory
+    - backend/src/services/lius/lines/exit/exitCapRate.yaml
+    - backend/src/services/lius/trajectory-engine.ts (esp. line 84)
+
+  Lease-Up Absorption
+    - backend/src/services/lius/lines/lease-up/leaseUpAbsorption.yaml
+    - backend/src/services/lius/trajectory-engine.ts
+
+  Correlation Engine (different system, but verify no event overlap)
+    - backend/src/services/correlationEngine.service.ts
+    - backend/src/services/correlation-adjustments.service.ts
+
+  Agent prompts (text-only surfacing)
+    - backend/src/agents/prompts/cashflow/system.ts
+    - backend/src/agents/tools/fetch_market_events.ts
+    - backend/src/agents/tools/fetch_m35_event_forecast.ts (if exists)
+
+PHASE 0a — EVENT SUBTYPE × MODULE MATRIX
+
+Build the core artifact: a matrix with event subtypes as rows and
+consuming modules as columns. Each cell gets a classification:
+
+  ✓ WIRED              — Event subtype flows through primary channel,
+                          mutates assumption/state programmatically,
+                          closed-loop (event change → state change
+                          without manual intervention).
+  ⚠ PARTIALLY_WIRED    — Event surfaces in display/attribution but
+                          does not mutate underlying LayeredValue
+                          or assumption layer. Read-only effect.
+                          (Example today: getM35ProformaAttribution
+                           reads event_forecasts but doesn't apply
+                           to FinancialContext.assumptions.)
+  ⚙ AGENT_ONLY         — Event surfaced only to agent prompts as
+                          text/JSON. Agent decides whether/how to
+                          apply. No deterministic write path.
+  ✗ NOT_WIRED          — Event subtype declared for this channel
+                          in EVENT_SUBTYPE_REGISTRY but no code
+                          consumes it from the spec'd module.
+  ⚡ DUPLICATE_INJECTION — Event applied through multiple paths
+                          (channel routing violation per Causal
+                          Discipline Invariant A).
+  ⤴ MISCLASSIFIED      — Event going through different channel
+                          than primary_channel declares.
+  ? SPEC_GAP           — Event subtype seen in code but not in
+                          EVENT_SUBTYPE_REGISTRY.
+
+For each cell: cite file:line evidence both for what IS wired and
+what is NOT. If the cell is NOT_WIRED, the evidence is the absence
+of any import/read of m35TrafficApiService / event_forecasts /
+event_playbooks / key_events in the relevant module file. Document
+the absence concretely:
+
+  Example:
+  multifamily_delivery × M07_traffic:
+    Expected: trafficCalibrationJob imports m35TrafficApiService,
+              calls getActiveEvents() to filter calibration window
+              per spec §2.3 Mechanism A.
+    Found:    backend/src/jobs/trafficCalibrationJob.ts contains
+              zero references to m35TrafficApi (grep -n
+              "m35TrafficApi\|getActiveEvents" returns no matches).
+              Calibration runs event-blind.
+    Status:   NOT_WIRED.
+
+PHASE 0b — END-TO-END TRACE ON A LIVE EVENT
+
+Pick one canonical example to trace fully through the system:
+multifamily_delivery, 300 units, submarket = Bishop's submarket
+(if known) or a synthetic test submarket.
+
+Trace:
+  1. Event ingestion — what process writes the row into key_events?
+  2. Playbook lookup — m35-playbook.service.ts: does a playbook
+     exist for multifamily_delivery? If yes, what's the playbook
+     value? If no (insufficient analogs), what's the fallback?
+  3. Forecast generation — m35-forecast.service.ts: which metric_keys
+     get event_forecasts rows generated? Confidence values?
+  4. M07 consumption path:
+     a. Does trafficCalibrationJob exclude the event window from
+        calibration evidence per Mechanism A?
+     b. Does trafficPredictionEngine apply the playbook absorption
+        lift per Mechanism D?
+     c. Does the lease-up curve in lius/lines/lease-up/* reflect
+        the playbook?
+  5. M09 consumption path:
+     a. Does proforma-adjustment.service.ts apply event_forecasts
+        cap_rate value to FinancialContext.assumptions.exitCapRate
+        platform layer?
+     b. Or does it only show eventAttribution to the user (read-only)?
+  6. M08 consumption: does causal-discipline-engine compute
+     expected_supply_pressure using the event subtype?
+  7. M25 consumption: does jedi-score.service.ts pipeline_units
+     reflect this event? Same supply step-down logic?
+  8. Exit cap consumption: does trajectory-engine.ts read M35
+     cap_rate forecasts, or only use the hardcoded
+     exit_cap_trajectory: -0.0025 baseline at line 84?
+
+For each step, report: WIRED / PARTIALLY_WIRED / AGENT_ONLY / NOT_WIRED
+with the actual file:line evidence. Where the path is broken, identify
+where it breaks.
+
+PHASE 0c — DUPLICATE INJECTION CHECK
+
+For each event subtype, search for ALL consumers (not just the
+primary channel). Identify any case where the same event is read
+by more than one channel-injection path:
+
+  - employer_expansion: should ONLY drive M07. If anything in M09
+    or M14 reads employer_expansion events directly and applies
+    them to assumptions/risk, that's DUPLICATE_INJECTION.
+  - multifamily_delivery: should ONLY drive M07. If JEDI Score
+    reads pipeline_units AND M07 reads multifamily_delivery
+    events AND ProForma reads vacancy_rate from event_forecasts,
+    that's three injections of the same supply signal.
+  - Etc. for every subtype.
+
+This check directly tests Causal Discipline Invariant A. Report
+violations as DUPLICATE_INJECTION findings with all the redundant
+read paths cited.
+
+Note: M03 reading multifamily_permit for dev feasibility is NOT
+duplicate injection (per spec §3.3, that's allowed read-only access
+to event data for a different purpose — developable supply, not
+present-period market). The test for DUPLICATE_INJECTION is:
+multiple modules applying the same event to overlapping
+assumptions/state.
+
+PHASE 0d — CAUSE/SYMPTOM SEPARATION CHECK
+
+Causal Discipline Invariant B says strategy scores must compose
+multiplicatively: Score = Expected × Validation, not additively.
+
+Search the M08 strategy scoring code path:
+  - backend/src/services/m08-strategies.service.ts
+  - backend/src/services/sigma/causal-discipline-engine.ts
+    (specifically computeSubScore method)
+
+Verify:
+  - Causes (employer events, supply events) feed Expected component
+  - Symptoms (search momentum, surge index, days_to_lease) feed
+    Validation component
+  - The two are combined multiplicatively, with validation_factor
+    bounded [V_FLOOR, V_CEILING] (0.7 to 1.3 per current code)
+  - Causes and symptoms are NOT added as independent evidence
+
+Report any place where the additive failure mode is present (cause
+and symptom of the same event both pumping a sub-score independently).
+
+PHASE 0e — TIMING DIMENSION
+
+The example Leon raised: "a 300-unit apartment being built — that
+will add to the supply and affect the market and competition and
+subject properties, but how and WHEN are key for each module."
+
+For each WIRED or PARTIALLY_WIRED event→module pathway found in
+Phase 0a, document the timing:
+
+  Timing dimension       Question
+  ─────────────────────  ───────────────────────────────────────
+  Announcement effect    Does the event start affecting state at
+                          announced_date, or only at materialization?
+  Decay shape            What decay curve does the consuming module
+                          apply (linear, S-curve, step, ramp)?
+                          Reference event_type_treatments.decay_shape.
+  Lead time              For pipeline events (announced but not
+                          delivered), how far ahead does the
+                          consuming module project the effect?
+  Window months          Which window_months value does the
+                          consumer read from event_forecasts?
+                          (3, 12, 24, 36)
+  Refresh trigger        Does the consumer re-read on a Kafka
+                          event when forecasts update, or only on
+                          deal-page load?
+
+For the 300-unit multifamily_delivery example specifically:
+  - Today's announcement → tomorrow's lease-up curve adjustment?
+                          Six-months-out adjustment? Materialization-
+                          date adjustment?
+  - The vacancy_rate event_forecast at window=12 — applied to
+    which year of the projection? Y1? Y2?
+  - When materialization_date arrives, does the platform recompute
+    the curve, or is it pre-baked at announcement?
+
+If timing isn't documented in the code, mark it as a TIMING_GAP
+finding (separate from NOT_WIRED — timing is a downstream question
+that only applies to already-wired paths).
+
+PHASE 0f — SUPPLY/DEMAND FORMULA AUDIT
+
+Specifically catalog the formulas the platform uses to translate
+event magnitude into assumption deltas:
+
+  M35 playbook (m35-playbook.service.ts:608-625):
+    Jobs-based (employer events):
+      rent_growth_pp_baseline = jobs × 0.0002 × wageMult × msaAtten
+      absorption_pp_baseline  = jobs × 0.0001 × wageMult × msaAtten
+    Non-jobs (supply, transit, etc.):
+      scaled_median = playbook_median × msaAtten × wageMult
+
+  Backtest service heuristic (backtest.service.ts:746-781):
+    supply_delivery base: -1.5% (rent change)
+    magnitude multipliers: 0.5 / 1.0 / 1.5 / 2.0
+    jobs factor: 1 + min(|jobs|/1000, 2) × 0.2
+
+  JEDI Score supply step-down (jedi-score.service.ts:286-291):
+    0 units → 60, <200 → 55, <500 → 50
+
+  Trajectory engine exit cap (trajectory-engine.ts:84):
+    Hardcoded baseline -0.25%/yr, no event input
+
+Report: which formulas are EVENT-AWARE (consume event data) vs
+EVENT-BLIND (use only hardcoded constants or market snapshots).
+Identify any inconsistencies (same magnitude unit producing
+different effects in different places).
+
+For the 300-unit example, walk through each formula:
+  - Playbook non-jobs path: scaled by MSA tier (×0.7/1.0/1.4)
+    and wage premium (×1.0/1.4). What does the actual playbook
+    median value say for multifamily_delivery × vacancy_rate?
+    × rent_growth_yoy? × cap_rate?
+  - Backtest: -1.5% base × magnitude multiplier. What's the
+    expected magnitude for 300 units?
+  - JEDI Score: 300 units lands in the <500 bucket → -10 points
+    on supply sub-score. This applies regardless of submarket
+    size — is that correct?
+
+PHASE 0g — CORRELATION ENGINE OVERLAP
+
+The Correlation Engine (correlationEngine.service.ts, 30 CORs) is
+a separate signal system from M35 playbooks. Verify:
+  - COR-06 (Pipeline % vs Rent Growth) uses snapshot supply_pressure
+    (categorical: low/moderate/high) — not event-level
+  - COR-19, COR-20 are reserved/unused
+  - No COR currently consumes event_forecasts or event_playbooks
+
+If any correlation IS reading event data, document as DUPLICATE_
+INJECTION (event signal entering through both the M35 attribution
+path and the correlation adjustment path).
+
+Also document any CORs whose adjustment delta_pct would be amplified
+or contradicted by an active M35 event in the same submarket. These
+aren't necessarily bugs — but they're places where the two systems
+should be reconciled, not running in parallel.
+
+OUTPUT
+
+Single Markdown doc at docs/architecture/EVENT_PROPAGATION_AUDIT.md
+matching the structure of existing audits (PROFORMA_SURFACE_AUDIT,
+OM_EXTRACTION_COVERAGE_AUDIT). Sections:
+
+  1. Header — date, scope, methodology, reference docs
+  2. Canonical event taxonomy (from EVENT_SUBTYPE_REGISTRY,
+      verbatim — not paraphrased)
+  3. Event × module matrix (Phase 0a) — the headline artifact
+  4. End-to-end trace on multifamily_delivery (Phase 0b)
+  5. Duplicate injection findings (Phase 0c)
+  6. Cause/symptom separation findings (Phase 0d)
+  7. Timing dimension catalog (Phase 0e)
+  8. Supply/demand formula catalog (Phase 0f)
+  9. Correlation engine overlap (Phase 0g)
+  10. Inventory of findings (priority-ranked, with IDs:
+       EP-N for event-propagation findings, DI-N for duplicate-
+       injection, CS-N for cause/symptom, TM-N for timing,
+       FA-N for formula, CE-N for correlation overlap)
+  11. Recommended Phase 1 fix sequence (priority-ranked, with
+       file:line for each fix anchor)
+
+Every finding has: ID, classification, file:line evidence, event
+subtype affected, consuming module, recommended action, effort
+estimate (S/M/L).
+
+OUT OF SCOPE
+
+  - Any code changes or fixes (Phase 1 work, separate prompts)
+  - Schema changes
+  - Adding new event subtypes or new modules to the canonical
+    taxonomy
+  - Performance audit (is the playbook query fast enough?)
+  - Live testing on production data — synthetic test events
+    are acceptable for Phase 0b end-to-end trace
+  - UI audit of event surfacing (M35EventCard, EventForecastPanel,
+    AttributionWaterfall — separate concern)
+  - Recommendation on whether channel routing is the RIGHT
+    architecture (it is, per Causal Discipline addendum — this
+    audit catalogs current compliance with that architecture,
+    doesn't relitigate it)
+
+ACCEPTANCE
+
+  - EVENT_PROPAGATION_AUDIT.md committed to docs/architecture/
+  - Event × module matrix covers all 16 declared subtypes ×
+    8 consuming modules (128 cells; some will be N/A — that's
+    fine, mark as such)
+  - Phase 0b end-to-end trace on multifamily_delivery is complete:
+    8 trace steps, each with WIRED/PARTIALLY_WIRED/AGENT_ONLY/
+    NOT_WIRED classification + file:line evidence
+  - Phase 0c duplicate injection check runs against every subtype
+  - Phase 0f formula audit catalogs all four known formulas
+    (playbook, backtest heuristic, JEDI step-down, trajectory
+    exit cap)
+  - Section 10 inventory has finding IDs, priority bands
+    (P0/P1/P2/P3), and effort estimates
+  - Section 11 Phase 1 fix sequence is concrete: file paths,
+    line ranges, expected change shape per fix
+
+Branch: claude/event-propagation-audit-phase-0 from origin/master.
+One commit: docs(architecture): Event propagation audit Phase 0 +
+channel routing compliance + supply/demand formula catalog.
