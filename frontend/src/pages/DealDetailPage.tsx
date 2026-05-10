@@ -495,6 +495,13 @@ const DealDetailPage: React.FC = () => {
   const dealJourney = useDealJourney(
     dealStoreCtx.identity?.id === dealId ? dealStoreCtx : null,
     journeyDqaCount,
+    // F9 projections and trafficProjection are only available inside
+    // FinancialEnginePage, which is not mounted at DealDetailPage level.
+    // Path.yearByYear therefore uses synthetic assumption extrapolation here.
+    // Phase 2 (Task #712): lift F9 state so the canonical modeled trajectory
+    // can be passed through and the overlay reflects live model outputs.
+    null,
+    null,
   );
   const [closeDealSuccess, setCloseDealSuccess] = useState(false);
   const [gapsDropdownOpen, setGapsDropdownOpen] = useState(false);
@@ -763,6 +770,9 @@ const DealDetailPage: React.FC = () => {
   }, []);
 
   // ── Deal Journey — DQA count for State A ─────────────────────────────────
+  // Endpoint filters status != 'dismissed' server-side; res.data.total is the
+  // pre-filtered active count.  The .alerts.length fallback covers older API
+  // versions that omit the top-level total field.
   useEffect(() => {
     if (!dealId) return;
     apiClient.get<{ success: boolean; total: number; alerts: Array<{ id: string; status: string }> }>(
