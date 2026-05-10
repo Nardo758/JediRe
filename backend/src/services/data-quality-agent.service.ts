@@ -163,15 +163,25 @@ function buildUserPrompt(
   documentType: string,
   proformaRows: Array<{ row: string; column: string; extractedValue: unknown; year1SlotValue: unknown; label: string }>,
   documentExcerpt: string,
-  seedGaps: Array<{ field: string; slot: string }> | null
+  seedGaps: SeedGap[] | null
 ): string {
   const rowsTable = proformaRows.map(r =>
     `  ${r.row} (${r.label}): extracted=${JSON.stringify(r.extractedValue)}, year1_slot=${JSON.stringify(r.year1SlotValue)}`
   ).join('\n');
 
-  const gapsNote = seedGaps && seedGaps.length > 0
-    ? `\nSeed plumbing gaps detected (source uploaded but year1 slot is null):\n${seedGaps.map(g => `  ${g.field}.${g.slot}`).join('\n')}`
-    : '';
+  let gapsNote = '';
+  if (seedGaps && seedGaps.length > 0) {
+    const gapLines = seedGaps.map(g => {
+      const delta = g.deltaSeconds !== null ? `${g.deltaSeconds}s` : 'unknown';
+      const sign  = g.deltaSeconds !== null
+        ? (g.deltaSeconds >= 0 ? '(seed after source)' : '(seed before source)')
+        : '';
+      return `  ${g.field}.${g.slot}  source-write=${g.sourceWriteTime ?? 'unknown'}  seed-write=${g.seedWriteTime ?? 'unknown'}  delta=${delta} ${sign}  likely=${g.phase2Class}`;
+    });
+    gapsNote = `\nSeed plumbing gaps (source present but year1 slot is null):\n${gapLines.join('\n')}\n`
+      + `Use the delta and likely classification as evidence when choosing SEED_PLUMBING. `
+      + `Where timestamps are unknown, default to classifying the gap as a stale-seed scenario.`;
+  }
 
   return `Document type: ${documentType}
 
@@ -193,7 +203,7 @@ async function callAgent(
   documentType: string,
   proformaRows: Array<{ row: string; column: string; extractedValue: unknown; year1SlotValue: unknown; label: string }>,
   documentExcerpt: string,
-  seedGaps: Array<{ field: string; slot: string }> | null
+  seedGaps: SeedGap[] | null
 ): Promise<DqaFinding[]> {
   const reportTool = {
     name: 'report_findings',
@@ -423,11 +433,27 @@ function extractDocumentExcerpt(filePath: string): string {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+export interface SeedGap {
+  field:           string;
+  slot:            string;
+  /** ISO timestamp — when the source field was written to broker_claims/extraction slot.
+   *  null when no extraction_events row exists (deal pre-dates Phase 2 or field never extracted). */
+  sourceWriteTime: string | null;
+  /** ISO timestamp — when deal_assumptions.updated_at was last set (seed write proxy). */
+  seedWriteTime:   string | null;
+  /** Signed delta in seconds: positive = seed after source (WRITE_RACE territory),
+   *  negative = seed before source (STALE_SEED territory). null when either timestamp unknown. */
+  deltaSeconds:    number | null;
+  /** Pre-computed Phase 2 signed-delta classification. Passed as context to Claude;
+   *  Claude uses SEED_PLUMBING until Task #696 activates the specific sub-types. */
+  phase2Class:     'SEED_PLUMBING_WRITE_RACE' | 'SEED_PLUMBING_STALE_SEED';
+}
+
 export interface RunDataQualityAgentOpts {
   dealId:       string;
   documentType: string;
   filePath?:    string;
-  seedGaps?:    Array<{ field: string; slot: string }> | null;
+  seedGaps?:    SeedGap[] | null;
 }
 
 /**
@@ -481,31 +507,13 @@ export async function runDataQualityAgent(
  * Trigger the agent after a reseed, using the seed observability log's gap list
  * to focus on SEED_PLUMBING findings.
  *
- * Phase 1 timestamp proxy (Task #696): uses deals.updated_at as a coarse proxy
- * for "when source data was last written." This fires on any deal edit, not
- * specifically on extraction writes, so it can misclassify STALE_SEED as WRITE_RACE
- * when an unrelated edit (e.g. deal rename) happens after seeding.
- *
- * Phase 2 TODO (Task #698 — active after Task #696 ships):
- *   Replace the deals.updated_at proxy with per-field extraction event timestamps:
- *
- *   const fieldNames = relevantGaps.map(g => g.field);
- *   const writeTimes = await fetchFieldWriteTimes(pool, dealId, documentType, fieldNames);
- *   const seedWrittenAt = ... (deal_assumptions.updated_at for this deal);
- *
- *   Then annotate each gap with:
- *     sourceWriteTime: writeTimes[g.field]?.toISOString() ?? null,
- *     seedWriteTime:   seedWrittenAt?.toISOString() ?? null,
- *     deltaSeconds:    computeDeltaSeconds(writeTimes[g.field] ?? null, seedWrittenAt ?? null),
- *     classification:  classifyTimestampDelta(writeTimes[g.field] ?? null, seedWrittenAt ?? null),
- *
- *   Pass the annotated gaps to runDataQualityAgent so buildUserPrompt() can include
- *   timing context for Claude's WRITE_RACE vs STALE_SEED decision.
- *
- *   Imports (fetchFieldWriteTimes, classifyTimestampDelta, computeDeltaSeconds)
- *   are already imported from extraction-events.service.ts at the top of this file.
- *   extraction_events rows are populated by emitOmProformaEvents() in routeOM()
- *   (data-router.ts) from Task #698.
+ * Phase 2 active (Task #698): fetches per-field source write timestamps from
+ * extraction_events and the seed write timestamp from deal_assumptions.updated_at,
+ * then annotates each gap with sourceWriteTime, seedWriteTime, deltaSeconds, and
+ * phase2Class before passing to runDataQualityAgent.  buildUserPrompt() renders
+ * all four fields so Claude sees precise timing context when deciding SEED_PLUMBING
+ * vs its WRITE_RACE / STALE_SEED sub-intent.  Task #696 will promote phase2Class
+ * into a first-class classification enum value once the taxonomy ships.
  */
 export async function runDataQualityAgentAfterReseed(
   pool: Pool,
@@ -515,14 +523,51 @@ export async function runDataQualityAgentAfterReseed(
   if (seedGaps.length === 0) return;
 
   const uploadedTypes = await detectUploadedDocumentTypes(pool, dealId);
+
+  // Fetch seed write time once (deal_assumptions.updated_at is the closest
+  // per-deal timestamp for when the seed pipeline last ran).
+  let seedWrittenAt: Date | null = null;
+  try {
+    const seedRes = await pool.query<{ updated_at: Date }>(
+      `SELECT updated_at FROM deal_assumptions WHERE deal_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+      [dealId]
+    );
+    seedWrittenAt = seedRes.rows[0]?.updated_at ?? null;
+  } catch {
+    // Non-fatal — timestamps will be null, phase2Class defaults to STALE_SEED.
+  }
+
   for (const documentType of uploadedTypes) {
-    const relevantGaps = seedGaps.filter(g => {
+    const baseGaps = seedGaps.filter(g => {
       const col = COLUMN_BY_DOCTYPE[documentType];
       return col && g.slot === col;
     });
-    if (relevantGaps.length === 0) continue;
+    if (baseGaps.length === 0) continue;
+
+    // Fetch per-field source write times from extraction_events (Phase 2).
+    const fieldNames = baseGaps.map(g => g.field);
+    let writeTimes: Record<string, Date> = {};
+    try {
+      writeTimes = await fetchFieldWriteTimes(pool, dealId, documentType, fieldNames);
+    } catch {
+      // Non-fatal — all sourceWriteTime values will be null.
+    }
+
+    const annotatedGaps: SeedGap[] = baseGaps.map(g => {
+      const sourceDate = writeTimes[g.field] ?? null;
+      const delta      = computeDeltaSeconds(sourceDate, seedWrittenAt);
+      return {
+        field:           g.field,
+        slot:            g.slot,
+        sourceWriteTime: sourceDate   ? sourceDate.toISOString()   : null,
+        seedWriteTime:   seedWrittenAt ? seedWrittenAt.toISOString() : null,
+        deltaSeconds:    delta,
+        phase2Class:     classifyTimestampDelta(sourceDate, seedWrittenAt),
+      };
+    });
+
     setImmediate(() => {
-      runDataQualityAgent(pool, { dealId, documentType, seedGaps: relevantGaps }).catch(() => {});
+      runDataQualityAgent(pool, { dealId, documentType, seedGaps: annotatedGaps }).catch(() => {});
     });
   }
 }
