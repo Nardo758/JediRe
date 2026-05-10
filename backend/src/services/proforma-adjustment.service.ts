@@ -1847,7 +1847,6 @@ export async function getDealFinancials(
   const OPEX_FIELDS: Array<[string, string]> = [
     ['repairs_maintenance', 'Repair & Maintenance'],
     ['contract_services', 'Contract Services'],
-    ['landscaping', 'Landscaping / Grounds'],
     ['payroll', 'Personnel'],
     ['marketing', 'Marketing / Advertising'],
     ['g_and_a', 'Administrative'],
@@ -1979,6 +1978,27 @@ export async function getDealFinancials(
     ...NOI_FIELDS.map(([k, _l]) => toRow(k, _l)),
   ];
 
+  // ── Fold landscaping into contract_services ────────────────────────────────
+  // Landscaping & Grounds is a contracted service; it is displayed merged with
+  // Contract Services rather than as a standalone line.  The underlying seed
+  // field (year1Seed.landscaping) is left intact so no data is lost.
+  {
+    const _csRow  = year1Rows.find(r => r.field === 'contract_services');
+    const _landLv = lv(year1Seed, 'landscaping');
+    if (_csRow && _landLv) {
+      const _addSlot = (a: number | null, b: number | null): number | null =>
+        a == null && b == null ? null : (a ?? 0) + (b ?? 0);
+      _csRow.broker   = _addSlot(_csRow.broker,   layerNum(_landLv, 'om') ?? layerNum(_landLv, 'broker'));
+      _csRow.platform = _addSlot(_csRow.platform, layerNum(_landLv, 'platform'));
+      _csRow.t12      = _addSlot(_csRow.t12,      layerNum(_landLv, 't12'));
+      const _landRes  = resolvedNum(_landLv);
+      if (_landRes != null) {
+        _csRow.resolved = (_csRow.resolved ?? 0) + _landRes;
+        _csRow.perUnit  = totalUnits > 0 ? Math.round(_csRow.resolved! / totalUnits) : null;
+      }
+    }
+  }
+
   // ── Back-fill broker/t12 slots for computed subtotal rows ─────────────────
   // EGI, net_rental_income, total_opex, and NOI are derived rows — the year1
   // seed stores no om/t12 layers for them (they are computed, not extracted
@@ -2051,7 +2071,7 @@ export async function getDealFinancials(
     const _opexComponents = [
       'payroll', 'repairs_maintenance', 'turnover', 'contract_services',
       'marketing', 'utilities', 'g_and_a', 'insurance', 'real_estate_tax',
-      'replacement_reserves', 'management_fee', 'landscaping',
+      'replacement_reserves', 'management_fee',
     ];
     const _topexRow = _byField('total_opex');
     if (_topexRow) {

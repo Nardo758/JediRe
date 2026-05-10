@@ -124,7 +124,7 @@ type Formulas  = Record<string, string>;
 
 // Field ordering from backend (sections 1 & 3)
 const REVENUE_ORDER = ['gpr','loss_to_lease','vacancy_loss','concessions','bad_debt','non_revenue_units','other_income','net_rental_income','egi'];
-const OPEX_ORDER    = ['payroll','repairs_maintenance','turnover','contract_services','landscaping','marketing','utilities','g_and_a','management_fee','insurance','real_estate_taxes','replacement_reserves','total_opex','noi'];
+const OPEX_ORDER    = ['payroll','repairs_maintenance','turnover','contract_services','marketing','utilities','g_and_a','management_fee','insurance','real_estate_taxes','replacement_reserves','total_opex','noi'];
 
 // ─── Formula evaluator — constrained arithmetic parser (no new Function) ───────
 // Only allows: numbers, +  -  *  /  ()  and the named refs below.

@@ -150,7 +150,7 @@ const REVENUE_FIELDS = new Set([
   'other_income', 'egi',
 ]);
 const CTRL_OPEX_FIELDS = new Set([
-  'payroll', 'repairs_maintenance', 'turnover', 'contract_services', 'landscaping',
+  'payroll', 'repairs_maintenance', 'turnover', 'contract_services',
   'marketing', 'utilities', 'g_and_a',
 ]);
 const NCTRL_OPEX_FIELDS = new Set([
@@ -720,7 +720,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const preNriRows  = revRows.filter(r => ['vacancy_loss', 'loss_to_lease', 'concessions', 'bad_debt', 'non_revenue_units'].includes(r.field));
   const postNriRows = revRows.filter(r => r.field === 'other_income');
   // Spec order: sort by canonical sequence
-  const CTRL_ORDER  = ['payroll','repairs_maintenance','turnover','contract_services','landscaping','marketing','utilities','g_and_a'];
+  const CTRL_ORDER  = ['payroll','repairs_maintenance','turnover','contract_services','marketing','utilities','g_and_a'];
   const NCTRL_ORDER = ['management_fee','insurance','real_estate_tax'];
   const ctrlRows = displayRows.filter(r => CTRL_OPEX_FIELDS.has(r.field))
     .sort((a, b) => CTRL_ORDER.indexOf(a.field) - CTRL_ORDER.indexOf(b.field));
