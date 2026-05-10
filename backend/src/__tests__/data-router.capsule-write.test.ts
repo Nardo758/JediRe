@@ -18,6 +18,32 @@ vi.mock('../database/connection', () => ({
   getPool: vi.fn(() => _activePool!),
 }));
 
+// ─── Side-effect service stubs ────────────────────────────────────────────────
+// Suppress KG ingestion, DQA, traffic, and cross-validation calls so tests are
+// deterministic and don't hit external APIs or produce noisy stderr.
+vi.mock('../services/document-extraction/om-distribution.service', () => ({
+  buildOmKgEventData: vi.fn(() => null),
+}));
+vi.mock('../services/neural-network/graph-ingestion-listener', () => ({
+  getGraphIngestionListener: vi.fn(() => ({ emit: vi.fn() })),
+}));
+vi.mock('../services/traffic-analytics.service', () => ({
+  computeAndPersistTrafficSnapshot: vi.fn(() => Promise.resolve()),
+}));
+vi.mock('../services/multi-doc-cross-validation.service', () => ({
+  runCrossValidation: vi.fn(() => Promise.resolve({ variances: 0 })),
+}));
+vi.mock('../services/data-quality-agent.service', () => ({
+  runDataQualityAgent:           vi.fn(() => Promise.resolve()),
+  runDataQualityAgentAfterReseed: vi.fn(() => Promise.resolve()),
+}));
+
+// Mock the shared logger so block (c) tests can inspect logger.info calls.
+const loggerInfoSpy = vi.fn();
+vi.mock('../utils/logger', () => ({
+  logger: { info: loggerInfoSpy, warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Builds a minimal mock pg Pool that captures every SQL call and param set. */
@@ -341,13 +367,8 @@ describe('seedProFormaYear1 — om slot population', () => {
 // ─── Block (c): seed observability log ────────────────────────────────────────
 
 describe('seed observability log', () => {
-  let consoleSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
-    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-  });
-  afterEach(() => {
-    consoleSpy.mockRestore();
+    loggerInfoSpy.mockClear();
   });
 
   function makePoolWithCapsule(capsule: Record<string, unknown>) {
@@ -370,6 +391,14 @@ describe('seed observability log', () => {
     };
   }
 
+  /** Extract the seed.complete log entry from logger.info spy calls. */
+  function getSeedLog(): Record<string, unknown> | undefined {
+    for (const call of loggerInfoSpy.mock.calls) {
+      if (call[0] === 'seed.complete') return call[1] as Record<string, unknown>;
+    }
+    return undefined;
+  }
+
   it('emits seed.complete event with correct top-level shape', async () => {
     const pool = makePoolWithCapsule({
       extraction_t12: { gpr: 4_800_000, real_estate_tax: 960_000, payroll: 280_000, noi: 2_704_000 },
@@ -383,16 +412,12 @@ describe('seed observability log', () => {
     const { seedProFormaYear1 } = await import('../services/proforma-seeder.service');
     await seedProFormaYear1(pool as never, 'deal-1');
 
-    const logCalls = consoleSpy.mock.calls
-      .map(c => { try { return JSON.parse(String(c[0])); } catch { return null; } })
-      .filter(Boolean);
-
-    const seedLog = logCalls.find((l: Record<string, unknown>) => l.event === 'seed.complete');
+    const seedLog = getSeedLog();
     expect(seedLog).toBeDefined();
-    expect(seedLog.deal_id).toBe('deal-1');
-    expect(typeof seedLog.timestamp).toBe('string');
-    expect(Array.isArray(seedLog.uploaded_sources)).toBe(true);
-    expect(seedLog.year1_slot_population).toBeDefined();
+    expect(seedLog!.deal_id).toBe('deal-1');
+    expect(typeof seedLog!.timestamp).toBe('string');
+    expect(Array.isArray(seedLog!.uploaded_sources)).toBe(true);
+    expect(seedLog!.year1_slot_population).toBeDefined();
   });
 
   it('includes expected_vs_actual_gaps when source uploaded but slot is null', async () => {
@@ -404,17 +429,13 @@ describe('seed observability log', () => {
     const { seedProFormaYear1 } = await import('../services/proforma-seeder.service');
     await seedProFormaYear1(pool as never, 'deal-1');
 
-    const logCalls = consoleSpy.mock.calls
-      .map(c => { try { return JSON.parse(String(c[0])); } catch { return null; } })
-      .filter(Boolean);
-
-    const seedLog = logCalls.find((l: Record<string, unknown>) => l.event === 'seed.complete');
+    const seedLog = getSeedLog();
     expect(seedLog).toBeDefined();
     // OM is uploaded (extraction_om present) but broker_claims.proforma is absent
     // → gpr.om / real_estate_tax.om / contract_services.om should all be gaps
-    expect(Array.isArray(seedLog.expected_vs_actual_gaps)).toBe(true);
-    expect(seedLog.expected_vs_actual_gaps.length).toBeGreaterThan(0);
-    const gapFields = (seedLog.expected_vs_actual_gaps as Array<{ field: string; slot: string }>)
+    expect(Array.isArray(seedLog!.expected_vs_actual_gaps)).toBe(true);
+    expect((seedLog!.expected_vs_actual_gaps as unknown[]).length).toBeGreaterThan(0);
+    const gapFields = (seedLog!.expected_vs_actual_gaps as Array<{ field: string; slot: string }>)
       .map(g => `${g.field}.${g.slot}`);
     expect(gapFields).toContain('gpr.om');
   });
@@ -438,13 +459,9 @@ describe('seed observability log', () => {
     const { seedProFormaYear1 } = await import('../services/proforma-seeder.service');
     await seedProFormaYear1(pool as never, 'deal-1');
 
-    const logCalls = consoleSpy.mock.calls
-      .map(c => { try { return JSON.parse(String(c[0])); } catch { return null; } })
-      .filter(Boolean);
-
-    const seedLog = logCalls.find((l: Record<string, unknown>) => l.event === 'seed.complete');
+    const seedLog = getSeedLog();
     expect(seedLog).toBeDefined();
     // Only T12 uploaded and all tracked t12 slots should be populated → no gaps
-    expect(seedLog.expected_vs_actual_gaps).toBeUndefined();
+    expect(seedLog!.expected_vs_actual_gaps).toBeUndefined();
   });
 });

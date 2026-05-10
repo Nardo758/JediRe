@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/types';
+import { logger } from '../utils/logger';
 
 // ProForma Seeder: merges extraction capsules into ProFormaYear1Seed (deal_assumptions.year1).
 // Priority: override > field-specific source > platform fallback. Idempotent.
@@ -1084,7 +1085,7 @@ function emitSeedObservabilityLog(
   if (expected_vs_actual_gaps.length > 0) {
     entry.expected_vs_actual_gaps = expected_vs_actual_gaps;
   }
-  console.log(JSON.stringify(entry));
+  logger.info('seed.complete', entry);
 }
 
 /**
