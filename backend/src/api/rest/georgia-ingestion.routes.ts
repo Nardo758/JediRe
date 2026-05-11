@@ -17,7 +17,7 @@ import { georgiaSaleCompsService } from '../../services/saleComps/georgia-sale-c
 import { apartmentLocatorSyncService } from '../../services/apartment-locator-sync.service';
 import { ingestAtlantaNews } from '../../scripts/ingest-atlanta-news';
 import { getPool } from '../../database/connection';
-import { requireAuth, requireRole } from '../../middleware/auth';
+import { requireAuth, requireRole, AuthenticatedRequest } from '../../middleware/auth';
 import { geocodingService } from '../../services/geocoding.service';
 import { syncMartaGtfs } from '../../services/real-data/marta-gtfs.service';
 import { syncOsmPois } from '../../services/real-data/osm-overpass.service';
@@ -1492,6 +1492,171 @@ router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async
   } catch (error) {
     console.error('[API] /georgia/extract-events error:', error);
     res.status(500).json({ error: 'Event extraction failed', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// ============================================================================
+// MARKET EVENTS REVIEW QUEUE (Task #371)
+// ============================================================================
+
+/**
+ * GET /api/v1/georgia/events/pending-review
+ * Returns news-sourced market events awaiting analyst review
+ * (reviewed_at IS NULL). Owner/admin only.
+ *
+ * Query params:
+ *   limit       1-200, default 50
+ *   minConfidence  0-1, default 0 (return all)
+ *   maxConfidence  0-1, default 1
+ *   status      optional filter on current status
+ */
+router.get('/events/pending-review', requireAuth, requireRole('owner', 'admin'), async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+
+    const limitRaw = parseInt(String(req.query.limit ?? ''), 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0
+      ? Math.min(limitRaw, 200)
+      : 50;
+
+    const minConfidenceRaw = parseFloat(String(req.query.minConfidence ?? ''));
+    const minConfidence = Number.isFinite(minConfidenceRaw) ? Math.max(0, Math.min(1, minConfidenceRaw)) : 0;
+    const maxConfidenceRaw = parseFloat(String(req.query.maxConfidence ?? ''));
+    const maxConfidence = Number.isFinite(maxConfidenceRaw) ? Math.max(0, Math.min(1, maxConfidenceRaw)) : 1;
+
+    const params: any[] = [minConfidence, maxConfidence, limit];
+    let statusClause = '';
+    if (typeof req.query.status === 'string' && req.query.status.length > 0) {
+      params.push(req.query.status);
+      statusClause = ` AND status = $${params.length}`;
+    }
+
+    const result = await pool.query(`
+      SELECT
+        id, event_type, event_name, event_description,
+        geography_type, geography_id, geography_name,
+        entity_name, entity_type,
+        jobs_affected, units_affected, investment_amount,
+        announced_date, effective_date,
+        expected_impact_direction, expected_impact_magnitude,
+        status, confidence_score,
+        source_url, source_type, source_date,
+        tags, created_at
+      FROM market_events
+      WHERE source_type = 'news'
+        AND reviewed_at IS NULL
+        AND COALESCE(confidence_score, 0) >= $1
+        AND COALESCE(confidence_score, 1) <= $2
+        ${statusClause}
+      ORDER BY created_at DESC
+      LIMIT $3
+    `, params);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      filters: { minConfidence, maxConfidence, limit },
+      events: result.rows,
+    });
+  } catch (error) {
+    console.error('[API] /georgia/events/pending-review error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch pending-review events',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+/**
+ * PATCH /api/v1/georgia/events/:id/review
+ * Promote / reject an AI-extracted event after analyst review.
+ * Owner/admin only.
+ *
+ * Body (all optional, but at least one of status/confidence_score required):
+ *   status            one of 'rumored'|'announced'|'confirmed'|'active'|'completed'|'cancelled'
+ *   confidence_score  0.0 - 1.0
+ *   notes             free-form analyst note
+ *
+ * Stamps reviewed_by (req.user.id) and reviewed_at = NOW().
+ */
+router.patch('/events/:id/review', requireAuth, requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const { id } = req.params;
+    const { status, confidence_score, notes } = req.body ?? {};
+
+    const VALID_STATUSES = ['rumored', 'announced', 'confirmed', 'active', 'completed', 'cancelled'];
+
+    if (status !== undefined && !VALID_STATUSES.includes(status)) {
+      return res.status(400).json({
+        error: 'Invalid status',
+        message: `status must be one of: ${VALID_STATUSES.join(', ')}`,
+      });
+    }
+
+    let confidence: number | undefined;
+    if (confidence_score !== undefined && confidence_score !== null) {
+      const c = Number(confidence_score);
+      if (!Number.isFinite(c) || c < 0 || c > 1) {
+        return res.status(400).json({
+          error: 'Invalid confidence_score',
+          message: 'confidence_score must be a number between 0 and 1',
+        });
+      }
+      confidence = c;
+    }
+
+    if (status === undefined && confidence === undefined && notes === undefined) {
+      return res.status(400).json({
+        error: 'Empty review',
+        message: 'Provide at least one of: status, confidence_score, notes',
+      });
+    }
+
+    const reviewerId = req.user?.userId ?? null;
+
+    const setClauses: string[] = [
+      'reviewed_at = NOW()',
+      'reviewed_by = $2',
+      'updated_at = NOW()',
+    ];
+    const params: any[] = [id, reviewerId];
+
+    if (status !== undefined) {
+      params.push(status);
+      setClauses.push(`status = $${params.length}`);
+    }
+    if (confidence !== undefined) {
+      params.push(confidence);
+      setClauses.push(`confidence_score = $${params.length}`);
+    }
+    if (notes !== undefined) {
+      params.push(notes === null ? null : String(notes));
+      setClauses.push(`review_notes = $${params.length}`);
+    }
+
+    const result = await pool.query(`
+      UPDATE market_events
+      SET ${setClauses.join(', ')}
+      WHERE id = $1
+      RETURNING
+        id, event_type, event_name,
+        status, confidence_score,
+        reviewed_by, reviewed_at, review_notes,
+        source_type, source_url
+    `, params);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    res.json({ success: true, event: result.rows[0] });
+  } catch (error) {
+    console.error('[API] /georgia/events/:id/review error:', error);
+    res.status(500).json({
+      error: 'Failed to record event review',
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 

@@ -161,7 +161,11 @@ export class BacktestService {
         FROM market_events me
         JOIN event_outcomes eo ON eo.event_id = me.id
         WHERE me.effective_date BETWEEN $1 AND $2
-          AND me.status = 'completed'
+          -- Task #371: include analyst-confirmed and active events alongside
+          -- completed ones; exclude unreviewed ('rumored', 'announced') and
+          -- 'cancelled' so low-quality news extractions can't poison the
+          -- training/validation set.
+          AND me.status IN ('confirmed', 'active', 'completed')
           AND eo.measurement_period = '12mo'
       `, [config.trainingStart, config.validationEnd]);
       

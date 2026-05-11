@@ -63,6 +63,19 @@ export class MarketEventsService {
       whereClause += ` AND me.status = ANY($${paramIndex})`;
       params.push(options.status);
       paramIndex++;
+    } else {
+      // Task #371: by default, gate AI-extracted news events behind analyst
+      // review so unreviewed rows can't affect proximity analysis.
+      //   - Always exclude 'rumored' and 'cancelled' regardless of source.
+      //   - For source_type='news', additionally require analyst review
+      //     (reviewed_at IS NOT NULL). 'announced' news events stay hidden
+      //     until promoted via PATCH /events/:id/review.
+      //   - Manual / non-news rows ('government', 'sec_filing', 'press_release',
+      //     etc.) keep their existing behaviour and do not require review.
+      // Callers that want to surface unreviewed events (with a UI disclaimer)
+      // can opt in by passing `status` explicitly.
+      whereClause += ` AND me.status NOT IN ('rumored', 'cancelled')`;
+      whereClause += ` AND (me.source_type IS DISTINCT FROM 'news' OR me.reviewed_at IS NOT NULL)`;
     }
     
     if (options.startDate) {

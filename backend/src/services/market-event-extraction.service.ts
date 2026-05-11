@@ -311,6 +311,13 @@ export async function insertExtractedEvents(
   for (const evt of events) {
     const geoId = resolveGeographyId(evt.geography_id);
 
+    // Task #371: low-confidence news-extracted events land as 'rumored' so
+    // analysts must promote them before they reach proximity / backtest.
+    // Threshold = 0.75. Higher-confidence rows keep the LLM-supplied status
+    // (typically 'announced'). Manual / non-news inserts are unaffected.
+    const effectiveStatus =
+      evt.confidence_score < 0.75 ? 'rumored' : evt.status;
+
     try {
       const result = await dbQuery(`
         INSERT INTO market_events (
@@ -352,7 +359,7 @@ export async function insertExtractedEvents(
         evt.effective_date,
         evt.expected_impact_direction,
         evt.expected_impact_magnitude,
-        evt.status,
+        effectiveStatus,
         evt.confidence_score,
         sourceUrl ?? null,
         sourceDate ?? null,
@@ -361,7 +368,7 @@ export async function insertExtractedEvents(
 
       if (result.rows.length > 0) {
         inserted++;
-        const persistedEvt = { ...evt, geography_id: geoId, id: result.rows[0].id };
+        const persistedEvt = { ...evt, geography_id: geoId, status: effectiveStatus, id: result.rows[0].id };
         persisted.push(persistedEvt);
         logger.info('[EventExtraction] Inserted market event', {
           event_name: evt.event_name,
@@ -390,7 +397,7 @@ export async function insertExtractedEvents(
               effectiveDate: evt.effective_date,
               impactDirection: evt.expected_impact_direction,
               impactMagnitude: evt.expected_impact_magnitude,
-              status: evt.status,
+              status: effectiveStatus,
               confidence: evt.confidence_score,
               sourceUrl: sourceUrl,
             }
