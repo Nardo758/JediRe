@@ -100,12 +100,21 @@ CREATE TABLE IF NOT EXISTS historical_observations (
   realization_complete_date    DATE,
   data_quality_flags           TEXT[],
   created_at                   TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at                   TIMESTAMP NOT NULL DEFAULT NOW(),
-
-  -- Compound unique constraint: one row per (geography x date x window)
-  CONSTRAINT uq_historical_obs_geo_date_window
-    UNIQUE (geography_level, COALESCE(parcel_id, submarket_id, msa_id), observation_date, observation_window)
+  updated_at                   TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- ─── UNIQUE CONSTRAINT (functional index) ───────────────────────────────────
+-- PostgreSQL does not support expressions like COALESCE() inside a
+-- CONSTRAINT ... UNIQUE table declaration, so we use a unique index instead.
+-- One row per (geography x date x window).
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hist_obs_geo_date_window
+  ON historical_observations (
+    geography_level,
+    COALESCE(parcel_id, submarket_id, msa_id),
+    observation_date,
+    observation_window
+  );
 
 -- ─── INDEXES ───────────────────────────────────────────────────────────────
 
@@ -133,8 +142,8 @@ COMMENT ON TABLE historical_observations IS
   'at common geography x time keys. Consumed by M35, M07, M36, M37, M38 for '
   'empirical coefficient derivation. See HISTORICAL_OBSERVATIONS_SPEC.md.';
 
-COMMENT ON CONSTRAINT uq_historical_obs_geo_date_window ON historical_observations IS
-  'Prevents duplicate observations for the same geography x date x window. '
+COMMENT ON INDEX idx_hist_obs_geo_date_window IS
+  'Unique functional index enforcing one row per (geography x date x window). '
   'Uses COALESCE to handle sparse geography columns — at least one of '
   'parcel_id, submarket_id, or msa_id must be populated.';
 

@@ -370,6 +370,7 @@ import { syncAtlantaPdCrimeFunction } from './inngest/functions/sync-atlanta-pd-
 import { snapshotSentimentDaily } from './inngest/functions/snapshot-sentiment.function';
 import { rateSheetStalenessCron } from './inngest/functions/rateSheetStaleness.cron';
 import { taxBillUploadedHandler } from './inngest/functions/taxBillUploaded.handler';
+import { historicalObservationsBackfill } from './inngest/functions/historicalObservationsBackfill';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -396,6 +397,8 @@ app.use(
       // Tax Service Phase 4 (Task #592): weekly rate sheet staleness check + cache invalidation
       rateSheetStalenessCron,
       taxBillUploadedHandler,
+      // Historical Observations (Task #716 follow-up): nightly realized output backfill
+      historicalObservationsBackfill,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
