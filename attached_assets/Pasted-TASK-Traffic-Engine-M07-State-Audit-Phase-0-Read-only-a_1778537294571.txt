@@ -1,0 +1,330 @@
+TASK — Traffic Engine (M07) State Audit — Phase 0
+
+Read-only audit. No code changes, no commits. Output is a single
+Markdown doc at docs/architecture/TRAFFIC_ENGINE_STATE_AUDIT.md.
+
+SCOPE BOUNDARY (READ FIRST)
+
+This audit is COMPLEMENTARY to ticket #715 (Event Propagation Audit).
+The boundary:
+  - #715 covers events flowing INTO M07 (event subtypes consumed by
+    M07 calibration, m35TrafficApiService usage).
+  - THIS audit covers M07's internal state and outputs flowing OUT
+    of M07 — independent of event integration.
+
+If a finding is properly within #715's scope (does event subtype X
+get consumed by M07?), DO NOT reproduce it here. Reference #715
+instead. This audit answers questions like:
+  - Is the Subject-First Calibration rule actually implemented?
+  - What confidence representation does M07 emit today (scalar vs
+    asymmetric percentile bands)?
+  - Which of T-01 through T-10 signals are computed?
+  - Are the three operational modes (Stabilized, Lease-Up,
+    Redevelopment) implemented or only spec'd?
+  - Where does trafficToProFormaService apply M07 outputs to the
+    LayeredValue platform layer of FinancialContext.assumptions?
+  - Are the single-snapshot rent-roll extractors built
+    (velocity, seasonality, waterfall, term mix)?
+
+REFERENCE DOCUMENTS
+
+Read these first:
+  - TRAFFIC_ENGINE_CALIBRATION_SPEC.md (canonical spec)
+  - CLAUDE.md sections "M07 Traffic Engine" + "M07 Subject-First
+    Calibration Rule"
+  - LEASE_VELOCITY_ENGINE_SPEC.md (related capability)
+  - docs/architecture/PROJECTIONS_TRAFFIC_ENGINE_AUDIT.md
+    (prior audit; treat its findings as starting state, not ground
+    truth — re-verify what it claimed)
+
+KNOWN ENTRY POINTS (incomplete list — discover more)
+
+  backend/src/types/traffic-calibration.types.ts
+  backend/src/jobs/trafficCalibrationJob.ts
+  backend/src/services/trafficPredictionEngine.ts
+  backend/src/services/traffic-calibration.service.ts
+  backend/src/services/trafficToProFormaService.ts
+  backend/src/services/m35-traffic-api.service.ts
+  backend/src/services/traffic-correlation.service.ts
+  backend/src/services/traffic-analytics.service.ts
+  backend/src/services/trafficLearningService.ts
+  backend/src/services/comp-traffic.service.ts
+  backend/src/services/traffic-data-sources.service.ts
+  backend/src/services/traffic-growth-index.service.ts
+  backend/src/services/traffic-module-wiring.ts
+  backend/src/api/rest/traffic-ai.routes.ts
+  backend/src/api/rest/deal-traffic.routes.ts
+
+Discover additional traffic-related files via:
+  grep -rln "traffic\|Traffic" backend/src --include="*.ts" |
+    grep -v node_modules | grep -v __tests__
+
+Append discovered files to "Relevant files" with one-line role
+note. Don't silently use a file that isn't enumerated.
+
+PHASE 1a — SERVICE INVENTORY WITH ROLE CLASSIFICATION
+
+For every traffic-related service file, classify its role:
+
+  Role                         Description
+  ─────────────────────────    ─────────────────────────────────
+  CALIBRATION                  Updates coefficients from evidence
+                                (e.g., trafficCalibrationJob)
+  PREDICTION                   Produces forward projections
+                                (e.g., trafficPredictionEngine)
+  EXTRACTION                   Pulls signals from source documents
+                                (e.g., rent roll → velocity)
+  CONSUMPTION_BRIDGE           Applies M07 outputs to downstream
+                                modules (e.g., trafficToProForma)
+  CORRELATION                  Maps traffic signals to outcomes
+                                (e.g., traffic-correlation)
+  DATA_SOURCE                  External data fetching
+                                (e.g., traffic-data-sources)
+  ANALYTICS                    UI / API support layer
+  LEARNING                     Subject-history accumulation
+  M35_BRIDGE                   Event integration contract
+                                (out of scope per boundary above —
+                                see #715)
+  ROUTE                        HTTP endpoints
+
+Cite the line ranges where the role function lives. Note whether
+each service is INVOKED (called from somewhere live) or ORPHANED
+(defined but no caller). Orphaned services are spec'd-but-unwired
+signals.
+
+PHASE 1b — CALIBRATION STATE
+
+The spec calls for three-layer Bayesian resolution:
+Baseline → Platform → Deal. For each layer:
+
+  Baseline layer: BASELINE_COEFFICIENTS in trafficCalibrationJob.ts
+    Document each coefficient (visibility_capture_rate,
+    apartment_seeker_pct, stop_probability, walkin_to_tour,
+    tour_to_app, app_to_signed) — its baseline value, its
+    interpretation, and whether the Bayesian update path uses it
+    as prior.
+
+  Platform layer: traffic_calibration_factors table
+    Document the schema (msa, submarket, class, vintage_band
+    bucket structure). Verify nightly job writes rows with
+    Bayesian posterior = (prior × n_prior + evidence × n_evidence)
+    / (n_prior + n_evidence). Sample-size thresholds:
+    MIN_PROPERTIES_TTM=5, MIN_PROPERTIES_SPARSE=2.
+
+  Deal layer: Subject-First Calibration rule
+    Per CLAUDE.md, subject history is promoted above peer when
+    sufficient. Find the implementation. What's the threshold
+    for promotion (months of subject history? n snapshots?).
+    Is it actually firing for properties with multi-snapshot
+    rent rolls? Cite the function + line.
+
+For each layer, classify:
+  ✓ FULLY_IMPLEMENTED  — code exists, invoked, tested
+  ⚠ PARTIAL            — code exists, partial invocation
+  ✗ SPEC_ONLY          — described in spec, no code
+  ❓ UNVERIFIABLE       — code present but no way to confirm it
+                          runs without live DB introspection
+
+PHASE 1c — OUTPUT CONTRACT
+
+Document the M07 output object that downstream consumers read.
+Look at trafficPredictionEngine.ts and trafficToProFormaService.ts
+for the response shapes.
+
+Key fields to inventory:
+  yearly[*].occupancyPct           — present? populated?
+  yearly[*].vacancyPct             — present? populated?
+  yearly[*].effRent                — present? populated?
+  yearly[*].rentGrowthPct          — present? populated?
+  yearly[*].confidenceBand         — does this exist? as scalar,
+                                      as percentile object, or
+                                      absent? Cite the type def.
+  leasingSignals.confidence        — what shape? Scalar or {p10,
+                                      p25, median, p75, p90}?
+  leaseUp.weeksTo90/93/95          — present? how derived?
+  leasingSignals.signing_velocity  — T-04 signal — present?
+  leasingSignals.seasonality       — T-05 — present?
+  leasingSignals.waterfall         — T-06 — present?
+  leasingSignals.term_mix          — T-07 — present?
+
+Find the TypeScript type definition for the M07 response object.
+Document its full shape. For each spec'd signal (T-01 through
+T-10 per TRAFFIC_ENGINE_CALIBRATION_SPEC.md), classify:
+  ✓ EMITTED            — appears in response object, populated
+  ⚠ EMITTED_NULL       — appears in type but never populated
+  ✗ NOT_EMITTED        — absent from response type
+
+This is the most operationally important section. The confidence
+representation question (scalar vs asymmetric percentile) is the
+single most important spec compliance gap to identify.
+
+PHASE 1d — EXTRACTOR INVENTORY
+
+Per CLAUDE.md, single-snapshot extractors should produce four
+outputs from one rent roll: velocity, seasonality, waterfall,
+term mix. The userMemory notes "Single-snapshot rent roll
+extractors validated and built."
+
+Verify by finding each extractor:
+  - Velocity extractor: lease signing rate from lease_start_date
+    fields in a single rent roll
+  - Seasonality extractor: distribution of lease_start_dates
+    across the calendar year
+  - Waterfall extractor: lease term × signing date distribution
+  - Term mix extractor: distribution of lease term lengths
+
+For each extractor:
+  - File and function name
+  - Input shape (rent roll snapshot format)
+  - Output shape (which T-N signal it produces)
+  - Where the output is consumed (M07 prediction? Display only?)
+  - Test coverage status (test file exists or not — don't run tests)
+
+Separately, classify diff-extractors (require 2+ snapshots):
+existence and trigger conditions.
+
+PHASE 1e — OPERATIONAL MODES
+
+Three modes spec'd: Stabilized, Lease-Up, Redevelopment. For each
+mode:
+  - Where is mode detected? (logic that selects which mode applies)
+  - Which formulas/coefficients change per mode?
+  - Where does the mode-selection code live (file:line)?
+
+If mode selection is absent (all properties processed identically),
+that's a SPEC_GAP finding. If it exists but is hardcoded to one
+mode, that's PARTIAL.
+
+PHASE 1f — CONSUMPTION SURFACE
+
+Where do M07 outputs land in the downstream platform?
+
+  trafficToProFormaService → which assumption fields?
+    Document each FinancialContext.assumptions field that this
+    service writes to. Which LayeredValue layer (platform? deal?)
+    is the write target? File:line for each write.
+
+  proforma-adjustment.service.ts → does it read M07 outputs?
+    Trace the read path.
+
+  jedi-score.service.ts → uses M07 outputs how? Direct read or
+    via aggregated supply/demand state?
+
+  m08-strategies.service.ts → reads M07 expected_demand_strength
+    per Causal Discipline §3.3?
+
+For each consumer, classify the data flow:
+  ✓ LIVE_READ          — consumer pulls M07 output at runtime
+  ⚠ STORED_READ        — consumer reads a stored M07 snapshot
+                          (potentially stale)
+  ✗ SPEC_ONLY          — spec'd consumer with no actual read
+
+PHASE 1g — CALIBRATION JOB STATE
+
+For trafficCalibrationJob.ts specifically:
+  - When was it last invoked in production? (check schedule
+    configuration; no DB introspection needed)
+  - Is the Kafka publish at line ~649 actually subscribed by any
+    consumer? Map the subscribers.
+  - Sample-size gating: does the job report buckets that didn't
+    meet MIN_PROPERTIES_TTM? Where do they fall back to?
+  - What's the absorption benchmark computation (computeAbsorption
+    Benchmarks)? Document its formula and inputs.
+
+NOTE: do NOT inventory event-window exclusion (Mechanism A) — that's
+explicitly in #715's scope.
+
+PHASE 1h — SPEC COMPLIANCE GAPS
+
+Cross-reference findings against TRAFFIC_ENGINE_CALIBRATION_SPEC.md.
+Build a list of declared-in-spec items that the audit found
+NOT_IMPLEMENTED or PARTIAL. Format:
+
+  Spec section X.Y "Z capability"
+    Spec requirement: <verbatim from spec, one sentence>
+    Audit finding: <NOT_IMPLEMENTED / PARTIAL>
+    Evidence: <file:line citation>
+    Impact: <what this gap prevents downstream>
+    Effort estimate: S/M/L
+
+This is the section that drives Phase 2 build sequencing.
+
+OUTPUT
+
+Single Markdown doc at docs/architecture/TRAFFIC_ENGINE_STATE_AUDIT.md.
+Sections:
+  1. Header — date, scope, BOUNDARY note (vs #715)
+  2. Service inventory with role classification (Phase 1a)
+  3. Calibration state — Baseline, Platform, Deal layers (Phase 1b)
+  4. Output contract — every field in the M07 response (Phase 1c)
+  5. Extractor inventory (Phase 1d)
+  6. Operational mode status (Phase 1e)
+  7. Consumption surface (Phase 1f)
+  8. Calibration job state (Phase 1g)
+  9. Spec compliance gaps (Phase 1h) — the actionable list
+  10. Finding inventory: TE-N IDs, priority bands P0/P1/P2/P3,
+      effort estimates S/M/L
+  11. Recommended Phase 2 build sequence — file paths, line
+      ranges, expected change shape per gap to close
+
+Every finding has: ID, classification, file:line evidence, what
+the spec called for, what's actually present, recommended action.
+
+OUT OF SCOPE
+
+  - Code changes or fixes (Phase 2 work)
+  - Event integration (covered by #715)
+  - M35 → M07 wiring (covered by #715)
+  - Tests run against production data
+  - UI audit of traffic visualizations
+  - Performance audit (job runtime, query optimization)
+  - Recommendation on whether the three-layer Bayesian approach
+    is correct (it is per spec — audit catalogs compliance)
+  - Strategy detection / M08 internal logic (only the M08→M07
+    read interface)
+
+SUPPLEMENTARY CLARIFICATIONS
+
+  A. Classification precedence (when multiple categories fit):
+     SPEC_ONLY > NOT_IMPLEMENTED > PARTIAL > EMITTED_NULL >
+     FULLY_IMPLEMENTED. Pick the highest-precedence category.
+
+  B. The confidence representation question (Phase 1c) is the
+     single most important deliverable. If you find conflicting
+     evidence (e.g., the response type allows scalar AND object,
+     and both code paths exist), document both with file:line and
+     mark as AMBIGUOUS — let me decide which is canonical.
+
+  C. Files-of-record protocol: append discovered files to the
+     bottom of Section 2 with role classification. Use the grep
+     command in "Known Entry Points" as the discovery floor; the
+     real set is likely larger.
+
+  D. Phase 1f consumption surface: for trafficToProFormaService
+     specifically, walk EVERY public method and document the
+     write target. This is what trafficToProForma's "bridge" role
+     actually does — without this surface mapped, Phase 2 fix
+     prioritization is impossible.
+
+  E. Effort budget guidance:
+       1a 10% / 1b 15% / 1c 20% / 1d 10% / 1e 5% /
+       1f 20% / 1g 10% / 1h 10%
+     Phase 1c (output contract) and 1f (consumption surface)
+     carry the highest weight because they determine where Phase
+     2 fix work lands.
+
+  F. Section 11 leverage statement: for each recommended fix,
+     state which downstream module (M09 ProForma / M08 Strategy /
+     M25 JEDI / M14 Risk) becomes more accurate once the gap
+     closes. Fixes that unblock multiple downstream consumers
+     get higher priority.
+
+  G. Cross-audit reference: if a finding appears in or is
+     adjacent to #715's scope, reference it explicitly (e.g.,
+     "See #715 Section 3 for M35 event ingress to this code
+     path"). Don't reproduce #715's findings.
+
+Branch: claude/traffic-engine-state-audit-phase-0 from origin/master.
+One commit: docs(architecture): Traffic Engine (M07) state audit
+Phase 0 — service inventory, calibration layers, output contract,
+extractors, modes, consumption, spec compliance gaps.
