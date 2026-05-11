@@ -30,6 +30,11 @@ export enum NotificationType {
   INFO_COLLABORATOR_ADDED = 'info_collaborator_added',
   INFO_COMMENT_MENTION = 'info_comment_mention',
   INFO_TASK_ASSIGNED = 'info_task_assigned',
+
+  // Data corpus (historical observations)
+  DATA_CORPUS_UPLOAD_REQUIRED = 'data_corpus_upload_required',
+  DATA_CORPUS_GAP_DETECTED = 'data_corpus_gap_detected',
+  DATA_CORPUS_REALIZATION_PENDING = 'data_corpus_realization_pending',
 }
 
 export enum NotificationPriority {

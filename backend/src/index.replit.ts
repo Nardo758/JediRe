@@ -623,6 +623,7 @@ import sigmaRouter from './api/rest/sigma.routes';
 import sigmaFullRouter from './api/rest/sigma-full.routes';
 import { designMassingRouter } from './services/design/design-massing.service';
 import leaseVelocityRouter from './api/rest/lease-velocity.routes';
+import historicalObservationsRoutes from './api/rest/historical-observations.routes';
 app.use('/api/v1/organization', organizationRouter);
 
 // Design 3D â€” AI massing generation
@@ -633,6 +634,9 @@ app.use('/api/v1/sigma', requireAuth, sigmaRouter);
 app.use('/api/v2/sigma', requireAuth, sigmaFullRouter);
 app.use('/api/v1/analogs', analogRouter);
 app.use('/api/v1/lease-velocity', leaseVelocityRouter);
+
+// Historical Observations — empirical calibration substrate
+app.use('/api/v1/historical-observations', requireAuth, historicalObservationsRoutes);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 
