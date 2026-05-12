@@ -1,0 +1,319 @@
+TASK — FIX-3: Emit Asymmetric Confidence Bands
+
+Per docs/architecture/TRAFFIC_ENGINE_STATE_AUDIT.md §11 Fix #3
+and findings TE-01 + TE-12. Replaces the current 3-point ±1σ
+confidence band with a 5-point asymmetric percentile band,
+backed by per-evidence JSONB storage so M38 can recompute
+arbitrary percentiles later without re-running calibration.
+
+CONTEXT
+
+Per audit §4.3, M07 currently emits THREE different confidence
+representations, none of which is the spec's required
+{p10, p25, median, p75, p90}:
+
+  1. confidence (top-level): { score: number 0-100; tier:
+     'High'|'Medium'|'Low'; breakdown }
+  2. confidence_band: { low, mid, high } — ±1σ around posterior
+  3. confidence_v2: { score, tier, data_weeks, per_metric }
+
+The TRAFFIC_ENGINE_CALIBRATION_SPEC.md §1.5 requires asymmetric
+percentile bands because the response distributions for lease
+absorption and rent growth are not symmetric. The existing ±1σ
+representation assumes symmetry and loses information.
+
+This fix:
+  1. Adds per-evidence values storage as JSONB array (so M38
+     can recompute different percentiles later)
+  2. Updates confidence_band shape to {low, p25, p50, median,
+     p75, high} where p50 and median are aliases for the same
+     value
+  3. Wires the new shape through trafficToProFormaService and
+     downstream consumers
+
+DEPENDENCIES
+
+  REQUIRED:
+  - FIX-1 (Calibration cron scheduling) merged and running
+    weekly. FIX-3 reformats the data the calibration job
+    produces; the cron has to be producing data first.
+
+  NOT REQUIRED:
+  - FIX-2 (Kafka subscriber) — different concern
+  - FIX-4 (Wire orphaned bridges) — depends on FIX-3 but FIX-3
+    doesn't depend on FIX-4
+
+SCOPE
+
+In scope:
+  - Schema migration: add evidence_values column to
+    traffic_calibration_factors as JSONB array
+  - Schema migration: change confidence_band shape via type
+    update (Postgres JSONB column doesn't enforce shape, but
+    the TypeScript type does)
+  - trafficCalibrationJob.ts lines 398-400: replace ±1σ
+    computation with per-evidence storage + percentile
+    computation
+  - traffic-calibration.types.ts: update CalibrationMeta
+    interface to new band shape
+  - trafficToProFormaService.ts (getTrafficProjection): add
+    confidenceBand: {low, p25, p50, median, p75, high} to
+    TrafficProjectionYear
+  - trafficPredictionEngine.ts: derive confidence_band from
+    coefficient family for the scalar → percentile promotion
+    when emitting the top-level confidence_band field
+  - Migration of existing rows: backfill evidence_values from
+    historical data where derivable; for rows where it isn't,
+    leave evidence_values NULL and compute confidence_band
+    from existing low/mid/high using approximation (clearly
+    flagged as approximate)
+
+Out of scope:
+  - Removing the legacy `confidence` (top-level scalar) — kept
+    for backward compatibility; new clients use confidence_band
+  - Removing `confidence_v2` (per-metric) — different concern,
+    distinct from absorption/rent bands
+  - The Kafka publish of calibration update events (FIX-2)
+  - Wiring orphaned traffic-module-wiring bridges (FIX-4)
+  - Frontend visualizations of the new bands (separate UI ticket)
+  - M38 reliability stats computation
+
+SCHEMA MIGRATION
+
+backend/src/db/migrations/YYYYMMDD_traffic_calibration_evidence_storage.sql:
+
+ALTER TABLE traffic_calibration_factors
+  ADD COLUMN IF NOT EXISTS evidence_values JSONB;
+
+COMMENT ON COLUMN traffic_calibration_factors.evidence_values IS
+  'JSONB array of per-evidence values [{ property_id, value,
+   recorded_at }]. Preserves raw evidence for M38 percentile
+   recomputation. NULL for rows pre-dating FIX-3.';
+
+CREATE INDEX IF NOT EXISTS idx_traffic_calibration_evidence
+  ON traffic_calibration_factors USING gin(evidence_values)
+  WHERE evidence_values IS NOT NULL;
+
+TYPE UPDATES
+
+backend/src/types/traffic-calibration.types.ts line 61:
+
+interface CalibrationMeta {
+  // ... existing fields ...
+
+  /**
+   * Asymmetric confidence band derived from per-evidence values.
+   * p50 and median are aliases for the same value.
+   *
+   * Pre-FIX-3 rows may have a legacy shape with only low/mid/
+   * high; consumers should handle both during migration.
+   */
+  confidence_band: {
+    low: number;       // p10 equivalent
+    p25: number;
+    p50: number;       // alias for median
+    median: number;    // alias for p50
+    p75: number;
+    high: number;      // p90 equivalent
+  } | LegacyConfidenceBand;
+
+  /** Per-evidence array used to compute the band. Available
+   *  for FIX-3+ rows; NULL for pre-FIX-3 rows. */
+  evidence_values: Array<{
+    property_id: string;
+    value: number;
+    recorded_at: string;  // ISO timestamp
+  }> | null;
+}
+
+interface LegacyConfidenceBand {
+  low: number;
+  mid: number;
+  high: number;
+}
+
+In trafficPredictionEngine.ts:
+  Add confidenceBand to TrafficProjectionYear:
+  
+  interface TrafficProjectionYear {
+    // ... existing fields ...
+    confidenceBand?: {
+      low: number;
+      p25: number;
+      p50: number;
+      median: number;
+      p75: number;
+      high: number;
+    };
+  }
+
+CORE IMPLEMENTATION
+
+backend/src/jobs/trafficCalibrationJob.ts lines 398-400:
+
+REPLACE the existing ±1σ computation:
+
+  // OLD (lines 398-400):
+  const mean = evidenceValues.reduce((a,b) => a+b, 0) / n;
+  const stdDev = Math.sqrt(evidenceValues.reduce(
+    (acc, v) => acc + (v - mean)**2, 0) / n);
+  const confidenceBand = {
+    low: mean - stdDev,
+    mid: mean,
+    high: mean + stdDev,
+  };
+
+WITH percentile computation + per-evidence storage:
+
+  // NEW:
+  // Store raw per-evidence values
+  const evidenceRecords = evidenceArray.map(e => ({
+    property_id: e.propertyId,
+    value: e.value,
+    recorded_at: e.recordedAt.toISOString(),
+  }));
+
+  // Compute percentile band
+  const sorted = [...evidenceValues].sort((a, b) => a - b);
+  const percentile = (p: number) =>
+    sorted[Math.min(Math.floor(sorted.length * p),
+                    sorted.length - 1)];
+
+  const median = percentile(0.5);
+  const confidenceBand = {
+    low: percentile(0.10),
+    p25: percentile(0.25),
+    p50: median,
+    median: median,
+    p75: percentile(0.75),
+    high: percentile(0.90),
+  };
+
+  // Persist both
+  const factorRow = {
+    // ... existing fields ...
+    confidence_band: confidenceBand,
+    evidence_values: evidenceRecords,
+  };
+
+This preserves the per-evidence array for M38's eventual
+percentile recomputation (FIX-3 Q1 option A) and emits the
+asymmetric percentile band immediately.
+
+CONSUMER UPDATES
+
+backend/src/services/trafficToProFormaService.ts:
+
+In getTrafficProjection(), populate confidenceBand on each
+yearly entry from the coefficient family's confidence_band:
+
+  const yearly = years.map((year) => ({
+    // ... existing fields ...
+    confidenceBand: factor?.confidence_band ? {
+      low: factor.confidence_band.low,
+      p25: factor.confidence_band.p25,
+      p50: factor.confidence_band.p50,
+      median: factor.confidence_band.median,
+      p75: factor.confidence_band.p75,
+      high: factor.confidence_band.high,
+    } : undefined,
+  }));
+
+backend/src/services/trafficPredictionEngine.ts:
+
+When emitting top-level confidence_band on TrafficPrediction:
+read from the calibration factor's confidence_band (now
+percentile-based) rather than computing ±1σ.
+
+If legacy LegacyConfidenceBand is encountered (pre-FIX-3 row),
+convert it on the fly: low → low, mid → median+p50, high → high,
+p25/p75 derived by linear interpolation between low/mid and
+mid/high respectively. This handles the migration period
+where some rows have new shape and others have legacy.
+
+BACKFILL OF EXISTING ROWS
+
+backend/src/scripts/backfill-traffic-calibration-percentiles.ts (NEW):
+
+For all existing traffic_calibration_factors rows where
+evidence_values IS NULL:
+  IF the original evidence is still available in
+  traffic_calibration_history or related sources:
+    Reconstruct evidence_values and recompute percentile band
+  ELSE:
+    Approximate band from existing {low, mid, high}:
+      low → low, mid → p50 + median, high → high,
+      p25 = low + 0.25 * (mid - low),
+      p75 = mid + 0.25 * (high - mid)
+    Flag as approximate via a new column.
+
+  Reports: N rows fully reconstructed, M rows approximated.
+
+This is a one-time script, not a continuous cron.
+
+VERIFICATION CHECKLIST
+
+After FIX-3 ships:
+  - Migration adds evidence_values column to
+    traffic_calibration_factors
+  - Next calibration cron run (Monday after FIX-3 merges)
+    produces rows with new shape and evidence_values populated
+  - trafficToProFormaService.getTrafficProjection() returns
+    TrafficProjectionYear with confidenceBand field
+  - Legacy confidence_band rows (from before FIX-3) still
+    render correctly via the on-the-fly conversion
+  - Backfill script runs and reports counts
+  - Smoke test: query a known property's
+    TrafficProjection.yearly; confirm confidenceBand is
+    populated for years with calibration data
+  - Unit tests: percentile computation handles edge cases
+    (n=1, n=2, n=100; tied values; non-numeric values)
+  - Integration test: full calibration → projection chain
+    produces asymmetric bands
+
+OUT OF SCOPE
+
+  - Removing legacy fields (confidence, confidence_v2)
+  - UI visualizations of the bands (separate ticket)
+  - M38 percentile recomputation logic
+  - Cross-band consistency checks (e.g., ensure low < p25 
+    p50 < p75 < high)
+  - Documentation of the new band shape in product docs
+
+ACCEPTANCE
+
+  - Schema migration applied; evidence_values column exists
+  - trafficCalibrationJob.ts emits asymmetric bands per the
+    new computation
+  - traffic-calibration.types.ts CalibrationMeta interface
+    updated
+  - trafficToProFormaService and trafficPredictionEngine
+    consume the new shape
+  - Backfill script runs and produces a count report
+  - Existing TrafficProjection consumers continue working
+    (legacy LegacyConfidenceBand handled via on-the-fly
+    conversion)
+  - Unit + integration tests pass
+  - Single commit, branch claude/fix-3-asymmetric-confidence-bands
+    from origin/master:
+    feat(traffic): Asymmetric percentile confidence bands +
+    per-evidence storage (FIX-3 from TRAFFIC_ENGINE_STATE_AUDIT.md;
+    resolves TE-01, TE-12)
+
+NOTES
+
+  - This fix is more consequential than FIX-1 because it
+    changes the shape of M07's emitted contract. Downstream
+    consumers (Pro Forma, JEDI Score, M14 Risk) gain
+    access to risk-adjusted bands that were impossible to
+    emit before.
+  - The per-evidence JSONB storage is the foundation for
+    M38's eventual reliability work — when M38 ships, it
+    reads evidence_values to compute per-stratum reliability
+    against realized outcomes from the historical_observations
+    corpus.
+  - The legacy LegacyConfidenceBand conversion is intentional
+    technical debt — it allows FIX-3 to ship without forcing
+    a hard cutover. After 2-3 calibration cycles, all rows
+    will have new shape and the legacy code path can be
+    removed in a follow-up.

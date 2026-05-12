@@ -1,0 +1,423 @@
+TASK — Historical Observations Phase 1: Schema + Ingestion + Reminder
+
+Per docs/architecture/HISTORICAL_OBSERVATIONS_SPEC.md §11
+Phase 1, §3 (schema), §6 (ingestion architecture), §7 (property
+performance ingestion), and §9 (reminder system).
+
+This is the foundation chapter for the platform's empirical
+calibration substrate. Once Phase 1 lands, every existing parse
+operation also creates corpus rows, the operator can see data
+coverage per deal, and weekly reminders surface gaps.
+
+DEPENDENCIES
+
+  REQUIRED:
+  - data_library_files.deal_id foreign key (separate ticket
+    "Data Library Deal Folder Restructure" — must merge first)
+  - Operational TrafficCalibrationJob cron (FIX-1 from
+    TRAFFIC_ENGINE_STATE_AUDIT.md — separate ticket;
+    parallel work, doesn't block Phase 1)
+
+  NOT REQUIRED:
+  - CoStar parser / dual-write (Phase 4 work)
+  - LODES / QCEW / Veraset ingestion (Phase 4)
+  - M22 variance analysis surface (separate spec, future)
+  - M38 reliability ledger (separate, future)
+
+SCOPE
+
+In scope:
+  - Schema migration: historical_observations table with all
+    columns per HISTORICAL_OBSERVATIONS_SPEC.md §3
+  - Transformer service: per-parser-type writes to corpus
+    inline with existing data-router.ts route functions
+  - Realized-outputs backfill service: nightly job that walks
+    rows hitting T+3, T+12, T+24 anniversaries and populates
+    realized_*_t* columns from later observations
+  - CorpusQueryService: query API per HISTORICAL_OBSERVATIONS_SPEC.md §8
+    (skeleton with stub implementations is acceptable for
+    Phase 1; full empirical refit logic is Phase 5)
+  - Lifecycle transition service: on deals.status →
+    'owned'/'portfolio'/'closed', auto-create Data Library
+    Deal Folder (via the deal_id FK from the prerequisite
+    ticket) and bootstrap initial historical_observations row
+  - Reminder system: 4 NotificationType values added, weekly
+    Monday 09:00 local-time Inngest cron, Data Coverage Panel
+    component on deal page header
+  - Weekly digest: aggregate notification + email per
+    HISTORICAL_OBSERVATIONS_SPEC.md §9.4
+
+Out of scope:
+  - CoStar / market survey / REIT 10-K / comp parsers (Phase
+    4-6; spec'd but not built here)
+  - LODES + QCEW + FRED ingestion (Phase 4)
+  - Empirical refits (M35 playbook re-derivation, M07 baseline
+    fitting, M36 Σ Phase B — all Phase 5+)
+  - M38 reliability stats (waits for owned-and-held cycle per
+    §1.2)
+  - Subject backfill of Jacksonville + 2 Atlanta historical
+    performance (separate one-sprint Replit session, parallel
+    to this work)
+
+SCHEMA
+
+backend/src/db/migrations/YYYYMMDD_historical_observations.sql:
+
+CREATE TABLE historical_observations (
+  id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  msa_id                      VARCHAR(20),
+  submarket_id                VARCHAR(40),
+  parcel_id                   VARCHAR(80),
+  latitude                    NUMERIC(10,7),
+  longitude                   NUMERIC(10,7),
+  geography_level             VARCHAR(20) NOT NULL,
+
+  observation_date            DATE NOT NULL,
+  observation_window          VARCHAR(20) NOT NULL,
+
+  -- INPUTS — populated by Phase 4 ingestion paths; Phase 1
+  -- only Phase 7 (property performance) writes these:
+  commute_shed_workers        INTEGER,
+  commute_shed_wage_pct       NUMERIC(6,4),
+  mobility_visits_monthly     INTEGER,
+  mobility_unique_visitors    INTEGER,
+  mobility_visits_psf         NUMERIC(8,4),
+  active_event_count          INTEGER,
+  event_employer_jobs_added   INTEGER,
+  event_employer_jobs_lost    INTEGER,
+  event_supply_units_delivered INTEGER,
+  event_supply_units_announced INTEGER,
+  event_subtypes              TEXT[],
+  msa_employment_total        INTEGER,
+  msa_employment_growth_yoy   NUMERIC(6,4),
+  msa_avg_wage                NUMERIC(10,2),
+  msa_wage_growth_yoy         NUMERIC(6,4),
+  msa_unemployment_rate       NUMERIC(5,3),
+  msa_population              INTEGER,
+  msa_household_growth_yoy    NUMERIC(6,4),
+  msa_in_migration_net        INTEGER,
+  msa_treasury_10y            NUMERIC(6,4),
+  msa_fed_funds_rate          NUMERIC(6,4),
+  submarket_avg_asking_rent   NUMERIC(10,2),
+  submarket_avg_effective_rent NUMERIC(10,2),
+  submarket_vacancy_rate      NUMERIC(5,3),
+  submarket_concession_pct    NUMERIC(5,3),
+  submarket_under_construction INTEGER,
+  submarket_pipeline_units_24mo INTEGER,
+  submarket_class_a_share     NUMERIC(5,3),
+
+  -- Property state (Phase 1 writes these from T12/RentRoll/OM/TaxBill):
+  property_occupancy          NUMERIC(5,3),
+  property_avg_rent           NUMERIC(10,2),
+  property_concession_per_unit NUMERIC(10,2),
+  property_unit_count         INTEGER,
+  property_year_built         INTEGER,
+  property_class              VARCHAR(2),
+  property_asking_rent        NUMERIC(10,2),
+  property_signing_velocity   NUMERIC(8,3),
+  capital_event_type          TEXT,
+  capital_event_amount        NUMERIC(14,2),
+  capital_event_metadata      JSONB,
+
+  -- CoStar overlay columns (Phase 4 writes these):
+  costar_submarket_rent       NUMERIC(10,2),
+  costar_submarket_vacancy    NUMERIC(5,3),
+  costar_submarket_absorption INTEGER,
+  costar_submarket_concession_pct NUMERIC(5,3),
+  costar_submarket_new_supply INTEGER,
+  market_survey_source        VARCHAR(40),
+  market_survey_snapshot      JSONB,
+
+  -- OUTPUTS (filled by realized-outputs backfill service):
+  realized_rent_change_t3     NUMERIC(6,4),
+  realized_rent_change_t12    NUMERIC(6,4),
+  realized_rent_change_t24    NUMERIC(6,4),
+  realized_occupancy_change_t3 NUMERIC(5,3),
+  realized_occupancy_change_t12 NUMERIC(5,3),
+  realized_concession_change_t12 NUMERIC(5,3),
+  realized_signing_velocity_t3 NUMERIC(8,3),
+  realized_signing_velocity_t12 NUMERIC(8,3),
+  realized_cap_rate_change_t12_bps INTEGER,
+  realized_cap_rate_change_t24_bps INTEGER,
+  realized_walkins_psf_t12    NUMERIC(8,4),
+
+  -- METADATA:
+  source_signals              TEXT[] NOT NULL,
+  signal_freshness_days       JSONB,
+  is_subject_property         BOOLEAN DEFAULT FALSE,
+  data_quality_tier           VARCHAR(20),
+  redistribution_restricted   BOOLEAN DEFAULT FALSE,
+  realization_complete        BOOLEAN DEFAULT FALSE,
+  realization_complete_date   DATE,
+  data_quality_flags          TEXT[],
+  created_at                  TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at                  TIMESTAMP NOT NULL DEFAULT NOW(),
+
+  UNIQUE (geography_level,
+          COALESCE(parcel_id, submarket_id, msa_id),
+          observation_date,
+          observation_window)
+);
+
+CREATE INDEX idx_hist_obs_msa_date
+  ON historical_observations(msa_id, observation_date);
+CREATE INDEX idx_hist_obs_submarket_date
+  ON historical_observations(submarket_id, observation_date);
+CREATE INDEX idx_hist_obs_parcel_date
+  ON historical_observations(parcel_id, observation_date);
+CREATE INDEX idx_hist_obs_subject
+  ON historical_observations(is_subject_property, observation_date)
+  WHERE is_subject_property = TRUE;
+CREATE INDEX idx_hist_obs_realization_pending
+  ON historical_observations(realization_complete, observation_date)
+  WHERE realization_complete = FALSE;
+
+TRANSFORMER (the corpus write hook)
+
+backend/src/services/historical-observations/document-to-corpus.ts (NEW):
+
+export async function writeT12ToCorpus(
+  pool: Pool,
+  dealId: string,
+  parsedT12: T12ParsedResult,
+  reportPeriod: Date,
+): Promise<void>;
+
+export async function writeRentRollToCorpus(
+  pool: Pool,
+  dealId: string,
+  parsedRentRoll: RentRollParsedResult,
+  snapshotDate: Date,
+): Promise<void>;
+
+export async function writeOMToCorpus(
+  pool: Pool,
+  dealId: string,
+  parsedOM: OMParsedResult,
+): Promise<void>;
+
+export async function writeTaxBillToCorpus(
+  pool: Pool,
+  dealId: string,
+  parsedTaxBill: TaxBillParsedResult,
+  taxYear: number,
+): Promise<void>;
+
+Each function:
+  1. Looks up the deal's parcel_id (creating if needed)
+  2. Determines observation_date from the parsed result's
+     reporting period (NOT the upload timestamp)
+  3. Computes the row fields per HISTORICAL_OBSERVATIONS_SPEC.md §7.6 table
+  4. Looks for an existing row at
+     (parcel_id, observation_date, 'monthly')
+  5. INSERTs new row OR UPDATEs existing row with new
+     source_signals appended and tier promoted if appropriate
+     (e.g., S2 → S1 if T12 + RentRoll both present within
+     a 14-day window)
+  6. Returns void; throws on error so the outer transaction
+     rolls back
+
+INTEGRATION
+
+backend/src/services/document-extraction/data-router.ts —
+add corpus write calls at the end of each existing route
+function, BEFORE the existing transaction commits:
+
+  case 'T12': {
+    const inserted = await routeT12(pool, data, propertyId, dealId, sourceRef, sourceDate);
+    await writeT12ToCorpus(pool, dealId, data, reportPeriodFromData(data));
+    return inserted;
+  }
+  case 'RENT_ROLL': {
+    const inserted = await routeRentRoll(pool, data, dealId, sourceRef, sourceDate);
+    await writeRentRollToCorpus(pool, dealId, data, snapshotDateFromData(data));
+    return inserted;
+  }
+  // ... similar for OM, TAX_BILL
+
+The corpus write is INLINE TRANSACTIONAL — same connection, same
+transaction. If the corpus write throws, the entire upload rolls
+back. This is intentional (per HISTORICAL_OBSERVATIONS_SPEC.md
+§7.5 architectural decision; events-without-subscribers is a
+known failure mode per audit TE-03).
+
+REALIZED OUTPUTS BACKFILL SERVICE
+
+backend/src/services/historical-observations/realized-outputs.service.ts (NEW):
+
+export class RealizedOutputsService {
+  /**
+   * Walk every row where realization_complete = FALSE.
+   * For each, compute realized_*_t* values from later
+   * observations at the same geography_level + geography_id.
+   *
+   * A row's realization is "complete" when all three windows
+   * (T+3, T+12, T+24) are either populated or definitively
+   * unfillable (no observation exists at the required offset
+   * after sufficient time has passed).
+   */
+  async backfillPendingRows(asOfDate: Date): Promise<{
+    rowsProcessed: number;
+    rowsCompleted: number;
+    rowsStillPending: number;
+  }>;
+}
+
+backend/src/inngest/functions/historicalObservationsBackfillCron.ts (NEW):
+
+export const historicalObservationsBackfillCron =
+  inngest.createFunction(
+    { id: 'historical-observations-backfill-weekly',
+      name: 'Historical Observations Realized Outputs Backfill' },
+    { cron: '0 3 * * 1' },  // 03:00 UTC every Monday
+    async ({ step }) => {
+      const svc = new RealizedOutputsService(getPool());
+      return step.run('backfill', () => svc.backfillPendingRows(new Date()));
+    },
+  );
+
+LIFECYCLE TRANSITION SERVICE
+
+backend/src/services/portfolio/lifecycle-transition.service.ts (NEW):
+
+When deals.status transitions to 'owned' / 'closed' / 'portfolio':
+  1. Add to Portfolio (already automatic via existing query)
+  2. Mark the deal's Data Library Folder as "Portfolio" (the
+     dependency ticket creates the deal_id FK; this work uses it)
+  3. Bootstrap historical_observations row at status transition
+     date with whatever subject state exists (from existing
+     parsed OM, T12, rent roll data)
+
+Trigger via a Kafka event 'deal.status.changed' emitted by the
+deals service at status transitions. Subscribe to it; on
+relevant transitions, run the three steps.
+
+CORPUS QUERY SERVICE
+
+backend/src/services/historical-observations/query.service.ts (NEW):
+
+Skeleton implementation acceptable for Phase 1. Query methods
+defined per HISTORICAL_OBSERVATIONS_SPEC.md §8 with simple
+WHERE clauses; tier-weighted aggregation and percentile
+computation can stub to placeholders that return "Phase 5
+work — empirical refit not yet implemented" with the raw row
+data accessible.
+
+REMINDER SYSTEM
+
+backend/src/types/notification.types.ts — add to existing enum:
+
+  DATA_CORPUS_UPLOAD_REQUIRED = 'data_corpus_upload_required',
+  DATA_CORPUS_GAP_DETECTED = 'data_corpus_gap_detected',
+  DATA_CORPUS_REALIZATION_PENDING = 'data_corpus_realization_pending',
+  DATA_CORPUS_WEEKLY_DIGEST = 'data_corpus_weekly_digest',
+
+backend/src/inngest/functions/dataCorpusReminderCron.ts (NEW):
+
+  cron: '0 9 * * 1'  // Monday 09:00 local-time
+
+  For each user with Portfolio deals:
+    For each Portfolio deal:
+      Check upload staleness per HISTORICAL_OBSERVATIONS_SPEC.md §9.2:
+        Trigger 1: missing monthly performance row (escalates by staleness)
+        Trigger 1a: missing CoStar submarket refresh (LOW-MEDIUM)
+        Trigger 1b: comp performance gap (LOW)
+        Trigger 2: realization window closing soon (HIGH)
+        Trigger 3: predicted vs realized comparison ready (LOW)
+      Emit notifications via existing NotificationService
+    Generate weekly digest:
+      Aggregate gaps across portfolio
+      Emit DATA_CORPUS_WEEKLY_DIGEST notification + email
+
+DATA COVERAGE PANEL
+
+frontend/src/components/deal/DataCoveragePanel.tsx (NEW):
+
+  Header widget on each deal page. Renders the layout per
+  HISTORICAL_OBSERVATIONS_SPEC.md §9.3 — five sections (Subject
+  Property Performance / Submarket Context CoStar / Market
+  Surveys / Comp Performance Tracking / External Signals) plus
+  Prediction Confidence rollup.
+
+  For Phase 1, only the Subject Property Performance section is
+  fully wired (data comes from the corpus rows). Other sections
+  render skeleton with "Phase N coming" placeholders.
+
+  GET /api/v1/historical-observations/coverage/:dealId →
+    returns the per-section coverage status.
+
+backend/src/api/rest/historical-observations.routes.ts (NEW):
+
+  GET /coverage/:dealId
+  GET /query (passes through to CorpusQueryService.query)
+  GET /summary (passes through to CorpusQueryService.summary)
+
+VERIFICATION CHECKLIST
+
+After Phase 1 ships:
+  - Migration applies; historical_observations table exists
+    with all indexes
+  - Uploading a T12 PDF to a deal page results in a
+    historical_observations row at the T12's reporting period
+  - Uploading a rent roll for the same month upgrades the
+    existing row to S1 tier
+  - 14 days after a T12-only upload, the row stays at S2 if
+    no rent roll arrives
+  - Triggering the realized-outputs backfill cron processes
+    rows past their T+3/T+12/T+24 anniversaries
+  - Transitioning a deal's status to 'owned' fires the
+    lifecycle transition service; bootstrap row appears
+  - Data Coverage Panel renders on a deal page showing the
+    deal's actual corpus coverage
+  - Monday morning reminder cron fires (test in dev)
+  - Weekly digest renders both as in-app notification and email
+  - Existing T12 / rent roll / OM / tax bill uploads still
+    succeed end-to-end (corpus write doesn't break anything)
+  - Unit tests for each transformer producing correct corpus
+    rows from sample parser outputs
+  - Integration test: upload T12 to a deal page; verify the
+    corpus row was created with correct fields
+  - Test rollback: if writeT12ToCorpus throws, the whole
+    upload rolls back and deal_t12_rows is also unchanged
+
+OUT OF SCOPE
+
+  - CoStar / market survey / REIT 10-K / comp parsers
+  - LODES / QCEW / Veraset ingestion paths
+  - Empirical refit work (M35 playbook re-derivation, etc.)
+  - M38 reliability ledger
+  - Subject backfill of historical Jacksonville + Atlanta
+    documents (separate one-sprint Replit session)
+  - Tier-weighted aggregation in CorpusQueryService (Phase 5)
+
+ACCEPTANCE
+
+  - Migration applied; all schema verified
+  - Document upload pipeline produces corpus rows for T12,
+    RentRoll, OM, TaxBill
+  - Realized-outputs backfill cron runs successfully
+  - Lifecycle transition fires on status change
+  - Data Coverage Panel renders on deal pages
+  - Weekly Monday cron fires reminder notifications
+  - Weekly digest delivers in-app + email
+  - All existing upload paths continue working
+  - Single PR, branch claude/historical-observations-phase-1
+    from origin/master:
+    feat(corpus): Historical Observations Phase 1 — schema,
+    transformer, realized-outputs backfill, lifecycle
+    transition, Data Coverage Panel, reminder system
+    (HISTORICAL_OBSERVATIONS_SPEC.md §11 Phase 1)
+
+NOTES
+
+  - This is the foundation chapter. After Phase 1 lands, every
+    monthly upload from operators automatically produces a
+    corpus row, and the corpus accumulates from day one of
+    operations.
+  - Subject backfill for Jacksonville + 2 Atlanta is a separate
+    one-sprint session. The pipeline needs to be live first;
+    then a Replit agent uploads ~360 historical documents
+    through the live pipeline.
+  - Empirical refits (Phase 5+) come later. Phase 1 builds the
+    substrate; Phase 5 uses it.
