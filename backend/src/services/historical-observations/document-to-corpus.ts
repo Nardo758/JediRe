@@ -24,13 +24,20 @@ import type { OMExtraction } from '../document-extraction/parsers/om-parser';
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Look up the parcel_id for a deal's primary property.
- * Falls back to the property UUID if the assessor parcel_id is not yet set.
+ * Resolve primary property identifiers for a deal.
+ * Returns propertyId, parcelId, and dealStatus so callers can derive
+ * is_subject_property without a second query.
  */
-async function resolveParcelId(pool: Pool, dealId: string): Promise<{ propertyId: string; parcelId: string } | null> {
+async function resolveParcelId(
+  pool: Pool,
+  dealId: string,
+): Promise<{ propertyId: string; parcelId: string; dealStatus: string } | null> {
   const result = await pool.query(
-    `SELECT dp.property_id, COALESCE(p.parcel_id, dp.property_id::text) AS parcel_id
+    `SELECT dp.property_id,
+            COALESCE(p.parcel_id, dp.property_id::text) AS parcel_id,
+            d.status AS deal_status
      FROM deal_properties dp
+     JOIN deals d ON d.id = dp.deal_id
      LEFT JOIN properties p ON p.id = dp.property_id
      WHERE dp.deal_id = $1
      LIMIT 1`,
@@ -40,6 +47,7 @@ async function resolveParcelId(pool: Pool, dealId: string): Promise<{ propertyId
   return {
     propertyId: result.rows[0].property_id as string,
     parcelId: result.rows[0].parcel_id as string,
+    dealStatus: (result.rows[0].deal_status as string) ?? 'unknown',
   };
 }
 
@@ -85,10 +93,42 @@ function computeTier(signals: string[]): string {
   return 'S4';
 }
 
+// ─── is_subject_property derivation ─────────────────────────────────────────
+
+/**
+ * The set of deal statuses under which the primary property is classified as a
+ * "subject property" in the corpus (is_subject_property = TRUE).
+ *
+ * All active pipeline and portfolio statuses qualify — only a truly archived
+ * deal would not. In practice every write path today is a subject-property write.
+ *
+ * Phase 4 callers (CoStar, REIT 10-K) will NOT call this for comp parcels;
+ * they pass FALSE explicitly when ingesting properties that are NOT the deal's
+ * primary target.
+ */
+const SUBJECT_PROPERTY_STATUSES = new Set([
+  'lead', 'evaluating', 'underwriting', 'negotiating',
+  'in_diligence', 'closing', 'owned', 'closed', 'portfolio',
+  'active', 'due_diligence', 'closed_won',
+]);
+
+/**
+ * Derive is_subject_property from a deal's status.
+ * Exported so Phase 4 non-subject ingest paths can call this for the deal's
+ * own parcel and pass FALSE for surrounding comp parcels.
+ */
+export function deriveIsSubjectProperty(dealStatus: string): boolean {
+  return SUBJECT_PROPERTY_STATUSES.has(dealStatus);
+}
+
 /**
  * Upsert helper: if a row already exists at (parcel_id × observation_date),
  * append new source signal(s) and update any non-null fields; otherwise INSERT.
  * Returns the row UUID.
+ *
+ * @param isSubjectProperty  Must be provided by caller — not hardcoded here.
+ *   Pass deriveIsSubjectProperty(dealStatus) for subject-property writes.
+ *   Phase 4 comp-ingest paths pass FALSE for non-subject parcels.
  */
 async function upsertCorpusRow(
   pool: Pool,
@@ -96,6 +136,7 @@ async function upsertCorpusRow(
   observationDate: Date,
   fields: Record<string, unknown>,
   newSignals: string[],
+  isSubjectProperty: boolean,
 ): Promise<string> {
   // Check for existing row
   const existing = await pool.query(
@@ -145,7 +186,7 @@ async function upsertCorpusRow(
     observation_date: observationDate,
     geography_level: 'parcel',
     observation_window: 'monthly',
-    is_subject_property: true,
+    is_subject_property: isSubjectProperty,
     source_signals: newSignals,
     data_quality_tier: computeTier(newSignals),
     ...fields,
@@ -201,7 +242,7 @@ export async function writeT12ToCorpus(
   const fields = corpusRowToSnakeFields(row);
 
   try {
-    await upsertCorpusRow(pool, resolved.parcelId, obsDate, fields, ['t12']);
+    await upsertCorpusRow(pool, resolved.parcelId, obsDate, fields, ['t12'], deriveIsSubjectProperty(resolved.dealStatus));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('[DocumentToCorpus] writeT12ToCorpus failed', { dealId, error: msg });
@@ -236,7 +277,7 @@ export async function writeRentRollToCorpus(
   const fields = corpusRowToSnakeFields(row);
 
   try {
-    await upsertCorpusRow(pool, resolved.parcelId, obsDate, fields, ['rent_roll']);
+    await upsertCorpusRow(pool, resolved.parcelId, obsDate, fields, ['rent_roll'], deriveIsSubjectProperty(resolved.dealStatus));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('[DocumentToCorpus] writeRentRollToCorpus failed', { dealId, error: msg });
@@ -323,7 +364,7 @@ export async function writeOMToCorpus(
     capital_event_metadata: capitalEventMetadata,
   };
 
-  await upsertCorpusRow(pool, resolved.parcelId, observationDate, fields, ['om']);
+  await upsertCorpusRow(pool, resolved.parcelId, observationDate, fields, ['om'], deriveIsSubjectProperty(resolved.dealStatus));
 }
 
 // ─── TaxBill ─────────────────────────────────────────────────────────────────
@@ -366,5 +407,5 @@ export async function writeTaxBillToCorpus(
     capital_event_metadata: capitalEventMetadata,
   };
 
-  await upsertCorpusRow(pool, resolved.parcelId, observationDate, fields, ['tax_bill']);
+  await upsertCorpusRow(pool, resolved.parcelId, observationDate, fields, ['tax_bill'], deriveIsSubjectProperty(resolved.dealStatus));
 }

@@ -119,6 +119,7 @@ export function createDataLibraryRoutes(pool: Pool): Router {
 
       const file = await service.uploadFile({
         userId: (req as any).user?.userId,
+        dealId: req.body.dealId || undefined,
         file: {
           originalname: req.file.originalname,
           buffer: req.file.buffer,

@@ -71,6 +71,7 @@ export const dataLibraryService = {
   },
 
   async uploadFile(file: File, metadata: {
+    dealId?: string;
     city?: string;
     zipCode?: string;
     propertyType?: string;
@@ -82,6 +83,7 @@ export const dataLibraryService = {
   }): Promise<DataLibraryFile> {
     const formData = new FormData();
     formData.append('file', file);
+    if (metadata.dealId) formData.append('dealId', metadata.dealId);
     if (metadata.city) formData.append('city', metadata.city);
     if (metadata.zipCode) formData.append('zipCode', metadata.zipCode);
     if (metadata.propertyType) formData.append('propertyType', metadata.propertyType);

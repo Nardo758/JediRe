@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { dataLibraryService, type DataLibraryFile, type DataLibrarySearchParams } from '@/services/dataLibrary.service';
+import { apiClient } from '@/services/api.client';
 import { DealFolderView } from '@/components/data-library/DealFolderView';
 import { pstUploadService, type PstJobStatus, type PstEntity } from '@/services/pstUpload.service';
 import { ContextIndicator } from '../components/intelligence/ContextIndicator';
@@ -146,10 +148,15 @@ export const DataLibraryPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pstInputRef = useRef<HTMLInputElement>(null);
 
+  const [searchParams] = useSearchParams();
+
   const [uploadMeta, setUploadMeta] = useState({
-    city: '', zipCode: '', propertyType: 'Multifamily', propertyHeight: '',
+    dealId: '', city: '', zipCode: '', propertyType: 'Multifamily', propertyHeight: '',
     yearBuilt: '', unitCount: '', sourceType: 'owned',
   });
+
+  // Deals list for the deal-association selector in the upload form
+  const [deals, setDeals] = useState<{ id: string; name: string }[]>([]);
 
   const [activeTab, setActiveTab] = useState<'folders' | 'search'>('folders');
 
@@ -158,6 +165,22 @@ export const DataLibraryPage: React.FC = () => {
   const [showPstResults, setShowPstResults] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const visibilityPollListenerRef = useRef<(() => void) | null>(null);
+
+  // Pre-fill dealId from ?dealId= URL param and load deal list for selector
+  useEffect(() => {
+    const paramDealId = searchParams.get('dealId');
+    if (paramDealId) {
+      setUploadMeta(p => ({ ...p, dealId: paramDealId }));
+      setShowUpload(true);
+    }
+    apiClient.get('/api/v1/deals', { params: { limit: 200 } })
+      .then(({ data }) => {
+        const list = Array.isArray(data) ? data : (data?.deals ?? []);
+        setDeals(list.map((d: any) => ({ id: d.id, name: d.name || d.deal_name || d.id })));
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // loadFiles is a stable function declared below this effect; it closes
   // over `filters` directly so re-running on `filters` change is sufficient.
@@ -194,11 +217,17 @@ export const DataLibraryPage: React.FC = () => {
     setError(null);
     try {
       await dataLibraryService.uploadFile(fileInput.files[0], {
-        ...uploadMeta,
+        dealId: uploadMeta.dealId || undefined,
+        city: uploadMeta.city,
+        zipCode: uploadMeta.zipCode,
+        propertyType: uploadMeta.propertyType,
+        propertyHeight: uploadMeta.propertyHeight,
+        yearBuilt: uploadMeta.yearBuilt,
         unitCount: uploadMeta.unitCount ? parseInt(uploadMeta.unitCount) : undefined,
+        sourceType: uploadMeta.sourceType,
       });
       setShowUpload(false);
-      setUploadMeta({ city: '', zipCode: '', propertyType: 'Multifamily', propertyHeight: '', yearBuilt: '', unitCount: '', sourceType: 'owned' });
+      setUploadMeta({ dealId: '', city: '', zipCode: '', propertyType: 'Multifamily', propertyHeight: '', yearBuilt: '', unitCount: '', sourceType: 'owned' });
       if (fileInput) fileInput.value = '';
       loadFiles();
     } catch (e: any) {
@@ -358,6 +387,27 @@ export const DataLibraryPage: React.FC = () => {
           <div style={{ marginBottom: 16 }}>
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,.pdf" style={{ color: '#8892b0', fontSize: 13 }} required />
             <p style={{ color: '#8892b0', fontSize: 11, margin: '4px 0 0' }}>CSV, Excel, or PDF files up to 50MB</p>
+          </div>
+
+          {/* Deal association — pre-filled from ?dealId= or chosen manually */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', color: '#8892b0', fontSize: 12, marginBottom: 4 }}>
+              Associate with Deal <span style={{ color: '#4a5568' }}>(optional)</span>
+            </label>
+            <select
+              value={uploadMeta.dealId}
+              onChange={e => setUploadMeta(p => ({ ...p, dealId: e.target.value }))}
+              style={{
+                width: '100%', background: '#0d1117', border: '1px solid #2a2a4a',
+                borderRadius: 6, color: uploadMeta.dealId ? '#ccd6f6' : '#4a5568',
+                padding: '7px 10px', fontSize: 13,
+              }}
+            >
+              <option value="">— No deal —</option>
+              {deals.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>

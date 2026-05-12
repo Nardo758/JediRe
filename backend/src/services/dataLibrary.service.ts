@@ -53,6 +53,7 @@ export interface DealFolderManifest {
 
 export interface DataLibraryUploadParams {
   userId?: string;
+  dealId?: string;
   file: {
     originalname: string;
     buffer: Buffer;
@@ -112,11 +113,12 @@ export class DataLibraryService {
 
     const result = await this.pool.query(
       `INSERT INTO data_library_files
-        (user_id, file_name, file_path, file_size, mime_type, city, zip_code, property_type, property_height, year_built, unit_count, source_type, tags)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        (user_id, deal_id, file_name, file_path, file_size, mime_type, city, zip_code, property_type, property_height, year_built, unit_count, source_type, tags)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         params.userId || null,
+        params.dealId || null,
         params.file.originalname,
         filePath,
         params.file.size,
