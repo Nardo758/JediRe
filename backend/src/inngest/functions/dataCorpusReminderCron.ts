@@ -157,12 +157,14 @@ async function getCorpusStatus(parcelId: string): Promise<CorpusStatus> {
 
 async function getDealTeamUserIds(dealId: string): Promise<string[]> {
   const sql = `
-    SELECT user_id FROM deal_team_members WHERE deal_id = $1 AND status = 'active'
+    SELECT user_id FROM deal_team_members WHERE deal_id = $1 AND status = 'active' AND user_id IS NOT NULL
     UNION
-    SELECT user_id FROM deals WHERE id = $1
+    SELECT user_id FROM deals WHERE id = $1 AND user_id IS NOT NULL
   `;
   const result = await query(sql, [dealId]);
-  return result.rows.map((r: Record<string, unknown>) => r.user_id as string);
+  return result.rows
+    .map((r: Record<string, unknown>) => r.user_id as string)
+    .filter(Boolean);
 }
 
 function uploadActionUrl(dealId: string, propertyId: string, month: string): string {
@@ -199,15 +201,15 @@ async function checkUploadRequired(prop: SubjectProperty, status: CorpusStatus, 
   for (const userId of userIds) {
     await createCorpusNotification(
       userId,
+      prop.dealId,
       'data_corpus_upload_required',
       `Upload ${prop.dealName}'s ${currentMonthName} performance${urgencyNote}. Last upload: ${lastStr}.`,
-      priority,
       {
-        dealId: prop.dealId,
         propertyId: prop.propertyId,
         parcelId: prop.parcelId,
         actionUrl: uploadActionUrl(prop.dealId, prop.propertyId, currentMonthName),
         daysSinceUpload: status.daysSinceUpload,
+        priority,
       },
     );
   }
@@ -232,11 +234,10 @@ async function checkRealizationPending(prop: SubjectProperty, status: CorpusStat
   for (const userId of userIds) {
     await createCorpusNotification(
       userId,
+      prop.dealId,
       'data_corpus_realization_pending',
       `${prop.dealName}: ${rowMonth} prediction's T+12 window is closing. Upload ${currentMonthName} to close the realization window.`,
-      'high',
       {
-        dealId: prop.dealId,
         propertyId: prop.propertyId,
         parcelId: prop.parcelId,
         rowObservationDate: status.pendingT12Realization.rowDate.toISOString().slice(0, 10),
@@ -278,11 +279,10 @@ async function checkComparisonReady(prop: SubjectProperty, _status: CorpusStatus
       for (const userId of userIds) {
         await createCorpusNotification(
           userId,
+          prop.dealId,
           'data_corpus_gap_detected',
           `${prop.dealName}: Rent change T+12 from ${monthName(obsDate)} was ${sign}${pctStr}%. Prediction comparison available.`,
-          'low',
           {
-            dealId: prop.dealId,
             propertyId: prop.propertyId,
             parcelId: prop.parcelId,
             observationDate: obsDate.toISOString().slice(0, 10),

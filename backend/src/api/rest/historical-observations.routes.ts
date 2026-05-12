@@ -135,7 +135,8 @@ router.get('/deals/:dealId/coverage', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
 
-    // Look up the deal's property info
+    // Look up the deal's property info — validate access (owner or active team member)
+    const requestingUserId = req.user?.userId;
     const dealSql = `
       SELECT
         d.name AS deal_name,
@@ -149,9 +150,16 @@ router.get('/deals/:dealId/coverage', async (req: Request, res: Response) => {
       JOIN deal_properties dp ON dp.deal_id = d.id
       LEFT JOIN properties p ON p.id = dp.property_id
       WHERE d.id = $1
+        AND (
+          d.user_id = $2
+          OR EXISTS (
+            SELECT 1 FROM deal_team_members
+            WHERE deal_id = $1 AND user_id = $2 AND status = 'active'
+          )
+        )
       LIMIT 5
     `;
-    const dealResult = await query(dealSql, [dealId]);
+    const dealResult = await query(dealSql, [dealId, requestingUserId]);
 
     if (dealResult.rows.length === 0) {
       res.status(404).json({ error: 'Deal not found or has no linked properties' });
