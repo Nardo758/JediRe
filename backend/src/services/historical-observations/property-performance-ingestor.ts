@@ -62,18 +62,13 @@ function extractMonthFromT12(data: T12Data, docDate: Date): Date {
 }
 
 /**
- * Extract the observation month from a rent roll's units array.
- * Uses the earliest lease_start or asOfDate from the data.
+ * Extract the observation month from a rent roll document.
+ * RentRollData has no top-level asOfDate, so we use the caller-supplied
+ * docDate directly. Using lease_start dates from individual units is
+ * incorrect — a long-term tenant's lease_start can be years in the past,
+ * which would misalign all T+N realized-output windows.
  */
-function extractMonthFromRentRoll(data: RentRollData, docDate: Date): Date {
-  // Use earliest lease_start from units as a signal of the reporting period
-  const leaseStarts = data.units
-    .filter((u: RentRollUnit) => u.leaseStart != null)
-    .map((u: RentRollUnit) => new Date(u.leaseStart!));
-  if (leaseStarts.length > 0) {
-    const minDate = new Date(Math.min(...leaseStarts.map((d: Date) => d.getTime())));
-    if (!isNaN(minDate.getTime())) return minDate;
-  }
+function extractMonthFromRentRoll(_data: RentRollData, docDate: Date): Date {
   return docDate;
 }
 

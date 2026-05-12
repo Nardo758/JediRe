@@ -230,7 +230,7 @@ export class RealizedOutputsService {
 
   /**
    * Find the nearest row at approximately the target date.
-   * Uses ±15 days tolerance for monthly observations.
+   * Uses ±30 days tolerance for monthly observations.
    */
   private findNearestRow(
     rows: CorpusRow[],

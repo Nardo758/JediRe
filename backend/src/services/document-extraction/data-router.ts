@@ -10,6 +10,7 @@ import { seedProFormaYear1, ensureDealAssumptionsSeeded } from '../proforma-seed
 import { runCrossValidation } from '../multi-doc-cross-validation.service';
 import { runDataQualityAgent, runDataQualityAgentAfterReseed } from '../data-quality-agent.service';
 import { emitExtractionEvents, emitOmProformaEvents } from '../extraction-events.service';
+import { ingestPropertyPerformance } from '../historical-observations/property-performance-ingestor';
 
 interface RouteContext {
   dealId: string;
@@ -90,6 +91,7 @@ export async function routeExtractionResult(
   const pool = getPool();
   const alerts: string[] = [];
   let rowsInserted = 0;
+  let resolvedPropertyId: string | null = null;
 
   const sourceRef = ctx.filename;
   const sourceDate = new Date().toISOString().split('T')[0];
@@ -97,6 +99,7 @@ export async function routeExtractionResult(
   switch (result.documentType) {
     case 'T12': {
       const propertyId = await getOrCreatePropertyForDeal(pool, ctx.dealId);
+      resolvedPropertyId = propertyId;
       rowsInserted = await routeT12(pool, result.data as T12Data, propertyId, ctx.dealId, sourceRef, sourceDate);
       break;
     }
@@ -124,6 +127,42 @@ export async function routeExtractionResult(
     case 'OM':
       rowsInserted = await routeOM(pool, result.data as unknown as OMExtraction, ctx.dealId, sourceRef, sourceDate, alerts);
       break;
+  }
+
+  // Historical Observations corpus ingestion (Phase 2)
+  // Best-effort, fire-and-forget — mirrors T12 / RENT_ROLL data into the
+  // empirical calibration substrate so M35, M07, M36, M37, M38 can derive
+  // coefficients from real property history. Never blocks the extraction response.
+  if (result.documentType === 'T12' || result.documentType === 'RENT_ROLL') {
+    const capturedData = result.data;
+    const capturedType = result.documentType;
+    const capturedDealId = ctx.dealId;
+    const capturedPropertyId = resolvedPropertyId;
+    setImmediate(async () => {
+      try {
+        const propId = capturedPropertyId ?? await getOrCreatePropertyForDeal(pool, capturedDealId);
+        const propRow = await pool.query(
+          'SELECT parcel_id FROM properties WHERE id = $1 LIMIT 1',
+          [propId]
+        );
+        // Fall back to internal UUID if assessor parcel_id is not yet populated
+        const parcelId: string = (propRow.rows[0]?.parcel_id as string | null) ?? propId;
+        await ingestPropertyPerformance({
+          dealId: capturedDealId,
+          propertyId: propId,
+          parcelId,
+          documentType: capturedType as 'T12' | 'RENT_ROLL',
+          observationDate: new Date(),
+          ...(capturedType === 'T12'
+            ? { t12Data: capturedData as T12Data }
+            : { rentRollData: capturedData as RentRollData }),
+        });
+      } catch (corpusErr) {
+        // Non-fatal — corpus ingestion must never surface to the user
+        const msg = corpusErr instanceof Error ? corpusErr.message : String(corpusErr);
+        console.warn('[data-router] Historical corpus ingestion failed (non-fatal):', msg);
+      }
+    });
   }
 
   let libraryUpdated = false;
