@@ -1,0 +1,61 @@
+TASK — FIX-1: Schedule TrafficCalibrationJob via Inngest (weekly)
+
+Per docs/architecture/TRAFFIC_ENGINE_STATE_AUDIT.md §11 Fix #1
+and findings TE-02 + TE-08. Activates the existing three-layer
+Bayesian calibration hierarchy by giving it a weekly schedule.
+
+CONTEXT
+
+The TrafficCalibrationJob class in backend/src/jobs/
+trafficCalibrationJob.ts is fully implemented (see audit §3 and §8)
+with Baseline (cold-start priors), Platform (traffic_calibration_
+factors Bayesian hierarchy), and Deal/Subject-First layers all
+wired into trafficPredictionEngine. The job's run() method:
+
+  1. Pulls lease events from rent roll snapshots (TTM window)
+  2. Computes evidence per property
+  3. Rolls up to scope buckets (msa × submarket × class × vintage_band)
+  4. Applies Bayesian update: posterior = (prior × n_prior +
+     evidence × n_evidence) / (n_prior + n_evidence)
+  5. Writes versioned rows to traffic_calibration_factors
+  6. Snapshots old rows to traffic_calibration_history
+  7. Computes absorption benchmarks
+  8. Publishes Kafka event traffic.calibration.updated
+
+Today, this job has no automatic trigger — manual admin invocation
+only. Result: platform posteriors are frozen at initial seed
+values. All downstream M07 consumers (M09 ProForma, M25 JEDI,
+M14 Risk) operate on stale coefficients indefinitely.
+
+This fix adds a weekly Inngest cron on Monday 02:00 UTC. Weekly
+(not nightly) because: (a) rent-roll snapshots arrive episodically,
+not daily; (b) Bayesian posteriors stabilize over multiple weeks
+of evidence, not single days; (c) weekly cadence reduces compute
+load while still keeping calibration meaningfully fresh.
+
+SCOPE
+
+In scope:
+  - New file: backend/src/inngest/functions/trafficCalibrationCron.ts
+  - Register the new function in the existing Inngest function
+    index file (discover the convention — likely
+    backend/src/inngest/index.ts or backend/src/inngest/
+    functions/index.ts)
+  - Add minimal logging: cron start, lookbackHours used, result
+    payload from job.run(), any error
+  - Add a guard so manual admin invocation is still possible
+    (don't conflict with existing admin route if one exists)
+  - Use lookbackHours = 168 (7 days) since the run is weekly,
+    not 24
+
+Out of scope:
+  - Modifying TrafficCalibrationJob.run() itself
+  - Kafka subscriber wiring (separate fix — FIX-2)
+  - Changing the absorption benchmark formula
+  - Cache invalidation logic in CoefficientResolverService
+  - Backfilling historical calibration runs
+  - Asymmetric confidence bands (FIX-3, separate dispatch)
+
+EXPECTED SHAPE
+
+```typescript
