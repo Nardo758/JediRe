@@ -356,9 +356,15 @@ export class TrafficCalibrationJob {
 
     for (const coeffName of ALL_COEFFICIENTS) {
       // Gather evidence values
-      const evidenceValues = bucket.rows
-        .map(r => r.evidence[coeffName])
-        .filter((v): v is number => v !== undefined);
+      const evidencePairs = bucket.rows
+        .map(r => ({
+          value: r.evidence[coeffName],
+          dealId: r.deal_id,
+          snapshotDate: r.snapshot_date,
+        }))
+        .filter((e): e is { value: number; dealId: string; snapshotDate: Date } =>
+          e.value !== undefined);
+      const evidenceValues = evidencePairs.map(e => e.value);
 
       if (evidenceValues.length < minRequired) continue;
 
