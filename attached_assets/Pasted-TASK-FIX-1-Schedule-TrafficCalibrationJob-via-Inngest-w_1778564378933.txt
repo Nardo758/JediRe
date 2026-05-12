@@ -1,0 +1,156 @@
+TASK — FIX-1: Schedule TrafficCalibrationJob via Inngest (weekly)
+
+Per docs/architecture/TRAFFIC_ENGINE_STATE_AUDIT.md §11 Fix #1
+and findings TE-02 + TE-08. Activates the existing three-layer
+Bayesian calibration hierarchy by giving it a weekly schedule.
+
+CONTEXT
+
+The TrafficCalibrationJob class in backend/src/jobs/
+trafficCalibrationJob.ts is fully implemented (see audit §3 and §8)
+with Baseline (cold-start priors), Platform (traffic_calibration_
+factors Bayesian hierarchy), and Deal/Subject-First layers all
+wired into trafficPredictionEngine. The job's run() method:
+
+  1. Pulls lease events from rent roll snapshots (TTM window)
+  2. Computes evidence per property
+  3. Rolls up to scope buckets (msa × submarket × class × vintage_band)
+  4. Applies Bayesian update: posterior = (prior × n_prior +
+     evidence × n_evidence) / (n_prior + n_evidence)
+  5. Writes versioned rows to traffic_calibration_factors
+  6. Snapshots old rows to traffic_calibration_history
+  7. Computes absorption benchmarks
+  8. Publishes Kafka event traffic.calibration.updated
+
+Today, this job has no automatic trigger — manual admin invocation
+only. Result: platform posteriors are frozen at initial seed
+values. All downstream M07 consumers (M09 ProForma, M25 JEDI,
+M14 Risk) operate on stale coefficients indefinitely.
+
+This fix adds a weekly Inngest cron on Monday 02:00 UTC. Weekly
+(not nightly) because: (a) rent-roll snapshots arrive episodically,
+not daily; (b) Bayesian posteriors stabilize over multiple weeks
+of evidence, not single days; (c) weekly cadence reduces compute
+load while still keeping calibration meaningfully fresh.
+
+SCOPE
+
+In scope:
+  - New file: backend/src/inngest/functions/trafficCalibrationCron.ts
+  - Register the new function in the existing Inngest function
+    index file (discover the convention — likely
+    backend/src/inngest/index.ts or backend/src/inngest/
+    functions/index.ts)
+  - Add minimal logging: cron start, lookbackHours used, result
+    payload from job.run(), any error
+  - Add a guard so manual admin invocation is still possible
+    (don't conflict with existing admin route if one exists)
+  - Use lookbackHours = 168 (7 days) since the run is weekly,
+    not 24
+
+Out of scope:
+  - Modifying TrafficCalibrationJob.run() itself
+  - Kafka subscriber wiring (separate fix — FIX-2)
+  - Changing the absorption benchmark formula
+  - Cache invalidation logic in CoefficientResolverService
+  - Backfilling historical calibration runs
+  - Asymmetric confidence bands (FIX-3, separate dispatch)
+
+EXPECTED SHAPE
+
+```typescript
+// backend/src/inngest/functions/trafficCalibrationCron.ts
+import { inngest } from '../client';
+import { TrafficCalibrationJob } from '../../jobs/trafficCalibrationJob';
+import { getPool } from '../../database/connection';
+import { logger } from '../../utils/logger';
+
+export const trafficCalibrationCron = inngest.createFunction(
+  {
+    id: 'traffic-calibration-weekly',
+    name: 'M07 Weekly Traffic Calibration',
+  },
+  { cron: '0 2 * * 1' },  // 02:00 UTC every Monday
+  async ({ step }) => {
+    const lookbackHours = 168;  // 7 days
+    logger.info('[TrafficCalibrationCron] Starting weekly calibration', { lookbackHours });
+
+    const result = await step.run('run-calibration', async () => {
+      const job = new TrafficCalibrationJob(getPool());
+      return job.run(lookbackHours);
+    });
+
+    logger.info('[TrafficCalibrationCron] Complete', {
+      buckets_updated: result.buckets_updated,
+      buckets_created: result.buckets_created,
+      properties_processed: result.properties_processed,
+      absorption_benchmarks_updated: result.absorption_benchmarks_updated,
+      job_version: result.job_version,
+    });
+
+    return result;
+  },
+);
+```
+
+Verify the import paths against the existing Inngest function
+conventions in the repo. If the inngest client lives at a
+different path, use the project's actual convention.
+
+VERIFICATION CHECKLIST
+
+After the fix:
+  - The new function is exported from the Inngest function index
+  - Local dev: running the Inngest dev server should show the
+    new function in the functions list
+  - The cron schedule '0 2 * * 1' is correct (Monday 02:00 UTC)
+  - lookbackHours = 168 (7 days) is passed to job.run()
+  - The existing manual admin invocation path (if any) is not
+    broken — find it via grep for "TrafficCalibrationJob" in
+    routes/ and admin/ directories; confirm it still works
+  - One smoke test in a __tests__ file that imports the new
+    function and verifies it constructs without throwing
+    (do NOT run the actual calibration in the test)
+  - Document the cron in CLAUDE.md (or wherever scheduled jobs
+    are catalogued — there may not be a doc; if so, this isn't
+    blocking)
+
+OUT OF SCOPE
+
+  - Kafka subscriber wiring (FIX-2, separate dispatch)
+  - Cache invalidation on calibration completion (FIX-2 territory)
+  - Asymmetric confidence band emission (FIX-3, separate dispatch)
+  - Any changes to TrafficCalibrationJob internals
+  - Backfilling historical calibration data
+  - Performance tuning (TTM window, lookback hours beyond
+    setting it to 168)
+
+ACCEPTANCE
+
+  - backend/src/inngest/functions/trafficCalibrationCron.ts
+    exists, exports trafficCalibrationCron
+  - Function registered in the Inngest function index
+  - Smoke test asserts construction succeeds
+  - Manual admin invocation path (if it exists) still works
+  - CLAUDE.md or equivalent updated noting the cron schedule
+  - Single commit, branch claude/fix-traffic-calibration-cron
+    from origin/master:
+    feat(traffic): schedule M07 weekly calibration via Inngest
+    cron — activates dormant Bayesian hierarchy (resolves TE-02,
+    TE-08 from TRAFFIC_ENGINE_STATE_AUDIT.md)
+
+NOTES
+
+  - This fix is "small but operationally enormous." It converts
+    dormant infrastructure into live infrastructure. After this
+    fix lands, the following Monday's run will be the first time
+    the platform layer of the three-layer Bayesian hierarchy has
+    updated since initial seed.
+  - The job's existing run() method handles edge cases
+    (zero new snapshots, sample-size gating); the cron is
+    intentionally a thin wrapper.
+  - lookbackHours = 168 (7 days) per weekly cadence. The job's
+    run signature accepts this directly.
+  - If you find the existing manual admin invocation path is
+    broken or already removed, note it in the commit message but
+    don't fix it in this PR — that's a separate concern.
