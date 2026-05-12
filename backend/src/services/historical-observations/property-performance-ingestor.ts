@@ -1,0 +1,250 @@
+/**
+ * Property Performance → Corpus Ingestion Orchestrator
+ *
+ * Phase 2: Takes parsed T12 / rent-roll output and writes it into
+ * historical_observations as a labeled (is_subject_property=TRUE) row.
+ *
+ * Architecture (per spec Section 7):
+ *
+ *   Document uploaded → existing parser (t12-parser / rent-roll-parser)
+ *     → data-router.ts routes to deal_monthly_actuals
+ *     → NEW: this orchestrator also receives the parsed result
+ *     → Transforms to PartialHistoricalObservationRow
+ *     → INSERT into historical_observations
+ *     → Triggers realized outputs backfill for prior rows at same parcel
+ *
+ * The orchestrator is idempotent — it checks for an existing row at the
+ * same (parcel_id × observation_date) and skips INSERT if one exists.
+ *
+ * @see HISTORICAL_OBSERVATIONS_SPEC.md Section 7
+ */
+
+import { query } from '../../database/connection';
+import { logger } from '../../utils/logger';
+import { corpusQueryService } from './query.service';
+import { realizedOutputsService } from './realized-outputs.service';
+import type {
+  PartialHistoricalObservationRow,
+} from '../historical-observations/types';
+import type { T12Data, T12Month, RentRollData, RentRollUnit } from '../../services/document-extraction/types';
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+export interface ParsedPropertyDocument {
+  dealId: string;
+  propertyId: string;
+  parcelId: string;
+  documentType: 'T12' | 'RENT_ROLL';
+  observationDate: Date;          // the month this document covers
+  t12Data?: T12Data;
+  rentRollData?: RentRollData;
+}
+
+export interface IngestionResult {
+  inserted: boolean;              // true if a new row was created
+  rowId?: string;                 // UUID of the inserted row
+  backfillCount: number;          // realized outputs backfilled for prior rows
+  warnings: string[];
+}
+
+// ─── Month extraction helpers ────────────────────────────────────────────────
+
+/**
+ * Extract the observation month from a T12's months array.
+ * Returns the first month's reportMonth parsed as a Date.
+ */
+function extractMonthFromT12(data: T12Data, docDate: Date): Date {
+  if (data.months.length > 0 && data.months[0].reportMonth) {
+    const parsed = new Date(data.months[0].reportMonth);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return docDate;
+}
+
+/**
+ * Extract the observation month from a rent roll's units array.
+ * Uses the earliest lease_start or asOfDate from the data.
+ */
+function extractMonthFromRentRoll(data: RentRollData, docDate: Date): Date {
+  // Use earliest lease_start from units as a signal of the reporting period
+  const leaseStarts = data.units
+    .filter((u: RentRollUnit) => u.leaseStart != null)
+    .map((u: RentRollUnit) => new Date(u.leaseStart!));
+  if (leaseStarts.length > 0) {
+    const minDate = new Date(Math.min(...leaseStarts.map((d: Date) => d.getTime())));
+    if (!isNaN(minDate.getTime())) return minDate;
+  }
+  return docDate;
+}
+
+// ─── Row equivalence check ───────────────────────────────────────────────────
+
+async function existingCorpusRow(
+  parcelId: string,
+  observationDate: Date,
+): Promise<string | null> {
+  const sql = `
+    SELECT id FROM historical_observations
+    WHERE parcel_id = $1 AND observation_date = $2::DATE AND geography_level = 'parcel'
+    LIMIT 1
+  `;
+  const result = await query(sql, [parcelId, observationDate]);
+  return result.rows[0]?.id ?? null;
+}
+
+// ─── T12 → corpus row ────────────────────────────────────────────────────────
+
+function t12ToCorpusRow(
+  data: T12Data,
+  parcelId: string,
+  observationDate: Date,
+  propertyId: string,
+): PartialHistoricalObservationRow {
+  const { summary, months } = data;
+
+  // Find a month with unit counts
+  const monthWithUnits = months.find(
+    (m: T12Month) => m.totalUnits != null && m.totalUnits > 0,
+  );
+
+  // Average occupancy across months that have occupancy info
+  const monthsWithOcc = months.filter(
+    (m: T12Month) => m.occupiedUnits != null && m.totalUnits != null && m.totalUnits > 0,
+  );
+  const avgOccupancy = monthsWithOcc.length > 0
+    ? monthsWithOcc.reduce((s: number, m: T12Month) => s + (m.occupiedUnits! / m.totalUnits!), 0) / monthsWithOcc.length
+    : null;
+
+  // Average rent: netRentalIncome / occupiedUnits across months
+  const monthsWithRent = months.filter(
+    (m: T12Month) => m.netRentalIncome != null && m.occupiedUnits != null && m.occupiedUnits > 0,
+  );
+  const avgRent = monthsWithRent.length > 0
+    ? monthsWithRent.reduce((s: number, m: T12Month) => s + (m.netRentalIncome! / m.occupiedUnits!), 0) / monthsWithRent.length
+    : null;
+
+  return {
+    parcelId,
+    observationDate,
+    geographyLevel: 'parcel',
+    observationWindow: 'monthly',
+    isSubjectProperty: true,
+    sourceSignals: ['t12'],
+    propertyUnitCount: monthWithUnits?.totalUnits ?? summary.totalUnits ?? null,
+    propertyOccupancy: avgOccupancy,
+    propertyAvgRent: avgRent,
+  };
+}
+
+// ─── Rent roll → corpus row ──────────────────────────────────────────────────
+
+function rentRollToCorpusRow(
+  data: RentRollData,
+  parcelId: string,
+  observationDate: Date,
+  propertyId: string,
+): PartialHistoricalObservationRow {
+  const units = data.units;
+
+  const totalUnits = units.length;
+  const occupiedUnits = units.filter(
+    (u: RentRollUnit) => u.status && /occupied|leased|rented/i.test(u.status),
+  ).length;
+  const occupancy = totalUnits > 0 ? occupiedUnits / totalUnits : null;
+
+  // Average rent: use effectiveRent (post-concession) for occupied units, else marketRent
+  const unitsWithRent = units.filter(
+    (u: RentRollUnit) => u.effectiveRent != null || u.marketRent != null,
+  );
+  const avgRent = unitsWithRent.length > 0
+    ? unitsWithRent.reduce((s: number, u: RentRollUnit) => s + (u.effectiveRent ?? u.marketRent ?? 0), 0) / unitsWithRent.length
+    : null;
+
+  // Concession = marketRent - effectiveRent for units with both
+  const unitsWithConcession = units.filter(
+    (u: RentRollUnit) => u.marketRent != null && u.effectiveRent != null && u.marketRent > u.effectiveRent,
+  );
+  const avgConcession = unitsWithConcession.length > 0
+    ? unitsWithConcession.reduce((s: number, u: RentRollUnit) => s + (u.marketRent! - u.effectiveRent!), 0) / unitsWithConcession.length
+    : null;
+
+  return {
+    parcelId,
+    observationDate,
+    geographyLevel: 'parcel',
+    observationWindow: 'monthly',
+    isSubjectProperty: true,
+    sourceSignals: ['rent_roll'],
+    propertyUnitCount: totalUnits,
+    propertyOccupancy: occupancy,
+    propertyAvgRent: avgRent,
+    propertyConcessionPerUnit: avgConcession,
+  };
+}
+
+// ─── Orchestrator ────────────────────────────────────────────────────────────
+
+export async function ingestPropertyPerformance(
+  doc: ParsedPropertyDocument,
+): Promise<IngestionResult> {
+  const warnings: string[] = [];
+
+  // Determine observation date
+  let obsDate: Date;
+  if (doc.documentType === 'T12' && doc.t12Data) {
+    obsDate = extractMonthFromT12(doc.t12Data, doc.observationDate);
+  } else if (doc.documentType === 'RENT_ROLL' && doc.rentRollData) {
+    obsDate = extractMonthFromRentRoll(doc.rentRollData, doc.observationDate);
+  } else {
+    obsDate = doc.observationDate;
+  }
+
+  // Normalize to 1st of month
+  obsDate = new Date(Date.UTC(obsDate.getUTCFullYear(), obsDate.getUTCMonth(), 1));
+
+  // Check for existing row (idempotent)
+  const existingId = await existingCorpusRow(doc.parcelId, obsDate);
+  if (existingId) {
+    logger.info('[PropertyPerformanceIngestor] Row already exists, skipping', {
+      parcelId: doc.parcelId,
+      date: obsDate.toISOString().slice(0, 7),
+      existingId,
+    });
+    return { inserted: false, backfillCount: 0, warnings };
+  }
+
+  // Build corpus row
+  let row: PartialHistoricalObservationRow;
+  if (doc.documentType === 'T12' && doc.t12Data) {
+    row = t12ToCorpusRow(doc.t12Data, doc.parcelId, obsDate, doc.propertyId);
+  } else if (doc.documentType === 'RENT_ROLL' && doc.rentRollData) {
+    row = rentRollToCorpusRow(doc.rentRollData, doc.parcelId, obsDate, doc.propertyId);
+  } else {
+    warnings.push(`Unsupported document type: ${doc.documentType} or missing parsed data`);
+    return { inserted: false, backfillCount: 0, warnings };
+  }
+
+  // Insert the row
+  const rowId = await corpusQueryService.insertRow(row);
+  logger.info('[PropertyPerformanceIngestor] Corpus row inserted', {
+    parcelId: doc.parcelId,
+    date: obsDate.toISOString().slice(0, 7),
+    rowId,
+    source: doc.documentType,
+  });
+
+  // Trigger realized outputs backfill for prior rows at same parcel
+  let backfillCount = 0;
+  try {
+    backfillCount = await realizedOutputsService.backfillForParcel(doc.parcelId);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn('[PropertyPerformanceIngestor] Backfill failed (non-fatal)', {
+      parcelId: doc.parcelId,
+      error: msg,
+    });
+    warnings.push(`Realized output backfill error: ${msg}`);
+  }
+
+  return { inserted: true, rowId, backfillCount, warnings };
+}

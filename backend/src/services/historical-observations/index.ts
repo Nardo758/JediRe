@@ -19,3 +19,11 @@ export {
 } from './types';
 
 export { CorpusQueryService, corpusQueryService } from './query.service';
+
+export { RealizedOutputsService, realizedOutputsService } from './realized-outputs.service';
+
+export {
+  ingestPropertyPerformance,
+  type IngestionResult,
+  type ParsedPropertyDocument,
+} from './property-performance-ingestor';

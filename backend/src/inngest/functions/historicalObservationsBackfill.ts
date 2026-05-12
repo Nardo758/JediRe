@@ -2,17 +2,16 @@
  * Inngest Cron: Historical Observations — Nightly Realized Output Backfill
  *
  * Runs nightly at 03:00 UTC.
- * Checks for historical_observations rows where the T+N window has closed
- * but realized_* columns are still NULL, and backfills them.
- *
- * Phase 1: Stub — logs only.
- * Phase 2: Full implementation using RealizedOutputsService.backfillAllOverdue().
+ * Scans historical_observations for rows where the T+N window has closed
+ * but realized_* columns are still NULL, and backfills them using the
+ * RealizedOutputsService.
  *
  * @see HISTORICAL_OBSERVATIONS_SPEC.md Section 7
  */
 
 import { inngest } from '../../lib/inngest';
 import { logger } from '../../utils/logger';
+import { realizedOutputsService } from '../../services/historical-observations/realized-outputs.service';
 
 export const historicalObservationsBackfill = inngest.createFunction(
   {
@@ -22,11 +21,15 @@ export const historicalObservationsBackfill = inngest.createFunction(
     retries: 2,
   },
   async ({ step }) => {
-    const result = await step.run('log-stub', async () => {
-      logger.info(
-        '[HistoricalObsBackfill] Stub — backfill not yet implemented. Phase 2 will call RealizedOutputsService.backfillAllOverdue()',
-      );
-      return { status: 'stub', processed: 0, errors: 0 };
+    const result = await step.run('backfill-overdue', async () => {
+      logger.info('[HistoricalObsBackfill] Starting nightly backfill');
+      const outcome = await realizedOutputsService.backfillAllOverdue();
+      logger.info('[HistoricalObsBackfill] Complete', outcome);
+      return {
+        status: 'ok',
+        processed: outcome.processed,
+        errors: outcome.errors,
+      };
     });
 
     return result;
