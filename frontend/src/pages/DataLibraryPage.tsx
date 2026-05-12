@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { dataLibraryService, type DataLibraryFile, type DataLibrarySearchParams } from '@/services/dataLibrary.service';
+import { DealFolderView } from '@/components/data-library/DealFolderView';
 import { pstUploadService, type PstJobStatus, type PstEntity } from '@/services/pstUpload.service';
 import { ContextIndicator } from '../components/intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
@@ -149,6 +150,8 @@ export const DataLibraryPage: React.FC = () => {
     city: '', zipCode: '', propertyType: 'Multifamily', propertyHeight: '',
     yearBuilt: '', unitCount: '', sourceType: 'owned',
   });
+
+  const [activeTab, setActiveTab] = useState<'folders' | 'search'>('folders');
 
   const [pstJob, setPstJob] = useState<PstJobStatus | null>(null);
   const [pstEntities, setPstEntities] = useState<PstEntity[]>([]);
@@ -300,7 +303,7 @@ export const DataLibraryPage: React.FC = () => {
   return (
     <div style={containerStyle}>
       {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <h2 style={{ margin: 0, color: '#ccd6f6', fontSize: 22 }}>Data Library</h2>
           <p style={{ margin: '4px 0 0', color: '#8892b0', fontSize: 13 }}>
@@ -316,6 +319,34 @@ export const DataLibraryPage: React.FC = () => {
         >
           + Upload File
         </button>
+      </div>
+
+      {/* ── Tab bar ────────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid #1e2740' }}>
+        {(['folders', 'search'] as const).map(tab => {
+          const label = tab === 'folders' ? 'Deal Folders' : 'Search & Filter';
+          const active = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: '8px 18px',
+                background: 'none',
+                border: 'none',
+                borderBottom: active ? '2px solid #00d4ff' : '2px solid transparent',
+                color: active ? '#00d4ff' : '#8892b0',
+                fontSize: 13,
+                fontWeight: active ? 600 : 400,
+                cursor: 'pointer',
+                marginBottom: -1,
+                transition: 'color 0.15s',
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {showUpload && (
@@ -397,6 +428,10 @@ export const DataLibraryPage: React.FC = () => {
 
       {showPstResults && pstJob && <PstProgressPanel job={pstJob} entities={pstEntities} onClose={() => setShowPstResults(false)} />}
 
+      {activeTab === 'folders' && <DealFolderView />}
+
+      {activeTab === 'search' && (
+        <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 20 }}>
         <FilterInput placeholder="Filter by city..." value={filters.city || ''} onChange={v => setFilters(p => ({ ...p, city: v || undefined }))} />
         <FilterInput placeholder="Zip code..." value={filters.zipCode || ''} onChange={v => setFilters(p => ({ ...p, zipCode: v || undefined }))} />
@@ -523,6 +558,8 @@ export const DataLibraryPage: React.FC = () => {
             </div>
           ))}
         </div>
+      )}
+        </>
       )}
     </div>
   );
