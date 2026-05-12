@@ -401,10 +401,29 @@ export class TrafficCalibrationJob {
       const totalN = nPrior + n_evidence;
       const posterior = (priorValue * nPrior + avgEvidence * n_evidence) / totalN;
 
-      // Confidence band (±1 std dev of evidence values)
-      const stdDev = this.stdDev(evidenceValues);
-      const confidenceLow = Math.max(0, posterior - stdDev);
-      const confidenceHigh = posterior + stdDev;
+      // Per-evidence records for M38 recomputation
+      const evidenceRecords = evidencePairs.map(e => ({
+        deal_id: e.dealId,
+        value: e.value,
+        recorded_at: new Date(e.snapshotDate).toISOString(),
+      }));
+
+      // Asymmetric percentile confidence band (FIX-3 — replaces ±1σ)
+      const sorted = [...evidenceValues].sort((a, b) => a - b);
+      const percentile = (p: number): number =>
+        sorted[Math.min(Math.floor(sorted.length * p), sorted.length - 1)];
+      const bandMedian = percentile(0.5);
+      const confidenceBandFix3 = {
+        low: Math.max(0, percentile(0.10)),
+        p25: percentile(0.25),
+        p50: bandMedian,
+        median: bandMedian,
+        p75: percentile(0.75),
+        high: percentile(0.90),
+      };
+      // Keep flat columns aligned: low=p10, mid=p50, high=p90
+      const confidenceLow = confidenceBandFix3.low;
+      const confidenceHigh = confidenceBandFix3.high;
 
       if (existing) {
         // Archive old row to history
@@ -426,14 +445,15 @@ export class TrafficCalibrationJob {
           UPDATE traffic_calibration_factors
           SET posterior_value = $1, n_prior = $2, n_evidence = $3,
               n_peer_properties = $4, confidence_low = $5, confidence_mid = $6,
-              confidence_high = $7, period_end = CURRENT_DATE,
+              confidence_high = $7, evidence_values = $10, period_end = CURRENT_DATE,
               match_tier = $8, calibration_source = $9, updated_at = NOW()
-          WHERE id = $10
+          WHERE id = $11
         `, [
           posterior, nPrior, n_evidence, n_evidence,
-          confidenceLow, posterior, confidenceHigh,
+          confidenceLow, bandMedian, confidenceHigh,
           this.getMatchTier(bucket.scope_level),
           this.buildCalibrationSource(bucket),
+          JSON.stringify(evidenceRecords),
           existing.id,
         ]);
         updated++;
@@ -445,8 +465,8 @@ export class TrafficCalibrationJob {
             prior_value, posterior_value, n_prior, n_evidence, n_peer_properties,
             cal_window, match_tier, calibration_source,
             confidence_low, confidence_mid, confidence_high,
-            period_end
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, CURRENT_DATE)
+            evidence_values, period_end
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, CURRENT_DATE)
         `, [
           coeffName, bucket.scope_level, bucket.msa_id, bucket.submarket_id,
           bucket.property_class, bucket.vintage_band,
@@ -454,7 +474,8 @@ export class TrafficCalibrationJob {
           bucket.window,
           this.getMatchTier(bucket.scope_level),
           this.buildCalibrationSource(bucket),
-          confidenceLow, posterior, confidenceHigh,
+          confidenceLow, bandMedian, confidenceHigh,
+          JSON.stringify(evidenceRecords),
         ]);
         created++;
       }

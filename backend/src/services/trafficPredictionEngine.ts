@@ -1313,7 +1313,22 @@ export class TrafficPredictionEngine {
         prediction.match_tier = meta.match_tier;
         prediction.window = meta.window;
         prediction.calibration_source = meta.calibration_source;
-        prediction.confidence_band = meta.confidence_band;
+        // On-the-fly legacy band conversion: promote { low, mid, high } → asymmetric shape
+        const rawBand = meta.confidence_band;
+        if ('p25' in rawBand) {
+          prediction.confidence_band = rawBand;
+        } else {
+          const lb = rawBand as import('../types/traffic-calibration.types').LegacyConfidenceBand;
+          const lbMedian = lb.mid;
+          prediction.confidence_band = {
+            low: lb.low,
+            p25: lb.low + 0.25 * (lb.mid - lb.low),
+            p50: lbMedian,
+            median: lbMedian,
+            p75: lb.mid + 0.25 * (lb.high - lb.mid),
+            high: lb.high,
+          };
+        }
         prediction.deal_mode = meta.mode as 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
       }
       // starting_state was also resolved early (before mode dispatch) — attach it

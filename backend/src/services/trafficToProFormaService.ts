@@ -799,6 +799,12 @@ export interface TrafficProjectionYear {
   toursPerWeek: number | null;
   appsPerWeek: number | null;
   leasesPerWeek: number | null;
+  /**
+   * Asymmetric percentile confidence band from the best-matching calibration factor.
+   * Present when a calibration factor exists for the deal's scope; undefined otherwise.
+   * Same band applies to all years — calibration uncertainty is scope-level, not per-year.
+   */
+  confidenceBand?: import('../types/traffic-calibration.types').AsymmetricConfidenceBand;
 }
 
 /** T-01/T-05/T-06/T-07 leasing velocity signals sourced from traffic_learned_rates */
@@ -876,7 +882,7 @@ export async function getTrafficProjection(
   dealId: string,
   holdYears = 10
 ): Promise<TrafficProjectionResult | null> {
-  const [tpRes, lrRes, predRes] = await Promise.all([
+  const [tpRes, lrRes, predRes, calRes] = await Promise.all([
     pool.query(
       `SELECT tp.*, pa.vacancy_current, pa.rent_growth_current, pa.exit_cap_current,
               pa.updated_at AS pa_updated_at, da.avg_lease_term_months,
@@ -930,6 +936,34 @@ export async function getTrafficProjection(
        LIMIT 1`,
       [dealId]
     ).catch(() => ({ rows: [] as { weekly_walk_ins: number | null }[] })),
+    // calRes: best-scope calibration factor for this deal (scope degradation: submarket → class → platform)
+    // Used to populate confidenceBand on TrafficProjectionYear entries.
+    pool.query<{
+      confidence_low: string;
+      confidence_mid: string;
+      confidence_high: string;
+      evidence_values: string | null;
+    }>(`
+      WITH deal_scope AS (
+        SELECT
+          d.deal_data->>'property_class' AS property_class,
+          d.deal_data->'market_intelligence'->'data'->'demographics'->'submarket'->>'id' AS submarket_id
+        FROM deals d WHERE d.id = $1 LIMIT 1
+      )
+      SELECT tcf.confidence_low, tcf.confidence_mid, tcf.confidence_high, tcf.evidence_values
+      FROM traffic_calibration_factors tcf, deal_scope ds
+      WHERE tcf.coefficient_name = 'walkin_to_tour'
+        AND tcf.cal_window = 'TTM'
+        AND (
+          (tcf.scope_level = 'submarket' AND tcf.submarket_id = ds.submarket_id AND ds.submarket_id IS NOT NULL)
+          OR (tcf.scope_level = 'class' AND tcf.property_class = ds.property_class AND ds.property_class IS NOT NULL)
+          OR tcf.scope_level = 'platform'
+        )
+      ORDER BY CASE tcf.scope_level
+        WHEN 'submarket' THEN 1 WHEN 'class' THEN 2 WHEN 'platform' THEN 3 ELSE 4
+      END
+      LIMIT 1
+    `, [dealId]).catch(() => ({ rows: [] as { confidence_low: string; confidence_mid: string; confidence_high: string; evidence_values: string | null }[] })),
   ]);
 
   if (tpRes.rows.length === 0) return null;
@@ -1036,6 +1070,35 @@ export async function getTrafficProjection(
     postRenoAbsorptionLagWks,
   } : null;
 
+  // Compute yearlyConfidenceBand from calRes (same band applied to all years)
+  const calRow = calRes.rows[0] ?? null;
+  let yearlyConfidenceBand: import('../types/traffic-calibration.types').AsymmetricConfidenceBand | undefined;
+  if (calRow) {
+    const calLow  = parseFloat(calRow.confidence_low)  || 0;
+    const calMid  = parseFloat(calRow.confidence_mid)  || 0;
+    const calHigh = parseFloat(calRow.confidence_high) || 0;
+    let parsed: Array<{ value: number }> | null = null;
+    if (calRow.evidence_values) {
+      try { parsed = JSON.parse(calRow.evidence_values); } catch { /* ignore */ }
+    }
+    if (parsed && parsed.length >= 2) {
+      const evSorted = [...parsed.map((e: { value: number }) => e.value)].sort((a, b) => a - b);
+      const pct = (p: number): number =>
+        evSorted[Math.min(Math.floor(evSorted.length * p), evSorted.length - 1)];
+      const evMedian = pct(0.5);
+      yearlyConfidenceBand = { low: calLow, p25: pct(0.25), p50: evMedian, median: evMedian, p75: pct(0.75), high: calHigh };
+    } else {
+      // Legacy row: approximate p25/p75 via linear interpolation
+      yearlyConfidenceBand = {
+        low: calLow,
+        p25: calLow  + 0.25 * (calMid - calLow),
+        p50: calMid, median: calMid,
+        p75: calMid  + 0.25 * (calHigh - calMid),
+        high: calHigh,
+      };
+    }
+  }
+
   // Build per-year trajectory from occupancy_trajectory / effective_rent_trajectory
   const occTraj: Array<{ month: number; value: number }> = row.occupancy_trajectory ?? [];
   const rentTraj: Array<{ month: number; value: number }> = row.effective_rent_trajectory ?? [];
@@ -1088,6 +1151,7 @@ export async function getTrafficProjection(
       toursPerWeek,
       appsPerWeek,
       leasesPerWeek,
+      confidenceBand: yearlyConfidenceBand,
     });
   }
 

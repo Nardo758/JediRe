@@ -228,12 +228,38 @@ export class CoefficientResolverService {
     // Resolver computes peerCollisions above only to expose them in the
     // CalibrationMeta response payload — no DB write here.
 
-    // Build confidence band
+    // Build confidence band — asymmetric (FIX-3) if evidence_values available, else legacy
     const sampleCoeff = platformCoefficients?.['walkin_to_tour'];
     const mid = (family.walkin_to_tour as LayeredValue).resolved;
-    const confidenceBand = sampleCoeff
-      ? { low: sampleCoeff.confidence_low, mid, high: sampleCoeff.confidence_high }
-      : { low: mid * 0.85, mid, high: mid * 1.15 };
+    let confidenceBand: AsymmetricConfidenceBand | LegacyConfidenceBand;
+    let resolvedEvidenceValues: CalibrationMeta['evidence_values'] = null;
+
+    if (sampleCoeff) {
+      let parsed: Array<{ deal_id: string; value: number; recorded_at: string }> | null = null;
+      if (sampleCoeff.evidence_values) {
+        try { parsed = JSON.parse(sampleCoeff.evidence_values); } catch { /* ignore */ }
+      }
+      resolvedEvidenceValues = parsed;
+
+      if (parsed && parsed.length >= 2) {
+        const evSorted = [...parsed.map(e => e.value)].sort((a, b) => a - b);
+        const pct = (p: number): number =>
+          evSorted[Math.min(Math.floor(evSorted.length * p), evSorted.length - 1)];
+        const evMedian = pct(0.5);
+        confidenceBand = {
+          low: sampleCoeff.confidence_low,
+          p25: pct(0.25),
+          p50: evMedian,
+          median: evMedian,
+          p75: pct(0.75),
+          high: sampleCoeff.confidence_high,
+        };
+      } else {
+        confidenceBand = { low: sampleCoeff.confidence_low, mid, high: sampleCoeff.confidence_high };
+      }
+    } else {
+      confidenceBand = { low: mid * 0.85, mid, high: mid * 1.15 };
+    }
 
     const meta: CalibrationMeta = {
       match_tier: overallMatchTier,
@@ -241,6 +267,7 @@ export class CoefficientResolverService {
       calibration_source: calibrationSource,
       n_peer_properties: nPeerProperties,
       confidence_band: confidenceBand,
+      evidence_values: resolvedEvidenceValues,
       coefficients: family,
       subject_history_tier: subjectHistory?.tier ?? undefined,
       // Full subject history record — allows the UI and agent tools to access
@@ -407,10 +434,12 @@ export class CoefficientResolverService {
             confidence_mid: string;
             confidence_high: string;
             calibration_source: string;
+            evidence_values: string | null;
           }>(`
             SELECT coefficient_name, posterior_value, n_peer_properties, cal_window,
                    confidence_low, confidence_mid, confidence_high,
-                   calibration_source, scope_level, submarket_id, property_class, vintage_band
+                   calibration_source, scope_level, submarket_id, property_class, vintage_band,
+                   evidence_values
             FROM traffic_calibration_factors
             WHERE scope_level = $1
               AND (submarket_id = $2 OR ($2 IS NULL AND submarket_id IS NULL))
@@ -433,6 +462,7 @@ export class CoefficientResolverService {
               source: row.calibration_source || '',
               confidence_low: parseFloat(row.confidence_low) || 0,
               confidence_high: parseFloat(row.confidence_high) || 0,
+              evidence_values: row.evidence_values ?? null,
             };
           }
 
@@ -472,4 +502,5 @@ interface PlatformEntry {
   source: string;
   confidence_low: number;
   confidence_high: number;
+  evidence_values: string | null;
 }
