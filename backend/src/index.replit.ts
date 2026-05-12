@@ -371,6 +371,7 @@ import { snapshotSentimentDaily } from './inngest/functions/snapshot-sentiment.f
 import { rateSheetStalenessCron } from './inngest/functions/rateSheetStaleness.cron';
 import { taxBillUploadedHandler } from './inngest/functions/taxBillUploaded.handler';
 import { historicalObservationsBackfill } from './inngest/functions/historicalObservationsBackfill';
+import { dataCorpusReminderCron } from './inngest/functions/dataCorpusReminderCron';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -399,6 +400,8 @@ app.use(
       taxBillUploadedHandler,
       // Historical Observations (Task #716 follow-up): nightly realized output backfill
       historicalObservationsBackfill,
+      // Historical Observations (Phase 3): monthly reminder + weekly digest
+      dataCorpusReminderCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,

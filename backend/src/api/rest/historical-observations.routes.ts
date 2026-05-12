@@ -14,6 +14,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { logger } from '../../utils/logger';
+import { query } from '../../database/connection';
 import { corpusQueryService } from '../../services/historical-observations';
 
 const router = Router();
@@ -120,6 +121,181 @@ router.get('/coverage', async (req: Request, res: Response) => {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('[HistoricalObs] GET /coverage failed', { error: msg });
     res.status(500).json({ error: 'Failed to get coverage report' });
+  }
+});
+
+/**
+ * GET /api/v1/historical-observations/deals/:dealId/coverage
+ *
+ * Rich coverage report for the Data Coverage Panel on the deal page.
+ * Returns property_performance, submarket_context, external_signals,
+ * and a composite confidence rating.
+ */
+router.get('/deals/:dealId/coverage', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    // Look up the deal's property info
+    const dealSql = `
+      SELECT
+        d.name AS deal_name,
+        dp.property_id,
+        COALESCE(p.parcel_id, dp.property_id) AS parcel_id,
+        p.msa_id,
+        p.submarket_id,
+        p.year_built,
+        p.property_class
+      FROM deals d
+      JOIN deal_properties dp ON dp.deal_id = d.id
+      LEFT JOIN properties p ON p.id = dp.property_id
+      WHERE d.id = $1
+      LIMIT 5
+    `;
+    const dealResult = await query(dealSql, [dealId]);
+
+    if (dealResult.rows.length === 0) {
+      res.status(404).json({ error: 'Deal not found or has no linked properties' });
+      return;
+    }
+
+    const properties = dealResult.rows.map((r: Record<string, unknown>) => ({
+      dealName: r.deal_name as string,
+      propertyId: r.property_id as string,
+      parcelId: (r.parcel_id as string) ?? (r.property_id as string),
+      msaId: (r.msa_id as string) ?? null,
+      submarketId: (r.submarket_id as string) ?? null,
+      yearBuilt: (r.year_built as number) ?? null,
+      propertyClass: (r.property_class as string) ?? null,
+    }));
+
+    // Build coverage for first/primary property
+    const primary = properties[0];
+
+    // Property performance status
+    const perfSql = `
+      SELECT
+        COUNT(*) AS total_months,
+        MAX(observation_date) AS last_upload,
+        MIN(observation_date) AS first_upload
+      FROM historical_observations
+      WHERE parcel_id = $1 AND is_subject_property = TRUE
+    `;
+    const perfResult = await query(perfSql, [primary.parcelId]);
+    const totalMonths = Number(perfResult.rows[0]?.total_months) || 0;
+    const lastUpload = perfResult.rows[0]?.last_upload
+      ? new Date(perfResult.rows[0].last_upload as string)
+      : null;
+    const firstUpload = perfResult.rows[0]?.first_upload
+      ? new Date(perfResult.rows[0].first_upload as string)
+      : null;
+
+    // Determine upload status
+    const now = new Date();
+    const daysSinceUpload = lastUpload
+      ? Math.floor((now.getTime() - lastUpload.getTime()) / (1000 * 60 * 60 * 24))
+      : 999;
+
+    let propertyStatus: 'current' | 'stale' | 'missing';
+    if (!lastUpload) propertyStatus = 'missing';
+    else if (daysSinceUpload <= 35) propertyStatus = 'current';
+    else propertyStatus = 'stale';
+
+    // Check for gaps in the upload sequence
+    let gaps = 0;
+    if (firstUpload && lastUpload && totalMonths > 1) {
+      const monthsBetween =
+        (lastUpload.getUTCFullYear() - firstUpload.getUTCFullYear()) * 12 +
+        (lastUpload.getUTCMonth() - firstUpload.getUTCMonth()) + 1;
+      gaps = monthsBetween - totalMonths;
+      if (gaps < 0) gaps = 0;
+    }
+
+    const coveragePct = totalMonths > 0
+      ? Math.min(100, Math.round((totalMonths / 84) * 100))
+      : 0;
+
+    // Submarket context
+    let submarketStatus: 'strong' | 'partial' | 'sparse' | 'missing' = 'missing';
+    let submarketMonths = 0;
+    if (primary.submarketId) {
+      const subSql = `
+        SELECT COUNT(*) AS cnt, MIN(observation_date) AS earliest, MAX(observation_date) AS latest
+        FROM historical_observations
+        WHERE submarket_id = $1 AND geography_level = 'submarket'
+      `;
+      const subResult = await query(subSql, [primary.submarketId]);
+      submarketMonths = Number(subResult.rows[0]?.cnt) || 0;
+      if (submarketMonths >= 36) submarketStatus = 'strong';
+      else if (submarketMonths >= 12) submarketStatus = 'partial';
+      else if (submarketMonths > 0) submarketStatus = 'sparse';
+    }
+
+    // External signal availability (stubs until Phase 4 ingestion is live)
+    const externalSignals = [
+      {
+        name: 'LODES (commute-shed)',
+        status: 'awaiting_ingestion' as const,
+        note: 'Phase 4',
+      },
+      {
+        name: 'QCEW (employment)',
+        status: 'awaiting_ingestion' as const,
+        note: 'Phase 4',
+      },
+      {
+        name: 'FRED (rates)',
+        status: 'awaiting_ingestion' as const,
+        note: 'Phase 4',
+      },
+      {
+        name: 'M35 events',
+        status: 'awaiting_ingestion' as const,
+        note: 'Phase 4',
+      },
+      {
+        name: 'Veraset mobility',
+        status: 'pending_subscription' as const,
+        note: 'Vendor selection',
+      },
+    ];
+
+    // Composite confidence
+    let confidence: 'high' | 'medium' | 'low';
+    if (propertyStatus === 'current' && submarketStatus === 'strong' && totalMonths >= 36) {
+      confidence = 'high';
+    } else if (propertyStatus !== 'missing' && (submarketStatus === 'partial' || submarketStatus === 'strong')) {
+      confidence = 'medium';
+    } else {
+      confidence = 'low';
+    }
+
+    res.json({
+      dealName: primary.dealName,
+      propertyId: primary.propertyId,
+      parcelId: primary.parcelId,
+      propertyPerformance: {
+        status: propertyStatus,
+        totalMonths,
+        lastUpload,
+        firstUpload,
+        daysSinceUpload,
+        gaps,
+        coveragePct,
+      },
+      submarketContext: {
+        status: submarketStatus,
+        totalMonths: submarketMonths,
+        submarketId: primary.submarketId,
+      },
+      externalSignals,
+      confidence,
+      yearBuilt: primary.yearBuilt,
+      propertyClass: primary.propertyClass,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[HistoricalObs] GET /deals/:dealId/coverage failed', { error: msg });
+    res.status(500).json({ error: 'Failed to get deal coverage report' });
   }
 });
 
