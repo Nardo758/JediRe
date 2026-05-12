@@ -26,6 +26,8 @@ import type {
   MatchTier,
   CalibrationWindow,
   SubjectTrafficHistory,
+  AsymmetricConfidenceBand,
+  LegacyConfidenceBand,
 } from '../types/traffic-calibration.types';
 import { SUBJECT_N_REQUIRED } from '../types/traffic-calibration.types';
 import { BASELINE_COEFFICIENTS } from '../jobs/trafficCalibrationJob';

@@ -279,7 +279,7 @@ interface TrafficPrediction {
   match_tier?: 'SUBJECT' | 'DEAL' | 'PLATFORM' | 'BASELINE';
   window?: 'TTM' | 'PYTM' | 'TTM_24';
   calibration_source?: string;
-  confidence_band?: { low: number; mid: number; high: number };
+  confidence_band?: import('../types/traffic-calibration.types').AsymmetricConfidenceBand | import('../types/traffic-calibration.types').LegacyConfidenceBand;
   deal_mode?: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
 
   // M07 §4.2: rent-roll derived enrichments (present when deal has uploaded rent rolls)

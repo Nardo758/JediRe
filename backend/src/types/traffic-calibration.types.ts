@@ -53,16 +53,50 @@ export interface TrafficCoefficientFamily {
 // Calibration Metadata (attached to every prediction)
 // ============================================================================
 
+/**
+ * Asymmetric percentile confidence band (FIX-3+).
+ * p50 and median are aliases for the same value.
+ * low = p10 equivalent; high = p90 equivalent.
+ */
+export interface AsymmetricConfidenceBand {
+  low: number;
+  p25: number;
+  p50: number;
+  median: number;
+  p75: number;
+  high: number;
+}
+
+/**
+ * Legacy ±1σ confidence band emitted by trafficCalibrationJob pre-FIX-3.
+ * Consumers should detect by absence of `p25` and convert on the fly.
+ */
+export interface LegacyConfidenceBand {
+  low: number;
+  mid: number;
+  high: number;
+}
+
 export interface CalibrationMeta {
   match_tier: MatchTier;
   window: CalibrationWindow;
   calibration_source: string;   // e.g. "submarket:atl_midtown | class:A | vintage:post_2015"
   n_peer_properties: number;
-  confidence_band: {
-    low: number;
-    mid: number;
-    high: number;
-  };
+  /**
+   * Asymmetric percentile confidence band derived from per-evidence values (FIX-3+).
+   * Pre-FIX-3 rows carry LegacyConfidenceBand { low, mid, high }.
+   * Detect shape via `'p25' in band`.
+   */
+  confidence_band: AsymmetricConfidenceBand | LegacyConfidenceBand;
+  /**
+   * Per-evidence array used to compute the band. Available for FIX-3+ rows;
+   * null for pre-FIX-3 rows. M38 reads this for percentile recomputation.
+   */
+  evidence_values: Array<{
+    deal_id: string;
+    value: number;
+    recorded_at: string;
+  }> | null;
   coefficients: TrafficCoefficientFamily;
   /** Starting-state mode resolved for this prediction (§4.2 output contract).
    *  Populated by the engine after starting-state resolution; absent if no deal context. */
