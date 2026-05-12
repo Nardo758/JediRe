@@ -44,6 +44,46 @@ export function createDataLibraryRoutes(pool: Pool): Router {
     }
   });
 
+  // ── Deal Folder endpoints ────────────────────────────────────────────────
+  // These three routes must be registered BEFORE the `/:id` param route so
+  // Express doesn't treat "folders" or "unaffiliated" as numeric IDs.
+
+  router.get('/folders', async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user?.userId;
+      if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+      const manifest = await service.getDealFolderManifest(userId);
+      res.json(manifest);
+    } catch (err: any) {
+      console.error('Data library folders manifest error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/folders/:dealId', async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user?.userId;
+      if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+      const files = await service.getFilesByDeal(req.params.dealId);
+      res.json(files);
+    } catch (err: any) {
+      console.error('Data library folder files error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/unaffiliated', async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user?.userId;
+      if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+      const files = await service.getUnaffiliatedFiles(userId);
+      res.json(files);
+    } catch (err: any) {
+      console.error('Data library unaffiliated files error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.get('/comparables', async (req: Request, res: Response) => {
     try {
       const comparables = await service.findComparables({

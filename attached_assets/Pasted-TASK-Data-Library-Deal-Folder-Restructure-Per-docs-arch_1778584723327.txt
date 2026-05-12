@@ -1,0 +1,259 @@
+TASK — Data Library Deal Folder Restructure
+
+Per docs/architecture/HISTORICAL_OBSERVATIONS_SPEC.md §7.1
+and Leon's request: reformat the Data Library so each deal
+is its own folder with its supporting files within, including
+archived deals with a status badge.
+
+CONTEXT
+
+Today the Data Library renders files as a flat list filtered
+by attributes (city, zip_code, property_type, unit_count) via
+data_library_files. There's no concept of "this file belongs
+to this deal" at the schema level — the table has no deal_id
+foreign key. Operators see a flat searchable inventory rather
+than a deal-organized folder structure.
+
+Leon wants per-deal folders for both active Portfolio deals
+and archived deals, distinguished by a status badge derived
+from deals.status. A deal becomes archived when it's removed
+from the Pipeline (existing flow at backend/src/deals/
+deals.service.ts already sets status='archived' and
+archived_at=NOW()).
+
+This work establishes the deal_id foreign key on
+data_library_files. The same column is consumed by the
+corpus-build work (separate ticket, sequenced after this one)
+to set is_subject_property correctly on historical_observations
+rows.
+
+SCOPE
+
+In scope:
+  - Schema migration: add deal_id FK on data_library_files
+    (nullable for non-deal files like email archives, market
+    data unaffiliated with a specific deal); add
+    redistribution_restricted boolean column (for future
+    CoStar/Yardi data — defaults FALSE)
+  - Backend: DataLibraryService gains:
+      getFilesByDeal(dealId) → returns files + deal status
+      getDealFolderManifest(userId) → list of all deals with
+        their file counts and status badges, plus an
+        "Unaffiliated" pseudo-folder for files with null deal_id
+  - Backfill: existing data_library_files rows where deal_id
+    can be derived from current associations (search for
+    foreign-key-style references in the parsed_data or tags
+    fields, or join through document upload audit trails if
+    that history exists)
+  - Frontend: new DealFolderView component:
+      Two-section layout: "Active Portfolio" on top, "Archived
+        Deals" below in a visually-distinct (dimmer) section
+      Within each section, list deals with expandable file
+        accordions
+      Per-deal: flat list of all files (no sub-folder by doc
+        type — Leon's call), inline metadata (filename,
+        uploaded date, document type), status badge on the
+        deal header derived from deals.status
+      Existing AssetDetailModal reused for clicking individual
+        files
+  - Existing flat-attribute-filtered view kept as a separate
+    tab; new folder view is an additional tab — both available
+    simultaneously
+  - The Unaffiliated pseudo-folder shows files with deal_id IS
+    NULL (CoStar exports, market surveys, email archives, etc.)
+    in a flat list
+
+Out of scope:
+  - The corpus write (separate ticket — sequenced after this)
+  - The CoStar parser / dual-write pattern (separate ticket)
+  - The historical_observations table (separate ticket)
+  - Migration of files from email archive PST imports — those
+    legitimately have no deal_id and stay in Unaffiliated
+  - Pipeline UI changes — Pipeline already has its own deal
+    list view; this work doesn't restructure Pipeline
+  - Folder-level operations (move file between deals, bulk
+    delete) — these are future capabilities, not in scope here
+
+SCHEMA MIGRATION
+
+backend/src/db/migrations/YYYYMMDD_data_library_deal_folders.sql:
+
+ALTER TABLE data_library_files
+  ADD COLUMN IF NOT EXISTS deal_id UUID
+    REFERENCES deals(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS redistribution_restricted BOOLEAN
+    NOT NULL DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_data_library_files_deal
+  ON data_library_files(deal_id)
+  WHERE deal_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_data_library_files_restricted
+  ON data_library_files(redistribution_restricted)
+  WHERE redistribution_restricted = TRUE;
+
+COMMENT ON COLUMN data_library_files.deal_id IS
+  'Optional foreign key to deals.id. NULL for files not
+   associated with a specific deal (e.g., email archive
+   imports, market-wide data uploads).';
+
+COMMENT ON COLUMN data_library_files.redistribution_restricted IS
+  'TRUE for files containing licensed data that cannot be
+   redistributed (e.g., CoStar, Yardi Matrix). Multi-tenant
+   surfaces must filter these rows out.';
+
+BACKEND IMPLEMENTATION
+
+backend/src/services/dataLibrary.service.ts — extend:
+
+interface DealFolderManifestEntry {
+  deal_id: string;
+  deal_name: string;
+  deal_status: 'lead' | 'evaluating' | 'underwriting' |
+               'negotiating' | 'in_diligence' | 'closing' |
+               'owned' | 'closed' | 'portfolio' | 'archived';
+  file_count: number;
+  total_size_bytes: number;
+  last_upload_at: Date | null;
+}
+
+interface DealFolderManifest {
+  active: DealFolderManifestEntry[];      // status NOT IN ('archived')
+  archived: DealFolderManifestEntry[];    // status = 'archived'
+  unaffiliated_file_count: number;
+  unaffiliated_total_size: number;
+}
+
+class DataLibraryService {
+  async getFilesByDeal(
+    dealId: string,
+    options?: { includeRestricted?: boolean }
+  ): Promise<DataLibraryFile[]>;
+
+  async getDealFolderManifest(userId: string): Promise<DealFolderManifest>;
+
+  async getUnaffiliatedFiles(
+    userId: string,
+    options?: { includeRestricted?: boolean }
+  ): Promise<DataLibraryFile[]>;
+}
+
+backend/src/api/rest/data-library.routes.ts — add:
+  GET /data-library/folders → returns DealFolderManifest
+  GET /data-library/folders/:dealId → returns DataLibraryFile[]
+  GET /data-library/unaffiliated → returns DataLibraryFile[]
+
+BACKFILL STRATEGY
+
+The migration adds nullable deal_id. Existing rows stay NULL by
+default (Unaffiliated). A separate one-time backfill script in
+backend/src/scripts/backfill-data-library-deal-ids.ts attempts
+to associate existing files where possible:
+
+1. Files uploaded via a deal-specific upload route should have
+   deal context in their original request — check audit logs
+   or related tables for the deal association.
+2. Files mentioned in deal_documents or deal_document_files
+   tables can be joined back to their deal.
+3. Files whose file_path includes a deal identifier in the
+   storage hierarchy can be parsed for the deal_id.
+4. Files that can't be associated stay NULL (legitimate
+   Unaffiliated cases).
+
+Report after backfill: N files associated, M files left as
+Unaffiliated. The report is informational; no failure if
+many files remain Unaffiliated.
+
+FRONTEND IMPLEMENTATION
+
+frontend/src/components/data-library/DealFolderView.tsx (NEW):
+
+  Two-section vertical layout:
+  ┌─────────────────────────────────────────────────────┐
+  │  Active Portfolio (3 deals)                          │
+  │  ├─ ▶ Jacksonville Property [Portfolio] (12 files)  │
+  │  ├─ ▶ Atlanta Property #1 [Portfolio]  (8 files)   │
+  │  └─ ▼ Atlanta Property #2 [Portfolio]  (4 files)   │
+  │       • Apr 2026 T12.pdf                            │
+  │       • Apr 2026 Rent Roll.xlsx                     │
+  │       • Mar 2026 T12.pdf                            │
+  │       • Mar 2026 Rent Roll.xlsx                     │
+  │                                                      │
+  │  Archived (2 deals)                                  │
+  │  ├─ ▶ Property X [Archived]            (5 files)   │
+  │  └─ ▶ Property Y [Archived]            (3 files)   │
+  │                                                      │
+  │  Unaffiliated (42 files)                            │
+  │  └─ ▶ CoStar exports, email archives, ...           │
+  └─────────────────────────────────────────────────────┘
+
+  Badge styling:
+    Portfolio / owned / closed → solid green badge
+    Lead / evaluating / underwriting / negotiating →
+      solid blue badge "Pipeline"
+    Archived → dimmed gray badge
+    The Active Portfolio section dims its rows slightly to
+    distinguish from focused view; Archived section dims more.
+
+  Flat file list within each expanded deal — no sub-folders
+  by document type. Filename, document type chip, upload date,
+  click-to-open AssetDetailModal.
+
+frontend/src/pages/DataLibraryPage.tsx — add tab:
+
+  Existing flat search view becomes "Search & Filter" tab.
+  New "Deal Folders" tab renders DealFolderView component.
+  Default tab on page load: Deal Folders (per Leon's request,
+  this becomes the primary view).
+
+frontend/src/components/data-library/AssetDetailModal.tsx — no
+changes; reused for file detail.
+
+VERIFICATION CHECKLIST
+
+After the fix:
+  - Migration runs cleanly on a dev DB; deal_id and
+    redistribution_restricted columns exist on data_library_files
+  - Backfill script runs and reports a count of files
+    associated vs left Unaffiliated
+  - DealFolderView renders for a test user with multiple deals
+    in different statuses
+  - Active Portfolio section shows non-archived deals at top
+  - Archived section shows archived deals with dimmed badges
+  - Unaffiliated pseudo-folder shows files with NULL deal_id
+  - Expanding a deal shows its files in a flat list
+  - Status badges derive from deals.status (live query, not
+    cached)
+  - Existing flat search view still works on the other tab
+  - Click-through to AssetDetailModal works from the new view
+  - Performance test: a user with 50+ deals and 1000+ files
+    renders the manifest in < 2 seconds
+
+OUT OF SCOPE
+
+  - Sub-folders by document type within a deal (Leon wants
+    flat list)
+  - Filtering within a deal folder (search bar within
+    folder) — future capability
+  - Drag-and-drop reorganization of files between deals
+  - Migration of files from existing PST email imports
+  - Backend-side multi-tenant filtering of restricted rows
+    (that's a future ticket when CoStar parser ships)
+
+ACCEPTANCE
+
+  - Schema migration applied; deal_id FK exists with index
+  - Backfill script runs successfully, reports counts
+  - getFilesByDeal, getDealFolderManifest, getUnaffiliatedFiles
+    exist and pass unit tests
+  - New REST endpoints functional
+  - DealFolderView component renders correctly for the test
+    fixtures
+  - DataLibraryPage shows two tabs: "Deal Folders" (default)
+    and "Search & Filter" (existing)
+  - Single commit, branch claude/data-library-deal-folders
+    from origin/master:
+    feat(data-library): per-deal folder structure with status
+    badges + redistribution_restricted flag — establishes
+    deal_id FK on data_library_files for downstream corpus
+    consumption

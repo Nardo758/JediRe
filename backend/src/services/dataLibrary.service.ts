@@ -11,6 +11,8 @@ import { isOmTerminalFailureStage } from './document-extraction/om-pipeline-stag
 export interface DataLibraryFile {
   id: number;
   user_id: string | null;
+  deal_id: string | null;
+  redistribution_restricted: boolean;
   file_name: string;
   file_path: string;
   file_size: number;
@@ -27,6 +29,26 @@ export interface DataLibraryFile {
   parsing_status: string;
   parsing_errors: string | null;
   uploaded_at: Date;
+}
+
+export type DealStatus =
+  | 'lead' | 'evaluating' | 'underwriting' | 'negotiating'
+  | 'in_diligence' | 'closing' | 'owned' | 'closed' | 'portfolio' | 'archived';
+
+export interface DealFolderManifestEntry {
+  deal_id: string;
+  deal_name: string;
+  deal_status: DealStatus;
+  file_count: number;
+  total_size_bytes: number;
+  last_upload_at: Date | null;
+}
+
+export interface DealFolderManifest {
+  active: DealFolderManifestEntry[];
+  archived: DealFolderManifestEntry[];
+  unaffiliated_file_count: number;
+  unaffiliated_total_size: number;
 }
 
 export interface DataLibraryUploadParams {
@@ -588,6 +610,95 @@ export class DataLibraryService {
       params,
     );
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async getFilesByDeal(
+    dealId: string,
+    options?: { includeRestricted?: boolean },
+  ): Promise<DataLibraryFile[]> {
+    const restrictedClause = options?.includeRestricted ? '' : 'AND redistribution_restricted = FALSE';
+    const result = await this.pool.query<DataLibraryFile>(
+      `SELECT * FROM data_library_files
+        WHERE deal_id = $1 ${restrictedClause}
+        ORDER BY uploaded_at DESC`,
+      [dealId],
+    );
+    return result.rows;
+  }
+
+  async getDealFolderManifest(userId: string): Promise<DealFolderManifest> {
+    const dealRows = await this.pool.query<{
+      deal_id: string;
+      deal_name: string;
+      deal_status: DealStatus;
+      file_count: string;
+      total_size_bytes: string;
+      last_upload_at: Date | null;
+    }>(
+      `SELECT
+         d.id                               AS deal_id,
+         d.name                             AS deal_name,
+         d.status                           AS deal_status,
+         COUNT(f.id)                        AS file_count,
+         COALESCE(SUM(f.file_size), 0)      AS total_size_bytes,
+         MAX(f.uploaded_at)                 AS last_upload_at
+       FROM deals d
+       LEFT JOIN data_library_files f
+         ON f.deal_id = d.id
+        AND f.redistribution_restricted = FALSE
+       WHERE d.user_id = $1
+       GROUP BY d.id, d.name, d.status
+       ORDER BY d.status = 'archived' ASC, d.updated_at DESC`,
+      [userId],
+    );
+
+    const unaffiliatedRow = await this.pool.query<{
+      file_count: string;
+      total_size: string;
+    }>(
+      `SELECT COUNT(*) AS file_count, COALESCE(SUM(file_size), 0) AS total_size
+         FROM data_library_files
+        WHERE user_id = $1
+          AND deal_id IS NULL
+          AND redistribution_restricted = FALSE`,
+      [userId],
+    );
+
+    const toEntry = (row: typeof dealRows.rows[0]): DealFolderManifestEntry => ({
+      deal_id: row.deal_id,
+      deal_name: row.deal_name,
+      deal_status: row.deal_status,
+      file_count: parseInt(row.file_count, 10),
+      total_size_bytes: parseInt(row.total_size_bytes, 10),
+      last_upload_at: row.last_upload_at,
+    });
+
+    const active = dealRows.rows.filter(r => r.deal_status !== 'archived').map(toEntry);
+    const archived = dealRows.rows.filter(r => r.deal_status === 'archived').map(toEntry);
+    const ua = unaffiliatedRow.rows[0];
+
+    return {
+      active,
+      archived,
+      unaffiliated_file_count: parseInt(ua.file_count, 10),
+      unaffiliated_total_size: parseInt(ua.total_size, 10),
+    };
+  }
+
+  async getUnaffiliatedFiles(
+    userId: string,
+    options?: { includeRestricted?: boolean },
+  ): Promise<DataLibraryFile[]> {
+    const restrictedClause = options?.includeRestricted ? '' : 'AND redistribution_restricted = FALSE';
+    const result = await this.pool.query<DataLibraryFile>(
+      `SELECT * FROM data_library_files
+        WHERE user_id = $1
+          AND deal_id IS NULL
+          ${restrictedClause}
+        ORDER BY uploaded_at DESC`,
+      [userId],
+    );
+    return result.rows;
   }
 
   async findComparables(params: { city?: string; propertyType?: string; unitCount?: number; propertyHeight?: string }): Promise<DataLibraryFile[]> {

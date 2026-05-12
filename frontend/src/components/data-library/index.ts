@@ -5,3 +5,4 @@
 export { CloudStoragePanel } from './CloudStoragePanel';
 export { BulkUploadPanel } from './BulkUploadPanel';
 export { AssetDetailModal } from './AssetDetailModal';
+export { DealFolderView } from './DealFolderView';
