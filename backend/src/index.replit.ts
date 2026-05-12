@@ -372,6 +372,7 @@ import { rateSheetStalenessCron } from './inngest/functions/rateSheetStaleness.c
 import { taxBillUploadedHandler } from './inngest/functions/taxBillUploaded.handler';
 import { historicalObservationsBackfill } from './inngest/functions/historicalObservationsBackfill';
 import { dataCorpusReminderCron } from './inngest/functions/dataCorpusReminderCron';
+import { weeklyCorpusDigestCron } from './inngest/functions/weeklyCorpusDigestCron';
 import { trafficCalibrationCron } from './inngest/functions/trafficCalibrationCron';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
@@ -401,8 +402,9 @@ app.use(
       taxBillUploadedHandler,
       // Historical Observations (Task #716 follow-up): nightly realized output backfill
       historicalObservationsBackfill,
-      // Historical Observations (Phase 3): monthly reminder + weekly digest
+      // Historical Observations (Phase 1): monthly reminder + weekly Monday digest
       dataCorpusReminderCron,
+      weeklyCorpusDigestCron,
       // M07 Traffic Engine (FIX-1): weekly Bayesian calibration update
       trafficCalibrationCron,
       // Autonomous agents (Task #327): morning briefings, compliance,

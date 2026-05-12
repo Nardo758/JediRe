@@ -35,6 +35,7 @@ export enum NotificationType {
   DATA_CORPUS_UPLOAD_REQUIRED = 'data_corpus_upload_required',
   DATA_CORPUS_GAP_DETECTED = 'data_corpus_gap_detected',
   DATA_CORPUS_REALIZATION_PENDING = 'data_corpus_realization_pending',
+  DATA_CORPUS_WEEKLY_DIGEST = 'data_corpus_weekly_digest',
 }
 
 export enum NotificationPriority {

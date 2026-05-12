@@ -27,3 +27,10 @@ export {
   type IngestionResult,
   type ParsedPropertyDocument,
 } from './property-performance-ingestor';
+
+export {
+  writeT12ToCorpus,
+  writeRentRollToCorpus,
+  writeOMToCorpus,
+  writeTaxBillToCorpus,
+} from './document-to-corpus';

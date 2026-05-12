@@ -75,6 +75,28 @@ export interface HistoricalObservationRow {
   propertyUnitCount: number | null;
   propertyYearBuilt: number | null;
   propertyClass: string | null;
+  propertyAskingRent: number | null;
+  propertySigningVelocity: number | null;
+
+  // ─── Capital events ──────────────────────────────────────────────────────
+  capitalEventType: string | null;
+  capitalEventAmount: number | null;
+  capitalEventMetadata: Record<string, unknown> | null;
+
+  // ─── Data quality ────────────────────────────────────────────────────────
+  dataQualityTier: string | null;
+  redistributionRestricted: boolean;
+
+  // ─── CoStar overlay (Phase 4) ────────────────────────────────────────────
+  costarSubmarketRent: number | null;
+  costarSubmarketVacancy: number | null;
+  costarSubmarketAbsorption: number | null;
+  costarSubmarketConcessionPct: number | null;
+  costarSubmarketNewSupply: number | null;
+
+  // ─── Market survey (Phase 4) ─────────────────────────────────────────────
+  marketSurveySource: string | null;
+  marketSurveySnapshot: Record<string, unknown> | null;
 
   // ─── Outputs: Realized changes ───────────────────────────────────────────
   realizedRentChangeT3: number | null;

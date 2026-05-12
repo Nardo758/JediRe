@@ -596,6 +596,23 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
           console.error('[Agents] Failed to trigger onDealStatusChanged:', agentErr instanceof Error ? agentErr.message : agentErr);
         }
       });
+
+      // Lifecycle transition → corpus bootstrap (Phase 1)
+      // When a deal moves into portfolio/owned/closed, bootstrap an initial
+      // historical_observations row so the realized-output windows begin
+      // accumulating from day one of the hold period.
+      setImmediate(async () => {
+        try {
+          const { onDealStatusTransitionToPortfolio } = await import('../../services/portfolio/lifecycle-transition.service');
+          await onDealStatusTransitionToPortfolio(
+            dealId,
+            updates.status,
+            req.user!.userId,
+          );
+        } catch (lcErr) {
+          console.warn('[LifecycleTransition] Corpus bootstrap failed (non-fatal):', lcErr instanceof Error ? lcErr.message : lcErr);
+        }
+      });
     }
 
     // M26 AUTO-TRIGGER: Recalculate tax projection when purchase price changes

@@ -129,34 +129,50 @@ export async function routeExtractionResult(
       break;
   }
 
-  // Historical Observations corpus ingestion (Phase 2)
-  // Best-effort, fire-and-forget — mirrors T12 / RENT_ROLL data into the
-  // empirical calibration substrate so M35, M07, M36, M37, M38 can derive
-  // coefficients from real property history. Never blocks the extraction response.
-  if (result.documentType === 'T12' || result.documentType === 'RENT_ROLL') {
+  // Historical Observations corpus ingestion (Phase 1)
+  // Best-effort, fire-and-forget — mirrors document data into the empirical
+  // calibration substrate. T12 + RENT_ROLL write property performance rows;
+  // OM writes property state + asking price capital event; TAX_BILL writes
+  // the annual tax assessment capital event. Never blocks the extraction response.
+  if (
+    result.documentType === 'T12' ||
+    result.documentType === 'RENT_ROLL' ||
+    result.documentType === 'OM' ||
+    result.documentType === 'TAX_BILL'
+  ) {
     const capturedData = result.data;
     const capturedType = result.documentType;
     const capturedDealId = ctx.dealId;
     const capturedPropertyId = resolvedPropertyId;
     setImmediate(async () => {
       try {
-        const propId = capturedPropertyId ?? await getOrCreatePropertyForDeal(pool, capturedDealId);
-        const propRow = await pool.query(
-          'SELECT parcel_id FROM properties WHERE id = $1 LIMIT 1',
-          [propId]
-        );
-        // Fall back to internal UUID if assessor parcel_id is not yet populated
-        const parcelId: string = (propRow.rows[0]?.parcel_id as string | null) ?? propId;
-        await ingestPropertyPerformance({
-          dealId: capturedDealId,
-          propertyId: propId,
-          parcelId,
-          documentType: capturedType as 'T12' | 'RENT_ROLL',
-          observationDate: new Date(),
-          ...(capturedType === 'T12'
-            ? { t12Data: capturedData as T12Data }
-            : { rentRollData: capturedData as RentRollData }),
-        });
+        const { writeOMToCorpus, writeTaxBillToCorpus } =
+          await import('../historical-observations/document-to-corpus');
+
+        if (capturedType === 'T12' || capturedType === 'RENT_ROLL') {
+          const propId = capturedPropertyId ?? await getOrCreatePropertyForDeal(pool, capturedDealId);
+          const propRow = await pool.query(
+            'SELECT parcel_id FROM properties WHERE id = $1 LIMIT 1',
+            [propId]
+          );
+          const parcelId: string = (propRow.rows[0]?.parcel_id as string | null) ?? propId;
+          await ingestPropertyPerformance({
+            dealId: capturedDealId,
+            propertyId: propId,
+            parcelId,
+            documentType: capturedType as 'T12' | 'RENT_ROLL',
+            observationDate: new Date(),
+            ...(capturedType === 'T12'
+              ? { t12Data: capturedData as T12Data }
+              : { rentRollData: capturedData as RentRollData }),
+          });
+        } else if (capturedType === 'OM') {
+          await writeOMToCorpus(pool, capturedDealId, capturedData as unknown as import('../document-extraction/parsers/om-parser').OMExtraction);
+        } else if (capturedType === 'TAX_BILL') {
+          const taxData = capturedData as TaxBillData;
+          const taxYear = taxData.taxYear ?? new Date().getFullYear();
+          await writeTaxBillToCorpus(pool, capturedDealId, taxData, taxYear);
+        }
       } catch (corpusErr) {
         // Non-fatal — corpus ingestion must never surface to the user
         const msg = corpusErr instanceof Error ? corpusErr.message : String(corpusErr);
