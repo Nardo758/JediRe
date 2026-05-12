@@ -1,13 +1,23 @@
 /**
  * Smoke test — trafficCalibrationCron
  *
- * Verifies the Inngest function is exported and constructed correctly
- * without invoking the actual calibration job or touching the database.
+ * Verifies the Inngest function is exported and constructed correctly,
+ * and that the handler calls job.run with lookbackHours = 168.
+ * Does NOT invoke the actual calibration job or touch the database.
  */
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 
 // ── Mocks (must precede dynamic import) ────────────────────────────────────
+
+const mockRun = vi.fn().mockResolvedValue({
+  buckets_updated: 2,
+  buckets_created: 1,
+  properties_processed: 5,
+  absorption_benchmarks_updated: 3,
+  job_version: '1.0.0',
+  run_at: new Date(),
+});
 
 vi.mock('../../../lib/inngest', () => {
   const createFunction = vi.fn(
@@ -28,16 +38,7 @@ vi.mock('../../../database', () => ({
 }));
 
 vi.mock('../../../jobs/trafficCalibrationJob', () => ({
-  TrafficCalibrationJob: vi.fn().mockImplementation(() => ({
-    run: vi.fn().mockResolvedValue({
-      buckets_updated: 0,
-      buckets_created: 0,
-      properties_processed: 0,
-      absorption_benchmarks_updated: 0,
-      job_version: '1.0.0',
-      run_at: new Date(),
-    }),
-  })),
+  TrafficCalibrationJob: vi.fn().mockImplementation(() => ({ run: mockRun })),
 }));
 
 vi.mock('../../../utils/logger', () => ({
@@ -74,5 +75,17 @@ describe('trafficCalibrationCron', () => {
 
   it('uses retries: 1', () => {
     expect(trafficCalibrationCron['retries']).toBe(1);
+  });
+
+  it('calls job.run with lookbackHours = 168', async () => {
+    // step.run executes the callback inline so we can assert on the job mock
+    const mockStep = {
+      run: vi.fn().mockImplementation((_name: string, fn: () => Promise<unknown>) => fn()),
+    };
+
+    const handler = trafficCalibrationCron['handler'] as (ctx: { step: typeof mockStep }) => Promise<unknown>;
+    await handler({ step: mockStep });
+
+    expect(mockRun).toHaveBeenCalledWith(168);
   });
 });
