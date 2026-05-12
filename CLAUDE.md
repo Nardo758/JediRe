@@ -82,6 +82,25 @@ User edits always win. Agent-written values remain in history and can be recalle
 
 ---
 
+## Scheduled Inngest Jobs
+
+All Inngest functions are registered in `backend/src/index.replit.ts` inside the `serve()` call.
+Function files live in `backend/src/inngest/functions/`.
+
+| Function ID | File | Schedule | Purpose |
+|-------------|------|----------|---------|
+| `traffic-calibration-weekly` | `trafficCalibrationCron.ts` | Monday 02:00 UTC (`0 2 * * 1`) | M07 Bayesian calibration — updates `traffic_calibration_factors` platform posteriors. lookbackHours=168. Resolves TE-02, TE-08 (TRAFFIC_ENGINE_STATE_AUDIT.md §11 Fix #1). |
+| `rate-sheet-staleness-check` | `rateSheetStaleness.cron.ts` | Sunday 03:00 UTC (`0 3 * * 0`) | Tax Service Phase 4 — flags expiring `rate_sheet_versions` rows for Research Agent re-verification. |
+| `data-corpus-reminder` | `dataCorpusReminderCron.ts` | 1st/2nd/3rd of month 12:00 UTC | Historical Observations Phase 3 — first-business-day guard; emits `deal_notifications` for missing monthly uploads, T+12 realization windows, and gap comparisons. |
+| `historical-observations-backfill` | `historicalObservationsBackfill.ts` | On-demand / one-shot | Backfills `historical_observations` from existing rent roll snapshots. |
+| `snapshot-sentiment-daily` | `snapshot-sentiment.function.ts` | Daily | Captures daily market sentiment snapshots. |
+| `capture-monthly-snapshots` | `capture-monthly-snapshots.ts` | Monthly | Market data monthly snapshot capture. |
+| `sync-marta-gtfs` | `sync-marta-gtfs.ts` | Scheduled | MARTA GTFS transit data sync. |
+| `sync-osm-pois` | `sync-osm-pois.ts` | Scheduled | OSM points-of-interest sync. |
+| `sync-atlanta-pd-crime` | `sync-atlanta-pd-crime.ts` | Scheduled | Atlanta PD crime data sync. |
+
+---
+
 ## M07 Traffic Engine — Current State (F6 Traffic Module)
 
 ### Shipped
