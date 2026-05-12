@@ -89,7 +89,7 @@ async function existingCorpusRow(
 
 // ─── T12 → corpus row ────────────────────────────────────────────────────────
 
-function t12ToCorpusRow(
+export function t12ToCorpusRow(
   data: T12Data,
   parcelId: string,
   observationDate: Date,
@@ -133,7 +133,7 @@ function t12ToCorpusRow(
 
 // ─── Rent roll → corpus row ──────────────────────────────────────────────────
 
-function rentRollToCorpusRow(
+export function rentRollToCorpusRow(
   data: RentRollData,
   parcelId: string,
   observationDate: Date,
@@ -163,6 +163,46 @@ function rentRollToCorpusRow(
     ? unitsWithConcession.reduce((s: number, u: RentRollUnit) => s + (u.marketRent! - u.effectiveRent!), 0) / unitsWithConcession.length
     : null;
 
+  // Signing velocity: leases starting in trailing 3-month window (spec §7.6 / H4)
+  const obsMonthEnd = new Date(Date.UTC(
+    observationDate.getUTCFullYear(),
+    observationDate.getUTCMonth() + 1,
+    0,
+  ));
+  const trailingWindowStart = new Date(Date.UTC(
+    observationDate.getUTCFullYear(),
+    observationDate.getUTCMonth() - 2,
+    1,
+  ));
+  const unitsWithLeaseStart = units.filter((u: RentRollUnit) => u.leaseStart != null);
+  let propertySigningVelocity: number | null = null;
+  const qualityFlags: string[] = [];
+
+  if (unitsWithLeaseStart.length > 0) {
+    const recentSignings = unitsWithLeaseStart.filter((u: RentRollUnit) => {
+      const startDate = new Date(u.leaseStart!);
+      return startDate >= trailingWindowStart && startDate <= obsMonthEnd;
+    }).length;
+
+    // Determine how many months of leaseStart data are available
+    const earliestStartMs = Math.min(
+      ...unitsWithLeaseStart.map((u: RentRollUnit) => new Date(u.leaseStart!).getTime()),
+    );
+    const availableMonths = Math.min(
+      3,
+      Math.max(
+        1,
+        Math.ceil((obsMonthEnd.getTime() - earliestStartMs) / (30.44 * 24 * 60 * 60 * 1000)),
+      ),
+    );
+
+    propertySigningVelocity = recentSignings / availableMonths;
+
+    if (availableMonths < 3) {
+      qualityFlags.push('signing_velocity_partial_window');
+    }
+  }
+
   return {
     parcelId,
     observationDate,
@@ -174,11 +214,22 @@ function rentRollToCorpusRow(
     propertyOccupancy: occupancy,
     propertyAvgRent: avgRent,
     propertyConcessionPerUnit: avgConcession,
+    propertySigningVelocity,
+    dataQualityFlags: qualityFlags.length > 0 ? qualityFlags : null,
   };
 }
 
 // ─── Orchestrator ────────────────────────────────────────────────────────────
 
+/**
+ * @deprecated Use the OM/TaxBill upsert pattern instead:
+ *   resolveParcelId(pool, dealId) → transformer → upsertCorpusRow(pool, ...)
+ *
+ * This function passes parcelId through from the caller, which means callers
+ * must resolve the parcel themselves. writeT12ToCorpus and writeRentRollToCorpus
+ * in document-to-corpus.ts now call upsertCorpusRow directly and no longer go
+ * through this function. See document-to-corpus.ts for the canonical pattern.
+ */
 export async function ingestPropertyPerformance(
   doc: ParsedPropertyDocument,
 ): Promise<IngestionResult> {

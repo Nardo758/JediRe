@@ -41,6 +41,7 @@ interface SubjectProperty {
   dealName: string;
   propertyId: string;
   parcelId: string;
+  submarketId: string | null;
 }
 
 interface CorpusStatus {
@@ -73,7 +74,8 @@ async function findSubjectProperties(): Promise<SubjectProperty[]> {
       d.id AS deal_id,
       d.name AS deal_name,
       dp.property_id,
-      COALESCE(p.parcel_id, dp.property_id) AS parcel_id
+      COALESCE(p.parcel_id, dp.property_id) AS parcel_id,
+      p.submarket_id
     FROM deals d
     JOIN deal_properties dp ON dp.deal_id = d.id
     LEFT JOIN properties p ON p.id = dp.property_id
@@ -87,6 +89,7 @@ async function findSubjectProperties(): Promise<SubjectProperty[]> {
     dealName: r.deal_name as string,
     propertyId: r.property_id as string,
     parcelId: r.parcel_id as string,
+    submarketId: (r.submarket_id as string | null) ?? null,
   }));
 }
 
@@ -252,6 +255,90 @@ async function checkRealizationPending(prop: SubjectProperty, status: CorpusStat
   });
 }
 
+// ─── Trigger 1a — CoStar submarket staleness ─────────────────────────────────
+
+async function checkCoStarStaleness(prop: SubjectProperty, userIds: string[]): Promise<void> {
+  if (!prop.submarketId) return;
+
+  const sql = `
+    SELECT
+      MAX(observation_date)::DATE AS last_refresh,
+      (NOW()::DATE - MAX(observation_date)::DATE) AS days_stale
+    FROM historical_observations
+    WHERE submarket_id = $1
+      AND geography_level = 'submarket'
+      AND 'costar' = ANY(source_signals)
+  `;
+  const result = await query(sql, [prop.submarketId]);
+  if (!result.rows[0]?.last_refresh) return; // no CoStar data yet — not a staleness issue
+
+  const dayStale = Number(result.rows[0].days_stale);
+  if (dayStale <= 60) return;
+
+  const priority = dayStale > 90 ? 'medium' : 'low';
+  const msg = `CoStar data for ${prop.submarketId} hasn't refreshed in ${dayStale} days. Upload the latest CoStar export to keep submarket context current.`;
+
+  for (const userId of userIds) {
+    await createCorpusNotification(userId, prop.dealId, 'data_corpus_gap_detected', msg, {
+      trigger: '1a',
+      submarketId: prop.submarketId,
+      daysSinceRefresh: dayStale,
+      priority,
+    });
+  }
+
+  logger.info('[CorpusReminder] CoStar staleness sent', {
+    dealId: prop.dealId,
+    submarketId: prop.submarketId,
+    dayStale,
+    priority,
+  });
+}
+
+// ─── Trigger 1b — Comp performance gap ───────────────────────────────────────
+
+async function checkCompGap(prop: SubjectProperty, userIds: string[]): Promise<void> {
+  if (!prop.submarketId) return;
+
+  const sql = `
+    SELECT
+      COUNT(DISTINCT parcel_id)::int AS n_stale_comps,
+      MIN(max_obs)::DATE             AS oldest_update
+    FROM (
+      SELECT parcel_id, MAX(observation_date) AS max_obs
+      FROM historical_observations
+      WHERE submarket_id = $1
+        AND geography_level = 'parcel'
+        AND is_subject_property = FALSE
+        AND data_quality_tier IN ('C1', 'C2')
+      GROUP BY parcel_id
+      HAVING (NOW()::DATE - MAX(observation_date)::DATE) > 180
+    ) stale
+  `;
+  const result = await query(sql, [prop.submarketId]);
+  const nStale = Number(result.rows[0]?.n_stale_comps) || 0;
+  if (nStale === 0) return;
+
+  const oldestUpdate = result.rows[0]?.oldest_update ?? null;
+  const msg = `Comp set for ${prop.submarketId} hasn't been refreshed recently. ${nStale} tracked comp(s) have no observation in >180 days. Last update: ${oldestUpdate ?? 'unknown'}.`;
+
+  for (const userId of userIds) {
+    await createCorpusNotification(userId, prop.dealId, 'data_corpus_gap_detected', msg, {
+      trigger: '1b',
+      submarketId: prop.submarketId,
+      nStaleComps: nStale,
+      oldestUpdate,
+      priority: 'low',
+    });
+  }
+
+  logger.info('[CorpusReminder] Comp gap sent', {
+    dealId: prop.dealId,
+    submarketId: prop.submarketId,
+    nStale,
+  });
+}
+
 // ─── Trigger 3 ───────────────────────────────────────────────────────────────
 
 async function checkComparisonReady(prop: SubjectProperty, _status: CorpusStatus, userIds: string[]): Promise<void> {
@@ -335,6 +422,10 @@ export const dataCorpusReminderCron = inngest.createFunction(
       const properties = await findSubjectProperties();
       logger.info('[DataCorpusReminder] Found subject properties', { count: properties.length });
 
+      // Track submarket IDs notified this run to avoid duplicating 1a/1b
+      // notifications when multiple portfolio properties share the same submarket.
+      const notifiedSubmarkets = new Set<string>();
+
       for (const prop of properties) {
         try {
           const status = await getCorpusStatus(prop.parcelId);
@@ -344,6 +435,13 @@ export const dataCorpusReminderCron = inngest.createFunction(
           await checkUploadRequired(prop, status, userIds);
           await checkRealizationPending(prop, status, userIds);
           await checkComparisonReady(prop, status, userIds);
+
+          // Triggers 1a + 1b fire once per unique submarket per run
+          if (prop.submarketId && !notifiedSubmarkets.has(prop.submarketId)) {
+            await checkCoStarStaleness(prop, userIds);
+            await checkCompGap(prop, userIds);
+            notifiedSubmarkets.add(prop.submarketId);
+          }
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
           logger.error('[DataCorpusReminder] Failed processing property', {

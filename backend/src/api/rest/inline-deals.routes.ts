@@ -583,6 +583,23 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
 
     // Trigger agent system on status change
     if (statusChanged) {
+      // H1 — Record lifecycle event (spec §7.9 Invariant 2).
+      // Fire before downstream hooks so the event timestamp precedes any
+      // corpus bootstrap or agent work triggered by the same status change.
+      setImmediate(async () => {
+        try {
+          const { recordDealLifecycleEvent } = await import('../../services/portfolio/lifecycle-transition.service');
+          await recordDealLifecycleEvent(
+            dealId,
+            previousDeal.status as string | null,
+            updates.status as string,
+            req.user!.userId,
+          );
+        } catch (lcErr) {
+          console.warn('[LifecycleEvents] Failed to record lifecycle event (non-fatal):', lcErr instanceof Error ? lcErr.message : lcErr);
+        }
+      });
+
       setImmediate(async () => {
         try {
           const { onDealStatusChanged } = await import('../../services/agents/platform-hooks');

@@ -16,8 +16,8 @@
 
 import { Pool } from 'pg';
 import { logger } from '../../utils/logger';
-import { corpusQueryService } from './query.service';
-import { ingestPropertyPerformance } from './property-performance-ingestor';
+import { t12ToCorpusRow, rentRollToCorpusRow } from './property-performance-ingestor';
+import type { PartialHistoricalObservationRow } from './types';
 import type { T12Data, RentRollData, TaxBillData } from '../document-extraction/types';
 import type { OMExtraction } from '../document-extraction/parsers/om-parser';
 
@@ -46,6 +46,33 @@ async function resolveParcelId(pool: Pool, dealId: string): Promise<{ propertyId
 /** Normalize a Date to the 1st of its UTC month. */
 function firstOfMonth(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+
+/**
+ * Convert a PartialHistoricalObservationRow (camelCase) into a snake_case
+ * field dict suitable for upsertCorpusRow's `fields` parameter.
+ *
+ * Strips keys that upsertCorpusRow manages itself (parcelId, observationDate,
+ * geographyLevel, observationWindow, isSubjectProperty, sourceSignals,
+ * dataQualityTier) so they are not double-written in the SET clause.
+ */
+const UPSERT_MANAGED_KEYS = new Set([
+  'parcelId', 'observationDate', 'geographyLevel', 'observationWindow',
+  'isSubjectProperty', 'sourceSignals', 'dataQualityTier',
+  'id', 'createdAt', 'updatedAt',
+]);
+
+function corpusRowToSnakeFields(
+  row: PartialHistoricalObservationRow,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [camelKey, val] of Object.entries(row)) {
+    if (UPSERT_MANAGED_KEYS.has(camelKey)) continue;
+    if (val === undefined) continue;
+    const snakeKey = camelKey.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
+    result[snakeKey] = val;
+  }
+  return result;
 }
 
 /** Determine data_quality_tier from source_signals already on the row. */
@@ -149,25 +176,32 @@ async function upsertCorpusRow(
 
 /**
  * Write a T12 parsed result into the corpus.
- * Delegates to PropertyPerformanceIngestor for field extraction and tier
- * promotion logic. Uses the pool-level connection so it participates in the
- * caller's transaction.
+ *
+ * Fix C1+C2: resolves the actual parcel_id from the deal before inserting,
+ * then calls upsertCorpusRow (which merges signals when a row already exists
+ * for the same parcel × month, promoting tier from S2 → S1 when the paired
+ * rent roll has already landed). Previously this delegated to
+ * ingestPropertyPerformance with parcelId: '' — all rows landed with an
+ * empty parcel_id and were unreachable.
  */
 export async function writeT12ToCorpus(
-  _pool: Pool,
+  pool: Pool,
   dealId: string,
   parsedT12: T12Data,
   reportPeriod: Date,
 ): Promise<void> {
+  const resolved = await resolveParcelId(pool, dealId);
+  if (!resolved) {
+    logger.warn('[DocumentToCorpus] writeT12ToCorpus: no parcel resolved for deal', { dealId });
+    return;
+  }
+
+  const obsDate = firstOfMonth(reportPeriod);
+  const row = t12ToCorpusRow(parsedT12, resolved.parcelId, obsDate, resolved.propertyId);
+  const fields = corpusRowToSnakeFields(row);
+
   try {
-    await ingestPropertyPerformance({
-      dealId,
-      propertyId: '',
-      parcelId: '',
-      documentType: 'T12',
-      observationDate: reportPeriod,
-      t12Data: parsedT12,
-    });
+    await upsertCorpusRow(pool, resolved.parcelId, obsDate, fields, ['t12']);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('[DocumentToCorpus] writeT12ToCorpus failed', { dealId, error: msg });
@@ -179,22 +213,30 @@ export async function writeT12ToCorpus(
 
 /**
  * Write a rent roll parsed result into the corpus.
+ *
+ * Fix C1+C2: resolves the actual parcel_id from the deal before inserting,
+ * then calls upsertCorpusRow (merges signals + tier promotion when T12 for
+ * same month is already present). Previously this passed parcelId: '' causing
+ * all rows to land with an empty parcel_id.
  */
 export async function writeRentRollToCorpus(
-  _pool: Pool,
+  pool: Pool,
   dealId: string,
   parsedRentRoll: RentRollData,
   snapshotDate: Date,
 ): Promise<void> {
+  const resolved = await resolveParcelId(pool, dealId);
+  if (!resolved) {
+    logger.warn('[DocumentToCorpus] writeRentRollToCorpus: no parcel resolved for deal', { dealId });
+    return;
+  }
+
+  const obsDate = firstOfMonth(snapshotDate);
+  const row = rentRollToCorpusRow(parsedRentRoll, resolved.parcelId, obsDate, resolved.propertyId);
+  const fields = corpusRowToSnakeFields(row);
+
   try {
-    await ingestPropertyPerformance({
-      dealId,
-      propertyId: '',
-      parcelId: '',
-      documentType: 'RENT_ROLL',
-      observationDate: snapshotDate,
-      rentRollData: parsedRentRoll,
-    });
+    await upsertCorpusRow(pool, resolved.parcelId, obsDate, fields, ['rent_roll']);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('[DocumentToCorpus] writeRentRollToCorpus failed', { dealId, error: msg });

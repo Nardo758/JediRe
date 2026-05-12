@@ -22,6 +22,48 @@
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
+// ─── Lifecycle Event Writer ───────────────────────────────────────────────────
+
+/**
+ * Append an entry to deal_lifecycle_events for every status transition.
+ * This is the write side of Spec §7.9 Invariant 2 — the corpus reads this
+ * table to distinguish pre-decision (broker-supplied) vs post-decision
+ * (operator-supplied) corpus months.
+ *
+ * Fire-and-forget safe: never throws; logs and swallows errors.
+ */
+export async function recordDealLifecycleEvent(
+  dealId: string,
+  fromStatus: string | null,
+  toStatus: string,
+  transitionedBy: string | null,
+  metadata?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await query(
+      `INSERT INTO deal_lifecycle_events
+         (deal_id, from_status, to_status, transitioned_by, metadata)
+       VALUES ($1, $2, $3, $4, $5::jsonb)`,
+      [
+        dealId,
+        fromStatus ?? null,
+        toStatus,
+        transitionedBy ?? null,
+        metadata ? JSON.stringify(metadata) : null,
+      ],
+    );
+    logger.debug('[LifecycleEvents] Event recorded', { dealId, fromStatus, toStatus });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[LifecycleEvents] Failed to record lifecycle event', {
+      dealId,
+      fromStatus,
+      toStatus,
+      error: msg,
+    });
+  }
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type PortfolioTransitionStatus = 'owned' | 'portfolio' | 'closed' | 'closed_won';
@@ -186,6 +228,12 @@ export async function onDealStatusTransitionToPortfolio(
     dealId,
     newStatus,
     userId,
+  });
+
+  // Invariant 2 (Spec §7.9): record every status transition so the corpus can
+  // distinguish pre-decision from post-decision months.
+  await recordDealLifecycleEvent(dealId, null, newStatus, userId, {
+    trigger: 'onDealStatusTransitionToPortfolio',
   });
 
   // Get subject property state

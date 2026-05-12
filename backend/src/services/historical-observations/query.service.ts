@@ -390,6 +390,25 @@ export class CorpusQueryService {
       realizedCapRateChangeT12Bps: 'realized_cap_rate_change_t12_bps',
       realizedCapRateChangeT24Bps: 'realized_cap_rate_change_t24_bps',
       realizedWalkinsPsfT12: 'realized_walkins_psf_t12',
+      // Property state (Phase 1 additions)
+      propertyAskingRent: 'property_asking_rent',
+      propertySigningVelocity: 'property_signing_velocity',
+      // Capital events
+      capitalEventType: 'capital_event_type',
+      capitalEventAmount: 'capital_event_amount',
+      capitalEventMetadata: 'capital_event_metadata',
+      // Data quality
+      dataQualityTier: 'data_quality_tier',
+      redistributionRestricted: 'redistribution_restricted',
+      // CoStar overlay (Phase 4)
+      costarSubmarketRent: 'costar_submarket_rent',
+      costarSubmarketVacancy: 'costar_submarket_vacancy',
+      costarSubmarketAbsorption: 'costar_submarket_absorption',
+      costarSubmarketConcessionPct: 'costar_submarket_concession_pct',
+      costarSubmarketNewSupply: 'costar_submarket_new_supply',
+      // Market survey (Phase 4)
+      marketSurveySource: 'market_survey_source',
+      marketSurveySnapshot: 'market_survey_snapshot',
       // Metadata
       sourceSignals: 'source_signals',
       signalFreshnessDays: 'signal_freshness_days',
