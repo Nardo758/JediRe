@@ -32,6 +32,17 @@ export interface SourceResolverContext {
   totalOpEx: number | null;
   effectiveGrossIncome: number | null;
   brokerAssumptions: Record<string, number> | null;
+  // D2 (CE-M26 re-scope): submarket/MSA/property identifiers used by the
+  // historical_observations Tier 3 query for `exit.exitCapRate`. All optional
+  // because most line items don't need them — only the exit-cap resolution
+  // path reads these. When absent for a deal, Tier 3 short-circuits to a
+  // miss and the cascade falls through (loudly, via Tier 5).
+  submarketId?: string | null;
+  msaId?: string | null;
+  propertyClass?: 'A' | 'B' | 'C' | null;
+  // Going-in cap as a percent (e.g. 5.5 means 5.5%). Used by the
+  // exitCapRate Tier 5 fallback (going-in + 25bps) — see queryTier5.
+  goingInCapPct?: number | null;
 }
 
 export interface SourceResolverResult {
@@ -263,43 +274,99 @@ async function queryTier2_5(
 }
 
 /**
- * Tier 3: Knowledge Graph / archive distribution.
+ * Tier 3: archive / corpus distribution.
+ *
+ * D2 (CE-13, CE-M26): the pre-D2 path queried `archive_line_items`, a
+ * table with zero writers and no migration in the codebase. That query
+ * unconditionally missed in production. Tier 3 is now split:
+ *
+ *  - For `exit.exitCapRate`: query historical_observations for realized
+ *    cap-rate changes in the deal's submarket. Sparse until corpus
+ *    Phase 4 (CoStar submarket ingestion). When sparse, returns null —
+ *    cascade falls through to lower-priority tiers and ultimately to
+ *    the loud Tier 5 fallback.
+ *  - For everything else: returns null (the legacy archive_line_items
+ *    path produced nothing anyway; preserving it would just be dead
+ *    code paying compute rent). A future Tier 3 reader for opex /
+ *    income / strategy line items will need its own corpus query.
  */
 async function queryTier3(
   schema: LIUSchema,
   ctx: SourceResolverContext,
   db: Pool,
 ): Promise<EvidenceSource | null> {
-  const key = schema.liuid.split('.').pop()!;
-  
-  // Query archive_deals for comparable benchmarks
+  if (schema.liuid === 'exit.exitCapRate') {
+    return queryTier3_ExitCapRate(ctx, db);
+  }
+  return null;
+}
+
+/**
+ * Tier 3 specialized path for `exit.exitCapRate`.
+ *
+ * Reads `realized_cap_rate_change_t12_bps` and `realized_cap_rate_change_t24_bps`
+ * from the most recent historical_observations rows for the deal's submarket,
+ * then applies the median change to the going-in cap to produce the resolved
+ * exit cap.
+ *
+ * Returns null when:
+ *   - no submarket on the context (the resolver has no way to scope)
+ *   - going-in cap absent (the change has no anchor)
+ *   - the corpus has no realized cap-rate rows for this submarket
+ *
+ * "Returns null" here means the cascade proceeds to the next tier — that is
+ * the correct behavior pre-corpus-Phase-4, and the eventual Tier 5 fallback
+ * emits a loud telemetry event so the consumer can see the resolution rode
+ * the crudest path.
+ */
+async function queryTier3_ExitCapRate(
+  ctx: SourceResolverContext,
+  db: Pool,
+): Promise<EvidenceSource | null> {
+  if (!ctx.submarketId || ctx.goingInCapPct == null) return null;
+
+  // Prefer T12 realizations (more recent, closer to typical hold horizon);
+  // fall back to T24 if T12 is unavailable. Take the median across the
+  // submarket so a single outlier deal doesn't dominate.
   const { rows } = await db.query(`
-    SELECT 
-      percentile_cont(0.50) WITHIN GROUP (ORDER BY annual_amount) AS p50,
-      COUNT(*) AS n
-    FROM archive_line_items ali
-    JOIN archive_deals ad ON ad.id = ali.archive_deal_id
-    WHERE ali.line_item = $1
-      AND ali.annual_amount IS NOT NULL
-      AND ad.state = $2
-    LIMIT 1
-  `, [key, ctx.state]);
-  
-  if (rows.length === 0 || rows[0].p50 == null) return null;
-  
-  const perUnit = Number(rows[0].p50);
-  const n = Number(rows[0].n);
-  const value = ctx.units ? perUnit * ctx.units : perUnit;
-  
+    SELECT
+      percentile_cont(0.50) WITHIN GROUP (
+        ORDER BY realized_cap_rate_change_t12_bps
+      ) FILTER (WHERE realized_cap_rate_change_t12_bps IS NOT NULL) AS t12_bps_median,
+      percentile_cont(0.50) WITHIN GROUP (
+        ORDER BY realized_cap_rate_change_t24_bps
+      ) FILTER (WHERE realized_cap_rate_change_t24_bps IS NOT NULL) AS t24_bps_median,
+      COUNT(*) FILTER (WHERE realized_cap_rate_change_t12_bps IS NOT NULL) AS t12_n
+    FROM historical_observations
+    WHERE submarket_id = $1
+      AND realization_complete = TRUE
+  `, [ctx.submarketId]);
+
+  const row = rows[0];
+  if (!row) return null;
+
+  const t12Median = row.t12_bps_median != null ? Number(row.t12_bps_median) : null;
+  const t24Median = row.t24_bps_median != null ? Number(row.t24_bps_median) : null;
+  const n = Number(row.t12_n) || 0;
+
+  // Corpus is empty for this submarket — short-circuit, let the cascade
+  // proceed. This is the expected pre-corpus-Phase-4 path.
+  if (t12Median == null && t24Median == null) return null;
+
+  const changeBps = t12Median ?? t24Median!;
+  // exitCap (decimal) = goingInCap (decimal) + change (bps → decimal)
+  const exitCapPct = ctx.goingInCapPct + changeBps / 100;
+  const value = exitCapPct / 100;
+
   return {
     tier: 3,
-    sourceKey: 'archive',
-    sourceLabel: `Archive (${ctx.state})`,
+    sourceKey: 'historical_observations',
+    sourceLabel: `Corpus realized cap change (${ctx.submarketId}, n=${n})`,
     value,
-    perUnit,
+    perUnit: null,
     pctEgi: null,
     n,
-    freshness: 0.6,
+    freshness: 0.65,
   };
 }
 
@@ -329,11 +396,50 @@ async function queryTier4(
 
 /**
  * Tier 5: Agent knowledge fallback (conservative default).
+ *
+ * D2 (CE-01, CE-M26 loud fallback): for `exit.exitCapRate`, this is the
+ * "going-in cap + 25bps" path. When the cascade lands here we emit a
+ * structured warn so operators can see the exit cap is running on its
+ * crudest fallback rather than on empirical (corpus / profile / broker)
+ * data — same observability discipline as D3's `sofr_forward_curve.fallback_heuristic`.
  */
 function queryTier5(
   schema: LIUSchema,
   ctx: SourceResolverContext,
 ): EvidenceSource | null {
+  // Exit cap rate has its own loud fallback path (going-in + 25bps).
+  if (schema.liuid === 'exit.exitCapRate') {
+    if (ctx.goingInCapPct == null) {
+      // No anchor — can't even compute the conservative default.
+      logger.warn('[LIUS] exit.exitCapRate Tier 5 fallback skipped — no going-in cap on context', {
+        event: 'exit_cap.tier5_fallback_skipped_no_anchor',
+        dealId: ctx.dealId,
+      });
+      return null;
+    }
+    const exitCapPct = ctx.goingInCapPct + 0.25;  // going-in % + 25 bps
+    const value = exitCapPct / 100;
+    logger.warn('[LIUS] exit.exitCapRate fell through to Tier 5 fallback (going-in + 25bps)', {
+      event: 'exit_cap.tier5_fallback',
+      dealId: ctx.dealId,
+      submarketId: ctx.submarketId ?? null,
+      goingInCapPct: ctx.goingInCapPct,
+      exitCapPct,
+      reason: ctx.submarketId
+        ? 'corpus has no realized cap-rate rows for submarket'
+        : 'no submarket on deal context',
+    });
+    return {
+      tier: 5,
+      sourceKey: 'fallback_going_in_plus_25bps',
+      sourceLabel: 'Going-in + 25bps (fallback)',
+      value,
+      perUnit: null,
+      pctEgi: null,
+      freshness: 0.2,
+    };
+  }
+
   // Conservative defaults per archetype
   const defaults: Record<string, number> = {
     // OpEx

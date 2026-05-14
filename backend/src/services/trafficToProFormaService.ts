@@ -693,18 +693,25 @@ export class TrafficToProFormaService {
         return;
       }
 
-      // Update the "current" (platform-adjusted) values
+      // Update the "current" (platform-adjusted) values.
+      //
+      // D2 (CE-08, CE-02): exit_cap_current is intentionally NOT written here.
+      // Pre-D2 the M07 traffic path was one of multiple writers to
+      // exit_cap_current, producing the three-headed exit-cap problem the
+      // audit flagged. Post-D2 the LIUS cascade (resolveExitCapFromLIUS,
+      // POST /api/v1/proforma/:dealId/exit-cap-refresh) is the single
+      // canonical writer. The traffic-refresh route triggers the LIUS
+      // resolution AFTER this persist completes so the column is repopulated
+      // by the canonical path on every traffic refresh.
       const vacancy = assumptions.find(a => a.id === 'vacancy');
       const rentGrowth = assumptions.find(a => a.id === 'rentGrowth');
       const absorption = assumptions.find(a => a.id === 'absorption');
-      const exitCap = assumptions.find(a => a.id === 'exitCap');
 
       await pool.query(
         `UPDATE proforma_assumptions SET
            vacancy_current = $2,
            rent_growth_current = $3,
            absorption_current = $4,
-           exit_cap_current = $5,
            last_recalculation = NOW(),
            updated_at = NOW()
          WHERE deal_id = $1`,
@@ -719,7 +726,6 @@ export class TrafficToProFormaService {
           vacancy?.platform.values[0] ?? 5.5,
           rentGrowth?.platform.values[0] ?? 2.8,
           absorption?.platform.values[0] ?? 130,
-          exitCap?.platform.values[4] ?? 5.5,
         ]
       );
 

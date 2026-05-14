@@ -46,6 +46,15 @@ export interface LIUSEngineContext {
   lifecycleTimeline?: LifecyclePhaseTimeline[];  // phase transitions
   profileEvents?: Record<string, TrajectoryEvent[]>;  // events by liuid
   pcaEvents?: Record<string, TrajectoryEvent[]>;      // PCA-derived events by liuid
+  // D2 (CE-M26): submarket/MSA/property identifiers and going-in cap for
+  // the exit-cap-rate resolution path. Threaded into the SourceResolverContext
+  // so the Tier 3 historical_observations query can scope by submarket and
+  // the Tier 5 fallback can compute going-in + 25bps loudly. Optional —
+  // resolvers that don't need them ignore the fields.
+  submarketId?: string | null;
+  msaId?: string | null;
+  propertyClass?: 'A' | 'B' | 'C' | null;
+  goingInCapPct?: number | null;
 }
 
 export interface LIUSEngineResult {
@@ -93,6 +102,10 @@ export async function runLIUSEngine(
     totalOpEx: ctx.totalOpEx,
     effectiveGrossIncome: ctx.effectiveGrossIncome,
     brokerAssumptions: ctx.brokerAssumptions,
+    submarketId: ctx.submarketId ?? null,
+    msaId: ctx.msaId ?? null,
+    propertyClass: ctx.propertyClass ?? null,
+    goingInCapPct: ctx.goingInCapPct ?? null,
   };
   
   // 4. Resolve each section in topological order

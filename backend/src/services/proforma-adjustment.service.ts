@@ -21,6 +21,7 @@ import { kafkaProducer } from './kafka/kafka-producer.service';
 import { KAFKA_TOPICS } from './kafka/event-schemas';
 import { buildTaxContext } from './tax/compositeResolver';
 import { composeOtherIncomeBreakdown, loadTrailingActualsMap } from './financials-composer.service';
+import { runLIUSEngine, type LIUSEngineContext } from './lius/engine';
 
 // ============================================================================
 // Types
@@ -592,13 +593,26 @@ export class ProFormaAdjustmentService {
       },
       confidenceScore: 70
     });
-    
-    await query(
-      `UPDATE proforma_assumptions SET exit_cap_current = $1 WHERE id = $2`,
-      [newValue, proformaId]
-    );
-    
-    logger.info('Exit cap adjusted', { dealId, newValue, compressionBps });
+
+    // D2 (CE-08, CE-02): this path historically wrote
+    //   `UPDATE proforma_assumptions SET exit_cap_current = $1 WHERE id = $2`
+    // making it a second writer in addition to the M07 trafficToProForma
+    // persist path. Post-D2 the LIUS cascade (resolveExitCapFromLIUS) is
+    // the single canonical writer of `exit_cap_current`. This momentum
+    // signal still produces an `assumption_adjustments` audit-trail row
+    // above (so the demand-signal/news-event trigger remains visible),
+    // but the column write is deferred. D4 will wire this momentum signal
+    // into the LIUS resolution properly via the M14_macro event channel —
+    // until then, the adjustment is recorded but not applied to the
+    // canonical column. Writing the column here would conflict with the
+    // LIUS write and produce non-deterministic exit caps depending on
+    // call order.
+    logger.info('[ProFormaAdjustment] Exit cap momentum signal computed (audit-only — column write deferred to LIUS resolution per D2)', {
+      dealId,
+      proposedNewValue: newValue,
+      compressionBps,
+      triggerType,
+    });
   }
   
   /**
@@ -781,15 +795,24 @@ export class ProFormaAdjustmentService {
       throw new Error('Pro forma not found for deal ' + dealId);
     }
 
-    // If debt service config provided, merge it into stored assumptions.
-    if (debtServiceConfig) {
-      await query(
-        `UPDATE proforma_assumptions SET
-          exit_cap_current = $1,
-          updated_at = NOW()
-         WHERE deal_id = $2`,
-        [debtServiceConfig.exitCap ?? proforma.exitCap.current, dealId]
-      );
+    // D2 (CE-08): this path previously wrote
+    //   `UPDATE proforma_assumptions SET exit_cap_current = $1 WHERE deal_id = $2`
+    // with debtServiceConfig.exitCap. That made the M11 capital-structure
+    // engine a third writer to the column, in addition to the M07 traffic
+    // path and the news/demand-signal path. Post-D2 the LIUS cascade
+    // (resolveExitCapFromLIUS) is the single canonical writer. If M11
+    // proposes an exit cap as part of its debt-service computation, that
+    // value is logged but not persisted — the canonical exit cap remains
+    // the LIUS-resolved value, and M11's debt terms must adapt to it
+    // rather than override it. This is the same discipline applied to
+    // calculateExitCapAdjustment above (D4 will properly wire any
+    // legitimate event-driven adjustments through the M14_macro channel).
+    if (debtServiceConfig?.exitCap != null) {
+      logger.info('[ProFormaAdjustment] M11 debt-service finalize provided exitCap proposal — audit-only (column write deferred to LIUS resolution per D2)', {
+        dealId,
+        proposedExitCap: debtServiceConfig.exitCap,
+        currentLiveValue: proforma.exitCap.current,
+      });
     }
 
     // Return computed result.
@@ -1203,6 +1226,145 @@ export class ProFormaAdjustmentService {
       confidencFactors: row.confidence_factors,
       createdAt: new Date(row.created_at),
       notes: row.notes
+    };
+  }
+
+  // ============================================================================
+  // D2 (CE-02): LIUS-driven exit cap resolution
+  // ============================================================================
+
+  /**
+   * Resolve the exit cap rate for a deal via the LIUS cascade and persist it
+   * to `proforma_assumptions.exit_cap_current`.
+   *
+   * This is the CE-02 wiring — `runLIUSEngine` was orphaned before D2 (no
+   * live caller). With this method the cascade fires:
+   *
+   *   Tier 3 (historical_observations) → Tier 2.5 (profile cluster)
+   *     → Tier 4 (broker OM, if present) → Tier 5 (going-in + 25bps, LOUD)
+   *
+   * The resolved value writes to the same `exit_cap_current` column the
+   * deterministic model already reads (via proforma-assumptions-bridge,
+   * `disposition.exitCapRate`), so the LIUS output replaces the previous
+   * M07/demand-signal-driven write as the canonical source.
+   *
+   * Returns the resolved cap rate (decimal, e.g. 0.0575 = 5.75%), or null
+   * when LIUS produced no value at all (deal has no submarket AND no
+   * going-in cap — both anchors missing).
+   */
+  async resolveExitCapFromLIUS(dealId: string): Promise<{
+    value: number | null;
+    tier: number | null;
+    sourceLabel: string | null;
+    fellThroughToFallback: boolean;
+  }> {
+    // 1. Load deal context — purchase price, units, state, plus the new
+    //    submarket / going-in-cap fields that the exit-cap cascade needs.
+    const dealRow = await query(
+      `SELECT id, project_type, deal_data, property_data, state, unit_count,
+              budget, hold_period_years
+       FROM deals WHERE id = $1 LIMIT 1`,
+      [dealId]
+    );
+    if (dealRow.rows.length === 0) {
+      throw new Error(`Deal ${dealId} not found`);
+    }
+    const deal = dealRow.rows[0];
+    const dealData = deal.deal_data || {};
+    const propertyData = deal.property_data || {};
+
+    // Going-in cap: try the proforma_assumptions baseline first, then
+    // deal_data overrides. Stored in DB as percent (5.5 = 5.5%).
+    const pfRow = await query(
+      `SELECT exit_cap_baseline, exit_cap_current
+       FROM proforma_assumptions WHERE deal_id = $1 LIMIT 1`,
+      [dealId]
+    );
+    const goingInCapPct: number | null =
+      pfRow.rows[0]?.exit_cap_baseline != null ? parseFloat(pfRow.rows[0].exit_cap_baseline) :
+      dealData.going_in_cap_pct != null ? parseFloat(dealData.going_in_cap_pct) :
+      dealData.goingInCapPct != null ? parseFloat(dealData.goingInCapPct) :
+      null;
+
+    const submarketId: string | null = dealData.submarket_id ?? dealData.submarketId ?? propertyData.submarket_id ?? null;
+    const msaId: string | null = dealData.msa_id ?? dealData.msaId ?? null;
+    const rawClass = dealData.property_class ?? propertyData.property_class ?? null;
+    const propertyClass: 'A' | 'B' | 'C' | null =
+      rawClass === 'A' || rawClass === 'B' || rawClass === 'C' ? rawClass : null;
+
+    const purchasePrice =
+      dealData.purchase_price != null ? parseFloat(dealData.purchase_price) :
+      deal.budget != null ? parseFloat(deal.budget) : null;
+    const units = deal.unit_count != null ? parseInt(deal.unit_count) : null;
+    const holdYears = deal.hold_period_years != null ? parseInt(deal.hold_period_years) : 5;
+
+    // 2. Run LIUS for the exit.exitCapRate line.
+    const ctx: LIUSEngineContext = {
+      dealId,
+      dealType: 'acquisition',
+      lifecyclePhase: 'stabilized',
+      state: deal.state || '',
+      county: null,
+      units,
+      purchasePrice,
+      totalOpEx: null,
+      effectiveGrossIncome: null,
+      brokerAssumptions: null,
+      sectionFilter: ['exit'],
+      holdPeriodYears: holdYears,
+      submarketId,
+      msaId,
+      propertyClass,
+      goingInCapPct,
+    };
+
+    // Run the LIUS engine directly (not runLIUSForLine, which uses a
+    // minimal context that doesn't carry submarket / going-in-cap data).
+    // sectionFilter:['exit'] scopes the run to the exit section only.
+    const engineResult = await runLIUSEngine(ctx);
+    const exitEv = engineResult.evidence.find(e => e.liuid === 'exit.exitCapRate');
+
+    if (!exitEv || exitEv.posterior.value <= 0) {
+      logger.warn('[ProFormaAdjustment] LIUS exit cap resolution produced no value', {
+        dealId,
+        hasSubmarket: submarketId != null,
+        hasGoingInCap: goingInCapPct != null,
+      });
+      return { value: null, tier: null, sourceLabel: null, fellThroughToFallback: false };
+    }
+
+    const resolvedDecimal = exitEv.posterior.value;
+    const resolvedPct = resolvedDecimal * 100;
+    const tier = exitEv.source.primaryTier;
+    const sourceLabel = exitEv.source.primarySource;
+    // Tier 5 is the loud going-in+25bps fallback path.
+    const fellThroughToFallback = tier === 5;
+
+    // 3. Persist to proforma_assumptions.exit_cap_current (% form, matching
+    //    the existing column convention: stored as percent, deterministic
+    //    runner converts to decimal at bridge time).
+    await query(
+      `UPDATE proforma_assumptions
+          SET exit_cap_current = $1,
+              last_recalculation = NOW(),
+              updated_at = NOW()
+        WHERE deal_id = $2`,
+      [resolvedPct, dealId]
+    );
+
+    logger.info('[ProFormaAdjustment] LIUS exit cap resolved and persisted', {
+      dealId,
+      tier,
+      sourceLabel,
+      resolvedPct,
+      fellThroughToFallback,
+    });
+
+    return {
+      value: resolvedDecimal,
+      tier,
+      sourceLabel,
+      fellThroughToFallback,
     };
   }
 }

@@ -645,6 +645,18 @@ router.post('/:dealId/traffic-refresh', authMiddleware.requireAuth, async (req: 
       dealId
     );
 
+    // D2 (CE-02): the traffic persist no longer writes exit_cap_current
+    // directly. The LIUS cascade is the canonical writer — run it now so
+    // the column is repopulated for the deterministic model's next read.
+    // Non-fatal: traffic refresh succeeds even if LIUS produces no value
+    // (e.g. deal has no submarket and no going-in cap anchor).
+    let exitCapResult: Awaited<ReturnType<typeof proformaAdjustmentService.resolveExitCapFromLIUS>> | null = null;
+    try {
+      exitCapResult = await proformaAdjustmentService.resolveExitCapFromLIUS(dealId);
+    } catch (liusErr: any) {
+      logger.error('Exit cap LIUS resolution failed during traffic refresh', liusErr?.message ?? liusErr);
+    }
+
     res.json({
       success: true,
       data: {
@@ -657,10 +669,46 @@ router.post('/:dealId/traffic-refresh', authMiddleware.requireAuth, async (req: 
           platformValue: a.platform.values[0],
           baselineValue: a.baseline.values[0],
         })),
+        exitCap: exitCapResult ? {
+          value: exitCapResult.value,
+          tier: exitCapResult.tier,
+          sourceLabel: exitCapResult.sourceLabel,
+          fellThroughToFallback: exitCapResult.fellThroughToFallback,
+        } : null,
       },
     });
   } catch (error: any) {
     logger.error('Error refreshing traffic→proforma:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// D2 (CE-02): LIUS → ProForma exit-cap resolution endpoint
+// ============================================================================
+//
+// Live caller for runLIUSEngine — pre-D2 the engine had no live caller and
+// the cascade for exit.exitCapRate never executed in production. POSTing
+// here runs the cascade for the deal's exit cap, writes the resolved value
+// to proforma_assumptions.exit_cap_current, and returns the tier + source
+// label so the UI can surface "this exit cap came from the historical
+// corpus / from broker OM / fell through to the going-in+25bps fallback."
+
+router.post('/:dealId/exit-cap-refresh', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { dealId } = req.params;
+    const result = await proformaAdjustmentService.resolveExitCapFromLIUS(dealId);
+    res.json({
+      success: true,
+      data: {
+        exitCap: result.value,
+        tier: result.tier,
+        sourceLabel: result.sourceLabel,
+        fellThroughToFallback: result.fellThroughToFallback,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error resolving exit cap via LIUS:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

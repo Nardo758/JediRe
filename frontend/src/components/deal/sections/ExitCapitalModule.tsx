@@ -804,8 +804,15 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   // trajectory grid with a "no live data" banner — the correct state
   // per the D1 NULL-where-no-source contract.
   const dealModule = useDealModule();
-  const live10yHistory: (number | null)[] | null = null; // TODO: wire to /api/v1/rates/history
-  const liveCapTrajectory: (number | null)[] | null = null; // TODO: wire to proforma_assumptions.exit_cap_current + LIUS
+  const live10yHistory: (number | null)[] | null = null; // TODO (D5 frontend wiring): /api/v1/rates/history
+  // D2 (CE-02, CE-08): the canonical exit cap source is now
+  // `proforma_assumptions.exit_cap_current`, written by the LIUS cascade
+  // via POST /api/v1/proforma/:dealId/exit-cap-refresh (or
+  // /traffic-refresh, which chains the LIUS resolution). Frontend fetch
+  // wiring to populate `liveCapTrajectory` from that endpoint is D5
+  // frontend work — D2 made the canonical source exist and singular;
+  // D5 brings it onto the chart.
+  const liveCapTrajectory: (number | null)[] | null = null; // TODO (D5 frontend wiring): proforma_assumptions.exit_cap_current
 
   const chartSeries: ConvergenceChart21Series = useMemo(() => {
     const empty = (): (number | null)[] => Array.from({ length: TOTAL_Q }, () => null);

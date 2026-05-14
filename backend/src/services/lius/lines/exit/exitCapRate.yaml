@@ -9,17 +9,28 @@
 #   - Interest rate environment
 #   - Asset class sentiment
 #
-# The trajectory engine models cap rate movement over the hold period
-# using M26 historical cap rate series and forward curve.
+# D2 (CE-M26) re-scope:
+#   The pre-D2 Tier 3 source — "M26 archive submarket cap rate
+#   trajectory" — did not exist as a table, service, or writer (audit
+#   §1.5 / CE-M26). The data this resolver needs is the same data the
+#   historical_observations corpus is being built to hold:
+#   realized_cap_rate_change_t12_bps and realized_cap_rate_change_t24_bps,
+#   populated by CoStar submarket ingestion in corpus Phase 4 (per
+#   HISTORICAL_OBSERVATIONS_SPEC.md §10). Tier 3 below now queries
+#   historical_observations directly. When the corpus has no cap rate
+#   data for the deal's submarket the resolver falls through to Tier 5,
+#   which emits structured telemetry so it is OBVIOUS the exit cap is
+#   running on the going-in + 25bps fallback rather than silently
+#   doing so.
 #
-# Default: +25bps expansion from going-in cap (conservative)
+# Default: going-in cap + 25bps expansion (loud, telemetry-flagged)
 #   (e.g., 5.50% going-in → 5.75% exit)
 
 liuid: "exit.exitCapRate"
 label: "Exit Cap Rate"
 section: "exit"
 archetype: "F"
-version: 1
+version: 2
 
 applicableDealTypes:
   - acquisition
@@ -29,10 +40,11 @@ applicableDealTypes:
   - disposition
 
 sourcePreference: [3, 2.5, 4, 5]
-# Tier 3: M26 archive submarket cap rate trajectory
+# Tier 3: historical_observations.realized_cap_rate_change_t* (corpus
+#         Phase 4 — sparse until CoStar submarket ingestion populates)
 # Tier 2.5: profile cluster exit cap achieved by product type
 # Tier 4: broker OM (going-in cap only — exit cap framed separately)
-# Tier 5: going-in cap + 25bps
+# Tier 5: going-in cap + 25bps — LOUD fallback, telemetry-flagged
 
 lifecycleOverrides: []
 
@@ -82,10 +94,10 @@ reasoningTemplate: |
   Going-in cap: {{going_in_cap}}%.
   Basis point expansion: {{bps_expansion}}bps.
   Hold period: {{hold_years}} years.
-  M26 {{submarket}} {{property_type}} {{vintage}}:
-    Going-in range: {{going_in_range}}
-    5-year forward: {{five_year_forward}}
-    10-year forward: {{ten_year_forward}}
+  Submarket: {{submarket}} {{property_type}} {{vintage}}.
+  Historical realized cap-rate changes (corpus):
+    T12 median: {{cap_change_t12_bps_median}} bps (n={{cap_change_n}})
+    T24 median: {{cap_change_t24_bps_median}} bps
   Interest rate 10yr treasury: {{treasury_10yr}} ({{treasury_trend}}).
   {{cap_spread_trend}} bps spread to treasuries ({{spread_assessment}}).
   Profile cluster exit caps (n={{profile_n}}): {{profile_exit_caps}}.
@@ -96,4 +108,8 @@ notes: |
   A 25bps error at a 5.5% exit cap is ~4.5% of value (~$2.7M on a $60M deal).
   Never use going-in cap as exit cap — always add basis points for
   uncertainty (25bps minimum, 50bps for development/lease-up).
-  Reference M26 series for submarket-specific cap rate trends.
+  Tier 3 reads historical_observations cap-rate realizations for the
+  deal's submarket; sparse until corpus Phase 4 populates. When the
+  cascade falls through to Tier 5 (going-in + 25bps) the resolver
+  emits a loud telemetry event — that is the signal the platform is
+  running on its crudest fallback rather than empirical data.

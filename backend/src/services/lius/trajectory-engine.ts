@@ -73,6 +73,14 @@ function getTransitions(timeline: LifecyclePhaseTimeline[]): PhaseTransition[] {
 
 // ─── Default Growth Rates ───────────────────────────────────────────────────
 
+// D2 (CE-01): `exit_cap_trajectory` removed from this table. The hardcoded
+// constant `-0.0025` was the audit's structurally-misaligned finding — a
+// flat compression bias that could not align with the Debt module's
+// dynamic rate classification. The exit-cap trajectory is now produced by
+// the LIUS resolution cascade for `exit.exitCapRate`, which sources from
+// historical_observations (corpus) and falls through to the loud
+// going-in+25bps Tier 5 fallback when the corpus has no rows for the
+// submarket. The trajectory engine no longer carries an exit-cap default.
 const DEFAULT_GROWTH_RATES: Record<string, number> = {
   cpi: 0.03,           // standard CPI
   m26_tax_growth: 0.03,  // property tax trend
@@ -81,11 +89,19 @@ const DEFAULT_GROWTH_RATES: Record<string, number> = {
   wage_growth: 0.04,       // admin/payroll inflation
   utility_inflation: 0.035,
   replacement_reserve_growth: 0.025,
-  exit_cap_trajectory: -0.0025,  // cap rate compression baseline
 };
 
 function resolveGrowthRate(driver: string): number {
   const key = driver.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  // D2 (CE-01): exit_cap_trajectory used to live in DEFAULT_GROWTH_RATES with
+  // a value of -0.0025. It was removed. Any caller that still passes
+  // 'exit_cap_trajectory' as the growth driver hits the 0.03 generic fallback
+  // here — which is not what we want for exit cap, but it's also not silent
+  // (it's the same generic miss every unrecognized driver gets). The correct
+  // path is for the LIUS resolution to compute the exit cap year by year
+  // rather than projecting forward via a single annual growth rate; this
+  // function's contract is only for archetype-A linear growth, which the
+  // exit cap schema no longer claims to be.
   return DEFAULT_GROWTH_RATES[key] ?? 0.03;
 }
 
