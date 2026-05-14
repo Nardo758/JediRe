@@ -150,6 +150,21 @@ export interface DebtAdvisorResponse {
     irrImpactBps?: number;
     covenantCushionDeltaBps?: number;
   };
+  /**
+   * CE-09: snapshot of the auto-applied platform-default write performed by
+   * `formulateDebtPlan`. The recommendation is written to the Pro Forma's
+   * `per_year_overrides` as `resolution: 'platform'` the moment it is
+   * computed, so the deterministic model picks it up without requiring an
+   * explicit Accept. `applied` is the count of fields written; `skipped`
+   * lists fields where a user override was already present and was
+   * intentionally preserved (user > platform precedence).
+   */
+  platformDefaultsApplied?: {
+    applied: number;
+    skipped: string[];
+    phaseIndex: number;
+    fieldsApplied: string[];
+  };
 }
 
 interface CacheEntry {
@@ -800,6 +815,38 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
     }
   }
 
+  // CE-09: write the recommendation to the Pro Forma's per_year_overrides
+  // as `resolution: 'platform'` the moment the plan is computed. User
+  // overrides win (writeDebtPlatformDefaults is user-override-safe by the
+  // SQL guard in applyDebtAdvisorPlatformDefault). Failures here are
+  // non-fatal: the formulated response is still returned so the UI renders
+  // the recommendation even if the persistence layer hiccups.
+  let platformDefaultsApplied: DebtAdvisorResponse['platformDefaultsApplied'];
+  if (phase1) {
+    try {
+      const writeResult = await writeDebtPlatformDefaults(pool, dealId, phase1, 'debt_advisor');
+      platformDefaultsApplied = {
+        applied: writeResult.applied,
+        skipped: writeResult.skipped,
+        phaseIndex: 0,
+        fieldsApplied: writeResult.fieldsApplied,
+      };
+      if (writeResult.skipped.length > 0) {
+        logger.info('[DebtAdvisor] Platform defaults applied — some fields preserved by user override', {
+          dealId,
+          applied: writeResult.applied,
+          skipped: writeResult.skipped,
+        });
+      }
+    } catch (writeErr: any) {
+      logger.warn('[DebtAdvisor] Platform-default auto-apply failed during formulate — recommendation still returned', {
+        dealId,
+        error: writeErr.message,
+      });
+      platformDefaultsApplied = { applied: 0, skipped: [], phaseIndex: 0, fieldsApplied: [] };
+    }
+  }
+
   const result: DebtAdvisorResponse = {
     dealId,
     computedAt: new Date().toISOString(),
@@ -843,6 +890,7 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
       covenantCushionBps,
     },
     ...(divergence !== undefined ? { divergence } : {}),
+    ...(platformDefaultsApplied !== undefined ? { platformDefaultsApplied } : {}),
   };
 
   advisorCache.set(dealId, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
@@ -853,12 +901,73 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
     m08Source: m08Output.source,
     phases: phases.length,
     contextNotes: contextMods.narrativeNotes.length,
+    platformDefaultsApplied: platformDefaultsApplied?.applied ?? 0,
+    platformDefaultsSkipped: platformDefaultsApplied?.skipped.length ?? 0,
   });
   return result;
 }
 
 export function bustAdvisorCache(dealId: string): void {
   advisorCache.delete(dealId);
+}
+
+/**
+ * CE-09: write every debt-plan phase field to the Pro Forma's
+ * `per_year_overrides` as `resolution: 'platform'`. Idempotent (same
+ * input phase → same writes) and user-override-safe (the SQL guard in
+ * `applyDebtAdvisorPlatformDefault` skips writes where the user has
+ * `resolution: 'override'` or `'cleared'`).
+ *
+ * Pre-D3 this only fired from `acceptDebtPlan`; D3 lifts it into
+ * `formulateDebtPlan` so the recommendation is live the moment it's
+ * computed, exactly like every other platform-layer assumption.
+ *
+ * Returns the count applied and the list of fields skipped because a
+ * user override was already in place — surfaced on
+ * `DebtAdvisorResponse.platformDefaultsApplied` so the UI can flag
+ * "your override is winning over the platform recommendation here".
+ */
+async function writeDebtPlatformDefaults(
+  pool: Pool,
+  dealId: string,
+  phase: DebtPhase,
+  source: string = 'debt_advisor'
+): Promise<{ applied: number; skipped: string[]; fieldsApplied: string[] }> {
+  const loanId = 'senior';
+
+  // For floating loans Configure computes effRate = sofr.platform + spread.platform,
+  // NOT interestRate.platform. Write the two components separately so Configure
+  // resolves the identical rate the Advisor recommended.
+  const isFloating = phase.rateType === 'Floating';
+  const spreadDecimal = (phase.spreadBps ?? 0) / 10000;
+  const sofrDecimal   = isFloating ? Math.max(0, phase.rateEst - spreadDecimal) : null;
+
+  const writes: Array<[string, number | string | null]> = [
+    ['loanAmount', phase.loanAmountEst],
+    ['termYears',  phase.termYears],
+    ['amortYears', phase.amortYears],
+    ['ioMonths',   phase.ioMonths],
+    ['origFee',    phase.origFee],
+    ['exitFee',    phase.exitFee ?? 0],
+    ['rateType',   phase.rateType],
+    ['prepayType', phase.prepayType],
+    ...(isFloating
+      ? ([['sofr', sofrDecimal], ['spread', spreadDecimal]] as Array<[string, number | string | null]>)
+      : ([['interestRate', phase.rateEst]] as Array<[string, number | string | null]>)
+    ),
+  ];
+
+  const results = await Promise.all(
+    writes.map(async ([field, value]) => {
+      const applied = await applyDebtAdvisorPlatformDefault(pool, dealId, loanId, field, value, source);
+      return { field, applied };
+    })
+  );
+
+  const fieldsApplied = results.filter(r => r.applied).map(r => r.field);
+  const skipped = results.filter(r => !r.applied).map(r => r.field);
+
+  return { applied: fieldsApplied.length, skipped, fieldsApplied };
 }
 
 export async function acceptDebtPlan(
@@ -877,39 +986,13 @@ export async function acceptDebtPlan(
     return { success: false, message: `Phase index ${phaseIndex} not found in recommended stack` };
   }
 
+  // CE-09: the platform defaults already fired in formulateDebtPlan.
+  // Accept is now an acknowledgment + alert-registration step; we re-run
+  // the write as a confirmation (idempotent, still respects user overrides).
   const pool = getPool();
-  const loanId = 'senior';
-  const source = 'debt_advisor';
-
-  // For floating loans Configure computes effRate = sofr.platform + spread.platform,
-  // NOT interestRate.platform. Write the two components separately so Configure
-  // resolves the identical rate the Advisor recommended.
-  const isFloating = phase.rateType === 'Floating';
-  const spreadDecimal = (phase.spreadBps ?? 0) / 10000;
-  const sofrDecimal   = isFloating ? Math.max(0, phase.rateEst - spreadDecimal) : null;
-
-  const rateWrites: Promise<void>[] = isFloating
-    ? [
-        applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'sofr',   sofrDecimal,   source),
-        applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'spread', spreadDecimal, source),
-      ]
-    : [
-        applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'interestRate', phase.rateEst, source),
-      ];
-  const overrideCount = 8 + rateWrites.length;
-
+  let result: { applied: number; skipped: string[]; fieldsApplied: string[] };
   try {
-    await Promise.all([
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'loanAmount',  phase.loanAmountEst, source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'termYears',   phase.termYears,     source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'amortYears',  phase.amortYears,    source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'ioMonths',    phase.ioMonths,      source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'origFee',     phase.origFee,       source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'exitFee',     phase.exitFee ?? 0,  source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'rateType',    phase.rateType,      source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'prepayType',  phase.prepayType,    source),
-      ...rateWrites,
-    ]);
+    result = await writeDebtPlatformDefaults(pool, dealId, phase, 'debt_advisor');
   } catch (overrideErr: any) {
     logger.error('[DebtAdvisor] Platform-default pipeline failed on accept — Configure fields not populated', {
       dealId,
@@ -921,16 +1004,18 @@ export async function acceptDebtPlan(
 
   bustAdvisorCache(dealId);
 
-  logger.info('[DebtAdvisor] Plan accepted, platform defaults written to Configure', {
+  logger.info('[DebtAdvisor] Plan accepted (confirmation — defaults already live from formulate)', {
     dealId,
     phaseIndex,
     loanAmount: phase.loanAmountEst,
     rate: phase.rateEst,
-    overridesApplied: overrideCount,
+    overridesApplied: result.applied,
+    overridesSkipped: result.skipped,
   });
 
-  return {
-    success: true,
-    message: `Debt plan accepted: ${overrideCount} fields set as platform defaults in Configure`,
-  };
+  const msg = result.skipped.length > 0
+    ? `Debt plan confirmed: ${result.applied} platform defaults applied, ${result.skipped.length} field(s) preserved by user override (${result.skipped.join(', ')})`
+    : `Debt plan confirmed: ${result.applied} platform defaults applied`;
+
+  return { success: true, message: msg };
 }

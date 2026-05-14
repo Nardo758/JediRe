@@ -4899,6 +4899,15 @@ export async function applyFinancialsOverride(
  *
  * Uses the same key format (debt:{loanId}:{fieldName}) as the F9 resolver's
  * debtOvr() helper, ensuring full compatibility with the layered value system.
+ *
+ * CE-09: this function is now fired automatically from `formulateDebtPlan`
+ * the moment a recommendation is computed (not only on the user clicking
+ * Accept). To preserve user-override precedence, the SQL guard below skips
+ * the write when the existing key already carries `resolution = 'override'`
+ * (or 'cleared', meaning the user explicitly nulled it). Same-key
+ * recomputation that already has a 'platform' entry is replaced — that is
+ * the normal refresh case. Returns true when the write was applied, false
+ * when a user override prevented it.
  */
 export async function applyDebtAdvisorPlatformDefault(
   pool: Pool,
@@ -4907,7 +4916,7 @@ export async function applyDebtAdvisorPlatformDefault(
   fieldName: string,
   value: number | string | null,
   source: string = 'debt_advisor'
-): Promise<void> {
+): Promise<boolean> {
   const key = `debt:${loanId}:${fieldName}`;
   const entry = {
     field: key,
@@ -4917,7 +4926,7 @@ export async function applyDebtAdvisorPlatformDefault(
     resolution: 'platform',
     source,
   };
-  await pool.query(
+  const result = await pool.query(
     `UPDATE deal_assumptions
         SET per_year_overrides = jsonb_set(
               COALESCE(per_year_overrides, '{}'::jsonb),
@@ -4925,7 +4934,18 @@ export async function applyDebtAdvisorPlatformDefault(
               $3::jsonb
             ),
             updated_at = NOW()
-      WHERE deal_id = $1`,
-    [dealId, `{${key}}`, JSON.stringify(entry)]
+      WHERE deal_id = $1
+        AND COALESCE(
+              per_year_overrides #>> ($4::text[]),
+              ''
+            ) NOT IN ('override', 'cleared')`,
+    [
+      dealId,
+      `{${key}}`,
+      JSON.stringify(entry),
+      // jsonb path to the nested resolution field: per_year_overrides.{key}.resolution
+      `{${key},resolution}`,
+    ]
   );
+  return (result.rowCount ?? 0) > 0;
 }

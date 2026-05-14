@@ -375,7 +375,22 @@ function MarketContextPanel({ env }: { env: RateEnvironmentResult }) {
         );
       })()}
       <div style={{ marginTop: 10 }}>
-        <div style={{ ...mono, color: C.textMuted, fontSize: 9, marginBottom: 4 }}>SOFR FORWARD CURVE</div>
+        <div style={{ ...mono, color: C.textMuted, fontSize: 9, marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>SOFR FORWARD CURVE</span>
+          {/* CE-06 telemetry surface: warn when the classification is riding the
+              level-shift heuristic because the NY Fed SOFRAI 30/90/180-day
+              averages were absent. The fallback behavior itself is unchanged. */}
+          {env.curveMode === 'fallback_heuristic' && (
+            <span style={{
+              ...mono, fontSize: 8, fontWeight: 700,
+              color: C.amber, padding: '1px 5px',
+              border: `1px solid ${C.amber}60`, borderRadius: 2,
+              letterSpacing: '0.05em',
+            }} title="SOFR 30/90/180-day averages unavailable — curve built from level-shift heuristic on spot SOFR. See CE-06.">
+              HEURISTIC FALLBACK
+            </span>
+          )}
+        </div>
         <svg width="100%" height={32} viewBox="0 0 200 32">
           <defs>
             <linearGradient id="curveGrad" x1="0" y1="0" x2="0" y2="1">
