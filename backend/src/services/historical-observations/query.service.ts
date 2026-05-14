@@ -116,26 +116,16 @@ export class CorpusQueryService {
     }
 
     // Subject property filter
-    // Double-guard: flag must be TRUE AND the row's own deal must currently be
-    // in owned/closed/portfolio.  For rows that have deal_id populated (the
-    // normal path after #722), we join directly on deals.id.  For rows whose
-    // deal_id is still NULL (pre-backfill), we fall back to the parcel JOIN so
-    // they are neither silently returned nor silently dropped.
+    // Guard: flag must be TRUE AND the row's own deal_id must point to a deal
+    // currently in owned/closed/portfolio status.  No parcel-based fallback —
+    // that path is ambiguous when a parcel appears in multiple deals.
+    // Rows with deal_id IS NULL (pre-backfill) are excluded; run the backfill
+    // script to populate deal_id before querying subject-only rows.
     if (q.isSubjectOnly) {
       whereClauses.push(`(
         is_subject_property = TRUE
-        AND (
-          deal_id IN (SELECT id FROM deals WHERE status IN ('owned', 'closed', 'portfolio'))
-          OR (
-            deal_id IS NULL
-            AND parcel_id IN (
-              SELECT COALESCE(p.parcel_id, dp.property_id::text)
-              FROM deal_properties dp
-              LEFT JOIN properties p ON p.id = dp.property_id
-              JOIN deals d ON d.id = dp.deal_id
-              WHERE d.status IN ('owned', 'closed', 'portfolio')
-            )
-          )
+        AND deal_id IN (
+          SELECT id FROM deals WHERE status IN ('owned', 'closed', 'portfolio')
         )
       )`);
     }

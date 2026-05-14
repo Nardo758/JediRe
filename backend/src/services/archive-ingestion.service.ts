@@ -289,7 +289,7 @@ function inferDealType(
 
 // ─── Folder Scanner ───────────────────────────────────────────────────────────
 
-export function scanArchiveFolder(archivePath: string, rootLabel?: string): ArchiveDealFolder[] {
+export function scanArchiveFolder(archivePath: string, rootLabel?: string, fileClassifications?: Record<string, ArchiveFile['type']>): ArchiveDealFolder[] {
   const folders: ArchiveDealFolder[] = [];
   
   if (!fs.existsSync(archivePath)) {
@@ -304,7 +304,7 @@ export function scanArchiveFolder(archivePath: string, rootLabel?: string): Arch
     if (!entry.isDirectory()) continue;
     
     const folderPath = path.join(archivePath, entry.name);
-    const files = findFilesRecursive(folderPath);
+    const files = findFilesRecursive(folderPath, 3, 0, fileClassifications);
     
     if (files.length === 0) continue;
     
@@ -326,7 +326,7 @@ export function scanArchiveFolder(archivePath: string, rootLabel?: string): Arch
         return {
           name: e.name,
           path: path.join(archivePath, e.name),
-          type: classifyFile(e.name),
+          type: fileClassifications?.[e.name] ?? classifyFile(e.name),
           extension: ext,
         } as ArchiveFile;
       })
@@ -346,7 +346,7 @@ export function scanArchiveFolder(archivePath: string, rootLabel?: string): Arch
   return folders;
 }
 
-function findFilesRecursive(dirPath: string, maxDepth = 3, currentDepth = 0): ArchiveFile[] {
+function findFilesRecursive(dirPath: string, maxDepth = 3, currentDepth = 0, fileClassifications?: Record<string, ArchiveFile['type']>): ArchiveFile[] {
   const files: ArchiveFile[] = [];
   
   if (currentDepth > maxDepth) return files;
@@ -358,14 +358,14 @@ function findFilesRecursive(dirPath: string, maxDepth = 3, currentDepth = 0): Ar
       const fullPath = path.join(dirPath, entry.name);
       
       if (entry.isDirectory()) {
-        files.push(...findFilesRecursive(fullPath, maxDepth, currentDepth + 1));
+        files.push(...findFilesRecursive(fullPath, maxDepth, currentDepth + 1, fileClassifications));
       } else if (entry.isFile()) {
         const ext = getExtension(entry.name);
         if (['xlsx', 'xls', 'pdf', 'csv'].includes(ext)) {
           files.push({
             name: entry.name,
             path: fullPath,
-            type: classifyFile(entry.name),
+            type: fileClassifications?.[entry.name] ?? classifyFile(entry.name),
             extension: ext,
           });
         }
@@ -749,7 +749,17 @@ function computeDQ(fields: Record<string, unknown>): number {
 
 export async function ingestArchiveDeals(
   archivePath: string,
-  options: { limit?: number; skipExisting?: boolean; rootLabel?: string; existingAssetId?: string; createdBy?: string } = {}
+  options: {
+    limit?: number;
+    skipExisting?: boolean;
+    rootLabel?: string;
+    existingAssetId?: string;
+    createdBy?: string;
+    /** Per-file doc-type overrides keyed by original filename (basename only).
+     *  Values must match ArchiveFile['type']: 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER'.
+     *  When present, overrides the auto-detected type from classifyFile(). */
+    fileClassifications?: Record<string, ArchiveFile['type']>;
+  } = {}
 ): Promise<ArchiveScanResult> {
   const pool = getPool();
   const result: ArchiveScanResult = {
@@ -763,7 +773,7 @@ export async function ingestArchiveDeals(
   logger.info(`Starting archive ingestion from: ${archivePath}`);
   
   // Scan for deal folders (pass rootLabel so flat uploads get named correctly)
-  const folders = scanArchiveFolder(archivePath, options.rootLabel);
+  const folders = scanArchiveFolder(archivePath, options.rootLabel, options.fileClassifications);
   result.totalFolders = folders.length;
   
   if (options.limit) {

@@ -74,6 +74,7 @@ interface UploadJob {
   customLabel?: string;
   assetId?: string; // ID of created/updated asset (for detail modal)
   fileMetadata?: string; // JSON-encoded per-file classification: [{docType, obsDate}]
+  fileClassificationMap?: Record<string, 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER'>; // filename → resolved ArchiveFile type
   assetsNeedingDetails: string[]; // Asset IDs with low DQ scores
   enrichment?: {
     status: 'pending' | 'running' | 'complete' | 'skipped';
@@ -100,13 +101,31 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
   const customLabel = req.body?.customLabel as string | undefined;
   const assetId = req.body?.assetId as string | undefined;
   const fileMetadata = req.body?.fileMetadata as string | undefined;
-  
+
   if (!files || files.length === 0) {
     return res.status(400).json({ success: false, error: 'No files uploaded' });
   }
-  
+
+  // Build filename → doc-type map from user-confirmed classifications (same order as FormData files)
+  let fileClassificationMap: Record<string, 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER'> | undefined;
+  if (fileMetadata) {
+    try {
+      const parsed = JSON.parse(fileMetadata) as Array<{ docType: string; obsDate?: string }>;
+      const validTypes = new Set(['T12', 'RENT_ROLL', 'TAX_BILL', 'OM', 'OTHER']);
+      fileClassificationMap = {};
+      files.forEach((f, i) => {
+        const dt = parsed[i]?.docType;
+        if (dt && validTypes.has(dt)) {
+          fileClassificationMap![f.originalname] = dt as 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER';
+        }
+      });
+    } catch {
+      logger.warn('[bulk-upload] Failed to parse fileMetadata JSON — using auto-detection');
+    }
+  }
+
   const uploadPath = files[0].destination;
-  
+
   // Create job
   const job: UploadJob = {
     id: jobId,
@@ -121,6 +140,7 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
     customLabel,
     assetId,
     fileMetadata,
+    fileClassificationMap,
     assetsNeedingDetails: [],
     createdAt: new Date(),
   };
@@ -324,6 +344,7 @@ async function processUploadJob(job: UploadJob): Promise<void> {
       rootLabel,
       existingAssetId: job.assetId || undefined,
       createdBy: job.userId || undefined,
+      fileClassifications: job.fileClassificationMap,
     });
 
     job.dealsCreated = result.parsedFolders;
@@ -420,13 +441,14 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
       rootLabel = r.rows[0]?.property_name || undefined;
     }
 
-    // Run archive ingestion
+    // Run archive ingestion (ZIP uploads don't carry per-file classifications from frontend)
     const result = await ingestArchiveDeals(job.uploadPath, {
       skipExisting: false,
       rootLabel,
       existingAssetId: job.assetId || undefined,
       createdBy: job.userId || undefined,
     });
+
 
     job.dealsCreated = result.parsedFolders;
     job.processedFiles = job.totalFiles;

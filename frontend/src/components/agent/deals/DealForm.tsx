@@ -22,6 +22,7 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
     expectedCloseDate: deal?.expectedCloseDate || null,
     priority: deal?.priority || 'medium',
     notes: deal?.notes || '',
+    deal_category: (deal as Record<string, unknown>)?.deal_category as 'pipeline' | 'portfolio' | undefined ?? 'pipeline',
   });
 
   const commissionEstimate = (formData.dealValue * formData.commissionRate) / 100;
@@ -172,6 +173,41 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
                   disabled={isSubmitting}
                 />
                 <div className="text-center font-medium capitalize">{type}</div>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Category: Pipeline vs Portfolio */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Category
+          </label>
+          <div className="flex gap-3">
+            {(['pipeline', 'portfolio'] as const).map(cat => (
+              <label
+                key={cat}
+                className={`
+                  flex-1 border-2 rounded-lg p-3 cursor-pointer transition-all
+                  ${formData.deal_category === cat
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-300 hover:border-blue-300'
+                  }
+                `}
+              >
+                <input
+                  type="radio"
+                  name="deal_category"
+                  value={cat}
+                  checked={formData.deal_category === cat}
+                  onChange={(e) => updateField('deal_category', e.target.value as 'pipeline' | 'portfolio')}
+                  className="sr-only"
+                  disabled={isSubmitting}
+                />
+                <div className="text-center font-medium capitalize">{cat}</div>
+                <div className="text-center text-xs text-gray-500 mt-0.5">
+                  {cat === 'pipeline' ? 'Active deal pursuit' : 'Owned / held asset'}
+                </div>
               </label>
             ))}
           </div>
