@@ -145,12 +145,13 @@ class CloudStorageService {
   
   // ─── Bulk Upload ──────────────────────────────────────────────────────────
   
-  async uploadFiles(files: File[], onProgress?: (progress: number) => void, dealId?: string, customLabel?: string, assetId?: string): Promise<BulkUploadJob> {
+  async uploadFiles(files: File[], onProgress?: (progress: number) => void, dealId?: string, customLabel?: string, assetId?: string, fileMetadata?: string): Promise<BulkUploadJob> {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
     if (dealId) formData.append('dealId', dealId);
     if (customLabel) formData.append('customLabel', customLabel);
     if (assetId) formData.append('assetId', assetId);
+    if (fileMetadata) formData.append('fileMetadata', fileMetadata);
     
     const response = await apiClient.post('/api/v1/bulk-upload/files', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

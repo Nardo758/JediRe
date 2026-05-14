@@ -227,10 +227,16 @@ const UploadModal: React.FC<{
     setUploading(true);
     setError(null);
     try {
+      const fileMetadata = JSON.stringify(
+        entries.map(e => ({ docType: e.docType, obsDate: e.obsDate })),
+      );
       await cloudStorageService.uploadFiles(
         entries.map(e => e.file),
         p => setProgress(p),
         dealId,
+        undefined,
+        undefined,
+        fileMetadata,
       );
       setDone(true);
       onUploaded();

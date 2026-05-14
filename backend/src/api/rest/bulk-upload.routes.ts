@@ -73,6 +73,7 @@ interface UploadJob {
   dealId?: string;
   customLabel?: string;
   assetId?: string; // ID of created/updated asset (for detail modal)
+  fileMetadata?: string; // JSON-encoded per-file classification: [{docType, obsDate}]
   assetsNeedingDetails: string[]; // Asset IDs with low DQ scores
   enrichment?: {
     status: 'pending' | 'running' | 'complete' | 'skipped';
@@ -98,6 +99,7 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
   const dealId = req.body?.dealId as string | undefined;
   const customLabel = req.body?.customLabel as string | undefined;
   const assetId = req.body?.assetId as string | undefined;
+  const fileMetadata = req.body?.fileMetadata as string | undefined;
   
   if (!files || files.length === 0) {
     return res.status(400).json({ success: false, error: 'No files uploaded' });
@@ -118,6 +120,7 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
     dealId,
     customLabel,
     assetId,
+    fileMetadata,
     assetsNeedingDetails: [],
     createdAt: new Date(),
   };
