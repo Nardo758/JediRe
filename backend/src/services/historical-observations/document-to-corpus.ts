@@ -107,9 +107,7 @@ function computeTier(signals: string[]): string {
  * primary target.
  */
 const SUBJECT_PROPERTY_STATUSES = new Set([
-  'lead', 'evaluating', 'underwriting', 'negotiating',
-  'in_diligence', 'closing', 'owned', 'closed', 'portfolio',
-  'active', 'due_diligence', 'closed_won',
+  'owned', 'closed', 'portfolio',
 ]);
 
 /**

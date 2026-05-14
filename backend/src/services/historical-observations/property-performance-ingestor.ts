@@ -94,6 +94,7 @@ export function t12ToCorpusRow(
   parcelId: string,
   observationDate: Date,
   propertyId: string,
+  isSubjectProperty = true,
 ): PartialHistoricalObservationRow {
   const { summary, months } = data;
 
@@ -123,7 +124,7 @@ export function t12ToCorpusRow(
     observationDate,
     geographyLevel: 'parcel',
     observationWindow: 'monthly',
-    isSubjectProperty: true,
+    isSubjectProperty,
     sourceSignals: ['t12'],
     propertyUnitCount: monthWithUnits?.totalUnits ?? summary.totalUnits ?? null,
     propertyOccupancy: avgOccupancy,
@@ -138,6 +139,7 @@ export function rentRollToCorpusRow(
   parcelId: string,
   observationDate: Date,
   propertyId: string,
+  isSubjectProperty = true,
 ): PartialHistoricalObservationRow {
   const units = data.units;
 
@@ -208,7 +210,7 @@ export function rentRollToCorpusRow(
     observationDate,
     geographyLevel: 'parcel',
     observationWindow: 'monthly',
-    isSubjectProperty: true,
+    isSubjectProperty,
     sourceSignals: ['rent_roll'],
     propertyUnitCount: totalUnits,
     propertyOccupancy: occupancy,
@@ -259,12 +261,23 @@ export async function ingestPropertyPerformance(
     return { inserted: false, backfillCount: 0, warnings };
   }
 
+  // Derive is_subject_property from deal status (owned/closed/portfolio only)
+  const SUBJECT_STATUSES = new Set(['owned', 'closed', 'portfolio']);
+  let dealStatus = 'unknown';
+  try {
+    const dsResult = await query('SELECT status FROM deals WHERE id = $1', [doc.dealId]);
+    dealStatus = (dsResult.rows[0]?.status as string) ?? 'unknown';
+  } catch {
+    warnings.push('Could not resolve deal status for is_subject_property — defaulting to FALSE');
+  }
+  const isSubjectProperty = SUBJECT_STATUSES.has(dealStatus);
+
   // Build corpus row
   let row: PartialHistoricalObservationRow;
   if (doc.documentType === 'T12' && doc.t12Data) {
-    row = t12ToCorpusRow(doc.t12Data, doc.parcelId, obsDate, doc.propertyId);
+    row = t12ToCorpusRow(doc.t12Data, doc.parcelId, obsDate, doc.propertyId, isSubjectProperty);
   } else if (doc.documentType === 'RENT_ROLL' && doc.rentRollData) {
-    row = rentRollToCorpusRow(doc.rentRollData, doc.parcelId, obsDate, doc.propertyId);
+    row = rentRollToCorpusRow(doc.rentRollData, doc.parcelId, obsDate, doc.propertyId, isSubjectProperty);
   } else {
     warnings.push(`Unsupported document type: ${doc.documentType} or missing parsed data`);
     return { inserted: false, backfillCount: 0, warnings };

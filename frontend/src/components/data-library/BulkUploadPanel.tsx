@@ -15,6 +15,8 @@ import { AssetDetailModal } from './AssetDetailModal';
 
 interface BulkUploadPanelProps {
   onUploadComplete?: () => void;
+  preselectedDealId?: string;
+  preselectedDealName?: string;
 }
 
 interface Deal {
@@ -39,18 +41,24 @@ const C = {
   primary: '#E2E8F0',
 };
 
-export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComplete }) => {
+export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({
+  onUploadComplete,
+  preselectedDealId,
+  preselectedDealName,
+}) => {
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadJob, setUploadJob] = useState<BulkUploadJob | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Deal linking
+  // Deal linking — pre-seed from props when launched from a DealFolder
   const [deals, setDeals] = useState<Deal[]>([]);
-  const [selectedDealId, setSelectedDealId] = useState<string>('');
-  const [dealsLoading, setDealsLoading] = useState(true);
-  const [linkMode, setLinkMode] = useState<'none' | 'pipeline' | 'custom'>('none');
+  const [selectedDealId, setSelectedDealId] = useState<string>(preselectedDealId ?? '');
+  const [dealsLoading, setDealsLoading] = useState(!preselectedDealId);
+  const [linkMode, setLinkMode] = useState<'none' | 'pipeline' | 'custom'>(
+    preselectedDealId ? 'pipeline' : 'none',
+  );
   const [customLabel, setCustomLabel] = useState('');
   
   // Asset detail modal (for custom-label uploads)
@@ -61,8 +69,16 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
 
-  // Load deals for the selector
+  // Load deals for the selector (skip when a deal is already pre-selected)
   useEffect(() => {
+    if (preselectedDealId) {
+      // Inject a synthetic deal entry so the confirmation badge renders
+      if (preselectedDealName) {
+        setDeals([{ id: preselectedDealId, name: preselectedDealName }]);
+      }
+      setDealsLoading(false);
+      return;
+    }
     apiClient.get('/api/v1/deals?limit=100')
       .then(res => {
         const list = res.data?.deals || res.data?.data || [];
@@ -70,7 +86,7 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
       })
       .catch(() => setDeals([]))
       .finally(() => setDealsLoading(false));
-  }, []);
+  }, [preselectedDealId, preselectedDealName]);
   
   // Poll upload job status
   useEffect(() => {

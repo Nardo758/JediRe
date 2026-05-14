@@ -77,6 +77,12 @@ export class DealsService {
 
     const deal = result.rows[0];
 
+    // For portfolio deals, set status = 'portfolio' so corpus derivation is correct
+    if ((dto as any).deal_category === 'portfolio') {
+      await this.db.query(`UPDATE deals SET status = 'portfolio' WHERE id = $1`, [deal.id]);
+      deal.status = 'portfolio';
+    }
+
     // Initialize deal modules based on tier
     await this.initializeModules(deal.id, tier);
 
@@ -288,6 +294,8 @@ export class DealsService {
         updates.push(`archived_at = NOW()`);
       }
     }
+    // Track whether a status transition is happening so we can sync corpus rows below
+    const statusChangingTo: string | undefined = dto.status;
 
     if (updates.length === 0) {
       throw new BadRequestException('No fields to update');
@@ -300,6 +308,27 @@ export class DealsService {
        RETURNING id, name, status, updated_at`,
       values
     );
+
+    // Reactive corpus sync: when deal status transitions in/out of owned/closed/portfolio,
+    // update is_subject_property on all corpus rows whose parcel belongs to this deal.
+    if (statusChangingTo) {
+      const SUBJECT_STATUSES = ['owned', 'closed', 'portfolio'];
+      const isSubjectProperty = SUBJECT_STATUSES.includes(statusChangingTo);
+      await this.db.query(
+        `UPDATE historical_observations
+            SET is_subject_property = $1, updated_at = NOW()
+          WHERE parcel_id IN (
+            SELECT COALESCE(p.parcel_id, dp.property_id::text)
+              FROM deal_properties dp
+              LEFT JOIN properties p ON p.id = dp.property_id
+             WHERE dp.deal_id = $2
+          )`,
+        [isSubjectProperty, dealId],
+      ).catch(err => {
+        // Non-fatal: corpus sync failure should not block the deal update
+        console.error('[DealsService] corpus is_subject_property sync failed:', err);
+      });
+    }
 
     await this.logActivity(dealId, userId, 'updated', `Deal updated: ${dto.name || 'properties changed'}`);
 

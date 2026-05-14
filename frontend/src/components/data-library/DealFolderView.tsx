@@ -6,6 +6,7 @@ import {
   type DealFolderManifestEntry,
   type DealStatus,
 } from '@/services/dataLibrary.service';
+import { BulkUploadPanel } from './BulkUploadPanel';
 
 const fmtSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -141,12 +142,76 @@ const FileRow: React.FC<{ file: DataLibraryFile; dimmed?: boolean }> = ({ file, 
   );
 };
 
+// ── Upload modal overlay ─────────────────────────────────────────────────────
+
+const UploadModal: React.FC<{
+  dealId: string;
+  dealName: string;
+  onClose: () => void;
+  onUploaded: () => void;
+}> = ({ dealId, dealName, onClose, onUploaded }) => (
+  <div
+    onClick={onClose}
+    style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(0,0,0,0.72)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '24px 16px',
+    }}
+  >
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{
+        width: '100%', maxWidth: 560, maxHeight: '90vh',
+        background: '#0F1117', border: '1px solid #1E2D45',
+        borderRadius: 8, overflow: 'auto',
+        display: 'flex', flexDirection: 'column',
+      }}
+    >
+      {/* Modal header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px', borderBottom: '1px solid #1E2D45',
+        fontFamily: "'JetBrains Mono', monospace",
+      }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#00BCD4', letterSpacing: 0.5 }}>
+            BULK UPLOAD HISTORICAL
+          </div>
+          <div style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>{dealName}</div>
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            background: 'none', border: 'none', color: '#475569',
+            cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px',
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Panel */}
+      <div style={{ padding: 16 }}>
+        <BulkUploadPanel
+          preselectedDealId={dealId}
+          preselectedDealName={dealName}
+          onUploadComplete={() => {
+            onUploaded();
+          }}
+        />
+      </div>
+    </div>
+  </div>
+);
+
 // ── Deal accordion ────────────────────────────────────────────────────────────
 
 const DealFolder: React.FC<{
   entry: DealFolderManifestEntry;
   dimmed?: boolean;
-}> = ({ entry, dimmed }) => {
+  onUploadClick: (dealId: string, dealName: string) => void;
+}> = ({ entry, dimmed, onUploadClick }) => {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<DataLibraryFile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -196,6 +261,29 @@ const DealFolder: React.FC<{
             last {fmtDate(entry.last_upload_at as any)}
           </span>
         )}
+        {/* Bulk upload affordance */}
+        <button
+          onClick={e => { e.stopPropagation(); onUploadClick(entry.deal_id, entry.deal_name); }}
+          title="Bulk upload historical documents for this deal"
+          style={{
+            marginLeft: 8, padding: '3px 8px',
+            background: 'transparent', border: '1px solid #1e3a5f',
+            color: '#60a5fa', fontSize: 10, fontWeight: 600,
+            cursor: 'pointer', borderRadius: 3, letterSpacing: 0.3,
+            fontFamily: 'inherit', flexShrink: 0,
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLButtonElement).style.background = '#1e3a5f';
+            (e.currentTarget as HTMLButtonElement).style.borderColor = '#60a5fa';
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+            (e.currentTarget as HTMLButtonElement).style.borderColor = '#1e3a5f';
+          }}
+        >
+          ↑ Upload
+        </button>
       </div>
 
       {open && (
@@ -303,8 +391,9 @@ export const DealFolderView: React.FC = () => {
   const [manifest, setManifest] = useState<DealFolderManifest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [uploadModal, setUploadModal] = useState<{ dealId: string; dealName: string } | null>(null);
 
-  useEffect(() => {
+  const loadManifest = useCallback(() => {
     let cancelled = false;
     setLoading(true);
     dataLibraryService
@@ -313,6 +402,19 @@ export const DealFolderView: React.FC = () => {
       .catch(e => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    return loadManifest();
+  }, [loadManifest]);
+
+  const handleUploadClick = useCallback((dealId: string, dealName: string) => {
+    setUploadModal({ dealId, dealName });
+  }, []);
+
+  const handleUploaded = useCallback(() => {
+    setUploadModal(null);
+    loadManifest();
+  }, [loadManifest]);
 
   if (loading) {
     return <div style={{ textAlign: 'center', padding: 40, color: '#8892b0' }}>Loading deal folders…</div>;
@@ -344,36 +446,47 @@ export const DealFolderView: React.FC = () => {
   }
 
   return (
-    <div style={{
-      background: '#0d1117', border: '1px solid #1e2740', borderRadius: 8,
-      overflow: 'hidden', fontSize: 13,
-    }}>
-      {hasActive && (
-        <>
-          <SectionHeader label="Active Portfolio" count={manifest.active.length} />
-          {manifest.active.map(entry => (
-            <DealFolder key={entry.deal_id} entry={entry} />
-          ))}
-        </>
-      )}
+    <>
+      <div style={{
+        background: '#0d1117', border: '1px solid #1e2740', borderRadius: 8,
+        overflow: 'hidden', fontSize: 13,
+      }}>
+        {hasActive && (
+          <>
+            <SectionHeader label="Active Portfolio" count={manifest.active.length} />
+            {manifest.active.map(entry => (
+              <DealFolder key={entry.deal_id} entry={entry} onUploadClick={handleUploadClick} />
+            ))}
+          </>
+        )}
 
-      {hasArchived && (
-        <>
-          <SectionHeader label="Archived" count={manifest.archived.length} dimmed />
-          {manifest.archived.map(entry => (
-            <DealFolder key={entry.deal_id} entry={entry} dimmed />
-          ))}
-        </>
-      )}
+        {hasArchived && (
+          <>
+            <SectionHeader label="Archived" count={manifest.archived.length} dimmed />
+            {manifest.archived.map(entry => (
+              <DealFolder key={entry.deal_id} entry={entry} dimmed onUploadClick={handleUploadClick} />
+            ))}
+          </>
+        )}
 
-      {hasUnaffiliated && (
-        <>
-          {(hasActive || hasArchived) && (
-            <SectionHeader label="Unaffiliated" count={manifest.unaffiliated_file_count} dimmed />
-          )}
-          <UnaffiliatedFolder count={manifest.unaffiliated_file_count} />
-        </>
+        {hasUnaffiliated && (
+          <>
+            {(hasActive || hasArchived) && (
+              <SectionHeader label="Unaffiliated" count={manifest.unaffiliated_file_count} dimmed />
+            )}
+            <UnaffiliatedFolder count={manifest.unaffiliated_file_count} />
+          </>
+        )}
+      </div>
+
+      {uploadModal && (
+        <UploadModal
+          dealId={uploadModal.dealId}
+          dealName={uploadModal.dealName}
+          onClose={() => setUploadModal(null)}
+          onUploaded={handleUploaded}
+        />
       )}
-    </div>
+    </>
   );
 };

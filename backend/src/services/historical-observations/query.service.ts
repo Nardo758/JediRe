@@ -116,8 +116,20 @@ export class CorpusQueryService {
     }
 
     // Subject property filter
+    // Double-guard: flag must be TRUE AND the deal must currently be in
+    // owned/closed/portfolio so stale rows from pipeline deals that were
+    // later demoted don't leak through if a backfill hasn't run yet.
     if (q.isSubjectOnly) {
-      whereClauses.push('is_subject_property = TRUE');
+      whereClauses.push(`(
+        is_subject_property = TRUE
+        AND parcel_id IN (
+          SELECT COALESCE(p.parcel_id, dp.property_id::text)
+          FROM deal_properties dp
+          LEFT JOIN properties p ON p.id = dp.property_id
+          JOIN deals d ON d.id = dp.deal_id
+          WHERE d.status IN ('owned', 'closed', 'portfolio')
+        )
+      )`);
     }
     if (q.isUnlabeledOnly) {
       whereClauses.push('is_subject_property = FALSE');
