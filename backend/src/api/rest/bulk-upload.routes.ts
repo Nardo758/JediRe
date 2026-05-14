@@ -74,7 +74,7 @@ interface UploadJob {
   customLabel?: string;
   assetId?: string; // ID of created/updated asset (for detail modal)
   fileMetadata?: string; // JSON-encoded per-file classification: [{docType, obsDate}]
-  fileClassificationMap?: Record<string, 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER'>; // filename → resolved ArchiveFile type
+  fileClassificationMap?: Record<string, { docType: 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER'; obsDate?: string }>; // safeName → {docType, obsDate}
   assetsNeedingDetails: string[]; // Asset IDs with low DQ scores
   enrichment?: {
     status: 'pending' | 'running' | 'complete' | 'skipped';
@@ -106,8 +106,9 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
     return res.status(400).json({ success: false, error: 'No files uploaded' });
   }
 
-  // Build filename → doc-type map from user-confirmed classifications (same order as FormData files)
-  let fileClassificationMap: Record<string, 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER'> | undefined;
+  // Build filename → classification map from user-confirmed classifications (same order as FormData files).
+  // Key by the sanitized disk filename (same regex multer uses) so archive-ingestion lookups match.
+  let fileClassificationMap: Record<string, { docType: 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER'; obsDate?: string }> | undefined;
   if (fileMetadata) {
     try {
       const parsed = JSON.parse(fileMetadata) as Array<{ docType: string; obsDate?: string }>;
@@ -116,7 +117,12 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
       files.forEach((f, i) => {
         const dt = parsed[i]?.docType;
         if (dt && validTypes.has(dt)) {
-          fileClassificationMap![f.originalname] = dt as 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER';
+          // Use same sanitization as multer storage so lookups match the on-disk filename
+          const safeName = f.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+          fileClassificationMap![safeName] = {
+            docType: dt as 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER',
+            obsDate: parsed[i]?.obsDate,
+          };
         }
       });
     } catch {

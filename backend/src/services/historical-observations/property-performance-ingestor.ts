@@ -283,6 +283,9 @@ export async function ingestPropertyPerformance(
     return { inserted: false, backfillCount: 0, warnings };
   }
 
+  // Thread dealId so the row is linkable without relying on parcel-join fallback
+  row = { ...row, dealId: doc.dealId ?? null };
+
   // Insert the row
   const rowId = await corpusQueryService.insertRow(row);
   logger.info('[PropertyPerformanceIngestor] Corpus row inserted', {

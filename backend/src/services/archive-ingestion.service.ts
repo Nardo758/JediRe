@@ -32,6 +32,8 @@ export interface ArchiveFile {
   path: string;
   type: 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'COSTAR' | 'OTHER' | 'UNKNOWN';
   extension: string;
+  /** User-confirmed observation month (YYYY-MM). Set when the operator specifies it during upload. */
+  obsDate?: string;
 }
 
 export interface ArchiveScanResult {
@@ -289,7 +291,7 @@ function inferDealType(
 
 // ─── Folder Scanner ───────────────────────────────────────────────────────────
 
-export function scanArchiveFolder(archivePath: string, rootLabel?: string, fileClassifications?: Record<string, ArchiveFile['type']>): ArchiveDealFolder[] {
+export function scanArchiveFolder(archivePath: string, rootLabel?: string, fileClassifications?: Record<string, { docType: ArchiveFile['type']; obsDate?: string }>): ArchiveDealFolder[] {
   const folders: ArchiveDealFolder[] = [];
   
   if (!fs.existsSync(archivePath)) {
@@ -323,11 +325,13 @@ export function scanArchiveFolder(archivePath: string, rootLabel?: string, fileC
       .map(e => {
         const ext = getExtension(e.name);
         if (!['xlsx', 'xls', 'pdf', 'csv'].includes(ext)) return null;
+        const cls = fileClassifications?.[e.name];
         return {
           name: e.name,
           path: path.join(archivePath, e.name),
-          type: fileClassifications?.[e.name] ?? classifyFile(e.name),
+          type: cls?.docType ?? classifyFile(e.name),
           extension: ext,
+          obsDate: cls?.obsDate,
         } as ArchiveFile;
       })
       .filter((f): f is ArchiveFile => f !== null);
@@ -346,7 +350,7 @@ export function scanArchiveFolder(archivePath: string, rootLabel?: string, fileC
   return folders;
 }
 
-function findFilesRecursive(dirPath: string, maxDepth = 3, currentDepth = 0, fileClassifications?: Record<string, ArchiveFile['type']>): ArchiveFile[] {
+function findFilesRecursive(dirPath: string, maxDepth = 3, currentDepth = 0, fileClassifications?: Record<string, { docType: ArchiveFile['type']; obsDate?: string }>): ArchiveFile[] {
   const files: ArchiveFile[] = [];
   
   if (currentDepth > maxDepth) return files;
@@ -362,11 +366,13 @@ function findFilesRecursive(dirPath: string, maxDepth = 3, currentDepth = 0, fil
       } else if (entry.isFile()) {
         const ext = getExtension(entry.name);
         if (['xlsx', 'xls', 'pdf', 'csv'].includes(ext)) {
+          const cls = fileClassifications?.[entry.name];
           files.push({
             name: entry.name,
             path: fullPath,
-            type: fileClassifications?.[entry.name] ?? classifyFile(entry.name),
+            type: cls?.docType ?? classifyFile(entry.name),
             extension: ext,
+            obsDate: cls?.obsDate,
           });
         }
       }
@@ -410,7 +416,11 @@ async function parseArchiveDeal(
         trailingRevenue = result.summary.t12Revenue ? Number(result.summary.t12Revenue) : null;
         trailingOpex = result.summary.t12OpEx ? Number(result.summary.t12OpEx) : null;
         trailingNoi = result.summary.t12NOI ? Number(result.summary.t12NOI) : null;
-        extractionData.t12 = result.summary;
+        extractionData.t12 = {
+          ...result.summary,
+          // Preserve user-confirmed observation month so corpus insertion can use it later
+          ...(t12File.obsDate ? { confirmedObsDate: t12File.obsDate } : {}),
+        };
         
         if (result.warnings?.length) {
           warnings.push(...result.warnings.map(w => `[T12] ${w}`));
@@ -438,7 +448,10 @@ async function parseArchiveDeal(
         avgRent = result.summary.avgEffectiveRent ? Number(result.summary.avgEffectiveRent) : (result.summary.avgMarketRent ? Number(result.summary.avgMarketRent) : null);
         occupancyPct = result.summary.occupancyRate ? Number(result.summary.occupancyRate) : null;
         lossToLeasePct = result.summary.lossToLeasePct ? Number(result.summary.lossToLeasePct) : null;
-        extractionData.rentRoll = result.summary;
+        extractionData.rentRoll = {
+          ...result.summary,
+          ...(rrFile.obsDate ? { confirmedObsDate: rrFile.obsDate } : {}),
+        };
         
         if (result.warnings?.length) {
           warnings.push(...result.warnings.map(w => `[RR] ${w}`));
@@ -755,10 +768,10 @@ export async function ingestArchiveDeals(
     rootLabel?: string;
     existingAssetId?: string;
     createdBy?: string;
-    /** Per-file doc-type overrides keyed by original filename (basename only).
-     *  Values must match ArchiveFile['type']: 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER'.
-     *  When present, overrides the auto-detected type from classifyFile(). */
-    fileClassifications?: Record<string, ArchiveFile['type']>;
+    /** Per-file overrides keyed by sanitized disk filename (basename only).
+     *  `docType` overrides the auto-detected type from classifyFile().
+     *  `obsDate` (YYYY-MM) overrides the observation period used when building corpus rows. */
+    fileClassifications?: Record<string, { docType: ArchiveFile['type']; obsDate?: string }>;
   } = {}
 ): Promise<ArchiveScanResult> {
   const pool = getPool();

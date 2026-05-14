@@ -112,6 +112,7 @@ export interface HistoricalObservationRow {
   realizedWalkinsPsfT12: number | null;
 
   // ─── Metadata ────────────────────────────────────────────────────────────
+  dealId: string | null;
   sourceSignals: string[];
   signalFreshnessDays: Record<string, number> | null;
   isSubjectProperty: boolean;

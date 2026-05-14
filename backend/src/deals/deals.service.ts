@@ -86,8 +86,10 @@ export class DealsService {
     // Initialize deal modules based on tier
     await this.initializeModules(deal.id, tier);
 
-    // Initialize pipeline
-    await this.initializePipeline(deal.id, dto.projectType);
+    // Initialize pipeline (portfolio deals skip acquisition-pipeline stages)
+    if (dto.deal_category !== 'portfolio') {
+      await this.initializePipeline(deal.id, dto.projectType);
+    }
 
     // Log activity
     await this.logActivity(deal.id, userId, 'created', `Deal created: ${dto.name}`);
@@ -311,26 +313,8 @@ export class DealsService {
 
     // Reactive corpus sync: when deal status transitions in/out of owned/closed/portfolio,
     // immediately update is_subject_property on every corpus row for this deal.
-    // Rows with deal_id populated are updated directly (primary path).
-    // Rows whose deal_id is still NULL (pre-backfill) are caught by the parcel JOIN fallback.
     if (statusChangingTo) {
-      const SUBJECT_STATUSES = ['owned', 'closed', 'portfolio'];
-      const isSubjectProperty = SUBJECT_STATUSES.includes(statusChangingTo);
-      await this.db.query(
-        `UPDATE historical_observations
-            SET is_subject_property = $1, updated_at = NOW()
-          WHERE deal_id = $2
-             OR (
-               deal_id IS NULL
-               AND parcel_id IN (
-                 SELECT COALESCE(p.parcel_id, dp.property_id::text)
-                   FROM deal_properties dp
-                   LEFT JOIN properties p ON p.id = dp.property_id
-                  WHERE dp.deal_id = $2
-               )
-             )`,
-        [isSubjectProperty, dealId],
-      );
+      await this.syncCorpusSubjectFlag(dealId, statusChangingTo);
     }
 
     await this.logActivity(dealId, userId, 'updated', `Deal updated: ${dto.name || 'properties changed'}`);
@@ -349,9 +333,36 @@ export class DealsService {
       [dealId]
     );
 
+    // Corpus sync: archiving a deal removes subject-property flag from its observations
+    await this.syncCorpusSubjectFlag(dealId, 'archived');
+
     await this.logActivity(dealId, userId, 'archived', 'Deal archived');
 
     return { success: true, message: 'Deal archived successfully' };
+  }
+
+  /**
+   * Sync is_subject_property on historical_observations whenever a deal's status changes.
+   * Primary path: rows with deal_id set. Fallback: pre-backfill rows identified by parcel join.
+   */
+  private async syncCorpusSubjectFlag(dealId: string, status: string): Promise<void> {
+    const SUBJECT_STATUSES = ['owned', 'closed', 'portfolio'];
+    const isSubjectProperty = SUBJECT_STATUSES.includes(status);
+    await this.db.query(
+      `UPDATE historical_observations
+          SET is_subject_property = $1, updated_at = NOW()
+        WHERE deal_id = $2
+           OR (
+             deal_id IS NULL
+             AND parcel_id IN (
+               SELECT COALESCE(p.parcel_id, dp.property_id::text)
+                 FROM deal_properties dp
+                 LEFT JOIN properties p ON p.id = dp.property_id
+                WHERE dp.deal_id = $2
+             )
+           )`,
+      [isSubjectProperty, dealId],
+    );
   }
 
   /**
