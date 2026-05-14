@@ -135,6 +135,7 @@ async function upsertCorpusRow(
   fields: Record<string, unknown>,
   newSignals: string[],
   isSubjectProperty: boolean,
+  dealId?: string,
 ): Promise<string> {
   // Check for existing row
   const existing = await pool.query(
@@ -161,6 +162,14 @@ async function upsertCorpusRow(
         assignments.push(`${key} = $${idx}`);
       }
     }
+
+    // Backfill deal_id on first upsert if the existing row lacks it
+    if (dealId) {
+      idx++;
+      params.push(dealId);
+      assignments.push(`deal_id = COALESCE(deal_id, $${idx})`);
+    }
+
     params.push(existingId);
     idx++;
 
@@ -187,6 +196,7 @@ async function upsertCorpusRow(
     is_subject_property: isSubjectProperty,
     source_signals: newSignals,
     data_quality_tier: computeTier(newSignals),
+    ...(dealId ? { deal_id: dealId } : {}),
     ...fields,
   };
 
@@ -240,7 +250,7 @@ export async function writeT12ToCorpus(
   const fields = corpusRowToSnakeFields(row);
 
   try {
-    await upsertCorpusRow(pool, resolved.parcelId, obsDate, fields, ['t12'], deriveIsSubjectProperty(resolved.dealStatus));
+    await upsertCorpusRow(pool, resolved.parcelId, obsDate, fields, ['t12'], deriveIsSubjectProperty(resolved.dealStatus), dealId);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('[DocumentToCorpus] writeT12ToCorpus failed', { dealId, error: msg });
@@ -275,7 +285,7 @@ export async function writeRentRollToCorpus(
   const fields = corpusRowToSnakeFields(row);
 
   try {
-    await upsertCorpusRow(pool, resolved.parcelId, obsDate, fields, ['rent_roll'], deriveIsSubjectProperty(resolved.dealStatus));
+    await upsertCorpusRow(pool, resolved.parcelId, obsDate, fields, ['rent_roll'], deriveIsSubjectProperty(resolved.dealStatus), dealId);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('[DocumentToCorpus] writeRentRollToCorpus failed', { dealId, error: msg });
@@ -362,7 +372,7 @@ export async function writeOMToCorpus(
     capital_event_metadata: capitalEventMetadata,
   };
 
-  await upsertCorpusRow(pool, resolved.parcelId, observationDate, fields, ['om'], deriveIsSubjectProperty(resolved.dealStatus));
+  await upsertCorpusRow(pool, resolved.parcelId, observationDate, fields, ['om'], deriveIsSubjectProperty(resolved.dealStatus), dealId);
 }
 
 // ─── TaxBill ─────────────────────────────────────────────────────────────────
@@ -405,5 +415,5 @@ export async function writeTaxBillToCorpus(
     capital_event_metadata: capitalEventMetadata,
   };
 
-  await upsertCorpusRow(pool, resolved.parcelId, observationDate, fields, ['tax_bill'], deriveIsSubjectProperty(resolved.dealStatus));
+  await upsertCorpusRow(pool, resolved.parcelId, observationDate, fields, ['tax_bill'], deriveIsSubjectProperty(resolved.dealStatus), dealId);
 }

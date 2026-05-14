@@ -1,12 +1,18 @@
 /**
- * Backfill: recompute is_subject_property for all historical_observations rows
- * that have a deal association (via parcel → deal_properties → deals.status).
+ * Backfill: populate deal_id and recompute is_subject_property on all
+ * historical_observations rows that can be linked to a deal.
  *
- * Rule: is_subject_property = TRUE only when the linked deal's status is
- *       one of: owned | closed | portfolio.
+ * Phase 1 — populate deal_id:
+ *   For rows with parcel_id but no deal_id, join through
+ *   deal_properties → properties to find the owning deal.
+ *   When a parcel appears in multiple deals, each row gets the deal whose
+ *   parcel_id match is exact (or the first match, if ambiguous).
  *
- * All other statuses (lead, evaluating, underwriting, negotiating,
- * in_diligence, closing, archived, active …) → FALSE.
+ * Phase 2 — recompute is_subject_property per row's own deal_id:
+ *   TRUE  iff  deals.status IN ('owned', 'closed', 'portfolio')
+ *   FALSE for all other statuses (pipeline, archived, etc.)
+ *
+ * Rows with no deal link (unaffiliated parcels) are left untouched.
  *
  * Usage:
  *   cd backend && npx ts-node --transpile-only src/scripts/backfill-corpus-subject-property.ts
@@ -28,56 +34,68 @@ async function main() {
     console.log(`  Subject statuses : ${SUBJECT_STATUSES.join(', ')}`);
     console.log('');
 
-    // ── Fetch all (parcel_id, deal_status) pairs ──────────────────────────
-    // A parcel can be linked to multiple deals; we take the most permissive
-    // status — if ANY linked deal is owned/closed/portfolio, the parcel is
-    // subject (the operator chose to upload docs for it in that capacity).
-    const parcelRows = await pool.query<{ parcel_id: string; deal_status: string }>(`
-      SELECT
-        COALESCE(p.parcel_id, dp.property_id::text) AS parcel_id,
-        d.status AS deal_status
-      FROM deal_properties dp
-      JOIN deals d ON d.id = dp.deal_id
+    // ── Phase 1: populate deal_id on rows that have a parcel_id but no deal_id ─
+
+    // Find corpus rows with no deal_id but with a parcel_id that maps to a deal
+    const toLink = await pool.query<{
+      corpus_id: string;
+      parcel_id: string;
+      deal_id: string;
+    }>(`
+      SELECT DISTINCT ON (ho.id)
+        ho.id           AS corpus_id,
+        ho.parcel_id,
+        dp.deal_id
+      FROM historical_observations ho
+      JOIN deal_properties dp
+        ON COALESCE(p.parcel_id, dp.property_id::text) = ho.parcel_id
       LEFT JOIN properties p ON p.id = dp.property_id
-      WHERE dp.property_id IS NOT NULL
+      WHERE ho.deal_id IS NULL
+        AND ho.parcel_id IS NOT NULL
+        AND ho.parcel_id <> ''
+      ORDER BY ho.id, dp.deal_id
     `);
 
-    // Build a map: parcel_id → isSubject
-    const parcelSubject = new Map<string, boolean>();
-    for (const row of parcelRows.rows) {
-      const current = parcelSubject.get(row.parcel_id) ?? false;
-      const isSubject = SUBJECT_STATUSES.includes(row.deal_status);
-      parcelSubject.set(row.parcel_id, current || isSubject);
+    console.log(`[Phase 1] ${toLink.rows.length} corpus row(s) eligible for deal_id population`);
+
+    let linked = 0;
+    for (const row of toLink.rows) {
+      if (!DRY_RUN) {
+        await pool.query(
+          `UPDATE historical_observations SET deal_id = $1 WHERE id = $2 AND deal_id IS NULL`,
+          [row.deal_id, row.corpus_id],
+        );
+      } else {
+        console.log(`  [dry-run] Would set id=${row.corpus_id} → deal_id=${row.deal_id}`);
+      }
+      linked++;
     }
+    console.log(`[Phase 1] deal_id populated on ${linked} row(s)${DRY_RUN ? ' (would)' : ''}`);
+    console.log('');
 
-    console.log(`[backfill] Resolved ${parcelSubject.size} distinct parcel(s) with deal links`);
+    // ── Phase 2: recompute is_subject_property based on each row's own deal ───
 
-    // ── Fetch all corpus rows that have a parcel_id ───────────────────────
+    // Fetch all corpus rows that now have a deal_id (including newly linked)
     const corpusRows = await pool.query<{
       id: string;
-      parcel_id: string;
+      deal_id: string;
       is_subject_property: boolean;
+      deal_status: string;
     }>(`
-      SELECT id, parcel_id, is_subject_property
-      FROM historical_observations
-      WHERE parcel_id IS NOT NULL AND parcel_id <> ''
+      SELECT ho.id, ho.deal_id, ho.is_subject_property, d.status AS deal_status
+        FROM historical_observations ho
+        JOIN deals d ON d.id = ho.deal_id
+       WHERE ho.deal_id IS NOT NULL
     `);
 
-    console.log(`[backfill] ${corpusRows.rows.length} corpus row(s) to evaluate`);
+    console.log(`[Phase 2] ${corpusRows.rows.length} corpus row(s) with deal_id to evaluate`);
 
     let setTrue = 0;
     let setFalse = 0;
     let unchanged = 0;
-    let unlinked = 0;
 
     for (const row of corpusRows.rows) {
-      const isSubject = parcelSubject.get(row.parcel_id);
-
-      if (isSubject === undefined) {
-        // No deal link found — leave is_subject_property as-is
-        unlinked++;
-        continue;
-      }
+      const isSubject = SUBJECT_STATUSES.includes(row.deal_status);
 
       if (row.is_subject_property === isSubject) {
         unchanged++;
@@ -93,21 +111,25 @@ async function main() {
         );
       }
 
-      if (isSubject) {
-        setTrue++;
-      } else {
-        setFalse++;
-      }
+      if (isSubject) setTrue++;
+      else setFalse++;
     }
 
-    // ── Report ─────────────────────────────────────────────────────────────
+    // Rows with no deal link (unaffiliated parcels)
+    const unlinkedResult = await pool.query<{ cnt: string }>(
+      `SELECT COUNT(*) AS cnt FROM historical_observations WHERE deal_id IS NULL`,
+    );
+    const unlinked = parseInt(unlinkedResult.rows[0]?.cnt ?? '0', 10);
+
+    // ── Report ─────────────────────────────────────────────────────────────────
     console.log('');
     console.log('─────────────────────────────────────────────────────────────');
     console.log(`[backfill] Complete${DRY_RUN ? ' (DRY RUN — no writes)' : ''}`);
-    console.log(`  Set TRUE   : ${setTrue}  (deal now owned/closed/portfolio)`);
-    console.log(`  Set FALSE  : ${setFalse}  (deal is pipeline/archived/other)`);
-    console.log(`  Unchanged  : ${unchanged}`);
-    console.log(`  No deal link (unlinked parcels — untouched) : ${unlinked}`);
+    console.log(`  deal_id linked   : ${linked}`);
+    console.log(`  Set TRUE         : ${setTrue}  (deal is owned/closed/portfolio)`);
+    console.log(`  Set FALSE        : ${setFalse}  (deal is pipeline/archived/other)`);
+    console.log(`  Unchanged        : ${unchanged}`);
+    console.log(`  No deal link     : ${unlinked}  (unaffiliated parcels — untouched)`);
     console.log('─────────────────────────────────────────────────────────────');
   } finally {
     await pool.end();

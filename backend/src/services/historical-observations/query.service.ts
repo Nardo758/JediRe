@@ -116,18 +116,26 @@ export class CorpusQueryService {
     }
 
     // Subject property filter
-    // Double-guard: flag must be TRUE AND the deal must currently be in
-    // owned/closed/portfolio so stale rows from pipeline deals that were
-    // later demoted don't leak through if a backfill hasn't run yet.
+    // Double-guard: flag must be TRUE AND the row's own deal must currently be
+    // in owned/closed/portfolio.  For rows that have deal_id populated (the
+    // normal path after #722), we join directly on deals.id.  For rows whose
+    // deal_id is still NULL (pre-backfill), we fall back to the parcel JOIN so
+    // they are neither silently returned nor silently dropped.
     if (q.isSubjectOnly) {
       whereClauses.push(`(
         is_subject_property = TRUE
-        AND parcel_id IN (
-          SELECT COALESCE(p.parcel_id, dp.property_id::text)
-          FROM deal_properties dp
-          LEFT JOIN properties p ON p.id = dp.property_id
-          JOIN deals d ON d.id = dp.deal_id
-          WHERE d.status IN ('owned', 'closed', 'portfolio')
+        AND (
+          deal_id IN (SELECT id FROM deals WHERE status IN ('owned', 'closed', 'portfolio'))
+          OR (
+            deal_id IS NULL
+            AND parcel_id IN (
+              SELECT COALESCE(p.parcel_id, dp.property_id::text)
+              FROM deal_properties dp
+              LEFT JOIN properties p ON p.id = dp.property_id
+              JOIN deals d ON d.id = dp.deal_id
+              WHERE d.status IN ('owned', 'closed', 'portfolio')
+            )
+          )
         )
       )`);
     }
@@ -428,6 +436,7 @@ export class CorpusQueryService {
       realizationComplete: 'realization_complete',
       realizationCompleteDate: 'realization_complete_date',
       dataQualityFlags: 'data_quality_flags',
+      dealId: 'deal_id',
     };
 
     for (const [camelKey, colName] of Object.entries(keyToCol)) {

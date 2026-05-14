@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   dataLibraryService,
   type DataLibraryFile,
@@ -6,7 +6,7 @@ import {
   type DealFolderManifestEntry,
   type DealStatus,
 } from '@/services/dataLibrary.service';
-import { BulkUploadPanel } from './BulkUploadPanel';
+import { cloudStorageService } from '@/services/cloudStorage.service';
 
 const fmtSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -142,68 +142,235 @@ const FileRow: React.FC<{ file: DataLibraryFile; dimmed?: boolean }> = ({ file, 
   );
 };
 
-// ── Upload modal overlay ─────────────────────────────────────────────────────
+// ── Per-file classification types ─────────────────────────────────────────────
+
+type DocType = 'T12' | 'RENT_ROLL' | 'OM' | 'TAX_BILL' | 'OTHER';
+
+interface FileEntry {
+  file: File;
+  docType: DocType;
+  obsDate: string; // YYYY-MM
+}
+
+const DOC_TYPE_LABELS: Record<DocType, string> = {
+  T12: 'T-12 (Trailing 12)',
+  RENT_ROLL: 'Rent Roll',
+  OM: 'Offering Memo',
+  TAX_BILL: 'Tax Bill',
+  OTHER: 'Other',
+};
+
+function inferDocType(filename: string): DocType {
+  const lower = filename.toLowerCase();
+  if (/t[-_]?12|trailing[\s_-]?12|actuals/.test(lower)) return 'T12';
+  if (/rent[\s_-]?roll|\brr\b/.test(lower)) return 'RENT_ROLL';
+  if (/\bom\b|offering[\s_-]?memo/.test(lower)) return 'OM';
+  if (/\btax\b|bill|assess/.test(lower)) return 'TAX_BILL';
+  return 'OTHER';
+}
+
+function currentYearMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// ── Bulk upload modal with per-file classification ────────────────────────────
 
 const UploadModal: React.FC<{
   dealId: string;
   dealName: string;
   onClose: () => void;
   onUploaded: () => void;
-}> = ({ dealId, dealName, onClose, onUploaded }) => (
-  <div
-    onClick={onClose}
-    style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,0.72)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '24px 16px',
-    }}
-  >
-    <div
-      onClick={e => e.stopPropagation()}
-      style={{
-        width: '100%', maxWidth: 560, maxHeight: '90vh',
-        background: '#0F1117', border: '1px solid #1E2D45',
-        borderRadius: 8, overflow: 'auto',
-        display: 'flex', flexDirection: 'column',
-      }}
-    >
-      {/* Modal header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 16px', borderBottom: '1px solid #1E2D45',
-        fontFamily: "'JetBrains Mono', monospace",
-      }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#00BCD4', letterSpacing: 0.5 }}>
-            BULK UPLOAD HISTORICAL
-          </div>
-          <div style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>{dealName}</div>
-        </div>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'none', border: 'none', color: '#475569',
-            cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px',
-          }}
-        >
-          ×
-        </button>
-      </div>
+}> = ({ dealId, dealName, onClose, onUploaded }) => {
+  const [entries, setEntries] = useState<FileEntry[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-      {/* Panel */}
-      <div style={{ padding: 16 }}>
-        <BulkUploadPanel
-          preselectedDealId={dealId}
-          preselectedDealName={dealName}
-          onUploadComplete={() => {
-            onUploaded();
-          }}
-        />
+  const addFiles = useCallback((newFiles: File[]) => {
+    const valid = newFiles.filter(f => {
+      const ext = f.name.toLowerCase().split('.').pop() ?? '';
+      return ['pdf', 'xlsx', 'xls', 'csv'].includes(ext);
+    });
+    setEntries(prev => [
+      ...prev,
+      ...valid.map(file => ({
+        file,
+        docType: inferDocType(file.name),
+        obsDate: currentYearMonth(),
+      })),
+    ]);
+    if (valid.length < newFiles.length) {
+      setError(`${newFiles.length - valid.length} file(s) skipped — only PDF, XLSX, XLS, CSV accepted`);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    addFiles(Array.from(e.dataTransfer.files));
+  }, [addFiles]);
+
+  const updateEntry = (idx: number, patch: Partial<FileEntry>) => {
+    setEntries(prev => prev.map((e, i) => i === idx ? { ...e, ...patch } : e));
+  };
+
+  const removeEntry = (idx: number) => {
+    setEntries(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleConfirmUpload = async () => {
+    if (entries.length === 0) return;
+    setUploading(true);
+    setError(null);
+    try {
+      await cloudStorageService.uploadFiles(
+        entries.map(e => e.file),
+        p => setProgress(p),
+        dealId,
+      );
+      setDone(true);
+      onUploaded();
+    } catch {
+      setError('Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const MONO = "'JetBrains Mono', 'Fira Code', monospace";
+  const C = { bg: '#0F1117', panel: '#161B27', border: '#1E2D45', cyan: '#00BCD4', muted: '#475569', secondary: '#94A3B8', primary: '#E2E8F0', red: '#FF4757', green: '#00D26A' };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 600, maxHeight: '90vh', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, display: 'flex', flexDirection: 'column', fontFamily: MONO }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.cyan, letterSpacing: 0.5 }}>BULK UPLOAD HISTORICAL</div>
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{dealName}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Drop zone */}
+          <div
+            onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={e => { e.preventDefault(); setIsDragging(false); }}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            style={{ border: `2px dashed ${isDragging ? C.cyan : C.border}`, background: isDragging ? `${C.cyan}08` : C.panel, padding: '24px 16px', textAlign: 'center', cursor: 'pointer', borderRadius: 4, transition: 'all 0.15s' }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.primary, marginBottom: 4 }}>Drop files here or click to select</div>
+            <div style={{ fontSize: 10, color: C.muted }}>PDF · XLSX · XLS · CSV</div>
+            <input ref={fileInputRef} type="file" multiple accept=".pdf,.xlsx,.xls,.csv" onChange={e => { if (e.target.files) addFiles(Array.from(e.target.files)); }} style={{ display: 'none' }} />
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div style={{ background: `${C.red}18`, border: `1px solid ${C.red}44`, padding: '8px 12px', fontSize: 11, color: '#FCA5A5', borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{error}</span>
+              <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', marginLeft: 8 }}>×</button>
+            </div>
+          )}
+
+          {/* Per-file classification table */}
+          {entries.length > 0 && !done && (
+            <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, overflow: 'hidden' }}>
+              {/* Column headers */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 110px 24px', gap: 8, padding: '7px 10px', background: C.panel, borderBottom: `1px solid ${C.border}`, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: 0.5 }}>
+                <div>FILE</div>
+                <div>DOC TYPE</div>
+                <div>OBS DATE</div>
+                <div></div>
+              </div>
+              {entries.map((entry, idx) => (
+                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 140px 110px 24px', gap: 8, padding: '7px 10px', borderTop: idx > 0 ? `1px solid ${C.border}` : undefined, alignItems: 'center' }}>
+                  {/* Filename */}
+                  <div style={{ fontSize: 11, color: C.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={entry.file.name}>
+                    {entry.file.name}
+                  </div>
+                  {/* Doc type dropdown */}
+                  <select
+                    value={entry.docType}
+                    onChange={e => updateEntry(idx, { docType: e.target.value as DocType })}
+                    style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.primary, fontFamily: MONO, fontSize: 10, padding: '4px 6px', outline: 'none', cursor: 'pointer' }}
+                  >
+                    {(Object.keys(DOC_TYPE_LABELS) as DocType[]).map(dt => (
+                      <option key={dt} value={dt}>{DOC_TYPE_LABELS[dt]}</option>
+                    ))}
+                  </select>
+                  {/* Observation date */}
+                  <input
+                    type="month"
+                    value={entry.obsDate}
+                    onChange={e => updateEntry(idx, { obsDate: e.target.value })}
+                    style={{ background: C.panel, border: `1px solid ${C.border}`, color: C.primary, fontFamily: MONO, fontSize: 10, padding: '4px 6px', outline: 'none' }}
+                  />
+                  {/* Remove */}
+                  <button onClick={() => removeEntry(idx)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Progress */}
+          {uploading && (
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: '12px 14px', borderRadius: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11, color: C.primary }}>
+                <span>Uploading {entries.length} file{entries.length !== 1 ? 's' : ''}…</span>
+                <span style={{ color: C.muted }}>{progress}%</span>
+              </div>
+              <div style={{ height: 3, background: '#1E2D45' }}>
+                <div style={{ height: '100%', width: `${progress}%`, background: C.cyan, transition: 'width 0.3s' }} />
+              </div>
+            </div>
+          )}
+
+          {/* Done */}
+          {done && (
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <div style={{ fontSize: 20, marginBottom: 6 }}>✓</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.green }}>Upload complete</div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{entries.length} file{entries.length !== 1 ? 's' : ''} added to the data library</div>
+              <button onClick={onClose} style={{ marginTop: 14, padding: '7px 20px', background: `${C.cyan}18`, border: `1px solid ${C.cyan}44`, color: C.cyan, fontFamily: MONO, fontSize: 11, cursor: 'pointer', borderRadius: 4 }}>Close</button>
+            </div>
+          )}
+
+          {/* Footer actions */}
+          {!done && (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={onClose}
+                disabled={uploading}
+                style={{ padding: '7px 16px', background: 'none', border: `1px solid ${C.border}`, color: C.secondary, fontFamily: MONO, fontSize: 11, cursor: 'pointer', borderRadius: 4 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmUpload}
+                disabled={entries.length === 0 || uploading}
+                style={{ padding: '7px 20px', background: entries.length > 0 && !uploading ? C.cyan : `${C.cyan}40`, border: 'none', color: entries.length > 0 && !uploading ? '#000' : C.muted, fontFamily: MONO, fontSize: 11, fontWeight: 700, cursor: entries.length > 0 && !uploading ? 'pointer' : 'default', borderRadius: 4, letterSpacing: 0.3 }}
+              >
+                {uploading ? 'Uploading…' : `Confirm & Upload${entries.length > 0 ? ` (${entries.length})` : ''}`}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ── Deal accordion ────────────────────────────────────────────────────────────
 

@@ -14,6 +14,10 @@ export class CreateDealDto {
   @IsNotEmpty()
   name: string;
 
+  @IsString()
+  @IsOptional()
+  deal_category?: string;
+
   @IsObject()
   @IsNotEmpty()
   boundary: {
