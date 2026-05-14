@@ -1,0 +1,138 @@
+TASK — Portfolio-as-Source-of-Truth Wiring
+
+Replaces the planned "subject backfill session" with infrastructure
+that makes adding-deals-to-Portfolio the operational equivalent of
+backfilling. Closes the loop on Phase 1 by replacing hardcoded
+is_subject_property assignment with relationship-driven derivation.
+
+CONTEXT
+
+Phase 1 corpus build shipped with is_subject_property hardcoded
+TRUE in upsertCorpusRow (document-to-corpus.ts:121). This works
+for the current single-tier (S1-only) corpus, but breaks down when:
+(a) deals leave Portfolio (status → archived); (b) Phase 4 non-
+subject sources land (CoStar property data, REIT 10-K, comp
+performance); (c) a deal's status changes after rows were inserted.
+
+The architectural fix: is_subject_property is computed at query
+time from deal.status, not stored at insert time. Storage stays
+as a denormalized hint (for query performance), but the canonical
+truth lives in the deal record. The compute logic also serves as
+the routing rule for module consumption: any module that wants
+"subject properties" reads rows where deal_id joins to a deal
+currently in Portfolio.
+
+This also enables your operational ask: adding a deal to Portfolio
+with historical performance data attached. The data uploads
+through normal Data Library Deal Folder paths; the corpus rows
+land with their actual observation dates; the is_subject_property
+flag follows the deal's Portfolio status automatically.
+
+SCOPE
+
+In scope:
+  1. Refactor is_subject_property handling:
+     - upsertCorpusRow accepts is_subject_property as derived,
+       not hardcoded
+     - Derivation function: deal.status IN ('owned', 'closed',
+       'portfolio') → TRUE, else FALSE
+     - Lookup against deals table at insert time
+  2. Backfill recomputation: a one-time script that re-derives
+     is_subject_property for every existing corpus row based on
+     its current deal's status. Sets the flag correctly even on
+     historical rows.
+  3. Reactive update on status change: when deals.status
+     transitions in or out of Portfolio states, the corpus
+     rows for that deal_id get their is_subject_property
+     re-derived. Implemented as a Kafka consumer or direct
+     call in deals.service.ts when status changes.
+  4. Query service support: CorpusQueryService.query() with
+     option { isSubjectOnly: true } now filters by:
+     - is_subject_property = TRUE AND
+     - deal_id IN (SELECT id FROM deals WHERE status IN
+                   ('owned', 'closed', 'portfolio'))
+     The double-check defends against stale denormalization.
+  5. Deal addition UX: extend the existing deal creation
+     flow to accept a status of 'portfolio' on initial entry
+     (skipping Pipeline). The lifecycle transition service
+     fires immediately on creation, creating the Data Library
+     Deal Folder ready for historical document uploads.
+  6. Bulk upload affordance: the Data Library Deal Folder UI
+     gains a "bulk upload historical performance" affordance —
+     a drag-zone that accepts multiple months of T12/rent roll
+     documents at once, parses each, and lands rows in the
+     corpus. No special "backfill mode" — just multi-file
+     upload, with the existing pipeline doing the work per
+     document.
+
+Out of scope:
+  - Removing is_subject_property column entirely. Keep it as
+    a denormalized hint for query performance; just compute
+    it correctly.
+  - Migration of historical FIX-1 calibration data — only
+    relevant to Traffic Engine, not corpus.
+  - The M-series UI items still queued.
+  - Phase 4 CoStar / external signal ingestion — separate work.
+
+KEY IMPLEMENTATION POINTS
+
+  is_subject_property derivation in upsertCorpusRow:
+
+  async function deriveIsSubjectProperty(
+    pool: Pool,
+    dealId: string
+  ): Promise<boolean> {
+    const result = await pool.query(
+      `SELECT status FROM deals WHERE id = $1`,
+      [dealId]
+    );
+    const status = result.rows[0]?.status;
+    return ['owned', 'closed', 'portfolio'].includes(status);
+  }
+
+  Reactive update on status change:
+  In deals.service.ts at the status transition point, after
+  the lifecycle event write, emit a corpus refresh:
+
+  await pool.query(
+    `UPDATE historical_observations
+     SET is_subject_property = $1, updated_at = NOW()
+     WHERE deal_id = $2`,
+    [isPortfolioStatus(toStatus), dealId]
+  );
+
+  Bulk upload UX in DealFolderView:
+  Add a "Bulk upload historical" button next to the existing
+  upload zone. Clicking opens a multi-file drag-drop modal
+  that lists each file's detected document type + observation
+  date as it parses, allowing the operator to review before
+  confirming the bulk insert.
+
+VERIFICATION CHECKLIST
+
+  - Add a new deal directly to Portfolio status (skip Pipeline).
+    Confirm Data Library Deal Folder is created automatically.
+  - Upload a historical T12 from 2018 to the new deal's folder.
+    Confirm corpus row lands with observation_date = 2018-03-01
+    (or whatever the T12 reports), is_subject_property = TRUE,
+    tier = S2.
+  - Upload the corresponding rent roll for the same month.
+    Confirm row promotes to S1.
+  - Transition an existing deal from Portfolio → archived.
+    Confirm all corpus rows for that deal_id update to
+    is_subject_property = FALSE.
+  - Module consumption test: M07 Subject-First calibration
+    query (or equivalent) returns only rows where the deal is
+    currently in Portfolio status.
+  - Bulk upload 12 months of T12 + rent roll for a new Portfolio
+    deal in a single drag operation. Confirm all 24 rows
+    correctly landed at correct observation dates, all S1.
+
+ACCEPTANCE
+
+  - upsertCorpusRow no longer hardcodes is_subject_property
+  - Backfill script run, reports counts of rows updated
+  - Reactive status-change handler updates corpus rows correctly
+  - Query service filters by Portfolio status at query time
+  - Bulk upload affordance functional
+  - Single PR, branch claude/portfolio-as-source-of-truth
