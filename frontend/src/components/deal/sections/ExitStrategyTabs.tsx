@@ -28,35 +28,40 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 // Types
 // ============================================================================
 
+// D1 (CE-04, P0): every projection field is `number | null`.
+// Hardcoded 21-year arrays were removed; when a live source for the
+// underlying signal (rent growth, cap rate, supply pressure,
+// value-add completion %) is unavailable for a given year, the field
+// is `null` and the UI MUST render "—" rather than a silent constant.
 interface ProjectionYear {
   year: number;
   label: string;
-  noi: number;
-  grossValue: number;
-  netProceeds: number;
-  irr: number;
-  multiple: number;
-  capRate: number;
-  supplyPressure: number;
-  rss: number;
-  marketWindow: number;
-  rateEnv: number;
-  supplyPos: number;
-  opReady: number;
-  buyerPressure: number;
-  rentGrowth: number;
-  valueAddComplete: number;
+  noi: number | null;
+  grossValue: number | null;
+  netProceeds: number | null;
+  irr: number | null;
+  multiple: number | null;
+  capRate: number | null;
+  supplyPressure: number | null;
+  rss: number | null;
+  marketWindow: number | null;
+  rateEnv: number | null;
+  supplyPos: number | null;
+  opReady: number | null;
+  buyerPressure: number | null;
+  rentGrowth: number | null;
+  valueAddComplete: number | null;
 }
 
 interface QuarterlyPoint {
   q: number;
   label: string;
   year: number;
-  rss: number;
-  irr: number;
-  multiple: number;
-  capRate: number;
-  supply: number;
+  rss: number | null;
+  irr: number | null;
+  multiple: number | null;
+  capRate: number | null;
+  supply: number | null;
 }
 
 interface ExitWindow {
@@ -92,17 +97,42 @@ interface ExitScenario {
 }
 
 export interface ExitStrategyConfig {
-  baseNOI: number;             // from M09 ProForma or default
-  equityInvested: number;      // from capital stack layers
-  loanBalance: number;         // from senior debt layer
+  // Live deal economics from useDealModule()
+  baseNOI: number | null;            // financial.noi (null when not yet computed)
+  equityInvested: number | null;     // capitalStructure.totalEquity
+  loanBalance: number | null;        // capitalStructure.loanBalance[0]
+  annualDebtService: number | null;  // capitalStructure.annualDebtService
   dealStatus: 'pipeline' | 'owned';
+
+  // D1: optional yearly trajectories. Index 0 is unused; index Y holds
+  // the projection input for hold-year Y (1-indexed to match the
+  // 10-year hold-period model). Missing or short arrays leave the
+  // year as `null` in the projection — UI renders "—".
+  //
+  // - rentGrowthByYear:        % nominal rent growth applied in year Y
+  // - exitCapByYear:           cap rate (%) assumed at end of year Y
+  // - supplyPressureByYear:    submarket supply pressure score (0-100)
+  // - valueAddCompleteByYear:  fraction (0..1) of value-add work done
+  rentGrowthByYear?: (number | null)[];
+  exitCapByYear?: (number | null)[];
+  supplyPressureByYear?: (number | null)[];
+  valueAddCompleteByYear?: (number | null)[];
+
+  // Optional sources for non-cap-driving projection inputs.
+  // When omitted, RSS sub-scores requiring these signals fall through
+  // to `null` and the corresponding bar / metric renders "—".
+  rateEnvironmentScore?: number | null;       // 0-100, from Debt module's rate env classification
+  buyerPressureByYear?: (number | null)[];    // 0-100
+  marketWindowByYear?: (number | null)[];     // 0-100
+  opReadinessByYear?: (number | null)[];      // 0-100
 }
 
 // ============================================================================
 // Formatters (matching DebtTab.tsx)
 // ============================================================================
 
-const fmtM = (v: number): string => {
+const fmtM = (v: number | null | undefined): string => {
+  if (v == null) return '—';
   if (v >= 1000000) return `$${(v / 1000000).toFixed(1)}M`;
   if (v >= 1000) return `$${(v / 1000).toFixed(0)}K`;
   return new Intl.NumberFormat('en-US', {
@@ -111,27 +141,41 @@ const fmtM = (v: number): string => {
   }).format(v);
 };
 
-const fmtPct = (v: number): string => `${v.toFixed(2)}%`;
+const fmtPct = (v: number | null | undefined): string =>
+  v == null ? '—' : `${v.toFixed(2)}%`;
+
+// "Not available" placeholder used wherever a live source is missing.
+// CRITICAL (CE-04): never substitute a fallback constant here — the
+// whole point of the D1 fix is making the absence visible.
+const NA = '—';
+const fmtNum = (v: number | null | undefined, suffix = ''): string =>
+  v == null ? NA : `${v}${suffix}`;
 
 // ============================================================================
 // Shared Sub-Components
 // ============================================================================
 
-/** SVG RSS Gauge — matches light theme */
-const RSSGauge: React.FC<{ score: number; size?: number }> = ({ score, size = 160 }) => {
+/** SVG RSS Gauge — matches light theme.
+ *  When `score` is null we render a neutral track-only gauge with "—".
+ */
+const RSSGauge: React.FC<{ score: number | null; size?: number }> = ({ score, size = 160 }) => {
+  const isLive = score != null;
   const [anim, setAnim] = useState(0);
   useEffect(() => {
-    const t = setTimeout(() => setAnim(score), 200);
+    if (!isLive) { setAnim(0); return; }
+    const t = setTimeout(() => setAnim(score!), 200);
     return () => clearTimeout(t);
-  }, [score]);
+  }, [score, isLive]);
 
   const r = (size / 2) - 12;
   const circ = r * 2 * Math.PI;
   const arcFrac = 270 / 360;
   const trackOffset = circ - arcFrac * circ;
-  const valueOffset = circ - (anim / 100) * arcFrac * circ;
-  const color = anim >= 85 ? '#16a34a' : anim >= 70 ? '#d97706' : anim >= 50 ? '#3b82f6' : '#dc2626';
-  const label = anim >= 85 ? 'STRONG SELL' : anim >= 70 ? 'PREPARE' : anim >= 50 ? 'WATCH' : 'HOLD';
+  const valueOffset = isLive ? circ - (anim / 100) * arcFrac * circ : circ;
+  const color = !isLive ? '#9CA3AF'
+    : anim >= 85 ? '#16a34a' : anim >= 70 ? '#d97706' : anim >= 50 ? '#3b82f6' : '#dc2626';
+  const label = !isLive ? 'NOT AVAILABLE'
+    : anim >= 85 ? 'STRONG SELL' : anim >= 70 ? 'PREPARE' : anim >= 50 ? 'WATCH' : 'HOLD';
   const cx = size / 2;
   const cy = size / 2;
 
@@ -149,7 +193,7 @@ const RSSGauge: React.FC<{ score: number; size?: number }> = ({ score, size = 16
         }} />
       <text x={cx} y={cy - 2} textAnchor="middle" fill={color}
         fontSize={size * 0.22} fontWeight="800" fontFamily="system-ui">
-        {Math.round(anim)}
+        {isLive ? Math.round(anim) : NA}
       </text>
       <text x={cx} y={cy + 15} textAnchor="middle" fill="#6B7280"
         fontSize={9} fontWeight="600" letterSpacing="1.5">
@@ -159,15 +203,19 @@ const RSSGauge: React.FC<{ score: number; size?: number }> = ({ score, size = 16
   );
 };
 
-/** Animated sub-score bar */
+/** Animated sub-score bar. `score: null` renders an empty grey bar
+ *  with "—" in place of the number, matching the D1 NULL-where-no-
+ *  source contract. */
 const SubScoreBar: React.FC<{
-  label: string; score: number; weight: number; color: string; delay?: number;
+  label: string; score: number | null; weight: number; color: string; delay?: number;
 }> = ({ label, score, weight, color, delay = 0 }) => {
+  const isLive = score != null;
   const [w, setW] = useState(0);
   useEffect(() => {
-    const t = setTimeout(() => setW(score), 300 + delay);
+    if (!isLive) { setW(0); return; }
+    const t = setTimeout(() => setW(score!), 300 + delay);
     return () => clearTimeout(t);
-  }, [score, delay]);
+  }, [score, delay, isLive]);
 
   return (
     <div className="mb-2.5">
@@ -175,15 +223,15 @@ const SubScoreBar: React.FC<{
         <span className="text-xs text-gray-500">
           {label} <span className="text-gray-400">{weight}%</span>
         </span>
-        <span className="text-xs font-bold" style={{ color }}>
-          {Math.round(w)}
+        <span className="text-xs font-bold" style={{ color: isLive ? color : '#9CA3AF' }}>
+          {isLive ? Math.round(w) : NA}
         </span>
       </div>
       <div className="h-1.5 rounded-full bg-gray-100">
         <div
           className="h-full rounded-full"
           style={{
-            width: `${w}%`,
+            width: isLive ? `${w}%` : '0%',
             background: `linear-gradient(90deg, ${color}66, ${color})`,
             transition: 'width 1.2s cubic-bezier(0.4,0,0.2,1)',
           }}
@@ -193,12 +241,13 @@ const SubScoreBar: React.FC<{
   );
 };
 
-/** Year selector button row */
+/** Year selector button row. `optimal: null` simply omits the BEST
+ *  badge — no fictional "optimal year" is chosen. */
 const YearSelector: React.FC<{
   years: number[];
   selected: number;
   onChange: (y: number) => void;
-  optimal: number;
+  optimal: number | null;
 }> = ({ years, selected, onChange, optimal }) => (
   <div className="flex gap-1.5 flex-wrap">
     {years.map(y => {
@@ -255,85 +304,174 @@ const SignalChip: React.FC<{
 // Projection Model Hook
 // ============================================================================
 
+// D1 (CE-04, P0): every projection input is sourced from `config`.
+// There are no inline trajectory arrays — when a given year has no
+// live source for rent growth / exit cap / supply pressure /
+// value-add completion, every dependent field for that year is set
+// to `null` and the UI renders "—".
+//
+// Per-year arrays passed in `config` are 1-indexed (slot 0 unused) so
+// `arr[y]` aligns with year Y (Y=1..10). Missing values may be
+// `undefined`, `null`, or beyond the array length — all three are
+// treated as "no live source for that year".
+function pickYear<T>(arr: (T | null)[] | undefined, y: number): T | null {
+  if (!arr) return null;
+  const v = arr[y];
+  return v == null ? null : v;
+}
+
 export function useProjectionModel(config?: ExitStrategyConfig) {
-  const baseNOI = config?.baseNOI || 1920000;
-  const equity = config?.equityInvested || 8000000;
-  const loan = config?.loanBalance || 19200000;
+  const baseNOI = config?.baseNOI ?? null;
+  const equity = config?.equityInvested ?? null;
+  const loan = config?.loanBalance ?? null;
+  const annualDS = config?.annualDebtService ?? null;
 
   const projectionModel = useMemo((): ProjectionYear[] => {
     const yrs: ProjectionYear[] = [];
-    const rg = [0, 8.5, 6.2, 4.8, 3.5, 3, 2.8, 2.5, 2.5, 2.5, 2.5];
-    const cr = [0, 4.85, 4.9, 5.05, 5.15, 5.25, 5.35, 5.4, 5.45, 5.5, 5.55];
-    const sp = [0, 15, 25, 45, 60, 55, 40, 30, 25, 20, 18];
-    const va = [0, 0.65, 0.9, 1, 1, 1, 1, 1, 1, 1, 1];
-    let cumulativeCF = 0;
+    // cumulativeCF accumulates only when both NOI base and debt service
+    // are live. If either is missing we leave cumulative as null —
+    // multiples and IRRs derived from it stay null too.
+    let cumulativeCF: number | null = (baseNOI != null && annualDS != null) ? 0 : null;
+    let growthMult: number | null = 1;
 
     for (let y = 1; y <= 10; y++) {
-      const growthMult = rg.slice(1, y + 1).reduce((a, b) => a * (1 + b / 100), 1);
-      const noi = baseNOI * growthMult + va[y] * 285 * 140 * 12;
-      const grossVal = noi / (cr[y] / 100);
-      const netProceeds = grossVal * 0.97 - loan;
-      cumulativeCF += Math.max(0, noi - loan * 0.0425);
-      const mult = Math.round(((netProceeds + cumulativeCF) / equity) * 100) / 100;
-      const irr = Math.round((Math.pow(Math.max(0.1, mult), 1 / y) - 1) * 1000) / 10;
+      const rg = pickYear<number>(config?.rentGrowthByYear, y);
+      const cap = pickYear<number>(config?.exitCapByYear, y);
+      const sp = pickYear<number>(config?.supplyPressureByYear, y);
+      const va = pickYear<number>(config?.valueAddCompleteByYear, y);
 
-      // RSS sub-scores
-      const mw = Math.max(30, 90 - y * 4 - sp[y] * 0.3);
-      const re = y <= 3 ? 68 : y <= 6 ? 62 : 55;
-      const spos = Math.max(30, 85 - sp[y]);
-      const or2 = va[y] >= 0.95 ? 88 : va[y] >= 0.8 ? 72 : 55;
-      const bp = Math.max(40, 85 - y * 3);
-      const rss = Math.round(mw * 0.35 + re * 0.25 + spos * 0.20 + or2 * 0.15 + bp * 0.05);
+      // Compound growth — null once any year's rent growth is missing.
+      growthMult = growthMult != null && rg != null
+        ? growthMult * (1 + rg / 100)
+        : null;
+
+      // NOI projection requires baseNOI + cumulative growth. Value-add
+      // uplift is intentionally omitted from this function in D1 —
+      // a live source for the per-unit renovation premium does not
+      // exist yet and the previous hardcoded `va * 285 * 140 * 12`
+      // term contributed a silent ~$40K/year per unit lift.
+      const noi: number | null = baseNOI != null && growthMult != null
+        ? Math.round(baseNOI * growthMult)
+        : null;
+
+      const grossVal: number | null = noi != null && cap != null && cap > 0
+        ? Math.round(noi / (cap / 100))
+        : null;
+
+      const netProceeds: number | null = grossVal != null && loan != null
+        ? Math.round(grossVal * 0.97 - loan)
+        : null;
+
+      if (cumulativeCF != null && noi != null && annualDS != null) {
+        cumulativeCF = cumulativeCF + Math.max(0, noi - annualDS);
+      } else if (noi == null || annualDS == null) {
+        cumulativeCF = null;
+      }
+
+      const mult: number | null =
+        netProceeds != null && cumulativeCF != null && equity != null && equity > 0
+          ? Math.round(((netProceeds + cumulativeCF) / equity) * 100) / 100
+          : null;
+
+      const irr: number | null = mult != null
+        ? Math.round((Math.pow(Math.max(0.1, mult), 1 / y) - 1) * 1000) / 10
+        : null;
+
+      // RSS sub-scores: each requires its own live source.
+      const marketWindow = pickYear<number>(config?.marketWindowByYear, y);
+      const rateEnv = config?.rateEnvironmentScore ?? null;
+      const supplyPos: number | null = sp != null ? Math.max(30, 85 - sp) : null;
+      const opReady: number | null = va != null
+        ? (va >= 0.95 ? 88 : va >= 0.8 ? 72 : 55)
+        : null;
+      const buyerPressure = pickYear<number>(config?.buyerPressureByYear, y);
+
+      // RSS aggregate: only when ALL components have live values.
+      const rss: number | null =
+        marketWindow != null && rateEnv != null && supplyPos != null && opReady != null && buyerPressure != null
+          ? Math.round(marketWindow * 0.35 + rateEnv * 0.25 + supplyPos * 0.20 + opReady * 0.15 + buyerPressure * 0.05)
+          : null;
 
       yrs.push({
-        year: y, label: `Y${y}`, noi: Math.round(noi),
-        grossValue: Math.round(grossVal), netProceeds: Math.round(netProceeds),
-        irr, multiple: mult, capRate: cr[y], supplyPressure: sp[y], rss,
-        marketWindow: Math.round(mw), rateEnv: re, supplyPos: Math.round(spos),
-        opReady: or2, buyerPressure: Math.round(bp),
-        rentGrowth: rg[y], valueAddComplete: Math.round(va[y] * 100),
+        year: y,
+        label: `Y${y}`,
+        noi,
+        grossValue: grossVal,
+        netProceeds,
+        irr,
+        multiple: mult,
+        capRate: cap,
+        supplyPressure: sp,
+        rss,
+        marketWindow,
+        rateEnv,
+        supplyPos,
+        opReady,
+        buyerPressure,
+        rentGrowth: rg,
+        valueAddComplete: va != null ? Math.round(va * 100) : null,
       });
     }
     return yrs;
-  }, [baseNOI, equity, loan]);
+  // pickYear is a pure helper; intentionally not in deps. RSS / NOI math
+  // re-runs whenever config or scalar inputs change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseNOI, equity, loan, annualDS,
+      config?.rentGrowthByYear, config?.exitCapByYear,
+      config?.supplyPressureByYear, config?.valueAddCompleteByYear,
+      config?.rateEnvironmentScore, config?.marketWindowByYear,
+      config?.buyerPressureByYear]);
 
-  const optimalYear = useMemo(
-    () => projectionModel.reduce((b, y) => y.rss > b.rss ? y : b, projectionModel[0]).year,
-    [projectionModel],
-  );
+  // Optimal year = highest available RSS. When no year has a live
+  // RSS, returns null and the UI shows "—".
+  const optimalYear = useMemo((): number | null => {
+    const withRss = projectionModel.filter(y => y.rss != null);
+    if (withRss.length === 0) return null;
+    return withRss.reduce((b, y) => (y.rss! > (b.rss ?? -1) ? y : b), withRss[0]).year;
+  }, [projectionModel]);
 
-  // Quarterly interpolation (40 data points)
+  // Quarterly interpolation. Any quarter whose bracketing years have a
+  // null RSS / IRR / multiple / capRate / supply yields null for that
+  // dimension — no fill-from-prior-year.
   const quarterlyData = useMemo((): QuarterlyPoint[] => {
     const quarters: QuarterlyPoint[] = [];
     const qLabels = ['Q1', 'Q2', 'Q3', 'Q4'];
+    const lerp = (a: number | null, b: number | null, f: number): number | null =>
+      (a == null || b == null) ? null : a + (b - a) * f;
     for (let y = 1; y <= 10; y++) {
       const yd = projectionModel[y - 1];
-      const prev = y > 1 ? projectionModel[y - 2] : {
-        rss: 35, irr: 0, multiple: 1, capRate: 5, supplyPressure: 10,
-      };
+      const prev = y > 1 ? projectionModel[y - 2] : null;
       for (let q = 0; q < 4; q++) {
         const f = (q + 1) / 4;
+        const rssLerp = prev ? lerp(prev.rss, yd.rss, f) : yd.rss;
+        const irrLerp = prev ? lerp(prev.irr, yd.irr, f) : yd.irr;
+        const multLerp = prev ? lerp(prev.multiple, yd.multiple, f) : yd.multiple;
+        const capLerp = prev ? lerp(prev.capRate, yd.capRate, f) : yd.capRate;
+        const supplyLerp = prev ? lerp(prev.supplyPressure, yd.supplyPressure, f) : yd.supplyPressure;
         quarters.push({
           q: (y - 1) * 4 + q + 1,
           label: `Y${y} ${qLabels[q]}`,
           year: y,
-          rss: Math.round(prev.rss + (yd.rss - (prev as any).rss) * f),
-          irr: Math.round((prev.irr + (yd.irr - prev.irr) * f) * 10) / 10,
-          multiple: Math.round(((prev as any).multiple + (yd.multiple - (prev as any).multiple) * f) * 100) / 100,
-          capRate: Math.round((prev.capRate + (yd.capRate - prev.capRate) * f) * 100) / 100,
-          supply: Math.round((prev as any).supplyPressure + (yd.supplyPressure - (prev as any).supplyPressure) * f),
+          rss: rssLerp != null ? Math.round(rssLerp) : null,
+          irr: irrLerp != null ? Math.round(irrLerp * 10) / 10 : null,
+          multiple: multLerp != null ? Math.round(multLerp * 100) / 100 : null,
+          capRate: capLerp != null ? Math.round(capLerp * 100) / 100 : null,
+          supply: supplyLerp != null ? Math.round(supplyLerp) : null,
         });
       }
     }
     return quarters;
   }, [projectionModel]);
 
-  // Detect exit windows (contiguous RSS >= 70 or >= 85)
+  // Detect exit windows from quarters that have a live RSS. Quarters
+  // with null RSS break a window run (treated like sub-70 — no zone).
   const windows = useMemo((): ExitWindow[] => {
     const w: ExitWindow[] = [];
     let cur: ExitWindow | null = null;
     quarterlyData.forEach(d => {
-      const zone: 'sell' | 'prepare' | null = d.rss >= 85 ? 'sell' : d.rss >= 70 ? 'prepare' : null;
+      const zone: 'sell' | 'prepare' | null = d.rss == null
+        ? null
+        : d.rss >= 85 ? 'sell' : d.rss >= 70 ? 'prepare' : null;
       if (zone && (!cur || cur.zone !== zone)) {
         if (cur) w.push(cur);
         cur = { zone, start: d.q, end: d.q, startLabel: d.label, endLabel: d.label };
@@ -349,19 +487,13 @@ export function useProjectionModel(config?: ExitStrategyConfig) {
     return w;
   }, [quarterlyData]);
 
-  // Timeline events
-  const events = useMemo((): TimelineEvent[] => [
-    { quarter: 2,  icon: '🔧', short: 'Reno starts',    text: 'Value-add renovation begins', color: '#3b82f6' },
-    { quarter: 8,  icon: '✅', short: '90% reno',       text: 'Renovation 90% complete',       color: '#16a34a' },
-    { quarter: 10, icon: '🏢', short: '200u delivered',  text: 'Competitor: 200-unit delivers',  color: '#dc2626' },
-    { quarter: 12, icon: '⭐', short: 'Stabilized',      text: 'Property stabilized',            color: '#16a34a' },
-    { quarter: 14, icon: '💰', short: 'Prepay 1%',       text: 'Prepayment penalty drops to 1%', color: '#16a34a' },
-    { quarter: 16, icon: '⚠️', short: 'Supply peak',    text: 'Peak supply — 1,240 units',      color: '#dc2626' },
-    { quarter: 18, icon: '🏢', short: '350u comp',       text: '350-unit competitor 1.2mi',       color: '#dc2626' },
-    { quarter: 22, icon: '📉', short: 'Supply eases',    text: 'Supply wave absorbed',            color: '#16a34a' },
-    { quarter: 28, icon: '🔒', short: 'Debt matures',    text: 'Loan maturity — refi required',   color: '#d97706' },
-    { quarter: 36, icon: '📊', short: 'Cycle mature',    text: 'Market entering mature phase',    color: '#6B7280' },
-  ], []);
+  // Timeline events. D1 leaves this hook empty — milestone events
+  // (renovation start, comp delivery, debt maturity, prepay step-down)
+  // are out of scope here and will be wired in a follow-up dispatch
+  // from M22 (capex schedule) + M35 (live supply/competitor events) +
+  // the debt module's monitoring triggers. Returning [] is the correct
+  // "not yet available" state rather than a hardcoded fictional list.
+  const events = useMemo((): TimelineEvent[] => [], []);
 
   return { projectionModel, optimalYear, quarterlyData, windows, events };
 }
@@ -484,10 +616,24 @@ export const ExitWindowsTab: React.FC<{
           const xScale = (q: number) => pad + ((q - 1) / 39) * (W - 2 * pad);
           const yScale = (v: number) => H - pad - ((v - minRss) / range) * (H - 2 * pad);
 
-          const rssPoints = quarterlyData.map(d => `${xScale(d.q)},${yScale(d.rss)}`).join(' ');
-          const rssArea = rssPoints + ` ${xScale(40)},${yScale(minRss)} ${xScale(1)},${yScale(minRss)}`;
-          const supplyPoints = quarterlyData.map(d => `${xScale(d.q)},${yScale(minRss + d.supply * 0.8)}`).join(' ');
-          const supplyArea = supplyPoints + ` ${xScale(40)},${yScale(minRss)} ${xScale(1)},${yScale(minRss)}`;
+          // Plot only quarters with live RSS / supply. When all values
+          // are null the polyline/polygon strings are empty and the
+          // chart renders just the grid + axes — which is the correct
+          // "no live trajectory available" state for D1.
+          const rssLivePoints = quarterlyData
+            .filter(d => d.rss != null)
+            .map(d => `${xScale(d.q)},${yScale(d.rss!)}`);
+          const rssPoints = rssLivePoints.join(' ');
+          const rssArea = rssLivePoints.length > 0
+            ? rssPoints + ` ${xScale(rssLivePoints.length === 0 ? 1 : 40)},${yScale(minRss)} ${xScale(1)},${yScale(minRss)}`
+            : '';
+          const supplyLivePoints = quarterlyData
+            .filter(d => d.supply != null)
+            .map(d => `${xScale(d.q)},${yScale(minRss + d.supply! * 0.8)}`);
+          const supplyPoints = supplyLivePoints.join(' ');
+          const supplyArea = supplyLivePoints.length > 0
+            ? supplyPoints + ` ${xScale(40)},${yScale(minRss)} ${xScale(1)},${yScale(minRss)}`
+            : '';
 
           return (
             <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="xMidYMid meet">
@@ -587,20 +733,36 @@ export const ExitWindowsTab: React.FC<{
           <div className="bg-white rounded-lg border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Select Exit Year</h4>
-              <span className="text-xs font-semibold text-green-600">Optimal: Year {optimalYear}</span>
+              <span className="text-xs font-semibold text-green-600">
+                Optimal: {optimalYear != null ? `Year ${optimalYear}` : NA}
+              </span>
             </div>
             <YearSelector years={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]} selected={selectedYear}
               onChange={setSelectedYear} optimal={optimalYear} />
           </div>
 
-          {/* Metric cards — matching renderKeyMetrics grid pattern */}
+          {/* Metric cards. Each card carries the raw value, classification
+              color, and display string; null values render "—" and use
+              a neutral grey color rather than a misleading red. */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: 'Projected IRR', value: `${sel.irr}%`, color: sel.irr >= 20 ? 'text-green-600' : sel.irr >= 15 ? 'text-amber-600' : 'text-red-600' },
-              { label: 'Equity Multiple', value: `${sel.multiple}x`, color: sel.multiple >= 3 ? 'text-green-600' : sel.multiple >= 2 ? 'text-amber-600' : 'text-red-600' },
-              { label: 'Gross Value', value: fmtM(sel.grossValue), color: 'text-gray-900' },
-              { label: 'Exit Cap Rate', value: `${sel.capRate}%`, color: 'text-gray-900' },
-            ].map((m, i) => (
+            {([
+              {
+                label: 'Projected IRR',
+                value: sel.irr == null ? NA : `${sel.irr}%`,
+                color: sel.irr == null ? 'text-gray-400'
+                  : sel.irr >= 20 ? 'text-green-600'
+                  : sel.irr >= 15 ? 'text-amber-600' : 'text-red-600',
+              },
+              {
+                label: 'Equity Multiple',
+                value: sel.multiple == null ? NA : `${sel.multiple}x`,
+                color: sel.multiple == null ? 'text-gray-400'
+                  : sel.multiple >= 3 ? 'text-green-600'
+                  : sel.multiple >= 2 ? 'text-amber-600' : 'text-red-600',
+              },
+              { label: 'Gross Value', value: fmtM(sel.grossValue), color: sel.grossValue == null ? 'text-gray-400' : 'text-gray-900' },
+              { label: 'Exit Cap Rate', value: sel.capRate == null ? NA : `${sel.capRate}%`, color: sel.capRate == null ? 'text-gray-400' : 'text-gray-900' },
+            ] as Array<{label:string;value:string;color:string}>).map((m, i) => (
               <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
                 <div className="text-xs text-gray-500 uppercase">{m.label}</div>
                 <div className={`text-xl font-bold mt-1 ${m.color}`}>{m.value}</div>
@@ -610,11 +772,28 @@ export const ExitWindowsTab: React.FC<{
 
           {/* Context row */}
           <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: 'Rent Growth', value: `${sel.rentGrowth}%`, sub: `Year ${selectedYear}`, color: 'text-blue-600' },
-              { label: 'Supply Pressure', value: `${sel.supplyPressure}%`, sub: '% of stock', color: sel.supplyPressure > 40 ? 'text-red-600' : 'text-amber-600' },
-              { label: 'Value-Add', value: `${sel.valueAddComplete}%`, sub: 'Reno complete', color: sel.valueAddComplete >= 95 ? 'text-green-600' : 'text-amber-600' },
-            ].map((m, i) => (
+            {([
+              {
+                label: 'Rent Growth',
+                value: sel.rentGrowth == null ? NA : `${sel.rentGrowth}%`,
+                sub: `Year ${selectedYear}`,
+                color: sel.rentGrowth == null ? 'text-gray-400' : 'text-blue-600',
+              },
+              {
+                label: 'Supply Pressure',
+                value: sel.supplyPressure == null ? NA : `${sel.supplyPressure}%`,
+                sub: '% of stock',
+                color: sel.supplyPressure == null ? 'text-gray-400'
+                  : sel.supplyPressure > 40 ? 'text-red-600' : 'text-amber-600',
+              },
+              {
+                label: 'Value-Add',
+                value: sel.valueAddComplete == null ? NA : `${sel.valueAddComplete}%`,
+                sub: 'Reno complete',
+                color: sel.valueAddComplete == null ? 'text-gray-400'
+                  : sel.valueAddComplete >= 95 ? 'text-green-600' : 'text-amber-600',
+              },
+            ] as Array<{label:string;value:string;sub:string;color:string}>).map((m, i) => (
               <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
                 <div className="text-xs text-gray-500 uppercase">{m.label}</div>
                 <div className={`text-lg font-bold mt-1 ${m.color}`}>{m.value}</div>
@@ -623,24 +802,34 @@ export const ExitWindowsTab: React.FC<{
             ))}
           </div>
 
-          {/* Verdict bar */}
-          <div className={`rounded-lg border-2 p-4 text-center ${
-            sel.rss >= 85 ? 'bg-green-50 border-green-200' :
-            sel.rss >= 70 ? 'bg-amber-50 border-amber-200' :
-            'bg-blue-50 border-blue-200'
-          }`}>
-            <span className={`text-2xl font-black ${
-              sel.rss >= 85 ? 'text-green-600' : sel.rss >= 70 ? 'text-amber-600' : 'text-blue-600'
-            }`}>{sel.rss}</span>
-            <span className="text-sm font-semibold text-gray-600 ml-3">
-              {sel.rss >= 85 ? 'STRONG SELL WINDOW' : sel.rss >= 70 ? 'PREPARE TO SELL' : sel.rss >= 50 ? 'WATCH — NOT YET' : 'HOLD'}
-            </span>
-            {selectedYear !== optimalYear && (
-              <span className="text-xs text-green-600 ml-3">
-                Best: Year {optimalYear} (RSS {projectionModel[optimalYear - 1].rss})
+          {/* Verdict bar. With null RSS we render a neutral "not yet
+              available" state instead of misclassifying as HOLD. */}
+          {sel.rss == null ? (
+            <div className="rounded-lg border-2 p-4 text-center bg-gray-50 border-gray-200">
+              <span className="text-2xl font-black text-gray-400">{NA}</span>
+              <span className="text-sm font-semibold text-gray-500 ml-3">
+                RSS NOT AVAILABLE — projection inputs not yet wired (see CE-04 / D1)
               </span>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className={`rounded-lg border-2 p-4 text-center ${
+              sel.rss >= 85 ? 'bg-green-50 border-green-200' :
+              sel.rss >= 70 ? 'bg-amber-50 border-amber-200' :
+              'bg-blue-50 border-blue-200'
+            }`}>
+              <span className={`text-2xl font-black ${
+                sel.rss >= 85 ? 'text-green-600' : sel.rss >= 70 ? 'text-amber-600' : 'text-blue-600'
+              }`}>{sel.rss}</span>
+              <span className="text-sm font-semibold text-gray-600 ml-3">
+                {sel.rss >= 85 ? 'STRONG SELL WINDOW' : sel.rss >= 70 ? 'PREPARE TO SELL' : sel.rss >= 50 ? 'WATCH — NOT YET' : 'HOLD'}
+              </span>
+              {optimalYear != null && selectedYear !== optimalYear && (
+                <span className="text-xs text-green-600 ml-3">
+                  Best: Year {optimalYear} (RSS {fmtNum(projectionModel[optimalYear - 1]?.rss)})
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -658,8 +847,14 @@ export const SensitivityTab: React.FC<{
   const [selectedYear, setSelectedYear] = useState(5);
   const { projectionModel, optimalYear } = useProjectionModel(config);
   const sel = projectionModel[selectedYear - 1];
-  const equity = config?.equityInvested || 8000000;
-  const loan = config?.loanBalance || 19200000;
+  const equity = config?.equityInvested ?? null;
+  const loan = config?.loanBalance ?? null;
+
+  // The sensitivity grid requires a base-year NOI + rent growth + cap.
+  // When ANY of those are null we cannot honestly compute IRR cells —
+  // we render a single placeholder row explaining what's missing rather
+  // than zeros (which would look like "deal does not return capital").
+  const canCompute = sel.noi != null && sel.rentGrowth != null && sel.capRate != null && equity != null && loan != null && equity > 0;
 
   return (
     <div className="space-y-6">
@@ -669,13 +864,18 @@ export const SensitivityTab: React.FC<{
             IRR Sensitivity — Year {selectedYear} Exit
           </h4>
           <span className="text-xs text-gray-400">
-            Base: {sel.capRate}% cap / {sel.rentGrowth}% growth
+            Base: {sel.capRate == null ? NA : `${sel.capRate}%`} cap / {sel.rentGrowth == null ? NA : `${sel.rentGrowth}%`} growth
           </span>
         </div>
         <div className="mb-4">
           <YearSelector years={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]} selected={selectedYear}
             onChange={setSelectedYear} optimal={optimalYear} />
         </div>
+        {!canCompute ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Sensitivity grid not available — required inputs (NOI base, rent growth, exit cap, equity, loan balance) are not yet wired for Year {selectedYear}. See CE-04 / D1.
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -697,11 +897,12 @@ export const SensitivityTab: React.FC<{
                     {cap.toFixed(2)}%
                   </td>
                   {[2, 3, 4, 5, 6].map(rg => {
-                    const adj = sel.noi * (1 + (rg - sel.rentGrowth) / 100);
-                    const net = (adj / (cap / 100)) * 0.97 - loan;
-                    const m2 = net / equity;
+                    // `canCompute` guarantees the !'s below are safe.
+                    const adj = sel.noi! * (1 + (rg - sel.rentGrowth!) / 100);
+                    const net = (adj / (cap / 100)) * 0.97 - loan!;
+                    const m2 = net / equity!;
                     const ir = Math.round((Math.pow(Math.max(0.1, m2), 1 / selectedYear) - 1) * 1000) / 10;
-                    const isBase = Math.abs(cap - sel.capRate) < 0.1 && Math.abs(rg - sel.rentGrowth) < 0.5;
+                    const isBase = Math.abs(cap - sel.capRate!) < 0.1 && Math.abs(rg - sel.rentGrowth!) < 0.5;
                     return (
                       <td key={`${cap}-${rg}`} className={`px-4 py-2.5 text-center font-semibold border-b border-gray-100 ${
                         isBase ? 'bg-blue-50 ring-2 ring-blue-300 ring-inset' : ''
@@ -717,6 +918,7 @@ export const SensitivityTab: React.FC<{
             </tbody>
           </table>
         </div>
+        )}
         <div className="flex items-center justify-center gap-6 mt-4">
           {[
             { color: 'bg-green-100', text: 'text-green-600', label: '≥25% IRR' },

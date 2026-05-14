@@ -39,7 +39,7 @@ export function SensitivityTab({ dealId, dealType, assumptions }: FinancialEngin
       RENT_GROWTH.map(growth => {
         try {
           const r = computeExitReturns(16, resolvedDealType, growth, cap);
-          return r.irr;
+          return r?.irr ?? 0;
         } catch { return 0; }
       })
     );
@@ -50,7 +50,7 @@ export function SensitivityTab({ dealId, dealType, assumptions }: FinancialEngin
       HOLD_PERIODS.map(hold => {
         try {
           const r = computeExitReturns(hold * 4, resolvedDealType, 3.0, cap);
-          return r.em;
+          return r?.em ?? 0;
         } catch { return 0; }
       })
     );
@@ -147,7 +147,7 @@ export function SensitivityTab({ dealId, dealType, assumptions }: FinancialEngin
             <tbody>
               {EXIT_CAPS.map((cap) => {
                 let baseIrr = 0;
-                try { baseIrr = computeExitReturns(20, resolvedDealType, 3.0, cap).irr; } catch { /* noop */ }
+                try { baseIrr = computeExitReturns(20, resolvedDealType, 3.0, cap)?.irr ?? 0; } catch { /* noop */ }
                 return (
                   <tr key={cap} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                     <td style={{ padding: '4px 8px', color: BT.text.amber, fontWeight: 600 }}>{cap.toFixed(1)}%</td>

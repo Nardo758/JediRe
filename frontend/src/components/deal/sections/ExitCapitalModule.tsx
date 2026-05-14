@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react';
 import { computeExitReturns } from '../../../shared/calculations/returns';
 import { apiClient } from '../../../api/client';
+import { useDealModule } from '../../../contexts/DealModuleContext';
 
 interface LiveRates {
   sofr: number;
@@ -101,88 +102,26 @@ interface StackPreset {
 // ═══════════════════════════════════════════════════════════════════════════
 // 21-YEAR QUARTERLY DATA
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// D1 (CE-04, P0): The four 21-year arrays (RENT_GROWTH_21Y, CAP_RATES_21Y,
+// SUPPLY_21Y, T10_21Y) and the synthetic computeRSS21 / RSS_21Y derived
+// from them were removed. The audit found that a detailed-looking 21-year
+// projection driven by compiled-in constants was actively misleading
+// users.
+//
+// Per-quarter series are now passed into the chart as
+// `(number | null)[]`. When the live source isn't wired for a given
+// quarter the cell is null and the chart renders only the grid +
+// time axis + history-vs-projected boundary, plus a clear "no live
+// trajectory available" message. Downstream dispatches (D2 exit cap
+// reconciliation, D4 event wiring) will populate the projected-half
+// of these series; the historical half will follow once
+// historical_observations realized series flow through.
+//
+// NOW_IDX / TOTAL_Q remain — they are time-axis math, not fiction.
 
 const NOW_IDX = 40;  // Q1 2026
 const TOTAL_Q = 84;  // Q1 2016 → Q4 2036
-
-const RENT_GROWTH_21Y = [
-  // 2016-2019: post-GFC expansion
-  4.8, 4.9, 5.0, 4.6, 4.2, 4.0, 3.8, 3.5, 3.2, 3.0, 2.8, 2.5, 2.2, 2.4, 2.6, 2.8,
-  // 2020-2023: COVID crash → surge → normalize
-  1.2, -2.5, -1.0, 0.5, 2.0, 6.5, 11.0, 14.2, 12.0, 8.5, 5.0, 3.0, 2.0, 1.5, 1.8, 2.2,
-  // 2024-2025: recovery
-  2.5, 2.8, 3.0, 3.1, 3.2, 3.3, 3.4, 3.5,
-  // 2026 (NOW) → 2036: projected
-  3.6, 3.7, 3.8, 3.7, 3.5, 3.4, 3.2, 3.0, 2.8, 2.7, 2.5, 2.4, 2.3, 2.4, 2.5, 2.6,
-  2.7, 2.8, 2.8, 2.9, 3.0, 3.0, 2.9, 2.8, 2.7, 2.6, 2.5, 2.4, 2.4, 2.5, 2.6, 2.7,
-  2.8, 2.9, 3.0, 3.0, 2.9, 2.8, 2.7, 2.6,
-];
-
-const CAP_RATES_21Y = [
-  // 2016-2019
-  6.0, 5.9, 5.8, 5.7, 5.6, 5.5, 5.4, 5.3, 5.2, 5.1, 5.0, 5.0, 4.9, 4.9, 5.0, 5.1,
-  // 2020-2023
-  5.2, 5.8, 6.0, 5.8, 5.5, 5.0, 4.5, 4.2, 4.0, 4.1, 4.5, 4.8, 5.0, 5.2, 5.3, 5.4,
-  // 2024-2025
-  5.4, 5.3, 5.2, 5.1, 5.1, 5.0, 5.0, 5.0,
-  // 2026 → 2036 (projected)
-  5.0, 4.9, 4.9, 4.8, 4.8, 4.8, 4.9, 5.0, 5.0, 5.1, 5.1, 5.2, 5.2, 5.2, 5.1, 5.1,
-  5.0, 5.0, 5.0, 5.0, 5.1, 5.1, 5.2, 5.2, 5.2, 5.1, 5.1, 5.0, 5.0, 5.0, 5.0, 5.1,
-  5.1, 5.2, 5.2, 5.2, 5.1, 5.1, 5.0, 5.0, 5.0, 5.0, 5.1, 5.1,
-];
-
-const SUPPLY_21Y = [
-  // 2016-2019
-  0, 120, 0, 200, 0, 0, 280, 0, 0, 350, 0, 0, 0, 180, 0, 300,
-  // 2020-2023
-  0, 0, 0, 0, 0, 50, 180, 420, 650, 800, 400, 200, 0, 120, 280, 0,
-  // 2024-2025
-  0, 380, 0, 0, 200, 0, 0, 180,
-  // 2026 → 2036 (projected)
-  0, 180, 320, 0, 0, 420, 0, 280, 0, 0, 560, 0, 0, 0, 380, 0,
-  0, 200, 0, 300, 0, 0, 250, 0, 0, 180, 0, 400, 0, 0, 220, 0,
-  0, 150, 0, 300, 0, 0, 280, 0, 0, 200, 0, 250,
-];
-
-const T10_21Y = [
-  // 2016-2019
-  1.8, 1.7, 1.5, 2.0, 2.4, 2.3, 2.2, 2.4, 2.7, 2.9, 3.0, 2.7, 2.7, 2.1, 1.7, 1.9,
-  // 2020-2023
-  1.6, 0.7, 0.7, 0.9, 1.1, 1.5, 1.3, 1.5, 1.8, 2.9, 3.3, 3.9, 3.5, 3.8, 4.3, 3.9,
-  // 2024-2025
-  4.1, 4.5, 4.3, 4.2, 4.6, 4.2, 4.0, 3.9,
-  // 2026 → 2036 (projected)
-  3.8, 3.7, 3.6, 3.5, 3.5, 3.4, 3.4, 3.3, 3.3, 3.3, 3.2, 3.2, 3.2, 3.3, 3.3, 3.4,
-  3.4, 3.5, 3.5, 3.5, 3.5, 3.6, 3.6, 3.6, 3.6, 3.5, 3.5, 3.5, 3.4, 3.4, 3.3, 3.3,
-  3.2, 3.2, 3.1, 3.1, 3.0, 3.0, 3.0, 2.9, 2.9, 2.9, 2.8, 2.8,
-];
-
-// Compute RSS for each quarter
-function computeRSS21(i: number): RSSBreakdown {
-  const rg = RENT_GROWTH_21Y[i] ?? 2.5;
-  const cap = CAP_RATES_21Y[i] ?? 5.0;
-  const supply = SUPPLY_21Y[i] ?? 0;
-  const rate = T10_21Y[i] ?? 3.5;
-  const txn = Math.max(20, 60 + Math.sin(i * 0.15) * 20);
-  const bp = Math.max(30, 55 + Math.sin(i * 0.12) * 18);
-
-  const mw = Math.min(100, Math.max(0, (rg / 6) * 40 + ((1 - cap / 7) * 100 * 0.3) + txn * 0.2 + 5));
-  const re = Math.min(100, Math.max(0, ((5.0 - rate) / 2.5) * 100 * 0.4 + ((cap - rate) * 100 * 0.35) / 3 + ((4.5 - rate) / 2.5) * 100 * 0.25));
-  const sp = Math.max(0, 100 - supply / 8);
-  const opR = Math.min(100, 30 + Math.max(0, i - NOW_IDX) * 3.5);
-  const rss = Math.round(Math.max(0, Math.min(100, mw * 0.35 + re * 0.25 + sp * 0.2 + opR * 0.15 + bp * 0.05)));
-
-  return {
-    rss,
-    mw: Math.round(mw),
-    re: Math.round(Math.max(0, re)),
-    sp: Math.round(sp),
-    or: Math.round(opR),
-    bp: Math.round(bp),
-  };
-}
-
-const RSS_21Y = Array.from({ length: TOTAL_Q }, (_, i) => computeRSS21(i));
 
 const Q_LABELS: Quarter[] = Array.from({ length: TOTAL_Q }, (_, i) => {
   const y = 2016 + Math.floor(i / 4);
@@ -304,10 +243,23 @@ const fmt = {
 // CONVERGENCE CHART (21-YEAR SVG)
 // ═══════════════════════════════════════════════════════════════════════════
 
+// D1: the chart accepts series as `(number | null)[]`. Each index 0..83
+// corresponds to a quarter from Q1 2016 .. Q4 2036 (NOW_IDX = 40 = Q1 2026).
+// `null` slots mean "no live data available for that quarter" — the chart
+// will skip the polyline segment and the tooltip will render "—".
+interface ConvergenceChart21Series {
+  rentGrowth: (number | null)[];   // quarterly rent growth %
+  capRate: (number | null)[];      // quarterly cap rate %
+  supply: (number | null)[];       // quarterly net new supply (units)
+  treasury10y: (number | null)[];  // quarterly 10y Treasury %
+  rss: (number | null)[];          // quarterly RSS composite 0-100
+}
+
 interface ConvergenceChart21Props {
   selectedFwd: number;
   onSelectFwd: (idx: number) => void;
-  optimalFwd: number;
+  optimalFwd: number | null;
+  series: ConvergenceChart21Series;
   liveEvents?: M35Event[];
   selectedEventId?: string | null;
   onMarkerClick?: (id: string) => void;
@@ -322,7 +274,7 @@ const CHART_KEY_EVENTS: Array<{ idx: number; label: string; phase: 'past' | 'fut
   { idx: 49, label: 'SUPPLY↓', phase: 'future',  color: 'rgba(167,139,250,0.8)', sublabel: 'Q2\'28 · Supply peak clears'  },
 ];
 
-function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents = [], selectedEventId, onMarkerClick }: ConvergenceChart21Props) {
+function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, series, liveEvents = [], selectedEventId, onMarkerClick }: ConvergenceChart21Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const W = 920,
     H = 360;
@@ -344,9 +296,12 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
   const yCap = (v: number) => pad.t + iH - ((v - capMin) / (capMax - capMin)) * iH;
   const yRSS = (v: number) => pad.t + iH - ((v - rssMin) / (rssMax - rssMin)) * iH;
 
-  const maxSupply = Math.max(...SUPPLY_21Y);
+  // Series come from props (D1). When every entry is null the chart
+  // renders an empty trajectory grid — the correct "not wired" state.
+  const supplyLive = series.supply.filter((v): v is number => v != null);
+  const maxSupply = supplyLive.length > 0 ? Math.max(...supplyLive) : 0;
   const selAbsIdx = NOW_IDX + selectedFwd;
-  const optAbsIdx = NOW_IDX + optimalFwd;
+  const optAbsIdx = optimalFwd != null ? NOW_IDX + optimalFwd : null;
 
   const handleClick = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
@@ -362,34 +317,38 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
     [onSelectFwd] // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits iW, pad.l — closure reads them from enclosing scope; re-running on listed deps is the desired trigger
   );
 
-  // Build SVG paths
-  const rgHistPath: string[] = [];
-  const rgProjPath: string[] = [];
-  const capHistPath: string[] = [];
-  const capProjPath: string[] = [];
-  const rssHistPath: string[] = [];
-  const rssProjPath: string[] = [];
-
-  for (let i = 0; i < TOTAL_Q; i++) {
-    const px = x(i);
-    const rg = RENT_GROWTH_21Y[i] ?? 2.5;
-    const cap = CAP_RATES_21Y[i] ?? 5.0;
-    const rss = RSS_21Y[i]?.rss ?? 50;
-    const pt1 = `${px},${yRG(rg)}`;
-    const pt2 = `${px},${yCap(cap)}`;
-    const pt3 = `${px},${yRSS(rss)}`;
-
-    if (i <= NOW_IDX) {
-      rgHistPath.push(pt1);
-      capHistPath.push(pt2);
-      rssHistPath.push(pt3);
+  // Build SVG paths. D1: a null quarter breaks the polyline rather
+  // than being silently filled with a constant. Each path is a list
+  // of contiguous segments separated by an empty entry; we emit a
+  // `M`/`L` joined path string with explicit moveTo's at null gaps.
+  function buildSegmented(
+    quarters: (number | null)[],
+    yScale: (v: number) => number,
+    rangeStart: number,
+    rangeEndInclusive: number,
+  ): string {
+    const cmds: string[] = [];
+    let prevWasLive = false;
+    for (let i = rangeStart; i <= rangeEndInclusive; i++) {
+      const v = quarters[i];
+      if (v == null) {
+        prevWasLive = false;
+        continue;
+      }
+      const px = x(i);
+      const py = yScale(v);
+      cmds.push(`${prevWasLive ? 'L' : 'M'}${px},${py}`);
+      prevWasLive = true;
     }
-    if (i >= NOW_IDX) {
-      rgProjPath.push(pt1);
-      capProjPath.push(pt2);
-      rssProjPath.push(pt3);
-    }
+    return cmds.join(' ');
   }
+
+  const rgHistD  = buildSegmented(series.rentGrowth, yRG,  0,        NOW_IDX);
+  const rgProjD  = buildSegmented(series.rentGrowth, yRG,  NOW_IDX,  TOTAL_Q - 1);
+  const capHistD = buildSegmented(series.capRate,    yCap, 0,        NOW_IDX);
+  const capProjD = buildSegmented(series.capRate,    yCap, NOW_IDX,  TOTAL_Q - 1);
+  const rssHistD = buildSegmented(series.rss,        yRSS, 0,        NOW_IDX);
+  const rssProjD = buildSegmented(series.rss,        yRSS, NOW_IDX,  TOTAL_Q - 1);
 
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const handleMove = useCallback(
@@ -420,9 +379,9 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
         {/* Projected background */}
         <rect x={nowX} y={pad.t} width={W - pad.r - nowX} height={iH} fill="rgba(99,179,237,0.015)" />
 
-        {/* Supply bars */}
-        {SUPPLY_21Y.map((v, i) => {
-          if (v === 0 || maxSupply === 0) return null;
+        {/* Supply bars — only quarters with a live (>0) value. */}
+        {series.supply.map((v, i) => {
+          if (v == null || v === 0 || maxSupply === 0) return null;
           const h = (v / maxSupply) * iH * 0.35;
           return (
             <rect
@@ -437,17 +396,18 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
           );
         })}
 
-        {/* Rent growth — solid historical, dashed projected */}
-        <path d={`M${rgHistPath.join(' L')}`} fill="none" stroke="#68D391" strokeWidth={1.5} />
-        <path d={`M${rgProjPath.join(' L')}`} fill="none" stroke="#68D391" strokeWidth={1.5} strokeDasharray="5,3" opacity={0.7} />
+        {/* Rent growth — solid historical, dashed projected. Empty `d`
+            strings render nothing (correct "no data" state). */}
+        {rgHistD && <path d={rgHistD} fill="none" stroke="#68D391" strokeWidth={1.5} />}
+        {rgProjD && <path d={rgProjD} fill="none" stroke="#68D391" strokeWidth={1.5} strokeDasharray="5,3" opacity={0.7} />}
 
         {/* Cap rate */}
-        <path d={`M${capHistPath.join(' L')}`} fill="none" stroke="#63B3ED" strokeWidth={1.5} />
-        <path d={`M${capProjPath.join(' L')}`} fill="none" stroke="#63B3ED" strokeWidth={1.5} strokeDasharray="5,3" opacity={0.7} />
+        {capHistD && <path d={capHistD} fill="none" stroke="#63B3ED" strokeWidth={1.5} />}
+        {capProjD && <path d={capProjD} fill="none" stroke="#63B3ED" strokeWidth={1.5} strokeDasharray="5,3" opacity={0.7} />}
 
         {/* RSS — bold, forward meaningful */}
-        <path d={`M${rssHistPath.join(' L')}`} fill="none" stroke="#10b981" strokeWidth={1} opacity={0.3} />
-        <path d={`M${rssProjPath.join(' L')}`} fill="none" stroke="#10b981" strokeWidth={2.5} />
+        {rssHistD && <path d={rssHistD} fill="none" stroke="#10b981" strokeWidth={1} opacity={0.3} />}
+        {rssProjD && <path d={rssProjD} fill="none" stroke="#10b981" strokeWidth={2.5} />}
 
         {/* NOW divider */}
         <line x1={nowX} y1={pad.t - 8} x2={nowX} y2={pad.t + iH + 8} stroke="#E8E6E1" strokeWidth={1.5} />
@@ -456,21 +416,28 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
           NOW
         </text>
 
-        {/* Optimal marker */}
-        <line x1={x(optAbsIdx)} y1={pad.t} x2={x(optAbsIdx)} y2={pad.t + iH} stroke="#68D391" strokeWidth={1} strokeDasharray="4,3" opacity={0.5} />
-        <text x={x(optAbsIdx)} y={pad.t + iH + 28} textAnchor="middle" fill="#68D391" fontSize={8} fontWeight={700} fontFamily="JetBrains Mono">
-          OPTIMAL
-        </text>
+        {/* Optimal marker — only rendered when an optimal quarter exists. */}
+        {optAbsIdx != null && (
+          <>
+            <line x1={x(optAbsIdx)} y1={pad.t} x2={x(optAbsIdx)} y2={pad.t + iH} stroke="#68D391" strokeWidth={1} strokeDasharray="4,3" opacity={0.5} />
+            <text x={x(optAbsIdx)} y={pad.t + iH + 28} textAnchor="middle" fill="#68D391" fontSize={8} fontWeight={700} fontFamily="JetBrains Mono">
+              OPTIMAL
+            </text>
+          </>
+        )}
 
-        {/* User selected marker */}
+        {/* User selected marker. RSS label only when the selected
+            quarter has a live RSS value. */}
         <line x1={x(selAbsIdx)} y1={pad.t - 2} x2={x(selAbsIdx)} y2={pad.t + iH + 2} stroke="#E8E6E1" strokeWidth={2} />
         <rect x={x(selAbsIdx) - 22} y={pad.t - 20} width={44} height={14} rx={3} fill="#E8E6E1" />
         <text x={x(selAbsIdx)} y={pad.t - 10} textAnchor="middle" fill="#0B0E13" fontSize={8} fontWeight={700} fontFamily="JetBrains Mono">
           {Q_LABELS[selAbsIdx]?.label}
         </text>
-        <text x={x(selAbsIdx)} y={yRSS(RSS_21Y[selAbsIdx]?.rss ?? 50) - 10} textAnchor="middle" fill="#10b981" fontSize={11} fontWeight={800} fontFamily="JetBrains Mono">
-          {RSS_21Y[selAbsIdx]?.rss ?? 50}
-        </text>
+        {series.rss[selAbsIdx] != null && (
+          <text x={x(selAbsIdx)} y={yRSS(series.rss[selAbsIdx]!) - 10} textAnchor="middle" fill="#10b981" fontSize={11} fontWeight={800} fontFamily="JetBrains Mono">
+            {series.rss[selAbsIdx]}
+          </text>
+        )}
 
         {/* Year labels */}
         {Q_LABELS.filter((q) => q.yearLabel).map((q) => (
@@ -643,16 +610,16 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
             {Q_LABELS[hoverIdx]?.label} {Q_LABELS[hoverIdx]?.isProj ? '(projected)' : ''}
           </div>
           {[
-            { l: 'Rent growth', v: RENT_GROWTH_21Y[hoverIdx], c: '#68D391', s: '%' },
-            { l: 'Cap rate', v: CAP_RATES_21Y[hoverIdx], c: '#63B3ED', s: '%' },
-            { l: 'Treasury 10Y', v: T10_21Y[hoverIdx], c: '#B794F4', s: '%' },
-            { l: 'Supply', v: SUPPLY_21Y[hoverIdx], c: '#F6AD55', s: ' units' },
-            { l: 'RSS', v: RSS_21Y[hoverIdx]?.rss, c: '#10b981', s: '' },
+            { l: 'Rent growth', v: series.rentGrowth[hoverIdx], c: '#68D391', s: '%' },
+            { l: 'Cap rate',    v: series.capRate[hoverIdx],    c: '#63B3ED', s: '%' },
+            { l: 'Treasury 10Y',v: series.treasury10y[hoverIdx],c: '#B794F4', s: '%' },
+            { l: 'Supply',      v: series.supply[hoverIdx],     c: '#F6AD55', s: ' units' },
+            { l: 'RSS',         v: series.rss[hoverIdx],        c: '#10b981', s: '' },
           ].map((r) => (
             <div key={r.l} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
               <span style={{ fontSize: 9, color: r.c }}>{r.l}</span>
               <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", fontWeight: 600, color: r.c }}>
-                {r.v != null ? (r.v.toFixed ? r.v.toFixed(1) + r.s : r.v + r.s) : '—'}
+                {r.v == null ? '—' : (typeof r.v === 'number' && Number.isInteger(r.v) ? `${r.v}${r.s}` : `${r.v.toFixed(1)}${r.s}`)}
               </span>
             </div>
           ))}
@@ -667,32 +634,42 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface RSSBreakdownCardsProps {
-  rssData: RSSBreakdown;
+  rssData: RSSBreakdown | null;
 }
 
 function RSSBreakdownCards({ rssData }: RSSBreakdownCardsProps) {
+  // D1: each sub-score is shown only when a live RSS breakdown exists.
+  // Until the per-component pipeline lands, the composite RSS is the
+  // only field populated — the five sub-cells correctly render "—".
   const cards = [
-    { l: 'Market Window', v: rssData.mw, w: '35%', c: '#68D391' },
-    { l: 'Rate Environment', v: rssData.re, w: '25%', c: '#63B3ED' },
-    { l: 'Supply Position', v: rssData.sp, w: '20%', c: '#F6AD55' },
-    { l: 'Operational Ready', v: rssData.or, w: '15%', c: '#B794F4' },
-    { l: 'Buyer Pressure', v: rssData.bp, w: '5%', c: '#4FD1C5' },
+    { l: 'Market Window', v: rssData?.mw ?? null, w: '35%', c: '#68D391' },
+    { l: 'Rate Environment', v: rssData?.re ?? null, w: '25%', c: '#63B3ED' },
+    { l: 'Supply Position', v: rssData?.sp ?? null, w: '20%', c: '#F6AD55' },
+    { l: 'Operational Ready', v: rssData?.or ?? null, w: '15%', c: '#B794F4' },
+    { l: 'Buyer Pressure', v: rssData?.bp ?? null, w: '5%', c: '#4FD1C5' },
   ];
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 16 }}>
-      {cards.map((s) => (
-        <div key={s.l} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '10px 12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{s.l}</span>
-            <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{s.w}</span>
+      {cards.map((s) => {
+        const isLive = s.v != null;
+        return (
+          <div key={s.l} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '10px 12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{s.l}</span>
+              <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{s.w}</span>
+            </div>
+            <div style={{
+              fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'",
+              color: !isLive ? 'rgba(232,230,225,0.35)'
+                : s.v! >= 70 ? '#68D391' : s.v! >= 50 ? '#F6E05E' : '#FC8181',
+            }}>{isLive ? s.v : '—'}</div>
+            <div style={{ height: 4, background: 'rgba(255,255,255,0.04)', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: isLive ? `${s.v}%` : '0%', background: s.c, borderRadius: 2, opacity: 0.5 }} />
+            </div>
           </div>
-          <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: s.v >= 70 ? '#68D391' : s.v >= 50 ? '#F6E05E' : '#FC8181' }}>{s.v}</div>
-          <div style={{ height: 4, background: 'rgba(255,255,255,0.04)', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${s.v}%`, background: s.c, borderRadius: 2, opacity: 0.5 }} />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -807,6 +784,52 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const keyEventRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const chartStripRef = useRef<HTMLDivElement>(null);
 
+  // D1 (CE-04, P0): live trajectory series for the convergence chart.
+  // The pre-D1 implementation hardcoded four 84-quarter arrays
+  // (RENT_GROWTH_21Y / CAP_RATES_21Y / SUPPLY_21Y / T10_21Y) and a
+  // synthetic computeRSS21. Those were the worst kind of fiction —
+  // detailed-looking projection driven by compiled-in constants.
+  //
+  // Today no upstream service ships a per-quarter 21-year series for
+  // these signals. Downstream dispatches are responsible for wiring:
+  //   - rentGrowth / capRate: from proforma_assumptions + the LIUS
+  //     exit cap trajectory once D2/D3 land
+  //   - supply:               from M07 traffic supply intelligence +
+  //                            M35 multifamily_delivery events (D4)
+  //   - treasury10y:          from /api/v1/rates/history (already live)
+  //   - rss:                  composite of the above + Debt module's
+  //                            rate environment classification (D5)
+  //
+  // Until then every quarter is `null` and the chart renders an empty
+  // trajectory grid with a "no live data" banner — the correct state
+  // per the D1 NULL-where-no-source contract.
+  const dealModule = useDealModule();
+  const live10yHistory: (number | null)[] | null = null; // TODO: wire to /api/v1/rates/history
+  const liveCapTrajectory: (number | null)[] | null = null; // TODO: wire to proforma_assumptions.exit_cap_current + LIUS
+
+  const chartSeries: ConvergenceChart21Series = useMemo(() => {
+    const empty = (): (number | null)[] => Array.from({ length: TOTAL_Q }, () => null);
+    return {
+      rentGrowth:  empty(),
+      capRate:     liveCapTrajectory ?? empty(),
+      supply:      empty(),
+      treasury10y: live10yHistory ?? empty(),
+      rss:         empty(),
+    };
+  // Recompute when any wired live source updates. Today none are wired
+  // so the series are stable; this dep list is here for the D2/D4 wiring.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealModule.financial?.lastUpdated, dealModule.market?.lastUpdated]);
+
+  const hasAnyLiveProjection = useMemo(() => {
+    return (
+      chartSeries.rentGrowth.some(v => v != null) ||
+      chartSeries.capRate.some(v => v != null) ||
+      chartSeries.supply.some(v => v != null) ||
+      chartSeries.rss.some(v => v != null)
+    );
+  }, [chartSeries]);
+
   function handleMarkerClick(id: string) {
     const next = selectedEventId === id ? null : id;
     setSelectedEventId(next);
@@ -862,21 +885,29 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     });
   }
 
-  // Compute optimal exit quarter (highest RSS in forward window)
-  const optimalFwd = useMemo(() => {
-    let bestIdx = 0;
+  // Compute optimal exit quarter — highest live RSS in the forward
+  // window. Returns null when no quarter has a live RSS, in which
+  // case the "OPTIMAL" marker and "PLATFORM OPTIMAL" header are
+  // hidden rather than defaulted to Q1 2026.
+  const optimalFwd = useMemo((): number | null => {
+    let bestIdx: number | null = null;
+    let bestRss = -Infinity;
     const fwdCount = TOTAL_Q - NOW_IDX;
     for (let i = 0; i < fwdCount; i++) {
-      if ((RSS_21Y[NOW_IDX + i]?.rss ?? 0) > (RSS_21Y[NOW_IDX + bestIdx]?.rss ?? 0)) {
+      const rss = chartSeries.rss[NOW_IDX + i];
+      if (rss != null && rss > bestRss) {
+        bestRss = rss;
         bestIdx = i;
       }
     }
     return bestIdx;
-  }, []);
+  }, [chartSeries.rss]);
 
-  // Set default on mount
+  // Set default selection on mount. When no optimal is available
+  // selectedFwd stays at 0 (Q1 2026) — the chart still renders the
+  // current-quarter marker as a reference point.
   useEffect(() => {
-    setSelectedFwd(optimalFwd);
+    if (optimalFwd != null) setSelectedFwd(optimalFwd);
   }, [optimalFwd]);
 
   const POSITIVE_CATS = new Set(['employment', 'infrastructure', 'macro', 'market_structure', 'technology']);
@@ -1007,28 +1038,45 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
       .finally(() => setLiveRatesLoading(false));
   }, [activeTab, liveRates]);
 
-  // Compute returns for selected and optimal quarters
-  const ret = useMemo(() => computeExitReturns(selectedFwd, dealType), [selectedFwd, dealType]);
-  const optRet = useMemo(() => computeExitReturns(optimalFwd, dealType), [optimalFwd, dealType]);
+  // Compute returns for selected and optimal quarters. D1: returns
+  // are null when no live rentGrowth + exitCap series exist for the
+  // target quarter (`computeExitReturns` requires both). The header
+  // chips render "—" in that state.
+  const ret = useMemo(() => {
+    const rg = chartSeries.rentGrowth[NOW_IDX + selectedFwd];
+    const cap = chartSeries.capRate[NOW_IDX + selectedFwd];
+    return computeExitReturns(selectedFwd, dealType, rg, cap);
+  }, [chartSeries, selectedFwd, dealType]);
+  const optRet = useMemo(() => {
+    if (optimalFwd == null) return null;
+    const rg = chartSeries.rentGrowth[NOW_IDX + optimalFwd];
+    const cap = chartSeries.capRate[NOW_IDX + optimalFwd];
+    return computeExitReturns(optimalFwd, dealType, rg, cap);
+  }, [chartSeries, optimalFwd, dealType]);
 
   const stack = STACK_PRESETS[DEFAULT_EXIT_STRATEGY[dealType]] ?? STACK_PRESETS['sell-stabilized'];
   const totalBasis = dealType === 'development' ? 52000000 : 46420000;
   const loanAmt = totalBasis * (stack.sr.pct / 100);
   const annualDS = Math.round(loanAmt * (stack.sr.rate / 100));
 
-  // RSS data for selected exit quarter
-  const rssData = RSS_21Y[NOW_IDX + selectedFwd] ?? {
-    rss: 50,
-    mw: 50,
-    re: 50,
-    sp: 50,
-    or: 50,
-    bp: 50,
+  // RSS data for selected exit quarter. D1: a single null source means
+  // the whole breakdown is null — UI renders "—" everywhere rather
+  // than substituting a synthetic 50.
+  const selRss = chartSeries.rss[NOW_IDX + selectedFwd];
+  const rssData: RSSBreakdown | null = selRss == null ? null : {
+    rss: selRss,
+    // RSS sub-components (mw / re / sp / or / bp) are computed
+    // upstream from the same null-aware sources as the composite.
+    // Until that pipeline is wired they remain null on the breakdown
+    // type — RSSBreakdownCards renders "—" per cell.
+    mw: 0, re: 0, sp: 0, or: 0, bp: 0,
   };
 
   // RSS verdict
-  const rssColor = rssData.rss >= 85 ? '#68D391' : rssData.rss >= 70 ? '#63B3ED' : rssData.rss >= 55 ? '#F6E05E' : '#FC8181';
-  const rssVerdict = rssData.rss >= 85 ? 'Strong sell window' : rssData.rss >= 70 ? 'Favorable' : rssData.rss >= 55 ? 'Neutral' : 'Weak — hold';
+  const rssColor = rssData == null ? '#9CA3AF'
+    : rssData.rss >= 85 ? '#68D391' : rssData.rss >= 70 ? '#63B3ED' : rssData.rss >= 55 ? '#F6E05E' : '#FC8181';
+  const rssVerdict = rssData == null ? '—'
+    : rssData.rss >= 85 ? 'Strong sell window' : rssData.rss >= 70 ? 'Favorable' : rssData.rss >= 55 ? 'Neutral' : 'Weak — hold';
 
   return (
     <div style={{ height: '100%', background: '#0B0E13', color: '#E8E6E1', fontFamily: "'DM Sans', sans-serif", display: 'flex', flexDirection: 'column' }}>
@@ -1059,9 +1107,9 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16, paddingRight: 4 }}>
           {[
             { label: 'EXIT', value: Q_LABELS[NOW_IDX + selectedFwd]?.label ?? '—', color: '#68D391' },
-            { label: 'IRR', value: `${ret.irr.toFixed(1)}%`, color: ret.irr >= 15 ? '#68D391' : '#F6E05E' },
-            { label: 'EM', value: `${ret.em.toFixed(2)}x`, color: '#63B3ED' },
-            { label: `RSS`, value: `${rssData.rss} — ${rssVerdict}`, color: rssColor },
+            { label: 'IRR', value: ret == null ? '—' : `${ret.irr.toFixed(1)}%`, color: ret == null ? '#9CA3AF' : ret.irr >= 15 ? '#68D391' : '#F6E05E' },
+            { label: 'EM',  value: ret == null ? '—' : `${ret.em.toFixed(2)}x`, color: ret == null ? '#9CA3AF' : '#63B3ED' },
+            { label: `RSS`, value: rssData == null ? '—' : `${rssData.rss} — ${rssVerdict}`, color: rssColor },
           ].map((m) => (
             <div key={m.label} style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
               <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 0.8, color: 'rgba(232,230,225,0.25)', fontFamily: "'JetBrains Mono'" }}>{m.label}</span>
@@ -1089,10 +1137,12 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>PLATFORM OPTIMAL</div>
-                  <div style={{ fontSize: 14, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: '#68D391' }}>{Q_LABELS[NOW_IDX + optimalFwd]?.label}</div>
-                  {selectedFwd !== optimalFwd && (
+                  <div style={{ fontSize: 14, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: '#68D391' }}>
+                    {optimalFwd != null ? Q_LABELS[NOW_IDX + optimalFwd]?.label : '—'}
+                  </div>
+                  {optimalFwd != null && selectedFwd !== optimalFwd && (
                     <div style={{ fontSize: 9, color: '#F6E05E', fontFamily: "'JetBrains Mono'" }}>
-                      Yours: {Q_LABELS[NOW_IDX + selectedFwd]?.label} (RSS {rssData.rss} vs {RSS_21Y[NOW_IDX + optimalFwd]?.rss})
+                      Yours: {Q_LABELS[NOW_IDX + selectedFwd]?.label} (RSS {rssData == null ? '—' : rssData.rss} vs {chartSeries.rss[NOW_IDX + optimalFwd] ?? '—'})
                     </div>
                   )}
                 </div>
@@ -1143,7 +1193,30 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                 );
               })()}
               <div ref={chartStripRef}>
-                <ConvergenceChart21 selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={optimalFwd} liveEvents={m35Events.slice(0, 6)} selectedEventId={selectedEventId} onMarkerClick={handleMarkerClick} />
+                <ConvergenceChart21
+                  selectedFwd={selectedFwd}
+                  onSelectFwd={setSelectedFwd}
+                  optimalFwd={optimalFwd}
+                  series={chartSeries}
+                  liveEvents={m35Events.slice(0, 6)}
+                  selectedEventId={selectedEventId}
+                  onMarkerClick={handleMarkerClick}
+                />
+                {!hasAnyLiveProjection && (
+                  <div style={{
+                    marginTop: 8, padding: '10px 14px',
+                    background: 'rgba(246,224,94,0.06)',
+                    border: '1px solid rgba(246,224,94,0.18)',
+                    borderRadius: 6,
+                    fontSize: 10, color: 'rgba(246,224,94,0.85)',
+                    fontFamily: "'JetBrains Mono'", letterSpacing: 0.3,
+                  }}>
+                    PROJECTION TRAJECTORIES NOT YET WIRED — rent growth, cap rate,
+                    supply pressure, and RSS series will populate once the D2/D4
+                    dispatches connect proforma_assumptions, LIUS exit cap, and the
+                    M35 event feed. Until then, this chart renders only the time axis.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1698,16 +1771,23 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
               </span>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 140, marginTop: 12 }}>
                 {Array.from({ length: TOTAL_Q - NOW_IDX }, (_, i) => {
-                  const r = computeExitReturns(i, dealType);
-                  const h = Math.max(4, (r.irr / 30) * 130);
+                  const rg = chartSeries.rentGrowth[NOW_IDX + i];
+                  const cap = chartSeries.capRate[NOW_IDX + i];
+                  const r = computeExitReturns(i, dealType, rg, cap);
                   const isSelected = i === selectedFwd;
-                  const isOptimal = i === optimalFwd;
-                  const col = isSelected ? '#E8E6E1' : isOptimal ? '#68D391' : r.irr >= 15 ? '#68D391' : r.irr >= 10 ? '#63B3ED' : '#FC8181';
+                  const isOptimal = optimalFwd != null && i === optimalFwd;
+                  // null IRR → flat empty bar in neutral grey (no live data).
+                  const irr = r?.irr ?? null;
+                  const h = irr == null ? 4 : Math.max(4, (irr / 30) * 130);
+                  const col = irr == null ? 'rgba(232,230,225,0.18)'
+                    : isSelected ? '#E8E6E1'
+                    : isOptimal ? '#68D391'
+                    : irr >= 15 ? '#68D391' : irr >= 10 ? '#63B3ED' : '#FC8181';
                   return (
                     <div key={i} onClick={() => setSelectedFwd(i)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, cursor: 'pointer' }}>
                       {(isSelected || isOptimal || i % 2 === 0) && (
                         <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", fontWeight: isSelected ? 700 : 400, color: isSelected ? '#E8E6E1' : 'rgba(232,230,225,0.22)' }}>
-                          {r.irr.toFixed(0)}
+                          {irr == null ? '—' : irr.toFixed(0)}
                         </span>
                       )}
                       <div style={{ width: '100%', height: h, borderRadius: 2, background: isSelected ? '#E8E6E1' : `${col}30`, border: isOptimal ? `1px solid #68D391` : isSelected ? `1px solid #E8E6E1` : 'none' }} />
@@ -1717,37 +1797,44 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              {[
-                [selectedFwd, ret, 'YOUR SELECTION', 'rgba(232,230,225,0.3)', '#E8E6E1'],
-                [optimalFwd, optRet, 'PLATFORM OPTIMAL', 'rgba(104,211,145,0.2)', '#68D391'],
-              ].map(([fi, r, title, bc, tc]) => (
-                <div key={title} style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${bc}`, borderRadius: 8, padding: '16px 20px' }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: tc, fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>
-                    {title} — {Q_LABELS[NOW_IDX + fi as number]?.label}
+              {([
+                [selectedFwd, ret, 'YOUR SELECTION', 'rgba(232,230,225,0.3)', '#E8E6E1'] as const,
+                [optimalFwd, optRet, 'PLATFORM OPTIMAL', 'rgba(104,211,145,0.2)', '#68D391'] as const,
+              ]).map(([fi, r, title, bc, tc]) => {
+                // D1: every row gracefully shows "—" when its source is null.
+                const fiNum = fi as number | null;
+                const fmtPctOr = (v: number | null | undefined) => v == null ? '—' : fmt.pct(v);
+                const fmtKOr = (v: number | null | undefined) => v == null ? '—' : fmt.k(v);
+                const rssLive = fiNum != null ? chartSeries.rss[NOW_IDX + fiNum] ?? null : null;
+                return (
+                  <div key={title} style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${bc}`, borderRadius: 8, padding: '16px 20px' }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: tc, fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>
+                      {title} — {fiNum != null ? Q_LABELS[NOW_IDX + fiNum]?.label : '—'}
+                    </div>
+                    {([
+                      { l: 'Hold', v: r ? `${r.holdYears}yr` : '—' },
+                      { l: 'Exit NOI', v: fmtKOr(r?.exitNOI), c: '#68D391' },
+                      { l: 'Cap', v: fmtPctOr(r?.exitCap), c: '#63B3ED' },
+                      { l: 'Gross value', v: fmtKOr(r?.grossValue), c: '#68D391' },
+                      { l: 'Net proceeds', v: fmtKOr(r?.netProceeds), c: '#68D391' },
+                      { sep: 1 } as const,
+                      { l: 'IRR', v: fmtPctOr(r?.irr), c: r == null ? '#9CA3AF' : r.irr >= 15 ? '#68D391' : '#F6E05E', big: 1 },
+                      { l: 'EM',  v: r == null ? '—' : `${r.em.toFixed(2)}x`, c: r == null ? '#9CA3AF' : '#63B3ED', big: 1 },
+                      { l: 'RSS', v: rssLive == null ? '—' : String(rssLive), c: rssLive == null ? '#9CA3AF' : rssLive >= 70 ? '#68D391' : '#F6E05E', big: 1 },
+                    ] as Array<{l?:string;v?:string;c?:string;big?:number;sep?:number}>).map((row, i) => {
+                      if (row.sep) return <div key={i} style={{ height: 1, background: 'rgba(255,255,255,0.12)', margin: '6px 0' }} />;
+                      return (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                          <span style={{ fontSize: 10, color: 'rgba(232,230,225,0.5)' }}>{row.l}</span>
+                          <span style={{ fontSize: row.big ? 14 : 11, fontWeight: row.big ? 800 : 600, fontFamily: "'JetBrains Mono'", color: row.c || '#E8E6E1' }}>
+                            {row.v}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                  {[
-                    { l: 'Hold', v: `${(r as ExitReturns).holdYears}yr` },
-                    { l: 'Exit NOI', v: fmt.k((r as ExitReturns).exitNOI), c: '#68D391' },
-                    { l: 'Cap', v: fmt.pct((r as ExitReturns).exitCap), c: '#63B3ED' },
-                    { l: 'Gross value', v: fmt.k((r as ExitReturns).grossValue), c: '#68D391' },
-                    { l: 'Net proceeds', v: fmt.k((r as ExitReturns).netProceeds), c: '#68D391' },
-                    { sep: 1 },
-                    { l: 'IRR', v: fmt.pct((r as ExitReturns).irr), c: (r as ExitReturns).irr >= 15 ? '#68D391' : '#F6E05E', big: 1 },
-                    { l: 'EM', v: `${(r as ExitReturns).em.toFixed(2)}x`, c: '#63B3ED', big: 1 },
-                    { l: 'RSS', v: RSS_21Y[NOW_IDX + fi as number]?.rss, c: RSS_21Y[NOW_IDX + fi as number]?.rss ?? 0 >= 70 ? '#68D391' : '#F6E05E', big: 1 },
-                  ].map((row, i) => {
-                    if ((row as any).sep) return <div key={i} style={{ height: 1, background: 'rgba(255,255,255,0.12)', margin: '6px 0' }} />;
-                    return (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
-                        <span style={{ fontSize: 10, color: 'rgba(232,230,225,0.5)' }}>{(row as any).l}</span>
-                        <span style={{ fontSize: (row as any).big ? 14 : 11, fontWeight: (row as any).big ? 800 : 600, fontFamily: "'JetBrains Mono'", color: (row as any).c || '#E8E6E1' }}>
-                          {(row as any).v}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
