@@ -82,6 +82,14 @@ export interface RateEnvironmentResult {
   pricingWindowScore: number;
   pricingWindowLabel: string;
   computedAt: string;
+  /**
+   * CE-06: which path produced the SOFR forward curve.
+   *   'live'                — built from real NY Fed SOFRAI 30/90/180-day averages
+   *   'fallback_heuristic'  — sofrAvg30 / sofrAvg180 missing; used a level-shift
+   *                            heuristic. Surfaced so the UI can warn that the
+   *                            classification is riding the heuristic.
+   */
+  curveMode: 'live' | 'fallback_heuristic';
   macroContext?: {
     gdpGrowthPct: number | null;
     cpiYoyPct: number | null;
@@ -149,6 +157,18 @@ export interface DebtAdvisorResponse {
     advisorRate?: number;
     irrImpactBps?: number;
     covenantCushionDeltaBps?: number;
+  };
+  /**
+   * CE-09: the recommendation was auto-applied to the Pro Forma's
+   * `per_year_overrides` (resolution: 'platform') the moment it was
+   * computed — no explicit Accept needed. `skipped` lists fields where
+   * the user already has an override that won over the platform default.
+   */
+  platformDefaultsApplied?: {
+    applied: number;
+    skipped: string[];
+    phaseIndex: number;
+    fieldsApplied: string[];
   };
 }
 

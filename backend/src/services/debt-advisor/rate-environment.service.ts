@@ -11,6 +11,20 @@ import { logger } from '../../utils/logger';
 
 export type RateEnvironment = 'Dropping' | 'Flat' | 'Rising';
 
+/**
+ * SOFR forward-curve construction mode.
+ *
+ *   'live'                — built from real NY Fed SOFRAI 30/90/180-day
+ *                            compounded averages (sofrAvg30 > 0 && sofrAvg180 > 0).
+ *   'fallback_heuristic'  — sofrAvg30 / sofrAvg180 were missing or zero, so the
+ *                            curve was generated from a level-shift heuristic
+ *                            keyed on the absolute SOFR spot. This is a
+ *                            silent-degradation path — surfaced here so
+ *                            downstream consumers and the UI can see it.
+ *                            See CE-06 in CAPITAL_EXIT_SUBSYSTEM_AUDIT.md.
+ */
+export type SofrForwardCurveMode = 'live' | 'fallback_heuristic';
+
 export interface RateEnvironmentResult {
   classification: RateEnvironment;
   sofr: number;
@@ -26,6 +40,12 @@ export interface RateEnvironmentResult {
   pricingWindowScore: number;
   pricingWindowLabel: string;
   computedAt: string;
+  /**
+   * Which path produced the SOFR forward curve. See `SofrForwardCurveMode`.
+   * Surfaced for both observability (CE-06) and so the UI can flag deals
+   * whose recommendation is currently riding the heuristic fallback.
+   */
+  curveMode: SofrForwardCurveMode;
   // FRED macro enrichment (from m28_rate_environment DB)
   macroContext?: {
     gdpGrowthPct: number | null;
@@ -58,37 +78,56 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
  * If `sofrAvg30 === 0` (data unavailable), falls back to a conservative
  * level-shift heuristic keyed on the absolute spot SOFR level.
  *
- * Returns annual rates in decimal form (e.g. 0.053), indexed [0..4] = Year 1..5.
+ * Returns annual rates in decimal form (e.g. 0.053), indexed [0..4] = Year 1..5,
+ * along with the construction mode so callers can surface which path fired.
+ * See CE-06 in CAPITAL_EXIT_SUBSYSTEM_AUDIT.md — this is observability only,
+ * the fallback behavior itself is intentionally unchanged.
  */
 function buildSofrForwardCurve(
   sofr: number,
   sofrAvg30: number = 0,
   sofrAvg90: number = 0,
   sofrAvg180: number = 0
-): number[] {
+): { curve: number[]; mode: SofrForwardCurveMode } {
   if (sofrAvg30 > 0 && sofrAvg180 > 0) {
     // Observed monthly rate-change: 30d avg is the midpoint of last 30 days,
     // 180d avg is midpoint of last 180 days; gap between midpoints ≈ 75 days (~2.5 mo).
     // Per-month change = (sofrAvg30 - sofrAvg90) / 2 months (30d→90d midpoint gap ≈ 2 mo).
     const monthlyChangeDec = (sofrAvg30 - sofrAvg90) / 2;
     const annualChangeDec  = monthlyChangeDec * 12;
-    return [
-      sofr,
-      sofr + annualChangeDec * (1 / 5),
-      sofr + annualChangeDec * (2 / 5),
-      sofr + annualChangeDec * (3 / 5),
-      sofr + annualChangeDec * (4 / 5),
-    ];
+    return {
+      mode: 'live',
+      curve: [
+        sofr,
+        sofr + annualChangeDec * (1 / 5),
+        sofr + annualChangeDec * (2 / 5),
+        sofr + annualChangeDec * (3 / 5),
+        sofr + annualChangeDec * (4 / 5),
+      ],
+    };
   }
-  // Fallback: level-shift heuristic when averages are unavailable
+  // Fallback: level-shift heuristic when averages are unavailable. Log a
+  // structured warn so the production telemetry shows when classifications
+  // are riding the heuristic vs the data-driven path.
   const baseDecline = sofr > 0.055 ? -0.0025 : sofr > 0.045 ? -0.0010 : 0.0005;
-  return [
+  logger.warn('[RateEnvironment] SOFR forward curve fell back to level-shift heuristic', {
+    event: 'sofr_forward_curve.fallback_heuristic',
+    reason: sofrAvg30 <= 0 ? 'sofrAvg30_missing' : 'sofrAvg180_missing',
     sofr,
-    sofr + baseDecline,
-    sofr + baseDecline * 2,
-    sofr + baseDecline * 3,
-    sofr + baseDecline * 4,
-  ];
+    sofrAvg30,
+    sofrAvg180,
+    baseDecline,
+  });
+  return {
+    mode: 'fallback_heuristic',
+    curve: [
+      sofr,
+      sofr + baseDecline,
+      sofr + baseDecline * 2,
+      sofr + baseDecline * 3,
+      sofr + baseDecline * 4,
+    ],
+  };
 }
 
 function classifyEnvironment(sofrForward12moBps: number): RateEnvironment {
@@ -208,7 +247,7 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
     const treasury10y = (liveRates.treasury10Y || 4.3) / 100;
     const fedFundsTarget = ((liveRates.effrTargetLow || 5.25) + (liveRates.effrTargetHigh || 5.5)) / 2 / 100;
 
-    const fwdCurve = buildSofrForwardCurve(sofr, sofrAvg30, sofrAvg90, sofrAvg180);
+    const { curve: fwdCurve, mode: curveMode } = buildSofrForwardCurve(sofr, sofrAvg30, sofrAvg90, sofrAvg180);
     const sofrForward12moBps = (fwdCurve[4] - fwdCurve[0]) * 10000;
 
     const classification = classifyEnvironment(sofrForward12moBps);
@@ -260,6 +299,7 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
       pricingWindowScore,
       pricingWindowLabel,
       computedAt: new Date().toISOString(),
+      curveMode,
       macroContext,
     };
 
@@ -286,6 +326,9 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
       pricingWindowScore: 50,
       pricingWindowLabel: 'Neutral',
       computedAt: new Date().toISOString(),
+      // Live rate fetch failed entirely — curve was not built from any data.
+      // Tag as fallback so the UI and callers know this is the degraded path.
+      curveMode: 'fallback_heuristic',
     };
     cache = { data: result, expiresAt: Date.now() + 5 * 60 * 1000 };
     return result;

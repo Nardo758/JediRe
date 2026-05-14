@@ -2,10 +2,32 @@
  * Debt Advisor Routes
  * Strategy-driven debt recommendation for a given deal.
  *
- * GET  /api/v1/deals/:dealId/debt/advisor           — get recommendation (15min cache)
- * POST /api/v1/deals/:dealId/debt/advisor/accept    — accept plan → populate Configure fields via financials override pipeline
- * POST /api/v1/deals/:dealId/debt/advisor/recompute — bust cache + recompute
+ * GET  /api/v1/deals/:dealId/debt/advisor           — get recommendation (15min cache).
+ *                                                      CE-09: the recommendation is
+ *                                                      auto-applied to Pro Forma
+ *                                                      per_year_overrides as
+ *                                                      resolution:'platform' the moment
+ *                                                      it is computed (no Accept needed).
+ *                                                      User overrides win over platform
+ *                                                      via the standard LayeredValue
+ *                                                      precedence — preserved by the
+ *                                                      applyDebtAdvisorPlatformDefault
+ *                                                      SQL guard.
+ * POST /api/v1/deals/:dealId/debt/advisor/accept    — confirmation + monitoring-trigger
+ *                                                      alert registration. Re-runs the
+ *                                                      platform-default write
+ *                                                      (idempotent) and registers the
+ *                                                      monitoring triggers as alerts.
+ *                                                      Post-D3 this is an
+ *                                                      acknowledgment step, not the
+ *                                                      activation gate.
+ * POST /api/v1/deals/:dealId/debt/advisor/recompute — bust cache + recompute (which
+ *                                                      re-fires the platform-default
+ *                                                      write under the same guard).
  * GET  /api/v1/deals/debt/rate-environment          — public rate environment snapshot
+ *                                                      from rate-environment.service —
+ *                                                      the single canonical producer
+ *                                                      post-CE-07.
  */
 import { Router, Request, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';

@@ -35,6 +35,10 @@ import {
   buildStanceTrace,
   type RateEnvironment,
 } from '../types/operator-stance';
+import {
+  classifyRateEnvironment,
+  type RateEnvironment as MarketRateEnvironment,
+} from './debt-advisor/rate-environment.service';
 import { randomUUID } from 'crypto';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -44,19 +48,22 @@ function getDb(): Pool {
 }
 
 /**
- * P3-01: Map m28_rate_environment.policy_stance + forward_direction to
- * the OperatorStance RateEnvironment enum. Used to seed a platform-default
- * rateEnvironment when the operator has not set a stance yet.
+ * CE-07: map the canonical Debt-module classification
+ * (`Dropping` | `Flat` | `Rising`, produced by `rate-environment.service`
+ * from the SOFR forward curve over `m28_rate_environment`) onto the
+ * OperatorStance `RateEnvironment` enum (`CUTTING` | `NORMALIZING` |
+ * `HIGHER_FOR_LONGER`).
+ *
+ * These two enums live in different worlds — the Debt-module one is a
+ * market classification used to pick fixed vs floating; the
+ * OperatorStance one is the stance posture the cashflow agent uses to
+ * modulate discretion. Pre-D3 both read `m28_rate_environment`
+ * independently and could disagree. Post-D3 the Debt module is the
+ * single producer; this function is the translation layer.
  */
-function mapM28ToRateEnvironment(
-  policyStance: string | null,
-  forwardDirection: string | null,
-): RateEnvironment {
-  if (policyStance === 'easing' || policyStance === 'emergency') return 'CUTTING';
-  if (policyStance === 'tightening') return 'HIGHER_FOR_LONGER';
-  // neutral — use forward_direction as secondary signal
-  if (forwardDirection === 'falling') return 'CUTTING';
-  if (forwardDirection === 'rising') return 'HIGHER_FOR_LONGER';
+function marketEnvToStanceEnv(market: MarketRateEnvironment): RateEnvironment {
+  if (market === 'Dropping') return 'CUTTING';
+  if (market === 'Rising')   return 'HIGHER_FOR_LONGER';
   return 'NORMALIZING';
 }
 
@@ -108,21 +115,21 @@ export async function getStanceForDeal(
   }
   const raw = res.rows[0].operator_stance;
 
-  // P3-01 bridge: when operator has not set a stance, seed rateEnvironment from
-  // live m28_rate_environment macro data so platform defaults reflect current
-  // monetary conditions rather than always defaulting to NORMALIZING.
+  // CE-07: when the operator has not set a stance, seed `rateEnvironment`
+  // from the canonical Debt-module classifier (`rate-environment.service`)
+  // rather than reading `m28_rate_environment` directly. This guarantees
+  // the stance's rate posture and the Debt Advisor's market classification
+  // can never disagree — they are derived from the same SOFR forward
+  // curve + macro context computation. Non-fatal: if the rate service
+  // fails we fall through to PLATFORM_STANCE_DEFAULTS.
   if (!raw) {
     try {
-      const m28 = await db.query(
-        `SELECT policy_stance, forward_direction FROM m28_rate_environment ORDER BY snapshot_date DESC LIMIT 1`,
-      );
-      if (m28.rows.length > 0) {
-        const { policy_stance, forward_direction } = m28.rows[0];
-        const rateEnvironment = mapM28ToRateEnvironment(policy_stance, forward_direction);
-        return resolveStance({ rateEnvironment });
-      }
-    } catch {
-      // m28 table not seeded yet — fall through to full platform defaults
+      const market = await classifyRateEnvironment();
+      return resolveStance({ rateEnvironment: marketEnvToStanceEnv(market.classification) });
+    } catch (err) {
+      logger.debug('[OperatorStance] rate-environment.service unavailable for default seed, using platform default', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
