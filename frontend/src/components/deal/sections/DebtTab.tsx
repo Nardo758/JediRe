@@ -103,12 +103,31 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   const template = strategyTemplates[selectedStrategy];
   const stack = defaultCapitalStack;
 
+  // D1 (CE-04): exitConfig is wired strictly from useDealModule context.
+  // Fields with no live source are passed as `null`, NOT a hardcoded
+  // fallback — the projection-model hook treats null as "no live data
+  // for this input" and surfaces it in the UI as "—".
+  //
+  // Yearly trajectory arrays (rentGrowthByYear, exitCapByYear,
+  // supplyPressureByYear, valueAddCompleteByYear) and the RSS sub-score
+  // inputs (rateEnvironmentScore, marketWindowByYear, buyerPressureByYear,
+  // opReadinessByYear) remain undefined here — there is no upstream
+  // live source today. Wiring them is downstream-dispatch work
+  // (D2: exit cap reconciliation, D4: events). Until those land, the
+  // RSS gauge, sub-score bars, and verdict bar all render "—".
   const exitConfig = useMemo<ExitStrategyConfig>(() => ({
-    baseNOI: financial?.noi || 0,
-    equityInvested: capitalStructure?.totalEquity || defaultCapitalStack.metrics.totalEquity || 8000000,
-    loanBalance: capitalStructure?.loanBalance?.[0] ?? defaultCapitalStack.metrics.totalDebt ?? 19200000,
+    baseNOI: financial?.noi ?? null,
+    equityInvested: capitalStructure?.totalEquity ?? null,
+    loanBalance: capitalStructure?.loanBalance?.[0] ?? null,
+    annualDebtService: capitalStructure?.annualDebtService ?? null,
     dealStatus: dealStatus || 'pipeline',
-  }), [financial?.noi, capitalStructure?.totalEquity, capitalStructure?.loanBalance, dealStatus]);
+  }), [
+    financial?.noi,
+    capitalStructure?.totalEquity,
+    capitalStructure?.loanBalance,
+    capitalStructure?.annualDebtService,
+    dealStatus,
+  ]);
 
   const markTabLoading = useCallback((tab: TabId, loading: boolean) => {
     setTabLoading(prev => ({ ...prev, [tab]: loading }));
