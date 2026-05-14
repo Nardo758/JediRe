@@ -559,6 +559,13 @@ The delta between 7.1 and 7.2 is the Phase 1 fix inventory.
 
 ## 8. Finding Inventory (CE-N)
 
+> **Provenance note.** CE-15 and CE-16 were not in the original audit
+> scope. They were surfaced during Layer 1 dispatch implementation:
+> CE-15 by D1's completion summary, CE-16 by the post-D3
+> cycle-intelligence scan. They follow the audit's classification
+> taxonomy and are included here so the inventory stays the single
+> source of truth for the subsystem.
+
 | ID | Classification | Description | Priority | Effort | Downstream Impact | Phase |
 |---|---|---|---|---|---|---|
 | CE-01 | STRUCTURALLY_MISALIGNED | `exit_cap_trajectory: -0.0025` is a single hardcoded constant (`trajectory-engine.ts:84`); cannot align with the Debt module's dynamic rate classification. | P0 | S | Pro Forma exit value, IRR | A |
@@ -576,6 +583,69 @@ The delta between 7.1 and 7.2 is the Phase 1 fix inventory.
 | CE-12 | NOT_WIRED | Exit Strategy `supplyPressure` / `buyerPressure` RSS components do not read from Traffic Engine supply data or M35 `multifamily_delivery` events. | P1 | M | Exit timing supply blindness | A (wiring) / B (model) |
 | CE-13 | UNVERIFIED | `archive_line_items` writer not found in production code paths. If table is empty, LIUS Tier 3 always misses and the cascade falls through. Verify by querying production. | P1 | S | LIUS data integrity | A |
 | CE-14 | DISPLAY_ONLY | `ExitCapitalModule` does fetch live M35 events but only renders them in `caseForBullets`, `keyTriggers`, and chart markers. The actual RSS / cap-rate trajectory that drives exit-window decisions ignores these events entirely. | P1 | M | Misleading user experience: events shown but not modeled | A |
+| CE-15 | HARDCODED | `ConvergenceChart.tsx` carries duplicate 21-year projection arrays — the same hardcoded-fiction pattern as CE-04, on a different surface. Consumed by `AssetOwnedPage` and `PortfolioPropertyPage`. D1 explicitly scoped this out (separate file, not in D1's named lines), but it is the same defect: the Portfolio property pages render a detailed multi-year projection from compiled-in constants. | P1 | M | Portfolio property page correctness; user trust on owned-asset surfaces | A (scaffold) / B (data) |
+| CE-16 | NOT_WIRED / HARDCODED | `cycle-intelligence.service.ts` (M28 Cycle Intelligence) is orphaned scaffolding. Three coupled facets: (1) prediction internals are stubbed — `predictCapRateMovement` uses `forwardMortgageChange = -68 // bps (example)` and a hardcoded `0.40` chain coefficient, `confidence: 0.75` hardcoded; same in `predictRentGrowth`, `predictFullChain`; (2) `m28_cycle_snapshots` is written by `classify-market-cycles.ts` — a manual script, not a scheduled service (dormant-infrastructure shape, same as pre-FIX-1 traffic); (3) the service has exactly one consumer, its own REST route — no Debt, Exit Timing, or Exit Strategy module consumes it. The type system is genuinely well-designed (`FullChainPrediction` models Fed-cut → mortgage → purchasing-power → txn-volume → cap-rate → value as an explicit causal chain); the substance is fictional and connected to nothing. | P1 | L | Layer 2 foundation — cycle-aware debt-term optimization, the stated goal of the Capital/Exit subsystem | A (schedule writer + wire consumers) / B (calibrate chain coefficients against corpus) |
+
+#### CE-15 — descriptive note
+
+D1's completion summary surfaced this: `ConvergenceChart.tsx` has its
+own duplicate 21-year arrays, distinct from the
+`ExitStrategyTabs` / `ExitCapitalModule` arrays that D1 removed. D1
+correctly left it out of scope — it wasn't in D1's named lines, and
+it's consumed by different pages (`AssetOwnedPage`,
+`PortfolioPropertyPage`) rather than the Exit Strategy tab. But it
+is the identical defect class as CE-04: a real-looking projection
+chart driven by compiled-in constants. After D1, the Exit Strategy
+tab is honest while the Portfolio property pages still show fiction.
+The fix shape is the same as CE-04 — remove the inline arrays, wire
+to live deal context, NULL-where-no-source. It can be a D1-style
+follow-on or folded into D5's frontend work; it does not gate
+anything.
+
+#### CE-16 — descriptive note
+
+Discovered during the cycle-intelligence scan that followed D3 (D3's
+CE-07 work surfaced cycle-intelligence as an `m28_rate_environment`
+reader). The finding reframes Layer 2: the cycle-aware debt-term
+optimization the subsystem is ultimately meant to do is not
+greenfield — the M28 Cycle Intelligence service is a fully-shaped
+attempt at it, designed with ambition (the `FullChainPrediction`
+causal chain is a sound model structure), but stubbed internally
+and wired to nothing. The three facets resolve to three distinct
+work items:
+
+- **Facet 1 — stubbed internals.** Replace the `(example)` constants
+  in `predictCapRateMovement` / `predictRentGrowth` / `predictFullChain`
+  with real computation. The chain coefficients (e.g. the `0.40`
+  mortgage-to-cap-rate factor) are an empirical question — the
+  `historical_observations` corpus, with
+  `realized_cap_rate_change_t12_bps` paired against
+  rate-environment-at-the-time, is the calibration data. Phase B,
+  corpus-gated — same dependency as CE-M26.
+- **Facet 2 — manual-script writer.** Schedule
+  `classify-market-cycles.ts` as a recurring job instead of a
+  hand-run script. Phase A, FIX-1-shaped. Verify against production
+  first whether `m28_cycle_snapshots` has ever been populated.
+- **Facet 3 — orphaned service.** Wire the Debt / Exit Timing /
+  Exit Strategy modules to consume `cycleIntelligenceService`. Phase
+  A — and this belongs in or beside D4, because "wire the M14_macro
+  event channel into the capital/exit modules" and "wire cycle
+  intelligence into the capital/exit modules" are the same
+  architectural surface: both feed forward-looking macro signal to
+  the same three consumers. D4's scope should be expanded to
+  account for it.
+
+**Frontend consumption check (settles priority):** grep of
+`frontend/src/` for `/cycle-intelligence`, `cycleIntelligence`,
+`predictCapRateMovement`, `predictFullChain`, `predictRentGrowth`,
+`FullChainPrediction` returns **zero matches**. The two `cycle-phase`
+hits in the frontend (`DebtTab.tsx:152`,
+`CapitalStructureSection.tsx:195`) call a different endpoint,
+`${API_BASE}/rate/cycle-phase`, not the m28 cycle-intelligence
+routes. All `cycleIntelligenceService.*` callers are internal to
+`m28-cycle-intelligence.routes.ts`. The stubbed `(example)`
+constants are not being shown to users — the escalation trigger
+(UI rendering fictional predictions) is not met, so P1 holds.
 
 ### 8.1 Load-bearing facts (per Supplementary Clarification B)
 
@@ -593,6 +663,14 @@ The delta between 7.1 and 7.2 is the Phase 1 fix inventory.
   Exit Strategy is on a worse failure mode (hardcoded inline arrays,
   CE-04) but is not blocked by mock-data interception per
   Supplementary Clarification A.
+- **`m28_cycle_snapshots` is written by a manual script, not a
+  scheduled service.** `classify-market-cycles.ts` populates the
+  table; nothing schedules it. This is the dormant-infrastructure
+  shape — same category as the pre-FIX-1 traffic calibration job —
+  but milder than CE-M26 (the table and writer exist; only the
+  schedule is missing). Whether the table has ever been populated
+  in production is unverified and should be queried. The fix shape
+  is known (schedule the script). This is Facet 2 of CE-16.
 
 ---
 
