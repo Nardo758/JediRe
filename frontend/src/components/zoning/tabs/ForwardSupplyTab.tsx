@@ -377,6 +377,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
   const [nonMfRingFilter, setNonMfRingFilter] = useState<3 | 5>(5);
   const [nonMfPage, setNonMfPage] = useState(0);
   const [nonMfExpanded, setNonMfExpanded] = useState(true);
+  const [nonMfSortDir, setNonMfSortDir] = useState<'desc' | 'asc'>('desc');
 
   const load = () => {
     if (!dealId) { setLoading(false); return; }
@@ -408,8 +409,12 @@ export default function ForwardSupplyTab({ dealId }: Props) {
 
   // ── L3 non-MF parcel data ──
   // 5mi ring contains all 3mi parcels as a superset; 3mi ring has only 3mi parcels.
-  const nonMfParcels: NonMfRezoneParcels[] =
+  const nonMfParcelsRaw: NonMfRezoneParcels[] =
     data?.rings.find((r) => r.radiusMiles === nonMfRingFilter)?.trendWeighted.probableRezoneParcels ?? [];
+  // Apply client-side sort (server pre-sorts desc; toggle gives asc view without a round-trip)
+  const nonMfParcels = nonMfSortDir === 'desc'
+    ? nonMfParcelsRaw
+    : [...nonMfParcelsRaw].sort((a, b) => a.probabilisticUnits - b.probabilisticUnits);
   const pagedNonMf = nonMfParcels.slice(nonMfPage * PAGE_SIZE, (nonMfPage + 1) * PAGE_SIZE);
   const nonMfTotalPages = Math.ceil(nonMfParcels.length / PAGE_SIZE);
 
@@ -641,19 +646,13 @@ export default function ForwardSupplyTab({ dealId }: Props) {
                   RING:
                 </span>
                 {([3, 5] as const).map((r) => (
-                  <button
+                  <FilterBtn
                     key={r}
+                    label={`${r}MI`}
+                    active={nonMfRingFilter === r}
+                    color={TEXT_PURPLE}
                     onClick={() => { setNonMfRingFilter(r); setNonMfPage(0); }}
-                    style={{
-                      fontFamily: MONO, fontSize: 8,
-                      color: nonMfRingFilter === r ? TEXT_PURPLE : TEXT_SECONDARY,
-                      background: nonMfRingFilter === r ? 'rgba(183,148,244,0.12)' : 'transparent',
-                      border: `1px solid ${nonMfRingFilter === r ? 'rgba(183,148,244,0.3)' : BORDER}`,
-                      padding: '2px 8px', cursor: 'pointer',
-                    }}
-                  >
-                    {r}MI
-                  </button>
+                  />
                 ))}
                 <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, marginLeft: 'auto', alignSelf: 'center' }}>
                   {nonMfParcels.length} parcels{(trendSignal?.nonMfParcelCount ?? 0) > nonMfParcels.length && nonMfParcels.length > 0 ? ' (top 100)' : ''}
@@ -674,7 +673,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
 
               {hasNonMfData && (
                 <div style={{ overflowY: 'auto', maxHeight: 320 }}>
-                  {/* Column headers */}
+                  {/* Column headers — PROB UNITS is sortable */}
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: '80px 1fr 55px 55px 80px 75px 80px',
@@ -683,9 +682,19 @@ export default function ForwardSupplyTab({ dealId }: Props) {
                     background: 'rgba(183,148,244,0.03)',
                     position: 'sticky', top: 0, zIndex: 1,
                   }}>
-                    {['ZONING', 'ADDRESS', 'ACRES', 'DIST', 'THEOR MF CAP', 'REZONE PROB', 'PROB UNITS'].map((h) => (
+                    {['ZONING', 'ADDRESS', 'ACRES', 'DIST', 'THEOR MF CAP', 'REZONE PROB'].map((h) => (
                       <span key={h} style={{ fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY }}>{h}</span>
                     ))}
+                    <span
+                      onClick={() => { setNonMfSortDir((d) => d === 'desc' ? 'asc' : 'desc'); setNonMfPage(0); }}
+                      style={{
+                        fontFamily: MONO, fontSize: 7, color: TEXT_PURPLE,
+                        cursor: 'pointer', userSelect: 'none',
+                      }}
+                      title="Toggle sort direction"
+                    >
+                      PROB UNITS {nonMfSortDir === 'desc' ? '▼' : '▲'}
+                    </span>
                   </div>
 
                   {pagedNonMf.map((p) => {
