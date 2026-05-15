@@ -677,17 +677,32 @@ constants are not being shown to users — the escalation trigger
   `SELECT COUNT(*), MAX(snapshot_date) FROM m28_cycle_snapshots` to
   confirm the cron has run successfully. Facet 2 of CE-16 is an ops
   check, not a code task.
-- **F47 is a third independent rate classifier (CE-07 follow-on).**
-  `/capital-structure/rate/cycle-phase` (served by
-  `capital-structure.routes.ts`, called from `DebtTab.tsx:152` and
-  `CapitalStructureSection.tsx:195`) is a stateless rate-cycle
-  classifier distinct from both (a) the M28 real-estate cycle
-  classifier (`cycle-intelligence.service.ts` / `m28_cycle_snapshots`)
-  and (b) the `rate-environment.service` / `operatorStance.service`
-  pair that D3's CE-07 unified. D3 touched neither this endpoint nor
-  its callers. F47 belongs on the post-#715 synthesis-pass agenda:
-  determine whether it should be unified with the CE-07 rate-environment
-  path or remain a separate stateless signal.
+- **F47 synthesis-pass decision — KEEP SEPARATE (CLOSED).** The
+  synthesis pass compared `/capital-structure/rate/cycle-phase` (F47)
+  against `classifyRateEnvironment()` (CE-07). They are intentionally
+  distinct and should not be unified. Four reasons:
+  (1) **Different signal type.** F47 classifies the *phase* of the rate
+  cycle — 4 positions: `easing | trough | tightening | peak` — from
+  caller-provided `fedDirection`, `durationMonths`, and `yieldCurveSlope`.
+  CE-07 classifies the *direction* of rates — 3 positions:
+  `Dropping | Flat | Rising` — from a SOFR forward curve built live.
+  Phase ≠ direction; the vocabularies are semantically incompatible.
+  (2) **Different input model.** F47 is stateless — the caller supplies
+  all inputs on each POST. CE-07 is self-sourced — it fetches live NY
+  Fed SOFR data and reads macro from `m28_rate_environment`.
+  (3) **Different output shape.** CE-07 returns a rich advisory object
+  (narrative, pricing window score, rate preference, term preference,
+  rate-cap advice, macro context). F47 returns a single `CyclePhase`
+  string consumed as one datum among several in the rates tab.
+  (4) **Different consumers and surfaces.** F47 feeds
+  `CapitalStructureSection.tsx`'s Rates tab alongside F49 lock-vs-float
+  and F51 sensitivity. CE-07 feeds the Debt Advisor tab's primary
+  recommendation engine. Merging them would couple two unrelated
+  rendering contexts.
+  **Caller correction:** The original note listed `DebtTab.tsx:152` as
+  a caller — repo-wide grep shows it is not. Only
+  `CapitalStructureSection.tsx:195` currently calls `/rate/cycle-phase`.
+  No code changes required. Synthesis item closed.
 
 ---
 
