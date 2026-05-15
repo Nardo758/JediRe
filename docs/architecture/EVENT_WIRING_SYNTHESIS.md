@@ -552,4 +552,70 @@ These Phase B items should be consolidated into one dispatch after the corpus ga
 
 ---
 
+## WS-3 Layer 3 — Phase B Empirical Rezone Probability Calibration
+
+**Landed:** Task #763 | **Status:** Engine live, corpus pending (Task #768)
+
+### What was built
+
+Phase B replaces the Phase A hand-set linear constants with empirically-derived rezone rates from `historical_observations`.  The engine is fully deployed; Phase B activates automatically once the corpus is populated — no additional deploy is needed.
+
+### Corpus schema (migration 20260518_historical_obs_rezone_calibration.sql)
+
+Five columns added to `historical_observations`:
+
+| Column | Type | Purpose |
+|---|---|---|
+| `rezone_upzoning_event_count` | INTEGER | Upzoning events in submarket at observation time |
+| `rezone_approval_event_count` | INTEGER | Entitlement-approval events at observation time |
+| `rezone_moratorium_active` | BOOLEAN | Was a development moratorium active? |
+| `rezone_outcome` | BOOLEAN | Did a confirmed MF rezone occur within the window? |
+| `rezone_window_months` | SMALLINT | Observation window (default 24 months) |
+
+Partial index `idx_hist_obs_rezone_corpus` on `(rezone_upzoning_event_count, rezone_outcome) WHERE rezone_outcome IS NOT NULL`.
+
+### Calibration logic (`rezone-trend.service.ts`)
+
+`computeTrendSignalPhaseB()` runs two corpus tiers in parallel:
+
+- **Tier 1 — Submarket-specific:** rows where `submarket_id = current` AND `rezone_window_months = 24`.  Preferred for precision.
+- **Tier 2 — Cross-submarket event-density bucket:** rows from any submarket where `ABS(rezone_upzoning_event_count - current) ≤ 2` AND `rezone_window_months = 24` AND moratorium state matches.  Used only when Tier 1 has fewer than 5 observations.
+
+Activation threshold: **5 observations** in the winning tier (`MIN_PHASE_B_CORPUS = 5`).
+
+When activated, a Bayesian shrinkage blend is applied:
+
+```
+w = corpusSize / (corpusSize + 20)          # PHASE_B_SHRINKAGE_FACTOR = 20
+calibrated = w × empirical_rate + (1-w) × phaseA_base
+```
+
+w → 1 as corpus grows; w → 0 when corpus just clears the threshold.  This prevents wild swings from small samples.  Moratorium cap (5%) and global max (40%) are re-applied after blending.
+
+### Fallback transparency
+
+`TrendSignal.phaseBCorpusSize` is always returned — even when Phase B falls back to Phase A.  This enables the Forward Supply UI to distinguish three states:
+
+| UI badge | Condition |
+|---|---|
+| `PHASE B EMPIRICAL` (green) | Phase B active — `modelPhase = 'B_empirical'` |
+| `PHASE A (FALLBACK)` (purple) | Corpus found but < 5 — `phaseBCorpusSize > 0 && modelPhase = 'A_linear'` |
+| `PHASE A LINEAR` (purple) | No corpus at all — `phaseBCorpusSize = 0 && modelPhase = 'A_linear'` |
+
+Hover tooltip shows the exact corpus count on all three badges.
+
+### Corpus gate
+
+Phase B does NOT activate until `historical_observations` has ≥5 rows with `rezone_outcome IS NOT NULL` and compatible `rezone_upzoning_event_count` values.
+
+**Next step:** Task #768 — ingest real Atlanta rezone outcomes to activate Phase B in production.
+
+### Pending Phase B items (not part of Task #763)
+
+- **Task #768:** Load real Atlanta rezone outcomes so Phase B activates
+- **Task #769:** Show inline corpus count (n=N) next to phase badge in the UI
+- **Task #770:** Back-test `PHASE_B_SHRINKAGE_FACTOR = 20` against held-out Atlanta outcomes
+
+---
+
 *End of EVENT_WIRING_SYNTHESIS.md*

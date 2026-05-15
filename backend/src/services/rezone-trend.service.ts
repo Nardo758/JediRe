@@ -248,6 +248,10 @@ export class RezoneTrendService {
   /**
    * Orchestrates signal computation: tries Phase B empirical calibration first;
    * falls back to Phase A linear model when corpus is insufficient.
+   *
+   * Phase B corpus size is always threaded through to `TrendSignal.phaseBCorpusSize`
+   * even on fallback, enabling the UI to distinguish "Phase A because no corpus"
+   * from "Phase A because corpus too small".
    */
   private async computeTrendSignal(submarketId: string | null): Promise<TrendSignal> {
     if (!submarketId) {
@@ -320,26 +324,30 @@ export class RezoneTrendService {
         : rawProbabilityA;
 
       // ── Phase B attempt ───────────────────────────────────────────────────
+      // Always await Phase B so we capture corpus size even on fallback.
       const phaseB = await this.computeTrendSignalPhaseB(
+        submarketId,
         upzoningEventCount,
         phaseABase,
         moratoriumActive,
       );
 
-      if (phaseB !== null) {
+      if (phaseB.activated) {
         return {
           submarketId,
           upzoningEventCount,
           approvalEventCount,
           moratoriumActive,
           moratoriumName,
-          rezoneProbabilityBase: phaseB.calibratedProb,
+          rezoneProbabilityBase: phaseB.calibratedProb!,
           modelPhase: 'B_empirical',
           phaseBCorpusSize: phaseB.corpusSize,
         };
       }
 
-      // Phase B insufficient corpus — fall back to Phase A
+      // Phase B insufficient corpus — fall back to Phase A.
+      // phaseBCorpusSize carries the actual matched row count even when < threshold,
+      // allowing the UI to distinguish "fallback (n=3)" from "no corpus (n=0)".
       return {
         submarketId,
         upzoningEventCount,
@@ -348,7 +356,7 @@ export class RezoneTrendService {
         moratoriumName,
         rezoneProbabilityBase: phaseABase,
         modelPhase: 'A_linear',
-        phaseBCorpusSize: phaseB === null ? 0 : 0,
+        phaseBCorpusSize: phaseB.corpusSize,
       };
     } catch (err) {
       logger.warn('[RezoneTrendService] computeTrendSignal failed', {
@@ -368,65 +376,116 @@ export class RezoneTrendService {
   }
 
   /**
-   * Phase B calibration: queries `historical_observations` for rows where
-   * the upzoning event count is within ±PHASE_B_EVENT_BUCKET_WINDOW of the
-   * current submarket and a rezone outcome was recorded.
+   * Phase B empirical calibration using a two-tier corpus lookup:
    *
-   * Applies Bayesian shrinkage toward the Phase A prior when the corpus is
-   * large enough to activate Phase B but still small enough to be uncertain.
+   *  Tier 1 — Submarket-specific: rows where `submarket_id` matches the
+   *    current submarket AND `rezone_window_months = 24` (vintage gate).
+   *    If this tier yields ≥ MIN_PHASE_B_CORPUS observations, use it directly.
    *
-   * Returns null when corpus is below MIN_PHASE_B_CORPUS (caller falls back to Phase A).
+   *  Tier 2 — Cross-submarket event-density bucket: rows from any submarket
+   *    where the upzoning event count is within ±PHASE_B_EVENT_BUCKET_WINDOW,
+   *    `rezone_window_months = 24`, and moratorium state matches.  Used only
+   *    when Tier 1 has insufficient coverage.
    *
+   * Always returns a result object — `activated: false` and `corpusSize` set to
+   * the best corpus size found when below the activation threshold, so the caller
+   * can surface "Phase A fallback (n=3)" vs "Phase A (no corpus)" in the UI.
+   *
+   * @param submarketId         Current deal's submarket
    * @param upzoningEventCount  Current submarket's upzoning event count
-   * @param phaseABase          Phase A computed probability (used as prior)
-   * @param moratoriumActive    If true, the moratorium cap is re-applied to the
-   *                            calibrated probability as well
+   * @param phaseABase          Phase A computed probability (Bayesian prior)
+   * @param moratoriumActive    Whether a moratorium is currently active
    */
   private async computeTrendSignalPhaseB(
+    submarketId: string,
     upzoningEventCount: number,
     phaseABase: number,
     moratoriumActive: boolean,
-  ): Promise<{ calibratedProb: number; corpusSize: number } | null> {
+  ): Promise<{
+    activated: boolean;
+    calibratedProb: number | null;
+    corpusSize: number;
+    matchScope: 'submarket' | 'cross_submarket' | null;
+  }> {
+    const noData = { activated: false, calibratedProb: null, corpusSize: 0, matchScope: null as null };
+
     try {
-      const result = await this.pool.query<{
-        empirical_rate: string | null;
-        corpus_size: string;
-      }>(
-        `SELECT
-           AVG(CASE WHEN rezone_outcome THEN 1.0 ELSE 0.0 END) AS empirical_rate,
-           COUNT(*) AS corpus_size
-         FROM historical_observations
-         WHERE rezone_outcome IS NOT NULL
-           AND ABS(COALESCE(rezone_upzoning_event_count, 0) - $1) <= $2`,
-        [upzoningEventCount, PHASE_B_EVENT_BUCKET_WINDOW],
-      );
+      // Run Tier 1 (submarket-specific × vintage) and Tier 2 (cross-submarket
+      // event-bucket × vintage × moratorium) in parallel.
+      const [tier1, tier2] = await Promise.all([
+        this.pool.query<{ empirical_rate: string | null; corpus_size: string }>(
+          `SELECT
+             AVG(CASE WHEN rezone_outcome THEN 1.0 ELSE 0.0 END) AS empirical_rate,
+             COUNT(*) AS corpus_size
+           FROM historical_observations
+           WHERE rezone_outcome IS NOT NULL
+             AND submarket_id = $1
+             AND COALESCE(rezone_window_months, 24) = 24`,
+          [submarketId],
+        ),
+        this.pool.query<{ empirical_rate: string | null; corpus_size: string }>(
+          `SELECT
+             AVG(CASE WHEN rezone_outcome THEN 1.0 ELSE 0.0 END) AS empirical_rate,
+             COUNT(*) AS corpus_size
+           FROM historical_observations
+           WHERE rezone_outcome IS NOT NULL
+             AND COALESCE(rezone_window_months, 24) = 24
+             AND ABS(COALESCE(rezone_upzoning_event_count, 0) - $1) <= $2
+             AND (
+               $3 = false
+               OR COALESCE(rezone_moratorium_active, false) = true
+             )`,
+          [upzoningEventCount, PHASE_B_EVENT_BUCKET_WINDOW, moratoriumActive],
+        ),
+      ]);
 
-      const row = result.rows[0];
-      const corpusSize = parseInt(row?.corpus_size ?? '0', 10);
+      const t1Size = parseInt(tier1.rows[0]?.corpus_size ?? '0', 10);
+      const t2Size = parseInt(tier2.rows[0]?.corpus_size ?? '0', 10);
 
-      if (!row || corpusSize < MIN_PHASE_B_CORPUS) {
-        return null;
+      // Choose the best tier that meets the activation threshold.
+      // Tier 1 (submarket-specific) is preferred for precision; Tier 2 as fallback.
+      let row: { empirical_rate: string | null; corpus_size: string } | undefined;
+      let matchScope: 'submarket' | 'cross_submarket' | null = null;
+      let corpusSize = 0;
+
+      if (t1Size >= MIN_PHASE_B_CORPUS) {
+        row = tier1.rows[0];
+        matchScope = 'submarket';
+        corpusSize = t1Size;
+      } else if (t2Size >= MIN_PHASE_B_CORPUS) {
+        row = tier2.rows[0];
+        matchScope = 'cross_submarket';
+        corpusSize = t2Size;
+      } else {
+        // Neither tier meets the threshold — return the larger of the two sizes
+        // so the UI can show "n=3 < 5 needed" rather than just "n=0".
+        return {
+          activated: false,
+          calibratedProb: null,
+          corpusSize: Math.max(t1Size, t2Size),
+          matchScope: null,
+        };
       }
 
-      const empiricalRate = parseFloat(row.empirical_rate ?? '0') || 0;
+      const empiricalRate = parseFloat(row?.empirical_rate ?? '0') || 0;
 
       // Bayesian shrinkage: blend empirical rate toward Phase A prior.
-      // w → 1 as corpus grows; w → 0 when corpus barely meets the threshold.
+      // w → 1 as corpus grows; w → 0 when corpus just clears the threshold.
       const w = corpusSize / (corpusSize + PHASE_B_SHRINKAGE_FACTOR);
       const blended = w * empiricalRate + (1 - w) * phaseABase;
 
-      // Apply moratorium cap and global max
+      // Re-apply moratorium cap and global max — these hard limits always hold.
       const calibrated = moratoriumActive
         ? Math.min(blended, MORATORIUM_PROBABILITY_CAP)
         : Math.min(blended, MAX_REZONE_PROBABILITY);
 
-      return { calibratedProb: calibrated, corpusSize };
+      return { activated: true, calibratedProb: calibrated, corpusSize, matchScope };
     } catch (err) {
       // Phase B is best-effort; any query failure is not fatal — Phase A takes over.
       logger.warn('[RezoneTrendService] computeTrendSignalPhaseB query failed', {
-        upzoningEventCount, err: (err as Error).message,
+        submarketId, upzoningEventCount, err: (err as Error).message,
       });
-      return null;
+      return noData;
     }
   }
 
