@@ -272,7 +272,11 @@ export class ProFormaAdjustmentService {
     await this.calculateOpexGrowthAdjustment(proforma.id, dealId, triggerType, triggerEventId);
     await this.calculateExitCapAdjustment(proforma.id, dealId, demandData, triggerType, triggerEventId);
     await this.calculateAbsorptionAdjustment(proforma.id, dealId, demandData, triggerType, triggerEventId);
-    
+
+    // W-04: apply policy event mutations (rent_control_passage, tax_abatement, eviction_moratorium)
+    // after demand-driven adjustments so policy ceilings/constraints take precedence
+    await this.applyPolicyEventMutations(proforma.id, dealId);
+
     // Update last recalculation timestamp
     await query(
       `UPDATE proforma_assumptions SET last_recalculation = NOW() WHERE id = $1`,
@@ -1064,7 +1068,233 @@ export class ProFormaAdjustmentService {
     
     return result.rows[0] || null;
   }
-  
+
+  // ============================================================================
+  // W-04: Policy Event Mutations — rent_control_passage, tax_abatement, eviction_moratorium
+  // (EVENT_WIRING_SYNTHESIS §W-04 / EP-04)
+  // ============================================================================
+
+  /**
+   * Fetch property_id and submarket_id for a deal via properties join.
+   * Used by W-04 policy methods to locate the right key_events rows.
+   */
+  private async getDealPropertyContext(dealId: string): Promise<{ propertyId: string | null; submarketId: string | null }> {
+    const result = await query(
+      `SELECT p.id AS property_id, p.submarket_id
+       FROM properties p
+       WHERE p.deal_id = $1
+       LIMIT 1`,
+      [dealId]
+    );
+    return {
+      propertyId: result.rows[0]?.property_id ?? null,
+      submarketId: result.rows[0]?.submarket_id ?? null,
+    };
+  }
+
+  /**
+   * W-04 §Step 2: Cap rent_growth_current at the legislated maximum from a
+   * materialized rent_control_passage event for the property's submarket.
+   */
+  private async applyRentControlCap(
+    proformaId: string,
+    dealId: string,
+    submarketId: string | null,
+  ): Promise<void> {
+    if (!submarketId) return;
+    const events = await query(
+      `SELECT magnitude_value
+       FROM key_events
+       WHERE subtype = 'rent_control_passage'
+         AND submarket_id = $1
+         AND status = 'materialized'
+       ORDER BY materialization_date DESC
+       LIMIT 1`,
+      [submarketId]
+    );
+    if (events.rows.length === 0) return;
+    const maxGrowth = parseFloat(events.rows[0].magnitude_value);
+    if (!isFinite(maxGrowth)) return;
+    const current = await this.getCurrentValue(proformaId, 'rent_growth');
+    const currentVal = parseFloat(String(current.current ?? current.baseline));
+    if (!isFinite(currentVal) || currentVal <= maxGrowth) return;
+    await query(
+      `UPDATE proforma_assumptions SET rent_growth_current = $1 WHERE id = $2`,
+      [maxGrowth, proformaId]
+    );
+    await this.createAdjustment({
+      proformaId,
+      adjustmentTrigger: 'manual',
+      assumptionType: 'rent_growth',
+      previousValue: currentVal,
+      newValue: maxGrowth,
+      calculationMethod: 'rent_control_cap',
+      calculationInputs: { submarket_id: submarketId, policy_cap: maxGrowth, event_subtype: 'rent_control_passage' },
+      confidenceScore: 95,
+    });
+    logger.info('[W-04] Rent control cap applied', { dealId, submarketId, maxGrowth, previousValue: currentVal });
+  }
+
+  /**
+   * W-04 §Step 3: Emit a level-reset on RE tax growth for hold years that fall
+   * within a tax_abatement event's [materialization_date, completion_date] window.
+   * Writes per-year overrides to deal_assumptions.per_year_overrides so the F9
+   * projection loop reads the abatement-adjusted tax amount via projPyOvr.
+   */
+  private async applyTaxAbatementLevelReset(
+    dealId: string,
+    propertyId: string | null,
+  ): Promise<void> {
+    if (!propertyId) return;
+    const events = await query(
+      `SELECT magnitude_value, materialization_date, completion_date
+       FROM key_events
+       WHERE subtype = 'tax_abatement'
+         AND property_id = $1
+         AND status IN ('materialized', 'in_progress')
+       ORDER BY materialization_date DESC
+       LIMIT 1`,
+      [propertyId]
+    );
+    if (events.rows.length === 0) return;
+    const ev = events.rows[0];
+    const magnitude = parseFloat(ev.magnitude_value); // abatement fraction [0, 1]
+    const abatementStart = new Date(ev.materialization_date);
+    const abatementEnd = ev.completion_date ? new Date(ev.completion_date) : null;
+
+    // Get hold_period_years, acquisition date (timeline_start), and Y1 RE tax
+    const ctxRow = await query(
+      `SELECT da.hold_period_years,
+              d.timeline_start,
+              da.year1->'real_estate_tax'->>'resolved' AS y1_tax
+       FROM deal_assumptions da
+       JOIN deals d ON d.id = da.deal_id
+       WHERE da.deal_id = $1`,
+      [dealId]
+    );
+    if (ctxRow.rows.length === 0) return;
+    const holdYears = parseInt(ctxRow.rows[0].hold_period_years ?? '0');
+    const rawAcqDate = ctxRow.rows[0].timeline_start;
+    const y1Tax = parseFloat(ctxRow.rows[0].y1_tax ?? '0');
+    if (!holdYears || !rawAcqDate || !isFinite(y1Tax) || y1Tax <= 0) return;
+    const acqDate = new Date(rawAcqDate);
+    const abatementMagnitude = isFinite(magnitude) ? Math.min(1, Math.max(0, magnitude)) : 0;
+
+    // Determine which hold years fall within the abatement window
+    const overrides: Array<[string, { value: number }]> = [];
+    for (let yr = 1; yr <= holdYears; yr++) {
+      const yearStart = new Date(acqDate.getFullYear() + yr - 1, acqDate.getMonth(), acqDate.getDate());
+      const yearEnd   = new Date(acqDate.getFullYear() + yr,     acqDate.getMonth(), acqDate.getDate());
+      // Year overlaps abatement if yearStart < abatementEnd AND yearEnd > abatementStart
+      const inWindow = yearStart < (abatementEnd ?? yearEnd) && yearEnd > abatementStart;
+      if (inWindow) {
+        // Level-reset: tax frozen at Y1 base reduced by abatement magnitude
+        const abatedAmount = Math.round(y1Tax * (1 - abatementMagnitude));
+        overrides.push([`real_estate_tax:yr${yr}`, { value: abatedAmount }]);
+      }
+    }
+    if (overrides.length === 0) return;
+
+    // Upsert per-year overrides into deal_assumptions.per_year_overrides
+    for (const [key, val] of overrides) {
+      await query(
+        `INSERT INTO deal_assumptions (deal_id, per_year_overrides, updated_at)
+         VALUES ($1, jsonb_build_object($2::text, $3::jsonb), NOW())
+         ON CONFLICT (deal_id) DO UPDATE
+           SET per_year_overrides = COALESCE(deal_assumptions.per_year_overrides, '{}'::jsonb) ||
+                                     jsonb_build_object($2::text, $3::jsonb),
+               updated_at = NOW()`,
+        [dealId, key, JSON.stringify(val)]
+      );
+    }
+    logger.info('[W-04] Tax abatement level-reset applied', {
+      dealId, propertyId, affectedYears: overrides.map(([k]) => k), abatementMagnitude,
+    });
+  }
+
+  /**
+   * W-04 §Step 4: Apply eviction moratorium policy constraint on bad-debt rate.
+   * Writes an increased bad_debt_pct platform value to deal_assumptions.year1 so
+   * the F9 projection loop's ry1('bad_debt_pct') reflects the collections constraint.
+   */
+  private async applyEvictionMoratoriumConstraint(
+    proformaId: string,
+    dealId: string,
+    submarketId: string | null,
+  ): Promise<void> {
+    if (!submarketId) return;
+    const events = await query(
+      `SELECT magnitude_value
+       FROM key_events
+       WHERE subtype = 'eviction_moratorium'
+         AND submarket_id = $1
+         AND status IN ('materialized', 'in_progress')
+       ORDER BY materialization_date DESC
+       LIMIT 1`,
+      [submarketId]
+    );
+    if (events.rows.length === 0) return;
+    const magnitude = parseFloat(events.rows[0].magnitude_value); // bad-debt increase (e.g. 0.02 = +2pp)
+    if (!isFinite(magnitude) || magnitude <= 0) return;
+
+    const daRow = await query(
+      `SELECT year1->'bad_debt_pct'->>'resolved' AS current_bad_debt FROM deal_assumptions WHERE deal_id = $1`,
+      [dealId]
+    );
+    const currentBadDebt = parseFloat(daRow.rows[0]?.current_bad_debt ?? '0') || 0.005;
+    const constrainedBadDebt = Math.min(0.20, currentBadDebt + magnitude);
+
+    // Write constrained bad_debt_pct to deal_assumptions.year1 as platform value
+    await query(
+      `INSERT INTO deal_assumptions (deal_id, year1, updated_at)
+       VALUES (
+         $1,
+         jsonb_build_object('bad_debt_pct', jsonb_build_object('platform', $2::numeric)),
+         NOW()
+       )
+       ON CONFLICT (deal_id) DO UPDATE
+         SET year1 = COALESCE(deal_assumptions.year1, '{}'::jsonb) ||
+                     jsonb_build_object('bad_debt_pct',
+                       COALESCE(deal_assumptions.year1->'bad_debt_pct', '{}'::jsonb) ||
+                         jsonb_build_object('platform', $2::numeric)),
+             updated_at = NOW()`,
+      [dealId, constrainedBadDebt]
+    );
+    await this.createAdjustment({
+      proformaId,
+      adjustmentTrigger: 'manual',
+      assumptionType: 'vacancy', // closest available adjustmentType; moratorium affects collections
+      previousValue: currentBadDebt,
+      newValue: constrainedBadDebt,
+      calculationMethod: 'eviction_moratorium_constraint',
+      calculationInputs: {
+        submarket_id: submarketId,
+        magnitude,
+        previous_bad_debt: currentBadDebt,
+        event_subtype: 'eviction_moratorium',
+      },
+      confidenceScore: 85,
+    });
+    logger.info('[W-04] Eviction moratorium constraint applied', {
+      dealId, submarketId, previousBadDebt: currentBadDebt, constrainedBadDebt,
+    });
+  }
+
+  /**
+   * Orchestrate W-04 policy event mutations. Non-fatal — recalculate() never throws
+   * due to policy wiring failures.
+   */
+  private async applyPolicyEventMutations(proformaId: string, dealId: string): Promise<void> {
+    try {
+      const { propertyId, submarketId } = await this.getDealPropertyContext(dealId);
+      await this.applyRentControlCap(proformaId, dealId, submarketId);
+      await this.applyTaxAbatementLevelReset(dealId, propertyId);
+      await this.applyEvictionMoratoriumConstraint(proformaId, dealId, submarketId);
+    } catch (err) {
+      logger.warn('[W-04] applyPolicyEventMutations non-fatal error', { dealId, error: err });
+    }
+  }
+
   private async getMarketTightness(dealId: string): Promise<number> {
     // Market tightness score (0-1)
     // Based on vacancy rate, rent growth, absorption
@@ -3773,11 +4003,14 @@ export async function getDealFinancials(
       const insurance    = insuranceOvr != null ? Math.round(insuranceOvr) : Math.round(runInsurance * (1 + insGrowthStep));
       runInsurance       = insurance;
 
-      // RE Taxes: prefer taxes tab perYear, else compound Y1 seed
+      // RE Taxes: prefer tax_abatement per-year override (W-04), then taxes tab, else compound Y1 seed
       let reTaxes = 0;
       let reTaxSource: 'taxes_tab' | 'proforma' | 'estimate' = 'estimate';
+      const reTaxAbatementOvr = projPyOvr('real_estate_tax'); // W-04: tax_abatement level-reset override
       const taxYr = taxes?.reTax?.perYear?.find(t => t.year === yr);
-      if (taxYr?.taxAmount != null && taxYr.taxAmount > 0) {
+      if (reTaxAbatementOvr != null) {
+        reTaxes = Math.round(reTaxAbatementOvr); reTaxSource = 'proforma';
+      } else if (taxYr?.taxAmount != null && taxYr.taxAmount > 0) {
         reTaxes = Math.round(taxYr.taxAmount); reTaxSource = 'taxes_tab';
       } else if (reTaxY1Base > 0) {
         reTaxes = Math.round(reTaxY1Base * Math.pow(1 + opexGrowthRate, yr - 1));

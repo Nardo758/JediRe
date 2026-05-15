@@ -128,6 +128,9 @@ const EVENT_SUBTYPE_REGISTRY: EventTypeDeclaration[] = [
   { eventSubtype: 'conversion', primaryChannel: 'M07_traffic', rationale: 'Net effect on stock' },
   { eventSubtype: 'rent_control_passage', primaryChannel: 'M09_proforma_direct', rationale: 'Discontinuous policy ceiling; not market-clearing-mediated' },
   { eventSubtype: 'tax_abatement', primaryChannel: 'M09_proforma_direct', rationale: 'Direct expense path change' },
+  // eviction_moratorium: discontinuous policy constraint on collections/turnover; direct-proforma
+  // sibling of rent_control_passage — wired to M09_proforma_direct per §5.2 of synthesis
+  { eventSubtype: 'eviction_moratorium', primaryChannel: 'M09_proforma_direct', rationale: 'Discontinuous policy constraint on collections and turnover; direct-proforma sibling of rent_control_passage (§5.2)' },
   { eventSubtype: 'entitlement_approval', primaryChannel: 'M03_devcap', rationale: 'Permits developable supply; not present-period market' },
   { eventSubtype: 'zoning_upzoning', primaryChannel: 'M03_devcap', rationale: 'Future supply potential' },
   { eventSubtype: 'rate_move', primaryChannel: 'M14_macro', rationale: 'Macro factor; flows to cap rates and debt directly' },
