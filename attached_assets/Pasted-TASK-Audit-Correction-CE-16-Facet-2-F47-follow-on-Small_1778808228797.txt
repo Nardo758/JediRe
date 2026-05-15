@@ -1,0 +1,92 @@
+TASK — Audit Correction: CE-16 Facet 2 + F47 follow-on
+
+Small markdown-only correction to docs/architecture/
+CAPITAL_EXIT_SUBSYSTEM_AUDIT.md. Two stale facts surfaced by
+STEP ZERO's bonus findings, plus one new follow-on note. No
+code, one file.
+
+WHY
+
+STEP ZERO (the cycle-phase endpoint reconciliation) surfaced
+that CE-16 Facet 2's "manual-script writer" claim was factually
+wrong: m28-scheduler.service.ts:43-51 already schedules
+classifyAllMarkets() on cron '0 10 1 * *'. The audit doc is the
+subsystem's source of truth — a wrong fact in it sends someone
+to fix something that isn't broken. It also surfaced that F47
+(/capital-structure/rate/cycle-phase) is a third independent
+rate classifier that D3's CE-07 unification didn't touch — a
+real follow-on that belongs recorded while it's fresh.
+
+CHANGES (3 corrections + 1 addition, all in
+docs/architecture/CAPITAL_EXIT_SUBSYSTEM_AUDIT.md)
+
+1. CE-16 inventory row (Section 8 table): Facet 2 rewritten
+   from "written by classify-market-cycles.ts — a manual
+   script, not a scheduled service (dormant-infrastructure
+   shape)" to "data observability is unverified — the writer
+   IS scheduled (m28-scheduler.service.ts:43-51, cron
+   '0 10 1 * *'), so this is NOT a dormant-writer fix; the
+   open question is whether the monthly cron has populated
+   rows in production." Phase tag changed from "A (schedule
+   writer + wire consumers)" to "A (wire consumers)" — the
+   schedule work doesn't exist.
+
+2. CE-16 descriptive note, Facet 2 bullet: rewritten from
+   "Schedule classify-market-cycles.ts as a recurring job"
+   to "data observability (CORRECTED)" — the writer is
+   scheduled, the remaining item is a production verification
+   query, not a code change, and it does NOT belong in D4's
+   code scope.
+
+3. Section 8.1 load-bearing facts: the "m28_cycle_snapshots
+   is written by a manual script" bullet rewritten to
+   "writer IS scheduled (CORRECTED)" — names the prior wrong
+   claim explicitly so the correction is legible to anyone
+   who read the earlier version.
+
+4. Section 8.1: NEW bullet — "F47 is a third independent rate
+   classifier (CE-07 follow-on)." Records that
+   /capital-structure/rate/cycle-phase is a stateless
+   rate-cycle classifier distinct from both the m28
+   real-estate cycle classifier and the rate-environment.
+   service / operatorStance.service pair D3 unified. Flags it
+   for the post-#715 synthesis pass agenda.
+
+DIFF SHAPE
+
+  docs/architecture/CAPITAL_EXIT_SUBSYSTEM_AUDIT.md
+  +36 -13
+
+VERIFICATION
+
+  - grep "manual script|manual-script|hand-run script" returns
+    exactly 1 hit — line ~675, inside the correction note
+    itself ("...claimed... written by a manual script... That
+    was wrong"). That's the correction naming what it corrects,
+    not a stale claim. Expected.
+  - grep "CORRECTED" returns 2 — the Facet 2 note and the 8.1
+    bullet
+  - grep "F47 is a third" returns 1 — the new 8.1 follow-on
+  - CE-16's Phase tag no longer says "schedule writer"
+
+ACCEPTANCE
+
+  - Single commit to master (markdown-only, no PR needed per
+    project protocol — it's a doc correction, not a feature):
+    docs(audit): correct CE-16 Facet 2 (writer is scheduled,
+    not manual) + add F47 third-rate-classifier follow-on
+    note — surfaced by STEP ZERO
+  - Or, if doc edits are going through branches like the
+    CE-15/CE-16 additions did: branch
+    claude/audit-ce16-facet2-correction, same commit message,
+    push.
+
+NOTE
+
+This corrects the record and shrinks D4. The staged D4 draft
+had folded CE-16 Facet 2 in-scope on the assumption it was a
+one-line cron registration. It isn't — the cron exists. D4's
+Facet 2 involvement drops to "nothing" (the data-observability
+check is a standalone production query, not D4 code). When D4
+unstages, its scope is CE-03 + CE-14 + CE-12 + CE-16 Facet 3
+only — Facet 2 is out.
