@@ -4,7 +4,10 @@
  * Renders the Stabilized Potential view per M09_PROFORMA_SPEC.md:
  *   LINE ITEM | CURRENT (T12) | PRO FORMA (Y_S) | Δ | DRIVER
  *
- * @version 1.0.0 (Session 9.1)
+ * Updated for Session 9.2: surfaces stabilization calendar month,
+ * binding constraints, and engine mode from the StabillizedYearResolver.
+ *
+ * @version 2.0.0 (Session 9.2)
  * @date 2026-05-15
  */
 
@@ -16,6 +19,12 @@ import type { LayeredValueSource } from '../../types/proforma.types';
 
 type ModelType = 'acquisition_value_add' | 'acquisition_stabilized' | 'development' | 'redevelopment';
 type AlertLevel = 'green' | 'amber' | 'red';
+
+interface BindingConstraint {
+  type: string;
+  description: string;
+  severity: string;
+}
 
 interface BridgeDecomposition {
   market: number;
@@ -42,7 +51,12 @@ interface StabilizedPotentialResponse {
   dealId: string;
   modelType: ModelType;
   stabilizedYear: number;
+  stabilizationCalendarMonth: string;
+  monthsToStabilization: number;
   bindingConstraint: string | null;
+  bindingConstraintSeverity: string | null;
+  constraints: BindingConstraint[];
+  engineMode: string;
   layout: StabilizedLineItem[];
   summary: {
     currentNoi: number;
@@ -90,6 +104,16 @@ function getModelTypeLabel(mt: ModelType): string {
   }
 }
 
+function getEngineModeLabel(mode: string): string {
+  switch (mode) {
+    case 'LEASE_UP_NEW_CONSTRUCTION': return 'Lease-Up (New Construction)';
+    case 'STABILIZED_MAINTENANCE': return 'Stabilized Maintenance';
+    case 'OCCUPANCY_RECOVERY': return 'Occupancy Recovery';
+    case 'V2_PENDING_VALUE_ADD': return 'V2 Pending Value-Add';
+    default: return mode;
+  }
+}
+
 function getAlertColor(al: AlertLevel): string {
   switch (al) {
     case 'green': return '#22c55e';
@@ -109,6 +133,15 @@ function getAlertLabel(al: AlertLevel): string {
 function getSourceBadge(source: LayeredValueSource | null): string {
   if (!source) return '';
   return source;
+}
+
+function getConstraintColor(severity: string): string {
+  switch (severity) {
+    case 'binding': return '#f59e0b';
+    case 'secondary': return '#818cf8';
+    case 'informational': return '#888';
+    default: return '#888';
+  }
 }
 
 const COMPONENT_ORDER = ['gpr', 'vacancy', 'concessions', 'bad_debt', 'other_income', 'egr', 'opex', 'noi', 'cap_rate', 'stabilized_value'];
@@ -225,11 +258,67 @@ const BridgePopover: React.FC<BridgePopoverProps> = ({ item, onClose }) => {
   );
 };
 
+// ─── Constraints Panel ────────────────────────────────────────────────────────
+
+interface ConstraintsPanelProps {
+  constraints: BindingConstraint[];
+  bindingConstraint: string | null;
+}
+
+const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints, bindingConstraint }) => {
+  if (constraints.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        background: '#1e1e2e',
+        border: '1px solid #383850',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 20,
+      }}
+    >
+      <div style={{ color: '#888', fontSize: 13, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        Binding Constraints
+      </div>
+      {constraints.map((c, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '4px 0',
+            fontSize: 13,
+          }}
+        >
+          <div
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: getConstraintColor(c.severity),
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ color: c.description === bindingConstraint ? '#f59e0b' : '#aaa', fontWeight: c.description === bindingConstraint ? 600 : 400 }}>
+            {c.description}
+            {c.description === bindingConstraint && (
+              <span style={{ color: '#f59e0b', marginLeft: 6, fontSize: 11, border: '1px solid #f59e0b33', borderRadius: 4, padding: '0 6px' }}>
+                BINDING
+              </span>
+            )}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface StabilizedPotentialViewProps {
   dealId: string;
-  /** When set, shows 4 strategies side-by-side (M08 integration, future) */
   showMultiStrategy?: boolean;
 }
 
@@ -290,8 +379,6 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
     (a, b) => COMPONENT_ORDER.indexOf(a.key) - COMPONENT_ORDER.indexOf(b.key)
   );
 
-  const sortedSummary = data.summary;
-
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -305,30 +392,36 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
           padding: '12px 16px',
           background: '#252540',
           borderRadius: 8,
-          marginBottom: 20,
+          marginBottom: 8,
           border: '1px solid #383850',
         }}
       >
         <div>
           <span style={{ color: '#aaa', fontSize: 13 }}>Model Type</span>
           <div style={{ color: '#e0e0e0', fontWeight: 600, fontSize: 15 }}>{getModelTypeLabel(data.modelType)}</div>
+          <div style={{ color: '#818cf8', fontSize: 11, marginTop: 2 }}>{getEngineModeLabel(data.engineMode)}</div>
         </div>
         <div style={{ textAlign: 'center' }}>
           <span style={{ color: '#aaa', fontSize: 13 }}>Stabilized Year</span>
           <div style={{ color: '#818cf8', fontWeight: 700, fontSize: 20 }}>Y{data.stabilizedYear}</div>
+          <div style={{ color: '#888', fontSize: 11 }}>{data.stabilizationCalendarMonth} ({data.monthsToStabilization}mo)</div>
         </div>
-        {data.bindingConstraint && (
-          <div style={{ textAlign: 'right', maxWidth: 300 }}>
-            <span style={{ color: '#aaa', fontSize: 13 }}>Binding Constraint</span>
-            <div style={{ color: '#f59e0b', fontSize: 13, marginTop: 2 }}>{data.bindingConstraint}</div>
-          </div>
-        )}
+        <div style={{ textAlign: 'right', maxWidth: 280 }}>
+          <span style={{ color: '#aaa', fontSize: 13 }}>Engine</span>
+          <div style={{ color: '#6366f1', fontSize: 12, marginTop: 2 }}>M07 Leass Velocity Engine</div>
+        </div>
         {showMultiStrategy && (
           <div style={{ textAlign: 'right' }}>
-            <span style={{ color: '#818cf8', fontSize: 12 }}>Multi-strategy view (M08) — coming soon</span>
+            <span style={{ color: '#818cf8', fontSize: 12 }}>Multi-strategy (M08) — upcoming</span>
           </div>
         )}
       </div>
+
+      {/* Constraints panel */}
+      <ConstraintsPanel
+        constraints={data.constraints}
+        bindingConstraint={data.bindingConstraint}
+      />
 
       {/* Phasing toggle */}
       <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
@@ -407,7 +500,6 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
                   fontWeight: item.isSubtotal ? 700 : 400,
                   color: isNoi ? '#60a5fa' : (isValuation ? '#a78bfa' : '#e0e0e0'),
                   background: item.isSubtotal ? '#1e1e32' : 'transparent',
-                  position: 'relative',
                 }}
               >
                 {/* Alert color rail */}
@@ -454,13 +546,13 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
                     padding: '8px 12px',
                     textAlign: 'right',
                     color: item.delta >= 0 ? '#22c55e' : '#ef4444',
-                    cursor: item.key === 'cap_rate' || item.key === 'stabilized_value' ? 'default' : 'pointer',
+                    cursor: !item.isSubtotal && item.key !== 'cap_rate' && item.key !== 'stabilized_value' ? 'pointer' : 'default',
                   }}
                   onClick={() => {
-                    if (item.key === 'cap_rate' || item.key === 'stabilized_value') return;
+                    if (item.isSubtotal || item.key === 'cap_rate' || item.key === 'stabilized_value') return;
                     setExpandedBridge(expandedBridge === item.key ? null : item.key);
                   }}
-                  title={item.key === 'cap_rate' || item.key === 'stabilized_value' ? '' : 'Click to expand bridge breakdown'}
+                  title={item.isSubtotal ? '' : 'Click to expand bridge breakdown'}
                 >
                   {item.key === 'cap_rate'
                     ? `${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)}bps`
@@ -548,21 +640,21 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
           marginTop: 20,
         }}
       >
-        <SummaryCard label="NOI Growth" value={fmt$(sortedSummary.noiGrowth)} />
-        <SummaryCard label="Stabilized Value" value={fmt$(sortedSummary.stabilizedValue)} />
+        <SummaryCard label="NOI Growth" value={fmt$(data.summary.noiGrowth)} />
+        <SummaryCard label="Stabilized Value" value={fmt$(data.summary.stabilizedValue)} />
         <SummaryCard
           label="Value Creation"
-          value={fmt$(sortedSummary.valueCreation)}
-          valueColor={sortedSummary.valueCreation >= 0 ? '#22c55e' : '#ef4444'}
+          value={fmt$(data.summary.valueCreation)}
+          valueColor={data.summary.valueCreation >= 0 ? '#22c55e' : '#ef4444'}
         />
-        <SummaryCard label="Yield-on-Cost" value={fmtPct(sortedSummary.yieldOnCost)} />
-        <SummaryCard label="Going-In Cap Rate" value={fmtPct(sortedSummary.goingInCapRate)} />
-        <SummaryCard label="Exit Cap Rate" value={fmtPct(sortedSummary.exitCapRate)} />
-        <SummaryCard label="Pro Forma NOI" value={fmt$(sortedSummary.proFormaNoi)} />
-        <SummaryCard label="Current NOI" value={fmt$(sortedSummary.currentNoi)} />
+        <SummaryCard label="Yield-on-Cost" value={fmtPct(data.summary.yieldOnCost)} />
+        <SummaryCard label="Going-In Cap Rate" value={fmtPct(data.summary.goingInCapRate)} />
+        <SummaryCard label="Exit Cap Rate" value={fmtPct(data.summary.exitCapRate)} />
+        <SummaryCard label="Pro Forma NOI" value={fmt$(data.summary.proFormaNoi)} />
+        <SummaryCard label="Current NOI" value={fmt$(data.summary.currentNoi)} />
       </div>
 
-      {/* Bridge popover (full breakdown modal) */}
+      {/* Bridge popover */}
       {expandedBridge && (
         <BridgePopover
           item={sortedLayout.find((l) => l.key === expandedBridge)!}
