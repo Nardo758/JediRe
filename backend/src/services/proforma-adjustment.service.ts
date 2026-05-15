@@ -1213,9 +1213,11 @@ export class ProFormaAdjustmentService {
   }
 
   /**
-   * W-04 §Step 4: Apply eviction moratorium policy constraint on bad-debt rate.
-   * Writes an increased bad_debt_pct platform value to deal_assumptions.year1 so
-   * the F9 projection loop's ry1('bad_debt_pct') reflects the collections constraint.
+   * W-04 §Step 4: Apply eviction moratorium policy constraint on bad-debt rate for
+   * hold years that overlap the moratorium's [materialization_date, completion_date]
+   * window. Writes per-year overrides to deal_assumptions.per_year_overrides as
+   * bad_debt_pct:yr{N} so the F9 projection loop applies the constraint only to the
+   * affected years via projPyOvr('bad_debt_pct').
    */
   private async applyEvictionMoratoriumConstraint(
     proformaId: string,
@@ -1224,7 +1226,7 @@ export class ProFormaAdjustmentService {
   ): Promise<void> {
     if (!submarketId) return;
     const events = await query(
-      `SELECT magnitude_value
+      `SELECT magnitude_value, materialization_date, completion_date
        FROM key_events
        WHERE subtype = 'eviction_moratorium'
          AND submarket_id = $1
@@ -1234,49 +1236,74 @@ export class ProFormaAdjustmentService {
       [submarketId]
     );
     if (events.rows.length === 0) return;
-    const magnitude = parseFloat(events.rows[0].magnitude_value); // bad-debt increase (e.g. 0.02 = +2pp)
+    const ev = events.rows[0];
+    const magnitude = parseFloat(ev.magnitude_value); // bad-debt increase, e.g. 0.02 = +2pp
     if (!isFinite(magnitude) || magnitude <= 0) return;
+    const moratoriumStart = new Date(ev.materialization_date);
+    const moratoriumEnd = ev.completion_date ? new Date(ev.completion_date) : null;
 
-    const daRow = await query(
-      `SELECT year1->'bad_debt_pct'->>'resolved' AS current_bad_debt FROM deal_assumptions WHERE deal_id = $1`,
+    // Get hold_period_years, acquisition date, and Y1 bad_debt_pct seed
+    const ctxRow = await query(
+      `SELECT da.hold_period_years,
+              d.timeline_start,
+              da.year1->'bad_debt_pct'->>'resolved' AS base_bad_debt
+       FROM deal_assumptions da
+       JOIN deals d ON d.id = da.deal_id
+       WHERE da.deal_id = $1`,
       [dealId]
     );
-    const currentBadDebt = parseFloat(daRow.rows[0]?.current_bad_debt ?? '0') || 0.005;
-    const constrainedBadDebt = Math.min(0.20, currentBadDebt + magnitude);
+    if (ctxRow.rows.length === 0) return;
+    const holdYears = parseInt(ctxRow.rows[0].hold_period_years ?? '0');
+    const rawAcqDate = ctxRow.rows[0].timeline_start;
+    if (!holdYears || !rawAcqDate) return;
+    const baseBadDebt = parseFloat(ctxRow.rows[0].base_bad_debt ?? '0') || 0.005;
+    const constrainedBadDebt = Math.min(0.20, baseBadDebt + magnitude);
+    const acqDate = new Date(rawAcqDate);
 
-    // Write constrained bad_debt_pct to deal_assumptions.year1 as platform value
-    await query(
-      `INSERT INTO deal_assumptions (deal_id, year1, updated_at)
-       VALUES (
-         $1,
-         jsonb_build_object('bad_debt_pct', jsonb_build_object('platform', $2::numeric)),
-         NOW()
-       )
-       ON CONFLICT (deal_id) DO UPDATE
-         SET year1 = COALESCE(deal_assumptions.year1, '{}'::jsonb) ||
-                     jsonb_build_object('bad_debt_pct',
-                       COALESCE(deal_assumptions.year1->'bad_debt_pct', '{}'::jsonb) ||
-                         jsonb_build_object('platform', $2::numeric)),
-             updated_at = NOW()`,
-      [dealId, constrainedBadDebt]
-    );
+    // Determine which hold years fall within the moratorium window
+    const overrides: Array<[string, { value: number }]> = [];
+    for (let yr = 1; yr <= holdYears; yr++) {
+      const yearStart = new Date(acqDate.getFullYear() + yr - 1, acqDate.getMonth(), acqDate.getDate());
+      const yearEnd   = new Date(acqDate.getFullYear() + yr,     acqDate.getMonth(), acqDate.getDate());
+      // Year overlaps moratorium if yearStart < moratoriumEnd AND yearEnd > moratoriumStart
+      const inWindow = yearStart < (moratoriumEnd ?? yearEnd) && yearEnd > moratoriumStart;
+      if (inWindow) {
+        overrides.push([`bad_debt_pct:yr${yr}`, { value: constrainedBadDebt }]);
+      }
+    }
+    if (overrides.length === 0) return;
+
+    // Upsert per-year overrides into deal_assumptions.per_year_overrides
+    for (const [key, val] of overrides) {
+      await query(
+        `INSERT INTO deal_assumptions (deal_id, per_year_overrides, updated_at)
+         VALUES ($1, jsonb_build_object($2::text, $3::jsonb), NOW())
+         ON CONFLICT (deal_id) DO UPDATE
+           SET per_year_overrides = COALESCE(deal_assumptions.per_year_overrides, '{}'::jsonb) ||
+                                     jsonb_build_object($2::text, $3::jsonb),
+               updated_at = NOW()`,
+        [dealId, key, JSON.stringify(val)]
+      );
+    }
     await this.createAdjustment({
       proformaId,
       adjustmentTrigger: 'manual',
-      assumptionType: 'vacancy', // closest available adjustmentType; moratorium affects collections
-      previousValue: currentBadDebt,
+      assumptionType: 'vacancy', // closest available type; moratorium affects collections
+      previousValue: baseBadDebt,
       newValue: constrainedBadDebt,
       calculationMethod: 'eviction_moratorium_constraint',
       calculationInputs: {
         submarket_id: submarketId,
         magnitude,
-        previous_bad_debt: currentBadDebt,
+        base_bad_debt: baseBadDebt,
+        affected_years: overrides.map(([k]) => k),
         event_subtype: 'eviction_moratorium',
       },
       confidenceScore: 85,
     });
     logger.info('[W-04] Eviction moratorium constraint applied', {
-      dealId, submarketId, previousBadDebt: currentBadDebt, constrainedBadDebt,
+      dealId, submarketId, baseBadDebt, constrainedBadDebt,
+      affectedYears: overrides.map(([k]) => k),
     });
   }
 
@@ -3964,7 +3991,9 @@ export async function getDealFinancials(
       const vacancyLoss = Math.round(gpr * vacPct);
       const lossToLease = Math.round(gpr * lossToLeasePct);
       const concessions = Math.round(gpr * concPct);
-      const badDebt     = Math.round(gpr * badDebtPct);
+      // W-04: eviction_moratorium per-year constraint overrides base bad_debt_pct for moratorium years
+      const effectiveBadDebtPct = projPyOvr('bad_debt_pct') ?? badDebtPct;
+      const badDebt     = Math.round(gpr * effectiveBadDebtPct);
       const nru         = Math.round(gpr * nruPct);
       const nri         = gpr - vacancyLoss - lossToLease - concessions - badDebt - nru;
       const otherIncOvr = projPyOvr('other_income');
