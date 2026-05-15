@@ -325,8 +325,14 @@ function RingCard({ ring, isLoading, trendSignal }: {
               <div>
                 <span style={{ color: TEXT_SECONDARY }}>NON-MF PARCELS </span>
                 <span style={{ color: TEXT_PRIMARY, fontWeight: 700 }}>
-                  {fmt(ring.trendWeighted.probableRezoneParcels.length)}
+                  {fmt(trendSignal?.nonMfParcelCount ?? ring.trendWeighted.probableRezoneParcels.length)}
                 </span>
+                {(trendSignal?.nonMfParcelCount ?? 0) > ring.trendWeighted.probableRezoneParcels.length &&
+                  ring.trendWeighted.probableRezoneParcels.length > 0 && (
+                  <span style={{ fontFamily: MONO, fontSize: 6, color: TEXT_SECONDARY, marginLeft: 3 }}>
+                    top 100 shown
+                  </span>
+                )}
               </div>
               {trendSignal?.moratoriumActive && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>

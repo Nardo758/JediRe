@@ -248,8 +248,10 @@ export class RezoneTrendService {
       const upzoningScore = upzoningRows.rows.reduce(
         (s, r) => s + normalise(r.magnitude_score), 0,
       );
+      // Half-weight vs upzoning: PROB_PER_APPROVAL_UNIT (0.025) is already
+      // half of PROB_PER_UPZONE_UNIT (0.05) — no additional *0.5 here.
       const approvalScore = approvalRows.rows.reduce(
-        (s, r) => s + normalise(r.magnitude_score) * 0.5, 0,
+        (s, r) => s + normalise(r.magnitude_score), 0,
       );
 
       const moratoriumActive = moratoriumRows.rows.length > 0;
