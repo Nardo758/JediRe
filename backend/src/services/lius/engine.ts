@@ -130,32 +130,43 @@ export async function runLIUSEngine(
     m35GrowthRateOverrides = toGrowthRateOverrides(m35Signals);
   }
 
-  // CE-16 F3 (W-08): Blend M28 cycle intelligence prediction into exit_cap_trajectory.
-  // predictCapRateMovement() returns a 12-month forward cap rate change in bps.
-  // We convert to a per-year decimal rate and blend 50/50 with the M35 signal.
+  // CE-16 F3 (W-08): Blend M28 cycle intelligence into exit_cap_trajectory.
+  // Requires a real cycle snapshot — no overlay when m28_cycle_snapshots is empty.
+  // Uses predictFullChain() per CE-16 F3 spec; cap_change_bps converted to per-year
+  // decimal and blended 50/50 with the M35 signal.
   // Non-fatal: any failure leaves m35GrowthRateOverrides untouched.
   if (ctx.marketId) {
     try {
-      const capForecast = await cycleIntelligenceService.predictCapRateMovement(ctx.marketId);
-      // Convert 12-month bps prediction to a per-year decimal (negative = compression).
-      const m28AnnualRate = capForecast.change_bps / 10000;
-      // The M35 override is already in m35GrowthRateOverrides['exit_cap_trajectory']
-      // (or absent, meaning we use the engine baseline of -0.0025).
-      const EXIT_CAP_BASELINE = -0.0025;
-      const m35Rate = m35GrowthRateOverrides['exit_cap_trajectory'] ?? EXIT_CAP_BASELINE;
-      const blendedRate = m35Rate * 0.5 + m28AnnualRate * 0.5;
-      // Only set the override when the blended rate differs meaningfully from the baseline.
-      if (Math.abs(blendedRate - EXIT_CAP_BASELINE) > 1e-5) {
-        m35GrowthRateOverrides = { ...m35GrowthRateOverrides, exit_cap_trajectory: blendedRate };
+      // Guard: only apply overlay when actual cycle snapshot data exists for this market.
+      const cycleSnapshot = await cycleIntelligenceService.getCyclePhase(ctx.marketId);
+      if (cycleSnapshot) {
+        const fullChain = await cycleIntelligenceService.predictFullChain(ctx.marketId);
+        // Convert 12-month cap-rate change bps to a per-year decimal
+        // (negative = compression; positive = expansion).
+        const m28AnnualRate = fullChain.predictions.cap_change_bps / 10000;
+        // The M35 override may already be in the map; fall back to engine baseline.
+        const EXIT_CAP_BASELINE = -0.0025;
+        const m35Rate = m35GrowthRateOverrides['exit_cap_trajectory'] ?? EXIT_CAP_BASELINE;
+        const blendedRate = m35Rate * 0.5 + m28AnnualRate * 0.5;
+        // Only write the override when the blended rate differs meaningfully from the baseline.
+        if (Math.abs(blendedRate - EXIT_CAP_BASELINE) > 1e-5) {
+          m35GrowthRateOverrides = { ...m35GrowthRateOverrides, exit_cap_trajectory: blendedRate };
+        }
+        logger.debug('[LIUS] M28 cycle cap rate overlay applied', {
+          dealId: ctx.dealId,
+          marketId: ctx.marketId,
+          cyclePhase: cycleSnapshot.lag_phase,
+          m28CapChangeBps: fullChain.predictions.cap_change_bps,
+          m28AnnualRate,
+          m35Rate,
+          blendedRate,
+        });
+      } else {
+        logger.debug('[LIUS] M28 cycle overlay skipped — no snapshot data for market', {
+          dealId: ctx.dealId,
+          marketId: ctx.marketId,
+        });
       }
-      logger.debug('[LIUS] M28 cycle cap rate overlay applied', {
-        dealId: ctx.dealId,
-        marketId: ctx.marketId,
-        m28CapChangeBps: capForecast.change_bps,
-        m28AnnualRate,
-        m35Rate,
-        blendedRate,
-      });
     } catch (m28Err: any) {
       logger.warn('[LIUS] M28 cycle cap rate fetch failed — exit_cap_trajectory uses M35-only signal', {
         dealId: ctx.dealId,
