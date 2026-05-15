@@ -1107,7 +1107,7 @@ export class ProFormaAdjustmentService {
        FROM key_events
        WHERE subtype = 'rent_control_passage'
          AND submarket_id = $1
-         AND status = 'materialized'
+         AND status IN ('materialized', 'in_progress')
        ORDER BY materialization_date DESC
        LIMIT 1`,
       [submarketId]
