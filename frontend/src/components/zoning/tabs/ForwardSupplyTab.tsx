@@ -1,15 +1,34 @@
 /**
- * WS-3 Layers 1+2 — Forward Supply Panel
+ * WS-3 Layers 1+2+3 — Forward Supply Panel
  *
  * Displays projected MF developable capacity within 3mi and 5mi rings of the
- * deal site, broken out by parcel class (vacant / underbuilt / developed).
- * Data is sourced from GET /api/v1/deals/:dealId/forward-supply.
+ * deal site.  Each ring card shows:
+ *
+ *   Layer 1+2 (static):  MF-zoned parcels swept by PostGIS + building-envelope
+ *                        capacity per parcel class.
+ *   Layer 3 (trend):     Non-MF parcels weighted by rezone probability derived
+ *                        from zoning_upzoning / entitlement_approval /
+ *                        development_moratorium events in the submarket.
+ *                        Phase A uses a linear event-density model.
+ *
+ * Data source: GET /api/v1/deals/:dealId/forward-supply
  */
 
 import React, { useEffect, useState } from 'react';
 import type { AxiosResponse } from 'axios';
-import { Building2, RefreshCw, AlertCircle, MapPin } from 'lucide-react';
+import { Building2, RefreshCw, AlertCircle, MapPin, TrendingUp } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
+
+// ─────────────────────────── Types ──────────────────────────────────────────
+
+interface TrendWeightedRing {
+  trendWeightedCapacityUnits: number;
+  probableRezoneParcels: {
+    parcelId: string;
+    theoreticalMFCapacity: number;
+    rezoneProbability: number;
+  }[];
+}
 
 interface ForwardSupplyRing {
   radiusMiles: 3 | 5;
@@ -20,6 +39,7 @@ interface ForwardSupplyRing {
   developedCount: number;
   parcelsByClass: { vacant: number; underbuilt: number; developed: number };
   staticByClass: { vacant: number; underbuilt: number; developed: number };
+  trendWeighted: TrendWeightedRing;
 }
 
 interface ForwardSupplyParcel {
@@ -34,6 +54,18 @@ interface ForwardSupplyParcel {
   limitingFactor: string;
   distanceMiles: number;
   ring: 3 | 5;
+}
+
+interface TrendSignalMeta {
+  submarketId: string | null;
+  upzoningEventCount: number;
+  approvalEventCount: number;
+  moratoriumActive: boolean;
+  moratoriumName: string | null;
+  rezoneProbabilityBase: number;
+  modelPhase: 'A_linear';
+  nonMfParcelCount: number;
+  nonMfSweepTruncated: boolean;
 }
 
 interface ForwardSupplyResponse {
@@ -52,6 +84,7 @@ interface ForwardSupplyResponse {
     mfZoningFilter: string;
     sweepTruncated: boolean;
     sweepTotalCount: number;
+    trendSignal: TrendSignalMeta | null;
   };
 }
 
@@ -60,15 +93,19 @@ interface Props {
   deal?: Record<string, unknown>;
 }
 
+// ─────────────────────────── Styles / constants ──────────────────────────────
+
 const MONO = "'JetBrains Mono', 'Fira Code', monospace";
 const BG = '#0a0e1a';
 const BG2 = '#111827';
+const BG3 = '#0d1525';
 const BORDER = 'rgba(255,255,255,0.06)';
 const TEXT_PRIMARY = '#e2e8f0';
 const TEXT_SECONDARY = '#7f8ea3';
 const TEXT_AMBER = '#F6AD55';
 const TEXT_GREEN = '#68D391';
 const TEXT_BLUE = '#63B3ED';
+const TEXT_PURPLE = '#B794F4';
 const TEXT_RED = '#FC8181';
 
 const CLASS_COLORS: Record<'vacant' | 'underbuilt' | 'developed', string> = {
@@ -83,7 +120,13 @@ const CLASS_LABELS: Record<'vacant' | 'underbuilt' | 'developed', string> = {
   developed: 'DEVELOPED',
 };
 
-/** Safe placeholder rings rendered while loading — all numeric fields are 0. */
+// ─────────────────────────── Placeholder data ───────────────────────────────
+
+const EMPTY_TREND_WEIGHTED: TrendWeightedRing = {
+  trendWeightedCapacityUnits: 0,
+  probableRezoneParcels: [],
+};
+
 const PLACEHOLDER_RINGS: ForwardSupplyRing[] = [
   {
     radiusMiles: 3,
@@ -94,6 +137,7 @@ const PLACEHOLDER_RINGS: ForwardSupplyRing[] = [
     developedCount: 0,
     parcelsByClass: { vacant: 0, underbuilt: 0, developed: 0 },
     staticByClass: { vacant: 0, underbuilt: 0, developed: 0 },
+    trendWeighted: EMPTY_TREND_WEIGHTED,
   },
   {
     radiusMiles: 5,
@@ -104,94 +148,14 @@ const PLACEHOLDER_RINGS: ForwardSupplyRing[] = [
     developedCount: 0,
     parcelsByClass: { vacant: 0, underbuilt: 0, developed: 0 },
     staticByClass: { vacant: 0, underbuilt: 0, developed: 0 },
+    trendWeighted: EMPTY_TREND_WEIGHTED,
   },
 ];
 
+// ─────────────────────────── Sub-components ─────────────────────────────────
+
 function fmt(n: number): string {
   return n.toLocaleString('en-US');
-}
-
-function RingCard({ ring, isLoading }: { ring: ForwardSupplyRing; isLoading: boolean }) {
-  const totalLatent = ring.vacantUnits + ring.underbuiltUnits;
-  const utilizationPct =
-    ring.staticCapacityUnits > 0
-      ? Math.round((1 - totalLatent / ring.staticCapacityUnits) * 100)
-      : 0;
-
-  return (
-    <div style={{ flex: 1, border: `1px solid ${BORDER}`, background: BG2, padding: '12px 14px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-        <MapPin size={11} style={{ color: TEXT_AMBER }} />
-        <span style={{ fontFamily: MONO, fontSize: 11, color: TEXT_AMBER, fontWeight: 700 }}>
-          {ring.radiusMiles}-MILE RING
-        </span>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY, marginLeft: 'auto' }}>
-          {ring.parcelCount} parcels
-        </span>
-      </div>
-
-      {isLoading ? (
-        <div style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>Loading…</div>
-      ) : (
-        <>
-          {/* Row 1: total static capacity + latent summary */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-            <Stat label="STATIC CAPACITY" value={fmt(ring.staticCapacityUnits)} unit="units" color={TEXT_PRIMARY} />
-            <Stat
-              label="LATENT SUPPLY"
-              value={fmt(totalLatent)}
-              unit="units"
-              color={totalLatent > 500 ? TEXT_RED : totalLatent > 200 ? TEXT_AMBER : TEXT_GREEN}
-            />
-          </div>
-
-          {/* Row 2: static capacity broken out by parcel class */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 10,
-            borderTop: `1px solid ${BORDER}`, paddingTop: 8,
-          }}>
-            <Stat label="VACANT CAP" value={fmt(ring.staticByClass.vacant)} unit="u" color={TEXT_GREEN} />
-            <Stat label="UNDERBUILT CAP" value={fmt(ring.staticByClass.underbuilt)} unit="u" color={TEXT_AMBER} />
-            <Stat label="DEVELOPED CAP" value={fmt(ring.staticByClass.developed)} unit="u" color={TEXT_SECONDARY} />
-          </div>
-
-          {/* Row 3: latent detail */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-            <Stat label="VACANT LATENT" value={fmt(ring.vacantUnits)} unit="units" color={TEXT_GREEN} />
-            <Stat label="UNDERBUILT LATENT" value={fmt(ring.underbuiltUnits)} unit="units" color={TEXT_AMBER} />
-          </div>
-
-          <div style={{ marginBottom: 6 }}>
-            <div style={{
-              display: 'flex', justifyContent: 'space-between',
-              fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, marginBottom: 3,
-            }}>
-              <span>DEVELOPMENT UTILIZATION</span>
-              <span style={{ color: TEXT_PRIMARY }}>{utilizationPct}%</span>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.06)', height: 4, borderRadius: 2 }}>
-              <div style={{
-                background: utilizationPct > 80 ? TEXT_GREEN : utilizationPct > 50 ? TEXT_AMBER : TEXT_RED,
-                height: '100%', width: `${utilizationPct}%`, borderRadius: 2,
-                transition: 'width 0.4s ease',
-              }} />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-            {(['vacant', 'underbuilt', 'developed'] as const).map((cls) => (
-              <div key={cls} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <div style={{ width: 6, height: 6, borderRadius: 1, background: CLASS_COLORS[cls] }} />
-                <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY }}>
-                  {CLASS_LABELS[cls]} {ring.parcelsByClass[cls]}
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 function Stat({ label, value, unit, color }: {
@@ -208,7 +172,200 @@ function Stat({ label, value, unit, color }: {
   );
 }
 
+function RingCard({ ring, isLoading, trendSignal }: {
+  ring: ForwardSupplyRing;
+  isLoading: boolean;
+  trendSignal: TrendSignalMeta | null;
+}) {
+  const totalLatent = ring.vacantUnits + ring.underbuiltUnits;
+  const utilizationPct =
+    ring.staticCapacityUnits > 0
+      ? Math.round((1 - totalLatent / ring.staticCapacityUnits) * 100)
+      : 0;
+
+  const trendUnits = ring.trendWeighted.trendWeightedCapacityUnits;
+  const totalWithTrend = ring.staticCapacityUnits + trendUnits;
+  const trendProbPct = trendSignal
+    ? Math.round(trendSignal.rezoneProbabilityBase * 100)
+    : 0;
+
+  return (
+    <div style={{ flex: 1, border: `1px solid ${BORDER}`, background: BG2, padding: '12px 14px' }}>
+      {/* Card header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+        <MapPin size={11} style={{ color: TEXT_AMBER }} />
+        <span style={{ fontFamily: MONO, fontSize: 11, color: TEXT_AMBER, fontWeight: 700 }}>
+          {ring.radiusMiles}-MILE RING
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY, marginLeft: 'auto' }}>
+          {ring.parcelCount} MF parcels
+        </span>
+      </div>
+
+      {isLoading ? (
+        <div style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>Loading…</div>
+      ) : (
+        <>
+          {/* ── Layer 1+2: Static MF capacity ───────────────────────────── */}
+          <div style={{
+            fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY,
+            marginBottom: 6, letterSpacing: '0.05em',
+          }}>
+            L1+2 · STATIC MF CAPACITY
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <Stat label="STATIC CAPACITY" value={fmt(ring.staticCapacityUnits)} unit="units" color={TEXT_PRIMARY} />
+            <Stat
+              label="LATENT SUPPLY"
+              value={fmt(totalLatent)}
+              unit="units"
+              color={totalLatent > 500 ? TEXT_RED : totalLatent > 200 ? TEXT_AMBER : TEXT_GREEN}
+            />
+          </div>
+
+          {/* Static capacity by class */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 10,
+            borderTop: `1px solid ${BORDER}`, paddingTop: 8,
+          }}>
+            <Stat label="VACANT CAP" value={fmt(ring.staticByClass.vacant)} unit="u" color={TEXT_GREEN} />
+            <Stat label="UNDERBUILT CAP" value={fmt(ring.staticByClass.underbuilt)} unit="u" color={TEXT_AMBER} />
+            <Stat label="DEVELOPED CAP" value={fmt(ring.staticByClass.developed)} unit="u" color={TEXT_SECONDARY} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <Stat label="VACANT LATENT" value={fmt(ring.vacantUnits)} unit="units" color={TEXT_GREEN} />
+            <Stat label="UNDERBUILT LATENT" value={fmt(ring.underbuiltUnits)} unit="units" color={TEXT_AMBER} />
+          </div>
+
+          {/* Utilization bar */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, marginBottom: 3,
+            }}>
+              <span>DEVELOPMENT UTILIZATION</span>
+              <span style={{ color: TEXT_PRIMARY }}>{utilizationPct}%</span>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.06)', height: 4, borderRadius: 2 }}>
+              <div style={{
+                background: utilizationPct > 80 ? TEXT_GREEN : utilizationPct > 50 ? TEXT_AMBER : TEXT_RED,
+                height: '100%', width: `${utilizationPct}%`, borderRadius: 2,
+                transition: 'width 0.4s ease',
+              }} />
+            </div>
+          </div>
+
+          {/* Parcel class legend */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+            {(['vacant', 'underbuilt', 'developed'] as const).map((cls) => (
+              <div key={cls} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ width: 6, height: 6, borderRadius: 1, background: CLASS_COLORS[cls] }} />
+                <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY }}>
+                  {CLASS_LABELS[cls]} {ring.parcelsByClass[cls]}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Layer 3: Trend-Weighted capacity ────────────────────────── */}
+          <div style={{
+            borderTop: `1px solid rgba(183,148,244,0.15)`,
+            paddingTop: 10,
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8,
+            }}>
+              <TrendingUp size={9} style={{ color: TEXT_PURPLE }} />
+              <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_PURPLE, letterSpacing: '0.05em' }}>
+                L3 · REZONE TREND · PROBABILISTIC
+              </span>
+              <span style={{
+                fontFamily: MONO, fontSize: 6, color: 'rgba(183,148,244,0.5)',
+                marginLeft: 'auto',
+              }}>
+                PHASE A LINEAR
+              </span>
+            </div>
+
+            {/* Static vs Trend-Weighted side by side */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 8 }}>
+              <Stat
+                label="STATIC (L1+2)"
+                value={fmt(ring.staticCapacityUnits)}
+                unit="u"
+                color={TEXT_PRIMARY}
+              />
+              <Stat
+                label="TREND UPSIDE"
+                value={`+${fmt(trendUnits)}`}
+                unit="u"
+                color={trendUnits > 0 ? TEXT_PURPLE : TEXT_SECONDARY}
+              />
+              <Stat
+                label="TOTAL W/ TREND"
+                value={fmt(totalWithTrend)}
+                unit="u"
+                color={trendUnits > 0 ? TEXT_PURPLE : TEXT_PRIMARY}
+              />
+            </div>
+
+            {/* Rezone probability and non-MF parcel count */}
+            <div style={{
+              display: 'flex', gap: 12,
+              fontFamily: MONO, fontSize: 8,
+            }}>
+              <div>
+                <span style={{ color: TEXT_SECONDARY }}>REZONE PROB </span>
+                <span style={{ color: trendProbPct > 0 ? TEXT_PURPLE : TEXT_SECONDARY, fontWeight: 700 }}>
+                  {trendProbPct}%
+                </span>
+              </div>
+              <div>
+                <span style={{ color: TEXT_SECONDARY }}>NON-MF PARCELS </span>
+                <span style={{ color: TEXT_PRIMARY, fontWeight: 700 }}>
+                  {fmt(ring.trendWeighted.probableRezoneParcels.length)}
+                </span>
+              </div>
+              {trendSignal?.moratoriumActive && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <AlertCircle size={8} style={{ color: TEXT_RED }} />
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_RED }}>
+                    MORATORIUM
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Upzone/approval event counts when available */}
+            {trendSignal && trendSignal.submarketId && (
+              <div style={{
+                display: 'flex', gap: 10, marginTop: 6,
+                fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY,
+              }}>
+                <span>↑ {trendSignal.upzoningEventCount} UPZONE EVENTS</span>
+                <span>✓ {trendSignal.approvalEventCount} APPROVALS</span>
+              </div>
+            )}
+
+            {!trendSignal?.submarketId && (
+              <div style={{
+                fontFamily: MONO, fontSize: 7, color: 'rgba(255,255,255,0.25)', marginTop: 4,
+              }}>
+                No submarket linked — trend signal unavailable
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const PAGE_SIZE = 50;
+
+// ─────────────────────────── Main component ─────────────────────────────────
 
 export default function ForwardSupplyTab({ dealId }: Props) {
   const [data, setData] = useState<ForwardSupplyResponse | null>(null);
@@ -219,10 +376,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
   const [page, setPage] = useState(0);
 
   const load = () => {
-    if (!dealId) {
-      setLoading(false);
-      return;
-    }
+    if (!dealId) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     apiClient
@@ -234,9 +388,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
           setError('Endpoint returned unsuccessful response');
         }
       })
-      .catch((err: Error) => {
-        setError(err.message ?? 'Failed to load forward supply data');
-      })
+      .catch((err: Error) => setError(err.message ?? 'Failed to load forward supply data'))
       .finally(() => setLoading(false));
   };
 
@@ -246,6 +398,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
   }, [dealId]);
 
   const displayRings: ForwardSupplyRing[] = data?.rings ?? PLACEHOLDER_RINGS;
+  const trendSignal = data?.metadata?.trendSignal ?? null;
 
   const filteredParcels = (data?.parcels ?? []).filter((p) => {
     if (ringFilter !== null && p.ring !== ringFilter) return false;
@@ -257,6 +410,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BG, overflowY: 'auto' }}>
+
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
@@ -267,7 +421,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
           FORWARD SUPPLY · WS-3
         </span>
         <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, marginLeft: 4 }}>
-          MF-ZONED PARCEL SWEEP · 3MI + 5MI RINGS · LAYER 1+2
+          L1+2 MF SWEEP · L3 REZONE TREND · 3MI + 5MI
         </span>
         {data?.metadata?.municipality && (
           <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_BLUE, marginLeft: 4 }}>
@@ -289,6 +443,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         </button>
       </div>
 
+      {/* No coordinates warning */}
       {!data?.metadata?.hasCoordinates && !loading && (
         <div style={{
           margin: 12, padding: '10px 14px',
@@ -302,6 +457,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         </div>
       )}
 
+      {/* No parcel data */}
       {data?.metadata?.hasCoordinates && !data?.metadata?.parcelDataAvailable && !loading && (
         <div style={{
           margin: 12, padding: '10px 14px',
@@ -315,6 +471,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         </div>
       )}
 
+      {/* Error */}
       {error && (
         <div style={{
           margin: 12, padding: '10px 14px',
@@ -324,6 +481,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         </div>
       )}
 
+      {/* MF sweep truncation warning */}
       {data?.metadata?.sweepTruncated && (
         <div style={{
           margin: '0 12px 4px', padding: '6px 10px',
@@ -332,15 +490,48 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         }}>
           <AlertCircle size={10} style={{ color: TEXT_RED }} />
           <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_RED }}>
-            SWEEP CAPPED — showing {data.parcels.length.toLocaleString()} of {data.metadata.sweepTotalCount.toLocaleString()}+ parcels. Ring totals may be understated. Ingest additional parcel data for complete coverage.
+            MF SWEEP CAPPED — showing {data.parcels.length.toLocaleString()} of {data.metadata.sweepTotalCount.toLocaleString()}+ parcels. Ring totals may be understated.
           </span>
         </div>
       )}
 
-      {/* Ring Summary Cards — always rendered; show "Loading…" until data arrives */}
+      {/* Non-MF sweep truncation warning */}
+      {trendSignal?.nonMfSweepTruncated && (
+        <div style={{
+          margin: '0 12px 4px', padding: '6px 10px',
+          background: 'rgba(183,148,244,0.05)', border: `1px solid rgba(183,148,244,0.15)`,
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <AlertCircle size={10} style={{ color: TEXT_PURPLE }} />
+          <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_PURPLE }}>
+            L3 NON-MF SWEEP CAPPED — trend-weighted totals may be understated.
+          </span>
+        </div>
+      )}
+
+      {/* Moratorium banner */}
+      {trendSignal?.moratoriumActive && (
+        <div style={{
+          margin: '0 12px 4px', padding: '6px 10px',
+          background: 'rgba(252,129,129,0.05)', border: `1px solid rgba(252,129,129,0.2)`,
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <AlertCircle size={10} style={{ color: TEXT_RED }} />
+          <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_RED }}>
+            ACTIVE MORATORIUM{trendSignal.moratoriumName ? ` — ${trendSignal.moratoriumName}` : ''} · Rezone probability capped at 5%.
+          </span>
+        </div>
+      )}
+
+      {/* Ring summary cards */}
       <div style={{ display: 'flex', gap: 10, padding: '10px 12px', flexShrink: 0 }}>
         {displayRings.map((ring) => (
-          <RingCard key={ring.radiusMiles} ring={ring} isLoading={loading} />
+          <RingCard
+            key={ring.radiusMiles}
+            ring={ring}
+            isLoading={loading}
+            trendSignal={trendSignal}
+          />
         ))}
       </div>
 
@@ -390,7 +581,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         </div>
       )}
 
-      {/* Parcel table */}
+      {/* MF parcel table (L1+2) */}
       {data && data.parcels.length > 0 && (
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <div style={{
@@ -402,7 +593,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
             position: 'sticky', top: 0, zIndex: 1,
           }}>
             {['ZONING', 'ADDRESS', 'ACRES', 'DIST', 'ALLOWED', 'LATENT', 'UNITS/AC', 'CLASS'].map((h) => (
-              <span key={h} style={{ fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY, textTransform: 'uppercase' }}>
+              <span key={h} style={{ fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY }}>
                 {h}
               </span>
             ))}
@@ -484,12 +675,17 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         </div>
       )}
 
+      {/* Footer */}
       {data?.computedAt && (
         <div style={{
           padding: '4px 12px', borderTop: `1px solid ${BORDER}`,
           fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY, flexShrink: 0,
+          background: BG3,
         }}>
-          COMPUTED {new Date(data.computedAt).toLocaleString()} · LAYER 1 SWEEP + LAYER 2 FEASIBILITY (WS-3) · LAYER 3 REZONE TREND: PENDING
+          COMPUTED {new Date(data.computedAt).toLocaleString()}
+          {' · '}L1 MF SWEEP + L2 FEASIBILITY (WS-3)
+          {' · '}L3 REZONE TREND PHASE A
+          {trendSignal ? ` · p=${(trendSignal.rezoneProbabilityBase * 100).toFixed(0)}%` : ''}
         </div>
       )}
     </div>
