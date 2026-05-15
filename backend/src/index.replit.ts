@@ -140,6 +140,7 @@ import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.ro
 import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
 import dealPhotosRoutes from './api/rest/deal-photos.routes';
 import dealContextRoutes from './api/rest/deal-context.routes';
+import exitTrajectoryRouter from './api/rest/exit-trajectory.routes';
 import financialModelRoutes from './api/rest/financial-model.routes';
 import deterministicModelRouter from './api/rest/deterministic-model.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
@@ -910,6 +911,9 @@ app.use('/api/v1/deals/:dealId/capsule', requireAuth, createDealCapsuleBridge(po
 
 // â”€â”€ Renovation Data API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use('/api/v1/deals/:dealId/renovation', requireAuth, createRenovationRoutes(pool));
+
+// -- Exit Trajectory (W-10 / CE-12) --
+app.use('/api/v1/deals', requireAuth, exitTrajectoryRouter);
 
 const activeUsers = new Map<string, any>();
 const dealPresence = new Map<string, Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>>();

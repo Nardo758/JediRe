@@ -73,6 +73,10 @@ export const DebtTab: React.FC<DebtTabProps> = ({
 
   const [liveDebtProducts, setLiveDebtProducts] = useState<any>(null);
   const [liveRateData, setLiveRateData] = useState<any>(null);
+  const [trajectoryData, setTrajectoryData] = useState<{
+    supplyPressureByYear: (number | null)[];
+    buyerPressureByYear: (number | null)[];
+  } | null>(null);
 
   const [liveRates, setLiveRates] = useState<any>(null);
   const [rateHistory, setRateHistory] = useState<any>(null);
@@ -103,30 +107,51 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   const template = strategyTemplates[selectedStrategy];
   const stack = defaultCapitalStack;
 
+  // W-10 (CE-12): Fetch M35 supply pressure + JEDI demand score for the
+  // Exit Windows / Sensitivity tabs on mount.  Results flow into exitConfig
+  // below; the projection-model hook renders "—" for any null year slot.
+  useEffect(() => {
+    if (!deal?.id) return;
+    apiClient
+      .get(`/api/v1/deals/${deal.id}/exit-trajectory`)
+      .then(res => {
+        if (res.data?.success) {
+          setTrajectoryData({
+            supplyPressureByYear: res.data.supplyPressureByYear,
+            buyerPressureByYear: res.data.buyerPressureByYear,
+          });
+        }
+      })
+      .catch(err => logSwallowedError('DebtTab/exit-trajectory', err));
+  // deal.id is the only external dep; trajectory fetch is mount-once per deal.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deal?.id]);
+
   // D1 (CE-04): exitConfig is wired strictly from useDealModule context.
   // Fields with no live source are passed as `null`, NOT a hardcoded
   // fallback — the projection-model hook treats null as "no live data
   // for this input" and surfaces it in the UI as "—".
   //
-  // Yearly trajectory arrays (rentGrowthByYear, exitCapByYear,
-  // supplyPressureByYear, valueAddCompleteByYear) and the RSS sub-score
-  // inputs (rateEnvironmentScore, marketWindowByYear, buyerPressureByYear,
-  // opReadinessByYear) remain undefined here — there is no upstream
-  // live source today. Wiring them is downstream-dispatch work
-  // (D2: exit cap reconciliation, D4: events). Until those land, the
-  // RSS gauge, sub-score bars, and verdict bar all render "—".
+  // W-10 (CE-12): supplyPressureByYear and buyerPressureByYear are now live
+  // from /exit-trajectory (M35 pipeline + JEDI demand sub-score).
+  // Remaining arrays (rentGrowthByYear, exitCapByYear, valueAddCompleteByYear,
+  // rateEnvironmentScore, marketWindowByYear, opReadinessByYear) are still
+  // pending upstream wiring (D2, D4).
   const exitConfig = useMemo<ExitStrategyConfig>(() => ({
     baseNOI: financial?.noi ?? null,
     equityInvested: capitalStructure?.totalEquity ?? null,
     loanBalance: capitalStructure?.loanBalance?.[0] ?? null,
     annualDebtService: capitalStructure?.annualDebtService ?? null,
     dealStatus: dealStatus || 'pipeline',
+    supplyPressureByYear: trajectoryData?.supplyPressureByYear,
+    buyerPressureByYear: trajectoryData?.buyerPressureByYear,
   }), [
     financial?.noi,
     capitalStructure?.totalEquity,
     capitalStructure?.loanBalance,
     capitalStructure?.annualDebtService,
     dealStatus,
+    trajectoryData,
   ]);
 
   const markTabLoading = useCallback((tab: TabId, loading: boolean) => {
