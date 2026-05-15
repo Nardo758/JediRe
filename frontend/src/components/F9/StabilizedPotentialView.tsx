@@ -586,22 +586,23 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
                   {fmtCell(item.proForma, item.formatAs)}
                 </div>
 
-                {/* Δ column — clickable to expand bridge; amber when conflictFlag */}
+                {/* Δ column — clickable to expand bridge; amber when conflictFlag; disabled in dev mode */}
                 <div
                   style={{
                     padding: '8px 12px',
                     textAlign: 'right',
                     color: item.conflictFlag ? '#f59e0b' : (item.delta >= 0 ? '#22c55e' : '#ef4444'),
                     background: item.conflictFlag ? 'rgba(245,158,11,0.08)' : undefined,
-                    cursor: !item.isSubtotal && item.key !== 'cap_rate' && item.key !== 'stabilized_value' ? 'pointer' : 'default',
+                    cursor: !data.devMode && !item.isSubtotal && item.key !== 'cap_rate' && item.key !== 'stabilized_value' ? 'pointer' : 'default',
                   }}
                   onClick={() => {
-                    if (item.isSubtotal || item.key === 'cap_rate' || item.key === 'stabilized_value') return;
+                    if (data.devMode || item.isSubtotal || item.key === 'cap_rate' || item.key === 'stabilized_value') return;
                     setExpandedBridge(expandedBridge === item.key ? null : item.key);
                   }}
                   title={item.conflictFlag
                     ? `Operator assumption exceeds platform estimate by ${item.conflictMultiple}× — review required`
-                    : (item.isSubtotal ? '' : 'Click to expand bridge breakdown')}
+                    : (data.devMode ? 'Bridge decomposition suppressed — no T12 on file'
+                      : (item.isSubtotal ? '' : 'Click to expand bridge breakdown'))}
                 >
                   {item.key === 'cap_rate'
                     ? `${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)}bps`
@@ -619,8 +620,8 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
                 </div>
               </div>
 
-              {/* Expanded bridge decomposition */}
-              {expandedBridge === item.key && (
+              {/* Expanded bridge decomposition — suppressed in dev mode */}
+              {expandedBridge === item.key && !data.devMode && (
                 <div
                   style={{
                     display: 'grid',
@@ -703,8 +704,8 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
         <SummaryCard label="Current NOI" value={fmt$(data.summary.currentNoi)} />
       </div>
 
-      {/* Bridge popover */}
-      {expandedBridge && (
+      {/* Bridge popover — suppressed in dev mode */}
+      {expandedBridge && !data.devMode && (
         <BridgePopover
           item={sortedLayout.find((l) => l.key === expandedBridge)!}
           onClose={() => setExpandedBridge(null)}

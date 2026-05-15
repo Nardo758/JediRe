@@ -959,7 +959,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               }}
               title="M09 — Stabilized Potential: 4-column bridge view"
             >
-              STAB. POTENTIAL
+              STABILIZED POTENTIAL
             </button>
           </div>
         </div>
