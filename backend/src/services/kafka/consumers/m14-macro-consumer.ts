@@ -26,8 +26,11 @@ const logger = {
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 const m14MacroHandler: MessageHandler = async (event: any) => {
+  // Accept both snake_case (canonical spec payload) and camelCase (legacy producers).
+  const primaryChannel: string | undefined = event.primary_channel ?? event.primaryChannel;
+
   // Filter: only process M14_macro channel events.
-  if (event.primaryChannel !== 'M14_macro') {
+  if (primaryChannel !== 'M14_macro') {
     return;
   }
 
