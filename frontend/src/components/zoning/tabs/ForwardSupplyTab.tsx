@@ -19,9 +19,9 @@
  * Data source: GET /api/v1/deals/:dealId/forward-supply
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import type { AxiosResponse } from 'axios';
-import { Building2, RefreshCw, AlertCircle, MapPin, TrendingUp } from 'lucide-react';
+import { Building2, RefreshCw, AlertCircle, MapPin, TrendingUp, Link2 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 
 // ─────────────────────────── Types ──────────────────────────────────────────
@@ -105,6 +105,12 @@ interface ForwardSupplyResponse {
 interface Props {
   dealId?: string;
   deal?: Record<string, unknown>;
+}
+
+interface SubmarketEntry {
+  id: number;
+  name: string;
+  slug: string;
 }
 
 // ─────────────────────────── Styles / constants ──────────────────────────────
@@ -370,8 +376,8 @@ function RingCard({ ring, isLoading, trendSignal }: {
             )}
 
             {!trendSignal?.submarketId && (
-              <div style={{ fontFamily: MONO, fontSize: 7, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>
-                No submarket linked — trend signal unavailable
+              <div style={{ fontFamily: MONO, fontSize: 7, color: 'rgba(183,148,244,0.4)', marginTop: 4 }}>
+                No submarket — L3 signal disabled ↓
               </div>
             )}
           </div>
@@ -398,6 +404,62 @@ export default function ForwardSupplyTab({ dealId }: Props) {
   const [nonMfPage, setNonMfPage] = useState(0);
   const [nonMfExpanded, setNonMfExpanded] = useState(true);
   const [nonMfSortDir, setNonMfSortDir] = useState<'desc' | 'asc'>('desc');
+
+  // Submarket linker state
+  const [showLinker, setShowLinker] = useState(false);
+  const [availableSubmarkets, setAvailableSubmarkets] = useState<SubmarketEntry[]>([]);
+  const [selectedSlug, setSelectedSlug] = useState('');
+  const [savingSubmarket, setSavingSubmarket] = useState(false);
+  const [submarketSaveError, setSubmarketSaveError] = useState<string | null>(null);
+
+  const fetchSubmarkets = useCallback(() => {
+    if (!dealId) return;
+    apiClient
+      .get<{ success: boolean; submarkets: SubmarketEntry[] }>(
+        `/api/v1/deals/${dealId}/submarkets`,
+      )
+      .then((res) => {
+        if (res.data?.success) {
+          setAvailableSubmarkets(res.data.submarkets);
+          if (res.data.submarkets.length > 0 && !selectedSlug) {
+            setSelectedSlug(res.data.submarkets[0].slug);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [dealId, selectedSlug]);
+
+  const openLinker = () => {
+    setSubmarketSaveError(null);
+    setShowLinker(true);
+    if (availableSubmarkets.length === 0) fetchSubmarkets();
+  };
+
+  const saveSubmarket = () => {
+    if (!dealId || !selectedSlug) return;
+    setSavingSubmarket(true);
+    setSubmarketSaveError(null);
+    apiClient
+      .patch(`/api/v1/deals/${dealId}/submarket`, { submarketId: selectedSlug })
+      .then(() => {
+        setShowLinker(false);
+        load();
+      })
+      .catch((err: Error) =>
+        setSubmarketSaveError(err.message ?? 'Failed to save submarket'),
+      )
+      .finally(() => setSavingSubmarket(false));
+  };
+
+  const unlinkSubmarket = () => {
+    if (!dealId) return;
+    setSavingSubmarket(true);
+    apiClient
+      .patch(`/api/v1/deals/${dealId}/submarket`, { submarketId: null })
+      .then(() => { setShowLinker(false); load(); })
+      .catch(() => {})
+      .finally(() => setSavingSubmarket(false));
+  };
 
   const load = () => {
     if (!dealId) { setLoading(false); return; }
@@ -519,6 +581,129 @@ export default function ForwardSupplyTab({ dealId }: Props) {
           <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_RED }}>
             ACTIVE MORATORIUM{trendSignal.moratoriumName ? ` — ${trendSignal.moratoriumName}` : ''} · Rezone probability capped at 5%.
           </span>
+        </div>
+      )}
+
+      {/* ── L3 Submarket linker / status banner ── */}
+      {data && !loading && (
+        <div style={{
+          margin: '0 12px 6px',
+          border: `1px solid ${trendSignal?.submarketId ? 'rgba(183,148,244,0.2)' : 'rgba(183,148,244,0.35)'}`,
+          background: trendSignal?.submarketId ? 'rgba(183,148,244,0.03)' : 'rgba(183,148,244,0.06)',
+          padding: '7px 12px',
+        }}>
+          {/* ── When submarket is already linked ── */}
+          {trendSignal?.submarketId && !showLinker && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Link2 size={9} style={{ color: TEXT_PURPLE }} />
+              <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY }}>L3 SUBMARKET</span>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_PURPLE, fontWeight: 700 }}>
+                {trendSignal.submarketId.replace(/-/g, ' ').toUpperCase()}
+              </span>
+              <button
+                onClick={openLinker}
+                style={{
+                  fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY,
+                  background: 'transparent', border: `1px solid ${BORDER}`,
+                  padding: '1px 6px', cursor: 'pointer', marginLeft: 4,
+                }}
+              >
+                CHANGE
+              </button>
+              <button
+                onClick={unlinkSubmarket}
+                disabled={savingSubmarket}
+                style={{
+                  fontFamily: MONO, fontSize: 7, color: 'rgba(252,129,129,0.6)',
+                  background: 'transparent', border: 'none',
+                  padding: '1px 4px', cursor: 'pointer',
+                }}
+              >
+                UNLINK
+              </button>
+            </div>
+          )}
+
+          {/* ── When no submarket linked ── */}
+          {!trendSignal?.submarketId && !showLinker && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Link2 size={9} style={{ color: 'rgba(183,148,244,0.5)' }} />
+              <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY }}>
+                L3 REZONE TREND — no submarket linked
+              </span>
+              <button
+                onClick={openLinker}
+                style={{
+                  fontFamily: MONO, fontSize: 8, color: TEXT_PURPLE,
+                  background: 'rgba(183,148,244,0.1)',
+                  border: `1px solid rgba(183,148,244,0.3)`,
+                  padding: '2px 10px', cursor: 'pointer', marginLeft: 'auto',
+                }}
+              >
+                LINK SUBMARKET ↗
+              </button>
+            </div>
+          )}
+
+          {/* ── Linker open: dropdown + save/cancel ── */}
+          {showLinker && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Link2 size={9} style={{ color: TEXT_PURPLE }} />
+                <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_PURPLE, fontWeight: 700 }}>
+                  LINK SUBMARKET TO L3
+                </span>
+                <button
+                  onClick={() => setShowLinker(false)}
+                  style={{
+                    fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY,
+                    background: 'transparent', border: 'none',
+                    padding: '1px 4px', cursor: 'pointer', marginLeft: 'auto',
+                  }}
+                >
+                  ✕ CANCEL
+                </button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {availableSubmarkets.length === 0 ? (
+                  <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY }}>
+                    Loading submarkets…
+                  </span>
+                ) : (
+                  <select
+                    value={selectedSlug}
+                    onChange={(e) => setSelectedSlug(e.target.value)}
+                    style={{
+                      fontFamily: MONO, fontSize: 8, color: TEXT_PRIMARY,
+                      background: BG2, border: `1px solid ${BORDER}`,
+                      padding: '3px 8px', outline: 'none', flex: 1, minWidth: 160,
+                    }}
+                  >
+                    {availableSubmarkets.map((sm) => (
+                      <option key={sm.id} value={sm.slug}>{sm.name}</option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  onClick={saveSubmarket}
+                  disabled={savingSubmarket || !selectedSlug}
+                  style={{
+                    fontFamily: MONO, fontSize: 8, color: savingSubmarket ? TEXT_SECONDARY : TEXT_PURPLE,
+                    background: 'rgba(183,148,244,0.1)',
+                    border: `1px solid rgba(183,148,244,0.3)`,
+                    padding: '3px 12px', cursor: savingSubmarket ? 'default' : 'pointer',
+                  }}
+                >
+                  {savingSubmarket ? 'SAVING…' : 'SAVE'}
+                </button>
+              </div>
+              {submarketSaveError && (
+                <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_RED }}>
+                  {submarketSaveError}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -699,8 +884,24 @@ export default function ForwardSupplyTab({ dealId }: Props) {
               </div>
 
               {!trendSignal?.submarketId && (
-                <div style={{ padding: '12px', fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>
-                  No submarket linked to this deal — rezone trend signal is unavailable. Link a submarket to compute Layer 3 upside.
+                <div style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>
+                    No submarket linked — use the
+                  </span>
+                  <button
+                    onClick={openLinker}
+                    style={{
+                      fontFamily: MONO, fontSize: 8, color: TEXT_PURPLE,
+                      background: 'rgba(183,148,244,0.1)',
+                      border: `1px solid rgba(183,148,244,0.25)`,
+                      padding: '2px 8px', cursor: 'pointer',
+                    }}
+                  >
+                    LINK SUBMARKET
+                  </button>
+                  <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>
+                    button above to unlock L3 rezone trend analysis.
+                  </span>
                 </div>
               )}
 
