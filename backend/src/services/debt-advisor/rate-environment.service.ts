@@ -168,6 +168,69 @@ interface MacroDbRow {
   snapshot_date: string | null;
 }
 
+// ─── W-07: rate_move forward overlay ──────────────────────────────────────────
+
+interface RateMoveRow {
+  magnitude_value: string | null;
+  materialization_date: string | null;
+}
+
+/**
+ * Fetches active rate_move events from key_events.
+ * Returns rows sorted by materialization_date so the overlay is applied
+ * in chronological order.
+ *
+ * W-07 (Task #729): EP-05 / CE-03 unified M14 macro wiring.
+ */
+async function fetchActiveRateMoveEvents(): Promise<RateMoveRow[]> {
+  try {
+    const result = await query(
+      `SELECT magnitude_value::text, materialization_date::text
+       FROM key_events
+       WHERE subtype = 'rate_move'
+         AND status IN ('announced', 'in_progress')
+       ORDER BY materialization_date ASC NULLS LAST`,
+      []
+    );
+    return result.rows as RateMoveRow[];
+  } catch (err: any) {
+    logger.warn('[RateEnvironment] Failed to fetch rate_move events', { error: err.message });
+    return [];
+  }
+}
+
+/**
+ * Applies rate_move events as a forward overlay on the SOFR curve.
+ *
+ * Each event's magnitude_value (bps) is added to the curve starting at
+ * the index that corresponds to the event's materialization_date.
+ * Curve indices 0–4 map to Year 1–5 (each step ≈ 12 months).
+ *
+ * W-07 Phase A: magnitudes are taken directly from ke.magnitude_value.
+ * Phase B (corpus-gated) will replace this with empirical M37 analogs.
+ */
+function applyRateMoveOverlay(curve: number[], events: RateMoveRow[]): number[] {
+  if (events.length === 0) return curve;
+  const now = Date.now();
+  const out = [...curve];
+  for (const ev of events) {
+    const bps = ev.magnitude_value != null ? parseFloat(ev.magnitude_value) : 0;
+    if (!bps) continue;
+    const monthsAhead = ev.materialization_date
+      ? Math.max(0, Math.round(
+          (new Date(ev.materialization_date).getTime() - now) / (30.44 * 24 * 3600 * 1000)
+        ))
+      : 0;
+    // Map months → curve index (0-based, each index = 1 year). Clamp to last bucket.
+    const startIdx = Math.min(out.length - 1, Math.floor(monthsAhead / 12));
+    const deltaDec = bps / 10000;
+    for (let i = startIdx; i < out.length; i++) {
+      out[i] += deltaDec;
+    }
+  }
+  return out;
+}
+
 async function fetchLatestMacroFromDb(): Promise<MacroDbRow | null> {
   try {
     const result = await query(
@@ -234,10 +297,12 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
   }
 
   try {
-    // Fetch live rates + macro DB context in parallel
-    const [liveRates, macroRow] = await Promise.all([
+    // Fetch live rates, macro DB context, and M35 rate_move events in parallel.
+    // W-07 (Task #729): rate_move overlay sourced from key_events.
+    const [liveRates, macroRow, rateMoveEvents] = await Promise.all([
       fetchLiveRates(),
       fetchLatestMacroFromDb(),
+      fetchActiveRateMoveEvents(),
     ]);
 
     const sofr = (liveRates.sofr || 5.3) / 100;
@@ -247,7 +312,9 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
     const treasury10y = (liveRates.treasury10Y || 4.3) / 100;
     const fedFundsTarget = ((liveRates.effrTargetLow || 5.25) + (liveRates.effrTargetHigh || 5.5)) / 2 / 100;
 
-    const { curve: fwdCurve, mode: curveMode } = buildSofrForwardCurve(sofr, sofrAvg30, sofrAvg90, sofrAvg180);
+    const { curve: rawCurve, mode: curveMode } = buildSofrForwardCurve(sofr, sofrAvg30, sofrAvg90, sofrAvg180);
+    // W-07: apply rate_move bps overlay keyed to materialization_date
+    const fwdCurve = applyRateMoveOverlay(rawCurve, rateMoveEvents);
     const sofrForward12moBps = (fwdCurve[4] - fwdCurve[0]) * 10000;
 
     const classification = classifyEnvironment(sofrForward12moBps);

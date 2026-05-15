@@ -40,16 +40,46 @@ export class CycleIntelligenceService {
     };
   }
 
+  /**
+   * W-07 (Task #729): Run the snapshot query and the recession_indicator check
+   * in parallel. If a key_events row with subtype='recession_indicator',
+   * confidence >= 0.6, and matching msa_id (or national scope) is found,
+   * lag_phase is forced to 'recession' (m28 taxonomy for the spec's 'Contraction').
+   *
+   * EP-05 / CE-03 unified M14 macro wiring.
+   */
   async getCyclePhase(marketId: string): Promise<CycleSnapshot | null> {
-    const result = await pool.query(
-      `SELECT * FROM m28_cycle_snapshots 
-       WHERE market_id = $1 
-       ORDER BY snapshot_date DESC 
-       LIMIT 1`,
-      [marketId]
-    );
-    
-    return result.rows[0] ? this.parseSnapshot(result.rows[0]) : null;
+    const [result, recessionResult] = await Promise.all([
+      pool.query(
+        `SELECT * FROM m28_cycle_snapshots
+         WHERE market_id = $1
+         ORDER BY snapshot_date DESC
+         LIMIT 1`,
+        [marketId]
+      ),
+      pool.query(
+        `SELECT confidence FROM key_events
+         WHERE subtype = 'recession_indicator'
+           AND status IN ('announced', 'in_progress', 'materialized')
+           AND (msa_id = $1 OR msa_id IS NULL)
+           AND confidence::numeric >= 0.6
+         ORDER BY confidence DESC NULLS LAST
+         LIMIT 1`,
+        [marketId]
+      ),
+    ]);
+
+    if (!result.rows[0]) return null;
+
+    const snapshot = this.parseSnapshot(result.rows[0]);
+
+    if (recessionResult.rows.length > 0) {
+      // Active recession indicator present — override lag_phase to reflect
+      // contractionary regime regardless of trailing m28 snapshot indicators.
+      return { ...snapshot, lag_phase: 'recession' };
+    }
+
+    return snapshot;
   }
 
   /**

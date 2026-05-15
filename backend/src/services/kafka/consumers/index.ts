@@ -12,6 +12,7 @@ import { registerJEDIScoreConsumer } from './jedi-score-consumer';
 import { registerAlertConsumer } from './alert-consumer';
 import { registerM35ForecastConsumer } from './m35-forecast-consumer';
 import { registerTaxBillUploadedConsumer } from './tax-bill-uploaded-consumer';
+import { registerM14MacroConsumer } from './m14-macro-consumer';
 import { consumerManager } from '../kafka-consumer-manager.service';
 import { retryHandler } from '../retry-handler.service';
 
@@ -37,6 +38,8 @@ export async function initializeConsumers(): Promise<void> {
       registerM35ForecastConsumer(),
       // Tax Service Phase 4 (Task #592): parcel cache invalidation on tax bill upload
       registerTaxBillUploadedConsumer(),
+      // W-07 (Task #729): M14 macro wiring — rate_move / recession_indicator events
+      registerM14MacroConsumer(),
     ]);
 
     // Start health check monitoring

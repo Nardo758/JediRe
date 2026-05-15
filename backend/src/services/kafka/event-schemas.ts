@@ -429,6 +429,12 @@ export const KAFKA_TOPICS = {
   TAX_JURISDICTION_EVENTS: 'tax.jurisdiction.events',
   /** Emitted when a tax bill document is uploaded; consumed to invalidate parcel cache. */
   TAX_BILL_UPLOADED: 'tax.bill.uploaded',
+  /**
+   * Emitted by the M35 classification pipeline when a key_events row is
+   * classified and assigned a primary_channel (e.g. 'M14_macro', 'M07_traffic').
+   * W-07 (Task #729): registered by m14-macro-consumer for M14_macro events.
+   */
+  EVENT_CLASSIFIED: 'event.classified',
 } as const;
 
 // ─── M35 Event Impact Engine — Kafka Message Types ────────────────────────────
