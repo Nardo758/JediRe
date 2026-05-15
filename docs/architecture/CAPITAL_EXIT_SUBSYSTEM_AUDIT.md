@@ -584,7 +584,7 @@ The delta between 7.1 and 7.2 is the Phase 1 fix inventory.
 | CE-13 | UNVERIFIED | `archive_line_items` writer not found in production code paths. If table is empty, LIUS Tier 3 always misses and the cascade falls through. Verify by querying production. | P1 | S | LIUS data integrity | A |
 | CE-14 | DISPLAY_ONLY | `ExitCapitalModule` does fetch live M35 events but only renders them in `caseForBullets`, `keyTriggers`, and chart markers. The actual RSS / cap-rate trajectory that drives exit-window decisions ignores these events entirely. | P1 | M | Misleading user experience: events shown but not modeled | A |
 | CE-15 | HARDCODED | `ConvergenceChart.tsx` carries duplicate 21-year projection arrays — the same hardcoded-fiction pattern as CE-04, on a different surface. Consumed by `AssetOwnedPage` and `PortfolioPropertyPage`. D1 explicitly scoped this out (separate file, not in D1's named lines), but it is the same defect: the Portfolio property pages render a detailed multi-year projection from compiled-in constants. | P1 | M | Portfolio property page correctness; user trust on owned-asset surfaces | A (scaffold) / B (data) |
-| CE-16 | NOT_WIRED / HARDCODED | `cycle-intelligence.service.ts` (M28 Cycle Intelligence) is orphaned scaffolding. Three coupled facets: (1) prediction internals are stubbed — `predictCapRateMovement` uses `forwardMortgageChange = -68 // bps (example)` and a hardcoded `0.40` chain coefficient, `confidence: 0.75` hardcoded; same in `predictRentGrowth`, `predictFullChain`; (2) `m28_cycle_snapshots` is written by `classify-market-cycles.ts` — a manual script, not a scheduled service (dormant-infrastructure shape, same as pre-FIX-1 traffic); (3) the service has exactly one consumer, its own REST route — no Debt, Exit Timing, or Exit Strategy module consumes it. The type system is genuinely well-designed (`FullChainPrediction` models Fed-cut → mortgage → purchasing-power → txn-volume → cap-rate → value as an explicit causal chain); the substance is fictional and connected to nothing. | P1 | L | Layer 2 foundation — cycle-aware debt-term optimization, the stated goal of the Capital/Exit subsystem | A (schedule writer + wire consumers) / B (calibrate chain coefficients against corpus) |
+| CE-16 | NOT_WIRED / HARDCODED | `cycle-intelligence.service.ts` (M28 Cycle Intelligence) is orphaned scaffolding. Three coupled facets: (1) prediction internals are stubbed — `predictCapRateMovement` uses `forwardMortgageChange = -68 // bps (example)` and a hardcoded `0.40` chain coefficient, `confidence: 0.75` hardcoded; same in `predictRentGrowth`, `predictFullChain`; (2) `m28_cycle_snapshots` data observability is unverified — the writer IS scheduled (`m28-scheduler.service.ts:43-51`, cron `'0 10 1 * *'`), so this is NOT a dormant-writer fix; the open question is whether the monthly cron has populated rows in production; (3) the service has exactly one consumer, its own REST route — no Debt, Exit Timing, or Exit Strategy module consumes it. The type system is genuinely well-designed (`FullChainPrediction` models Fed-cut → mortgage → purchasing-power → txn-volume → cap-rate → value as an explicit causal chain); the substance is fictional and connected to nothing. | P1 | L | Layer 2 foundation — cycle-aware debt-term optimization, the stated goal of the Capital/Exit subsystem | A (wire consumers) / B (calibrate chain coefficients against corpus) |
 
 #### CE-15 — descriptive note
 
@@ -622,10 +622,15 @@ work items:
   `realized_cap_rate_change_t12_bps` paired against
   rate-environment-at-the-time, is the calibration data. Phase B,
   corpus-gated — same dependency as CE-M26.
-- **Facet 2 — manual-script writer.** Schedule
-  `classify-market-cycles.ts` as a recurring job instead of a
-  hand-run script. Phase A, FIX-1-shaped. Verify against production
-  first whether `m28_cycle_snapshots` has ever been populated.
+- **Facet 2 — data observability (CORRECTED).** The writer is already
+  scheduled: `m28-scheduler.service.ts:43-51` registers
+  `classifyAllMarkets()` on cron `'0 10 1 * *'` (1st of each month,
+  10:00 UTC). Scheduling `classify-market-cycles.ts` is **not** a D4
+  code task — that work does not exist. The remaining item is a
+  production verification query: run
+  `SELECT COUNT(*), MAX(snapshot_date) FROM m28_cycle_snapshots` to
+  confirm whether the monthly cron has ever successfully populated the
+  table. That is an ops check, not a Phase A fix.
 - **Facet 3 — orphaned service.** Wire the Debt / Exit Timing /
   Exit Strategy modules to consume `cycleIntelligenceService`. Phase
   A — and this belongs in or beside D4, because "wire the M14_macro
@@ -663,14 +668,26 @@ constants are not being shown to users — the escalation trigger
   Exit Strategy is on a worse failure mode (hardcoded inline arrays,
   CE-04) but is not blocked by mock-data interception per
   Supplementary Clarification A.
-- **`m28_cycle_snapshots` is written by a manual script, not a
-  scheduled service.** `classify-market-cycles.ts` populates the
-  table; nothing schedules it. This is the dormant-infrastructure
-  shape — same category as the pre-FIX-1 traffic calibration job —
-  but milder than CE-M26 (the table and writer exist; only the
-  schedule is missing). Whether the table has ever been populated
-  in production is unverified and should be queried. The fix shape
-  is known (schedule the script). This is Facet 2 of CE-16.
+- **`m28_cycle_snapshots` writer IS scheduled (CORRECTED).** The
+  earlier claim — "written by a manual script, not a scheduled
+  service" — was wrong. `m28-scheduler.service.ts:43-51` registers
+  `classifyAllMarkets()` on cron `'0 10 1 * *'`. This is **not** the
+  dormant-infrastructure pattern; the schedule exists. The only open
+  item is production observability: query
+  `SELECT COUNT(*), MAX(snapshot_date) FROM m28_cycle_snapshots` to
+  confirm the cron has run successfully. Facet 2 of CE-16 is an ops
+  check, not a code task.
+- **F47 is a third independent rate classifier (CE-07 follow-on).**
+  `/capital-structure/rate/cycle-phase` (served by
+  `capital-structure.routes.ts`, called from `DebtTab.tsx:152` and
+  `CapitalStructureSection.tsx:195`) is a stateless rate-cycle
+  classifier distinct from both (a) the M28 real-estate cycle
+  classifier (`cycle-intelligence.service.ts` / `m28_cycle_snapshots`)
+  and (b) the `rate-environment.service` / `operatorStance.service`
+  pair that D3's CE-07 unified. D3 touched neither this endpoint nor
+  its callers. F47 belongs on the post-#715 synthesis-pass agenda:
+  determine whether it should be unified with the CE-07 rate-environment
+  path or remain a separate stateless signal.
 
 ---
 
