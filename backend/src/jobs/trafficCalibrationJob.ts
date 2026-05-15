@@ -638,8 +638,9 @@ export class TrafficCalibrationJob {
       submarket_id: string;
       materialization_date: string;
       completion_date: string | null;
+      status: string;
     }>(`
-      SELECT ke.submarket_id, ke.materialization_date, ke.completion_date
+      SELECT ke.submarket_id, ke.materialization_date, ke.completion_date, ke.status
       FROM key_events ke
       WHERE ke.submarket_id = ANY($1)
         AND ke.status IN ('in_progress', 'materialized')
@@ -649,14 +650,21 @@ export class TrafficCalibrationJob {
 
     if (eventsResult.rows.length === 0) return snapshots;
 
-    // Build submarket → exclusion windows map
+    const now = new Date();
+
+    // Build submarket → exclusion windows map.
+    // Null-completion_date policy (per EVENT_WIRING_SYNTHESIS §W-03):
+    //   in_progress  → event is still occurring; exclude through "now" (open-ended)
+    //   materialized → event completed but date unrecorded; use 24-month post-materialization window
     const windowsBySubmarket = new Map<string, Array<{ start: Date; end: Date }>>();
     for (const row of eventsResult.rows) {
       if (!row.submarket_id || !row.materialization_date) continue;
       const start = new Date(row.materialization_date);
       const end = row.completion_date
         ? new Date(row.completion_date)
-        : new Date(start.getTime() + 365 * 24 * 60 * 60 * 1000); // default: 12-month window
+        : row.status === 'in_progress'
+          ? now  // still ongoing — exclude all observations through today
+          : new Date(start.getTime() + 2 * 365 * 24 * 60 * 60 * 1000); // materialized, no date: 24-month window
       if (!windowsBySubmarket.has(row.submarket_id)) {
         windowsBySubmarket.set(row.submarket_id, []);
       }
