@@ -2959,7 +2959,9 @@ export async function getDealFinancials(
   // `resolved` when no higher-priority source already holds that slot.
   {
     const platformTaxY1 = taxForecast.reTax.platformAnnualTax;
-    if (platformTaxY1 != null && platformTaxY1 > 0) {
+    // Allow 0 as a valid value (tax abatement / full exemption scenarios).
+    // Guard only against null and non-finite (NaN / Infinity).
+    if (platformTaxY1 != null && isFinite(platformTaxY1)) {
       const HIGH_PRIORITY = new Set(['override', 't12', 'tax_bill', 'rent_roll', 'box_score']);
 
       // 1a. Mutate year1Seed so ry1('real_estate_tax') in the projection loop
@@ -3009,24 +3011,37 @@ export async function getDealFinancials(
         void (async () => {
           try {
             // Guard: skip write when the stored value is within 1% of current.
+            // Also treat non-finite stored values as stale (force rewrite).
             const check = await query(
               `SELECT year1->'real_estate_tax'->>'platform' AS pv FROM deal_assumptions WHERE deal_id = $1`,
               [_dealId],
             );
-            const stored = check.rows[0]?.pv != null ? parseFloat(check.rows[0].pv) : null;
+            const storedRaw = check.rows[0]?.pv != null ? parseFloat(check.rows[0].pv) : null;
+            const stored = (storedRaw != null && isFinite(storedRaw)) ? storedRaw : null;
             const needsWrite = stored == null ||
-              Math.abs((platformTaxY1 - stored) / Math.max(1, stored)) > 0.01;
+              Math.abs((platformTaxY1 - stored) / Math.max(1, Math.abs(stored))) > 0.01;
             if (needsWrite) {
+              // True upsert: create the deal_assumptions row if absent so the
+              // write-back works even on first-load edge flows where the row
+              // has not yet been written by the assumptions seeder.
               await query(
-                `UPDATE deal_assumptions
-                 SET year1 = COALESCE(year1, '{}'::jsonb) ||
-                               jsonb_build_object(
-                                 'real_estate_tax',
-                                 COALESCE(year1->'real_estate_tax', '{}'::jsonb) ||
-                                   jsonb_build_object('platform', $2::numeric)
-                               ),
-                     updated_at = NOW()
-                 WHERE deal_id = $1`,
+                `INSERT INTO deal_assumptions (deal_id, year1, updated_at)
+                 VALUES (
+                   $1,
+                   jsonb_build_object(
+                     'real_estate_tax',
+                     jsonb_build_object('platform', $2::numeric)
+                   ),
+                   NOW()
+                 )
+                 ON CONFLICT (deal_id) DO UPDATE
+                   SET year1 = COALESCE(deal_assumptions.year1, '{}'::jsonb) ||
+                                 jsonb_build_object(
+                                   'real_estate_tax',
+                                   COALESCE(deal_assumptions.year1->'real_estate_tax', '{}'::jsonb) ||
+                                     jsonb_build_object('platform', $2::numeric)
+                                 ),
+                       updated_at = NOW()`,
                 [_dealId, platformTaxY1],
               );
             }

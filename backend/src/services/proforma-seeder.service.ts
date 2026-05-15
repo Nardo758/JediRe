@@ -823,7 +823,7 @@ function buildSeed(
       const exField = (ex as Record<string, unknown>).real_estate_tax;
       if (!exField || typeof exField !== 'object') return null;
       const v = (exField as Record<string, unknown>).platform;
-      return typeof v === 'number' && isFinite(v) && v > 0 ? v : null;
+      return typeof v === 'number' && isFinite(v) ? v : null;
     })();
     if (exTaxPlatform != null && realEstateTax.platform == null) {
       realEstateTax.platform = exTaxPlatform;
