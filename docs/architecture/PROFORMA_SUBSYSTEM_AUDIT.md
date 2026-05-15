@@ -682,10 +682,22 @@ Concession modulation (CAPITALIZED → 0, HYBRID → partial) in Engine B only. 
 
 ---
 
-### PF-MD-1 — `capitalStructureMockData` Active Import in DebtTab
+### PF-MD-1 — `capitalStructureMockData` Actively Rendered in DebtTab (CONFIRMED ON_MOCK_DATA)
 
 **Priority:** P3 · **Effort:** S · **Phase:** A  
-`frontend/src/components/deal/sections/DebtTab.tsx:21` imports `capitalStructureMockData`. Whether mock values are rendered vs used as type stubs only requires a line-level verification. Risk: if any rendering code falls through to mock data, the Debt Tab displays fictional capital structure figures.
+`frontend/src/components/deal/sections/DebtTab.tsx:21` imports `capitalStructureMockData`. Line-level verification confirms all of the following constants are directly rendered (not inert type stubs):
+
+| Constant | Usage in DebtTab | Live override available? |
+|---|---|---|
+| `lockVsFloatAnalysis` | Lines 712–727: lock vs float recommendation panel, NPV figures, rationale text | No — rendered directly from mock |
+| `spreadAnalysis` | Line 735: spread analysis rows | No — rendered directly from mock |
+| `rateForecast` | Line 766: rate forecast rows | No — rendered directly from mock |
+| `debtProducts` | Lines 173, 343, 347: debt product cards and filter | No — rendered directly from mock |
+| `strategyTemplates` | Lines 107, 280, 409–417: strategy selection labels and default stack | No — rendered directly from mock |
+| `currentRates` | Lines 197–199: treasury rate display | Partial — `liveRates || currentRates` at line 643 falls back to mock when live unavailable |
+| `defaultCapitalStack` | Lines 72, 108, 282, 381: capital stack initial state, acquisition price | No — rendered directly from mock |
+
+**Classification: ON_MOCK_DATA.** The DebtTab Rate Strategy tab (`id: 'rates'`), Debt Products tab (`id: 'debt'`), and Exit & Capital tab (`id: 'exit-overview'`) all render hardcoded fictional values from `capitalStructureMockData`. The lock vs float recommendation, spread analysis, and rate forecast displayed to the operator are not computed from any deal's actual financing terms.
 
 ---
 
