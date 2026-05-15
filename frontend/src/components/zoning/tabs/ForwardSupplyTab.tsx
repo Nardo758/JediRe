@@ -43,6 +43,7 @@ interface ForwardSupplyResponse {
   rings: ForwardSupplyRing[];
   parcels: ForwardSupplyParcel[];
   metadata: {
+    dealFound: boolean;
     lat: number | null;
     lng: number | null;
     hasCoordinates: boolean;
@@ -331,7 +332,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         }}>
           <AlertCircle size={10} style={{ color: TEXT_RED }} />
           <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_RED }}>
-            SWEEP CAPPED — showing {data.metadata.sweepTotalCount.toLocaleString()} of {data.metadata.sweepTotalCount.toLocaleString()}+ parcels. Ring totals may be understated. Ingest additional parcel data for complete coverage.
+            SWEEP CAPPED — showing {data.parcels.length.toLocaleString()} of {data.metadata.sweepTotalCount.toLocaleString()}+ parcels. Ring totals may be understated. Ingest additional parcel data for complete coverage.
           </span>
         </div>
       )}

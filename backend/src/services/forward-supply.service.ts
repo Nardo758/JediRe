@@ -48,6 +48,8 @@ export interface ForwardSupplyResult {
   rings: ForwardSupplyRing[];
   parcels: (FeasibilityParcel & { ring: RingRadius })[];
   metadata: {
+    /** False when no row exists for dealId; callers should return 404 in this case. */
+    dealFound: boolean;
     lat: number | null;
     lng: number | null;
     hasCoordinates: boolean;
@@ -103,36 +105,43 @@ export class ForwardSupplyService {
   async compute(dealId: string): Promise<ForwardSupplyResult> {
     const dealRow = await this.getDealContext(dealId);
 
-    const emptyMeta = {
-      lat: null,
-      lng: null,
-      hasCoordinates: false,
-      parcelDataAvailable: false,
-      municipality: null,
-      mfZoningFilter: 'broad_mf' as const,
-      sweepTruncated: false,
-      sweepTotalCount: 0,
-    };
-
     if (!dealRow) {
       return {
         dealId,
         computedAt: new Date().toISOString(),
         rings: RING_RADII.map((r) => buildRing(r, [])),
         parcels: [],
-        metadata: emptyMeta,
+        metadata: {
+          dealFound: false,
+          lat: null, lng: null,
+          hasCoordinates: false,
+          parcelDataAvailable: false,
+          municipality: null,
+          mfZoningFilter: 'broad_mf' as const,
+          sweepTruncated: false,
+          sweepTotalCount: 0,
+        },
       };
     }
 
     const { lat, lng, municipality } = dealRow;
 
-    if (!lat || !lng || isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
+    if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng) || (lat === 0 && lng === 0)) {
       return {
         dealId,
         computedAt: new Date().toISOString(),
         rings: RING_RADII.map((r) => buildRing(r, [])),
         parcels: [],
-        metadata: { ...emptyMeta, lat, lng, municipality },
+        metadata: {
+          dealFound: true,
+          lat, lng,
+          hasCoordinates: false,
+          parcelDataAvailable: false,
+          municipality,
+          mfZoningFilter: 'broad_mf' as const,
+          sweepTruncated: false,
+          sweepTotalCount: 0,
+        },
       };
     }
 
@@ -149,6 +158,7 @@ export class ForwardSupplyService {
         rings: RING_RADII.map((r) => buildRing(r, [])),
         parcels: [],
         metadata: {
+          dealFound: true,
           lat, lng, hasCoordinates: true, parcelDataAvailable: false,
           municipality, mfZoningFilter: 'broad_mf',
           sweepTruncated: sweepResult.truncated,
@@ -172,6 +182,7 @@ export class ForwardSupplyService {
       rings,
       parcels: taggedParcels,
       metadata: {
+        dealFound: true,
         lat, lng, hasCoordinates: true, parcelDataAvailable: true,
         municipality, mfZoningFilter: 'broad_mf',
         sweepTruncated: sweepResult.truncated,
