@@ -32,6 +32,13 @@ export interface TrajectoryContext {
   profileEvents?: TrajectoryEvent[];
   pcaEvents?: TrajectoryEvent[];
   userEvents?: TrajectoryEvent[];
+  /**
+   * Growth rate overrides keyed by driver name (e.g. 'exit_cap_trajectory').
+   * When present, the override takes precedence over DEFAULT_GROWTH_RATES
+   * for the matching driver. Used by the M35 bridge (m35-bridge.ts) to
+   * inject live event-driven rates instead of hardcoded constants.
+   */
+  m35GrowthRateOverrides?: Record<string, number>;
 }
 
 export interface YearProjection {
@@ -165,9 +172,9 @@ export function projectTrajectory(
   const years = ctx.holdPeriodYears || 10;
   if (baselineValue <= 0) return [];
 
-  const baseGrowthRate = resolveGrowthRate(
-    schema.trajectory?.baseGrowth ?? 'cpi',
-  );
+  const growthDriver = schema.trajectory?.baseGrowth ?? 'cpi';
+  const baseGrowthRate =
+    ctx.m35GrowthRateOverrides?.[growthDriver] ?? resolveGrowthRate(growthDriver);
 
   // Collect all events
   const schemaEvents = [...(schema.trajectory?.scheduledEvents ?? [])];

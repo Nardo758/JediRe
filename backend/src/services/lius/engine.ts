@@ -29,6 +29,13 @@ import {
   type TrajectoryContext,
   type LifecyclePhaseTimeline,
 } from './trajectory-engine';
+import { type LocationTarget } from '../m35-traffic-api.service';
+import {
+  fetchM35TrajectorySignals,
+  toGrowthRateOverrides,
+  buildAbsorptionSpikeEvent,
+  type M35TrajectorySignals,
+} from './m35-bridge';
 
 export interface LIUSEngineContext {
   dealId: string;
@@ -46,6 +53,16 @@ export interface LIUSEngineContext {
   lifecycleTimeline?: LifecyclePhaseTimeline[];  // phase transitions
   profileEvents?: Record<string, TrajectoryEvent[]>;  // events by liuid
   pcaEvents?: Record<string, TrajectoryEvent[]>;      // PCA-derived events by liuid
+  /**
+   * Deal location for M35 trajectory enrichment (W-02).
+   * When present, the engine pre-fetches live market-event signals and injects:
+   *   - An adjusted exit_cap_trajectory rate into trajectory contexts for schemas
+   *     whose baseGrowth driver is 'exit_cap_trajectory'.
+   *   - A Year-1 discrete_spike event into leaseUp.leaseUpAbsorption from any
+   *     active multifamily_delivery events within 5 miles.
+   * When absent, DEFAULT_GROWTH_RATES constants are used unchanged (backward compatible).
+   */
+  location?: LocationTarget;
 }
 
 export interface LIUSEngineResult {
@@ -95,6 +112,16 @@ export async function runLIUSEngine(
     brokerAssumptions: ctx.brokerAssumptions,
   };
   
+  // 3b. Pre-fetch M35 trajectory signals (W-02: exit cap + absorption wiring).
+  // Fetched once per engine run to avoid N×DB round-trips inside the loop.
+  // Returns safe defaults (baseline -0.0025, zero drag) when location is absent.
+  let m35Signals: M35TrajectorySignals | null = null;
+  let m35GrowthRateOverrides: Record<string, number> = {};
+  if (ctx.location) {
+    m35Signals = await fetchM35TrajectorySignals(ctx.location, ctx.units);
+    m35GrowthRateOverrides = toGrowthRateOverrides(m35Signals);
+  }
+
   // 4. Resolve each section in topological order
   const allEvidences: Evidence[] = [];
   const bySection: Record<string, Evidence[]> = {};
@@ -114,13 +141,36 @@ export async function runLIUSEngine(
         // Collision detection
         const collision = detectCollision(result, resolverCtx, schema);
         
-        // Trajectory: project year-by-year values for the hold period
+        // Trajectory: project year-by-year values for the hold period.
+        // m35GrowthRateOverrides is non-empty only when ctx.location was provided.
         const holdPeriod = ctx.holdPeriodYears ?? 10;
+
+        // For leaseUp.leaseUpAbsorption: inject M35 competing-delivery spike
+        // as a pcaEvent so it supersedes the null-value placeholder in the YAML.
+        const callerPcaEvents = ctx.pcaEvents?.[schema.liuid] ?? [];
+        let effectivePcaEvents = callerPcaEvents;
+        if (
+          schema.liuid === 'leaseUp.leaseUpAbsorption' &&
+          m35Signals !== null &&
+          result.posterior.value > 0
+        ) {
+          const absorptionSpike = buildAbsorptionSpikeEvent(
+            m35Signals,
+            result.posterior.value,
+          );
+          if (absorptionSpike !== null) {
+            effectivePcaEvents = [...callerPcaEvents, absorptionSpike];
+          }
+        }
+
         const trajectoryCtx: TrajectoryContext = {
           holdPeriodYears: holdPeriod,
           lifecycleTimeline: ctx.lifecycleTimeline ?? [],
           profileEvents: ctx.profileEvents?.[schema.liuid],
-          pcaEvents: ctx.pcaEvents?.[schema.liuid],
+          pcaEvents: effectivePcaEvents.length > 0 ? effectivePcaEvents : undefined,
+          m35GrowthRateOverrides: Object.keys(m35GrowthRateOverrides).length > 0
+            ? m35GrowthRateOverrides
+            : undefined,
         };
         const yearProjections = projectTrajectory(schema, result.posterior.value, trajectoryCtx);
         

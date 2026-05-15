@@ -320,6 +320,6 @@ export interface SchemaCatalog {
   version: string;
   entries: SchemaCatalogEntry[];
   bySection: Record<string, SchemaCatalogEntry[]>;
-  byLiuid: Record<Li uid, SchemaCatalogEntry>;
+  byLiuid: Record<Liuid, SchemaCatalogEntry>;
   dagOrder: Liuid[];                     // topological sort result
 }
