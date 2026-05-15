@@ -2,13 +2,18 @@
  * WS-3 Layer 1 — Radius Sweep Service
  *
  * Queries county_parcels within fixed 3mi and 5mi rings of a point using
- * a Haversine-based SQL distance calculation.  Only returns parcels that
- * carry a multifamily-eligible zoning designation (broad MF filter so no
- * developable supply is missed at this stage; Layer 2 applies the binding
- * dimensional filter).
+ * PostGIS ST_DWithin on a geography type derived from the stored
+ * centroid_lat / centroid_lng columns.  Only returns parcels that carry
+ * a multifamily-eligible zoning designation (broad MF filter so no
+ * developable supply is missed; Layer 2 applies the binding dimensional
+ * filter).
  *
- * Does NOT depend on PostGIS — uses centroid_lat/centroid_lng plus a
- * bounding-box pre-filter and an inline Haversine expression for accuracy.
+ * Uses ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography so no stored
+ * PostGIS geometry column is required — the on-the-fly cast is accurate
+ * great-circle distance and satisfies PostGIS ring membership semantics.
+ *
+ * A bounding-box pre-filter on centroid_lat/centroid_lng is applied first
+ * to keep the sequential scan bounded before the geography expression runs.
  */
 
 import { Pool } from 'pg';
@@ -67,6 +72,11 @@ export class RadiusSweepService {
 
   /**
    * Returns all MF-zoned parcels within `radiusMiles` of (lat, lng).
+   *
+   * Uses PostGIS ST_DWithin on a geography type for accurate great-circle
+   * ring membership.  A bounding-box pre-filter reduces the rows the
+   * geography expression evaluates.
+   *
    * Limited to MAX_PARCELS results to bound query cost.
    */
   async sweep(lat: number, lng: number, radiusMiles: number): Promise<SweptParcel[]> {
@@ -102,9 +112,9 @@ export class RadiusSweepService {
            lot_depth_ft,
            centroid_lat,
            centroid_lng,
-           SQRT(
-             POW((centroid_lat - $1) * 111320, 2) +
-             POW((centroid_lng - $2) * 111320 * COS(RADIANS($1)), 2)
+           ST_Distance(
+             ST_SetSRID(ST_MakePoint(centroid_lng, centroid_lat), 4326)::geography,
+             ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
            ) AS distance_m,
            raw_record
          FROM county_parcels
@@ -112,28 +122,31 @@ export class RadiusSweepService {
            AND centroid_lng BETWEEN $2 - $4 AND $2 + $4
            AND centroid_lat IS NOT NULL
            AND centroid_lng IS NOT NULL
+           AND ST_DWithin(
+             ST_SetSRID(ST_MakePoint(centroid_lng, centroid_lat), 4326)::geography,
+             ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
+             $5
+           )
            AND ${MF_ZONING_CONDITIONS}
          ORDER BY distance_m
-         LIMIT $5`,
-        [lat, lng, latOffset, lngOffset, MAX_PARCELS],
+         LIMIT $6`,
+        [lat, lng, latOffset, lngOffset, radiusM, MAX_PARCELS],
       );
 
-      return result.rows
-        .filter((r) => parseFloat(r.distance_m) <= radiusM)
-        .map((r) => ({
-          parcelId: r.parcel_id,
-          address: r.site_address ?? null,
-          zoningCode: r.county_zoning_code ?? null,
-          zoningDesc: r.county_zoning_desc ?? null,
-          landUseCode: r.land_use_code ?? null,
-          lotAreaSf: Math.max(1, parseFloat(r.lot_area_sf ?? '0') || 0),
-          lotWidthFt: r.lot_width_ft ? parseFloat(r.lot_width_ft) || null : null,
-          lotDepthFt: r.lot_depth_ft ? parseFloat(r.lot_depth_ft) || null : null,
-          centroidLat: parseFloat(r.centroid_lat),
-          centroidLng: parseFloat(r.centroid_lng),
-          distanceMiles: parseFloat(r.distance_m) / MI_TO_METERS,
-          rawRecord: r.raw_record ?? {},
-        }));
+      return result.rows.map((r) => ({
+        parcelId: r.parcel_id,
+        address: r.site_address ?? null,
+        zoningCode: r.county_zoning_code ?? null,
+        zoningDesc: r.county_zoning_desc ?? null,
+        landUseCode: r.land_use_code ?? null,
+        lotAreaSf: Math.max(1, parseFloat(r.lot_area_sf ?? '0') || 0),
+        lotWidthFt: r.lot_width_ft ? parseFloat(r.lot_width_ft) || null : null,
+        lotDepthFt: r.lot_depth_ft ? parseFloat(r.lot_depth_ft) || null : null,
+        centroidLat: parseFloat(r.centroid_lat),
+        centroidLng: parseFloat(r.centroid_lng),
+        distanceMiles: parseFloat(r.distance_m) / MI_TO_METERS,
+        rawRecord: r.raw_record ?? {},
+      }));
     } catch (err) {
       logger.warn('[RadiusSweepService] sweep query failed', {
         lat, lng, radiusMiles, err: (err as Error).message,
