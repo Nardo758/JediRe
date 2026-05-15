@@ -328,8 +328,11 @@ export class JEDIScoreService {
     const m35Demo   = parseFloat(m35DemoResult?.rows[0]?.m35_units ?? '0') || 0;
 
     const supply = supplyResult.rows[0];
+    // pg returns SUM() as a string — coerce explicitly before arithmetic
+    const legacyUnits = Number(supply.total_units) || 0;
     // Blend: legacy news_events baseline + M35 deliveries/permits − M35 demolitions/conversions
-    const pipelineUnits = (supply.total_units || 0) + m35Supply - m35Demo;
+    // Floor at 0: negative net pipeline (more demolitions than deliveries) should not invert scoring
+    const pipelineUnits = Math.max(0, legacyUnits + m35Supply - m35Demo);
 
     let baseScore: number;
     if (pipelineUnits === 0) baseScore = 60.0;
