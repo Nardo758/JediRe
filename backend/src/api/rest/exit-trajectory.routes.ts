@@ -86,26 +86,35 @@ router.get('/:dealId/exit-trajectory', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
-    const { submarket_id: submarketId, lat, lng } = dealRes.rows[0];
+    const { submarket_id: submarketId, msa_id: msaId, lat, lng } = dealRes.rows[0];
 
-    // 2. M35 supply per window_months horizon (W-05 canonical query)
+    // 2. M35 supply per window_months horizon (W-05 canonical query).
+    //    Primary: filter by ke.submarket_id when available.
+    //    Fallback: filter by ke.msa_id when submarket is absent.
     const supplyByWindow = new Map<number, number>();
     let hasLiveSupplyData = false;
+    let resolvedSupplyScope: 'submarket' | 'msa' | 'none' = 'none';
 
-    if (submarketId) {
+    const activeScope = submarketId ?? null;
+    const fallbackScope = !submarketId && msaId ? msaId : null;
+
+    if (activeScope || fallbackScope) {
+      const scopeId = activeScope ?? fallbackScope!;
+      const scopeColumn = activeScope ? 'ke.submarket_id' : 'ke.msa_id';
+
       const supplyRes = await pool.query<{ window_months: string; units: string }>(
         `SELECT ef.window_months,
                 COALESCE(SUM(ef.point_estimate), 0) AS units
          FROM event_forecasts ef
          JOIN key_events ke ON ke.id = ef.event_id
          WHERE ke.subtype IN ('multifamily_delivery', 'multifamily_permit')
-           AND ke.submarket_id = $1
+           AND ${scopeColumn} = $1
            AND ef.metric_key IN ('deliveries', 'permits_issued', 'net_absorption_units')
            AND ef.status = 'active'
            AND ef.window_months = ANY($2)
          GROUP BY ef.window_months
          ORDER BY ef.window_months`,
-        [submarketId, WINDOWS]
+        [scopeId, WINDOWS]
       );
 
       for (const row of supplyRes.rows) {
@@ -113,6 +122,7 @@ router.get('/:dealId/exit-trajectory', async (req, res) => {
         supplyByWindow.set(wm, parseFloat(row.units) || 0);
         hasLiveSupplyData = true;
       }
+      resolvedSupplyScope = activeScope ? 'submarket' : 'msa';
     }
 
     // 3. M07 supply-side signal — computeEventPipelineSignal
@@ -148,9 +158,9 @@ router.get('/:dealId/exit-trajectory', async (req, res) => {
           ? applyM07Adjustment(base, m07SupplySignal)
           : base;
         supplyPressureByYear.push(adjusted);
-      } else if (submarketId) {
-        // Submarket known but no active forecast rows for this window —
-        // treat as zero competing pipeline rather than unknown.
+      } else if (resolvedSupplyScope !== 'none') {
+        // Scope is known (submarket or MSA) but no active forecast rows for
+        // this window — treat as zero competing pipeline rather than unknown.
         const adjusted = m07SupplySignal != null
           ? applyM07Adjustment(0, m07SupplySignal)
           : 0;
@@ -197,6 +207,8 @@ router.get('/:dealId/exit-trajectory', async (req, res) => {
       buyerPressureByYear,
       metadata: {
         submarketId: submarketId ?? null,
+        msaId: msaId ?? null,
+        resolvedSupplyScope,
         hasLiveSupplyData,
         hasLiveM07Data: jediPositionScore !== null,
         m07SupplySignal,

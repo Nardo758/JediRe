@@ -613,7 +613,7 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, series, live
             { l: 'Rent growth', v: series.rentGrowth[hoverIdx], c: '#68D391', s: '%' },
             { l: 'Cap rate',    v: series.capRate[hoverIdx],    c: '#63B3ED', s: '%' },
             { l: 'Treasury 10Y',v: series.treasury10y[hoverIdx],c: '#B794F4', s: '%' },
-            { l: 'Supply',      v: series.supply[hoverIdx],     c: '#F6AD55', s: ' units' },
+            { l: 'Supply pos.', v: series.supply[hoverIdx],     c: '#F6AD55', s: '/100' },
             { l: 'RSS',         v: series.rss[hoverIdx],        c: '#10b981', s: '' },
           ].map((r) => (
             <div key={r.l} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
