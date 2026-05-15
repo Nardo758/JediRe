@@ -424,6 +424,10 @@ export class RezoneTrendService {
           [submarketId],
         ),
         this.pool.query<{ empirical_rate: string | null; corpus_size: string }>(
+          // Tier 2: cross-submarket event-density bucket.
+          // Strict moratorium match: when active, only match rows with an active
+          // moratorium (those situations are structurally different from normal
+          // conditions).  When inactive, only match rows without an active moratorium.
           `SELECT
              AVG(CASE WHEN rezone_outcome THEN 1.0 ELSE 0.0 END) AS empirical_rate,
              COUNT(*) AS corpus_size
@@ -431,10 +435,7 @@ export class RezoneTrendService {
            WHERE rezone_outcome IS NOT NULL
              AND COALESCE(rezone_window_months, 24) = 24
              AND ABS(COALESCE(rezone_upzoning_event_count, 0) - $1) <= $2
-             AND (
-               $3 = false
-               OR COALESCE(rezone_moratorium_active, false) = true
-             )`,
+             AND COALESCE(rezone_moratorium_active, false) = $3`,
           [upzoningEventCount, PHASE_B_EVENT_BUCKET_WINDOW, moratoriumActive],
         ),
       ]);

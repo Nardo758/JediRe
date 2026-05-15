@@ -296,8 +296,26 @@ function RingCard({ ring, isLoading, trendSignal }: {
               <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_PURPLE, letterSpacing: '0.05em' }}>
                 L3 · REZONE TREND · PROBABILISTIC
               </span>
-              <span style={{ fontFamily: MONO, fontSize: 6, color: 'rgba(183,148,244,0.5)', marginLeft: 'auto' }}>
-                PHASE A LINEAR
+              <span
+                style={{
+                  fontFamily: MONO, fontSize: 6, marginLeft: 'auto',
+                  color: trendSignal?.modelPhase === 'B_empirical'
+                    ? 'rgba(74,222,128,0.7)'
+                    : 'rgba(183,148,244,0.5)',
+                }}
+                title={
+                  trendSignal?.modelPhase === 'B_empirical'
+                    ? `Phase B empirical — ${trendSignal.phaseBCorpusSize} corpus observations`
+                    : (trendSignal?.phaseBCorpusSize ?? 0) > 0
+                      ? `Phase A fallback — corpus too small (n=${trendSignal!.phaseBCorpusSize}, need 5)`
+                      : 'Phase A linear model — no Phase B corpus yet'
+                }
+              >
+                {trendSignal?.modelPhase === 'B_empirical'
+                  ? 'PHASE B'
+                  : (trendSignal?.phaseBCorpusSize ?? 0) > 0
+                    ? 'PHASE A (FALLBACK)'
+                    : 'PHASE A LINEAR'}
               </span>
             </div>
 
@@ -785,7 +803,7 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         }}>
           COMPUTED {new Date(data.computedAt).toLocaleString()}
           {' · '}L1 MF SWEEP + L2 FEASIBILITY (WS-3)
-          {' · '}L3 REZONE TREND PHASE A
+          {' · '}L3 REZONE TREND {trendSignal?.modelPhase === 'B_empirical' ? 'PHASE B' : 'PHASE A'}
           {trendSignal ? ` · p=${(trendSignal.rezoneProbabilityBase * 100).toFixed(0)}%` : ''}
         </div>
       )}
