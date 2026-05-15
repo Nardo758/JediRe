@@ -817,8 +817,9 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
   useEffect(() => {
     if (!dealId) return;
+    // apiClient in this module uses baseURL '/api/v1' — path is relative to that.
     apiClient
-      .get(`/api/v1/deals/${dealId}/exit-trajectory`)
+      .get(`/deals/${dealId}/exit-trajectory`)
       .then(res => {
         if (res.data?.success) {
           setTrajectoryData({
