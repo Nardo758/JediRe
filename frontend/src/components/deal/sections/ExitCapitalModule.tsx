@@ -807,6 +807,24 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const live10yHistory: (number | null)[] | null = null; // TODO: wire to /api/v1/rates/history
   const liveCapTrajectory: (number | null)[] | null = null; // TODO: wire to proforma_assumptions.exit_cap_current + LIUS
 
+  // W-10 (CE-12): Typed contract for GET /api/v1/deals/:id/exit-trajectory.
+  // apiClient (api/client.ts) has an interceptor that returns response.data
+  // directly, so the generic parameter here is the actual payload type.
+  interface ExitTrajectoryResponse {
+    success: boolean;
+    dealId: string;
+    computedAt: string;
+    supplyPressureByYear: (number | null)[];
+    buyerPressureByYear: (number | null)[];
+    metadata: {
+      submarketId: string | null;
+      hasLiveSupplyData: boolean;
+      hasLiveM07Data: boolean;
+      m07SupplySignal: number | null;
+      m07SupplySignalApplied: boolean;
+    };
+  }
+
   // W-10 (CE-12): Fetch M35 supply pressure + M07 buyer pressure from
   // /exit-trajectory.  supplyPressureByYear is used for chartSeries.supply
   // and rssData.sp; buyerPressureByYear feeds rssData.bp.
@@ -817,12 +835,10 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
   useEffect(() => {
     if (!dealId) return;
-    // apiClient (from api/client.ts) has a response interceptor that unwraps
-    // response.data automatically — so .then(res) receives the payload directly.
-    // baseURL is '/api/v1', so path is relative to that.
+    // baseURL is '/api/v1'; interceptor unwraps response.data automatically.
     apiClient
-      .get(`/deals/${dealId}/exit-trajectory`)
-      .then((res: any) => {
+      .get<ExitTrajectoryResponse>(`/deals/${dealId}/exit-trajectory`)
+      .then((res: ExitTrajectoryResponse) => {
         if (res?.success) {
           setTrajectoryData({
             supplyPressureByYear: res.supplyPressureByYear,
