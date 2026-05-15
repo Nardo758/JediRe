@@ -7,6 +7,7 @@ import {
   Clock,
   Lock,
   RefreshCw,
+  Building2,
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import BoundaryAndZoningTab from '../../zoning/tabs/BoundaryAndZoningTab';
@@ -14,6 +15,7 @@ import DevelopmentCapacityTab from '../../zoning/tabs/DevelopmentCapacityTab';
 import RegulatoryRiskTab from '../../zoning/tabs/RegulatoryRiskTab';
 import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
 import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
+import ForwardSupplyTab from '../../zoning/tabs/ForwardSupplyTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
 import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 import { BT as BT2, BtTabWrapper, PanelHeader, SubTabBar } from '../bloomberg-ui';
@@ -30,7 +32,7 @@ interface ZoningModuleSectionProps {
 }
 
 const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'risk'];
-const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'risk', 'timeline', 'hbu'];
+const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'risk', 'timeline', 'hbu', 'forward_supply'];
 
 const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] = [
   { id: 'boundary_zoning', label: 'Boundary & Zoning', icon: <MapPin className="w-4 h-4" />, step: 1 },
@@ -38,6 +40,7 @@ const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: n
   { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 3 },
   { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 4 },
   { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 5 },
+  { id: 'forward_supply', label: 'Forward Supply', icon: <Building2 className="w-4 h-4" />, step: 6 },
 ];
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
@@ -140,6 +143,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         return <RegulatoryRiskTab dealId={resolvedDealId} deal={deal} />;
       case 'timeline':
         return <TimeToShovelTab dealId={resolvedDealId} deal={deal} />;
+      case 'forward_supply':
+        return <ForwardSupplyTab dealId={resolvedDealId} deal={deal} />;
       default:
         return (
           <BoundaryAndZoningTab

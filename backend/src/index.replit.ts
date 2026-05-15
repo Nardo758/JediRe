@@ -141,6 +141,7 @@ import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
 import dealPhotosRoutes from './api/rest/deal-photos.routes';
 import dealContextRoutes from './api/rest/deal-context.routes';
 import exitTrajectoryRouter from './api/rest/exit-trajectory.routes';
+import forwardSupplyRouter from './api/rest/forward-supply.routes';
 import financialModelRoutes from './api/rest/financial-model.routes';
 import deterministicModelRouter from './api/rest/deterministic-model.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
@@ -914,6 +915,9 @@ app.use('/api/v1/deals/:dealId/renovation', requireAuth, createRenovationRoutes(
 
 // -- Exit Trajectory (W-10 / CE-12) --
 app.use('/api/v1/deals', requireAuth, exitTrajectoryRouter);
+
+// -- Forward Supply (WS-3 Layers 1+2) --
+app.use('/api/v1/deals', requireAuth, forwardSupplyRouter);
 
 const activeUsers = new Map<string, any>();
 const dealPresence = new Map<string, Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>>();

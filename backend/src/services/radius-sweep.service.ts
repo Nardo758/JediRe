@@ -1,0 +1,144 @@
+/**
+ * WS-3 Layer 1 — Radius Sweep Service
+ *
+ * Queries county_parcels within fixed 3mi and 5mi rings of a point using
+ * a Haversine-based SQL distance calculation.  Only returns parcels that
+ * carry a multifamily-eligible zoning designation (broad MF filter so no
+ * developable supply is missed at this stage; Layer 2 applies the binding
+ * dimensional filter).
+ *
+ * Does NOT depend on PostGIS — uses centroid_lat/centroid_lng plus a
+ * bounding-box pre-filter and an inline Haversine expression for accuracy.
+ */
+
+import { Pool } from 'pg';
+import { logger } from '../utils/logger';
+
+export interface SweptParcel {
+  parcelId: string;
+  address: string | null;
+  zoningCode: string | null;
+  zoningDesc: string | null;
+  landUseCode: string | null;
+  lotAreaSf: number;
+  lotWidthFt: number | null;
+  lotDepthFt: number | null;
+  centroidLat: number;
+  centroidLng: number;
+  distanceMiles: number;
+  rawRecord: Record<string, unknown>;
+}
+
+const MI_TO_METERS = 1609.344;
+const DEG_PER_METER_LAT = 1 / 111320;
+
+const MF_ZONING_CONDITIONS = `
+  (
+    county_zoning_code ILIKE '%MF%'
+    OR county_zoning_code ILIKE '%RM%'
+    OR county_zoning_code ILIKE '%MR%'
+    OR county_zoning_code ILIKE '%MDR%'
+    OR county_zoning_code ILIKE '%HDR%'
+    OR county_zoning_code ILIKE '%RMF%'
+    OR county_zoning_code ILIKE '%MFR%'
+    OR county_zoning_code ILIKE '%MU%'
+    OR county_zoning_code ILIKE '%MX%'
+    OR county_zoning_code ILIKE 'R-3%'
+    OR county_zoning_code ILIKE 'R3%'
+    OR county_zoning_code ILIKE 'R-4%'
+    OR county_zoning_code ILIKE 'R4%'
+    OR county_zoning_code ILIKE 'R-5%'
+    OR county_zoning_code ILIKE 'R5%'
+    OR county_zoning_code ILIKE 'R-6%'
+    OR county_zoning_code ILIKE 'R6%'
+    OR county_zoning_code ILIKE '%APT%'
+    OR county_zoning_code ILIKE '%MULTI%'
+    OR county_zoning_code ILIKE '%HIGH%DENS%'
+    OR county_zoning_code ILIKE '%MH%'
+    OR land_use_code ILIKE '%multi%'
+    OR land_use_code ILIKE '%apartment%'
+    OR land_use_code ILIKE '%condo%'
+    OR land_use_code ILIKE '%residential_hi%'
+  )
+`;
+
+export class RadiusSweepService {
+  constructor(private pool: Pool) {}
+
+  /**
+   * Returns all MF-zoned parcels within `radiusMiles` of (lat, lng).
+   * Limited to MAX_PARCELS results to bound query cost.
+   */
+  async sweep(lat: number, lng: number, radiusMiles: number): Promise<SweptParcel[]> {
+    const radiusM = radiusMiles * MI_TO_METERS;
+    const latOffset = radiusM * DEG_PER_METER_LAT;
+    const lngOffset = latOffset / Math.max(0.01, Math.cos((lat * Math.PI) / 180));
+
+    const MAX_PARCELS = 1500;
+
+    try {
+      const result = await this.pool.query<{
+        parcel_id: string;
+        site_address: string | null;
+        county_zoning_code: string | null;
+        county_zoning_desc: string | null;
+        land_use_code: string | null;
+        lot_area_sf: string | null;
+        lot_width_ft: string | null;
+        lot_depth_ft: string | null;
+        centroid_lat: string;
+        centroid_lng: string;
+        distance_m: string;
+        raw_record: Record<string, unknown> | null;
+      }>(
+        `SELECT
+           parcel_id,
+           site_address,
+           county_zoning_code,
+           county_zoning_desc,
+           land_use_code,
+           lot_area_sf,
+           lot_width_ft,
+           lot_depth_ft,
+           centroid_lat,
+           centroid_lng,
+           SQRT(
+             POW((centroid_lat - $1) * 111320, 2) +
+             POW((centroid_lng - $2) * 111320 * COS(RADIANS($1)), 2)
+           ) AS distance_m,
+           raw_record
+         FROM county_parcels
+         WHERE centroid_lat BETWEEN $1 - $3 AND $1 + $3
+           AND centroid_lng BETWEEN $2 - $4 AND $2 + $4
+           AND centroid_lat IS NOT NULL
+           AND centroid_lng IS NOT NULL
+           AND ${MF_ZONING_CONDITIONS}
+         ORDER BY distance_m
+         LIMIT $5`,
+        [lat, lng, latOffset, lngOffset, MAX_PARCELS],
+      );
+
+      return result.rows
+        .filter((r) => parseFloat(r.distance_m) <= radiusM)
+        .map((r) => ({
+          parcelId: r.parcel_id,
+          address: r.site_address ?? null,
+          zoningCode: r.county_zoning_code ?? null,
+          zoningDesc: r.county_zoning_desc ?? null,
+          landUseCode: r.land_use_code ?? null,
+          lotAreaSf: Math.max(1, parseFloat(r.lot_area_sf ?? '0') || 0),
+          lotWidthFt: r.lot_width_ft ? parseFloat(r.lot_width_ft) || null : null,
+          lotDepthFt: r.lot_depth_ft ? parseFloat(r.lot_depth_ft) || null : null,
+          centroidLat: parseFloat(r.centroid_lat),
+          centroidLng: parseFloat(r.centroid_lng),
+          distanceMiles: parseFloat(r.distance_m) / MI_TO_METERS,
+          rawRecord: r.raw_record ?? {},
+        }));
+    } catch (err) {
+      logger.warn('[RadiusSweepService] sweep query failed', {
+        lat, lng, radiusMiles, err: (err as Error).message,
+      });
+      return [];
+    }
+  }
+}
