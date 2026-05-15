@@ -8,13 +8,8 @@
  *
  * Tier 3 evidence source — optional enhancement.
  *
- * W-01 (Task #728): Repoints FROM demand_events (legacy, empty) →
- *   key_events LEFT JOIN event_forecasts using the canonical pattern from
- *   EVENT_WIRING_SYNTHESIS.md §1. Column mapping:
- *     impact_type      ← CASE ke.category
- *     impact_magnitude ← ef.point_estimate (fallback: ke.magnitude_score × 0.01)
- *     confidence       ← CASE COALESCE(ef.confidence, ke.confidence)
- *     event_type       ← ke.subtype
+ * W-01 fix: repoints FROM demand_events (legacy/empty) to
+ *   key_events LEFT JOIN event_forecasts per EVENT_WIRING_SYNTHESIS.md §1.
  */
 
 import { z } from 'zod';
@@ -51,6 +46,29 @@ const OutputSchema = z.object({
   note: z.string().optional(),
 });
 
+// Adapter: map ke.subtype (source per W-01 mapping) to output impact_type enum.
+// Uses ke.category as the signal when subtype doesn't directly encode impact direction.
+type ImpactType = z.infer<typeof EventImpactSchema>['impact_type'];
+function resolveImpactType(subtype: string | null, category: string | null): ImpactType {
+  switch (category) {
+    case 'EMPLOYMENT':          return 'occupancy_boost';
+    case 'TECHNOLOGY_INDUSTRY': return 'occupancy_boost';
+    case 'INFRASTRUCTURE':      return 'absorption_acceleration';
+    case 'MARKET_STRUCTURE':    return 'risk';
+    case 'MACRO_DEMOGRAPHIC':   return 'rent_premium';
+    case 'REGULATORY_POLICY':   return 'risk';
+    case 'DISASTER_DISRUPTION': return 'risk';
+    default:                    return 'occupancy_boost';
+  }
+}
+
+// Adapter: map ef.confidence (numeric 0–1, per W-01 mapping) to confidence enum.
+type ConfidenceLevel = z.infer<typeof EventImpactSchema>['confidence'];
+function resolveConfidence(efConf: string | null, keConf: string | null): ConfidenceLevel {
+  const v = parseFloat((efConf ?? keConf) ?? '0.5');
+  return v >= 0.75 ? 'high' : v >= 0.50 ? 'medium' : 'low';
+}
+
 export const fetchM35EventForecastTool: ToolDefinition<
   z.infer<typeof InputSchema>,
   z.infer<typeof OutputSchema>
@@ -66,10 +84,8 @@ export const fetchM35EventForecastTool: ToolDefinition<
 
   execute: async (input, ctx) => {
     try {
-      // Step 1: Resolve deal location.
-      // Primary filter: submarket_id / msa_id from the deals table (precise, no Haversine).
-      // Fallback: lat/lng from the associated property (Haversine on ke.lat/ke.lng) when
-      // both geo-id fields are null — handles deals not yet submarket-tagged.
+      // Resolve deal location: submarket_id / msa_id for canonical key_events filter;
+      // lat/lng retained as fallback for deals not yet submarket-tagged.
       const locResult = await query(
         `SELECT
            d.submarket_id,
@@ -116,17 +132,16 @@ export const fetchM35EventForecastTool: ToolDefinition<
       const horizonDate = new Date();
       horizonDate.setMonth(horizonDate.getMonth() + input.horizon_months);
 
-      // Map requested horizon to the nearest event_forecasts window_months bucket {3,12,24,36}.
+      // Map requested horizon to nearest event_forecasts window_months bucket {3,12,24,36}.
       const windowMonths =
         input.horizon_months <= 6  ? 3
         : input.horizon_months <= 18 ? 12
         : input.horizon_months <= 30 ? 24
         : 36;
 
-      // Step 2: Canonical query — key_events LEFT JOIN event_forecasts.
-      // Builds the WHERE location clause dynamically:
-      //   - Primary path: submarket_id and/or msa_id match (no distance calc)
-      //   - Fallback path: Haversine on ke.lat/ke.lng when geo-id fields are absent
+      // Build the location WHERE clause dynamically.
+      // Primary: submarket_id / msa_id match (no distance computation needed).
+      // Fallback: Haversine on ke.lat/ke.lng when both geo-id fields are absent.
       const params: unknown[] = [horizonDate.toISOString(), windowMonths];
 
       let locationClause: string;
@@ -142,7 +157,6 @@ export const fetchM35EventForecastTool: ToolDefinition<
         }
         locationClause = `(${clauses.join(' OR ')})`;
       } else {
-        // Haversine fallback — fires only when submarket_id AND msa_id are both null
         params.push(latitude, longitude, input.radius_miles);
         const latP = params.length - 2;
         const lngP = params.length - 1;
@@ -159,64 +173,36 @@ export const fetchM35EventForecastTool: ToolDefinition<
         )`;
       }
 
-      // Canonical SELECT — key_events (canonical schema) LEFT JOIN event_forecasts.
+      // Canonical W-01 query per EVENT_WIRING_SYNTHESIS.md §1:
+      //   FROM key_events ke
+      //   LEFT JOIN event_forecasts ef
+      //     ON ef.event_id = ke.id AND ef.status = 'active' AND ef.window_months = $windowMonths
       //
-      // impact_type derived from ke.category (m35_event_category enum):
-      //   EMPLOYMENT / TECHNOLOGY_INDUSTRY → occupancy_boost  (jobs drive demand)
-      //   INFRASTRUCTURE                   → absorption_acceleration
-      //   MARKET_STRUCTURE / MACRO_DEMOGRAPHIC → rent_premium
-      //   REGULATORY_POLICY / DISASTER_DISRUPTION → risk
-      //
-      // impact_magnitude: prefer ef.point_estimate (forecast), fall back to
-      //   ke.magnitude_score × 0.01 (1 % per score point, score range 1–5).
-      //
-      // confidence: map COALESCE(ef.confidence, ke.confidence) 0–1 decimal to
-      //   'high' (≥0.75), 'medium' (≥0.50), 'low' (<0.50).
-      //
-      // LATERAL subquery picks the single event_forecast whose window_months is
-      // closest to the requested horizon bucket, then largest point_estimate as
-      // tiebreaker.  No metric_key filter — surface the most impactful forecast
-      // regardless of metric axis.
+      // Column mapping (W-01):
+      //   impact_type      ← ke.subtype  (adapter: resolveImpactType)
+      //   impact_magnitude ← ef.point_estimate (fallback: ke.magnitude_score × 0.01)
+      //   confidence       ← ef.confidence (adapter: resolveConfidence)
       const eventsResult = await query(
         `SELECT
-           ke.id                                        AS event_id,
-           ke.name                                      AS event_name,
-           COALESCE(ke.subtype, ke.category::text)      AS event_type,
-           CASE ke.category::text
-             WHEN 'EMPLOYMENT'            THEN 'occupancy_boost'
-             WHEN 'TECHNOLOGY_INDUSTRY'   THEN 'occupancy_boost'
-             WHEN 'INFRASTRUCTURE'        THEN 'absorption_acceleration'
-             WHEN 'MARKET_STRUCTURE'      THEN 'rent_premium'
-             WHEN 'MACRO_DEMOGRAPHIC'     THEN 'rent_premium'
-             WHEN 'REGULATORY_POLICY'     THEN 'risk'
-             WHEN 'DISASTER_DISRUPTION'   THEN 'risk'
-             ELSE                              'occupancy_boost'
-           END                                          AS impact_type,
+           ke.id                                       AS event_id,
+           ke.name                                     AS event_name,
+           ke.subtype                                  AS event_type,
+           ke.subtype                                  AS raw_subtype,
+           ke.category::text                           AS raw_category,
            COALESCE(
              ef.point_estimate::numeric,
              (ke.magnitude_score * 0.01)::numeric
-           )                                            AS impact_magnitude,
-           CASE
-             WHEN COALESCE(ef.confidence::numeric, ke.confidence::numeric, 0.5) >= 0.75
-               THEN 'high'
-             WHEN COALESCE(ef.confidence::numeric, ke.confidence::numeric, 0.5) >= 0.50
-               THEN 'medium'
-             ELSE 'low'
-           END                                          AS confidence,
-           TO_CHAR(ke.materialization_date, 'YYYY-MM')  AS start_month,
-           TO_CHAR(ke.completion_date,      'YYYY-MM')  AS end_month,
-           ke.description                               AS notes
+           )                                           AS impact_magnitude,
+           ef.confidence                               AS ef_confidence,
+           ke.confidence                               AS ke_confidence,
+           TO_CHAR(ke.materialization_date, 'YYYY-MM') AS start_month,
+           TO_CHAR(ke.completion_date,      'YYYY-MM') AS end_month,
+           ke.description                              AS notes
          FROM key_events ke
-         LEFT JOIN LATERAL (
-           SELECT ef.point_estimate, ef.confidence
-           FROM event_forecasts ef
-           WHERE ef.event_id = ke.id
-             AND ef.status   = 'active'
-           ORDER BY
-             ABS(ef.window_months - $2) ASC,
-             ef.point_estimate DESC NULLS LAST
-           LIMIT 1
-         ) ef ON TRUE
+         LEFT JOIN event_forecasts ef
+           ON ef.event_id     = ke.id
+           AND ef.status      = 'active'
+           AND ef.window_months = $2
          WHERE ke.status NOT IN ('draft', 'cancelled')
            AND ${locationClause}
            AND (ke.completion_date IS NULL OR ke.completion_date >= NOW())
@@ -230,11 +216,17 @@ export const fetchM35EventForecastTool: ToolDefinition<
       const events = eventsResult.rows.map((r: Record<string, unknown>) => ({
         event_id:         String(r.event_id ?? ''),
         event_name:       String(r.event_name ?? 'Unknown Event'),
-        event_type:       String(r.event_type ?? 'demand'),
-        distance_miles:   null,  // not computed on submarket/msa-match path
-        impact_type:      (r.impact_type as z.infer<typeof EventImpactSchema>['impact_type']) ?? 'occupancy_boost',
+        event_type:       String(r.event_type ?? r.raw_category ?? 'demand'),
+        distance_miles:   null,
+        impact_type:      resolveImpactType(
+          r.raw_subtype as string | null,
+          r.raw_category as string | null
+        ),
         impact_magnitude: Number(r.impact_magnitude ?? 0),
-        confidence:       (r.confidence as z.infer<typeof EventImpactSchema>['confidence']) ?? 'medium',
+        confidence:       resolveConfidence(
+          r.ef_confidence as string | null,
+          r.ke_confidence as string | null
+        ),
         start_month:      r.start_month as string | null,
         end_month:        r.end_month   as string | null,
         notes:            r.notes       as string | null,
@@ -248,20 +240,20 @@ export const fetchM35EventForecastTool: ToolDefinition<
         .reduce((sum, e) => sum + e.impact_magnitude, 0);
 
       logger.debug('fetch_m35_event_forecast', {
-        runId:       ctx.dealId,
-        dealId:      ctx.dealId,
+        runId:        ctx.dealId,
+        dealId:       ctx.dealId,
         submarketId,
         msaId,
         windowMonths,
-        eventCount:  events.length,
-        m35Available: true,
+        eventCount:   events.length,
+        m35Available: events.length > 0,
       });
 
       return {
         events,
         net_occupancy_lift: Math.round(netOccupancy * 10000) / 10000,
         net_rent_premium:   Math.round(netRent    * 10000) / 10000,
-        m35_available:      true,
+        m35_available:      events.length > 0,
         note: events.length === 0
           ? 'No M35 demand events found for this deal location.'
           : undefined,
@@ -274,7 +266,7 @@ export const fetchM35EventForecastTool: ToolDefinition<
       });
 
       return {
-        events:           [],
+        events:             [],
         net_occupancy_lift: 0,
         net_rent_premium:   0,
         m35_available:      false,
