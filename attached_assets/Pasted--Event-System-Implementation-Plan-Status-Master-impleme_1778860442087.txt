@@ -1,0 +1,389 @@
+# Event System — Implementation Plan
+
+**Status:** Master implementation plan — supersedes the standalone synthesis-pass dispatch by absorbing it as Phase 0
+**Owner:** Leon / JEDI RE
+**Inputs:** `EVENT_PROPAGATION_AUDIT.md`, `CAPITAL_EXIT_SUBSYSTEM_AUDIT.md`, `TRAFFIC_ENGINE_STATE_AUDIT.md`, the `EVENT_SUBTYPE_REGISTRY` (`causal-discipline-engine.ts:114`), and the registry-expansion / Forward-Supply decisions from the planning conversation
+**Pairs with:** the staged D4 draft (dissolves into this plan — see §4.5), the Capital Timing Optimization spec (Layer 2, separate), `HISTORICAL_OBSERVATIONS_SPEC.md` (the Phase B calibration substrate)
+
+---
+
+## 0. Purpose and Scope
+
+The platform tracks 16 event subtypes in `EVENT_SUBTYPE_REGISTRY`. Three independent Phase-0 audits — Event Propagation, Capital/Exit Subsystem, Traffic Engine State — converged on the same architectural debt: **events are tracked but not consumed.** The Event Propagation Audit's event×module matrix found 66 NOT_WIRED cells and 16 MISCLASSIFIED cells. The modules that are *declared* responsible for propagating each event subtype's effect largely don't query for those events.
+
+This document is the master implementation plan for closing that debt and extending the system. It covers three workstreams:
+
+- **WS-1 — Event-wiring consolidation.** The Event Propagation Audit's 7-fix sequence, the Capital/Exit audit's D4 findings, and the event-touching subset of the Traffic Engine fixes, merged into one consolidated backlog. They overlap at the file-and-line level; dispatching them separately would put multiple agents in the same functions.
+- **WS-2 — Registry expansion.** Two new event subtypes (`development_moratorium`, `eviction_moratorium`) and one new cause metric (`business_formation_trend`).
+- **WS-3 — Forward Supply.** A new M03 feature: a forward developable-supply projection per submarket, the supply-side sibling of what M07 does for demand.
+
+**What this document is not:** a re-audit. The three Phase-0 audits stand. This plan reads them, consolidates them, and extends them.
+
+**The discipline this plan enforces:** no code dispatch in WS-1, WS-2, or WS-3 begins until Phase 0 (the synthesis read-pass, §3) completes. The merge map and file-collision matrix that Phase 0 produces are what prevent the parallel-collision problem. This is non-negotiable and is the reason Phase 0 is Phase 0.
+
+---
+
+## 1. The Four Workstreams and How They Interlock
+
+```
+                    ┌─────────────────────────────────────┐
+                    │  PHASE 0 — Synthesis Read-Pass       │
+                    │  (read-only; produces merge map +    │
+                    │   file-collision matrix)             │
+                    └──────────────┬──────────────────────┘
+                                   │
+              ┌────────────────────┼────────────────────┐
+              ▼                    ▼                    ▼
+       ┌────────────┐      ┌──────────────┐      ┌──────────────┐
+       │   WS-1     │      │     WS-2     │      │     WS-3     │
+       │ Event-     │      │  Registry    │      │  Forward     │
+       │ wiring     │◄─────┤  Expansion   │      │  Supply      │
+       │ backlog    │      │ (moratoriums │      │ (M03 feature)│
+       │            │      │  + biz form) │      │              │
+       └─────┬──────┘      └──────┬───────┘      └──────┬───────┘
+             │                    │                     │
+             │  EP Fix 6 wires    │  development_        │  Layers 1+2
+             │  M03_devcap events ─┼─ moratorium is ─────┤  buildable now
+             │  ───────────────────┘  consumed by ───────┤  (event-indep.)
+             │                       WS-3 Layer 3        │
+             │                                           │  Layer 3 gated
+             └──────────── EP Fix 6 ─────────────────────┘  on EP Fix 6
+```
+
+**The interlock that matters most:** WS-2's `development_moratorium` subtype, WS-1's EP Fix 6 (wire M03 for the development-capacity events), and WS-3's Layer 3 (the rezone/upzone trend model) are the **same arc**. The moratorium event is a registry addition (WS-2); EP Fix 6 wires the M03_devcap event channel (WS-1); WS-3 Layer 3 is the most important *consumer* of that channel. A development moratorium in a submarket is a hard cap on forward supply — so it is not just a registry row, it is a direct input to the Forward Supply model. These three should be sequenced together, not as three separate efforts that happen to touch the same events.
+
+**The other interlock:** WS-3 Layers 1 and 2 are event-independent (GIS query + existing zoning-module feasibility logic) and are buildable now. Only WS-3 Layer 3 is gated on WS-1's EP Fix 6.
+
+---
+
+## 2. The Canonical Consumption Pattern
+
+The Event Propagation Audit's Section 11 established the canonical event-consumption pattern. **Every wiring change in this plan conforms to it.** It is not re-litigated here; it is adopted as the standard.
+
+```sql
+-- The canonical pattern: direct SQL against key_events,
+-- LEFT JOIN event_forecasts when a projected magnitude is needed.
+
+SELECT ...
+FROM key_events ke
+LEFT JOIN event_forecasts ef
+  ON ef.event_id = ke.id
+  AND ef.status = 'active'
+  AND ef.window_months = $windowMonths
+WHERE ke.subtype = $subtype
+  AND ke.status IN ('announced', 'in_progress', 'materialized')   -- per consumer need
+  AND ST_DWithin(                                                  -- or: ke.msa_id = $msaId
+    ST_SetSRID(ST_Point(ke.lng, ke.lat), 4326)::geography,
+    ST_SetSRID(ST_Point($lng, $lat), 4326)::geography,
+    $radiusMiles * 1609.34
+  )
+
+-- Column mapping (from EP Fix 1):
+--   impact_type      ← ke.subtype
+--   impact_magnitude ← ef.point_estimate
+--   confidence       ← ef.confidence
+```
+
+**Rules:**
+
+- `key_events` is the **event of record** for all consumption — filtered by `subtype`, `status`, and a geospatial or `msa_id` predicate.
+- `event_forecasts` is **joined on** when the consumer needs the forecast magnitude / confidence of a *projected* impact, keyed by `window_months`.
+- `demand_events` is the **wrong (legacy) table.** EP Fix 1 is explicitly "repoint *off* `demand_events`." Anything still reading it is on dead schema and fails silently when the legacy table is empty.
+- The `event.classified` Kafka topic is **not** in the canonical consumption path. No Section 11 fix reads from it. (It may exist for other purposes; consumers do not subscribe to it.)
+
+Conformance to this pattern is an acceptance criterion for every wiring fix in WS-1, WS-2, and WS-3.
+
+---
+
+## 3. Phase 0 — The Synthesis Read-Pass
+
+**This phase is read-only and produces a document, not code. It must complete before any WS-1/WS-2/WS-3 code dispatch.**
+
+The three audits target overlapping files. Known overlaps (the starting set — Phase 0 finds the rest):
+
+| Overlap | Classification | Detail |
+|---|---|---|
+| EP Fix 7 ≈ Capital/Exit CE-03 | **DUPLICATE** | Both wire `rate-environment.service.ts` + `cycle-intelligence.service.ts` to `rate_move` / `recession_indicator`. Same files, same subtypes, same channel. Must become ONE dispatch. |
+| EP Fix 2 ≈ Capital/Exit CE-14 | **STACKED on D2** | Both get M35 signal into the exit cap trajectory. EP-03/FA-02 name `trajectory-engine.ts:84` directly. Both sit on top of Capital/Exit D2 (repoints Tier 3, removes the hardcoded `−0.0025`). |
+| EP Fix 5 ≈ Capital/Exit CE-12 | **RELATED** | Both consume supply events (`multifamily_delivery`) — EP Fix 5 into M25's supply score, CE-12 into Exit Strategy's supplyPressure component. Different consumers, same event. |
+| EP Fix 3 ≈ Traffic FIX-1/2/4 | **COLLISION** | EP Fix 3 wires `m35TrafficApiService` into `trafficPredictionEngine.ts` + `trafficCalibrationJob.ts` — the same files Traffic FIX-4 (bridge wiring) and FIX-1/FIX-2 (calibration cron + Kafka subscriber) touch. |
+| EP Fix 7 cycle-intel ~ Capital/Exit CE-16 Facet 3 | **ADJACENT** | Fix 7 makes `cycle-intelligence.service.ts` *consume* recession events; CE-16 F3 makes the capital/exit modules *consume the cycle service*. Sequential, same file in the same arc. |
+
+**Phase 0 produces `docs/architecture/EVENT_WIRING_SYNTHESIS.md`** containing:
+
+1. The canonical pattern restated as the conformance standard (§2 above).
+2. **The merge map** — every EP fix, every Capital/Exit D4-related finding, every event-touching Traffic fix, classified DUPLICATE / STACKED / ADJACENT / INDEPENDENT. The table above is the starting set; Phase 0 completes it.
+3. **The file-collision matrix** — every file touched by more than one fix/finding, with the line ranges each targets. Likely repeat offenders: `rate-environment.service.ts`, `cycle-intelligence.service.ts`, `trajectory-engine.ts`, `proforma-adjustment.service.ts`, `trafficPredictionEngine.ts`, `trafficCalibrationJob.ts`. Phase 0 confirms and finds the rest.
+4. **The consolidated event-wiring sequence** — see §4, which this plan pre-populates with what is already known; Phase 0 fills in the mechanical completeness.
+5. **Disposition of the staged D4 draft** — see §4.5.
+6. **Disposition of #727 (F47)** — see §4.6.
+7. **The registry-expansion line items (WS-2) placed in the sequence** — see §5.
+
+**What is already known** (does not require the read-pass): the canonical pattern, the EP 7-fix leverage ranking, the major overlaps above, the D2 gate. **What requires the read-pass:** the complete file-collision matrix at line-range granularity, and the full merge classification of all 7 EP fixes × all Capital/Exit findings × all event-touching Traffic fixes.
+
+Phase 0 is the synthesis-pass dispatch (read-only, ~3,041 lines of audit input across the three docs). It is the first executable step of this plan.
+
+---
+
+## 4. WS-1 — The Consolidated Event-Wiring Backlog
+
+### 4.1 The EP 7-fix sequence and its leverage ranking
+
+The Event Propagation Audit ranked its fixes by leverage (matrix cells flipped per file touched):
+
+| Rank | Fix | Resolves | Files | Cells flipped | Leverage |
+|---|---|---|---|---:|---:|
+| 1 | Fix 1 — Cashflow Agent schema repoint (`demand_events` → `key_events`+`event_forecasts`) | EP-02 | 1 | 16 | 16.0 |
+| 2 | Fix 2 — LIUS M35 bridge (`window_months → hold_year`, wire into `trajectory-engine.ts`) | EP-03, TM-03, FA-02 | 2 | 16 | 8.0 |
+| 3 | Fix 3 — M07 wiring (`m35TrafficApiService` → `trafficPredictionEngine` + `trafficCalibrationJob`) | EP-01 | 2 | 10 | 5.0 |
+| 4 | Fix 4 — M09 proforma mutation (`rent_control_passage`, `tax_abatement`) | EP-04 | 1 | 4 | 4.0 |
+| 5 | Fix 5 — M25 supply score from `event_forecasts` | EP-07, FA-01 | 1 | 4 | 4.0 |
+| 6 | Fix 6 — M03 devcap wiring (`entitlement_approval`, `zoning_upzoning`, `multifamily_permit`) | EP-06 | 2 | 6 | 3.0 |
+| 7 | Fix 7 — M14 macro (`rate_move`, `recession_indicator`, M14 pathways) | EP-05 | 2 | 4 | 2.0 |
+
+All 7 fixes landing flips 64 of 66 NOT_WIRED/MISCLASSIFIED cells. The remaining 2 (TM-01 temporal decay, CS-02 directionality) are improvement-class follow-ons.
+
+### 4.2 The proposed consolidated sequence
+
+Phase 0 finalizes this; the plan pre-populates it with what is known. Ordering principle: EP leverage ranking, interleaved with the Capital/Exit findings and the event-touching Traffic fixes, **gated by the real dependencies** — D2 must land before anything touching the exit cap trajectory; TM-03's `window_months → hold_year` bridge must land before any LIUS wiring.
+
+| Seq | Consolidated item | Merges | Phase | Gate |
+|---|---|---|---|---|
+| **W1** | Cashflow Agent schema repoint | EP Fix 1 | A | None — highest leverage, dispatch first |
+| **W2** | M07 traffic event wiring | EP Fix 3 + Traffic FIX-4 (reconcile in Phase 0 — same files) | A | Traffic FIX-1 (dispatched), FIX-2 |
+| **W3** | LIUS M35 bridge + exit cap trajectory | EP Fix 2 + Capital/Exit CE-14 + the `window_months→hold_year` bridge (TM-03) | A | **Capital/Exit D2 must land first** |
+| **W4** | M09 proforma mutation | EP Fix 4 | A | None |
+| **W5** | M25 supply score | EP Fix 5 + Capital/Exit CE-12 (related — supply event consumers) | A | None |
+| **W6** | M03 devcap wiring | EP Fix 6 + the WS-2 `development_moratorium` subtype | A | **Unblocks WS-3 Layer 3** |
+| **W7** | M14 macro wiring | EP Fix 7 + Capital/Exit CE-03 (DUPLICATE — one dispatch) + Capital/Exit CE-16 Facet 3 (adjacent) | A | D2 (for the trajectory-touching portion) |
+| **WB** | Impact-magnitude calibration | Phase B of all of the above | B | `historical_observations` corpus populated |
+
+**Phase A** delivers the wiring — events reach the modules, consumers query `key_events` correctly. **Phase B** delivers the calibrated impact magnitudes (how much a `rate_move` shifts the rate environment, how much a `multifamily_delivery` moves supply pressure) — corpus-gated, same deferral as CE-M26 and the rest of the empirical arc.
+
+### 4.3 The D2 critical-path gate
+
+Capital/Exit D2 (exit cap reconciliation) repoints the LIUS Tier 3 resolver, gives `runLIUSEngine` a live caller, and removes the hardcoded `exit_cap_trajectory: −0.0025` from `trajectory-engine.ts:84`. **EP-03, FA-02, and EP Fix 2 all name that exact line.** W3 and the trajectory-touching portion of W7 cannot land until D2 is merged. D2 is pushed (`claude/d2-exit-cap-reconciliation`, commit `82bca52`) but the PR is pending. **D2's PR landing is on the critical path for the entire event-wiring backlog, not just the Capital/Exit subsystem.**
+
+### 4.4 Phase A vs Phase B
+
+Every W-item has a Phase A (wiring) and a Phase B (magnitudes). Phase A is offline-able against synthetic fixtures and is the bulk of the work. Phase B is corpus-gated: the impact magnitudes are empirical questions the `historical_observations` corpus answers once populated. Phase A makes the path exist; Phase B makes the path carry calibrated truth. This is the same discipline as D1's NULL-where-no-source, D2's loud fallback, and FIX-1's schedule-the-writer.
+
+### 4.5 Disposition of the staged D4 draft
+
+The staged D4 draft (CE-03 + CE-14 + CE-12 + CE-16 Facet 3) **dissolves into this consolidated sequence.** Its four findings become line items:
+
+- **CE-03** → merges into **W7** (DUPLICATE with EP Fix 7 — same files, same subtypes)
+- **CE-14** → merges into **W3** (STACKED with EP Fix 2 on D2)
+- **CE-12** → merges into **W5** (related to EP Fix 5 — supply event consumers)
+- **CE-16 Facet 3** → merges into **W7** (adjacent to EP Fix 7's cycle-intelligence changes)
+
+D4 as a standalone dispatch ceases to exist. This is the correct outcome — the Capital/Exit audit and the Event Propagation audit converged on the same fixes; the dispatches converge too. The staged D4 draft was not wasted: it is one of Phase 0's inputs, and its findings come out the other side as part of the consolidated sequence.
+
+### 4.6 Disposition of #727 (F47)
+
+#727 (F47 third rate-classifier reconciliation) was flagged for "the post-#715 synthesis pass." Phase 0 *is* that pass. #727 stays its own ticket but is sequenced as a line item adjacent to **W7** — it is the rate-classifier-consolidation slice of the M14 macro wiring. Phase 0 states whether it folds into W7 or runs immediately after; the audit-then-decide structure of #727 (option (a) unify F47 into the canonical path / option (b) document it as deliberately separate) is preserved.
+
+---
+
+## 5. WS-2 — Registry Expansion
+
+Three additions to `causal-discipline-engine.ts`. **These do not get committed ahead of Phase 0.** They land as part of their consumer-wiring W-items, so each new signal arrives with a consumer attached — the Event Propagation Audit's central lesson is that tracked-but-not-consumed is the dominant failure mode, and adding signals without consumers makes the matrix worse.
+
+### 5.1 `development_moratorium` — new event subtype
+
+```typescript
+{ eventSubtype: 'development_moratorium', primaryChannel: 'M03_devcap',
+  rationale: 'Halts new permitting; removes future developable supply for the
+              moratorium duration. The negative-direction sibling of
+              zoning_upzoning / entitlement_approval — M03_devcap handles
+              development-capacity changes in either direction.' }
+```
+
+- **Channel:** M03_devcap (single channel).
+- **Lands with:** W6 (M03 devcap wiring). The M03 consumer that EP Fix 6 builds must read `development_moratorium` alongside `entitlement_approval` / `zoning_upzoning` / `multifamily_permit`.
+- **Downstream:** a direct input to WS-3 Layer 3 — a development moratorium in the radius is a hard cap on forward supply for its duration.
+
+### 5.2 `eviction_moratorium` — new event subtype
+
+```typescript
+{ eventSubtype: 'eviction_moratorium', primaryChannel: 'M09_proforma_direct',
+  rationale: 'Discontinuous policy constraint on collections and turnover;
+              a direct proforma path change, not market-clearing-mediated.
+              Sibling to rent_control_passage.' }
+```
+
+- **Channel:** M09_proforma_direct (single channel).
+- **Lands with:** W4 (M09 proforma mutation). EP Fix 4 wires `rent_control_passage` and `tax_abatement`; `eviction_moratorium` is the same wiring pattern in the same file.
+- **Note:** `eviction_moratorium` and `rent_control_passage` are both tenant-protection policies. A future refactor could consolidate them under a `tenant_protection_policy` subtype with variants. Not blocking — two clean subtypes for now; revisit only if the data sources make the distinction noisy.
+
+### 5.3 `business_formation_trend` — new cause metric (not an event subtype)
+
+```typescript
+{ metricId: 'business_formation_trend', name: 'Business Formation Trend',
+  category: 'demand_cause' },
+```
+
+- **Why a cause metric, not an event:** business formation data (Census Business Formation Statistics, published weekly/monthly by state and MSA) is *continuous* — a number that moves over time — not a discrete thing-that-happened-on-a-date. It belongs with `wage_growth_trend` and `in_migration_trend` in `CAUSE_METRICS`, not in `EVENT_SUBTYPE_REGISTRY`.
+- **Causal logic:** new business formations are a *leading indicator* of employment growth. They precede `employer_expansion` rather than duplicating it — formations signal future demand-pool growth before it shows up as realized headcount.
+- **Channel implication:** feeds M07_traffic the same way `in_migration_trend` does — a demand-pool driver.
+- **Lands with:** the M07 demand-cause consumption path. Phase 0 places it; it is lighter than the subtype additions because it extends an existing metric category rather than adding a new event to the matrix.
+
+### 5.4 Explicitly NOT added — demand surge
+
+Demand surge is **not** a registry addition. It is already present as `C_SURGE_INDEX` in `SYMPTOM_METRICS` — and it is on the correct side of the cause/symptom line. Demand surge is the *observable downstream consequence* of demand events (`employer_expansion`, `in_migration_driver`, `business_formation_trend`), not an independent cause. Adding it as an event would create a causal loop: the thing that is supposed to be the *measured output* of demand events would also become an *input*, enabling double-counting.
+
+If demand surge should *drive* a model effect, that is a wiring item — wire the existing `C_SURGE_INDEX` symptom into a consumer — not a new event. If it should *trigger an alert or re-underwrite*, that is an M22 / monitoring concern (the Monitor tab, Capital/Exit CE-05 territory). **Open decision (§9):** which of these is intended.
+
+---
+
+## 6. WS-3 — Forward Supply Feature
+
+A new M03 feature: a forward developable-supply projection per submarket. The supply-side sibling of what M07's traffic engine does for demand.
+
+### 6.1 The formula
+
+```
+forward_supply(submarket, radius) =
+    static_capacity_under_current_zoning
+  + (probable_rezone_capacity × trend_weight)
+
+where:
+
+  static_capacity_under_current_zoning =
+    Σ over swept undeveloped/underbuilt MF-zoned parcels of
+      ( parcel_acreage × binding_units_per_acre )
+
+  binding_units_per_acre =
+    the zoning module's feasibility-resolved constraint
+    (setbacks / FAR / parking minimums / height / lot coverage),
+    NOT the nominal zoning designation number
+
+  probable_rezone_capacity =
+    Σ over swept non-MF parcels of theoretical MF capacity
+    if rezoned
+
+  trend_weight =
+    a function of M03_devcap event density in the submarket
+    (zoning_upzoning + entitlement_approval event history,
+     net of development_moratorium)
+```
+
+### 6.2 The three layers
+
+The feature decomposes into three layers. Only Layer 3 is genuinely new modeling.
+
+**Layer 1 — Radius parcel sweep.** A GIS query: every parcel zoned for multifamily within a 3-mile and 5-mile radius of the deal, with geometry, acreage, and current improvements. This is mostly *existing data access* — the platform has Florida county GIS integrations (3 verified) and ArcGIS GeoEnrichment. If the existing zoning module pulls only deal-parcel zoning rather than parcel-level zoning across a radius, the sweep is a small extension, not a build.
+
+**Layer 2 — Batch feasibility capacity.** For each swept parcel, run the zoning module's *existing* feasibility-resolution logic — the M02→M03 handoff that already resolves setbacks, FAR, parking minimums, and height into a binding units-per-acre for the *subject* parcel. The Forward Supply feature applies that same logic to *every parcel in the radius*. **This is the piggyback** — vectorize the existing zoning-module logic over the radius sweep; do not reimplement zoning interpretation. The userMemory records the governing principle: *zoning constraints must be binding gates, not advisory — parking is frequently the actual binding feasibility constraint.* Layer 2 also applies the **undeveloped/underbuilt filter**: distinguishing a vacant lot from a parcel with an aging 12-unit building on land zoned for 60 units. The latter is *underbuilt* — latent supply — and arguably matters more than raw vacant land. This is a current-use-vs-allowed-use delta, joining current-improvement data (ATTOM, county assessor records) to the zoning capacity.
+
+**Layer 3 — Rezone/upzone trend weighting.** The genuinely new probabilistic model. Layers 1 and 2 produce a *static* picture: theoretical capacity under *current* zoning. But the feature's goal is *future* supply — which includes parcels not multifamily-zoned today but sitting where the rezone/upzone trend says they likely will be. Layer 3 consumes the M03_devcap event stream — `zoning_upzoning`, `entitlement_approval`, and `development_moratorium` events accumulated per submarket *are* the rezone/upzone trend — and weights the static capacity by the probability that currently-non-MF parcels get rezoned.
+
+### 6.3 Build status and gating
+
+| Layer | What it is | Build status | Gate |
+|---|---|---|---|
+| **1 — Radius parcel sweep** | GIS query for MF-zoned parcels in 3mi/5mi rings | Mostly existing data access; small extension if zoning module is deal-parcel-only | **Buildable now** |
+| **2 — Batch feasibility capacity** | Vectorize existing M02/M03 feasibility logic over the sweep; undeveloped/underbuilt filter | Piggyback — no new feasibility engine | **Buildable now** (event-independent) |
+| **3 — Rezone/upzone trend weighting** | Probabilistic model consuming M03_devcap events | Genuinely new modeling | **Gated on WS-1 W6 (EP Fix 6)** — Layer 3 is the M03 event channel's most important consumer |
+
+**Layers 1 and 2 are buildable now** — GIS plus existing feasibility logic, no event dependency. The static forward-supply-capacity picture is genuinely useful on its own: "here is the theoretical multifamily capacity in the radius under current zoning" is a real answer without the trend layer.
+
+**Layer 3 is gated on W6.** It is the consumer of the M03_devcap events that EP Fix 6 wires. You cannot wire a consumer to events that are not flowing. And **Layer 3's trend-model calibration is corpus-gated (Phase B)** — how much a `zoning_upzoning` event density predicts an actual rezone is an empirical question the `historical_observations` corpus answers, same as every other magnitude question on the platform.
+
+### 6.4 Required new code
+
+**Backend:**
+- `backend/src/services/forward-supply/radius-sweep.service.ts` — Layer 1: the GIS query for MF-zoned parcels in 3mi/5mi rings
+- `backend/src/services/forward-supply/batch-feasibility.service.ts` — Layer 2: vectorized call into the existing zoning-module feasibility resolution, plus the undeveloped/underbuilt filter
+- `backend/src/services/forward-supply/rezone-trend.service.ts` — Layer 3: the probabilistic trend model (gated on W6; calibration corpus-gated)
+- `backend/src/services/forward-supply/forward-supply.service.ts` — the orchestrator composing the three layers into the `forward_supply` projection
+- Edits to the zoning module to expose its feasibility-resolution logic as a callable unit if it is currently inlined into the subject-parcel path
+- `backend/src/api/rest/forward-supply.routes.ts` — the endpoint
+
+**Frontend:**
+- A Forward Supply panel — likely on the M03 / development surface, showing the 3mi and 5mi ring projections side by side, with the static-vs-trend-weighted split visible (so the user can see Layer 1+2 capacity vs. the Layer 3 probabilistic addition)
+
+### 6.5 Open spec decision — fixed rings vs. adaptive shed
+
+The "3 and 5-mile radius" — fixed choice or parameter? M07's traffic engine uses an *adaptive* commute-shed rather than a fixed radius. For a dense urban submarket, 3mi might capture the relevant competitive supply shed; for a Florida exurban deal, 5mi might be too tight.
+
+**Recommendation:** fixed 3mi and 5mi rings for v1 — two standard rings the user can compare, simple and predictable. Adaptive shed is a later refinement. But this is a real spec decision (§9).
+
+---
+
+## 7. Sequencing and Dependencies — The Master Sequence
+
+```
+NOW          Phase 0 (synthesis read-pass) ──────────┐
+             WS-3 Layers 1+2 (event-independent) ────┤  parallel — both
+                                                      │  start now
+             D2 PR lands ─────────────────────────────┤  (critical path —
+                                                      │   not on Claude)
+                                                      ▼
+AFTER        W1 (Cashflow Agent repoint) — leverage 16, dispatch first
+PHASE 0      W2 (M07 traffic wiring)
+             W4 (M09 proforma mutation)
+             W5 (M25 supply + CE-12)
+                                                      │
+AFTER D2     W3 (LIUS bridge + exit cap + CE-14) ─────┤  gated on D2
+                                                      │
+             W6 (M03 devcap + development_moratorium)─┤  unblocks WS-3 L3
+                                                      ▼
+AFTER W6     WS-3 Layer 3 (rezone/upzone trend model)
+             W7 (M14 macro + CE-03 + CE-16-F3 + #727)
+                                                      │
+AFTER        WB (Phase B impact-magnitude calibration)│  gated on the
+CORPUS       WS-3 Layer 3 trend calibration ──────────┘  historical_
+                                                         observations corpus
+```
+
+### 7.1 The gates
+
+- **Phase 0** gates all WS-1 code dispatches. Read-only, unblocked, dispatch now.
+- **D2's PR landing** gates W3 and the trajectory portion of W7. On the critical path; not on Claude — needs the PR merged.
+- **W6 (EP Fix 6)** gates WS-3 Layer 3.
+- **The `historical_observations` corpus** gates all Phase B magnitude calibration, including WS-3 Layer 3's trend model.
+- **TM-03** (the `window_months → hold_year` bridge) is folded into W3 and must land before any LIUS wiring within it.
+
+### 7.2 What is buildable now (no gate)
+
+- **Phase 0** — the synthesis read-pass, read-only.
+- **WS-3 Layers 1 and 2** — the radius sweep and batch feasibility, event-independent.
+
+Everything else waits on Phase 0 completing, D2 landing, or W6 landing.
+
+---
+
+## 8. What This Plan Supersedes and Preserves
+
+- **Supersedes:** the standalone synthesis-pass dispatch — absorbed as Phase 0.
+- **Supersedes:** the staged D4 draft as a standalone dispatch — dissolved into W3, W5, W7 (§4.5).
+- **Preserves:** the three Phase-0 audits as the inputs of record. This plan reads and consolidates them; it does not redo them.
+- **Preserves:** #727 (F47) as its own ticket, sequenced adjacent to W7 (§4.6).
+- **Preserves:** the Capital Timing Optimization spec (Layer 2 of the Capital/Exit arc) as separate — that is forward-looking debt-term optimization, a different concern from event wiring.
+
+---
+
+## 9. Open Decisions
+
+1. **Demand surge — drive or flag?** `C_SURGE_INDEX` already exists as a symptom metric. Does it need to *drive* a model effect (a wiring item — wire the existing symptom into a consumer) or *trigger an alert / re-underwrite* (an M22 monitoring item)? This determines whether it is a WS-1 wiring line or a monitoring-track item. It is **not** a registry addition either way.
+
+2. **Forward Supply — fixed rings or adaptive shed?** Recommendation is fixed 3mi/5mi rings for v1, adaptive shed as a later refinement. Needs confirmation before WS-3 Layer 1 specs the sweep query.
+
+3. **`eviction_moratorium` — own subtype or `tenant_protection_policy` variant?** Recommendation is two clean subtypes (`eviction_moratorium`, `rent_control_passage`) now, with a possible future consolidation under `tenant_protection_policy`. Confirm, or decide to do the consolidation up front.
+
+4. **Speculative macro subtypes — hold or add?** `credit_spread_move` and `capital_flow_shift` were raised as possible M14 additions (the M14 channel is thin relative to its importance for the Capital/Exit and Layer 2 work). Recommendation: **hold** — do not add a macro subtype without a confirmed data source and a consumer that will read it. The Event Propagation Audit's lesson is that tracked-but-unconsumed is the dominant failure mode. Revisit when there is a concrete data source.
+
+5. **`transit_infrastructure` subtype — add?** A new rail station / highway interchange / transit line changes demand geography. The platform has `transportation_infra` as a *cause metric* but no discrete event for "transit project announced/opened." Worth a subtype if the data sources carry it; same hold-until-there-is-a-source discipline as #4.
+
+6. **WS-3 Layer 2 — is the zoning module's feasibility logic already callable?** If the M02/M03 feasibility resolution is inlined into the subject-parcel path rather than exposed as a callable unit, Layer 2 needs a small refactor to extract it before it can be vectorized. Phase 0 or an early WS-3 scoping step should confirm.
+
+---
+
+## 10. Summary
+
+The platform tracks 16 event subtypes; three audits found that most are not consumed. This plan consolidates the event-wiring debt into one backlog (WS-1), extends the registry with two moratorium subtypes and one business-formation cause metric (WS-2), and specs the Forward Supply feature (WS-3) — the supply-side sibling of the M07 demand model.
+
+The discipline that holds it together: **Phase 0 (the synthesis read-pass) runs first, read-only, and produces the merge map that prevents parallel-collision.** Nothing in WS-1/WS-2/WS-3 dispatches as code until Phase 0 completes. The registry additions land *with* their consumer wiring, never ahead of it. Forward Supply Layers 1+2 are buildable now; Layer 3 is gated on the M03 event wiring (W6); all Phase B magnitude calibration is gated on the `historical_observations` corpus.
+
+The critical-path item not on the implementation track: **D2's PR must land.** It removes the hardcoded exit-cap trajectory that EP-03, FA-02, and EP Fix 2 all depend on. It is done work sitting in a branch, and it gates W3 and part of W7.
