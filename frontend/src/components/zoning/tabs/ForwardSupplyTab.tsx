@@ -75,7 +75,9 @@ interface TrendSignalMeta {
   moratoriumActive: boolean;
   moratoriumName: string | null;
   rezoneProbabilityBase: number;
-  modelPhase: 'A_linear';
+  modelPhase: 'A_linear' | 'B_empirical';
+  /** Matched corpus rows for Phase B. 0 = Phase B not attempted or no match. */
+  phaseBCorpusSize: number;
   nonMfParcelCount: number;
   nonMfSweepTruncated: boolean;
 }
@@ -619,14 +621,33 @@ export default function ForwardSupplyTab({ dealId }: Props) {
             <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PURPLE, fontWeight: 700 }}>
               L3 · NON-MF PROBABLE REZONE PARCELS
             </span>
-            <span style={{
-              fontFamily: MONO, fontSize: 7, color: 'rgba(183,148,244,0.6)',
-              background: 'rgba(183,148,244,0.1)',
-              border: `1px solid rgba(183,148,244,0.2)`,
-              padding: '1px 5px', borderRadius: 2,
-            }}>
-              PHASE A LINEAR
-            </span>
+            {trendSignal?.modelPhase === 'B_empirical' ? (
+              <span style={{
+                fontFamily: MONO, fontSize: 7, color: 'rgba(74,222,128,0.8)',
+                background: 'rgba(74,222,128,0.08)',
+                border: '1px solid rgba(74,222,128,0.25)',
+                padding: '1px 5px', borderRadius: 2,
+              }}
+                title={`Phase B empirical calibration active — ${trendSignal.phaseBCorpusSize} corpus observations`}
+              >
+                PHASE B EMPIRICAL
+              </span>
+            ) : (
+              <span style={{
+                fontFamily: MONO, fontSize: 7, color: 'rgba(183,148,244,0.6)',
+                background: 'rgba(183,148,244,0.1)',
+                border: '1px solid rgba(183,148,244,0.2)',
+                padding: '1px 5px', borderRadius: 2,
+              }}
+                title={
+                  (trendSignal?.phaseBCorpusSize ?? 0) > 0
+                    ? `Phase A fallback — Phase B corpus too small (${trendSignal!.phaseBCorpusSize} obs, need 5)`
+                    : 'Phase A linear model — no Phase B corpus yet'
+                }
+              >
+                {(trendSignal?.phaseBCorpusSize ?? 0) > 0 ? 'PHASE A (FALLBACK)' : 'PHASE A LINEAR'}
+              </span>
+            )}
             <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, marginLeft: 4 }}>
               sorted by probabilistic units ↓
             </span>

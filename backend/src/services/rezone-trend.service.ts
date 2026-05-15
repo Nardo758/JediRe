@@ -13,15 +13,19 @@
  *
  *  3. Theoretical MF Capacity — estimates what each non-MF parcel could support
  *     if rezoned, using the municipality's median MF density as a proxy.
- *     Phase A uses this uniform density; Phase B will use parcel-level
- *     comparable rezone outcomes from `historical_observations`.
+ *     Phase A uses this uniform density; Phase B uses empirical rezone rates
+ *     from `historical_observations`.
  *
  *  4. Probability-Weighted Capacity — theoreticalMFCapacity × rezoneProbability.
  *     In Phase A, all non-MF parcels in the submarket share the same
- *     `rezoneProbabilityBase`; Phase B will calibrate per-parcel weights.
+ *     `rezoneProbabilityBase`; Phase B calibrates against real outcomes.
  *
- * Phase B empirical calibration is corpus-gated on `historical_observations`
- * and is dispatched separately.
+ * Phase B empirical calibration is corpus-gated: requires ≥ MIN_PHASE_B_CORPUS
+ * observations in `historical_observations` with similar event-density profiles
+ * before activating; falls back to Phase A otherwise.
+ *
+ * NOTE: MF_ZONING_CONDITIONS here must stay in sync with the identical block
+ * in radius-sweep.service.ts.
  */
 
 import { Pool } from 'pg';
@@ -36,15 +40,39 @@ const MAX_NON_MF_PARCELS = 2000;
 /** Default MF density when no zoning_districts data is available. */
 const DEFAULT_MF_DENSITY_UNITS_PER_ACRE = 25;
 
-// ─────────────────── Phase A probability constants ──────────────────────────
+// ─────────────────────── Phase A probability constants ───────────────────────
 // Each normalised upzoning event (magnitude 1-5 → 0-1 scale) contributes this
 // much to the base rezone probability.  Approval events have half the weight.
+// NOTE: Keep these in sync with any documentation referencing Phase A constants.
 const PROB_PER_UPZONE_UNIT = 0.05;
 const PROB_PER_APPROVAL_UNIT = 0.025;
-/** Maximum Phase A rezone probability, regardless of event count. */
+/** Maximum rezone probability regardless of event count or model phase. */
 const MAX_REZONE_PROBABILITY = 0.40;
 /** When a development_moratorium is active, cap probability at this floor. */
 const MORATORIUM_PROBABILITY_CAP = 0.05;
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────── Phase B calibration constants ───────────────────────
+/**
+ * Minimum number of empirical rezone observations required before Phase B
+ * activates.  Below this threshold the corpus is too thin for reliable rate
+ * estimates and the system falls back to Phase A.
+ */
+const MIN_PHASE_B_CORPUS = 5;
+
+/**
+ * ±N tolerance when matching the current submarket's upzoning event count to
+ * historical corpus rows.  Allows cross-submarket learning even when the
+ * exact event count hasn't been observed before.
+ */
+const PHASE_B_EVENT_BUCKET_WINDOW = 2;
+
+/**
+ * Bayesian shrinkage factor.  A corpus of this many observations is treated as
+ * "full confidence empirical"; smaller corpora are blended toward the Phase A
+ * prior.  Formula: w = corpusSize / (corpusSize + SHRINKAGE_FACTOR).
+ */
+const PHASE_B_SHRINKAGE_FACTOR = 20;
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Matches MF_ZONING_CONDITIONS in radius-sweep.service.ts — MUST stay in sync.
@@ -78,7 +106,7 @@ const MF_ZONING_CONDITIONS = `
   )
 `;
 
-// ─────────────────────────────── Types ──────────────────────────────────────
+// ─────────────────────────────────── Types ───────────────────────────────────
 
 export interface TrendSignal {
   submarketId: string | null;
@@ -87,16 +115,24 @@ export interface TrendSignal {
   moratoriumActive: boolean;
   moratoriumName: string | null;
   /**
-   * Phase A base rezone probability for all non-MF parcels in the submarket.
+   * Base rezone probability for all non-MF parcels in the submarket.
    * Range: 0..MAX_REZONE_PROBABILITY (0.40).
    * 0 when submarketId is null (no submarket linked to deal).
    */
   rezoneProbabilityBase: number;
   /**
-   * 'A_linear' — Phase A flat-rate model.
-   * 'B_empirical' reserved for Phase B after historical_observations corpus.
+   * 'A_linear'   — Phase A flat-rate linear model (event count × fixed weights).
+   * 'B_empirical' — Phase B empirically-calibrated model using historical rezone
+   *                  outcomes from `historical_observations`.
    */
-  modelPhase: 'A_linear';
+  modelPhase: 'A_linear' | 'B_empirical';
+  /**
+   * Number of corpus observations matched for Phase B calibration.
+   * 0 means Phase B was not attempted or found zero matching rows.
+   * > 0 but < MIN_PHASE_B_CORPUS means Phase B fell back to Phase A.
+   * ≥ MIN_PHASE_B_CORPUS means Phase B is active (modelPhase = 'B_empirical').
+   */
+  phaseBCorpusSize: number;
 }
 
 export interface TrendRing {
@@ -132,7 +168,7 @@ export interface TrendResult {
   nonMfSweepTruncated: boolean;
 }
 
-// ─────────────────────────────── Service ────────────────────────────────────
+// ──────────────────────────────── Service ────────────────────────────────────
 
 export class RezoneTrendService {
   constructor(private pool: Pool) {}
@@ -209,6 +245,10 @@ export class RezoneTrendService {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
+  /**
+   * Orchestrates signal computation: tries Phase B empirical calibration first;
+   * falls back to Phase A linear model when corpus is insufficient.
+   */
   private async computeTrendSignal(submarketId: string | null): Promise<TrendSignal> {
     if (!submarketId) {
       return {
@@ -219,6 +259,7 @@ export class RezoneTrendService {
         moratoriumName: null,
         rezoneProbabilityBase: 0,
         modelPhase: 'A_linear',
+        phaseBCorpusSize: 0,
       };
     }
 
@@ -259,8 +300,6 @@ export class RezoneTrendService {
       const upzoningScore = upzoningRows.rows.reduce(
         (s, r) => s + normalise(r.magnitude_score), 0,
       );
-      // Half-weight vs upzoning: PROB_PER_APPROVAL_UNIT (0.025) is already
-      // half of PROB_PER_UPZONE_UNIT (0.05) — no additional *0.5 here.
       const approvalScore = approvalRows.rows.reduce(
         (s, r) => s + normalise(r.magnitude_score), 0,
       );
@@ -268,23 +307,48 @@ export class RezoneTrendService {
       const moratoriumActive = moratoriumRows.rows.length > 0;
       const moratoriumName = moratoriumRows.rows[0]?.name ?? null;
 
-      const rawProbability = Math.min(
+      const upzoningEventCount = upzoningRows.rows.length;
+      const approvalEventCount = approvalRows.rows.length;
+
+      // ── Phase A base probability ──────────────────────────────────────────
+      const rawProbabilityA = Math.min(
         upzoningScore * PROB_PER_UPZONE_UNIT + approvalScore * PROB_PER_APPROVAL_UNIT,
         MAX_REZONE_PROBABILITY,
       );
+      const phaseABase = moratoriumActive
+        ? Math.min(rawProbabilityA, MORATORIUM_PROBABILITY_CAP)
+        : rawProbabilityA;
 
-      const rezoneProbabilityBase = moratoriumActive
-        ? Math.min(rawProbability, MORATORIUM_PROBABILITY_CAP)
-        : rawProbability;
+      // ── Phase B attempt ───────────────────────────────────────────────────
+      const phaseB = await this.computeTrendSignalPhaseB(
+        upzoningEventCount,
+        phaseABase,
+        moratoriumActive,
+      );
 
+      if (phaseB !== null) {
+        return {
+          submarketId,
+          upzoningEventCount,
+          approvalEventCount,
+          moratoriumActive,
+          moratoriumName,
+          rezoneProbabilityBase: phaseB.calibratedProb,
+          modelPhase: 'B_empirical',
+          phaseBCorpusSize: phaseB.corpusSize,
+        };
+      }
+
+      // Phase B insufficient corpus — fall back to Phase A
       return {
         submarketId,
-        upzoningEventCount: upzoningRows.rows.length,
-        approvalEventCount: approvalRows.rows.length,
+        upzoningEventCount,
+        approvalEventCount,
         moratoriumActive,
         moratoriumName,
-        rezoneProbabilityBase,
+        rezoneProbabilityBase: phaseABase,
         modelPhase: 'A_linear',
+        phaseBCorpusSize: phaseB === null ? 0 : 0,
       };
     } catch (err) {
       logger.warn('[RezoneTrendService] computeTrendSignal failed', {
@@ -298,7 +362,71 @@ export class RezoneTrendService {
         moratoriumName: null,
         rezoneProbabilityBase: 0,
         modelPhase: 'A_linear',
+        phaseBCorpusSize: 0,
       };
+    }
+  }
+
+  /**
+   * Phase B calibration: queries `historical_observations` for rows where
+   * the upzoning event count is within ±PHASE_B_EVENT_BUCKET_WINDOW of the
+   * current submarket and a rezone outcome was recorded.
+   *
+   * Applies Bayesian shrinkage toward the Phase A prior when the corpus is
+   * large enough to activate Phase B but still small enough to be uncertain.
+   *
+   * Returns null when corpus is below MIN_PHASE_B_CORPUS (caller falls back to Phase A).
+   *
+   * @param upzoningEventCount  Current submarket's upzoning event count
+   * @param phaseABase          Phase A computed probability (used as prior)
+   * @param moratoriumActive    If true, the moratorium cap is re-applied to the
+   *                            calibrated probability as well
+   */
+  private async computeTrendSignalPhaseB(
+    upzoningEventCount: number,
+    phaseABase: number,
+    moratoriumActive: boolean,
+  ): Promise<{ calibratedProb: number; corpusSize: number } | null> {
+    try {
+      const result = await this.pool.query<{
+        empirical_rate: string | null;
+        corpus_size: string;
+      }>(
+        `SELECT
+           AVG(CASE WHEN rezone_outcome THEN 1.0 ELSE 0.0 END) AS empirical_rate,
+           COUNT(*) AS corpus_size
+         FROM historical_observations
+         WHERE rezone_outcome IS NOT NULL
+           AND ABS(COALESCE(rezone_upzoning_event_count, 0) - $1) <= $2`,
+        [upzoningEventCount, PHASE_B_EVENT_BUCKET_WINDOW],
+      );
+
+      const row = result.rows[0];
+      const corpusSize = parseInt(row?.corpus_size ?? '0', 10);
+
+      if (!row || corpusSize < MIN_PHASE_B_CORPUS) {
+        return null;
+      }
+
+      const empiricalRate = parseFloat(row.empirical_rate ?? '0') || 0;
+
+      // Bayesian shrinkage: blend empirical rate toward Phase A prior.
+      // w → 1 as corpus grows; w → 0 when corpus barely meets the threshold.
+      const w = corpusSize / (corpusSize + PHASE_B_SHRINKAGE_FACTOR);
+      const blended = w * empiricalRate + (1 - w) * phaseABase;
+
+      // Apply moratorium cap and global max
+      const calibrated = moratoriumActive
+        ? Math.min(blended, MORATORIUM_PROBABILITY_CAP)
+        : Math.min(blended, MAX_REZONE_PROBABILITY);
+
+      return { calibratedProb: calibrated, corpusSize };
+    } catch (err) {
+      // Phase B is best-effort; any query failure is not fatal — Phase A takes over.
+      logger.warn('[RezoneTrendService] computeTrendSignalPhaseB query failed', {
+        upzoningEventCount, err: (err as Error).message,
+      });
+      return null;
     }
   }
 
@@ -379,7 +507,8 @@ export class RezoneTrendService {
   /**
    * Returns the median max_density_per_acre across MF-eligible zoning districts
    * for the municipality.  Used as a uniform proxy for theoretical MF capacity
-   * of non-MF parcels in Phase A.
+   * of non-MF parcels in Phase A (and Phase B — density estimation is separate
+   * from probability calibration).
    */
   private async getMedianMfDensity(municipality: string): Promise<number | null> {
     if (!municipality) return null;

@@ -1,0 +1,369 @@
+TASK — Pro Forma Subsystem Audit (Phase 0)
+
+Read-only audit. No code changes, no commits to source.
+Output is a single Markdown doc at:
+docs/architecture/PROFORMA_SUBSYSTEM_AUDIT.md
+
+WHY THIS EXISTS
+
+The Pro Forma is the most consequential surface on the
+platform — it's where every signal (rents, expenses, debt,
+exit, assumptions, events) gets composed into the underwriting
+model that drives investment decisions. Three Phase-0 audits
+have already landed for adjacent subsystems (Traffic Engine,
+Capital/Exit, Event Propagation), and each found the same
+pattern: sophisticated infrastructure, dormant or hardcoded
+internals, modules that don't talk to each other. The Pro
+Forma has not had this scrutiny applied end-to-end.
+
+Specific known issues from prior work (these are STARTING
+POINTS for the audit, not its scope — the audit must find what
+else is wrong):
+  - LayeredValue resolution drift (broker > platform > user
+    precedence; alertLevel propagation)
+  - Whole-percent vs decimal storage drift on opexGrowthPct,
+    rentGrowthYr1, and similar assumption fields
+  - Write races on Pro Forma assumption fields (the
+    gpr.om / bp_contract_services / proforma_assumptions
+    triangle has historically had multiple writers landing on
+    the same column from different services)
+  - OperatorStance modulation: declared in the Cashflow Agent
+    spec; uncertain whether all discretion points actually
+    consume it
+  - Mock data interception (the 25 mock files in
+    frontend/src/data/ — confirm whether any still serve Pro
+    Forma surfaces)
+
+SCOPE — the four questions this audit answers
+
+For every Pro Forma module, assumption, write path, and UI
+surface, classify against four axes:
+
+  Q1 — DATA SOURCE: Where does each input come from?
+       LIVE (real current data) /
+       FALLBACK (live source with silent degradation to a
+                 heuristic when data is absent) /
+       HARDCODED (a constant in code) /
+       NOT_WIRED (reads a table/source that has no writer or
+                  is empty) /
+       ON_MOCK_DATA (reads frontend/src/data/*Mock.ts) /
+       STRUCTURALLY_MISALIGNED (a hardcoded constant where the
+                                consumer expects dynamic input)
+
+  Q2 — WRITE PATH: For every field that gets written to
+       proforma_assumptions (or its equivalent), enumerate ALL
+       writers. Three-way collisions like the historical
+       gpr.om / bp_contract_services / proforma_assumptions
+       triangle are the canonical failure mode — find every
+       multi-writer column. Classify each multi-writer field:
+       SINGLE_WRITER (canonical, one source) /
+       LAYERED (multiple writers but with explicit precedence
+                via LayeredValue) /
+       RACE (multiple writers, no precedence, last-write-wins) /
+       PHANTOM (a writer exists but never executes)
+
+  Q3 — UNIT NORMALIZATION: For every numeric assumption field,
+       confirm the storage convention (decimal 0.03 vs whole
+       percent 3.0 vs bps 300) and check whether all readers
+       and writers agree. Mismatched conventions are the
+       opexGrowthPct / rentGrowthYr1 failure mode — find every
+       instance. Classify: CONSISTENT / MIXED / UNDOCUMENTED.
+
+  Q4 — UI CORRESPONDENCE: For every Pro Forma UI surface,
+       trace what it reads. Is the displayed value sourced
+       from the canonical write path (Q2), or from a parallel
+       independent computation, or from mock data? Classify:
+       CANONICAL (UI reads the same source the model reads) /
+       PARALLEL (UI computes independently — could diverge) /
+       ON_MOCK / DISPLAY_ONLY (UI shows a value that doesn't
+       feed back to the model).
+
+REFERENCE DOCUMENTS
+
+Read first to understand the established audit shape and the
+known historical issues:
+  - docs/architecture/CAPITAL_EXIT_SUBSYSTEM_AUDIT.md (the
+    audit shape this one follows — finding inventory format,
+    classification taxonomy, Phase A/B split, file:line
+    evidence discipline)
+  - docs/architecture/EVENT_PROPAGATION_AUDIT.md (the
+    cause/symptom and tracked-vs-consumed framing — same
+    failure mode likely applies inside the Pro Forma)
+  - docs/architecture/TRAFFIC_ENGINE_STATE_AUDIT.md (the
+    dormant-infrastructure pattern — schemas with writers
+    that aren't scheduled, services with no live callers)
+  - The Cashflow Agent system prompt and any
+    proforma-related spec files in the repo
+  - CLAUDE.md and FEATURE_EXPANSION.md for context
+
+KNOWN ENTRY POINTS (incomplete — discover more)
+
+Backend services (likely):
+  - backend/src/services/proforma-adjustment.service.ts
+  - backend/src/services/financials-composer.ts (or similar)
+  - backend/src/services/proforma-seeder.service.ts (or
+    similar)
+  - backend/src/services/deterministic/deterministic-model-
+    runner.ts
+  - backend/src/agents/cashflow/* (the Cashflow Agent
+    implementation — system prompt, tools, discretion logic)
+  - backend/src/services/lius/* (the LIU layer that resolves
+    assumptions)
+  - Any service writing to proforma_assumptions table
+
+Schema / state:
+  - The proforma_assumptions table (every column)
+  - The per_year_overrides table (D3 introduced
+    applyDebtAdvisorPlatformDefault's idempotent write
+    pattern — verify other writers respect the same
+    precedence)
+  - The deal_t12_rows, deal_rent_roll_units tables (Pro
+    Forma input sources)
+  - The LayeredValue<T> shape and its alertLevel field
+
+Frontend:
+  - frontend/src/components/deal/sections/* (all Pro Forma
+    tab components)
+  - frontend/src/data/*Mock.ts (confirm whether any are
+    imported into Pro Forma surfaces — the 25 mock files in
+    frontend/src/data/ have historically intercepted live
+    data)
+  - useDealModule() and the dealStore — what the UI actually
+    reads
+
+Cross-system (the Pro Forma is a consumer, so audit its
+inputs too):
+  - Inputs from M07 (traffic — rent growth, signing velocity,
+    absorption assumptions)
+  - Inputs from the LIUS engine (assumption resolution via
+    Tier cascades)
+  - Inputs from the rate-environment service (debt
+    assumptions, post-D3)
+  - Inputs from the exit cap path (post-D2, the canonical
+    proforma_assumptions.exit_cap_current)
+
+PHASE 0a — MODULE INVENTORY
+
+For every Pro Forma module, document:
+  - What it computes (rent projection, expense projection,
+    debt service, exit value, sensitivity, etc.)
+  - Where its inputs come from (Q1 classification per input)
+  - Where its outputs go (which downstream module / UI / DB
+    column consumes them)
+  - Whether it has unit tests; if so, do the tests use real
+    fixtures or synthetic ones?
+
+Include the three Pro Forma model types referenced in the
+project documentation: Acquisition, Development,
+Redevelopment. If the audit finds all three are implemented,
+classify each. If only one or two are, document which.
+
+PHASE 0b — ASSUMPTION GRID
+
+For every assumption stored in proforma_assumptions (or its
+equivalent), produce a row:
+  Field name | Storage convention | Writers (with file:line) |
+  Readers (with file:line) | Resolution rule | Unit
+  classification (Q3) | Write-collision classification (Q2)
+
+This is the core inventory. It should have N rows for N
+fields and be exhaustive. The known starting issues
+(opexGrowthPct, rentGrowthYr1, exit_cap_current,
+gpr.om / bp_contract_services) appear as specific rows —
+plus every other field. The "every other field" is where the
+audit's value lives — the failure modes prior conversation
+identified are likely representative of a broader pattern.
+
+PHASE 0c — WRITE-PATH MAP
+
+For each multi-writer field surfaced by Phase 0b, produce a
+diagram or table showing:
+  - Each writer (service, function, line)
+  - When each writer fires (trigger condition)
+  - Whether the writers respect LayeredValue precedence
+  - Whether there's a SQL guard (the way D3's
+    applyDebtAdvisorPlatformDefault has a guard on
+    per_year_overrides.resolution = 'override' | 'cleared')
+  - Last-write-wins ordering, if applicable
+
+The historical gpr.om / bp_contract_services / proforma_
+assumptions write race is the canonical example of what this
+phase finds; do not assume that race is the only one.
+
+PHASE 0d — LIU CASCADE AUDIT
+
+The Pro Forma resolves many assumptions through LIU lines
+(the same Tier 1-5 cascade pattern as exitCapRate.yaml).
+For every LIU line that feeds the Pro Forma:
+  - Does runLIUSEngine actually execute for this line?
+    (CE-02 found runLIUSEngine was orphaned for exitCapRate;
+    verify which other lines have the same problem)
+  - Does the resolution output land in proforma_assumptions,
+    or is there a parallel write that bypasses LIU?
+  - Tier-by-tier: does each Tier's source actually exist as
+    a populated table/service, or is any Tier phantom (the
+    CE-M26 pattern)?
+  - Is the Tier 5 fallback loud (telemetry) or silent?
+
+The known instance is exitCapRate (now fixed via D2). The
+audit must find every other LIU line that has the same
+problem — orphaned engine, phantom tiers, silent fallback.
+
+PHASE 0e — UI CORRESPONDENCE
+
+For every Pro Forma UI surface:
+  - What does it display?
+  - Where does it read from? (Q4 classification)
+  - Is there a "Source" indicator visible to the user (the
+    LayeredValue source pattern)?
+  - Does the UI show "—" / "not available" when data is
+    missing, or does it show a silent default? (D1's
+    NULL-where-no-source discipline)
+
+Specifically check whether any Pro Forma frontend component
+imports from frontend/src/data/*Mock.ts. The Capital/Exit
+audit (CE-04) found that "mock data orphaned" was misleading
+because the fiction had been *inlined* into component code
+rather than imported from the mock file. Apply the same
+scrutiny here: orphaned mock imports AND inlined hardcoded
+arrays both count as ON_MOCK_DATA failures.
+
+PHASE 0f — CROSS-MODULE ALIGNMENT
+
+The Pro Forma consumes from M07, LIUS, rate-environment
+service, the exit cap path, and (eventually, post-WS-1) the
+event channels. Document for each:
+  - Does the Pro Forma read the canonical output of each
+    consumer, or does it have its own parallel computation
+    that could diverge?
+  - Are there any fields where the Pro Forma's model and the
+    UI display disagree on the source?
+
+This is the same analysis as the Capital/Exit audit's
+Phase 0c (cross-module alignment) but inward-facing — the
+Pro Forma as the consumer.
+
+PHASE 0g — KNOWN-DEAL VERIFICATION
+
+For 464 Bishop (the deal with the known historical
+gpr.om / bp_contract_services issue), trace the Pro Forma
+end-to-end:
+  - What rent assumptions does it currently use?
+  - What expense assumptions?
+  - What exit cap?
+  - What debt assumptions?
+  - For each, what's the resolved source (Q1) and does the
+    UI agree with the model (Q4)?
+
+This is a sanity check: a real deal, run through the audit's
+lens, surfaces whether the abstract findings translate to
+concrete trust issues on a known deal. If 464 Bishop isn't
+accessible from the read-only audit context, pick any
+in-progress deal and apply the same trace.
+
+OUTPUT
+
+docs/architecture/PROFORMA_SUBSYSTEM_AUDIT.md, structured:
+
+  1. Header — scope, methodology, three Pro Forma model
+     types covered
+  2. Module inventory (Phase 0a) — every Pro Forma module,
+     its inputs and outputs, test status
+  3. Assumption grid (Phase 0b) — exhaustive per-field table
+  4. Write-path map (Phase 0c) — multi-writer collisions
+  5. LIU cascade audit (Phase 0d) — every LIU line feeding
+     the Pro Forma, tier-by-tier
+  6. UI correspondence (Phase 0e) — per-surface read source
+  7. Cross-module alignment (Phase 0f) — the Pro Forma as
+     consumer
+  8. Known-deal verification (Phase 0g) — 464 Bishop or
+     equivalent
+  9. Finding inventory — IDs (PF-N for Pro Forma findings),
+     priority bands P0-P3, effort S/M/L, downstream impact,
+     Phase A (offline-able wiring) vs Phase B (corpus-gated
+     calibration)
+ 10. Load-bearing facts — the 2-4 most consequential
+     discoveries, called out separately (per the
+     Capital/Exit audit's "Supplementary Clarification B"
+     pattern). The known starting issues may or may not
+     turn out to be the load-bearing ones; let the evidence
+     decide.
+ 11. Phase 1 fix sequence — ordered by leverage, with file:
+     line anchors, dependencies, and Phase A/B tags
+
+CLASSIFICATION TAXONOMY (precedence high to low)
+  STRUCTURALLY_MISALIGNED > RACE > NOT_WIRED > PHANTOM >
+  ON_MOCK_DATA > HARDCODED > FALLBACK > MIXED > DISPLAY_ONLY >
+  PARALLEL > LAYERED > CONSISTENT > SINGLE_WRITER >
+  WIRED/LIVE/CANONICAL
+
+OUT OF SCOPE
+  - Any code changes (Phase 1 work, comes after this audit)
+  - Re-auditing modules already covered by Capital/Exit,
+    Event Propagation, or Traffic Engine audits — note the
+    cross-reference, don't redo the work
+  - The Pro Forma's eventual event-consumption wiring (that's
+    WS-1 in the Event System Implementation Plan)
+  - The historical_observations corpus build (separate spec)
+  - Speculating on fixes — the audit produces classifications
+    and evidence; fix dispatches are downstream
+
+ACCEPTANCE
+  - PROFORMA_SUBSYSTEM_AUDIT.md committed
+  - All four questions (data source / write path / unit
+    normalization / UI correspondence) answered with file:
+    line evidence
+  - Assumption grid is exhaustive — every field in
+    proforma_assumptions appears as a row
+  - Every multi-writer field is classified and its writers
+    enumerated
+  - Every LIU line feeding the Pro Forma is verified for
+    runLIUSEngine execution, tier population, and fallback
+    telemetry
+  - Mock-data check covers both imports AND inlined
+    hardcoded arrays
+  - Load-bearing facts called out explicitly
+  - Phase 1 fix sequence tagged Phase A (offline-able) vs
+    Phase B (corpus-gated)
+  - Branch claude/proforma-subsystem-audit-phase-0
+
+SUPPLEMENTARY CLARIFICATIONS
+  A. If a Pro Forma module turns out to depend on data the
+     historical_observations corpus is meant to provide (per
+     HISTORICAL_OBSERVATIONS_SPEC.md), classify the
+     calibration as Phase B — corpus-gated. This is the same
+     pattern as CE-M26 and the rest of the empirical arc.
+     Don't propose building parallel cap_rate_archive-style
+     infrastructure.
+  B. If a Pro Forma assumption has multiple writers and they
+     don't respect LayeredValue precedence, that's a P0
+     finding — last-write-wins on a Pro Forma assumption
+     means the model can silently produce wrong NOI / IRR /
+     debt service depending on which service fired most
+     recently.
+  C. The Cashflow Agent's OperatorStance modulation is
+     declared in spec but not verified consumed at every
+     discretion point. If any discretion point in the
+     Cashflow Agent doesn't actually consume the stance,
+     that's an EP-style "spec'd but not wired" finding —
+     classify NOT_WIRED with the stance as the missing
+     consumer.
+  D. The three Pro Forma model types (Acquisition,
+     Development, Redevelopment) may have different
+     calibration maturity. Audit each independently — they
+     are unlikely to be uniformly built out.
+
+NOTE — what this audit unblocks
+
+The Pro Forma is the consumer of nearly every other
+subsystem on the platform. This audit's output is the
+inventory of where each consumer-side wiring is correct,
+broken, or missing — which means the audit produces the
+Pro-Forma slice of the consolidated event-wiring backlog
+(WS-1 in EVENT_SYSTEM_IMPLEMENTATION_PLAN.md) as a
+byproduct. Findings classified PF-N here that overlap with
+EP/CE/TE findings get flagged in the Phase 1 fix sequence
+for merge-with-existing-W-item rather than as standalone
+fixes. The audit is upstream of the Event System
+Implementation Plan's Phase 0 — but only by a beat; they're
+consolidatable.
