@@ -267,23 +267,69 @@ export class JEDIScoreService {
    * Enriched with bedroom_demand for supply/demand gap analysis.
    */
   private async calculateSupplyScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
-    const supplyResult = await query(
-      `SELECT COUNT(*) as permit_count,
-              SUM((ne.extracted_data->>'unit_count')::INTEGER) as total_units
-       FROM news_events ne
-       JOIN trade_area_event_impacts taei ON taei.event_id = ne.id
-       JOIN trade_areas ta ON ta.id = taei.trade_area_id
-       JOIN properties p ON p.id = ta.property_id
-       JOIN deal_properties dp_link ON dp_link.property_id = p.id
-       WHERE dp_link.deal_id = $1
-         AND ne.event_category = 'development'
-         AND ne.event_type LIKE '%permit%'
-         AND ne.published_at > NOW() - INTERVAL '12 months'`,
-      [dealId]
-    );
+    // Run legacy news_events query and submarket resolution in parallel
+    const [supplyResult, submarketRow] = await Promise.all([
+      query(
+        `SELECT COUNT(*) as permit_count,
+                SUM((ne.extracted_data->>'unit_count')::INTEGER) as total_units
+         FROM news_events ne
+         JOIN trade_area_event_impacts taei ON taei.event_id = ne.id
+         JOIN trade_areas ta ON ta.id = taei.trade_area_id
+         JOIN properties p ON p.id = ta.property_id
+         JOIN deal_properties dp_link ON dp_link.property_id = p.id
+         WHERE dp_link.deal_id = $1
+           AND ne.event_category = 'development'
+           AND ne.event_type LIKE '%permit%'
+           AND ne.published_at > NOW() - INTERVAL '12 months'`,
+        [dealId]
+      ),
+      query(
+        `SELECT p.submarket_id
+         FROM properties p
+         JOIN deal_properties dp ON dp.property_id = p.id
+         WHERE dp.deal_id = $1
+         LIMIT 1`,
+        [dealId]
+      ),
+    ]);
+
+    const submarketId: string | null = submarketRow.rows[0]?.submarket_id ?? null;
+
+    // W-05: M35 pipeline queries from event_forecasts (live supply data);
+    // run in parallel when submarket is known, otherwise skip (no-op)
+    const [m35SupplyResult, m35DemoResult] = submarketId
+      ? await Promise.all([
+          query(
+            `SELECT COALESCE(SUM(ef.point_estimate), 0) AS m35_units
+             FROM event_forecasts ef
+             JOIN key_events ke ON ke.id = ef.event_id
+             WHERE ke.subtype IN ('multifamily_delivery', 'multifamily_permit')
+               AND ke.submarket_id = $1
+               AND ef.metric_key IN ('deliveries', 'permits_issued', 'net_absorption_units')
+               AND ef.status = 'active'
+               AND ef.window_months = 12`,
+            [submarketId]
+          ),
+          query(
+            `SELECT COALESCE(SUM(ef.point_estimate), 0) AS m35_units
+             FROM event_forecasts ef
+             JOIN key_events ke ON ke.id = ef.event_id
+             WHERE ke.subtype IN ('demolition', 'conversion')
+               AND ke.submarket_id = $1
+               AND ef.metric_key IN ('deliveries', 'permits_issued', 'net_absorption_units')
+               AND ef.status = 'active'
+               AND ef.window_months = 12`,
+            [submarketId]
+          ),
+        ])
+      : [null, null];
+
+    const m35Supply = parseFloat(m35SupplyResult?.rows[0]?.m35_units ?? '0') || 0;
+    const m35Demo   = parseFloat(m35DemoResult?.rows[0]?.m35_units ?? '0') || 0;
 
     const supply = supplyResult.rows[0];
-    const pipelineUnits = supply.total_units || 0;
+    // Blend: legacy news_events baseline + M35 deliveries/permits − M35 demolitions/conversions
+    const pipelineUnits = (supply.total_units || 0) + m35Supply - m35Demo;
 
     let baseScore: number;
     if (pipelineUnits === 0) baseScore = 60.0;
