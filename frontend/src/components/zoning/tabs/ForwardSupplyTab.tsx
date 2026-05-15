@@ -11,6 +11,11 @@
  *                        development_moratorium events in the submarket.
  *                        Phase A uses a linear event-density model.
  *
+ * Two browseable tables appear below the ring cards:
+ *   1. L1+2 MF parcel table — filtered by ring + class
+ *   2. L3 non-MF probable-rezone table — filtered by ring, sorted by
+ *      probabilistic units (descending, pre-sorted server-side)
+ *
  * Data source: GET /api/v1/deals/:dealId/forward-supply
  */
 
@@ -21,13 +26,20 @@ import { apiClient } from '../../../services/api.client';
 
 // ─────────────────────────── Types ──────────────────────────────────────────
 
+interface NonMfRezoneParcels {
+  parcelId: string;
+  address: string | null;
+  zoningCode: string | null;
+  acreage: number;
+  distanceMiles: number;
+  theoreticalMFCapacity: number;
+  rezoneProbability: number;
+  probabilisticUnits: number;
+}
+
 interface TrendWeightedRing {
   trendWeightedCapacityUnits: number;
-  probableRezoneParcels: {
-    parcelId: string;
-    theoreticalMFCapacity: number;
-    rezoneProbability: number;
-  }[];
+  probableRezoneParcels: NonMfRezoneParcels[];
 }
 
 interface ForwardSupplyRing {
@@ -100,6 +112,7 @@ const BG = '#0a0e1a';
 const BG2 = '#111827';
 const BG3 = '#0d1525';
 const BORDER = 'rgba(255,255,255,0.06)';
+const BORDER_PURPLE = 'rgba(183,148,244,0.12)';
 const TEXT_PRIMARY = '#e2e8f0';
 const TEXT_SECONDARY = '#7f8ea3';
 const TEXT_AMBER = '#F6AD55';
@@ -129,28 +142,22 @@ const EMPTY_TREND_WEIGHTED: TrendWeightedRing = {
 
 const PLACEHOLDER_RINGS: ForwardSupplyRing[] = [
   {
-    radiusMiles: 3,
-    parcelCount: 0,
-    staticCapacityUnits: 0,
-    vacantUnits: 0,
-    underbuiltUnits: 0,
-    developedCount: 0,
+    radiusMiles: 3, parcelCount: 0, staticCapacityUnits: 0,
+    vacantUnits: 0, underbuiltUnits: 0, developedCount: 0,
     parcelsByClass: { vacant: 0, underbuilt: 0, developed: 0 },
     staticByClass: { vacant: 0, underbuilt: 0, developed: 0 },
     trendWeighted: EMPTY_TREND_WEIGHTED,
   },
   {
-    radiusMiles: 5,
-    parcelCount: 0,
-    staticCapacityUnits: 0,
-    vacantUnits: 0,
-    underbuiltUnits: 0,
-    developedCount: 0,
+    radiusMiles: 5, parcelCount: 0, staticCapacityUnits: 0,
+    vacantUnits: 0, underbuiltUnits: 0, developedCount: 0,
     parcelsByClass: { vacant: 0, underbuilt: 0, developed: 0 },
     staticByClass: { vacant: 0, underbuilt: 0, developed: 0 },
     trendWeighted: EMPTY_TREND_WEIGHTED,
   },
 ];
+
+const PAGE_SIZE = 50;
 
 // ─────────────────────────── Sub-components ─────────────────────────────────
 
@@ -169,6 +176,25 @@ function Stat({ label, value, unit, color }: {
         <span style={{ fontSize: 8, fontWeight: 400, color: TEXT_SECONDARY, marginLeft: 3 }}>{unit}</span>
       </div>
     </div>
+  );
+}
+
+function FilterBtn({
+  label, active, color, onClick,
+}: { label: string; active: boolean; color?: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        fontFamily: MONO, fontSize: 8,
+        color: active ? (color ?? TEXT_AMBER) : TEXT_SECONDARY,
+        background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
+        border: `1px solid ${active ? (color ? `${color}55` : 'rgba(246,173,85,0.3)') : BORDER}`,
+        padding: '2px 8px', cursor: 'pointer',
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -191,7 +217,6 @@ function RingCard({ ring, isLoading, trendSignal }: {
 
   return (
     <div style={{ flex: 1, border: `1px solid ${BORDER}`, background: BG2, padding: '12px 14px' }}>
-      {/* Card header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
         <MapPin size={11} style={{ color: TEXT_AMBER }} />
         <span style={{ fontFamily: MONO, fontSize: 11, color: TEXT_AMBER, fontWeight: 700 }}>
@@ -206,11 +231,7 @@ function RingCard({ ring, isLoading, trendSignal }: {
         <div style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>Loading…</div>
       ) : (
         <>
-          {/* ── Layer 1+2: Static MF capacity ───────────────────────────── */}
-          <div style={{
-            fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY,
-            marginBottom: 6, letterSpacing: '0.05em',
-          }}>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY, marginBottom: 6, letterSpacing: '0.05em' }}>
             L1+2 · STATIC MF CAPACITY
           </div>
 
@@ -224,7 +245,6 @@ function RingCard({ ring, isLoading, trendSignal }: {
             />
           </div>
 
-          {/* Static capacity by class */}
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 10,
             borderTop: `1px solid ${BORDER}`, paddingTop: 8,
@@ -239,7 +259,6 @@ function RingCard({ ring, isLoading, trendSignal }: {
             <Stat label="UNDERBUILT LATENT" value={fmt(ring.underbuiltUnits)} unit="units" color={TEXT_AMBER} />
           </div>
 
-          {/* Utilization bar */}
           <div style={{ marginBottom: 12 }}>
             <div style={{
               display: 'flex', justifyContent: 'space-between',
@@ -257,7 +276,6 @@ function RingCard({ ring, isLoading, trendSignal }: {
             </div>
           </div>
 
-          {/* Parcel class legend */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
             {(['vacant', 'underbuilt', 'developed'] as const).map((cls) => (
               <div key={cls} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -269,34 +287,20 @@ function RingCard({ ring, isLoading, trendSignal }: {
             ))}
           </div>
 
-          {/* ── Layer 3: Trend-Weighted capacity ────────────────────────── */}
-          <div style={{
-            borderTop: `1px solid rgba(183,148,244,0.15)`,
-            paddingTop: 10,
-          }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8,
-            }}>
+          {/* L3 section */}
+          <div style={{ borderTop: `1px solid ${BORDER_PURPLE}`, paddingTop: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}>
               <TrendingUp size={9} style={{ color: TEXT_PURPLE }} />
               <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_PURPLE, letterSpacing: '0.05em' }}>
                 L3 · REZONE TREND · PROBABILISTIC
               </span>
-              <span style={{
-                fontFamily: MONO, fontSize: 6, color: 'rgba(183,148,244,0.5)',
-                marginLeft: 'auto',
-              }}>
+              <span style={{ fontFamily: MONO, fontSize: 6, color: 'rgba(183,148,244,0.5)', marginLeft: 'auto' }}>
                 PHASE A LINEAR
               </span>
             </div>
 
-            {/* Static vs Trend-Weighted side by side */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 8 }}>
-              <Stat
-                label="STATIC (L1+2)"
-                value={fmt(ring.staticCapacityUnits)}
-                unit="u"
-                color={TEXT_PRIMARY}
-              />
+              <Stat label="STATIC (L1+2)" value={fmt(ring.staticCapacityUnits)} unit="u" color={TEXT_PRIMARY} />
               <Stat
                 label="TREND UPSIDE"
                 value={`+${fmt(trendUnits)}`}
@@ -311,11 +315,7 @@ function RingCard({ ring, isLoading, trendSignal }: {
               />
             </div>
 
-            {/* Rezone probability and non-MF parcel count */}
-            <div style={{
-              display: 'flex', gap: 12,
-              fontFamily: MONO, fontSize: 8,
-            }}>
+            <div style={{ display: 'flex', gap: 12, fontFamily: MONO, fontSize: 8 }}>
               <div>
                 <span style={{ color: TEXT_SECONDARY }}>REZONE PROB </span>
                 <span style={{ color: trendProbPct > 0 ? TEXT_PURPLE : TEXT_SECONDARY, fontWeight: 700 }}>
@@ -337,28 +337,20 @@ function RingCard({ ring, isLoading, trendSignal }: {
               {trendSignal?.moratoriumActive && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                   <AlertCircle size={8} style={{ color: TEXT_RED }} />
-                  <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_RED }}>
-                    MORATORIUM
-                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_RED }}>MORATORIUM</span>
                 </div>
               )}
             </div>
 
-            {/* Upzone/approval event counts when available */}
             {trendSignal && trendSignal.submarketId && (
-              <div style={{
-                display: 'flex', gap: 10, marginTop: 6,
-                fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY,
-              }}>
+              <div style={{ display: 'flex', gap: 10, marginTop: 6, fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY }}>
                 <span>↑ {trendSignal.upzoningEventCount} UPZONE EVENTS</span>
                 <span>✓ {trendSignal.approvalEventCount} APPROVALS</span>
               </div>
             )}
 
             {!trendSignal?.submarketId && (
-              <div style={{
-                fontFamily: MONO, fontSize: 7, color: 'rgba(255,255,255,0.25)', marginTop: 4,
-              }}>
+              <div style={{ fontFamily: MONO, fontSize: 7, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>
                 No submarket linked — trend signal unavailable
               </div>
             )}
@@ -369,17 +361,22 @@ function RingCard({ ring, isLoading, trendSignal }: {
   );
 }
 
-const PAGE_SIZE = 50;
-
 // ─────────────────────────── Main component ─────────────────────────────────
 
 export default function ForwardSupplyTab({ dealId }: Props) {
   const [data, setData] = useState<ForwardSupplyResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // L1+2 MF parcel table state
   const [ringFilter, setRingFilter] = useState<3 | 5 | null>(null);
   const [classFilter, setClassFilter] = useState<'vacant' | 'underbuilt' | 'developed' | null>(null);
   const [page, setPage] = useState(0);
+
+  // L3 non-MF parcel table state
+  const [nonMfRingFilter, setNonMfRingFilter] = useState<3 | 5>(5);
+  const [nonMfPage, setNonMfPage] = useState(0);
+  const [nonMfExpanded, setNonMfExpanded] = useState(true);
 
   const load = () => {
     if (!dealId) { setLoading(false); return; }
@@ -388,24 +385,19 @@ export default function ForwardSupplyTab({ dealId }: Props) {
     apiClient
       .get<ForwardSupplyResponse>(`/api/v1/deals/${dealId}/forward-supply`)
       .then((res: AxiosResponse<ForwardSupplyResponse>) => {
-        if (res.data?.success) {
-          setData(res.data);
-        } else {
-          setError('Endpoint returned unsuccessful response');
-        }
+        if (res.data?.success) setData(res.data);
+        else setError('Endpoint returned unsuccessful response');
       })
       .catch((err: Error) => setError(err.message ?? 'Failed to load forward supply data'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    load();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dealId]);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dealId]);
 
-  const displayRings: ForwardSupplyRing[] = data?.rings ?? PLACEHOLDER_RINGS;
+  const displayRings = data?.rings ?? PLACEHOLDER_RINGS;
   const trendSignal = data?.metadata?.trendSignal ?? null;
 
+  // ── L1+2 MF parcel filtering ──
   const filteredParcels = (data?.parcels ?? []).filter((p) => {
     if (ringFilter !== null && p.ring !== ringFilter) return false;
     if (classFilter !== null && p.currentUse !== classFilter) return false;
@@ -414,10 +406,19 @@ export default function ForwardSupplyTab({ dealId }: Props) {
   const pagedParcels = filteredParcels.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(filteredParcels.length / PAGE_SIZE);
 
+  // ── L3 non-MF parcel data ──
+  // 5mi ring contains all 3mi parcels as a superset; 3mi ring has only 3mi parcels.
+  const nonMfParcels: NonMfRezoneParcels[] =
+    data?.rings.find((r) => r.radiusMiles === nonMfRingFilter)?.trendWeighted.probableRezoneParcels ?? [];
+  const pagedNonMf = nonMfParcels.slice(nonMfPage * PAGE_SIZE, (nonMfPage + 1) * PAGE_SIZE);
+  const nonMfTotalPages = Math.ceil(nonMfParcels.length / PAGE_SIZE);
+
+  const hasNonMfData = nonMfParcels.length > 0;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BG, overflowY: 'auto' }}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '8px 12px', borderBottom: `1px solid ${BORDER}`, flexShrink: 0,
@@ -449,79 +450,46 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         </button>
       </div>
 
-      {/* No coordinates warning */}
+      {/* ── Banners ── */}
       {!data?.metadata?.hasCoordinates && !loading && (
-        <div style={{
-          margin: 12, padding: '10px 14px',
-          background: 'rgba(246,173,85,0.05)', border: `1px solid rgba(246,173,85,0.2)`,
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
+        <div style={{ margin: 12, padding: '10px 14px', background: 'rgba(246,173,85,0.05)', border: `1px solid rgba(246,173,85,0.2)`, display: 'flex', alignItems: 'center', gap: 8 }}>
           <AlertCircle size={12} style={{ color: TEXT_AMBER }} />
           <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>
             No coordinates on this deal. Draw a property boundary or set coordinates to enable the radius sweep.
           </span>
         </div>
       )}
-
-      {/* No parcel data */}
       {data?.metadata?.hasCoordinates && !data?.metadata?.parcelDataAvailable && !loading && (
-        <div style={{
-          margin: 12, padding: '10px 14px',
-          background: 'rgba(99,179,237,0.05)', border: `1px solid rgba(99,179,237,0.2)`,
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
+        <div style={{ margin: 12, padding: '10px 14px', background: 'rgba(99,179,237,0.05)', border: `1px solid rgba(99,179,237,0.2)`, display: 'flex', alignItems: 'center', gap: 8 }}>
           <AlertCircle size={12} style={{ color: TEXT_BLUE }} />
           <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>
             No MF-zoned county parcel data found within 5 miles. Ingest parcel GeoJSON data for this area to populate the supply sweep.
           </span>
         </div>
       )}
-
-      {/* Error */}
       {error && (
-        <div style={{
-          margin: 12, padding: '10px 14px',
-          background: 'rgba(252,129,129,0.05)', border: `1px solid rgba(252,129,129,0.2)`,
-        }}>
+        <div style={{ margin: 12, padding: '10px 14px', background: 'rgba(252,129,129,0.05)', border: `1px solid rgba(252,129,129,0.2)` }}>
           <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_RED }}>{error}</span>
         </div>
       )}
-
-      {/* MF sweep truncation warning */}
       {data?.metadata?.sweepTruncated && (
-        <div style={{
-          margin: '0 12px 4px', padding: '6px 10px',
-          background: 'rgba(252,129,129,0.05)', border: `1px solid rgba(252,129,129,0.2)`,
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}>
+        <div style={{ margin: '0 12px 4px', padding: '6px 10px', background: 'rgba(252,129,129,0.05)', border: `1px solid rgba(252,129,129,0.2)`, display: 'flex', alignItems: 'center', gap: 6 }}>
           <AlertCircle size={10} style={{ color: TEXT_RED }} />
           <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_RED }}>
             MF SWEEP CAPPED — showing {data.parcels.length.toLocaleString()} of {data.metadata.sweepTotalCount.toLocaleString()}+ parcels. Ring totals may be understated.
           </span>
         </div>
       )}
-
-      {/* Non-MF sweep truncation warning */}
       {trendSignal?.nonMfSweepTruncated && (
-        <div style={{
-          margin: '0 12px 4px', padding: '6px 10px',
-          background: 'rgba(183,148,244,0.05)', border: `1px solid rgba(183,148,244,0.15)`,
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}>
+        <div style={{ margin: '0 12px 4px', padding: '6px 10px', background: 'rgba(183,148,244,0.05)', border: `1px solid ${BORDER_PURPLE}`, display: 'flex', alignItems: 'center', gap: 6 }}>
           <AlertCircle size={10} style={{ color: TEXT_PURPLE }} />
           <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_PURPLE }}>
             L3 NON-MF SWEEP CAPPED — trend-weighted totals may be understated.
           </span>
         </div>
       )}
-
-      {/* Moratorium banner */}
       {trendSignal?.moratoriumActive && (
-        <div style={{
-          margin: '0 12px 4px', padding: '6px 10px',
-          background: 'rgba(252,129,129,0.05)', border: `1px solid rgba(252,129,129,0.2)`,
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}>
+        <div style={{ margin: '0 12px 4px', padding: '6px 10px', background: 'rgba(252,129,129,0.05)', border: `1px solid rgba(252,129,129,0.2)`, display: 'flex', alignItems: 'center', gap: 6 }}>
           <AlertCircle size={10} style={{ color: TEXT_RED }} />
           <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_RED }}>
             ACTIVE MORATORIUM{trendSignal.moratoriumName ? ` — ${trendSignal.moratoriumName}` : ''} · Rezone probability capped at 5%.
@@ -529,159 +497,256 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         </div>
       )}
 
-      {/* Ring summary cards */}
+      {/* ── Ring summary cards ── */}
       <div style={{ display: 'flex', gap: 10, padding: '10px 12px', flexShrink: 0 }}>
         {displayRings.map((ring) => (
-          <RingCard
-            key={ring.radiusMiles}
-            ring={ring}
-            isLoading={loading}
-            trendSignal={trendSignal}
-          />
+          <RingCard key={ring.radiusMiles} ring={ring} isLoading={loading} trendSignal={trendSignal} />
         ))}
       </div>
 
-      {/* Filter bar */}
+      {/* ── L1+2 MF parcel table ── */}
       {data && data.parcels.length > 0 && (
-        <div style={{
-          display: 'flex', gap: 6, padding: '4px 12px 8px',
-          borderBottom: `1px solid ${BORDER}`,
-          flexShrink: 0, flexWrap: 'wrap',
-        }}>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, alignSelf: 'center' }}>
-            FILTER:
-          </span>
-          {([null, 3, 5] as const).map((r) => (
-            <button
-              key={String(r)}
-              onClick={() => { setRingFilter(r); setPage(0); }}
-              style={{
-                fontFamily: MONO, fontSize: 8,
-                color: ringFilter === r ? TEXT_AMBER : TEXT_SECONDARY,
-                background: ringFilter === r ? 'rgba(246,173,85,0.12)' : 'transparent',
-                border: `1px solid ${ringFilter === r ? 'rgba(246,173,85,0.3)' : BORDER}`,
-                padding: '2px 8px', cursor: 'pointer',
-              }}
-            >
-              {r === null ? 'ALL RINGS' : `${r}MI`}
-            </button>
-          ))}
-          {(['vacant', 'underbuilt', 'developed', null] as const).map((cls) => (
-            <button
-              key={String(cls)}
-              onClick={() => { setClassFilter(cls); setPage(0); }}
-              style={{
-                fontFamily: MONO, fontSize: 8,
-                color: classFilter === cls ? (cls ? CLASS_COLORS[cls] : TEXT_PRIMARY) : TEXT_SECONDARY,
-                background: classFilter === cls ? 'rgba(255,255,255,0.05)' : 'transparent',
-                border: `1px solid ${classFilter === cls ? BORDER : 'rgba(255,255,255,0.04)'}`,
-                padding: '2px 8px', cursor: 'pointer',
-              }}
-            >
-              {cls === null ? 'ALL CLASSES' : CLASS_LABELS[cls]}
-            </button>
-          ))}
-          <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, marginLeft: 'auto', alignSelf: 'center' }}>
-            {filteredParcels.length} parcels
-          </span>
-        </div>
-      )}
-
-      {/* MF parcel table (L1+2) */}
-      {data && data.parcels.length > 0 && (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <>
+          {/* Filter bar */}
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: '80px 1fr 60px 60px 70px 70px 70px 60px',
-            padding: '5px 12px',
-            borderBottom: `1px solid ${BORDER}`,
-            background: 'rgba(255,255,255,0.02)',
-            position: 'sticky', top: 0, zIndex: 1,
+            display: 'flex', gap: 6, padding: '4px 12px 8px',
+            borderBottom: `1px solid ${BORDER}`, flexShrink: 0, flexWrap: 'wrap',
           }}>
-            {['ZONING', 'ADDRESS', 'ACRES', 'DIST', 'ALLOWED', 'LATENT', 'UNITS/AC', 'CLASS'].map((h) => (
-              <span key={h} style={{ fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY }}>
-                {h}
-              </span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, alignSelf: 'center' }}>
+              L1+2 FILTER:
+            </span>
+            {([null, 3, 5] as const).map((r) => (
+              <FilterBtn
+                key={String(r)}
+                label={r === null ? 'ALL RINGS' : `${r}MI`}
+                active={ringFilter === r}
+                onClick={() => { setRingFilter(r); setPage(0); }}
+              />
             ))}
+            {(['vacant', 'underbuilt', 'developed', null] as const).map((cls) => (
+              <FilterBtn
+                key={String(cls)}
+                label={cls === null ? 'ALL CLASSES' : CLASS_LABELS[cls]}
+                active={classFilter === cls}
+                color={cls ? CLASS_COLORS[cls] : undefined}
+                onClick={() => { setClassFilter(cls); setPage(0); }}
+              />
+            ))}
+            <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, marginLeft: 'auto', alignSelf: 'center' }}>
+              {filteredParcels.length} parcels
+            </span>
           </div>
 
-          {pagedParcels.map((p) => (
-            <div
-              key={p.parcelId}
-              style={{
+          {/* Table */}
+          <div style={{ overflowY: 'auto', flexShrink: 0, maxHeight: 280 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '80px 1fr 60px 60px 70px 70px 70px 60px',
+              padding: '5px 12px',
+              borderBottom: `1px solid ${BORDER}`,
+              background: 'rgba(255,255,255,0.02)',
+              position: 'sticky', top: 0, zIndex: 1,
+            }}>
+              {['ZONING', 'ADDRESS', 'ACRES', 'DIST', 'ALLOWED', 'LATENT', 'UNITS/AC', 'CLASS'].map((h) => (
+                <span key={h} style={{ fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY }}>{h}</span>
+              ))}
+            </div>
+            {pagedParcels.map((p) => (
+              <div key={p.parcelId} style={{
                 display: 'grid',
                 gridTemplateColumns: '80px 1fr 60px 60px 70px 70px 70px 60px',
                 padding: '4px 12px',
                 borderBottom: `1px solid rgba(255,255,255,0.03)`,
-              }}
-            >
-              <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_BLUE }}>
-                {p.zoningCode ?? '—'}
-              </span>
-              <span style={{
-                fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
-                {p.address ?? `Parcel ${p.parcelId.slice(0, 8)}`}
-              </span>
-              <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PRIMARY }}>{p.acreage.toFixed(2)}</span>
-              <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>{p.distanceMiles.toFixed(2)}mi</span>
-              <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PRIMARY }}>{p.allowedUnits}</span>
-              <span style={{ fontFamily: MONO, fontSize: 9, color: p.latentCapacityUnits > 0 ? CLASS_COLORS[p.currentUse] : TEXT_SECONDARY }}>
-                {p.latentCapacityUnits > 0 ? `+${p.latentCapacityUnits}` : '—'}
-              </span>
-              <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PRIMARY }}>{p.bindingUnitsPerAcre.toFixed(1)}</span>
-              <span style={{ fontFamily: MONO, fontSize: 8, color: CLASS_COLORS[p.currentUse] }}>
-                {CLASS_LABELS[p.currentUse]}
-              </span>
-            </div>
-          ))}
-
-          {totalPages > 1 && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 12px', borderTop: `1px solid ${BORDER}`,
-            }}>
-              <button
-                onClick={() => setPage(Math.max(0, page - 1))}
-                disabled={page === 0}
-                style={{
-                  fontFamily: MONO, fontSize: 8, color: page === 0 ? TEXT_SECONDARY : TEXT_PRIMARY,
-                  background: 'transparent', border: `1px solid ${BORDER}`,
-                  padding: '2px 8px', cursor: page === 0 ? 'default' : 'pointer',
-                }}
-              >
-                ◀ PREV
-              </button>
-              <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY }}>
-                {page + 1} / {totalPages}
-              </span>
-              <button
-                onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
-                disabled={page >= totalPages - 1}
-                style={{
-                  fontFamily: MONO, fontSize: 8,
-                  color: page >= totalPages - 1 ? TEXT_SECONDARY : TEXT_PRIMARY,
-                  background: 'transparent', border: `1px solid ${BORDER}`,
-                  padding: '2px 8px', cursor: page >= totalPages - 1 ? 'default' : 'pointer',
-                }}
-              >
-                NEXT ▶
-              </button>
-            </div>
-          )}
-        </div>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_BLUE }}>{p.zoningCode ?? '—'}</span>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.address ?? `Parcel ${p.parcelId.slice(0, 8)}`}
+                </span>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PRIMARY }}>{p.acreage.toFixed(2)}</span>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>{p.distanceMiles.toFixed(2)}mi</span>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PRIMARY }}>{p.allowedUnits}</span>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: p.latentCapacityUnits > 0 ? CLASS_COLORS[p.currentUse] : TEXT_SECONDARY }}>
+                  {p.latentCapacityUnits > 0 ? `+${p.latentCapacityUnits}` : '—'}
+                </span>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PRIMARY }}>{p.bindingUnitsPerAcre.toFixed(1)}</span>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: CLASS_COLORS[p.currentUse] }}>{CLASS_LABELS[p.currentUse]}</span>
+              </div>
+            ))}
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: `1px solid ${BORDER}` }}>
+                <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0}
+                  style={{ fontFamily: MONO, fontSize: 8, color: page === 0 ? TEXT_SECONDARY : TEXT_PRIMARY, background: 'transparent', border: `1px solid ${BORDER}`, padding: '2px 8px', cursor: page === 0 ? 'default' : 'pointer' }}>
+                  ◀ PREV
+                </button>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY }}>{page + 1} / {totalPages}</span>
+                <button onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1}
+                  style={{ fontFamily: MONO, fontSize: 8, color: page >= totalPages - 1 ? TEXT_SECONDARY : TEXT_PRIMARY, background: 'transparent', border: `1px solid ${BORDER}`, padding: '2px 8px', cursor: page >= totalPages - 1 ? 'default' : 'pointer' }}>
+                  NEXT ▶
+                </button>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {data && data.parcels.length === 0 && !loading && !data.metadata.parcelDataAvailable && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 12px' }}>
           <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>
             No parcel data — run the parcel ingest for this area to enable forward supply analysis.
           </span>
         </div>
       )}
 
-      {/* Footer */}
+      {/* ── L3 Non-MF probable-rezone table ── */}
+      {data && (
+        <div style={{ borderTop: `1px solid ${BORDER_PURPLE}`, flexShrink: 0 }}>
+          {/* Collapsible section header */}
+          <div
+            onClick={() => setNonMfExpanded((v) => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', cursor: 'pointer',
+              background: 'rgba(183,148,244,0.04)',
+              userSelect: 'none',
+            }}
+          >
+            <TrendingUp size={9} style={{ color: TEXT_PURPLE }} />
+            <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PURPLE, fontWeight: 700 }}>
+              L3 · NON-MF PROBABLE REZONE PARCELS
+            </span>
+            <span style={{
+              fontFamily: MONO, fontSize: 7, color: 'rgba(183,148,244,0.6)',
+              background: 'rgba(183,148,244,0.1)',
+              border: `1px solid rgba(183,148,244,0.2)`,
+              padding: '1px 5px', borderRadius: 2,
+            }}>
+              PHASE A LINEAR
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, marginLeft: 4 }}>
+              sorted by probabilistic units ↓
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, marginLeft: 'auto' }}>
+              {nonMfExpanded ? '▲' : '▼'}
+            </span>
+          </div>
+
+          {nonMfExpanded && (
+            <>
+              {/* Ring filter for non-MF table */}
+              <div style={{
+                display: 'flex', gap: 6, padding: '4px 12px 6px',
+                borderBottom: `1px solid ${BORDER_PURPLE}`, flexWrap: 'wrap',
+              }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, alignSelf: 'center' }}>
+                  RING:
+                </span>
+                {([3, 5] as const).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => { setNonMfRingFilter(r); setNonMfPage(0); }}
+                    style={{
+                      fontFamily: MONO, fontSize: 8,
+                      color: nonMfRingFilter === r ? TEXT_PURPLE : TEXT_SECONDARY,
+                      background: nonMfRingFilter === r ? 'rgba(183,148,244,0.12)' : 'transparent',
+                      border: `1px solid ${nonMfRingFilter === r ? 'rgba(183,148,244,0.3)' : BORDER}`,
+                      padding: '2px 8px', cursor: 'pointer',
+                    }}
+                  >
+                    {r}MI
+                  </button>
+                ))}
+                <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY, marginLeft: 'auto', alignSelf: 'center' }}>
+                  {nonMfParcels.length} parcels{(trendSignal?.nonMfParcelCount ?? 0) > nonMfParcels.length && nonMfParcels.length > 0 ? ' (top 100)' : ''}
+                </span>
+              </div>
+
+              {!trendSignal?.submarketId && (
+                <div style={{ padding: '12px', fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>
+                  No submarket linked to this deal — rezone trend signal is unavailable. Link a submarket to compute Layer 3 upside.
+                </div>
+              )}
+
+              {trendSignal?.submarketId && !hasNonMfData && !loading && (
+                <div style={{ padding: '12px', fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>
+                  No non-MF parcels found within the {nonMfRingFilter}-mile ring. The rezone trend signal ({Math.round((trendSignal?.rezoneProbabilityBase ?? 0) * 100)}%) will apply to non-MF parcels when parcel data is ingested.
+                </div>
+              )}
+
+              {hasNonMfData && (
+                <div style={{ overflowY: 'auto', maxHeight: 320 }}>
+                  {/* Column headers */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '80px 1fr 55px 55px 80px 75px 80px',
+                    padding: '5px 12px',
+                    borderBottom: `1px solid ${BORDER}`,
+                    background: 'rgba(183,148,244,0.03)',
+                    position: 'sticky', top: 0, zIndex: 1,
+                  }}>
+                    {['ZONING', 'ADDRESS', 'ACRES', 'DIST', 'THEOR MF CAP', 'REZONE PROB', 'PROB UNITS'].map((h) => (
+                      <span key={h} style={{ fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY }}>{h}</span>
+                    ))}
+                  </div>
+
+                  {pagedNonMf.map((p) => {
+                    const probPct = Math.round(p.rezoneProbability * 100);
+                    return (
+                      <div key={p.parcelId} style={{
+                        display: 'grid',
+                        gridTemplateColumns: '80px 1fr 55px 55px 80px 75px 80px',
+                        padding: '4px 12px',
+                        borderBottom: `1px solid rgba(255,255,255,0.03)`,
+                      }}>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_BLUE }}>
+                          {p.zoningCode ?? '—'}
+                        </span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {p.address ?? `Parcel ${p.parcelId.slice(0, 8)}`}
+                        </span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PRIMARY }}>
+                          {p.acreage.toFixed(2)}
+                        </span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>
+                          {p.distanceMiles.toFixed(2)}mi
+                        </span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PRIMARY }}>
+                          {fmt(p.theoreticalMFCapacity)}u
+                        </span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_PURPLE }}>
+                          {probPct}%
+                        </span>
+                        <span style={{
+                          fontFamily: MONO, fontSize: 9,
+                          color: p.probabilisticUnits > 0 ? TEXT_PURPLE : TEXT_SECONDARY,
+                          fontWeight: p.probabilisticUnits > 50 ? 700 : 400,
+                        }}>
+                          {p.probabilisticUnits > 0 ? `~${fmt(p.probabilisticUnits)}u` : '—'}
+                        </span>
+                      </div>
+                    );
+                  })}
+
+                  {nonMfTotalPages > 1 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: `1px solid ${BORDER}` }}>
+                      <button onClick={() => setNonMfPage(Math.max(0, nonMfPage - 1))} disabled={nonMfPage === 0}
+                        style={{ fontFamily: MONO, fontSize: 8, color: nonMfPage === 0 ? TEXT_SECONDARY : TEXT_PRIMARY, background: 'transparent', border: `1px solid ${BORDER}`, padding: '2px 8px', cursor: nonMfPage === 0 ? 'default' : 'pointer' }}>
+                        ◀ PREV
+                      </button>
+                      <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY }}>{nonMfPage + 1} / {nonMfTotalPages}</span>
+                      <button onClick={() => setNonMfPage(Math.min(nonMfTotalPages - 1, nonMfPage + 1))} disabled={nonMfPage >= nonMfTotalPages - 1}
+                        style={{ fontFamily: MONO, fontSize: 8, color: nonMfPage >= nonMfTotalPages - 1 ? TEXT_SECONDARY : TEXT_PRIMARY, background: 'transparent', border: `1px solid ${BORDER}`, padding: '2px 8px', cursor: nonMfPage >= nonMfTotalPages - 1 ? 'default' : 'pointer' }}>
+                        NEXT ▶
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Footer ── */}
       {data?.computedAt && (
         <div style={{
           padding: '4px 12px', borderTop: `1px solid ${BORDER}`,

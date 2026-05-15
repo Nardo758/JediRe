@@ -109,11 +109,17 @@ export interface TrendRing {
   /**
    * Top-100 non-MF parcels by probabilistic contribution.  Full ring
    * aggregation uses ALL parcels; this slice is for UI drill-down only.
+   * Sorted descending by probabilisticUnits (pre-computed server-side).
    */
   probableRezoneParcels: {
     parcelId: string;
+    address: string | null;
+    zoningCode: string | null;
+    acreage: number;
+    distanceMiles: number;
     theoreticalMFCapacity: number;
     rezoneProbability: number;
+    probabilisticUnits: number;
   }[];
 }
 
@@ -182,8 +188,13 @@ export class RezoneTrendService {
         trendWeightedCapacityUnits,
         probableRezoneParcels: top100.map((p) => ({
           parcelId: p.parcelId,
+          address: p.address,
+          zoningCode: p.zoningCode,
+          acreage: parseFloat((Math.max(0.01, p.lotAreaSf / 43560)).toFixed(3)),
+          distanceMiles: parseFloat(p.distanceMiles.toFixed(3)),
           theoreticalMFCapacity: p.theoreticalMFCapacity,
           rezoneProbability: p.rezoneProbability,
+          probabilisticUnits: p.probabilisticUnits,
         })),
       };
     });
