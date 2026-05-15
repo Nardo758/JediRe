@@ -2949,6 +2949,95 @@ export async function getDealFinancials(
     } : null,
   };
 
+  // ── Tax engine → proforma seed write-back ──────────────────────────────────
+  // taxService.forecast() is the authoritative source for the post-acquisition
+  // RE tax (Year 1). Backfill its result into year1Seed and year1Rows so the
+  // proforma PLATFORM column and downstream ry1('real_estate_tax') both reflect
+  // the engine-computed value rather than the historical T-12/tax-bill figure.
+  // Priority: override (95) > t12 (85) > tax_bill (85) > rent_roll (80) >
+  //           box_score (75) > platform (70). The engine value only promotes to
+  // `resolved` when no higher-priority source already holds that slot.
+  {
+    const platformTaxY1 = taxForecast.reTax.platformAnnualTax;
+    if (platformTaxY1 != null && platformTaxY1 > 0) {
+      const HIGH_PRIORITY = new Set(['override', 't12', 'tax_bill', 'rent_roll', 'box_score']);
+
+      // 1a. Mutate year1Seed so ry1('real_estate_tax') in the projection loop
+      //     reads the engine value. lv() returns a reference to year1Seed[key],
+      //     so mutations here propagate to all subsequent reads via resolvedNum().
+      const taxSeedLv = lv(year1Seed, 'real_estate_tax') as Record<string, unknown> | null;
+      if (taxSeedLv) {
+        taxSeedLv.platform = platformTaxY1;
+        const existingResolution = taxSeedLv.resolution as string | null;
+        if (!existingResolution || !HIGH_PRIORITY.has(existingResolution)) {
+          taxSeedLv.resolved = platformTaxY1;
+          taxSeedLv.resolution = 'platform';
+        }
+      } else {
+        // No LayeredValue yet — create a minimal one so ry1() never returns 0.
+        (year1Seed as Record<string, unknown>).real_estate_tax = {
+          platform:   platformTaxY1,
+          resolved:   platformTaxY1,
+          resolution: 'platform',
+        };
+      }
+
+      // 1b. Backfill year1Rows (already built from year1Seed before the forecast
+      //     ran) so the current API response reflects the engine value.
+      const retRow = year1Rows.find((r: { field: string }) => r.field === 'real_estate_tax');
+      if (retRow) {
+        retRow.platform = platformTaxY1;
+        if (retRow.resolved == null || !HIGH_PRIORITY.has(retRow.resolution ?? '')) {
+          retRow.resolved    = platformTaxY1;
+          retRow.resolution  = 'platform';
+          retRow.source      = 'platform';
+          retRow.confidence  = 70;
+          retRow.perUnit     = totalUnits > 0 ? Math.round(platformTaxY1 / totalUnits) : null;
+        }
+        // Recompute benchmarkPosition with the refreshed platform baseline.
+        if (retRow.resolved != null && platformTaxY1 > 0) {
+          const ratio = retRow.resolved / platformTaxY1;
+          retRow.benchmarkPosition = ratio > 1.05 ? 'above' : ratio < 0.95 ? 'below' : 'within';
+        }
+      }
+
+      // 1c. Persist the platform value to deal_assumptions.year1 so the seeder
+      //     can read it on future loads without re-running the forecast.
+      //     Fire-and-forget: DB failure must never block the proforma response.
+      if (deal.id != null) {
+        const _dealId = String(deal.id);
+        void (async () => {
+          try {
+            // Guard: skip write when the stored value is within 1% of current.
+            const check = await query(
+              `SELECT year1->'real_estate_tax'->>'platform' AS pv FROM deal_assumptions WHERE deal_id = $1`,
+              [_dealId],
+            );
+            const stored = check.rows[0]?.pv != null ? parseFloat(check.rows[0].pv) : null;
+            const needsWrite = stored == null ||
+              Math.abs((platformTaxY1 - stored) / Math.max(1, stored)) > 0.01;
+            if (needsWrite) {
+              await query(
+                `UPDATE deal_assumptions
+                 SET year1 = COALESCE(year1, '{}'::jsonb) ||
+                               jsonb_build_object(
+                                 'real_estate_tax',
+                                 COALESCE(year1->'real_estate_tax', '{}'::jsonb) ||
+                                   jsonb_build_object('platform', $2::numeric)
+                               ),
+                     updated_at = NOW()
+                 WHERE deal_id = $1`,
+                [_dealId, platformTaxY1],
+              );
+            }
+          } catch (e) {
+            logger.warn('[proforma-adjustment] tax platform write-back failed', { dealId: _dealId, error: e });
+          }
+        })();
+      }
+    }
+  }
+
   // ── Debt Stack v2 — build from capitalStack fields + persisted per_year_overrides ────
   const SOFR_CURVE_DEFAULT = [0.0500, 0.0475, 0.0450, 0.0425, 0.0400];
   const seniorRate = capitalStack.interestRate;
@@ -3565,6 +3654,9 @@ export async function getDealFinancials(
     const utilitiesY1  = ry1('utilities');
     const gAndAY1      = ry1('g_and_a');
     const insuranceY1  = ry1('insurance');
+    // reTaxY1Base: reads year1Seed.real_estate_tax.resolved, which the tax-engine
+    // write-back (above) has already populated with taxForecast.reTax.platformAnnualTax
+    // when no higher-priority source (override/t12/tax_bill) is present.
     const reTaxY1Base  = ry1('real_estate_tax');
     const reservesY1   = ry1('replacement_reserves') || (totalUnits * 350);
 

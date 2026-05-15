@@ -812,6 +812,30 @@ function buildSeed(
     realEstateTax = opexFromT12('real_estate_tax', 'real_estate_tax', null, bpTax);
   }
 
+  // ── Preserve tax-engine platform slot ────────────────────────────────────
+  // proforma-adjustment.service.ts writes taxService.forecast()'s Year 1 RE tax
+  // to deal_assumptions.year1.real_estate_tax.platform (fire-and-forget).
+  // When the seeder runs on a deal that already has that persisted value, carry
+  // it forward into the new seed so the proforma PLATFORM column stays populated.
+  // The existing user override / t12 / tax_bill resolution is not disturbed.
+  {
+    const exTaxPlatform = (() => {
+      const exField = (ex as Record<string, unknown>).real_estate_tax;
+      if (!exField || typeof exField !== 'object') return null;
+      const v = (exField as Record<string, unknown>).platform;
+      return typeof v === 'number' && isFinite(v) && v > 0 ? v : null;
+    })();
+    if (exTaxPlatform != null && realEstateTax.platform == null) {
+      realEstateTax.platform = exTaxPlatform;
+      // Promote to resolved only when no higher-priority source already won.
+      const HIGH_PRIORITY = new Set(['override', 't12', 'tax_bill', 'rent_roll', 'box_score']);
+      if (!realEstateTax.resolution || !HIGH_PRIORITY.has(realEstateTax.resolution as string)) {
+        realEstateTax.resolved   = exTaxPlatform;
+        realEstateTax.resolution = 'platform';
+      }
+    }
+  }
+
   // ───────── DERIVED FIELDS ─────────
   // v31 spec: bad debt is deducted from gross rental income, not from EGI.
   // NRI = GPR × (1 − ltl − vacancy − concessions − nru − bad_debt).
