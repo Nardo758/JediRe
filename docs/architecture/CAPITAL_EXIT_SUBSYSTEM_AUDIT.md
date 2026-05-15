@@ -699,10 +699,17 @@ constants are not being shown to users — the escalation trigger
   and F51 sensitivity. CE-07 feeds the Debt Advisor tab's primary
   recommendation engine. Merging them would couple two unrelated
   rendering contexts.
-  **Caller correction:** The original note listed `DebtTab.tsx:152` as
-  a caller — repo-wide grep shows it is not. Only
-  `CapitalStructureSection.tsx:195` currently calls `/rate/cycle-phase`.
-  No code changes required. Synthesis item closed.
+  **Active callers (corrected):** Both `DebtTab.tsx:171` and
+  `CapitalStructureSection.tsx:195` call `POST /rate/cycle-phase`.
+  The original note's line reference (`DebtTab.tsx:152`) was stale but
+  the file is still a live caller — it is the Rates sub-tab of the Debt
+  Advisor. This is expected: both the Capital Structure section and the
+  Debt module's Rates tab independently fetch the same phase label for
+  their own display. The CE-07 service (`classifyRateEnvironment()` in
+  `backend/src/services/debt-advisor/rate-environment.service.ts`) is
+  consumed by the Debt Advisor tab's primary recommendation engine —
+  distinct from the Rates sub-tab. No code changes required. Synthesis
+  item closed.
 
 ---
 
