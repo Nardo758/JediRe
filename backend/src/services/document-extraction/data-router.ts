@@ -104,7 +104,7 @@ export async function routeExtractionResult(
       break;
     }
     case 'RENT_ROLL':
-      rowsInserted = await routeRentRoll(pool, result.data as RentRollData, ctx.dealId, sourceRef, sourceDate);
+      rowsInserted = await routeRentRoll(pool, result.data as RentRollData, ctx.dealId, sourceRef, sourceDate, result.capsuleExtras);
       break;
     case 'AGED_RECEIVABLES':
       rowsInserted = await routeAgedReceivables(pool, result.data as AgedReceivablesData, ctx.dealId, sourceRef, sourceDate);
@@ -364,7 +364,7 @@ async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: s
   return count;
 }
 
-async function routeRentRoll(pool: Pool, data: RentRollData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
+async function routeRentRoll(pool: Pool, data: RentRollData, dealId: string, sourceRef: string, sourceDate: string, capsuleExtras?: Record<string, unknown>): Promise<number> {
   await pool.query(
     `DELETE FROM deal_lease_transactions WHERE deal_id = $1 AND source_type = 'extraction'
      AND lease_type IN ('current', 'vacant')`,
@@ -408,13 +408,21 @@ async function routeRentRoll(pool: Pool, data: RentRollData, dealId: string, sou
     }, null);
     const vacancyPct = totalUnits > 0 ? vacantCount / totalUnits : null;
 
-    // other_income_monthly is set by the rent-roll parser on the data object
-    // (e.g. parking, pet_rent, storage, rubs, fees, etc.) even though it is
-    // not declared in the RentRollData TypeScript interface.
-    const otherIncomeMonthly = (data as unknown as { other_income_monthly?: Record<string, number> }).other_income_monthly;
-    const otherIncomeTotal = otherIncomeMonthly
+    // other_income_monthly is produced by the rent-roll parser and surfaced
+    // via capsuleExtras (not result.data). It is a Record<string, number>
+    // keyed by income category (parking, pet_rent, storage, rubs, fees,
+    // insurance_admin, concessions_other, other). When capsuleExtras is
+    // absent (e.g. direct routeRentRoll calls in tests), fall back to
+    // summing non-rent charge codes across all units.
+    const otherIncomeMonthly = capsuleExtras?.other_income_monthly as Record<string, number> | undefined;
+    const otherIncomeTotal: number | null = otherIncomeMonthly
       ? Object.values(otherIncomeMonthly).reduce((s, v) => s + (v ?? 0), 0)
-      : null;
+      : data.units.reduce<number | null>((acc, u) => {
+          const nonRentTotal = Object.entries(u.charges)
+            .filter(([k]) => k !== 'rent')
+            .reduce((s, [, v]) => s + (v ?? 0), 0);
+          return nonRentTotal > 0 ? (acc ?? 0) + nonRentTotal : acc;
+        }, null);
 
     setImmediate(() => {
       emitExtractionEvents(pool, {
