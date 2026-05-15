@@ -817,18 +817,22 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
   useEffect(() => {
     if (!dealId) return;
-    // apiClient in this module uses baseURL '/api/v1' — path is relative to that.
+    // apiClient (from api/client.ts) has a response interceptor that unwraps
+    // response.data automatically — so .then(res) receives the payload directly.
+    // baseURL is '/api/v1', so path is relative to that.
     apiClient
       .get(`/deals/${dealId}/exit-trajectory`)
-      .then(res => {
-        if (res.data?.success) {
+      .then((res: any) => {
+        if (res?.success) {
           setTrajectoryData({
-            supplyPressureByYear: res.data.supplyPressureByYear,
-            buyerPressureByYear: res.data.buyerPressureByYear,
+            supplyPressureByYear: res.supplyPressureByYear,
+            buyerPressureByYear: res.buyerPressureByYear,
           });
         }
       })
-      .catch(() => null);
+      .catch((err: unknown) => {
+        console.warn('[ExitCapitalModule] exit-trajectory unavailable', err);
+      });
   // mount-once per dealId
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
