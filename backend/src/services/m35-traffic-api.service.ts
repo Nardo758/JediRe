@@ -53,6 +53,13 @@ export interface M35ActiveEvent {
   msaId: string | null;
   submarketId: string | null;
   magnitudeScore: number;
+  /**
+   * Raw magnitude value from key_events.magnitude_value.
+   * For multifamily_delivery / multifamily_permit events this is the
+   * unit count (e.g. 300 units). Null when the event type does not
+   * carry a numeric magnitude value.
+   */
+  magnitudeValue: number | null;
   announcedDate: Date | null;
   materializationDate: Date | null;
   completionDate: Date | null;
@@ -127,7 +134,7 @@ export class M35TrafficApiService {
       SELECT
         ke.id, ke.name, ke.category, ke.subtype, ke.status,
         ke.lat, ke.lng, ke.msa_id, ke.submarket_id,
-        ke.magnitude_score, ke.confidence,
+        ke.magnitude_score, ke.magnitude_value, ke.confidence,
         ke.announced_date, ke.materialization_date, ke.completion_date,
         COALESCE(ett.baseline_treatment, 'PASS_THROUGH') AS baseline_treatment,
         COALESCE(ett.default_magnitude, 0) AS default_magnitude,
@@ -152,6 +159,7 @@ export class M35TrafficApiService {
       msaId: r.msa_id,
       submarketId: r.submarket_id,
       magnitudeScore: parseFloat(r.magnitude_score || '0.5'),
+      magnitudeValue: r.magnitude_value != null ? parseFloat(r.magnitude_value) : null,
       confidence: parseFloat(r.confidence || '0.7'),
       announcedDate: r.announced_date ? new Date(r.announced_date) : null,
       materializationDate: r.materialization_date ? new Date(r.materialization_date) : null,

@@ -89,6 +89,13 @@ export interface M35TrajectorySignals {
    */
   absorptionDragFactor: number;
 
+  /**
+   * Total competing units from multifamily_delivery events (sum of magnitude_value).
+   * Null when no delivery events carry a known unit count — the fallback
+   * score-based heuristic is used in that case.
+   */
+  competingUnits: number | null;
+
   /** Number of active multifamily_delivery events found within 5mi. */
   competingDeliveryCount: number;
 
@@ -156,10 +163,13 @@ export async function fetchM35TrajectorySignals(
         `absorptionDrag=${absorptionDragFactor.toFixed(3)}`,
     );
 
+    const competingUnits = computeCompetingUnits(deliveryEvents);
+
     return {
       adjustedExitCapRate,
       pipelineSignal,
       absorptionDragFactor,
+      competingUnits,
       competingDeliveryCount: deliveryEvents.length,
       competingDeliveryConfidence,
     };
@@ -213,6 +223,9 @@ export function buildAbsorptionSpikeEvent(
     description:
       `Competing supply drag: ${signals.competingDeliveryCount} active ` +
       `multifamily_delivery event(s) within 5mi (M35 key_events). ` +
+      (signals.competingUnits != null
+        ? `${signals.competingUnits} competing units. `
+        : '') +
       `Drag factor: ${(signals.absorptionDragFactor * 100).toFixed(1)}%.`,
     value: Math.round(dragValue * 100) / 100,
     deltaPct: null,
@@ -225,33 +238,49 @@ export function buildAbsorptionSpikeEvent(
 // ─── Internal Helpers ────────────────────────────────────────────────────────
 
 /**
+ * Sum the real unit counts (magnitude_value) from competing delivery events.
+ * Returns null when none of the events carry a known unit count — this signals
+ * callers to fall back to the score-based heuristic rather than treating the
+ * total as zero.
+ */
+function computeCompetingUnits(
+  deliveryEvents: M35ActiveEvent[],
+): number | null {
+  const withUnits = deliveryEvents.filter(e => e.magnitudeValue != null);
+  if (withUnits.length === 0) return null;
+  return withUnits.reduce((sum, e) => sum + (e.magnitudeValue as number), 0);
+}
+
+/**
  * Compute the fractional Y1 absorption drag from competing delivery events.
  *
- * A single max-magnitude event (magnitudeScore = 1.0) produces a 15% drag.
- * Aggregate drag is capped at 25%.
+ * Primary path (when actual unit counts are available):
+ *   drag = competingUnits / subjectUnits, capped at MAX_ABSORPTION_DRAG (25%).
+ *   e.g. 300 competing units vs 200-unit subject → 150% raw → capped at 25%.
  *
- * When subject unit count is known, drag is modulated by relative size:
- * a 100-unit competitor against a 300-unit subject has 1/3 the impact
- * of a 100-unit competitor against a 100-unit subject.
+ * Fallback path (when magnitude_value is absent for all events, or subjectUnits
+ * is unknown):
+ *   drag = sum(magnitudeScore) × 0.15, capped at 25%.
+ *   This preserves backward compatibility for events without a unit count.
  */
 function computeAbsorptionDrag(
   deliveryEvents: M35ActiveEvent[],
   subjectUnits?: number | null,
 ): number {
+  const MAX_DRAG = 0.25;
+
   if (deliveryEvents.length === 0) return 0;
 
-  const totalMagnitude = deliveryEvents.reduce(
-    (sum, e) => sum + e.magnitudeScore,
-    0,
-  );
+  const competingUnits = computeCompetingUnits(deliveryEvents);
 
-  const rawDrag = Math.min(0.25, totalMagnitude * 0.15);
-
-  if (subjectUnits && subjectUnits > 0) {
-    return Math.min(0.25, rawDrag * (100 / Math.max(100, subjectUnits)));
+  // Primary: ratio of competing units to subject units
+  if (competingUnits != null && subjectUnits && subjectUnits > 0) {
+    return Math.min(MAX_DRAG, competingUnits / subjectUnits);
   }
 
-  return rawDrag;
+  // Fallback: score-based heuristic (no real unit counts available)
+  const totalScore = deliveryEvents.reduce((sum, e) => sum + e.magnitudeScore, 0);
+  return Math.min(MAX_DRAG, totalScore * 0.15);
 }
 
 function safeDefaults(): M35TrajectorySignals {
@@ -259,6 +288,7 @@ function safeDefaults(): M35TrajectorySignals {
     adjustedExitCapRate: EXIT_CAP_BASELINE,
     pipelineSignal: 0,
     absorptionDragFactor: 0,
+    competingUnits: null,
     competingDeliveryCount: 0,
     competingDeliveryConfidence: 1.0,
   };
