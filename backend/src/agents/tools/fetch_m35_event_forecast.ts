@@ -46,10 +46,44 @@ const OutputSchema = z.object({
   note: z.string().optional(),
 });
 
-// Adapter: map ke.subtype (source per W-01 mapping) to output impact_type enum.
-// Uses ke.category as the signal when subtype doesn't directly encode impact direction.
+// Adapter: map ke.subtype (W-01 source) to output impact_type enum.
+// Explicit subtype map covers known taxonomy values; category fallback covers future subtypes.
 type ImpactType = z.infer<typeof EventImpactSchema>['impact_type'];
+const SUBTYPE_IMPACT: Record<string, ImpactType> = {
+  // EMPLOYMENT
+  MAJOR_EMPLOYER_ARRIVAL:    'occupancy_boost',
+  PLANT_OPENING:             'occupancy_boost',
+  EMPLOYER_EXPANSION:        'occupancy_boost',
+  MAJOR_EMPLOYER_DEPARTURE:  'risk',
+  PLANT_CLOSURE:             'risk',
+  EMPLOYER_CONTRACTION:      'risk',
+  // INFRASTRUCTURE
+  TRANSIT_LINE_OPENING:      'absorption_acceleration',
+  HIGHWAY_EXPANSION:         'absorption_acceleration',
+  STADIUM_ARENA:             'absorption_acceleration',
+  MIXED_USE_DEVELOPMENT:     'absorption_acceleration',
+  // MARKET_STRUCTURE / supply
+  MULTIFAMILY_DELIVERY:      'risk',
+  SUPPLY_PIPELINE_SHOCK:     'risk',
+  // MACRO_DEMOGRAPHIC
+  POPULATION_INFLUX:         'rent_premium',
+  DEMOGRAPHIC_SHIFT:         'rent_premium',
+  // REGULATORY_POLICY
+  STR_REGULATION_BAN:        'rent_premium',  // removes competing STR supply → LTR benefit
+  ZONING_UPZONE:             'absorption_acceleration',
+  RENT_CONTROL_ENACTED:      'risk',
+  MORATORIUM:                'risk',
+  // DISASTER_DISRUPTION
+  HURRICANE_NAMED_STORM:     'risk',
+  WILDFIRE:                  'risk',
+  FLOOD_EVENT:               'risk',
+};
+
 function resolveImpactType(subtype: string | null, category: string | null): ImpactType {
+  if (subtype && SUBTYPE_IMPACT[subtype]) {
+    return SUBTYPE_IMPACT[subtype];
+  }
+  // Category fallback for subtypes not yet in the explicit map
   switch (category) {
     case 'EMPLOYMENT':          return 'occupancy_boost';
     case 'TECHNOLOGY_INDUSTRY': return 'occupancy_boost';
@@ -62,10 +96,11 @@ function resolveImpactType(subtype: string | null, category: string | null): Imp
   }
 }
 
-// Adapter: map ef.confidence (numeric 0–1, per W-01 mapping) to confidence enum.
+// Adapter: map ef.confidence (numeric 0–1, W-01 source) to confidence enum.
 type ConfidenceLevel = z.infer<typeof EventImpactSchema>['confidence'];
-function resolveConfidence(efConf: string | null, keConf: string | null): ConfidenceLevel {
-  const v = parseFloat((efConf ?? keConf) ?? '0.5');
+function resolveConfidence(efConf: string | null): ConfidenceLevel {
+  if (efConf == null) return 'low';
+  const v = parseFloat(efConf);
   return v >= 0.75 ? 'high' : v >= 0.50 ? 'medium' : 'low';
 }
 
@@ -84,8 +119,8 @@ export const fetchM35EventForecastTool: ToolDefinition<
 
   execute: async (input, ctx) => {
     try {
-      // Resolve deal location: submarket_id / msa_id for canonical key_events filter;
-      // lat/lng retained as fallback for deals not yet submarket-tagged.
+      // Resolve deal location: submarket_id / msa_id (canonical key_events filter);
+      // lat/lng retained as Haversine fallback for deals not yet submarket-tagged.
       const locResult = await query(
         `SELECT
            d.submarket_id,
@@ -139,7 +174,7 @@ export const fetchM35EventForecastTool: ToolDefinition<
         : input.horizon_months <= 30 ? 24
         : 36;
 
-      // Build the location WHERE clause dynamically.
+      // Build location WHERE clause.
       // Primary: submarket_id / msa_id match (no distance computation needed).
       // Fallback: Haversine on ke.lat/ke.lng when both geo-id fields are absent.
       const params: unknown[] = [horizonDate.toISOString(), windowMonths];
@@ -178,10 +213,12 @@ export const fetchM35EventForecastTool: ToolDefinition<
       //   LEFT JOIN event_forecasts ef
       //     ON ef.event_id = ke.id AND ef.status = 'active' AND ef.window_months = $windowMonths
       //
-      // Column mapping (W-01):
-      //   impact_type      ← ke.subtype  (adapter: resolveImpactType)
-      //   impact_magnitude ← ef.point_estimate (fallback: ke.magnitude_score × 0.01)
-      //   confidence       ← ef.confidence (adapter: resolveConfidence)
+      // W-01 column mapping:
+      //   event_type (free string) ← ke.subtype
+      //   impact_type              ← ke.subtype  (adapter: resolveImpactType)
+      //   impact_magnitude         ← ef.point_estimate (fallback: ke.magnitude_score × 0.01)
+      //   confidence               ← ef.confidence     (adapter: resolveConfidence)
+      //   m35_available            ← true when rows > 0
       const eventsResult = await query(
         `SELECT
            ke.id                                       AS event_id,
@@ -194,14 +231,13 @@ export const fetchM35EventForecastTool: ToolDefinition<
              (ke.magnitude_score * 0.01)::numeric
            )                                           AS impact_magnitude,
            ef.confidence                               AS ef_confidence,
-           ke.confidence                               AS ke_confidence,
            TO_CHAR(ke.materialization_date, 'YYYY-MM') AS start_month,
            TO_CHAR(ke.completion_date,      'YYYY-MM') AS end_month,
            ke.description                              AS notes
          FROM key_events ke
          LEFT JOIN event_forecasts ef
-           ON ef.event_id     = ke.id
-           AND ef.status      = 'active'
+           ON ef.event_id      = ke.id
+           AND ef.status       = 'active'
            AND ef.window_months = $2
          WHERE ke.status NOT IN ('draft', 'cancelled')
            AND ${locationClause}
@@ -223,10 +259,7 @@ export const fetchM35EventForecastTool: ToolDefinition<
           r.raw_category as string | null
         ),
         impact_magnitude: Number(r.impact_magnitude ?? 0),
-        confidence:       resolveConfidence(
-          r.ef_confidence as string | null,
-          r.ke_confidence as string | null
-        ),
+        confidence:       resolveConfidence(r.ef_confidence as string | null),
         start_month:      r.start_month as string | null,
         end_month:        r.end_month   as string | null,
         notes:            r.notes       as string | null,
