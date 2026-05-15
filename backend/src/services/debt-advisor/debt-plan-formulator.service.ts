@@ -17,6 +17,7 @@ import { getM08StrategyOutput, M08StrategyOutput } from './m08-strategy-output.s
 import { applyDebtContextModifier, ContextModification } from './debt-context-modifier.service';
 import { applyDebtAdvisorPlatformDefault } from '../proforma-adjustment.service';
 import { getDealFinancialContext } from '../deal-financial-context.service';
+import { cycleIntelligenceService } from '../cycle-intelligence.service';
 import { logger } from '../../utils/logger';
 import strategyDebtMapping from './strategy-debt-mapping.json';
 
@@ -165,6 +166,12 @@ export interface DebtAdvisorResponse {
     phaseIndex: number;
     fieldsApplied: string[];
   };
+  /**
+   * CE-16 F3 (W-08): Müller-cycle phase at the time of formulation.
+   * Used to apply spread modulation to debt cost basis. Null when
+   * m28_cycle_snapshots is unpopulated or the MSA is not tracked.
+   */
+  cyclePhase?: string | null;
 }
 
 interface CacheEntry {
@@ -623,10 +630,12 @@ async function fetchDealBasicContext(pool: Pool, dealId: string): Promise<{
   state: string;
   units: number;
   holdMonths: number;
+  msaId: string | null;
 }> {
   const result = await pool.query(
     `SELECT budget, city, state, unit_count, hold_period_years,
-            project_type, deal_data
+            project_type, deal_data,
+            deal_data->>'msaId' AS msa_id
      FROM deals
      WHERE id = $1 LIMIT 1`,
     [dealId]
@@ -653,6 +662,7 @@ async function fetchDealBasicContext(pool: Pool, dealId: string): Promise<{
     state: deal.state || '',
     units: deal.unit_count ? parseInt(deal.unit_count) : 0,
     holdMonths,
+    msaId: deal.msa_id || null,
   };
 }
 
@@ -670,6 +680,33 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
     classifyRateEnvironment(),
     getDealFinancialContext(dealId).catch(() => null),
   ]);
+
+  // CE-16 F3 (W-08): Fetch cycle phase for spread modulation.
+  // Non-fatal: null when m28_cycle_snapshots is empty or MSA is untracked.
+  let cyclePhaseSnapshot: Awaited<ReturnType<typeof cycleIntelligenceService.getCyclePhase>> = null;
+  if (dealCtx.msaId) {
+    try {
+      cyclePhaseSnapshot = await cycleIntelligenceService.getCyclePhase(dealCtx.msaId);
+    } catch (cycleErr: any) {
+      logger.warn('[DebtAdvisor] Cycle phase fetch failed — no spread modulation applied', {
+        dealId,
+        msaId: dealCtx.msaId,
+        error: cycleErr.message,
+      });
+    }
+  }
+
+  // Spread modulation table (bps additive to rateEst).
+  // Recession → credit tightens (+25bps); Expansion → credit loosens (-10bps).
+  const CYCLE_SPREAD_DELTA_BPS: Record<string, number> = {
+    recession:   25,
+    hypersupply: 15,
+    recovery:    -5,
+    expansion:  -10,
+  };
+  const cycleSpreadDeltaBps = cyclePhaseSnapshot
+    ? (CYCLE_SPREAD_DELTA_BPS[cyclePhaseSnapshot.lag_phase] ?? 0)
+    : 0;
 
   if (!m08Output) {
     const noStrategyResponse: DebtAdvisorResponse = {
@@ -736,6 +773,24 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
   ]);
 
   const phases = buildPhases(mapping, rateEnv, dealCtx.purchasePrice, holdMonths, dealCtx.state, subStrategyKey, contextMods, productHint, strategyDrivers);
+
+  // CE-16 F3 (W-08): Apply cycle-phase spread modulation to all non-exit phases.
+  // rateEst is adjusted additively; spreadBps metadata updated to reflect the new all-in cost.
+  if (cycleSpreadDeltaBps !== 0) {
+    const spreadDeltaDecimal = cycleSpreadDeltaBps / 10000;
+    for (const ph of phases) {
+      if (ph.product === 'exit_payoff') continue;
+      ph.rateEst = Math.max(0, ph.rateEst + spreadDeltaDecimal);
+      if (ph.spreadBps != null) {
+        ph.spreadBps = Math.max(0, ph.spreadBps + cycleSpreadDeltaBps);
+      }
+    }
+    logger.debug('[DebtAdvisor] Cycle spread modulation applied', {
+      dealId,
+      cyclePhase: cyclePhaseSnapshot?.lag_phase,
+      spreadDeltaBps: cycleSpreadDeltaBps,
+    });
+  }
 
   // Compute DSCR / Debt Yield from T-12 NOI (if available) for each non-exit phase.
   // Falls back to estimate (1% of purchase price/month) when actuals not yet ingested.
@@ -891,6 +946,7 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
     },
     ...(divergence !== undefined ? { divergence } : {}),
     ...(platformDefaultsApplied !== undefined ? { platformDefaultsApplied } : {}),
+    cyclePhase: cyclePhaseSnapshot?.lag_phase ?? null,
   };
 
   advisorCache.set(dealId, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
