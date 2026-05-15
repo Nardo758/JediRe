@@ -23,6 +23,7 @@ import { CoefficientResolverService, type ResolvedCoefficients } from './coeffic
 import { StartingStateService } from './starting-state.service';
 import { CatalogMetricsWiringService } from './catalog-metrics-wiring.service';
 import type { CalibrationMeta, StartingState, LeaseUpState, RedevelopmentState } from '../types/traffic-calibration.types';
+import { m35TrafficApiService } from './m35-traffic-api.service';
 
 export interface DataSourceSignals {
   visibility?: {
@@ -569,6 +570,8 @@ export class TrafficPredictionEngine {
     let traffic_context: DataSourceSignals['traffic_context'];
     let propertyState = 'FL';
     let propertyDirection: 'inbound' | 'outbound' = 'inbound';
+    let propertySubmarketId: string | null = null;
+    let propertyMsaId: string | null = null;
     try {
       const tr = await pool.query(
         `SELECT ptc.primary_adt, ptc.primary_road_name, ptc.primary_road_classification,
@@ -576,7 +579,7 @@ export class TrafficPredictionEngine {
                 ptc.secondary_adt, ptc.secondary_adt_distance_m, ptc.secondary_road_name,
                 ptc.secondary_adt_station_id,
                 ptc.google_realtime_factor, ptc.trend_direction, ptc.trend_pct,
-                p.frontage_type, p.state,
+                p.frontage_type, p.state, p.submarket_id, p.msa_id,
                 sec_adt.road_classification AS secondary_road_classification
          FROM property_traffic_context ptc
          LEFT JOIN properties p ON p.id = ptc.property_id
@@ -587,6 +590,8 @@ export class TrafficPredictionEngine {
       if (tr.rows.length > 0) {
         const t = tr.rows[0];
         propertyState = t.state || 'FL';
+        propertySubmarketId = t.submarket_id || null;
+        propertyMsaId = t.msa_id || null;
         const primaryAdt = t.primary_adt || 0;
         const primaryDistanceM = t.primary_adt_distance_m != null ? Number(t.primary_adt_distance_m) : undefined;
         const primaryClassification = t.primary_road_classification || '';
@@ -851,10 +856,21 @@ export class TrafficPredictionEngine {
         seasonalDeviation = seasonalFactor - 1.0;
       } catch { }
 
+      // 6th weighted component (W-03 / EP-01): M35 event pipeline signal at 15% weight.
+      // Existing 3-component weighted sum rescaled to 85% so total = 100%.
+      let pipelineSignal = 0;
+      if (propertySubmarketId || propertyMsaId) {
+        try {
+          pipelineSignal = await m35TrafficApiService.computeEventPipelineSignal(
+            { submarket: propertySubmarketId ?? undefined, msaId: propertyMsaId ?? undefined },
+            18,
+          );
+        } catch { }
+      }
+
       const trafficTrajectory =
-        digitalMomentum * 0.5 +
-        yoyAadtGrowth * 0.3 +
-        seasonalDeviation * 0.2;
+        (digitalMomentum * 0.5 + yoyAadtGrowth * 0.3 + seasonalDeviation * 0.2) * 0.85 +
+        pipelineSignal * 0.15;
 
       const trendDirection = domainTrend ? domainTrend.direction : 'stable';
 

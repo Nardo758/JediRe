@@ -146,6 +146,8 @@ const CAUSE_METRICS: CauseMetric[] = [
   { metricId: 'demographic_projection', name: 'Demographic Projection', category: 'demand_cause' },
   { metricId: 'wage_growth_trend', name: 'Wage Growth Trend', category: 'demand_cause' },
   { metricId: 'transportation_infra', name: 'Transportation Infrastructure', category: 'demand_cause' },
+  // business_formation_trend feeds M07_traffic channel the same way in_migration_trend does (WS-2)
+  { metricId: 'business_formation_trend', name: 'Business Formation Trend', category: 'demand_cause' },
   { metricId: 'delivery_pipeline', name: 'Multifamily Delivery Pipeline', category: 'supply_cause' },
   { metricId: 'permit_trend', name: 'Permit Trend', category: 'supply_cause' },
   { metricId: 'demolition_rate', name: 'Demolition Rate', category: 'supply_cause' },

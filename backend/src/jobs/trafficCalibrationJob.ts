@@ -82,8 +82,18 @@ export class TrafficCalibrationJob {
       return { buckets_updated: 0, buckets_created: 0, properties_processed: 0, absorption_benchmarks_updated: absorptionUpdated, job_version: this.JOB_VERSION, run_at: runAt };
     }
 
+    // Mechanism A (W-03): Filter out snapshots whose observation date falls within an M35 event
+    // materialization window so event-contaminated observations don't corrupt the Bayesian prior.
+    const filteredSnapshots = await this.filterBaselineExcludedSnapshots(newSnapshots);
+    if (filteredSnapshots.length < newSnapshots.length) {
+      logger.info('[CalibrationJob] Baseline exclusion: filtered event-window snapshots', {
+        original: newSnapshots.length, filtered: filteredSnapshots.length,
+        excluded: newSnapshots.length - filteredSnapshots.length,
+      });
+    }
+
     // Compute evidence from NEW snapshots only
-    const evidenceRows = await this.computeEvidenceFromSnapshots(newSnapshots);
+    const evidenceRows = await this.computeEvidenceFromSnapshots(filteredSnapshots);
     logger.info('[CalibrationJob] Evidence rows from new snapshots', { count: evidenceRows.length });
 
     // Roll up to scope buckets
@@ -602,6 +612,65 @@ export class TrafficCalibrationJob {
     }
 
     return updated;
+  }
+
+  // ============================================================================
+  // Mechanism A: M35 Baseline Exclusion (W-03)
+  // ============================================================================
+
+  /**
+   * Filters calibration snapshots whose observation date falls within an M35 event
+   * materialization window for the same submarket. Prevents event-contaminated
+   * observations (e.g., a stadium opening) from corrupting the Bayesian prior.
+   *
+   * Per EVENT_WIRING_SYNTHESIS.md §W-03: exclusion windows come from
+   * key_events.status IN ('in_progress','materialized') for the submarket.
+   */
+  private async filterBaselineExcludedSnapshots(snapshots: any[]): Promise<any[]> {
+    if (snapshots.length === 0) return snapshots;
+
+    const submarketIds = [
+      ...new Set(snapshots.map((s: any) => s.submarket_id).filter(Boolean) as string[]),
+    ];
+    if (submarketIds.length === 0) return snapshots;
+
+    const eventsResult = await this.pool.query<{
+      submarket_id: string;
+      materialization_date: string;
+      completion_date: string | null;
+    }>(`
+      SELECT ke.submarket_id, ke.materialization_date, ke.completion_date
+      FROM key_events ke
+      WHERE ke.submarket_id = ANY($1)
+        AND ke.status IN ('in_progress', 'materialized')
+        AND ke.materialization_date IS NOT NULL
+      ORDER BY ke.submarket_id, ke.materialization_date
+    `, [submarketIds]);
+
+    if (eventsResult.rows.length === 0) return snapshots;
+
+    // Build submarket → exclusion windows map
+    const windowsBySubmarket = new Map<string, Array<{ start: Date; end: Date }>>();
+    for (const row of eventsResult.rows) {
+      if (!row.submarket_id || !row.materialization_date) continue;
+      const start = new Date(row.materialization_date);
+      const end = row.completion_date
+        ? new Date(row.completion_date)
+        : new Date(start.getTime() + 365 * 24 * 60 * 60 * 1000); // default: 12-month window
+      if (!windowsBySubmarket.has(row.submarket_id)) {
+        windowsBySubmarket.set(row.submarket_id, []);
+      }
+      windowsBySubmarket.get(row.submarket_id)!.push({ start, end });
+    }
+
+    return snapshots.filter((snap: any) => {
+      const subId: string | null = snap.submarket_id;
+      if (!subId) return true;
+      const windows = windowsBySubmarket.get(subId);
+      if (!windows || windows.length === 0) return true;
+      const snapDate = new Date(snap.snapshot_date);
+      return !windows.some(w => snapDate >= w.start && snapDate <= w.end);
+    });
   }
 
   // ============================================================================
