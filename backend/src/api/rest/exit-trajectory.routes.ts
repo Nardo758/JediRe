@@ -102,10 +102,15 @@ router.get('/:dealId/exit-trajectory', async (req, res) => {
       }
     }
 
-    // 3. Buyer pressure — latest JEDI demand sub-score for this deal.
-    //    demand_score from jedi_score_history is already 0-100.
-    const jediRes = await pool.query<{ demand_score: string | null }>(
-      `SELECT demand_score
+    // 3. Buyer pressure — M07-derived position_score from jedi_score_history.
+    //    position_score is computed by calculateTrafficContributionToJEDI()
+    //    from four M07 traffic signals: T-01 (walk-in volume → positionAdj),
+    //    T-04 (correlation signal: HIDDEN_GEM/VALIDATED/HYPE_CHECK/DEAD_ZONE),
+    //    T-07 (8-week trajectory trend direction), T-09 (competitive share).
+    //    It therefore directly reflects M07 demand/absorption intelligence
+    //    rather than the blended JEDI demand sub-score.
+    const jediRes = await pool.query<{ position_score: string | null }>(
+      `SELECT position_score
        FROM jedi_score_history
        WHERE deal_id = $1
        ORDER BY created_at DESC
@@ -113,12 +118,13 @@ router.get('/:dealId/exit-trajectory', async (req, res) => {
       [dealId]
     );
 
-    const rawDemand = jediRes.rows[0]?.demand_score;
+    const rawDemand = jediRes.rows[0]?.position_score;
     const jediDemandScore: number | null = rawDemand != null
       ? Math.min(100, Math.max(0, parseFloat(rawDemand) || 0))
       : null;
 
-    // Broadcast single-point demand score across all 10 years.
+    // Broadcast single-point M07 position score across all 10 years.
+    // Year-by-year M07 calibration (demand trajectory per window) is post-W-10 scope.
     const buyerPressureByYear: (number | null)[] = [null];
     for (let y = 1; y <= 10; y++) {
       buyerPressureByYear.push(jediDemandScore);
@@ -133,7 +139,7 @@ router.get('/:dealId/exit-trajectory', async (req, res) => {
       metadata: {
         submarketId: submarketId ?? null,
         hasLiveSupplyData,
-        hasLiveDemandData: jediDemandScore !== null,
+        hasLiveM07Data: jediDemandScore !== null,
       },
     });
   } catch (err) {

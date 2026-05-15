@@ -61,12 +61,12 @@ interface Quarter {
 }
 
 interface RSSBreakdown {
-  rss: number;
-  mw: number;  // Market Window (35%)
-  re: number;  // Rate Environment (25%)
-  sp: number;  // Supply Position (20%)
-  or: number;  // Operational Readiness (15%)
-  bp: number;  // Buyer Pressure (5%)
+  rss: number | null;       // composite (null until D5 aggregation is wired)
+  mw: number | null;  // Market Window (35%)
+  re: number | null;  // Rate Environment (25%)
+  sp: number | null;  // Supply Position (20%) — W-10: live from M35 pipeline
+  or: number | null;  // Operational Readiness (15%)
+  bp: number | null;  // Buyer Pressure (5%)  — W-10: live from M07-via-JEDI
 }
 
 interface ExitReturns {
@@ -794,8 +794,8 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   // these signals. Downstream dispatches are responsible for wiring:
   //   - rentGrowth / capRate: from proforma_assumptions + the LIUS
   //     exit cap trajectory once D2/D3 land
-  //   - supply:               from M07 traffic supply intelligence +
-  //                            M35 multifamily_delivery events (D4)
+  //   - supply:               W-10 WIRED — M35 multifamily_delivery events
+  //                            via /exit-trajectory endpoint (D4 partial)
   //   - treasury10y:          from /api/v1/rates/history (already live)
   //   - rss:                  composite of the above + Debt module's
   //                            rate environment classification (D5)
@@ -807,19 +807,61 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const live10yHistory: (number | null)[] | null = null; // TODO: wire to /api/v1/rates/history
   const liveCapTrajectory: (number | null)[] | null = null; // TODO: wire to proforma_assumptions.exit_cap_current + LIUS
 
+  // W-10 (CE-12): Fetch M35 supply pressure + M07 buyer pressure from
+  // /exit-trajectory.  supplyPressureByYear is used for chartSeries.supply
+  // and rssData.sp; buyerPressureByYear feeds rssData.bp.
+  const [trajectoryData, setTrajectoryData] = useState<{
+    supplyPressureByYear: (number | null)[];
+    buyerPressureByYear: (number | null)[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient
+      .get(`/api/v1/deals/${dealId}/exit-trajectory`)
+      .then(res => {
+        if (res.data?.success) {
+          setTrajectoryData({
+            supplyPressureByYear: res.data.supplyPressureByYear,
+            buyerPressureByYear: res.data.buyerPressureByYear,
+          });
+        }
+      })
+      .catch(() => null);
+  // mount-once per dealId
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealId]);
+
+  // Expand annual supply pressure (Y1-Y10) to quarterly for convergence chart.
+  // Each annual value spans 4 quarters starting at NOW_IDX.
+  // Supply pressure → supply position: supplyPos = max(30, 85 - pressure).
+  const supplyQuarterly = useMemo((): (number | null)[] => {
+    const arr: (number | null)[] = Array.from({ length: TOTAL_Q }, () => null);
+    if (!trajectoryData) return arr;
+    for (let y = 1; y <= 10; y++) {
+      const pressure = trajectoryData.supplyPressureByYear[y];
+      if (pressure == null) continue;
+      const supplyScore = Math.max(30, 85 - pressure);
+      for (let q = 0; q < 4; q++) {
+        const qIdx = NOW_IDX + (y - 1) * 4 + q;
+        if (qIdx < TOTAL_Q) arr[qIdx] = supplyScore;
+      }
+    }
+    return arr;
+  }, [trajectoryData]);
+
   const chartSeries: ConvergenceChart21Series = useMemo(() => {
     const empty = (): (number | null)[] => Array.from({ length: TOTAL_Q }, () => null);
     return {
       rentGrowth:  empty(),
       capRate:     liveCapTrajectory ?? empty(),
-      supply:      empty(),
+      supply:      supplyQuarterly,          // W-10: live from /exit-trajectory (M35)
       treasury10y: live10yHistory ?? empty(),
       rss:         empty(),
     };
-  // Recompute when any wired live source updates. Today none are wired
-  // so the series are stable; this dep list is here for the D2/D4 wiring.
+  // Recompute when any wired live source updates.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dealModule.financial?.lastUpdated, dealModule.market?.lastUpdated]);
+  }, [dealModule.financial?.lastUpdated, dealModule.market?.lastUpdated, supplyQuarterly]);
 
   const hasAnyLiveProjection = useMemo(() => {
     return (
@@ -1059,23 +1101,33 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const loanAmt = totalBasis * (stack.sr.pct / 100);
   const annualDS = Math.round(loanAmt * (stack.sr.rate / 100));
 
-  // RSS data for selected exit quarter. D1: a single null source means
-  // the whole breakdown is null — UI renders "—" everywhere rather
-  // than substituting a synthetic 50.
+  // RSS data for selected exit quarter.
+  // D1: composite rss is null until D5 wires the full aggregation.
+  // W-10: sp (Supply Position) and bp (Buyer Pressure) are live once
+  // /exit-trajectory responds — rssData is non-null when either is available.
   const selRss = chartSeries.rss[NOW_IDX + selectedFwd];
-  const rssData: RSSBreakdown | null = selRss == null ? null : {
-    rss: selRss,
-    // RSS sub-components (mw / re / sp / or / bp) are computed
-    // upstream from the same null-aware sources as the composite.
-    // Until that pipeline is wired they remain null on the breakdown
-    // type — RSSBreakdownCards renders "—" per cell.
-    mw: 0, re: 0, sp: 0, or: 0, bp: 0,
-  };
+  const selectedYear = Math.max(1, Math.min(10, Math.floor(selectedFwd / 4) + 1));
+  const liveSp: number | null = (() => {
+    const p = trajectoryData?.supplyPressureByYear?.[selectedYear];
+    return p != null ? Math.max(30, 85 - p) : null;
+  })();
+  const liveBp: number | null = trajectoryData?.buyerPressureByYear?.[selectedYear] ?? null;
 
-  // RSS verdict
-  const rssColor = rssData == null ? '#9CA3AF'
+  const rssData: RSSBreakdown | null = (selRss == null && liveSp == null && liveBp == null)
+    ? null
+    : {
+      rss:  selRss ?? null,      // null until D5; sub-scores may be live sooner
+      mw:   null,                // pending D2/D4 wiring
+      re:   null,                // pending D5 rate-environment wiring
+      sp:   liveSp,              // W-10: live from M35 multifamily_delivery
+      or:   null,                // pending operational readiness wiring
+      bp:   liveBp,              // W-10: live from M07 position_score
+    };
+
+  // RSS verdict — only meaningful when composite rss is live
+  const rssColor = (rssData == null || rssData.rss == null) ? '#9CA3AF'
     : rssData.rss >= 85 ? '#68D391' : rssData.rss >= 70 ? '#63B3ED' : rssData.rss >= 55 ? '#F6E05E' : '#FC8181';
-  const rssVerdict = rssData == null ? '—'
+  const rssVerdict = (rssData == null || rssData.rss == null) ? '—'
     : rssData.rss >= 85 ? 'Strong sell window' : rssData.rss >= 70 ? 'Favorable' : rssData.rss >= 55 ? 'Neutral' : 'Weak — hold';
 
   return (
@@ -1109,7 +1161,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
             { label: 'EXIT', value: Q_LABELS[NOW_IDX + selectedFwd]?.label ?? '—', color: '#68D391' },
             { label: 'IRR', value: ret == null ? '—' : `${ret.irr.toFixed(1)}%`, color: ret == null ? '#9CA3AF' : ret.irr >= 15 ? '#68D391' : '#F6E05E' },
             { label: 'EM',  value: ret == null ? '—' : `${ret.em.toFixed(2)}x`, color: ret == null ? '#9CA3AF' : '#63B3ED' },
-            { label: `RSS`, value: rssData == null ? '—' : `${rssData.rss} — ${rssVerdict}`, color: rssColor },
+            { label: `RSS`, value: (rssData == null || rssData.rss == null) ? '—' : `${rssData.rss} — ${rssVerdict}`, color: rssColor },
           ].map((m) => (
             <div key={m.label} style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
               <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 0.8, color: 'rgba(232,230,225,0.25)', fontFamily: "'JetBrains Mono'" }}>{m.label}</span>
@@ -1142,7 +1194,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   </div>
                   {optimalFwd != null && selectedFwd !== optimalFwd && (
                     <div style={{ fontSize: 9, color: '#F6E05E', fontFamily: "'JetBrains Mono'" }}>
-                      Yours: {Q_LABELS[NOW_IDX + selectedFwd]?.label} (RSS {rssData == null ? '—' : rssData.rss} vs {chartSeries.rss[NOW_IDX + optimalFwd] ?? '—'})
+                      Yours: {Q_LABELS[NOW_IDX + selectedFwd]?.label} (RSS {(rssData == null || rssData.rss == null) ? '—' : rssData.rss} vs {chartSeries.rss[NOW_IDX + optimalFwd] ?? '—'})
                     </div>
                   )}
                 </div>
