@@ -77,6 +77,10 @@ function parsePositiveDollar(s: string): number | null {
   const n = parseFloat(cleaned);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
+/** Format a number for display inside an editable input (commas, no $ sign). */
+function fmtInputNum(n: number): string {
+  return new Intl.NumberFormat('en-US').format(Math.round(n));
+}
 /** Parse a user-typed percentage string. "5.5" or "5.5%" → 0.055. Returns null if non-positive or NaN. */
 function parsePctDecimal(s: string): number | null {
   if (!s) return null;
@@ -191,7 +195,7 @@ function OverrideInput({
         fontFamily: MONO, fontSize: 9, fontWeight: 600,
         color: value ? TEAL : BT.text.muted,
         background: BT.bg.input,
-        border: `1px solid ${TEAL}55`,
+        border: `1px solid ${TEAL}99`,
         padding: '3px 6px', width,
         textAlign: 'right',
         outline: 'none',
@@ -484,10 +488,15 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   // edit; onF9Refresh handlers below trigger a manual sync after a successful
   // save by stashing the new server value into local state directly.
   const hydratedDealId = useRef<string | null>(null);
+  // Tracks the last value explicitly saved via PATCH /purchase-price so that
+  // the save guard compares against the confirmed server write rather than the
+  // fallback-resolved value (which can include deals.budget from deal creation,
+  // causing the guard to silently skip the first explicit save).
+  const lastSavedPurchasePrice = useRef<number | null>(null);
   useEffect(() => {
     if (!fin || hydratedDealId.current === props.dealId) return;
     hydratedDealId.current = props.dealId;
-    if (fin.capitalStack?.purchasePrice != null) setPurchasePrice(String(fin.capitalStack.purchasePrice));
+    if (fin.capitalStack?.purchasePrice != null) setPurchasePrice(fmtInputNum(fin.capitalStack.purchasePrice));
     if (fin.assumptions?.holdYears != null)      setHoldYears(String(fin.assumptions.holdYears));
     if (fin.assumptions?.exitCap != null)        setExitCap((fin.assumptions.exitCap * 100).toFixed(2));
     if (fin.closeDate)                           setCloseDate(fin.closeDate);
@@ -503,11 +512,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if ((fin.assumptions as any)?.sellingCostsPct != null) setSellingCosts(((fin.assumptions as any).sellingCostsPct * 100).toFixed(2));
     // Closing cost sub-lines
     const uovr = (fin.sourcesUses?.userOverrides ?? {}) as Record<string, number | null>;
-    if (uovr.closingCostsBrokerFee  != null) setCloseBrokerFee(String(Math.round(uovr.closingCostsBrokerFee)));
-    if (uovr.closingCostsLegalDD    != null) setCloseLegalDD(String(Math.round(uovr.closingCostsLegalDD)));
-    if (uovr.closingCostsLenderOrig != null) setCloseLender(String(Math.round(uovr.closingCostsLenderOrig)));
-    if (uovr.closingCostsReserves   != null) setCloseReserves(String(Math.round(uovr.closingCostsReserves)));
-    if (uovr.closingCostsOther      != null) setCloseOther(String(Math.round(uovr.closingCostsOther)));
+    if (uovr.closingCostsBrokerFee  != null) setCloseBrokerFee(fmtInputNum(uovr.closingCostsBrokerFee));
+    if (uovr.closingCostsLegalDD    != null) setCloseLegalDD(fmtInputNum(uovr.closingCostsLegalDD));
+    if (uovr.closingCostsLenderOrig != null) setCloseLender(fmtInputNum(uovr.closingCostsLenderOrig));
+    if (uovr.closingCostsReserves   != null) setCloseReserves(fmtInputNum(uovr.closingCostsReserves));
+    if (uovr.closingCostsOther      != null) setCloseOther(fmtInputNum(uovr.closingCostsOther));
   }, [props.dealId, fin]);
 
   // ── basis.changed subscriber ─────────────────────────────────────────────
@@ -662,7 +671,13 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   async function savePurchasePrice() {
     const num = parsePositiveDollar(purchasePrice);
     if (num == null) return;
-    if (num === purchasePriceResolved) return;
+    // Guard: skip re-save only when we have already explicitly saved this exact
+    // value this session. We intentionally do NOT compare against
+    // purchasePriceResolved because that value can come from the deals.budget
+    // fallback (set at deal creation) — which would silently block the first
+    // explicit save of deal_data.purchase_price when the user enters the same
+    // number that happens to match the pipeline budget.
+    if (lastSavedPurchasePrice.current != null && num === lastSavedPurchasePrice.current) return;
     try {
       // Routes through the dealStore action which dual-writes both
       // deal_data.purchase_price (financial composer) and deals.budget
@@ -670,6 +685,8 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
       // `basis.changed`. The basis.changed subscriber below handles the
       // F9 refresh — no direct onF9Refresh call needed here.
       await setPurchasePriceStore(props.dealId, num);
+      lastSavedPurchasePrice.current = num;
+      setPurchasePrice(fmtInputNum(num));
     } catch (e) {
       console.error('[DealTerms] Save purchase price failed:', e instanceof Error ? e.message : e);
     }
