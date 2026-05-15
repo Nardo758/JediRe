@@ -408,13 +408,22 @@ async function routeRentRoll(pool: Pool, data: RentRollData, dealId: string, sou
     }, null);
     const vacancyPct = totalUnits > 0 ? vacantCount / totalUnits : null;
 
+    // other_income_monthly is set by the rent-roll parser on the data object
+    // (e.g. parking, pet_rent, storage, rubs, fees, etc.) even though it is
+    // not declared in the RentRollData TypeScript interface.
+    const otherIncomeMonthly = (data as unknown as { other_income_monthly?: Record<string, number> }).other_income_monthly;
+    const otherIncomeTotal = otherIncomeMonthly
+      ? Object.values(otherIncomeMonthly).reduce((s, v) => s + (v ?? 0), 0)
+      : null;
+
     setImmediate(() => {
       emitExtractionEvents(pool, {
         dealId,
         sourceType: 'RENT_ROLL',
         fields: {
-          gpr:        totalGprMonthly,   // monthly total; seeder annualizes
-          vacancy_pct: vacancyPct,
+          gpr:               totalGprMonthly,   // monthly total; seeder annualizes
+          vacancy_pct:       vacancyPct,
+          other_income_total: otherIncomeTotal,  // monthly; sum of other_income_monthly categories
         },
       }).catch(() => {});
     });

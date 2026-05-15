@@ -52,14 +52,20 @@ GROUP BY 1, 2
 ORDER BY 1, 2;
 ```
 
-**Expected post-Phase 2 deploy (Task #698):** All four source types are wired.
+**Expected post-Phase 2 deploy (Task #698 + #700):** All four source types are wired.
 Rows should appear within minutes of document upload:
 - **OM** — gpr, vacancy_pct, real_estate_tax, contract_services, payroll,
   repairs_maintenance, turnover, marketing, utilities, insurance,
   management_fee_pct, noi, other_income_total
-- **T12** — same 12 fields (annualized from deal_monthly_actuals)
-- **RENT_ROLL** — gpr, vacancy_pct
-- **TAX_BILL** — real_estate_tax
+- **T12** — gpr, vacancy_pct, real_estate_tax, contract_services, payroll,
+  repairs_maintenance, turnover, marketing, utilities, insurance,
+  management_fee_pct, noi (annualized from deal_monthly_actuals)
+- **RENT_ROLL** — gpr, vacancy_pct, other_income_total
+  (other_income_total = monthly sum of parking, pet_rent, storage, rubs,
+  fees, insurance_admin, concessions_other, other categories from the
+  rent-roll parser; null when no charge-code data was extracted)
+- **TAX_BILL** — real_estate_tax (totalAnnualTax from the tax bill;
+  emitted only when totalAnnualTax is non-null)
 
 ```sql
 -- Check a specific deal's extraction event timeline
