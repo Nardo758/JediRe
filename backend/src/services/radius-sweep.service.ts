@@ -67,6 +67,21 @@ const MF_ZONING_CONDITIONS = `
   )
 `;
 
+export interface SweepResult {
+  parcels: SweptParcel[];
+  /** True when the result set was capped at MAX_PARCELS. Ring metrics may be
+   *  understated; the operator should ingest more parcel data for this area. */
+  truncated: boolean;
+  totalCount: number;
+}
+
+/**
+ * Hard cap per sweep. Set high enough to cover dense 5-mile metros while
+ * bounding query cost.  The `truncated` flag is always returned so callers
+ * can expose an explicit warning — there is no silent data loss.
+ */
+const MAX_PARCELS = 5000;
+
 export class RadiusSweepService {
   constructor(private pool: Pool) {}
 
@@ -77,14 +92,13 @@ export class RadiusSweepService {
    * ring membership.  A bounding-box pre-filter reduces the rows the
    * geography expression evaluates.
    *
-   * Limited to MAX_PARCELS results to bound query cost.
+   * When results exceed MAX_PARCELS the response is capped and `truncated`
+   * is set to true — callers must surface this explicitly; no silent loss.
    */
-  async sweep(lat: number, lng: number, radiusMiles: number): Promise<SweptParcel[]> {
+  async sweep(lat: number, lng: number, radiusMiles: number): Promise<SweepResult> {
     const radiusM = radiusMiles * MI_TO_METERS;
     const latOffset = radiusM * DEG_PER_METER_LAT;
     const lngOffset = latOffset / Math.max(0.01, Math.cos((lat * Math.PI) / 180));
-
-    const MAX_PARCELS = 1500;
 
     try {
       const result = await this.pool.query<{
@@ -100,6 +114,7 @@ export class RadiusSweepService {
         centroid_lng: string;
         distance_m: string;
         raw_record: Record<string, unknown> | null;
+        total_count: string;
       }>(
         `SELECT
            parcel_id,
@@ -116,7 +131,8 @@ export class RadiusSweepService {
              ST_SetSRID(ST_MakePoint(centroid_lng, centroid_lat), 4326)::geography,
              ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
            ) AS distance_m,
-           raw_record
+           raw_record,
+           COUNT(*) OVER() AS total_count
          FROM county_parcels
          WHERE centroid_lat BETWEEN $1 - $3 AND $1 + $3
            AND centroid_lng BETWEEN $2 - $4 AND $2 + $4
@@ -133,7 +149,10 @@ export class RadiusSweepService {
         [lat, lng, latOffset, lngOffset, radiusM, MAX_PARCELS],
       );
 
-      return result.rows.map((r) => ({
+      const totalCount = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
+      const truncated = totalCount > MAX_PARCELS;
+
+      const parcels: SweptParcel[] = result.rows.map((r) => ({
         parcelId: r.parcel_id,
         address: r.site_address ?? null,
         zoningCode: r.county_zoning_code ?? null,
@@ -147,11 +166,13 @@ export class RadiusSweepService {
         distanceMiles: parseFloat(r.distance_m) / MI_TO_METERS,
         rawRecord: r.raw_record ?? {},
       }));
+
+      return { parcels, truncated, totalCount };
     } catch (err) {
       logger.warn('[RadiusSweepService] sweep query failed', {
         lat, lng, radiusMiles, err: (err as Error).message,
       });
-      return [];
+      return { parcels: [], truncated: false, totalCount: 0 };
     }
   }
 }

@@ -18,11 +18,8 @@ interface ForwardSupplyRing {
   vacantUnits: number;
   underbuiltUnits: number;
   developedCount: number;
-  parcelsByClass: {
-    vacant: number;
-    underbuilt: number;
-    developed: number;
-  };
+  parcelsByClass: { vacant: number; underbuilt: number; developed: number };
+  staticByClass: { vacant: number; underbuilt: number; developed: number };
 }
 
 interface ForwardSupplyParcel {
@@ -52,6 +49,8 @@ interface ForwardSupplyResponse {
     parcelDataAvailable: boolean;
     municipality: string | null;
     mfZoningFilter: string;
+    sweepTruncated: boolean;
+    sweepTotalCount: number;
   };
 }
 
@@ -93,6 +92,7 @@ const PLACEHOLDER_RINGS: ForwardSupplyRing[] = [
     underbuiltUnits: 0,
     developedCount: 0,
     parcelsByClass: { vacant: 0, underbuilt: 0, developed: 0 },
+    staticByClass: { vacant: 0, underbuilt: 0, developed: 0 },
   },
   {
     radiusMiles: 5,
@@ -102,6 +102,7 @@ const PLACEHOLDER_RINGS: ForwardSupplyRing[] = [
     underbuiltUnits: 0,
     developedCount: 0,
     parcelsByClass: { vacant: 0, underbuilt: 0, developed: 0 },
+    staticByClass: { vacant: 0, underbuilt: 0, developed: 0 },
   },
 ];
 
@@ -132,7 +133,8 @@ function RingCard({ ring, isLoading }: { ring: ForwardSupplyRing; isLoading: boo
         <div style={{ fontFamily: MONO, fontSize: 9, color: TEXT_SECONDARY }}>Loading…</div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+          {/* Row 1: total static capacity + latent summary */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
             <Stat label="STATIC CAPACITY" value={fmt(ring.staticCapacityUnits)} unit="units" color={TEXT_PRIMARY} />
             <Stat
               label="LATENT SUPPLY"
@@ -140,8 +142,22 @@ function RingCard({ ring, isLoading }: { ring: ForwardSupplyRing; isLoading: boo
               unit="units"
               color={totalLatent > 500 ? TEXT_RED : totalLatent > 200 ? TEXT_AMBER : TEXT_GREEN}
             />
-            <Stat label="VACANT" value={fmt(ring.vacantUnits)} unit="units" color={TEXT_GREEN} />
-            <Stat label="UNDERBUILT" value={fmt(ring.underbuiltUnits)} unit="units" color={TEXT_AMBER} />
+          </div>
+
+          {/* Row 2: static capacity broken out by parcel class */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 10,
+            borderTop: `1px solid ${BORDER}`, paddingTop: 8,
+          }}>
+            <Stat label="VACANT CAP" value={fmt(ring.staticByClass.vacant)} unit="u" color={TEXT_GREEN} />
+            <Stat label="UNDERBUILT CAP" value={fmt(ring.staticByClass.underbuilt)} unit="u" color={TEXT_AMBER} />
+            <Stat label="DEVELOPED CAP" value={fmt(ring.staticByClass.developed)} unit="u" color={TEXT_SECONDARY} />
+          </div>
+
+          {/* Row 3: latent detail */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <Stat label="VACANT LATENT" value={fmt(ring.vacantUnits)} unit="units" color={TEXT_GREEN} />
+            <Stat label="UNDERBUILT LATENT" value={fmt(ring.underbuiltUnits)} unit="units" color={TEXT_AMBER} />
           </div>
 
           <div style={{ marginBottom: 6 }}>
@@ -304,6 +320,19 @@ export default function ForwardSupplyTab({ dealId }: Props) {
           background: 'rgba(252,129,129,0.05)', border: `1px solid rgba(252,129,129,0.2)`,
         }}>
           <span style={{ fontFamily: MONO, fontSize: 9, color: TEXT_RED }}>{error}</span>
+        </div>
+      )}
+
+      {data?.metadata?.sweepTruncated && (
+        <div style={{
+          margin: '0 12px 4px', padding: '6px 10px',
+          background: 'rgba(252,129,129,0.05)', border: `1px solid rgba(252,129,129,0.2)`,
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <AlertCircle size={10} style={{ color: TEXT_RED }} />
+          <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_RED }}>
+            SWEEP CAPPED — showing {data.metadata.sweepTotalCount.toLocaleString()} of {data.metadata.sweepTotalCount.toLocaleString()}+ parcels. Ring totals may be understated. Ingest additional parcel data for complete coverage.
+          </span>
         </div>
       )}
 

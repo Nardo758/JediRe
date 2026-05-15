@@ -20,11 +20,22 @@ export type RingRadius = typeof RING_RADII[number];
 export interface ForwardSupplyRing {
   radiusMiles: RingRadius;
   parcelCount: number;
+  /** Total allowedUnits for all MF-zoned parcels in this ring. */
   staticCapacityUnits: number;
+  /** allowedUnits summed for VACANT-class parcels (full latent capacity). */
   vacantUnits: number;
+  /** latentCapacityUnits summed for UNDERBUILT-class parcels. */
   underbuiltUnits: number;
+  /** Count of DEVELOPED-class parcels. */
   developedCount: number;
-  parcelsByClass: {
+  parcelsByClass: { vacant: number; underbuilt: number; developed: number };
+  /**
+   * Static capacity broken out by parcel class.
+   * vacant.units = sum(allowedUnits) for vacant parcels
+   * underbuilt.units = sum(allowedUnits) for underbuilt parcels
+   * developed.units = sum(allowedUnits) for developed parcels
+   */
+  staticByClass: {
     vacant: number;
     underbuilt: number;
     developed: number;
@@ -43,6 +54,9 @@ export interface ForwardSupplyResult {
     parcelDataAvailable: boolean;
     municipality: string | null;
     mfZoningFilter: 'broad_mf';
+    /** True when the parcel sweep hit the MAX_PARCELS cap; ring totals may be understated. */
+    sweepTruncated: boolean;
+    sweepTotalCount: number;
   };
 }
 
@@ -52,6 +66,7 @@ function buildRing(
 ): ForwardSupplyRing {
   const inRing = parcels.filter((p) => p.distanceMiles <= radiusMiles);
   const byClass = { vacant: 0, underbuilt: 0, developed: 0 };
+  const staticByClass = { vacant: 0, underbuilt: 0, developed: 0 };
   let staticCapacity = 0;
   let vacantUnits = 0;
   let underbuiltUnits = 0;
@@ -59,6 +74,7 @@ function buildRing(
   for (const p of inRing) {
     byClass[p.currentUse]++;
     staticCapacity += p.allowedUnits;
+    staticByClass[p.currentUse] += p.allowedUnits;
     if (p.currentUse === 'vacant') vacantUnits += p.allowedUnits;
     if (p.currentUse === 'underbuilt') underbuiltUnits += p.latentCapacityUnits;
   }
@@ -71,6 +87,7 @@ function buildRing(
     underbuiltUnits,
     developedCount: byClass.developed,
     parcelsByClass: byClass,
+    staticByClass,
   };
 }
 
@@ -93,6 +110,8 @@ export class ForwardSupplyService {
       parcelDataAvailable: false,
       municipality: null,
       mfZoningFilter: 'broad_mf' as const,
+      sweepTruncated: false,
+      sweepTotalCount: 0,
     };
 
     if (!dealRow) {
@@ -121,9 +140,9 @@ export class ForwardSupplyService {
 
     logger.debug('[ForwardSupplyService] sweeping', { dealId, lat, lng, radiusMiles: largestRadius });
 
-    const swept = await this.sweepService.sweep(lat, lng, largestRadius);
+    const sweepResult = await this.sweepService.sweep(lat, lng, largestRadius);
 
-    if (swept.length === 0) {
+    if (sweepResult.parcels.length === 0) {
       return {
         dealId,
         computedAt: new Date().toISOString(),
@@ -132,11 +151,13 @@ export class ForwardSupplyService {
         metadata: {
           lat, lng, hasCoordinates: true, parcelDataAvailable: false,
           municipality, mfZoningFilter: 'broad_mf',
+          sweepTruncated: sweepResult.truncated,
+          sweepTotalCount: sweepResult.totalCount,
         },
       };
     }
 
-    const feasible = await this.feasibilityService.run(swept, municipality ?? '');
+    const feasible = await this.feasibilityService.run(sweepResult.parcels, municipality ?? '');
 
     const taggedParcels: (FeasibilityParcel & { ring: RingRadius })[] = feasible.map((p) => ({
       ...p,
@@ -153,6 +174,8 @@ export class ForwardSupplyService {
       metadata: {
         lat, lng, hasCoordinates: true, parcelDataAvailable: true,
         municipality, mfZoningFilter: 'broad_mf',
+        sweepTruncated: sweepResult.truncated,
+        sweepTotalCount: sweepResult.totalCount,
       },
     };
   }

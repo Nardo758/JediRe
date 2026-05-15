@@ -204,16 +204,25 @@ export class BatchFeasibilityService {
     const yearBuilt = rr['year_built'] ?? rr['year_blt'] ?? null;
     const luLower = (landUseCode ?? '').toLowerCase();
 
+    // Determine improvement state from signals — independent of computed zoning capacity
     const isVacant =
       (luLower.includes('vacant') || luLower.includes('unimproved') || luLower === 'v') ||
       (improvedValue === 0 && buildingSf === 0 && !yearBuilt) ||
       (improvedValue > 0 && landValue > 0 && improvedValue / (improvedValue + landValue) < 0.03);
 
-    if (isVacant || allowedUnits === 0) {
+    if (isVacant) {
+      // Parcel is unimproved — full allowedUnits is latent capacity (or 0 if zoning gives none)
       return {
         currentUse: 'vacant',
         latentCapacityUnits: allowedUnits,
       };
+    }
+
+    // Parcel has improvements.  If the zoning envelope yields zero buildable units
+    // (e.g. non-conforming lot, setbacks consume the full lot) treat as developed —
+    // there is existing structure and no additional capacity under current zoning.
+    if (allowedUnits === 0) {
+      return { currentUse: 'developed', latentCapacityUnits: 0 };
     }
 
     let estimatedCurrentUnits = 0;
