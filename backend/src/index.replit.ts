@@ -112,6 +112,7 @@ import uploadRouter from './api/rest/upload.routes';
 import compQueryRouter from './api/rest/comp-query.routes';
 import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
 import proformaRouter from './api/rest/proforma.routes';
+import stabilizedPotentialRouter from './api/rest/stabilized-potential.routes';
 import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
 import adminApiKeyRouter from './api/rest/admin-api-key.routes';
 import entitlementRouter from './api/rest/entitlement.routes';
@@ -472,6 +473,7 @@ app.use('/api/v1/deals', requireAuth, dealValidationRoutes);
 // Phase 11: Unit Mix Propagation
 app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
+app.use('/api/v1/proforma', requireAuth, stabilizedPotentialRouter);
 app.use('/api/v1/proforma', requireAuth, proformaRouter);
 app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/deals', financialDocumentsRoutes);

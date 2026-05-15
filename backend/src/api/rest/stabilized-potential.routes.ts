@@ -56,11 +56,15 @@ interface StabilizedLineItem {
   dominantSource: LayeredValueSource | null;
   alertLevel: AlertLevel;
   isSubtotal: boolean;
+  formatAs?: 'dollar' | 'pct';
+  conflictFlag?: boolean;
+  conflictMultiple?: number;
 }
 
 interface StabilizedPotentialResponse {
   dealId: string;
   modelType: ModelType;
+  devMode: boolean;
   stabilizedYear: number;
   stabilizationCalendarMonth: string;
   monthsToStabilization: number;
@@ -88,6 +92,7 @@ interface LayoutBuildContext {
   dealData: Record<string, any>;
   pool: ReturnType<typeof getPool>;
   dealId: string;
+  modelType: ModelType;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -211,23 +216,46 @@ async function fetchCurrentFinancials(dealId: string, pool: ReturnType<typeof ge
 // ─── Layout Builders ──────────────────────────────────────────────────────────
 
 /**
+ * Apply conflict surfacing to a layout item (spec §5.3).
+ * When |Δ_operator| > |Δ_platform| × 1.5, flag the item amber and attach
+ * conflictFlag + conflictMultiple so the UI can render the warning tooltip.
+ */
+function applyConflictSurfacing(item: StabilizedLineItem): StabilizedLineItem {
+  const { platform, operator } = item.bridge;
+  if (Math.abs(platform) === 0) return item;
+  const multiple = Math.abs(operator) / Math.abs(platform);
+  if (multiple > 1.5) {
+    return {
+      ...item,
+      alertLevel: 'amber',
+      conflictFlag: true,
+      conflictMultiple: Math.round(multiple * 10) / 10,
+    };
+  }
+  return item;
+}
+
+/**
  * Build the full line-item layout for any model type.
  * Uses real engine output for Pro Forma column, real T12 for Current column.
+ * For development deals (model_type === 'development'), Current column is $0
+ * with no bridge decomposition per spec §6.2.
  */
 async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<StabilizedLineItem[]> {
+  const isDevelopment = ctx.modelType === 'development';
   const cur = await fetchCurrentFinancials(ctx.dealId, ctx.pool);
   const sm = stabMonthOutput(ctx.engineResult);
 
-  // Current values
-  const cGpr = cur.gpr > 0 ? cur.gpr : 4_820_000;
-  const cOccupancy = cur.currentOccupancy;
-  const cVacancy = cGpr * Math.max(0, 1 - cOccupancy);
-  const cConcessions = cGpr * (cur.concessionRate || 0.02);
-  const cBadDebt = cur.badDebt > 0 ? cur.badDebt : cGpr * 0.01;
-  const cOtherIncome = cur.otherIncome > 0 ? cur.otherIncome : 145_000;
-  const cOpex = cur.opex > 0 ? cur.opex : cGpr * 0.45;
-  const cEgr = cGpr - cVacancy - cConcessions - cBadDebt + cOtherIncome;
-  const cNoi = cEgr - cOpex;
+  // Current values — development deals have no T12 so Current = $0
+  const cGpr = isDevelopment ? 0 : (cur.gpr > 0 ? cur.gpr : 4_820_000);
+  const cOccupancy = isDevelopment ? 0 : cur.currentOccupancy;
+  const cVacancy = isDevelopment ? 0 : cGpr * Math.max(0, 1 - cOccupancy);
+  const cConcessions = isDevelopment ? 0 : cGpr * (cur.concessionRate || 0.02);
+  const cBadDebt = isDevelopment ? 0 : (cur.badDebt > 0 ? cur.badDebt : cGpr * 0.01);
+  const cOtherIncome = isDevelopment ? 0 : (cur.otherIncome > 0 ? cur.otherIncome : 145_000);
+  const cOpex = isDevelopment ? 0 : (cur.opex > 0 ? cur.opex : cGpr * 0.45);
+  const cEgr = isDevelopment ? 0 : (cGpr - cVacancy - cConcessions - cBadDebt + cOtherIncome);
+  const cNoi = isDevelopment ? 0 : (cEgr - cOpex);
 
   // Pro Forma values (from engine or estimated)
   const pGpr = pfGpr(ctx);
@@ -263,29 +291,35 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
   const noiDelta = pNoi - cNoi;
   const capDelta = (goingInCapRate - exitCapRate) * 100;
 
-  return [
+  const emptyBridge: BridgeDecomposition = { market: 0, platform: 0, operator: 0, capex: 0 };
+
+  const rawItems: StabilizedLineItem[] = [
     {
       key: 'gpr',
       label: 'Gross Potential Rent',
-      current: cGpr,
+      current: isDevelopment ? 0 : cGpr,
       proForma: pGpr,
       delta: gprDelta,
-      driver: cGpr > 0
-        ? `Rent roll burn-off + premium: ${fmt$(cGpr)} → ${fmt$(pGpr)} (${((pGpr / cGpr - 1) * 100).toFixed(1)}%)`
-        : `Full build-out (no current T12)`,
-      bridge: { market: Math.round(gprDelta * 0.18), platform: Math.round(gprDelta * 0.31), operator: Math.round(gprDelta * 0.39), capex: Math.round(gprDelta * 0.12) },
-      dominantSource: cGpr > 0 ? 'rent_roll' : 'platform',
+      driver: isDevelopment
+        ? `Full lease-up to ${fmt$(pGpr)} (ground-up delivery)`
+        : cGpr > 0
+          ? `Rent roll burn-off + premium: ${fmt$(cGpr)} → ${fmt$(pGpr)} (${((pGpr / cGpr - 1) * 100).toFixed(1)}%)`
+          : `Full build-out (no current T12)`,
+      bridge: isDevelopment ? emptyBridge : { market: Math.round(gprDelta * 0.18), platform: Math.round(gprDelta * 0.31), operator: Math.round(gprDelta * 0.39), capex: Math.round(gprDelta * 0.12) },
+      dominantSource: isDevelopment ? 'platform' : (cGpr > 0 ? 'rent_roll' : 'platform'),
       alertLevel: 'green',
       isSubtotal: false,
     },
     {
       key: 'vacancy',
       label: 'Vacancy',
-      current: -cVacancy,
+      current: isDevelopment ? 0 : -cVacancy,
       proForma: -pVacancy,
       delta: vacDelta,
-      driver: `Occupancy recovery: ${(cOccupancy * 100).toFixed(0)}% → ${(pOccupancy * 100).toFixed(0)}%`,
-      bridge: { market: Math.round(vacDelta * 0.15), platform: Math.round(vacDelta * 0.50), operator: Math.round(vacDelta * 0.35), capex: 0 },
+      driver: isDevelopment
+        ? `Lease-up to ${(pOccupancy * 100).toFixed(0)}% stabilized occupancy`
+        : `Occupancy recovery: ${(cOccupancy * 100).toFixed(0)}% → ${(pOccupancy * 100).toFixed(0)}%`,
+      bridge: isDevelopment ? emptyBridge : { market: Math.round(vacDelta * 0.15), platform: Math.round(vacDelta * 0.50), operator: Math.round(vacDelta * 0.35), capex: 0 },
       dominantSource: 'platform',
       alertLevel: 'green',
       isSubtotal: false,
@@ -293,11 +327,11 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
     {
       key: 'concessions',
       label: 'Concessions',
-      current: -cConcessions,
+      current: isDevelopment ? 0 : -cConcessions,
       proForma: -pConcessions,
       delta: concDelta,
-      driver: 'Concession environment normalization',
-      bridge: { market: Math.round(concDelta * 0.30), platform: Math.round(concDelta * 0.55), operator: Math.round(concDelta * 0.15), capex: 0 },
+      driver: isDevelopment ? 'Stabilized concession environment' : 'Concession environment normalization',
+      bridge: isDevelopment ? emptyBridge : { market: Math.round(concDelta * 0.30), platform: Math.round(concDelta * 0.55), operator: Math.round(concDelta * 0.15), capex: 0 },
       dominantSource: 'platform',
       alertLevel: 'green',
       isSubtotal: false,
@@ -305,11 +339,11 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
     {
       key: 'bad_debt',
       label: 'Bad Debt',
-      current: -cBadDebt,
+      current: isDevelopment ? 0 : -cBadDebt,
       proForma: -pBadDebt,
       delta: bdDelta,
-      driver: 'Tenant quality lift post-renovation',
-      bridge: { market: Math.round(bdDelta * 0.10), platform: Math.round(bdDelta * 0.45), operator: Math.round(bdDelta * 0.45), capex: 0 },
+      driver: isDevelopment ? 'New construction tenant base' : 'Tenant quality lift post-renovation',
+      bridge: isDevelopment ? emptyBridge : { market: Math.round(bdDelta * 0.10), platform: Math.round(bdDelta * 0.45), operator: Math.round(bdDelta * 0.45), capex: 0 },
       dominantSource: 'platform',
       alertLevel: 'green',
       isSubtotal: false,
@@ -317,11 +351,11 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
     {
       key: 'other_income',
       label: 'Other Income',
-      current: cur.otherIncome > 0 ? cur.otherIncome : cOtherIncome,
+      current: isDevelopment ? 0 : (cur.otherIncome > 0 ? cur.otherIncome : cOtherIncome),
       proForma: pOtherIncome,
       delta: oiDelta,
       driver: 'RUBS + parking pricing (M08 ancillary)',
-      bridge: { market: Math.round(oiDelta * 0.15), platform: Math.round(oiDelta * 0.40), operator: Math.round(oiDelta * 0.45), capex: 0 },
+      bridge: isDevelopment ? emptyBridge : { market: Math.round(oiDelta * 0.15), platform: Math.round(oiDelta * 0.40), operator: Math.round(oiDelta * 0.45), capex: 0 },
       dominantSource: 'platform',
       alertLevel: 'green',
       isSubtotal: false,
@@ -329,11 +363,11 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
     {
       key: 'egr',
       label: 'Effective Gross Revenue',
-      current: cEgr,
+      current: isDevelopment ? 0 : cEgr,
       proForma: pEgr,
       delta: egrDelta,
-      driver: 'Rent growth + occupancy recovery - concessions',
-      bridge: { market: 0, platform: 0, operator: 0, capex: 0 },
+      driver: isDevelopment ? 'First stabilized year EGR' : 'Rent growth + occupancy recovery - concessions',
+      bridge: emptyBridge,
       dominantSource: null,
       alertLevel: 'green',
       isSubtotal: true,
@@ -341,25 +375,27 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
     {
       key: 'opex',
       label: 'Operating Expenses',
-      current: -cOpex,
+      current: isDevelopment ? 0 : -cOpex,
       proForma: -pOpex,
-      delta: cOpex - pOpex, // positive = expenses decreased (good)
-      driver: 'Inflation + insurance reset (M22 normalization)',
-      bridge: { market: Math.round(Math.abs(pOpex - cOpex) * 0.45), platform: Math.round(Math.abs(pOpex - cOpex) * 0.10), operator: Math.round(Math.abs(pOpex - cOpex) * 0.45), capex: 0 },
-      dominantSource: 't12',
-      alertLevel: pOpex > cOpex * 1.15 ? 'amber' : 'green',
+      delta: isDevelopment ? 0 : (cOpex - pOpex),
+      driver: isDevelopment ? 'Stabilized OpEx build (M22 normalization)' : 'Inflation + insurance reset (M22 normalization)',
+      bridge: isDevelopment ? emptyBridge : { market: Math.round(Math.abs(pOpex - cOpex) * 0.45), platform: Math.round(Math.abs(pOpex - cOpex) * 0.10), operator: Math.round(Math.abs(pOpex - cOpex) * 0.45), capex: 0 },
+      dominantSource: isDevelopment ? 'platform' : 't12',
+      alertLevel: (!isDevelopment && pOpex > cOpex * 1.15) ? 'amber' : 'green',
       isSubtotal: false,
     },
     {
       key: 'noi',
       label: 'Net Operating Income',
-      current: cNoi,
+      current: isDevelopment ? 0 : cNoi,
       proForma: pNoi,
       delta: noiDelta,
-      driver: cNoi > 0
-        ? `${fmt$(noiDelta)} NOI growth — ${((pNoi / cNoi - 1) * 100).toFixed(1)}%`
-        : `First stabilized year NOI: ${fmt$(pNoi)}`,
-      bridge: { market: 0, platform: 0, operator: 0, capex: 0 },
+      driver: isDevelopment
+        ? `First stabilized year NOI: ${fmt$(pNoi)}`
+        : cNoi > 0
+          ? `${fmt$(noiDelta)} NOI growth — ${((pNoi / cNoi - 1) * 100).toFixed(1)}%`
+          : `First stabilized year NOI: ${fmt$(pNoi)}`,
+      bridge: emptyBridge,
       dominantSource: null,
       alertLevel: 'green',
       isSubtotal: true,
@@ -367,32 +403,35 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
     {
       key: 'cap_rate',
       label: 'Cap Rate',
-      current: -(goingInCapRate * 100),
+      current: isDevelopment ? null : -(goingInCapRate * 100),
       proForma: -(exitCapRate * 100),
       delta: capDelta,
       driver: capDelta > 0
         ? `Submarket compression: ${(goingInCapRate * 100).toFixed(2)}% → ${(exitCapRate * 100).toFixed(2)}%`
         : `Cap rate expansion: ${(goingInCapRate * 100).toFixed(2)}% → ${(exitCapRate * 100).toFixed(2)}%`,
-      bridge: { market: 0, platform: 0, operator: 0, capex: 0 },
+      bridge: emptyBridge,
       dominantSource: 'platform',
       alertLevel: capDelta >= 0 ? 'green' : 'amber',
       isSubtotal: false,
+      formatAs: 'pct',
     },
     {
       key: 'stabilized_value',
       label: 'Stabilized Value',
-      current: goingInValue,
+      current: isDevelopment ? null : goingInValue,
       proForma: stabValue,
       delta: valueCreation,
       driver: valueCreation > 0
         ? `Value creation: ${fmt$(valueCreation)} (NOI × cap compression)`
         : `Value destruction: ${fmt$(valueCreation)} (NOI insufficient to cover cap expansion)`,
-      bridge: { market: 0, platform: 0, operator: 0, capex: 0 },
+      bridge: emptyBridge,
       dominantSource: null,
       alertLevel: valueCreation >= 0 ? 'green' : 'red',
       isSubtotal: true,
     },
   ];
+
+  return rawItems.map(item => item.isSubtotal ? item : applyConflictSurfacing(item));
 }
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -459,6 +498,7 @@ router.get('/:dealId/stabilized-potential', requireAuth, async (req: Authenticat
       dealData: dealRow.deal_data ?? {},
       pool,
       dealId,
+      modelType: yearResult.modelType,
     };
 
     const layout = await buildStabilizedLayout(ctx);
@@ -469,10 +509,12 @@ router.get('/:dealId/stabilized-potential', requireAuth, async (req: Authenticat
     const goingInValue = layout.find(l => l.key === 'stabilized_value')?.current ?? 0;
     const stabValue = layout.find(l => l.key === 'stabilized_value')?.proForma ?? 0;
     const goingInCapEntry = layout.find(l => l.key === 'cap_rate');
+    const isDevelopment = yearResult.modelType === 'development';
 
     const response: StabilizedPotentialResponse = {
       dealId,
       modelType: yearResult.modelType,
+      devMode: isDevelopment,
       stabilizedYear: yearResult.stabilizedYear,
       stabilizationCalendarMonth: yearResult.stabilizationCalendarMonth,
       monthsToStabilization: yearResult.monthsToStabilization,

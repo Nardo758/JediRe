@@ -7,6 +7,7 @@ import { ConcessionDrilldownModal, aggregateConcessionDetail } from './Concessio
 import { CommentaryPanel } from './CommentaryPanel';
 import { SourceBadge } from './SourceBadge';
 import { useDealStore, PlatformColSource } from '../../../stores/dealStore';
+import { StabilizedPotentialView } from '../../../components/F9/StabilizedPotentialView';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -463,6 +464,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showStabilized, setShowStabilized] = useState(false);
   const [reparsing, setReparsing] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionState>({});
   const [reservesPuDraft, setReservesPuDraft] = useState<string | null>(null);
@@ -940,14 +942,25 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           {/* BROKER VIEW / BUILD YOUR OWN toggle */}
           <div style={{ display: 'flex', background: '#1a1a1a', padding: 2, borderRadius: 3, border: '1px solid #2a2a2a' }}>
             {(['BROKER_VIEW', 'BUILD_OWN'] as const).map(mode => (
-              <button key={mode} onClick={() => setViewMode(mode)} style={{
+              <button key={mode} onClick={() => { setViewMode(mode); setShowStabilized(false); }} style={{
                 padding: '3px 10px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer', fontFamily: MONO, letterSpacing: '0.06em', transition: 'all 0.15s',
-                background: viewMode === mode ? (mode === 'BROKER_VIEW' ? 'rgba(180,83,9,0.5)' : 'rgba(29,78,216,0.5)') : 'transparent',
-                color: viewMode === mode ? (mode === 'BROKER_VIEW' ? '#fcd34d' : '#bfdbfe') : '#475569',
+                background: !showStabilized && viewMode === mode ? (mode === 'BROKER_VIEW' ? 'rgba(180,83,9,0.5)' : 'rgba(29,78,216,0.5)') : 'transparent',
+                color: !showStabilized && viewMode === mode ? (mode === 'BROKER_VIEW' ? '#fcd34d' : '#bfdbfe') : '#475569',
               }}>
                 {mode === 'BROKER_VIEW' ? 'BROKER VIEW' : 'BUILD YOUR OWN'}
               </button>
             ))}
+            <button
+              onClick={() => setShowStabilized(v => !v)}
+              style={{
+                padding: '3px 10px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer', fontFamily: MONO, letterSpacing: '0.06em', transition: 'all 0.15s',
+                background: showStabilized ? 'rgba(99,102,241,0.5)' : 'transparent',
+                color: showStabilized ? '#c7d2fe' : '#475569',
+              }}
+              title="M09 — Stabilized Potential: 4-column bridge view"
+            >
+              STAB. POTENTIAL
+            </button>
           </div>
         </div>
 
@@ -1084,8 +1097,15 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         </div>
       )}
 
+      {/* ── Stabilized Potential (M09) overlay ── */}
+      {showStabilized && dealId && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+          <StabilizedPotentialView dealId={dealId} />
+        </div>
+      )}
+
       {/* ── Scrollable body ── */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', display: showStabilized ? 'none' : undefined }}>
 
         {/* ── VALUATION SNAPSHOT STRIP ── */}
         {data.proforma.valuationSnapshot && (

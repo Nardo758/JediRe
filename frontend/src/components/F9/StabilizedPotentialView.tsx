@@ -45,11 +45,15 @@ interface StabilizedLineItem {
   dominantSource: LayeredValueSource | null;
   alertLevel: AlertLevel;
   isSubtotal: boolean;
+  formatAs?: 'dollar' | 'pct';
+  conflictFlag?: boolean;
+  conflictMultiple?: number;
 }
 
 interface StabilizedPotentialResponse {
   dealId: string;
   modelType: ModelType;
+  devMode: boolean;
   stabilizedYear: number;
   stabilizationCalendarMonth: string;
   monthsToStabilization: number;
@@ -74,8 +78,17 @@ interface StabilizedPotentialResponse {
 
 function fmt$(val: number | null): string {
   if (val === null || val === undefined) return '—';
-  const sign = val >= 0 ? '' : '';
-  return `${sign}$${Math.abs(val).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `$${Math.abs(val).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+function fmtRawPct(val: number | null): string {
+  if (val === null || val === undefined) return '—';
+  return `${Math.abs(val).toFixed(2)}%`;
+}
+
+function fmtCell(val: number | null, formatAs?: 'dollar' | 'pct'): string {
+  if (formatAs === 'pct') return fmtRawPct(val);
+  return fmt$(val);
 }
 
 function fmtPct(val: number | null): string {
@@ -408,7 +421,7 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
         </div>
         <div style={{ textAlign: 'right', maxWidth: 280 }}>
           <span style={{ color: '#aaa', fontSize: 13 }}>Engine</span>
-          <div style={{ color: '#6366f1', fontSize: 12, marginTop: 2 }}>M07 Leass Velocity Engine</div>
+          <div style={{ color: '#6366f1', fontSize: 12, marginTop: 2 }}>M07 Lease Velocity Engine</div>
         </div>
         {showMultiStrategy && (
           <div style={{ textAlign: 'right' }}>
@@ -422,6 +435,39 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
         constraints={data.constraints}
         bindingConstraint={data.bindingConstraint}
       />
+
+      {/* Dev mode Trust Stack notice */}
+      {data.devMode && (
+        <div
+          style={{
+            background: '#1a1100',
+            border: '1px solid #f59e0b55',
+            borderRadius: 8,
+            padding: '10px 14px',
+            marginBottom: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: '#f59e0b',
+              letterSpacing: '0.06em',
+              flexShrink: 0,
+            }}
+          >
+            TRUST STACK
+          </div>
+          <div style={{ fontSize: 12, color: '#d97706' }}>
+            Development deal — no T12 on file. Current column shows $0. Pro Forma column is driven by
+            platform signals (M07 Lease Velocity) only. Bridge decomposition suppressed until actuals
+            are available.
+          </div>
+        </div>
+      )}
 
       {/* Phasing toggle */}
       <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
@@ -533,26 +579,29 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
                 </div>
 
                 <div style={{ padding: '8px 12px', textAlign: 'right', color: item.current === null ? '#555' : undefined }}>
-                  {fmt$(item.current)}
+                  {fmtCell(item.current, item.formatAs)}
                 </div>
 
                 <div style={{ padding: '8px 12px', textAlign: 'right' }}>
-                  {fmt$(item.proForma)}
+                  {fmtCell(item.proForma, item.formatAs)}
                 </div>
 
-                {/* Δ column — clickable to expand bridge */}
+                {/* Δ column — clickable to expand bridge; amber when conflictFlag */}
                 <div
                   style={{
                     padding: '8px 12px',
                     textAlign: 'right',
-                    color: item.delta >= 0 ? '#22c55e' : '#ef4444',
+                    color: item.conflictFlag ? '#f59e0b' : (item.delta >= 0 ? '#22c55e' : '#ef4444'),
+                    background: item.conflictFlag ? 'rgba(245,158,11,0.08)' : undefined,
                     cursor: !item.isSubtotal && item.key !== 'cap_rate' && item.key !== 'stabilized_value' ? 'pointer' : 'default',
                   }}
                   onClick={() => {
                     if (item.isSubtotal || item.key === 'cap_rate' || item.key === 'stabilized_value') return;
                     setExpandedBridge(expandedBridge === item.key ? null : item.key);
                   }}
-                  title={item.isSubtotal ? '' : 'Click to expand bridge breakdown'}
+                  title={item.conflictFlag
+                    ? `Operator assumption exceeds platform estimate by ${item.conflictMultiple}× — review required`
+                    : (item.isSubtotal ? '' : 'Click to expand bridge breakdown')}
                 >
                   {item.key === 'cap_rate'
                     ? `${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)}bps`
