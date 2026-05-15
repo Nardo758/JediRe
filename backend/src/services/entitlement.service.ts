@@ -326,4 +326,53 @@ export class EntitlementService {
 
     return factors;
   }
+
+  /**
+   * W-06: Query M35 key_events for competitive pipeline and active moratoriums
+   * in the given submarket. Used by feasibility analysis to surface regulatory
+   * supply signals alongside the internal entitlements table.
+   *
+   * Returns:
+   *  - competitiveApprovals: count of announced/in_progress/materialized approvals + permits
+   *  - activeMoratorium: true if a development_moratorium event is materialized or in_progress
+   *  - moratoriumDetails: event details when active moratorium is found
+   */
+  async getSubmarketPipelineSignals(submarketId: string): Promise<{
+    competitiveApprovals: number;
+    competitiveMagnitudeTotal: number;
+    activeMoratorium: boolean;
+    moratoriumDetails: { id: string; name: string; status: string; completionDate: string | null } | null;
+  }> {
+    const [approvalsResult, moratoriumResult] = await Promise.all([
+      this.pool.query(
+        `SELECT COUNT(*) AS count,
+                COALESCE(SUM(COALESCE(magnitude_value::numeric, magnitude_score::numeric, 0)), 0) AS magnitude_total
+         FROM key_events
+         WHERE subtype IN ('entitlement_approval', 'multifamily_permit')
+           AND submarket_id = $1
+           AND status IN ('announced', 'in_progress', 'materialized')`,
+        [submarketId]
+      ),
+      this.pool.query(
+        `SELECT id, name, status, completion_date
+         FROM key_events
+         WHERE subtype = 'development_moratorium'
+           AND submarket_id = $1
+           AND status IN ('materialized', 'in_progress')
+         ORDER BY materialization_date DESC
+         LIMIT 1`,
+        [submarketId]
+      ),
+    ]);
+
+    const morRow = moratoriumResult.rows[0] ?? null;
+    return {
+      competitiveApprovals: parseInt(approvalsResult.rows[0]?.count ?? '0') || 0,
+      competitiveMagnitudeTotal: parseFloat(approvalsResult.rows[0]?.magnitude_total ?? '0') || 0,
+      activeMoratorium: morRow !== null,
+      moratoriumDetails: morRow
+        ? { id: morRow.id, name: morRow.name, status: morRow.status, completionDate: morRow.completion_date ?? null }
+        : null,
+    };
+  }
 }

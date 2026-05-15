@@ -133,6 +133,9 @@ const EVENT_SUBTYPE_REGISTRY: EventTypeDeclaration[] = [
   { eventSubtype: 'eviction_moratorium', primaryChannel: 'M09_proforma_direct', rationale: 'Discontinuous policy constraint on collections and turnover; direct-proforma sibling of rent_control_passage (§5.2)' },
   { eventSubtype: 'entitlement_approval', primaryChannel: 'M03_devcap', rationale: 'Permits developable supply; not present-period market' },
   { eventSubtype: 'zoning_upzoning', primaryChannel: 'M03_devcap', rationale: 'Future supply potential' },
+  // development_moratorium: negative-direction M03 signal — halts permitting, suppresses devcap;
+  // negative counterpart to zoning_upzoning / entitlement_approval (synthesis §5.1)
+  { eventSubtype: 'development_moratorium', primaryChannel: 'M03_devcap', rationale: 'Halts permitting and suppresses development capacity; negative-direction counterpart to entitlement_approval and zoning_upzoning (§5.1)' },
   { eventSubtype: 'rate_move', primaryChannel: 'M14_macro', rationale: 'Macro factor; flows to cap rates and debt directly' },
   { eventSubtype: 'recession_indicator', primaryChannel: 'M14_macro', rationale: 'Macro regime signal' },
   { eventSubtype: 'regional_shock', primaryChannel: 'multi_channel',

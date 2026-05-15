@@ -162,10 +162,36 @@ export class ZoningRecommendationOrchestrator {
 
     const currentDensityFromDb = await this.getCurrentDensityFromDb(currentCode, municipality);
 
-    const [nearbyAnalysis, entitlementPatterns] = await Promise.all([
+    // W-06: resolve submarket in parallel with nearby + entitlement scans
+    const [nearbyAnalysis, entitlementPatterns, submarketRow] = await Promise.all([
       this.scanNearbyProperties(lat, lng, currentCode, currentDensityFromDb),
       this.scanEntitlementActivity(municipality, state, currentCode),
+      this.pool.query(
+        `SELECT p.submarket_id FROM properties p WHERE p.deal_id = $1 LIMIT 1`,
+        [dealId]
+      ),
     ]);
+
+    // W-06: query M35 zoning_upzoning events to fold magnitude into HBU density scoring
+    const m35SubmarketId: string | null = submarketRow.rows[0]?.submarket_id ?? null;
+    let m35UpzoneBoost = 0;
+    if (m35SubmarketId) {
+      const upzoningEvents = await this.pool.query(
+        `SELECT magnitude_score
+         FROM key_events
+         WHERE subtype = 'zoning_upzoning'
+           AND submarket_id = $1
+           AND status NOT IN ('draft', 'cancelled')`,
+        [m35SubmarketId]
+      );
+      if (upzoningEvents.rows.length > 0) {
+        const avgMagnitude = upzoningEvents.rows.reduce(
+          (sum: number, r: any) => sum + (parseFloat(r.magnitude_score) || 0), 0
+        ) / upzoningEvents.rows.length;
+        // magnitude_score is 1-5 scale; normalise to a 0–0.5 density score boost factor
+        m35UpzoneBoost = Math.min(avgMagnitude / 10, 0.5);
+      }
+    }
 
     const candidates = await this.buildCandidates(
       currentCode, municipality, state, nearbyAnalysis, entitlementPatterns,
@@ -173,6 +199,20 @@ export class ZoningRecommendationOrchestrator {
     );
 
     const sortedCandidates = candidates.sort((a, b) => b.score - a.score);
+
+    // W-06: apply M35 upzoning density uplift boost to candidates that have positive density signal
+    if (m35UpzoneBoost > 0) {
+      for (const c of sortedCandidates) {
+        if (c.densityUplift > 0 || c.farUplift > 0) {
+          const baseDensScore = Math.min(Math.max(c.densityUplift, c.farUplift), 200) / 200;
+          const boostedDensScore = Math.min(baseDensScore * (1 + m35UpzoneBoost), 1.0);
+          const delta = Math.round((boostedDensScore - baseDensScore) * SCORE_WEIGHTS.densityUplift * 100);
+          c.score = Math.min(100, c.score + delta);
+        }
+      }
+      sortedCandidates.sort((a, b) => b.score - a.score);
+    }
+
     sortedCandidates.forEach((c, i) => c.rank = i + 1);
 
     const topRecommendation = sortedCandidates.length > 0 ? sortedCandidates[0] : null;
