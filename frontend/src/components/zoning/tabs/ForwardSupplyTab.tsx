@@ -426,7 +426,9 @@ export default function ForwardSupplyTab({ dealId }: Props) {
           }
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setSubmarketSaveError('Failed to load submarket list. Check connection and try again.');
+      });
   }, [dealId, selectedSlug]);
 
   const openLinker = () => {
@@ -454,10 +456,13 @@ export default function ForwardSupplyTab({ dealId }: Props) {
   const unlinkSubmarket = () => {
     if (!dealId) return;
     setSavingSubmarket(true);
+    setSubmarketSaveError(null);
     apiClient
       .patch(`/api/v1/deals/${dealId}/submarket`, { submarketId: null })
       .then(() => { setShowLinker(false); load(); })
-      .catch(() => {})
+      .catch((err: Error) =>
+        setSubmarketSaveError(err.message ?? 'Failed to unlink submarket'),
+      )
       .finally(() => setSavingSubmarket(false));
   };
 
@@ -594,33 +599,40 @@ export default function ForwardSupplyTab({ dealId }: Props) {
         }}>
           {/* ── When submarket is already linked ── */}
           {trendSignal?.submarketId && !showLinker && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Link2 size={9} style={{ color: TEXT_PURPLE }} />
-              <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY }}>L3 SUBMARKET</span>
-              <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_PURPLE, fontWeight: 700 }}>
-                {trendSignal.submarketId.replace(/-/g, ' ').toUpperCase()}
-              </span>
-              <button
-                onClick={openLinker}
-                style={{
-                  fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY,
-                  background: 'transparent', border: `1px solid ${BORDER}`,
-                  padding: '1px 6px', cursor: 'pointer', marginLeft: 4,
-                }}
-              >
-                CHANGE
-              </button>
-              <button
-                onClick={unlinkSubmarket}
-                disabled={savingSubmarket}
-                style={{
-                  fontFamily: MONO, fontSize: 7, color: 'rgba(252,129,129,0.6)',
-                  background: 'transparent', border: 'none',
-                  padding: '1px 4px', cursor: 'pointer',
-                }}
-              >
-                UNLINK
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Link2 size={9} style={{ color: TEXT_PURPLE }} />
+                <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_SECONDARY }}>L3 SUBMARKET</span>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: TEXT_PURPLE, fontWeight: 700 }}>
+                  {trendSignal.submarketId.replace(/-/g, ' ').toUpperCase()}
+                </span>
+                <button
+                  onClick={openLinker}
+                  style={{
+                    fontFamily: MONO, fontSize: 7, color: TEXT_SECONDARY,
+                    background: 'transparent', border: `1px solid ${BORDER}`,
+                    padding: '1px 6px', cursor: 'pointer', marginLeft: 4,
+                  }}
+                >
+                  CHANGE
+                </button>
+                <button
+                  onClick={unlinkSubmarket}
+                  disabled={savingSubmarket}
+                  style={{
+                    fontFamily: MONO, fontSize: 7, color: 'rgba(252,129,129,0.6)',
+                    background: 'transparent', border: 'none',
+                    padding: '1px 4px', cursor: 'pointer',
+                  }}
+                >
+                  {savingSubmarket ? '…' : 'UNLINK'}
+                </button>
+              </div>
+              {submarketSaveError && (
+                <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_RED }}>
+                  {submarketSaveError}
+                </span>
+              )}
             </div>
           )}
 
