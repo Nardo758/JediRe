@@ -68,12 +68,12 @@ roadmapRouter.post(
         sponsor_capabilities: sponsor_capabilities ?? undefined,
       };
 
-      // Create a pending roadmap row
+      // Create a pending roadmap row — persist full input_json alongside decomposed fields
       const insertResult = await query(
         `INSERT INTO deal_roadmaps
            (deal_id, created_by, target_return_metric, target_return_value, hold_years,
-            constraints_json, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'running')
+            input_json, constraints_json, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'running')
          RETURNING id`,
         [
           dealId,
@@ -81,6 +81,7 @@ roadmapRouter.post(
           input.target_return.metric,
           input.target_return.value,
           input.target_return.hold_years,
+          JSON.stringify(input),
           constraints ? JSON.stringify(constraints) : null,
         ]
       );

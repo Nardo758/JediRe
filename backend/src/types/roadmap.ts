@@ -154,6 +154,9 @@ export interface RoadmapOutput {
     achievability_status: AchievabilityStatus;
     achievability_reasoning: string;
     generated_at: string;
+    baseline_irr: number;
+    target_irr: number;
+    roadmap_irr: number;
   };
 
   baseline_proforma: {

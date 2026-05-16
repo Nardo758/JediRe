@@ -68,6 +68,9 @@ interface RoadmapOutput {
     achievability_status: string;
     achievability_reasoning: string;
     generated_at: string;
+    baseline_irr: number;
+    target_irr: number;
+    roadmap_irr: number;
   };
   baseline_proforma: { description: string; irr: number; equity_multiple: number; noi_path: number[] };
   target_proforma: { description: string; irr: number; equity_multiple: number; noi_path_required: number[] };
@@ -405,49 +408,88 @@ function ActionEvidencePanel({ action, onClose }: { action: RoadmapAction; onClo
   );
 }
 
-// ── Year-by-Year Chart ────────────────────────────────────────────────────────
+// ── Per-action colour palette (deterministic by index) ────────────────────────
+
+const ACTION_COLORS = [
+  '#00d4aa', '#06b6d4', '#8B5CF6', '#f59e0b', '#22c55e',
+  '#ef4444', '#3b82f6', '#f97316', '#a855f7', '#14b8a6',
+  '#eab308', '#6366f1', '#84cc16', '#ec4899', '#64748b',
+];
+
+// ── Year-by-Year Chart — per-action stacked contributions ─────────────────────
 
 function TrajectoryChart({ trajectory, actions }: { trajectory: YearlyTrajectory[]; actions: RoadmapAction[] }) {
-  const maxNoi = Math.max(...trajectory.map(y => y.noi_with_roadmap), ...trajectory.map(y => y.noi_baseline));
-
   if (trajectory.length === 0) return null;
 
-  const CHART_HEIGHT = 120;
-  const actionMap = new Map(actions.map(a => [a.id, a]));
+  const CHART_HEIGHT = 140;
+  const border = BT.border?.medium ?? '#30363d';
+  const textMuted = BT.text?.muted ?? '#6b7280';
+
+  // Assign a stable colour to each action by its index in the actions array
+  const actionColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    actions.forEach((a, i) => map.set(a.id, ACTION_COLORS[i % ACTION_COLORS.length]));
+    return map;
+  }, [actions]);
+
+  // For each year, build an ordered list of (action_id, contribution, color) segments
+  // from primary_lift_drivers, then add the baseline segment at the bottom.
+  const maxNoi = Math.max(
+    ...trajectory.map(y => y.noi_with_roadmap),
+    ...trajectory.map(y => y.noi_baseline),
+    1
+  );
 
   return (
     <div>
       {/* Bars */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: CHART_HEIGHT, padding: '0 4px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: CHART_HEIGHT, padding: '0 4px' }}>
         {trajectory.map(year => {
-          const baselineH = maxNoi > 0 ? (year.noi_baseline / maxNoi) * CHART_HEIGHT : 0;
-          const liftH = maxNoi > 0 ? (year.noi_lift_this_year / maxNoi) * CHART_HEIGHT : 0;
-          const totalH = baselineH + liftH;
+          const baselineH = (year.noi_baseline / maxNoi) * CHART_HEIGHT;
+
+          // Build per-action segments for this year (top of bar, stacked)
+          // drivers are sorted desc by contribution from the engine
+          const segments = year.primary_lift_drivers
+            .filter(d => d.dollar_contribution > 0)
+            .map(d => ({
+              action_id: d.action_id,
+              contribution: d.dollar_contribution,
+              color: actionColorMap.get(d.action_id) ?? '#6b7280',
+              label: actions.find(a => a.id === d.action_id)?.action_name ?? d.action_id,
+              h: (d.dollar_contribution / maxNoi) * CHART_HEIGHT,
+            }));
+
+          const totalLiftH = segments.reduce((s, seg) => s + seg.h, 0);
 
           return (
-            <div key={year.year} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-              {/* Stacked bar */}
+            <div key={year.year} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'stretch', height: '100%', justifyContent: 'flex-end' }}>
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: CHART_HEIGHT }}>
-                {liftH > 0 && (
+                {/* Per-action lift segments (top → bottom order = smallest → largest so tooltip reads naturally) */}
+                {[...segments].reverse().map((seg, idx) => (
                   <div
-                    title={`NOI Lift Y${year.year}: ${fmt$(year.noi_lift_this_year)}`}
+                    key={seg.action_id}
+                    title={`${seg.label}: ${fmt$(seg.contribution)}`}
                     style={{
-                      height: liftH, background: BT.met?.financial ?? '#00d4aa',
-                      borderRadius: '2px 2px 0 0', opacity: 0.85,
+                      height: Math.max(seg.h, 1),
+                      background: seg.color,
+                      opacity: 0.88,
+                      borderRadius: idx === segments.length - 1 ? '2px 2px 0 0' : 0,
                     }}
                   />
-                )}
+                ))}
+                {/* Baseline NOI segment */}
                 <div
                   title={`Baseline NOI Y${year.year}: ${fmt$(year.noi_baseline)}`}
                   style={{
-                    height: Math.max(baselineH, 2), background: BT.bg?.active ?? '#1c2128',
-                    border: `1px solid ${BT.border?.medium ?? '#30363d'}`,
-                    borderTop: liftH > 0 ? 'none' : undefined,
+                    height: Math.max(baselineH, 2),
+                    background: BT.bg?.active ?? '#1c2128',
+                    border: `1px solid ${border}`,
+                    borderTop: totalLiftH > 0 ? 'none' : undefined,
                   }}
                 />
               </div>
               {/* Year label */}
-              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text?.muted ?? '#6b7280', marginTop: 3, textAlign: 'center' }}>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: textMuted, marginTop: 3, textAlign: 'center' }}>
                 Y{year.year}
               </div>
             </div>
@@ -456,34 +498,40 @@ function TrajectoryChart({ trajectory, actions }: { trajectory: YearlyTrajectory
       </div>
 
       {/* Posture strip */}
-      <div style={{ display: 'flex', gap: 6, padding: '3px 4px', marginTop: 2 }}>
+      <div style={{ display: 'flex', gap: 4, padding: '3px 4px', marginTop: 2 }}>
         {trajectory.map(year => (
           <div key={year.year} style={{ flex: 1 }}>
             <div style={{
               height: 4, borderRadius: 1,
               background: postureColor(year.posture_classification),
               opacity: 0.85,
-              title: year.posture_classification,
-            }} />
+            }} title={year.posture_classification} />
           </div>
         ))}
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: 14, marginTop: 6, padding: '0 4px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ width: 10, height: 10, background: BT.met?.financial ?? '#00d4aa', borderRadius: 1 }} />
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text?.muted ?? '#6b7280' }}>NOI lift from roadmap</span>
+      {/* Per-action legend (only actions that appear in at least one year) */}
+      {actions.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginTop: 8, padding: '0 4px' }}>
+          {/* Baseline entry */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 10, height: 10, background: BT.bg?.active ?? '#1c2128', border: `1px solid ${border}`, borderRadius: 1, flexShrink: 0 }} />
+            <span style={{ fontFamily: MONO, fontSize: 7, color: textMuted }}>Baseline NOI</span>
+          </div>
+          {/* One entry per action */}
+          {actions.map((a, i) => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 10, height: 10, background: ACTION_COLORS[i % ACTION_COLORS.length], borderRadius: 1, flexShrink: 0 }} />
+              <span style={{ fontFamily: MONO, fontSize: 7, color: textMuted }}>{a.action_name}</span>
+            </div>
+          ))}
+          {/* Posture strip legend */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 20, height: 4, borderRadius: 1, background: `linear-gradient(to right, ${BT.met?.financial ?? '#00d4aa'}, ${BT.text?.amber ?? '#f59e0b'}, ${BT.text?.red ?? '#ef4444'})`, flexShrink: 0 }} />
+            <span style={{ fontFamily: MONO, fontSize: 7, color: textMuted }}>Posture strip: offense/neutral/defense</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ width: 10, height: 10, background: BT.bg?.active ?? '#1c2128', border: `1px solid ${BT.border?.medium ?? '#30363d'}`, borderRadius: 1 }} />
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text?.muted ?? '#6b7280' }}>Baseline NOI</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ width: 20, height: 4, borderRadius: 1, background: `linear-gradient(to right, ${BT.met?.financial ?? '#00d4aa'}, ${BT.text?.amber ?? '#f59e0b'}, ${BT.text?.red ?? '#ef4444'})` }} />
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text?.muted ?? '#6b7280' }}>Posture: offense/neutral/defense</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -662,37 +710,44 @@ export function RoadmapTab({ dealId, f9Financials }: FinancialEngineTabProps) {
                 {achievabilityLabel(roadmap.meta.achievability_status)}
               </span>
 
-              {/* IRR comparison */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div>
-                  <span style={{ fontFamily: MONO, fontSize: 8, color: textMuted }}>BASELINE IRR </span>
-                  <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: textSecondary }}>
-                    {fmtPct(roadmap.baseline_proforma.irr)}
+              {/* IRR comparison — baseline → roadmap → target */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: textMuted, letterSpacing: 0.4 }}>BASELINE IRR</span>
+                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: textSecondary }}>
+                    {fmtPct(roadmap.meta.baseline_irr)}
                   </span>
                 </div>
                 <span style={{ fontFamily: MONO, fontSize: 10, color: textMuted }}>→</span>
-                <div>
-                  <span style={{ fontFamily: MONO, fontSize: 8, color: textMuted }}>TARGET </span>
-                  <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: amber }}>
-                    {fmtPct(roadmap.target_proforma.irr)}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: green, letterSpacing: 0.4 }}>ROADMAP IRR</span>
+                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: green }}>
+                    {fmtPct(roadmap.meta.roadmap_irr)}
                   </span>
                 </div>
-                <div style={{ width: 1, height: 16, background: borderMed }} />
-                <div>
-                  <span style={{ fontFamily: MONO, fontSize: 8, color: textMuted }}>ACTIONS </span>
-                  <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: green }}>
+                <span style={{ fontFamily: MONO, fontSize: 10, color: textMuted }}>→</span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: amber, letterSpacing: 0.4 }}>TARGET IRR</span>
+                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: amber }}>
+                    {fmtPct(roadmap.meta.target_irr)}
+                  </span>
+                </div>
+                <div style={{ width: 1, height: 28, background: borderMed, flexShrink: 0 }} />
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: textMuted }}>ACTIONS</span>
+                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: green }}>
                     {roadmap.roadmap_actions.length}
                   </span>
                 </div>
-                <div>
-                  <span style={{ fontFamily: MONO, fontSize: 8, color: textMuted }}>NOI GAP </span>
-                  <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: textPrimary }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: textMuted }}>NOI GAP</span>
+                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: textPrimary }}>
                     {fmt$(roadmap.gap_analysis.total_noi_gap)}
                   </span>
                 </div>
-                <div>
-                  <span style={{ fontFamily: MONO, fontSize: 8, color: textMuted }}>M36 d </span>
-                  <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color:
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: textMuted }}>M36 d</span>
+                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color:
                     roadmap.plausibility_check.m36_d_value <= 1.5 ? green
                       : roadmap.plausibility_check.m36_d_value <= 2.5 ? amber : red }}>
                     {roadmap.plausibility_check.m36_d_value.toFixed(2)}

@@ -769,25 +769,42 @@ export function getActionById(id: string): ActionLibraryEntry | undefined {
 }
 
 /**
- * Filter actions eligible for a given deal type, excluding sponsor-excluded IDs.
+ * Filter actions eligible for a given deal type and posture, excluding sponsor-excluded IDs.
+ * dealPosture: 'offense' | 'neutral' | 'defense' — derived from the gap between baseline
+ * and target NOI.  Offense-only actions are excluded in defense posture.
  */
 export function getEligibleActions(
   dealType: string,
   excludedIds: string[] = [],
-  mustIncludeIds: string[] = []
+  mustIncludeIds: string[] = [],
+  dealPosture: 'offense' | 'neutral' | 'defense' = 'offense'
 ): ActionLibraryEntry[] {
-  const normalizedType = dealType.toLowerCase().replace('-', '_');
+  const normalizedType = dealType.toLowerCase().replace(/[-\s]/g, '_');
   const eligible = ACTION_LIBRARY.filter(a => {
     if (excludedIds.includes(a.id)) return false;
-    if (!a.applicability.deal_types.includes(normalizedType)) {
-      // Also allow if deal_type is broadly 'existing' or if the library entry covers 'existing'
-      if (!a.applicability.deal_types.includes('existing')) return false;
-    }
+    // Deal type gate: allow if entry covers this type OR covers 'existing'
+    const typeCovered =
+      a.applicability.deal_types.includes(normalizedType) ||
+      a.applicability.deal_types.includes('existing');
+    if (!typeCovered) return false;
+    // Posture gate: exclude actions that don't support the deal-level posture
+    if (!a.applicability.requires_posture.includes(dealPosture)) return false;
     return true;
   });
-  // Must-include actions are always added even if filtered out
+  // Must-include actions bypass posture and type gates
   const mustInclude = ACTION_LIBRARY.filter(
     a => mustIncludeIds.includes(a.id) && !eligible.find(e => e.id === a.id)
   );
   return [...eligible, ...mustInclude];
+}
+
+/**
+ * Returns true if an action supports the given year posture.
+ * Used per-year in trajectory assembly to gate action starts.
+ */
+export function actionSupportsPosture(
+  action: ActionLibraryEntry,
+  yearPosture: 'offense' | 'neutral' | 'defense'
+): boolean {
+  return action.applicability.requires_posture.includes(yearPosture);
 }

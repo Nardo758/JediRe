@@ -18,7 +18,7 @@ import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { goalSeek } from '../sigma/sigma-engine';
 import { computePlausibility } from '../sigma/sigma-engine';
-import { getEligibleActions } from './action-library';
+import { getEligibleActions, actionSupportsPosture, ACTION_LIBRARY } from './action-library';
 import type {
   RoadmapInput,
   RoadmapOutput,
@@ -358,17 +358,54 @@ function computeGapAnalysis(
   };
 }
 
+// ── Deal-level posture derivation ────────────────────────────────────────────
+
+/**
+ * Derive the deal-level posture from the gap between baseline Y1 NOI and target Y1 NOI.
+ * - offense : target is >8% above baseline — need to actively push revenue/cut expenses
+ * - neutral  : target is 0-8% above baseline — moderate value-add
+ * - defense  : target is at or below baseline — protect existing NOI, no aggressive actions
+ */
+function deriveDealPosture(
+  baselineNoiY1: number,
+  targetNoiY1: number
+): 'offense' | 'neutral' | 'defense' {
+  if (baselineNoiY1 <= 0) return 'offense';
+  const gapPct = (targetNoiY1 - baselineNoiY1) / baselineNoiY1;
+  if (gapPct > 0.08) return 'offense';
+  if (gapPct > 0) return 'neutral';
+  return 'defense';
+}
+
+/**
+ * Classify the posture for a single year given how much NOI lift is expected.
+ * Used for per-year posture strip in trajectory (informational).
+ * Also controls whether offense-only actions can START in that year.
+ */
+function classifyYearPosture(
+  baselineNoi: number,
+  targetNoi: number
+): 'offense' | 'neutral' | 'defense' {
+  if (baselineNoi <= 0) return 'offense';
+  const gapPct = (targetNoi - baselineNoi) / baselineNoi;
+  if (gapPct > 0.06) return 'offense';
+  if (gapPct > 0.01) return 'neutral';
+  return 'defense';
+}
+
 // ── Step 4: Action Inventory & Sizing ────────────────────────────────────────
 
 function sizeActions(
   financials: Awaited<ReturnType<typeof loadDealFinancials>>,
   gapAnalysis: RoadmapOutput['gap_analysis'],
-  input: RoadmapInput
+  input: RoadmapInput,
+  dealPosture: 'offense' | 'neutral' | 'defense'
 ): RoadmapAction[] {
   const eligible = getEligibleActions(
     financials.dealType,
     input.constraints?.sponsor_excluded_actions ?? [],
-    input.constraints?.must_include_actions ?? []
+    input.constraints?.must_include_actions ?? [],
+    dealPosture
   );
 
   const { totalUnits } = financials;
@@ -493,13 +530,31 @@ function sequenceActions(actions: RoadmapAction[]): RoadmapAction[] {
   return sorted;
 }
 
-// ── Step 6: Trajectory Assembly ───────────────────────────────────────────────
+// ── Step 6: Trajectory Assembly with Posture Gating ──────────────────────────
 
+/**
+ * Build the year-by-year trajectory with posture-gated action starts.
+ *
+ * Posture gating rule: an action can only START (i.e., first become active) in
+ * year Y if the year's expected posture supports the action's requires_posture.
+ * Actions that started in an earlier year continue producing impact regardless
+ * of posture — only new starts are gated.
+ *
+ * Year posture is classified from the gap between baseline and target NOI for
+ * that year: offense >6%, neutral 0–6%, defense ≤0%.
+ */
 function buildTrajectory(
   baselineNoiPath: number[],
+  targetNoiPath: number[],
   actions: RoadmapAction[],
   holdYears: number
 ): YearlyTrajectory[] {
+  // Build lookup map from action id → library entry for posture gating
+  const libraryMap = new Map(ACTION_LIBRARY.map(a => [a.id, a]));
+
+  // Track which actions have already started (by their start_month threshold)
+  const actionStarted = new Set<string>();
+
   const trajectory: YearlyTrajectory[] = [];
   let cumulativeLift = 0;
 
@@ -507,36 +562,59 @@ function buildTrajectory(
     const startMonth = (year - 1) * 12 + 1;
     const endMonth = year * 12;
 
+    const baselineNoi = baselineNoiPath[year - 1] ?? baselineNoiPath[baselineNoiPath.length - 1];
+    const targetNoi = targetNoiPath[year - 1] ?? targetNoiPath[targetNoiPath.length - 1];
+
+    // Classify year posture from the remaining gap between baseline and target
+    const yearPosture = classifyYearPosture(baselineNoi, targetNoi);
+
     const activeActions: string[] = [];
     let noiLiftThisYear = 0;
     const drivers: { action_id: string; dollar_contribution: number }[] = [];
 
     for (const action of actions) {
-      const { impact_starts_month, impact_fully_realized_month } = action.timing;
+      const { start_month, impact_starts_month, impact_fully_realized_month, duration_months } = action.timing;
 
-      if (impact_starts_month > endMonth) continue;
+      // Is this action's start month within this year?
+      const startsThisYear = start_month >= startMonth && start_month <= endMonth;
 
-      // Is action active this year?
-      const actionEndMonth = action.timing.start_month + action.timing.duration_months;
-      if (actionEndMonth < startMonth && impact_starts_month < startMonth) continue;
+      if (startsThisYear && !actionStarted.has(action.id)) {
+        // Posture gate: check whether this action can START in the current year's posture
+        const libraryEntry = libraryMap.get(action.id);
+        if (libraryEntry && !actionSupportsPosture(libraryEntry, yearPosture)) {
+          // Action cannot start in a year with this posture — defer it
+          continue;
+        }
+        actionStarted.add(action.id);
+      } else if (!startsThisYear && !actionStarted.has(action.id)) {
+        // Action hasn't started yet and this isn't its start year — skip
+        if (start_month > endMonth) continue;
+        // start_month < startMonth means it should have started in a prior year
+        // but may have been deferred by posture gate — check if it can start now
+        if (start_month < startMonth && !actionStarted.has(action.id)) {
+          // Retroactively start: check posture for this year
+          const libraryEntry = libraryMap.get(action.id);
+          if (libraryEntry && !actionSupportsPosture(libraryEntry, yearPosture)) continue;
+          actionStarted.add(action.id);
+        }
+      }
+
+      if (!actionStarted.has(action.id)) continue;
+
+      // Check if action's impact window overlaps this year
+      const actionEndMonth = start_month + duration_months;
+      const hasImpact = impact_starts_month <= endMonth && actionEndMonth >= startMonth - 12;
+      if (!hasImpact && impact_starts_month > endMonth) continue;
 
       activeActions.push(action.id);
 
       // Compute fractional impact realized in this year
       let realizationFraction = 0;
       if (endMonth >= impact_fully_realized_month) {
-        // Fully realized
         realizationFraction = 1.0;
-      } else if (startMonth >= impact_starts_month) {
-        // Partial ramp within this year
-        const rampRange = Math.max(1, impact_fully_realized_month - impact_starts_month);
-        const overlapEnd = Math.min(endMonth, impact_fully_realized_month);
-        const overlapStart = Math.max(startMonth, impact_starts_month);
-        realizationFraction = Math.max(0, (overlapEnd - overlapStart)) / rampRange;
       } else if (endMonth >= impact_starts_month) {
-        // Impact starts partway through this year
         const rampRange = Math.max(1, impact_fully_realized_month - impact_starts_month);
-        const monthsRamping = endMonth - impact_starts_month;
+        const monthsRamping = endMonth - Math.max(impact_starts_month, startMonth - 1);
         realizationFraction = Math.min(1, monthsRamping / rampRange);
       }
 
@@ -550,15 +628,7 @@ function buildTrajectory(
     }
 
     cumulativeLift += noiLiftThisYear;
-    const baselineNoi = baselineNoiPath[year - 1] ?? baselineNoiPath[baselineNoiPath.length - 1];
     const noiWithRoadmap = baselineNoi + noiLiftThisYear;
-
-    // Posture: simple heuristic based on lift momentum
-    const liftPct = baselineNoi > 0 ? noiLiftThisYear / baselineNoi : 0;
-    const postureClassification =
-      liftPct > 0.08 ? 'offense'
-        : liftPct > 0.03 ? 'neutral'
-          : 'defense';
 
     // Sort drivers descending
     drivers.sort((a, b) => b.dollar_contribution - a.dollar_contribution);
@@ -566,7 +636,7 @@ function buildTrajectory(
     trajectory.push({
       year,
       actions_active: activeActions,
-      posture_classification: postureClassification,
+      posture_classification: yearPosture,
       noi_baseline: Math.round(baselineNoi),
       noi_with_roadmap: Math.round(noiWithRoadmap),
       noi_lift_this_year: Math.round(noiLiftThisYear),
@@ -576,6 +646,28 @@ function buildTrajectory(
   }
 
   return trajectory;
+}
+
+/**
+ * Compute roadmap IRR from the trajectory's NOI-with-roadmap path.
+ */
+function computeRoadmapIrr(
+  trajectory: YearlyTrajectory[],
+  financials: Awaited<ReturnType<typeof loadDealFinancials>>
+): number {
+  const noiPath = trajectory.map(y => y.noi_with_roadmap);
+  const equity = financials.purchasePrice - financials.loanAmount;
+  const exitNoi = (noiPath[noiPath.length - 1] ?? financials.baseNoi) * (1 + financials.noiGrowthPct);
+
+  return computeSimpleLeveragedIrr({
+    equity,
+    noiPath,
+    annualDebtService: financials.annualDebtService,
+    exitNoi,
+    exitCapRate: financials.exitCapRate,
+    sellingCostsPct: financials.sellingCostsPct,
+    loanPayoff: financials.loanAmount,
+  });
 }
 
 // ── Step 7: Achievability Assessment ─────────────────────────────────────────
@@ -693,15 +785,22 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
     targetProforma.noi_path_required
   );
 
-  // Step 4 — Action Inventory & Sizing
-  const rawActions = sizeActions(financials, gapAnalysis, input);
+  // Step 4 — Derive deal-level posture from NOI gap
+  const dealPosture = deriveDealPosture(
+    baselineProforma.noi_path[0] ?? financials.baseNoi,
+    targetProforma.noi_path_required[0] ?? financials.baseNoi
+  );
+
+  // Step 4 — Action Inventory & Sizing (posture-gated at deal level)
+  const rawActions = sizeActions(financials, gapAnalysis, input, dealPosture);
 
   // Step 5 — Sequencing
   const sequencedActions = sequenceActions(rawActions);
 
-  // Step 6 — Trajectory
+  // Step 6 — Trajectory (posture-gated per year)
   const trajectory = buildTrajectory(
     baselineProforma.noi_path,
+    targetProforma.noi_path_required,
     sequencedActions,
     holdYears
   );
@@ -716,6 +815,9 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
     sequencedActions
   );
 
+  // Compute roadmap IRR from trajectory (NOI-with-roadmap path → leveraged IRR)
+  const roadmapIrr = computeRoadmapIrr(trajectory, financials);
+
   // Step 8 — M36 Check
   const plausibilityCheck = runM36Check(financials, targetProforma.noi_path_required);
 
@@ -723,7 +825,10 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
     deal_id: input.deal_id,
     status,
     action_count: sequencedActions.length,
-    projected_irr: (projectedIrr * 100).toFixed(1),
+    deal_posture: dealPosture,
+    baseline_irr_pct: (baselineIrr * 100).toFixed(1),
+    target_irr_pct: (requiredIrr * 100).toFixed(1),
+    roadmap_irr_pct: (roadmapIrr * 100).toFixed(1),
   });
 
   return {
@@ -733,6 +838,9 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
       achievability_status: status,
       achievability_reasoning: reasoning,
       generated_at: new Date().toISOString(),
+      baseline_irr: parseFloat((baselineIrr * 100).toFixed(2)),
+      target_irr: parseFloat((requiredIrr * 100).toFixed(2)),
+      roadmap_irr: parseFloat((roadmapIrr * 100).toFixed(2)),
     },
     baseline_proforma: baselineProforma,
     target_proforma: targetProforma,
