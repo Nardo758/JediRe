@@ -1871,23 +1871,29 @@ router.patch('/:dealId/m22/floor-plan-cost', requireAuth, async (req: Authentica
       return res.status(404).json({ error: 'Deal not found' });
     }
 
-    // Upsert the floor-plan cost override into deal_assumptions JSONB
-    await pool.query(
-      `UPDATE deal_assumptions
+    // Upsert the floor-plan cost override into deal_assumptions JSONB.
+    // INSERT ON CONFLICT ensures the row is created if it doesn't exist yet,
+    // preventing silent non-persist when no deal_assumptions row exists yet.
+    const overridePayload = JSON.stringify({
+      cost_per_unit,
+      updated_at: new Date().toISOString(),
+    });
+    const upsertResult = await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, assumptions, updated_at)
+       VALUES ($3, jsonb_set('{}'::jsonb, ARRAY['m22_floor_plan_overrides', $1], $2::jsonb, true), NOW())
+       ON CONFLICT (deal_id) DO UPDATE
        SET assumptions = jsonb_set(
-         COALESCE(assumptions, '{}'::jsonb),
+         COALESCE(deal_assumptions.assumptions, '{}'::jsonb),
          ARRAY['m22_floor_plan_overrides', $1],
          $2::jsonb,
          true
        ),
-       updated_at = NOW()
-       WHERE deal_id = $3`,
-      [
-        floor_plan_id,
-        JSON.stringify({ cost_per_unit, updated_at: new Date().toISOString() }),
-        dealId,
-      ]
+       updated_at = NOW()`,
+      [floor_plan_id, overridePayload, dealId]
     );
+    if ((upsertResult.rowCount ?? 0) === 0) {
+      return res.status(500).json({ error: 'Failed to persist floor-plan cost override' });
+    }
 
     logger.info(`M22 floor-plan cost override saved: deal=${dealId} plan=${floor_plan_id} cost=${cost_per_unit}`);
     return res.json({ ok: true, floor_plan_id, cost_per_unit });

@@ -109,6 +109,12 @@ interface DealFinancials {
   renovationScope?: string | null;
   /** Whether the renovation program has a uniform or mixed scope. */
   scopeUniformity?: 'uniform' | 'mixed' | null;
+  /**
+   * Operator-configured yield-on-cost hurdle rate (decimal, e.g. 0.12 = 12%).
+   * Threaded to <FloorPlanGrid> so YoC threshold warnings use the deal-level
+   * setting rather than a hardcoded default. Null → grid falls back to 10%.
+   */
+  targetYieldThreshold?: number | null;
   /** Per-category ancillary income reconciliation (RR / T-12 / OM). Task #519. */
   otherIncomeBreakdown?: {
     rows: Array<{
@@ -162,6 +168,13 @@ interface DealFinancials {
     pre_renovation: { value: number | null; source: string | null; confidence?: 'high' | 'medium' | 'low' | null; note?: string | null };
     post_stabilization: { value: number | null; source: string | null; confidence?: 'high' | 'medium' | 'low' | null; note?: string | null };
     transition_year?: { value: number | null; source: string | null; confidence?: 'high' | 'medium' | 'low' | null; note?: string | null } | null;
+    /**
+     * Human-readable timing label read from M22 capex_schedule (e.g. "Y3",
+     * "Month 28", "Post unit-#-completion"). Describes when the pre-renovation
+     * regime ends and post-stabilization begins. Populated by the cashflow agent
+     * from capex_schedule.transition_month when available.
+     */
+    transition_timing_label?: string | null;
   }> | null;
 }
 
@@ -1203,6 +1216,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                         dealId={dealId ?? null}
                         renovationScope={data.renovationScope ?? null}
                         scopeUniformity={data.scopeUniformity ?? null}
+                        targetYieldThreshold={data.targetYieldThreshold ?? null}
                       />
                     </td>
                   </tr>

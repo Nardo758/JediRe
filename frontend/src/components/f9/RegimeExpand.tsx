@@ -44,6 +44,13 @@ export interface RegimeData {
   pre_renovation: RegimeValue;
   post_stabilization: RegimeValue;
   transition_year?: RegimeValue | null;
+  /**
+   * Human-readable timing label sourced from M22 capex_schedule.transition_month
+   * by the cashflow agent. Examples: "Y3", "Month 28", "Post unit-#-completion".
+   * When present, displayed in the regime sub-header so the operator can see
+   * exactly when the pre-renovation regime ends without navigating to M22.
+   */
+  transition_timing_label?: string | null;
 }
 
 interface Props {
@@ -247,6 +254,17 @@ export function RegimeExpand({
           color: '#1e3a4a', letterSpacing: '0.04em', borderBottom: '1px solid #0a1520',
         }}>
           PRE-RENOVATION → POST-STABILIZATION
+          {/* Transition timing from M22 capex_schedule when available */}
+          {regimeData?.transition_timing_label && (
+            <span style={{
+              marginLeft: 8, fontFamily: MONO, fontSize: 7.5,
+              color: '#a78bfa', background: '#1a1030',
+              border: '1px solid #a78bfa33', borderRadius: 2,
+              padding: '0px 5px', letterSpacing: '0.04em',
+            }}>
+              M22 → {regimeData.transition_timing_label}
+            </span>
+          )}
           {!hasAgentData && (
             <span style={{ marginLeft: 8, color: '#1a2a1a', fontStyle: 'italic' }}>
               {derivedPreReno != null

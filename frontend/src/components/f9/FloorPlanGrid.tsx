@@ -103,6 +103,12 @@ interface Props {
   dealId?: string | null;
   renovationScope?: string | null;
   scopeUniformity?: 'uniform' | 'mixed' | null;
+  /**
+   * Operator-configured yield-on-cost threshold below which a warning is shown.
+   * Read from deal.target_yield_threshold when available; defaults to 10% (0.10).
+   * Per spec § 4 the threshold must come from deal configuration, not be hardcoded.
+   */
+  targetYieldThreshold?: number | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -119,7 +125,7 @@ const POSITIONING_OPTIONS: { label: string; value: PositioningPct }[] = [
 
 const DEFAULT_CAPTURE_RATE = 0.78;
 const DEFAULT_POSITIONING: PositioningPct = 50;
-const YOC_THRESHOLD = 0.10;
+const DEFAULT_YOC_THRESHOLD = 0.10; // fallback when deal config not available
 // Deviation thresholds per spec § 4
 const PCT_DEVIATION_BPS = 0.01;  // 100 bps
 const DOLLAR_DEVIATION_PCT = 0.05; // 5%
@@ -226,7 +232,10 @@ export function FloorPlanGrid({
   dealId,
   renovationScope,
   scopeUniformity,
+  targetYieldThreshold,
 }: Props) {
+  // Resolve effective YoC threshold from deal config (spec § 4); fallback to 10%
+  const YOC_THRESHOLD = targetYieldThreshold ?? DEFAULT_YOC_THRESHOLD;
 
   // ── Derive row list ──────────────────────────────────────────────────────────
 
@@ -657,10 +666,12 @@ export function FloorPlanGrid({
                           {rs.postRenoTargetRent != null ? fmtRent(rs.postRenoTargetRent) : 'edit above'}
                         </span>
                       )}
-                      {/* Platform suggestion hint when deviating */}
-                      {targetDeviates && platformTarget != null && (
-                        <div style={{ fontSize: 7, color: '#f59e0b', marginTop: 1 }}>
-                          ⚠ P50: {fmtRent(platformTarget)}
+                      {/* Platform suggestion always shown as subtle hint (spec § 4 3-layer model):
+                          - Deviating: amber warning with platform anchor
+                          - Non-deviating: muted ghost to confirm the platform basis */}
+                      {platformTarget != null && (
+                        <div style={{ fontSize: 7, marginTop: 1, color: targetDeviates ? '#f59e0b' : '#1e3a2a' }}>
+                          {targetDeviates ? '⚠ P50: ' : 'P50: '}{fmtRent(platformTarget)}
                         </div>
                       )}
                     </div>
