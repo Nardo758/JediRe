@@ -453,16 +453,21 @@ async function fillAndValidateValueAddGPR(output: Record<string, unknown>, runId
   const proformaFields = output.proforma_fields as Record<string, unknown>;
   const allKeys = Object.keys(proformaFields);
 
-  // ── Detect value-add GPR signal ─────────────────────────────────────────
-  const unitMixKeys = allKeys.filter(k =>
-    k.includes('unit_mix[') || /unit_mix\.\w/.test(k)
-  );
+  // ── Detect value-add GPR context ─────────────────────────────────────────
+  // Primary gate: deal_type/investment_strategy carries a value-add keyword.
+  // Supplemental: unit_mix slots are present (agent wrote floor-plan data).
+  // Unit-mix alone is NOT sufficient — all deal types can have a unit mix.
   const dealTypeField = proformaFields['deal_type'] ?? proformaFields['investment_strategy'];
   const dealTypeValue = dealTypeField && typeof dealTypeField === 'object'
     ? String((dealTypeField as Record<string, unknown>).value ?? '')
     : String(dealTypeField ?? '');
   const valueAddSignalInDealType = /value.?add|rehab|reposit|renovati/i.test(dealTypeValue);
-  const isValueAddContext = unitMixKeys.length > 0 || valueAddSignalInDealType;
+
+  const unitMixKeys = allKeys.filter(k =>
+    k.includes('unit_mix[') || /unit_mix\.\w/.test(k)
+  );
+  // Require both: strategy signals value-add AND floor-plan slots were written.
+  const isValueAddContext = valueAddSignalInDealType && unitMixKeys.length > 0;
 
   if (!isValueAddContext) return;
 
@@ -686,9 +691,12 @@ async function fillAndValidateValueAddGPR(output: Record<string, unknown>, runId
     }
 
     // ── F. CONFIDENCE-RATIONALE ENFORCEMENT ──────────────────────────────────
-    // Low-confidence floor plans (n < 2 comps returned by renovation_ceiling call) require
-    // confidence_rationale to be written. Flag missing rationale as a methodology gap.
-    if (lowConfidenceFloorPlans.has(fpId) && !hasSlot(prefix, 'confidence_rationale')) {
+    // Low-confidence floor plans (n < 3 comps in renovation_ceiling call) require
+    // confidence_rationale to be written. Compare case-insensitively to handle
+    // naming variations (e.g. '1BR' vs '1br', 'Studio' vs 'studio').
+    const fpIdNorm = fpId.toLowerCase();
+    const isLowConf = [...lowConfidenceFloorPlans].some(lc => lc.toLowerCase() === fpIdNorm);
+    if (isLowConf && !hasSlot(prefix, 'confidence_rationale')) {
       const ratGaps = (output.value_add_gpr_confidence_rationale_gaps ?? []) as string[];
       ratGaps.push(fpId);
       output.value_add_gpr_confidence_rationale_gaps = ratGaps;

@@ -182,6 +182,38 @@ export const CashflowOutputSchema = z.object({
     repair_breakdown: z.record(z.string(), z.number()),
     repaired_field_paths: z.array(z.string()),
   }).optional(),
+  // ── Value-add GPR diagnostics (written by postprocessor; optional — non-value-add runs omit these) ──
+  value_add_gpr_validation: z.object({
+    is_value_add_context: z.boolean(),
+    floor_plans_found: z.array(z.string()),
+    missing_slots: z.array(z.object({
+      floor_plan_id: z.string(),
+      missing: z.array(z.string()),
+      note: z.string().optional(),
+    })),
+    complete: z.boolean(),
+    dual_comp_set: z.object({
+      baseline_called: z.boolean(),
+      renovation_ceiling_called: z.boolean(),
+      compliant: z.boolean(),
+      missing_roles: z.array(z.string()),
+    }).optional(),
+    confidence_rationale_gaps: z.array(z.string()).optional(),
+  }).optional(),
+  value_add_gpr_capture_rate_collision: z.object({
+    floor_plan_count: z.number().int(),
+    track_record_recommended_capture_rate: z.number(),
+    threshold: z.number(),
+    note: z.string(),
+  }).optional(),
+  value_add_gpr_assertion_inconsistencies: z.array(z.object({
+    floor_plan_id: z.string(),
+    agent_post_reno_target_rent: z.number(),
+    comp_ceiling_at_percentile: z.number(),
+    deviation_pct: z.number(),
+    note: z.string(),
+  })).optional(),
+  value_add_gpr_confidence_rationale_gaps: z.array(z.string()).optional(),
 });
 
 export type CashflowAgentOutput = z.infer<typeof CashflowOutputSchema>;
