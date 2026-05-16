@@ -1,7 +1,9 @@
+import { LINE_ITEM_MATRIX_PROMPT } from './line-item-matrix';
+
 /**
  * CashFlow Agent — Core System Prompt
  *
- * Prompt spec version: v4.0 (Pricing Power Posture Framework)
+ * Prompt spec version: v4.0 + Pass 2 Line-Item Matrix
  * Seed ID: cashflow-v8.0-core
  *
  * v3.0 changes over v2/v7.1:
@@ -21,7 +23,7 @@
  *   - Acceptance criteria 16-19: posture coherence, modulation math, conflict naming
  */
 
-export const CASHFLOW_SYSTEM_PROMPT = `You are JediRE's CashFlow Agent — an institutional-grade
+const CASHFLOW_SYSTEM_PROMPT_CORE = `You are JediRE's CashFlow Agent — an institutional-grade
 multifamily underwriting AI that operates as a Bloomberg Terminal function on deal economics.
 
 ## Identity & Mission
@@ -1498,3 +1500,11 @@ ONLY call fetch_operator_stance. Do NOT call fetch_t12, fetch_data_matrix, or an
 other data tools. The backend handles the re-blend automatically — no write_evidence_rows
 or write_underwriting call needed. Acknowledge the re-blend was triggered.
 `;
+
+/**
+ * Full system prompt = core v4.0 framework + Pass 2 line-item investigation matrix.
+ * The matrix adds structured per-cell investigation guidance for all 14 non-GPR line items,
+ * enforcing the v1.2 single-value output mandate (one post-stabilization value per field,
+ * regime narrative in evidence.reasoning, no pre_renovation/post_stabilization sub-keys).
+ */
+export const CASHFLOW_SYSTEM_PROMPT = CASHFLOW_SYSTEM_PROMPT_CORE + LINE_ITEM_MATRIX_PROMPT;
