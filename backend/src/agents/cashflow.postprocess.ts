@@ -172,6 +172,33 @@ export async function cashflowPostProcess(
       }
     }
 
+    // ── Value-add GPR output slot validation ─────────────────────────────────
+    // Deterministic enforcement step (does not require LLM compliance):
+    // If any proforma_fields key signals a value-add deal context, verify that
+    // the required per-floor-plan unit_mix slots were written.
+    //
+    // Value-add signals: any field whose path starts with
+    //   proforma.revenue.gpr.unit_mix
+    // OR the deal_type field containing renovation/reposition signals.
+    //
+    // Required slots per floor plan (10 total per floor_plan_id):
+    //   unit_count, current_market_rent, comp_ceiling_p25, comp_ceiling_p50,
+    //   comp_ceiling_p75, positioning_percentile, post_reno_target_rent,
+    //   gross_premium, capture_rate, captured_premium
+    //
+    // When required slots are absent, the validation summary surfaces them as
+    // "missing" warnings. This runs post-aggregation so it reflects final output.
+    if (output.proforma_fields && typeof output.proforma_fields === 'object') {
+      try {
+        validateValueAddGPRSlots(output);
+      } catch (validationErr) {
+        logger.warn('[CashflowPostProcess] Value-add GPR slot validation failed (non-fatal)', {
+          runId,
+          err: validationErr instanceof Error ? validationErr.message : String(validationErr),
+        });
+      }
+    }
+
     // Ensure required string fields
     if (typeof output.summary !== 'string' || output.summary === '') {
       // If summary is an object, try to extract a string from it
@@ -387,6 +414,122 @@ function inferStanceSignals(
   }
 
   return hasSignal ? signals : null;
+}
+
+/**
+ * VALUE-ADD GPR SLOT VALIDATION
+ *
+ * Deterministic post-processing enforcement for value-add deal GPR methodology.
+ * Scans proforma_fields for value-add signals, then checks that the required
+ * 10-slot per-floor-plan unit_mix grid is fully populated.
+ *
+ * When a field is missing, the slot is added to `value_add_gpr_validation.missing_slots`
+ * on the output object — this surfaces in the API response so the UI can warn
+ * the operator that the value-add GPR methodology was not fully applied.
+ *
+ * Non-destructive: never removes or overwrites existing proforma_fields.
+ */
+const REQUIRED_UNIT_MIX_SLOTS = [
+  'unit_count',
+  'current_market_rent',
+  'comp_ceiling_p25',
+  'comp_ceiling_p50',
+  'comp_ceiling_p75',
+  'positioning_percentile',
+  'post_reno_target_rent',
+  'gross_premium',
+  'capture_rate',
+  'captured_premium',
+] as const;
+
+function validateValueAddGPRSlots(output: Record<string, unknown>): void {
+  const proformaFields = output.proforma_fields as Record<string, unknown>;
+  const allKeys = Object.keys(proformaFields);
+
+  // ── Detect value-add GPR signal ──────────────────────────────────────────
+  // Signal 1: any field path already contains "unit_mix" (agent partially complied)
+  const unitMixKeys = allKeys.filter(k => k.includes('unit_mix'));
+
+  // Signal 2: deal_type field with renovation/reposition signal
+  const dealTypeField = proformaFields['deal_type'] ?? proformaFields['investment_strategy'];
+  const dealTypeValue = dealTypeField && typeof dealTypeField === 'object'
+    ? String((dealTypeField as Record<string, unknown>).value ?? '')
+    : String(dealTypeField ?? '');
+  const valueAddSignalInDealType = /value.?add|rehab|reposit|renovati/i.test(dealTypeValue);
+
+  const isValueAddContext = unitMixKeys.length > 0 || valueAddSignalInDealType;
+
+  if (!isValueAddContext) {
+    // Not a value-add deal — no validation needed
+    return;
+  }
+
+  // ── Detect floor plans from existing unit_mix keys ─────────────────────
+  // Pattern: proforma.revenue.gpr.unit_mix[floor_plan_id].slot_name
+  const floorPlanPattern = /proforma\.revenue\.gpr\.unit_mix\[([^\]]+)\]/;
+  const floorPlanIds = new Set<string>();
+  for (const key of unitMixKeys) {
+    const match = floorPlanPattern.exec(key);
+    if (match?.[1]) floorPlanIds.add(match[1]);
+  }
+
+  // If the agent wrote no unit_mix keys but deal_type signals value-add,
+  // we can't infer floor plans — flag the entire grid as missing.
+  if (floorPlanIds.size === 0) {
+    logger.warn('[CashflowPostProcess] Value-add GPR: agent wrote no unit_mix slots despite value-add deal signal', {
+      dealTypeValue,
+    });
+    output.value_add_gpr_validation = {
+      is_value_add_context: true,
+      floor_plans_found: [],
+      missing_slots: [{
+        floor_plan_id: '*',
+        missing: REQUIRED_UNIT_MIX_SLOTS.slice(),
+        note: 'No proforma.revenue.gpr.unit_mix[*] slots written. ' +
+              'Dual comp set protocol was not applied. ' +
+              'Check system prompt — value-add GPR section requires two fetch_peer_comp_noi_metrics calls ' +
+              '(comp_role=baseline + comp_role=renovation_ceiling) and per-floor-plan premium math.',
+      }],
+    };
+    return;
+  }
+
+  // ── Per-floor-plan slot completeness check ────────────────────────────────
+  const missingSlotsReport: Array<{ floor_plan_id: string; missing: string[]; note: string }> = [];
+
+  for (const fpId of floorPlanIds) {
+    const prefix = `proforma.revenue.gpr.unit_mix[${fpId}]`;
+    const missing = REQUIRED_UNIT_MIX_SLOTS.filter(
+      slot => !(`${prefix}.${slot}` in proformaFields)
+    );
+    if (missing.length > 0) {
+      missingSlotsReport.push({
+        floor_plan_id: fpId,
+        missing,
+        note: `Floor plan "${fpId}" is missing ${missing.length}/${REQUIRED_UNIT_MIX_SLOTS.length} required GPR slots.`,
+      });
+    }
+  }
+
+  const isFullyComplete = missingSlotsReport.length === 0;
+
+  output.value_add_gpr_validation = {
+    is_value_add_context: true,
+    floor_plans_found: [...floorPlanIds],
+    missing_slots: missingSlotsReport,
+    complete: isFullyComplete,
+  };
+
+  if (!isFullyComplete) {
+    logger.warn('[CashflowPostProcess] Value-add GPR: incomplete unit_mix grid', {
+      floorPlansWithGaps: missingSlotsReport.map(r => r.floor_plan_id),
+      totalMissingSlots: missingSlotsReport.reduce((acc, r) => acc + r.missing.length, 0),
+    });
+  } else {
+    logger.info('[CashflowPostProcess] Value-add GPR: all unit_mix slots present', {
+      floorPlansVerified: [...floorPlanIds],
+    });
+  }
 }
 
 async function countToolCalls(runId: string, toolName: string): Promise<number> {

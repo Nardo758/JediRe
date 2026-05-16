@@ -903,9 +903,14 @@ across all floor plans:
 
 **Capture rate** — pull from fetch_owned_asset_actuals filtered to buyer's prior value-add programs:
 - Buyer with 2+ documented similar programs (same scope, same vintage band): use their median capture rate
-- First-time operator at this scope or scale: archive cohort P25 capture rate (typically 0.70-0.75)
+  (fetch_owned_asset_actuals value_add_programs_only=true → renovation_capture_summary.recommended_capture_rate)
+- Buyer with 1 prior similar program: single-program lift as proxy, confidence=medium
+- First-time operator at this scope / no portfolio evidence: archive cohort P50 default = 0.80, confidence=medium
+  (P25 = 0.72 reserved for operators with partial track record at materially lower scope)
 - Valid range: 0.70-0.90. Anything > 0.90 requires explicit documented justification.
 - Capture rate above buyer's documented track record is a pitfall — surface the gap in evidence.
+- ALWAYS apply market growth haircut from fetch_market_trends: if (median_lift − market_drift_over_hold) < 5%,
+  treat capture rate as unproven → revert to archive P50 (0.80) with confidence=medium.
 
 **Stabilized year aggregate GPR:**
 
