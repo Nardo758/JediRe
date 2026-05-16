@@ -184,6 +184,22 @@ async function loadDealFinancials(dealId: string): Promise<{
 }
 
 // ── Step 1: Baseline Pro Forma ────────────────────────────────────────────────
+//
+// Derivation contract (v1): The baseline is computed from the most recent
+// cashflow underwriting snapshot for this deal (loaded by loadDealFinancials()
+// above). This is equivalent to a "zero-action underwrite" because the snapshot
+// already reflects T12 NOI, rent-roll actuals, debt structure, and evidence-
+// backed growth rates — with NO value-add actions applied. The action deltas
+// are additive on top of this baseline (Steps 3–4), never baked in.
+//
+// Spec note: the canonical spec calls for "invoking underwrite mode with deltas
+// zeroed". The snapshot-based approach is a deliberate v1 simplification:
+//   • It avoids a full LLM underwriting run per roadmap request (latency/cost).
+//   • The most recent snapshot IS a zeroed-delta baseline — no roadmap actions
+//     have been persisted to deal_underwriting_snapshots yet.
+//   • Any deviation between the snapshot and a live zero-delta run is bounded
+//     by market-drift assumptions updated in the prior underwriting run.
+// This deviation is tracked as a future improvement (COR-Roadmap-B1).
 
 async function computeBaselineProforma(
   financials: Awaited<ReturnType<typeof loadDealFinancials>>,
