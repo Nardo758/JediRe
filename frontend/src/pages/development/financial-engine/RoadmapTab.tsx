@@ -546,6 +546,8 @@ export function RoadmapTab({ dealId, f9Financials }: FinancialEngineTabProps) {
   const [showBuildModal, setShowBuildModal] = useState(false);
   const [selectedAction, setSelectedAction] = useState<RoadmapAction | null>(null);
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<'impact' | 'timing' | 'confidence' | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const holdYears = f9Financials?.assumptions?.holdYears ?? null;
 
@@ -588,11 +590,12 @@ export function RoadmapTab({ dealId, f9Financials }: FinancialEngineTabProps) {
           },
         }),
       });
-      const json = await res.json() as { success: boolean; output?: RoadmapOutput; error?: string };
-      if (!res.ok || !json.success) {
-        throw new Error(json.error ?? `HTTP ${res.status}`);
+      // API returns RoadmapOutput directly (merged with roadmap_id/deal_id metadata)
+      const json = await res.json() as (RoadmapOutput & { roadmap_id?: string; deal_id?: string; error?: string });
+      if (!res.ok) {
+        throw new Error((json as { error?: string }).error ?? `HTTP ${res.status}`);
       }
-      setRoadmap(json.output ?? null);
+      setRoadmap(json.meta != null ? json : null);
       setShowBuildModal(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Roadmap generation failed');
@@ -601,11 +604,36 @@ export function RoadmapTab({ dealId, f9Financials }: FinancialEngineTabProps) {
     }
   }, [dealId]);
 
+  const CONF_ORDER: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
   const filteredActions = useMemo(() => {
     if (!roadmap) return [];
-    if (!filterCategory) return roadmap.roadmap_actions;
-    return roadmap.roadmap_actions.filter(a => a.category === filterCategory);
-  }, [roadmap, filterCategory]);
+    const base = filterCategory
+      ? roadmap.roadmap_actions.filter(a => a.category === filterCategory)
+      : [...roadmap.roadmap_actions];
+    if (!sortKey) return base;
+    return base.slice().sort((a, b) => {
+      let delta = 0;
+      if (sortKey === 'impact') {
+        delta = a.expected_impact.annualized_dollar_impact_at_full_realization
+               - b.expected_impact.annualized_dollar_impact_at_full_realization;
+      } else if (sortKey === 'timing') {
+        delta = a.timing.start_month - b.timing.start_month;
+      } else if (sortKey === 'confidence') {
+        delta = (CONF_ORDER[a.expected_impact.confidence] ?? 0) - (CONF_ORDER[b.expected_impact.confidence] ?? 0);
+      }
+      return sortDir === 'desc' ? -delta : delta;
+    });
+  }, [roadmap, filterCategory, sortKey, sortDir]);
+
+  const handleSort = (key: 'impact' | 'timing' | 'confidence') => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+  };
 
   const CATEGORIES = useMemo(() => {
     if (!roadmap) return [];
@@ -853,9 +881,31 @@ export function RoadmapTab({ dealId, f9Financials }: FinancialEngineTabProps) {
                 background: bgHeader, padding: '5px 10px',
                 borderBottom: `1px solid ${border}`,
               }}>
-                {['#', 'ACTION', 'TIMING', 'IMPACT/YR', 'CATEGORY', 'CONF'].map(h => (
-                  <div key={h} style={{ fontFamily: MONO, fontSize: 7, color: textMuted, letterSpacing: 0.4 }}>{h}</div>
-                ))}
+                {(
+                [
+                  { label: '#', key: null },
+                  { label: 'ACTION', key: null },
+                  { label: 'TIMING', key: 'timing' as const },
+                  { label: 'IMPACT/YR', key: 'impact' as const },
+                  { label: 'CATEGORY', key: null },
+                  { label: 'CONF', key: 'confidence' as const },
+                ] as { label: string; key: 'impact' | 'timing' | 'confidence' | null }[]
+              ).map(({ label, key }) => (
+                <div
+                  key={label}
+                  onClick={key ? () => handleSort(key) : undefined}
+                  style={{
+                    fontFamily: MONO, fontSize: 7, color: key ? (sortKey === key ? textPrimary : textMuted) : textMuted,
+                    letterSpacing: 0.4, cursor: key ? 'pointer' : 'default',
+                    userSelect: 'none', display: 'flex', alignItems: 'center', gap: 2,
+                  }}
+                >
+                  {label}
+                  {key && sortKey === key && (
+                    <span style={{ fontSize: 6 }}>{sortDir === 'desc' ? '▼' : '▲'}</span>
+                  )}
+                </div>
+              ))}
               </div>
 
               {filteredActions.map((action, idx) => {

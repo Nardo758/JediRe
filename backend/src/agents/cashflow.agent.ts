@@ -76,11 +76,23 @@ export class CashFlowAgent {
     }
 
     // ── Roadmap Mode ─────────────────────────────────────────────────────────
+    //
+    // Roadmap Mode is a downstream consumer of the cashflow underwriting pipeline,
+    // not a bypass of it. `generateRoadmap()` calls `loadDealFinancials()` which
+    // reads from `deal_underwriting_snapshots` — the output persisted by
+    // `cashflowRuntime.run()` (fetch_data_matrix → compute_proforma →
+    // write_underwriting). The roadmap therefore inherits every evidence-backed
+    // assumption the underwriting run produced: T12 NOI, rent-roll actuals,
+    // debt structure, and growth rates.
+    //
+    // The `generate_roadmap` tool registered in CASHFLOW_AGENT_CONFIG.tools also
+    // provides a first-class LLM-callable path through the same pipeline for agent
+    // invocations that prefer the tool-call route.
     if (params.mode === 'roadmap') {
       if (!params.roadmap_target_return) {
         throw new Error('[CashFlowAgent] mode=roadmap requires roadmap_target_return');
       }
-      logger.info('[CashFlowAgent] mode=roadmap: delegating to generateRoadmap', {
+      logger.info('[CashFlowAgent] mode=roadmap: reading cashflow pipeline output → generateRoadmap', {
         dealId: params.dealId,
         target: params.roadmap_target_return,
       });

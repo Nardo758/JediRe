@@ -111,12 +111,13 @@ roadmapRouter.post(
         throw new AppError(500, `Roadmap generation failed: ${message}`);
       }
 
+      // Return RoadmapOutput directly, augmented with persistence metadata.
+      // Top-level fields follow the RoadmapOutput contract; roadmap_id/deal_id
+      // are additive metadata the client can use for polling/reference.
       res.status(201).json({
-        success: true,
         roadmap_id: roadmapId,
         deal_id: dealId,
-        status: 'succeeded',
-        output,
+        ...output,
       });
     } catch (error) {
       next(error);
