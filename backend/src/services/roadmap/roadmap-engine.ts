@@ -403,6 +403,7 @@ function sizeActions(
 ): RoadmapAction[] {
   const eligible = getEligibleActions(
     financials.dealType,
+    financials.assetClass,
     input.constraints?.sponsor_excluded_actions ?? [],
     input.constraints?.must_include_actions ?? [],
     dealPosture

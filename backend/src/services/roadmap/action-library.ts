@@ -769,29 +769,49 @@ export function getActionById(id: string): ActionLibraryEntry | undefined {
 }
 
 /**
- * Filter actions eligible for a given deal type and posture, excluding sponsor-excluded IDs.
- * dealPosture: 'offense' | 'neutral' | 'defense' — derived from the gap between baseline
- * and target NOI.  Offense-only actions are excluded in defense posture.
+ * Filter actions eligible for a given deal type, asset class, and posture.
+ * All three axes must match (or must-include bypasses all gates).
+ *
+ * @param dealType     e.g. 'existing', 'value_add', 'development'
+ * @param assetClass   e.g. 'multifamily', 'office', 'retail', 'industrial'
+ * @param excludedIds  sponsor-excluded action IDs
+ * @param mustIncludeIds  always included even if not eligible
+ * @param dealPosture  'offense' | 'neutral' | 'defense' — derived from NOI gap
  */
 export function getEligibleActions(
   dealType: string,
+  assetClass: string,
   excludedIds: string[] = [],
   mustIncludeIds: string[] = [],
   dealPosture: 'offense' | 'neutral' | 'defense' = 'offense'
 ): ActionLibraryEntry[] {
   const normalizedType = dealType.toLowerCase().replace(/[-\s]/g, '_');
+  const normalizedClass = assetClass.toLowerCase().replace(/[-\s]/g, '_');
+
   const eligible = ACTION_LIBRARY.filter(a => {
     if (excludedIds.includes(a.id)) return false;
-    // Deal type gate: allow if entry covers this type OR covers 'existing'
+
+    // Deal-type gate: allow if entry covers this type OR covers 'existing'
     const typeCovered =
       a.applicability.deal_types.includes(normalizedType) ||
       a.applicability.deal_types.includes('existing');
     if (!typeCovered) return false;
+
+    // Asset-class gate: allow if entry covers this class OR has no class restriction
+    const classCovered =
+      !a.applicability.asset_classes ||
+      a.applicability.asset_classes.length === 0 ||
+      a.applicability.asset_classes.includes(normalizedClass) ||
+      a.applicability.asset_classes.includes('all');
+    if (!classCovered) return false;
+
     // Posture gate: exclude actions that don't support the deal-level posture
     if (!a.applicability.requires_posture.includes(dealPosture)) return false;
+
     return true;
   });
-  // Must-include actions bypass posture and type gates
+
+  // Must-include actions bypass all three gates
   const mustInclude = ACTION_LIBRARY.filter(
     a => mustIncludeIds.includes(a.id) && !eligible.find(e => e.id === a.id)
   );

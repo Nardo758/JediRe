@@ -18,6 +18,8 @@
 import { logger } from '../utils/logger';
 import { cashflowRuntime, type CashflowAgentOutput } from './cashflow.config';
 import type { RunContext } from './runtime/types';
+import { generateRoadmap } from '../services/roadmap/roadmap-engine';
+import type { RoadmapInput, RoadmapOutput } from '../types/roadmap';
 
 export interface CashflowAgentParams {
   dealId?: string;
@@ -28,15 +30,38 @@ export interface CashflowAgentParams {
   interestRate?: number;
   downPaymentPercent?: number;
   loanTermYears?: number;
+  /**
+   * Execution mode:
+   *   'underwrite' (default) — full cashflow evidence underwriting
+   *   'roadmap'              — value-creation roadmap generation; requires roadmap_target_return
+   */
+  mode?: 'underwrite' | 'roadmap';
+  /**
+   * Required when mode === 'roadmap'.
+   */
+  roadmap_target_return?: {
+    metric: RoadmapInput['target_return']['metric'];
+    value: number;
+    hold_years: number;
+  };
+  roadmap_constraints?: RoadmapInput['constraints'];
+  roadmap_sponsor_capabilities?: RoadmapInput['sponsor_capabilities'];
   [key: string]: unknown;
 }
 
 export class CashFlowAgent {
   /**
-   * Execute cashflow analysis for a deal.
+   * Execute cashflow analysis or roadmap generation for a deal.
    *
-   * Routes through `cashflowRuntime.run()` when dealId is present.
-   * Legacy callers not providing dealId receive a zeroed result.
+   * mode === 'underwrite' (default):
+   *   Routes through `cashflowRuntime.run()` — full evidence underwriting path.
+   *
+   * mode === 'roadmap':
+   *   Calls `generateRoadmap()` directly, bypassing the LLM runtime.
+   *   `roadmap_target_return` is required; result is returned as a
+   *   `RoadmapOutput` cast via the `roadmap_output` key on the returned object.
+   *   This makes Roadmap Mode a first-class mode of the Cashflow Agent,
+   *   sharing the same authz and deal-context pipeline.
    */
   async execute(params: CashflowAgentParams, userId?: string): Promise<CashflowAgentOutput> {
     const resolvedUserId = params.userId ?? userId ?? 'unknown';
@@ -50,6 +75,49 @@ export class CashFlowAgent {
       return this.defaultResult(now);
     }
 
+    // ── Roadmap Mode ─────────────────────────────────────────────────────────
+    if (params.mode === 'roadmap') {
+      if (!params.roadmap_target_return) {
+        throw new Error('[CashFlowAgent] mode=roadmap requires roadmap_target_return');
+      }
+      logger.info('[CashFlowAgent] mode=roadmap: delegating to generateRoadmap', {
+        dealId: params.dealId,
+        target: params.roadmap_target_return,
+      });
+
+      const roadmapInput: RoadmapInput = {
+        deal_id: params.dealId,
+        target_return: params.roadmap_target_return,
+        constraints: params.roadmap_constraints,
+        sponsor_capabilities: params.roadmap_sponsor_capabilities,
+      };
+
+      const roadmapOutput: RoadmapOutput = await generateRoadmap(roadmapInput);
+
+      // Return a minimal CashflowAgentOutput envelope with the full roadmap
+      // output accessible via the `roadmap_output` extension key.
+      // Callers that understand mode=roadmap should read `roadmap_output`.
+      return {
+        purchase_price: null,
+        noi_year1: roadmapOutput.baseline_proforma.noi_path[0] ?? null,
+        year1_cap_rate_pct: null,
+        irr_pct: roadmapOutput.meta.roadmap_irr,
+        avg_cash_on_cash_pct: null,
+        dscr_year1: null,
+        equity_invested: null,
+        exit_value: null,
+        investment_rating: roadmapOutput.meta.achievability_status as string,
+        summary: roadmapOutput.meta.achievability_reasoning,
+        has_t12_data: false,
+        has_rent_roll: false,
+        confidence_score: 1,
+        fields_written: [],
+        completed_at: new Date().toISOString(),
+        roadmap_output: roadmapOutput,
+      } as CashflowAgentOutput & { roadmap_output: RoadmapOutput };
+    }
+
+    // ── Standard Underwrite Mode ──────────────────────────────────────────────
     const ctx: RunContext = {
       dealId: params.dealId,
       userId: resolvedUserId,
