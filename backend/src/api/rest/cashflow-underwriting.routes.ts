@@ -320,18 +320,28 @@ dealUnderwritingRouter.get(
       // delta_reasons, cohort_comparison_status, analog_cohort_status, and outlier_justification
       // as top-level keys in deal_underwriting_snapshots.proforma_json (alongside proforma_fields).
       // These are NOT stored in underwriting_evidence — they live in the snapshot JSON.
+      //
+      // When the evidence row has an agent_run_id, prefer the snapshot from the same run so
+      // cohort data is always consistent with the evidence being shown. Falls back to most-recent
+      // snapshot when agent_run_id is absent or no matching snapshot exists.
       let cohortContext: Record<string, unknown> | null = null;
       try {
         const snapshotKey = resolveSnapshotGrowthKey(fieldPath);
         if (snapshotKey) {
+          // Read agent_run_id from the evidence row (already fetched above) for run-coherent lookup
+          const evidenceAgentRunId = result.rows.length > 0
+            ? ((result.rows[0] as Record<string, unknown>).agent_run_id as string | null | undefined) ?? null
+            : null;
           const cohortResult = await query(
             `SELECT proforma_json->$2 AS cohort_data
              FROM deal_underwriting_snapshots
              WHERE deal_id = $1
                AND proforma_json ? $2
-             ORDER BY created_at DESC
+             ORDER BY
+               CASE WHEN $3::text IS NOT NULL AND agent_run_id = $3 THEN 0 ELSE 1 END,
+               created_at DESC
              LIMIT 1`,
-            [dealId, snapshotKey]
+            [dealId, snapshotKey, evidenceAgentRunId]
           );
           const raw = (cohortResult.rows[0] as Record<string, unknown> | undefined)?.cohort_data;
           if (raw && typeof raw === 'object') {
