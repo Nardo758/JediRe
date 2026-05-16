@@ -1057,7 +1057,7 @@ export function formatValue(path: string, value: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Integration Example
+// Integration Example — see cashflow.postprocess.ts for the live wiring.
 // ---------------------------------------------------------------------------
 
 /*
