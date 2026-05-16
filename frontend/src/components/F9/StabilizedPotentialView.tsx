@@ -388,7 +388,7 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
     );
   }
 
-  const sortedLayout = [...data.layout].sort(
+  const sortedLayout = [...(data.layout ?? [])].sort(
     (a, b) => COMPONENT_ORDER.indexOf(a.key) - COMPONENT_ORDER.indexOf(b.key)
   );
 
