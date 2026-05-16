@@ -603,6 +603,14 @@ export function FloorPlanGrid({
               const platformRenoCost = r.renovation_cost;
               const costDeviates = rs.renoCostPerUnit != null && platformRenoCost != null &&
                 Math.abs((rs.renoCostPerUnit - platformRenoCost) / Math.max(platformRenoCost, 1)) > DOLLAR_DEVIATION_PCT;
+              // Above-P90 cost override flag (spec § 9): proxy uses platform-adjusted
+              // baseline × 1.25 since archive cohort P90 requires agent data.
+              // Phase 2 will wire actual archive P90 from the LayeredValue baseline.
+              const costAboveP90Proxy = rs.renoCostPerUnit != null && platformRenoCost != null &&
+                rs.renoCostPerUnit > platformRenoCost * 1.25;
+              const costAbovePct = (rs.renoCostPerUnit != null && platformRenoCost != null && platformRenoCost > 0)
+                ? Math.round(((rs.renoCostPerUnit - platformRenoCost) / platformRenoCost) * 100)
+                : null;
               const hasWritebackError = !!writebackErrors[r.floor_plan_id];
 
               return (
@@ -627,27 +635,40 @@ export function FloorPlanGrid({
 
                   {/* Positioning Percentile — editable dropdown */}
                   <td style={{ ...cellStyle, padding: '2px 4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <select
-                        value={rs.positioningPercentile}
-                        onChange={e => updatePositioning(r.floor_plan_id, Number(e.target.value) as PositioningPct, r.comp_ceiling)}
-                        style={{
-                          background: '#0a1a26', border: '1px solid #1e3a4a',
-                          color: '#06b6d4', fontFamily: MONO, fontSize: 8,
-                          borderRadius: 2, padding: '1px 3px', cursor: 'pointer',
-                          width: isCustom ? 60 : 60,
-                        }}
-                      >
-                        {POSITIONING_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                      {/* Custom: show direct target rent input */}
-                      {isCustom && (
-                        <CustomTargetInput
-                          value={rs.postRenoTargetRent}
-                          onChange={v => updateCustomTarget(r.floor_plan_id, v)}
-                        />
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <select
+                          value={rs.positioningPercentile}
+                          onChange={e => updatePositioning(r.floor_plan_id, Number(e.target.value) as PositioningPct, r.comp_ceiling)}
+                          style={{
+                            background: '#0a1a26', border: '1px solid #1e3a4a',
+                            color: '#06b6d4', fontFamily: MONO, fontSize: 8,
+                            borderRadius: 2, padding: '1px 3px', cursor: 'pointer',
+                            width: 60,
+                          }}
+                        >
+                          {POSITIONING_OPTIONS.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                        {/* Custom: show direct target rent input */}
+                        {isCustom && (
+                          <CustomTargetInput
+                            value={rs.postRenoTargetRent}
+                            onChange={v => updateCustomTarget(r.floor_plan_id, v)}
+                          />
+                        )}
+                      </div>
+                      {/* Sub-P50 informational flag (spec § 9): non-blocking,
+                          surfaces when sponsor chooses below-median positioning */}
+                      {!isCustom && rs.positioningPercentile > 0 && rs.positioningPercentile < 50 && (
+                        <div style={{
+                          fontSize: 6.5, color: '#94a3b8', marginTop: 2,
+                          background: '#0a1020', border: '1px solid #1e2538',
+                          borderRadius: 2, padding: '0px 3px', lineHeight: '1.4',
+                        }}>
+                          ↓ sub-P50 — below comp-set median
+                        </div>
                       )}
                     </div>
                   </td>
@@ -700,8 +721,8 @@ export function FloorPlanGrid({
                   {!postStabilizationView && (
                     <td style={{
                       ...cellStyle, padding: '2px 4px',
-                      background: costDeviates ? '#0d0a14' : undefined,
-                      outline: costDeviates ? '1px solid #f59e0b22' : undefined,
+                      background: costAboveP90Proxy ? '#110a00' : (costDeviates ? '#0d0a14' : undefined),
+                      outline: costAboveP90Proxy ? '1px solid #f59e0b55' : (costDeviates ? '1px solid #f59e0b22' : undefined),
                     }}>
                       <RenoCostInput
                         value={rs.renoCostPerUnit}
@@ -710,6 +731,17 @@ export function FloorPlanGrid({
                         hasWritebackError={hasWritebackError}
                         onChange={v => updateRenoCost(r.floor_plan_id, v)}
                       />
+                      {/* Above-P90 narrative (spec § 9): yellow chip when cost
+                          is >25% above platform-adjusted baseline. Non-blocking. */}
+                      {costAboveP90Proxy && costAbovePct != null && (
+                        <div style={{
+                          fontSize: 6.5, color: '#f59e0b', marginTop: 2,
+                          background: '#1a0e00', border: '1px solid #f59e0b33',
+                          borderRadius: 2, padding: '1px 4px', lineHeight: '1.5',
+                        }}>
+                          ⚠ {costAbovePct}% above platform basis — verify scope
+                        </div>
+                      )}
                     </td>
                   )}
 
@@ -733,27 +765,43 @@ export function FloorPlanGrid({
             })}
           </tbody>
 
-          {/* ── Aggregate footer ── */}
-          <tfoot>
-            <tr>
-              <td style={footerLeftStyle}>AGGREGATE</td>
-              <td style={{ ...footerStyle, color: '#64748b' }}>{aggregate.totalUnitsSum || totalUnits}</td>
-              <td style={footerStyle}>{fmtRent(aggregate.avgCurrentRent)}</td>
-              <td style={{ ...footerStyle, color: '#334155', fontSize: 8, fontStyle: 'italic' }}>weighted avg</td>
-              <td style={{ ...footerStyle, color: '#0891b2', fontSize: 8 }}>wt'd</td>
-              <td style={{ ...footerStyle, color: '#22c55e' }}>{fmtRent(aggregate.avgTargetRent)}</td>
-              <td style={{ ...footerStyle, color: '#34d399' }}>{fmtRent(aggregate.avgPremium)}</td>
-              <td style={{ ...footerStyle, color: '#64748b', fontSize: 8 }}>—</td>
-              {!postStabilizationView && (
-                <td style={{ ...footerStyle, color: '#a78bfa' }}>{fmtBudget(aggregate.totalRenoBudget) || '—'}</td>
-              )}
-              {!postStabilizationView && (
-                <td style={{ ...footerStyle, color: '#f59e0b', fontSize: 10 }}>
-                  {aggregate.propertyYoC != null ? fmtYoC(aggregate.propertyYoC) : '—'}
+          {/* ── Aggregate footer — hidden for single-floor-plan properties (spec § 9):
+               the aggregate row would be identical to the one data row. Show a
+               subtle "= above" label in the first cell instead of duplicating. ── */}
+          {sourceRows.length > 1 ? (
+            <tfoot>
+              <tr>
+                <td style={footerLeftStyle}>AGGREGATE</td>
+                <td style={{ ...footerStyle, color: '#64748b' }}>{aggregate.totalUnitsSum || totalUnits}</td>
+                <td style={footerStyle}>{fmtRent(aggregate.avgCurrentRent)}</td>
+                <td style={{ ...footerStyle, color: '#334155', fontSize: 8, fontStyle: 'italic' }}>weighted avg</td>
+                <td style={{ ...footerStyle, color: '#0891b2', fontSize: 8 }}>wt'd</td>
+                <td style={{ ...footerStyle, color: '#22c55e' }}>{fmtRent(aggregate.avgTargetRent)}</td>
+                <td style={{ ...footerStyle, color: '#34d399' }}>{fmtRent(aggregate.avgPremium)}</td>
+                <td style={{ ...footerStyle, color: '#64748b', fontSize: 8 }}>—</td>
+                {!postStabilizationView && (
+                  <td style={{ ...footerStyle, color: '#a78bfa' }}>{fmtBudget(aggregate.totalRenoBudget) || '—'}</td>
+                )}
+                {!postStabilizationView && (
+                  <td style={{ ...footerStyle, color: '#f59e0b', fontSize: 10 }}>
+                    {aggregate.propertyYoC != null ? fmtYoC(aggregate.propertyYoC) : '—'}
+                  </td>
+                )}
+              </tr>
+            </tfoot>
+          ) : (
+            /* Single floor plan: aggregate = the one row; show an identity label */
+            <tfoot>
+              <tr>
+                <td colSpan={postStabilizationView ? 8 : 10} style={{
+                  ...footerStyle, textAlign: 'left', color: '#1e2d3a', fontStyle: 'italic',
+                  padding: '3px 8px', fontSize: 7.5,
+                }}>
+                  Single floor plan — aggregate equals the row above
                 </td>
-              )}
-            </tr>
-          </tfoot>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
@@ -850,6 +898,8 @@ function CaptureRateInput({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
 
+  const captureAbove1 = value > 1.0;
+
   if (editing) {
     return (
       <input
@@ -858,8 +908,11 @@ function CaptureRateInput({
         onChange={e => setDraft(e.target.value)}
         onBlur={() => {
           const v = parseFloat(draft);
+          // Accept 0–200% range; values 1–100 are treated as percentages and
+          // converted; values 0–1 are treated as decimals. Allows capture > 1.0
+          // so sponsor can express above-ceiling conviction (spec § 9 edge case).
           if (!isNaN(v) && v >= 0 && v <= 1) onChange(v);
-          else if (!isNaN(v) && v > 1 && v <= 100) onChange(v / 100);
+          else if (!isNaN(v) && v > 1 && v <= 200) onChange(v / 100);
           setEditing(false);
         }}
         onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditing(false); }}
@@ -877,15 +930,25 @@ function CaptureRateInput({
         title="Click to edit capture rate"
         style={{
           cursor: 'pointer',
-          color: deviates ? '#f59e0b' : '#94a3b8',
-          borderBottom: `1px dotted ${deviates ? '#f59e0b55' : '#334155'}`,
+          color: captureAbove1 ? '#ef4444' : (deviates ? '#f59e0b' : '#94a3b8'),
+          borderBottom: `1px dotted ${captureAbove1 ? '#ef444455' : (deviates ? '#f59e0b55' : '#334155')}`,
           fontSize: 9,
         }}
       >
         {fmtPct(value, 0)}
       </span>
-      {/* Platform suggestion hint when deviating */}
-      {deviates && (
+      {/* Warning chip: capture rate >1.0 implies property out-performs comp ceiling */}
+      {captureAbove1 && (
+        <div style={{
+          fontSize: 7, color: '#ef4444', marginTop: 1,
+          background: '#1a0808', border: '1px solid #ef444422',
+          borderRadius: 2, padding: '0px 3px', lineHeight: '1.4',
+        }}>
+          ⚠ &gt;100% capture — confirm comp positioning
+        </div>
+      )}
+      {/* Platform suggestion hint when deviating but not above 1.0 */}
+      {deviates && !captureAbove1 && (
         <div style={{ fontSize: 7, color: '#64748b', marginTop: 1 }}>
           platform: {fmtPct(platformDefault, 0)}
         </div>

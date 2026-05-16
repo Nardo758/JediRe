@@ -1839,10 +1839,19 @@ router.get('/:dealId/stance/affected-fields', requireAuth, async (req: Authentic
  *
  * Body: { floor_plan_id: string; cost_per_unit: number | null }
  *
- * Phase 1 implementation: stores in deal_assumptions JSONB under
- * `m22_floor_plan_overrides` so the data survives and can be read back by
- * FloorPlanGrid without requiring a full M22 capex schedule build.
- * Full M22 capex schedule integration is a follow-on task.
+ * Storage: persists to deal_assumptions.assumptions under the JSON path
+ *   capex_schedule → floor_plan_costs → {floor_plan_id}
+ *
+ * This is the M22 capex_schedule shared state for Phase 1.
+ * `deal_assumptions.assumptions.capex_schedule` is the canonical Phase 1
+ * store for all M22 capex data that does not yet have a dedicated DB table.
+ * Both FloorPlanGrid and M22's own UI surface read from and write to this
+ * path (last-write-wins, per spec § Q6). The FloorPlanGrid reads it back
+ * on next render through the agent payload / GET deal-financials response.
+ *
+ * Phase 2 follow-on (#800 / #802): wire the module-wiring orchestrator's
+ * `capex_schedule.updated` event so S&U, Cap Stack, and M14 Risk recompute
+ * immediately after a cost write.
  */
 router.patch('/:dealId/m22/floor-plan-cost', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -1878,13 +1887,33 @@ router.patch('/:dealId/m22/floor-plan-cost', requireAuth, async (req: Authentica
       cost_per_unit,
       updated_at: new Date().toISOString(),
     });
+    // Store under capex_schedule.floor_plan_costs.{floor_plan_id} — this IS the
+    // M22 shared state key path. The nested jsonb_set builds the path one level
+    // at a time so intermediate keys are created if absent.
     const upsertResult = await pool.query(
       `INSERT INTO deal_assumptions (deal_id, assumptions, updated_at)
-       VALUES ($3, jsonb_set('{}'::jsonb, ARRAY['m22_floor_plan_overrides', $1], $2::jsonb, true), NOW())
+       VALUES (
+         $3,
+         jsonb_set(
+           jsonb_set('{}'::jsonb, ARRAY['capex_schedule'], '{}'::jsonb, true),
+           ARRAY['capex_schedule', 'floor_plan_costs', $1],
+           $2::jsonb,
+           true
+         ),
+         NOW()
+       )
        ON CONFLICT (deal_id) DO UPDATE
        SET assumptions = jsonb_set(
-         COALESCE(deal_assumptions.assumptions, '{}'::jsonb),
-         ARRAY['m22_floor_plan_overrides', $1],
+         jsonb_set(
+           COALESCE(deal_assumptions.assumptions, '{}'::jsonb),
+           ARRAY['capex_schedule'],
+           COALESCE(
+             (COALESCE(deal_assumptions.assumptions, '{}'::jsonb))->'capex_schedule',
+             '{}'::jsonb
+           ),
+           true
+         ),
+         ARRAY['capex_schedule', 'floor_plan_costs', $1],
          $2::jsonb,
          true
        ),
