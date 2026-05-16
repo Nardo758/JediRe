@@ -1331,7 +1331,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   )}
 
                   {/* ── No breakdown available chip ── */}
-                  {showAncillary && !hasBreakdown && (
+                  {/* Pattern B takes full precedence — suppress ancillary render when PatternB is active */}
+                  {showAncillary && !hasBreakdown && !showOtherIncomePatternB && (
                     <tr style={{ background: '#050e16' }}>
                       <td colSpan={9} style={{
                         padding: '5px 8px 5px 28px', fontSize: 8, color: '#1e4a5f',
@@ -1344,7 +1345,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   )}
 
                   {/* ── Inline per-category breakdown ── */}
-                  {showAncillary && hasBreakdown && (
+                  {showAncillary && hasBreakdown && !showOtherIncomePatternB && (
                     <>
                       {/* Section header */}
                       <tr style={{ background: '#030e14' }}>

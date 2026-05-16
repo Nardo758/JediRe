@@ -332,7 +332,36 @@ export function FloorPlanGrid({
   }
 
   function acceptPlatformGrid() {
-    applyGlobalPositioning(50);
+    // Spec: applies P50 positioning + archive-cohort (platform) cost +
+    // portfolio capture defaults globally while preserving per-cell editability.
+    setGlobalPositioning(50);
+    setRowStates(prev => {
+      const next = { ...prev };
+      for (const r of sourceRows) {
+        const id = r.floor_plan_id;
+        const target = computePostRenoTarget(r.comp_ceiling, 50);
+        next[id] = {
+          ...next[id],
+          positioningPercentile: 50,
+          captureRate: DEFAULT_CAPTURE_RATE,
+          // Reset to platform-basis reno cost; if none available keep current
+          renoCostPerUnit: r.renovation_cost ?? next[id]?.renoCostPerUnit ?? null,
+          postRenoTargetRent: target,
+        };
+      }
+      return next;
+    });
+    // Clear any prior error states — starting fresh from platform grid
+    setWritebackErrors({});
+    setPositioningWritebackErrors({});
+    // Persist all rows (positioning + cost) back to M22
+    for (const r of sourceRows) {
+      const target = computePostRenoTarget(r.comp_ceiling, 50);
+      schedulePositioningWriteback(r.floor_plan_id, 50, DEFAULT_CAPTURE_RATE, target);
+      if (r.renovation_cost != null) {
+        scheduleWriteback(r.floor_plan_id, r.renovation_cost);
+      }
+    }
   }
 
   // ── M22 write-back (debounced 800ms, with error tracking) ────────────────────
@@ -498,12 +527,69 @@ export function FloorPlanGrid({
     return { totalUnitsSum, avgCurrentRent, avgTargetRent, avgPremium, totalRevenueAnnualized, totalRenoBudget, propertyYoC, missingCostCount, unitsWithCost };
   }, [sourceRows, rowStates]);
 
-  // ── No data fallback ──────────────────────────────────────────────────────────
+  // ── No data fallback: aggregate-only view (spec missing-unit-mix criterion) ──
+  // When neither gprUnitMix nor rentRollMix provides floor-plan rows, render an
+  // aggregate-only summary using the totalUnits prop so the operator can still
+  // see property-level YoC once they enter a cost, and understands what to do.
 
   if (sourceRows.length === 0) {
     return (
-      <div style={{ padding: '12px 16px', fontFamily: MONO, fontSize: 9, color: '#334155', fontStyle: 'italic' }}>
-        Per-floor-plan grid unavailable — rent roll did not provide unit mix detail.
+      <div style={{ background: '#050d14', borderTop: '1px solid #0e2235' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid #0e2235', flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.08em', color: '#06b6d4' }}>
+            FLOOR-PLAN GPR GRID
+          </span>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: '#f59e0b', background: '#1a1200', border: '1px solid #f59e0b33', borderRadius: 2, padding: '1px 6px' }}>
+            AGGREGATE ONLY
+          </span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+            <thead>
+              <tr>
+                <th style={{ padding: '3px 8px', textAlign: 'left', fontFamily: MONO, fontSize: 8, color: '#475569', fontWeight: 700, letterSpacing: '0.04em', borderBottom: '1px solid #1e2538', background: '#080e14' }}>
+                  FLOOR PLAN
+                </th>
+                <th style={{ padding: '3px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 8, color: '#475569', fontWeight: 700, letterSpacing: '0.04em', borderBottom: '1px solid #1e2538', background: '#080e14' }}>
+                  UNITS
+                </th>
+                {!postStabilizationView && (
+                  <th style={{ padding: '3px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 8, color: '#a78bfa', fontWeight: 700, letterSpacing: '0.04em', borderBottom: '1px solid #1e2538', background: '#080e14', whiteSpace: 'nowrap' }}>
+                    RENO COST / UNIT
+                  </th>
+                )}
+                {!postStabilizationView && (
+                  <th style={{ padding: '3px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 8, color: '#f59e0b', fontWeight: 700, letterSpacing: '0.04em', borderBottom: '1px solid #1e2538', background: '#080e14', whiteSpace: 'nowrap' }}>
+                    YIELD ON COST
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ background: '#060c14' }}>
+                <td style={{ padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: '#e2e8f0', fontWeight: 600, fontStyle: 'italic' }}>
+                  All units (no floor-plan mix)
+                </td>
+                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#64748b', fontSize: 9 }}>
+                  {totalUnits || '—'}
+                </td>
+                {!postStabilizationView && (
+                  <td style={{ padding: '4px 8px', textAlign: 'right', color: '#334155', fontSize: 9, fontStyle: 'italic' }}>
+                    —
+                  </td>
+                )}
+                {!postStabilizationView && (
+                  <td style={{ padding: '4px 8px', textAlign: 'right', color: '#334155', fontSize: 9 }}>
+                    —
+                  </td>
+                )}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding: '8px 12px', borderTop: '1px solid #0e2235', fontFamily: MONO, fontSize: 8, color: '#334155', fontStyle: 'italic' }}>
+          Per-floor-plan breakdown unavailable — run the Cashflow Agent or upload a rent roll with unit-mix detail to populate the grid.
+        </div>
       </div>
     );
   }
