@@ -184,7 +184,7 @@ export async function cashflowPostProcess(
     //   format B (dot):     proforma.revenue.gpr.unit_mix.floor_plan_id.slot
     if (output.proforma_fields && typeof output.proforma_fields === 'object') {
       try {
-        fillAndValidateValueAddGPR(output);
+        await fillAndValidateValueAddGPR(output, runId);
       } catch (validationErr) {
         logger.warn('[CashflowPostProcess] Value-add GPR fill/validate failed (non-fatal)', {
           runId,
@@ -449,7 +449,7 @@ const ARCHIVE_P50_CAPTURE_RATE = 0.80;
 // Threshold above P50 that triggers a collision (5pp above archive P50 = above archive P75)
 const CAPTURE_RATE_COLLISION_THRESHOLD = ARCHIVE_P50_CAPTURE_RATE + 0.05;
 
-function fillAndValidateValueAddGPR(output: Record<string, unknown>): void {
+async function fillAndValidateValueAddGPR(output: Record<string, unknown>, runId: string): Promise<void> {
   const proformaFields = output.proforma_fields as Record<string, unknown>;
   const allKeys = Object.keys(proformaFields);
 
@@ -510,15 +510,45 @@ function fillAndValidateValueAddGPR(output: Record<string, unknown>): void {
     proformaFields[`${prefix}.${slot}`] = {
       value: Math.round(value * 100) / 100,
       source: 'postprocessor_math_fill',
-      // evidence must be a canonical object (not a JSON string) to pass CashflowOutputSchema.parse
+      // Canonical CanonicalEvidence shape: source_tier (number 1-4) + source_label (string)
+      // Tier 4 = AI/model inference; postprocessor math fill is deterministic but derived
+      // from LLM-written comp ceiling data, so tier 4 is appropriate.
       evidence: {
+        source_tier: 4,
+        source_label: 'postprocessor_math_fill',
         confidence_level: 'medium',
-        source_type: 'deterministic_computation',
-        formula,
-        note: 'Auto-filled by postprocessor from agent-written comp ceiling data.',
+        derivation: formula,
+        note: 'Deterministically computed by postprocessor from agent-written comp ceiling slots.',
       },
     };
   };
+
+  // ── Fetch documented track record capture rate from fetch_owned_asset_actuals result ──
+  // Query the tool_result step for this run to get renovation_capture_summary.recommended_capture_rate.
+  // This is the S3-sourced rate against which the agent's chosen capture_rate is compared.
+  // Falls back to ARCHIVE_P50_CAPTURE_RATE (0.80) if the tool was not called or returned no programs.
+  let trackRecordCaptureRate = ARCHIVE_P50_CAPTURE_RATE;
+  try {
+    const { rows: assetActualsRows } = await query(
+      `SELECT payload FROM agent_run_steps
+       WHERE agent_run_id = $1 AND step_type = 'tool_result' AND tool_name = 'fetch_owned_asset_actuals'
+       ORDER BY step_index DESC LIMIT 1`,
+      [runId]
+    );
+    if (assetActualsRows.length > 0) {
+      const payload = typeof assetActualsRows[0].payload === 'string'
+        ? JSON.parse(assetActualsRows[0].payload)
+        : assetActualsRows[0].payload;
+      const rcs = payload?.renovation_capture_summary;
+      if (rcs && typeof rcs.recommended_capture_rate === 'number') {
+        trackRecordCaptureRate = rcs.recommended_capture_rate;
+      }
+    }
+  } catch {
+    // Non-fatal: if DB query fails, fall back to archive P50 anchor
+  }
+  // Collision threshold: agent's capture_rate > track_record + 5pp (materially above documented evidence)
+  const captureRateCollisionThreshold = trackRecordCaptureRate + 0.05;
 
   // ── Per-floor-plan: FILL + COLLISION ──────────────────────────────────
   let captureRateCollisionCount = 0;
@@ -567,11 +597,15 @@ function fillAndValidateValueAddGPR(output: Record<string, unknown>): void {
         `${gross_premium.toFixed(2)} (gross) × ${capture_rate} (capture_rate) = ${cp.toFixed(2)}`);
     }
 
-    // ── C. COLLIDE: flag above-archive capture rate ───────────────────────
-    if (capture_rate > CAPTURE_RATE_COLLISION_THRESHOLD) {
+    // ── C. COLLIDE: flag when agent's capture_rate exceeds documented track record ─────
+    // Compare agent-written capture_rate against S3-sourced recommended_capture_rate
+    // (from fetch_owned_asset_actuals). Collision when assertion materially exceeds evidence.
+    if (capture_rate > captureRateCollisionThreshold) {
       captureRateCollisionCount++;
-      logger.warn('[CashflowPostProcess] GPR capture rate above archive P50+5pp', {
-        fpId, capture_rate, threshold: CAPTURE_RATE_COLLISION_THRESHOLD,
+      logger.warn('[CashflowPostProcess] GPR capture rate exceeds documented track record', {
+        fpId, capture_rate,
+        track_record_recommended: trackRecordCaptureRate,
+        threshold: captureRateCollisionThreshold,
       });
     }
   }
@@ -582,13 +616,13 @@ function fillAndValidateValueAddGPR(output: Record<string, unknown>): void {
     if (cs && typeof cs.minor_count === 'number') {
       cs.minor_count += captureRateCollisionCount;
     }
-    // Also record in value_add_gpr_validation
     output.value_add_gpr_capture_rate_collision = {
       floor_plan_count: captureRateCollisionCount,
-      threshold: CAPTURE_RATE_COLLISION_THRESHOLD,
-      note: `${captureRateCollisionCount} floor plan(s) have capture_rate > ${CAPTURE_RATE_COLLISION_THRESHOLD} ` +
-            `(archive P50+5pp). Requires documented track record evidence. ` +
-            `If buyer track record does not support above-archive capture, reduce to 0.80.`,
+      track_record_recommended_capture_rate: trackRecordCaptureRate,
+      threshold: captureRateCollisionThreshold,
+      note: `${captureRateCollisionCount} floor plan(s) have capture_rate > documented track record + 5pp ` +
+            `(track record: ${trackRecordCaptureRate}, threshold: ${captureRateCollisionThreshold}). ` +
+            'Requires explicit documented justification above buyer track record evidence.',
     };
   }
 
