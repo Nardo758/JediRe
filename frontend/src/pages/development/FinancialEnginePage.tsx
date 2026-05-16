@@ -400,7 +400,12 @@ const BUILTIN_TAB_LABELS = [
 const BUILTIN_TAB_COUNT = BUILTIN_TAB_LABELS.length;
 
 // Roadmap tab (index 8) is only surfaced for value-add and redevelopment deals.
-const ROADMAP_ELIGIBLE_TYPES: DealType[] = ['value-add', 'redevelopment'];
+// Uses a regex matcher rather than DealType[] because the backend project_type
+// field can arrive as 'value-add', 'value_add', 'rehab', 'renovation', etc.
+function isRoadmapEligibleDealType(dt: string): boolean {
+  if (dt === 'redevelopment') return true;
+  return /value.?add|rehab|renovation/i.test(dt);
+}
 
 interface FinancialEnginePageProps {
   dealId: string;
@@ -415,7 +420,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
 
   // Roadmap tab (index 8) is only surfaced for value-add and redevelopment deals.
   // Declared early so all subsequent callbacks close over the correct binding.
-  const isRoadmapEligible = ROADMAP_ELIGIBLE_TYPES.includes(resolvedDealType);
+  const isRoadmapEligible = isRoadmapEligibleDealType(resolvedDealType);
   // When ROADMAP is hidden the custom-tabs strip starts one index earlier.
   const effectiveBuiltinCount = isRoadmapEligible ? BUILTIN_TAB_COUNT : BUILTIN_TAB_COUNT - 1;
 
