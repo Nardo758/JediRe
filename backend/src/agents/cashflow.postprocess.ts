@@ -544,12 +544,13 @@ async function fillAndValidateValueAddGPR(output: Record<string, unknown>, runId
       if (role === 'baseline') dualCompValidation.baseline_called = true;
       if (role === 'renovation_ceiling') {
         dualCompValidation.renovation_ceiling_called = true;
-        // Collect low-confidence floor plans from this call (n < 2 → low)
+        // Collect low-confidence floor plans from this call (n < 3 → low).
+        // rent_distribution_by_unit_type is a Record<unitType, { n, p25, p50, p75, confidence }>
         const dist = p?.rent_distribution_by_unit_type;
-        if (Array.isArray(dist)) {
-          for (const entry of dist) {
-            if (entry?.confidence === 'low' && entry?.unit_type) {
-              lowConfidenceFloorPlans.add(String(entry.unit_type));
+        if (dist && typeof dist === 'object' && !Array.isArray(dist)) {
+          for (const [unitType, entry] of Object.entries(dist as Record<string, { confidence?: string }>)) {
+            if (entry?.confidence === 'low') {
+              lowConfidenceFloorPlans.add(unitType);
             }
           }
         }
