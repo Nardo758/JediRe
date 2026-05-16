@@ -21,7 +21,7 @@ import { computePlausibility } from '../sigma/sigma-engine';
 import { getEligibleActions, actionSupportsPosture, ACTION_LIBRARY } from './action-library';
 import { resolveStance } from '../../types/operator-stance';
 import type { OperatorStance } from '../../types/operator-stance';
-import { buildCompComparison } from './comp-comparison.service';
+import { buildCompComparison, buildManualCompComparison, getTopCompCandidates } from './comp-comparison.service';
 import type {
   RoadmapInput,
   RoadmapOutput,
@@ -1084,15 +1084,38 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
   // Step 8 — M36 Check
   const plausibilityCheck = runM36Check(financials, targetProforma.noi_path_required);
 
-  // Step 9 — Comp Comparison (optional — Task #787)
+  // Step 9 — Comp Comparison + Candidates (optional — Task #787)
   let compComparison: RoadmapOutput['comp_comparison'] | undefined;
+  let compCandidates: RoadmapOutput['comp_candidates'] | undefined;
+
   if (input.comp_id) {
     try {
-      compComparison = await buildCompComparison(input.deal_id, input.comp_id);
+      compComparison = await buildCompComparison(input.deal_id, input.comp_id, input);
     } catch (err) {
-      logger.warn('[roadmap-engine] Comp comparison failed — continuing without it', {
+      logger.warn('[roadmap-engine] Comp comparison (DB) failed — continuing without it', {
         deal_id: input.deal_id,
         comp_id: input.comp_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else if (input.manual_comp) {
+    try {
+      compComparison = await buildManualCompComparison(input.deal_id, input.manual_comp, input);
+    } catch (err) {
+      logger.warn('[roadmap-engine] Comp comparison (manual) failed — continuing without it', {
+        deal_id: input.deal_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else {
+    // No comp selected — surface top-3 candidates in the response so the
+    // client can prompt the user to select one on the next generation.
+    try {
+      const candidates = await getTopCompCandidates(input.deal_id);
+      if (candidates.length > 0) compCandidates = candidates;
+    } catch (err) {
+      logger.warn('[roadmap-engine] Fetching comp candidates failed — non-critical', {
+        deal_id: input.deal_id,
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -1107,6 +1130,7 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
     target_irr_pct: (requiredIrr * 100).toFixed(1),
     roadmap_irr_pct: (roadmapIrr * 100).toFixed(1),
     has_comp_comparison: !!compComparison,
+    comp_candidates_surfaced: compCandidates?.length ?? 0,
   });
 
   return {
@@ -1127,5 +1151,6 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
     yearly_trajectory: trajectory,
     plausibility_check: plausibilityCheck,
     ...(compComparison ? { comp_comparison: compComparison } : {}),
+    ...(compCandidates  ? { comp_candidates: compCandidates } : {}),
   };
 }

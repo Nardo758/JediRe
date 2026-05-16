@@ -34,6 +34,13 @@ export interface RoadmapInput {
     hold_years: number;
   };
   comp_id?: string;
+  manual_comp?: {
+    name: string;
+    avg_asking_rent: number;
+    comp_year_built?: number;
+    comp_units?: number;
+    distance_miles?: number;
+  };
   constraints?: {
     max_capex_budget?: number;
     max_debt_terms?: { rate: number; ltv: number };
@@ -220,6 +227,7 @@ export interface RoadmapOutput {
   };
 
   comp_comparison?: CompComparison;
+  comp_candidates?: CompCandidate[];
 }
 
 // ── DB Row — deal_roadmaps table ─────────────────────────────────────────────

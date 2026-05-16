@@ -44,7 +44,7 @@ roadmapRouter.post(
 
       await assertDealAccess(dealId, req.user!.userId);
 
-      const { target_return, constraints, sponsor_capabilities, comp_id } = req.body;
+      const { target_return, constraints, sponsor_capabilities, comp_id, manual_comp } = req.body;
 
       if (!target_return?.metric || target_return?.value == null || !target_return?.hold_years) {
         throw new AppError(400, 'target_return.metric, target_return.value, and target_return.hold_years are required');
@@ -68,6 +68,20 @@ roadmapRouter.post(
         throw new AppError(400, 'comp_id must be a valid UUID');
       }
 
+      if (comp_id != null && manual_comp != null) {
+        throw new AppError(400, 'Provide either comp_id or manual_comp, not both');
+      }
+
+      if (manual_comp != null) {
+        if (!manual_comp.name || typeof manual_comp.name !== 'string') {
+          throw new AppError(400, 'manual_comp.name is required');
+        }
+        const manualRent = Number(manual_comp.avg_asking_rent);
+        if (!isFinite(manualRent) || manualRent <= 0) {
+          throw new AppError(400, 'manual_comp.avg_asking_rent must be a positive number');
+        }
+      }
+
       const input: RoadmapInput = {
         deal_id: dealId,
         target_return: {
@@ -75,8 +89,17 @@ roadmapRouter.post(
           value: Number(target_return.value),
           hold_years: Number(target_return.hold_years),
         },
-        comp_id: comp_id ?? undefined,
-        constraints: constraints ?? undefined,
+        comp_id:    comp_id ?? undefined,
+        manual_comp: manual_comp
+          ? {
+              name:            String(manual_comp.name),
+              avg_asking_rent: Number(manual_comp.avg_asking_rent),
+              comp_year_built: manual_comp.comp_year_built != null ? Number(manual_comp.comp_year_built) : undefined,
+              comp_units:      manual_comp.comp_units != null      ? Number(manual_comp.comp_units) : undefined,
+              distance_miles:  manual_comp.distance_miles != null  ? Number(manual_comp.distance_miles) : undefined,
+            }
+          : undefined,
+        constraints:          constraints          ?? undefined,
         sponsor_capabilities: sponsor_capabilities ?? undefined,
       };
 

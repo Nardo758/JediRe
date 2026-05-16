@@ -124,6 +124,7 @@ interface RoadmapOutput {
   yearly_trajectory: YearlyTrajectory[];
   plausibility_check: { m36_d_value: number; classification: string; notes: string };
   comp_comparison?: CompComparison;
+  comp_candidates?: CompCandidate[];
 }
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
@@ -192,10 +193,24 @@ function confidenceBadge(conf: string): { label: string; color: string } {
 
 // ── Build Roadmap Modal ───────────────────────────────────────────────────────
 
+interface ManualCompEntry {
+  name: string;
+  avg_asking_rent: string;
+  comp_year_built: string;
+  comp_units: string;
+  distance_miles: string;
+}
+
 interface BuildModalProps {
   dealId: string | undefined;
   onClose: () => void;
-  onBuild: (params: { metric: string; value: number; holdYears: number; compId?: string }) => void;
+  onBuild: (params: {
+    metric: string;
+    value: number;
+    holdYears: number;
+    compId?: string;
+    manualComp?: { name: string; avg_asking_rent: number; comp_year_built?: number; comp_units?: number; distance_miles?: number };
+  }) => void;
   loading: boolean;
   f9HoldYears: number | null;
 }
@@ -208,6 +223,10 @@ function BuildRoadmapModal({ dealId, onClose, onBuild, loading, f9HoldYears }: B
   const [compCandidates, setCompCandidates] = useState<CompCandidate[]>([]);
   const [compLoading, setCompLoading] = useState(false);
   const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualComp, setManualComp] = useState<ManualCompEntry>({
+    name: '', avg_asking_rent: '', comp_year_built: '', comp_units: '', distance_miles: '',
+  });
 
   const METRICS = [
     { id: 'irr', label: 'Target IRR (%)', placeholder: '15', hint: 'e.g. 15 for 15%' },
@@ -245,6 +264,10 @@ function BuildRoadmapModal({ dealId, onClose, onBuild, loading, f9HoldYears }: B
     finally { setCompLoading(false); }
   }
 
+  const manualCompValid = showManualEntry
+    && manualComp.name.trim().length > 0
+    && parseFloat(manualComp.avg_asking_rent) > 0;
+
   function handleSubmit() {
     const numValue = parseFloat(value);
     const numHold = parseInt(holdYears, 10);
@@ -253,7 +276,24 @@ function BuildRoadmapModal({ dealId, onClose, onBuild, loading, f9HoldYears }: B
     const rawValue = (metric === 'irr' || metric === 'cash_on_cash_y3' || metric === 'noi_growth_3yr')
       ? numValue / 100
       : numValue;
-    onBuild({ metric, value: rawValue, holdYears: numHold, compId: selectedCompId ?? undefined });
+
+    if (showManualEntry && manualCompValid) {
+      const yb = parseInt(manualComp.comp_year_built, 10);
+      const units = parseInt(manualComp.comp_units, 10);
+      const dist = parseFloat(manualComp.distance_miles);
+      onBuild({
+        metric, value: rawValue, holdYears: numHold,
+        manualComp: {
+          name: manualComp.name.trim(),
+          avg_asking_rent: parseFloat(manualComp.avg_asking_rent),
+          comp_year_built: isFinite(yb) && yb > 0 ? yb : undefined,
+          comp_units:      isFinite(units) && units > 0 ? units : undefined,
+          distance_miles:  isFinite(dist) && dist > 0 ? dist : undefined,
+        },
+      });
+    } else {
+      onBuild({ metric, value: rawValue, holdYears: numHold, compId: selectedCompId ?? undefined });
+    }
   }
 
   const inputStyle: React.CSSProperties = {
@@ -352,7 +392,7 @@ function BuildRoadmapModal({ dealId, onClose, onBuild, loading, f9HoldYears }: B
               </div>
             )}
 
-            {!compLoading && compCandidates.length > 0 && (
+            {!compLoading && compCandidates.length > 0 && !showManualEntry && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
                 <div style={{ fontFamily: MONO, fontSize: 8, color: textM, letterSpacing: 0.5, marginBottom: 2 }}>
                   TOP-3 HIGHEST-RENT COMPS IN YOUR COMP SET
@@ -399,7 +439,87 @@ function BuildRoadmapModal({ dealId, onClose, onBuild, loading, f9HoldYears }: B
               </div>
             )}
 
-            {selectedCompId && (
+            {/* Manual comp entry toggle */}
+            {!showManualEntry && (
+              <div style={{ marginBottom: 14, textAlign: 'center' }}>
+                <button
+                  onClick={() => { setShowManualEntry(true); setSelectedCompId(null); }}
+                  style={{
+                    background: 'transparent', border: `1px dashed ${border}`,
+                    color: textM, fontFamily: MONO, fontSize: 8, padding: '5px 14px',
+                    cursor: 'pointer', borderRadius: 2, letterSpacing: 0.3, width: '100%',
+                  }}
+                >
+                  + ENTER COMP MANUALLY
+                </button>
+              </div>
+            )}
+
+            {/* Manual comp entry form */}
+            {showManualEntry && (
+              <div style={{ border: `1px solid ${green}40`, borderRadius: 2, padding: '12px', marginBottom: 14, background: `${green}05` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: green, letterSpacing: 0.5 }}>MANUAL COMP ENTRY</div>
+                  <button
+                    onClick={() => { setShowManualEntry(false); setManualComp({ name: '', avg_asking_rent: '', comp_year_built: '', comp_units: '', distance_miles: '' }); }}
+                    style={{ background: 'none', border: 'none', color: textM, cursor: 'pointer', fontSize: 12 }}
+                  >×</button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div>
+                    <label style={{ display: 'block', fontFamily: MONO, fontSize: 8, color: textM, marginBottom: 3 }}>PROPERTY NAME *</label>
+                    <input
+                      value={manualComp.name}
+                      onChange={e => setManualComp(p => ({ ...p, name: e.target.value }))}
+                      placeholder="e.g. Midtown Vue Apartments"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontFamily: MONO, fontSize: 8, color: textM, marginBottom: 3 }}>AVG ASKING RENT ($/mo) *</label>
+                    <input
+                      type="number"
+                      value={manualComp.avg_asking_rent}
+                      onChange={e => setManualComp(p => ({ ...p, avg_asking_rent: e.target.value }))}
+                      placeholder="e.g. 1850"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                    <div>
+                      <label style={{ display: 'block', fontFamily: MONO, fontSize: 7, color: textM, marginBottom: 3 }}>YEAR BUILT</label>
+                      <input type="number" value={manualComp.comp_year_built}
+                        onChange={e => setManualComp(p => ({ ...p, comp_year_built: e.target.value }))}
+                        placeholder="2018" style={{ ...inputStyle, padding: '4px 6px' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontFamily: MONO, fontSize: 7, color: textM, marginBottom: 3 }}>UNITS</label>
+                      <input type="number" value={manualComp.comp_units}
+                        onChange={e => setManualComp(p => ({ ...p, comp_units: e.target.value }))}
+                        placeholder="200" style={{ ...inputStyle, padding: '4px 6px' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontFamily: MONO, fontSize: 7, color: textM, marginBottom: 3 }}>DIST (MI)</label>
+                      <input type="number" value={manualComp.distance_miles}
+                        onChange={e => setManualComp(p => ({ ...p, distance_miles: e.target.value }))}
+                        placeholder="0.5" style={{ ...inputStyle, padding: '4px 6px' }} />
+                    </div>
+                  </div>
+                  {!manualCompValid && manualComp.name.trim().length > 0 && (
+                    <div style={{ fontFamily: MONO, fontSize: 7, color: amber }}>
+                      Enter an avg asking rent to continue
+                    </div>
+                  )}
+                  {manualCompValid && (
+                    <div style={{ fontFamily: MONO, fontSize: 7, color: green }}>
+                      ✓ Ready — comp comparison will be built from this data
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(selectedCompId && !showManualEntry) && (
               <div style={{ fontFamily: MONO, fontSize: 8, color: textM, marginBottom: 14,
                 background: `${green}0a`, border: `1px solid ${green}30`, borderRadius: 2, padding: '6px 10px' }}>
                 The roadmap will include a comp comparison panel showing attribution and replicability analysis.
@@ -413,7 +533,7 @@ function BuildRoadmapModal({ dealId, onClose, onBuild, loading, f9HoldYears }: B
               }}>← BACK</button>
 
               <div style={{ display: 'flex', gap: 8 }}>
-                {!selectedCompId && (
+                {!selectedCompId && !showManualEntry && (
                   <button onClick={handleSubmit} disabled={loading} style={{
                     background: 'transparent', border: `1px solid ${border}`,
                     color: textS, fontFamily: MONO, fontSize: 9, padding: '6px 14px', cursor: loading ? 'default' : 'pointer', borderRadius: 2,
@@ -421,12 +541,21 @@ function BuildRoadmapModal({ dealId, onClose, onBuild, loading, f9HoldYears }: B
                     {loading ? 'GENERATING...' : 'SKIP · NO COMP'}
                   </button>
                 )}
-                <button onClick={handleSubmit} disabled={loading} style={{
-                  background: loading ? `${green}40` : green,
-                  border: 'none', color: '#000', fontFamily: MONO, fontSize: 9, fontWeight: 700,
-                  padding: '6px 18px', cursor: loading ? 'default' : 'pointer', borderRadius: 2, letterSpacing: 0.5,
-                }}>
-                  {loading ? 'GENERATING...' : selectedCompId ? 'GENERATE WITH COMP' : 'GENERATE ROADMAP'}
+                <button
+                  onClick={handleSubmit}
+                  disabled={loading || (showManualEntry && !manualCompValid)}
+                  style={{
+                    background: (loading || (showManualEntry && !manualCompValid)) ? `${green}40` : green,
+                    border: 'none', color: '#000', fontFamily: MONO, fontSize: 9, fontWeight: 700,
+                    padding: '6px 18px',
+                    cursor: (loading || (showManualEntry && !manualCompValid)) ? 'default' : 'pointer',
+                    borderRadius: 2, letterSpacing: 0.5,
+                  }}
+                >
+                  {loading ? 'GENERATING...'
+                    : showManualEntry && manualCompValid ? 'GENERATE WITH MANUAL COMP'
+                    : selectedCompId ? 'GENERATE WITH COMP'
+                    : 'GENERATE ROADMAP'}
                 </button>
               </div>
             </div>
@@ -567,7 +696,11 @@ function ActionEvidencePanel({ action, onClose }: { action: RoadmapAction; onClo
 
 // ── Comp Comparison Side Panel ────────────────────────────────────────────────
 
-function CompComparisonPanel({ comp, onClose }: { comp: CompComparison; onClose: () => void }) {
+function CompComparisonPanel({ comp, onClose, onActionClick }: {
+  comp: CompComparison;
+  onClose: () => void;
+  onActionClick?: (actionId: string) => void;
+}) {
   const bg         = BT.bg?.panel ?? '#0d1117';
   const bgHeader   = BT.bg?.header ?? '#010409';
   const bgTerminal = BT.bg?.terminal ?? '#010409';
@@ -731,11 +864,18 @@ function CompComparisonPanel({ comp, onClose }: { comp: CompComparison; onClose:
                     {diff.replicable && diff.mapped_action_ids.length > 0 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                         {diff.mapped_action_ids.map(aid => (
-                          <span key={aid} style={{
-                            fontFamily: MONO, fontSize: 7, color: catCol,
-                            border: `1px solid ${catCol}30`, padding: '1px 5px',
-                            borderRadius: 1, background: `${catCol}0a`,
-                          }}>→ {aid.replace(/_/g, ' ')}</span>
+                          <span
+                            key={aid}
+                            onClick={() => onActionClick?.(aid)}
+                            title={onActionClick ? 'Click to view action details' : undefined}
+                            style={{
+                              fontFamily: MONO, fontSize: 7, color: catCol,
+                              border: `1px solid ${catCol}30`, padding: '1px 5px',
+                              borderRadius: 1, background: `${catCol}0a`,
+                              cursor: onActionClick ? 'pointer' : 'default',
+                              textDecoration: onActionClick ? 'underline dotted' : 'none',
+                            }}
+                          >→ {aid.replace(/_/g, ' ')}</span>
                         ))}
                       </div>
                     )}
@@ -937,7 +1077,13 @@ export function RoadmapTab({ dealId, f9Financials }: FinancialEngineTabProps) {
 
   useEffect(() => { void loadLatest(); }, [loadLatest]);
 
-  const handleBuild = useCallback(async (params: { metric: string; value: number; holdYears: number; compId?: string }) => {
+  const handleBuild = useCallback(async (params: {
+    metric: string;
+    value: number;
+    holdYears: number;
+    compId?: string;
+    manualComp?: { name: string; avg_asking_rent: number; comp_year_built?: number; comp_units?: number; distance_miles?: number };
+  }) => {
     if (!dealId) return;
     setGenerating(true);
     setError(null);
@@ -950,6 +1096,7 @@ export function RoadmapTab({ dealId, f9Financials }: FinancialEngineTabProps) {
         },
       };
       if (params.compId) body.comp_id = params.compId;
+      if (params.manualComp) body.manual_comp = params.manualComp;
 
       const res = await fetch(`/api/v1/deals/${dealId}/roadmap`, {
         method: 'POST',
@@ -1363,6 +1510,13 @@ export function RoadmapTab({ dealId, f9Financials }: FinancialEngineTabProps) {
             <CompComparisonPanel
               comp={roadmap.comp_comparison}
               onClose={() => setShowCompPanel(false)}
+              onActionClick={(actionId) => {
+                const action = roadmap.roadmap_actions.find(a => a.id === actionId);
+                if (action) {
+                  setShowCompPanel(false);
+                  setSelectedAction(action);
+                }
+              }}
             />
           </div>
         </div>
