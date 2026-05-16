@@ -510,12 +510,13 @@ function fillAndValidateValueAddGPR(output: Record<string, unknown>): void {
     proformaFields[`${prefix}.${slot}`] = {
       value: Math.round(value * 100) / 100,
       source: 'postprocessor_math_fill',
-      evidence: JSON.stringify({
+      // evidence must be a canonical object (not a JSON string) to pass CashflowOutputSchema.parse
+      evidence: {
         confidence_level: 'medium',
         source_type: 'deterministic_computation',
         formula,
         note: 'Auto-filled by postprocessor from agent-written comp ceiling data.',
-      }),
+      },
     };
   };
 
