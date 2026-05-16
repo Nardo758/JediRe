@@ -30,6 +30,79 @@ export interface ProjYearExport {
   cumulativeEM: number | null;
 }
 
+// ─── Regime Bridge ──────────────────────────────────────────────────────────
+
+interface RegimeFactors {
+  turnoverMult: number;
+  repairsMult: number;
+  concessionsMult: number;
+  marketingMult: number;
+}
+
+/**
+ * Returns year-by-year regime multipliers for regime-sensitive line items.
+ *
+ * Value-add: elevated turnover/R&M/concessions during the renovation period, then drops
+ * to stabilized (1.0) by the first post-renovation year.
+ *
+ * Lease-up / development: elevated marketing + suppressed turnover during the lease-up
+ * period (new-lease first cycle), normalising afterward.
+ *
+ * Stabilized: all multipliers 1.0 — no adjustment to the Y1 Pro Forma base.
+ *
+ * Per-year per_year_overrides from the agent or user (pv.turnoverRatioOvr,
+ * pv.repairsMultOvr, pv.concessionsPctOvr, pv.marketingMultOvr) take precedence over
+ * these computed defaults and are applied in the main projection loop.
+ */
+function computeRegimeRamp(params: {
+  yr: number;
+  renovationPeriodYrs: number;
+  leaseUpPeriodYrs: number;
+  dealMode: 'value_add' | 'lease_up' | 'stabilized';
+}): RegimeFactors {
+  const { yr, renovationPeriodYrs, leaseUpPeriodYrs, dealMode } = params;
+  const NEUTRAL: RegimeFactors = { turnoverMult: 1.0, repairsMult: 1.0, concessionsMult: 1.0, marketingMult: 1.0 };
+
+  if (dealMode === 'value_add' && renovationPeriodYrs > 0) {
+    if (yr <= renovationPeriodYrs) {
+      // Progress 0→1 as we move through the renovation period.
+      // Multipliers ramp down from peak (start of reno) toward transition-year levels.
+      const t = renovationPeriodYrs > 1 ? (yr - 1) / (renovationPeriodYrs - 1) : 1;
+      return {
+        turnoverMult:    1.60 - 0.40 * t,  // 1.60 → 1.20: disruption-driven resident churn
+        repairsMult:     1.25 - 0.15 * t,  // 1.25 → 1.10: deferred-maintenance catch-up
+        concessionsMult: 1.40 - 0.30 * t,  // 1.40 → 1.10: retention concessions during reno
+        marketingMult:   1.20 - 0.10 * t,  // 1.20 → 1.10: marketing for displaced-unit lease-up
+      };
+    }
+    if (yr === renovationPeriodYrs + 1) {
+      // First post-renovation year: slight turnover overhang as new leasing normalises.
+      return { turnoverMult: 1.10, repairsMult: 1.0, concessionsMult: 1.0, marketingMult: 1.0 };
+    }
+    return NEUTRAL;
+  }
+
+  if (dealMode === 'lease_up' && leaseUpPeriodYrs > 0) {
+    if (yr <= leaseUpPeriodYrs) {
+      // Lease-up period: elevated marketing to fill units; near-zero turnover (first-cycle leases).
+      const t = leaseUpPeriodYrs > 1 ? (yr - 1) / (leaseUpPeriodYrs - 1) : 1;
+      return {
+        turnoverMult:    0.20 + 0.40 * t,  // 0.20 → 0.60: first cohort, low churn
+        repairsMult:     1.0,
+        concessionsMult: 1.0,
+        marketingMult:   1.75 - 0.55 * t,  // 1.75 → 1.20: aggressive initial lease-up marketing
+      };
+    }
+    if (yr === leaseUpPeriodYrs + 1) {
+      // First stabilised year after lease-up: turnover still below long-run rate.
+      return { turnoverMult: 0.75, repairsMult: 1.0, concessionsMult: 1.0, marketingMult: 1.10 };
+    }
+    return NEUTRAL;
+  }
+
+  return NEUTRAL;
+}
+
 // ─── Projection builder ─────────────────────────────────────────────────────
 
 export function buildProjectionsForExport(
@@ -103,6 +176,31 @@ export function buildProjectionsForExport(
   // TODO(agent): concessionBurnOffPct — agent integration out of scope here.
   let accumulatedBurnOff = 0; // grows each year; concessions = Y1 × max(0, 1 - accumulated)
 
+  // ── Regime Bridge: deal-type-aware year-by-year trajectory ────────────────
+  // Detect deal mode from M07 traffic signals — the most reliable automated source.
+  // postRenoAbsorptionLagWks > 0  →  value-add renovation regime
+  // leaseUp.weeksTo95 > 26        →  lease-up / development regime
+  // Neither                       →  stabilised (no regime adjustment)
+  const _postRenoLagWks = f.trafficProjection?.leasingSignals?.postRenoAbsorptionLagWks ?? 0;
+  const _leaseUpWks     = f.trafficProjection?.leaseUp?.weeksTo95 ?? 0;
+  const dealMode: 'value_add' | 'lease_up' | 'stabilized' =
+    _postRenoLagWks > 0 ? 'value_add' :
+    _leaseUpWks     > 26 ? 'lease_up'  :
+    'stabilized';
+
+  // Renovation period length: per_year_overrides scalar override wins; then M07 signal;
+  // then default 2 years for value-add deals.  Capped at 3 to avoid distorting long holds.
+  const renovationPeriodYrs: number = (() => {
+    const ovr = f.userOverrides['renovation_period_years']?.[1];
+    if (ovr != null && ovr > 0) return Math.min(3, Math.round(ovr));
+    if (_postRenoLagWks > 0) return Math.min(3, Math.ceil(_postRenoLagWks / 52));
+    return dealMode === 'value_add' ? 2 : 0;
+  })();
+
+  // Lease-up period length: M07 weeksTo95 converted to years, capped at 3.
+  const leaseUpPeriodYrs: number =
+    _leaseUpWks > 0 ? Math.min(3, Math.ceil(_leaseUpWks / 52)) : 0;
+
   for (let yr = 1; yr <= holdYears; yr++) {
     const tv = tyr(yr);
     const pv = pyr(yr);
@@ -135,12 +233,28 @@ export function buildProjectionsForExport(
     const vacPct      = tv?.vacancyPct ?? pv?.vacancyPct ?? y1('vacancy_pct') ?? 0.05;
     const vacancyLoss = Math.round(gpr * (vacPct ?? 0.05));
     const lossToLease = Math.round(gpr * lossToLeasePctY1);
-    // Concession burn-off: Y1 concessions × (1 - accumulatedBurnOff).
-    // accumulatedBurnOff = 0 in Y1 → full Y1 concession (existing behavior preserved).
-    // Each year's rate is read per-year (stepped UI) or flat (falls back to Y1 override
-    // → assumptions field → 0), making this genuinely year-sensitive / Section B.
-    const concessions = Math.round(gpr * concPctY1 * Math.max(0, 1 - accumulatedBurnOff));
-    // Accumulate this year's burn-off rate so next year's concession is further reduced.
+    // ── Regime multipliers for this year ─────────────────────────────────────
+    // computeRegimeRamp() provides deal-type defaults; per-year agent/user overrides win.
+    const rf = computeRegimeRamp({ yr, renovationPeriodYrs, leaseUpPeriodYrs, dealMode });
+    // Per-year agent/user overrides take precedence over computed regime defaults.
+    const regTurnoverMult  = pv?.turnoverRatioOvr   ?? rf.turnoverMult;
+    const regRepairsMult   = pv?.repairsMultOvr      ?? rf.repairsMult;
+    const regMarketingMult = pv?.marketingMultOvr    ?? rf.marketingMult;
+
+    // Concessions — three-path resolution:
+    // 1. Agent/user per-year concessionsPct override → exact % of GPR, no burn-off applied
+    // 2. Value-add regime → Y1 rate × regime concessionsMult (bypasses burn-off accumulator)
+    // 3. Stabilised path → existing burn-off accumulator (preserves prior behaviour)
+    const concessions = (() => {
+      if (pv?.concessionsPctOvr != null) {
+        return Math.round(gpr * pv.concessionsPctOvr);
+      }
+      if (dealMode === 'value_add' && renovationPeriodYrs > 0) {
+        return Math.round(gpr * concPctY1 * rf.concessionsMult);
+      }
+      return Math.round(gpr * concPctY1 * Math.max(0, 1 - accumulatedBurnOff));
+    })();
+    // Advance the burn-off accumulator (affects path 3 next year).
     const burnOffThisYr = f.userOverrides['concessionBurnOffPct']?.[yr]
       ?? assumptions.concessionBurnOffPct
       ?? 0;
@@ -153,10 +267,14 @@ export function buildProjectionsForExport(
     const egi         = nri + otherIncome;
 
     const payroll    = Math.round(payrollY1    * opexMult);
-    const repairs    = Math.round(repairsY1    * opexMult);
-    const turnover   = Math.round(turnoverY1   * opexMult);
+    // Regime-sensitive lines: regime multiplier applied before the growth compounding.
+    // For value-add: repairs & turnover are elevated during the renovation period.
+    // For lease-up: turnover is suppressed; marketing is elevated during the lease-up period.
+    // regXxxMult = 1.0 for stabilised deals → no change to existing behaviour.
+    const repairs    = Math.round(repairsY1    * regRepairsMult   * opexMult);
+    const turnover   = Math.round(turnoverY1   * regTurnoverMult  * opexMult);
     const contractSvc = Math.round(contractY1  * opexMult);
-    const marketing  = Math.round(marketingY1  * opexMult);
+    const marketing  = Math.round(marketingY1  * regMarketingMult * opexMult);
     const utilities  = Math.round(utilitiesY1  * opexMult);
     const gAndA      = Math.round(gAndAY1      * opexMult);
     const mgmtFee    = Math.round(egi          * (mgmtFeePctY1 ?? 0.05));

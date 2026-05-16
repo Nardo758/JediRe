@@ -325,7 +325,12 @@ export interface F9DealFinancials {
   assumptions: {
     holdYears: number; exitCap: number|null; rentGrowthYr1: number|null;
     rentGrowthStabilized: number|null;
-    perYear: Array<{ year: number; rentGrowthPct: number|null; vacancyPct: number|null; exitCapIfLastYear: number|null }>;
+    perYear: Array<{
+      year: number; rentGrowthPct: number|null; vacancyPct: number|null; exitCapIfLastYear: number|null;
+      /** Regime bridge overrides — populated from per_year_overrides JSONB by the agent (Pass 3). */
+      turnoverRatioOvr?: number|null; repairsMultOvr?: number|null;
+      concessionsPctOvr?: number|null; marketingMultOvr?: number|null;
+    }>;
     gprDecomposition: F9GprDecomposition|null;
     narrative: string|null;
   };

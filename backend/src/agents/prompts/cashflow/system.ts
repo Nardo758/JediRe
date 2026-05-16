@@ -795,6 +795,13 @@ back the weakest-defended delta first and re-evaluate.
 33. \`write_underwriting\` — persist proforma snapshot ONLY (no evidence_rows). Call ONCE
     after all write_evidence_rows calls are complete.
 34. \`write_projection\` — emit multi-year projection
+35. **[value-add / development / redevelopment only] Regime Trajectory Write (Pass 3)**
+    Execute the REGIME TRAJECTORY WRITE PROTOCOL from line-item-matrix.ts.
+    Write per-year regime overrides for turnover_ratio, repairs_multiplier, concessions_pct,
+    and marketing_multiplier where your evidence documents a trajectory that differs >10% from
+    the engine defaults. Also write renovation_period_years:yr1 (value-add) so the projection
+    engine uses your assessed renovation period rather than the M07 signal default.
+    Skip this step for stabilised acquisitions with no renovation.
 
 ---
 

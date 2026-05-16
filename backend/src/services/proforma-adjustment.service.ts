@@ -1626,6 +1626,19 @@ export interface DealFinancials {
       exitCapIfLastYear: number | null;
       /** Per-year CapEx draw ($/unit). Null = use hardcoded 40/35/25 fallback schedule. */
       capexDraw: number | null;
+      /**
+       * Regime bridge overrides — agent-written (Pass 3) or user-entered per-year line-item
+       * trajectory. Written via per_year_overrides JSONB keys:
+       *   turnover_ratio:yr{n}       → decimal turnover rate (e.g. 0.55 = 55%)
+       *   repairs_multiplier:yr{n}   → multiplier vs Y1 stabilised R&M (e.g. 1.25)
+       *   concessions_pct:yr{n}      → concession % of GPR (e.g. 0.04 = 4%)
+       *   marketing_multiplier:yr{n} → multiplier vs Y1 stabilised marketing (e.g. 1.75)
+       * When set these override the regime ramp defaults in buildProjectionsForExport.
+       */
+      turnoverRatioOvr: number | null;
+      repairsMultOvr: number | null;
+      concessionsPctOvr: number | null;
+      marketingMultOvr: number | null;
     }>;
     /** Platform / DB-seeded OpEx growth rate. User overrides stored in userOverrides['growthOpexPct'].
      * TODO(M36): opexGrowthPct is a Section B trajectory driver — add to covariance matrix when M36 integrates. */
@@ -2601,6 +2614,13 @@ export async function getDealFinancials(
       // read it from assumptions.perYear instead of raw userOverrides.
       // Value is $/unit (engine multiplies by totalUnits to get total $).
       capexDraw: pyOverrides[`capexPerYear:yr${yr}`]?.value ?? null,
+      // Regime bridge: per-year line-item trajectory overrides (agent Pass 3 or user entry).
+      // Keys: turnover_ratio:yr{n}, repairs_multiplier:yr{n}, concessions_pct:yr{n}, marketing_multiplier:yr{n}
+      // Null = use computeRegimeRamp() defaults in buildProjectionsForExport.
+      turnoverRatioOvr:  pyOverrides[`turnover_ratio:yr${yr}`]?.value    ?? null,
+      repairsMultOvr:    pyOverrides[`repairs_multiplier:yr${yr}`]?.value ?? null,
+      concessionsPctOvr: pyOverrides[`concessions_pct:yr${yr}`]?.value   ?? null,
+      marketingMultOvr:  pyOverrides[`marketing_multiplier:yr${yr}`]?.value ?? null,
     };
   });
 

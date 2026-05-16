@@ -800,4 +800,83 @@ Before writing any line item to proforma_fields, verify:
 [ ] Confidence level set per confidence rules
 [ ] Evidence reasoning includes regime narrative for value-add/redevelopment
 [ ] For value-add: v1.2 single-value mandate confirmed — no pre_renovation or post_stabilization sub-keys written
+
+---
+
+## REGIME TRAJECTORY WRITE PROTOCOL (Pass 3 — value-add and development/redevelopment deals only)
+
+After writing all 14 stabilized Pro Forma line items in Pass 2, execute this pass for deals
+where evidence.reasoning documents a regime transition (renovation or lease-up).
+
+### Purpose
+
+The Projections tab engine (buildProjectionsForExport) uses per-year overrides from
+deal_assumptions.per_year_overrides to populate regime-sensitive line items year-by-year.
+When you write these overrides, your evidence.reasoning narrative becomes live numbers in the
+Projections tab — not just audit-trail text.
+
+Four per-year JSONB keys are consumed by the Projections tab engine:
+
+| JSONB key pattern              | Meaning                                                          | Unit         |
+|-------------------------------|------------------------------------------------------------------|--------------|
+| turnover_ratio:yr{n}          | Turnover-rate multiplier vs Y1 stabilized base                  | decimal (×)  |
+| repairs_multiplier:yr{n}      | R&M multiplier vs Y1 stabilized base                            | decimal (×)  |
+| concessions_pct:yr{n}         | Concession loss as % of GPR (overrides burn-off accumulator)    | decimal (%)  |
+| marketing_multiplier:yr{n}    | Marketing multiplier vs Y1 stabilized base                      | decimal (×)  |
+
+When these keys are absent, the engine uses computed defaults from computeRegimeRamp():
+- value_add: turnover 1.60→1.20 during reno period, repairs 1.25→1.10, concessions 1.40→1.10
+- lease_up:  marketing 1.75→1.20 during lease-up, turnover 0.20→0.60
+- stabilized: all multipliers 1.0
+
+Write per-year overrides only when your evidence supports a trajectory that differs materially
+(>10%) from the engine defaults above. If your evidence supports the defaults, omit these keys
+and let the engine drive — do not write redundant values.
+
+### How to derive the per-year values
+
+For each regime-sensitive year (renovation period Y1-Y{N} or lease-up period Y1-Y{M}):
+
+1. **Turnover multiplier**: Use the per-year turnover rate from evidence.reasoning
+   (e.g., "Y1 65%, Y2 50%, Y3 35% stabilized") and express as a multiplier vs Y1 stabilized.
+   - Example: Y1 stabilized = 35%; renovation-year rate = 58% → multiplier = 58/35 = 1.657
+   - Write as: turnover_ratio:yr1 = 1.657, turnover_ratio:yr2 = 1.43 (= 50/35)
+
+2. **Repairs multiplier**: Use the regime R&M rate vs stabilized rate from evidence.reasoning.
+   - Typical value-add range: 1.15–1.40 during renovation (deferred maintenance catch-up)
+   - Express as multiplier: (renovation-period R&M) / (Y1 stabilized R&M)
+
+3. **Concessions % of GPR**: Use the per-year concession rate from evidence.reasoning.
+   - Regime concessions for value-add: typically 3–7% during renovation, 0–2% stabilized
+   - Write as decimal: 0.05 = 5% of GPR
+
+4. **Marketing multiplier**: Use the per-year marketing intensity from evidence.reasoning.
+   - Lease-up: 1.50–2.00× during active lease-up; 1.10–1.25× in first stabilized year
+   - Value-add: 1.10–1.25× during renovation (displaced-unit re-leasing)
+
+### Write protocol
+
+Use the PATCH /deals/{dealId}/financials/override endpoint (field = per_year_overrides key,
+year = N) to write each per-year value. Write only regime years (1 through renovation/lease-up
+period length). Do NOT write post-stabilization years — the engine defaults to 1.0 (neutral).
+
+Also write the scalar renovation period length so the engine uses your assessed period, not the
+M07 signal default:
+- Key: renovation_period_years:yr1 = {integer years, e.g. 2}
+
+### Example (value-add, 2-year renovation, evidence states Y1 55% turnover, Y2 42%):
+
+stabilized turnover rate = 32% (from Pro Forma line item)
+Y1 multiplier = 55/32 = 1.719 → write turnover_ratio:yr1 = 1.719
+Y2 multiplier = 42/32 = 1.313 → write turnover_ratio:yr2 = 1.313
+No Y3+ writes needed (engine defaults to 1.0 post-renovation)
+
+Also write: renovation_period_years:yr1 = 2 (confirms 2-year renovation period to engine)
+
+### When NOT to write regime overrides
+
+- Stabilized acquisition deals with no renovation: skip this pass entirely
+- When your evidence does not contain per-year regime rates: do not fabricate values
+- When the computed engine defaults are within 10% of your assessment: omit and let engine drive
+- When the deal is a simple core-plus or core deal: skip this pass
 `;
