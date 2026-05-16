@@ -2270,6 +2270,32 @@ export async function getDealFinancials(
     }
   }
 
+  // ── Other income source-layer correction ──────────────────────────────────
+  // The seeder (proforma-seeder.service.ts) computes all three source layers of
+  // `other_income_per_unit` as ANNUAL per-unit values:
+  //   t12       → other_t12_annual_total / totalUnits
+  //   rent_roll → Σ(monthly categories) × 12 / totalUnits
+  //   om        → Σ(monthly categories) × 12 / totalUnits
+  //
+  // `toDollarRow` applies `_otherIncMul = totalUnits × 12` uniformly, treating
+  // the stored values as monthly per-unit.  This inflates broker/t12/rentRoll
+  // columns by exactly 12×.  The `resolved` slot is unaffected because it was
+  // derived backward from the seeded EGI (already in monthly/unit convention).
+  //
+  // Fix: divide broker, t12, and rentRoll columns by 12 to recover the correct
+  // annual dollar amounts.  Do NOT touch resolved (it is already correct) or
+  // platform (platform is never set for this field — always null).
+  {
+    const _oiRow = year1Rows.find(r => r.field === 'other_income');
+    if (_oiRow) {
+      if (_oiRow.broker   != null) _oiRow.broker   = Math.round(_oiRow.broker   / 12);
+      if (_oiRow.t12      != null) _oiRow.t12      = Math.round(_oiRow.t12      / 12);
+      if (_oiRow.rentRoll != null) _oiRow.rentRoll = Math.round(_oiRow.rentRoll / 12);
+      // perUnit is derived from resolved (monthly/unit × units × 12 = annual).
+      // The per-unit display stays based on resolved, which is already correct.
+    }
+  }
+
   // ── Back-fill broker/t12 slots for computed subtotal rows ─────────────────
   // EGI, net_rental_income, total_opex, and NOI are derived rows — the year1
   // seed stores no om/t12 layers for them (they are computed, not extracted
