@@ -63,15 +63,19 @@ export async function cashflowPostProcess(
     // idempotent, and logs all repairs for conformance monitoring.
     if (output.proforma_fields && typeof output.proforma_fields === 'object') {
       try {
-        const proformaRecord = output.proforma_fields as Record<string, any>;
+        const proformaRecord = output.proforma_fields as Record<string, unknown>;
         const keys = Object.keys(proformaRecord);
 
         if (keys.length > 0) {
           const fieldsArray = keys.map((key) => {
-            const field = proformaRecord[key] as Record<string, unknown>;
+            const entry = proformaRecord[key];
+            const fieldObj: Record<string, unknown> =
+              entry !== null && typeof entry === 'object'
+                ? (entry as Record<string, unknown>)
+                : {};
             return {
-              ...field,
-              field_path: typeof field.field_path === 'string' ? field.field_path : key,
+              ...fieldObj,
+              field_path: typeof fieldObj.field_path === 'string' ? fieldObj.field_path : key,
             };
           });
 
@@ -91,6 +95,10 @@ export async function cashflowPostProcess(
             normalizedRecord[key] = normalizedArray[idx];
           });
           output.proforma_fields = normalizedRecord;
+          // Persistence: evidence_normalization_summary is declared as an optional
+          // field in CashflowOutputSchema, so it survives outputSchema.parse() and
+          // is written to agent_runs.output by AgentRuntime (UPDATE agent_runs SET
+          // output = $1 WHERE id = $2). No dedicated column migration required.
           output.evidence_normalization_summary = summary;
         }
       } catch (normErr) {
