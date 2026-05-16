@@ -5,12 +5,14 @@
  * Pro Forma field. Renders nothing for within_tolerance / no_conflict; a
  * yellow ⓘ chip for minor_mismatch; a red ⚠ chip for major_mismatch.
  *
+ * Chip label shows inline delta: e.g. "ⓘ +$8,088 / +2.5%"
+ *
  * Clicking the chip opens an inline popover showing:
  *   • Resolved value + source pill
  *   • Alternative (aggregate) value + source pill
  *   • Delta $ and %
- *   • Resolution method and status badge
- *   • One-line human-readable footnote
+ *   • Tolerance bands (what each status level means)
+ *   • Canonical footnote
  */
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -34,7 +36,7 @@ export interface HierarchicalResolution {
 
 interface Props {
   resolution: HierarchicalResolution | null | undefined;
-  /** Compact mode: smaller chip, for inline row label use */
+  /** Compact mode: smaller chip for inline row label use (shows icon + delta only) */
   compact?: boolean;
 }
 
@@ -58,7 +60,17 @@ function fmtDelta(n: number | null | undefined): string {
 
 function fmtPct(n: number | null | undefined): string {
   if (n == null) return '—';
-  return `${n >= 0 ? '+' : ''}${(n * 100).toFixed(1)}%`;
+  return `${n >= 0 ? '+' : ''}${(Math.abs(n) * 100).toFixed(1)}%`;
+}
+
+/** Inline chip label: "+$8,088 / +2.5%" */
+function deltaLabel(resolution: HierarchicalResolution): string {
+  const d = resolution.reconciliation_delta;
+  const p = resolution.reconciliation_delta_pct;
+  if (d == null && p == null) return '';
+  if (d == null) return fmtPct(p);
+  if (p == null) return fmtDelta(d);
+  return `${fmtDelta(d)} / ${fmtPct(p)}`;
 }
 
 function humanMethod(method: string): string {
@@ -97,30 +109,51 @@ function sourceColor(src: string): string {
   return SOURCE_COLOR[src] ?? '#6b7a8d';
 }
 
-// ─── Status badge colours ─────────────────────────────────────────────────────
+// ─── Status config ────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
   minor_mismatch: {
-    chipColor:  '#d97706',
-    chipBg:     '#1a0f00',
-    chipBorder: '#7c2d12',
-    label:      'ⓘ',
-    title:      'Minor reconciliation mismatch — click for detail',
-    headerColor:'#d97706',
-    headerLabel:'MINOR MISMATCH',
-    headerBg:   '#1a0f00',
+    chipColor:   '#d97706',
+    chipBg:      '#1a0f00',
+    chipBorder:  '#7c2d12',
+    icon:        'ⓘ',
+    title:       'Minor reconciliation mismatch — click for detail',
+    headerColor: '#d97706',
+    headerLabel: 'MINOR MISMATCH',
+    headerBg:    '#1a0f00',
+    statusDesc:  '5–25% delta or $5k–$25k difference',
   },
   major_mismatch: {
-    chipColor:  '#ef4444',
-    chipBg:     '#1a0000',
-    chipBorder: '#7f1d1d',
-    label:      '⚠',
-    title:      'Major reconciliation mismatch — review required',
-    headerColor:'#ef4444',
-    headerLabel:'MAJOR MISMATCH',
-    headerBg:   '#1a0000',
+    chipColor:   '#ef4444',
+    chipBg:      '#1a0000',
+    chipBorder:  '#7f1d1d',
+    icon:        '⚠',
+    title:       'Major reconciliation mismatch — review required',
+    headerColor: '#ef4444',
+    headerLabel: 'MAJOR MISMATCH',
+    headerBg:    '#1a0000',
+    statusDesc:  '>25% delta or >$25k difference',
   },
 } as const;
+
+// ─── Tolerance bands table ────────────────────────────────────────────────────
+
+function ToleranceBands() {
+  const row = (status: string, color: string, desc: string) => (
+    <div key={status} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1px 0' }}>
+      <span style={{ fontSize: 7, fontFamily: MONO, color, fontWeight: 700, letterSpacing: '0.04em', minWidth: 90 }}>{status}</span>
+      <span style={{ fontSize: 7, color: '#475569', fontFamily: LABEL }}>{desc}</span>
+    </div>
+  );
+  return (
+    <div style={{ background: '#040c14', border: '1px solid #0e2235', borderRadius: 3, padding: '4px 8px' }}>
+      <div style={{ fontSize: 7, color: '#334155', fontFamily: MONO, letterSpacing: '0.06em', marginBottom: 3 }}>TOLERANCE BANDS</div>
+      {row('WITHIN TOLERANCE', '#22c55e', '≤5% delta and ≤$5k — no badge shown')}
+      {row('MINOR MISMATCH', '#d97706', '5–25% delta or $5k–$25k')}
+      {row('MAJOR MISMATCH', '#ef4444', '>25% delta or >$25k — review required')}
+    </div>
+  );
+}
 
 // ─── Popover ──────────────────────────────────────────────────────────────────
 
@@ -134,22 +167,24 @@ function Popover({
   onClose: () => void;
 }) {
   const cfg = STATUS_CONFIG[status];
-  const altValue = resolution.resolution_method === 'breakdown_sum'
-    ? resolution.aggregate_value
-    : resolution.breakdown_sum;
-  const altLabel = resolution.resolution_method === 'breakdown_sum'
-    ? 'T-12 Aggregate'
-    : 'Breakdown Sum';
-  const altSrc = resolution.resolution_method === 'breakdown_sum'
-    ? 't12'
-    : 'rent_roll';
+  const isBreakdownPrimary = resolution.resolution_method === 'breakdown_sum';
+  const altValue  = isBreakdownPrimary ? resolution.aggregate_value  : resolution.breakdown_sum;
+  const altLabel  = isBreakdownPrimary ? 'T-12 Aggregate'            : 'Breakdown Sum';
+  const altSrc    = isBreakdownPrimary ? 't12'                       : 'rent_roll';
 
   const delta    = resolution.reconciliation_delta;
   const deltaPct = resolution.reconciliation_delta_pct;
 
-  const footnote = resolution.resolution_method === 'breakdown_sum'
-    ? `Reconciled from ${humanSource(resolution.resolution_source)} detail; ${altLabel} ${fmt$(altValue)} ${deltaPct != null ? `within ${Math.abs(deltaPct * 100).toFixed(1)}% tolerance` : ''}`
-    : `Resolved from ${humanSource(resolution.resolution_source)} aggregate; breakdown detail ${altValue != null ? `${fmt$(altValue)}` : 'unavailable'}`;
+  // Canonical footnote text per spec: explains why breakdown vs aggregate was chosen
+  const canonicalFootnote = isBreakdownPrimary
+    ? `T-12 publishes an aggregate only — no per-category breakdown. ` +
+      `Rent roll detail sum (${fmt$(resolution.breakdown_sum ?? resolution.resolved_value)}) ` +
+      `is the higher-fidelity source at ${deltaPct != null ? Math.abs(deltaPct * 100).toFixed(1) + '% delta' : 'unknown delta'}. ` +
+      `Resolved value uses breakdown sum as primary.`
+    : `Breakdown sum unavailable or lower-confidence. ` +
+      `T-12 aggregate (${fmt$(resolution.aggregate_value ?? resolution.resolved_value)}) ` +
+      `used as primary source. ` +
+      `${altValue != null ? `Breakdown detail ${fmt$(altValue)} noted for reference.` : ''}`;
 
   return (
     <div
@@ -159,12 +194,12 @@ function Popover({
         top: '100%',
         left: 0,
         marginTop: 4,
-        width: 300,
+        width: 320,
         background: '#07101a',
         border: `1px solid ${cfg.chipBorder}`,
         borderTop: `2px solid ${cfg.chipColor}`,
         borderRadius: 4,
-        boxShadow: `0 4px 20px rgba(0,0,0,0.7)`,
+        boxShadow: '0 4px 20px rgba(0,0,0,0.7)',
         fontFamily: MONO,
       }}
     >
@@ -189,7 +224,7 @@ function Popover({
       </div>
 
       {/* Body */}
-      <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
 
         {/* Resolved row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -225,34 +260,36 @@ function Popover({
           </div>
         )}
 
-        {/* Divider */}
-        <div style={{ borderTop: '1px solid #0e2235', margin: '2px 0' }} />
-
         {/* Delta row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #0e2235', paddingTop: 4 }}>
           <span style={{ fontSize: 8, color: '#6b7a8d' }}>DELTA</span>
           <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 9, color: delta != null && delta > 0 ? '#22c55e' : '#f59e0b' }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: delta != null && delta > 0 ? '#22c55e' : '#f59e0b' }}>
               {fmtDelta(delta)}
             </span>
-            <span style={{ fontSize: 8, color: '#475569' }}>
+            <span style={{ fontSize: 8, color: '#6b7a8d' }}>
               {fmtPct(deltaPct)}
             </span>
           </span>
         </div>
 
-        {/* Method row */}
+        {/* Resolution method */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 8, color: '#6b7a8d' }}>METHOD</span>
           <span style={{ fontSize: 8, color: '#94a3b8' }}>{humanMethod(resolution.resolution_method)}</span>
         </div>
 
-        {/* Divider */}
-        <div style={{ borderTop: '1px solid #0e2235', margin: '2px 0' }} />
+        {/* Tolerance bands */}
+        <div style={{ marginTop: 2 }}>
+          <ToleranceBands />
+        </div>
 
-        {/* Footnote */}
-        <div style={{ fontSize: 7.5, color: '#475569', fontFamily: LABEL, fontStyle: 'italic', lineHeight: 1.4 }}>
-          {footnote}
+        {/* Canonical footnote */}
+        <div style={{
+          fontSize: 7.5, color: '#475569', fontFamily: LABEL, fontStyle: 'italic',
+          lineHeight: 1.45, borderTop: '1px solid #0e2235', paddingTop: 5,
+        }}>
+          {canonicalFootnote}
         </div>
       </div>
     </div>
@@ -282,6 +319,7 @@ export function ReconciliationChip({ resolution, compact = false }: Props) {
   if (status !== 'minor_mismatch' && status !== 'major_mismatch') return null;
 
   const cfg = STATUS_CONFIG[status];
+  const dl  = deltaLabel(resolution);
 
   return (
     <span ref={wrapRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
@@ -291,16 +329,18 @@ export function ReconciliationChip({ resolution, compact = false }: Props) {
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: compact ? 2 : 3,
+          gap: 3,
           background: open ? `${cfg.chipColor}22` : cfg.chipBg,
           border: `1px solid ${open ? cfg.chipColor : cfg.chipBorder}`,
           borderRadius: 3,
-          padding: compact ? '0px 3px' : '1px 5px',
+          padding: compact ? '0px 4px' : '1px 5px',
           cursor: 'pointer',
           marginLeft: compact ? 4 : 6,
-          transition: 'all 0.1s',
+          transition: 'background 0.1s, border-color 0.1s',
+          whiteSpace: 'nowrap',
         }}
       >
+        {/* Icon */}
         <span style={{
           fontFamily: MONO,
           fontSize: compact ? 7.5 : 8,
@@ -309,15 +349,28 @@ export function ReconciliationChip({ resolution, compact = false }: Props) {
           letterSpacing: '0.02em',
           lineHeight: 1.2,
         }}>
-          {cfg.label}
+          {cfg.icon}
         </span>
+        {/* Delta inline — always shown; compact hides the RECONCILED label */}
+        {dl && (
+          <span style={{
+            fontFamily: MONO,
+            fontSize: compact ? 7 : 7.5,
+            color: cfg.chipColor,
+            letterSpacing: '0.03em',
+            opacity: 0.9,
+          }}>
+            {dl}
+          </span>
+        )}
+        {/* "RECONCILED" label only in non-compact mode */}
         {!compact && (
           <span style={{
             fontFamily: MONO,
             fontSize: 7,
             color: cfg.chipColor,
             letterSpacing: '0.06em',
-            opacity: 0.85,
+            opacity: 0.7,
           }}>
             RECONCILED
           </span>

@@ -1332,6 +1332,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     dqaAlerts={dqaByRow[r.field]}
                     onDqaClick={setDqaDrawer}
                     labelAdornment={<ReconciliationChip resolution={otherIncomeResolution} compact />}
+                    overrideResolvedValue={otherIncomeResolution != null ? otherIncomeResolution.resolved_value : undefined}
                   />
 
                   {/* Pattern B — regime expand (value_add / redevelopment) */}
@@ -2879,6 +2880,12 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   onDqaClick?: (alert: DqaAlertShape) => void;
   /** Optional inline element rendered after the row label (e.g. ReconciliationChip for Other Income) */
   labelAdornment?: React.ReactNode;
+  /**
+   * When set, overrides the Resolved column display value with the engine-corrected number
+   * (e.g. math_correction_report.hierarchical_resolutions resolved_value for Other Income).
+   * Does not affect edit/save behaviour — only the display.
+   */
+  overrideResolvedValue?: number | null;
 }) {
   const viewMode          = useDealStore(s => s.viewMode);
   const platformColSource = useDealStore(s => s.platformColSource);
@@ -2923,7 +2930,9 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
     return fmt$(val);
   }
 
-  const serverResolved = row.resolved;
+  // Task #805: when the math engine has corrected the resolved value, use that as the
+  // display baseline. Falls back to row.resolved when no override is supplied.
+  const serverResolved = overrideResolvedValue !== undefined ? overrideResolvedValue : row.resolved;
   const resolvedVal = isBroker
     ? (row.broker ?? serverResolved)
     : (optimisticResolved !== undefined ? optimisticResolved : serverResolved);
