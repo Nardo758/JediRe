@@ -605,7 +605,7 @@ export class AgentRuntime {
         system: systemPrompt,
         messages,
         tools: this.config.tools.map(toAnthropicToolSchema),
-        max_tokens: 4096,
+        max_tokens: 8192,
         tool_choice: toolChoice,
         metadata: {
           actor_type: 'agent',

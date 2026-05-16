@@ -35,7 +35,7 @@ const EVIDENCE_PROMPTS: Array<{
   {
     id: 'cashflow-v8.0-core',
     promptType: 'core',
-    version: '5.0.0',
+    version: '5.1.0',
     systemPrompt: CASHFLOW_SYSTEM_PROMPT,
   },
   {

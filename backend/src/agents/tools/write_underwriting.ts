@@ -53,8 +53,7 @@ const EvidenceRowInputSchema = z.object({
 
 const InputSchema = z.object({
   deal_id: z.string().uuid(),
-  evidence_rows: z.array(EvidenceRowInputSchema).min(1).max(100),
-  proforma_snapshot: z.record(z.string(), z.unknown()).optional()
+  proforma_snapshot: z.record(z.string(), z.unknown())
     .describe('Full proforma_fields map for the snapshot table'),
   evidence_map: z.record(z.string(), z.unknown()).optional()
     .describe('Evidence map for the snapshot table'),
@@ -211,9 +210,9 @@ export const writeUnderwritingTool: ToolDefinition<
 > = {
   name: 'write_underwriting',
   description:
-    'Persist evidence rows to underwriting_evidence and optionally a proforma snapshot. ' +
-    'Call once per run after all evidence is gathered. Include ALL fields you underwrite, ' +
-    'even fields with no collision.',
+    'Persist the proforma snapshot to deal_underwriting_snapshots. ' +
+    'Call ONCE per run after all write_evidence_rows calls are done. ' +
+    'Runs sanity checks against the snapshot before writing.',
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
   requiresCapability: 'write:deal_context',
@@ -235,8 +234,10 @@ export const writeUnderwritingTool: ToolDefinition<
     }
 
     // ── Run sanity checks BEFORE writing to database ──
+    // evidence_rows are written separately via write_evidence_rows;
+    // sanity checks run against the proforma_snapshot values only.
     const sanityResult = runSanityChecks(
-      input.evidence_rows,
+      [],
       input.proforma_snapshot,
       { projectType: dealProjectType }
     );
@@ -272,35 +273,9 @@ export const writeUnderwritingTool: ToolDefinition<
       };
     }
 
-    // Sanity checks passed — proceed with writes
-    const evidenceIds: string[] = [];
-
-    for (const row of input.evidence_rows) {
-      const result = await query(
-        `INSERT INTO underwriting_evidence
-           (deal_id, agent_run_id, field_path, value_numeric, value_text,
-            primary_tier, data_points, reasoning, alternatives, collision, confidence)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         RETURNING id`,
-        [
-          input.deal_id,
-          ctx.correlationId ?? null,
-          row.field_path,
-          row.value_numeric ?? null,
-          row.value_text ?? null,
-          row.primary_tier,
-          JSON.stringify(row.data_points),
-          row.reasoning,
-          JSON.stringify(row.alternatives),
-          row.collision ? JSON.stringify(row.collision) : null,
-          row.confidence,
-        ]
-      );
-      evidenceIds.push(result.rows[0]?.id as string ?? '');
-    }
-
+    // Sanity checks passed — write snapshot
     let snapshotId: string | null = null;
-    if (input.proforma_snapshot && input.evidence_map) {
+    if (input.proforma_snapshot) {
       const snapResult = await query(
         `INSERT INTO deal_underwriting_snapshots
            (deal_id, agent_run_id, proforma_json, evidence_map)
@@ -319,14 +294,13 @@ export const writeUnderwritingTool: ToolDefinition<
     logger.info('write_underwriting', {
       runId: ctx.correlationId,
       dealId: input.deal_id,
-      evidenceCount: evidenceIds.length,
       snapshotId,
       sanityWarnings: sanityResult.warnings.length,
     });
 
     return {
       success: true,
-      evidence_ids: evidenceIds,
+      evidence_ids: [],
       snapshot_id: snapshotId,
       written_at: new Date().toISOString(),
       sanity_warnings: sanityResult.warnings.length > 0 ? sanityResult.warnings : undefined,

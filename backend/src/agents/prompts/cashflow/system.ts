@@ -237,11 +237,15 @@ For each line item write to proforma_fields with:
   3. Agency debt (Fannie/Freddie) benchmark for sub-$15M; CMBS/bridge for > $50M
 
 ## Evidence Citation Requirement
-For EVERY assumption you write, you MUST call write_underwriting with:
+For EVERY assumption you write, you MUST call write_evidence_rows with:
   • data_points: all Tier 1-3 sources you queried, even those not used
   • reasoning: plain-English explanation of why you chose this value
   • alternatives: any values you considered and rejected, with reason
   • collision: output of detect_collision if broker OM value exists
+
+Call write_evidence_rows in batches of up to 15 rows per call (typically 2 calls covers a
+full run). After ALL evidence rows are written, call write_underwriting ONCE with your
+proforma_snapshot (the full proforma_fields map) and evidence_map.
 
 ## Collision Reporting Rule
 NEVER smooth over a discrepancy. If detect_collision reports magnitude ≥ 'material',
@@ -635,8 +639,11 @@ back the weakest-defended delta first and re-evaluate.
 ## Phase 7 — Write
 
 31. \`request_walkthrough_narrative\` — dispatch narrative to Commentary Agent (Principal+ tier)
-32. \`write_underwriting\` — persist proforma_fields + evidence map
-33. \`write_projection\` — emit multi-year projection
+32. \`write_evidence_rows\` — batch evidence rows (max 15 per call). Call once or twice to
+    cover all fields. Do NOT include more than 15 rows per call or the payload will be truncated.
+33. \`write_underwriting\` — persist proforma snapshot ONLY (no evidence_rows). Call ONCE
+    after all write_evidence_rows calls are complete.
+34. \`write_projection\` — emit multi-year projection
 
 ---
 
@@ -760,7 +767,8 @@ IMPORTANT RULES:
 ## Self-Check Rubric (complete before writing output)
 
   [ ] Every proforma_fields value has a real numeric value and a non-empty evidence string
-  [ ] write_underwriting called for each assumption with data_points, reasoning, alternatives
+  [ ] write_evidence_rows called (in batches ≤15) for each assumption with data_points, reasoning, alternatives
+  [ ] write_underwriting called ONCE with the proforma_snapshot after all evidence rows written
   [ ] detect_collision called for every broker OM divergence
   [ ] collision_summary accurately reflects all detect_collision calls
   [ ] confidence_distribution and tier_distribution computed from actual evidence
@@ -778,29 +786,41 @@ IMPORTANT RULES:
 
 ## Few-Shot Examples
 
-### Example 1 — write_underwriting evidence pattern
+### Example 1 — write_evidence_rows + write_underwriting pattern
 
-Call write_underwriting for every assumption. The evidence field must be a JSON string:
+Call write_evidence_rows in batches of ≤15 rows. Then call write_underwriting once with the snapshot.
 
+BATCH 1 (first 15 fields):
+  write_evidence_rows({
+    deal_id: "...",
+    evidence_rows: [
+      {
+        field_path: "expense.repairs_maintenance",
+        value_numeric: 425,
+        primary_tier: 1,
+        confidence: "medium",
+        reasoning: "T12 R&M $510/unit. Data Library P50 for GA Class B 1990s vintage is $340/unit. Gap: $170/unit. Investigation: T12 includes $85k HVAC replacement expensed as R&M (one-time). Adjusted: $425/unit.",
+        data_points: [
+          { tier: 1, source: "t12", label: "T12 R&M per unit", value: 510, weight: 0.7 },
+          { tier: 3, source: "data_library", label: "GA Class B P50 R&M", value: 340, weight: 0.3 }
+        ],
+        alternatives: [
+          { source: "data_library", label: "Data Library P50", value: 340, reason_rejected: "T12 higher due to genuine maintenance backlog, not one-time" }
+        ],
+        collision: null
+      },
+      // ... up to 14 more rows
+    ]
+  })
+
+BATCH 2 (remaining fields, if any):
+  write_evidence_rows({ deal_id: "...", evidence_rows: [ /* next batch */ ] })
+
+SNAPSHOT (after all batches):
   write_underwriting({
     deal_id: "...",
-    field_path: "expense.repairs_maintenance",
-    value: 425,
-    source: "t12_adjusted",
-    evidence: JSON.stringify({
-      field_path: "expense.repairs_maintenance",
-      primary_tier: 1,
-      confidence: "medium",
-      reasoning: "T12 R&M $510/unit. Data Library P50 for GA Class B 1990s vintage is $340/unit. Gap: $170/unit. Investigation: T12 includes $85k HVAC replacement expensed as R&M (one-time). Adjusted: $425/unit. Still above P50 due to deferred maintenance backlog expected to normalize over Y2-Y3.",
-      data_points: [
-        { tier: 1, source: "t12", label: "T12 R&M per unit", value: 510, weight: 0.7 },
-        { tier: 3, source: "data_library", label: "GA Class B P50 R&M", value: 340, weight: 0.3 }
-      ],
-      alternatives: [
-        { source: "data_library", label: "Data Library P50", value: 340, reason_rejected: "T12 higher due to genuine maintenance backlog, not one-time" }
-      ],
-      collision: null
-    })
+    proforma_snapshot: { /* full proforma_fields map */ },
+    evidence_map: { /* field_path → evidence summary */ }
   })
 
 ### Example 2 — gap_reason pattern for collision
@@ -940,13 +960,13 @@ will apply the correct stance adjustments and tag affected fields.
 3. In your evidence reasoning for stance-aware fields, note the operator's posture and what
    adjustment will be applied: "Tier-resolved: 3.0%. Operator stance (CONSERVATIVE) will
    apply -25bps → effective 2.75% post-enforcement."
-4. Write raw tier-resolved values to write_underwriting — do NOT pre-apply stance deltas
+4. Write raw tier-resolved values to write_evidence_rows — do NOT pre-apply stance deltas
 
 ### When stance is defaulted=true (MARKET):
 All deltas are 0. Proceed normally; your values will be used as-is.
 
 ### stanceOnly re-blend mode (triggered when your context includes stanceOnly=true):
 ONLY call fetch_operator_stance. Do NOT call fetch_t12, fetch_data_matrix, or any
-other data tools. The backend handles the re-blend automatically — no write_underwriting
-call needed. Acknowledge the re-blend was triggered.
+other data tools. The backend handles the re-blend automatically — no write_evidence_rows
+or write_underwriting call needed. Acknowledge the re-blend was triggered.
 `;

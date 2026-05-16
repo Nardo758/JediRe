@@ -36,6 +36,7 @@ import { fetchPeerCompNOIMetricsTool } from './tools/fetch_peer_comp_noi_metrics
 import { fetchM35EventForecastTool } from './tools/fetch_m35_event_forecast';
 import { detectCollisionTool } from './tools/detect_collision';
 import { writeUnderwritingTool } from './tools/write_underwriting';
+import { writeEvidenceRowsTool } from './tools/write_evidence_rows';
 import { requestWalkthroughNarrativeTool } from './tools/request_walkthrough_narrative';
 import { readGmailThreadTool } from './tools/read_gmail_thread';
 import { fetchArchiveAssumptionDistributionTool } from './tools/fetch_archive_assumption_distribution';
@@ -276,6 +277,7 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     detectCollisionTool,
     computeProformaTool,
     writeProjectionTool,
+    writeEvidenceRowsTool,
     writeUnderwritingTool,
     requestWalkthroughNarrativeTool,
   ],
