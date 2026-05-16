@@ -33,9 +33,9 @@ const EVIDENCE_PROMPTS: Array<{
   systemPrompt: string;
 }> = [
   {
-    id: 'cashflow-v7.1-core',
+    id: 'cashflow-v8.0-core',
     promptType: 'core',
-    version: '4.1.0',
+    version: '5.0.0',
     systemPrompt: CASHFLOW_SYSTEM_PROMPT,
   },
   {
@@ -82,7 +82,7 @@ export async function seedCashflowPrompt(): Promise<void> {
     });
   }
 
-  logger.info('CashFlow Agent prompts seeded (v7.1 — fetch_data_matrix-first guidance)', {
+  logger.info('CashFlow Agent prompts seeded (v8.0 — analog-anchored forecasting, prompt-spec v3.0)', {
     count: EVIDENCE_PROMPTS.length,
     ids: EVIDENCE_PROMPTS.map(p => p.id),
   });
