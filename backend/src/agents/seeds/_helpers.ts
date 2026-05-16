@@ -51,6 +51,7 @@ export async function upsertAgentPrompt(params: UpsertAgentPromptParams): Promis
      ON CONFLICT (id) DO UPDATE
        SET system_prompt  = EXCLUDED.system_prompt,
            output_schema  = EXCLUDED.output_schema,
+           version        = EXCLUDED.version,
            active         = true,
            updated_at     = NOW()`,
     [id, agentId, version, promptType, systemPrompt, JSON.stringify(outputSchema)],
