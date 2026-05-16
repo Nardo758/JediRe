@@ -1629,11 +1629,12 @@ export interface DealFinancials {
       /**
        * Regime bridge overrides — agent-written (Pass 3) or user-entered per-year line-item
        * trajectory. Written via per_year_overrides JSONB keys:
-       *   turnover_ratio:yr{n}       → decimal turnover rate (e.g. 0.55 = 55%)
-       *   repairs_multiplier:yr{n}   → multiplier vs Y1 stabilised R&M (e.g. 1.25)
-       *   concessions_pct:yr{n}      → concession % of GPR (e.g. 0.04 = 4%)
-       *   marketing_multiplier:yr{n} → multiplier vs Y1 stabilised marketing (e.g. 1.75)
-       * When set these override the regime ramp defaults in buildProjectionsForExport.
+       *   turnover_ratio:yr{n}       → multiplier vs Y1 stabilised base (e.g. 1.60 = 60% above stabilised)
+       *   repairs_multiplier:yr{n}   → multiplier vs Y1 stabilised R&M (e.g. 1.25 = 25% above stabilised)
+       *   concessions_pct:yr{n}      → concession % of GPR as decimal (e.g. 0.04 = 4%)
+       *   marketing_multiplier:yr{n} → multiplier vs Y1 stabilised marketing (e.g. 1.75 = 75% above stabilised)
+       * All three multiplier fields are applied as: Y1_base × regime_multiplier × opex_growth_compounding.
+       * When set these override the computeRegimeRamp() defaults in buildProjectionsForExport.
        */
       turnoverRatioOvr: number | null;
       repairsMultOvr: number | null;
