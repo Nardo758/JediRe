@@ -11,8 +11,7 @@ import { z } from 'zod';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import type { ToolDefinition } from '../runtime/types';
-import { normalizeEvidence } from '../utils/evidenceNormalizer';
-import type { RawEvidence } from '../utils/evidenceNormalizer';
+import { normalizeProformaFields } from '../utils/evidenceNormalizer';
 
 const EvidencePointInputSchema = z.object({
   tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
@@ -275,37 +274,39 @@ export const writeUnderwritingTool: ToolDefinition<
       };
     }
 
-    // Sanity checks passed — normalize evidence in snapshot before writing
+    // Sanity checks passed — normalize evidence in snapshot before writing.
+    // Uses normalizeProformaFields() for consistent telemetry: every field is
+    // visited (including those missing evidence entirely), and repairs emit the
+    // canonical evidence_normalized log + cashflow.evidence.repaired metric.
     let normalizedSnapshot = input.proforma_snapshot;
     if (normalizedSnapshot) {
-      let repairedCount = 0;
-      const out: Record<string, unknown> = {};
-      for (const [key, entry] of Object.entries(normalizedSnapshot)) {
-        if (entry && typeof entry === 'object' && 'evidence' in entry) {
-          const field = entry as Record<string, unknown>;
-          const reasoning = typeof field.reasoning === 'string' ? field.reasoning : null;
-          const result = normalizeEvidence(field.evidence as RawEvidence, key, reasoning);
-          out[key] = { ...field, evidence: result.evidence };
-          if (result.was_repaired) {
-            repairedCount += 1;
-            logger.info('write_underwriting: evidence normalized pre-snapshot', {
-              runId: ctx.correlationId,
-              dealId: input.deal_id,
-              fieldPath: key,
-              repair_actions: result.repair_actions,
-            });
-          }
-        } else {
-          out[key] = entry;
-        }
-      }
-      normalizedSnapshot = out;
-      if (repairedCount > 0) {
-        logger.info('write_underwriting: snapshot evidence normalization complete', {
-          runId: ctx.correlationId,
-          dealId: input.deal_id,
-          fields_repaired: repairedCount,
+      const keys = Object.keys(normalizedSnapshot);
+      if (keys.length > 0) {
+        const fieldsArray = keys.map((key) => {
+          const entry = (normalizedSnapshot as Record<string, unknown>)[key];
+          const fieldObj =
+            entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {};
+          return {
+            ...fieldObj,
+            field_path: typeof fieldObj.field_path === 'string' ? fieldObj.field_path : key,
+          };
         });
+
+        const { proformaFields: normalizedArray } = normalizeProformaFields(
+          fieldsArray,
+          {
+            deal_id: input.deal_id,
+            run_id: ctx.correlationId ?? 'unknown',
+            prompt_version: 'tool-call',
+            logger,
+          },
+        );
+
+        const out: Record<string, unknown> = {};
+        keys.forEach((key, idx) => {
+          out[key] = normalizedArray[idx];
+        });
+        normalizedSnapshot = out;
       }
     }
 
