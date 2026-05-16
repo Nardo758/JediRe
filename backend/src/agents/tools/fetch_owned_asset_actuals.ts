@@ -102,6 +102,37 @@ const RenovationCaptureSummarySchema = z.object({
     .describe('Per-program rent trajectory from earliest to latest actuals'),
   avg_implied_rent_lift_pct: z.number().nullable()
     .describe('Mean implied rent lift % across programs (market drift not stripped). Agent applies market growth haircut to isolate renovation premium.'),
+  /**
+   * Structured numeric capture rate fields — agent uses these directly.
+   *
+   * IMPORTANT: these are implied (gross lift ÷ assumed comp premium bandwidth)
+   * approximations. The agent MUST strip market drift before trusting as true
+   * renovation capture. Treat as a starting bracket, not a final number.
+   *
+   * derivation:
+   *   implied_lift_pct = (last_rent - first_rent) / first_rent
+   *   implied_lift_pct_values across all programs → median_implied_lift_pct
+   *   recommended_capture_rate → clamp to [0.70, 0.90] per protocol.
+   *
+   * If programs_found = 0, both fields are null and the agent falls back to
+   * archive cohort P25 default: recommended_capture_rate will be 0.72.
+   */
+  median_implied_lift_pct: z.number().nullable()
+    .describe('Median implied rent lift % across all programs — use as centre of sponsor track-record evidence.'),
+  recommended_capture_rate: z.number().nullable()
+    .describe(
+      'Numeric capture rate for the agent to use directly in: captured_premium = gross_premium × recommended_capture_rate. ' +
+      'Derived from programs_found and median lift: ' +
+      '≥2 programs with lift > 5% → median lift / 0.18 clamped to [0.70, 0.90]; ' +
+      '1 program → P25 of range: 0.74; ' +
+      '0 programs → archive default: 0.72. ' +
+      'Agent must document source in evidence (track_record | archive_default).'
+    ),
+  capture_rate_source: z.enum(['track_record', 'archive_default'])
+    .describe(
+      '"track_record" when ≥1 value-add programs found with rent trajectory data; ' +
+      '"archive_default" when programs_found=0 or no trajectories available.'
+    ),
   track_record_note: z.string()
     .describe(
       'Agent-readable summary: programs found count, lift range, and recommended capture rate. ' +
@@ -204,7 +235,15 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
         assets: [],
         total_owned_portfolio_size: totalCount,
         renovation_capture_summary: input.value_add_programs_only
-          ? { programs_found: 0, rent_trajectories: [], avg_implied_rent_lift_pct: null, track_record_note: emptyCaptureNote! }
+          ? {
+              programs_found: 0,
+              rent_trajectories: [],
+              avg_implied_rent_lift_pct: null,
+              median_implied_lift_pct: null,
+              recommended_capture_rate: 0.72,
+              capture_rate_source: 'archive_default' as const,
+              track_record_note: emptyCaptureNote!,
+            }
           : null,
         note: 'No comparable owned assets with TTM data found.',
       };
@@ -390,33 +429,73 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
       const lifts = rentTrajectories
         .map(t => t.implied_rent_lift_pct)
         .filter((v): v is number => v != null);
+
+      // avg lift across programs
       const avgLift = lifts.length > 0
         ? Math.round(lifts.reduce((a, b) => a + b, 0) / lifts.length * 10000) / 10000
         : null;
 
+      // median lift (sort ascending, pick middle)
+      let medianLift: number | null = null;
+      if (lifts.length > 0) {
+        const sorted = [...lifts].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        medianLift = sorted.length % 2 !== 0
+          ? sorted[mid]!
+          : Math.round(((sorted[mid - 1]! + sorted[mid]!) / 2) * 10000) / 10000;
+      }
+
+      // ── Derive recommended_capture_rate ──────────────────────────────
+      // Protocol: implied_lift encompasses both renovation premium AND market
+      // drift.  The 0.18 divisor approximates the expected comp bandwidth
+      // (p75 - p25) for a typical value-add deal; this yields a capture_rate
+      // bracket.  The agent MUST apply a market growth haircut from
+      // fetch_market_trends before treating this as a final input.
+      //
+      // Tier rules (matches system prompt):
+      //   ≥2 programs with median lift > 5% → clamp(medianLift / 0.18, 0.70, 0.90)
+      //   1 program                          → 0.74 (archive P25)
+      //   0 programs                         → 0.72 (archive default)
       const pCount = rentTrajectories.length;
+      let recommendedCaptureRate: number;
+      let captureRateSource: 'track_record' | 'archive_default';
+
+      if (pCount >= 2 && medianLift != null && medianLift > 0.05) {
+        recommendedCaptureRate = Math.min(0.90, Math.max(0.70, Math.round(medianLift / 0.18 * 100) / 100));
+        captureRateSource = 'track_record';
+      } else if (pCount === 1) {
+        recommendedCaptureRate = 0.74;
+        captureRateSource = 'track_record';
+      } else {
+        recommendedCaptureRate = 0.72;
+        captureRateSource = 'archive_default';
+      }
+
       let trackRecordNote: string;
       if (pCount === 0) {
         trackRecordNote =
           'No rent trajectory data found for matching value-add programs. ' +
-          'Use archive cohort P25 capture rate default: 0.70-0.75. ' +
-          'Document as "no_track_record" with confidence=low.';
+          `Archive default capture rate applied: ${recommendedCaptureRate}. ` +
+          'Document as "archive_default" with confidence=low.';
       } else {
         const liftRange = lifts.length > 0
           ? `rent lifts ${(Math.min(...lifts) * 100).toFixed(1)}%-${(Math.max(...lifts) * 100).toFixed(1)}%`
           : 'no rent lift data available';
         trackRecordNote =
           `Buyer has ${pCount} prior value-add program(s) in portfolio with ${liftRange} ` +
-          `(avg ${avgLift != null ? (avgLift * 100).toFixed(1) + '%' : 'N/A'} total rent lift including market drift). ` +
-          'Apply market growth haircut from fetch_market_trends to isolate renovation premium. ' +
-          `Recommended: if avg lift exceeds market growth by >12%, sponsor has demonstrated above-archive capture; ` +
-          `if lift is near market growth, capture rate is unproven — use archive P25 default (0.70-0.75).`;
+          `(median ${medianLift != null ? (medianLift * 100).toFixed(1) + '%' : 'N/A'} total rent lift including market drift). ` +
+          `Recommended capture rate: ${recommendedCaptureRate} (source: ${captureRateSource}). ` +
+          'IMPORTANT: apply market growth haircut from fetch_market_trends to isolate renovation premium before use. ' +
+          'If (median_lift − market_drift) < 5%, treat capture rate as unproven → use archive default 0.72.';
       }
 
       renovationCaptureSummary = {
         programs_found: pCount,
         rent_trajectories: rentTrajectories,
         avg_implied_rent_lift_pct: avgLift,
+        median_implied_lift_pct: medianLift,
+        recommended_capture_rate: recommendedCaptureRate,
+        capture_rate_source: captureRateSource,
         track_record_note: trackRecordNote,
       };
     }

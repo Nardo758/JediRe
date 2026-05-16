@@ -133,6 +133,25 @@ const OutputSchema = z.object({
    * Null when comp_role was omitted (non-value-add / legacy call).
    */
   comp_role: z.enum(['baseline', 'renovation_ceiling']).nullable().optional(),
+  /**
+   * Surfaces exactly which filters were applied to this comp set.
+   * Critical for agent reasoning: if unit_count_filter.applied = false, the agent
+   * must rely on the year_built band for size comparability and note the limitation
+   * in evidence when populating comp_ceiling slots.
+   */
+  comp_filter_applied: z.object({
+    city: z.boolean(),
+    state: z.boolean(),
+    asset_class: z.boolean(),
+    year_built_min: z.number().nullable(),
+    year_built_max: z.number().nullable(),
+    unit_count_filter: z.object({
+      requested_min: z.number().nullable(),
+      requested_max: z.number().nullable(),
+      applied: z.boolean(),
+      note: z.string(),
+    }).nullable(),
+  }).optional(),
   note: z.string().optional(),
 });
 
@@ -193,6 +212,28 @@ export const fetchPeerCompNOIMetricsTool: ToolDefinition<
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // ── Comp filter applied summary (surfaces what was and was not filtered) ─
+    // apartment_rent_comps does not carry a property-level unit_count column.
+    // unit_count comparability is enforced via year_built_min/max (which the
+    // caller must set per the two-comp-set protocol) and the returned comp_count
+    // per floor plan that the agent uses to assess set quality.
+    // The comp_filter_applied object tells the agent exactly which filters were
+    // applied so it can reason about comp set comparability and flag gaps.
+    const compFilterApplied = {
+      city: !!input.city,
+      state: !!input.state,
+      asset_class: !!input.asset_class,
+      year_built_min: input.year_built_min ?? null,
+      year_built_max: input.year_built_max ?? null,
+      unit_count_filter: input.units_min != null || input.units_max != null
+        ? { requested_min: input.units_min ?? null, requested_max: input.units_max ?? null,
+            applied: false,
+            note: 'apartment_rent_comps does not carry property-level unit_count. ' +
+                  'Unit-count comparability is enforced via year_built band. ' +
+                  'Review comp_count per floor plan in rent_distribution_by_unit_type.' }
+        : null,
+    };
 
     // ── Individual comp rows (all comp_role values) ──────────────────
     const compsParams = [...params, input.max_comps];
@@ -321,6 +362,7 @@ export const fetchPeerCompNOIMetricsTool: ToolDefinition<
       },
       rent_distribution_by_unit_type: rentDistributionByUnitType,
       comp_role: input.comp_role ?? null,
+      comp_filter_applied: compFilterApplied,
       note: notes.length > 0 ? notes.join(' | ') : undefined,
     };
   },

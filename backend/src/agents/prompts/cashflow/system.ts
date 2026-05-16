@@ -897,9 +897,9 @@ applies flat annual growth that masks retention drag and rent roll burn-off.
 Compute independently for each floor plan — do NOT smooth a single premium percentage
 across all floor plans:
 
-  gross_premium = comp_ceiling_at_positioning_percentile − current_market_rent
-  captured_premium = gross_premium × historical_capture_rate
-  post_reno_target_rent = current_market_rent + captured_premium
+  post_reno_target_rent = comp_ceiling_at_positioning_percentile
+  gross_premium         = post_reno_target_rent − current_market_rent
+  captured_premium      = gross_premium × historical_capture_rate
 
 **Capture rate** — pull from fetch_owned_asset_actuals filtered to buyer's prior value-add programs:
 - Buyer with 2+ documented similar programs (same scope, same vintage band): use their median capture rate
