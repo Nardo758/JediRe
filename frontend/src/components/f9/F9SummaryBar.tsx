@@ -82,6 +82,18 @@ export function F9SummaryBar({
 }: F9SummaryBarProps) {
   const mono = BT.font.mono;
 
+  /**
+   * Returns a click handler that toggles the filter off when the pill is
+   * already active (clicking an active pill → clear → unfiltered view).
+   */
+  const makeOnClick = (type: 'collision' | 'confidence' | 'tier', value: string) => () => {
+    if (activeFilter?.type === type && activeFilter.value === value) {
+      onFilterChange?.(null);
+    } else {
+      onFilterChange?.({ type, value });
+    }
+  };
+
   if (!collision_summary && !confidence_distribution && !tier_distribution && archive_percentile == null) {
     return null;
   }
@@ -107,7 +119,7 @@ export function F9SummaryBar({
               label="SEV"
               value={collision_summary.severe_count}
               color={BT.text.red}
-              onClick={() => onFilterChange?.({ type: 'collision', value: 'severe' })}
+              onClick={makeOnClick('collision', 'severe')}
               active={activeFilter?.type === 'collision' && activeFilter.value === 'severe'}
             />
           )}
@@ -116,7 +128,7 @@ export function F9SummaryBar({
               label="MAT"
               value={collision_summary.material_count}
               color={BT.text.amber}
-              onClick={() => onFilterChange?.({ type: 'collision', value: 'material' })}
+              onClick={makeOnClick('collision', 'material')}
               active={activeFilter?.type === 'collision' && activeFilter.value === 'material'}
             />
           )}
@@ -125,7 +137,7 @@ export function F9SummaryBar({
               label="MIN"
               value={collision_summary.minor_count}
               color={BT.text.secondary}
-              onClick={() => onFilterChange?.({ type: 'collision', value: 'minor' })}
+              onClick={makeOnClick('collision', 'minor')}
               active={activeFilter?.type === 'collision' && activeFilter.value === 'minor'}
             />
           )}
@@ -145,21 +157,21 @@ export function F9SummaryBar({
             label="HI"
             value={confidence_distribution.high}
             color={BT.text.green}
-            onClick={() => onFilterChange?.({ type: 'confidence', value: 'high' })}
+            onClick={makeOnClick('confidence', 'high')}
             active={activeFilter?.type === 'confidence' && activeFilter.value === 'high'}
           />
           <MetricPill
             label="MED"
             value={confidence_distribution.medium}
             color={BT.text.amber}
-            onClick={() => onFilterChange?.({ type: 'confidence', value: 'medium' })}
+            onClick={makeOnClick('confidence', 'medium')}
             active={activeFilter?.type === 'confidence' && activeFilter.value === 'medium'}
           />
           <MetricPill
             label="LO"
             value={confidence_distribution.low}
             color={BT.text.red}
-            onClick={() => onFilterChange?.({ type: 'confidence', value: 'low' })}
+            onClick={makeOnClick('confidence', 'low')}
             active={activeFilter?.type === 'confidence' && activeFilter.value === 'low'}
           />
         </div>
@@ -175,21 +187,21 @@ export function F9SummaryBar({
             label="T1"
             value={tier_distribution.tier1}
             color={BT.accent.doc}
-            onClick={() => onFilterChange?.({ type: 'tier', value: '1' })}
+            onClick={makeOnClick('tier', '1')}
             active={activeFilter?.type === 'tier' && activeFilter.value === '1'}
           />
           <MetricPill
             label="T2"
             value={tier_distribution.tier2}
             color="#60A5FA"
-            onClick={() => onFilterChange?.({ type: 'tier', value: '2' })}
+            onClick={makeOnClick('tier', '2')}
             active={activeFilter?.type === 'tier' && activeFilter.value === '2'}
           />
           <MetricPill
             label="T3"
             value={tier_distribution.tier3}
             color={BT.text.purple}
-            onClick={() => onFilterChange?.({ type: 'tier', value: '3' })}
+            onClick={makeOnClick('tier', '3')}
             active={activeFilter?.type === 'tier' && activeFilter.value === '3'}
           />
           {tier_distribution.tier4 > 0 && (
@@ -197,7 +209,7 @@ export function F9SummaryBar({
               label="T4"
               value={tier_distribution.tier4}
               color={BT.text.orange}
-              onClick={() => onFilterChange?.({ type: 'tier', value: '4' })}
+              onClick={makeOnClick('tier', '4')}
               active={activeFilter?.type === 'tier' && activeFilter.value === '4'}
             />
           )}
