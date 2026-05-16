@@ -784,18 +784,28 @@ function buildTrajectory(
 
       if (!actionStarted.has(action.id)) continue;
 
-      // Check if action's impact window overlaps this year
-      const actionEndMonth = start_month + duration_months;
-      const hasImpact = impact_starts_month <= endMonth && actionEndMonth >= startMonth - 12;
-      if (!hasImpact && impact_starts_month > endMonth) continue;
+      // ── Impact persistence model ──────────────────────────────────────────
+      // Once a value-add action achieves full realization its NOI lift is
+      // PERMANENT — it is baked into the asset's run rate for all remaining
+      // hold years.  Gating on `start_month + duration_months` (the old
+      // `actionEndMonth` check) was wrong: duration_months is the *implementation
+      // window*, not the economic life of the benefit.
+      //
+      // Correct model:
+      //   Phase 1 (impact_starts_month → impact_fully_realized_month): ramp-up
+      //   Phase 2 (impact_fully_realized_month → end of hold): 100% steady-state
+      //   Pre-impact (current endMonth < impact_starts_month): no contribution yet
+      if (impact_starts_month > endMonth) continue; // impact hasn't begun this year
 
       activeActions.push(action.id);
 
-      // Compute fractional impact realized in this year
+      // Compute realization fraction for this year
       let realizationFraction = 0;
       if (endMonth >= impact_fully_realized_month) {
+        // Fully realized — steady-state contribution for all remaining years
         realizationFraction = 1.0;
       } else if (endMonth >= impact_starts_month) {
+        // Ramp-up phase: partial realization proportional to months ramping
         const rampRange = Math.max(1, impact_fully_realized_month - impact_starts_month);
         const monthsRamping = endMonth - Math.max(impact_starts_month, startMonth - 1);
         realizationFraction = Math.min(1, monthsRamping / rampRange);
@@ -813,7 +823,8 @@ function buildTrajectory(
     cumulativeLift += noiLiftThisYear;
     const noiWithRoadmap = baselineNoi + noiLiftThisYear;
 
-    // Sort drivers descending
+    // Sort drivers descending by contribution — all included (no cap)
+    // The chart renders every segment so the bar fully accounts for all active actions.
     drivers.sort((a, b) => b.dollar_contribution - a.dollar_contribution);
 
     trajectory.push({
@@ -824,7 +835,7 @@ function buildTrajectory(
       noi_with_roadmap: Math.round(noiWithRoadmap),
       noi_lift_this_year: Math.round(noiLiftThisYear),
       noi_lift_cumulative: Math.round(cumulativeLift),
-      primary_lift_drivers: drivers.slice(0, 5),
+      primary_lift_drivers: drivers, // all active-action contributions, no cap
     });
   }
 
