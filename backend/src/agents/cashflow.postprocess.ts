@@ -510,18 +510,63 @@ async function fillAndValidateValueAddGPR(output: Record<string, unknown>, runId
     proformaFields[`${prefix}.${slot}`] = {
       value: Math.round(value * 100) / 100,
       source: 'postprocessor_math_fill',
-      // Canonical CanonicalEvidence shape: source_tier (number 1-4) + source_label (string)
-      // Tier 4 = AI/model inference; postprocessor math fill is deterministic but derived
-      // from LLM-written comp ceiling data, so tier 4 is appropriate.
+      // Canonical CanonicalEvidence shape: source_tier (1-4 number), source_label (string),
+      // confidence ('high'|'medium'|'low'). Must match CanonicalEvidence interface exactly.
       evidence: {
         source_tier: 4,
         source_label: 'postprocessor_math_fill',
-        confidence_level: 'medium',
-        derivation: formula,
-        note: 'Deterministically computed by postprocessor from agent-written comp ceiling slots.',
+        confidence: 'medium',
+        derivation_chain: [formula],
+        source_doc_ref: null,
+        source_doc_excerpt: null,
+        data_points: [],
+        collision_with_broker: null,
       },
     };
   };
+
+  // ── D. DUAL-COMP-SET ENFORCEMENT ─────────────────────────────────────────
+  // Deterministically verify that both comp roles (baseline + renovation_ceiling) were called.
+  // For value-add context, both comp sets are required by the GPR methodology spec.
+  const dualCompValidation = { baseline_called: false, renovation_ceiling_called: false };
+  // Track which floor plans the renovation_ceiling comp call returned as low-confidence.
+  const lowConfidenceFloorPlans = new Set<string>();
+  try {
+    const { rows: compCallRows } = await query(
+      `SELECT payload FROM agent_run_steps
+       WHERE agent_run_id = $1 AND step_type = 'tool_result' AND tool_name = 'fetch_peer_comp_noi_metrics'
+       ORDER BY step_index ASC`,
+      [runId]
+    );
+    for (const row of compCallRows) {
+      const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+      const role: string = p?.comp_role ?? '';
+      if (role === 'baseline') dualCompValidation.baseline_called = true;
+      if (role === 'renovation_ceiling') {
+        dualCompValidation.renovation_ceiling_called = true;
+        // Collect low-confidence floor plans from this call (n < 2 → low)
+        const dist = p?.rent_distribution_by_unit_type;
+        if (Array.isArray(dist)) {
+          for (const entry of dist) {
+            if (entry?.confidence === 'low' && entry?.unit_type) {
+              lowConfidenceFloorPlans.add(String(entry.unit_type));
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // Non-fatal: if DB query fails, dual-comp validation is inconclusive
+  }
+
+  const dualCompMissing: string[] = [];
+  if (!dualCompValidation.baseline_called) dualCompMissing.push('baseline');
+  if (!dualCompValidation.renovation_ceiling_called) dualCompMissing.push('renovation_ceiling');
+  if (dualCompMissing.length > 0) {
+    logger.warn('[CashflowPostProcess] Value-add GPR: missing required comp role calls', {
+      runId, missing: dualCompMissing,
+    });
+  }
 
   // ── Fetch documented track record capture rate from fetch_owned_asset_actuals result ──
   // Query the tool_result step for this run to get renovation_capture_summary.recommended_capture_rate.
@@ -608,6 +653,46 @@ async function fillAndValidateValueAddGPR(output: Record<string, unknown>, runId
         threshold: captureRateCollisionThreshold,
       });
     }
+
+    // ── E. SPONSOR ASSERTION INCONSISTENCY CHECK ─────────────────────────────
+    // If the agent wrote post_reno_target_rent (sponsor assertion) but it differs from
+    // comp_ceiling at the positioning percentile by > 10%, flag it as a methodology deviation.
+    const agentWrittenPostReno = hasSlot(prefix, 'post_reno_target_rent')
+      ? getSlot(prefix, 'post_reno_target_rent')
+      : null;
+    if (
+      agentWrittenPostReno != null &&
+      ceilingAtPercentile != null &&
+      ceilingAtPercentile > 0
+    ) {
+      const deviationPct = Math.abs(agentWrittenPostReno - ceilingAtPercentile) / ceilingAtPercentile;
+      if (deviationPct > 0.10) {
+        logger.warn('[CashflowPostProcess] GPR sponsor-asserted post_reno_target_rent deviates > 10% from comp ceiling', {
+          fpId, agentWrittenPostReno, ceilingAtPercentile, deviationPct: (deviationPct * 100).toFixed(1) + '%',
+        });
+        const inconsistencies = (output.value_add_gpr_assertion_inconsistencies ?? []) as Array<Record<string, unknown>>;
+        inconsistencies.push({
+          floor_plan_id: fpId,
+          agent_post_reno_target_rent: agentWrittenPostReno,
+          comp_ceiling_at_percentile: ceilingAtPercentile,
+          deviation_pct: Math.round(deviationPct * 1000) / 10,
+          note: `Agent asserted post_reno_target_rent deviates ${(deviationPct * 100).toFixed(1)}% from ` +
+                `comp ceiling at P${Math.round(positioning_pct * 100)}. ` +
+                'Sponsor assertion > 10% above comp ceiling requires documented evidence override.',
+        });
+        output.value_add_gpr_assertion_inconsistencies = inconsistencies;
+      }
+    }
+
+    // ── F. CONFIDENCE-RATIONALE ENFORCEMENT ──────────────────────────────────
+    // Low-confidence floor plans (n < 2 comps returned by renovation_ceiling call) require
+    // confidence_rationale to be written. Flag missing rationale as a methodology gap.
+    if (lowConfidenceFloorPlans.has(fpId) && !hasSlot(prefix, 'confidence_rationale')) {
+      const ratGaps = (output.value_add_gpr_confidence_rationale_gaps ?? []) as string[];
+      ratGaps.push(fpId);
+      output.value_add_gpr_confidence_rationale_gaps = ratGaps;
+      logger.warn('[CashflowPostProcess] GPR low-confidence floor plan missing confidence_rationale', { fpId });
+    }
   }
 
   // Surface capture rate collisions in collision_summary
@@ -645,11 +730,21 @@ async function fillAndValidateValueAddGPR(output: Record<string, unknown>, runId
   }
 
   const isFullyComplete = missingSlotsReport.length === 0;
+  const confidenceRationaleGaps = (output.value_add_gpr_confidence_rationale_gaps ?? []) as string[];
   output.value_add_gpr_validation = {
     is_value_add_context: true,
     floor_plans_found: [...floorPlanIds],
     missing_slots: missingSlotsReport,
     complete: isFullyComplete,
+    // Dual-comp-set enforcement: both baseline + renovation_ceiling must be called for value-add
+    dual_comp_set: {
+      baseline_called: dualCompValidation.baseline_called,
+      renovation_ceiling_called: dualCompValidation.renovation_ceiling_called,
+      compliant: dualCompValidation.baseline_called && dualCompValidation.renovation_ceiling_called,
+      missing_roles: dualCompMissing,
+    },
+    // Low-confidence floor plans missing required confidence_rationale
+    confidence_rationale_gaps: confidenceRationaleGaps,
   };
 
   if (!isFullyComplete) {
