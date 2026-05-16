@@ -172,27 +172,21 @@ export async function cashflowPostProcess(
       }
     }
 
-    // ── Value-add GPR output slot validation ─────────────────────────────────
-    // Deterministic enforcement step (does not require LLM compliance):
-    // If any proforma_fields key signals a value-add deal context, verify that
-    // the required per-floor-plan unit_mix slots were written.
+    // ── Value-add GPR: fill + validate ───────────────────────────────────────
+    // Two responsibilities (both non-fatal):
+    //   A. FILL: deterministically compute missing math slots (post_reno_target_rent,
+    //      gross_premium, captured_premium) from comp ceiling data the agent wrote.
+    //   B. VALIDATE: scan for slot completeness; surface gaps in value_add_gpr_validation.
+    //   C. COLLIDE: emit a capture-rate collision when agent assumption exceeds track record.
     //
-    // Value-add signals: any field whose path starts with
-    //   proforma.revenue.gpr.unit_mix
-    // OR the deal_type field containing renovation/reposition signals.
-    //
-    // Required slots per floor plan (10 total per floor_plan_id):
-    //   unit_count, current_market_rent, comp_ceiling_p25, comp_ceiling_p50,
-    //   comp_ceiling_p75, positioning_percentile, post_reno_target_rent,
-    //   gross_premium, capture_rate, captured_premium
-    //
-    // When required slots are absent, the validation summary surfaces them as
-    // "missing" warnings. This runs post-aggregation so it reflects final output.
+    // Handles both agent path formats:
+    //   format A (bracket): proforma.revenue.gpr.unit_mix[floor_plan_id].slot
+    //   format B (dot):     proforma.revenue.gpr.unit_mix.floor_plan_id.slot
     if (output.proforma_fields && typeof output.proforma_fields === 'object') {
       try {
-        validateValueAddGPRSlots(output);
+        fillAndValidateValueAddGPR(output);
       } catch (validationErr) {
-        logger.warn('[CashflowPostProcess] Value-add GPR slot validation failed (non-fatal)', {
+        logger.warn('[CashflowPostProcess] Value-add GPR fill/validate failed (non-fatal)', {
           runId,
           err: validationErr instanceof Error ? validationErr.message : String(validationErr),
         });
@@ -417,17 +411,25 @@ function inferStanceSignals(
 }
 
 /**
- * VALUE-ADD GPR SLOT VALIDATION
+ * VALUE-ADD GPR: FILL + VALIDATE
  *
- * Deterministic post-processing enforcement for value-add deal GPR methodology.
- * Scans proforma_fields for value-add signals, then checks that the required
- * 10-slot per-floor-plan unit_mix grid is fully populated.
+ * Three responsibilities (all non-fatal, non-destructive):
  *
- * When a field is missing, the slot is added to `value_add_gpr_validation.missing_slots`
- * on the output object — this surfaces in the API response so the UI can warn
- * the operator that the value-add GPR methodology was not fully applied.
+ * A. FILL — deterministically compute any missing math slots from what the
+ *    agent already wrote (comp ceiling + current rent + capture rate → derived slots):
+ *      post_reno_target_rent = comp_ceiling at positioning_percentile
+ *      gross_premium         = post_reno_target_rent − current_market_rent
+ *      captured_premium      = gross_premium × capture_rate
+ *    Written with source='postprocessor_math_fill' so evidence chain is auditable.
  *
- * Non-destructive: never removes or overwrites existing proforma_fields.
+ * B. VALIDATE — scan for completeness; surface gaps in value_add_gpr_validation.
+ *
+ * C. COLLIDE — emit a collision when agent's chosen capture_rate exceeds the
+ *    archive P50 anchor (0.80) by more than 0.05 without documented track record.
+ *
+ * Handles both agent path formats:
+ *   bracket: proforma.revenue.gpr.unit_mix[floor_plan_id].slot
+ *   dot:     proforma.revenue.gpr.unit_mix.floor_plan_id.slot
  */
 const REQUIRED_UNIT_MIX_SLOTS = [
   'unit_count',
@@ -442,77 +444,172 @@ const REQUIRED_UNIT_MIX_SLOTS = [
   'captured_premium',
 ] as const;
 
-function validateValueAddGPRSlots(output: Record<string, unknown>): void {
+// Archive P50 capture rate anchor (matches fetch_owned_asset_actuals canonical default)
+const ARCHIVE_P50_CAPTURE_RATE = 0.80;
+// Threshold above P50 that triggers a collision (5pp above archive P50 = above archive P75)
+const CAPTURE_RATE_COLLISION_THRESHOLD = ARCHIVE_P50_CAPTURE_RATE + 0.05;
+
+function fillAndValidateValueAddGPR(output: Record<string, unknown>): void {
   const proformaFields = output.proforma_fields as Record<string, unknown>;
   const allKeys = Object.keys(proformaFields);
 
-  // ── Detect value-add GPR signal ──────────────────────────────────────────
-  // Signal 1: any field path already contains "unit_mix" (agent partially complied)
-  const unitMixKeys = allKeys.filter(k => k.includes('unit_mix'));
-
-  // Signal 2: deal_type field with renovation/reposition signal
+  // ── Detect value-add GPR signal ─────────────────────────────────────────
+  const unitMixKeys = allKeys.filter(k =>
+    k.includes('unit_mix[') || /unit_mix\.\w/.test(k)
+  );
   const dealTypeField = proformaFields['deal_type'] ?? proformaFields['investment_strategy'];
   const dealTypeValue = dealTypeField && typeof dealTypeField === 'object'
     ? String((dealTypeField as Record<string, unknown>).value ?? '')
     : String(dealTypeField ?? '');
   const valueAddSignalInDealType = /value.?add|rehab|reposit|renovati/i.test(dealTypeValue);
-
   const isValueAddContext = unitMixKeys.length > 0 || valueAddSignalInDealType;
 
-  if (!isValueAddContext) {
-    // Not a value-add deal — no validation needed
-    return;
-  }
+  if (!isValueAddContext) return;
 
-  // ── Detect floor plans from existing unit_mix keys ─────────────────────
-  // Pattern: proforma.revenue.gpr.unit_mix[floor_plan_id].slot_name
-  const floorPlanPattern = /proforma\.revenue\.gpr\.unit_mix\[([^\]]+)\]/;
+  // ── Detect floor plans — supports BOTH bracket and dot path formats ────
+  const bracketPattern = /\.unit_mix\[([^\]]+)\]\./;
+  const dotPattern = /\.unit_mix\.([^.[]+)\./;
   const floorPlanIds = new Set<string>();
   for (const key of unitMixKeys) {
-    const match = floorPlanPattern.exec(key);
-    if (match?.[1]) floorPlanIds.add(match[1]);
+    const bm = bracketPattern.exec(key);
+    if (bm?.[1]) { floorPlanIds.add(bm[1]); continue; }
+    const dm = dotPattern.exec(key);
+    if (dm?.[1]) floorPlanIds.add(dm[1]);
   }
 
-  // If the agent wrote no unit_mix keys but deal_type signals value-add,
-  // we can't infer floor plans — flag the entire grid as missing.
   if (floorPlanIds.size === 0) {
-    logger.warn('[CashflowPostProcess] Value-add GPR: agent wrote no unit_mix slots despite value-add deal signal', {
-      dealTypeValue,
-    });
+    logger.warn('[CashflowPostProcess] Value-add GPR: no unit_mix slots written despite value-add signal', { dealTypeValue });
     output.value_add_gpr_validation = {
       is_value_add_context: true,
       floor_plans_found: [],
-      missing_slots: [{
-        floor_plan_id: '*',
-        missing: REQUIRED_UNIT_MIX_SLOTS.slice(),
-        note: 'No proforma.revenue.gpr.unit_mix[*] slots written. ' +
-              'Dual comp set protocol was not applied. ' +
-              'Check system prompt — value-add GPR section requires two fetch_peer_comp_noi_metrics calls ' +
-              '(comp_role=baseline + comp_role=renovation_ceiling) and per-floor-plan premium math.',
-      }],
+      missing_slots: [{ floor_plan_id: '*', missing: REQUIRED_UNIT_MIX_SLOTS.slice(),
+        note: 'No unit_mix slots written. Dual comp set protocol was not applied.' }],
+      complete: false,
     };
     return;
   }
 
-  // ── Per-floor-plan slot completeness check ────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const getNumeric = (fieldValue: unknown): number | null => {
+    if (fieldValue == null) return null;
+    if (typeof fieldValue === 'number') return fieldValue;
+    if (typeof fieldValue === 'object') {
+      const v = (fieldValue as Record<string, unknown>).value;
+      return typeof v === 'number' ? v : (typeof v === 'string' && !isNaN(Number(v)) ? Number(v) : null);
+    }
+    return typeof fieldValue === 'string' && !isNaN(Number(fieldValue)) ? Number(fieldValue) : null;
+  };
+
+  const getSlot = (prefix: string, slot: string): number | null =>
+    getNumeric(proformaFields[`${prefix}.${slot}`]);
+
+  const hasSlot = (prefix: string, slot: string): boolean =>
+    `${prefix}.${slot}` in proformaFields && proformaFields[`${prefix}.${slot}`] != null;
+
+  const writeSlot = (prefix: string, slot: string, value: number, formula: string): void => {
+    proformaFields[`${prefix}.${slot}`] = {
+      value: Math.round(value * 100) / 100,
+      source: 'postprocessor_math_fill',
+      evidence: JSON.stringify({
+        confidence_level: 'medium',
+        source_type: 'deterministic_computation',
+        formula,
+        note: 'Auto-filled by postprocessor from agent-written comp ceiling data.',
+      }),
+    };
+  };
+
+  // ── Per-floor-plan: FILL + COLLISION ──────────────────────────────────
+  let captureRateCollisionCount = 0;
+
+  for (const fpId of floorPlanIds) {
+    // Determine which prefix format this floor plan uses
+    const bracketPrefix = `proforma.revenue.gpr.unit_mix[${fpId}]`;
+    const dotPrefix = `proforma.revenue.gpr.unit_mix.${fpId}`;
+    const prefix = allKeys.some(k => k.startsWith(bracketPrefix + '.')) ? bracketPrefix : dotPrefix;
+
+    // Read existing slot values
+    const positioning_pct = getSlot(prefix, 'positioning_percentile') ?? 0.50;
+    const current_market_rent = getSlot(prefix, 'current_market_rent');
+    const p25 = getSlot(prefix, 'comp_ceiling_p25');
+    const p50 = getSlot(prefix, 'comp_ceiling_p50');
+    const p75 = getSlot(prefix, 'comp_ceiling_p75');
+    const capture_rate = getSlot(prefix, 'capture_rate') ?? ARCHIVE_P50_CAPTURE_RATE;
+
+    // ── A. FILL: compute post_reno_target_rent from comp ceiling at positioning percentile
+    const ceilingAtPercentile: number | null = (() => {
+      if (positioning_pct <= 0.375) return p25;
+      if (positioning_pct <= 0.625) return p50;
+      return p75 ?? p50 ?? p25;
+    })();
+
+    if (ceilingAtPercentile != null && !hasSlot(prefix, 'post_reno_target_rent')) {
+      writeSlot(prefix, 'post_reno_target_rent', ceilingAtPercentile,
+        `comp_ceiling at P${Math.round(positioning_pct * 100)} = ${ceilingAtPercentile}`);
+    }
+
+    const post_reno_target_rent = getSlot(prefix, 'post_reno_target_rent') ?? ceilingAtPercentile;
+
+    if (post_reno_target_rent != null && current_market_rent != null && !hasSlot(prefix, 'gross_premium')) {
+      const gp = post_reno_target_rent - current_market_rent;
+      writeSlot(prefix, 'gross_premium', gp,
+        `${post_reno_target_rent} (post_reno_target) − ${current_market_rent} (current) = ${gp.toFixed(2)}`);
+    }
+
+    const gross_premium = getSlot(prefix, 'gross_premium') ??
+      (post_reno_target_rent != null && current_market_rent != null
+        ? post_reno_target_rent - current_market_rent : null);
+
+    if (gross_premium != null && !hasSlot(prefix, 'captured_premium')) {
+      const cp = gross_premium * capture_rate;
+      writeSlot(prefix, 'captured_premium', cp,
+        `${gross_premium.toFixed(2)} (gross) × ${capture_rate} (capture_rate) = ${cp.toFixed(2)}`);
+    }
+
+    // ── C. COLLIDE: flag above-archive capture rate ───────────────────────
+    if (capture_rate > CAPTURE_RATE_COLLISION_THRESHOLD) {
+      captureRateCollisionCount++;
+      logger.warn('[CashflowPostProcess] GPR capture rate above archive P50+5pp', {
+        fpId, capture_rate, threshold: CAPTURE_RATE_COLLISION_THRESHOLD,
+      });
+    }
+  }
+
+  // Surface capture rate collisions in collision_summary
+  if (captureRateCollisionCount > 0) {
+    const cs = output.collision_summary as Record<string, number> | undefined;
+    if (cs && typeof cs.minor_count === 'number') {
+      cs.minor_count += captureRateCollisionCount;
+    }
+    // Also record in value_add_gpr_validation
+    output.value_add_gpr_capture_rate_collision = {
+      floor_plan_count: captureRateCollisionCount,
+      threshold: CAPTURE_RATE_COLLISION_THRESHOLD,
+      note: `${captureRateCollisionCount} floor plan(s) have capture_rate > ${CAPTURE_RATE_COLLISION_THRESHOLD} ` +
+            `(archive P50+5pp). Requires documented track record evidence. ` +
+            `If buyer track record does not support above-archive capture, reduce to 0.80.`,
+    };
+  }
+
+  // ── B. VALIDATE: completeness check after fill ────────────────────────
   const missingSlotsReport: Array<{ floor_plan_id: string; missing: string[]; note: string }> = [];
 
   for (const fpId of floorPlanIds) {
-    const prefix = `proforma.revenue.gpr.unit_mix[${fpId}]`;
-    const missing = REQUIRED_UNIT_MIX_SLOTS.filter(
-      slot => !(`${prefix}.${slot}` in proformaFields)
-    );
+    const bracketPrefix = `proforma.revenue.gpr.unit_mix[${fpId}]`;
+    const dotPrefix = `proforma.revenue.gpr.unit_mix.${fpId}`;
+    const prefix = allKeys.some(k => k.startsWith(bracketPrefix + '.')) ? bracketPrefix : dotPrefix;
+
+    const missing = REQUIRED_UNIT_MIX_SLOTS.filter(slot => !hasSlot(prefix, slot));
     if (missing.length > 0) {
       missingSlotsReport.push({
         floor_plan_id: fpId,
         missing,
-        note: `Floor plan "${fpId}" is missing ${missing.length}/${REQUIRED_UNIT_MIX_SLOTS.length} required GPR slots.`,
+        note: `"${fpId}" missing ${missing.length}/${REQUIRED_UNIT_MIX_SLOTS.length} slots after postprocessor fill.`,
       });
     }
   }
 
   const isFullyComplete = missingSlotsReport.length === 0;
-
   output.value_add_gpr_validation = {
     is_value_add_context: true,
     floor_plans_found: [...floorPlanIds],
@@ -521,12 +618,12 @@ function validateValueAddGPRSlots(output: Record<string, unknown>): void {
   };
 
   if (!isFullyComplete) {
-    logger.warn('[CashflowPostProcess] Value-add GPR: incomplete unit_mix grid', {
+    logger.warn('[CashflowPostProcess] Value-add GPR: gaps after postprocessor fill', {
       floorPlansWithGaps: missingSlotsReport.map(r => r.floor_plan_id),
-      totalMissingSlots: missingSlotsReport.reduce((acc, r) => acc + r.missing.length, 0),
+      totalRemaining: missingSlotsReport.reduce((acc, r) => acc + r.missing.length, 0),
     });
   } else {
-    logger.info('[CashflowPostProcess] Value-add GPR: all unit_mix slots present', {
+    logger.info('[CashflowPostProcess] Value-add GPR: all unit_mix slots present (including postprocessor fills)', {
       floorPlansVerified: [...floorPlanIds],
     });
   }

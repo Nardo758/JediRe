@@ -123,28 +123,28 @@ const RenovationCaptureSummarySchema = z.object({
       'confirm or adjust the recommended_capture_rate starting anchor.'
     ),
   /**
-   * Canonical archive P50 starting anchor = 0.80.
+   * Estimated capture rate derived from buyer's S3 track record.
    *
-   * recommended_capture_rate is ALWAYS set to 0.80 (archive cohort P50, medium confidence).
-   * This is intentional — raw rent lift pct cannot be reliably converted to capture rate
-   * without historical comp ceilings from acquisition time. The P50 anchor is the
-   * canonical neutral starting point per spec ("typical capture rates are 70-90%").
+   * Computation (when programs_found ≥ 1):
+   *   Per program:
+   *     hold_years   = months_observed / 12
+   *     market_base  = hold_years × 0.03  (3%/yr conservative constant)
+   *     isolated     = implied_lift_pct − market_base
+   *     tier: isolated > 15% → 0.85 | 8-15% → 0.82 | 3-8% → 0.80 | < 3% → 0.76
+   *   recommended_capture_rate = median of per-program tier capture rates.
    *
-   * The agent uses median_implied_lift_pct as EVIDENCE to ADJUST from the anchor:
-   *   - If (median_lift − market_growth_over_hold) > 12% → upgrade toward 0.84-0.86 (above-archive)
-   *   - If (median_lift − market_growth_over_hold) < 5%  → downgrade to 0.72-0.76 (unproven)
-   *   - Otherwise → keep at 0.80 (anchor)
+   * When programs_found = 0: archive cohort P50 fallback = 0.80.
    *
-   * NOTE: do NOT clamp median_implied_lift_pct to capture_rate range. They are different units.
+   * Valid range: [0.76, 0.85] from tier map; agent may adjust within [0.70, 0.90]
+   * with documented justification. Anything > 0.90 requires explicit evidence.
    */
   recommended_capture_rate: z.number()
     .describe(
-      'Archive P50 capture rate anchor = 0.80 (medium confidence). ' +
-      'ALWAYS 0.80 — this is the canonical starting point for all scenarios. ' +
-      'The agent adjusts from this anchor using the trajectory evidence (median_implied_lift_pct) ' +
-      'and market growth data from fetch_market_trends. ' +
-      'Valid adjustment range: 0.70 (unproven/low scope) to 0.90 (documented above-archive performance). ' +
-      'Document final chosen rate and source in evidence field.'
+      'Estimated capture rate from buyer S3 track record (median of per-program market-adjusted lift tiers). ' +
+      '0 programs → archive P50 fallback = 0.80. ' +
+      'Range: 0.76 (unproven) → 0.80 (archive P50) → 0.82 → 0.85 (above-archive documented). ' +
+      'Agent uses directly in: captured_premium = gross_premium × recommended_capture_rate. ' +
+      'Document source (track_record | archive_default) and confidence in evidence.'
     ),
   capture_rate_source: z.enum(['track_record', 'archive_default'])
     .describe(
@@ -460,29 +460,57 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
           : Math.round(((sorted[mid - 1]! + sorted[mid]!) / 2) * 10000) / 10000;
       }
 
-      // ── Derive recommended_capture_rate ──────────────────────────────
-      // Spec (CASHFLOW_LINE_ITEM_MATRIX_PASS1_PATCHED): S3 capture rate comes
-      // from "buyer's documented capture rate on similar repositioning programs".
+      // ── Derive recommended_capture_rate from S3 track record ─────────────
+      // Spec: "historical_capture_rate comes from S3 — buyer's actual capture on
+      // similar repositioning programs."
       //
-      // deal_monthly_actuals stores rent trajectories, not explicit capture rates.
-      // median_implied_lift_pct = (last_rent - first_rent) / first_rent,
-      // typically 0.05–0.30 (5–30% gross rent lift including market drift).
+      // Since deal_monthly_actuals stores rent trajectories (not explicit capture
+      // rates per prior program), we derive an estimated capture rate per program
+      // using a market-adjusted lift tier mapping:
       //
-      // CRITICAL: median_implied_lift_pct is NOT the capture rate and CANNOT
-      // be mapped directly to one (different unit — it would always floor at 0.70).
-      // The capture rate lives in [0.70, 0.90] while raw rent lift is [0.05, 0.30].
+      //   per_program:
+      //     hold_years = months_observed / 12
+      //     market_baseline = hold_years × 0.03   (3%/yr conservative constant)
+      //     isolated_lift = implied_lift_pct − market_baseline
+      //     tier: isolated_lift > 0.15 → 0.85 | 0.08-0.15 → 0.82 | 0.03-0.08 → 0.80 | < 0.03 → 0.76
       //
-      // Canonical rule (single source of truth):
-      //   recommended_capture_rate = 0.80 (archive cohort P50) in ALL cases.
-      //   The agent uses median_implied_lift_pct as EVIDENCE to adjust from anchor:
-      //     isolated_lift = median_implied_lift_pct − market_growth_over_hold_period
-      //     If isolated_lift > 12%  → upgrade toward 0.84-0.86 (above-archive, document)
-      //     If isolated_lift < 5%   → downgrade to 0.72-0.76 (unproven, document)
-      //     Otherwise               → keep 0.80 (anchor)
+      //   recommended_capture_rate = median of per-program tier capture rates
+      //   programs_found = 0 → archive cohort P50 fallback = 0.80
+      //
+      // This IS "median capture from comparable programs" — the implied capture
+      // rate estimated from each program's isolated renovation lift.
       const pCount = rentTrajectories.length;
-      const recommendedCaptureRate = 0.80; // always archive P50 anchor
-      const captureRateSource: 'track_record' | 'archive_default' =
-        pCount >= 1 ? 'track_record' : 'archive_default';
+      let captureRateSource: 'track_record' | 'archive_default';
+      let recommendedCaptureRate: number;
+
+      if (pCount >= 1) {
+        // Compute per-program estimated capture rate via market-adjusted lift tiers
+        const perProgramRates = rentTrajectories.map(t => {
+          const lift = t.implied_rent_lift_pct;
+          if (lift == null) return 0.80; // fallback for programs with no lift data
+          const holdYears = Math.max(1, t.months_observed / 12);
+          const marketBaseline = holdYears * 0.03;
+          const isolatedLift = lift - marketBaseline;
+          if (isolatedLift > 0.15) return 0.85;
+          if (isolatedLift > 0.08) return 0.82;
+          if (isolatedLift > 0.03) return 0.80;
+          return 0.76; // unproven — lift barely above market drift
+        });
+
+        // Median of per-program estimated capture rates
+        const sortedRates = [...perProgramRates].sort((a, b) => a - b);
+        const mid = Math.floor(sortedRates.length / 2);
+        const medianRate = sortedRates.length % 2 !== 0
+          ? sortedRates[mid]!
+          : (sortedRates[mid - 1]! + sortedRates[mid]!) / 2;
+
+        recommendedCaptureRate = Math.round(medianRate * 100) / 100;
+        captureRateSource = 'track_record';
+      } else {
+        // No programs found → archive cohort P50 fallback
+        recommendedCaptureRate = 0.80;
+        captureRateSource = 'archive_default';
+      }
 
       let trackRecordNote: string;
       if (pCount === 0) {
