@@ -8,6 +8,10 @@ import { CommentaryPanel } from './CommentaryPanel';
 import { SourceBadge } from './SourceBadge';
 import { useDealStore, PlatformColSource } from '../../../stores/dealStore';
 import { StabilizedPotentialView } from '../../../components/F9/StabilizedPotentialView';
+import { FloorPlanGrid } from '../../../components/f9/FloorPlanGrid';
+import type { GprUnitMixEntry } from '../../../components/f9/FloorPlanGrid';
+import { RegimeExpand } from '../../../components/f9/RegimeExpand';
+import { isPatternB } from '../../../config/m09_line_item_patterns';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -99,6 +103,12 @@ interface DealFinancials {
     perYear: Array<{ year: number; vacancyPct: number | null; rentGrowthPct: number | null; exitCapIfLastYear: number | null }>;
   };
   meta: { seeded: boolean; updatedAt: string | null };
+  /** Per-floor-plan GPR grid from cashflow agent (Task #797 / Pattern A). Null when agent has not run. */
+  gprUnitMix?: GprUnitMixEntry[] | null;
+  /** Renovation scope descriptor for the GPR grid header (from M22 capex_schedule). */
+  renovationScope?: string | null;
+  /** Whether the renovation program has a uniform or mixed scope. */
+  scopeUniformity?: 'uniform' | 'mixed' | null;
   /** Per-category ancillary income reconciliation (RR / T-12 / OM). Task #519. */
   otherIncomeBreakdown?: {
     rows: Array<{
@@ -476,6 +486,14 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   }, [sigmaField]);
   const [showAncillary, setShowAncillary] = useState(false);
   const [showUtilitiesBreakdown, setShowUtilitiesBreakdown] = useState(false);
+  // Pattern A — GPR floor-plan grid expand
+  const [gprExpanded, setGprExpanded] = useState(false);
+  const [showPostStabView, setShowPostStabView] = useState(false);
+  // Pattern B — per-row regime expand (keyed by field name)
+  const [regimeExpandOpen, setRegimeExpandOpen] = useState<Record<string, boolean>>({});
+  const toggleRegimeExpand = useCallback((field: string) => {
+    setRegimeExpandOpen(prev => ({ ...prev, [field]: !prev[field] }));
+  }, []);
   // Lifted from AncillaryExpansionPanel so the inline P&L rows can edit category overrides
   const [ancillaryCatEdit, setAncillaryCatEdit] = useState<{ cat: string; val: string } | null>(null);
   const [ancillaryCatBusy, setAncillaryCatBusy] = useState(false);
@@ -794,6 +812,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     .sort((a, b) => NCTRL_ORDER.indexOf(a.field) - NCTRL_ORDER.indexOf(b.field));
   const noiRow   = rows.find(r => r.field === 'noi');
 
+  // Deal type — drives pattern routing (A/B/C per m09_line_item_patterns.ts)
+  const dealType: string = (deal?.['deal_type'] as string | null) ?? (deal?.['dealType'] as string | null) ?? 'existing';
+
   const egiRow       = byField['egi'];
   const totalOpexRow = byField['total_opex'];
   const aggSlot = (rs: OperatingStatementRow[], key: keyof OperatingStatementRow) =>
@@ -960,6 +981,17 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               title="M09 — Stabilized Potential: 4-column bridge view"
             >
               STABILIZED POTENTIAL
+            </button>
+            <button
+              onClick={() => { setShowPostStabView(v => !v); setShowStabilized(false); }}
+              style={{
+                padding: '3px 10px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer', fontFamily: MONO, letterSpacing: '0.06em', transition: 'all 0.15s',
+                background: showPostStabView ? 'rgba(34,197,94,0.25)' : 'transparent',
+                color: showPostStabView ? '#86efac' : '#475569',
+              }}
+              title="Post-Stabilization view — hides renovation cost + yield columns in GPR grid"
+            >
+              POST-STAB VIEW
             </button>
           </div>
         </div>
@@ -1131,19 +1163,38 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             {/* ── REVENUE ── */}
             <SectionHeader label="Revenue" accentColor="#06b6d4" bg="#051a24" />
 
-            {/* GPR — top-line revenue data row */}
+            {/* GPR — Pattern A: floor-plan grid expand */}
             {byField['gpr'] && (
-              <DataRow row={byField['gpr']} isEven={false} shade="blue"
-                corrections={corrections} setCorrections={setCorrections}
-                totalUnits={totalUnits} egiResolved={egiResolved}
-                activePeriod={activePeriod}
-                onSaveCorrection={handleSaveCorrection}
-                onResetCorrection={handleResetCorrection}
-                evidenceResolved={resolveEvidence('gpr', evidenceFieldMap)}
-                sigmaTier={sigmaField?.field === 'gpr' ? sigmaField.tier : null}
-                dqaAlerts={dqaByRow['gpr']}
-                onDqaClick={setDqaDrawer}
-              />
+              <React.Fragment>
+                <DataRow row={byField['gpr']} isEven={false} shade="blue"
+                  corrections={corrections} setCorrections={setCorrections}
+                  totalUnits={totalUnits} egiResolved={egiResolved}
+                  activePeriod={activePeriod}
+                  onSaveCorrection={handleSaveCorrection}
+                  onResetCorrection={handleResetCorrection}
+                  evidenceResolved={resolveEvidence('gpr', evidenceFieldMap)}
+                  sigmaTier={sigmaField?.field === 'gpr' ? sigmaField.tier : null}
+                  dqaAlerts={dqaByRow['gpr']}
+                  onDqaClick={setDqaDrawer}
+                  onToggleAncillary={() => setGprExpanded(v => !v)}
+                  ancillaryOpen={gprExpanded}
+                />
+                {gprExpanded && (
+                  <tr style={{ background: '#040b12' }}>
+                    <td colSpan={9} style={{ padding: 0, borderBottom: '2px solid #0891b255' }}>
+                      <FloorPlanGrid
+                        gprUnitMix={data.gprUnitMix ?? null}
+                        rentRollMix={data.rentRollSummary?.unitMix ?? null}
+                        totalUnits={totalUnits}
+                        postStabilizationView={showPostStabView}
+                        dealId={dealId ?? null}
+                        renovationScope={data.renovationScope ?? null}
+                        scopeUniformity={data.scopeUniformity ?? null}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             )}
 
             {/* Income deductions (vacancy, LTL, concessions, bad debt, NRU) */}
@@ -1159,6 +1210,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     source: r.source ?? 'recognition',
                   }
                 : r;
+              const showPreNriPatternB = isPatternB(r.field, dealType);
+              const preNriBOpen = !!regimeExpandOpen[r.field];
               return (
                 <React.Fragment key={r.field}>
                   <DataRow row={displayRow} isEven={i % 2 === 0} shade="blue"
@@ -1174,7 +1227,19 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     stanceTrace={r.field === 'vacancy_loss' ? stanceByPath['vacancy']?.trace : undefined}
                     dqaAlerts={dqaByRow[r.field]}
                     onDqaClick={setDqaDrawer}
+                    onToggleAncillary={showPreNriPatternB ? () => toggleRegimeExpand(r.field) : undefined}
+                    ancillaryOpen={showPreNriPatternB ? preNriBOpen : undefined}
                   />
+                  {showPreNriPatternB && preNriBOpen && (
+                    <RegimeExpand
+                      field={r.field}
+                      label={r.label}
+                      resolvedValue={r.resolved}
+                      regimeData={null}
+                      totalUnits={totalUnits}
+                      egiResolved={egiResolved}
+                    />
+                  )}
                   {isConcessionsOverridden && (
                     <tr style={{ background: '#110e00' }}>
                       <td
@@ -1404,7 +1469,10 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
             {/* ── CONTROLLABLE EXPENSES ── */}
             <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
-            {ctrlRows.map((r, i) => (
+            {ctrlRows.map((r, i) => {
+              const showPatternB = isPatternB(r.field, dealType);
+              const bOpen = !!regimeExpandOpen[r.field];
+              return (
               <React.Fragment key={r.field}>
                 <DataRow row={r} isEven={i % 2 === 0} shade="warm"
                   corrections={corrections} setCorrections={setCorrections}
@@ -1417,7 +1485,20 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   stanceModulated={!!(stanceByPath['expenseGrowth'])}
                   stanceTrace={stanceByPath['expenseGrowth']?.trace}
                   dqaAlerts={dqaByRow[r.field]}
-                  onDqaClick={setDqaDrawer} />
+                  onDqaClick={setDqaDrawer}
+                  onToggleAncillary={showPatternB ? () => toggleRegimeExpand(r.field) : undefined}
+                  ancillaryOpen={showPatternB ? bOpen : undefined}
+                />
+                {showPatternB && bOpen && (
+                  <RegimeExpand
+                    field={r.field}
+                    label={r.label}
+                    resolvedValue={r.resolved}
+                    regimeData={null}
+                    totalUnits={totalUnits}
+                    egiResolved={egiResolved}
+                  />
+                )}
                 {r.field === 'utilities' && (() => {
                   const waterSewer = byField['water_sewer'];
                   const electric   = byField['electric'];
@@ -1460,7 +1541,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   );
                 })()}
               </React.Fragment>
-            ))}
+              );
+            })}
             <tr style={{ background: '#1a110a' }}>
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#1a110a' }}>─── CONTROLLABLE OPEX ───</td>
               <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#fb923c', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.broker)}</td>
