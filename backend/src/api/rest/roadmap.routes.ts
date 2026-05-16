@@ -1,9 +1,10 @@
 /**
  * Roadmap Mode REST Routes
  *
- * POST  /api/v1/deals/:dealId/roadmap        Generate a new roadmap
- * GET   /api/v1/deals/:dealId/roadmap/latest  Fetch the most recent roadmap
- * GET   /api/v1/deals/:dealId/roadmap/:id     Fetch a specific roadmap by ID
+ * POST  /api/v1/deals/:dealId/roadmap                Generate a new roadmap
+ * GET   /api/v1/deals/:dealId/roadmap/comp-candidates Top-3 comp candidates for user selection
+ * GET   /api/v1/deals/:dealId/roadmap/latest          Fetch the most recent roadmap
+ * GET   /api/v1/deals/:dealId/roadmap/:id             Fetch a specific roadmap by ID
  */
 
 import { Router, Response } from 'express';
@@ -11,6 +12,7 @@ import { query } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
 import { generateRoadmap } from '../../services/roadmap/roadmap-engine';
+import { getTopCompCandidates } from '../../services/roadmap/comp-comparison.service';
 import type { RoadmapInput } from '../../types/roadmap';
 import { logger } from '../../utils/logger';
 
@@ -42,7 +44,7 @@ roadmapRouter.post(
 
       await assertDealAccess(dealId, req.user!.userId);
 
-      const { target_return, constraints, sponsor_capabilities } = req.body;
+      const { target_return, constraints, sponsor_capabilities, comp_id } = req.body;
 
       if (!target_return?.metric || target_return?.value == null || !target_return?.hold_years) {
         throw new AppError(400, 'target_return.metric, target_return.value, and target_return.hold_years are required');
@@ -62,6 +64,10 @@ roadmapRouter.post(
         throw new AppError(400, 'target_return.value must be a finite positive number');
       }
 
+      if (comp_id != null && !UUID_RE.test(String(comp_id))) {
+        throw new AppError(400, 'comp_id must be a valid UUID');
+      }
+
       const input: RoadmapInput = {
         deal_id: dealId,
         target_return: {
@@ -69,6 +75,7 @@ roadmapRouter.post(
           value: Number(target_return.value),
           hold_years: Number(target_return.hold_years),
         },
+        comp_id: comp_id ?? undefined,
         constraints: constraints ?? undefined,
         sponsor_capabilities: sponsor_capabilities ?? undefined,
       };
@@ -139,6 +146,28 @@ roadmapRouter.post(
         deal_id: dealId,
         ...output,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ── GET /api/v1/deals/:dealId/roadmap/comp-candidates ─────────────────────────
+// Returns the top-3 highest-rent comps from the deal's competitive set.
+// Used by the Build Roadmap modal so the user can explicitly pick the reference comp.
+roadmapRouter.get(
+  '/:dealId/roadmap/comp-candidates',
+  requireAuth,
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const { dealId } = req.params;
+      if (!UUID_RE.test(dealId)) throw new AppError(400, 'Invalid deal ID');
+
+      await assertDealAccess(dealId, req.user!.userId);
+
+      const candidates = await getTopCompCandidates(dealId);
+
+      res.json({ success: true, candidates });
     } catch (error) {
       next(error);
     }

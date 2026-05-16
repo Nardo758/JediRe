@@ -33,6 +33,7 @@ export interface RoadmapInput {
     value: number;
     hold_years: number;
   };
+  comp_id?: string;
   constraints?: {
     max_capex_budget?: number;
     max_debt_terms?: { rate: number; ltv: number };
@@ -127,18 +128,41 @@ export interface YearlyTrajectory {
   primary_lift_drivers: { action_id: string; dollar_contribution: number }[];
 }
 
-// ── CompComparison (optional — Task #787) ─────────────────────────────────────
+// ── CompComparison (Task #787) ─────────────────────────────────────────────────
+
+export interface ObservedDifference {
+  category: 'physical' | 'operational' | 'pricing' | 'ancillary' | 'tenant_mix';
+  description: string;
+  rent_or_noi_attribution: number;
+  replicable: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  mapped_action_ids: string[];
+}
+
+export interface CompCandidate {
+  id: string;
+  comp_name: string;
+  comp_address: string;
+  comp_city: string;
+  comp_state: string;
+  comp_units: number;
+  comp_year_built: number;
+  comp_asset_class: string;
+  comp_distance_miles: number;
+  avg_asking_rent: number;
+  avg_effective_rent: number;
+  relevance_score: number;
+}
 
 export interface CompComparison {
-  reference_comp: { property_id: string; name: string };
-  observed_differences: {
-    category: 'physical' | 'operational' | 'pricing' | 'ancillary' | 'tenant_mix';
-    description: string;
-    rent_or_noi_attribution: number;
-  }[];
+  reference_comp: { property_id: string; name: string; avg_rent: number; units: number; year_built: number; distance_miles: number };
+  subject_avg_rent: number;
+  rent_premium_per_unit: number;
+  observed_differences: ObservedDifference[];
   replicable_differences: string[];
   non_replicable_differences: string[];
   replicability_score: number;
+  total_replicable_annual_impact: number;
 }
 
 // ── RoadmapOutput — full output contract ─────────────────────────────────────

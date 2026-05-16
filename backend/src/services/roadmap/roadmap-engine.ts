@@ -21,6 +21,7 @@ import { computePlausibility } from '../sigma/sigma-engine';
 import { getEligibleActions, actionSupportsPosture, ACTION_LIBRARY } from './action-library';
 import { resolveStance } from '../../types/operator-stance';
 import type { OperatorStance } from '../../types/operator-stance';
+import { buildCompComparison } from './comp-comparison.service';
 import type {
   RoadmapInput,
   RoadmapOutput,
@@ -1083,6 +1084,20 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
   // Step 8 — M36 Check
   const plausibilityCheck = runM36Check(financials, targetProforma.noi_path_required);
 
+  // Step 9 — Comp Comparison (optional — Task #787)
+  let compComparison: RoadmapOutput['comp_comparison'] | undefined;
+  if (input.comp_id) {
+    try {
+      compComparison = await buildCompComparison(input.deal_id, input.comp_id);
+    } catch (err) {
+      logger.warn('[roadmap-engine] Comp comparison failed — continuing without it', {
+        deal_id: input.deal_id,
+        comp_id: input.comp_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   logger.info('[roadmap-engine] Roadmap generation complete', {
     deal_id: input.deal_id,
     status,
@@ -1091,6 +1106,7 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
     baseline_irr_pct: (baselineIrr * 100).toFixed(1),
     target_irr_pct: (requiredIrr * 100).toFixed(1),
     roadmap_irr_pct: (roadmapIrr * 100).toFixed(1),
+    has_comp_comparison: !!compComparison,
   });
 
   return {
@@ -1110,5 +1126,6 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
     roadmap_actions: sequencedActions,
     yearly_trajectory: trajectory,
     plausibility_check: plausibilityCheck,
+    ...(compComparison ? { comp_comparison: compComparison } : {}),
   };
 }
