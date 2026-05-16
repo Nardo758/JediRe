@@ -419,8 +419,7 @@ const ACTION_COLORS = [
 // ── Year-by-Year Chart — per-action stacked contributions ─────────────────────
 
 function TrajectoryChart({ trajectory, actions }: { trajectory: YearlyTrajectory[]; actions: RoadmapAction[] }) {
-  if (trajectory.length === 0) return null;
-
+  // Hooks MUST be called unconditionally before any early return (React hook-order rule).
   const CHART_HEIGHT = 140;
   const border = BT.border?.medium ?? '#30363d';
   const textMuted = BT.text?.muted ?? '#6b7280';
@@ -431,6 +430,8 @@ function TrajectoryChart({ trajectory, actions }: { trajectory: YearlyTrajectory
     actions.forEach((a, i) => map.set(a.id, ACTION_COLORS[i % ACTION_COLORS.length]));
     return map;
   }, [actions]);
+
+  if (trajectory.length === 0) return null;
 
   // For each year, build an ordered list of (action_id, contribution, color) segments
   // from primary_lift_drivers, then add the baseline segment at the bottom.

@@ -109,12 +109,14 @@ roadmapRouter.post(
         );
         logger.error('[roadmap-routes] Generation failed', { roadmapId, err });
 
-        // Validation errors from loadDealFinancials — surface as 422 (not 500)
-        // so the client knows the deal needs underwriting before roadmap can run.
+        // Validation errors from loadDealFinancials — surface as 422 (not 500).
+        // ROADMAP_NO_SNAPSHOT / ROADMAP_MISSING_NOI: kept for legacy log parsing.
+        // ROADMAP_NO_BASELINE: new code when neither snapshot nor purchase_price exists.
         const isValidationError =
           message.startsWith('ROADMAP_NO_SNAPSHOT') ||
           message.startsWith('ROADMAP_INVALID_SNAPSHOT') ||
-          message.startsWith('ROADMAP_MISSING_NOI');
+          message.startsWith('ROADMAP_MISSING_NOI') ||
+          message.startsWith('ROADMAP_NO_BASELINE');
 
         throw new AppError(
           isValidationError ? 422 : 500,
