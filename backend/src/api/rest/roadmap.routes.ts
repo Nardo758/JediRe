@@ -57,6 +57,11 @@ roadmapRouter.post(
         throw new AppError(400, 'target_return.hold_years must be between 1 and 30');
       }
 
+      const numericValue = Number(target_return.value);
+      if (!isFinite(numericValue) || numericValue <= 0) {
+        throw new AppError(400, 'target_return.value must be a finite positive number');
+      }
+
       const input: RoadmapInput = {
         deal_id: dealId,
         target_return: {

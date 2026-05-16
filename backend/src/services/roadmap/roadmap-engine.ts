@@ -390,8 +390,21 @@ async function computeTargetProforma(
     // CoC → approximate IRR (CoC is a lower bound; IRR tends to be ~CoC + 3-5%)
     requiredIrr = value + 0.04;
   } else if (metric === 'noi_growth_3yr') {
-    // NOI growth target → we need NOI to grow by that % over 3 years
-    requiredIrr = 0.12; // default IRR assumption when metric is NOI growth
+    // value = target cumulative NOI growth over 3 years (e.g. 0.15 = 15% total).
+    // Annualise → build implied NOI path → derive implied IRR. This ensures
+    // different growth targets produce different roadmap outputs.
+    const annualGrowthRate = Math.pow(1 + value, 1 / 3) - 1;
+    const impliedPath = buildNoiPath(financials.baseNoi, annualGrowthRate, hold_years);
+    const impliedExitNoi = impliedPath[impliedPath.length - 1] * (1 + annualGrowthRate);
+    requiredIrr = computeSimpleLeveragedIrr({
+      equity: financials.purchasePrice - financials.loanAmount,
+      noiPath: impliedPath,
+      annualDebtService: financials.annualDebtService,
+      exitNoi: impliedExitNoi,
+      exitCapRate: financials.exitCapRate,
+      sellingCostsPct: financials.sellingCostsPct,
+      loanPayoff: financials.loanAmount,
+    });
   }
 
   // Use goal_seek to find the required NOI path
