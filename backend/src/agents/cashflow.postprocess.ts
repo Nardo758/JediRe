@@ -12,6 +12,7 @@ import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
 import { getStanceForDeal, applyStanceToProformaFields, applyStanceReblend, suggestAgentInferredStance } from '../services/operatorStance.service';
 import type { OperatorStancePatch } from '../types/operator-stance';
+import { normalizeProformaFields } from './utils/evidenceNormalizer';
 
 interface FieldOutput {
   value: unknown;
@@ -54,6 +55,51 @@ export async function cashflowPostProcess(
       // No tool calls AND no inline fields — create empty aggregates
       logger.warn(`[CashflowPostProcess] No tool calls or inline fields for ${runId}`);
       fillMissingAggregates(output, {});
+    }
+
+    // ── Evidence normalization ────────────────────────────────────────────────
+    // Coerce any string or malformed evidence fields to CanonicalEvidence shape
+    // before schema validation. Runs on every cashflow agent output, is
+    // idempotent, and logs all repairs for conformance monitoring.
+    if (output.proforma_fields && typeof output.proforma_fields === 'object') {
+      try {
+        const proformaRecord = output.proforma_fields as Record<string, any>;
+        const keys = Object.keys(proformaRecord);
+
+        if (keys.length > 0) {
+          const fieldsArray = keys.map((key) => {
+            const field = proformaRecord[key] as Record<string, unknown>;
+            return {
+              ...field,
+              field_path: typeof field.field_path === 'string' ? field.field_path : key,
+            };
+          });
+
+          const { proformaFields: normalizedArray, summary } = normalizeProformaFields(
+            fieldsArray,
+            {
+              deal_id: ctx.dealId ?? 'unknown',
+              run_id: runId,
+              prompt_version: (output.prompt_version as string | undefined) ?? 'unknown',
+              logger,
+            },
+          );
+
+          // Rebuild record preserving original key order
+          const normalizedRecord: Record<string, unknown> = {};
+          keys.forEach((key, idx) => {
+            normalizedRecord[key] = normalizedArray[idx];
+          });
+          output.proforma_fields = normalizedRecord;
+          output.evidence_normalization_summary = summary;
+        }
+      } catch (normErr) {
+        // Non-fatal: normalizer failure must never block agent output
+        logger.warn('[CashflowPostProcess] Evidence normalizer failed (non-fatal)', {
+          runId,
+          err: normErr instanceof Error ? normErr.message : String(normErr),
+        });
+      }
     }
 
     // ── Backend-enforced stance modulation ───────────────────────────────────

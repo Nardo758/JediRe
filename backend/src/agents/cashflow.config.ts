@@ -107,7 +107,9 @@ const EvidenceSchema = z.object({
 const ProformaFieldSchema = z.object({
   value: z.union([z.number(), z.string(), z.null()]),
   source: z.string(),
-  evidence: EvidenceSchema,
+  // Accept any object shape — the evidenceNormalizer guarantees CanonicalEvidence
+  // structure for downstream consumers; the schema just gates out plain strings.
+  evidence: z.union([EvidenceSchema, z.record(z.string(), z.unknown())]),
   archive_percentile: z.number().min(0).max(100).nullable().optional().describe(
     'Where this assumption falls in the archive distribution (0=P10, 50=P50, 100=P90). Null if < 5 samples.'
   ),
@@ -142,6 +144,14 @@ export const CashflowOutputSchema = z.object({
   fields_written: z.array(z.string()).optional(),
   confidence_score: z.number().min(0).max(1).optional(),
   snapshot_id: z.string().nullable().optional(),
+  // ── Evidence normalizer telemetry ──
+  evidence_normalization_summary: z.object({
+    total_fields: z.number(),
+    fields_repaired: z.number(),
+    fields_clean: z.number(),
+    repair_breakdown: z.record(z.string(), z.number()),
+    repaired_field_paths: z.array(z.string()),
+  }).optional(),
 });
 
 export type CashflowAgentOutput = z.infer<typeof CashflowOutputSchema>;

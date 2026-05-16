@@ -64,6 +64,9 @@ if (!fs.existsSync(logDir)) {
 
 export default logger;
 
+/** Logger type — use for dependency injection in utilities that need a logger. */
+export type Logger = typeof logger;
+
 /**
  * Create a child logger with a named context.
  * Returns a winston-compatible child logger with pino-identical API:
