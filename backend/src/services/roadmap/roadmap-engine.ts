@@ -119,10 +119,49 @@ function computeEquityMultiple(params: {
 }
 
 /**
- * Pull the most recent underwriting snapshot for a deal, returning
- * key financial parameters needed by the roadmap engine.
+ * Extract a numeric value from a single proforma_json field entry.
+ *
+ * The snapshot flat map stores each field as either:
+ *   { value_numeric: number, layer: string, ... }  (normalised shape from write_underwriting)
+ *   { value: number, ... }                          (raw shape before normalisation)
+ *   number                                          (direct numeric — rare, defensive)
+ *
+ * Returns null when the field is absent or cannot be parsed as a finite number.
  */
-async function loadDealFinancials(dealId: string): Promise<{
+function extractFieldNumeric(entry: unknown): number | null {
+  if (entry == null) return null;
+  if (typeof entry === 'number') return isFinite(entry) ? entry : null;
+  if (typeof entry === 'object') {
+    const obj = entry as Record<string, unknown>;
+    // Preferred: value_numeric (normalised shape written by write_underwriting v1.1+)
+    for (const key of ['value_numeric', 'value']) {
+      const v = obj[key];
+      if (v != null) {
+        const n = typeof v === 'number' ? v : parseFloat(String(v));
+        if (isFinite(n)) return n;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Look up one or more candidate field keys in the snapshot flat map and return
+ * the first non-null numeric value found.  Returns null when none match.
+ */
+function snapshotField(
+  pf: Record<string, unknown> | null | undefined,
+  ...keys: string[]
+): number | null {
+  if (!pf) return null;
+  for (const key of keys) {
+    const v = extractFieldNumeric(pf[key]);
+    if (v !== null) return v;
+  }
+  return null;
+}
+
+export interface RoadmapFinancials {
   baseNoi: number;
   purchasePrice: number;
   loanAmount: number;
@@ -133,53 +172,142 @@ async function loadDealFinancials(dealId: string): Promise<{
   totalUnits: number;
   dealType: string;
   assetClass: string;
-}> {
-  // Load from deal_underwriting_snapshots (most recent succeeded run)
-  const snapResult = await query(
-    `SELECT dus.proforma_json
-     FROM deal_underwriting_snapshots dus
-     JOIN agent_runs ar ON ar.id = dus.agent_run_id
-     WHERE dus.deal_id = $1 AND ar.status = 'succeeded'
-     ORDER BY dus.created_at DESC LIMIT 1`,
-    [dealId]
-  );
+  /** True when NOI was read from snapshot; false when it fell back to cap-rate estimate. */
+  noiFromSnapshot: boolean;
+}
 
-  const pf = (snapResult.rows[0] as Record<string, unknown> | undefined)?.proforma_json as Record<string, unknown> | null | undefined;
+/**
+ * Pull the most recent underwriting snapshot for a deal and parse its
+ * proforma_json flat-field map into the key financial parameters the
+ * roadmap engine needs.
+ *
+ * Snapshot structure (persisted by write_underwriting):
+ *   proforma_json = {
+ *     "noi_year1":           { value_numeric: 450000, layer: "t12_derived", ... },
+ *     "noi_year2":           { value_numeric: 463500, ... },
+ *     "exit_cap_rate":       { value_numeric: 0.0535, ... },
+ *     "loan_amount":         { value_numeric: 3250000, ... },
+ *     "annual_debt_service": { value_numeric: 211250, ... },
+ *     "selling_costs_pct":   { value_numeric: 0.02, ... },
+ *     ...
+ *   }
+ *
+ * Hard validation: throws if the snapshot is absent or NOI cannot be derived.
+ * Downstream callers must catch and surface 422 to the API layer rather than
+ * producing a synthetic roadmap.
+ */
+async function loadDealFinancials(dealId: string): Promise<RoadmapFinancials> {
+  // Load snapshot and deal metadata in parallel
+  const [snapResult, dealResult] = await Promise.all([
+    query(
+      `SELECT dus.proforma_json, dus.created_at
+       FROM deal_underwriting_snapshots dus
+       JOIN agent_runs ar ON ar.id = dus.agent_run_id
+       WHERE dus.deal_id = $1 AND ar.status = 'succeeded'
+       ORDER BY dus.created_at DESC LIMIT 1`,
+      [dealId]
+    ),
+    query(
+      `SELECT d.project_type, d.asset_class,
+              COALESCE(d.purchase_price, 0) AS purchase_price,
+              COALESCE(d.total_units, 0) AS total_units
+       FROM deals d WHERE d.id = $1`,
+      [dealId]
+    ),
+  ]);
 
-  // Pull deal metadata
-  const dealResult = await query(
-    `SELECT d.project_type, d.asset_class,
-            COALESCE(d.purchase_price, 0) AS purchase_price,
-            COALESCE(d.total_units, 0) AS total_units
-     FROM deals d WHERE d.id = $1`,
-    [dealId]
-  );
+  const snapRow = snapResult.rows[0] as Record<string, unknown> | undefined;
+
+  // ── Hard validation ────────────────────────────────────────────────────────
+  if (!snapRow) {
+    throw new Error(
+      `ROADMAP_NO_SNAPSHOT: Deal ${dealId} has no succeeded underwriting snapshot. ` +
+      `Run the Cashflow Agent in underwrite mode before generating a roadmap.`
+    );
+  }
+
+  // proforma_json is the flat field map — NOT a nested { proforma_fields: {...} } object
+  const pf = snapRow.proforma_json as Record<string, unknown> | null | undefined;
+
+  if (!pf || typeof pf !== 'object' || Array.isArray(pf)) {
+    throw new Error(
+      `ROADMAP_INVALID_SNAPSHOT: Deal ${dealId} snapshot has no parsable proforma_json. ` +
+      `Snapshot created at ${snapRow.created_at ?? 'unknown'}.`
+    );
+  }
+
   const deal = (dealResult.rows[0] as Record<string, unknown> | undefined) ?? {};
 
-  const pfFields = (pf as Record<string, unknown> | null | undefined)?.proforma_fields as Record<string, unknown> | null | undefined;
+  // ── Extract from flat field map ───────────────────────────────────────────
+  // Each entry is { value_numeric: number, ... } or { value: number, ... }
 
-  const baseNoi = safeFloat(pfFields?.noi_year1 ?? pfFields?.noi ?? pf?.noi_year1, 0);
+  const noiYear1 = snapshotField(pf, 'noi_year1', 'noi', 'revenue.noi');
+  const noiYear2 = snapshotField(pf, 'noi_year2');
+  const exitCapRate = snapshotField(pf, 'exit_cap_rate');
+  const loanAmountSnap = snapshotField(pf, 'loan_amount');
+  const annualDebtServiceSnap = snapshotField(pf, 'annual_debt_service');
+  const sellingCostsPct = snapshotField(pf, 'selling_costs_pct');
+
   const purchasePrice = safeFloat(deal.purchase_price, 0);
-  const exitCapRate = safeFloat(pfFields?.exit_cap_rate ?? pf?.exit_cap_rate, 0.055);
-  const loanAmount = safeFloat(pfFields?.loan_amount ?? pf?.loan_amount, purchasePrice * 0.65);
-  const annualDebtService = safeFloat(pfFields?.annual_debt_service ?? pf?.annual_debt_service, loanAmount * 0.065);
-  const sellingCostsPct = safeFloat(pfFields?.selling_costs_pct ?? pf?.selling_costs_pct, 0.02);
 
-  // Derive NOI growth from Y1/Y2 NOI if available
-  const noiY2 = safeFloat(pfFields?.noi_year2 ?? pf?.noi_year2, 0);
-  const noiGrowthPct = baseNoi > 0 && noiY2 > 0 ? (noiY2 - baseNoi) / baseNoi : 0.03;
+  // ── Hard validation: NOI is the critical baseline input ───────────────────
+  if (noiYear1 === null || noiYear1 <= 0) {
+    throw new Error(
+      `ROADMAP_MISSING_NOI: Deal ${dealId} snapshot is missing noi_year1 / noi / revenue.noi ` +
+      `(snapshot keys: ${Object.keys(pf).slice(0, 12).join(', ')}...). ` +
+      `Cannot generate a roadmap without a real underwriting baseline.`
+    );
+  }
+
+  // ── Derive secondary fields with logged fallbacks ─────────────────────────
+  // These are allowed to fall back — they are less critical than NOI and are
+  // often computable from deal assumptions when not in the snapshot.
+
+  const resolvedLoanAmount = loanAmountSnap ?? purchasePrice * 0.65;
+  const resolvedDebtService = annualDebtServiceSnap ?? resolvedLoanAmount * 0.065;
+  const resolvedExitCap = exitCapRate ?? 0.055;
+  const resolvedSellingCosts = sellingCostsPct ?? 0.02;
+
+  const missingFields: string[] = [];
+  if (loanAmountSnap === null) missingFields.push('loan_amount');
+  if (annualDebtServiceSnap === null) missingFields.push('annual_debt_service');
+  if (exitCapRate === null) missingFields.push('exit_cap_rate');
+  if (missingFields.length > 0) {
+    logger.warn('roadmap.loadDealFinancials.fallback', {
+      dealId,
+      missingFields,
+      note: 'Using estimated fallbacks — rerun underwriting for more precise roadmap.',
+    });
+  }
+
+  // NOI growth: derive from Y1/Y2 path if available; else conservative 3%
+  const noiGrowthPct =
+    noiYear2 !== null && noiYear2 > 0
+      ? (noiYear2 - noiYear1) / noiYear1
+      : 0.03;
+
+  logger.info('roadmap.loadDealFinancials.resolved', {
+    dealId,
+    noiYear1,
+    noiYear2,
+    noiGrowthPct,
+    exitCapRate: resolvedExitCap,
+    loanAmount: resolvedLoanAmount,
+    source: 'snapshot',
+  });
 
   return {
-    baseNoi: baseNoi || purchasePrice * 0.055,
+    baseNoi: noiYear1,
     purchasePrice: purchasePrice || 5_000_000,
-    loanAmount,
-    annualDebtService,
-    exitCapRate: exitCapRate || 0.055,
-    sellingCostsPct: sellingCostsPct || 0.02,
+    loanAmount: resolvedLoanAmount,
+    annualDebtService: resolvedDebtService,
+    exitCapRate: resolvedExitCap,
+    sellingCostsPct: resolvedSellingCosts,
     noiGrowthPct: Math.max(0.01, Math.min(0.12, noiGrowthPct)),
     totalUnits: safeFloat(deal.total_units, 100),
     dealType: String(deal.project_type ?? 'existing'),
     assetClass: String(deal.asset_class ?? 'multifamily'),
+    noiFromSnapshot: true,
   };
 }
 

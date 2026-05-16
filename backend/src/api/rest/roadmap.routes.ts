@@ -108,7 +108,20 @@ roadmapRouter.post(
           [message, roadmapId]
         );
         logger.error('[roadmap-routes] Generation failed', { roadmapId, err });
-        throw new AppError(500, `Roadmap generation failed: ${message}`);
+
+        // Validation errors from loadDealFinancials — surface as 422 (not 500)
+        // so the client knows the deal needs underwriting before roadmap can run.
+        const isValidationError =
+          message.startsWith('ROADMAP_NO_SNAPSHOT') ||
+          message.startsWith('ROADMAP_INVALID_SNAPSHOT') ||
+          message.startsWith('ROADMAP_MISSING_NOI');
+
+        throw new AppError(
+          isValidationError ? 422 : 500,
+          isValidationError
+            ? message
+            : `Roadmap generation failed: ${message}`
+        );
       }
 
       // Return RoadmapOutput directly, augmented with persistence metadata.
