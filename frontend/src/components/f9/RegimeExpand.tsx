@@ -62,6 +62,13 @@ interface Props {
   totalUnits?: number;
   egiResolved?: number | null;
   postStabView?: boolean;
+  /**
+   * Total column count of the parent Pro Forma table.
+   * 9 in BUILD_OWN (all data columns); 7 in BROKER_VIEW (T-period + Platform
+   * hidden). Sub-header rows use this to avoid colSpan misalignment.
+   * Defaults to 9.
+   */
+  tableColCount?: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -216,6 +223,7 @@ export function RegimeExpand({
   totalUnits,
   egiResolved,
   postStabView = false,
+  tableColCount = 9,
 }: Props) {
   const hasAgentData = regimeData != null && (
     regimeData.pre_renovation.value != null ||
@@ -249,7 +257,7 @@ export function RegimeExpand({
     <>
       {/* Regime sub-header */}
       <tr style={{ background: '#040a10' }}>
-        <td colSpan={9} style={{
+        <td colSpan={tableColCount} style={{
           padding: '2px 8px 2px 24px', fontFamily: MONO, fontSize: 7.5,
           color: '#1e3a4a', letterSpacing: '0.04em', borderBottom: '1px solid #0a1520',
         }}>

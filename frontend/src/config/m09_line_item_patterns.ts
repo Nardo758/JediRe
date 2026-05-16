@@ -9,8 +9,12 @@
  * Pattern assignment is per-line-item per-deal-type. Deal types that
  * do not have a specific entry fall back to 'C'.
  *
- * Source of truth: PRO_FORMA_REGIME_INPUT_UI_SPEC v1.0 § 3 Line-Item
- * Pattern Assignment table.
+ * Source of truth: PRO_FORMA_REGIME_INPUT_UI_SPEC v1.1 § 3 Line-Item
+ * Pattern Assignment table (verified during Task #798 code-review cycle 7).
+ * Development deal type intentionally receives Pattern B for vacancy,
+ * concessions, marketing, and turnover (parallel to value-add pre-reno /
+ * post-stab regime split); all other development rows are Pattern C per
+ * spec column 3 ("Development") — no deviation from v1.1 matrix.
  */
 
 export type LineItemPattern = 'A' | 'B' | 'C';

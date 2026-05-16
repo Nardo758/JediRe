@@ -400,6 +400,10 @@ function applyEvidenceFilter(
 export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh, lvCostTreatmentView, onLvTreatmentViewChange }: FinancialEngineTabProps) {
   const viewMode             = useDealStore(s => s.viewMode);
   const setViewMode          = useDealStore(s => s.setViewMode);
+  // Number of columns in the table. Expansion/sub-rows use this so they
+  // correctly span the table in BROKER_VIEW (7 cols, T-period + Platform hidden)
+  // vs BUILD_OWN (9 cols, all data columns visible).
+  const tableColCount        = viewMode === 'BROKER_VIEW' ? 7 : 9;
   const y1Source             = useDealStore(s => s.y1Source);
   const setY1Source          = useDealStore(s => s.setY1Source);
   const platformColSource    = useDealStore(s => s.platformColSource);
@@ -1207,7 +1211,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 />
                 {gprExpanded && (
                   <tr style={{ background: '#040b12' }}>
-                    <td colSpan={9} style={{ padding: 0, borderBottom: '2px solid #0891b255' }}>
+                    <td colSpan={tableColCount} style={{ padding: 0, borderBottom: '2px solid #0891b255' }}>
                       <FloorPlanGrid
                         gprUnitMix={data.gprUnitMix ?? null}
                         rentRollMix={data.rentRollSummary?.unitMix ?? null}
@@ -1267,12 +1271,13 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                       totalUnits={totalUnits}
                       egiResolved={egiResolved}
                       postStabView={showPostStabView}
+                      tableColCount={tableColCount}
                     />
                   )}
                   {isConcessionsOverridden && (
                     <tr style={{ background: '#110e00' }}>
                       <td
-                        colSpan={9}
+                        colSpan={tableColCount}
                         onClick={openY1Drill}
                         style={{ padding: '2px 8px 2px 28px', fontSize: 8, color: '#92714a', fontFamily: MONO, borderBottom: '1px solid #1f1a00', cursor: 'pointer' }}
                         title="Click for Y1 concession recognition breakdown by lease cohort"
@@ -1327,6 +1332,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                       totalUnits={totalUnits}
                       egiResolved={egiResolved}
                       postStabView={showPostStabView}
+                      tableColCount={tableColCount}
                     />
                   )}
 
@@ -1334,7 +1340,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   {/* Pattern B takes full precedence — suppress ancillary render when PatternB is active */}
                   {showAncillary && !hasBreakdown && !showOtherIncomePatternB && (
                     <tr style={{ background: '#050e16' }}>
-                      <td colSpan={9} style={{
+                      <td colSpan={tableColCount} style={{
                         padding: '5px 8px 5px 28px', fontSize: 8, color: '#1e4a5f',
                         fontFamily: MONO, borderLeft: '3px solid #0e3347',
                         fontStyle: 'italic', borderBottom: '1px solid #071520',
@@ -1349,7 +1355,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     <>
                       {/* Section header */}
                       <tr style={{ background: '#030e14' }}>
-                        <td colSpan={9} style={{ padding: '3px 8px 3px 20px', borderBottom: '1px solid #0a2030' }}>
+                        <td colSpan={tableColCount} style={{ padding: '3px 8px 3px 20px', borderBottom: '1px solid #0a2030' }}>
                           <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#06b6d4', letterSpacing: '0.08em' }}>
                             ANCILLARY INCOME BREAKDOWN
                           </span>
@@ -1496,7 +1502,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
                       {/* User-line CRUD — panel with hideCategoryTable so categories aren't duplicated */}
                       <tr style={{ background: '#030d16' }}>
-                        <td colSpan={9} style={{ padding: 0, borderBottom: '1px solid #0e2030' }}>
+                        <td colSpan={tableColCount} style={{ padding: 0, borderBottom: '1px solid #0e2030' }}>
                           <AncillaryExpansionPanel
                             totalUnits={totalUnits}
                             dealId={dealId}
@@ -1548,6 +1554,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     totalUnits={totalUnits}
                     egiResolved={egiResolved}
                     postStabView={showPostStabView}
+                    tableColCount={tableColCount}
                   />
                 )}
                 {r.field === 'utilities' && (() => {
@@ -1561,7 +1568,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                         onClick={() => setShowUtilitiesBreakdown(v => !v)}
                         style={{ background: '#100b00', cursor: 'pointer' }}
                       >
-                        <td colSpan={9} style={{ padding: '2px 8px 2px 24px', fontSize: 8, color: '#6b4a1a', fontFamily: MONO, fontStyle: 'italic', userSelect: 'none' }}>
+                        <td colSpan={tableColCount} style={{ padding: '2px 8px 2px 24px', fontSize: 8, color: '#6b4a1a', fontFamily: MONO, fontStyle: 'italic', userSelect: 'none' }}>
                           {showUtilitiesBreakdown ? '▾' : '▸'}{' '}
                           {subLines.length > 0 ? `${subLines.length} sub-lines available` : 'Consolidated — water/sewer · electric · gas'}{' '}
                           <span style={{ color: '#3d2a00' }}>(click to {showUtilitiesBreakdown ? 'collapse' : 'expand'})</span>
@@ -1581,7 +1588,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                           </tr>
                         )) : (
                           <tr style={{ background: '#0d0900' }}>
-                            <td colSpan={9} style={{ padding: '3px 8px 3px 28px', fontSize: 8, color: '#3d2a00', fontFamily: MONO, borderBottom: '1px solid #1a1200', fontStyle: 'italic' }}>
+                            <td colSpan={tableColCount} style={{ padding: '3px 8px 3px 28px', fontSize: 8, color: '#3d2a00', fontFamily: MONO, borderBottom: '1px solid #1a1200', fontStyle: 'italic' }}>
                               Backend maps water/sewer · electric · gas → single utilities bucket (T-12 extraction).
                               Split appears here when sub-line data is available.
                             </td>
@@ -1866,7 +1873,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             {dsInterest != null && (
               <>
                 <tr style={{ background: '#0d0d1f', borderTop: '2px solid #1e1b4b' }}>
-                  <td colSpan={9} style={{ padding: '4px 12px', fontSize: 9, fontWeight: 700, color: '#818cf8', fontFamily: MONO, letterSpacing: '0.1em' }}>
+                  <td colSpan={tableColCount} style={{ padding: '4px 12px', fontSize: 9, fontWeight: 700, color: '#818cf8', fontFamily: MONO, letterSpacing: '0.1em' }}>
                     DEBT SERVICE
                   </td>
                 </tr>

@@ -93,6 +93,14 @@ interface RowState {
   captureRate: number;
   renoCostPerUnit: number | null;
   postRenoTargetRent: number | null;
+  /**
+   * Last value seeded from agent/source data (gprUnitMix.renovation_cost).
+   * Used during source-reconciliation to detect user edits: if current
+   * renoCostPerUnit === _srcRenoCost the user has not overridden and the grid
+   * will accept an incoming M22 surface update; if they differ, the user's
+   * value is preserved (last-write-wins per shared-state spec).
+   */
+  _srcRenoCost: number | null;
 }
 
 interface Props {
@@ -276,32 +284,50 @@ export function FloorPlanGrid({
       const rawPct = r.positioning_percentile;
       const pct: PositioningPct = (rawPct === 25 || rawPct === 40 || rawPct === 50 ||
         rawPct === 60 || rawPct === 75 || rawPct === 90) ? rawPct : DEFAULT_POSITIONING;
+      const srcCost = r.renovation_cost ?? null;
       init[r.floor_plan_id] = {
         positioningPercentile: pct,
         captureRate: r.capture_rate ?? DEFAULT_CAPTURE_RATE,
-        renoCostPerUnit: r.renovation_cost ?? null,
+        renoCostPerUnit: srcCost,
         postRenoTargetRent: r.post_reno_target_rent ?? null,
+        _srcRenoCost: srcCost,
       };
     }
     return init;
   });
 
   useEffect(() => {
+    // Source-reconciliation: runs when gprUnitMix / rentRollMix props change
+    // (e.g. cashflow agent re-run, M22 surface edit propagated back through parent).
+    // Strategy: accept incoming source value if the user has NOT overridden locally
+    // (proxy: current renoCostPerUnit === _srcRenoCost → still on source default).
+    // If user has overridden, their value wins (last-write-wins shared-state spec).
     setRowStates(prev => {
       const next: Record<string, RowState> = {};
       for (const r of sourceRows) {
-        if (!prev[r.floor_plan_id]) {
-          const rawPct = r.positioning_percentile;
-          const pct: PositioningPct = (rawPct === 25 || rawPct === 40 || rawPct === 50 ||
-            rawPct === 60 || rawPct === 75 || rawPct === 90) ? rawPct : DEFAULT_POSITIONING;
+        const rawPct = r.positioning_percentile;
+        const pct: PositioningPct = (rawPct === 25 || rawPct === 40 || rawPct === 50 ||
+          rawPct === 60 || rawPct === 75 || rawPct === 90) ? rawPct : DEFAULT_POSITIONING;
+        const newSrcCost = r.renovation_cost ?? null;
+        const existing = prev[r.floor_plan_id];
+        if (!existing) {
+          // New floor plan from an updated agent response — seed from source
           next[r.floor_plan_id] = {
             positioningPercentile: pct,
             captureRate: r.capture_rate ?? DEFAULT_CAPTURE_RATE,
-            renoCostPerUnit: r.renovation_cost ?? null,
+            renoCostPerUnit: newSrcCost,
             postRenoTargetRent: r.post_reno_target_rent ?? null,
+            _srcRenoCost: newSrcCost,
           };
         } else {
-          next[r.floor_plan_id] = prev[r.floor_plan_id];
+          // Existing floor plan: reconcile reno cost from source if user hasn't
+          // locally edited it. Always advance the source fingerprint.
+          const userHasEditedCost = existing.renoCostPerUnit !== existing._srcRenoCost;
+          next[r.floor_plan_id] = {
+            ...existing,
+            renoCostPerUnit: userHasEditedCost ? existing.renoCostPerUnit : newSrcCost,
+            _srcRenoCost: newSrcCost,
+          };
         }
       }
       return next;
@@ -340,12 +366,16 @@ export function FloorPlanGrid({
       for (const r of sourceRows) {
         const id = r.floor_plan_id;
         const target = computePostRenoTarget(r.comp_ceiling, 50);
+        const platformCost = r.renovation_cost ?? next[id]?.renoCostPerUnit ?? null;
         next[id] = {
           ...next[id],
           positioningPercentile: 50,
           captureRate: DEFAULT_CAPTURE_RATE,
-          // Reset to platform-basis reno cost; if none available keep current
-          renoCostPerUnit: r.renovation_cost ?? next[id]?.renoCostPerUnit ?? null,
+          // Reset to platform-basis reno cost; if none available keep current.
+          // Also advance _srcRenoCost so the reconciliation fingerprint stays
+          // coherent — after acceptance, user can still override cell-by-cell.
+          renoCostPerUnit: platformCost,
+          _srcRenoCost: platformCost,
           postRenoTargetRent: target,
         };
       }
