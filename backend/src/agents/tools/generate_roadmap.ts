@@ -1,22 +1,4 @@
-/**
- * CashFlow Agent Tool: generate_roadmap
- *
- * Value-Creation Roadmap Mode — triggered when the operator asks for a
- * prescriptive action plan to reach a target return.
- *
- * This tool is a first-class member of the cashflow agent's tool registry.
- * It shares the same DealContext pipeline as all other cashflow tools —
- * `loadDealFinancials()` reads the latest underwriting snapshot that was
- * already populated by prior tool calls (fetch_t12, fetch_rent_roll, etc.).
- *
- * The agent should call this tool AFTER the standard context-gathering tools
- * (fetch_data_matrix or fetch_t12 + fetch_assumptions) have run, so that
- * the underwriting snapshot is fresh and the roadmap baseline is grounded
- * in evidence-backed numbers.
- *
- * Output: full RoadmapOutput JSON (meta, baseline, target, gap, actions,
- *   trajectory, plausibility check).
- */
+/** CashFlow Agent Tool: generate_roadmap — prescriptive action plan to a target return. */
 
 import { z } from 'zod';
 import { generateRoadmap } from '../../services/roadmap/roadmap-engine';

@@ -21,17 +21,7 @@ import type { RunContext } from './runtime/types';
 import { generateRoadmap } from '../services/roadmap/roadmap-engine';
 import type { RoadmapInput, RoadmapOutput } from '../types/roadmap';
 
-/**
- * Discriminated output type for Roadmap Mode.
- *
- * When `mode === 'roadmap'`, `execute()` returns this type instead of the full
- * `CashflowAgentOutput` (which requires proforma_fields, collision_summary, etc.
- * from an LLM underwriting run that roadmap mode does not invoke).
- *
- * Callers MUST discriminate on `mode` before reading output fields:
- *   if (result.mode === 'roadmap') { use result.roadmap_output }
- *   else { use result as CashflowAgentOutput }
- */
+/** Discriminated output for Roadmap Mode — callers must check mode === 'roadmap'. */
 export interface CashflowRoadmapOutput {
   readonly mode: 'roadmap';
   /** Full roadmap output — the primary payload for roadmap-mode callers. */

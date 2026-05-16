@@ -147,10 +147,26 @@ function extractFieldNumeric(entry: unknown): number | null {
   return null;
 }
 
-/**
- * Look up one or more candidate field keys in the snapshot flat map and return
- * the first non-null numeric value found.  Returns null when none match.
- */
+/** Extract a string value from the proforma_json flat field map. */
+function snapshotTextField(
+  pf: Record<string, unknown> | null | undefined,
+  ...keys: string[]
+): string | null {
+  if (!pf) return null;
+  for (const key of keys) {
+    const entry = pf[key];
+    if (entry == null) continue;
+    if (typeof entry === 'string' && entry) return entry;
+    if (typeof entry === 'object') {
+      const e = entry as Record<string, unknown>;
+      if (typeof e.value_text === 'string' && e.value_text) return e.value_text;
+      if (typeof e.value === 'string' && e.value) return e.value;
+    }
+  }
+  return null;
+}
+
+/** Look up candidate field keys in the snapshot flat map; returns first non-null numeric. */
 function snapshotField(
   pf: Record<string, unknown> | null | undefined,
   ...keys: string[]
@@ -174,10 +190,15 @@ export interface RoadmapFinancials {
   totalUnits: number;
   dealType: string;
   assetClass: string;
-  /** True when NOI was read from a snapshot; false when derived from deal assumptions. */
   noiFromSnapshot: boolean;
   /** Resolved OperatorStance for posture-aware action gating. */
   operatorStance: OperatorStance;
+  /**
+   * Per-year posture classifications written by the LLM during underwriting
+   * (proforma.posture.y<N>.classification). Used to gate actions per year.
+   * Keys are 1-indexed hold years. Missing keys fall back to NOI-gap heuristic.
+   */
+  postureByYear: Record<number, string>;
 }
 
 /**
@@ -196,16 +217,12 @@ export interface RoadmapFinancials {
  *     ...
  *   }
  *
- * Self-contained baseline: snapshot is preferred (evidence-backed values from a
- * prior underwriting run) but NOT required. When absent, falls back to a
- * deterministic baseline computed from deal_assumptions + deals.purchase_price.
- * The only hard-fail is ROADMAP_NO_BASELINE — when neither a snapshot nor a
- * purchase_price exists, there is no numeric anchor to build a roadmap from.
+ * Baseline contract: the most recent succeeded underwriting snapshot is the
+ * zero-action baseline (produced by write_underwriting without roadmap deltas).
+ * deal_assumptions supplies secondary fields (exit_cap, rent_growth) when the
+ * snapshot omits them; it does NOT supply NOI — that requires a snapshot.
  */
 async function loadDealFinancials(dealId: string): Promise<RoadmapFinancials> {
-  // Load snapshot, deal metadata, and deal assumptions in parallel.
-  // Snapshot is preferred but not required — we fall back to deal_assumptions
-  // for a deterministic baseline when no snapshot exists.
   const [snapResult, dealResult, assumptionsResult] = await Promise.all([
     query(
       `SELECT dus.proforma_json, dus.created_at
@@ -223,7 +240,6 @@ async function loadDealFinancials(dealId: string): Promise<RoadmapFinancials> {
        FROM deals d WHERE d.id = $1`,
       [dealId]
     ),
-    // deal_assumptions: exit_cap, rent_growth_yr1, ltv_pct, selling_costs_pct
     query(
       `SELECT da.exit_cap, da.rent_growth_yr1, da.selling_costs_pct
        FROM deal_assumptions da WHERE da.deal_id = $1 LIMIT 1`,
@@ -235,116 +251,74 @@ async function loadDealFinancials(dealId: string): Promise<RoadmapFinancials> {
   const da = (assumptionsResult.rows[0] as Record<string, unknown> | undefined) ?? {};
   const purchasePrice = safeFloat(deal.purchase_price, 0);
 
-  // ── Load OperatorStance (persisted in deals.operator_stance JSONB) ─────────
-  // resolveStance() handles null/partial — always returns a full valid stance.
+  // resolveStance() always returns a full valid stance (handles null/partial)
   const operatorStance = resolveStance(deal.operator_stance as Record<string, unknown> | null | undefined);
 
-  // ── Attempt to extract from snapshot (preferred — evidence-backed values) ──
   const snapRow = snapResult.rows[0] as Record<string, unknown> | undefined;
   const pf = (snapRow?.proforma_json && typeof snapRow.proforma_json === 'object' && !Array.isArray(snapRow.proforma_json))
     ? snapRow.proforma_json as Record<string, unknown>
     : null;
 
-  let noiYear1: number | null = null;
-  let noiYear2: number | null = null;
-  let exitCapRateSnap: number | null = null;
-  let loanAmountSnap: number | null = null;
-  let annualDebtServiceSnap: number | null = null;
-  let sellingCostsPctSnap: number | null = null;
-  let noiFromSnapshot = false;
-
-  if (pf) {
-    noiYear1 = snapshotField(pf, 'noi_year1', 'noi', 'revenue.noi');
-    noiYear2 = snapshotField(pf, 'noi_year2');
-    exitCapRateSnap = snapshotField(pf, 'exit_cap_rate');
-    loanAmountSnap = snapshotField(pf, 'loan_amount');
-    annualDebtServiceSnap = snapshotField(pf, 'annual_debt_service');
-    sellingCostsPctSnap = snapshotField(pf, 'selling_costs_pct');
-
-    if (noiYear1 !== null && noiYear1 > 0) {
-      noiFromSnapshot = true;
-      logger.info('roadmap.loadDealFinancials.snapshot', { dealId, noiYear1 });
-    } else {
-      logger.warn('roadmap.loadDealFinancials.snapshot_missing_noi', {
-        dealId,
-        snapshotKeys: Object.keys(pf).slice(0, 12),
-        note: 'Snapshot exists but noi_year1 is absent — falling back to deal_assumptions.',
-      });
-    }
-  } else {
-    logger.info('roadmap.loadDealFinancials.no_snapshot', {
-      dealId,
-      note: 'No succeeded underwriting snapshot — using deterministic baseline from deal_assumptions.',
-    });
-  }
-
-  // ── Deterministic fallback baseline (self-contained, no snapshot required) ──
-  //
-  // When no snapshot exists (or snapshot lacks NOI), compute a deterministic
-  // baseline from deal assumptions + deal fields. This is the "equivalent
-  // deterministic baseline compute path" described in the spec, making roadmap
-  // mode self-contained without requiring a prior LLM underwriting run.
-  //
-  // Priority chain for each field:
-  //   1. Snapshot (evidence-backed, from write_underwriting)
-  //   2. deal_assumptions (operator-entered — exit_cap, rent_growth_yr1)
-  //   3. Market platform defaults
-
-  // Exit cap: snapshot → deal_assumptions.exit_cap (stored as decimal, e.g. 0.055)
-  const exitCapFromDA = da.exit_cap !== null && da.exit_cap !== undefined
-    ? safeFloat(da.exit_cap, 0)
-    : null;
-  const resolvedExitCap = (exitCapRateSnap && exitCapRateSnap > 0)
-    ? exitCapRateSnap
-    : (exitCapFromDA && exitCapFromDA > 0 ? exitCapFromDA : 0.055);
-
-  // Rent growth: snapshot → deal_assumptions.rent_growth_yr1
-  const rentGrowthFromDA = da.rent_growth_yr1 !== null && da.rent_growth_yr1 !== undefined
-    ? safeFloat(da.rent_growth_yr1, 0)
-    : null;
-
-  // Selling costs: snapshot → deal_assumptions.selling_costs_pct → 2%
-  const sellingCostsPctFromDA = da.selling_costs_pct !== null && da.selling_costs_pct !== undefined
-    ? safeFloat(da.selling_costs_pct, 0)
-    : null;
-  const resolvedSellingCosts = (sellingCostsPctSnap && sellingCostsPctSnap > 0)
-    ? sellingCostsPctSnap
-    : (sellingCostsPctFromDA && sellingCostsPctFromDA > 0 ? sellingCostsPctFromDA : 0.02);
-
-  // NOI: if not from snapshot, derive from purchase_price × going-in cap rate.
-  // Going-in cap = exit cap (often similar for value-add at stabilization).
-  const resolvedNoi = (noiYear1 !== null && noiYear1 > 0)
-    ? noiYear1
-    : purchasePrice * resolvedExitCap;
-
-  if (resolvedNoi <= 0) {
+  if (!pf) {
     throw new Error(
-      `ROADMAP_NO_BASELINE: Deal ${dealId} has neither an underwriting snapshot nor a ` +
-      `purchase_price to derive a baseline NOI from. Please enter a purchase price or ` +
-      `run the Cashflow Agent in underwrite mode.`
+      `ROADMAP_NO_SNAPSHOT: Deal ${dealId} has no succeeded underwriting snapshot. ` +
+      `Run the Cashflow Agent in underwrite mode before generating a roadmap.`
     );
   }
 
+  const noiYear1 = snapshotField(pf, 'noi_year1', 'noi', 'revenue.noi');
+  const noiYear2 = snapshotField(pf, 'noi_year2');
+
+  if (!noiYear1 || noiYear1 <= 0) {
+    throw new Error(
+      `ROADMAP_MISSING_NOI: Deal ${dealId} snapshot is missing noi_year1 ` +
+      `(keys: ${Object.keys(pf).slice(0, 12).join(', ')}...). Rerun underwriting.`
+    );
+  }
+
+  // Secondary fields: snapshot first, deal_assumptions as supplement, then platform default
+  const exitCapFromDA = safeFloat(da.exit_cap, 0);
+  const resolvedExitCap = snapshotField(pf, 'exit_cap_rate') ??
+    (exitCapFromDA > 0 ? exitCapFromDA : 0.055);
+
+  const sellingCostsFromDA = safeFloat(da.selling_costs_pct, 0);
+  const resolvedSellingCosts = snapshotField(pf, 'selling_costs_pct') ??
+    (sellingCostsFromDA > 0 ? sellingCostsFromDA : 0.02);
+
+  const loanAmountSnap = snapshotField(pf, 'loan_amount');
   const resolvedLoanAmount = loanAmountSnap ?? purchasePrice * 0.65;
-  const resolvedDebtService = annualDebtServiceSnap ?? resolvedLoanAmount * 0.065;
+  const resolvedDebtService = snapshotField(pf, 'annual_debt_service') ?? resolvedLoanAmount * 0.065;
 
-  // NOI growth: snapshot Y2/Y1 slope → deal_assumptions.rent_growth_yr1 → 3%
-  const noiGrowthPct = (noiFromSnapshot && noiYear2 !== null && noiYear2 > 0)
-    ? (noiYear2 - resolvedNoi) / resolvedNoi
-    : (rentGrowthFromDA && rentGrowthFromDA > 0 ? rentGrowthFromDA : 0.03);
+  // NOI growth: Y1→Y2 slope from snapshot; fall back to deal_assumptions.rent_growth_yr1
+  const rentGrowthFromDA = safeFloat(da.rent_growth_yr1, 0);
+  const noiGrowthPct = (noiYear2 && noiYear2 > 0)
+    ? (noiYear2 - noiYear1) / noiYear1
+    : (rentGrowthFromDA > 0 ? rentGrowthFromDA : 0.03);
 
-  logger.info('roadmap.loadDealFinancials.resolved', {
+  // ── Per-year posture from snapshot (Pricing Power Posture Framework) ─────────
+  // The LLM writes proforma.posture.y<N>.classification during underwriting.
+  // These are the authoritative per-year posture labels used to gate actions.
+  const postureByYear: Record<number, string> = {};
+  for (let y = 1; y <= 15; y++) {
+    const cls = snapshotTextField(pf,
+      `proforma.posture.y${y}.classification`,
+      `posture.y${y}.classification`,
+      `posture_y${y}_classification`,
+    );
+    if (cls) postureByYear[y] = cls;
+  }
+
+  logger.info('roadmap.loadDealFinancials', {
     dealId,
-    noiYear1: resolvedNoi,
-    noiFromSnapshot,
+    noiYear1,
     exitCapRate: resolvedExitCap,
     noiGrowthPct,
+    postureYears: Object.keys(postureByYear).length,
     operatorPosture: operatorStance.underwritingPosture,
-    operatorCycle: operatorStance.cyclePosition,
   });
 
   return {
-    baseNoi: resolvedNoi,
+    baseNoi: noiYear1,
     purchasePrice: purchasePrice || 5_000_000,
     loanAmount: resolvedLoanAmount,
     annualDebtService: resolvedDebtService,
@@ -354,28 +328,13 @@ async function loadDealFinancials(dealId: string): Promise<RoadmapFinancials> {
     totalUnits: safeFloat(deal.total_units, 100),
     dealType: String(deal.project_type ?? 'existing'),
     assetClass: String(deal.asset_class ?? 'multifamily'),
-    noiFromSnapshot,
+    noiFromSnapshot: true,
     operatorStance,
+    postureByYear,
   };
 }
 
 // ── Step 1: Baseline Pro Forma ────────────────────────────────────────────────
-//
-// Derivation contract (v1): The baseline is computed from the most recent
-// cashflow underwriting snapshot for this deal (loaded by loadDealFinancials()
-// above). This is equivalent to a "zero-action underwrite" because the snapshot
-// already reflects T12 NOI, rent-roll actuals, debt structure, and evidence-
-// backed growth rates — with NO value-add actions applied. The action deltas
-// are additive on top of this baseline (Steps 3–4), never baked in.
-//
-// Spec note: the canonical spec calls for "invoking underwrite mode with deltas
-// zeroed". The snapshot-based approach is a deliberate v1 simplification:
-//   • It avoids a full LLM underwriting run per roadmap request (latency/cost).
-//   • The most recent snapshot IS a zeroed-delta baseline — no roadmap actions
-//     have been persisted to deal_underwriting_snapshots yet.
-//   • Any deviation between the snapshot and a live zero-delta run is bounded
-//     by market-drift assumptions updated in the prior underwriting run.
-// This deviation is tracked as a future improvement (COR-Roadmap-B1).
 
 async function computeBaselineProforma(
   financials: Awaited<ReturnType<typeof loadDealFinancials>>,
@@ -635,14 +594,22 @@ function deriveDealPosture(
 }
 
 /**
- * Classify the posture for a single year given how much NOI lift is expected.
- * Used for per-year posture strip in trajectory (informational).
- * Also controls whether offense-only actions can START in that year.
+ * Classify posture for a single year.
+ * snapshotPosture is the LLM-computed Pricing Power Posture classification
+ * written to the snapshot during underwriting (proforma.posture.y<N>.classification).
+ * When present it is authoritative — the NOI-gap heuristic is the fallback only.
  */
 function classifyYearPosture(
   baselineNoi: number,
-  targetNoi: number
+  targetNoi: number,
+  snapshotPosture?: string
 ): 'offense' | 'neutral' | 'defense' {
+  if (snapshotPosture) {
+    if (snapshotPosture === 'offense' || snapshotPosture === 'strong_offense') return 'offense';
+    if (snapshotPosture === 'defense' || snapshotPosture === 'strong_defense') return 'defense';
+    return 'neutral';
+  }
+  // Fallback: NOI-gap heuristic when snapshot has no per-year posture
   if (baselineNoi <= 0) return 'offense';
   const gapPct = (targetNoi - baselineNoi) / baselineNoi;
   if (gapPct > 0.06) return 'offense';
@@ -793,19 +760,17 @@ function sequenceActions(actions: RoadmapAction[]): RoadmapAction[] {
 /**
  * Build the year-by-year trajectory with posture-gated action starts.
  *
- * Posture gating rule: an action can only START (i.e., first become active) in
- * year Y if the year's expected posture supports the action's requires_posture.
- * Actions that started in an earlier year continue producing impact regardless
- * of posture — only new starts are gated.
- *
- * Year posture is classified from the gap between baseline and target NOI for
- * that year: offense >6%, neutral 0–6%, defense ≤0%.
+ * Posture gating: an action can only START in year Y if that year's posture
+ * supports the action's requires_posture. postureByYear supplies the
+ * authoritative Pricing Power Posture classifications from the underwriting
+ * snapshot (proforma.posture.y<N>.classification); NOI-gap is the fallback.
  */
 function buildTrajectory(
   baselineNoiPath: number[],
   targetNoiPath: number[],
   actions: RoadmapAction[],
-  holdYears: number
+  holdYears: number,
+  postureByYear: Record<number, string>
 ): YearlyTrajectory[] {
   // Build lookup map from action id → library entry for posture gating
   const libraryMap = new Map(ACTION_LIBRARY.map(a => [a.id, a]));
@@ -823,8 +788,9 @@ function buildTrajectory(
     const baselineNoi = baselineNoiPath[year - 1] ?? baselineNoiPath[baselineNoiPath.length - 1];
     const targetNoi = targetNoiPath[year - 1] ?? targetNoiPath[targetNoiPath.length - 1];
 
-    // Classify year posture from the remaining gap between baseline and target
-    const yearPosture = classifyYearPosture(baselineNoi, targetNoi);
+    // Classify year posture: snapshot Pricing Power Posture takes precedence;
+    // NOI-gap heuristic is the fallback when snapshot has no per-year label.
+    const yearPosture = classifyYearPosture(baselineNoi, targetNoi, postureByYear[year]);
 
     const activeActions: string[] = [];
     let noiLiftThisYear = 0;
@@ -1082,7 +1048,8 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
     baselineProforma.noi_path,
     targetProforma.noi_path_required,
     sequencedActions,
-    holdYears
+    holdYears,
+    financials.postureByYear
   );
 
   // Compute roadmap IRR from trajectory first — it is the single source of truth
