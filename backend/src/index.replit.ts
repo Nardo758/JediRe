@@ -355,6 +355,10 @@ import cashflowUnderwritingRoutes, { dealUnderwritingRouter } from './api/rest/c
 app.use('/api/v1/agents', cashflowUnderwritingRoutes);
 app.use('/api/v1/deals', dealUnderwritingRouter);
 
+// Roadmap Mode routes: POST/GET /api/v1/deals/:dealId/roadmap
+import { roadmapRouter } from './api/rest/roadmap.routes';
+app.use('/api/v1/deals', requireAuth, roadmapRouter);
+
 // Inngest durable function serve handler
 // In dev: Inngest Dev Server proxies to /api/inngest
 // In prod: Inngest cloud calls this endpoint

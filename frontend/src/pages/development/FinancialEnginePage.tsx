@@ -13,6 +13,7 @@ import { CapitalHubTab } from './financial-engine/CapitalHubTab';
 import { ReturnsHubTab } from './financial-engine/ReturnsHubTab';
 import { CompareHubTab } from './financial-engine/CompareHubTab';
 import { DecisionTab } from './financial-engine/DecisionTab';
+import { RoadmapTab } from './financial-engine/RoadmapTab';
 import { CustomTabRenderer } from './financial-engine/CustomTabRenderer';
 import { exportToExcel } from './financial-engine/excel-export';
 import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials, EvidenceFieldMeta, LeasingCostTreatment } from './financial-engine/types';
@@ -394,6 +395,7 @@ const BUILTIN_TAB_LABELS = [
   '% RETURNS',
   '◐ SCENARIOS',
   '⇔ COMPARE',
+  '⊛ ROADMAP',
 ];
 const BUILTIN_TAB_COUNT = BUILTIN_TAB_LABELS.length;
 
@@ -1666,6 +1668,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 5 && <BtTabWrapper><ReturnsHubTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 6 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 7 && <BtTabWrapper><CompareHubTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 8 && <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><RoadmapTab {...tabProps} /></BtTabWrapper>}
           {activeCustomTab && (
             <BtTabWrapper>
               <CustomTabRenderer
