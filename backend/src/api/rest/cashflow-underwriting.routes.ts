@@ -54,7 +54,7 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
 
     // Tier-trigger policy: verify the user's tier permits manual runs
     const userTierRes = await query(
-      `SELECT u.tier FROM users u JOIN deals d ON d.user_id = u.id WHERE d.id = $1`,
+      `SELECT u.subscription_tier AS tier FROM users u JOIN deals d ON d.user_id = u.id WHERE d.id = $1`,
       [deal_id]
     );
     const userTier = (userTierRes.rows[0]?.tier as string | null) ?? '';
@@ -66,9 +66,10 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
 
     // Build deal-type-aware composite prompt for deterministic prompt selection
     const dealRow = await query(
-      `SELECT dp.property_type, d.deal_type
+      `SELECT p.property_type, d.project_type AS deal_type
        FROM deals d
        LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+       LEFT JOIN properties p ON p.id = dp.property_id
        WHERE d.id = $1
        ORDER BY dp.created_at ASC LIMIT 1`,
       [deal_id]

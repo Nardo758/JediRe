@@ -350,6 +350,11 @@ import agentRunsRouter, { dealAgentRunsRouter } from './api/rest/agent-runs.rout
 app.use('/api/v1/agents', agentRunsRouter);
 app.use('/api/v1/deals', dealAgentRunsRouter);
 
+// CashFlow underwriting routes: POST /api/v1/agents/cashflow/underwrite + deal-scoped evidence endpoints
+import cashflowUnderwritingRoutes, { dealUnderwritingRouter } from './api/rest/cashflow-underwriting.routes';
+app.use('/api/v1/agents', cashflowUnderwritingRoutes);
+app.use('/api/v1/deals', dealUnderwritingRouter);
+
 // Inngest durable function serve handler
 // In dev: Inngest Dev Server proxies to /api/inngest
 // In prod: Inngest cloud calls this endpoint

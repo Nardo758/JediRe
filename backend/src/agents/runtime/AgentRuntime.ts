@@ -397,7 +397,7 @@ export class AgentRuntime {
       }
 
       const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx: ctxWithRun, accrued });
-      const validated = this.config.outputSchema.parse(result.content);
+      const validated = this.config.outputSchema.parse(result.content ?? {});
 
       await query(
         `UPDATE agent_runs
@@ -515,11 +515,11 @@ export class AgentRuntime {
       const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx: ctxWithRun, accrued });
 
       // Step 5: Post-process (aggregate tool-persisted data from DB) then validate
-      let finalOutput = result.content as Record<string, unknown>;
+      let finalOutput = (result.content ?? {}) as Record<string, unknown>;
       if (this.config.postProcess) {
         finalOutput = await this.config.postProcess(finalOutput, ctxWithRun, run.id);
       }
-      const validated = this.config.outputSchema.parse(finalOutput);
+      const validated = this.config.outputSchema.parse(finalOutput ?? {});
 
       // Step 6: Mark complete
       await query(

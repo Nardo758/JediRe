@@ -78,7 +78,8 @@ interface SanityCheckResult {
 
 function runSanityChecks(
   evidenceRows: z.infer<typeof EvidenceRowInputSchema>[],
-  proformaSnapshot?: Record<string, unknown>
+  proformaSnapshot?: Record<string, unknown>,
+  dealContext?: { projectType?: string | null }
 ): SanityCheckResult {
   const warnings: string[] = [];
   const blockers: string[] = [];
@@ -108,6 +109,17 @@ function runSanityChecks(
   const totalOpex = metrics['total_opex'] ?? metrics['opex.total'] ?? null;
   const noi = metrics['noi'] ?? metrics['noi_year1'] ?? null;
 
+  // Occupancy from evidence rows (stored as decimal 0–1 or pct 0–100)
+  const occupancyRaw = metrics['occupancy_pct'] ?? metrics['occupancy'] ?? metrics['physical_occupancy'] ?? null;
+  const occupancyPct = occupancyRaw != null
+    ? (occupancyRaw > 1 ? occupancyRaw / 100 : occupancyRaw)
+    : null;
+
+  // Lease-up / non-stabilised flag: project_type is 'lease-up' or occupancy < 88%
+  const isLeasingUp =
+    dealContext?.projectType === 'lease-up' ||
+    (occupancyPct != null && occupancyPct < 0.88);
+
   // ── Check 1: OpEx should not exceed EGI ──
   if (totalOpex != null && egi != null && egi > 0) {
     const opexRatio = totalOpex / egi;
@@ -124,11 +136,23 @@ function runSanityChecks(
   }
 
   // ── Check 2: NOI should not be negative for stabilized assets ──
+  // Lease-up and sub-88% occupancy assets legitimately carry negative T-12 NOI;
+  // downgrade from a hard blocker to a warning in those cases.
   if (noi != null && noi < 0 && gpr != null && gpr > 100000) {
-    blockers.push(
-      `BLOCKER: NOI is negative ($${Math.round(noi).toLocaleString()}) on a property with ` +
-      `$${Math.round(gpr).toLocaleString()} GPR — likely extraction or calculation error`
-    );
+    if (isLeasingUp) {
+      const occupancyLabel = occupancyPct != null
+        ? ` (${(occupancyPct * 100).toFixed(0)}% occupancy — lease-up drag expected)`
+        : ' (lease-up project type — negative NOI expected during stabilisation)';
+      warnings.push(
+        `WARNING: NOI is negative ($${Math.round(noi).toLocaleString()}) on a property with ` +
+        `$${Math.round(gpr).toLocaleString()} GPR${occupancyLabel}`
+      );
+    } else {
+      blockers.push(
+        `BLOCKER: NOI is negative ($${Math.round(noi).toLocaleString()}) on a property with ` +
+        `$${Math.round(gpr).toLocaleString()} GPR — likely extraction or calculation error`
+      );
+    }
   }
 
   // ── Check 3: NOI margin sanity (should be 30-70% for most multifamily) ──
@@ -195,10 +219,26 @@ export const writeUnderwritingTool: ToolDefinition<
   requiresCapability: 'write:deal_context',
 
   execute: async (input, ctx) => {
+    // ── Fetch deal context for lease-up detection ──
+    let dealProjectType: string | null = null;
+    try {
+      const dealRow = await query(
+        `SELECT project_type FROM deals WHERE id = $1`,
+        [input.deal_id]
+      );
+      dealProjectType = (dealRow.rows[0]?.project_type as string | null) ?? null;
+    } catch (lookupErr) {
+      logger.warn('write_underwriting: could not fetch deal project_type (non-fatal)', {
+        dealId: input.deal_id,
+        err: lookupErr instanceof Error ? lookupErr.message : String(lookupErr),
+      });
+    }
+
     // ── Run sanity checks BEFORE writing to database ──
     const sanityResult = runSanityChecks(
       input.evidence_rows,
-      input.proforma_snapshot
+      input.proforma_snapshot,
+      { projectType: dealProjectType }
     );
 
     // Log warnings and blockers
