@@ -28,6 +28,39 @@ export const dealUnderwritingRouter = Router({ mergeParams: true });
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Maps an evidence field_path to the top-level key in deal_underwriting_snapshots.proforma_json
+ * where the v3.0 cashflow agent stores cohort baseline data.
+ *
+ * The v3.0 agent writes growth assumption cohort context as siblings to proforma_fields:
+ *   assumptions_growth_rent_y1, assumptions_growth_rent_y2_plus,
+ *   assumptions_growth_expense_y1, assumptions_growth_expense_long_run,
+ *   assumptions_growth_vacancy_stabilized, exit_cap_rate
+ *
+ * Returns null for fields that do not carry cohort baseline context.
+ */
+function resolveSnapshotGrowthKey(fieldPath: string): string | null {
+  if (!fieldPath) return null;
+  // Direct match (already in canonical form)
+  if (fieldPath.startsWith('assumptions_growth_') || fieldPath === 'exit_cap_rate') {
+    return fieldPath;
+  }
+  // proforma.assumptions.growth.rent_y1 → assumptions_growth_rent_y1
+  const dotMatch = fieldPath.match(/(?:proforma\.)?assumptions\.growth\.(.+)/);
+  if (dotMatch) return `assumptions_growth_${dotMatch[1]}`;
+  // Short row-key aliases from AssumptionsTab row definitions
+  const KEY_MAP: Record<string, string> = {
+    growthRentPct:         'assumptions_growth_rent_y1',
+    rentGrowthYr1:         'assumptions_growth_rent_y1',
+    rentGrowthStabilized:  'assumptions_growth_rent_y2_plus',
+    growthOpexPct:         'assumptions_growth_expense_y1',
+    growthVacancyPct:      'assumptions_growth_vacancy_stabilized',
+    exitCapRate:           'exit_cap_rate',
+    'exit_cap_rate':       'exit_cap_rate',
+  };
+  return KEY_MAP[fieldPath] ?? null;
+}
+
 async function assertDealAccess(dealId: string, userId: string): Promise<void> {
   const result = await query(
     `SELECT d.id FROM deals d
@@ -282,6 +315,52 @@ dealUnderwritingRouter.get(
         // Archive context is non-blocking — evidence is still returned without it
       }
 
+      // ── Cohort context: extract per-run analog cohort baseline written by v3.0 agent ──
+      // The v3.0 cashflow agent writes cohort_baseline_p50/p25/p75, cohort_n, delta_from_cohort_p50,
+      // delta_reasons, cohort_comparison_status, analog_cohort_status, and outlier_justification
+      // as top-level keys in deal_underwriting_snapshots.proforma_json (alongside proforma_fields).
+      // These are NOT stored in underwriting_evidence — they live in the snapshot JSON.
+      let cohortContext: Record<string, unknown> | null = null;
+      try {
+        const snapshotKey = resolveSnapshotGrowthKey(fieldPath);
+        if (snapshotKey) {
+          const cohortResult = await query(
+            `SELECT proforma_json->$2 AS cohort_data
+             FROM deal_underwriting_snapshots
+             WHERE deal_id = $1
+               AND proforma_json ? $2
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [dealId, snapshotKey]
+          );
+          const raw = (cohortResult.rows[0] as Record<string, unknown> | undefined)?.cohort_data;
+          if (raw && typeof raw === 'object') {
+            const cd = raw as Record<string, unknown>;
+            const p25 = cd.cohort_baseline_p25 != null ? Number(cd.cohort_baseline_p25) : null;
+            const p50 = cd.cohort_baseline_p50 != null ? Number(cd.cohort_baseline_p50) : null;
+            const p75 = cd.cohort_baseline_p75 != null ? Number(cd.cohort_baseline_p75) : null;
+            const cohortN = cd.cohort_n != null ? Number(cd.cohort_n) : null;
+            // Only expose cohort context when we have at least the P50
+            if (p50 !== null && cohortN !== null) {
+              cohortContext = {
+                cohort_baseline_p25: p25,
+                cohort_baseline_p50: p50,
+                cohort_baseline_p75: p75,
+                cohort_n: cohortN,
+                value_numeric: cd.value_numeric != null ? Number(cd.value_numeric) : null,
+                delta_from_cohort_p50: cd.delta_from_cohort_p50 != null ? Number(cd.delta_from_cohort_p50) : null,
+                delta_reasons: Array.isArray(cd.delta_reasons) ? cd.delta_reasons : null,
+                cohort_comparison_status: (cd.cohort_comparison_status as string | null) ?? null,
+                analog_cohort_status: (cd.analog_cohort_status as string | null) ?? null,
+                outlier_justification: (cd.outlier_justification as string | null) ?? null,
+              };
+            }
+          }
+        }
+      } catch {
+        // Cohort context is non-blocking
+      }
+
       const overrideRow = overrideResult.rows[0] as Record<string, unknown> | undefined;
       const activeOverride = overrideRow
         ? {
@@ -298,6 +377,7 @@ dealUnderwritingRouter.get(
           active_override: activeOverride,
           archive_context: archiveContext,
           archive_enabled: archiveEnabled,
+          cohort_context: cohortContext,
           deal_id: dealId,
           field_path: fieldPath,
         });
@@ -324,6 +404,7 @@ dealUnderwritingRouter.get(
         active_override: activeOverride,
         archive_context: archiveContext,
         archive_enabled: archiveEnabled,
+        cohort_context: cohortContext,
         deal_id: dealId,
         field_path: fieldPath,
       });

@@ -94,6 +94,26 @@ interface ArchiveContext {
   range_label: string | null;
 }
 
+interface DeltaReason {
+  signal: string;
+  direction: '+' | '-' | string;
+  contribution_bps?: number;
+  [key: string]: unknown;
+}
+
+interface CohortContext {
+  cohort_baseline_p25: number | null;
+  cohort_baseline_p50: number | null;
+  cohort_baseline_p75: number | null;
+  cohort_n: number | null;
+  value_numeric: number | null;
+  delta_from_cohort_p50: number | null;
+  delta_reasons: DeltaReason[] | null;
+  cohort_comparison_status: 'within_p25_p75' | 'above_p75' | 'below_p25' | null;
+  analog_cohort_status: 'sufficient' | 'broadened' | 'insufficient' | null;
+  outlier_justification: string | null;
+}
+
 interface ActiveOverride {
   value: unknown;
   overridden_at: string;
@@ -112,10 +132,14 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
   const [reverting, setReverting] = useState(false);
   const [archiveContext, setArchiveContext] = useState<ArchiveContext | null>(null);
   const [archiveEnabled, setArchiveEnabled] = useState(false);
+  const [cohortContext, setCohortContext] = useState<CohortContext | null>(null);
+  const [showOutlierJustification, setShowOutlierJustification] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     setLoading(true);
+    setCohortContext(null);
+    setShowOutlierJustification(false);
     fetch(`/api/v1/deals/${dealId}/assumptions/${encodeURIComponent(fieldPath)}/evidence`, {
       credentials: 'include',
     })
@@ -126,6 +150,7 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
           setActiveOverride(data.active_override ?? null);
           setArchiveContext(data.archive_context ?? null);
           setArchiveEnabled(data.archive_enabled === true);
+          setCohortContext(data.cohort_context ?? null);
           setLoading(false);
         }
       })
@@ -302,6 +327,216 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
                             </span>
                           </div>
                         ))}
+                    </div>
+                  )}
+
+                  {/* ── COHORT BASELINE — shown when v3.0 agent provided analog cohort data ── */}
+                  {cohortContext && cohortContext.cohort_baseline_p50 !== null && (
+                    <div style={{
+                      marginTop: 16,
+                      padding: '10px 12px',
+                      background: `${BT.text.purple}10`,
+                      border: `1px solid ${BT.text.purple}33`,
+                      borderRadius: 4,
+                    }}>
+                      {/* Section header */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                        <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.purple, letterSpacing: 0.5 }}>
+                          ANALOG COHORT BASELINE
+                        </span>
+                        {cohortContext.cohort_n !== null && (
+                          <span style={{
+                            fontFamily: mono, fontSize: 7,
+                            color: BT.text.purple,
+                            background: `${BT.text.purple}22`,
+                            border: `1px solid ${BT.text.purple}44`,
+                            borderRadius: 2, padding: '0 4px', lineHeight: '14px',
+                          }}>
+                            n={cohortContext.cohort_n}
+                          </span>
+                        )}
+                        {/* Outlier badge */}
+                        {(cohortContext.cohort_comparison_status === 'above_p75' ||
+                          cohortContext.cohort_comparison_status === 'below_p25') && (
+                          <button
+                            onClick={() => setShowOutlierJustification(v => !v)}
+                            style={{
+                              fontFamily: mono, fontSize: 7, fontWeight: 700,
+                              color: BT.text.amber,
+                              background: `${BT.text.amber}18`,
+                              border: `1px solid ${BT.text.amber}55`,
+                              borderRadius: 2, padding: '0 5px', lineHeight: '14px',
+                              cursor: cohortContext.outlier_justification ? 'pointer' : 'default',
+                            }}
+                          >
+                            {cohortContext.cohort_comparison_status === 'above_p75' ? '▲ ABOVE P75' : '▼ BELOW P25'}
+                            {cohortContext.outlier_justification && (
+                              <span style={{ marginLeft: 3 }}>{showOutlierJustification ? '▲' : '▼'}</span>
+                            )}
+                          </button>
+                        )}
+                        {/* Broadened cohort indicator */}
+                        {cohortContext.analog_cohort_status === 'broadened' && (
+                          <span style={{
+                            fontFamily: mono, fontSize: 7,
+                            color: BT.text.secondary,
+                            border: `1px solid ${BT.border.medium}`,
+                            borderRadius: 2, padding: '0 4px', lineHeight: '14px',
+                          }}>
+                            BROADENED
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Sparse cohort warning */}
+                      {cohortContext.analog_cohort_status === 'insufficient' && (
+                        <div style={{
+                          marginBottom: 8, padding: '5px 8px',
+                          background: `${BT.text.amber}10`,
+                          border: `1px solid ${BT.text.amber}33`,
+                          borderRadius: 3,
+                          fontFamily: mono, fontSize: 8, color: BT.text.amber,
+                        }}>
+                          SPARSE COHORT DATA — insufficient analog deals found; baseline is indicative only
+                        </div>
+                      )}
+
+                      {/* Outlier justification expandable */}
+                      {showOutlierJustification && cohortContext.outlier_justification && (
+                        <div style={{
+                          marginBottom: 8, padding: '6px 8px',
+                          background: `${BT.text.amber}08`,
+                          border: `1px solid ${BT.text.amber}33`,
+                          borderRadius: 3,
+                          fontFamily: mono, fontSize: 8, color: BT.text.secondary,
+                          lineHeight: 1.6,
+                        }}>
+                          {cohortContext.outlier_justification}
+                        </div>
+                      )}
+
+                      {/* P25–P50–P75 distribution bar */}
+                      {cohortContext.cohort_baseline_p25 !== null && cohortContext.cohort_baseline_p75 !== null && (
+                        (() => {
+                          const p25 = cohortContext.cohort_baseline_p25!;
+                          const p50 = cohortContext.cohort_baseline_p50!;
+                          const p75 = cohortContext.cohort_baseline_p75!;
+                          const range = p75 - p25;
+                          const fmtPct = (v: number) => (v * 100).toFixed(2) + '%';
+                          // P50 position within bar (0–100% of P25–P75 range)
+                          const p50Pct = range > 0 ? Math.round(((p50 - p25) / range) * 100) : 50;
+                          // Subject value marker (clamped -12% to 112% to stay on-bar with slight bleed)
+                          const subjectVal = cohortContext.value_numeric;
+                          const subjectPct = (subjectVal !== null && range > 0)
+                            ? Math.max(-12, Math.min(112, ((subjectVal - p25) / range) * 100))
+                            : null;
+                          const isOutside = subjectPct !== null && (subjectPct < 0 || subjectPct > 100);
+                          return (
+                            <div style={{ marginBottom: 10 }}>
+                              {/* Label row */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                                <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.muted }}>P25</span>
+                                <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.muted }}>P50</span>
+                                <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.muted }}>P75</span>
+                              </div>
+                              {/* Bar track */}
+                              <div style={{
+                                position: 'relative', height: 6,
+                                background: BT.bg.header, borderRadius: 3,
+                                overflow: 'visible',
+                              }}>
+                                {/* Filled band (P25 to P75 = full width of bar) */}
+                                <div style={{
+                                  position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
+                                  background: `${BT.text.purple}33`, borderRadius: 3,
+                                }} />
+                                {/* P50 spine */}
+                                <div style={{
+                                  position: 'absolute',
+                                  left: `${p50Pct}%`,
+                                  top: -2, width: 2, bottom: -2,
+                                  background: BT.text.purple,
+                                  transform: 'translateX(-50%)',
+                                }} />
+                                {/* Subject value marker */}
+                                {subjectPct !== null && (
+                                  <div
+                                    title={`Projection: ${fmtPct(subjectVal!)}${isOutside ? ' (outside P25–P75)' : ''}`}
+                                    style={{
+                                      position: 'absolute',
+                                      left: `${subjectPct}%`,
+                                      top: -4, width: 3, height: 14,
+                                      background: isOutside ? BT.text.amber : '#10b981',
+                                      borderRadius: 1,
+                                      transform: 'translateX(-50%)',
+                                    }}
+                                  />
+                                )}
+                              </div>
+                              {/* Value labels */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                                <span style={{ fontFamily: mono, fontSize: 8, color: BT.text.secondary }}>{fmtPct(p25)}</span>
+                                <span style={{ fontFamily: mono, fontSize: 8, color: BT.text.purple }}>{fmtPct(p50)}</span>
+                                <span style={{ fontFamily: mono, fontSize: 8, color: BT.text.secondary }}>{fmtPct(p75)}</span>
+                              </div>
+                              {/* Subject value annotation */}
+                              {subjectVal !== null && (
+                                <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <div style={{
+                                    width: 3, height: 8,
+                                    background: isOutside ? BT.text.amber : '#10b981',
+                                    borderRadius: 1, flexShrink: 0,
+                                  }} />
+                                  <span style={{ fontFamily: mono, fontSize: 8, color: isOutside ? BT.text.amber : '#10b981' }}>
+                                    PROJECTION: {fmtPct(subjectVal)}
+                                    {cohortContext.delta_from_cohort_p50 !== null && (
+                                      <span style={{ color: BT.text.muted, fontWeight: 400, marginLeft: 4 }}>
+                                        ({cohortContext.delta_from_cohort_p50 >= 0 ? '+' : ''}{(cohortContext.delta_from_cohort_p50 * 10000).toFixed(0)} bps vs P50)
+                                      </span>
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()
+                      )}
+
+                      {/* Delta reasons */}
+                      {cohortContext.delta_reasons && cohortContext.delta_reasons.length > 0 && (
+                        <div>
+                          <div style={{ fontFamily: mono, fontSize: 7, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 4 }}>
+                            SIGNAL-DRIVEN DELTAS
+                          </div>
+                          {cohortContext.delta_reasons.map((dr, i) => (
+                            <div key={i} style={{
+                              display: 'flex', alignItems: 'center', gap: 6,
+                              padding: '3px 6px',
+                              background: BT.bg.header, borderRadius: 2, marginBottom: 2,
+                            }}>
+                              <span style={{
+                                fontFamily: mono, fontSize: 7, fontWeight: 700,
+                                color: dr.direction === '+' ? '#10b981' : BT.text.red,
+                                flexShrink: 0,
+                              }}>
+                                {dr.direction === '+' ? '▲' : '▼'}
+                              </span>
+                              <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.secondary, flex: 1 }}>
+                                {dr.signal}
+                              </span>
+                              {dr.contribution_bps !== undefined && (
+                                <span style={{
+                                  fontFamily: mono, fontSize: 7,
+                                  color: dr.contribution_bps > 0 ? '#10b981' : BT.text.red,
+                                  flexShrink: 0,
+                                }}>
+                                  {dr.contribution_bps > 0 ? '+' : ''}{dr.contribution_bps} bps
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
