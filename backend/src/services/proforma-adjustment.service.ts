@@ -2389,6 +2389,114 @@ export async function getDealFinancials(
     }
   }
 
+  // ── Recompute resolved subtotals from leaf-item resolved values ────────────
+  // The year1 seed stores extraction-sourced subtotals (total_opex, noi, egi,
+  // net_rental_income) that can differ from the sum of their component leaf
+  // items. This happens when:
+  //   • The T-12 reported a gross total that included line items classified
+  //     differently by the extractor (e.g. debt service folded into OpEx).
+  //   • The cashflow agent corrected individual line items but the subtotal
+  //     stored in deal_assumptions.year1 was never updated.
+  // The broker and t12 columns are already recomputed from leaf items in the
+  // back-fill block above.  Apply the same approach to the resolved column so
+  // the Pro Forma tab always shows a mathematically consistent statement.
+  //
+  // Override threshold: ignore floating-point dust (< $1 difference).
+  // Safe to re-order: all leaf rows are fully built before this block runs.
+  {
+    const _rf = (f: string) => year1Rows.find(r => r.field === f);
+
+    // Leaf fields that compose total_opex.  This must match OPEX_FIELDS above
+    // (excluding management_fee_pct and total_opex itself).
+    // 'management_fee' is the canonical $-denominated row produced by
+    //   toDollarRow('management_fee_pct', …, _egiForDollars)
+    //   — do NOT use the raw 'management_fee_pct' row (it holds a fraction).
+    // 'utilities' (combined) is intentionally excluded: it is NOT in OPEX_FIELDS;
+    //   decomposed 'water_sewer' + 'electric' + 'gas_fuel' are the canonical fields.
+    //   Including both would double-count on deals that populate all four.
+    const OPEX_LEAF_FIELDS = [
+      'payroll', 'repairs_maintenance', 'turnover', 'contract_services',
+      'marketing', 'g_and_a',
+      'water_sewer', 'electric', 'gas_fuel',
+      'insurance', 'real_estate_tax',
+      'replacement_reserves', 'management_fee',
+    ];
+
+    // Revenue deduction fields (canonical $-denominated rows built by toDollarRow).
+    const REV_DED_FIELDS = [
+      'loss_to_lease', 'vacancy_loss', 'concessions', 'bad_debt', 'non_revenue_units',
+    ];
+
+    // total_opex — sum of opex leaf resolved values
+    const _hasAnyLeafOpex = OPEX_LEAF_FIELDS.some(f => (_rf(f)?.resolved ?? null) != null);
+    if (_hasAnyLeafOpex) {
+      const _leafOpexSum = OPEX_LEAF_FIELDS.reduce(
+        (s, f) => { const v = _rf(f)?.resolved; return v != null ? s + v : s; }, 0,
+      );
+      const _topexRow = _rf('total_opex');
+      if (_topexRow && Math.abs(_leafOpexSum - (_topexRow.resolved ?? 0)) > 1) {
+        _topexRow.resolved = Math.round(_leafOpexSum);
+        if (totalUnits > 0) _topexRow.perUnit = Math.round(_leafOpexSum / totalUnits);
+      }
+    }
+
+    // net_rental_income — GPR minus revenue deductions
+    const _gprResolved = _rf('gpr')?.resolved;
+    if (_gprResolved != null) {
+      const _dedSum = REV_DED_FIELDS.reduce(
+        (s, f) => { const v = _rf(f)?.resolved; return v != null ? s + v : s; }, 0,
+      );
+      const _computedNri = _gprResolved - _dedSum;
+      const _nriRow = _rf('net_rental_income');
+      if (_nriRow && Math.abs(_computedNri - (_nriRow.resolved ?? 0)) > 1) {
+        _nriRow.resolved = Math.round(_computedNri);
+        if (totalUnits > 0) _nriRow.perUnit = Math.round(_computedNri / totalUnits);
+      }
+    }
+
+    // egi — net_rental_income + other_income
+    {
+      const _nriResolved = _rf('net_rental_income')?.resolved;
+      const _oiResolved  = _rf('other_income')?.resolved;
+      if (_nriResolved != null) {
+        const _computedEgi = _nriResolved + (_oiResolved ?? 0);
+        const _egiRow = _rf('egi');
+        if (_egiRow && Math.abs(_computedEgi - (_egiRow.resolved ?? 0)) > 1) {
+          _egiRow.resolved = Math.round(_computedEgi);
+          if (totalUnits > 0) _egiRow.perUnit = Math.round(_computedEgi / totalUnits);
+        }
+      }
+    }
+
+    // noi — egi minus total_opex (uses the recomputed values from above)
+    {
+      const _egiResolved   = _rf('egi')?.resolved;
+      const _topexResolved = _rf('total_opex')?.resolved;
+      if (_egiResolved != null && _topexResolved != null) {
+        const _computedNoi = _egiResolved - _topexResolved;
+        const _noiRow = _rf('noi');
+        if (_noiRow && Math.abs(_computedNoi - (_noiRow.resolved ?? 0)) > 1) {
+          _noiRow.resolved = Math.round(_computedNoi);
+          if (totalUnits > 0) _noiRow.perUnit = Math.round(_computedNoi / totalUnits);
+        }
+      }
+    }
+
+    // noi_after_reserves — noi minus replacement_reserves
+    {
+      const _noiResolved  = _rf('noi')?.resolved;
+      const _resResolved  = _rf('replacement_reserves')?.resolved;
+      if (_noiResolved != null) {
+        const _computedNar = _noiResolved - (_resResolved ?? 0);
+        const _narRow = _rf('noi_after_reserves');
+        if (_narRow && Math.abs(_computedNar - (_narRow.resolved ?? 0)) > 1) {
+          _narRow.resolved = Math.round(_computedNar);
+          if (totalUnits > 0) _narRow.perUnit = Math.round(_computedNar / totalUnits);
+        }
+      }
+    }
+  }
+
   // ── Populate T-6 / T-3 / T-1 trailing actuals ─────────────────────────────
   // Mirrors composeDealFinancials lines 363–373. Subtotal rows (egi,
   // net_rental_income, total_opex, noi) are mapped directly to their own DB

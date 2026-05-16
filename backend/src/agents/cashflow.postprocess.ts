@@ -228,6 +228,66 @@ export async function cashflowPostProcess(
               }
             }
           }
+
+          // ── Write corrected subtotals back to deal_assumptions.year1 ──────────
+          // correctSnapshotMath patches output.proforma_fields in-memory
+          // (persisted to agent_runs.output) but never touches deal_assumptions.year1,
+          // which is the data source getDealFinancials() reads.
+          // Write only the subtotals that actually changed so the Pro Forma tab
+          // displays the engine-corrected values. Non-fatal: never blocks agent output.
+          if (ctx.dealId) {
+            try {
+              // Maps math engine canonical field paths → deal_assumptions.year1 short keys.
+              // Only subtotal rows are eligible — never rewrite individual leaf line items.
+              const SUBTOTAL_TO_YEAR1: Record<string, string> = {
+                'proforma.opex.total':                  'total_opex',
+                'proforma.revenue.egi':                 'egi',
+                'proforma.noi':                         'noi',
+                'proforma.revenue.base_rental_revenue': 'net_rental_income',
+                'proforma.noi_after_reserves':          'noi_after_reserves',
+              };
+
+              let writeCount = 0;
+              for (const [enginePath, correctedValue] of Object.entries(corrected_snapshot.resolved)) {
+                const year1Key = SUBTOTAL_TO_YEAR1[enginePath];
+                if (year1Key === undefined) continue;
+
+                // Skip if the engine did not actually change this field
+                const originalValue = resolvedColumn[enginePath];
+                if (originalValue === correctedValue) continue;
+
+                // jsonb_set(COALESCE(year1,'{}'), ARRAY[key,'resolved'], to_jsonb(value), create_missing=true)
+                // Updates only the 'resolved' slot within the existing LayeredValue
+                // envelope, preserving t12/broker/platform layers untouched.
+                await query(
+                  `UPDATE deal_assumptions
+                   SET year1 = jsonb_set(
+                     COALESCE(year1, '{}'),
+                     ARRAY[$2::text, 'resolved'],
+                     to_jsonb($3::numeric),
+                     true
+                   )
+                   WHERE deal_id = $1`,
+                  [ctx.dealId, year1Key, correctedValue],
+                );
+                writeCount++;
+              }
+
+              if (writeCount > 0) {
+                logger.info('[CashflowPostProcess] Math-corrected subtotals written back to deal_assumptions.year1', {
+                  dealId: ctx.dealId,
+                  runId,
+                  writeCount,
+                });
+              }
+            } catch (writeBackErr) {
+              logger.warn('[CashflowPostProcess] Math-engine subtotal write-back to year1 failed (non-fatal)', {
+                dealId: ctx.dealId,
+                runId,
+                err: writeBackErr instanceof Error ? writeBackErr.message : String(writeBackErr),
+              });
+            }
+          }
         }
 
         // Merge hierarchical_resolutions from all per-column reports into a
