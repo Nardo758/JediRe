@@ -104,12 +104,41 @@ const EvidenceSchema = z.object({
   collision: FieldCollisionSchema,
 });
 
+/**
+ * Canonical evidence shape produced by evidenceNormalizer.ts.
+ * This is the authoritative output schema for proforma_fields[*].evidence after
+ * the post-processor normalizer runs. The legacy EvidenceSchema (above) is kept
+ * for the write_evidence_rows tool input validation only.
+ */
+export const CanonicalEvidenceSchema = z.object({
+  source_tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  source_label: z.string(),
+  source_doc_ref: z.string().nullable().optional(),
+  source_doc_excerpt: z.string().nullable().optional(),
+  data_points: z.array(z.object({
+    key: z.string(),
+    value: z.union([z.string(), z.number()]),
+    unit: z.string().optional(),
+  })).optional(),
+  confidence: z.enum(['high', 'medium', 'low']),
+  derivation_chain: z.array(z.string()).optional(),
+  collision_with_broker: z.object({
+    broker_value: z.number(),
+    agent_value: z.number(),
+    delta_pct: z.number(),
+    severity: z.enum(['minor', 'material', 'major']),
+    narrative: z.string(),
+  }).nullable().optional(),
+});
+
 const ProformaFieldSchema = z.object({
   value: z.union([z.number(), z.string(), z.null()]),
   source: z.string(),
-  // Accept any object shape — the evidenceNormalizer guarantees CanonicalEvidence
-  // structure for downstream consumers; the schema just gates out plain strings.
-  evidence: z.union([EvidenceSchema, z.record(z.string(), z.unknown())]),
+  // Strict canonical evidence shape enforced here.
+  // The evidenceNormalizer runs in both write_underwriting (pre-snapshot)
+  // and cashflowPostProcess (pre-schema-validation), guaranteeing this shape
+  // is always satisfied before parse() is called.
+  evidence: CanonicalEvidenceSchema,
   archive_percentile: z.number().min(0).max(100).nullable().optional().describe(
     'Where this assumption falls in the archive distribution (0=P10, 50=P50, 100=P90). Null if < 5 samples.'
   ),

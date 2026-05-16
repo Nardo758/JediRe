@@ -11,6 +11,8 @@ import { z } from 'zod';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import type { ToolDefinition } from '../runtime/types';
+import { normalizeEvidence } from '../utils/evidenceNormalizer';
+import type { RawEvidence } from '../utils/evidenceNormalizer';
 
 const EvidencePointInputSchema = z.object({
   tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
@@ -273,9 +275,43 @@ export const writeUnderwritingTool: ToolDefinition<
       };
     }
 
-    // Sanity checks passed — write snapshot
+    // Sanity checks passed — normalize evidence in snapshot before writing
+    let normalizedSnapshot = input.proforma_snapshot;
+    if (normalizedSnapshot) {
+      let repairedCount = 0;
+      const out: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(normalizedSnapshot)) {
+        if (entry && typeof entry === 'object' && 'evidence' in entry) {
+          const field = entry as Record<string, unknown>;
+          const reasoning = typeof field.reasoning === 'string' ? field.reasoning : null;
+          const result = normalizeEvidence(field.evidence as RawEvidence, key, reasoning);
+          out[key] = { ...field, evidence: result.evidence };
+          if (result.was_repaired) {
+            repairedCount += 1;
+            logger.info('write_underwriting: evidence normalized pre-snapshot', {
+              runId: ctx.correlationId,
+              dealId: input.deal_id,
+              fieldPath: key,
+              repair_actions: result.repair_actions,
+            });
+          }
+        } else {
+          out[key] = entry;
+        }
+      }
+      normalizedSnapshot = out;
+      if (repairedCount > 0) {
+        logger.info('write_underwriting: snapshot evidence normalization complete', {
+          runId: ctx.correlationId,
+          dealId: input.deal_id,
+          fields_repaired: repairedCount,
+        });
+      }
+    }
+
+    // Write snapshot (with normalized evidence)
     let snapshotId: string | null = null;
-    if (input.proforma_snapshot) {
+    if (normalizedSnapshot) {
       const snapResult = await query(
         `INSERT INTO deal_underwriting_snapshots
            (deal_id, agent_run_id, proforma_json, evidence_map)
@@ -284,7 +320,7 @@ export const writeUnderwritingTool: ToolDefinition<
         [
           input.deal_id,
           ctx.correlationId ?? null,
-          JSON.stringify(input.proforma_snapshot),
+          JSON.stringify(normalizedSnapshot),
           JSON.stringify(input.evidence_map),
         ]
       );
