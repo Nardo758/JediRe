@@ -716,6 +716,7 @@ const COMPUTATION_ORDER: string[] = [
 
 export function recomputeAllSubtotals(
   columnValues: Record<string, number>,
+  sourceMetadata?: Record<string, SourceType>,
 ): Record<string, number> {
   const result = { ...columnValues };
 
@@ -723,11 +724,19 @@ export function recomputeAllSubtotals(
     const config = LINE_ITEM_CONFIG[subtotalPath];
     if (!config) continue;
 
-    if (
-      config.subtotal_formula ||
-      SPECIAL_FORMULAS[subtotalPath] ||
-      config.kind === 'hierarchical_subtotal'
-    ) {
+    if (config.kind === 'hierarchical_subtotal' && config.hierarchical_config) {
+      // Use full source-priority resolution (aggregate fallback when breakdown absent).
+      // Pure breakdown sum (computeSubtotal) returns 0 when no breakdown leaves are
+      // present, which would corrupt EGI/NOI downstream. resolveHierarchicalSubtotal
+      // correctly falls back to the T-12 aggregate per the v1.1 source-priority rules.
+      const resolution = resolveHierarchicalSubtotal(
+        subtotalPath,
+        result,
+        sourceMetadata ?? {},
+        result[subtotalPath],  // stored aggregate from original column values
+      );
+      result[subtotalPath] = resolution.resolved_value;
+    } else if (config.subtotal_formula || SPECIAL_FORMULAS[subtotalPath]) {
       result[subtotalPath] = computeSubtotal(subtotalPath, result);
     }
   }
@@ -791,7 +800,7 @@ export function validateColumnMath(
   sourceMetadata?: Record<string, SourceType>,
 ): ValidationReport {
   const findings: ValidationFinding[] = [];
-  const recomputed = recomputeAllSubtotals(columnValues);
+  const recomputed = recomputeAllSubtotals(columnValues, sourceMetadata);
   const hierarchicalResolutions: Record<string, HierarchicalResolution> = {};
 
   // First pass — check hierarchical subtotals for breakdown-vs-aggregate consistency

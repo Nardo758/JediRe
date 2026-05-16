@@ -230,10 +230,23 @@ export async function cashflowPostProcess(
           }
         }
 
+        // Merge hierarchical_resolutions from all per-column reports into a
+        // flat map keyed by field_path. The resolved column is authoritative
+        // for the single-column snapshot the postprocessor builds.
+        const mergedHierarchicalResolutions: Record<string, object> = {};
+        for (const columnReport of Object.values(validation_report.per_column)) {
+          for (const [path, resolution] of Object.entries(columnReport.hierarchical_resolutions)) {
+            mergedHierarchicalResolutions[path] = resolution;
+          }
+        }
+
         output.math_correction_report = {
           passed: validation_report.passed,
           was_corrected,
           summary: validation_report.summary,
+          hierarchical_resolutions: Object.keys(mergedHierarchicalResolutions).length > 0
+            ? mergedHierarchicalResolutions
+            : undefined,
         };
       } catch (mathErr) {
         logger.warn('[CashflowPostProcess] Math engine correctSnapshotMath failed (non-fatal)', {
@@ -457,9 +470,11 @@ function mapSourceLabel(source: string): SourceType {
   const s = source.toLowerCase();
   if (s.includes('rent_roll') || s.includes('rentroll') || s.includes('rent roll')) return 'rent_roll';
   if (s.includes('t12') || s.includes('t-12') || s.includes('t 12') || s.includes('trailing')) return 't12';
-  if (s.includes('om') || s.includes('broker') || s.includes('marketing') || s.includes('offering')) return 'om';
   if (s.includes('user_override') || s.includes('override')) return 'user_override';
-  if (s.includes('computed') || s.includes('math_fill') || s.includes('postprocessor')) return 'computed';
+  // 'computed' must be checked before 'om' — 'computed' contains the substring 'om'
+  // and would be incorrectly mapped to the lower-priority 'om' source if order were reversed.
+  if (s === 'computed' || s.includes('math_fill') || s.includes('postprocessor')) return 'computed';
+  if (s === 'om' || s.includes('broker') || s.includes('marketing') || s.includes('offering')) return 'om';
   return 'platform_fallback';
 }
 

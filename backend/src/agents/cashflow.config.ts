@@ -224,6 +224,18 @@ export const CashflowOutputSchema = z.object({
       total_minor: z.number().int().nonnegative(),
       breakdown_aggregate_mismatches: z.number().int().nonnegative(),
     }),
+    // Per-path hierarchical resolution details (source priority decision + reconciliation status).
+    // Consumed by Task #805 Other Income Reconciliation Badge UI.
+    hierarchical_resolutions: z.record(z.string(), z.object({
+      resolved_value: z.number(),
+      resolution_source: z.string(),
+      resolution_method: z.enum(['breakdown_sum', 'aggregate', 'fallback']),
+      breakdown_sum: z.number().optional(),
+      aggregate_value: z.number().optional(),
+      reconciliation_delta: z.number().optional(),
+      reconciliation_delta_pct: z.number().optional(),
+      reconciliation_status: z.enum(['no_conflict', 'within_tolerance', 'minor_mismatch', 'major_mismatch']),
+    })).optional(),
   }).optional(),
 });
 
