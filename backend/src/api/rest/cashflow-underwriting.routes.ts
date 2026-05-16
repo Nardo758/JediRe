@@ -139,57 +139,6 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
   }
 });
 
-// ── POST /api/v1/agents/cashflow/roadmap ─────────────────────────────────────
-// Roadmap Mode: first-class cashflow agent mode that generates a value-creation
-// roadmap for a deal.  Shares the same authz pipeline as /cashflow/underwrite
-// but routes to generateRoadmap() rather than the LLM runtime.
-//
-// Body: { deal_id, target_return: { metric, value, hold_years }, constraints?, sponsor_capabilities? }
-router.post('/cashflow/roadmap', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
-  try {
-    const { deal_id, target_return, constraints, sponsor_capabilities } = req.body as Record<string, unknown>;
-
-    if (!deal_id || !UUID_RE.test(String(deal_id))) {
-      throw new AppError(400, 'deal_id must be a valid UUID');
-    }
-    if (!target_return || typeof target_return !== 'object') {
-      throw new AppError(400, 'target_return is required');
-    }
-    const tr = target_return as Record<string, unknown>;
-    const validMetrics = ['irr', 'equity_multiple', 'noi_growth_3yr', 'cash_on_cash_y3'];
-    if (!validMetrics.includes(String(tr.metric))) {
-      throw new AppError(400, `target_return.metric must be one of: ${validMetrics.join(', ')}`);
-    }
-    if (!tr.value || !tr.hold_years) {
-      throw new AppError(400, 'target_return.value and target_return.hold_years are required');
-    }
-
-    await assertDealAccess(String(deal_id), req.user!.userId);
-
-    const { cashFlowAgent } = await import('../../agents/cashflow.agent');
-    const result = await cashFlowAgent.execute(
-      {
-        dealId: String(deal_id),
-        userId: req.user!.userId,
-        mode: 'roadmap',
-        roadmap_target_return: {
-          metric: tr.metric as 'irr' | 'equity_multiple' | 'noi_growth_3yr' | 'cash_on_cash_y3',
-          value: Number(tr.value),
-          hold_years: Number(tr.hold_years),
-        },
-        roadmap_constraints: constraints as never,
-        roadmap_sponsor_capabilities: sponsor_capabilities as never,
-      },
-      req.user!.userId
-    );
-
-    const roadmapResult = (result as Record<string, unknown>).roadmap_output;
-    res.json({ success: true, output: roadmapResult });
-  } catch (error) {
-    next(error);
-  }
-});
-
 // ── GET /api/v1/agents/runs/:runId/underwriting ───────────────────
 router.get('/runs/:runId/underwriting', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {

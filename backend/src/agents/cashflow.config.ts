@@ -59,6 +59,7 @@ import { goalSeekTargetIrrTool } from './tools/goal_seek_target_irr';
 import { fetchAnchorGrowthRatesTool } from './tools/fetch_anchor_growth_rates';
 import { fetchCountyTaxRulesTool } from './tools/fetch_county_tax_rules';
 import { fetchOperatorStanceTool } from './tools/fetch_operator_stance';
+import { generateRoadmapTool } from './tools/generate_roadmap';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -319,6 +320,8 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     writeEvidenceRowsTool,
     writeUnderwritingTool,
     requestWalkthroughNarrativeTool,
+    // Roadmap Mode — value-creation action plan (call after context tools)
+    generateRoadmapTool,
   ],
   outputSchema: CashflowOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.cashflow,

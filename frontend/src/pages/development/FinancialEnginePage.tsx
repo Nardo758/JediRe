@@ -399,6 +399,9 @@ const BUILTIN_TAB_LABELS = [
 ];
 const BUILTIN_TAB_COUNT = BUILTIN_TAB_LABELS.length;
 
+// Roadmap tab (index 8) is only surfaced for value-add and redevelopment deals.
+const ROADMAP_ELIGIBLE_TYPES: DealType[] = ['value-add', 'redevelopment'];
+
 interface FinancialEnginePageProps {
   dealId: string;
   deal?: Record<string, unknown>;
@@ -409,6 +412,12 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const params = useParams<{ id?: string; dealId?: string }>();
   const resolvedDealId = dealId || params.dealId || params.id || '';
   const resolvedDealType: DealType = (propDealType as DealType) || 'existing';
+
+  // Roadmap tab (index 8) is only surfaced for value-add and redevelopment deals.
+  // Declared early so all subsequent callbacks close over the correct binding.
+  const isRoadmapEligible = ROADMAP_ELIGIBLE_TYPES.includes(resolvedDealType);
+  // When ROADMAP is hidden the custom-tabs strip starts one index earlier.
+  const effectiveBuiltinCount = isRoadmapEligible ? BUILTIN_TAB_COUNT : BUILTIN_TAB_COUNT - 1;
 
   const [activeTab, setActiveTab] = useState(0);
   const [kpiLoading, setKpiLoading] = useState(false);
@@ -486,7 +495,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       // Clamp activeTab if a server-side reload removed the tab we were on
       // (e.g. another session deleted it) so we never show a blank pane.
       setActiveTab(prev => {
-        const maxValid = BUILTIN_TAB_COUNT + tabs.length - 1;
+        const maxValid = effectiveBuiltinCount + tabs.length - 1;
         return prev > maxValid ? Math.max(0, maxValid) : prev;
       });
       setCustomTabsError(null);
@@ -1170,10 +1179,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         setCustomTabs(tabs);
         if (switchToCustomTabId) {
           const idx = tabs.findIndex(t => t.tab_id === switchToCustomTabId);
-          if (idx >= 0) setActiveTab(BUILTIN_TAB_COUNT + idx);
+          if (idx >= 0) setActiveTab(effectiveBuiltinCount + idx);
         } else if (tabs.length > customTabs.length) {
           // A new tab was created via the inline fence — switch to it.
-          setActiveTab(BUILTIN_TAB_COUNT + 0);
+          setActiveTab(effectiveBuiltinCount + 0);
         }
       }
     } catch (err: any) {
@@ -1208,17 +1217,17 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   // Build the displayed tab strip = built-in tabs + custom tabs (purple ✦).
   const displayTabs = useMemo(
     () => [
-      ...BUILTIN_TAB_LABELS,
+      ...(isRoadmapEligible ? BUILTIN_TAB_LABELS : BUILTIN_TAB_LABELS.slice(0, -1)),
       ...customTabs.map(t => `✦ ${t.title.toUpperCase()}`),
     ],
-    [customTabs],
+    [customTabs, isRoadmapEligible],
   );
 
   const activeCustomTab: CustomTabRow | null = useMemo(
-    () => activeTab >= BUILTIN_TAB_COUNT
-      ? customTabs[activeTab - BUILTIN_TAB_COUNT] ?? null
+    () => activeTab >= effectiveBuiltinCount
+      ? customTabs[activeTab - effectiveBuiltinCount] ?? null
       : null,
-    [activeTab, customTabs],
+    [activeTab, customTabs, effectiveBuiltinCount],
   );
 
   const handleCustomTabRefresh = useCallback(async (tabId: string) => {
@@ -1243,7 +1252,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         // If the active tab was the deleted one (or sat after it), step back
         // to the closest still-valid tab to avoid a blank pane.
         const removedIdx = prev.findIndex(t => t.tab_id === tabId);
-        if (removedIdx >= 0 && activeTab >= BUILTIN_TAB_COUNT + removedIdx) {
+        if (removedIdx >= 0 && activeTab >= effectiveBuiltinCount + removedIdx) {
           setActiveTab(Math.max(0, activeTab - 1));
         }
         return next;
@@ -1668,7 +1677,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 5 && <BtTabWrapper><ReturnsHubTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 6 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 7 && <BtTabWrapper><CompareHubTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 8 && <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><RoadmapTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 8 && isRoadmapEligible && <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><RoadmapTab {...tabProps} /></BtTabWrapper>}
           {activeCustomTab && (
             <BtTabWrapper>
               <CustomTabRenderer
