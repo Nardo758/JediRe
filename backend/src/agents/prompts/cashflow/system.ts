@@ -321,7 +321,10 @@ For each line item write to proforma_fields with:
   - benchmark_percentile: where it falls in P10-P90 range
   - pct_egi: as percentage of Effective Gross Income
   - confidence: high/medium/low based on benchmark match quality
-  - source: T-12 actual / benchmark / conservative default
+  - source: use one of the canonical source labels — rent_roll, t12, om,
+    user_override, computed, or platform_fallback — so the v1.1 Math Engine
+    can resolve hierarchical subtotals (e.g., Other Income breakdown-vs-aggregate)
+    and surface reconciliation findings correctly
 
 ### Exit Cap Rate
   1. Derive from peer comp sales data if available

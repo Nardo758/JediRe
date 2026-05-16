@@ -13,6 +13,8 @@ import type { RunContext } from './runtime/types';
 import { getStanceForDeal, applyStanceToProformaFields, applyStanceReblend, suggestAgentInferredStance } from '../services/operatorStance.service';
 import type { OperatorStancePatch } from '../types/operator-stance';
 import { normalizeProformaFields } from './utils/evidenceNormalizer';
+import { correctSnapshotMath } from '../services/proforma/proFormaMathEngine';
+import type { ProFormaSnapshot, SourceType } from '../services/proforma/proFormaMathEngine';
 
 interface FieldOutput {
   value: unknown;
@@ -168,6 +170,75 @@ export async function cashflowPostProcess(
         logger.warn('[CashflowPostProcess] Stance modulation skipped (non-fatal)', {
           dealId: ctx.dealId,
           err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // ── Pro Forma Math Engine v1.1: correctSnapshotMath ──────────────────────
+    // Build a ProFormaSnapshot from the resolved proforma_fields, run the math
+    // integrity validator, and auto-correct any subtotal mismatches or
+    // breakdown-vs-aggregate divergences. Corrections are applied back to
+    // proforma_fields in-place. The compact validation report is written to
+    // output.math_correction_report for downstream consumers (Task #805 badge UI).
+    // Non-fatal: any failure here never blocks agent output.
+    if (output.proforma_fields && typeof output.proforma_fields === 'object') {
+      try {
+        const pfFields = output.proforma_fields as Record<string, any>;
+
+        const resolvedColumn: Record<string, number> = {};
+        const sourceMetadataResolved: Record<string, SourceType> = {};
+
+        for (const [fieldPath, fieldEntry] of Object.entries(pfFields)) {
+          const entry = fieldEntry as Record<string, unknown>;
+          const raw = entry?.value;
+          const numValue =
+            typeof raw === 'number' ? raw
+            : typeof raw === 'string' && raw !== '' && !isNaN(Number(raw)) ? Number(raw)
+            : null;
+          if (numValue !== null) {
+            resolvedColumn[fieldPath] = numValue;
+          }
+          if (typeof entry?.source === 'string') {
+            sourceMetadataResolved[fieldPath] = mapSourceLabel(entry.source);
+          }
+        }
+
+        const snapshot: ProFormaSnapshot = {
+          resolved: resolvedColumn,
+          source_metadata: { resolved: sourceMetadataResolved },
+        };
+
+        const { corrected_snapshot, validation_report, was_corrected } = correctSnapshotMath(
+          snapshot,
+          {
+            deal_id: ctx.dealId ?? 'unknown',
+            run_id: runId,
+            prompt_version: (output.prompt_version as string | undefined) ?? 'unknown',
+            logger,
+          },
+        );
+
+        if (was_corrected) {
+          for (const [fieldPath, correctedValue] of Object.entries(corrected_snapshot.resolved)) {
+            const existing = pfFields[fieldPath];
+            if (existing && typeof existing === 'object') {
+              const rec = existing as Record<string, unknown>;
+              if (rec.value !== correctedValue) {
+                rec.value = correctedValue;
+              }
+            }
+          }
+        }
+
+        output.math_correction_report = {
+          passed: validation_report.passed,
+          was_corrected,
+          summary: validation_report.summary,
+        };
+      } catch (mathErr) {
+        logger.warn('[CashflowPostProcess] Math engine correctSnapshotMath failed (non-fatal)', {
+          runId,
+          err: mathErr instanceof Error ? mathErr.message : String(mathErr),
         });
       }
     }
@@ -378,6 +449,20 @@ async function aggregateFromToolCalls(
  *   vacancy > 0.07 pp       → stressVacancyFloor bump (1–5 pp)
  *   rent_growth < 0.02 /yr  → underwritingPosture: CONSERVATIVE
  */
+/**
+ * Map an agent source label string to a canonical SourceType understood by
+ * the Pro Forma Math Engine v1.1. Matches common variants the LLM writes.
+ */
+function mapSourceLabel(source: string): SourceType {
+  const s = source.toLowerCase();
+  if (s.includes('rent_roll') || s.includes('rentroll') || s.includes('rent roll')) return 'rent_roll';
+  if (s.includes('t12') || s.includes('t-12') || s.includes('t 12') || s.includes('trailing')) return 't12';
+  if (s.includes('om') || s.includes('broker') || s.includes('marketing') || s.includes('offering')) return 'om';
+  if (s.includes('user_override') || s.includes('override')) return 'user_override';
+  if (s.includes('computed') || s.includes('math_fill') || s.includes('postprocessor')) return 'computed';
+  return 'platform_fallback';
+}
+
 function inferStanceSignals(
   proformaFields: Record<string, any>,
 ): OperatorStancePatch | null {

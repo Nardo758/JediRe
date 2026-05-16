@@ -214,6 +214,17 @@ export const CashflowOutputSchema = z.object({
     note: z.string(),
   })).optional(),
   value_add_gpr_confidence_rationale_gaps: z.array(z.string()).optional(),
+  // ── Pro Forma Math Engine v1.1 correction report ──
+  math_correction_report: z.object({
+    passed: z.boolean(),
+    was_corrected: z.boolean(),
+    summary: z.object({
+      total_critical: z.number().int().nonnegative(),
+      total_major: z.number().int().nonnegative(),
+      total_minor: z.number().int().nonnegative(),
+      breakdown_aggregate_mismatches: z.number().int().nonnegative(),
+    }),
+  }).optional(),
 });
 
 export type CashflowAgentOutput = z.infer<typeof CashflowOutputSchema>;
