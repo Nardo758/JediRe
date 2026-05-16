@@ -1821,8 +1821,10 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       if (mathRes.rows.length > 0 && mathRes.rows[0].math_correction_report) {
         mathCorrectionReport = mathRes.rows[0].math_correction_report;
       }
-    } catch {
-      // Non-fatal — UI degrades gracefully without reconciliation data
+    } catch (mathErr: unknown) {
+      // Non-fatal — UI degrades gracefully without reconciliation data.
+      // Log at warn so ops can detect persistent query failures.
+      logger.warn('math_correction_report fetch failed (non-fatal):', mathErr instanceof Error ? mathErr.message : String(mathErr));
     }
 
     // Compute hold-period returns from F9 projection engine

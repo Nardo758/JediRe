@@ -52,10 +52,10 @@ function fmt$(n: number | null | undefined): string {
 
 function fmtDelta(n: number | null | undefined): string {
   if (n == null) return '—';
-  const sign = n >= 0 ? '+' : '';
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${sign}${n < 0 ? '-' : ''}$${(abs / 1_000_000).toFixed(2)}M`;
-  return `${sign}$${Math.round(n).toLocaleString()}`;
+  const sign = n >= 0 ? '+' : '-';
+  const abs  = Math.abs(n);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+  return `${sign}$${Math.round(abs).toLocaleString()}`;
 }
 
 function fmtPct(n: number | null | undefined): string {
@@ -175,16 +175,16 @@ function Popover({
   const delta    = resolution.reconciliation_delta;
   const deltaPct = resolution.reconciliation_delta_pct;
 
-  // Canonical footnote text per spec: explains why breakdown vs aggregate was chosen
+  // Canonical footnote text per spec (PRO_FORMA_MATH_CORRECTION §4):
+  //   "Reconciled from Rent Roll detail; T-12 aggregate $X within Y% tolerance"
   const canonicalFootnote = isBreakdownPrimary
-    ? `T-12 publishes an aggregate only — no per-category breakdown. ` +
-      `Rent roll detail sum (${fmt$(resolution.breakdown_sum ?? resolution.resolved_value)}) ` +
-      `is the higher-fidelity source at ${deltaPct != null ? Math.abs(deltaPct * 100).toFixed(1) + '% delta' : 'unknown delta'}. ` +
-      `Resolved value uses breakdown sum as primary.`
-    : `Breakdown sum unavailable or lower-confidence. ` +
-      `T-12 aggregate (${fmt$(resolution.aggregate_value ?? resolution.resolved_value)}) ` +
-      `used as primary source. ` +
-      `${altValue != null ? `Breakdown detail ${fmt$(altValue)} noted for reference.` : ''}`;
+    ? `Reconciled from ${humanSource(resolution.resolution_source)} detail; ` +
+      `T-12 aggregate ${fmt$(altValue ?? resolution.aggregate_value)} ` +
+      (deltaPct != null ? `within ${Math.abs(deltaPct * 100).toFixed(1)}% tolerance` : 'recorded for reference') +
+      `. Breakdown sum is the higher-fidelity source — T-12 publishes an aggregate only, no per-category breakdown.`
+    : `Resolved from ${humanSource(resolution.resolution_source)} aggregate; ` +
+      `breakdown detail ${altValue != null ? fmt$(altValue) : 'unavailable'} noted for reference. ` +
+      `Aggregate used as primary — breakdown confidence insufficient.`;
 
   return (
     <div
