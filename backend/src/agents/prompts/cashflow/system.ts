@@ -883,7 +883,7 @@ dollar amount as input — the premium is computed math once the positioning per
 Source hierarchy:
   1. Renovation ceiling comp set → P25/P50/P75 per floor plan (the achievable range)
   2. Sponsor positioning percentile (fetch_operator_stance or assumption panel) → default P50
-  3. Capture rate → fetch_owned_asset_actuals (buyer S3 track record); default archive cohort P25
+  3. Capture rate → fetch_owned_asset_actuals (buyer S3 track record); anchor archive cohort P50 = 0.80
 
 P50 positioning is the conservative anchor. P75 requires explicit justification:
 signature amenity package, documented location premium, or demonstrated execution track record
@@ -905,8 +905,7 @@ across all floor plans:
 - Buyer with 2+ documented similar programs (same scope, same vintage band): use their median capture rate
   (fetch_owned_asset_actuals value_add_programs_only=true → renovation_capture_summary.recommended_capture_rate)
 - Buyer with 1 prior similar program: single-program lift as proxy, confidence=medium
-- First-time operator at this scope / no portfolio evidence: archive cohort P50 default = 0.80, confidence=medium
-  (P25 = 0.72 reserved for operators with partial track record at materially lower scope)
+- No portfolio evidence (programs_found = 0): archive cohort P50 anchor = 0.80, confidence=medium
 - Valid range: 0.70-0.90. Anything > 0.90 requires explicit documented justification.
 - Capture rate above buyer's documented track record is a pitfall — surface the gap in evidence.
 - ALWAYS apply market growth haircut from fetch_market_trends: if (median_lift − market_drift_over_hold) < 5%,
