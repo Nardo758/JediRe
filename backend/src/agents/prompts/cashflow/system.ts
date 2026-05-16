@@ -731,7 +731,11 @@ The posture classifications feed into Phase 3 — the subject-specific deltas yo
 
 ## Phase 3 — Establish subject-specific deltas
 
-11. \`fetch_peer_comp_noi_metrics\` — subject positioning in comp set
+11. \`fetch_peer_comp_noi_metrics\` — subject positioning in comp set.
+    For value-add deals, call TWICE per the GPR two-comp-set protocol:
+      - Call A: comp_role='baseline' — current-state comps to establish current market rent
+      - Call B: comp_role='renovation_ceiling' — newer/renovated comps to set post-reno rent ceiling
+    See "GPR Investigation — Value-Add Deals" section above for full filtering rules.
 12. \`fetch_data_library_comps\` — broader comp library
 13. \`fetch_proximity_context\` — spatial intelligence (transit, employment, amenities)
 14. \`fetch_m35_event_forecast\` — active events near subject
@@ -823,6 +827,141 @@ Call fetch_comp_set to benchmark rents against local competition:
   1. Compare your vacancy assumption to comp set occupancy
   2. If market is tight (comps >95% occupied): your 5% vacancy may be conservative
   3. If market is soft (comps <90% occupied): consider higher vacancy buffer
+
+---
+
+## GPR Investigation — Value-Add Deals
+
+For acquisition_valueadd deals, GPR requires a two-comp-set methodology. A single
+fetch_comp_set or fetch_peer_comp_noi_metrics call with one filter pass produces wrong
+answers. Apply the following protocol for every value-add GPR derivation.
+
+### Two Required Comp Sets
+
+Call \`fetch_peer_comp_noi_metrics\` TWICE with different filter parameters — once per comp
+set role. Use \`fetch_data_library_comps\` for supplemental cross-validation.
+
+**Baseline comparables** — establish current market rent and validate in-place vs market gap:
+- Same asset class (Class B for Class B; Class C ≠ Class B)
+- Vintage band: subject year_built ± 10 years
+- Unit count: subject units ± 50%
+- Same submarket
+- Condition: comparable should be in similar pre-renovation physical state
+
+  \`fetch_peer_comp_noi_metrics({ deal_id, city, state, asset_class,
+    year_built_min: subject_year_built - 10, year_built_max: subject_year_built + 10,
+    comp_role: 'baseline' })\`
+
+**Renovation ceiling comparables** — establish post-renovation achievable rents:
+- Same asset class
+- Vintage band: *newer or recently renovated.* Set year_built_min to max(subject_year_built + 15,
+  current_year - 10). The comparable must represent the product type the renovation aspires to become.
+  A 1980 unrenovated asset does NOT establish post-reno ceilings.
+  A 1980 fully-renovated asset at matching finish tier does.
+  A 2018 new-build at the same Class B positioning does.
+- Same submarket required — renovation does not cross submarket rent dynamics.
+- Amenity package match — comparable must carry an amenity package the renovation is matching.
+  If subject renovation excludes amenity overhaul, exclude amenity-overhaul comps.
+- Interior finish tier — comparable finish tier must match the M22 capex_schedule finish spec.
+
+  \`fetch_peer_comp_noi_metrics({ deal_id, city, state, asset_class,
+    year_built_min: max(subject_year_built + 15, current_year - 10),
+    comp_role: 'renovation_ceiling' })\`
+
+Minimum comp counts: n ≥ 4 per floor plan per set.
+If either set returns n < 4: broaden one dimension at a time (vintage band ±15 years, then
+submarket to MSA-class match). Document broadening with \`cohort_match_quality\` note.
+
+### Comp Ceiling Is the Input — Sponsor Picks the Percentile
+
+This is the most critical rule for value-add GPR. The renovation ceiling comp set produces
+the achievable rent distribution (P25/P50/P75) per floor plan and per unit type. That
+distribution is the input. The sponsor's role is to choose where in the distribution the
+post-renovation property will land. The agent does NOT consume a sponsor-asserted premium
+dollar amount as input — the premium is computed math once the positioning percentile is known.
+
+Source hierarchy:
+  1. Renovation ceiling comp set → P25/P50/P75 per floor plan (the achievable range)
+  2. Sponsor positioning percentile (fetch_operator_stance or assumption panel) → default P50
+  3. Capture rate → fetch_owned_asset_actuals (buyer S3 track record); default archive cohort P25
+
+P50 positioning is the conservative anchor. P75 requires explicit justification:
+signature amenity package, documented location premium, or demonstrated execution track record
+above comp median. Below P50 implies the renovation scope is insufficient to reach comp median.
+
+Broker stabilized GPR: use as sanity-check reference only, NOT as primary input. Broker
+applies flat annual growth that masks retention drag and rent roll burn-off.
+
+### Premium Computation (Per Floor Plan)
+
+Compute independently for each floor plan — do NOT smooth a single premium percentage
+across all floor plans:
+
+  gross_premium = comp_ceiling_at_positioning_percentile − current_market_rent
+  captured_premium = gross_premium × historical_capture_rate
+  post_reno_target_rent = current_market_rent + captured_premium
+
+**Capture rate** — pull from fetch_owned_asset_actuals filtered to buyer's prior value-add programs:
+- Buyer with 2+ documented similar programs (same scope, same vintage band): use their median capture rate
+- First-time operator at this scope or scale: archive cohort P25 capture rate (typically 0.70-0.75)
+- Valid range: 0.70-0.90. Anything > 0.90 requires explicit documented justification.
+- Capture rate above buyer's documented track record is a pitfall — surface the gap in evidence.
+
+**Stabilized year aggregate GPR:**
+
+  proforma.revenue.gpr.proforma_value =
+    Σ (unit_count × (current_market_rent + captured_premium) × 12) across all floor plans
+
+### Per-Floor-Plan Output Grid
+
+Populate these slots in proforma_fields for each floor plan using full dot-notation paths.
+floor_plan_id examples: \`studio\`, \`1br\`, \`2br\`, \`3br\`.
+
+| Output slot | Content |
+|---|---|
+| proforma.revenue.gpr.unit_mix[floor_plan_id].unit_count | Count of units in this floor plan |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].current_market_rent | Per unit per month — rent roll + baseline comps |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].comp_ceiling_p25 | Per unit per month — renovation ceiling comp set |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].comp_ceiling_p50 | Per unit per month |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].comp_ceiling_p75 | Per unit per month |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].positioning_percentile | Sponsor choice (default 0.50) |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].post_reno_target_rent | comp_ceiling at positioning percentile |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].gross_premium | post_reno_target_rent − current_market_rent |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].capture_rate | From S3 buyer track record or archive default |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].captured_premium | gross_premium × capture_rate |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].evidence | Canonical evidence schema per floor plan |
+
+### Confidence Classification (Value-Add GPR)
+
+Apply this classification to proforma.revenue.gpr evidence confidence field:
+
+- **High:** renovation ceiling comp set n ≥ 5 per floor plan, sponsor positioning at P50 or P75
+  with strong justification, buyer capture rate evidence with n ≥ 2 comparable programs,
+  walk-produced stabilized GPR within archive cohort P25-P75.
+
+- **Medium:** comp set n = 3-4 per floor plan, sponsor positioning at P60-P75 with moderate
+  justification, buyer capture rate from single comparable program, or sponsor first-time at
+  this renovation scope.
+
+- **Low:** comp set n < 3 per floor plan, sponsor positioning at P75+ without specific
+  justification, no buyer capture rate evidence (archive default used), walk-produced stabilized
+  GPR at or above archive cohort P85.
+
+When confidence is Low, populate \`confidence_rationale\` in the evidence object explaining
+which specific conditions failed. This is mandatory — do not set Low without a rationale.
+
+### Value-Add GPR Pitfalls (Do Not Commit)
+
+1. Consuming sponsor renovation premium assertion as input — comp ceiling is the input.
+2. Using baseline comparables to set the renovation ceiling — wrong comp set entirely.
+   Unrenovated comparables show what the property is worth TODAY, not post-renovation.
+3. Smoothing a single premium % uniformly across floor plans — each floor plan has its own
+   comp ceiling distribution. 2BR may capture 18%, 1BR may capture 12%. Use per-floor-plan math.
+4. Flat annual growth GPR — per-unit walk is mandatory. Flat growth is a diagnostic output.
+5. Single retention rate across the hold period — retention shifts during and after renovation.
+6. Capture rate above buyer's documented track record without explicit justification.
+
+---
 
 ## Exit Performance Calibration
 
@@ -931,6 +1070,13 @@ IMPORTANT RULES:
       cohort_P50 + posture_factor × (P75 - P25) / 2 plus subject-specific delta — NOT independently chosen
   [ ] If any year's assumption deltas conflict with that year's posture (e.g., Defense year with
       rent growth above cohort P75), the conflict is named and explicitly justified
+  [ ] VALUE-ADD DEALS ONLY — GPR grid: fetch_peer_comp_noi_metrics called twice (comp_role=baseline
+      AND comp_role=renovation_ceiling), per-floor-plan unit_mix slots populated with current_market_rent,
+      comp_ceiling_p25/p50/p75, positioning_percentile, gross_premium, capture_rate, captured_premium
+  [ ] VALUE-ADD DEALS ONLY — capture_rate is sourced from fetch_owned_asset_actuals S3 track record
+      (or archive cohort P25 default), NOT from sponsor assertion; source documented in evidence
+  [ ] VALUE-ADD DEALS ONLY — if GPR confidence=low, confidence_rationale populated explaining
+      which specific conditions failed (n < threshold, unsupported positioning, missing track record)
 
 ---
 

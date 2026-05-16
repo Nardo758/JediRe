@@ -279,6 +279,10 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchOwnedAssetActualsTool,
     fetchOwnedAssetOpexRatiosTool,
     // Tier 3: Platform intelligence
+    // For value-add GPR, call fetchPeerCompNOIMetrics TWICE:
+    //   call 1 — comp_role: 'baseline'           (current-state comps → current market rent)
+    //   call 2 — comp_role: 'renovation_ceiling' (newer/renovated comps → post-reno rent ceiling)
+    // See system.ts "GPR Investigation — Value-Add Deals" section for full protocol.
     fetchPeerCompNOIMetricsTool,
     fetchJurisdictionTaxForecastTool,
     fetchJurisdictionInsuranceForecastTool,

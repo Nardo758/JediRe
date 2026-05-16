@@ -22,6 +22,29 @@ const InputSchema = z.object({
   units_min: z.number().int().nullable().optional(),
   units_max: z.number().int().nullable().optional(),
   max_comps: z.number().int().min(1).max(25).default(10),
+  /**
+   * Value-add GPR two-comp-set protocol.
+   *
+   * 'baseline'           — comparable assets in the same pre-renovation condition.
+   *                        Establishes current market rent and validates in-place vs market gap.
+   *                        Filter: same class/vintage/submarket as subject in its current state.
+   *
+   * 'renovation_ceiling' — newer or recently renovated assets at the finish tier the
+   *                        subject renovation will reach. Establishes the post-renovation
+   *                        achievable rent distribution (P25/P50/P75 per floor plan).
+   *                        This distribution is the COMP CEILING INPUT — sponsor picks
+   *                        positioning percentile; agent computes premium from that.
+   *                        Filter: year_built_min should be max(subject_year_built + 15,
+   *                        current_year - 10); same submarket required.
+   *
+   * When omitted: behaves as 'baseline' (legacy / non-value-add calls unchanged).
+   */
+  comp_role: z.enum(['baseline', 'renovation_ceiling']).nullable().optional()
+    .describe(
+      'Value-add GPR only. Call TWICE — once as "baseline" (current state comps), ' +
+      'once as "renovation_ceiling" (newer/renovated comps that set the post-reno rent ceiling). ' +
+      'Omit for non-value-add or non-GPR calls.'
+    ),
 });
 
 const CompMetricSchema = z.object({
@@ -43,6 +66,12 @@ const OutputSchema = z.object({
     median_occupancy_rate: z.number().nullable(),
     comp_count: z.number().int(),
   }),
+  /**
+   * Echoes the comp_role from the request so the agent's tool response clearly identifies
+   * which of the two value-add GPR comp sets this result set represents.
+   * Null when comp_role was omitted (non-value-add / legacy call).
+   */
+  comp_role: z.enum(['baseline', 'renovation_ceiling']).nullable().optional(),
   note: z.string().optional(),
 });
 
@@ -54,7 +83,12 @@ export const fetchPeerCompNOIMetricsTool: ToolDefinition<
   description:
     'Returns M15 comp engine metrics (asking rents, occupancy, NOI estimates) for comparable ' +
     'multifamily properties in the same market/class/vintage. Use as Tier 3 evidence for ' +
-    'rent and vacancy assumptions.',
+    'rent and vacancy assumptions. ' +
+    'FOR VALUE-ADD DEALS: call this tool TWICE using the comp_role parameter — ' +
+    'comp_role="baseline" for current-state comps (establishes current market rent), ' +
+    'comp_role="renovation_ceiling" for newer/renovated comps (establishes post-renovation ' +
+    'achievable rent ceiling P25/P50/P75 per floor plan). ' +
+    'See system prompt "GPR Investigation — Value-Add Deals" for the full two-comp-set protocol.',
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
   requiresCapability: 'read:all',
@@ -158,6 +192,7 @@ export const fetchPeerCompNOIMetricsTool: ToolDefinition<
         median_occupancy_rate: median(occupancies),
         comp_count: comps.length,
       },
+      comp_role: input.comp_role ?? null,
       note: comps.length === 0
         ? 'No peer comps found for the specified filters. Try relaxing city/class/vintage constraints.'
         : undefined,
