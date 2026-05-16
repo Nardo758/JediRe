@@ -1287,6 +1287,179 @@ What this example demonstrates: the year-by-year posture creates a real operatin
 
 ---
 
+### Example 5 — Value-Add GPR two-comp-set protocol (per-floor-plan grid)
+
+INPUT CONTEXT: 180-unit Midtown Atlanta Class B value-add. 1988 vintage. 3 floor plans (1BR × 90, 2BR × 70, studio × 20). Renovation scope: full interior ($28k/unit), amenity refresh. Sponsor asserts $200/unit renovation premium. Buyer has 2 prior value-add programs documented in owned portfolio.
+
+CORRECT TOOL CALL SEQUENCE:
+
+CALL A — baseline comp set (establishes current market rent):
+  fetch_peer_comp_noi_metrics({
+    deal_id: "...", city: "Atlanta", state: "GA", asset_class: "B",
+    year_built_min: 1978, year_built_max: 1998,
+    comp_role: "baseline"
+  })
+
+  RETURNS:
+    comp_role: "baseline"
+    submarket_summary: { median_asking_rent: 1210, comp_count: 9 }
+    rent_distribution_by_unit_type: null  ← null on baseline calls
+
+CALL B — renovation ceiling comp set (establishes post-reno target range):
+  fetch_peer_comp_noi_metrics({
+    deal_id: "...", city: "Atlanta", state: "GA", asset_class: "B",
+    year_built_min: 2005,            ← max(1988+15=2003, 2026-10=2016) → use 2016 if data permits;
+                                        relax to 2005 after broadening
+    comp_role: "renovation_ceiling"
+  })
+
+  RETURNS:
+    comp_role: "renovation_ceiling"
+    submarket_summary: { median_asking_rent: 1435, comp_count: 14 }
+    rent_distribution_by_unit_type: {
+      "studio": { n: 4, p25: 1080, p50: 1140, p75: 1195, confidence: "medium" },
+      "1BR":    { n: 7, p25: 1290, p50: 1360, p75: 1430, confidence: "high" },
+      "2BR":    { n: 5, p25: 1590, p50: 1680, p75: 1760, confidence: "high" }
+    }
+
+CALL C — buyer capture rate evidence (S3):
+  fetch_owned_asset_actuals({
+    deal_id: "...", asset_class: "B", year_built: 1988, units: 180,
+    value_add_programs_only: true
+  })
+
+  RETURNS:
+    renovation_capture_summary: {
+      programs_found: 2,
+      avg_capture_rate: 0.81,
+      capture_rates: [0.78, 0.84],
+      track_record_note: "Buyer has 2 documented Class B value-add programs with median capture 81%."
+    }
+
+CORRECT PREMIUM COMPUTATION (sponsor default P50 positioning, 81% capture rate):
+
+  studio (20 units):
+    current_market_rent: 1050 (rent roll + baseline comps)
+    post_reno_target_rent: 1140 (p50 at P50 positioning)
+    gross_premium: 1140 - 1050 = $90/unit/month
+    captured_premium: 90 × 0.81 = $72.90/unit/month
+    note: comp ceiling n=4 → MEDIUM confidence for studio floor plan
+
+  1BR (90 units):
+    current_market_rent: 1220 (rent roll + baseline comps)
+    post_reno_target_rent: 1360 (p50 at P50 positioning)
+    gross_premium: 1360 - 1220 = $140/unit/month
+    captured_premium: 140 × 0.81 = $113.40/unit/month
+    note: comp ceiling n=7 → HIGH confidence
+
+  2BR (70 units):
+    current_market_rent: 1450 (rent roll + baseline comps)
+    post_reno_target_rent: 1680 (p50 at P50 positioning)
+    gross_premium: 1680 - 1450 = $230/unit/month
+    captured_premium: 230 × 0.81 = $186.30/unit/month
+    note: comp ceiling n=5 → HIGH confidence
+
+SPONSOR ASSERTION CHECK:
+  Sponsor asserted $200/unit uniform premium.
+  2BR computed premium ($186/unit) is CLOSE to assertion — defensible.
+  1BR computed premium ($113/unit) is BELOW sponsor assertion — sponsor is overstating 1BR premium by $87/unit.
+  Studio computed premium ($73/unit) is WELL BELOW assertion — overstated by $127/unit.
+  → This is a MATERIAL collision on revenue.gross_potential_rent. Call detect_collision.
+
+PROFORMA FIELDS WRITTEN (per-floor-plan grid + aggregate):
+
+  write_evidence_rows({
+    evidence_rows: [
+      {
+        field_path: "proforma.revenue.gpr.unit_mix.studio.current_market_rent",
+        value_numeric: 1050, primary_tier: 1, confidence: "medium",
+        reasoning: "Rent roll avg for studio units $1,050. Baseline comps (n=9, 1978-1998 Class B Atlanta) median $1,210 across all unit types — studios below portfolio median consistent with floor plan mix.",
+        data_points: [
+          { tier: 1, source: "rent_roll", label: "Rent roll studio avg", value: 1050, weight: 0.8 },
+          { tier: 3, source: "peer_comp_baseline", label: "Baseline comp median", value: 1210, weight: 0.2 }
+        ]
+      },
+      {
+        field_path: "proforma.revenue.gpr.unit_mix.studio.comp_ceiling_p25",
+        value_numeric: 1080, primary_tier: 3, confidence: "medium",
+        reasoning: "Renovation ceiling comp set studio P25 (n=4, Class B Atlanta 2005+ renovated). Confidence MEDIUM — n=4 below preferred n≥5 threshold.",
+        data_points: [{ tier: 3, source: "peer_comp_renovation_ceiling", label: "Studio P25 n=4", value: 1080, weight: 1.0 }]
+      },
+      {
+        field_path: "proforma.revenue.gpr.unit_mix.studio.comp_ceiling_p50",
+        value_numeric: 1140, primary_tier: 3, confidence: "medium",
+        reasoning: "Renovation ceiling comp set studio P50 (n=4).",
+        data_points: [{ tier: 3, source: "peer_comp_renovation_ceiling", label: "Studio P50 n=4", value: 1140, weight: 1.0 }]
+      },
+      {
+        field_path: "proforma.revenue.gpr.unit_mix.studio.comp_ceiling_p75",
+        value_numeric: 1195, primary_tier: 3, confidence: "medium",
+        reasoning: "Renovation ceiling comp set studio P75 (n=4).",
+        data_points: [{ tier: 3, source: "peer_comp_renovation_ceiling", label: "Studio P75 n=4", value: 1195, weight: 1.0 }]
+      },
+      {
+        field_path: "proforma.revenue.gpr.unit_mix.studio.positioning_percentile",
+        value_numeric: 0.50, primary_tier: 3, confidence: "medium",
+        reasoning: "Sponsor accepted platform default P50 positioning for studio.",
+        data_points: [{ tier: 3, source: "operator_stance", label: "Default P50 positioning", value: 0.50, weight: 1.0 }]
+      },
+      {
+        field_path: "proforma.revenue.gpr.unit_mix.studio.post_reno_target_rent",
+        value_numeric: 1140, primary_tier: 3, confidence: "medium",
+        reasoning: "comp_ceiling_p50 at P50 positioning = $1,140/unit/month.",
+        data_points: [{ tier: 3, source: "peer_comp_renovation_ceiling", label: "Studio ceiling P50", value: 1140, weight: 1.0 }]
+      },
+      {
+        field_path: "proforma.revenue.gpr.unit_mix.studio.gross_premium",
+        value_numeric: 90, primary_tier: 3, confidence: "medium",
+        reasoning: "post_reno_target_rent $1,140 - current_market_rent $1,050 = $90/unit/month gross premium.",
+        data_points: [
+          { tier: 3, source: "computed", label: "Ceiling P50 minus current", value: 90, weight: 1.0 }
+        ]
+      },
+      {
+        field_path: "proforma.revenue.gpr.unit_mix.studio.capture_rate",
+        value_numeric: 0.81, primary_tier: 2, confidence: "medium",
+        reasoning: "Buyer's owned portfolio: 2 prior Class B value-add programs, capture rates 0.78 and 0.84, median 0.81 (from fetch_owned_asset_actuals renovation_capture_summary).",
+        data_points: [{ tier: 2, source: "owned_portfolio", label: "Buyer 2-program median capture", value: 0.81, weight: 1.0 }]
+      },
+      {
+        field_path: "proforma.revenue.gpr.unit_mix.studio.captured_premium",
+        value_numeric: 72.90, primary_tier: 2, confidence: "medium",
+        reasoning: "gross_premium $90 × capture_rate 0.81 = $72.90/unit/month.",
+        data_points: [{ tier: 2, source: "computed", label: "Gross × capture", value: 72.90, weight: 1.0 }]
+      }
+      // ... identical pattern for 1BR and 2BR floor plans
+    ]
+  })
+
+AGGREGATE GPR:
+  studio:  20 × (1050 + 72.90) × 12 = $269,496/yr
+  1BR:     90 × (1220 + 113.40) × 12 = $1,440,072/yr
+  2BR:     70 × (1450 + 186.30) × 12 = $1,376,892/yr
+  proforma.revenue.gpr.proforma_value = $3,086,460/yr (stabilized year)
+
+  Sponsor-asserted aggregate (flat $200 premium): $3,323,520/yr → 7.7% above computed.
+  → detect_collision(agent: 3,086,460, broker: 3,323,520) → MATERIAL (delta 7.7%, agent_lower)
+
+CONFIDENCE CLASSIFICATION:
+  Overall GPR confidence: MEDIUM
+  Rationale: studio n=4 (below n≥5 threshold for high), 1BR and 2BR HIGH.
+  confidence_rationale: "Studio renovation ceiling comp set n=4 (preferred n≥5). 1BR and 2BR
+  ceiling distributions are HIGH confidence (n=7, n=5). Overall GPR confidence set to MEDIUM
+  driven by studio floor plan ceiling uncertainty. Studio represents 20/180 = 11% of units."
+
+What this example demonstrates:
+- Two distinct comp sets produce materially different premium per floor plan (not uniform $200)
+- Sponsor's uniform assertion overstates 1BR by 55% and studio by 174% — this would be a SEVERE
+  collision if accepted as input. The comp-ceiling methodology surfaces it before it goes to proforma
+- Capture rate from S3 is the disciplining multiplier — even at P50 positioning, only 81% of the
+  gross premium is modeled as captured
+- n < 5 for studio triggers MEDIUM confidence and requires confidence_rationale even though the
+  aggregate GPR confidence is dominated by the larger 1BR and 2BR floor plans
+
+---
+
 ## OperatorStance — Meta-Layer Modulation
 
 Call fetch_operator_stance(deal_id) after fetch_data_matrix to understand the operator's

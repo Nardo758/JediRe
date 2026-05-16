@@ -20,6 +20,33 @@ const InputSchema = z.object({
   year_built: z.number().int().nullable().optional().describe('Vintage year for cohort matching'),
   units: z.number().int().nullable().optional().describe('Unit count for size comparability'),
   max_assets: z.number().int().default(5).describe('Max comparable assets to return'),
+  /**
+   * Value-add GPR — capture rate sourcing (S3).
+   *
+   * When true, the tool additionally:
+   *   1. Filters results to deals where project_type is 'value-add', 'renovation', or 'rehab'.
+   *   2. Computes a rent trajectory for each asset (earliest actuals vs latest actuals)
+   *      to surface the effective rent lift delivered over the program period.
+   *   3. Returns a renovation_capture_summary with:
+   *        - programs_found: count of matching value-add programs
+   *        - rent_trajectories: per-asset first/last effective rent + implied lift %
+   *        - avg_implied_rent_lift_pct: geometric mean rent lift across found programs
+   *        - track_record_note: agent-readable summary + recommended capture rate
+   *
+   * The agent uses renovation_capture_summary to determine the capture_rate input for
+   * the per-floor-plan premium computation:
+   *   captured_premium = gross_premium × historical_capture_rate
+   *
+   * If programs_found = 0, track_record_note will instruct the agent to use the
+   * archive cohort P25 default (0.70-0.75) for first-time operators.
+   */
+  value_add_programs_only: z.boolean().optional().default(false)
+    .describe(
+      'Value-add GPR only. Set true to filter for buyer\'s prior value-add/renovation programs ' +
+      'and return renovation_capture_summary for capture rate derivation. ' +
+      'The summary includes rent trajectory (first vs last actuals) per asset and an ' +
+      'avg_implied_rent_lift_pct that grounds the capture rate assumption in S3 evidence.'
+    ),
 });
 
 const OwnedAssetSummarySchema = z.object({
@@ -45,9 +72,53 @@ const OwnedAssetSummarySchema = z.object({
   }).nullable(),
 });
 
+/**
+ * Per-asset rent trajectory computed when value_add_programs_only=true.
+ * Earliest and latest actuals bracket the program period; the lift % is
+ * the implied premium delivered (market drift included, not stripped out).
+ * Agent should compare implied lift to submarket rent growth to estimate
+ * how much of the lift is renovation-driven vs market-driven.
+ */
+const RentTrajectorySchema = z.object({
+  property_id: z.string(),
+  address: z.string().nullable(),
+  first_month: z.string().describe('ISO date of earliest actuals month'),
+  last_month: z.string().describe('ISO date of latest actuals month'),
+  first_effective_rent: z.number().nullable().describe('Avg effective rent/unit at program start'),
+  last_effective_rent: z.number().nullable().describe('Avg effective rent/unit at program end/latest'),
+  implied_rent_lift_pct: z.number().nullable()
+    .describe('(last - first) / first — includes market drift; agent strips market growth to isolate renovation premium'),
+  months_observed: z.number().int(),
+});
+
+/**
+ * Renovation capture summary — populated when value_add_programs_only=true.
+ * Primary output for value-add GPR capture rate derivation (S3 sourcing).
+ */
+const RenovationCaptureSummarySchema = z.object({
+  programs_found: z.number().int()
+    .describe('Number of portfolio value-add programs found matching filters'),
+  rent_trajectories: z.array(RentTrajectorySchema)
+    .describe('Per-program rent trajectory from earliest to latest actuals'),
+  avg_implied_rent_lift_pct: z.number().nullable()
+    .describe('Mean implied rent lift % across programs (market drift not stripped). Agent applies market growth haircut to isolate renovation premium.'),
+  track_record_note: z.string()
+    .describe(
+      'Agent-readable summary: programs found count, lift range, and recommended capture rate. ' +
+      'If programs_found=0, instructs agent to use archive cohort P25 default (0.70-0.75).'
+    ),
+});
+
 const OutputSchema = z.object({
   assets: z.array(OwnedAssetSummarySchema),
   total_owned_portfolio_size: z.number().int(),
+  /**
+   * Populated only when value_add_programs_only=true.
+   * Use this to source the capture_rate for per-floor-plan premium computation:
+   *   captured_premium = gross_premium × historical_capture_rate
+   * See system prompt "GPR Investigation — Value-Add Deals" for full derivation.
+   */
+  renovation_capture_summary: RenovationCaptureSummarySchema.nullable().optional(),
   note: z.string().optional(),
 });
 
@@ -59,7 +130,11 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
   description:
     'Fetch TTM operating actuals from comparable owned portfolio assets. ' +
     'Returns per-unit NOI, occupancy, effective rent, and opex metrics from deal_monthly_actuals. ' +
-    'Use as Tier 2 evidence to cross-check T-12 assumptions.',
+    'Use as Tier 2 evidence to cross-check T-12 assumptions. ' +
+    'FOR VALUE-ADD DEALS: set value_add_programs_only=true to retrieve renovation_capture_summary — ' +
+    'the buyer\'s prior value-add program rent trajectories used to derive the historical_capture_rate ' +
+    'for per-floor-plan premium computation (captured_premium = gross_premium × capture_rate). ' +
+    'If programs_found=0, track_record_note instructs use of archive cohort P25 default (0.70-0.75).',
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
   requiresCapability: 'read:all',
@@ -78,6 +153,17 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
       []
     );
     const totalCount = parseInt(String(totalResult.rows[0]?.cnt ?? '0'), 10);
+
+    // value_add_programs_only: narrow to properties linked to value-add deals
+    const valueAddClause = input.value_add_programs_only
+      ? `AND EXISTS (
+           SELECT 1 FROM deal_properties dp2
+           INNER JOIN deals d2 ON d2.id = dp2.deal_id
+           WHERE dp2.property_id = p.id
+             AND LOWER(COALESCE(d2.project_type, d2.deal_type, '')) SIMILAR TO
+                 '%(value.?add|rehab|renovati|repositi)%'
+         )`
+      : '';
 
     // Get all properties with TTM data
     const propsResult = await query(
@@ -101,14 +187,25 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
          SELECT dp.property_id FROM deal_properties dp
          INNER JOIN deals d ON d.id = dp.deal_id WHERE d.id = $2
        )
+       ${valueAddClause}
        LIMIT 50`,
       [ttmStart.toISOString().slice(0, 10), input.deal_id]
     );
 
     if (propsResult.rows.length === 0) {
+      // If value_add_programs_only was requested and nothing found, return a
+      // renovation_capture_summary that tells the agent to use archive P25 default.
+      const emptyCaptureNote = input.value_add_programs_only
+        ? 'No prior value-add programs found in owned portfolio matching these filters. ' +
+          'Use archive cohort P25 capture rate default: 0.70-0.75 for first-time operators at this scope. ' +
+          'Document as "no_track_record" in evidence with confidence=low.'
+        : undefined;
       return {
         assets: [],
         total_owned_portfolio_size: totalCount,
+        renovation_capture_summary: input.value_add_programs_only
+          ? { programs_found: 0, rent_trajectories: [], avg_implied_rent_lift_pct: null, track_record_note: emptyCaptureNote! }
+          : null,
         note: 'No comparable owned assets with TTM data found.',
       };
     }
@@ -239,12 +336,103 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
       };
     });
 
+    // ── Renovation capture summary (value_add_programs_only=true only) ──
+    //
+    // Queries the full actuals history (not just TTM) for each property to
+    // compute the rent trajectory from program start to latest available month.
+    // The implied rent lift % includes market drift; the agent is instructed to
+    // apply a market growth haircut (from fetch_market_trends) to isolate the
+    // renovation-specific lift and derive a capture rate.
+    let renovationCaptureSummary: z.infer<typeof RenovationCaptureSummarySchema> | null = null;
+
+    if (input.value_add_programs_only && propertyIds.length > 0) {
+      const parseNum = (v: unknown): number | null =>
+        v != null && !isNaN(Number(v)) ? Math.round(Number(v) * 100) / 100 : null;
+
+      const trajectoryResult = await query(
+        `SELECT
+           dma.property_id,
+           p.address_line1                                        AS address,
+           MIN(dma.report_month)                                  AS first_month,
+           MAX(dma.report_month)                                  AS last_month,
+           COUNT(DISTINCT dma.report_month)                       AS months_observed,
+           (ARRAY_AGG(dma.avg_effective_rent ORDER BY dma.report_month ASC))[1]    AS first_rent,
+           (ARRAY_AGG(dma.avg_effective_rent ORDER BY dma.report_month DESC))[1]   AS last_rent
+         FROM deal_monthly_actuals dma
+         JOIN properties p ON p.id = dma.property_id
+         WHERE dma.property_id = ANY($1::uuid[])
+           AND dma.is_budget = false
+           AND dma.avg_effective_rent IS NOT NULL
+         GROUP BY dma.property_id, p.address_line1`,
+        [propertyIds]
+      );
+
+      const rentTrajectories = trajectoryResult.rows
+        .map((r: Record<string, unknown>) => {
+          const firstRent = parseNum(r.first_rent);
+          const lastRent = parseNum(r.last_rent);
+          const liftPct = firstRent != null && lastRent != null && firstRent > 0
+            ? Math.round(((lastRent - firstRent) / firstRent) * 10000) / 10000
+            : null;
+          return {
+            property_id: String(r.property_id),
+            address: (r.address ?? null) as string | null,
+            first_month: String(r.first_month ?? ''),
+            last_month: String(r.last_month ?? ''),
+            first_effective_rent: firstRent,
+            last_effective_rent: lastRent,
+            implied_rent_lift_pct: liftPct,
+            months_observed: Number(r.months_observed ?? 0),
+          };
+        })
+        .filter(t => t.first_effective_rent != null && t.last_effective_rent != null);
+
+      const lifts = rentTrajectories
+        .map(t => t.implied_rent_lift_pct)
+        .filter((v): v is number => v != null);
+      const avgLift = lifts.length > 0
+        ? Math.round(lifts.reduce((a, b) => a + b, 0) / lifts.length * 10000) / 10000
+        : null;
+
+      const pCount = rentTrajectories.length;
+      let trackRecordNote: string;
+      if (pCount === 0) {
+        trackRecordNote =
+          'No rent trajectory data found for matching value-add programs. ' +
+          'Use archive cohort P25 capture rate default: 0.70-0.75. ' +
+          'Document as "no_track_record" with confidence=low.';
+      } else {
+        const liftRange = lifts.length > 0
+          ? `rent lifts ${(Math.min(...lifts) * 100).toFixed(1)}%-${(Math.max(...lifts) * 100).toFixed(1)}%`
+          : 'no rent lift data available';
+        trackRecordNote =
+          `Buyer has ${pCount} prior value-add program(s) in portfolio with ${liftRange} ` +
+          `(avg ${avgLift != null ? (avgLift * 100).toFixed(1) + '%' : 'N/A'} total rent lift including market drift). ` +
+          'Apply market growth haircut from fetch_market_trends to isolate renovation premium. ' +
+          `Recommended: if avg lift exceeds market growth by >12%, sponsor has demonstrated above-archive capture; ` +
+          `if lift is near market growth, capture rate is unproven — use archive P25 default (0.70-0.75).`;
+      }
+
+      renovationCaptureSummary = {
+        programs_found: pCount,
+        rent_trajectories: rentTrajectories,
+        avg_implied_rent_lift_pct: avgLift,
+        track_record_note: trackRecordNote,
+      };
+    }
+
     logger.debug('fetch_owned_asset_actuals', {
       runId: ctx.dealId,
       dealId: ctx.dealId,
       assetCount: assets.length,
+      valueAddProgramsOnly: input.value_add_programs_only,
+      renovationProgramsFound: renovationCaptureSummary?.programs_found ?? null,
     });
 
-    return { assets, total_owned_portfolio_size: totalCount };
+    return {
+      assets,
+      total_owned_portfolio_size: totalCount,
+      renovation_capture_summary: renovationCaptureSummary,
+    };
   },
 };
