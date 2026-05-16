@@ -527,19 +527,35 @@ function computeGapAnalysis(
 // ── Deal-level posture derivation ────────────────────────────────────────────
 
 /**
- * Derive the deal-level posture from the gap between baseline Y1 NOI and target Y1 NOI.
- * - offense : target is >8% above baseline — need to actively push revenue/cut expenses
- * - neutral  : target is 0-8% above baseline — moderate value-add
- * - defense  : target is at or below baseline — protect existing NOI, no aggressive actions
+ * Derive the deal-level posture from the CUMULATIVE NOI gap across the entire hold period.
+ *
+ * Y1 comparison is a known anti-pattern: both baseline and target NOI paths start at
+ * baseNoi (year 0 → year 1 step has no lift yet), so a Y1-only comparison always returns
+ * a near-zero gap and incorrectly defaults to "defense", filtering out offense actions.
+ *
+ * Correct approach: sum the total additional NOI required across all hold years, then
+ * express it as a fraction of cumulative baseline NOI.
+ *   - offense : cumulative lift needed > 12% of baseline cumulative NOI
+ *   - neutral  : 3% – 12% lift needed (moderate value-add)
+ *   - defense  : < 3% lift needed (target already close to baseline; preserve NOI)
  */
 function deriveDealPosture(
-  baselineNoiY1: number,
-  targetNoiY1: number
+  baselineNoiPath: number[],
+  targetNoiPath: number[]
 ): 'offense' | 'neutral' | 'defense' {
-  if (baselineNoiY1 <= 0) return 'offense';
-  const gapPct = (targetNoiY1 - baselineNoiY1) / baselineNoiY1;
-  if (gapPct > 0.08) return 'offense';
-  if (gapPct > 0) return 'neutral';
+  const cumulativeBaseline = baselineNoiPath.reduce((s, v) => s + v, 0);
+  if (cumulativeBaseline <= 0) return 'offense';
+
+  // Total NOI lift required over hold period (ignoring years where baseline > target)
+  const cumulativeLiftNeeded = targetNoiPath.reduce(
+    (s, t, i) => s + Math.max(0, t - (baselineNoiPath[i] ?? 0)),
+    0
+  );
+
+  const liftPct = cumulativeLiftNeeded / cumulativeBaseline;
+
+  if (liftPct > 0.12) return 'offense';
+  if (liftPct > 0.03) return 'neutral';
   return 'defense';
 }
 
@@ -839,13 +855,22 @@ function computeRoadmapIrr(
 
 // ── Step 7: Achievability Assessment ─────────────────────────────────────────
 
+/**
+ * Assess achievability of the roadmap.
+ *
+ * `roadmapIrr` is the single source of truth for IRR — it is computed from
+ * the actual trajectory cashflows by `computeRoadmapIrr()` BEFORE this function
+ * is called. We never interpolate a separate "projected IRR" here; that was a
+ * known inconsistency (it could diverge from `meta.roadmap_irr` shown in the UI).
+ */
 function assessAchievability(
   trajectory: YearlyTrajectory[],
   targetNoiPath: number[],
   baselineIrr: number,
   targetIrr: number,
+  roadmapIrr: number,
   actions: RoadmapAction[]
-): { status: AchievabilityStatus; reasoning: string; projectedIrr: number } {
+): { status: AchievabilityStatus; reasoning: string } {
   // Compare cumulative roadmap NOI lift to total NOI gap
   const totalRoadmapLift = trajectory.reduce((s, y) => s + y.noi_lift_this_year, 0);
   const totalGap = targetNoiPath.reduce(
@@ -860,29 +885,28 @@ function assessAchievability(
   const lowConfidence = actions.filter(a => a.expected_impact.confidence === 'low').length;
   const stretchRatio = lowConfidence / Math.max(actions.length, 1);
 
-  // Estimate projected IRR from roadmap NOI path
-  const projectedIrr = targetIrr * Math.min(1, gapClosed) +
-    baselineIrr * (1 - Math.min(1, gapClosed));
+  // roadmapIrr is the trajectory-computed IRR (single source of truth)
+  const roadmapIrrPct = (roadmapIrr * 100).toFixed(1);
+  const targetIrrPct = (targetIrr * 100).toFixed(1);
 
   let status: AchievabilityStatus;
   let reasoning: string;
 
   if (gapClosed >= 1.0 && stretchRatio < 0.3) {
     status = 'achievable';
-    reasoning = `Roadmap projects ${(projectedIrr * 100).toFixed(1)}% IRR vs target ${(targetIrr * 100).toFixed(1)}%. Full roadmap meets target at P50 execution across ${actions.length} named actions. ${highConfidence} actions are well-evidenced.`;
+    reasoning = `Roadmap projects ${roadmapIrrPct}% IRR vs target ${targetIrrPct}%. Full roadmap meets target at P50 execution across ${actions.length} named actions. ${highConfidence} actions are well-evidenced.`;
   } else if (gapClosed >= 0.85 && stretchRatio < 0.5) {
     status = 'achievable_with_stretch';
-    reasoning = `Roadmap closes ${(gapClosed * 100).toFixed(0)}% of the NOI gap at P50. Target is reachable if ${lowConfidence} lower-confidence actions perform at P75. Projected IRR: ${(projectedIrr * 100).toFixed(1)}%.`;
+    reasoning = `Roadmap closes ${(gapClosed * 100).toFixed(0)}% of the NOI gap at P50 (projected IRR: ${roadmapIrrPct}%). Target is reachable if ${lowConfidence} lower-confidence actions perform at P75.`;
   } else if (gapClosed >= 0.60) {
     status = 'achievable_only_with_overrides';
-    reasoning = `Roadmap closes ${(gapClosed * 100).toFixed(0)}% of the NOI gap. Reaching the ${(targetIrr * 100).toFixed(1)}% target requires either additional actions not yet in the plan, above-P75 execution on key actions, or assumption overrides not currently supported by archive evidence.`;
+    reasoning = `Roadmap closes ${(gapClosed * 100).toFixed(0)}% of the NOI gap (projected IRR: ${roadmapIrrPct}% vs target ${targetIrrPct}%). Reaching target requires either additional actions, above-P75 execution on key actions, or assumption overrides not currently supported by archive evidence.`;
   } else {
     status = 'not_achievable';
-    const maxReachable = baselineIrr + (targetIrr - baselineIrr) * gapClosed;
-    reasoning = `Target ${(targetIrr * 100).toFixed(1)}% IRR is not achievable with the current action set at P75 execution. Maximum reachable IRR with full roadmap at P75 is approximately ${(maxReachable * 100).toFixed(1)}%. To close the gap: negotiate a lower purchase price, extend the hold period, or expand the action scope.`;
+    reasoning = `Target ${targetIrrPct}% IRR is not achievable with the current action set at P75 execution. Trajectory-computed IRR with full roadmap is ${roadmapIrrPct}% (vs baseline ${(baselineIrr * 100).toFixed(1)}%). To close the gap: negotiate a lower purchase price, extend the hold period, or expand the action scope.`;
   }
 
-  return { status, reasoning, projectedIrr };
+  return { status, reasoning };
 }
 
 // ── Step 8: M36 Plausibility Check ───────────────────────────────────────────
@@ -952,10 +976,11 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
     targetProforma.noi_path_required
   );
 
-  // Step 4 — Derive deal-level posture from NOI gap
+  // Step 4 — Derive deal-level posture from cumulative NOI gap across hold period
+  // (Y1-only comparison was a known anti-pattern — see deriveDealPosture() docs)
   const dealPosture = deriveDealPosture(
-    baselineProforma.noi_path[0] ?? financials.baseNoi,
-    targetProforma.noi_path_required[0] ?? financials.baseNoi
+    baselineProforma.noi_path,
+    targetProforma.noi_path_required
   );
 
   // Step 4 — Action Inventory & Sizing (posture-gated at deal level)
@@ -972,18 +997,20 @@ export async function generateRoadmap(input: RoadmapInput): Promise<RoadmapOutpu
     holdYears
   );
 
-  // Step 7 — Achievability
+  // Compute roadmap IRR from trajectory first — it is the single source of truth
+  // for all IRR references in achievability reasoning and the meta block.
+  const roadmapIrr = computeRoadmapIrr(trajectory, financials);
+
+  // Step 7 — Achievability (uses trajectory-computed roadmapIrr — no separate interpolation)
   const baselineIrr = baselineProforma.irr / 100;
-  const { status, reasoning, projectedIrr } = assessAchievability(
+  const { status, reasoning } = assessAchievability(
     trajectory,
     targetProforma.noi_path_required,
     baselineIrr,
     requiredIrr,
+    roadmapIrr,
     sequencedActions
   );
-
-  // Compute roadmap IRR from trajectory (NOI-with-roadmap path → leveraged IRR)
-  const roadmapIrr = computeRoadmapIrr(trajectory, financials);
 
   // Step 8 — M36 Check
   const plausibilityCheck = runM36Check(financials, targetProforma.noi_path_required);

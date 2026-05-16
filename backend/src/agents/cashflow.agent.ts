@@ -21,6 +21,26 @@ import type { RunContext } from './runtime/types';
 import { generateRoadmap } from '../services/roadmap/roadmap-engine';
 import type { RoadmapInput, RoadmapOutput } from '../types/roadmap';
 
+/**
+ * Discriminated output type for Roadmap Mode.
+ *
+ * When `mode === 'roadmap'`, `execute()` returns this type instead of the full
+ * `CashflowAgentOutput` (which requires proforma_fields, collision_summary, etc.
+ * from an LLM underwriting run that roadmap mode does not invoke).
+ *
+ * Callers MUST discriminate on `mode` before reading output fields:
+ *   if (result.mode === 'roadmap') { use result.roadmap_output }
+ *   else { use result as CashflowAgentOutput }
+ */
+export interface CashflowRoadmapOutput {
+  readonly mode: 'roadmap';
+  /** Full roadmap output — the primary payload for roadmap-mode callers. */
+  roadmap_output: RoadmapOutput;
+  /** Summary fields surfaced for generic consumers that don't discriminate on mode. */
+  summary: string;
+  completed_at: string;
+}
+
 export interface CashflowAgentParams {
   dealId?: string;
   userId?: string;
@@ -63,7 +83,7 @@ export class CashFlowAgent {
    *   This makes Roadmap Mode a first-class mode of the Cashflow Agent,
    *   sharing the same authz and deal-context pipeline.
    */
-  async execute(params: CashflowAgentParams, userId?: string): Promise<CashflowAgentOutput> {
+  async execute(params: CashflowAgentParams, userId?: string): Promise<CashflowAgentOutput | CashflowRoadmapOutput> {
     const resolvedUserId = params.userId ?? userId ?? 'unknown';
     const now = new Date().toISOString();
 
@@ -106,27 +126,16 @@ export class CashFlowAgent {
 
       const roadmapOutput: RoadmapOutput = await generateRoadmap(roadmapInput);
 
-      // Return a minimal CashflowAgentOutput envelope with the full roadmap
-      // output accessible via the `roadmap_output` extension key.
-      // Callers that understand mode=roadmap should read `roadmap_output`.
-      return {
-        purchase_price: null,
-        noi_year1: roadmapOutput.baseline_proforma.noi_path[0] ?? null,
-        year1_cap_rate_pct: null,
-        irr_pct: roadmapOutput.meta.roadmap_irr,
-        avg_cash_on_cash_pct: null,
-        dscr_year1: null,
-        equity_invested: null,
-        exit_value: null,
-        investment_rating: roadmapOutput.meta.achievability_status as string,
-        summary: roadmapOutput.meta.achievability_reasoning,
-        has_t12_data: false,
-        has_rent_roll: false,
-        confidence_score: 1,
-        fields_written: [],
-        completed_at: new Date().toISOString(),
+      // Return a properly typed CashflowRoadmapOutput — no unsafe cast.
+      // Callers must discriminate on result.mode === 'roadmap' before reading
+      // roadmap-specific fields.  Generic consumers can use `result.summary`.
+      const roadmapResult: CashflowRoadmapOutput = {
+        mode: 'roadmap',
         roadmap_output: roadmapOutput,
-      } as CashflowAgentOutput & { roadmap_output: RoadmapOutput };
+        summary: roadmapOutput.meta.achievability_reasoning,
+        completed_at: new Date().toISOString(),
+      };
+      return roadmapResult;
     }
 
     // ── Standard Underwrite Mode ──────────────────────────────────────────────
