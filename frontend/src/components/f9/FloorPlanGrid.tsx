@@ -165,13 +165,21 @@ function CompCeilingCell({ ceiling }: { ceiling: CompCeiling | null }) {
     return <span style={{ color: '#334155' }}>—</span>;
   }
   return (
-    <span style={{ fontSize: 8.5, letterSpacing: 0 }}>
-      <span style={{ color: '#64748b' }}>{ceiling.p25 != null ? `$${Math.round(ceiling.p25).toLocaleString()}` : '—'}</span>
-      <span style={{ color: '#334155' }}> / </span>
-      <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{ceiling.p50 != null ? `$${Math.round(ceiling.p50).toLocaleString()}` : '—'}</span>
-      <span style={{ color: '#334155' }}> / </span>
-      <span style={{ color: '#64748b' }}>{ceiling.p75 != null ? `$${Math.round(ceiling.p75).toLocaleString()}` : '—'}</span>
-    </span>
+    <div style={{ fontSize: 8.5, letterSpacing: 0 }}>
+      <div>
+        <span style={{ color: '#64748b' }}>{ceiling.p25 != null ? `$${Math.round(ceiling.p25).toLocaleString()}` : '—'}</span>
+        <span style={{ color: '#334155' }}> / </span>
+        <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{ceiling.p50 != null ? `$${Math.round(ceiling.p50).toLocaleString()}` : '—'}</span>
+        <span style={{ color: '#334155' }}> / </span>
+        <span style={{ color: '#64748b' }}>{ceiling.p75 != null ? `$${Math.round(ceiling.p75).toLocaleString()}` : '—'}</span>
+      </div>
+      {/* Comp set sample size per spec § 9 acceptance criterion */}
+      {ceiling.sample_size != null && (
+        <div style={{ fontSize: 6.5, color: '#1e3a4a', marginTop: 1 }}>
+          n={ceiling.sample_size}{ceiling.confidence ? ` · ${ceiling.confidence}` : ''}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -315,6 +323,12 @@ export function FloorPlanGrid({
       }
       return next;
     });
+    // Schedule write-backs for all rows: per-unit walk re-runs on each
+    for (const r of sourceRows) {
+      const captureRate = rowStates[r.floor_plan_id]?.captureRate ?? DEFAULT_CAPTURE_RATE;
+      const target = pct === 0 ? null : computePostRenoTarget(r.comp_ceiling, pct);
+      schedulePositioningWriteback(r.floor_plan_id, pct, captureRate, target);
+    }
   }
 
   function acceptPlatformGrid() {
@@ -336,16 +350,63 @@ export function FloorPlanGrid({
           cost_per_unit: cost,
         });
         setWritebackErrors(prev => ({ ...prev, [floorPlanId]: false }));
+        // Frontend event for in-page consumers (DealJourneyOverlay, OperatorStance
+        // reblend). The backend route handler fires moduleEventBus.emitDebounced so
+        // the orchestrator cascades S&U / Cap Stack / M14 Risk automatically.
+        window.dispatchEvent(new CustomEvent('capex_schedule.updated', {
+          detail: { dealId, floor_plan_id: floorPlanId, cost_per_unit: cost },
+        }));
       } catch {
-        // Surface the failure — user needs to know the M22 write did not persist
         setWritebackErrors(prev => ({ ...prev, [floorPlanId]: true }));
+      }
+    }, 800);
+  }, [dealId]);
+
+  // ── Positioning write-back (debounced 800ms) ──────────────────────────────────
+  // Persists positioning percentile + capture rate to M22 capex_schedule so the
+  // per-unit walk (M07ProjectionsAdapter) and Projections tab can incorporate
+  // the sponsor's rent-positioning assumptions. Dispatch triggers LVE re-seed.
+
+  const positioningWritebackTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [positioningWritebackErrors, setPositioningWritebackErrors] = useState<Record<string, boolean>>({});
+
+  const schedulePositioningWriteback = useCallback((
+    floorPlanId: string,
+    positioningPercentile: number,
+    captureRate: number,
+    postRenoTargetRent: number | null,
+  ) => {
+    if (!dealId) return;
+    if (positioningWritebackTimers.current[floorPlanId]) {
+      clearTimeout(positioningWritebackTimers.current[floorPlanId]);
+    }
+    positioningWritebackTimers.current[floorPlanId] = setTimeout(async () => {
+      try {
+        await apiClient.patch(`/api/v1/deals/${dealId}/m22/floor-plan-positioning`, {
+          floor_plan_id: floorPlanId,
+          positioning_percentile: positioningPercentile,
+          capture_rate: captureRate,
+          post_reno_target_rent: postRenoTargetRent,
+        });
+        setPositioningWritebackErrors(prev => ({ ...prev, [floorPlanId]: false }));
+        // Notify Projections tab to re-seed LVE — updated positioning affects
+        // per-unit walk absorption curves and blended occupancy estimates.
+        window.dispatchEvent(new CustomEvent('gpr_grid.positioning_changed', {
+          detail: { dealId },
+        }));
+      } catch {
+        setPositioningWritebackErrors(prev => ({ ...prev, [floorPlanId]: true }));
       }
     }, 800);
   }, [dealId]);
 
   useEffect(() => {
     const timers = writebackTimers.current;
-    return () => { Object.values(timers).forEach(t => clearTimeout(t)); };
+    const ptimers = positioningWritebackTimers.current;
+    return () => {
+      Object.values(timers).forEach(t => clearTimeout(t));
+      Object.values(ptimers).forEach(t => clearTimeout(t));
+    };
   }, []);
 
   // ── Row update helpers ────────────────────────────────────────────────────────
@@ -354,14 +415,25 @@ export function FloorPlanGrid({
     setGlobalPositioning(null);
     const target = pct === 0 ? null : computePostRenoTarget(ceiling, pct);
     setRowStates(prev => ({ ...prev, [id]: { ...prev[id], positioningPercentile: pct, postRenoTargetRent: pct === 0 ? prev[id].postRenoTargetRent : target } }));
+    // Write-back: persist new positioning so M07ProjectionsAdapter can re-run
+    // the per-unit walk with updated rent assumptions.
+    const captureRate = rowStates[id]?.captureRate ?? DEFAULT_CAPTURE_RATE;
+    const newTarget = pct === 0 ? (rowStates[id]?.postRenoTargetRent ?? null) : target;
+    schedulePositioningWriteback(id, pct, captureRate, newTarget);
   }
 
   function updateCustomTarget(id: string, target: number | null) {
     setRowStates(prev => ({ ...prev, [id]: { ...prev[id], postRenoTargetRent: target } }));
+    const pct = rowStates[id]?.positioningPercentile ?? DEFAULT_POSITIONING;
+    const captureRate = rowStates[id]?.captureRate ?? DEFAULT_CAPTURE_RATE;
+    schedulePositioningWriteback(id, pct, captureRate, target);
   }
 
   function updateCaptureRate(id: string, rate: number) {
     setRowStates(prev => ({ ...prev, [id]: { ...prev[id], captureRate: rate } }));
+    const pct = rowStates[id]?.positioningPercentile ?? DEFAULT_POSITIONING;
+    const target = rowStates[id]?.postRenoTargetRent ?? null;
+    schedulePositioningWriteback(id, pct, rate, target);
   }
 
   function resetAllCaptureRates() {
@@ -372,6 +444,11 @@ export function FloorPlanGrid({
       }
       return next;
     });
+    for (const r of sourceRows) {
+      const pct = rowStates[r.floor_plan_id]?.positioningPercentile ?? DEFAULT_POSITIONING;
+      const target = rowStates[r.floor_plan_id]?.postRenoTargetRent ?? null;
+      schedulePositioningWriteback(r.floor_plan_id, pct, DEFAULT_CAPTURE_RATE, target);
+    }
   }
 
   function updateRenoCost(id: string, cost: number | null) {
@@ -670,6 +747,12 @@ export function FloorPlanGrid({
                           ↓ sub-P50 — below comp-set median
                         </div>
                       )}
+                      {/* Positioning write-back error indicator */}
+                      {positioningWritebackErrors[r.floor_plan_id] && (
+                        <div style={{ fontSize: 6.5, color: '#ef4444', marginTop: 2 }}>
+                          ⚠ save failed
+                        </div>
+                      )}
                     </div>
                   </td>
 
@@ -727,6 +810,15 @@ export function FloorPlanGrid({
                       <RenoCostInput
                         value={rs.renoCostPerUnit}
                         platformDefault={platformRenoCost}
+                        layeredValue={{
+                          resolved: rs.renoCostPerUnit ?? r.renovation_cost,
+                          baseline: r.renovation_cost,
+                          platform: r.renovation_cost,
+                          override: (rs.renoCostPerUnit != null && rs.renoCostPerUnit !== r.renovation_cost)
+                            ? rs.renoCostPerUnit : null,
+                          source: rs.renoCostPerUnit != null ? 'user_override'
+                            : (r.renovation_cost != null ? 'agent' : undefined),
+                        }}
                         deviates={costDeviates}
                         hasWritebackError={hasWritebackError}
                         onChange={v => updateRenoCost(r.floor_plan_id, v)}
@@ -958,16 +1050,27 @@ function CaptureRateInput({
 }
 
 // ─── Reno Cost inline editor ──────────────────────────────────────────────────
+//
+// 3-layer evidence display per spec § 4:
+//   Layer 1 (scope/baseline) — agent-derived scope estimate; gray, smallest
+//   Layer 2 (platform)       — platform-adjusted value; muted; same as baseline in Phase 1
+//   Layer 3 (override)       — sponsor's live edit; amber indicator when active
+//
+// The layeredValue prop carries all three layers. FloorPlanGrid synthesizes it
+// from (r.renovation_cost = baseline/platform) + (rs.renoCostPerUnit = override).
+// Phase 2 will wire the actual LayeredValue<T> from the agent payload.
 
 function RenoCostInput({
   value,
   platformDefault,
+  layeredValue,
   deviates,
   hasWritebackError,
   onChange,
 }: {
   value: number | null;
   platformDefault: number | null;
+  layeredValue?: LayeredNum | null;
   deviates: boolean;
   hasWritebackError: boolean;
   onChange: (v: number | null) => void;
@@ -996,6 +1099,11 @@ function RenoCostInput({
       />
     );
   }
+
+  const hasOverride = layeredValue?.override != null;
+  const baseline = layeredValue?.baseline ?? platformDefault;
+  const platform = layeredValue?.platform ?? platformDefault;
+
   return (
     <div>
       <span
@@ -1014,11 +1122,36 @@ function RenoCostInput({
         {value != null ? fmtCost(value) : 'set cost'}
         {hasWritebackError && <span style={{ marginLeft: 4, fontSize: 8 }} title="Save to M22 failed — retry">⚠</span>}
       </span>
-      {/* Platform suggestion hint when deviating */}
-      {deviates && platformDefault != null && (
-        <div style={{ fontSize: 7, color: '#64748b', marginTop: 1 }}>
-          platform: {fmtCost(platformDefault)}
+
+      {/* 3-layer evidence stack (spec § 4):
+          Layer 1: scope basis (baseline from agent/scope analysis)
+          Layer 2: platform-adjusted (same as baseline in Phase 1)
+          Layer 3: active override indicator
+          When layeredValue not provided, fall back to simple deviation hint. */}
+      {layeredValue != null ? (
+        <div style={{ fontSize: 6.5, marginTop: 2, lineHeight: '1.5' }}>
+          {baseline != null && (
+            <div style={{ color: '#1e2d3a' }}>
+              scope: {fmtCost(baseline)}
+            </div>
+          )}
+          {platform != null && platform !== baseline && (
+            <div style={{ color: '#334155' }}>
+              plat: {fmtCost(platform)}
+            </div>
+          )}
+          {hasOverride && (
+            <div style={{ color: '#f59e0b88', fontSize: 6 }}>
+              ↑ override active
+            </div>
+          )}
         </div>
+      ) : (
+        deviates && platformDefault != null && (
+          <div style={{ fontSize: 7, color: '#64748b', marginTop: 1 }}>
+            platform: {fmtCost(platformDefault)}
+          </div>
+        )
       )}
     </div>
   );

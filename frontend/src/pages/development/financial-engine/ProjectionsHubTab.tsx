@@ -66,6 +66,11 @@ export function ProjectionsHubTab({ integrityWarning, ...props }: ProjectionsHub
   // Track last seeded f9Financials reference to avoid redundant re-runs
   const lvLastSeedRef = useRef<typeof f9Financials>(null);
 
+  // Stable ref to lvInputs — lets the DOM event handler always see the latest
+  // inputs without being re-registered on every state change.
+  const lvInputsRef = useRef<LVInputs>(DEFAULT_LV_INPUTS);
+  useEffect(() => { lvInputsRef.current = lvInputs; }, [lvInputs]);
+
   // Core engine runner — accepts inputs directly to avoid stale-closure issues.
   // emitEvent=true only for user-triggered runs to prevent auto-seed feedback loop.
   const runLvEngine = useCallback(async (inputs: LVInputs, emitEvent = false) => {
@@ -95,6 +100,16 @@ export function ProjectionsHubTab({ integrityWarning, ...props }: ProjectionsHub
       setLvLoading(false);
     }
   }, [dealId]);
+
+  // Re-run LVE when FloorPlanGrid positioning changes are persisted.
+  // Positioning edits (percentile / capture rate) change the per-unit walk
+  // absorption assumptions; dispatched by FloorPlanGrid after 800ms debounce
+  // write-back succeeds (spec § data-flow: positioning → per-unit walk → Projections).
+  useEffect(() => {
+    const handler = () => { void runLvEngine(lvInputsRef.current, false); };
+    window.addEventListener('gpr_grid.positioning_changed', handler);
+    return () => window.removeEventListener('gpr_grid.positioning_changed', handler);
+  }, [runLvEngine]);
 
   // Re-seed and re-run whenever f9Financials is a new object reference
   useEffect(() => {

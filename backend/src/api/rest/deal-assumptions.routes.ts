@@ -9,6 +9,7 @@ import { Router, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { moduleEventBus, ModuleEventType } from '../../services/module-wiring/module-event-bus';
 import { bustM08Cache } from '../../services/m08-strategies.service';
 import { 
   DealAssumptionsInput, 
@@ -1925,10 +1926,144 @@ router.patch('/:dealId/m22/floor-plan-cost', requireAuth, async (req: Authentica
     }
 
     logger.info(`M22 floor-plan cost override saved: deal=${dealId} plan=${floor_plan_id} cost=${cost_per_unit}`);
+
+    // Emit M22 DATA_UPDATED so the module wiring orchestrator cascades recomputes
+    // to the P2-4 pipeline consumers: Sources & Uses (capital-structure-adapter),
+    // Cap Stack (wireCapitalStack), and M14 Risk (applyM14RiskAdjustments).
+    // The orchestrator subscribes to ModuleEventType.DATA_UPDATED in its
+    // initialize() handler and calls executeCascade from the downstream modules.
+    moduleEventBus.emitDebounced({
+      type: ModuleEventType.DATA_UPDATED,
+      sourceModule: 'M22' as Parameters<typeof moduleEventBus.emitDebounced>[0]['sourceModule'],
+      dealId,
+      data: {
+        source: 'floor_plan_grid_cost_override',
+        floor_plan_id,
+        cost_per_unit,
+      },
+      timestamp: new Date(),
+    });
+
     return res.json({ ok: true, floor_plan_id, cost_per_unit });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     logger.error(`M22 floor-plan cost write-back failed: ${msg}`);
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// ─── M22 Floor-Plan Positioning Write-Back ────────────────────────────────────
+/**
+ * PATCH /api/v1/deals/:dealId/m22/floor-plan-positioning
+ *
+ * Persists per-floor-plan positioning percentile, capture rate, and custom
+ * post-reno target rent from the FloorPlanGrid UI back to the M22 capex_schedule.
+ * Called by FloorPlanGrid after 800ms debounce when the sponsor edits the
+ * Positioning or Capture Rate cells.
+ *
+ * Body: {
+ *   floor_plan_id: string;
+ *   positioning_percentile: number;
+ *   capture_rate: number;
+ *   post_reno_target_rent: number | null;
+ * }
+ *
+ * Storage: deal_assumptions.assumptions.capex_schedule.floor_plan_positions.{id}
+ *
+ * After persisting, emits M22 DATA_UPDATED so the P2-4 projections adapter can
+ * incorporate updated positioning into the per-unit walk (phase-weighted
+ * blended occupancy and rent growth curves in M07ProjectionsAdapter).
+ */
+router.patch('/:dealId/m22/floor-plan-positioning', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const { floor_plan_id, positioning_percentile, capture_rate, post_reno_target_rent } = req.body as {
+      floor_plan_id: string;
+      positioning_percentile: number;
+      capture_rate: number;
+      post_reno_target_rent: number | null;
+    };
+
+    if (!floor_plan_id || typeof floor_plan_id !== 'string') {
+      return res.status(400).json({ error: 'floor_plan_id is required' });
+    }
+    if (typeof positioning_percentile !== 'number' || typeof capture_rate !== 'number') {
+      return res.status(400).json({ error: 'positioning_percentile and capture_rate must be numbers' });
+    }
+
+    const pool = getPool();
+
+    const dealCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (dealCheck.rowCount === 0) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    const payload = JSON.stringify({
+      positioning_percentile,
+      capture_rate,
+      post_reno_target_rent,
+      updated_at: new Date().toISOString(),
+    });
+
+    const upsertResult = await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, assumptions, updated_at)
+       VALUES (
+         $3,
+         jsonb_set(
+           jsonb_set('{}'::jsonb, ARRAY['capex_schedule'], '{}'::jsonb, true),
+           ARRAY['capex_schedule', 'floor_plan_positions', $1],
+           $2::jsonb,
+           true
+         ),
+         NOW()
+       )
+       ON CONFLICT (deal_id) DO UPDATE
+       SET assumptions = jsonb_set(
+         jsonb_set(
+           COALESCE(deal_assumptions.assumptions, '{}'::jsonb),
+           ARRAY['capex_schedule'],
+           COALESCE(
+             (COALESCE(deal_assumptions.assumptions, '{}'::jsonb))->'capex_schedule',
+             '{}'::jsonb
+           ),
+           true
+         ),
+         ARRAY['capex_schedule', 'floor_plan_positions', $1],
+         $2::jsonb,
+         true
+       ),
+       updated_at = NOW()`,
+      [floor_plan_id, payload, dealId]
+    );
+    if ((upsertResult.rowCount ?? 0) === 0) {
+      return res.status(500).json({ error: 'Failed to persist floor-plan positioning override' });
+    }
+
+    logger.info(`M22 floor-plan positioning saved: deal=${dealId} plan=${floor_plan_id} pct=${positioning_percentile} cap=${capture_rate}`);
+
+    // Emit so M07ProjectionsAdapter recalculates per-unit walk with updated
+    // positioning inputs (rent growth curves, absorption pacing).
+    moduleEventBus.emitDebounced({
+      type: ModuleEventType.DATA_UPDATED,
+      sourceModule: 'M22' as Parameters<typeof moduleEventBus.emitDebounced>[0]['sourceModule'],
+      dealId,
+      data: {
+        source: 'floor_plan_grid_positioning_override',
+        floor_plan_id,
+        positioning_percentile,
+        capture_rate,
+      },
+      timestamp: new Date(),
+    });
+
+    return res.json({ ok: true, floor_plan_id, positioning_percentile, capture_rate });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error(`M22 floor-plan positioning write-back failed: ${msg}`);
     return res.status(500).json({ error: msg });
   }
 });
