@@ -2406,6 +2406,17 @@ export async function getDealFinancials(
   {
     const _rf = (f: string) => year1Rows.find(r => r.field === f);
 
+    // Guard: if the operator has explicitly set an override on the subtotal's
+    // LayeredValue slot, preserve their intent — do NOT recompute from leaves.
+    // This lets power users pin a specific total_opex/noi/egi/nri value that
+    // differs from the bottom-up leaf sum (e.g. a blended portfolio estimate).
+    const _hasOperatorOverride = (key: string): boolean => {
+      const field = lv(year1Seed, key);
+      if (!field || typeof field !== 'object') return false;
+      const override = (field as Record<string, unknown>).override;
+      return override != null && override !== 'null';
+    };
+
     // Leaf fields that compose total_opex.  This must match OPEX_FIELDS above
     // (excluding management_fee_pct and total_opex itself).
     // 'management_fee' is the canonical $-denominated row produced by
@@ -2427,9 +2438,9 @@ export async function getDealFinancials(
       'loss_to_lease', 'vacancy_loss', 'concessions', 'bad_debt', 'non_revenue_units',
     ];
 
-    // total_opex — sum of opex leaf resolved values
+    // total_opex — sum of opex leaf resolved values (skip if operator override present)
     const _hasAnyLeafOpex = OPEX_LEAF_FIELDS.some(f => (_rf(f)?.resolved ?? null) != null);
-    if (_hasAnyLeafOpex) {
+    if (_hasAnyLeafOpex && !_hasOperatorOverride('total_opex')) {
       const _leafOpexSum = OPEX_LEAF_FIELDS.reduce(
         (s, f) => { const v = _rf(f)?.resolved; return v != null ? s + v : s; }, 0,
       );
@@ -2440,9 +2451,9 @@ export async function getDealFinancials(
       }
     }
 
-    // net_rental_income — GPR minus revenue deductions
+    // net_rental_income — GPR minus revenue deductions (skip if operator override present)
     const _gprResolved = _rf('gpr')?.resolved;
-    if (_gprResolved != null) {
+    if (_gprResolved != null && !_hasOperatorOverride('net_rental_income')) {
       const _dedSum = REV_DED_FIELDS.reduce(
         (s, f) => { const v = _rf(f)?.resolved; return v != null ? s + v : s; }, 0,
       );
@@ -2454,8 +2465,8 @@ export async function getDealFinancials(
       }
     }
 
-    // egi — net_rental_income + other_income
-    {
+    // egi — net_rental_income + other_income (skip if operator override present)
+    if (!_hasOperatorOverride('egi')) {
       const _nriResolved = _rf('net_rental_income')?.resolved;
       const _oiResolved  = _rf('other_income')?.resolved;
       if (_nriResolved != null) {
@@ -2468,8 +2479,9 @@ export async function getDealFinancials(
       }
     }
 
-    // noi — egi minus total_opex (uses the recomputed values from above)
-    {
+    // noi — egi minus total_opex (uses the recomputed values from above;
+    //   skip if operator has pinned a specific NOI)
+    if (!_hasOperatorOverride('noi')) {
       const _egiResolved   = _rf('egi')?.resolved;
       const _topexResolved = _rf('total_opex')?.resolved;
       if (_egiResolved != null && _topexResolved != null) {
@@ -2482,8 +2494,8 @@ export async function getDealFinancials(
       }
     }
 
-    // noi_after_reserves — noi minus replacement_reserves
-    {
+    // noi_after_reserves — noi minus replacement_reserves (skip if operator override)
+    if (!_hasOperatorOverride('noi_after_reserves')) {
       const _noiResolved  = _rf('noi')?.resolved;
       const _resResolved  = _rf('replacement_reserves')?.resolved;
       if (_noiResolved != null) {
