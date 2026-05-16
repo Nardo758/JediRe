@@ -11,6 +11,8 @@ import { StabilizedPotentialView } from '../../../components/F9/StabilizedPotent
 import { FloorPlanGrid } from '../../../components/f9/FloorPlanGrid';
 import type { GprUnitMixEntry } from '../../../components/f9/FloorPlanGrid';
 import { RegimeExpand } from '../../../components/f9/RegimeExpand';
+import { ReconciliationChip } from '../../../components/f9/ReconciliationChip';
+import type { HierarchicalResolution } from '../../../components/f9/ReconciliationChip';
 import { isPatternB } from '../../../config/m09_line_item_patterns';
 
 const MONO = BT.font.mono;
@@ -176,6 +178,14 @@ interface DealFinancials {
      */
     transition_timing_label?: string | null;
   }> | null;
+  /**
+   * Math engine v1.1 correction report (Task #804 / #805).
+   * Populated when a completed cashflow agent run with math_correction_report is available.
+   * Null when the agent has not yet run or produced no corrections.
+   */
+  mathCorrectionReport?: {
+    hierarchical_resolutions?: Record<string, HierarchicalResolution>;
+  } | null;
 }
 
 // ─── Sections layout ──────────────────────────────────────────────────────────
@@ -1303,6 +1313,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               // Pattern B takes precedence over ancillary breakdown for value_add / redevelopment
               const showOtherIncomePatternB = isPatternB(r.field, dealType);
               const otherIncomeBOpen = !!regimeExpandOpen[r.field];
+              // Task #805 — math engine v1.1 reconciliation for Other Income header row
+              const otherIncomeResolution = data?.mathCorrectionReport?.hierarchical_resolutions?.['proforma.revenue.other_income'] ?? null;
               return (
                 <React.Fragment key={r.field}>
                   <DataRow row={r} isEven={i % 2 === 0} shade="blue"
@@ -1319,6 +1331,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
                     dqaAlerts={dqaByRow[r.field]}
                     onDqaClick={setDqaDrawer}
+                    labelAdornment={<ReconciliationChip resolution={otherIncomeResolution} compact />}
                   />
 
                   {/* Pattern B — regime expand (value_add / redevelopment) */}
@@ -1471,9 +1484,14 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                       })}
 
                       {/* Total Other Income — named categories resolved + user lines annual */}
+                      {/* Task #805: uses engine-corrected resolved_value when math_correction_report is available */}
                       {(() => {
                         const userLinesAnnual = userLines.reduce((s, l) => s + l.monthly * 12, 0);
-                        const grandTotal = (breakdown!.total.resolved ?? 0) + userLinesAnnual;
+                        const engineResolution = data?.mathCorrectionReport?.hierarchical_resolutions?.['proforma.revenue.other_income'] ?? null;
+                        const baseResolved = engineResolution != null
+                          ? engineResolution.resolved_value
+                          : (breakdown!.total.resolved ?? 0);
+                        const grandTotal = baseResolved + userLinesAnnual;
                         return (
                           <tr style={{ background: '#041018', borderTop: '1px solid #0e2a3a', borderLeft: '3px solid #06b6d4' }}>
                             <td style={{ padding: '4px 8px 4px 28px', fontSize: 9, fontWeight: 700, color: '#38bdf8', fontFamily: MONO, position: 'sticky', left: 0, background: '#041018' }}>
@@ -1492,8 +1510,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                                 {fmtFull$(breakdown!.total.rent_roll)}
                               </td>
                             )}
-                            <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22d3ee', fontWeight: 700, fontSize: 10, fontFamily: MONO }}>
-                              {fmtFull$(grandTotal)}
+                            <td style={{ padding: '4px 6px', textAlign: 'right', color: '#22d3ee', fontWeight: 700, fontSize: 10, fontFamily: MONO }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {fmtFull$(grandTotal)}
+                                <ReconciliationChip resolution={engineResolution} />
+                              </span>
                             </td>
                             <td colSpan={4} />
                           </tr>
@@ -2856,6 +2877,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   dqaAlerts?: DqaAlertShape[];
   /** Called when user clicks a DQA icon to open the detail drawer */
   onDqaClick?: (alert: DqaAlertShape) => void;
+  /** Optional inline element rendered after the row label (e.g. ReconciliationChip for Other Income) */
+  labelAdornment?: React.ReactNode;
 }) {
   const viewMode          = useDealStore(s => s.viewMode);
   const platformColSource = useDealStore(s => s.platformColSource);
@@ -2978,8 +3001,14 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
                 · click to add lines
               </span>
             )}
+            {labelAdornment}
           </button>
-        ) : row.label}
+        ) : (
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            {row.label}
+            {labelAdornment}
+          </span>
+        )}
       </td>
 
       {/* BROKER */}

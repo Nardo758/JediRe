@@ -1792,6 +1792,39 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
     const closeDate: string | null = dateRes.rows[0]?.close_date ?? null;
     const saleDate: string | null  = dateRes.rows[0]?.sale_date  ?? null;
 
+    // Fetch math_correction_report.hierarchical_resolutions from the latest
+    // completed cashflow agent run (Task #804 / #805). Null when agent hasn't run yet.
+    let mathCorrectionReport: {
+      hierarchical_resolutions?: Record<string, {
+        resolved_value: number;
+        resolution_source: string;
+        resolution_method: string;
+        breakdown_sum?: number;
+        aggregate_value?: number;
+        reconciliation_delta?: number;
+        reconciliation_delta_pct?: number;
+        reconciliation_status: string;
+      }>;
+    } | null = null;
+    try {
+      const mathRes = await pool.query(
+        `SELECT output->'cashflow'->'math_correction_report' AS math_correction_report
+         FROM agent_runs
+         WHERE deal_id = $1
+           AND agent_id = 'pipeline'
+           AND status = 'completed'
+           AND output->'cashflow'->'math_correction_report' IS NOT NULL
+         ORDER BY completed_at DESC
+         LIMIT 1`,
+        [dealId]
+      );
+      if (mathRes.rows.length > 0 && mathRes.rows[0].math_correction_report) {
+        mathCorrectionReport = mathRes.rows[0].math_correction_report;
+      }
+    } catch {
+      // Non-fatal — UI degrades gracefully without reconciliation data
+    }
+
     // Compute hold-period returns from F9 projection engine
     const projs = buildProjectionsForExport(data, holdYears);
     const equity = data.capitalStack.equityAtClose ?? 0;
@@ -1809,7 +1842,7 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       returns = { irr, equityMultiple, cashOnCash } as any;
     }
 
-    res.json({ success: true, data: { ...data, returns, closeDate, saleDate } });
+    res.json({ success: true, data: { ...data, returns, closeDate, saleDate, mathCorrectionReport } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     logger.error('Financials endpoint error:', message);
