@@ -68,6 +68,16 @@ roadmapRouter.post(
         throw new AppError(400, 'comp_id must be a valid UUID');
       }
 
+      if (comp_id != null) {
+        const memberCheck = await query(
+          `SELECT 1 FROM competitive_sets WHERE id = $1 AND deal_id = $2 AND is_active = true`,
+          [comp_id, dealId]
+        );
+        if (memberCheck.rows.length === 0) {
+          throw new AppError(400, `comp_id ${comp_id} does not belong to this deal's active comp set`);
+        }
+      }
+
       if (comp_id != null && manual_comp != null) {
         throw new AppError(400, 'Provide either comp_id or manual_comp, not both');
       }

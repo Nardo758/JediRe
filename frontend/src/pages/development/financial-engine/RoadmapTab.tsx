@@ -696,10 +696,11 @@ function ActionEvidencePanel({ action, onClose }: { action: RoadmapAction; onClo
 
 // ── Comp Comparison Side Panel ────────────────────────────────────────────────
 
-function CompComparisonPanel({ comp, onClose, onActionClick }: {
+function CompComparisonPanel({ comp, onClose, onActionClick, roadmapActionIds }: {
   comp: CompComparison;
   onClose: () => void;
   onActionClick?: (actionId: string) => void;
+  roadmapActionIds?: Set<string>;
 }) {
   const bg         = BT.bg?.panel ?? '#0d1117';
   const bgHeader   = BT.bg?.header ?? '#010409';
@@ -863,20 +864,28 @@ function CompComparisonPanel({ comp, onClose, onActionClick }: {
                     </div>
                     {diff.replicable && diff.mapped_action_ids.length > 0 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                        {diff.mapped_action_ids.map(aid => (
-                          <span
-                            key={aid}
-                            onClick={() => onActionClick?.(aid)}
-                            title={onActionClick ? 'Click to view action details' : undefined}
-                            style={{
-                              fontFamily: MONO, fontSize: 7, color: catCol,
-                              border: `1px solid ${catCol}30`, padding: '1px 5px',
-                              borderRadius: 1, background: `${catCol}0a`,
-                              cursor: onActionClick ? 'pointer' : 'default',
-                              textDecoration: onActionClick ? 'underline dotted' : 'none',
-                            }}
-                          >→ {aid.replace(/_/g, ' ')}</span>
-                        ))}
+                        {diff.mapped_action_ids.map(aid => {
+                          const inRoadmap = !roadmapActionIds || roadmapActionIds.has(aid);
+                          return (
+                            <span
+                              key={aid}
+                              onClick={() => inRoadmap ? onActionClick?.(aid) : undefined}
+                              title={inRoadmap
+                                ? (onActionClick ? 'Click to view action details' : undefined)
+                                : 'This action was not included in the generated roadmap'}
+                              style={{
+                                fontFamily: MONO, fontSize: 7,
+                                color: inRoadmap ? catCol : textM,
+                                border: `1px solid ${inRoadmap ? catCol : textM}30`,
+                                padding: '1px 5px', borderRadius: 1,
+                                background: inRoadmap ? `${catCol}0a` : 'transparent',
+                                cursor: inRoadmap && onActionClick ? 'pointer' : 'default',
+                                textDecoration: inRoadmap && onActionClick ? 'underline dotted' : 'none',
+                                opacity: inRoadmap ? 1 : 0.4,
+                              }}
+                            >{inRoadmap ? '→' : '○'} {aid.replace(/_/g, ' ')}</span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1510,6 +1519,7 @@ export function RoadmapTab({ dealId, f9Financials }: FinancialEngineTabProps) {
             <CompComparisonPanel
               comp={roadmap.comp_comparison}
               onClose={() => setShowCompPanel(false)}
+              roadmapActionIds={new Set(roadmap.roadmap_actions.map(a => a.id))}
               onActionClick={(actionId) => {
                 const action = roadmap.roadmap_actions.find(a => a.id === actionId);
                 if (action) {
