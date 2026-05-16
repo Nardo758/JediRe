@@ -150,6 +150,19 @@ interface DealFinancials {
     last_recomputed: string | null;
     monthly_detail?: Record<string, F9ConcessionMonthlyDetail>;
   } | null;
+  /**
+   * Per-field regime data from the cashflow agent (Task #797).
+   * Keyed by the Pro Forma row field name (e.g. 'turnover', 'vacancy_loss').
+   * Populated when the agent has produced per-regime values for value-add /
+   * redevelopment deals. Null/absent when the agent has not yet run.
+   * Consumed by <RegimeExpand> (Pattern B) to show pre-renovation and
+   * post-stabilization sub-rows with real values instead of T12 fallback.
+   */
+  regimeDataByField?: Record<string, {
+    pre_renovation: { value: number | null; source: string | null; confidence?: 'high' | 'medium' | 'low' | null; note?: string | null };
+    post_stabilization: { value: number | null; source: string | null; confidence?: 'high' | 'medium' | 'low' | null; note?: string | null };
+    transition_year?: { value: number | null; source: string | null; confidence?: 'high' | 'medium' | 'low' | null; note?: string | null } | null;
+  }> | null;
 }
 
 // ─── Sections layout ──────────────────────────────────────────────────────────
@@ -1236,7 +1249,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                       label={r.label}
                       resolvedValue={r.resolved}
                       t12Value={r.t12 ?? null}
-                      regimeData={null}
+                      regimeData={data?.regimeDataByField?.[r.field] ?? null}
                       totalUnits={totalUnits}
                       egiResolved={egiResolved}
                       postStabView={showPostStabView}
@@ -1268,6 +1281,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               const breakdown  = data?.otherIncomeBreakdown ?? null;
               const hasBreakdown = breakdown != null && breakdown.rows.length > 0;
               const userLines  = data?.otherIncomeUserLines ?? [];
+              // Pattern B takes precedence over ancillary breakdown for value_add / redevelopment
+              const showOtherIncomePatternB = isPatternB(r.field, dealType);
+              const otherIncomeBOpen = !!regimeExpandOpen[r.field];
               return (
                 <React.Fragment key={r.field}>
                   <DataRow row={r} isEven={i % 2 === 0} shade="blue"
@@ -1276,13 +1292,29 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     activePeriod={activePeriod}
                     onSaveCorrection={handleSaveCorrection}
                     onResetCorrection={handleResetCorrection}
-                    onToggleAncillary={() => setShowAncillary(v => !v)}
-                    ancillaryOpen={showAncillary}
+                    onToggleAncillary={showOtherIncomePatternB
+                      ? () => toggleRegimeExpand(r.field)
+                      : () => setShowAncillary(v => !v)}
+                    ancillaryOpen={showOtherIncomePatternB ? otherIncomeBOpen : showAncillary}
                     evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                     sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
                     dqaAlerts={dqaByRow[r.field]}
                     onDqaClick={setDqaDrawer}
                   />
+
+                  {/* Pattern B — regime expand (value_add / redevelopment) */}
+                  {showOtherIncomePatternB && otherIncomeBOpen && (
+                    <RegimeExpand
+                      field={r.field}
+                      label={r.label}
+                      resolvedValue={r.resolved}
+                      t12Value={r.t12 ?? null}
+                      regimeData={data?.regimeDataByField?.[r.field] ?? null}
+                      totalUnits={totalUnits}
+                      egiResolved={egiResolved}
+                      postStabView={showPostStabView}
+                    />
+                  )}
 
                   {/* ── No breakdown available chip ── */}
                   {showAncillary && !hasBreakdown && (
@@ -1497,7 +1529,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     label={r.label}
                     resolvedValue={r.resolved}
                     t12Value={r.t12 ?? null}
-                    regimeData={null}
+                    regimeData={data?.regimeDataByField?.[r.field] ?? null}
                     totalUnits={totalUnits}
                     egiResolved={egiResolved}
                     postStabView={showPostStabView}

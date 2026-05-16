@@ -100,9 +100,19 @@ const PATTERN_TABLE: Record<string, PatternEntry> = {
 };
 
 /**
+ * Normalize a deal-type string to the canonical underscore form used in
+ * PATTERN_TABLE. The codebase uses both hyphen and underscore variants
+ * (e.g. "value-add" vs "value_add", "lease-up" vs "lease_up").
+ */
+function normalizeDealType(dt: string): DealTypeKey {
+  return dt.replace(/-/g, '_') as DealTypeKey;
+}
+
+/**
  * Returns the expand pattern for a given line item field and deal type.
  * Falls back to 'C' (no expand) when the field is not in the table,
  * or when the deal type does not match the table entry's deal type list.
+ * Deal-type strings are normalized (hyphens → underscores) before lookup.
  */
 export function getLineItemPattern(
   field: string,
@@ -111,7 +121,7 @@ export function getLineItemPattern(
   const entry = PATTERN_TABLE[field];
   if (!entry) return 'C';
   if (!dealType) return 'C';
-  const dt = dealType as DealTypeKey;
+  const dt = normalizeDealType(dealType);
   if (entry.dealTypes.includes(dt)) return entry.pattern;
   return 'C';
 }

@@ -1829,5 +1829,74 @@ router.get('/:dealId/stance/affected-fields', requireAuth, async (req: Authentic
   }
 });
 
+// ─── M22 Floor-Plan Cost Write-Back ──────────────────────────────────────────
+/**
+ * PATCH /api/v1/deals/:dealId/m22/floor-plan-cost
+ *
+ * Persists a per-floor-plan renovation cost override from the FloorPlanGrid UI
+ * (Pattern A) back to the M22 capex_schedule. Called by FloorPlanGrid on blur /
+ * after 800ms debounce when the sponsor edits the "Reno Cost per Unit" cell.
+ *
+ * Body: { floor_plan_id: string; cost_per_unit: number | null }
+ *
+ * Phase 1 implementation: stores in deal_assumptions JSONB under
+ * `m22_floor_plan_overrides` so the data survives and can be read back by
+ * FloorPlanGrid without requiring a full M22 capex schedule build.
+ * Full M22 capex schedule integration is a follow-on task.
+ */
+router.patch('/:dealId/m22/floor-plan-cost', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const { floor_plan_id, cost_per_unit } = req.body as {
+      floor_plan_id: string;
+      cost_per_unit: number | null;
+    };
+
+    if (!floor_plan_id || typeof floor_plan_id !== 'string') {
+      return res.status(400).json({ error: 'floor_plan_id is required' });
+    }
+    if (cost_per_unit !== null && (typeof cost_per_unit !== 'number' || cost_per_unit < 0)) {
+      return res.status(400).json({ error: 'cost_per_unit must be a non-negative number or null' });
+    }
+
+    const pool = getPool();
+
+    // Verify deal ownership
+    const dealCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (dealCheck.rowCount === 0) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    // Upsert the floor-plan cost override into deal_assumptions JSONB
+    await pool.query(
+      `UPDATE deal_assumptions
+       SET assumptions = jsonb_set(
+         COALESCE(assumptions, '{}'::jsonb),
+         ARRAY['m22_floor_plan_overrides', $1],
+         $2::jsonb,
+         true
+       ),
+       updated_at = NOW()
+       WHERE deal_id = $3`,
+      [
+        floor_plan_id,
+        JSON.stringify({ cost_per_unit, updated_at: new Date().toISOString() }),
+        dealId,
+      ]
+    );
+
+    logger.info(`M22 floor-plan cost override saved: deal=${dealId} plan=${floor_plan_id} cost=${cost_per_unit}`);
+    return res.json({ ok: true, floor_plan_id, cost_per_unit });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error(`M22 floor-plan cost write-back failed: ${msg}`);
+    return res.status(500).json({ error: msg });
+  }
+});
+
 export default router;
 
