@@ -1,0 +1,393 @@
+# PRO FORMA REGIME INPUT UI — ARCHITECTURE SPEC v1.1
+
+**Supersedes:** v1.0
+**Changes from v1.0:**
+- Floor-plan grid (Pattern A) expanded with two columns: Reno Cost and Yield on Cost
+- Aggregate row gains property-level yield-on-cost — the deck headline number
+- New data shape fields on `UnitMixEntry`: `renovation_cost`, `yield_on_cost`, `renovation_scope`, `scope_id`
+- M22 capex_schedule remains canonical source; grid writes back per-floor-plan cost edits
+- New Section 5.5 — scope indicator at grid header; mixed-scope handling deferred to v2 with a documented placeholder
+- New edge cases: yield-on-cost below cost-of-capital, missing cost data, scope mismatch, above-P90 cost override
+- Updated acceptance criteria
+
+**Format:** This document is a self-contained replacement for v1.0. Use this version going forward.
+
+---
+
+## 1. PURPOSE
+
+The current Pro Forma surface treats each line item as a single value with three layers of evidence. This works for stabilized deals and for line items that are genuinely single-valued.
+
+It does not work for value-add and redevelopment deals where:
+- Multiple line items have genuinely different pre-renovation and post-stabilization values
+- GPR is fundamentally a per-floor-plan grid, not a single number
+- The rent decision is incomplete without the matching renovation cost decision — yield-on-cost is the actual unit of evaluation, not premium alone
+
+This spec defines the UI surface that captures these structural realities without abandoning the existing layered assumption pattern.
+
+---
+
+## 2. THREE EXPAND PATTERNS
+
+Every Pro Forma row gets one of three expand behaviors, determined by the line item's nature. Pattern routing is per-line-item per-deal-type config.
+
+### 2.1 Pattern A — Floor-Plan Grid with Cost and Yield (GPR)
+
+**When used:** Gross Potential Rent, for deal types where floor-plan-specific underwriting matters (value-add, redevelopment, lease-up, development). For acquisition stabilized, the grid is read-only — no renovation, no positioning decision, no cost data.
+
+**Collapsed view:** Single row showing aggregate current GPR, aggregate Pro Forma GPR, Δ, driver.
+
+**Expanded view — the full floor-plan grid:**
+
+```
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Renovation Scope: Full Interior — paint, flooring, cabinets, appliances, fixtures, lighting   (set via M22)
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+FLOOR PLAN    UNITS  CURRENT   COMP CEILING (P25/P50/P75)  POSITION  POST-RENO   PREMIUM  CAPTURE  RENO COST  YIELD
+                     MARKET                                PERCENTILE TARGET     /MO     RATE    PER UNIT   ON COST
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+1BR/1BA       52     $1,425    $1,520 / $1,680 / $1,820    P50       $1,680     $255    78%     $18,500    12.9%
+1BR/1BA Den   24     $1,510    $1,610 / $1,775 / $1,920    P50       $1,775     $265    78%     $19,800    12.5%
+2BR/1BA       86     $1,680    $1,795 / $1,975 / $2,140    P50       $1,975     $295    78%     $22,400    12.3%
+2BR/2BA       72     $1,790    $1,920 / $2,115 / $2,295    P50       $2,115     $325    78%     $24,000    12.7%
+3BR/2BA       29     $2,150    $2,310 / $2,535 / $2,755    P50       $2,535     $385    78%     $29,500    12.2%
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+AGGREGATE     263    $1,627    weighted avg                wtd P50   $1,917     $290    78%     $22,650    12.5%
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Total Renovation Budget: $5,956,950  |  Total Stabilized Premium Revenue (annualized): $914,640  |  Property YoC: 15.4%
+```
+
+Each cell has an evidence pill and source indicator per the existing 3-layer pattern. The columns:
+
+| Column | Type | Source | Editable |
+|--------|------|--------|----------|
+| Floor Plan | label | rent roll | no |
+| Units | int | rent roll | no |
+| Current Market | $/unit/mo | rent roll | rare override |
+| Comp Ceiling | P25/P50/P75 | M05 comp set | no (snapshot at run time) |
+| Positioning Percentile | dropdown | platform default + sponsor input | yes |
+| Post-Reno Target | $/unit/mo | computed from positioning × comp ceiling | rare override |
+| Premium | $/unit/mo | computed (target − current) | derived |
+| Capture Rate | % | S3 owned-portfolio | yes |
+| Reno Cost per Unit | $/unit | M22 capex_schedule + 3-layer evidence | yes |
+| Yield on Cost | % | computed | derived |
+
+**The yield-on-cost calculation per floor plan:**
+
+```
+yield_on_cost_per_floor_plan =
+  (captured_premium_per_unit_per_mo × 12) / renovation_cost_per_unit
+
+where captured_premium = (post_reno_target − current_market) × capture_rate
+```
+
+Example, the 2BR/2BA row:
+
+```
+captured_premium = ($2,115 − $1,790) × 0.78 = $253.50/unit/mo
+annualized       = $253.50 × 12 = $3,042/unit/yr
+yield-on-cost    = $3,042 / $24,000 = 12.7%
+```
+
+**Property-level yield-on-cost (aggregate row footer):**
+
+```
+total_stabilized_premium_revenue = Σ (units × captured_premium × 12) across all floor plans
+total_renovation_budget          = Σ (units × renovation_cost) across all floor plans
+property_yield_on_cost           = total_stabilized_premium_revenue / total_renovation_budget
+```
+
+Property yield-on-cost is the deck headline number — what the sponsor cites in LP committee. The grid produces it automatically as a function of the grid's inputs.
+
+**Three input modes:**
+
+- **Accept platform grid** — one button applies platform's full grid: P50 positioning, archive-cohort-derived renovation cost per floor plan, sponsor's portfolio capture rate. Cells remain individually editable after acceptance.
+- **Global positioning override** — single dropdown above the grid; recalculates positioning rows but does NOT change cost rows (cost is independent of positioning).
+- **Per-row override** — sponsor adjusts individual rows. Positioning, capture rate, and renovation cost are all per-row editable.
+
+**Bidirectional editing:**
+
+The grid is bidirectional for the cost-and-positioning relationship:
+- Adjusting positioning changes post-reno target → premium → yield-on-cost (cost held constant)
+- Adjusting cost changes yield-on-cost (premium held constant)
+- The grid does NOT auto-adjust positioning when cost changes. Sponsor reasons about positioning (what's the market) and cost (what does it cost to get there) as separate inputs; yield-on-cost is the output that helps them decide if the combination is attractive.
+
+### 2.2 Pattern B — Simple Regime Expand (unchanged from v1.0)
+
+Two sub-rows for line items with regime split but no per-floor-plan variation: turnover, R&M, marketing, vacancy, concessions.
+
+### 2.3 Pattern C — Single-Value (unchanged from v1.0)
+
+Existing 3-layer pattern. No expand.
+
+---
+
+## 3. LINE-ITEM PATTERN ASSIGNMENT (unchanged from v1.0)
+
+Pattern routing table from v1.0 unchanged. GPR uses Pattern A across all deal types; renovation cost data is rendered within the GPR Pattern A grid, not as a separate row.
+
+A note on the renovation capex line item: the property-level renovation budget (Σ units × reno cost) still appears as its own Pro Forma row under `proforma.capex.total` per the field catalog. The aggregate footer of the GPR grid shows the total renovation budget for visibility, but the canonical source remains the capex line item, which itself reads from M22 capex_schedule. The relationship:
+
+```
+M22 capex_schedule  ─→  proforma.capex.total                                  (Pro Forma capex row)
+                    └─→  proforma.revenue.gpr.unit_mix[*].renovation_cost     (per-floor-plan in grid)
+```
+
+Both reads are from M22. Edits in the floor-plan grid write back to M22 capex_schedule at the per-floor-plan level. Edits to the aggregate `proforma.capex.total` are computed-only — sponsor cannot edit the property total directly; they edit per-floor-plan and the total recomputes.
+
+---
+
+## 4. PLATFORM-SUGGESTION-WITH-OVERRIDE INTERACTION (unchanged from v1.0)
+
+Each cell carries the 3-layer pattern: Baseline (gray, subtle), Platform-Adjusted (default visible), User Override (blue, primary when present). 100bps / 5% deviation thresholds trigger yellow highlight.
+
+---
+
+## 5. DATA SHAPE
+
+The UI consumes the agent's output per the field catalog. Pattern A requires the per-floor-plan grid output slots from the patched Pass 1 reference cell, **extended with cost and yield-on-cost fields**:
+
+```typescript
+proforma.revenue.gpr.unit_mix: UnitMixEntry[]
+
+interface UnitMixEntry {
+  floor_plan_id: string;            // "1br_1ba", "2br_2ba", etc.
+  floor_plan_label: string;
+  unit_count: number;
+
+  // Rent positioning fields
+  current_market_rent: LayeredValue<number>;
+  comp_ceiling: {
+    p25: number;
+    p50: number;
+    p75: number;
+    sample_size: number;
+    confidence: 'high' | 'medium' | 'low';
+  };
+  positioning_percentile: LayeredValue<number>;
+  post_reno_target_rent: LayeredValue<number>;
+  gross_premium: number;
+  capture_rate: LayeredValue<number>;
+  captured_premium: number;
+
+  // Cost and yield fields (NEW in v1.1)
+  renovation_cost: LayeredValue<number>;   // $ per unit; source: M22 capex_schedule
+  renovation_scope: string;                 // descriptor: "Full Interior", "Cosmetic", etc.
+  scope_id: string;                         // reference to M22 capex_schedule scope
+  yield_on_cost: number;                    // computed: (captured_premium × 12) / renovation_cost
+
+  evidence: CanonicalEvidence;
+}
+
+interface UnitMixAggregate {
+  total_units: number;
+  weighted_current_market: number;
+  weighted_post_reno_target: number;
+  weighted_premium: number;
+  weighted_capture_rate: number;
+  weighted_renovation_cost: number;
+  total_renovation_budget: number;
+  total_stabilized_premium_revenue: number;
+  property_yield_on_cost: number;
+}
+```
+
+The `renovation_cost.layer_sources` carries the 3-layer evidence per floor plan:
+- **Baseline:** archive cohort median per-floor-plan renovation cost for similar scope, vintage, region
+- **Platform-Adjusted:** baseline × current construction cost environment (regional labor cost index, M11 materials inflation)
+- **User Override:** sponsor's actual cost estimate, typically from contractor bids or sponsor's portfolio actuals
+
+### 5.5 Renovation Scope — header indicator and v2 placeholder
+
+The grid as specced shows **one scope per floor plan**, set at the property level via M22 capex_schedule. The scope indicator displays at the top:
+
+```
+Renovation Scope: Full Interior — paint, flooring, cabinets, appliances, fixtures, lighting
+```
+
+If M22 capex_schedule includes a scope description, render it. If not: `Renovation Scope: [not specified — set in M22]`.
+
+**Mixed-scope programs deferred to v2.** Some value-add programs apply different scopes to different unit cohorts (e.g., 50 units get full gut, 100 cosmetic-only, 113 nothing). The current grid does not support this. v2 enhancement would add a Scope column (each floor plan can have its own scope) or split rows within a floor plan ("2BR/2BA — Full Gut" and "2BR/2BA — Cosmetic" as two rows). For v1, the grid assumes one scope across the program; mixed-scope programs are flagged in agent output with `program_scope_uniformity: 'mixed'` and a warning surfaces in the grid header: "Mixed-scope program detected. v1 grid shows weighted average cost; for per-scope detail, see M22 capex_schedule."
+
+This is a real limitation worth being honest about. It's also rare in practice — most operators commit to one scope tier when they commit to a renovation program.
+
+For backward compatibility with v2, `UnitMixEntry` carries `scope_id` even in v1; in v1 it's always the property-wide scope, in v2 it can vary per row or per sub-row.
+
+---
+
+## 6. POST-STABILIZATION VIEW (updated)
+
+Tab toggle at Pro Forma surface header switches between Current / Pro Forma / Post-Stabilization views.
+
+When in Post-Stabilization view, the floor-plan grid **hides the renovation cost column and yield-on-cost column** — by this stage of the deal story, the costs have been incurred and the question is "what is the property's stabilized economics," not "what does the renovation cost." The Pro Forma view is the bridge view (shows both rent and cost); the Post-Stabilization view is the destination view (rents only).
+
+---
+
+## 7. INTEGRATION WITH EXISTING M09 SURFACE (updated for cost)
+
+Per v1.0, plus:
+
+7. **M22 write-back path.** When sponsor edits per-floor-plan renovation cost in the grid, the change writes to M22 capex_schedule at the floor-plan-cohort level. M22 is canonical source of truth; the grid is a view + edit surface. The write-back:
+   - Debounces edits (don't write on every keystroke; commit on blur or after 800ms idle)
+   - Updates both the M22 record AND local Pro Forma state so yield-on-cost recomputes immediately
+   - Reflects to other modules consuming M22 capex_schedule (Sources & Uses, Cap Stack, M14 Risk)
+
+8. **Yield-on-cost computation.** Pure derivation; no agent involvement. Computed in the M09 component at render time.
+
+9. **Property yield-on-cost callout.** The aggregate footer's `property_yield_on_cost` value should be prominent — it's the deck headline number. Render in larger type with a subtle accent, similar to how NOI is rendered in blue per existing color spec.
+
+---
+
+## 8. BUILD PHASES (updated)
+
+### Phase 1 — Bloomberg JSX prototype (1 session)
+- Mock data with full unit mix grid including cost and yield columns
+- Mock Pattern B regime expand for turnover row
+- Phasing tabs and post-stabilization view tab integrated
+- Pattern routing logic from config
+- Property-level yield-on-cost footer rendered prominently
+- File to hand to Replit/Claude Code as contract
+
+### Phase 2 — Pattern A floor-plan grid component (1 session)
+- `<FloorPlanGrid>` component with all 10 columns
+- Platform-suggestion-with-override interaction model
+- Global positioning override + per-row override
+- Yield-on-cost computed live per row + property aggregate
+- Aggregate row computation
+- Evidence pills per cell
+- Scope indicator at grid header
+
+### Phase 3 — Pattern B regime expand component (1 session)
+[Unchanged from v1.0]
+
+### Phase 4 — Pattern routing and config (1 session)
+[Unchanged from v1.0]
+
+### Phase 5 — Post-stabilization view (1 session)
+- View tab toggle
+- Filter logic to hide pre-renovation regime values
+- Hide cost and yield columns in Post-Stabilization view
+- Coordination with phasing toggle
+
+### Phase 6 — Data flow integration (1 session)
+- Sponsor positioning changes → re-run per-unit walk → Pro Forma aggregate updates
+- Sponsor cost changes → write to M22 capex_schedule → yield-on-cost recomputes
+- Caching: debounce walk re-runs; immediate yield-on-cost recompute (pure math)
+- Cross-module reflection: capex_schedule changes propagate to S&U, Cap Stack, Risk
+
+### Phase 7 — Integration testing and polish (1 session)
+- All 4 deal types render correctly
+- All 3 patterns render per deal type
+- Edge cases handled (see Section 9)
+- Performance: re-render budget under 100ms for grid edits
+
+---
+
+## 9. EDGE CASES (expanded)
+
+### Single-floor-plan property (unchanged)
+Pattern A degenerates gracefully to a single row. Aggregate row identical to the single floor plan row; UI should label or hide accordingly.
+
+### Properties with missing unit mix data (unchanged)
+Grid falls back to aggregate-only rendering with a small note: "Per-floor-plan grid unavailable — rent roll did not provide unit mix detail."
+
+### Stabilized acquisitions with renovation in flight (unchanged)
+M22 capex_schedule handles via per-unit renovation completion dates. No special UI required.
+
+### Sponsor positioning at sub-comp-set percentile (unchanged)
+Flag with note. Non-blocking.
+
+### Capture rate above 1.0 (unchanged)
+Flag with warning. Non-blocking.
+
+### Yield-on-cost below cost-of-capital (NEW)
+When the computed yield-on-cost per floor plan falls below the buyer's cost-of-capital (or below a 10% default threshold if cost-of-capital is not provided), flag the row with a small warning chip: "Yield-on-cost below threshold — renovation cost may exceed achievable premium." Non-blocking; may be intentional (sponsor accepting low yield on some floor plans to justify others), but it should surface.
+
+The cost-of-capital threshold reads from deal-level config (`deal.target_yield_threshold` if present) or defaults to 10%.
+
+### Missing renovation cost data (NEW)
+If M22 capex_schedule does not have per-floor-plan cost for one or more floor plans, render those rows with a placeholder ("—") in the Reno Cost and Yield columns. The aggregate footer still computes using only the floor plans with complete data. Show a small badge on the grid: "Missing cost data for 2 of 5 floor plans — aggregate yield reflects partial coverage."
+
+### Scope mismatch with grid assumptions (NEW)
+If M22 indicates `program_scope_uniformity: 'mixed'`, the grid header shows the v2 placeholder warning. The grid still functions — it renders weighted average cost per floor plan rather than scope-specific cost.
+
+### Renovation cost edited above archive cohort P90 (NEW)
+If sponsor overrides per-floor-plan cost more than 25% above archive cohort P90 for similar scope/vintage/region, flag the cell with the existing yellow-highlight pattern. Warning narrative: "Renovation cost is 32% above archive P90 for full interior 1980-vintage class B. Cost premium may reflect a deliberate scope upgrade or aggressive sponsor budget — investigate."
+
+---
+
+## 10. ACCEPTANCE CRITERIA (updated)
+
+1. Every Pro Forma row renders according to its assigned pattern (A / B / C) per the config
+2. Floor-plan grid for GPR shows all 10 columns per floor plan (Floor Plan, Units, Current Market, Comp Ceiling P25/P50/P75, Positioning, Post-Reno Target, Premium, Capture, Reno Cost, Yield on Cost)
+3. Positioning percentile is editable per row and globally; captured premium AND yield-on-cost recalculate live
+4. Renovation cost per unit is editable per row; yield-on-cost recalculates live; M22 capex_schedule writes back on edit commit
+5. Aggregate row reflects weighted average of floor-plan rows in real time
+6. Property-level yield-on-cost displays in the aggregate footer as a prominent callout
+7. Renovation scope indicator displays at the top of the grid; mixed-scope programs trigger v2 placeholder warning
+8. Pattern B regime expand shows pre-renovation and post-stabilization values with separate evidence
+9. Pattern C rows render identically to current behavior
+10. Post-Stabilization view tab hides pre-renovation regime values AND hides cost/yield columns
+11. Sponsor overrides flow back to the per-unit walk (positioning) and to M22 capex_schedule (cost); Projections tab and Cap Stack update accordingly
+12. Sample deals across all 4 deal types render without errors
+13. All edge cases handled: single floor plan, missing unit mix, missing cost data, sub-P50 positioning, above-1.0 capture rate, yield below cost-of-capital, scope mismatch, above-P90 cost override
+
+---
+
+## 11. OPEN QUESTIONS (updated)
+
+### Q1: Comp set rendering depth in floor-plan grid (unchanged)
+Show on click only.
+
+### Q2: User-defined floor plan grouping (unchanged)
+Rigidly use rent roll codes for v1.
+
+### Q3: Comp ceiling refresh cadence (unchanged)
+Snapshot at agent run time, persist with deal record.
+
+### Q4: Sub-percentile positioning (unchanged)
+Custom dropdown option for free-form.
+
+### Q5: Cross-floor-plan capture rate variation (unchanged)
+Behind Advanced link.
+
+### Q6: Renovation cost source-of-truth coordination with M22 (NEW)
+The grid writes back to M22 capex_schedule. M22 also has its own UI surface. What happens when:
+- User edits cost in M22 → grid shows updated values on next render? Yes — should subscribe to M22 state.
+- User edits cost in grid → M22 surface shows updated values? Yes — same state.
+- Cost edited simultaneously in both surfaces? Last-write-wins with optimistic UI; M22 is source of truth.
+
+**Recommendation:** treat M22 capex_schedule as shared state object; both grid and M22 surface read from and write to it.
+
+### Q7: Yield-on-cost as a decision filter (NEW)
+Some sponsors will want to filter the grid to show only floor plans with yield above (or below) a threshold. Should the grid support yield-on-cost filtering at the top?
+
+**Recommendation:** v2 enhancement. v1 ships with data visible per row; sponsors read across rows manually. Filtering controls add UI density without clear v1 value — wait for demand.
+
+### Q8: Pre-renovation capture (NEW)
+For value-add deals with mid-stream renovation (some units already renovated at acquisition), the grid currently treats all units as pre-renovation. Should units already captured be shown differently?
+
+**Recommendation:** for v1, grid reflects only units to be renovated. Captured-already units bypass renovation premium math (their rent is already at post-reno market). Grid header notes: "Showing X of Y units to be renovated; Z units previously captured." For v2, surface a sub-grid showing the captured-already cohort.
+
+### Q9: Renovation cost evidence depth in evidence panel (NEW)
+When sponsor clicks the evidence pill on a per-floor-plan cost cell, what does the panel show?
+- Archive cohort: "Median renovation cost for full interior 1980-vintage Westshore Class B: $22,400/unit (n=8 deals, P25-P75 range $19,200-$26,800)"
+- Owned portfolio: "Sponsor's last 3 similar repositionings: $21,800, $23,500, $22,100 — median $22,100"
+- M22 capex_schedule: "Current budget: $22,400/unit — last edited by [user] on [date]"
+
+**Recommendation:** show all three layers in the evidence panel, similar to rent cells. The cost cell is structurally the same as a rent cell — multi-source value with current selection.
+
+---
+
+## 12. CHANGELOG
+
+**v1.1 (current)**
+- Added renovation cost column and yield-on-cost column to floor-plan grid
+- Added property-level yield-on-cost to aggregate footer (deck headline number)
+- Extended `UnitMixEntry` data shape with `renovation_cost`, `renovation_scope`, `scope_id`, `yield_on_cost`
+- Added Section 5.5: scope indicator at grid header, v2 placeholder for mixed-scope programs
+- Added 4 new edge cases: yield below cost-of-capital, missing cost data, scope mismatch, above-P90 cost override
+- Added 4 new open questions (Q6-Q9): M22 coordination, yield filter, pre-renovation capture, cost evidence depth
+
+**v1.0 (archival)**
+- Initial spec — three expand patterns, floor-plan grid for GPR rent only, simple regime expand for B-pattern items, single-value for C-pattern items
