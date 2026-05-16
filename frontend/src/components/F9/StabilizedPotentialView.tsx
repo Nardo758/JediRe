@@ -279,7 +279,7 @@ interface ConstraintsPanelProps {
 }
 
 const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints, bindingConstraint }) => {
-  if (constraints.length === 0) return null;
+  if (!constraints || constraints.length === 0) return null;
 
   return (
     <div
@@ -432,7 +432,7 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
 
       {/* Constraints panel */}
       <ConstraintsPanel
-        constraints={data.constraints}
+        constraints={data.constraints ?? []}
         bindingConstraint={data.bindingConstraint}
       />
 
@@ -681,28 +681,30 @@ const StabilizedPotentialView: React.FC<StabilizedPotentialViewProps> = ({ dealI
         })}
       </div>
 
-      {/* Summary block */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 12,
-          marginTop: 20,
-        }}
-      >
-        <SummaryCard label="NOI Growth" value={fmt$(data.summary.noiGrowth)} />
-        <SummaryCard label="Stabilized Value" value={fmt$(data.summary.stabilizedValue)} />
-        <SummaryCard
-          label="Value Creation"
-          value={fmt$(data.summary.valueCreation)}
-          valueColor={data.summary.valueCreation >= 0 ? '#22c55e' : '#ef4444'}
-        />
-        <SummaryCard label="Yield-on-Cost" value={fmtPct(data.summary.yieldOnCost)} />
-        <SummaryCard label="Going-In Cap Rate" value={fmtPct(data.summary.goingInCapRate)} />
-        <SummaryCard label="Exit Cap Rate" value={fmtPct(data.summary.exitCapRate)} />
-        <SummaryCard label="Pro Forma NOI" value={fmt$(data.summary.proFormaNoi)} />
-        <SummaryCard label="Current NOI" value={fmt$(data.summary.currentNoi)} />
-      </div>
+      {/* Summary block — guarded: server may return data without summary yet */}
+      {data.summary && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: 12,
+            marginTop: 20,
+          }}
+        >
+          <SummaryCard label="NOI Growth" value={fmt$(data.summary.noiGrowth)} />
+          <SummaryCard label="Stabilized Value" value={fmt$(data.summary.stabilizedValue)} />
+          <SummaryCard
+            label="Value Creation"
+            value={fmt$(data.summary.valueCreation)}
+            valueColor={data.summary.valueCreation >= 0 ? '#22c55e' : '#ef4444'}
+          />
+          <SummaryCard label="Yield-on-Cost" value={fmtPct(data.summary.yieldOnCost)} />
+          <SummaryCard label="Going-In Cap Rate" value={fmtPct(data.summary.goingInCapRate)} />
+          <SummaryCard label="Exit Cap Rate" value={fmtPct(data.summary.exitCapRate)} />
+          <SummaryCard label="Pro Forma NOI" value={fmt$(data.summary.proFormaNoi)} />
+          <SummaryCard label="Current NOI" value={fmt$(data.summary.currentNoi)} />
+        </div>
+      )}
 
       {/* Bridge popover — suppressed in dev mode */}
       {expandedBridge && !data.devMode && (
