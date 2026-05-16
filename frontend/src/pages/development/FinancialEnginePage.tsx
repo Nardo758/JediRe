@@ -416,7 +416,11 @@ interface FinancialEnginePageProps {
 export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDealType }: FinancialEnginePageProps) {
   const params = useParams<{ id?: string; dealId?: string }>();
   const resolvedDealId = dealId || params.dealId || params.id || '';
-  const resolvedDealType: DealType = (propDealType as DealType) || 'existing';
+  // Resolve deal type from prop → deal record → platform default.
+  // Never silently default to 'existing' when the deal has a project_type on the record.
+  const resolvedDealType: DealType = (propDealType as DealType)
+    || (propDeal?.project_type as DealType | undefined)
+    || 'existing';
 
   // Roadmap tab (index 8) is only surfaced for value-add and redevelopment deals.
   // Declared early so all subsequent callbacks close over the correct binding.

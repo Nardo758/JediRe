@@ -562,8 +562,8 @@ export function RoadmapTab({ dealId, f9Financials }: FinancialEngineTabProps) {
         credentials: 'include',
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json() as { success: boolean; output?: RoadmapOutput; roadmap?: RoadmapOutput };
-      setRoadmap(json.output ?? json.roadmap ?? null);
+      const json = await res.json() as { success: boolean; output?: RoadmapOutput | null };
+      setRoadmap(json.output ?? null);
     } catch (err) {
       // No existing roadmap — this is fine
       setRoadmap(null);

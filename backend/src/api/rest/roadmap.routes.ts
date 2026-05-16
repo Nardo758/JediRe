@@ -167,7 +167,7 @@ roadmapRouter.get(
       );
 
       if (result.rows.length === 0) {
-        res.json({ success: true, roadmap: null, deal_id: dealId });
+        res.json({ success: true, output: null, deal_id: dealId });
         return;
       }
 
