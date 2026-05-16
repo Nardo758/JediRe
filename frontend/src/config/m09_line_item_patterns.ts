@@ -8,6 +8,9 @@
  *
  * Pattern assignment is per-line-item per-deal-type. Deal types that
  * do not have a specific entry fall back to 'C'.
+ *
+ * Source of truth: PRO_FORMA_REGIME_INPUT_UI_SPEC v1.0 § 3 Line-Item
+ * Pattern Assignment table.
  */
 
 export type LineItemPattern = 'A' | 'B' | 'C';
@@ -25,34 +28,74 @@ interface PatternEntry {
   dealTypes: DealTypeKey[];
 }
 
+/**
+ * Spec § 3 pattern table. Only B-pattern entries are listed here
+ * (C is the default fallback). GPR (A) is the one A-pattern entry.
+ *
+ * Omissions vs spec that remain C for all deal types:
+ *   property_tax, insurance, payroll, management_fee, capex_reserve,
+ *   cap_rate, debt_assumptions, exit_cap
+ */
 const PATTERN_TABLE: Record<string, PatternEntry> = {
+  // ── Pattern A ─────────────────────────────────────────────────────────────
   gpr: {
     pattern: 'A',
     dealTypes: ['value_add', 'redevelopment', 'development', 'lease_up', 'stabilized', 'existing'],
   },
+
+  // ── Pattern B ─────────────────────────────────────────────────────────────
+  // Vacancy: B for value_add, development, redevelopment; C for stabilized
   vacancy_loss: {
     pattern: 'B',
-    dealTypes: ['value_add', 'redevelopment'],
+    dealTypes: ['value_add', 'redevelopment', 'development'],
   },
+
+  // Concessions: B for value_add, development, redevelopment
   concessions: {
+    pattern: 'B',
+    dealTypes: ['value_add', 'redevelopment', 'development'],
+  },
+
+  // Bad Debt: B for value_add and redevelopment; C for development
+  bad_debt: {
     pattern: 'B',
     dealTypes: ['value_add', 'redevelopment'],
   },
+
+  // Other Income: B for value_add and redevelopment; C for development
+  other_income: {
+    pattern: 'B',
+    dealTypes: ['value_add', 'redevelopment'],
+  },
+
+  // Utilities: B for redevelopment only
+  utilities: {
+    pattern: 'B',
+    dealTypes: ['redevelopment'],
+  },
+
+  // R&M: B for value_add and redevelopment; C for development
   repairs_maintenance: {
     pattern: 'B',
     dealTypes: ['value_add', 'redevelopment'],
   },
+
+  // Marketing: B for value_add, development, redevelopment
   marketing: {
     pattern: 'B',
-    dealTypes: ['value_add', 'redevelopment'],
+    dealTypes: ['value_add', 'redevelopment', 'development'],
   },
-  turnover: {
-    pattern: 'B',
-    dealTypes: ['value_add', 'redevelopment'],
-  },
+
+  // Service Contracts: B when structural change expected (value_add, redevelopment)
   contract_services: {
     pattern: 'B',
     dealTypes: ['value_add', 'redevelopment'],
+  },
+
+  // Turnover Cost: B for value_add, development, redevelopment
+  turnover: {
+    pattern: 'B',
+    dealTypes: ['value_add', 'redevelopment', 'development'],
   },
 };
 

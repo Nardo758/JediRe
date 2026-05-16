@@ -3,16 +3,26 @@
  *
  * Two sub-rows for line items with a regime split but no per-floor-plan
  * variation: turnover, R&M, marketing, vacancy, concessions,
- * contract_services.
+ * contract_services, bad_debt, other_income, utilities.
  *
- * Sub-rows:
- *   Pre-Renovation  — in-progress renovation environment (elevated costs,
- *                     displacement loss, active construction)
- *   Post-Stabilization — normalized stabilized economics
+ * Sub-rows (per spec § 2.2):
+ *   Pre-Renovation  — in-progress renovation environment (Y1 through
+ *                     stabilization year − 1). Sourced from T12 trailing
+ *                     actuals when cashflow agent has not yet run.
+ *   Post-Stabilization — normalized stabilized economics (Y3 onward).
+ *                     Always shows the proforma resolved value when agent
+ *                     data is absent.
+ *   Transition Year — optional; rendered when agent produces a phased
+ *                     bridge value between the two regimes.
  *
- * Data: consumed from regimeData prop when cashflow agent has produced
- * per-regime values. Falls back to the single proforma row resolved value
- * with a placeholder note when regime split is not yet available.
+ * Props:
+ *   t12Value      — trailing 12-month actual value; used as pre-renovation
+ *                   baseline when regimeData is null (meaningful even before
+ *                   the agent runs).
+ *   postStabView  — when true, hides the pre-renovation row (post-stab
+ *                   column view for the parent Pro Forma surface).
+ *   regimeData    — rich per-regime values from the cashflow agent. When
+ *                   present, overrides the derived fallback display.
  */
 
 import React from 'react';
@@ -21,7 +31,7 @@ import { BT } from '../deal/bloomberg-ui';
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
 
-// ─── Data shape ───────────────────────────────────────────────────────────────
+// ─── Data shapes ──────────────────────────────────────────────────────────────
 
 export interface RegimeValue {
   value: number | null;
@@ -40,9 +50,11 @@ interface Props {
   field: string;
   label: string;
   resolvedValue: number | null;
+  t12Value?: number | null;
   regimeData?: RegimeData | null;
   totalUnits?: number;
   egiResolved?: number | null;
+  postStabView?: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -61,6 +73,14 @@ function pctOfEgi(val: number | null, egi: number | null): string {
 function perUnit(val: number | null, units: number | undefined): string {
   if (val == null || !units || units === 0) return '—';
   return `$${Math.round(Math.abs(val) / units).toLocaleString()}/u`;
+}
+
+function fmtDelta(pre: number | null, post: number | null): string {
+  if (pre == null || post == null) return '—';
+  const d = post - pre;
+  const sign = d >= 0 ? '+' : '';
+  if (Math.abs(d) >= 1_000_000) return `${sign}$${(d / 1_000_000).toFixed(2)}M`;
+  return `${sign}$${Math.round(d).toLocaleString()}`;
 }
 
 const SOURCE_COLOR: Record<string, string> = {
@@ -140,7 +160,9 @@ function RegimeRow({
         background: '#07101a',
         borderLeft: '1px solid #0e2235', borderRight: '1px solid #0e2235',
       }}>
-        {isPlaceholder ? 'pending agent run' : fmt$(val)}
+        {isPlaceholder ? (
+          <span style={{ color: '#334155', fontSize: 8 }}>pending agent run</span>
+        ) : fmt$(val)}
       </td>
 
       {/* % of EGI */}
@@ -150,7 +172,7 @@ function RegimeRow({
 
       {/* Source badge */}
       <td style={{ padding: '3px 8px', textAlign: 'left', fontSize: 7.5 }}>
-        {src && (
+        {!isPlaceholder && src && (
           <span style={{
             fontFamily: MONO, color: sourceColor(src),
             background: `${sourceColor(src)}14`,
@@ -169,7 +191,7 @@ function RegimeRow({
       </td>
 
       {/* Note */}
-      <td style={{ padding: '3px 8px', fontSize: 8, color: '#334155', fontStyle: 'italic', fontFamily: LABEL }}>
+      <td style={{ padding: '3px 8px', fontSize: 8, color: '#475569', fontStyle: 'italic', fontFamily: LABEL }}>
         {rv?.note ?? ''}
       </td>
     </tr>
@@ -178,75 +200,99 @@ function RegimeRow({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function RegimeExpand({ field: _field, label, resolvedValue, regimeData, totalUnits, egiResolved }: Props) {
-  const hasData = regimeData != null && (
+export function RegimeExpand({
+  field: _field,
+  label,
+  resolvedValue,
+  t12Value,
+  regimeData,
+  totalUnits,
+  egiResolved,
+  postStabView = false,
+}: Props) {
+  const hasAgentData = regimeData != null && (
     regimeData.pre_renovation.value != null ||
     regimeData.post_stabilization.value != null
   );
 
-  if (!hasData) {
-    return (
-      <>
-        {/* Pre-renovation row — placeholder */}
-        <RegimeRow
-          regimeLabel="Pre-Renovation"
-          accentColor="#f59e0b"
-          rv={{ value: null, source: null }}
-          totalUnits={totalUnits}
-          egiResolved={egiResolved}
-          isPlaceholder
-        />
+  // Derive pre-renovation proxy from T12 when agent hasn't run yet.
+  // T12 trailing actuals represent the current in-place (pre-renovation)
+  // operating environment — the best available pre-reno baseline.
+  const derivedPreReno: RegimeValue | null = !hasAgentData && t12Value != null
+    ? { value: t12Value, source: 't12', note: 'trailing 12-month actual (pre-reno baseline)' }
+    : null;
 
-        {/* Post-stabilization row — show resolved value as proxy */}
-        <RegimeRow
-          regimeLabel="Post-Stabilization"
-          accentColor="#22c55e"
-          rv={{
-            value: resolvedValue,
-            source: 'platform',
-            note: 'stabilized projection',
-          }}
-          totalUnits={totalUnits}
-          egiResolved={egiResolved}
-        />
+  const preRenoRv: RegimeValue | null = hasAgentData
+    ? regimeData!.pre_renovation
+    : derivedPreReno;
 
-        {/* Hint */}
-        <tr style={{ background: '#040a0e' }}>
-          <td colSpan={9} style={{
-            padding: '2px 8px 2px 28px', fontSize: 7.5, color: '#1e2a38',
-            fontFamily: LABEL, fontStyle: 'italic',
-          }}>
-            Run Cashflow Agent to populate per-regime values for {label}
-          </td>
-        </tr>
-      </>
-    );
-  }
+  const postStabRv: RegimeValue = hasAgentData
+    ? regimeData!.post_stabilization
+    : { value: resolvedValue, source: 'platform', note: 'pro forma stabilized projection' };
+
+  const transitionRv: RegimeValue | null = hasAgentData && regimeData!.transition_year
+    ? regimeData!.transition_year
+    : null;
+
+  // Delta between pre-reno and post-stab for the sub-header
+  const delta = fmtDelta(preRenoRv?.value ?? null, postStabRv.value);
+  const preIsPlaceholder = !hasAgentData && derivedPreReno == null;
 
   return (
     <>
-      <RegimeRow
-        regimeLabel="Pre-Renovation"
-        accentColor="#f59e0b"
-        rv={regimeData.pre_renovation}
-        totalUnits={totalUnits}
-        egiResolved={egiResolved}
-      />
+      {/* Regime sub-header */}
+      <tr style={{ background: '#040a10' }}>
+        <td colSpan={9} style={{
+          padding: '2px 8px 2px 24px', fontFamily: MONO, fontSize: 7.5,
+          color: '#1e3a4a', letterSpacing: '0.04em', borderBottom: '1px solid #0a1520',
+        }}>
+          PRE-RENOVATION → POST-STABILIZATION
+          {!hasAgentData && (
+            <span style={{ marginLeft: 8, color: '#1a2a1a', fontStyle: 'italic' }}>
+              {derivedPreReno != null
+                ? '· pre-reno from T12 actuals · post-stab from platform proforma'
+                : '· run Cashflow Agent for per-regime values'}
+            </span>
+          )}
+          {preRenoRv?.value != null && postStabRv.value != null && (
+            <span style={{
+              marginLeft: 12, fontFamily: MONO, fontSize: 7,
+              color: delta.startsWith('+') ? '#1a3a2a' : '#3a1a1a',
+            }}>
+              Δ {delta}
+            </span>
+          )}
+        </td>
+      </tr>
 
-      {regimeData.transition_year && (
+      {/* Pre-renovation row — hidden in post-stab view */}
+      {!postStabView && (
+        <RegimeRow
+          regimeLabel="Pre-Renovation"
+          accentColor="#f59e0b"
+          rv={preRenoRv}
+          totalUnits={totalUnits}
+          egiResolved={egiResolved}
+          isPlaceholder={preIsPlaceholder}
+        />
+      )}
+
+      {/* Transition year row (agent data only) */}
+      {!postStabView && transitionRv && (
         <RegimeRow
           regimeLabel="Transition Year"
           accentColor="#a78bfa"
-          rv={regimeData.transition_year}
+          rv={transitionRv}
           totalUnits={totalUnits}
           egiResolved={egiResolved}
         />
       )}
 
+      {/* Post-stabilization row */}
       <RegimeRow
         regimeLabel="Post-Stabilization"
         accentColor="#22c55e"
-        rv={regimeData.post_stabilization}
+        rv={postStabRv}
         totalUnits={totalUnits}
         egiResolved={egiResolved}
       />

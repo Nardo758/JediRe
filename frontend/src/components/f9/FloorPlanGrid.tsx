@@ -10,16 +10,25 @@
  * Live math: YoC = (captured_premium × 12) / reno_cost
  * Aggregate footer: property-level YoC = total_premium_revenue / total_reno_budget
  *
+ * Positioning options per spec § 2.1: P25 / P40 / P50 / P60 / P75 / P90 / Custom
+ *   Custom: user enters post-reno target rent directly.
+ *
+ * Evidence-pill semantics (spec § 4):
+ *   - Platform-suggested value shown as subtle hint below editable cells
+ *   - Yellow highlight when user override deviates >100bps (% field) or
+ *     >5% (dollar field) from platform suggestion
+ *   - Error indicator on reno cost cell when M22 writeback fails
+ *
+ * Input modes (spec § 2.1):
+ *   Accept Platform Grid — applies P50 positioning to all rows
+ *   Global Positioning Override — single dropdown above the grid
+ *   Per-row Override — individual row controls
+ *   Reset Capture Rate — reverts to portfolio default
+ *
  * Data sources (in priority order):
  *   1. gprUnitMix — cashflow agent output (rich, all columns populated)
- *   2. rentRollMix — rent roll unit mix (current market rent only; other cols empty)
+ *   2. rentRollMix — rent roll unit mix (current market rent only)
  *   3. null       — shows "grid unavailable" message
- *
- * Edit semantics:
- *   - Positioning Percentile: dropdown (P25/P50/P75/P90) — recalcs target + YoC immediately
- *   - Capture Rate: numeric input — recalcs YoC immediately
- *   - Reno Cost per Unit: numeric input — recalcs YoC immediately; writes back to
- *     M22 capex_schedule on blur / after 800ms idle (PATCH /api/v1/deals/:id/m22/floor-plan-cost)
  *
  * Post-stabilization view: hides Reno Cost + Yield columns per spec § 6.
  */
@@ -76,8 +85,11 @@ export interface RentRollUnitRow {
   concessionPct: number | null;
 }
 
+// 0 is sentinel for Custom mode (user enters target rent directly)
+type PositioningPct = 25 | 40 | 50 | 60 | 75 | 90 | 0;
+
 interface RowState {
-  positioningPercentile: number;
+  positioningPercentile: PositioningPct;
   captureRate: number;
   renoCostPerUnit: number | null;
   postRenoTargetRent: number | null;
@@ -92,6 +104,25 @@ interface Props {
   renovationScope?: string | null;
   scopeUniformity?: 'uniform' | 'mixed' | null;
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const POSITIONING_OPTIONS: { label: string; value: PositioningPct }[] = [
+  { label: 'P25', value: 25 },
+  { label: 'P40', value: 40 },
+  { label: 'P50', value: 50 },
+  { label: 'P60', value: 60 },
+  { label: 'P75', value: 75 },
+  { label: 'P90', value: 90 },
+  { label: 'Custom', value: 0 },
+];
+
+const DEFAULT_CAPTURE_RATE = 0.78;
+const DEFAULT_POSITIONING: PositioningPct = 50;
+const YOC_THRESHOLD = 0.10;
+// Deviation thresholds per spec § 4
+const PCT_DEVIATION_BPS = 0.01;  // 100 bps
+const DOLLAR_DEVIATION_PCT = 0.05; // 5%
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
 
@@ -154,11 +185,27 @@ function computeYoC(
 
 function computePostRenoTarget(
   ceiling: CompCeiling | null,
-  percentile: number,
+  percentile: PositioningPct,
 ): number | null {
-  if (!ceiling) return null;
+  if (!ceiling || percentile === 0) return null;
   if (percentile <= 25) return ceiling.p25;
+  if (percentile <= 40) {
+    // Interpolate between P25 and P50
+    const p25 = ceiling.p25;
+    const p50 = ceiling.p50;
+    if (p25 == null) return p50;
+    if (p50 == null) return p25;
+    return p25 + (p50 - p25) * 0.6;
+  }
   if (percentile <= 50) return ceiling.p50 ?? ceiling.p25;
+  if (percentile <= 60) {
+    // Interpolate between P50 and P75
+    const p50 = ceiling.p50;
+    const p75 = ceiling.p75;
+    if (p50 == null) return p75;
+    if (p75 == null) return p50;
+    return p50 + (p75 - p50) * 0.4;
+  }
   if (percentile <= 75) return ceiling.p75 ?? ceiling.p50 ?? ceiling.p25;
   if (percentile <= 90) {
     const p75 = ceiling.p75;
@@ -168,17 +215,6 @@ function computePostRenoTarget(
   }
   return ceiling.p75;
 }
-
-const POSITIONING_OPTIONS = [
-  { label: 'P25', value: 25 },
-  { label: 'P50', value: 50 },
-  { label: 'P75', value: 75 },
-  { label: 'P90', value: 90 },
-];
-
-const DEFAULT_CAPTURE_RATE = 0.78;
-const DEFAULT_POSITIONING = 50;
-const YOC_THRESHOLD = 0.10;
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -220,8 +256,11 @@ export function FloorPlanGrid({
   const [rowStates, setRowStates] = useState<Record<string, RowState>>(() => {
     const init: Record<string, RowState> = {};
     for (const r of sourceRows) {
+      const rawPct = r.positioning_percentile;
+      const pct: PositioningPct = (rawPct === 25 || rawPct === 40 || rawPct === 50 ||
+        rawPct === 60 || rawPct === 75 || rawPct === 90) ? rawPct : DEFAULT_POSITIONING;
       init[r.floor_plan_id] = {
-        positioningPercentile: r.positioning_percentile ?? DEFAULT_POSITIONING,
+        positioningPercentile: pct,
         captureRate: r.capture_rate ?? DEFAULT_CAPTURE_RATE,
         renoCostPerUnit: r.renovation_cost ?? null,
         postRenoTargetRent: r.post_reno_target_rent ?? null,
@@ -234,12 +273,19 @@ export function FloorPlanGrid({
     setRowStates(prev => {
       const next: Record<string, RowState> = {};
       for (const r of sourceRows) {
-        next[r.floor_plan_id] = prev[r.floor_plan_id] ?? {
-          positioningPercentile: r.positioning_percentile ?? DEFAULT_POSITIONING,
-          captureRate: r.capture_rate ?? DEFAULT_CAPTURE_RATE,
-          renoCostPerUnit: r.renovation_cost ?? null,
-          postRenoTargetRent: r.post_reno_target_rent ?? null,
-        };
+        if (!prev[r.floor_plan_id]) {
+          const rawPct = r.positioning_percentile;
+          const pct: PositioningPct = (rawPct === 25 || rawPct === 40 || rawPct === 50 ||
+            rawPct === 60 || rawPct === 75 || rawPct === 90) ? rawPct : DEFAULT_POSITIONING;
+          next[r.floor_plan_id] = {
+            positioningPercentile: pct,
+            captureRate: r.capture_rate ?? DEFAULT_CAPTURE_RATE,
+            renoCostPerUnit: r.renovation_cost ?? null,
+            postRenoTargetRent: r.post_reno_target_rent ?? null,
+          };
+        } else {
+          next[r.floor_plan_id] = prev[r.floor_plan_id];
+        }
       }
       return next;
     });
@@ -247,24 +293,29 @@ export function FloorPlanGrid({
 
   // ── Global positioning override ───────────────────────────────────────────────
 
-  const [globalPositioning, setGlobalPositioning] = useState<number | null>(null);
+  const [globalPositioning, setGlobalPositioning] = useState<PositioningPct | null>(null);
 
-  function applyGlobalPositioning(pct: number) {
+  function applyGlobalPositioning(pct: PositioningPct) {
     setGlobalPositioning(pct);
     setRowStates(prev => {
       const next = { ...prev };
       for (const r of sourceRows) {
         const id = r.floor_plan_id;
-        const target = computePostRenoTarget(r.comp_ceiling, pct);
+        const target = pct === 0 ? null : computePostRenoTarget(r.comp_ceiling, pct);
         next[id] = { ...next[id], positioningPercentile: pct, postRenoTargetRent: target };
       }
       return next;
     });
   }
 
-  // ── M22 write-back (debounced 800ms) ─────────────────────────────────────────
+  function acceptPlatformGrid() {
+    applyGlobalPositioning(50);
+  }
+
+  // ── M22 write-back (debounced 800ms, with error tracking) ────────────────────
 
   const writebackTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [writebackErrors, setWritebackErrors] = useState<Record<string, boolean>>({});
 
   const scheduleWriteback = useCallback((floorPlanId: string, cost: number | null) => {
     if (!dealId) return;
@@ -275,8 +326,10 @@ export function FloorPlanGrid({
           floor_plan_id: floorPlanId,
           cost_per_unit: cost,
         });
+        setWritebackErrors(prev => ({ ...prev, [floorPlanId]: false }));
       } catch {
-        // Non-fatal — endpoint may not exist in v1; grid still reflects local state
+        // Surface the failure — user needs to know the M22 write did not persist
+        setWritebackErrors(prev => ({ ...prev, [floorPlanId]: true }));
       }
     }, 800);
   }, [dealId]);
@@ -288,18 +341,33 @@ export function FloorPlanGrid({
 
   // ── Row update helpers ────────────────────────────────────────────────────────
 
-  function updatePositioning(id: string, pct: number, ceiling: CompCeiling | null) {
+  function updatePositioning(id: string, pct: PositioningPct, ceiling: CompCeiling | null) {
     setGlobalPositioning(null);
-    const target = computePostRenoTarget(ceiling, pct);
-    setRowStates(prev => ({ ...prev, [id]: { ...prev[id], positioningPercentile: pct, postRenoTargetRent: target } }));
+    const target = pct === 0 ? null : computePostRenoTarget(ceiling, pct);
+    setRowStates(prev => ({ ...prev, [id]: { ...prev[id], positioningPercentile: pct, postRenoTargetRent: pct === 0 ? prev[id].postRenoTargetRent : target } }));
+  }
+
+  function updateCustomTarget(id: string, target: number | null) {
+    setRowStates(prev => ({ ...prev, [id]: { ...prev[id], postRenoTargetRent: target } }));
   }
 
   function updateCaptureRate(id: string, rate: number) {
     setRowStates(prev => ({ ...prev, [id]: { ...prev[id], captureRate: rate } }));
   }
 
+  function resetAllCaptureRates() {
+    setRowStates(prev => {
+      const next = { ...prev };
+      for (const id of Object.keys(next)) {
+        next[id] = { ...next[id], captureRate: DEFAULT_CAPTURE_RATE };
+      }
+      return next;
+    });
+  }
+
   function updateRenoCost(id: string, cost: number | null) {
     setRowStates(prev => ({ ...prev, [id]: { ...prev[id], renoCostPerUnit: cost } }));
+    setWritebackErrors(prev => ({ ...prev, [id]: false }));
     scheduleWriteback(id, cost);
   }
 
@@ -317,7 +385,7 @@ export function FloorPlanGrid({
     for (const r of sourceRows) {
       const rs = rowStates[r.floor_plan_id];
       if (!rs) continue;
-      const target = rs.postRenoTargetRent ?? computePostRenoTarget(r.comp_ceiling, rs.positioningPercentile);
+      const target = rs.postRenoTargetRent ?? (rs.positioningPercentile !== 0 ? computePostRenoTarget(r.comp_ceiling, rs.positioningPercentile) : null);
       const current = r.current_market_rent;
       const units = r.unit_count;
       totalUnitsSum += units;
@@ -355,7 +423,7 @@ export function FloorPlanGrid({
   }
 
   const hasCeilingData = sourceRows.some(r => r.comp_ceiling != null);
-  const hasCostData = sourceRows.some(r => r.renovation_cost != null);
+  const anyCaptureRateCustomized = Object.values(rowStates).some(rs => Math.abs(rs.captureRate - DEFAULT_CAPTURE_RATE) > 0.001);
 
   // ─── Styles ──────────────────────────────────────────────────────────────────
 
@@ -387,7 +455,7 @@ export function FloorPlanGrid({
 
       {/* ── Header bar ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: '1px solid #0e2235', flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.08em', color: '#06b6d4' }}>
             FLOOR-PLAN GPR GRID
           </span>
@@ -403,12 +471,12 @@ export function FloorPlanGrid({
               background: '#1a1200', border: '1px solid #f59e0b44',
               borderRadius: 2, padding: '1px 5px',
             }}>
-              ⚠ Mixed-scope program detected — grid shows weighted-avg cost. Per-scope detail in M22.
+              ⚠ Mixed-scope program — grid shows weighted-avg cost. Per-scope detail in M22.
             </span>
           )}
           {!hasCeilingData && (
             <span style={{ fontFamily: LABEL, fontSize: 8, color: '#475569', fontStyle: 'italic' }}>
-              · Comp ceiling data unavailable — run Cashflow Agent to populate
+              · Comp ceiling unavailable — run Cashflow Agent to populate
             </span>
           )}
           {aggregate.missingCostCount > 0 && (
@@ -417,31 +485,67 @@ export function FloorPlanGrid({
               background: '#1a1200', border: '1px solid #f59e0b44',
               borderRadius: 2, padding: '1px 5px',
             }}>
-              Missing cost data for {aggregate.missingCostCount} of {sourceRows.length} floor plan{sourceRows.length !== 1 ? 's' : ''} — aggregate yield reflects partial coverage
+              Missing cost data for {aggregate.missingCostCount}/{sourceRows.length} floor plan{sourceRows.length !== 1 ? 's' : ''}
             </span>
           )}
         </div>
 
-        {/* Global positioning override */}
-        {hasCeilingData && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontFamily: LABEL, fontSize: 8, color: '#475569' }}>Global positioning:</span>
-            {POSITIONING_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => applyGlobalPositioning(opt.value)}
-                style={{
-                  fontFamily: MONO, fontSize: 8, fontWeight: 700,
-                  padding: '2px 6px', borderRadius: 2, border: 'none', cursor: 'pointer',
-                  background: globalPositioning === opt.value ? '#0891b2' : '#0c1a26',
-                  color: globalPositioning === opt.value ? '#fff' : '#475569',
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Header controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+
+          {/* Accept platform grid */}
+          {hasCeilingData && (
+            <button
+              onClick={acceptPlatformGrid}
+              style={{
+                fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                padding: '2px 8px', borderRadius: 2, cursor: 'pointer',
+                background: '#0a1e2e', border: '1px solid #0891b2',
+                color: '#06b6d4',
+              }}
+              title="Apply platform grid with P50 positioning across all floor plans"
+            >
+              ACCEPT PLATFORM GRID (P50)
+            </button>
+          )}
+
+          {/* Global positioning override */}
+          {hasCeilingData && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontFamily: LABEL, fontSize: 8, color: '#475569' }}>Global:</span>
+              {POSITIONING_OPTIONS.filter(o => o.value !== 0).map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => applyGlobalPositioning(opt.value)}
+                  style={{
+                    fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                    padding: '2px 5px', borderRadius: 2, border: 'none', cursor: 'pointer',
+                    background: globalPositioning === opt.value ? '#0891b2' : '#0c1a26',
+                    color: globalPositioning === opt.value ? '#fff' : '#475569',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Reset capture rate */}
+          {anyCaptureRateCustomized && (
+            <button
+              onClick={resetAllCaptureRates}
+              style={{
+                fontFamily: MONO, fontSize: 7.5, fontWeight: 700,
+                padding: '2px 6px', borderRadius: 2, cursor: 'pointer',
+                background: '#0c1220', border: '1px solid #334155',
+                color: '#64748b',
+              }}
+              title={`Reset all capture rates to portfolio default (${fmtPct(DEFAULT_CAPTURE_RATE, 0)})`}
+            >
+              RESET CAPTURE RATE → {fmtPct(DEFAULT_CAPTURE_RATE, 0)}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Grid table ── */}
@@ -469,13 +573,28 @@ export function FloorPlanGrid({
                 renoCostPerUnit: null,
                 postRenoTargetRent: null,
               };
-              const target = rs.postRenoTargetRent ?? computePostRenoTarget(r.comp_ceiling, rs.positioningPercentile) ?? r.post_reno_target_rent;
+              const isCustom = rs.positioningPercentile === 0;
+              const computedTarget = isCustom
+                ? null
+                : computePostRenoTarget(r.comp_ceiling, rs.positioningPercentile);
+              const target = rs.postRenoTargetRent ?? computedTarget ?? r.post_reno_target_rent;
               const current = r.current_market_rent;
               const grossPremium = (target != null && current != null) ? target - current : null;
               const capturedPremium = grossPremium != null ? grossPremium * rs.captureRate : null;
               const yoc = computeYoC(current, target, rs.captureRate, rs.renoCostPerUnit);
               const yocBelowThreshold = yoc != null && yoc < YOC_THRESHOLD;
               const rowBg = idx % 2 === 0 ? '#060c14' : '#050a10';
+
+              // Evidence-pill deviation flags (spec § 4)
+              const platformTarget = r.post_reno_target_rent ?? computePostRenoTarget(r.comp_ceiling, 50);
+              const targetDeviates = target != null && platformTarget != null &&
+                Math.abs((target - platformTarget) / Math.max(platformTarget, 1)) > DOLLAR_DEVIATION_PCT;
+              const platformCaptureRate = r.capture_rate ?? DEFAULT_CAPTURE_RATE;
+              const captureDeviates = Math.abs(rs.captureRate - platformCaptureRate) > PCT_DEVIATION_BPS;
+              const platformRenoCost = r.renovation_cost;
+              const costDeviates = rs.renoCostPerUnit != null && platformRenoCost != null &&
+                Math.abs((rs.renoCostPerUnit - platformRenoCost) / Math.max(platformRenoCost, 1)) > DOLLAR_DEVIATION_PCT;
+              const hasWritebackError = !!writebackErrors[r.floor_plan_id];
 
               return (
                 <tr key={r.floor_plan_id} style={{ background: rowBg }}>
@@ -499,25 +618,52 @@ export function FloorPlanGrid({
 
                   {/* Positioning Percentile — editable dropdown */}
                   <td style={{ ...cellStyle, padding: '2px 4px' }}>
-                    <select
-                      value={rs.positioningPercentile}
-                      onChange={e => updatePositioning(r.floor_plan_id, Number(e.target.value), r.comp_ceiling)}
-                      style={{
-                        background: '#0a1a26', border: '1px solid #1e3a4a',
-                        color: '#06b6d4', fontFamily: MONO, fontSize: 8,
-                        borderRadius: 2, padding: '1px 3px', cursor: 'pointer',
-                        width: 52,
-                      }}
-                    >
-                      {POSITIONING_OPTIONS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <select
+                        value={rs.positioningPercentile}
+                        onChange={e => updatePositioning(r.floor_plan_id, Number(e.target.value) as PositioningPct, r.comp_ceiling)}
+                        style={{
+                          background: '#0a1a26', border: '1px solid #1e3a4a',
+                          color: '#06b6d4', fontFamily: MONO, fontSize: 8,
+                          borderRadius: 2, padding: '1px 3px', cursor: 'pointer',
+                          width: isCustom ? 60 : 60,
+                        }}
+                      >
+                        {POSITIONING_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                      {/* Custom: show direct target rent input */}
+                      {isCustom && (
+                        <CustomTargetInput
+                          value={rs.postRenoTargetRent}
+                          onChange={v => updateCustomTarget(r.floor_plan_id, v)}
+                        />
+                      )}
+                    </div>
                   </td>
 
                   {/* Post-Reno Target */}
-                  <td style={{ ...cellStyle, color: '#22c55e', fontWeight: 600 }}>
-                    {target != null ? fmtRent(target) : (hasCeilingData ? '—' : <span style={{ color: '#1e3a2a', fontStyle: 'italic' }}>no comps</span>)}
+                  <td style={{
+                    ...cellStyle,
+                    color: '#22c55e', fontWeight: 600,
+                    background: targetDeviates ? '#0d1a0a' : undefined,
+                    outline: targetDeviates ? '1px solid #f59e0b22' : undefined,
+                  }}>
+                    <div>
+                      {!isCustom && (target != null ? fmtRent(target) : (hasCeilingData ? '—' : <span style={{ color: '#1e3a2a', fontStyle: 'italic' }}>no comps</span>))}
+                      {isCustom && (
+                        <span style={{ fontStyle: rs.postRenoTargetRent == null ? 'italic' : 'normal', color: rs.postRenoTargetRent != null ? '#22c55e' : '#334155' }}>
+                          {rs.postRenoTargetRent != null ? fmtRent(rs.postRenoTargetRent) : 'edit above'}
+                        </span>
+                      )}
+                      {/* Platform suggestion hint when deviating */}
+                      {targetDeviates && platformTarget != null && (
+                        <div style={{ fontSize: 7, color: '#f59e0b', marginTop: 1 }}>
+                          ⚠ P50: {fmtRent(platformTarget)}
+                        </div>
+                      )}
+                    </div>
                   </td>
 
                   {/* Premium */}
@@ -526,18 +672,31 @@ export function FloorPlanGrid({
                   </td>
 
                   {/* Capture Rate — editable */}
-                  <td style={{ ...cellStyle, padding: '2px 4px' }}>
+                  <td style={{
+                    ...cellStyle, padding: '2px 4px',
+                    background: captureDeviates ? '#0d1a0a' : undefined,
+                    outline: captureDeviates ? '1px solid #f59e0b22' : undefined,
+                  }}>
                     <CaptureRateInput
                       value={rs.captureRate}
+                      platformDefault={platformCaptureRate}
+                      deviates={captureDeviates}
                       onChange={v => updateCaptureRate(r.floor_plan_id, v)}
                     />
                   </td>
 
                   {/* Reno Cost per Unit — editable + M22 write-back */}
                   {!postStabilizationView && (
-                    <td style={{ ...cellStyle, padding: '2px 4px' }}>
+                    <td style={{
+                      ...cellStyle, padding: '2px 4px',
+                      background: costDeviates ? '#0d0a14' : undefined,
+                      outline: costDeviates ? '1px solid #f59e0b22' : undefined,
+                    }}>
                       <RenoCostInput
                         value={rs.renoCostPerUnit}
+                        platformDefault={platformRenoCost}
+                        deviates={costDeviates}
+                        hasWritebackError={hasWritebackError}
                         onChange={v => updateRenoCost(r.floor_plan_id, v)}
                       />
                     </td>
@@ -551,7 +710,7 @@ export function FloorPlanGrid({
                       fontWeight: yoc != null ? 700 : 400,
                     }}>
                       {yoc != null ? (
-                        <span title={yocBelowThreshold ? 'Yield-on-cost below threshold — renovation cost may exceed achievable premium' : undefined}>
+                        <span title={yocBelowThreshold ? 'Yield-on-cost below threshold — reno cost may exceed achievable premium' : undefined}>
                           {fmtYoC(yoc)}
                           {yocBelowThreshold && <span style={{ marginLeft: 3, fontSize: 8 }}>⚠</span>}
                         </span>
@@ -573,7 +732,7 @@ export function FloorPlanGrid({
               <td style={{ ...footerStyle, color: '#0891b2', fontSize: 8 }}>wt'd</td>
               <td style={{ ...footerStyle, color: '#22c55e' }}>{fmtRent(aggregate.avgTargetRent)}</td>
               <td style={{ ...footerStyle, color: '#34d399' }}>{fmtRent(aggregate.avgPremium)}</td>
-              <td style={{ ...footerStyle, color: '#64748b' }}>—</td>
+              <td style={{ ...footerStyle, color: '#64748b', fontSize: 8 }}>—</td>
               {!postStabilizationView && (
                 <td style={{ ...footerStyle, color: '#a78bfa' }}>{fmtBudget(aggregate.totalRenoBudget) || '—'}</td>
               )}
@@ -620,9 +779,63 @@ export function FloorPlanGrid({
   );
 }
 
+// ─── Custom Target Rent inline editor ─────────────────────────────────────────
+
+function CustomTargetInput({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => {
+          const raw = draft.replace(/[$,]/g, '');
+          const v = parseFloat(raw);
+          onChange(isNaN(v) || v <= 0 ? null : v);
+          setEditing(false);
+        }}
+        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditing(false); }}
+        placeholder="$rent"
+        style={{
+          width: 56, background: '#0a1a26', border: '1px solid #22c55e',
+          color: '#22c55e', fontFamily: MONO, fontSize: 8, borderRadius: 2, padding: '1px 3px',
+        }}
+      />
+    );
+  }
+  return (
+    <span
+      onClick={() => { setDraft(value != null ? String(Math.round(value)) : ''); setEditing(true); }}
+      title="Enter custom post-reno target rent"
+      style={{
+        cursor: 'pointer',
+        color: value != null ? '#22c55e' : '#334155',
+        borderBottom: '1px dotted #1a3a2a',
+        fontStyle: value == null ? 'italic' : 'normal',
+        fontSize: 8,
+      }}
+    >
+      {value != null ? fmtRent(value) : 'set $'}
+    </span>
+  );
+}
+
 // ─── Capture Rate inline editor ───────────────────────────────────────────────
 
-function CaptureRateInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function CaptureRateInput({
+  value,
+  platformDefault,
+  deviates,
+  onChange,
+}: {
+  value: number;
+  platformDefault: number;
+  deviates: boolean;
+  onChange: (v: number) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -647,19 +860,44 @@ function CaptureRateInput({ value, onChange }: { value: number; onChange: (v: nu
     );
   }
   return (
-    <span
-      onClick={() => { setDraft((value * 100).toFixed(0)); setEditing(true); }}
-      title="Click to edit capture rate"
-      style={{ cursor: 'pointer', color: '#94a3b8', borderBottom: '1px dotted #334155', fontSize: 9 }}
-    >
-      {fmtPct(value, 0)}
-    </span>
+    <div>
+      <span
+        onClick={() => { setDraft((value * 100).toFixed(0)); setEditing(true); }}
+        title="Click to edit capture rate"
+        style={{
+          cursor: 'pointer',
+          color: deviates ? '#f59e0b' : '#94a3b8',
+          borderBottom: `1px dotted ${deviates ? '#f59e0b55' : '#334155'}`,
+          fontSize: 9,
+        }}
+      >
+        {fmtPct(value, 0)}
+      </span>
+      {/* Platform suggestion hint when deviating */}
+      {deviates && (
+        <div style={{ fontSize: 7, color: '#64748b', marginTop: 1 }}>
+          platform: {fmtPct(platformDefault, 0)}
+        </div>
+      )}
+    </div>
   );
 }
 
 // ─── Reno Cost inline editor ──────────────────────────────────────────────────
 
-function RenoCostInput({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+function RenoCostInput({
+  value,
+  platformDefault,
+  deviates,
+  hasWritebackError,
+  onChange,
+}: {
+  value: number | null;
+  platformDefault: number | null;
+  deviates: boolean;
+  hasWritebackError: boolean;
+  onChange: (v: number | null) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -685,18 +923,29 @@ function RenoCostInput({ value, onChange }: { value: number | null; onChange: (v
     );
   }
   return (
-    <span
-      onClick={() => { setDraft(value != null ? String(Math.round(value)) : ''); setEditing(true); }}
-      title="Click to edit renovation cost per unit — writes back to M22 capex schedule"
-      style={{
-        cursor: 'pointer',
-        color: value != null ? '#a78bfa' : '#2a1a3a',
-        borderBottom: `1px dotted ${value != null ? '#5b21b6' : '#2a1a3a'}`,
-        fontStyle: value == null ? 'italic' : 'normal',
-        fontSize: 9,
-      }}
-    >
-      {value != null ? fmtCost(value) : 'set cost'}
-    </span>
+    <div>
+      <span
+        onClick={() => { setDraft(value != null ? String(Math.round(value)) : ''); setEditing(true); }}
+        title={hasWritebackError
+          ? 'M22 write failed — click to retry'
+          : 'Click to edit renovation cost per unit — writes back to M22 capex schedule'}
+        style={{
+          cursor: 'pointer',
+          color: hasWritebackError ? '#ef4444' : (deviates ? '#f59e0b' : (value != null ? '#a78bfa' : '#2a1a3a')),
+          borderBottom: `1px dotted ${hasWritebackError ? '#ef444455' : (value != null ? '#5b21b6' : '#2a1a3a')}`,
+          fontStyle: value == null ? 'italic' : 'normal',
+          fontSize: 9,
+        }}
+      >
+        {value != null ? fmtCost(value) : 'set cost'}
+        {hasWritebackError && <span style={{ marginLeft: 4, fontSize: 8 }} title="Save to M22 failed — retry">⚠</span>}
+      </span>
+      {/* Platform suggestion hint when deviating */}
+      {deviates && platformDefault != null && (
+        <div style={{ fontSize: 7, color: '#64748b', marginTop: 1 }}>
+          platform: {fmtCost(platformDefault)}
+        </div>
+      )}
+    </div>
   );
 }

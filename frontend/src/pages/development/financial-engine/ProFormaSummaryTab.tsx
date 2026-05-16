@@ -1235,9 +1235,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                       field={r.field}
                       label={r.label}
                       resolvedValue={r.resolved}
+                      t12Value={r.t12 ?? null}
                       regimeData={null}
                       totalUnits={totalUnits}
                       egiResolved={egiResolved}
+                      postStabView={showPostStabView}
                     />
                   )}
                   {isConcessionsOverridden && (
@@ -1494,9 +1496,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     field={r.field}
                     label={r.label}
                     resolvedValue={r.resolved}
+                    t12Value={r.t12 ?? null}
                     regimeData={null}
                     totalUnits={totalUnits}
                     egiResolved={egiResolved}
+                    postStabView={showPostStabView}
                   />
                 )}
                 {r.field === 'utilities' && (() => {
