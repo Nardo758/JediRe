@@ -1,0 +1,304 @@
+# TASK — 464 BISHOP DIAGNOSTIC
+
+## Objective
+
+Run the Cash Flow Agent on 464 Bishop (deal `3f32276f`) and conduct a structured forensic review of the run against the platform's authoritative specifications. Produce diagnostic findings that inform three downstream decisions: M36 plausibility ticket scoping, Tickets A/B/C prioritization, and CIE Phase 1 finding type selection.
+
+This is a diagnostic observation session. The goal is to validate the agent's reasoning quality against the recently shipped infrastructure (Task #829 fetch_unit_mix, Task #830 prompt updates, math engine v1.1, Task #824 write-back), not to produce a customer-facing underwriting.
+
+## Deal context
+
+- **Deal ID:** `3f32276f`
+- **Property:** 464 Bishop
+- **Classification:** acquisition_valueadd (confirm in DealContext at run start)
+- **Unit count:** 232 (per prior diagnostic conversations)
+- **Sponsor owned-portfolio data:** availability unknown — confirm via `fetch_owned_asset_actuals` in Phase 1
+- **Strategy:** value-add with operational lift (confirm `strategy.includes_other_income_lift` flag)
+
+## Infrastructure context (must verify before running)
+
+The following infrastructure is expected to be in production. If any is not, surface as a Phase 1 blocker rather than proceed silently:
+
+- **fetch_unit_mix tool** exists and returns per-floor-plan data from `deal_assumptions.unit_mix` with overrides applied (Task #829)
+- **data-matrix.service.ts hydration** populates `extractedData.rentRoll.floorPlanMix` and `otherIncomeMonthly` (Task #829)
+- **Cash Flow Agent prompt** references `fetch_unit_mix` for per-floor-plan data and uses Method 3 with `otherIncomeMonthly` for Other Income (Task #830, prompt version v4.x)
+- **Math engine v1.1** integrated in `cashflowPostProcess` with hierarchical subtotal handling
+- **Task #824 write-back** active with parallel `_dollars` fields and `other_income_dollars` mapping (post unit-mismatch fix)
+- **Source residual convention:** likely NOT yet integrated — verify and note status
+
+If the prompt version or math engine version in production differs from expected, report it and proceed against whichever version is live.
+
+## Phase 1 — Execute the agent run
+
+1. Invoke the Cash Flow Agent on deal `3f32276f` with full instrumentation enabled
+2. Capture the complete telemetry:
+   - Tool call sequence in order, with parameters and return values
+   - Reasoning traces between tool calls
+   - Final agent output (proforma_fields, evidence objects, source metadata)
+   - Math validation report from `cashflowPostProcess` (`was_math_corrected`, validation findings)
+   - Plausibility evaluation result if `evaluate_plausibility` was called
+   - Evidence rows written via `write_evidence_rows`
+   - Final underwriting snapshot persisted to `deal_underwriting_snapshots`
+   - Year1 write-back results (which fields written, which skipped, why)
+3. Persist the full trace at `/tmp/cashflow_diagnostic_464_bishop_{timestamp}.json`
+4. Do NOT interrupt the run. If it fails midway, capture state at failure and proceed to forensic review of partial output
+
+## Phase 2 — Load reference specifications
+
+Before reviewing the trace, load the platform's current specifications. These define what the agent SHOULD have done:
+
+- Cash Flow Agent canonical system prompt (current production version)
+- Cash Flow Agent deal-type playbooks (value-add variant specifically)
+- Line-item investigation matrix Pass 1 v1.3 (Value-Add GPR cell)
+- Other Income reasoning method spec v1.2 (Method 3 specifically for this deal)
+- proFormaMathEngine.ts v1.1 (subtotal formulas and hierarchical handling)
+- M09 Pro Forma specification (Stabilized Potential view, 4-component Δ decomposition)
+- Pro Forma Regime Input UI spec v1.3 (Floor-Plan Grid data shape)
+
+The agent's output must conform to these. The review identifies where it does not.
+
+## Phase 3 — Structured forensic review (10 categories)
+
+For each category, document findings against the trace. Each finding gets: category, severity, evidence quote from the trace, expected behavior from spec, impact assessment, specific actionable recommendation.
+
+### Category A — Tool call orchestration
+
+Per the tool orchestration map in the current Cash Flow Agent prompt:
+
+- Phase 1 first calls: `fetch_data_matrix`, then `fetch_t12`, `fetch_rent_roll`, `fetch_assumptions`, **`fetch_unit_mix`** (new in Task #830)
+- Phase 2 analog baseline: archive tools, market trends
+- Phase 2.5 posture: supply pipeline, absorption, lease velocity
+- Phase 3 subject-specific: comp set, M35 events, owned-portfolio actuals
+- Phase 4 specialized: jurisdiction tax forecast, insurance forecast (mandatory)
+- Phase 5 compute: `compute_proforma` for per-unit walk
+- Phase 6 verify: `detect_collision`, `evaluate_plausibility`
+- Phase 7 write: `write_evidence_rows`, `write_underwriting`
+
+**Check specifically:**
+- Was `fetch_unit_mix` called? (Task #830 added it; if not called, the prompt update didn't land or the agent isn't reading the updated prompt)
+- Was `fetch_rent_roll` called and treated as per-floor-plan source? (Should NOT be — it returns property aggregates only)
+- Were jurisdiction tax/insurance forecasts called? (Mandatory, never optional)
+- Was `evaluate_plausibility` called? (Required before final write)
+- Were tools called in the prescribed phase order, or out-of-order? Out-of-order calls (e.g., subject-specific before analog baseline) indicate reasoning not anchored to cohort
+
+### Category B — Analog cohort anchoring
+
+Per the v3 prompt patch Section A.5, every Pro Forma assumption with a growth or projection component must show cohort baseline, compute delta from cohort P50, and justify deviation.
+
+**Check:**
+- Were cohort baseline fields populated for major assumptions (rent growth, exit cap, vacancy, NOI growth, Other Income)?
+- Were deviations from cohort P50 justified with named market signals?
+- Were any assumptions outside cohort P25-P75 without `outlier_justification`?
+- Was `cohort_n` populated and ≥ 8 (or broadening documented)?
+
+### Category C — Posture awareness per year
+
+Per the v4 prompt patch Section A.6:
+
+**Check:**
+- Was `proforma.posture.y<N>` populated for every year of the hold period?
+- Was `signal_breakdown` populated with the 8 signals (supply pipeline, absorption, comp concession trend, lease velocity, comp trade-out, M35 events, employment growth, migration)?
+- Did `assumption_modulation` show specific per-year adjustments?
+- Was Y1 posture coherent with the deal's actual market context?
+
+### Category D — Deal-type playbook adherence (value-add)
+
+For 464 Bishop as a value-add deal, the playbook requires:
+
+**Check:**
+- Was `compute_proforma` called? Did it produce a per-unit walk output, NOT flat rent growth?
+- Was owned-portfolio retention rate referenced vs default 0.55?
+- Did loss-to-lease compress over the hold (regime-aware) or stay flat?
+- Was Y1 vacancy elevated vs stabilized year (renovation displacement)?
+- Are turnover, R&M, marketing modeled with pre/post regime values in the evidence narrative (even if output is single-value per UI v1.3)?
+- Property tax via `fetch_jurisdiction_tax_forecast`, not T-12 alone?
+- Insurance via `fetch_jurisdiction_insurance_forecast` (mandatory for FL/CA)?
+
+### Category E — Renovation premium derivation (CRITICAL)
+
+Per the line-item matrix v1.3 patched reference cell, renovation premium derivation must reverse the intuitive sourcing:
+
+- **Comp ceiling is the input** (M05 comp set per floor plan, P25/P50/P75)
+- **Sponsor's job is positioning percentile selection**, not premium assertion
+- **Premium is computed math:** `(comp_ceiling_at_chosen_percentile - current_market) × historical_capture_rate`
+- **Capture rate from owned-portfolio actuals**, with sponsor track record evidence
+
+**Check:**
+- Did the agent compute comp ceiling per floor plan from M05?
+- Did the agent source positioning percentile from sponsor input or platform default (P50)?
+- Was capture rate from owned-portfolio or platform default?
+- Did the agent treat sponsor's asserted premium as input? (Critical flaw per Common Pitfall #1 in the matrix)
+- Were comp ceiling comparables filtered correctly (newer/recently-renovated, not baseline comparables)?
+- Was renovation premium computed per floor plan (each its own premium) or smoothed across floor plans?
+
+### Category F — Per-floor-plan output shape
+
+Per UI spec v1.3 Section 5.1, the agent must emit `proforma.revenue.gpr.unit_mix[]` per floor plan with full grid data.
+
+**Check:**
+- Did the agent emit the `unit_mix` array?
+- Is every floor plan from the rent roll represented (sourced via `fetch_unit_mix`)?
+- Are all `UnitMixEntry` fields populated (unit_count, current_market_rent, comp_ceiling, positioning_percentile, post_reno_target_rent, gross_premium, capture_rate, captured_premium, renovation_cost, renovation_scope, yield_on_cost, evidence)?
+- Is yield-on-cost computed correctly per floor plan?
+- Is property-level yield-on-cost in the aggregate footer?
+
+### Category G — Math integrity
+
+Per math engine v1.1, subtotals must compute correctly. Run `validateSnapshot()` on the agent's output and report every finding.
+
+**Check specifically:**
+- Total OpEx ties to sum of Controllable + Non-Controllable (v1.0 bug site)
+- Other Income reconciliation: breakdown sum vs T-12 aggregate (v1.1 bug site)
+- Base Rental Revenue = GPR - all deductions (deduction sign convention)
+- NOI = EGI - Total OpEx
+- All values stored as positive (sign behavior via config)
+- `was_math_corrected` flag value and any corrections logged
+
+### Category H — Output schema conformance
+
+Per Task #824 unit-mismatch fix and the v2 prompt patch:
+
+**Check:**
+- Every `proforma_fields` entry has `evidence` as structured object, not string
+- Every required field has `value_numeric` populated or `gap_reason` set
+- Source labels in canonical taxonomy (`om`, `t12`, `rent_roll`, `owned_portfolio`, etc.)
+- All Other Income values are total annual dollars, not per-unit-per-month (post unit-mismatch fix)
+- Year1 write-back used `_dollars` parallel fields for management fee, vacancy, bad debt, other income (Task #824)
+
+### Category I — M36 plausibility cross-check (CRITICAL for downstream ticket)
+
+Per the v3 prompt patch Section E, `evaluate_plausibility` must be called before final write.
+
+**Check:**
+- Was `evaluate_plausibility` called?
+- What was the d value returned?
+- If d > 1.5, did the agent attach `plausibility_note` explaining stretches?
+- If d > 2.0, did the agent specifically name market evidence for each `top_stretch_variable`?
+- If d > 3.0, did the agent block the write per the hard rule?
+
+**This category directly informs the M36 ticket scoping.** If M36 was called and operated correctly, the ticket is lighter than feared. If M36 was silent or returned implausibly low d on values that should have triggered it (e.g., the historical $145M Other Income corruption case), the ticket gets fully scoped to investigate.
+
+### Category J — Other Income reasoning method (Method 3 specifically)
+
+Per Other Income spec v1.2:
+
+**Check:**
+- Was `otherIncomeMonthly` from `fetch_data_matrix.extractedData.rentRoll` consulted? (Task #829 hydration fix)
+- Was Method 3 selected (per selection logic for value-add deals)?
+- Did the agent emit per-category breakdown (parking, pet, storage, RUBS, etc.)?
+- Did Method 3 reconcile breakdown sum against T-12 aggregate?
+- Were Method 3 fallback paths used for sparse categories (archive cohort sourcing)?
+- Was `value_numeric` total annual dollars at every level (aggregate + per category)?
+
+## Phase 4 — Structured findings output
+
+Save findings as JSON at `/tmp/cashflow_diagnostic_464_bishop_findings_{timestamp}.json`:
+
+```json
+{
+  "session_id": "string",
+  "deal_id": "3f32276f",
+  "agent_run_id": "string",
+  "prompt_version": "string (actual version found in production)",
+  "math_engine_version": "string",
+  "timestamp": "ISO8601",
+  "agent_completed_successfully": boolean,
+  "infrastructure_verified": {
+    "fetch_unit_mix_available": boolean,
+    "floor_plan_mix_hydrated": boolean,
+    "other_income_monthly_hydrated": boolean,
+    "math_engine_v1_1_active": boolean,
+    "task_824_writeback_active": boolean,
+    "source_residual_convention_integrated": boolean
+  },
+  "summary": {
+    "total_findings": number,
+    "critical_count": number,
+    "major_count": number,
+    "minor_count": number,
+    "categories_with_critical": ["string"],
+    "overall_assessment": "string (one paragraph)"
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "A-J",
+      "category_name": "Tool Orchestration | ...",
+      "severity": "critical | major | minor",
+      "title": "string",
+      "description": "string",
+      "evidence_from_trace": {
+        "trace_location": "string",
+        "agent_quote_or_action": "string",
+        "expected_behavior": "string"
+      },
+      "spec_reference": "string",
+      "impact": "string",
+      "recommendation": {
+        "action": "string",
+        "target_file": "string",
+        "proposed_text": "string",
+        "priority": "ship_blocker | next_iteration | nice_to_have"
+      }
+    }
+  ],
+  "downstream_decisions": {
+    "m36_ticket_scope": "light | moderate | heavy | critical",
+    "m36_scoping_rationale": "string (what Category I revealed about M36 behavior)",
+    "ticket_a_b_c_priorities": {
+      "ticket_a_agent_runtime_audit": "high | medium | low | not_needed",
+      "ticket_b_seeder_refactor": "high | medium | low | not_needed",
+      "ticket_c_type_runtime_audit": "high | medium | low | not_needed",
+      "rationale": "string"
+    },
+    "cie_phase_1_finding_type_priorities": [
+      "string (which finding types from the CIE spec would have caught real issues on this deal, in order of priority)"
+    ]
+  }
+}
+```
+
+## Phase 5 — Markdown executive summary
+
+Save markdown at `/tmp/cashflow_diagnostic_464_bishop_summary_{timestamp}.md`:
+
+1. **Headline finding** — single most important issue, one sentence
+2. **Critical findings** — bulleted list with category and recommendation
+3. **Major findings** — bulleted list, briefer
+4. **Math integrity status** — pass/fail with specifics from Category G
+5. **M36 status** — what Category I revealed; scoping recommendation for the M36 ticket
+6. **Downstream priorities** — Tickets A/B/C and CIE Phase 1 informed by findings
+7. **Confidence assessment** — was the agent's output trustworthy for an LP decision?
+
+Under 1,500 words. The JSON is the operational data; the markdown is the executive read.
+
+## Failure handling
+
+**If the agent run fails before completion:**
+1. Capture partial state at failure point
+2. Identify the failing tool, input, and error
+3. Run the diagnostic categories evaluable from partial state (e.g., tool orchestration up to failure)
+4. Document failure in JSON with `failure_point` field
+5. Do not retry automatically — surface failure for triage
+
+**If infrastructure verification fails in Phase 1:**
+1. Note which infrastructure expectations are unmet
+2. Decide whether to proceed against actual production state or block on infrastructure fixes
+3. Default: proceed and report against whatever is live; flag the infrastructure gap as Phase 1 finding
+
+## Success criteria
+
+1. Agent run executed (success or documented failure)
+2. All 10 categories reviewed with documented evidence
+3. JSON output well-formed with structured findings
+4. Markdown summary under 1,500 words
+5. Every critical finding has specific actionable recommendation with file path and proposed change
+6. Downstream decisions section informs M36 ticket scope, Tickets A/B/C priorities, CIE finding type priorities
+
+Do not produce vague findings. Every claim has evidence. Every recommendation has a file path.
+
+## Reminder on framing
+
+This is a quality review, not a performance review. The agent's "mistakes" are signals about where the prompts and specs need work, not failures of the agent itself. Frame findings constructively: each finding is an opportunity to make the next run better.
+
+Be specific. Be actionable. Be honest about severity.

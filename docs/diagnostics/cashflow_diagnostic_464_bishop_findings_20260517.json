@@ -1,0 +1,340 @@
+{
+  "session_id": "diag-808e0016-20260517",
+  "deal_id": "3f32276f-aacd-4da3-b306-317c5109b403",
+  "agent_run_id": "808e0016-e8f0-47c3-acfd-1dea38b1f9cb",
+  "prompt_version": "cashflow-v8.0-core",
+  "math_engine_version": "v1.1 (correctSnapshotMath active)",
+  "timestamp": "2026-05-17T17:30:00Z",
+  "agent_completed_successfully": true,
+  "run_metadata": {
+    "agent_version": "3.2.0",
+    "tokens_in": 965343,
+    "tokens_out": 17439,
+    "duration_ms": 162522
+  },
+  "infrastructure_verified": {
+    "fetch_unit_mix_available": true,
+    "fetch_unit_mix_registered_in_config": true,
+    "floor_plan_mix_hydrated": true,
+    "other_income_monthly_hydrated": true,
+    "math_engine_v1_1_active": true,
+    "task_824_writeback_partial": true,
+    "task_824_writeback_other_income_fixed": false,
+    "source_residual_convention_integrated": false,
+    "pr2_edit1_fetch_unit_mix_in_prompt": true,
+    "pr2_edit2_other_income_monthly_in_prompt": false,
+    "notes": "other_income maps to other_income_per_unit (unit-mismatch bug active). PR2 Edit 2 (otherIncomeMonthly Method 3 instruction) absent from cashflow-v8.0-core. Source residual convention not integrated."
+  },
+  "proforma_field_audit": {
+    "total_fields_emitted": 23,
+    "tier1_count": 5,
+    "tier2_count": 0,
+    "tier3_count": 5,
+    "tier4_count": 13,
+    "pct_unanchored": "56.5%",
+    "evidence_fields_clean": 0,
+    "evidence_fields_repaired": 23,
+    "math_was_corrected": false,
+    "math_engine_passed": true,
+    "math_engine_caveat": "Pass misleading: no category breakdown exists to trigger conflict detection. other_income resolved via fallback (value=0).",
+    "collision_summary": { "severe": 3, "minor": 8, "material": 0 }
+  },
+  "summary": {
+    "total_findings": 13,
+    "critical_count": 5,
+    "major_count": 5,
+    "minor_count": 3,
+    "categories_with_critical": ["E", "F", "J", "H", "B"],
+    "overall_assessment": "The agent completed successfully but produced a structurally thin underwriting: 23 fields, 56% tier4/unanchored, no per-floor-plan unit_mix grid, no posture fields, no per-category Other Income breakdown, and all 23 evidence objects emitted as strings requiring postprocess repair. M36 was called (d=2.69 Heroic) but the response to the high d-score was insufficient and the result was not persisted as a structured field. GPR accepted broker OM aggregate without comp-ceiling computation. Other Income accepted broker OM at 3x P90 benchmark without Method 3 analysis. Two write-back bugs active: other_income maps to wrong year1 key, and the agent's correct insurance value ($125K) is silently blocked by a stale OM-sourced override. Not suitable for LP presentation as-is."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "F",
+      "category_name": "Per-Floor-Plan Output Shape",
+      "severity": "critical",
+      "title": "No per-floor-plan unit_mix grid emitted — GPR taken as OM aggregate",
+      "description": "Agent emitted a single aggregate GPR ($4,901,400, source: om) with no proforma.revenue.gpr.unit_mix[] array. Despite fetch_unit_mix registered in config and referenced at 15+ locations in the system prompt, no per-floor-plan grid with comp_ceiling, positioning_percentile, post_reno_target_rent, capture_rate, or yield_on_cost was produced. proforma_json contains 23 keys; none is revenue.gpr.unit_mix. Root cause may be a data gap: 464 Bishop has a single 'Default' floor plan row with no per-plan detail.",
+      "evidence_from_trace": {
+        "trace_location": "deal_underwriting_snapshots.proforma_json keys (23 total)",
+        "agent_quote_or_action": "revenue.gross_potential_rent: {value: 4901400, source: 'om', source_tier: 1, derivation_chain: ['Broker OM stabilized GPR $4,901,400. T12 GPR $4,876,535. Using broker OM as stabilized target.']}",
+        "expected_behavior": "Agent calls fetch_unit_mix, fetches comp ceiling per floor plan (comp_role=renovation_ceiling), emits revenue.gpr.unit_mix[] with all UnitMixEntry fields per UI spec v1.3 Section 5.1"
+      },
+      "spec_reference": "PRO_FORMA_REGIME_INPUT_UI_SPEC v1.3 Section 5.1; cashflow system.ts lines 942-966; CASHFLOW_LINE_ITEM_MATRIX v1.3 (Value-Add GPR cell)",
+      "impact": "GPR is the largest line item. Without per-floor-plan comp ceiling computation, renovation premium cannot be validated. Unit_mix grid in M09 has no data. Sponsor Unit Mix tab overrides invisible to this underwriting.",
+      "recommendation": {
+        "action": "Investigate whether 464 Bishop's unit mix data (single Default row, no per-plan detail) is the root cause. If data gap: ticket to seed per-floor-plan data for 464 Bishop from rent roll. If prompt gap: add postprocess validation that flags incomplete unit_mix for value-add deals.",
+        "target_file": "backend/src/agents/cashflow.postprocess.ts",
+        "proposed_text": "if (isValueAdd && !proformaFields['revenue.gpr.unit_mix']) { validationWarnings.push({ code: 'MISSING_UNIT_MIX_GRID', severity: 'major', message: 'Per-floor-plan unit_mix grid not emitted for value-add deal' }); }",
+        "priority": "ship_blocker"
+      }
+    },
+    {
+      "id": "F-002",
+      "category": "E",
+      "category_name": "Renovation Premium Derivation",
+      "severity": "critical",
+      "title": "GPR renovation premium sourced from broker OM directly — comp ceiling never computed",
+      "description": "Agent accepted broker OM stabilized GPR ($4,901,400) as direct input. Source labeled source_tier: 1 (T12-level confidence) despite derivation chain showing broker OM origin. No comp ceiling computed per floor plan from M05. No positioning percentile selected. No capture rate applied from owned-portfolio actuals. Common Pitfall #1 in the line-item matrix committed.",
+      "evidence_from_trace": {
+        "trace_location": "proforma_json['revenue.gross_potential_rent'].evidence",
+        "agent_quote_or_action": "source: 'om' | source_tier: 1 | derivation_chain: ['Broker OM stabilized GPR $4,901,400. T12 GPR $4,876,535 (lease-up phase). Rent roll annualized $4,932,300. Using broker OM as stabilized target.'] | data_points: []",
+        "expected_behavior": "fetch_peer_comp_noi_metrics (comp_role=renovation_ceiling) called; P25/P50/P75 per floor plan computed; gross_premium = (comp_ceiling_at_percentile − current_market) × capture_rate; data_points[] populated with actual comp observations"
+      },
+      "spec_reference": "CASHFLOW_LINE_ITEM_MATRIX_PASS1 v1.3 (Value-Add GPR cell, Common Pitfall #1); cashflow system.ts lines 956-993",
+      "impact": "If broker OM overstates achievable stabilized rents by 5%, that is ~$245K/yr GPR overstatement — 50bps cap rate compression at $65M. No external validation of the rent assumption exists.",
+      "recommendation": {
+        "action": "Add Common Pitfall #1 enforcement to system prompt: GPR for value-add deals must be derived from comp_ceiling computation, not accepted from OM projection. Add required field comp_ceiling_source to per-floor-plan output; must be 'renovation_comp_set' not 'om'.",
+        "target_file": "backend/src/agents/prompts/cashflow/system.ts",
+        "proposed_text": "Add to Common Pitfalls: 'Do NOT treat broker OM projected stabilized rent as comp_ceiling. Comp ceiling must come from recently-renovated comparable properties (comp_role=renovation_ceiling). Broker OM is used for current_market_rent cross-check only, not as the stabilized target.'",
+        "priority": "ship_blocker"
+      }
+    },
+    {
+      "id": "F-003",
+      "category": "J",
+      "category_name": "Other Income Reasoning Method",
+      "severity": "critical",
+      "title": "Other Income: Method 3 not applied; broker OM aggregate accepted at 3× P90 without category analysis",
+      "description": "Agent set Other Income at $341,907 (source: om, tier: 4) with no per-category breakdown. $341,907 / 232 units = $1,473/unit/year vs benchmark P90 of $480/unit/year — 3× P90 accepted with only qualitative justification. Method 3 (Rent Roll Actuals with Category Projection) should have been selected for a value-add deal with T12 and rent roll available. No otherIncomeMonthly consultation visible. No per-category evidence in data_points[].",
+      "evidence_from_trace": {
+        "trace_location": "proforma_json['revenue.other_income']",
+        "agent_quote_or_action": "value: 341907 | source: 'om' | source_tier: 4 | source_label: 'BROKER_OM' | data_points: [] | derivation_chain: ['Broker OM $341,907. Above benchmark P90 ($480/unit) but justified by premium amenities (rooftop, pool, garage, pet spa, EV charging).']",
+        "expected_behavior": "Method 3 selected; fetch_data_matrix.extractedData.rentRoll.otherIncomeMonthly consulted; per-category breakdown (parking, pet, RUBS, storage, EV charging) emitted in data_points[]; aggregate cross-checked against T12"
+      },
+      "spec_reference": "OTHER_INCOME_REASONING_METHOD_SPEC v1.2 (Section 3, Section 7); math engine v1.1 (other_income resolved via fallback, value=0)",
+      "impact": "If $342K is broker puffing and achievable is ~$111K (P90 benchmark), NOI is overstated by $231K/year — 35bps cap rate compression at $65M. CIE cannot produce missing_ancillary_category findings if the agent never identifies categories.",
+      "recommendation": {
+        "action": "Apply PR2 Edit 2 to cashflow-v8.0-core: insert Method 3 / otherIncomeMonthly instruction. Add postprocess validation: if value-add deal, other_income source='om', and data_points=[], flag as UNVALIDATED_OM_ACCEPTANCE.",
+        "target_file": "backend/src/agents/prompts/cashflow/system.ts",
+        "proposed_text": "In Other Income section: 'For value-add deals with T12: call fetch_data_matrix and read extractedData.rentRoll.otherIncomeMonthly for per-category monthly amounts. This is Method 3. Emit per-category breakdown in data_points[]. Do NOT accept broker OM aggregate as sole input when T12 and rent roll data exist.'",
+        "priority": "ship_blocker"
+      }
+    },
+    {
+      "id": "F-004",
+      "category": "H",
+      "category_name": "Output Schema Conformance",
+      "severity": "critical",
+      "title": "All 23 evidence fields emitted as strings — 0 clean; postprocess normalizer repaired all",
+      "description": "evidence_normalization_summary: { fields_clean: 0, total_fields: 23, fields_repaired: 23, coerced_string_to_object: 23 }. Agent emitted all evidence as plain strings rather than structured objects. Postprocess normalizer inferred source labels (6 as t12, 9 as broker_om, 1 as confidence_low) from string content — a best-effort repair that loses structured data_points[].",
+      "evidence_from_trace": {
+        "trace_location": "output.evidence_normalization_summary",
+        "agent_quote_or_action": "{ fields_clean: 0, fields_repaired: 23, repair_breakdown: { coerced_string_to_object: 23, inferred_source_t12: 6, inferred_source_broker_om: 9, inferred_confidence_low: 1 } }",
+        "expected_behavior": "fields_clean should approach 23; coerced_string_to_object should be 0. Evidence objects must arrive as { confidence, data_points[], source_tier, source_label, derivation_chain[] }."
+      },
+      "spec_reference": "Task #824 evidence schema; cashflow system.ts output format instructions",
+      "impact": "data_points[] is empty for all 23 fields after coercion. Evidence drawer will show narrative text only, no structured sourcing table. Any downstream system reading evidence.data_points for programmatic analysis gets []. Normalizer repair is lossy.",
+      "recommendation": {
+        "action": "Review cashflow-v8.0-core evidence format instructions. Add prompt reinforcement with a concrete example of the canonical evidence object. Add a postprocess metric alert when coerced_string_to_object > 5.",
+        "target_file": "backend/src/agents/prompts/cashflow/system.ts",
+        "proposed_text": "Reinforce: 'For each proforma_fields entry, emit evidence as JSON: { confidence: string, data_points: [{tier, source, label, value, weight}], source_tier: number, source_label: string, derivation_chain: string[] }. Do NOT emit evidence as a plain string narrative.'",
+        "priority": "ship_blocker"
+      }
+    },
+    {
+      "id": "F-005",
+      "category": "B",
+      "category_name": "Analog Cohort Anchoring",
+      "severity": "critical",
+      "title": "13 of 23 fields (56%) tier4/UNANCHORED — no cohort baseline on any growth assumption",
+      "description": "Tier distribution: tier1=5 (insurance, property_tax, GPR, repairs_maintenance, payroll), tier2=0, tier3=5, tier4=13. archive_percentile is null for all fields. No cohort_n. Growth assumptions rent_y1 (3%), expense_y1 (3%), and exit cap (5%) all at tier4 UNANCHORED. Per v3 prompt spec, every projection-component assumption must show cohort P25/P50/P75, cohort_n ≥ 8, and delta_from_cohort_p50.",
+      "evidence_from_trace": {
+        "trace_location": "proforma_json all fields with source_tier and archive_percentile",
+        "agent_quote_or_action": "assumptions.growth.rent_y1: { value: 0.03, source: 'user_override', source_tier: 4, source_label: 'UNANCHORED', derivation_chain: ['User assumption 3%. Anchor 4.0%. Market trends near 0%.'] } | archive_percentile: null (all fields)",
+        "expected_behavior": "rent_y1 evidence: { cohort_baseline: {p25: X, p50: Y, p75: Z, n: N}, delta_from_cohort_p50: ±bps, outlier_justification: '...' if outside P25-P75 }"
+      },
+      "spec_reference": "Cashflow Agent v3 prompt patch Section A.5; cashflow system.ts Phase 2 analog baseline tools",
+      "impact": "Without cohort anchoring, LP cannot assess whether rent growth (3%), expense growth (3%), or exit cap (5%) is supported by historical Atlanta multifamily performance. 3% rent growth for Atlanta West Midtown may be at the 90th percentile of historical actuals — that context is invisible.",
+      "recommendation": {
+        "action": "Verify Phase 2 analog baseline tools (fetch_archive_assumption_distribution, fetch_archive_achievement_vs_assumption) are returning data for Atlanta West Midtown. If archive sparse (n<4), document broadening path. If tools return data but agent ignores it, add explicit prompt instruction to populate cohort_baseline fields in evidence.",
+        "target_file": "backend/src/agents/tools/fetch_archive_assumption_distribution.ts",
+        "proposed_text": "Confirm tool returns rows for submarket='atlanta_west_midtown' or broadens to metro='atlanta'. Log warning when n<4 to surface archive sparseness.",
+        "priority": "next_iteration"
+      }
+    },
+    {
+      "id": "F-006",
+      "category": "C",
+      "category_name": "Posture Awareness Per Year",
+      "severity": "major",
+      "title": "No per-year posture fields in output — posture framework absent from this run",
+      "description": "proforma_fields contains no proforma.posture.yN for any hold-period year. The v4 prompt patch requires posture classification per year with 8 signals scored (supply pipeline, absorption, comp concession trend, lease velocity, comp trade-out, M35 events, employment growth, migration) and per-year assumption_modulation.",
+      "evidence_from_trace": {
+        "trace_location": "proforma_json keys (complete list of 23)",
+        "agent_quote_or_action": "No proforma.posture.y1 through y5 in any key. System prompt has posture examples at lines 1296, 1314 (ancillary_lift posture_factor) but output has no posture fields.",
+        "expected_behavior": "proforma.posture.y1 through y{hold_years}, each with signal_breakdown (8 signals scored), classification (favorable/neutral/cautious/stressed), assumption_modulation (per-year adjustments)."
+      },
+      "spec_reference": "Cashflow Agent v4 prompt patch Section A.6",
+      "impact": "Year-by-year risk classification unavailable. M08, M35, and OperatorStance consumers that read posture receive no signal from this underwriting. Posture-aware modulation of expense growth and renewal rates is undetectable.",
+      "recommendation": {
+        "action": "Add mandatory posture output check to postprocess: if value-add deal and no proforma.posture.y1 found, emit validation warning. Add to system prompt mandatory output section: 'You MUST emit proforma.posture.y1 through proforma.posture.y{hold_years} for value-add deals.'",
+        "target_file": "backend/src/agents/prompts/cashflow/system.ts",
+        "proposed_text": "Add to mandatory outputs: 'REQUIRED FOR VALUE-ADD DEALS: proforma.posture.y1 through proforma.posture.y{hold_years}. Each must have: signal_breakdown (all 8 signals scored 0-1), classification (favorable|neutral|cautious|stressed), assumption_modulation.'",
+        "priority": "next_iteration"
+      }
+    },
+    {
+      "id": "F-007",
+      "category": "I",
+      "category_name": "M36 Plausibility Cross-Check",
+      "severity": "major",
+      "title": "M36 called, d=2.69 Heroic — agent response insufficient; result not persisted as structured field",
+      "description": "M36 evaluate_plausibility was called and returned d=2.69 (Heroic). For d > 2.0 the spec requires the agent to name market evidence for each top_stretch_variable. Agent response in summary: 'driven primarily by management fee structure — review assumptions for internal consistency.' No market evidence named. No plausibility_result in output_keys. Also: management_fee at $128,049 on $4,901,400 EGI = 2.6% — industry-standard for multifamily — suggesting Phase A prior for management_fee may be miscalibrated.",
+      "evidence_from_trace": {
+        "trace_location": "output.summary (last 300 chars)",
+        "agent_quote_or_action": "M36 plausibility score of 2.69 (Heroic) is driven primarily by management fee structure — review assumptions for internal consistency.",
+        "expected_behavior": "plausibility_result as structured top-level output key: { d_score: 2.69, band: 'HEROIC', top_stretch_variables: [{name, contribution, market_evidence}], plausibility_note: '...' }. Agent should name specific evidence for each stretch variable when d > 2.0."
+      },
+      "spec_reference": "Cashflow Agent v3 prompt Section E; evaluate_plausibility tool (sigma-engine.ts thresholds ≤2.0 Aggressive, ≤3.0 Heroic, >3.0 blocked)",
+      "impact": "A Heroic score on a $65M deal with no named stretch-variable evidence provides no actionable guidance. If management_fee prior is miscalibrated, Heroic scores will be routine on normal deals, causing alert fatigue and eventual prompt-level suppression of M36 checks.",
+      "recommendation": {
+        "action": "(1) Add plausibility_result as required top-level output key so d-score is persisted in agent_runs.output. (2) Review sigma-engine.ts PRIORS map: management_fee_pct industry standard is 3-4% of EGI; if prior mean is lower, recalibrate. (3) Strengthen system prompt for d > 2.0: require specific market evidence per top_stretch_variable, not a generic structural note.",
+        "target_file": "backend/src/services/sigma/sigma-engine.ts",
+        "proposed_text": "In PRIORS map: management_fee_pct mean should reflect 3-4% of EGI for multifamily. Current value producing Heroic on 2.6% suggests mean may be set too low (e.g., 1.5-2%). Review against archive distribution.",
+        "priority": "next_iteration"
+      }
+    },
+    {
+      "id": "F-008",
+      "category": "D",
+      "category_name": "Deal-Type Playbook Adherence",
+      "severity": "major",
+      "title": "Vacancy flat at 5% OM assumption — not regime-aware for lease-up deal at 80.2% occupancy",
+      "description": "464 Bishop is in lease-up at 80.2% occupancy. Agent set vacancy_pct=5% (source: om, tier4) — the stabilized assumption — not the current 19.8% actual vacancy or an absorption-curve Y1 estimate. The value-add playbook requires Y1 vacancy elevation for lease-up deals entering below 90% occupancy.",
+      "evidence_from_trace": {
+        "trace_location": "proforma_json['revenue.vacancy_pct'] and ['revenue.vacancy_loss']",
+        "agent_quote_or_action": "vacancy_pct: { value: 0.05, source: 'om', source_tier: 4, source_label: 'BROKER_OM' } | vacancy_loss: $245,070",
+        "expected_behavior": "For lease-up at 80.2%: Y1 vacancy should reflect the absorption trajectory from 80.2% to stabilized 95%, not a flat stabilized 5%. Y1 effective_vacancy is likely 12-18% depending on lease-up velocity."
+      },
+      "spec_reference": "Cashflow Agent deal-type playbooks (lease-up stabilization variant)",
+      "impact": "At 80.2% occupancy, effective units = ~186 of 232. Using 5% vacancy (220 units effective) overstates Y1 GPR by ~$177K. The going-in cap using Y1 actual NOI is lower than the model shows.",
+      "recommendation": {
+        "action": "Add lease-up vacancy path to value-add playbook in system prompt: when current_occupancy < 90%, Y1 vacancy_pct must be computed from absorption trajectory, not from stabilized assumption. Source from lease velocity data (fetch_lease_velocity if available) or archive cohort absorption rate.",
+        "target_file": "backend/src/agents/prompts/cashflow/system.ts",
+        "proposed_text": "In value-add playbook: 'If current_occupancy < 90%: Y1 vacancy_loss reflects the absorption path from current_occupancy to stabilized_occupancy. Do not apply stabilized vacancy_pct to Y1. Compute avg_Y1_occupancy from lease-up velocity data.'",
+        "priority": "next_iteration"
+      }
+    },
+    {
+      "id": "F-009",
+      "category": "H",
+      "category_name": "Write-Back — Unit Mismatch",
+      "severity": "major",
+      "title": "other_income write-back maps to other_income_per_unit — unit-mismatch bug active",
+      "description": "cashflow.postprocess.ts line 364: 'revenue.other_income' → 'other_income_per_unit'. Agent emits $341,907 as total annual Other Income. year1.other_income_per_unit shows { om: 857.22, t12: 169.19, agent: 341907 } — om/t12 values are per-unit-per-month rates; agent value is annual total. Storing $341,907 annual total in a per-unit-per-month field corrupts the year1 slot. This is the same class of bug fixed for management_fee ($→management_fee_dollars), vacancy ($→vacancy_loss_dollars), and bad_debt ($→bad_debt_dollars) — Other Income was not included in the fix.",
+      "evidence_from_trace": {
+        "trace_location": "backend/src/agents/cashflow.postprocess.ts line 364; deal_assumptions.year1.other_income_per_unit",
+        "agent_quote_or_action": "AGENT_FIELD_TO_YEAR1 line 364: 'revenue.other_income' → 'other_income_per_unit' | year1: { om: 857.22, t12: 169.19, agent: 341907 }",
+        "expected_behavior": "Agent value ($341,907 annual) should write to other_income_dollars (new parallel key). other_income_per_unit should retain the per-unit-per-month rate values only."
+      },
+      "spec_reference": "Task #824 write-back fix (management_fee_dollars pattern); cashflow.postprocess.ts lines 347-368",
+      "impact": "Any consumer reading year1.other_income_per_unit.agent and treating it as per-unit-per-month will compute $341,907/unit/month × 232 units × 12 months = ~$950M annual Other Income. This is the '$145M corruption' class of bug referenced in diagnostic prompt.",
+      "recommendation": {
+        "action": "One-line fix: change 'other_income_per_unit' to 'other_income_dollars' in AGENT_FIELD_TO_YEAR1 map.",
+        "target_file": "backend/src/agents/cashflow.postprocess.ts",
+        "proposed_text": "'revenue.other_income': 'other_income_dollars',  // was other_income_per_unit; agent emits annual dollars not per-unit-per-month",
+        "priority": "ship_blocker"
+      }
+    },
+    {
+      "id": "F-010",
+      "category": "H",
+      "category_name": "Write-Back — Override Interaction",
+      "severity": "major",
+      "title": "Insurance agent correction ($125K) blocked by stale OM-sourced override ($46K underinsured)",
+      "description": "Agent correctly computed insurance at $125,280 (GA benchmark $540/unit × 232, source: jurisdiction_forecast, tier1). year1.insurance shows { om: 46400, t12: 63698.91, agent: null, override: 46400, resolved: 46400 }. Agent value is null in year1 — the write-back skipped it because override: 46400 exists. This override appears set by a prior seeder/OM processing pass, not a deliberate operator entry. The correct value ($125,280) is silently suppressed; the operator sees $46,400 (underinsured by $79K/year).",
+      "evidence_from_trace": {
+        "trace_location": "deal_assumptions.year1.insurance; proforma_json['expense.insurance']",
+        "agent_quote_or_action": "proforma_fields insurance: { value: 125280, source: 'jurisdiction_forecast', tier1 } | year1.insurance: { om: 46400, t12: 63698.91, agent: null, override: 46400, resolved: 46400 }",
+        "expected_behavior": "Jurisdiction-forecast value ($125,280) should reach operator view. OM-sourced override should not permanently block agent corrections when no deliberate operator action set the override."
+      },
+      "spec_reference": "Task #824 write-back (override-wins rule); cashflow.postprocess.ts lines 416-430",
+      "impact": "$79K annual insurance gap flows forward to all projections invisibly. Resolved NOI is overstated by $79K/year. At 5% exit cap, this represents $1.58M valuation uplift from an underinsured assumption.",
+      "recommendation": {
+        "action": "Distinguish system-set overrides (seeder/OM-sourced) from deliberate operator overrides. Add override_source field to LayeredValue override slot: 'seeder' vs 'operator'. Only operator-sourced overrides should block agent corrections.",
+        "target_file": "backend/src/agents/cashflow.postprocess.ts",
+        "proposed_text": "const isOperatorOverride = existingLv?.override_source === 'operator'; if (isOperatorOverride && typeof existingOverride === 'number' && isFinite(existingOverride)) continue;",
+        "priority": "next_iteration"
+      }
+    },
+    {
+      "id": "F-011",
+      "category": "G",
+      "category_name": "Math Integrity",
+      "severity": "minor",
+      "title": "Math engine 'pass' misleading — no breakdown to detect Other Income conflict",
+      "description": "math_correction_report: { passed: true, was_corrected: false, other_income: { resolved_value: 0, resolution_method: 'fallback' } }. The engine passed because there is no per-category breakdown to conflict with the aggregate. The v1.1 spec's primary job for Other Income (breakdown-vs-aggregate reconciliation) was never exercised.",
+      "evidence_from_trace": {
+        "trace_location": "output.math_correction_report.hierarchical_resolutions",
+        "agent_quote_or_action": "'proforma.revenue.other_income': { resolved_value: 0, resolution_method: 'fallback', resolution_source: 'platform_fallback', reconciliation_status: 'no_conflict' }",
+        "expected_behavior": "When agent emits per-category breakdown, engine reconciles sum-of-parts against T12 aggregate. fallback should be rare and logged as a warning."
+      },
+      "spec_reference": "proFormaMathEngine.ts v1.1 (hierarchical subtotal handling)",
+      "impact": "False assurance from math engine pass. Engine is healthy when data exists — the issue is it is not being fed breakdown data. Pass status provides no signal about Other Income quality.",
+      "recommendation": {
+        "action": "Emit WARNING in validation_report when other_income resolves via platform_fallback.",
+        "target_file": "backend/src/services/proforma/proFormaMathEngine.ts",
+        "proposed_text": "if (resolution_method === 'fallback') validationReport.warnings.push({ code: 'OTHER_INCOME_NO_BREAKDOWN', message: 'Other income resolved via fallback — no agent category data provided.' });",
+        "priority": "nice_to_have"
+      }
+    },
+    {
+      "id": "F-012",
+      "category": "A",
+      "category_name": "Tool Call Orchestration",
+      "severity": "minor",
+      "title": "detect_collision not verifiable as agent tool call — tool call trace not persisted",
+      "description": "Collision summary present (severe: 3, minor: 8) but tool_calls is not a column in agent_runs. Cannot confirm whether detect_collision was called as Phase 6 agent tool or whether the collision data is computed by the platform/postprocess layer. No tool call trace is available for any of the 7 phases.",
+      "evidence_from_trace": {
+        "trace_location": "agent_runs schema (columns: id, agent_id, agent_version, prompt_version, deal_id, triggered_by, trigger_context, user_id, status, input, output, error, tokens_in, tokens_out, cost_usd, started_at, completed_at, duration_ms)",
+        "agent_quote_or_action": "No tool_calls column in agent_runs. Collision summary exists in output but source unverifiable.",
+        "expected_behavior": "tool_calls JSONB column would allow forensic verification of phase ordering, mandatory tool presence, and out-of-order calls."
+      },
+      "spec_reference": "Cashflow Agent prompt Phases 1-7 (tool orchestration map)",
+      "impact": "All future Category A diagnostics rely on inference rather than observation. Cannot confirm fetch_unit_mix was called, whether evaluate_plausibility was called as Phase 6 vs embedded differently, or whether Phase 2 analog tools were invoked.",
+      "recommendation": {
+        "action": "Add tool_calls JSONB column to agent_runs to persist ordered tool call sequence.",
+        "target_file": "backend/src/database/migrations/ (new migration)",
+        "proposed_text": "ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS tool_calls JSONB; -- [{name, input_preview, output_preview, called_at, duration_ms}]",
+        "priority": "nice_to_have"
+      }
+    },
+    {
+      "id": "F-013",
+      "category": "A",
+      "category_name": "Tool Call Orchestration / Other Income",
+      "severity": "minor",
+      "title": "PR2 Edit 2 (otherIncomeMonthly Method 3 instruction) absent from cashflow-v8.0-core",
+      "description": "Grep of system.ts for 'otherIncomeMonthly', 'other_income_monthly', 'Method 3', 'per-category' returned 0 matches. Only posture-related ancillary references found (lines 201, 1296, 1314). PR2 Edit 2 specified inserting Method 3 / otherIncomeMonthly instruction with fallback path into the Other Income reasoning section. This instruction is absent.",
+      "evidence_from_trace": {
+        "trace_location": "grep backend/src/agents/prompts/cashflow/system.ts for PR2 Edit 2 keywords",
+        "agent_quote_or_action": "0 matches for otherIncomeMonthly|Method 3|per-category in system.ts (1546 lines)",
+        "expected_behavior": "System prompt should instruct: 'For Method 3, read extractedData.rentRoll.otherIncomeMonthly from fetch_data_matrix. Emit per-category breakdown in data_points[].'"
+      },
+      "spec_reference": "PR2 Agent Prompt Updates Edit 2; OTHER_INCOME_REASONING_METHOD_SPEC v1.2 Section 7",
+      "impact": "The Task #829 data hydration investment (otherIncomeMonthly is now populated) is stranded — the agent has no instruction to use it. Every future run on deals with rent roll other income data will repeat F-003.",
+      "recommendation": {
+        "action": "Apply PR2 Edit 2 verbatim to system.ts. This is the Other Income Method 3 instruction block that was authored but not yet inserted into the production prompt.",
+        "target_file": "backend/src/agents/prompts/cashflow/system.ts",
+        "proposed_text": "Insert in Other Income section: '**Method 3 — Rent Roll Actuals with Category Projection:** Call fetch_data_matrix and read extractedData.rentRoll.otherIncomeMonthly for per-category monthly amounts (parking, pet, storage, RUBS, etc.). When sparse (<3 categories) or null, fall back to archive cohort for missing categories. All values must be total annual dollars.'",
+        "priority": "ship_blocker"
+      }
+    }
+  ],
+  "downstream_decisions": {
+    "m36_ticket_scope": "moderate",
+    "m36_scoping_rationale": "M36 evaluate_plausibility was called and produced d=2.69 (Heroic) — the tool is wired and functional. Three gaps justify a moderate-scope ticket: (1) plausibility_result not in output_keys as a structured field; only appears in summary text, blocking downstream consumers; (2) agent response to d > 2.0 is thin — 'management fee structure' cited, no named market evidence per top_stretch_variable; (3) management_fee at 2.6% of EGI producing a Heroic score suggests Phase A priors for management_fee may be miscalibrated. Ticket should scope: persist plausibility_result as structured output, improve agent prompt response for d > 2.0, review management_fee prior in sigma-engine.ts PRIORS map against archive distribution.",
+    "ticket_a_b_c_priorities": {
+      "ticket_a_agent_writeback_values_silently_erased": "high",
+      "ticket_b_guardrail_for_cross_deal_writes": "medium",
+      "ticket_c_wire_goal_seek_tool": "low",
+      "rationale": "Ticket A confirmed critical by this diagnostic: two distinct active write-back failures on this single deal — (1) other_income maps to wrong year1 key (F-009, ship_blocker, one-line fix), and (2) insurance agent value silently blocked by stale OM-sourced override (F-010, major). Both are ship_blocker or major severity. Ticket B (cross-deal guardrails) not directly observed on this run but the OM-as-override contamination pattern (F-010) is structurally related and warrants investigation. Ticket C (goal-seek) not relevant to observed failures."
+    },
+    "cie_phase_1_finding_type_priorities": [
+      "underpriced_ancillary_fee — highest value for 464 Bishop and similar premium multifamily: would have flagged $341,907 Other Income (3× P90 benchmark of $111K for 232 units) and forced per-category justification before acceptance",
+      "missing_ancillary_category — 464 Bishop has premium amenities (EV charging, pet spa, package lockers, rooftop) not broken out in underwriting; CIE would surface specific categories the agent missed",
+      "low_ancillary_adoption_rate — parking and EV charging adoption at a 2017 mid-rise in transit-proximate Atlanta West Midtown has meaningful sensitivity; cohort adoption rates per category would anchor the projection"
+    ]
+  }
+}
