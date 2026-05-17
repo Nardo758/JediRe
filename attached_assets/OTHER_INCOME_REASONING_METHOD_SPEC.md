@@ -1,7 +1,14 @@
-# OTHER INCOME REASONING METHOD SPEC v1.1.1
+# OTHER INCOME REASONING METHOD SPEC v1.2
 
-**Status:** v1.1.1 — Method 4 selection logic + CIE bidirectional integration
-**Supersedes:** v1.1
+**Status:** v1.2 — per-method CIE consumption guidance + M22 calibration via CIE
+**Supersedes:** v1.1.1
+
+**Changes from v1.1.1:**
+- Section 7 CIE integration expanded: per-method consumption paths specified (Method 1 adds category, Method 2 triggers re-selection to Method 3, Method 3/4 add category via Method 1 logic); unreviewed/deferred/declined handling explicit; unit convention note added
+- Q4 added: M22 Post-Close calibration flows through CIE, not directly into agent Other Income reasoning
+- Method 4 (Owned-Portfolio Analog) and Methods 1, 2, 3 unchanged
+
+**Reconciliation note (v1.2 patch vs v1.1.1):** The v1.2 patch was authored against a v1.1 base that still carried the original Method 4 (Archive Cohort Projection). v1.1.1 had already promoted the Owned-Portfolio Analog to Method 4 and added deterministic selection criteria — a structural improvement over the v1.0 Method 4. As a result: (a) v1.2's "remove Method 4" edit does not apply — our Method 4 is the Owned-Portfolio Analog, not Archive Cohort Projection; (b) v1.2's selection simplification to 3-method return does not apply — 4-method selection is preserved; (c) v1.2's Section 2.5 and 6.3 rewrites are redundant with v1.1.1. Applied: Section 7 per-method guidance and Q4.
 
 **Changes from v1.1:**
 - Added Method 4 to the selection function with deterministic criteria (owned-portfolio match quality + ancillary program match + n ≥ 2 comparables)
@@ -350,7 +357,21 @@ The cashflow agent system prompt includes the following guidance for Other Incom
 
 **Source for per-category rent roll detail (NEW v1.1):** When using Method 3, source per-category ancillary detail from `fetch_data_matrix.extractedData.rentRoll.otherIncomeMonthly`. When this is sparse or null, fall back to CIE-sourced cohort data for missing categories. Do not invent per-category values — every category in your output must trace to a documented source.
 
-**CIE integration:** When CIE has produced an Other Income opportunity finding (e.g., "RUBS not implemented — cohort P50 adds $48/unit/mo"), and the sponsor has accepted the finding, incorporate the accepted change into your Other Income projection per the Method 5 consumption logic in Section 2.5 — regardless of which projection method (1–4) you selected. Label each accepted-finding contribution with source label `cie_accepted_finding`.
+**CIE integration:** Before computing your Other Income projection, read existing CIE findings from DealContext (filtered to `domain: 'revenue'` and `finding_type` in `['missing_ancillary_category', 'underpriced_ancillary_fee', 'low_ancillary_adoption_rate']`). Findings in `sponsor_state: 'accepted'` are part of the deal's stabilized strategy and must be included in your projection.
+
+For each accepted CIE finding:
+- **If Method 1 is selected:** add the accepted category to your fee schedule projection using Method 1 logic (fee × adoption × applicable units)
+- **If Method 2 is selected:** the acceptance of an opportunity finding means the deal now has an operational lift component — recompute method selection, which will likely resolve to Method 3
+- **If Method 3 is selected:** add the accepted category to your per-category breakdown using Method 1 logic (fee × adoption × applicable units); the category appears in the Pro Forma even if it is not in the current rent roll
+- **If Method 4 is selected:** same as Method 3 — add the accepted category using Method 1 logic in addition to the sponsor-portfolio-anchored baseline
+
+Label each accepted-finding contribution with source label `cie_accepted_finding`.
+
+Findings in `sponsor_state: 'unreviewed'` or `'deferred'` do not feed your projection but must be acknowledged in your evidence narrative as opportunities the sponsor has not yet acted on.
+
+Findings in `sponsor_state: 'declined'` are excluded from your projection entirely.
+
+The unit convention is unchanged: all numeric values are total annual dollars, not per-unit-per-month.
 
 **Aggregate reconciliation:** After producing the per-category breakdown, cross-check your aggregate against the T-12 aggregate. If your projection exceeds T-12 by more than 15%, explain the delta (new programs, fee increases, adoption improvement). If it's below T-12, explain the reduction.
 
@@ -399,11 +420,25 @@ Some sponsors negotiate bulk agreements that produce Other Income. This is a con
 ### Q3: Per-category growth rate sources
 Parking and storage demand track differently than fee income. Future version: per-category growth rate library keyed by metro × category.
 
+### Q4: M22 Post-Close calibration via CIE
+
+The CIE's calibration loop (per CIE spec Section 11 Phase 5) consumes M22 actuals to refine capex sourcing and adoption rate estimates for opportunity findings. Once M22 has depth, CIE's "implement RUBS" finding shifts from estimated capex to M22-actuals capex, dropping confidence flags and tightening payback estimates.
+
+For the agent's Other Income reasoning, M22 calibration appears indirectly via CIE findings the sponsor accepts. The agent does not query M22 directly for Other Income projections; it consumes the calibration through CIE's accepted findings.
+
+**Recommendation:** the agent prompt does not need to know about M22 for Other Income reasoning. CIE handles M22 integration; the agent reads CIE findings. This keeps the agent's reasoning focused on projection and delegates opportunity detection to the platform.
+
 ---
 
 ## 11. CHANGELOG
 
-**v1.1.1 (current)**
+**v1.2 (current)**
+- Section 7 CIE integration expanded: per-method consumption paths specified for each of Methods 1, 2, 3, and 4; Method 2 acceptance triggers re-selection to Method 3; unreviewed/deferred/declined handling explicit; unit convention note added
+- Q4 added: M22 Post-Close calibration flows through CIE findings, not directly into agent Other Income reasoning
+- Methods 1, 2, 3, 4 unchanged; selection logic unchanged
+- Reconciliation: v1.2 patch edits that conflicted with v1.1.1 (remove Method 4, simplify selection) were not applied; Owned-Portfolio Analog Method 4 is preserved
+
+**v1.1.1 (archival)**
 - Added Method 4 to the selection function with deterministic criteria (owned-portfolio match quality + ancillary program match + n ≥ 2 comparables)
 - Added `DataAvailability` fields supporting Method 4 selection: `owned_portfolio_match_quality`, `owned_portfolio_has_ancillary_program`, `owned_portfolio_comparable_count`
 - Section 3 restructured: pseudocode decision tree replaced with typed `selectOtherIncomeMethod()` function and `hasDirectlyComparableOwnedPortfolio()` helper; Section 3.2 deal-type defaults table added with Method 4 override condition column
