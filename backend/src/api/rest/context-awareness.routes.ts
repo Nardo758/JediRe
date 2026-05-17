@@ -415,11 +415,52 @@ export function createContextAwarenessRoutes(pool: Pool): Router {
         });
       }
 
+      // Inject live platform data so the LLM can answer operational questions
+      // like "how many agents are running" without needing the knowledge graph.
+      let extraContext = '';
+      try {
+        const [agentStatusRes, recentRunsRes] = await Promise.all([
+          pool.query<{ status: string; cnt: string }>(`
+            SELECT status, COUNT(*) AS cnt
+            FROM agent_runs
+            WHERE created_at > NOW() - INTERVAL '24 hours'
+            GROUP BY status
+            ORDER BY status
+          `),
+          pool.query<{ agent_id: string; deal_name: string | null; started_at: string }>(`
+            SELECT ar.agent_id, d.name AS deal_name, ar.started_at
+            FROM agent_runs ar
+            LEFT JOIN deals d ON d.id = ar.deal_id
+            WHERE ar.status = 'running'
+            ORDER BY ar.started_at DESC
+            LIMIT 10
+          `),
+        ]);
+
+        const counts = agentStatusRes.rows
+          .map(r => `  ${r.status}: ${r.cnt}`)
+          .join('\n');
+        const running = recentRunsRes.rows;
+
+        extraContext = `Agent runs (last 24 h):\n${counts || '  (none)'}`;
+        if (running.length > 0) {
+          const list = running
+            .map(r => `  - ${r.agent_id}${r.deal_name ? ` on "${r.deal_name}"` : ''} (started ${r.started_at})`)
+            .join('\n');
+          extraContext += `\n\nCurrently running agents (${running.length}):\n${list}`;
+        } else {
+          extraContext += '\n\nCurrently running agents: none';
+        }
+      } catch {
+        // non-fatal — answer() works fine without it
+      }
+
       const result = await contextService.answer(question, {
         dealId,
         marketId,
         submarketId,
         limit: typeof limit === 'number' ? limit : undefined,
+        extraContext: extraContext || undefined,
       });
 
       res.json({

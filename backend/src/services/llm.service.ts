@@ -37,6 +37,17 @@ interface LLMProvider {
  * Get configured LLM provider from environment
  */
 function getLLMProvider(): LLMProvider | null {
+  // Check for DeepSeek first — cost-efficient and preferred for lightweight
+  // inference tasks like the Neural Network Hub "Ask Network" chat.
+  if (process.env.DEEPSEEK_API_KEY) {
+    return {
+      name: 'deepseek',
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      endpoint: `${(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '')}/chat/completions`,
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    };
+  }
+
   // Check for Claude/Anthropic.
   // Prefer the AI_INTEGRATIONS proxy key/URL (Replit ModelFarm) so that
   // proxy-issued keys don't get sent directly to api.anthropic.com (which
@@ -62,16 +73,6 @@ function getLLMProvider(): LLMProvider | null {
       apiKey: process.env.OPENAI_API_KEY,
       endpoint: 'https://api.openai.com/v1/chat/completions',
       model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
-    };
-  }
-
-  // Check for DeepSeek (cheap OpenAI-compatible endpoint, ideal for plumbing work)
-  if (process.env.DEEPSEEK_API_KEY) {
-    return {
-      name: 'deepseek',
-      apiKey: process.env.DEEPSEEK_API_KEY,
-      endpoint: `${(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '')}/chat/completions`,
-      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
     };
   }
 

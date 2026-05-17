@@ -916,7 +916,7 @@ export class ContextAwarenessService {
    */
   async answer(
     question: string,
-    opts: { dealId?: string; marketId?: string; submarketId?: string; limit?: number } = {}
+    opts: { dealId?: string; marketId?: string; submarketId?: string; limit?: number; extraContext?: string } = {}
   ): Promise<{
     text: string;
     sources: Array<{ id: string; type: NodeType; name: string; score: number }>;
@@ -1002,12 +1002,17 @@ export class ContextAwarenessService {
     if (opts.submarketId) scopeBits.push(`submarketId=${opts.submarketId}`);
     const scope = scopeBits.length ? `Scope: ${scopeBits.join(', ')}` : 'Scope: none';
 
+    const liveBlock = opts.extraContext
+      ? `\nLive platform data:\n${opts.extraContext}\n`
+      : '';
+
     const prompt = `You are JediRe's neural network analyst. Answer the user's question
-using ONLY the knowledge graph context below. If the context is insufficient,
-say so plainly — do not fabricate.  Cite sources by their bracket number, e.g. [1].
+using the context below. Prefer live platform data when relevant. If context is
+insufficient, say so plainly — do not fabricate. Cite knowledge-graph sources by
+their bracket number, e.g. [1].
 
 ${scope}
-
+${liveBlock}
 Knowledge graph context:
 ${contextBlock}
 
