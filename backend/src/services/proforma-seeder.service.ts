@@ -1186,6 +1186,40 @@ export async function seedProFormaYear1(
     const bpProforma = bpRaw && typeof bpRaw === 'object' ? bpRaw as Record<string, unknown> : null;
     const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma);
 
+    // F-010 write-path guard: validate seed before DB write. If any field
+    // slipped through getOverride() with override === om AND no override_source,
+    // auto-heal here so contaminated data can NEVER reach the database.
+    // This is a defense-in-depth layer — getOverride() should have already
+    // returned null for such fields; if this fires it indicates a code regression.
+    for (const [field, value] of Object.entries(seed)) {
+      if (!value || typeof value !== 'object' || !('override' in value)) continue;
+      const lv = value as Record<string, unknown>;
+      if (
+        lv.override != null &&
+        lv.om != null &&
+        lv.override === lv.om &&
+        (lv.override_source == null || lv.override_source === undefined)
+      ) {
+        console.error(
+          `[F-010 write-guard] BUG: contaminated override in field "${field}" for deal ${dealId}.` +
+          ` override=${lv.override} equals om=${lv.om} with no override_source.` +
+          ` Auto-healing: clearing override and re-resolving from t12/platform.`
+        );
+        lv.override = null;
+        if ('t12' in lv && lv.t12 != null) {
+          lv.resolved = lv.t12;
+          lv.resolution = 't12';
+        } else if ('platform' in lv && lv.platform != null) {
+          lv.resolved = lv.platform;
+          lv.resolution = 'platform_fallback';
+        } else {
+          lv.resolved = null;
+          lv.resolution = 'platform_fallback';
+        }
+        warnings.push(`F-010 auto-healed: ${field} (override was equal to om with no source)`);
+      }
+    }
+
     // Surface warnings from any layered value
     for (const [k, v] of Object.entries(seed)) {
       if (v && typeof v === 'object' && 'warning' in v && (v as Record<string, unknown>).warning) {
