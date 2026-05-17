@@ -2390,6 +2390,41 @@ export async function getDealFinancials(
       if (_eT != null && _oT != null) _seedNoi.t12 = Math.round(_eT - _oT);
     }
 
+    // Insurance T12 recovery — the T12 extractor occasionally cannot map
+    // "Insurance - Bldg" (or similar GL labels) to the canonical `insurance`
+    // field and files them under custom_line_items instead, leaving
+    // insurance.t12 = null.  Recover by scanning custom_line_items for:
+    //   1. A "TOTAL INSURANCE EXPENSES" rollup key  (preferred — no double-count)
+    //   2. Any key whose label contains "insurance" but NOT "health" (payroll item)
+    // Only applied when the canonical insurance.t12 slot is still null.
+    {
+      const _insRow = _byField('insurance');
+      if (_insRow && _insRow.t12 == null) {
+        const _customItems = (
+          (_dealData?.extraction_t12 as Record<string, any>)
+            ?.opex
+            ?.custom_line_items ?? {}
+        ) as Record<string, number>;
+        // Prefer the explicit rollup key to avoid double-counting
+        const _rollupKey = Object.keys(_customItems).find(
+          k => /total\s+insurance\s+expenses?/i.test(k)
+        );
+        if (_rollupKey != null && typeof _customItems[_rollupKey] === 'number') {
+          _insRow.t12 = Math.round(_customItems[_rollupKey]);
+        } else {
+          // Sum individual building-insurance lines, skip health/employee lines
+          const _insSum = Object.entries(_customItems).reduce((s, [k, v]) => {
+            if (typeof v !== 'number') return s;
+            const kl = k.toLowerCase();
+            if (!kl.includes('insurance')) return s;
+            if (kl.includes('health') || kl.includes('employee')) return s;
+            return s + v;
+          }, 0);
+          if (_insSum > 0) _insRow.t12 = Math.round(_insSum);
+        }
+      }
+    }
+
     // Individual opex broker fallback — seed.om may be null when broker
     // proforma data was entered after the seed was first created (the seeder
     // only runs once; subsequent broker_claims edits are not back-propagated
