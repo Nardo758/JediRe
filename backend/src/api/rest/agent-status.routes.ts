@@ -129,18 +129,35 @@ export function createAgentStatusRoutes(pool: Pool): Router {
             LIMIT 10`,
           dbParams
         ),
-        // Pull real agent runs (cashflow, research, etc.) as synthetic events
+        // Pull real agent runs (cashflow, research, etc.) as synthetic events.
+        // agent_runs.user_id and deals.user_id / org_members.user_id are UUID
+        // columns — cast $1 explicitly to avoid "operator does not exist: text = uuid".
         pool.query(
-          `SELECT r.id,
-                  r.agent_id || '.' || r.status AS event_type,
-                  r.deal_id, r.user_id,
-                  COALESCE(r.completed_at, r.started_at) AS created_at
-             FROM agent_runs r
-             ${VISIBILITY_JOINS_AR}
-            WHERE COALESCE(r.completed_at, r.started_at) >= NOW() - INTERVAL '24 hours'
-              AND ${VISIBILITY_WHERE}
-            ORDER BY COALESCE(r.completed_at, r.started_at) DESC
-            LIMIT 20`,
+          isAdmin
+            ? `SELECT r.id,
+                      r.agent_id || '.' || r.status AS event_type,
+                      r.deal_id, r.user_id,
+                      COALESCE(r.completed_at, r.started_at) AS created_at
+                 FROM agent_runs r
+                WHERE COALESCE(r.completed_at, r.started_at) >= NOW() - INTERVAL '24 hours'
+                ORDER BY COALESCE(r.completed_at, r.started_at) DESC
+                LIMIT 20`
+            : `SELECT r.id,
+                      r.agent_id || '.' || r.status AS event_type,
+                      r.deal_id, r.user_id,
+                      COALESCE(r.completed_at, r.started_at) AS created_at
+                 FROM agent_runs r
+                 LEFT JOIN deals d
+                   ON d.id = r.deal_id AND d.archived_at IS NULL
+                 LEFT JOIN org_members om
+                   ON om.org_id = d.org_id AND om.user_id = $1::uuid
+                WHERE COALESCE(r.completed_at, r.started_at) >= NOW() - INTERVAL '24 hours'
+                  AND (
+                    r.user_id = $1::uuid
+                    OR (r.deal_id IS NOT NULL AND (d.user_id = $1::uuid OR om.user_id IS NOT NULL))
+                  )
+                ORDER BY COALESCE(r.completed_at, r.started_at) DESC
+                LIMIT 20`,
           dbParams
         ),
       ]);
