@@ -249,8 +249,9 @@ describe('applyUserOverride: Task #832 — agent sub-key preservation', () => {
     expect(update).toBeDefined();
     const fieldForDb = JSON.parse(update!.params[3] as string);
     expect(fieldForDb.override).toBeNull();
-    // override_source is set to `undefined` on clear which JSON.stringify omits
-    expect(fieldForDb.override_source).toBeUndefined();
+    // override_source is explicitly null on clear so JSON.stringify includes it
+    // and the JSONB || merge removes the stale 'operator' value from the DB.
+    expect(fieldForDb.override_source).toBeNull();
   });
 
   it('version snapshot is attempted after the DB write', async () => {

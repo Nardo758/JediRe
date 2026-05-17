@@ -1332,8 +1332,11 @@ export async function applyUserOverride(
   // Stamp origin so agent write-back can distinguish deliberate operator
   // overrides from system-sourced values (e.g., seeder OM layer).
   // 'operator' = a human explicitly entered this value via the UI.
-  (field as LayeredValue<number> & { override_source?: string }).override_source =
-    value != null ? 'operator' : undefined;
+  // Use null (not undefined) for the clear case so JSON.stringify includes the
+  // key in $4 and the SQL JSONB || merge explicitly removes the stale
+  // 'operator' value from the DB rather than silently preserving it.
+  (field as LayeredValue<number> & { override_source?: string | null }).override_source =
+    value != null ? 'operator' : null;
   if (value != null) {
     field.resolved = value;
     field.resolution = 'override';
