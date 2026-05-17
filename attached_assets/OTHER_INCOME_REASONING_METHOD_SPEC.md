@@ -350,7 +350,7 @@ The cashflow agent system prompt includes the following guidance for Other Incom
 
 **Source for per-category rent roll detail (NEW v1.1):** When using Method 3, source per-category ancillary detail from `fetch_data_matrix.extractedData.rentRoll.otherIncomeMonthly`. When this is sparse or null, fall back to CIE-sourced cohort data for missing categories. Do not invent per-category values — every category in your output must trace to a documented source.
 
-**CIE integration:** When CIE has produced an Other Income opportunity finding (e.g., "RUBS not implemented — cohort P50 adds $48/unit/mo"), and the sponsor has accepted the finding, include the accepted category in your Method 3 projection with source label `cie_accepted_finding`.
+**CIE integration:** When CIE has produced an Other Income opportunity finding (e.g., "RUBS not implemented — cohort P50 adds $48/unit/mo"), and the sponsor has accepted the finding, incorporate the accepted change into your Other Income projection per the Method 5 consumption logic in Section 2.5 — regardless of which projection method (1–4) you selected. Label each accepted-finding contribution with source label `cie_accepted_finding`.
 
 **Aggregate reconciliation:** After producing the per-category breakdown, cross-check your aggregate against the T-12 aggregate. If your projection exceeds T-12 by more than 15%, explain the delta (new programs, fee increases, adoption improvement). If it's below T-12, explain the reduction.
 
@@ -380,11 +380,11 @@ The cashflow agent system prompt includes the following guidance for Other Incom
 4. Missing categories (present in ≥ 60% of cohort but absent from subject) are identified and flagged
 5. The aggregate projection reconciles against T-12 with an explicit delta explanation when deviation exceeds 15%
 6. Per-category breakdown appears in evidence narrative regardless of method selected (except Method 2 aggregate-only)
-7. CIE-accepted Other Income findings appear as categories in Method 3 projection with `cie_accepted_finding` source label
+7. CIE-accepted Other Income findings are incorporated into the Other Income projection (regardless of which method is active) with `cie_accepted_finding` source label per the Method 5 consumption path
 8. Comparable filtering rules are applied before consuming cohort adoption rates; n < 4 triggers cohort broadening with documented `cohort_match_quality`
 9. On a development test deal, Method 1 is selected with adoption rates traceable to owned-portfolio or archive cohort
 10. (NEW) When `otherIncomeMonthly` is sparse, Method 3 fallback correctly hybrids with archive cohort per-category data (via CIE) and produces a complete per-category breakdown
-11. (NEW) Method 5 reference to CIE: when CIE produces an Other Income opportunity finding that the sponsor accepts, the accepted category appears in Method 3's per-category breakdown on the next agent run
+11. (NEW) Method 5 CIE consumption is method-agnostic: when CIE produces an Other Income opportunity finding that the sponsor accepts, the accepted change appears in the agent's next Other Income projection regardless of whether Method 1, 2, 3, or 4 was selected
 
 ---
 
