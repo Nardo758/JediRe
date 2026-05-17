@@ -475,7 +475,23 @@ function buildSeed(
       current = (current as Record<string, unknown>)[part];
     }
     if (current && typeof current === 'object' && 'override' in current) {
-      return (current as LayeredValue<number>).override ?? null;
+      const lv = current as LayeredValue<number> & { override_source?: string | null; om?: number | null };
+      // F-010 contamination guard: if override_source is absent (pre-operator-tag era,
+      // before Task #832 added 'operator' stamping) AND override exactly equals the om
+      // slot, this is a legacy OM-to-override write from a historical code path.
+      // Returning null lets the priority resolver fall through to t12/platform and
+      // allows the cashflow agent to write its value on the next run.
+      // Real operator overrides are always stamped override_source='operator' by the
+      // current applyUserOverride, so this guard never touches legitimate overrides.
+      if (
+        (lv.override_source == null) &&
+        lv.override != null &&
+        lv.om != null &&
+        lv.override === lv.om
+      ) {
+        return null;
+      }
+      return lv.override ?? null;
     }
     return null;
   };
