@@ -1,0 +1,363 @@
+# COMPETITIVE INTELLIGENCE ENGINE SPEC — RECONCILIATION PATCH v1.0 → v1.0.1
+
+**Purpose:** Four small edits to the CIE spec addressing three observations from review (filename reference fragility, finding_id composition undefined, M22 graceful degradation unclear) plus a cross-reference audit.
+
+**Type:** Reconciliation patch — no architectural changes; mechanical clarity and reference durability improvements.
+
+**Apply directly to the existing CIE spec v1.0.** Minor version bump to v1.0.1.
+
+---
+
+## Why this patch
+
+Spec review surfaced three implementation-time gotchas that would have produced friction during Phase 1 build:
+
+1. The spec references `CASHFLOW_AGENT_PROMPT_PATCH_V4.md` by filename, but the canonical filename in production may differ. Filename references break when files are renamed, consolidated, or versioned.
+
+2. `finding_id` is referenced throughout but its composition is undefined. Without a stable upsert key, the persistence layer defaults to insert-only semantics — re-runs produce duplicate findings rather than updating existing ones. Sponsor's accept/decline state would be lost on every re-run.
+
+3. Section 7's capex sourcing priority chain lists M22 as priority #1, but Phase 5 describes M22 integration as a later enhancement. As currently written, Phase 1 would either block on M22 readiness or silently fail when M22 returns null.
+
+A fourth edit (cross-reference audit) catches other filename references that would create the same fragility as observation 1.
+
+---
+
+## EDIT 1 — Replace filename references with behavioral descriptions
+
+### Section 13 — Connection to prior specs
+
+**Find the existing "Pairs with" list at the top of the document and Section 13.**
+
+**Replace the cashflow agent prompt reference:**
+
+**Old:**
+> Pairs with `CASHFLOW_AGENT_PROMPT_PATCH_V4.md` (CIE runs as a separate post-pass; does not bloat agent prompt)
+
+**New:**
+> Pairs with the canonical Cash Flow Agent system prompt — the current production version including analog cohort anchoring (Section A.5) and posture-per-year reasoning (Section A.6). CIE runs as a separate post-pass and does not bloat the agent prompt. The agent prompt's Other Income reasoning section reads CIE findings from DealContext; no other agent-prompt changes are required for CIE integration.
+
+### Cross-reference audit — convert other filename references where appropriate
+
+**Apply the same principle to other doc references in the spec.** Code file references (`.ts`, `.tsx` files) stay as filenames because code has specific paths. Doc references convert to behavioral descriptions:
+
+| Reference type | Current form | Updated form |
+|---|---|---|
+| Code: `proFormaMathEngine.ts v1.1` | Keep as-is — code files have specific paths | (no change) |
+| Doc: `SOURCE_RESIDUAL_CONVENTION.md v1.1` | Replace with: "the platform's source residual convention (v1.1 or current), which defines residual source taxonomy and cohort filtering rules" |
+| Doc: `OTHER_INCOME_REASONING_METHOD_SPEC.md v1.1.1` | Replace with: "the Other Income reasoning method spec (current version) which covers the agent's per-method underwriting logic and the bidirectional integration with CIE via Method 5" |
+| Doc: `M09_PROFORMA_SPEC.md` | Replace with: "the M09 Pro Forma module specification" |
+| Doc: Roadmap mode spec | Replace with: "the Roadmap mode specification (when authored), which curates CIE findings into ordered action plans" |
+
+Code file references stay as filenames because they're imported by other code — the path is the contract. Doc references become behavioral so they survive renaming and consolidation.
+
+---
+
+## EDIT 2 — Define finding_id composition
+
+### Section 3 — Universal finding shape
+
+**Find the `CompetitiveIntelligenceFinding` interface (Section 3 of the spec).**
+
+**Replace the `finding_id` field declaration and add a new subsection below the interface:**
+
+**Current:**
+```typescript
+export interface CompetitiveIntelligenceFinding {
+  finding_id: string;
+  // ... rest of interface
+}
+```
+
+**Updated:**
+```typescript
+export interface CompetitiveIntelligenceFinding {
+  finding_id: string;       // see Section 3.1 below for composition rule
+  // ... rest of interface
+}
+```
+
+**Add new Section 3.1 immediately after the interface:**
+
+```
+### 3.1 finding_id composition
+
+`finding_id` is a deterministic string composed from three components:
+
+```typescript
+function computeFindingId(
+  deal_id: string,
+  finding_type: string,
+  field_path: string,
+): string {
+  return `${deal_id}:${finding_type}:${field_path}`;
+}
+```
+
+This composition guarantees that:
+
+1. **Same finding across runs has the same id.** Re-running CIE on the same deal
+   produces the same finding_id for the same (finding_type, field_path)
+   combination. The persistence layer upserts rather than inserts.
+
+2. **Sponsor state persists.** When a sponsor accepts, declines, or defers a
+   finding, that state is keyed to the finding_id. Re-runs update the row's
+   findings data (current values, cohort comparison) without disturbing the
+   sponsor_state, sponsor_reason, or sponsor_reviewed_at fields.
+
+3. **Cross-deal uniqueness.** Different deals produce different finding_ids
+   even for the same finding_type and field_path. Findings are scoped to
+   their deal.
+
+**Composite field paths for findings spanning multiple fields:**
+
+Some findings span multiple fields (e.g., a `term_structure_mismatch` debt
+finding spans loan type, rate, term, and prepayment penalty). For these,
+use a synthetic composite field_path:
+
+| Finding type | Composite field_path |
+|---|---|
+| `term_structure_mismatch` | `loan_terms.composite` |
+| `disposition_channel_mismatch` | `exit_strategy.composite` |
+| `staffing_model_mismatch` | `operating_model.staffing_composite` |
+| `compliance_program_gap` | `operating_model.compliance_composite` |
+
+The composite suffix (`.composite` or `.{aspect}_composite`) makes the
+synthetic path visually distinct from real field paths. Composite paths are
+documented in each finding type's library entry.
+
+**Database upsert pattern:**
+
+```sql
+INSERT INTO deal_underwriting_snapshots_ci_findings (...)
+VALUES (...)
+ON CONFLICT (finding_id) DO UPDATE
+SET
+  subject = EXCLUDED.subject,
+  cohort = EXCLUDED.cohort,
+  finding = EXCLUDED.finding,
+  action = EXCLUDED.action,
+  evidence_narrative = EXCLUDED.evidence_narrative,
+  confidence = EXCLUDED.confidence,
+  -- DO NOT overwrite sponsor_state, sponsor_reason, sponsor_reviewed_at
+  -- DO NOT overwrite sponsor_action_taken
+  updated_at = NOW();
+```
+
+The upsert preserves sponsor decision state across re-runs. The finding's
+analytical content (current values, cohort comparison, action estimates)
+refreshes; the sponsor's relationship to the finding persists.
+```
+
+---
+
+## EDIT 3 — Clarify M22 graceful degradation
+
+### Section 7 — Action characterization
+
+**Find Section 7.1 (Capex sourcing — priority order).**
+
+**Replace the capex sourcing section with this updated text:**
+
+```
+### 7.1 Capex sourcing — priority order with graceful degradation
+
+For each finding requiring a capex estimate, the engine consults sources in
+priority order. The chain **degrades gracefully** — if a higher-priority source
+returns null for the relevant comparable, the chain falls through to the next
+source automatically. No flag flip or feature toggle is required.
+
+**Priority chain:**
+
+1. **M22 actuals (priority #1).** When `deal_monthly_actuals` has data for
+   comparable deals that recently implemented the same change, M22 returns
+   the actual capex spend per category. Highest fidelity.
+
+2. **Archive cohort typical (priority #2).** When M22 returns null (no
+   comparable M22 actuals exist yet, or M22 isn't populated for this category),
+   the chain falls through to archive cohort. Returns median capex per
+   category per unit count across archive deals where the change was
+   implemented.
+
+3. **Estimated by category (priority #3).** When both M22 and archive cohort
+   return null (rare — usually a brand-new finding type), the chain falls
+   through to platform default estimates. Each finding type carries a
+   default capex range in its library entry.
+
+**Phase 1 behavior — what to expect when M22 has no data:**
+
+At Phase 1 of the CIE rollout, M22 (`deal_monthly_actuals` table) is not yet
+fully populated for most finding types. The capex chain behaves as follows:
+
+- M22 returns null → chain falls through to archive cohort
+- Archive cohort returns data → finding gets capex estimate from cohort
+- Finding's `capex_source` field is set to `'archive_cohort_typical'`
+- Confidence is medium (typical for cohort-sourced estimates)
+
+This is the **default expected behavior at Phase 1**. The CIE Phase 1 build is
+NOT blocked on M22 readiness. M22 is consulted, returns null, chain proceeds.
+The implementer does NOT need to wire a flag, feature toggle, or conditional —
+the priority chain's null handling does the right thing automatically.
+
+**Phase 5 behavior — what improves when M22 matures:**
+
+As M22 actuals accumulate over time (months and quarters post-deployment), more
+findings get sourced from priority #1 (M22 actuals) instead of priority #2
+(archive cohort). The `capex_source` field shifts from `'archive_cohort_typical'`
+to `'m22_actuals'` for those findings. Confidence rises from medium to high.
+
+This shift happens automatically per the priority chain. No CIE-side code
+change is required when M22 matures. The chain was already calling M22 from
+Phase 1; M22 just starts returning non-null values for more findings.
+
+**Implementation rule:**
+
+The Phase 1 implementer should write the priority chain expecting all three
+levels to be consulted, with null handling at each level falling through to
+the next. The chain is fully functional from Phase 1 regardless of M22's
+maturity. M22 maturity over time improves the chain's output quality without
+requiring any CIE-side changes.
+```
+
+### Section 11 — Phase 5 description update
+
+**Find the Phase 5 entry in Section 11 (Implementation Phases).**
+
+**Update the description:**
+
+**Old:**
+```
+### Phase 5 — Calibration loop (ongoing)
+- Sponsor decline patterns feed back into CIE thresholds
+- M22 actuals feed back into capex sourcing
+- Cohort growth improves confidence over time
+```
+
+**Updated:**
+```
+### Phase 5 — Calibration loop (ongoing, no explicit build)
+
+This is not a discrete build phase but an ongoing behavior of the system. Three
+calibration dynamics operate automatically:
+
+1. **Sponsor decline pattern feedback.** When specific finding types accumulate
+   decline reasons (e.g., "not_in_scope" for missing_amenity findings on Class C
+   deals), CIE's severity classification thresholds adjust to surface those
+   findings less aggressively for similar deals in the future. This adjustment
+   is data-driven and requires no manual threshold tuning.
+
+2. **M22 capex sourcing maturation.** As M22 (`deal_monthly_actuals`) accumulates
+   comparable deals' actual implementation spend, more findings shift their
+   capex_source from `archive_cohort_typical` to `m22_actuals`. This is
+   automatic per the priority chain (Section 7.1); no code change required.
+
+3. **Cohort growth.** As the platform processes more deals, archive cohort
+   distributions improve their statistical power. Findings that previously
+   carried medium confidence due to thin cohort (n = 4-7) shift to high
+   confidence as cohort matches grow (n ≥ 8).
+
+Phase 5 is the ambient calibration the platform performs as it operates. It
+does not gate Phase 1, 2, 3, or 4 readiness. The CIE is fully functional from
+Phase 1 with cohort-sourced capex and medium confidence; Phase 5's improvements
+are progressive enhancements over time.
+```
+
+---
+
+## EDIT 4 — Add the cross-reference principle to Section 14
+
+### Section 14 — Strategic positioning
+
+**Add a new short subsection at the end of Section 14 (or as a new Section 15 if preferred):**
+
+```
+### Note on cross-references in this spec
+
+References to other platform specs use behavioral descriptions rather than
+filenames where possible. This makes references durable across filename
+consolidation, version bumps, and document renaming. References to code files
+(.ts, .tsx) use filenames because code has specific import paths that are
+contractual.
+
+When implementing the CIE, follow the spec by behavior, not by hunting for
+specific filenames. If a referenced behavior isn't in the file you expect,
+search for the behavior — it may have been consolidated or moved.
+```
+
+---
+
+## CHANGELOG ADDITION
+
+### Section 15 (or 16 if Section 15 was added) — Add v1.0.1 entry
+
+```
+**v1.0.1 (current)**
+- Filename references replaced with behavioral descriptions for doc references
+  (code file references unchanged)
+- finding_id composition defined explicitly (deal_id:finding_type:field_path)
+- Composite field_paths defined for findings spanning multiple fields
+- Database upsert pattern specified with sponsor_state preservation
+- M22 graceful degradation clarified — priority chain handles null fallback
+  automatically; CIE Phase 1 not blocked on M22 readiness
+- Phase 5 description reframed as ongoing ambient calibration rather than
+  discrete build phase
+```
+
+---
+
+## VERIFICATION
+
+After applying the four edits, verify:
+
+1. Section 13 references the cashflow agent prompt by behavior, not by filename
+2. Section 3.1 exists with finding_id composition rule
+3. Section 3.1 includes the composite field_path table for multi-field findings
+4. Section 3.1 includes the SQL upsert pattern with sponsor_state preservation
+5. Section 7.1 specifies graceful degradation across M22 / archive cohort / estimated
+6. Section 7.1 explicitly states Phase 1 is not blocked on M22 readiness
+7. Section 11 Phase 5 is reframed as ambient calibration
+8. The "Note on cross-references" appears at the end of Section 14
+9. Changelog entry added
+
+### Test the finding_id composition
+
+Walk through three scenarios mentally:
+
+**Scenario A:** Run CIE on deal X. CIE produces a `missing_ancillary_category` finding for field path `proforma.revenue.other_income.rubs`. finding_id should be `X:missing_ancillary_category:proforma.revenue.other_income.rubs`.
+
+**Scenario B:** Sponsor accepts the finding. Re-run CIE on deal X. The same finding regenerates with the same finding_id. The upsert preserves `sponsor_state: 'accepted'`. ✓
+
+**Scenario C:** Re-run CIE produces a `term_structure_mismatch` debt finding. finding_id should be `X:term_structure_mismatch:loan_terms.composite`. ✓
+
+If any of these three behave unexpectedly in the implementation, the finding_id composition needs refinement.
+
+---
+
+## WHAT THIS PATCH PRESERVES
+
+The CIE's architecture is unchanged:
+- Six domains (revenue, opex, capex, debt, operating, exit)
+- Universal finding shape
+- Separate-post-pass architecture
+- Severity classification
+- Sponsor interaction model
+- Roadmap mode connection
+
+What this patch tightens:
+- References don't break when files are renamed
+- finding_id has a deterministic, documented composition
+- Phase 1 implementer knows M22 graceful degradation is automatic
+- Phase 5 is properly framed as ambient, not a discrete build phase
+
+Four edits. The spec's substance is unchanged. The implementation friction is removed.
+
+---
+
+## APPLICATION ORDER
+
+1. Apply Edit 1 (filename → behavioral references; cross-reference audit)
+2. Apply Edit 2 (Section 3.1 finding_id composition + upsert pattern)
+3. Apply Edit 3 (Section 7.1 graceful degradation + Section 11 Phase 5 reframe)
+4. Apply Edit 4 (Section 14 cross-reference note)
+5. Add changelog entry
+
+Estimated effort: 30-45 minutes of editing. No architectural changes; mechanical clarity improvements.

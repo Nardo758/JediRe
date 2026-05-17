@@ -1,16 +1,16 @@
-# COMPETITIVE INTELLIGENCE ENGINE — PLATFORM-WIDE SPEC v1.0
+# COMPETITIVE INTELLIGENCE ENGINE — PLATFORM-WIDE SPEC v1.0.1
 
-**Status:** Draft v1.0 — new platform module
+**Status:** Draft v1.0.1 — reconciliation patch applied
 **Owner:** Leon / JEDI RE
 **Module designation:** M-prefixed (next available, suggest M37 or per current numbering)
 **Purpose:** Establish the platform's archive-driven opportunity and risk detection engine that runs across every deal and surfaces findings the underwriting alone does not.
 
 **Pairs with:**
 - `proFormaMathEngine.ts` v1.1 (subject-side values are consumed from corrected snapshots)
-- `SOURCE_RESIDUAL_CONVENTION.md` v1.1 (residual values flagged appropriately in cohort filtering)
-- `OTHER_INCOME_REASONING_METHOD_SPEC.md` v1.0 (CI Engine supersedes Method 5; ancillary findings are one finding type among many)
-- `CASHFLOW_AGENT_PROMPT_PATCH_V4.md` (CI Engine runs as a separate post-pass; does not bloat agent prompt)
-- Roadmap mode spec (CI findings ARE the action library)
+- The platform's source residual convention (v1.1 or current), which defines residual source taxonomy and cohort filtering rules
+- The Other Income reasoning method spec (current version) which covers the agent's per-method underwriting logic and the bidirectional integration with CIE via Method 5
+- The canonical Cash Flow Agent system prompt — the current production version including analog cohort anchoring and posture-per-year reasoning. CIE runs as a separate post-pass and does not bloat the agent prompt. The agent prompt's Other Income reasoning section reads CIE findings from DealContext; no other agent-prompt changes are required for CIE integration.
+- The Roadmap mode specification (when authored), which curates CIE findings into ordered action plans
 - M22 Post-Close Intelligence (M22 actuals power capex estimates in findings)
 
 ---
@@ -62,7 +62,7 @@ Every finding, regardless of domain or type, conforms to this shape:
 
 ```typescript
 export interface CompetitiveIntelligenceFinding {
-  finding_id: string;
+  finding_id: string;       // see Section 3.1 below for composition rule
   deal_id: string;
   run_id: string;
   created_at: string;
@@ -137,6 +137,61 @@ export interface CompetitiveIntelligenceFinding {
   sponsor_reviewed_at?: string;
 }
 ```
+
+### 3.1 finding_id composition
+
+`finding_id` is a deterministic string composed from three components:
+
+```typescript
+function computeFindingId(
+  deal_id: string,
+  finding_type: string,
+  field_path: string,
+): string {
+  return `${deal_id}:${finding_type}:${field_path}`;
+}
+```
+
+This composition guarantees that:
+
+1. **Same finding across runs has the same id.** Re-running CIE on the same deal produces the same `finding_id` for the same `(finding_type, field_path)` combination. The persistence layer upserts rather than inserts.
+
+2. **Sponsor state persists.** When a sponsor accepts, declines, or defers a finding, that state is keyed to the `finding_id`. Re-runs update the row's findings data (current values, cohort comparison) without disturbing the `sponsor_state`, `sponsor_reason`, or `sponsor_reviewed_at` fields.
+
+3. **Cross-deal uniqueness.** Different deals produce different `finding_id`s even for the same `finding_type` and `field_path`. Findings are scoped to their deal.
+
+**Composite field paths for findings spanning multiple fields:**
+
+Some findings span multiple fields (e.g., a `term_structure_mismatch` debt finding spans loan type, rate, term, and prepayment penalty). For these, use a synthetic composite `field_path`:
+
+| Finding type | Composite field_path |
+|---|---|
+| `term_structure_mismatch` | `loan_terms.composite` |
+| `disposition_channel_mismatch` | `exit_strategy.composite` |
+| `staffing_model_mismatch` | `operating_model.staffing_composite` |
+| `compliance_program_gap` | `operating_model.compliance_composite` |
+
+The composite suffix (`.composite` or `.{aspect}_composite`) makes the synthetic path visually distinct from real field paths. Composite paths are documented in each finding type's library entry.
+
+**Database upsert pattern:**
+
+```sql
+INSERT INTO deal_underwriting_snapshots_ci_findings (...)
+VALUES (...)
+ON CONFLICT (finding_id) DO UPDATE
+SET
+  subject = EXCLUDED.subject,
+  cohort = EXCLUDED.cohort,
+  finding = EXCLUDED.finding,
+  action = EXCLUDED.action,
+  evidence_narrative = EXCLUDED.evidence_narrative,
+  confidence = EXCLUDED.confidence,
+  -- DO NOT overwrite sponsor_state, sponsor_reason, sponsor_reviewed_at
+  -- DO NOT overwrite sponsor_action_taken
+  updated_at = NOW();
+```
+
+The upsert preserves sponsor decision state across re-runs. The finding's analytical content (current values, cohort comparison, action estimates) refreshes; the sponsor's relationship to the finding persists.
 
 ---
 
@@ -304,13 +359,32 @@ The finding's `cohort.achievement_realized` field is populated when achievement-
 
 Each finding includes an `action` object with implementation estimates. Capex sourcing is the hardest part.
 
-### Capex sourcing — priority order
+### 7.1 Capex sourcing — priority order with graceful degradation
 
-1. **M22 actuals** (when available): comparable deals that recently implemented the same change. The M22 Post-Close Intelligence module's `deal_monthly_actuals` table tracks per-category capex spend post-acquisition. For a finding like "implement RUBS," CIE queries M22 for comparable deals' actual RUBS implementation costs in similar properties.
+For each finding requiring a capex estimate, the engine consults sources in priority order. The chain **degrades gracefully** — if a higher-priority source returns null for the relevant comparable, the chain falls through to the next source automatically. No flag flip or feature toggle is required.
 
-2. **Archive cohort typical**: median capex per category per unit count across archive deals where the change was implemented. Broader, less precise than M22 but available immediately.
+**Priority chain:**
 
-3. **Estimated by category**: platform default per category type (e.g., "RUBS implementation typical: $1,200-$1,800 per unit"). Lowest fidelity, used when neither M22 nor cohort data exists.
+1. **M22 actuals (priority #1).** When `deal_monthly_actuals` has data for comparable deals that recently implemented the same change, M22 returns the actual capex spend per category. Highest fidelity.
+
+2. **Archive cohort typical (priority #2).** When M22 returns null (no comparable M22 actuals exist yet, or M22 isn't populated for this category), the chain falls through to archive cohort. Returns median capex per category per unit count across archive deals where the change was implemented.
+
+3. **Estimated by category (priority #3).** When both M22 and archive cohort return null (rare — usually a brand-new finding type), the chain falls through to platform default estimates. Each finding type carries a default capex range in its library entry.
+
+**Phase 1 behavior — what to expect when M22 has no data:**
+
+At Phase 1 of the CIE rollout, M22 (`deal_monthly_actuals` table) is not yet fully populated for most finding types. The capex chain behaves as follows:
+
+- M22 returns null → chain falls through to archive cohort
+- Archive cohort returns data → finding gets capex estimate from cohort
+- Finding's `capex_source` field is set to `'archive_cohort_typical'`
+- Confidence is medium (typical for cohort-sourced estimates)
+
+This is the **default expected behavior at Phase 1**. The CIE Phase 1 build is NOT blocked on M22 readiness. M22 is consulted, returns null, chain proceeds. The implementer does NOT need to wire a flag, feature toggle, or conditional — the priority chain's null handling does the right thing automatically.
+
+**Phase 5 behavior — what improves when M22 matures:**
+
+As M22 actuals accumulate over time, more findings get sourced from priority #1 (M22 actuals) instead of priority #2 (archive cohort). The `capex_source` field shifts from `'archive_cohort_typical'` to `'m22_actuals'` for those findings. Confidence rises from medium to high. This shift happens automatically per the priority chain — no CIE-side code change is required.
 
 Capex source is recorded on the finding so sponsors can see the basis. M22-sourced findings carry higher confidence; estimated findings carry lower confidence.
 
@@ -474,10 +548,17 @@ Total: ~25-30 finding types across 5 build sessions. Each session validates its 
 - Target return optimization
 - Roadmap UI
 
-### Phase 5 — Calibration loop (ongoing)
-- Sponsor decline patterns feed back into CIE thresholds
-- M22 actuals feed back into capex sourcing
-- Cohort growth improves confidence over time
+### Phase 5 — Calibration loop (ongoing, no explicit build)
+
+This is not a discrete build phase but an ongoing behavior of the system. Three calibration dynamics operate automatically:
+
+1. **Sponsor decline pattern feedback.** When specific finding types accumulate decline reasons (e.g., `not_in_scope` for missing-amenity findings on Class C deals), CIE's severity classification thresholds adjust to surface those findings less aggressively for similar deals in the future. This adjustment is data-driven and requires no manual threshold tuning.
+
+2. **M22 capex sourcing maturation.** As M22 (`deal_monthly_actuals`) accumulates comparable deals' actual implementation spend, more findings shift their `capex_source` from `archive_cohort_typical` to `m22_actuals`. This is automatic per the priority chain (Section 7.1); no code change required.
+
+3. **Cohort growth.** As the platform processes more deals, archive cohort distributions improve their statistical power. Findings that previously carried medium confidence due to thin cohort (n = 4–7) shift to high confidence as cohort matches grow (n ≥ 8).
+
+Phase 5 is the ambient calibration the platform performs as it operates. It does not gate Phase 1, 2, 3, or 4 readiness. The CIE is fully functional from Phase 1 with cohort-sourced capex and medium confidence; Phase 5's improvements are progressive enhancements over time.
 
 Total: 8-10 focused sessions for full v1.0 platform-wide CIE. Phase 1 + Wave A of Phase 2 + Phase 3 is the minimum viable ship (5-7 sessions); Roadmap depends on enough finding types existing to be useful, so Wave B and Phase 4 follow.
 
@@ -504,11 +585,11 @@ Total: 8-10 focused sessions for full v1.0 platform-wide CIE. Phase 1 + Wave A o
 
 CIE composes with every existing platform convention:
 
-- **Math engine v1.1**: CIE reads from corrected snapshots; never operates on uncorrected raw agent output
-- **Source residual convention v1.1**: CIE cohort queries exclude residual sources; findings about residual fields are surfaced with that context
-- **Other Income reasoning v1.1.1**: CIE supersedes Method 5 as standalone archive-cohort projection; Section 2.5 of the Other Income spec documents the active CIE consumption path; Section 6.3 documents bidirectional integration
+- **Math engine v1.1** (`proFormaMathEngine.ts`): CIE reads from corrected snapshots; never operates on uncorrected raw agent output
+- **Source residual convention (v1.1 or current)**, which defines residual source taxonomy and cohort filtering rules: CIE cohort queries exclude residual sources; findings about residual fields are surfaced with that context
+- **Other Income reasoning method spec (current version)**, which covers the agent's per-method underwriting logic and the bidirectional integration with CIE via Method 5: CIE supersedes Method 5 as standalone archive-cohort projection; the Other Income spec's Section 2.5 documents the active CIE consumption path; Section 6.3 documents bidirectional integration
 - **Floor-plan grid (UI v1.2)**: CIE findings on per-floor-plan rents flow through the grid's evidence pills
-- **Cash Flow Agent prompt v4**: agent prompt does not need to know about CIE; engine runs post-pass, agent stays focused on projection
+- **Canonical Cash Flow Agent system prompt** (current production version): agent prompt does not need to know about CIE; engine runs post-pass, agent stays focused on projection; no agent-prompt changes required for CIE integration
 - **Line-item investigation matrix Pass 1**: each cell's "Common Pitfalls" section can reference relevant CIE findings as the platform-level safety net
 
 This is the pattern: CIE consumes the platform's existing intelligence and produces actionable findings on top. It doesn't replace anything; it adds a strategic visibility layer.
@@ -532,6 +613,12 @@ With CIE:
 - The platform becomes the institutional memory of "what comparable sponsors did on similar deals"
 
 This is the layer that distinguishes JEDI RE from spreadsheet underwriting plus broker network. Individual sponsors have limited memory and limited peer visibility. The platform has the archive. CIE surfaces that asymmetry as actionable opportunity.
+
+### Note on cross-references in this spec
+
+References to other platform specs use behavioral descriptions rather than filenames where possible. This makes references durable across filename consolidation, version bumps, and document renaming. References to code files (`.ts`, `.tsx`) use filenames because code has specific import paths that are contractual.
+
+When implementing the CIE, follow the spec by behavior, not by hunting for specific filenames. If a referenced behavior isn't in the file you expect, search for the behavior — it may have been consolidated or moved.
 
 ---
 
@@ -561,3 +648,19 @@ M22 is gated on `deal_monthly_actuals` table being populated. Until M22 has dept
 A sponsor's portfolio of 12 deals might have findings that are coherent across deals (e.g., 8 of 12 properties missing RUBS — portfolio-wide opportunity).
 
 **Recommendation:** v1.0 is per-deal. Portfolio aggregation is v2.0 — a separate "Portfolio Opportunities" view that aggregates findings across the sponsor's deals.
+
+---
+
+## 16. CHANGELOG
+
+**v1.0.1 (current)**
+- Filename references replaced with behavioral descriptions for all doc references (code file references unchanged)
+- `finding_id` composition defined explicitly (`deal_id:finding_type:field_path`) in new Section 3.1
+- Composite `field_path` values defined for findings spanning multiple fields
+- Database upsert pattern specified with `sponsor_state` preservation
+- M22 graceful degradation clarified in Section 7.1 — priority chain handles null fallback automatically; CIE Phase 1 is NOT blocked on M22 readiness
+- Phase 5 description reframed as ongoing ambient calibration rather than discrete build phase
+- Cross-reference note added to Section 14
+
+**v1.0**
+- Initial draft — six domains, universal finding shape, severity classification, cohort query rules, sponsor interaction model, Roadmap integration, implementation phases
