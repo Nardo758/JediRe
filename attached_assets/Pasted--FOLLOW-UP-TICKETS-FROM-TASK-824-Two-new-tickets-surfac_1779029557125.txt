@@ -1,0 +1,264 @@
+# FOLLOW-UP TICKETS FROM TASK #824
+
+Two new tickets surfaced by the Cash Flow Agent → Proforma Write-back debugging session. Both are structural fixes to patterns that produced silent failures in #824 and will produce more silent failures elsewhere if left in place.
+
+---
+
+## TICKET A — AgentRuntime Codepath Consistency Audit
+
+**Priority:** High
+**Estimated effort:** 1 focused session
+**Type:** Architecture audit + remediation
+**Sibling/source:** Task #824 (this audit closes a class of bugs that #824 surfaced one instance of)
+
+### Context
+
+During Task #824, a `postProcess` hook was silently bypassed in production for every agent run that came through `startAsync`. The root cause: `AgentRuntime` has two execution codepaths — `run()` (synchronous) and `_continueRun()` (async, used by the pipeline and the underwrite route). They were not symmetric. `run()` invoked `this.config.postProcess`; `_continueRun()` did not.
+
+This bug went undetected for an unknown duration because:
+- The synchronous `run()` path masked the broken async path during testing
+- The failure mode was silent (no error, just missing behavior)
+- Logs from the working path were structurally identical to logs from the broken path, except for the missing postProcess line which is easy to miss
+
+The asymmetry was fixed in #824 for `postProcess` specifically. But there is no reason to assume `postProcess` is the only hook with this asymmetry. The same pattern is highly likely to exist for other config callbacks.
+
+### Problem statement
+
+Verify that every `this.config.*` hook in `AgentRuntime` is invoked identically in `run()` and `_continueRun()`. Where divergence exists, either:
+1. Fix the asymmetry (both paths call the hook), OR
+2. Document the asymmetry explicitly with rationale (intentional divergence is acceptable; silent divergence is not)
+
+### Done looks like
+
+1. A documented audit of every `this.config.*` reference in `AgentRuntime`, with a per-hook table showing:
+   - Hook name
+   - Invoked in `run()`? (yes/no, with code reference)
+   - Invoked in `_continueRun()`? (yes/no, with code reference)
+   - If divergent: is the divergence intentional or a bug?
+
+2. Every bug-divergence is fixed (the hook is invoked in both codepaths)
+
+3. Every intentional divergence is documented with an inline code comment explaining the rationale, so future engineers don't accidentally "fix" intentional behavior
+
+4. A regression test is added that invokes both codepaths against a mock agent config and asserts that every hook fires in both. The test must fail if a future refactor reintroduces asymmetry on any hook.
+
+### Steps
+
+1. **Inventory the hooks.** Read `src/agents/runtime/AgentRuntime.ts` (or equivalent) and list every `this.config.*` callable reference. Likely candidates beyond `postProcess`:
+   - `preProcess` / `beforeRun`
+   - `validateOutput` / `schemaValidator`
+   - `firstToolCall` / `initialAction`
+   - `onToolCall` / `toolCallInterceptor`
+   - `onStop` / `afterRun`
+   - `onError` / `errorHandler`
+   - `telemetry` / `observability` hooks
+   - `retry` / `backoff` config
+
+2. **Trace each hook through both codepaths.** For each hook, follow execution in `run()` and `_continueRun()`. Record findings in a structured table.
+
+3. **Classify findings.** Each divergence is either:
+   - **Bug** — should be invoked in both, currently isn't
+   - **Intentional** — there's a real reason one path skips this hook (e.g., async path has different error handling that supersedes the hook)
+   - **Unclear** — need a brief code archeology to decide
+
+4. **Fix bugs.** For each bug-classified divergence, add the invocation to the missing codepath. Wrap in `try/catch` consistent with the existing pattern (postProcess is non-fatal in `run()`; mirror that in `_continueRun()`).
+
+5. **Document intentional divergences.** Inline code comments on both codepaths explaining why each is intentional. Format:
+   ```typescript
+   // INTENTIONAL: this.config.X is not invoked in _continueRun because [reason]
+   ```
+
+6. **Add the regression test.** Test exists at `src/agents/runtime/__tests__/runtime-symmetry.test.ts` (or equivalent). For each hook, the test:
+   - Builds a mock config that records every callback invocation
+   - Runs a minimal agent through `run()`, records invocations
+   - Runs the same minimal agent through `_continueRun()`, records invocations
+   - Asserts the invocation sets are equal (modulo documented intentional divergences)
+
+7. **Commit with reference to #824 in the message.**
+
+### Acceptance criteria
+
+1. Audit table exists in code review or as a markdown file at the relevant location
+2. Every divergence is classified (bug / intentional / unclear → resolved)
+3. Every bug-classified divergence is fixed in code
+4. Every intentional divergence has an inline comment explaining the rationale
+5. The regression test passes and fails appropriately on a synthetic codepath divergence
+6. No agent in production loses functionality that was working before the audit
+7. PR description references the #824 origin and the broader silent-failure-mode concern
+
+### Out of scope
+
+- Refactoring `AgentRuntime` to merge `run()` and `_continueRun()` into a single codepath. (Tempting, but bigger scope; defer to a separate architecture ticket if the audit reveals enough complexity to justify it.)
+- Changes to individual agents' config callbacks (the audit is about runtime invocation, not callback behavior)
+- Performance optimization (the audit is about correctness)
+
+### Risk
+
+The audit may surface multiple silent-bypass bugs simultaneously. Some hooks may have been bypassed for so long that the system is implicitly dependent on them not running. Fixing them all in one PR could change behavior in unexpected places.
+
+**Mitigation:** ship the audit table first (read-only). Then ship each bug fix as a separate PR with explicit before/after behavior documentation. Each PR is independently revertable if it surfaces unintended consequences.
+
+### Notes for the implementer
+
+- The fix in #824 added the postProcess invocation directly to `_continueRun()`. Use that diff as the reference pattern for any new invocations needed.
+- The error handling pattern in #824 wraps postProcess in `try/catch` so a postProcess failure doesn't fail the run. Mirror that for any other non-fatal hooks. Fatal hooks (e.g., schema validation) should retain their existing fail-the-run behavior.
+- Be cautious about hooks that should fire `before` something vs `after` something. Asymmetry in *order* can be just as bad as asymmetry in *invocation*.
+
+---
+
+## TICKET B — Proforma-Seeder Write Pattern Refactor
+
+**Priority:** High
+**Estimated effort:** 1-2 focused sessions
+**Type:** Bug fix + architecture refinement
+**Sibling/source:** Task #824 (this fix closes the read-side equivalent of the #824 write-side issue)
+
+### Context
+
+During Task #824, the agent's debugging surfaced a known pre-existing issue (correctly deferred at the time):
+
+> "The agent=UNDEF is from the proforma-seeder doing a full year1 replace between runs — a pre-existing ordering concern unrelated to Task #824."
+
+The pattern: `proforma-seeder.service.ts` at line 1346 executes `SET year1 = $2::jsonb` — a full object replacement. This means:
+
+1. Agent run writes `real_estate_tax` with `resolution: "agent"` to `deal_assumptions.year1`
+2. Some unrelated trigger (deal capsule refresh, T-12 re-ingestion, capsule update) fires the proforma-seeder
+3. Proforma-seeder does the full-replace
+4. Agent's contribution is silently wiped from `year1`
+5. The operator opens the Pro Forma and the agent's value is gone — replaced by whatever the seeder reconstructed from its own sources
+
+This is silent data loss. The override hierarchy (`override > agent > platform > t12 > om`) that Task #824 carefully respected on the write side is completely bypassed by the seeder on the read-write side. The operator has no way to know why a value changed.
+
+This is operationally serious because:
+- A sponsor cites a number to an LP on Monday
+- Some routine event triggers the seeder Tuesday (capsule refresh, new T-12 upload, etc.)
+- The sponsor opens the deal Tuesday afternoon and the number is different
+- The sponsor doesn't know whether the LP saw the right number, the wrong number, or which is which
+
+### Problem statement
+
+Refactor the proforma-seeder's write pattern from full-object replacement to key-level updates that respect the existing resolution hierarchy. The seeder should never clobber a higher-priority layer.
+
+### Done looks like
+
+1. The seeder writes to `deal_assumptions.year1` using `jsonb_set` per field, not full replace.
+2. For each field the seeder writes, it checks the existing higher-priority layers (override > agent > platform) and skips its own write if any of those is present with a non-null value.
+3. The seeder's contribution lands in its appropriate layer (likely `platform` or `t12` or `om` depending on data source) — not the resolved/top-level value.
+4. The resolution hierarchy is enforced consistently: the resolved value reflects the highest-priority layer present, computed at read time or at write time consistently.
+5. Existing operator overrides, agent contributions, and platform values are preserved across seeder runs.
+6. A regression test verifies that running the seeder after an agent run does NOT remove agent-written fields.
+
+### Steps
+
+1. **Audit the current seeder code.** Read `proforma-seeder.service.ts` around line 1346. Document:
+   - What triggers the seeder (deal capsule refresh, T-12 ingestion, manual refresh, scheduled task?)
+   - What sources the seeder reads from (extraction capsules, T-12 parse output, OM parse output)
+   - What the seeder writes (which year1 keys, with what data)
+   - Where the current full-replace happens and why
+
+2. **Decide the resolution layer for seeder writes.** The seeder consolidates data from multiple ingestion sources. Its outputs likely belong in `t12`, `om`, or `platform` layers depending on source. Map each seeder-written field to its appropriate layer.
+
+3. **Refactor write pattern.** Replace the full-replace with per-key writes:
+   ```typescript
+   // BEFORE
+   UPDATE deal_assumptions SET year1 = $2::jsonb WHERE deal_id = $1;
+
+   // AFTER (per field, in a loop)
+   UPDATE deal_assumptions
+   SET year1 = jsonb_set(
+     COALESCE(year1, '{}'::jsonb),
+     ARRAY[fieldKey, layerName],
+     to_jsonb($value)
+   )
+   WHERE deal_id = $1;
+   ```
+
+4. **Implement layer-aware skip logic.** For each field, before writing the seeder's value:
+   - Read the existing field state from year1
+   - Check whether `override`, `agent`, or `platform` (in priority order) is present and non-null
+   - If a higher-priority layer is present, skip writing to lower-priority layer slots OR write to the seeder's layer but don't update the resolved value
+   - The resolved value should always reflect the highest-priority layer present (computed centrally, not duplicated)
+
+5. **Centralize resolved-value computation.** If the resolved value isn't already computed centrally (i.e., if every writer separately sets `year1.<key>.resolved`), this is the place to extract it to a single helper. The pattern:
+   ```typescript
+   function computeResolvedValue(layers: LayeredValue): { value: number; resolution: string } {
+     if (layers.override?.value != null) return { value: layers.override.value, resolution: 'override' };
+     if (layers.agent?.value != null)    return { value: layers.agent.value,    resolution: 'agent' };
+     if (layers.platform?.value != null) return { value: layers.platform.value, resolution: 'platform' };
+     if (layers.t12?.value != null)      return { value: layers.t12.value,      resolution: 't12' };
+     if (layers.om?.value != null)       return { value: layers.om.value,       resolution: 'om' };
+     return { value: 0, resolution: 'none' };
+   }
+   ```
+
+   Every writer (seeder, agent postprocess, operator UI) calls this helper after writing its own layer. Or, even better, the resolved value is computed at *read* time so writers don't have to think about it.
+
+6. **Update other writers if needed.** If the resolved-value computation moves to read time, any place that currently writes to `year1.<key>.resolved` and `year1.<key>.resolution` should stop doing so. Specifically: the postProcess block from #824 may need updating. Be careful not to break the work that just shipped.
+
+7. **Add regression test.** Test pattern:
+   - Seed a deal via the seeder
+   - Verify year1 has seeder values
+   - Run the cash flow agent
+   - Verify year1 has agent values for the agent-mapped fields, AND seeder values are preserved for unchanged fields
+   - Re-run the seeder
+   - Verify agent values are STILL there after seeder re-run
+   - Verify operator overrides (synthetic) are preserved through both
+
+8. **Document the resolution hierarchy.** This is a recurring concept across the platform. Worth a short doc at `docs/architecture/year1-resolution-hierarchy.md` that names every writer, names every layer, and shows the resolved-value computation. The platform has been hand-waving on this for too long.
+
+### Acceptance criteria
+
+1. Proforma-seeder no longer does full-object replacement on `year1`
+2. Seeder writes land in the appropriate layer slot per field (t12 / om / platform, not the resolved value directly)
+3. Agent-written values survive a subsequent seeder run
+4. Operator-overridden values survive both seeder and agent runs
+5. The resolution hierarchy is documented and enforced consistently
+6. Regression test passes and would fail on a regression
+7. F9 Proforma renders correctly for a deal that has been seeded, agent-run, and re-seeded — no flicker, no missing values, no unexpected resolution changes
+8. No degradation on the existing #824 write-back behavior
+
+### Out of scope
+
+- Migration of historical year1 data (existing deals stay as they are; new writes follow the new pattern)
+- Refactoring the LayeredValue schema itself
+- Changes to the F9 frontend rendering (it already handles the LayeredValue shape correctly)
+- Other writers to `deal_assumptions` beyond seeder and agent postprocess
+
+### Risk
+
+The seeder is called on multiple triggers. Changing its write pattern could affect:
+- Initial deal setup (first seed populates year1)
+- Capsule refreshes (re-seeds may now skip fields that were previously overwritten)
+- T-12 re-ingestion (may produce different year1 state than before)
+
+**Mitigation:** ship behind a feature flag for the first week. Run on a small set of deals first. Validate year1 state matches expectations before broader rollout. Specifically test:
+- A deal that has only been seeded (no agent run): year1 should look the same as before the refactor
+- A deal that has been seeded then agent-run: agent values should be in `agent` layer, seeder values in `t12`/`om`/`platform` layer
+- A deal with operator overrides: overrides should win and persist through any number of seeder/agent re-runs
+
+### Notes for the implementer
+
+- The `jsonb_set` pattern from #824 (used in the agent postProcess write-back) is the reference. Same approach, applied to the seeder.
+- PostgreSQL's `jsonb_set` requires intermediate path keys to exist OR `create_missing => true` to be passed. The #824 agent encountered this and resolved it by using `||` merge for brand-new top-level keys. Watch for the same edge case in the seeder.
+- The resolved-value computation question (write-time vs read-time) is genuinely architectural. If the team has a strong preference, follow it. If not, my recommendation is read-time — it eliminates an entire class of "writer A and writer B disagree about resolved" bugs because there's only one place that decides.
+
+### Severity rationale
+
+Marking this as high severity because the data loss is silent and operationally serious. A sponsor cannot trust the Pro Forma if values change without explanation. Until this is fixed, every #824-style fix has limited durability — the seeder can wipe agent contributions at any moment.
+
+---
+
+## A NOTE ON THESE TWO TOGETHER
+
+Tickets A and B share a root cause pattern: **operations that should fail loudly are failing silently**. The platform has multiple places where:
+
+- `jsonb_set` silently fails for missing intermediate keys
+- `postProcess` hooks are silently bypassed in some codepaths
+- Full-object replacements silently wipe higher-priority layer contributions
+- Type coercion silently drops values (the `typeof v === 'number'` check on a stringified NUMERIC)
+
+These are all instances of the same architectural smell: **silent failure modes in operations that have meaningful effects on user-visible data**. Each is small individually; collectively they erode platform trust.
+
+After tickets A and B ship, worth a broader hygiene pass to identify other silent-failure modes and convert them to loud-failure modes (explicit error, explicit log, explicit fallback with telemetry). That's a third ticket worth opening if the team has the appetite.
+
+For now: A and B fix two confirmed instances. They're sufficient to ship as standalone work.
