@@ -2251,7 +2251,7 @@ export async function getDealFinancials(
     // Canonical $-denominated revenue deductions (consumed by ProFormaSummaryTab).
     toDollarRow('loss_to_lease_pct',     'loss_to_lease',     'Loss to Lease',         _gprForDollars),
     toDollarRow('vacancy_pct',           'vacancy_loss',      'Vacancy & Credit Loss', _gprForDollars, 'vacancy_loss_dollars'),
-    toDollarRow('concessions_pct',       'concessions',       'Concessions',           _gprForDollars),
+    toDollarRow('concessions_pct',       'concessions',       'Concessions',           _gprForDollars, 'concessions'),
     toDollarRow('bad_debt_pct',          'bad_debt',          'Bad Debt',              _gprForDollars, 'bad_debt_dollars'),
     toDollarRow('non_revenue_units_pct', 'non_revenue_units', 'Non-Revenue Units',     _gprForDollars),
     toDollarRow('other_income_per_unit', 'other_income',      'Other Income',          _otherIncMul),
