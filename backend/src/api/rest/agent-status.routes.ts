@@ -84,7 +84,16 @@ export function createAgentStatusRoutes(pool: Pool): Router {
 
       const dbParams = isAdmin ? [] : [userId];
 
-      const [running, recent, events] = await Promise.all([
+      // agent_runs uses the same deal_id / user_id columns — reuse the same
+      // visibility joins, but the table alias must be `r` to match the WHERE.
+      const VISIBILITY_JOINS_AR = !isAdmin ? `
+        LEFT JOIN deals d
+          ON d.id = r.deal_id AND d.archived_at IS NULL
+        LEFT JOIN org_members om
+          ON om.org_id = d.org_id AND om.user_id = $1
+      ` : '';
+
+      const [running, recent, events, runsEvents] = await Promise.all([
         pool.query(
           `SELECT r.id, r.agent_id, r.trigger_event, r.deal_id, r.user_id, r.status,
                   r.started_at, r.created_at
@@ -120,17 +129,39 @@ export function createAgentStatusRoutes(pool: Pool): Router {
             LIMIT 10`,
           dbParams
         ),
+        // Pull real agent runs (cashflow, research, etc.) as synthetic events
+        pool.query(
+          `SELECT r.id,
+                  r.agent_id || '.' || r.status AS event_type,
+                  r.deal_id, r.user_id,
+                  COALESCE(r.completed_at, r.started_at) AS created_at
+             FROM agent_runs r
+             ${VISIBILITY_JOINS_AR}
+            WHERE COALESCE(r.completed_at, r.started_at) >= NOW() - INTERVAL '24 hours'
+              AND ${VISIBILITY_WHERE}
+            ORDER BY COALESCE(r.completed_at, r.started_at) DESC
+            LIMIT 20`,
+          dbParams
+        ),
       ]);
+
+      // Merge agent_events + synthetic agent_run events, sort descending, cap at 20
+      const mergedEvents = [
+        ...events.rows,
+        ...runsEvents.rows,
+      ].sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ).slice(0, 20);
 
       res.json({
         success: true,
         running: running.rows,
         recent: recent.rows,
-        events: events.rows,
+        events: mergedEvents,
         summary: {
           runningCount: running.rows.length,
           recentCount: recent.rows.length,
-          eventCount: events.rows.length,
+          eventCount: mergedEvents.length,
         },
         ts: new Date().toISOString(),
       });
