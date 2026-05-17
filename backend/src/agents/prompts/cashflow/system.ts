@@ -329,11 +329,18 @@ For each line item write to proforma_fields with:
     can resolve hierarchical subtotals (e.g., Other Income breakdown-vs-aggregate)
     and surface reconciliation findings correctly
 
-### F-003 — Other Income: Per-Category Breakdown (MANDATORY on every run)
+### F-003 — Other Income: Per-Category Breakdown
 
-A single Other Income aggregate is never acceptable output. You MUST break Other Income
-into the following categories and write each as a child field of
-\`revenue.other_income.breakdown\`:
+When T-12 line-item detail, rent roll, or DealContext provides any category-level signal
+(e.g., separate parking income, laundry income, or pet fees), you MUST break Other Income
+into categories and write each as a child field of \`revenue.other_income.breakdown\`.
+A bare aggregate with no attribution is only acceptable when the deal is confirmed to have
+zero non-rent revenue programs AND that absence is explicitly documented as:
+  method_selected: "zero_no_program", notes: "<brief reason>".
+In all other cases, produce the breakdown using the fallback chain — the goal is
+attribution, not silence.
+
+Required categories:
 
   | Category key  | Description |
   |---------------|-------------|
@@ -351,19 +358,19 @@ For each category, populate:
   - method_selected: e.g., 'direct_t12', 'per_space_×_rate', 'archive_p50', 'zero_no_program'
   - notes: 1-2 sentence justification
 
-When \`otherIncomeMonthly\` is absent from DealContext (context.extractedData missing this field):
+**Fallback chain when \`otherIncomeMonthly\` is absent from DealContext:**
   1. Use the T-12 Other Income line item if available — decompose into estimated categories
-     based on property type and what the T-12 detail reveals. Document as source: "t12".
+     based on property type and T-12 detail. Document as source: "t12".
   2. If T-12 Other Income is also absent, use archive cohort P50 per category for Class B
      multifamily. Typical range: $40–$80/unit/month total. Document as source: "archive_cohort"
      with confidence: "low" and note: "DealContext otherIncomeMonthly absent — archive fallback".
-  3. NEVER emit a single aggregate without category attribution in the breakdown object.
+  3. If archive also unavailable, use source: "none", amount: 0, and note the absence explicitly
+     — this makes the gap visible rather than silently missing.
 
-Reconciliation gate: sum(categories × 12 × unit_count) must be compared against the T-12
-other_income aggregate when T-12 is available. Write the comparison to:
-  \`revenue.other_income.reconciliation_note\`
-A sum-vs-aggregate divergence > 10% MUST be explained. Unexplained divergences of this
-magnitude indicate either a missing category or a misclassified T-12 line item.
+Reconciliation gate: when T-12 is available, compare sum(categories × 12 × unit_count) against
+the T-12 other_income aggregate. Write the comparison to \`revenue.other_income.reconciliation_note\`.
+A divergence > 10% MUST be explained. Unexplained divergence of this magnitude indicates a
+missing category or a misclassified T-12 line item.
 
 ### Exit Cap Rate
   1. Derive from peer comp sales data if available
@@ -1231,6 +1238,13 @@ IMPORTANT RULES:
       (or archive cohort P25 default), NOT from sponsor assertion; source documented in evidence
   [ ] VALUE-ADD DEALS ONLY — if GPR confidence=low, confidence_rationale populated explaining
       which specific conditions failed (n < threshold, unsupported positioning, missing track record)
+  [ ] EXISTING/STABILIZED DEALS ONLY — GPR floor-plan grid (F-002): fetch_unit_mix called;
+      fetch_peer_comp_noi_metrics(comp_role=baseline) called to cross-validate market rents;
+      per-floor-plan unit_mix slots populated: in_place_rent, market_rent, mark_to_market_gap,
+      source; total_gpr computed as Σ(unit_count × market_rent × 12); T-12 GPR cross-check
+      documented; broker OM's asserted GPR NOT written to revenue.gross_potential_rent without
+      completing this gate; if has_data=false from fetch_unit_mix, degenerate grid built and
+      limitation_note populated (see Phase 1 F-001 protocol)
 
 ---
 
