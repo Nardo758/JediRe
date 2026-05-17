@@ -1,15 +1,16 @@
-# OTHER INCOME REASONING METHOD SPEC v1.1
+# OTHER INCOME REASONING METHOD SPEC v1.1.1
 
-**Status:** v1.1 — post unit mix audit source precision update
-**Supersedes:** v1.0
+**Status:** v1.1.1 — Method 4 selection logic + CIE bidirectional integration
+**Supersedes:** v1.1
 
-**Changes from v1.0:**
-- Added source reference in Sub-step 3a: otherIncomeMonthly is the canonical input after PR 1 hydration fix
-- Added Sub-step 3 fallback subsection: Method 3 hybrid with archive cohort when otherIncomeMonthly is sparse
-- Section 6.3 added: Competitive Intelligence Engine replaces Method 5 as the platform-wide opportunity detection engine
-- Acceptance criteria items 10–11 added: fallback works, accepted CIE findings flow into Method 3 breakdown
-- Agent prompt addition: source discipline for per-category detail
-- No changes to Methods 1, 2, or selection logic
+**Changes from v1.1:**
+- Added Method 4 to the selection function with deterministic criteria (owned-portfolio match quality + ancillary program match + n ≥ 2 comparables)
+- Added DataAvailability fields supporting Method 4 selection
+- Clarified Method 4 as a standalone alternative to Method 3, not an overlay
+- Rewrote Section 2.5 (Method 5) as the active CIE integration point rather than backward-compat-only
+- Rewrote Section 6.3 to specify the bidirectional integration loop
+- Each accepted CIE finding now has a documented consumption path in the agent's next reasoning pass
+- No changes to Methods 1, 2, or 3
 
 ---
 
@@ -83,31 +84,200 @@ The output remains a per-category breakdown with each category carrying its sour
 
 ### 2.4 Method 4 — Owned-Portfolio Analog
 
-**When used:** Sponsor has directly comparable owned assets with the same ancillary program profile (same operator, similar vintage/class/submarket, similar renovation scope if value-add).
+**When applicable:**
 
-**Logic:** Use the sponsor's actuals from comparable owned assets as the per-category starting point, adjusted for market differences (submarket fee level index) and the subject's renovation scope (if the program will be enhanced).
+When the sponsor has directly comparable owned assets that operate the same ancillary program as the subject deal will operate post-stabilization. The criteria are strict:
+- 2 or more comparable owned-portfolio assets (n ≥ 2)
+- Asset class match (Class A for Class A, etc.)
+- Vintage band within ±10 years of subject
+- Submarket match or comparable submarket
+- The ancillary program structure matches: same fee categories, similar adoption patterns, similar unit composition
 
-This method is typically combined with Method 3 — owned-portfolio data fills gaps where the subject's rent roll is thin.
+When these criteria are met, the sponsor's own actuals are the highest-fidelity projection available. Archive cohort and fee schedule projections are lower fidelity by comparison.
 
-### 2.5 Method 5 — Archive Cohort Projection (superseded by CIE)
+**Inputs:**
 
-Method 5 is now a reference to the Competitive Intelligence Engine. See Section 6.3. The agent's Other Income reasoning consumes CIE findings rather than running a separate archive cohort projection. The method name is retained for backward compatibility in evidence labels.
+- Sponsor's owned-portfolio actuals via `fetch_owned_asset_actuals`
+- Per-category revenue at the comparable assets (P25/P50/P75 across the sponsor's comparable portfolio)
+- Market adjustment factors: submarket rent index differential between subject and sponsor's comparable assets (to scale fees to subject's market)
+- Renovation scope adjustment: if subject is being renovated differently than the sponsor's comparable assets, apply scope-driven adjustments per category
+
+**Derivation:**
+
+For each ancillary category present in the sponsor's owned-portfolio comparable assets:
+
+```
+subject_category_revenue =
+  sponsor_owned_portfolio_p50_per_category
+  × market_adjustment_factor
+  × subject_unit_count_ratio
+```
+
+Where:
+- `sponsor_owned_portfolio_p50_per_category` is the median annual category revenue per unit at the sponsor's comparable assets
+- `market_adjustment_factor` scales for rent index differentials between markets
+- `subject_unit_count_ratio` scales for property size differences
+
+Sum across categories to produce stabilized year Other Income.
+
+**Output shape:**
+
+- Per-category dollar values
+- Aggregate
+- Each category's evidence narrative names the specific comparable owned-portfolio assets used as anchor, with attribution
+- `source: 'agent_method_4'` per category
+
+**Method 4 is a standalone alternative to Method 3, NOT an overlay.**
+
+When Method 4 is selected, it replaces Method 3's rent-roll-triangulation approach with sponsor-portfolio-anchored projections. The subject's rent roll detail (via `otherIncomeMonthly`) is still consulted for current state, but the *stabilized projection* is sponsor-portfolio-driven, not rent-roll-driven.
+
+When Method 4 is NOT selected (criteria not met), Method 3 applies with owned-portfolio data feeding into Method 3's source hierarchy at lower priority (below rent roll, above archive cohort). This is the standard pattern across all methods.
+
+**Confidence:**
+
+- High when n ≥ 3 comparable owned-portfolio assets with matching ancillary program
+- Medium when n = 2 OR ancillary program partial match
+- Low when n < 2 (fall back to Method 3)
+
+When confidence drops to low, the agent should switch to Method 3 rather than proceed with weak Method 4.
+
+### 2.5 Method 5 — Competitive Intelligence Engine reference
+
+Method 5 is not a standalone reasoning method. It is the active integration point between Other Income reasoning and the platform-wide Competitive Intelligence Engine (CIE).
+
+**Backward compatibility:**
+
+In v1.0 of this spec, Method 5 was "Archive Cohort Projection" — a standalone method using archive cohort distributions when no other data was available. That standalone usage has been retired. Evidence labels carrying `method: 'method_5'` or `source: 'archive_cohort_projection'` from v1.0-era deals are retained for audit-trail consistency but no new evidence is produced with these labels.
+
+**Active integration with CIE:**
+
+The CIE produces opportunity findings across the revenue domain, including three finding types specifically for Other Income:
+- `missing_ancillary_category`: cohort presence ≥ 50%; subject has none
+- `underpriced_ancillary_fee`: subject rate < cohort P25
+- `low_ancillary_adoption_rate`: subject adoption < cohort P25
+
+These findings are durable artifacts the sponsor reviews and accepts, declines, or defers.
+
+**Consumption path — accepted CIE findings flow into the agent's reasoning:**
+
+When the agent runs Other Income reasoning, it reads existing CIE findings from DealContext:
+
+```typescript
+const ciFindings = dealContext.ci_findings
+  .filter(f => f.domain === 'revenue')
+  .filter(f => f.sponsor_state === 'accepted')
+  .filter(f =>
+    f.finding_type === 'missing_ancillary_category' ||
+    f.finding_type === 'underpriced_ancillary_fee' ||
+    f.finding_type === 'low_ancillary_adoption_rate'
+  );
+```
+
+For each accepted finding, the agent incorporates the recommended change into its projection:
+
+- **Accepted `missing_ancillary_category`** → adds the category to the stabilized year per-category breakdown using Method 1 logic (fee schedule × adoption × applicable units). The category appears in the Pro Forma even though it's not in the current rent roll.
+
+- **Accepted `underpriced_ancillary_fee`** → adjusts the category's rate to the cohort P50 (or sponsor's chosen positioning) in the stabilized year projection. The current rate is preserved in pre-stabilization year(s); the adjustment phases in.
+
+- **Accepted `low_ancillary_adoption_rate`** → adjusts the category's adoption rate to cohort P50 in the stabilized year projection. Same phase-in pattern as rate adjustments.
+
+Findings in `sponsor_state: 'unreviewed'` or `'deferred'` do NOT feed the projection but are referenced in the evidence narrative as opportunities the sponsor has not yet acted on.
+
+Findings in `sponsor_state: 'declined'` are excluded entirely.
+
+**This is the feedback loop:**
+
+The agent produces the projection (Methods 1–4). CIE compares the projection against cohort and surfaces findings. The sponsor reviews findings and decides. Accepted findings flow back into the agent's next projection. Each cycle progressively closes the gap between the subject deal's underwriting and the comparable cohort's realized achievement.
+
+**Method 5 is not selected via the selection function.** It is *always active* when CIE findings exist. The selection function returns Method 1–4 for the projection method; Method 5's findings are incorporated regardless of which projection method is selected.
+
+See `COMPETITIVE_INTELLIGENCE_ENGINE_SPEC.md` for full CIE coverage including the universal finding shape, severity classification, and sponsor interaction model.
 
 ---
 
-## 3. METHOD SELECTION DECISION TREE
+## 3. METHOD SELECTION
 
+### 3.1 Selection function
+
+```typescript
+function selectOtherIncomeMethod(
+  dealContext: DealContext,
+  dataAvailability: DataAvailability,
+): 'method_1' | 'method_2' | 'method_3' | 'method_4' {
+
+  // Pre-stabilization deals — no operating history
+  const isPreStabilization = dealContext.classification === 'development' ||
+                              dealContext.classification === 'lease_up' ||
+                              (dealContext.classification === 'redevelopment' &&
+                               dealContext.scope === 'full_repositioning');
+
+  if (isPreStabilization) {
+    // Method 4 takes priority over Method 1 when sponsor has directly comparable
+    // owned assets with the same ancillary program
+    if (hasDirectlyComparableOwnedPortfolio(dataAvailability)) {
+      return 'method_4';
+    }
+    return 'method_1';
+  }
+
+  // Stabilized acquisition with no operational lift — T-12 is sufficient
+  const isStabilizedNoLift = dealContext.classification === 'acquisition_stabilized' &&
+                              !dealContext.strategy.includes_other_income_lift;
+
+  if (isStabilizedNoLift && dataAvailability.t12_quality === 'high') {
+    return 'method_2';
+  }
+
+  // Value-add and stabilized-with-lift deals
+  // Method 4 wins when sponsor has directly comparable owned assets
+  if (hasDirectlyComparableOwnedPortfolio(dataAvailability)) {
+    return 'method_4';
+  }
+
+  // Default: rent roll triangulation
+  return 'method_3';
+}
+
+function hasDirectlyComparableOwnedPortfolio(
+  dataAvailability: DataAvailability,
+): boolean {
+  return (
+    dataAvailability.owned_portfolio_match_quality === 'high' &&
+    dataAvailability.owned_portfolio_has_ancillary_program === true &&
+    dataAvailability.owned_portfolio_comparable_count >= 2
+  );
+}
 ```
-Does the subject have a T-12 rent roll with per-category Other Income detail?
-  Yes → Does otherIncomeMonthly have ≥ 3 categories populated?
-          Yes → Method 3 (full)
-          No  → Method 3 with fallback (hybrid with CIE/archive cohort for missing categories)
-  No  → Does the sponsor have directly comparable owned assets with similar program?
-          Yes → Method 4 (+ Method 1 for any new categories)
-          No  → Is this a development / redevelopment deal, or is the sponsor introducing new programs?
-                  Yes → Method 1
-                  No  → Method 2 (aggregate T-12 trend only — acknowledge limitation in evidence)
+
+**DataAvailability interface** (relevant fields):
+
+```typescript
+interface DataAvailability {
+  // Existing fields
+  t12_present: boolean;
+  t12_quality: 'high' | 'medium' | 'low' | 'absent';
+  rent_roll_ancillary_detail: boolean;
+
+  // NEW for Method 4 selection
+  owned_portfolio_match_quality: 'high' | 'medium' | 'low' | 'absent';
+  owned_portfolio_has_ancillary_program: boolean;
+  owned_portfolio_comparable_count: number;
+}
 ```
+
+### 3.2 Deal-type defaults
+
+| Deal Type | Default Method | Method 4 Override Condition |
+|---|---|---|
+| Acquisition (value-add) | Method 3 | Sponsor has 2+ directly comparable owned-portfolio assets with the same ancillary program |
+| Acquisition (stabilized, no lift) | Method 2 | Same as above |
+| Acquisition (stabilized, with lift) | Method 3 | Same as above |
+| Development | Method 1 | Same as above |
+| Redevelopment (full repositioning) | Method 1 | Same as above |
+| Redevelopment (partial) | Method 3 | Same as above |
+| Lease-up | Method 1 | Same as above |
+
+The Method 4 override applies across all deal types when the owned-portfolio criteria are met. Method 4 takes priority because the sponsor's own actuals are higher fidelity than archive cohort or fee schedule projections.
 
 ---
 
@@ -152,11 +322,21 @@ Method 1 typically doesn't produce residuals (no source total to residualize aga
 Method 2 doesn't produce residuals (aggregate-only, no breakdown to reconcile).
 Method 3 may produce Pattern A or Pattern B residuals if the sponsor's plan covers categories the rent roll doesn't.
 
-### 6.3 With Competitive Intelligence Engine (NEW v1.1)
+### 6.3 With Competitive Intelligence Engine — bidirectional integration
 
-Method 5 of this spec is superseded by the platform-wide Competitive Intelligence Engine. The CIE produces opportunity findings for Other Income (missing categories, underpriced fees, low adoption rates) as part of its revenue domain. See `COMPETITIVE_INTELLIGENCE_ENGINE_SPEC.md` for full coverage.
+The CIE is the platform-wide opportunity detection engine. For Other Income, CIE produces three finding types covering categories the agent's underwriting might miss or underprice.
 
-Within this Other Income spec, Method 5 is now a *reference* to CIE, not a separate method. The agent's Other Income reasoning consumes CIE findings when relevant (e.g., a CIE "missing RUBS" finding that the sponsor has accepted appears as a category in Method 3's per-category breakdown for the stabilized year).
+**Bidirectional integration:**
+
+1. **Agent → CIE:** The agent's stated Pro Forma value (via Methods 1–4) flows into CIE's comparison. CIE compares the projection against archive cohort distribution and produces findings where the agent's projection is structurally below cohort norm.
+
+2. **CIE → Agent:** Sponsor-accepted CIE findings flow into the agent's next Other Income reasoning pass via Method 5 (the CIE reference). The agent's next projection incorporates the accepted findings.
+
+This is a feedback loop. Each agent run + CIE pass progressively closes the gap between the subject deal's underwriting and the comparable cohort's realized achievement. The platform learns the deal's value-creation envelope over time.
+
+**Method 5 is the consumption side of the loop.** CIE produces findings; Method 5 (referenced from whichever projection method is active) consumes accepted findings. The two specs together describe the complete loop — this spec covers the agent's consumption pattern; the CIE spec covers the production pattern.
+
+See `COMPETITIVE_INTELLIGENCE_ENGINE_SPEC.md` for full CIE coverage.
 
 ---
 
@@ -223,7 +403,16 @@ Parking and storage demand track differently than fee income. Future version: pe
 
 ## 11. CHANGELOG
 
-**v1.1 (current)**
+**v1.1.1 (current)**
+- Added Method 4 to the selection function with deterministic criteria (owned-portfolio match quality + ancillary program match + n ≥ 2 comparables)
+- Added `DataAvailability` fields supporting Method 4 selection: `owned_portfolio_match_quality`, `owned_portfolio_has_ancillary_program`, `owned_portfolio_comparable_count`
+- Section 3 restructured: pseudocode decision tree replaced with typed `selectOtherIncomeMethod()` function and `hasDirectlyComparableOwnedPortfolio()` helper; Section 3.2 deal-type defaults table added with Method 4 override condition column
+- Clarified Method 4 (Section 2.4) as a standalone alternative to Method 3, not an overlay; "typically combined with Method 3" language removed; explicit "NOT an overlay" statement added; full criteria, derivation formula, output shape, and confidence tiers added
+- Rewrote Section 2.5 (Method 5) as the active CIE integration point: backward-compat note for v1.0 labels, three CIE finding types, `ciFindings` filter snippet, per-finding-type consumption paths, unreviewed/deferred/declined handling, feedback loop summary
+- Rewrote Section 6.3 to specify bidirectional integration (Agent→CIE and CIE→Agent); "Method 5 is the consumption side of the loop" clarification added
+- No changes to Methods 1, 2, or 3
+
+**v1.1 (archival)**
 - Added source reference in Sub-step 3a: `otherIncomeMonthly` is the canonical input after the hydration fix in PR 1 of the unit mix audit (Item 4)
 - Added Sub-step 3 fallback subsection: Method 3 hybrid with archive cohort when `otherIncomeMonthly` is sparse (< 3 categories) or null
 - Section 6.3 added: Competitive Intelligence Engine supersedes Method 5 as the platform-wide opportunity detection engine; Method 5 retained as a reference alias
