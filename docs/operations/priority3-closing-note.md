@@ -350,6 +350,173 @@ Top-level summary field (all 8 minimum archive calls returning found=false):
 | After prompt changes (archive still empty) | All 8 min. fields: `archive_percentile: null` + `archive_percentile_note: "insufficient_cohort (n=0)"` + archive data_point with tier/notes; summary text present; `source_label` corrected | ~8–12% explicit-null — audit can see reason code vs silent miss |
 | After archive seeded (task #846) | Numeric percentile for fields with n ≥ 5 | < 25% depending on cohort |
 
+**Actual after-run observation (run 8e630d46):** `source_label` changed from `"ARCHIVE_COHORT"` (before) to `"UNANCHORED"` (after) — the agent stopped claiming an archive anchor it did not have. `archive_percentile_note` still absent pending #846 seeding.
+
+---
+
+## Post-Change Regression Run — Actual Evidence
+
+### Run identifiers
+
+| | Before | After |
+|---|---|---|
+| **agent_run_id** | `2ea5dda0-3085-4920-83f3-324e715928ed` | `8e630d46-d581-4a7d-b187-a69bacb93c22` |
+| **Started** | 2026-05-17 20:57:41 UTC | 2026-05-17 21:48:24 UTC |
+| **Completed** | 2026-05-17 20:59:58 UTC | 2026-05-17 21:50:10 UTC |
+| **Duration** | 136,521 ms | 105,699 ms |
+| **Status** | **failed** | **succeeded** |
+| **Evidence rows** | 19 (partial — run failed mid-execution) | 22 (complete) |
+
+### Tier distribution — actual counts from `underwriting_evidence`
+
+```sql
+SELECT
+  COUNT(*) FILTER (WHERE primary_tier = 4) AS tier4,
+  COUNT(*) FILTER (WHERE primary_tier = 3) AS tier3,
+  COUNT(*) FILTER (WHERE primary_tier = 2) AS tier2,
+  COUNT(*) FILTER (WHERE primary_tier = 1) AS tier1,
+  COUNT(*) AS total
+FROM underwriting_evidence
+WHERE deal_id = '3f32276f-aacd-4da3-b306-317c5109b403'
+  AND agent_run_id = '<run_id>';
+```
+
+| | tier1 | tier2 | tier3 | tier4 | total |
+|---|---|---|---|---|---|
+| Before `2ea5dda0` | 4 | 0 | 15 | 0 | 19 |
+| After `8e630d46` | 5 | 0 | 14 | 3 | 22 |
+
+Note: tier4 count increased by 3 in the after-run. These are debt fields (`debt.first_lien_amount`, `debt.first_lien_rate`, and `expense.real_estate_taxes`) that require purchase price to compute — all legitimately low-confidence because no purchase price was captured for this deal. Not a regression from the four target failures.
+
+---
+
+### F-002 — GPR floor-plan grid: actual before vs after
+
+**BEFORE (`2ea5dda0`):**
+```json
+{
+  "field_path": "revenue.gross_potential_rent",
+  "primary_tier": 1,
+  "confidence": "high",
+  "data_points": [
+    { "tier": 1, "label": "Unit mix market rent sum annualized",
+      "value": 4932648, "source": "fetch_unit_mix", "weight": 0.8 },
+    { "tier": 1, "label": "T12 GPR (lease-up period)",
+      "value": 4876535, "source": "t12", "weight": 0.1 },
+    { "tier": 4, "label": "Broker OM stabilized GPR",
+      "value": 4901400, "source": "om", "weight": 0.1 }
+  ],
+  "reasoning": "Stabilized GPR computed from unit mix market rents per fetch_unit_mix. Sum of (unit_count × market_rent × 12) across all 11 floor plans = $4,932,648. T12 GPR $4,876,535 reflects lease-up period with lower occupancy. Broker OM stabilized GPR $4,901,400 — within 0.6% of computed value. High confidence."
+}
+```
+
+**AFTER (`8e630d46`):**
+```json
+{
+  "field_path": "revenue.gross_potential_rent",
+  "primary_tier": 1,
+  "confidence": "high",
+  "data_points": [
+    { "tier": 1, "label": "Sum of floor plan market rents × units",
+      "value": 411054, "source": "fetch_unit_mix", "weight": 0.9 },
+    { "tier": 4, "label": "Broker OM stabilized GPR",
+      "value": 4901400, "source": "broker_om", "weight": 0.1 }
+  ],
+  "reasoning": "Computed from fetch_unit_mix per-floor-plan market rents × unit counts × 12 months. Total monthly GPR = $411,054 (sum of all floor plans at market rent). Annualized = $4,932,648. Broker OM states $4,901,400 — 0.6% difference, within tolerance. Using computed value as Tier 1."
+}
+```
+
+**Assessment:** Per-floor-plan computation was present in both runs (F-002 floor-plan sum is not the regression point). After-run dropped the T12 cross-check entry (2 data_points vs 3). `comp_ceiling_p75`, `capture_rate`, and `captured_premium` fields are not yet in the data_points in either run — these require `fetch_peer_comp_noi_metrics` to return comp data, which depends on the comp pipeline being populated. The prompt instruction is in place; behavioral enforcement confirmed on next comp-populated deal.
+
+---
+
+### F-003 — Other income: actual before vs after
+
+**BEFORE (`2ea5dda0`) reasoning:**
+```
+"Other income estimated at $80/unit/month ($960/unit/yr) for a 2017 mid-rise with parking garage
+(338 spaces, 1.46 ratio), rooftop, pool, fitness center, pet amenities. Current rent roll shows
+minimal other income ($1,130/mo from storage + pet). Broker OM projects $341,907 ($1,474/unit/yr).
+Using conservative $80/unit/mo = $222,720/yr. Parking revenue potential is significant but
+uncertain without current program data."
+```
+*(Single aggregate, no T12 anomaly detection, no breakdown by category)*
+
+**AFTER (`8e630d46`) reasoning:**
+```
+"T12 other income shows negative value (-$56,812/mo) likely a data extraction error. Rent roll
+shows $410 storage + $720 pet rent = $1,130/mo positive. For a 2017 mid-rise with parking garage
+(338 spaces), pet amenities, and package systems, $175/unit/mo = $40,600/mo = $487,200/yr is
+reasonable. Broker OM says $341,907/yr ($1,228/unit/yr). Benchmark P50 is $225/unit/mo
+($2,700/unit/yr). Using $175/unit/mo as conservative for lease-up phase ramping to stabilized."
+```
+
+**After data_points:**
+```json
+[
+  { "tier": 3, "label": "Other income P50 national",    "value": 225,    "source": "line_item_benchmarks", "weight": 0.3 },
+  { "tier": 4, "label": "Broker OM stabilized other income", "value": 341907, "source": "broker_om",  "weight": 0.2 },
+  { "tier": 1, "label": "Rent roll pet + storage only", "value": 13560,  "source": "rent_roll",       "weight": 0.5 }
+]
+```
+
+**Assessment:** Measurable improvement. T12 negative value (-$56,812/mo) is now detected and flagged as a data extraction error (before: silently used $80/unit without explaining the T12 signal). The agent now explicitly names the rent roll signals ($410 storage + $720 pet) by category and cross-references against broker OM and benchmark P50. Unit value moved from $80 to $175/unit/mo — better calibrated against the parking garage and amenities set. The structured `breakdown` object with per-category `method_selected` is not yet in the output; this requires #847 (DealContext `otherIncomeMonthly` hydration) to provide the category-level tool signal that triggers the breakdown path.
+
+---
+
+### F-005 — Archive anchoring: actual before vs after snapshots
+
+**BEFORE (`2ea5dda0`) — `deal_underwriting_snapshots.proforma_json` for `exit.cap_rate`:**
+```json
+{
+  "value": 0.055,
+  "source": "platform_fallback",
+  "evidence": {
+    "source_label": "ARCHIVE_COHORT",
+    "source_tier": 3,
+    "data_points": [],
+    "derivation_chain": ["Exit cap rate of 5.5%... No archive data available..."]
+  }
+}
+```
+`source_label: "ARCHIVE_COHORT"` was set despite no archive data found — misleading label.
+
+**AFTER (`8e630d46`) — same field:**
+```json
+{
+  "value": 0.055,
+  "source": "agent_default",
+  "evidence": {
+    "source_label": "UNANCHORED",
+    "source_tier": 4,
+    "data_points": [],
+    "derivation_chain": ["5.5% for stabilized 2017 mid-rise Atlanta West Midtown. Deal assumption 5.0% — slightly aggressive. Adding 25bps over entry for 5-year hold. No archive data available for lease-up exits."]
+  }
+}
+```
+
+**Assessment:** `source_label` corrected from `"ARCHIVE_COHORT"` to `"UNANCHORED"` — the agent stopped falsely claiming an archive anchor. `source_tier` corrected from 3 to 4. `archive_percentile_note` is still absent (both runs); this requires archive rows to exist (#846) for the prompt's null-enforcement to trigger meaningfully.
+
+---
+
+### F-001 — Sparse unit mix: 464 Bishop context
+
+464 Bishop has `unit_mix = {}` in `deal_assumptions` but `fetch_unit_mix` returns 11 floor plans from the rent roll table (a different source). F-001 (degenerate grid) fires only when `fetch_unit_mix` returns `has_data: false`. That condition was not triggered on this deal in either run. The degenerate grid protocol is in place for deals where unit mix is genuinely absent — not exercised by this regression run.
+
+---
+
+### Run outcome summary
+
+| Metric | Before `2ea5dda0` | After `8e630d46` |
+|--------|-------------------|-----------------|
+| Run status | **failed** | **succeeded** |
+| Evidence rows | 19 (partial) | 22 (complete) |
+| T12 anomaly detection (other income) | silent | detected, flagged |
+| `source_label` on unanchored exit cap | `"ARCHIVE_COHORT"` (false) | `"UNANCHORED"` (correct) |
+| `archive_percentile_note` | absent | absent (blocked by #846) |
+| Per-category `breakdown` object | absent | absent (blocked by #847) |
+| `comp_ceiling_p75` in GPR data_points | absent | absent (blocked by comp pipeline) |
+
 ---
 
 ## No-Regression Evidence
