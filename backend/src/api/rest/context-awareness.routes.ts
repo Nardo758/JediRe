@@ -437,15 +437,24 @@ export function createContextAwarenessRoutes(pool: Pool): Router {
           `),
         ]);
 
+        const now = new Date();
+        const toAgo = (ts: string) => {
+          const secs = Math.floor((now.getTime() - new Date(ts).getTime()) / 1000);
+          if (secs < 60) return `${secs}s ago`;
+          if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+          if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+          return `${Math.floor(secs / 86400)}d ago`;
+        };
+
         const counts = agentStatusRes.rows
           .map(r => `  ${r.status}: ${r.cnt}`)
           .join('\n');
         const running = recentRunsRes.rows;
 
-        extraContext = `Agent runs (last 24 h):\n${counts || '  (none)'}`;
+        extraContext = `Current time: ${now.toUTCString()}\n\nAgent runs (last 24 h):\n${counts || '  (none)'}`;
         if (running.length > 0) {
           const list = running
-            .map(r => `  - ${r.agent_id}${r.deal_name ? ` on "${r.deal_name}"` : ''} (started ${r.started_at})`)
+            .map(r => `  - ${r.agent_id}${r.deal_name ? ` on "${r.deal_name}"` : ''} (started ${toAgo(r.started_at)})`)
             .join('\n');
           extraContext += `\n\nCurrently running agents (${running.length}):\n${list}`;
         } else {
