@@ -162,16 +162,31 @@ router.get('/subscription', async (req: Request, res: Response) => {
     const balance = await creditService.getBalance(userId!);
 
     if (!balance) {
+      // No Stripe subscription yet — auto-provision with scout defaults so
+      // dev/test accounts and pre-checkout users are not shown as exhausted.
+      // Production users arrive here via the Stripe invoice.paid webhook which
+      // calls provisionUser() before this endpoint is ever hit.
+      try {
+        await creditService.provisionUser(userId!, 'dev_auto', 'scout');
+      } catch (provisionErr) {
+        // Non-fatal: if provision fails (e.g. userId constraint), fall through
+        // to the safe default below rather than crashing the request.
+        logger.warn('billing /subscription: auto-provision failed', {
+          userId,
+          err: provisionErr instanceof Error ? provisionErr.message : String(provisionErr),
+        });
+      }
+      const provisioned = await creditService.getBalance(userId!);
       return res.json({
         success: true,
         data: {
           tier: 'scout',
           status: 'none',
-          creditsIncludedMonthly: 100,
-          creditsRemaining: 0,
-          creditsUsedThisPeriod: 0,
-          periodStart: null,
-          periodEnd: null,
+          creditsIncludedMonthly: provisioned?.creditsIncludedMonthly ?? 100,
+          creditsRemaining: provisioned?.creditsRemaining ?? 100,
+          creditsUsedThisPeriod: provisioned?.creditsUsedThisPeriod ?? 0,
+          periodStart: provisioned?.periodStart ?? null,
+          periodEnd: provisioned?.periodEnd ?? null,
           cancelAtPeriodEnd: false,
           stripeSubscription: null,
         },
@@ -180,7 +195,24 @@ router.get('/subscription', async (req: Request, res: Response) => {
 
     let stripeSubscription: any = null;
 
-    if (balance.stripeCustomerId) {
+    // Dev/test accounts (empty stripe_customer_id) auto-replenish when exhausted
+    // so the banner never gets stuck in a permanently locked state during development.
+    // Real Stripe-backed accounts are unaffected by this check.
+    const isDevAccount = !balance.stripeCustomerId || balance.stripeCustomerId === '' || balance.stripeCustomerId.startsWith('dev_');
+    if (isDevAccount && balance.creditsRemaining <= 0) {
+      try {
+        await creditService.resetMonthlyCredits(userId!);
+        const refreshed = await creditService.getBalance(userId!);
+        if (refreshed) Object.assign(balance, refreshed);
+      } catch (replenishErr) {
+        logger.warn('billing /subscription: dev auto-replenish failed (non-fatal)', {
+          userId,
+          err: replenishErr instanceof Error ? replenishErr.message : String(replenishErr),
+        });
+      }
+    }
+
+    if (balance.stripeCustomerId && !isDevAccount) {
       try {
         const { getUncachableStripeClient } = await import('../../services/stripe/stripeClient');
         const stripe = await getUncachableStripeClient();
