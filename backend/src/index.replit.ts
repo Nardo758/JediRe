@@ -166,6 +166,7 @@ import m35BacktestRouter from './routes/m35-backtest.routes';
 import corporateHealthRouter from './api/rest/corporate-health.routes';
 import mediaRouter from './api/rest/media.routes';
 import orgRouter from './api/rest/org.routes';
+import underwritingScenariosRouter from './api/rest/underwriting-scenarios.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 import { startM28Scheduler } from './services/m28-scheduler.service';
 
@@ -583,6 +584,7 @@ app.use('/api/v1/benchmark-timeline', requireAuth, benchmarkTimelineRouter);
 app.use('/api/v1/entitlements', requireAuth, entitlementRouter);
 app.use('/api/v1/regulatory-alerts', requireAuth, regulatoryAlertRouter);
 app.use('/api/v1/scenarios', requireAuth, scenariosRouter);
+app.use('/api/v1/deals', requireAuth, underwritingScenariosRouter);
 app.use('/api/v1/risk', requireAuth, riskRouter);
 app.use('/api/v1/events', requireAuth, kafkaEventsRouter);
 app.use('/api/v1/m35/connectors', requireAuth, m35ConnectorsRouter);

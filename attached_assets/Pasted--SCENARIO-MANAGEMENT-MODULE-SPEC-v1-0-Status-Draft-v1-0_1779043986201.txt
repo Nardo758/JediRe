@@ -1,0 +1,587 @@
+# SCENARIO MANAGEMENT MODULE SPEC v1.0
+
+**Status:** Draft v1.0 — new platform module
+**Owner:** Leon / JEDI RE
+**Module designation:** M-prefixed (suggest M40 or next available per current numbering)
+**Purpose:** Establish named, versioned, attributed scenario management for deal underwriting — every state of a deal becomes a preserved, comparable, revertable scenario with explicit attribution to agent runs or user edits
+
+**Pairs with:**
+- `JEDI_RE_MEMORY_ARCHITECTURE_MAP.md` (this spec adds a new dimension to the four-layer memory architecture)
+- `proFormaMathEngine.ts` v1.1 (math correction runs per scenario, not globally)
+- `OTHER_INCOME_REASONING_METHOD_SPEC.md` v1.2 (agent's method selection captured per scenario)
+- `COMPETITIVE_INTELLIGENCE_ENGINE_SPEC.md` v1.0.1 (CIE findings attached to scenarios; sponsor accept/decline state per scenario)
+- M22 Post-Close Intelligence (M22 actuals validate against specific historical scenarios)
+- Existing `deal_underwriting_snapshots` table (scenarios wrap snapshots; do not replace)
+
+---
+
+## 1. PURPOSE
+
+Currently, JEDI RE has a single live state per deal — `deal_assumptions.year1` with its layered structure (override / agent / platform / t12 / om). Every agent run updates the agent layer in place. Every operator override updates the override layer in place. The platform retains run records in `deal_underwriting_snapshots`, but these are immutable audit logs, not user-facing scenario abstractions.
+
+This produces three operational gaps:
+
+1. **No way to preserve a moment in time as a named state.** "What did we underwrite at IC presentation on March 15?" requires hunting through snapshot history rather than asking for a named version.
+
+2. **No way to model alternatives.** "Aggressive Case" vs "Conservative Case" vs "Lender-Approved Case" can only be modeled by overwriting the live state, losing the alternatives.
+
+3. **No clear attribution model.** Operator edits silently merge with agent outputs in the resolution chain. The user can't easily see "this is what the AI thinks, this is what I changed."
+
+Scenario Management addresses all three by introducing **named, attributed, complete-state scenarios** as a first-class platform abstraction. The live state at any moment is always within a specific scenario. Switching scenarios switches the live state. Creating a new scenario forks the current state.
+
+---
+
+## 2. ARCHITECTURAL FOUNDATIONS
+
+### 2.1 Live state is always within a scenario
+
+**Model 1 selected** (from design discussion): Every modification to `year1` happens within some scenario. The user is always "in" a scenario. There is no unnamed working state.
+
+When a deal is first set up, a default scenario is created automatically — typically named "Initial Underwriting" with `created_by: agent` after the first agent run completes. The user can rename it.
+
+When the user wants to model an alternative, they fork the current scenario into a new one with a name they provide. The new scenario inherits the current state as a starting point; subsequent edits apply only to the new scenario.
+
+When the agent re-runs, it runs against the currently active scenario (or creates a new agent-attributed scenario per Model X below).
+
+### 2.2 Agent runs create new agent-attributed scenarios
+
+**Model X selected** (from design discussion): Every cashflow agent run produces a new scenario with `created_by: agent` and a default name like `"Agent Run YYYY-MM-DD HH:MM"`. The user can keep, rename, or discard.
+
+Rationale: The agent will run many times during active underwriting. Each run represents a distinct reasoning pass with potentially different conclusions. Preserving each as a scenario enables:
+
+- Comparison of agent reasoning evolution over time
+- Audit trail of what was underwritten at each decision point
+- Easy revert to a prior agent run if a subsequent run produced inferior reasoning
+- Drift detection across runs (did the agent's NOI projection shift materially? why?)
+
+Storage management is handled by archival (Section 8) rather than restricting agent runs from creating scenarios.
+
+### 2.3 Scenarios wrap snapshots, do not replace them
+
+`deal_underwriting_snapshots` remains the immutable run record table. Each agent run still produces a snapshot. Scenarios are a higher-level abstraction:
+
+- A scenario has a name, identity, attribution, lifecycle (active / archived / deleted)
+- A scenario references one or more snapshots as its source data
+- An agent-attributed scenario references the snapshot from the agent run that produced it
+- A user-attributed scenario references the snapshot it forked from, plus its own override deltas
+
+This separation keeps the audit trail (snapshots) immutable while making the user-facing abstraction (scenarios) malleable.
+
+### 2.4 Relationship to the four-layer memory architecture
+
+Scenarios add a fifth dimension to the existing architecture without replacing any layer:
+
+- **Layer 1** (Conversation memory) — unchanged; conversation references the active scenario when discussing the deal
+- **Layer 2** (Deal memory) — `year1` becomes scoped to the active scenario; `deal_underwriting_snapshots` unchanged; new `deal_scenarios` table added
+- **Layer 3** (Knowledge Graph) — unchanged; KG is cross-deal domain knowledge
+- **Layer 4** (Context window) — DealContext assembly now includes the active scenario's state
+- **NEW: Layer 5** (Scenario history) — preserved named states across time
+
+The DealContext assembly (Phase 1 of agent runtime) reads from the active scenario. Switching scenarios invalidates the DealContext cache for that deal.
+
+---
+
+## 3. DATA MODEL
+
+### 3.1 The `deal_scenarios` table
+
+```sql
+CREATE TABLE deal_scenarios (
+  scenario_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID NOT NULL REFERENCES deals(deal_id) ON DELETE CASCADE,
+
+  -- Identity
+  name TEXT NOT NULL,
+  description TEXT,
+
+  -- Attribution
+  created_by TEXT NOT NULL CHECK (created_by IN ('agent', 'user')),
+  created_by_user_id UUID REFERENCES users(user_id),
+  created_by_agent_run_id UUID REFERENCES agent_runs(run_id),
+
+  -- Lifecycle
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  archived_at TIMESTAMPTZ,
+  deleted_at TIMESTAMPTZ,
+
+  -- State
+  is_active BOOLEAN NOT NULL DEFAULT FALSE,
+  parent_scenario_id UUID REFERENCES deal_scenarios(scenario_id),
+
+  -- Snapshot references
+  primary_snapshot_id UUID REFERENCES deal_underwriting_snapshots(snapshot_id),
+
+  -- The scenario's year1 state
+  year1 JSONB NOT NULL,
+
+  -- Metadata
+  tags TEXT[],
+  notes TEXT,
+
+  CONSTRAINT one_active_scenario_per_deal
+    EXCLUDE (deal_id WITH =) WHERE (is_active = TRUE AND deleted_at IS NULL)
+);
+
+CREATE INDEX idx_deal_scenarios_deal_id ON deal_scenarios(deal_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_deal_scenarios_active ON deal_scenarios(deal_id, is_active) WHERE is_active = TRUE AND deleted_at IS NULL;
+CREATE INDEX idx_deal_scenarios_created_at ON deal_scenarios(deal_id, created_at DESC) WHERE deleted_at IS NULL;
+```
+
+**Key design choices:**
+
+- `year1` JSONB is stored ON the scenario, not pulled from elsewhere. Each scenario is self-contained.
+- `is_active` enforced uniquely per deal (one active scenario at a time).
+- Soft delete via `deleted_at`; archived scenarios via `archived_at` (different concepts — archived means "still accessible, not in active list"; deleted means "user removed").
+- `parent_scenario_id` enables fork lineage; useful for "where did this scenario come from."
+
+### 3.2 Migration from current single-state model
+
+For existing deals, a migration creates one initial scenario per deal:
+
+```sql
+-- For each deal, create initial scenario from current year1
+INSERT INTO deal_scenarios (
+  deal_id,
+  name,
+  created_by,
+  is_active,
+  year1,
+  created_at
+)
+SELECT
+  deal_id,
+  'Initial Underwriting',
+  CASE
+    WHEN EXISTS (SELECT 1 FROM jsonb_each(year1) e WHERE e.value ? 'agent')
+      THEN 'agent'
+    ELSE 'user'
+  END,
+  TRUE,
+  year1,
+  COALESCE(updated_at, NOW())
+FROM deal_assumptions
+WHERE year1 IS NOT NULL;
+```
+
+After migration, `deal_assumptions.year1` becomes derived state: at any moment, `deal_assumptions.year1 = deal_scenarios.year1 WHERE deal_id = X AND is_active = TRUE`. The migration can either:
+
+- **Option A:** Keep `deal_assumptions.year1` as a denormalized cache of the active scenario's year1 (updated via trigger on `deal_scenarios.year1` changes)
+- **Option B:** Drop `deal_assumptions.year1` entirely; every read goes through the active scenario
+
+Recommend Option A for backward compatibility — existing reads continue working without code changes. New code reads from `deal_scenarios` directly. Migration to Option B can be a follow-on cleanup.
+
+### 3.3 Scenario diff representation
+
+For comparison views, the platform needs to compute diffs between scenarios. The diff is field-by-field across the year1 JSONB:
+
+```typescript
+interface ScenarioDiff {
+  scenario_a_id: string;
+  scenario_b_id: string;
+  computed_at: string;
+  field_diffs: FieldDiff[];
+  summary: {
+    fields_with_changes: number;
+    fields_unchanged: number;
+    materially_different: number;     // change > threshold (e.g., 5%)
+    a_higher: number;
+    a_lower: number;
+  };
+}
+
+interface FieldDiff {
+  field_path: string;
+  scenario_a_value: number | null;
+  scenario_b_value: number | null;
+  delta_absolute: number;
+  delta_pct: number | null;
+  resolution_a: string;                // override / agent / platform / etc.
+  resolution_b: string;
+  significance: 'major' | 'minor' | 'trivial';
+}
+```
+
+Diffs are computed on-demand, not stored. Cached briefly (1 hour) since they're expensive for large year1 structures and frequently re-requested.
+
+---
+
+## 4. API SURFACE
+
+### 4.1 Endpoints
+
+```
+GET    /api/v1/deals/:dealId/scenarios
+  → List all non-deleted scenarios for a deal
+  → Filter params: status (active|archived), created_by (agent|user)
+  → Sort: created_at DESC by default
+
+GET    /api/v1/deals/:dealId/scenarios/active
+  → Return the currently active scenario
+
+GET    /api/v1/deals/:dealId/scenarios/:scenarioId
+  → Return full scenario detail including year1
+
+POST   /api/v1/deals/:dealId/scenarios
+  → Create a new scenario, forking from current active
+  → Body: { name, description?, tags?, source_scenario_id? }
+  → If source_scenario_id omitted, forks from active scenario
+  → Returns the new scenario; does NOT make it active
+
+POST   /api/v1/deals/:dealId/scenarios/:scenarioId/activate
+  → Make this scenario the active one
+  → Triggers DealContext cache invalidation
+  → If user has unsaved changes in the prior active scenario, prompt before switching
+
+PATCH  /api/v1/deals/:dealId/scenarios/:scenarioId
+  → Update scenario metadata (name, description, tags, notes)
+  → Does NOT modify year1 (that goes through the override API)
+
+POST   /api/v1/deals/:dealId/scenarios/:scenarioId/archive
+  → Soft archive — scenario remains accessible but not in active list
+
+POST   /api/v1/deals/:dealId/scenarios/:scenarioId/restore
+  → Restore from archive
+
+DELETE /api/v1/deals/:dealId/scenarios/:scenarioId
+  → Soft delete via deleted_at
+  → Cannot delete the active scenario; user must activate another first
+  → Cannot delete the only scenario for a deal
+
+GET    /api/v1/deals/:dealId/scenarios/:scenarioAId/diff/:scenarioBId
+  → Compute and return diff between two scenarios
+  → Cached 1 hour
+```
+
+### 4.2 Override API integration
+
+The existing override API (`PATCH /api/v1/deals/:dealId/financials/override`) modifies year1 ON THE ACTIVE SCENARIO. No URL change needed; the endpoint resolves the active scenario internally.
+
+To override a non-active scenario:
+
+```
+PATCH /api/v1/deals/:dealId/scenarios/:scenarioId/financials/override
+```
+
+The active scenario's override endpoint is a convenience alias for the active scenario's URL.
+
+### 4.3 Agent runtime integration
+
+When an agent run is triggered:
+
+1. Run target: by default, runs against the active scenario
+2. Optionally specify `scenario_id` in the request to run against a specific scenario
+3. Result: either updates the target scenario's agent layer OR creates a new agent-attributed scenario
+
+Configuration flag on the agent invocation request:
+```
+{
+  "deal_id": "X",
+  "scenario_target": "active" | "<scenario_id>" | "create_new",
+  "new_scenario_name": "optional name when scenario_target === 'create_new'"
+}
+```
+
+Default behavior: `scenario_target: "create_new"` for cashflow agent (per Model X). The agent always creates a new agent-attributed scenario. The previous active scenario remains; the user can switch to the new one via the UI.
+
+Exception: when the agent re-runs as part of a sponsor accepting a CIE finding (per Other Income spec v1.2 Section 7), the re-run modifies the active scenario in place rather than creating a new one. The CIE acceptance is the change event; the agent re-run reflects it.
+
+---
+
+## 5. UI REQUIREMENTS
+
+### 5.1 Scenario picker
+
+Persistent UI element visible on every deal surface. Shows:
+
+- Currently active scenario name
+- Dropdown of available scenarios (non-archived) with creation date and attribution
+- "+" button to create new scenario (with name input)
+- "..." menu per scenario: rename, archive, delete, duplicate, compare
+
+The picker is the user's primary control surface for scenarios. Placement: top of the deal capsule, persistent across F1-F12 navigation.
+
+### 5.2 Scenario comparison view
+
+A two-pane (or three-pane) comparison surface. Side-by-side display of selected scenarios at the Pro Forma level:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Compare Scenarios                                       │
+├──────────────────┬──────────────────┬───────────────────┤
+│ Agent Run 5/17   │ My Aggressive    │ Conservative      │
+│ Active           │ Case             │ Recap Case        │
+├──────────────────┼──────────────────┼───────────────────┤
+│ GPR    $4.21M    │ $4.45M  (+5.7%)  │ $4.18M  (-0.7%)   │
+│ EGI    $3.92M    │ $4.18M  (+6.6%)  │ $3.88M  (-1.0%)   │
+│ OpEx   $1.90M    │ $1.85M  (-2.6%)  │ $2.05M  (+7.9%)   │
+│ NOI    $2.02M    │ $2.33M  (+15.3%) │ $1.83M  (-9.4%)   │
+│ ...              │ ...              │ ...               │
+└──────────────────┴──────────────────┴───────────────────┘
+```
+
+Delta percentages computed against the leftmost scenario by default. Color coding for material differences (>5%). Click any row for field-level explanation across scenarios.
+
+### 5.3 Scenario history view
+
+Time-ordered list of all scenarios for the deal (active + archived). Shows creation pattern over time, agent vs user attribution, lineage (which forked from which).
+
+Visualization: vertical timeline with branches showing fork lineage. Useful for understanding "how did we get here" — which agent run produced what conclusion, which user adjustments were made, which scenarios were presented to whom.
+
+### 5.4 Scenario state in Pro Forma view (F9)
+
+When viewing F9 Pro Forma, the active scenario's name appears prominently at the top. A subtle visual indicator (color band, icon) distinguishes agent-attributed vs user-attributed scenarios.
+
+When viewing a user-attributed scenario, fields modified by the user show a distinct visual treatment (e.g., subtle accent color) so the user can see at a glance which values are their overrides vs which came from the underlying agent run.
+
+---
+
+## 6. AGENT RUNTIME INTEGRATION
+
+### 6.1 DealContext assembly with scenario awareness
+
+Phase 1 of the agent runtime (Research Agent assembly) reads from the active scenario's year1, NOT from `deal_assumptions.year1`:
+
+```typescript
+// Before scenarios
+const year1 = await db.query('SELECT year1 FROM deal_assumptions WHERE deal_id = $1', [dealId]);
+
+// After scenarios
+const activeScenario = await db.query(
+  'SELECT year1 FROM deal_scenarios WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL',
+  [dealId]
+);
+const year1 = activeScenario.year1;
+```
+
+The DealContext cache key becomes `(deal_id, scenario_id)` instead of `(deal_id)` alone. Switching scenarios invalidates the cache for that deal.
+
+### 6.2 Agent write-back to scenarios
+
+When the agent emits its output and `cashflowPostProcess` writes back:
+
+1. If `scenario_target: "create_new"`: a new scenario is created, agent's year1 written to it, snapshot persisted with reference, new scenario NOT activated automatically (user reviews and activates manually)
+2. If `scenario_target: "active"`: the active scenario's agent layer is updated in place per existing write-back logic
+3. If `scenario_target: <specific_id>`: that scenario's agent layer is updated
+
+The existing write-back map (with Task #824 corrections and the F-009 fix once shipped) applies uniformly to whichever scenario is the target.
+
+### 6.3 Override discipline within scenarios
+
+The proforma-seeder full-replace pattern (Ticket B) becomes per-scenario. When the operator overrides a field, the seeder modifies only that field's override slot WITHIN THE ACTIVE SCENARIO's year1. Other scenarios are untouched.
+
+This eliminates the cross-scenario contamination risk entirely. Each scenario is self-contained.
+
+---
+
+## 7. CIE INTEGRATION
+
+### 7.1 CIE findings are per-scenario
+
+CIE findings (per CIE spec v1.0.1) are produced against a specific scenario's state. When CIE runs, it produces findings for the scenario that's currently being analyzed.
+
+`ci_findings` JSONB on `deal_underwriting_snapshots` already exists. With scenarios, CIE findings need to be scoped to the scenario the snapshot belongs to.
+
+Two options:
+
+- **Findings inherited from snapshot's scenario:** Each snapshot belongs to a scenario; findings on the snapshot apply to that scenario
+- **Findings on the scenario directly:** Separate `scenario_ci_findings` table or JSONB column on `deal_scenarios`
+
+Recommend the second option. CIE findings are scenario-level concepts, not snapshot-level. The sponsor's accept/decline state should persist across re-runs of CIE on the same scenario. Storing findings on the scenario (with `findings JSONB` column on `deal_scenarios`) is the cleaner architecture.
+
+### 7.2 Sponsor accept/decline state per scenario
+
+When a sponsor accepts a CIE finding (e.g., "implement RUBS"), the acceptance is scoped to the scenario it was made in. If the sponsor switches to a different scenario, the same finding may or may not be present, and their decision state may be different.
+
+This enables modeling alternatives like: "In the Aggressive Case, I accepted RUBS implementation. In the Conservative Case, I declined it. Both are preserved."
+
+---
+
+## 8. ARCHIVAL AND STORAGE MANAGEMENT
+
+### 8.1 Automatic archival policy
+
+Per the design decision earlier: agent-attributed scenarios accumulate quickly. Storage management:
+
+- Agent-attributed scenarios older than 30 days AND not actively referenced (parent of another scenario, has CIE findings reviewed, was ever active) are automatically archived
+- Archived scenarios remain accessible via direct URL or history view but don't appear in default scenario lists
+- User-attributed scenarios are NOT automatically archived; they require explicit user action
+
+### 8.2 Compression of historical agent scenarios
+
+For agent-attributed scenarios older than 90 days, the platform consolidates them:
+
+- Keep first agent run per month
+- Keep any agent run that was ever the active scenario
+- Keep any agent run that was the parent of a user scenario
+- Discard the rest (preserving their snapshots in `deal_underwriting_snapshots` as the audit record)
+
+This is purely storage optimization. The snapshots remain as the immutable audit trail; the scenarios that wrapped them are pruned to keep the user-facing list manageable.
+
+### 8.3 Hard delete policy
+
+Soft-deleted scenarios (`deleted_at` set) are hard-deleted after 90 days. Per-deal hard delete (full deal removal) cascades to all scenarios. Snapshots are NOT hard-deleted at the same time; they remain as the audit trail per the underwriting snapshot retention policy.
+
+---
+
+## 9. IMPLEMENTATION PHASES
+
+### Phase 1 — Foundation (3-4 sessions)
+- Database migration: create `deal_scenarios` table
+- Migration script: convert existing deals to single-scenario state
+- Backward compatibility: `deal_assumptions.year1` becomes a trigger-maintained denormalization of active scenario's year1
+- API endpoints: list, get, create, activate, archive, delete scenarios
+- Scenario diff computation
+
+### Phase 2 — UI integration (2-3 sessions)
+- Scenario picker UI component
+- Scenario active state indicator on F9 and Deal Capsule
+- Scenario history view
+- Comparison view (two-pane initially; three-pane in Phase 4)
+
+### Phase 3 — Agent runtime integration (2 sessions)
+- DealContext assembly reads from active scenario
+- DealContext cache keyed on (deal_id, scenario_id)
+- Agent runs create new agent-attributed scenarios by default
+- Override API operates on active scenario
+
+### Phase 4 — CIE integration (1 session, after CIE Phase 1 ships)
+- CIE findings stored per scenario
+- Sponsor accept/decline state per scenario
+- Comparison view extended to show CIE finding differences across scenarios
+
+### Phase 5 — Archival and storage management (1 session)
+- Automatic archival policy implementation
+- Compression of historical agent scenarios
+- Storage monitoring and reporting
+
+**Total estimated effort: 9-11 sessions.** Larger than CIE Phase 1 because it touches more surfaces (DB, API, UI, agent runtime, CIE integration). Sequenced with Phase 1 first to unblock everything downstream.
+
+---
+
+## 10. ACCEPTANCE CRITERIA — v1.0 MVP
+
+1. Every existing deal has at least one scenario after migration
+2. Active scenario per deal is enforced uniquely
+3. Users can create named scenarios via UI with attribution
+4. Agent runs create new agent-attributed scenarios by default
+5. Switching scenarios changes the live state (F9 reflects scenario's year1)
+6. Comparison view displays two scenarios side-by-side at the Pro Forma level
+7. Override API writes only to the active scenario; other scenarios untouched
+8. DealContext cache invalidates correctly when scenarios switch
+9. Soft delete protects against accidental loss; archival reduces UI clutter
+10. Scenario history visualizes lineage with parent-child relationships
+11. Backward compatibility: existing code reading `deal_assumptions.year1` continues working
+12. No data loss during migration from single-state to scenario model
+
+---
+
+## 11. RISKS AND MITIGATIONS
+
+### Risk 1: Migration produces incorrect initial scenarios for existing deals
+
+Mitigation: dry-run the migration on staging; validate that every deal has exactly one active scenario after migration with year1 matching the pre-migration state. Run integrity check comparing pre- and post-migration values per deal.
+
+### Risk 2: Agent runs create too many scenarios
+
+Mitigation: archival policy (Section 8) handles this automatically. Additional safeguards: rate-limit agent runs to prevent runaway scenario creation (e.g., max 10 agent-attributed scenarios per deal per day).
+
+### Risk 3: Scenario switching invalidates user's in-progress work
+
+Mitigation: confirm dialog before switching scenarios when the current scenario has unsaved changes. "Unsaved" means override edits made within the past N minutes that haven't been persisted. Persist eagerly to reduce the window.
+
+### Risk 4: Comparison view performance on large scenarios
+
+Mitigation: diff computation is cached for 1 hour per scenario pair. The diff itself is lazy-loaded by field hierarchy (expand sections to compute deeper). Pre-compute diff for the active scenario vs each other scenario on scenario list load.
+
+### Risk 5: Backward compatibility regression on existing year1 readers
+
+Mitigation: keep `deal_assumptions.year1` as a trigger-maintained denormalization for the first 60 days. Monitor read patterns. Once confident every consumer is scenario-aware, migrate to direct scenario reads.
+
+### Risk 6: User confusion about which scenario they're in
+
+Mitigation: persistent UI indicator showing the active scenario name prominently. Visual treatment (color band, icon) for agent-attributed vs user-attributed scenarios. Audit trail in the history view.
+
+---
+
+## 12. OPEN QUESTIONS
+
+### Q1: How are scenarios shared across users (when team collaboration ships)?
+
+Currently the platform is largely single-user-per-deal. When team collaboration ships (M29-M32 per userMemories), scenarios will be the natural unit of sharing.
+
+**Recommendation defer:** keep v1.0 single-user. Team collaboration spec addresses scenario sharing when it lands.
+
+### Q2: Read-only scenarios for LP/external sharing
+
+Some scenarios should be sharable to external parties (LPs, lenders) as read-only views. This requires:
+- Scenario-scoped permissions
+- Public-link generation
+- Snapshot capture (the read-only view shouldn't change even if the underlying scenario does)
+
+**Recommendation defer:** out of scope for v1.0. Add as v1.1 feature.
+
+### Q3: Scenarios for what's currently in deal_capsule (deal-level structure)?
+
+The deal capsule has its own state (entity structure, financing terms, etc.) separate from year1. Should scenarios cover the deal capsule too, or only year1?
+
+**Recommendation v1.0 scope:** scenarios cover year1 only. Deal capsule remains shared across scenarios. Future scenarios may extend to capsule-level if user demand emerges.
+
+### Q4: M22 actuals interaction with scenarios
+
+When M22 produces actuals for a deal post-close, which scenario do they validate? The one that was active at close? All scenarios? A new "Actuals" scenario?
+
+**Recommendation:** create a special "Actuals" scenario at deal close that captures the realized state. M22 actuals populate that scenario's year1 as data accumulates. Comparison view can show "Pre-Close Aggressive Case vs Actuals" — the core post-close intelligence question.
+
+### Q5: Versioning the scenarios themselves
+
+If a user heavily edits a scenario over time, should there be sub-versions? "Conservative Case v2" implying changes from "Conservative Case v1"?
+
+**Recommendation:** no sub-versioning in v1.0. Users wanting to preserve a moment can duplicate the scenario with a new name. Sub-versioning is a v2.0 consideration if it emerges as a user need.
+
+---
+
+## 13. STRATEGIC POSITIONING
+
+Scenario Management is one of the highest-leverage features for the platform's positioning. Three reasons:
+
+**1. It's what LP committees expect.** Institutional LPs evaluating a sponsor's deal expect to see scenario analysis — base case, downside, upside, stress test. Currently, JEDI RE produces a single underwriting per deal. With scenarios, the platform supports the analytical workflow LP committees actually use.
+
+**2. It operationalizes the platform's value-creation thesis.** The Roadmap mode produces ordered action plans to hit target returns. Each "what if I do X" is naturally a scenario. The Roadmap connection becomes "save this as a scenario to compare against my base case." Scenarios are the medium through which value-creation alternatives become real.
+
+**3. It enables genuine collaboration.** When team collaboration ships, scenarios become the unit of work distribution. "Analyst, model the conservative case." "GP, review the IC presentation scenario." Without scenarios, all collaborators are stepping on each other's edits. With scenarios, each can work in their own version.
+
+The combination with the existing four-layer memory architecture, CIE findings, and M22 calibration produces a platform where every underwriting question has structured, comparable, attributable answers preserved across time. This is the institutional-grade analytical platform the JEDI RE positioning promises.
+
+---
+
+## 14. DEPENDENCIES AND SEQUENCING
+
+### Hard dependencies
+- Database access for migration
+- Existing `deal_assumptions.year1` structure as the foundation
+- Existing `deal_underwriting_snapshots` table for snapshot wrapping
+
+### Soft dependencies
+- CIE spec (Phase 4 of scenarios builds on CIE; can ship Phase 1-3 first)
+- Team collaboration spec (informs Phase 5 design but not blocking)
+- M22 Post-Close Intelligence (informs Q4 design but not blocking)
+
+### Recommended sequencing relative to current priorities
+- Priority 1 (F-009): unrelated; can ship in parallel
+- Priority 2 (F-010 / Ticket B): closely related — Ticket B's per-field override pattern is exactly what scenarios need at the override layer. Worth coordinating so Ticket B's fix lands in a scenario-aware way
+- Priority 3 (agent prompt operational depth): unrelated; can ship in parallel
+
+**Sequencing recommendation:** start Scenario Management Phase 1 (database + API foundation) in parallel with Priorities 1-3. UI work (Phase 2) can follow once foundation is stable. Full ship target: 4-6 weeks from start.
+
+This is a multi-week build by design. It's the largest single architectural addition since the platform's foundation. Worth the investment because it unlocks LP committee workflow, Roadmap mode, and team collaboration — three strategically significant capabilities.
+
+---
+
+## 15. WHAT THIS SPEC DOES NOT COVER
+
+- **Multi-user collaboration on the same scenario.** Locking, conflict resolution, concurrent edits — all deferred to team collaboration spec (M29-M32).
+- **Scenario templates.** Pre-built scenarios (e.g., "Stress Test Template") that users can instantiate. Worth considering for v1.1.
+- **Scenario diffing across deals.** Comparing scenarios from different deals. Useful for portfolio-level analysis. Deferred.
+- **Time-series scenarios.** Each scenario is a point-in-time state. Year-over-year scenario evolution within a single named scenario is not modeled. Could be added if user demand emerges.
+- **Scenario approval workflow.** IC sign-off on a specific scenario, audit trail of approvals. Operational governance feature, deferred to a separate workflow spec.

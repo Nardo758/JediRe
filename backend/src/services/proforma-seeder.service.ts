@@ -1286,17 +1286,31 @@ export async function applyUserOverride(
   value: number | null,
   userId: string
 ): Promise<void> {
-  const result = await pool.query(
-    `SELECT year1 FROM deal_assumptions WHERE deal_id = $1`,
+  // M40: prefer the active underwriting scenario as the source of year1.
+  // Falls back to deal_assumptions for deals not yet bootstrapped by the migration.
+  const scenarioRes = await pool.query(
+    `SELECT id, year1 FROM deal_underwriting_scenarios
+      WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL`,
     [dealId]
   );
-  if (result.rows.length === 0 || !result.rows[0].year1) {
-    throw new Error('No year1 seed exists — upload at least one document first');
+  const activeScenarioId: string | null = scenarioRes.rows[0]?.id ?? null;
+
+  let rawYear1: unknown;
+  if (activeScenarioId) {
+    rawYear1 = scenarioRes.rows[0].year1;
+  } else {
+    const daRes = await pool.query(
+      `SELECT year1 FROM deal_assumptions WHERE deal_id = $1`,
+      [dealId]
+    );
+    if (daRes.rows.length === 0 || !daRes.rows[0].year1) {
+      throw new Error('No year1 seed exists — upload at least one document first');
+    }
+    rawYear1 = daRes.rows[0].year1;
   }
 
-  const seed = typeof result.rows[0].year1 === 'string'
-    ? JSON.parse(result.rows[0].year1)
-    : result.rows[0].year1;
+  const seed = typeof rawYear1 === 'string' ? JSON.parse(rawYear1) : rawYear1;
+  if (!seed) throw new Error('No year1 seed exists — upload at least one document first');
 
   const parts = fieldPath.split('.');
   let target: Record<string, unknown> = seed as unknown as Record<string, unknown>;
@@ -1413,24 +1427,49 @@ export async function applyUserOverride(
   // supplies a complete, well-formed LayeredValue for those legacy slots.
   const fieldForDb = field as unknown as Record<string, unknown>;
 
-  await pool.query(
-    `UPDATE deal_assumptions
-     SET year1 = jsonb_set(
-       year1 || $3::jsonb,
-       $2::text[],
-       COALESCE(
-         CASE jsonb_typeof(year1 #> $2::text[])
-           WHEN 'object' THEN year1 #> $2::text[]
-           ELSE NULL
-         END,
-         '{}'::jsonb
-       ) || $4::jsonb,
-       true
-     ),
-     updated_at = NOW()
-     WHERE deal_id = $1`,
-    [dealId, parts, JSON.stringify(derivedUpdate), JSON.stringify(fieldForDb)]
-  );
+  // M40: write to the active underwriting scenario when available.
+  // The DB trigger (trg_sync_underwriting_scenario) mirrors the change back to
+  // deal_assumptions.year1 so all existing readers continue to see it.
+  // Falls back to a direct deal_assumptions write for pre-migration deals.
+  if (activeScenarioId) {
+    await pool.query(
+      `UPDATE deal_underwriting_scenarios
+       SET year1 = jsonb_set(
+         year1 || $3::jsonb,
+         $2::text[],
+         COALESCE(
+           CASE jsonb_typeof(year1 #> $2::text[])
+             WHEN 'object' THEN year1 #> $2::text[]
+             ELSE NULL
+           END,
+           '{}'::jsonb
+         ) || $4::jsonb,
+         true
+       ),
+       updated_at = NOW()
+       WHERE id = $1`,
+      [activeScenarioId, parts, JSON.stringify(derivedUpdate), JSON.stringify(fieldForDb)]
+    );
+  } else {
+    await pool.query(
+      `UPDATE deal_assumptions
+       SET year1 = jsonb_set(
+         year1 || $3::jsonb,
+         $2::text[],
+         COALESCE(
+           CASE jsonb_typeof(year1 #> $2::text[])
+             WHEN 'object' THEN year1 #> $2::text[]
+             ELSE NULL
+           END,
+           '{}'::jsonb
+         ) || $4::jsonb,
+         true
+       ),
+       updated_at = NOW()
+       WHERE deal_id = $1`,
+      [dealId, parts, JSON.stringify(derivedUpdate), JSON.stringify(fieldForDb)]
+    );
+  }
 
   // ── Version snapshot ──────────────────────────────────────────────────────
   // Persist a deal version entry so the override is visible in the version

@@ -275,17 +275,34 @@ export async function cashflowPostProcess(
                 // jsonb_set(COALESCE(year1,'{}'), ARRAY[key,'resolved'], to_jsonb(value), create_missing=true)
                 // Updates only the 'resolved' slot within the existing LayeredValue
                 // envelope, preserving t12/broker/platform layers untouched.
-                await query(
-                  `UPDATE deal_assumptions
+                // M40: write corrected subtotal to the active underwriting scenario.
+                // Trigger syncs deal_assumptions.year1; fallback for pre-migration deals.
+                const subWriteRes = await query(
+                  `UPDATE deal_underwriting_scenarios
                    SET year1 = jsonb_set(
                      COALESCE(year1, '{}'),
                      ARRAY[$2::text, 'resolved'],
                      to_jsonb($3::numeric),
                      true
-                   )
-                   WHERE deal_id = $1`,
+                   ),
+                   updated_at = NOW()
+                   WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+                   RETURNING id`,
                   [ctx.dealId, year1Key, correctedValue],
                 );
+                if ((subWriteRes.rowCount ?? 0) === 0) {
+                  await query(
+                    `UPDATE deal_assumptions
+                     SET year1 = jsonb_set(
+                       COALESCE(year1, '{}'),
+                       ARRAY[$2::text, 'resolved'],
+                       to_jsonb($3::numeric),
+                       true
+                     )
+                     WHERE deal_id = $1`,
+                    [ctx.dealId, year1Key, correctedValue],
+                  );
+                }
                 writeCount++;
               }
 
@@ -458,8 +475,11 @@ export async function cashflowPostProcess(
           // slots (t12, om, override, platform) while adding/updating agent,
           // resolved, and resolution sub-keys.
           try {
-            await query(
-              `UPDATE deal_assumptions
+            // M40: write agent value to the active underwriting scenario.
+            // The DB trigger mirrors the change to deal_assumptions.year1.
+            // Falls back to deal_assumptions for deals without a scenario.
+            const agentScenarioRes = await query(
+              `UPDATE deal_underwriting_scenarios
                SET year1 = jsonb_set(
                  COALESCE(year1, '{}'),
                  ARRAY[$2::text],
@@ -469,10 +489,29 @@ export async function cashflowPostProcess(
                    'resolution', $4::text
                  ),
                  true
-               )
-               WHERE deal_id = $1`,
+               ),
+               updated_at = NOW()
+               WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+               RETURNING id`,
               [ctx.dealId, year1Key, agentValue, 'agent']
             );
+            if ((agentScenarioRes.rowCount ?? 0) === 0) {
+              await query(
+                `UPDATE deal_assumptions
+                 SET year1 = jsonb_set(
+                   COALESCE(year1, '{}'),
+                   ARRAY[$2::text],
+                   COALESCE(year1->$2::text, '{}') || jsonb_build_object(
+                     'agent',      $3::numeric,
+                     'resolved',   $3::numeric,
+                     'resolution', $4::text
+                   ),
+                   true
+                 )
+                 WHERE deal_id = $1`,
+                [ctx.dealId, year1Key, agentValue, 'agent']
+              );
+            }
             agentWriteCount++;
           } catch (fieldWriteErr) {
             agentFailedFields.push(year1Key);
