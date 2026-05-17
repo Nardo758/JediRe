@@ -359,11 +359,15 @@ The cashflow agent system prompt includes the following guidance for Other Incom
 
 **CIE integration:** Before computing your Other Income projection, read existing CIE findings from DealContext (filtered to `domain: 'revenue'` and `finding_type` in `['missing_ancillary_category', 'underpriced_ancillary_fee', 'low_ancillary_adoption_rate']`). Findings in `sponsor_state: 'accepted'` are part of the deal's stabilized strategy and must be included in your projection.
 
-For each accepted CIE finding:
-- **If Method 1 is selected:** add the accepted category to your fee schedule projection using Method 1 logic (fee × adoption × applicable units)
-- **If Method 2 is selected:** the acceptance of an opportunity finding means the deal now has an operational lift component — recompute method selection, which will likely resolve to Method 3
-- **If Method 3 is selected:** add the accepted category to your per-category breakdown using Method 1 logic (fee × adoption × applicable units); the category appears in the Pro Forma even if it is not in the current rent roll
-- **If Method 4 is selected:** same as Method 3 — add the accepted category using Method 1 logic in addition to the sponsor-portfolio-anchored baseline
+**Per-finding-type consumption (applies regardless of which projection method is active):**
+
+- **`missing_ancillary_category`** — add the category to your projection. If `hasDirectlyComparableOwnedPortfolio` is true for this deal, derive the category using Method 4 logic (sponsor's owned-portfolio actuals, market-adjusted). Otherwise, use Method 1 logic (fee × adoption × applicable units, sourced from fee schedule and archive cohort adoption rates).
+
+- **`underpriced_ancillary_fee`** — adjust the category's rate to cohort P50 (or the sponsor's stated positioning if accepted above P50) in the stabilized year. Preserve the current rate in pre-stabilization years; the adjustment phases in over the business plan timeline.
+
+- **`low_ancillary_adoption_rate`** — adjust the category's adoption rate to cohort P50 in the stabilized year. Same phase-in pattern as rate adjustments: current adoption preserved in pre-stabilization years.
+
+**Method 2 special case:** if Method 2 is the active projection method and the sponsor accepts any CIE finding, the deal now has an operational lift component. Recompute method selection — this will resolve to Method 3 (value-add path). Do not apply accepted CIE findings within a Method 2 projection; re-run Method 3 selection first.
 
 Label each accepted-finding contribution with source label `cie_accepted_finding`.
 
@@ -433,10 +437,12 @@ For the agent's Other Income reasoning, M22 calibration appears indirectly via C
 ## 11. CHANGELOG
 
 **v1.2 (current)**
-- Section 7 CIE integration expanded: per-method consumption paths specified for each of Methods 1, 2, 3, and 4; Method 2 acceptance triggers re-selection to Method 3; unreviewed/deferred/declined handling explicit; unit convention note added
-- Q4 added: M22 Post-Close calibration flows through CIE findings, not directly into agent Other Income reasoning
-- Methods 1, 2, 3, 4 unchanged; selection logic unchanged
-- Reconciliation: v1.2 patch edits that conflicted with v1.1.1 (remove Method 4, simplify selection) were not applied; Owned-Portfolio Analog Method 4 is preserved
+- Section 7 (agent prompt) gains per-finding-type consumption guidance: explicit mapping from accepted CIE finding types to agent behavior — `missing_ancillary_category` → Method 4 logic if `hasDirectlyComparableOwnedPortfolio`, else Method 1 logic; `underpriced_ancillary_fee` → rate adjustment to cohort P50 with phase-in; `low_ancillary_adoption_rate` → adoption adjustment to cohort P50 with phase-in; Method 2 special case documented (acceptance triggers re-selection to Method 3)
+- Q4 added: M22 Post-Close capex calibration delegated to CIE's Section 7.1 priority chain; Other Income spec no longer carries M22 integration directly; agent reads CIE findings, not M22 tables
+- v1.1.1's Method 4 (Owned-Portfolio Analog), Method 5 (CIE active integration), and Section 6.3 (bidirectional CIE integration) preserved as-is — superior to the v1.2 patch document's framing of these items
+- No structural changes to Methods 1, 2, 3, or to the selection function
+
+**Reconciliation note:** This v1.2 release adopts the additive content from the v1.2 patch document (Section 7 per-finding-type guidance, Q4 M22 reframe) while preserving the superior v1.1.1 framing of Method 4, Method 5, and Section 6.3. The v1.2 patch document is considered fully reconciled and should not be reapplied.
 
 **v1.1.1 (archival)**
 - Added Method 4 to the selection function with deterministic criteria (owned-portfolio match quality + ancillary program match + n ≥ 2 comparables)
