@@ -2413,6 +2413,35 @@ export async function getDealFinancials(
         if (_v != null) _r.broker = Math.round(_v);
       }
     }
+
+    // Contract Services residual — when the OM reports totalOpexAnnual but
+    // omits a separate contractServicesAnnual line, derive it as the gap
+    // between the stated total and the sum of all other known broker opex
+    // items.  This keeps the broker column internally consistent:
+    //   totalOpexAnnual = Σ(all broker opex lines)
+    // Only applied when the broker slot is still empty after the loop above
+    // and the residual is positive (guards against floating-point drift and
+    // mis-classified OM formats).
+    const _csBrokerRow = _byField('contract_services');
+    if (_csBrokerRow && _csBrokerRow.broker == null) {
+      const _bpTotalOpexAnnual = _bpNum('totalOpexAnnual');
+      if (_bpTotalOpexAnnual != null) {
+        // Sum every opex line item's broker column except contract_services itself.
+        // Includes management_fee and replacement_reserves which are set by
+        // toDollarRow/toRow (not by _bpOpexMap) before this block executes.
+        const _otherOpexFields = [
+          'payroll', 'repairs_maintenance', 'turnover', 'marketing',
+          'g_and_a', 'utilities', 'insurance', 'real_estate_tax',
+          'replacement_reserves', 'management_fee',
+          'water_sewer', 'electric', 'gas_fuel',
+        ];
+        const _knownSum = _otherOpexFields.reduce(
+          (s, f) => s + (_byField(f)?.broker ?? 0), 0,
+        );
+        const _residual = _bpTotalOpexAnnual - _knownSum;
+        if (_residual > 0) _csBrokerRow.broker = Math.round(_residual);
+      }
+    }
   }
 
   // ── Recompute resolved subtotals from leaf-item resolved values ────────────
