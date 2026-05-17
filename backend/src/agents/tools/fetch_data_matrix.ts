@@ -99,7 +99,7 @@ export async function fetchDataMatrix(
   // Resolve deal from ID or use provided deal
   if (params.dealId) {
     const result = await pool.query(`
-      SELECT id, name AS property_name, address, city, state,
+      SELECT id, name AS property_name, address, city, state, state_code,
              unit_count AS units, deal_category AS deal_type,
              latitude, longitude, deal_data
       FROM deals WHERE id = $1
@@ -119,7 +119,7 @@ export async function fetchDataMatrix(
       propertyName: row.property_name || property.name,
       address: row.address || property.address,
       city: row.city || property.city,
-      state: row.state || property.state,
+      state: row.state_code || property.state || row.state,
       county: property.county || dd.geographic_context?.county_name,
       units: row.units || property.units,
       yearBuilt: property.yearBuilt || property.year_built,

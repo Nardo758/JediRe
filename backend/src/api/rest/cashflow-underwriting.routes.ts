@@ -108,7 +108,8 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
       [deal_id]
     );
     const systemPromptOverride = await buildCompositePrompt(
-      (dealRow.rows[0] as Record<string, unknown>) ?? {}
+      (dealRow.rows[0] as Record<string, unknown>) ?? {},
+      deal_id
     );
 
     const ctx: RunContext = {

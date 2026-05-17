@@ -22,6 +22,7 @@ import { DEFAULT_BUDGET_CAPS } from './config/budget';
 import { query } from '../database/connection';
 import type { AgentConfig } from './runtime/types';
 import { cashflowPostProcess } from './cashflow.postprocess';
+import { normalizeEvidence } from './utils/evidenceNormalizer';
 
 import { fetchT12Tool } from './tools/fetch_t12';
 import { fetchRentRollTool } from './tools/fetch_rent_roll';
@@ -135,11 +136,21 @@ export const CanonicalEvidenceSchema = z.object({
 const ProformaFieldSchema = z.object({
   value: z.union([z.number(), z.string(), z.null()]),
   source: z.string(),
-  // Strict canonical evidence shape enforced here.
-  // The evidenceNormalizer runs in both write_underwriting (pre-snapshot)
-  // and cashflowPostProcess (pre-schema-validation), guaranteeing this shape
-  // is always satisfied before parse() is called.
-  evidence: CanonicalEvidenceSchema,
+  // Defense-in-depth: z.preprocess coerces string/malformed evidence to
+  // CanonicalEvidence at Zod parse time. cashflowPostProcess also runs
+  // normalizeProformaFields before this parse() call, but if that step
+  // is skipped (DB failure, early-catch, etc.) this preprocess guarantees
+  // the schema never rejects on a string evidence field.
+  evidence: z.preprocess(
+    (val) => {
+      try {
+        return normalizeEvidence(val as Parameters<typeof normalizeEvidence>[0], 'schema_preprocess', null).evidence;
+      } catch {
+        return val;
+      }
+    },
+    CanonicalEvidenceSchema,
+  ),
   archive_percentile: z.number().min(0).max(100).nullable().optional().describe(
     'Where this assumption falls in the archive distribution (0=P10, 50=P50, 100=P90). Null if < 5 samples.'
   ),
@@ -260,11 +271,25 @@ export const CASHFLOW_DEAL_TYPE_TO_PROMPT_TYPE: Record<CashflowDealType, string>
 
 /** Resolve deal type from deal context fields and property data. */
 export function resolveProjectType(dealRow: Record<string, unknown>): CashflowDealType {
-  const raw = String(dealRow.project_type ?? dealRow.deal_type ?? dealRow.property_type ?? '').toLowerCase();
-  if (raw.includes('redevelopment') || raw.includes('conversion')) return 'redevelopment';
-  if (raw.includes('development') && !raw.includes('re')) return 'development';
-  if (raw.includes('value') || raw.includes('rehab') || raw.includes('renovation')) return 'value-add';
-  if (raw.includes('lease') || raw.includes('stabiliz') || raw.includes('delivery')) return 'lease-up';
+  const category  = String(dealRow.deal_category ?? '').toLowerCase();
+  const raw       = String(dealRow.project_type ?? dealRow.deal_type ?? dealRow.property_type ?? '').toLowerCase();
+  const thesis    = String(dealRow.investment_thesis ?? '').toLowerCase();
+  const combined  = `${raw} ${category} ${thesis}`;
+
+  if (combined.includes('redevelopment') || combined.includes('conversion')) return 'redevelopment';
+  if (combined.includes('development') && !combined.includes('re')) return 'development';
+  if (combined.includes('value') || combined.includes('rehab') || combined.includes('renovation')) return 'value-add';
+  if (combined.includes('lease') || combined.includes('stabiliz') || combined.includes('delivery')) return 'lease-up';
+
+  // Heuristic: recently built deals in the pipeline are typically lease-up acquisitions.
+  // "Pipeline" is the pre-acquisition category; if the property is ≤8 years old it is
+  // almost certainly still in its lease-up absorption window.
+  if (category === 'pipeline') {
+    const yearBuilt   = Number(dealRow.year_built ?? 0);
+    const currentYear = new Date().getFullYear();
+    if (yearBuilt > 0 && yearBuilt >= currentYear - 8) return 'lease-up';
+  }
+
   return 'existing';
 }
 
@@ -292,8 +317,36 @@ export function getAllowedTriggerModes(tier: string): string[] {
  * Used by both cashflow.inngest.ts (event-driven runs) and
  * cashflow-underwriting.routes.ts (manual REST-triggered runs).
  */
-export async function buildCompositePrompt(dealRow: Record<string, unknown>): Promise<string> {
-  const dealType = resolveProjectType(dealRow);
+export async function buildCompositePrompt(
+  dealRow: Record<string, unknown>,
+  dealId?: string
+): Promise<string> {
+  // Augment dealRow with deal_category, year_built, and investment_thesis when not
+  // already present.  Both call sites (inngest + REST route) may only pass a subset
+  // of fields, so we self-heal by fetching the missing ones from the DB.
+  const effectiveId = dealId ?? String(dealRow.deal_id ?? dealRow.id ?? '');
+  let enriched = { ...dealRow };
+  if (effectiveId && !dealRow.deal_category) {
+    try {
+      const r = await query(
+        `SELECT d.deal_category,
+                COALESCE(
+                  p.year_built,
+                  NULLIF(d.deal_data->'broker_claims'->'property'->>'yearBuilt','')::int,
+                  NULLIF(d.deal_data->'broker_claims'->'property'->>'year_built','')::int
+                ) AS year_built,
+                d.deal_data->'broker_claims'->>'investmentThesis' AS investment_thesis
+         FROM deals d
+         LEFT JOIN properties p ON p.deal_id = d.id
+         WHERE d.id = $1
+         LIMIT 1`,
+        [effectiveId]
+      );
+      if (r.rows[0]) enriched = { ...enriched, ...r.rows[0] };
+    } catch (_) { /* non-fatal — classification falls back to 'existing' */ }
+  }
+
+  const dealType = resolveProjectType(enriched);
   const variantType = CASHFLOW_DEAL_TYPE_TO_PROMPT_TYPE[dealType];
 
   const coreRow = await query(

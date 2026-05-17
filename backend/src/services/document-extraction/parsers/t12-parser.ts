@@ -44,7 +44,7 @@ const RULES: CategoryRule[] = [
   { pattern: /^total\s+make[\s-]*ready/i, field: 'isSubtotal', isSubtotal: true },
   { pattern: /^total\s+recreational/i, field: 'isSubtotal', isSubtotal: true },
   { pattern: /^total\s+contract/i, field: 'isSubtotal', isSubtotal: true },
-  { pattern: /^total\s+general\s+maintenance/i, field: 'isSubtotal', isSubtotal: true },
+  { pattern: /^total\s+(general|property)\s+maintenance\b/i, field: 'isSubtotal', isSubtotal: true },
   { pattern: /^total\s+(other\s+)?(advertising|marketing)/i, field: 'isSubtotal', isSubtotal: true },
   { pattern: /^total\s+office/i, field: 'isSubtotal', isSubtotal: true },
   { pattern: /^total\s+(other\s+)?general\s*&?\s*admin/i, field: 'isSubtotal', isSubtotal: true },
@@ -53,6 +53,14 @@ const RULES: CategoryRule[] = [
   { pattern: /^total\s+taxes/i, field: 'isSubtotal', isSubtotal: true },
   { pattern: /^total\s+(non\s*recoverable\s+)?operating\s+expense/i, field: 'isSubtotal', isSubtotal: true },
   { pattern: /^total\s+expense/i, field: 'isSubtotal', isSubtotal: true },
+  { pattern: /^total\s+insurance/i, field: 'isSubtotal', isSubtotal: true },
+  { pattern: /^total\s+trash\b/i, field: 'isSubtotal', isSubtotal: true },
+  { pattern: /^total\s+capital\s+(improvements?|expenditures?)/i, field: 'isSubtotal', isSubtotal: true },
+  { pattern: /^total\s+(other\s+)?debt\s+service/i, field: 'isSubtotal', isSubtotal: true },
+  { pattern: /^total\s+(revenues?|multifamily|gpr|other\s+expense|interest)/i, field: 'isSubtotal', isSubtotal: true },
+  { pattern: /^net\s+(?:loss|operating\s+income)\s*[/\s(]/i, field: 'isSubtotal', isSubtotal: true },
+  { pattern: /^multifamily\s+rental\s+revenue/i, field: 'isSubtotal', isSubtotal: true },
+  { pattern: /^gross\s+possible\s+rent\s*[-–]\s*subtotal/i, field: 'isSubtotal', isSubtotal: true },
   { pattern: /^net\s+operating\s+income\s*$/i, field: 'noi', isSubtotal: true },
   { pattern: /^potential\s+rent\s*$/i, field: 'isSubtotal', isSubtotal: true },
   { pattern: /^(income|expenses?|revenue)\s*$/i, field: 'isHeader', isHeader: true },
@@ -95,10 +103,13 @@ const RULES: CategoryRule[] = [
   { pattern: /\b(concierge|guest\s+services|locks?\s*\/?\s*key|vendor\s+rebates|miscellaneous\s+income)\b/i, field: 'miscIncome' },
 
   // ─── OpEx — Payroll & Benefits ───
-  { pattern: /\b(salaries|salary|bonuses|payroll\s+taxes?|workers\s+comp|401k|employee\s+burden|group\s+insurance|maintenance\s+manager)\b/i, field: 'payroll' },
+  // NOTE: health\s+insurance must appear BEFORE the property insurance rule below.
+  { pattern: /\b(salaries|salary|bonuses?|payroll\s+taxes?|workers?\s*'?s?\s+comp|workmans?\s+comp|401k|employee\s+burden|group\s+insurance|health\s+insurance|maintenance\s+manager|maintenance\s+personnel|maintenance\s+staff|maintenance\s+tech(?:nician)?|incentive\s+pay|employee\s+(bonus|bonuses)|temporary\s+labor|temp\s+labor|uniforms?|other\s+payroll|payroll\s+costs?)\b/i, field: 'payroll' },
 
   // ─── OpEx — R&M (separate from turnover/make-ready) ───
-  { pattern: /\b(access\s+gate|appliance\s+repair|building\s*-?\s*interior|cleaning\s*&?\s*supplies|common\s+area\s+repair|electrical\s+supplies|elevator\s+repairs?|hvac|lighting|locks?\s*&?\s*keys|maintenance\s+supplies|painting\s+supplies|plumbing|preventative\s+maintenance|safety\s*&?\s*fire|small\s+tools|water\s+penetration|miscellaneous\s+supplies)\b/i, field: 'repairsMaintenance' },
+  // Catches all "R&M - X" prefixed lines, then individual maintenance items.
+  { pattern: /\br\s*[&+]\s*m\b/i, field: 'repairsMaintenance' },
+  { pattern: /\b(access\s+gate|appliance\s+repair|appliance\s+replacement|building\s*-?\s*interior|carpet\s+replacement|cleaning\s*&?\s*supplies|common\s+area\s+rep(?:air)?|electrical\s+(?:supplies|improvements?)|elevator\s+(?:repairs?|contract)|hvac|landscaping\s*[-–]?\s*labor|large\s+appliance|lighting|locks?\s*&?\s*keys|maintenance\s+supplies|painting\s+supplies|plumbing|preventative\s+maintenance|readying\s+apartments?|safety\s*&?\s*fire|security\s+locks?|small\s+tools|sewer\s+lift\s+station|vinyl\s+replacement|water\s+penetration|miscellaneous\s+supplies|one\s+time\s+casualty)\b/i, field: 'repairsMaintenance' },
 
   // ─── OpEx — Make-Ready / Turnover ───
   { pattern: /\b(carpet\s+cleaning|paint\s+contractor|make[\s-]*ready)\b/i, field: 'turnover' },
@@ -107,7 +118,9 @@ const RULES: CategoryRule[] = [
   { pattern: /\b(pool\s+supplies|recreational|amenity)\b/i, field: 'amenities' },
 
   // ─── OpEx — Contract Services ───
-  { pattern: /\b(cable\s+tv\s+contract|elevator\s+contract|equipment\s+contract|fire\s+alarm|fire\s+protection|janitorial|landscape|pest\s+control|trash\s+removal)\b/i, field: 'contractServices' },
+  // Note: 'landscape' here catches "Landscaping - Materials", "Landscape Contract" etc.
+  // "Landscaping - Labor" is caught by the R&M rule above (more specific, appears first).
+  { pattern: /\b(cable\s+tv\s+contract|equipment\s+contract|fire\s+alarm|fire\s+protection|janitorial|landscape(?!\s*[-–]?\s*labor)|pest\s+control|trash\s+removal|maintenance\s+contract)\b/i, field: 'contractServices' },
 
   // ─── OpEx — Marketing ───
   { pattern: /\b(visual\s+(and|&)\s+creative|search\s+engine\s+marketing|internet\s+listing|property\s+website|social\s+media|reputation\s+management|printing\s+costs?|outreach|promotional\s+signage|locator|referral|strategic\s+marketing|tour\s+experience|prospect\s+refreshments|resident\s+activities|resident\s+retention|shopping\s+reports|satisfaction\s+survey)\b/i, field: 'marketing' },
@@ -122,7 +135,8 @@ const RULES: CategoryRule[] = [
   { pattern: /\b(administrative.*fees?|accounting\s+fees?|assoc.*fees?|membership\s+dues|bank\s+charges|computer\s+expense|employee\s+meetings?|recruitment|recognition|entertainment|internet\s+access|music.*licensing|licenses.*permits|ops\s+technology|training|seminars|uniform|miscellaneous\s+general|miscellaneous\s+admin)\b/i, field: 'adminGeneral' },
 
   // ─── OpEx — Utilities ───
-  { pattern: /\b(electric\b(?!\s+rebill)|gas\b(?!\s+rebill)|water[\s/]*sewer|water\s+\(only\)|sewer\s+\(only\)|water\s*-?\s*irrigation|other\s+utilities|utility\s+rebill\s+service)/i, field: 'utilities' },
+  // "electric\w*" catches both "Electric" and "Electricity"; lookbehind avoids "Electric Rebill".
+  { pattern: /\b(electric\w*(?!\s*-?\s*rebill)|gas\b(?!\s*-?\s*rebill)|water[\s/&]*sewer|water\s+[(&].*sewer|water\s+\(only\)|sewer\s+\(only\)|water\s*[-–]?\s*irrigation|other\s+utilities|utility\s+billing\s+service|valet\s*trash|trash\s+(occupied|unoccupied|pickup|hauling))\b/i, field: 'utilities' },
 
   // ─── OpEx — Management Fee ───
   { pattern: /\bmanagement\s+fees?\b/i, field: 'managementFee' },
@@ -132,10 +146,10 @@ const RULES: CategoryRule[] = [
   { pattern: /\bpersonal\s+property\s+tax/i, field: 'propertyTax' },  // bundled into propertyTax
   { pattern: /\btaxes?\s*$/i, field: 'propertyTax' },
 
-  // ─── OpEx — Insurance (property, not employee-group) ───
+  // ─── OpEx — Insurance (property, not employee-group or health) ───
   { pattern: /\bproperty\s+insurance\b/i, field: 'insurance' },
-  { pattern: /\binsurance\s*-?\s*property\b/i, field: 'insurance' },
-  // Note: "Group Insurance" intentionally NOT matched — it's payroll
+  { pattern: /\binsurance\s*-?\s*(property|bldg|building|fire|casualty)\b/i, field: 'insurance' },
+  // Note: "Group Insurance" and "Health Insurance" intentionally NOT matched — they're payroll
 ];
 
 interface ExtendedT12Month extends T12Month {

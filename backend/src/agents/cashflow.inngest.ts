@@ -321,7 +321,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
       // receives instructions calibrated to the specific project strategy.
       const systemPromptOverride = await buildCompositePrompt({
         property_type: dealCtx.property_type ?? '',
-      });
+      }, dealId);
 
       const ctx: RunContext = {
         dealId,

@@ -78,6 +78,12 @@ export const computeProformaTool: ToolDefinition<
     const rgGrowth = 1 + input.annual_rent_growth_pct / 100;
     const expGrowth = 1 + input.annual_expense_growth_pct / 100;
 
+    // Pre-compute base expenses from Year-1 actuals so each projection year
+    // scales them independently against the Year-1 base (not against the
+    // already-grown prior-year expenses, which compounds the growth rate
+    // incorrectly and inflates expenses in later years).
+    const baseExpenses = input.gross_revenue_year1 - input.noi_year1;
+
     let grossRev = input.gross_revenue_year1;
     let noi = input.noi_year1;
     const projections = [];
@@ -85,8 +91,8 @@ export const computeProformaTool: ToolDefinition<
 
     for (let yr = 1; yr <= input.hold_period_years; yr++) {
       if (yr > 1) {
-        grossRev = grossRev * rgGrowth;
-        const expenses = (grossRev - noi) * expGrowth;
+        grossRev = input.gross_revenue_year1 * Math.pow(rgGrowth, yr - 1);
+        const expenses = baseExpenses * Math.pow(expGrowth, yr - 1);
         noi = grossRev - expenses;
       }
       const cf = noi - annualDebtService;
@@ -107,7 +113,15 @@ export const computeProformaTool: ToolDefinition<
     // Exit value
     const exitNoi = projections[projections.length - 1]?.noi ?? noi;
     const exitValue = exitNoi / (input.exit_cap_rate_pct / 100);
-    const remainingLoan = loanAmount * 0.85; // simplified (no full amort schedule)
+    // Compute actual remaining loan balance using standard amortization formula:
+    // B(n) = L * [ (1+r)^N - (1+r)^n ] / [ (1+r)^N - 1 ]
+    // where n = payments made (hold_period_years * 12), N = total payments.
+    const paymentsMade = input.hold_period_years * 12;
+    const remainingLoan = monthlyRate > 0
+      ? loanAmount *
+        (Math.pow(1 + monthlyRate, numPayments) - Math.pow(1 + monthlyRate, paymentsMade)) /
+        (Math.pow(1 + monthlyRate, numPayments) - 1)
+      : loanAmount * (1 - paymentsMade / numPayments);
     const exitProceeds = exitValue - remainingLoan;
     cashFlows[cashFlows.length - 1] = (cashFlows[cashFlows.length - 1] ?? 0) + exitProceeds;
 

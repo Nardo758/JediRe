@@ -51,8 +51,17 @@ export async function cashflowPostProcess(
       logger.info(`[CashflowPostProcess] Inline JSON mode: ${Object.keys(inlineFields).length} fields`);
       fillMissingAggregates(output, inlineFields);
     } else if (hasToolCallData) {
-      // Model used write_underwriting tool — aggregate from DB
-      await aggregateFromToolCalls(output, runId);
+      // Model used write_underwriting tool — aggregate from DB.
+      // Inner try-catch: a DB failure here must NOT prevent the evidence
+      // normalization block below from running (which fixes string evidence).
+      try {
+        await aggregateFromToolCalls(output, runId);
+      } catch (aggErr) {
+        logger.warn('[CashflowPostProcess] aggregateFromToolCalls failed (non-fatal) — normalization will still run', {
+          runId,
+          err: aggErr instanceof Error ? aggErr.message : String(aggErr),
+        });
+      }
     } else {
       // No tool calls AND no inline fields — create empty aggregates
       logger.warn(`[CashflowPostProcess] No tool calls or inline fields for ${runId}`);
