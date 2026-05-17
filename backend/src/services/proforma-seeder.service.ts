@@ -1391,27 +1391,42 @@ export async function applyUserOverride(
   const rootKey = parts[0];
   delete derivedUpdate[rootKey];
 
-  // Build target-field sub-key delta (Layer B — only changed sub-keys).
-  const targetDelta: Record<string, unknown> = {
-    override:        (field as Record<string, unknown>).override,
-    resolved:        (field as Record<string, unknown>).resolved,
-    resolution:      (field as Record<string, unknown>).resolution,
-    updated_at:      (field as Record<string, unknown>).updated_at,
-    updated_by:      userId,
-    override_source: value != null ? 'operator' : null,
-  };
+  // Build target-field value (Layer B).
+  // Use the full in-memory field object (not a sub-key delta).  This is safe
+  // for two reasons:
+  //   1. The in-memory field was loaded from DB then mutated — it already
+  //      contains all DB-sourced sub-keys (t12, om, platform, broker, etc.)
+  //      for the field.
+  //   2. JSONB `||` (right supersedes left): `(db_field) || (field)`.  Only
+  //      keys present in the right side win; any key in db_field that is NOT
+  //      in the in-memory field is PRESERVED.  The agent sub-key (`agent`) is
+  //      written exclusively by the Cashflow Agent — it is never set by the
+  //      seeder or applyUserOverride — so it is not in `field` and survives.
+  //
+  // Scalar guard (code review requirement): legacy records may still have a
+  // raw number (not an object) at the target field path.  `jsonb_typeof` is
+  // used inside a CASE so that non-object DB values fall back to `'{}'::jsonb`
+  // rather than causing an invalid merge.  The full in-memory `field` then
+  // supplies a complete, well-formed LayeredValue for those legacy slots.
+  const fieldForDb = field as unknown as Record<string, unknown>;
 
   await pool.query(
     `UPDATE deal_assumptions
      SET year1 = jsonb_set(
        year1 || $3::jsonb,
        $2::text[],
-       COALESCE(year1 #> $2::text[], '{}') || $4::jsonb,
+       COALESCE(
+         CASE jsonb_typeof(year1 #> $2::text[])
+           WHEN 'object' THEN year1 #> $2::text[]
+           ELSE NULL
+         END,
+         '{}'::jsonb
+       ) || $4::jsonb,
        true
      ),
      updated_at = NOW()
      WHERE deal_id = $1`,
-    [dealId, parts, JSON.stringify(derivedUpdate), JSON.stringify(targetDelta)]
+    [dealId, parts, JSON.stringify(derivedUpdate), JSON.stringify(fieldForDb)]
   );
 
   // ── Version snapshot ──────────────────────────────────────────────────────
