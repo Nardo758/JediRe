@@ -1,0 +1,115 @@
+# Re: Task #824 — Cash Flow Agent → Proforma Write-back
+
+Reviewed the task spec — it's well-scoped overall and the override-hierarchy + non-fatal failure handling are exactly right. Three issues worth addressing before this goes to build, plus two minor items that can ship with one-line clarifications.
+
+---
+
+## Critical — must fix before ship
+
+### 1. Don't store dollar values in `_pct` fields
+
+The spec maps three agent fields into year1 keys whose names end in `_pct`, but the agent produces dollar values:
+
+```
+expense.management_fee → management_fee_pct  (agent value is dollars)
+revenue.vacancy_loss   → vacancy_pct          (agent value is dollars)
+revenue.bad_debt       → bad_debt_pct         (presumably dollars too)
+```
+
+Storing dollars in a field called `_pct` is a Trojan horse:
+
+- Operators overriding the field don't know whether to enter a percentage or a dollar amount
+- The next agent run reads `management_fee_pct: 137500` and has no idea whether that's a percentage stored as basis-points-times-1000 or a mislabeled dollar
+- Anywhere the platform multiplies `management_fee_pct × EGI` to compute the fee, the math produces nonsense
+
+**Fix:** add parallel `_dollars` fields. Agent writes dollars; existing `_pct` fields remain for operator-entered percentages. Three new year1 keys:
+
+- `management_fee_dollars`
+- `vacancy_loss_dollars`
+- `bad_debt_dollars`
+
+Downstream code reads whichever is present. The percent fields remain valid for operators who think in percentages; the dollar fields capture what the agent actually reasoned about. No coercion, no confusion.
+
+If you'd rather not add new fields, the alternative is to compute the percentage at write time (`management_fee_pct = agent_dollar_value / egi`) and document the derivation. But this is the worse option — it loses the agent's actual reasoning and round-trips through math that could go wrong.
+
+### 2. Read from the post-correction snapshot, not the raw agent output
+
+The spec says the write-back happens "after the existing math-engine subtotal write-back block." Worth being explicit about which value source the loop reads from:
+
+- Agent produces `proforma.opex.total = $3,134,554` (wrong)
+- Math engine v1.1 corrects to `$1,873,015` and sets `was_math_corrected: true`
+- Write-back fires — **which value does it write to year1?**
+
+If it reads from the agent's raw output, it writes the wrong value back to year1, undoing the math engine's correction in the operator-facing surface. The math engine fix becomes invisible to the user, defeating its purpose.
+
+**Fix:** explicitly read from the post-correction `corrected_snapshot.resolved` (the math engine's output), not from `output.proforma_fields` (the agent's pre-correction output). Add one line to the spec:
+
+> "The write-back loop reads field values from `corrected_snapshot.resolved` produced by `correctSnapshotMath()`, not from the agent's raw `output.proforma_fields`. This ensures math-engine corrections are reflected in year1."
+
+This matters most for the subtotal fields (Base Rental Revenue, EGI, Total OpEx, NOI). Leaf fields (payroll, insurance) aren't math-corrected, so reading from either source is equivalent — but consistency in the implementation is cleaner.
+
+### 3. Add Contract Services, Turnover, Concessions to the mapping
+
+The spec lists 13 fields. Three meaningful ones are missing:
+
+- **Contract Services** — we just spent a session getting Replit to correctly derive $61,402 for 464 Bishop's contract services via residual handling. If the write-back doesn't include it, the operator never sees that value in year1. Year1 still shows blank or whatever pre-agent value existed. Defeats the recent fix.
+- **Turnover** — real OpEx line item that varies materially between pre-renovation and post-stabilization regimes for value-add deals. The agent reasons about it; the operator should see the agent's value.
+- **Concessions** — revenue deduction that flows into Base Rental Revenue. Without it, the operator sees GPR and EGI from the agent but the bridge between them (loss-to-lease, vacancy, concessions, bad debt) is partially populated, partially blank. Looks like the agent did half the job.
+
+Loss-to-Lease and Non-Revenue Units could ship in v2 but worth flagging for parity.
+
+**Fix:** add three keys to `AGENT_FIELD_TO_YEAR1`:
+
+```
+expense.contract_services → contract_services
+expense.turnover           → turnover
+revenue.concessions        → concessions
+```
+
+Verify the year1 key names against the actual JSONB schema before commit.
+
+---
+
+## Minor — ship with one-line clarifications
+
+### 4. Override edge case — empty/cleared overrides
+
+The spec says "only write if no override slot already exists and is non-null." This handles the common case but has a subtle edge:
+
+- Operator manually enters $24,000 R&M override
+- Operator later clears the override (intending to fall back to platform/agent value)
+- Agent runs
+
+If the UI clears overrides by setting the value to `null` (rather than removing the key), the spec's behavior is correct. If the UI removes the key entirely, also correct. If the UI sets the value to `0`, the spec writes anyway — which is probably the right behavior but worth confirming `0` doesn't have semantic meaning as an "I want $0 here" override.
+
+**Fix:** tighten the check to "skip only if override is present AND has a non-null numeric value." One-line clarification, no architectural change.
+
+### 5. Source provenance — `resolution: "agent"` flattens upstream sourcing
+
+The spec tags agent-written values as `resolution: "agent"`. This is correct for the year1 surface but flattens the underlying source detail. A value the agent derived via residual (e.g., contract services as `broker_om_residual`) loses that detail at year1.
+
+This is probably fine — year1 is the simplified operator view; detailed provenance lives in `deal_underwriting_snapshots` and is accessible via the evidence drawer. But it should be a conscious decision, not an accident.
+
+**Fix:** add one sentence to the spec:
+
+> "Year1's `resolution: 'agent'` is a coarse-grained operator-facing label. Detailed source provenance (including residual derivations, owned-portfolio anchoring, archive cohort comparisons) is preserved in `deal_underwriting_snapshots` and exposed via the evidence drawer."
+
+No code change. Just sets the expectation.
+
+---
+
+## Summary
+
+| Issue | Severity | Action |
+|---|---|---|
+| 1. Dollar values in `_pct` fields | Critical | Add `_dollars` parallel fields |
+| 2. Read raw vs corrected snapshot | Critical | Specify post-correction source |
+| 3. Missing Contract Services / Turnover / Concessions | Major | Add 3 keys to map |
+| 4. Empty override edge case | Minor | Tighten check to non-null numeric |
+| 5. Provenance flattening | Minor | Document the year1 abstraction level |
+
+Issues 1-3 should be addressed in the spec before Replit picks this up. Issues 4-5 are one-line clarifications.
+
+The override-wins rule and non-fatal failure handling are exactly right and should stay as-specified.
+
+Once the spec is updated, this is a clean ship.
