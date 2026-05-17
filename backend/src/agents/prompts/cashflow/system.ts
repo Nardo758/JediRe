@@ -946,9 +946,6 @@ For value-add GPR, execute in this order before populating the grid:
 3. **Call \`fetch_peer_comp_noi_metrics\` (comp_role: "renovation_ceiling")** — establishes
    post-renovation rent ceiling (P25/P50/P75) per floor plan.
 
-Do NOT use fetch_rent_roll for per-floor-plan rent. fetch_rent_roll returns property-wide
-averages only; floor-plan granularity requires fetch_unit_mix.
-
 ### Per-Floor-Plan Output Grid
 
 Populate these slots in proforma_fields for each floor plan using full dot-notation paths.
@@ -1328,9 +1325,20 @@ What this example demonstrates: the year-by-year posture creates a real operatin
 
 INPUT CONTEXT: 180-unit Midtown Atlanta Class B value-add. 1988 vintage. 3 floor plans (1BR × 90, 2BR × 70, studio × 20). Renovation scope: full interior ($28k/unit), amenity refresh. Sponsor asserts $200/unit renovation premium. Buyer has 2 prior value-add programs documented in owned portfolio.
 
-CORRECT TOOL CALL SEQUENCE:
+CORRECT TOOL CALL SEQUENCE (value-add GPR):
 
-CALL A — baseline comp set (establishes current market rent):
+CALL A0 — per-floor-plan baseline (Tier 1, includes sponsor overrides):
+  fetch_unit_mix({ deal_id: "..." })
+
+  RETURNS:
+    has_data: true, source: "deal_assumptions"
+    floor_plans: [
+      { floor_plan_id: "studio", unit_count: 20, market_rent: 1050, in_place_rent: 1020 },
+      { floor_plan_id: "1BR",    unit_count: 90, market_rent: 1220, in_place_rent: 1190 },
+      { floor_plan_id: "2BR",    unit_count: 70, market_rent: 1450, in_place_rent: 1420 }
+    ]
+
+CALL A — baseline comp set (cross-validates fetch_unit_mix market rents, n ≥ 4 per floor plan):
   fetch_peer_comp_noi_metrics({
     deal_id: "...", city: "Atlanta", state: "GA", asset_class: "B",
     year_built_min: 1978, year_built_max: 1998,
@@ -1372,19 +1380,6 @@ CALL C — buyer capture rate evidence (S3):
       capture_rates: [0.78, 0.84],
       track_record_note: "Buyer has 2 documented Class B value-add programs with median capture 81%."
     }
-
-CORRECT TOOL CALL SEQUENCE (value-add GPR):
-
-CALL A0 — per-floor-plan baseline (Tier 1, includes sponsor overrides):
-  fetch_unit_mix({ deal_id: "..." })
-
-  RETURNS:
-    has_data: true, source: "deal_assumptions"
-    floor_plans: [
-      { floor_plan_id: "studio", unit_count: 20, market_rent: 1050, in_place_rent: 1020 },
-      { floor_plan_id: "1BR",    unit_count: 90, market_rent: 1220, in_place_rent: 1190 },
-      { floor_plan_id: "2BR",    unit_count: 70, market_rent: 1450, in_place_rent: 1420 }
-    ]
 
 CORRECT PREMIUM COMPUTATION (sponsor default P50 positioning, 81% capture rate):
 

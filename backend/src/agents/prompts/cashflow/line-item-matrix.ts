@@ -217,14 +217,17 @@ This is a \`Record<string, number>\` where keys are category names (parking, pet
 storage, rubs, etc.) and values are total monthly $ for each category, extracted from the
 uploaded rent roll document.
 
-**Null check — Method 3 fallback rule:**
+**Null check — Method 1 fallback rule:**
 If \`context.extractedData.rentRoll.otherIncomeMonthly\` is null or undefined, the uploaded
 rent roll did not contain per-category ancillary detail. In this case degrade to a
-Method 1+2 hybrid:
-  1. Use T12 aggregate other income as the floor (existing programs baseline)
-  2. Cross-check against owned portfolio actuals for programs of the same type (Method 1 below)
-  3. If no portfolio evidence, anchor to fetch_line_item_benchmarks P50 by program type (Method 2)
-  Flag evidence.confidence as Medium when this fallback path is used — exact category
+Method 2+3 hybrid:
+  1. Use Method 2 (T12 aggregate other income) as the floor for existing programs. If T12 is
+     also unavailable (development deal), this floor is $0.
+  2. Augment with Method 3 sources: choose between owned-portfolio actuals vs benchmarks
+     (fetch_line_item_benchmarks) based on which has higher data confidence for this deal —
+     if the operator has ≥ 2 comparable portfolio assets with documented ancillary programs,
+     portfolio actuals take precedence; otherwise use fetch_line_item_benchmarks P50 by program type.
+  Flag evidence.confidence as Medium when this fallback path is used — exact per-category
   breakdown is unavailable.
 
 **Method 2 — T12 and rent roll document level (Tier 1)**
