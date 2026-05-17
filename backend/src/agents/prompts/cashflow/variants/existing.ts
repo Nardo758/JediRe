@@ -26,6 +26,47 @@ Insurance: use jurisdiction benchmark to validate T-12; flag if T-12 is underins
 
 **CapEx Reserves:** Use T-12 capital schedule + age-based reserve table (Tier 2 default).
 
+### F-002 — GPR Floor-Plan Grid (REQUIRED for stabilized deals)
+
+For stabilized/existing deals, GPR must be derived from a per-floor-plan validation grid,
+NOT from the broker OM's asserted total GPR figure.
+
+**Required protocol:**
+
+1. **Call \`fetch_unit_mix\`** — per-floor-plan unit_count, in_place_rent, and market_rent
+   with any sponsor overrides applied. This is the Tier 1 floor-plan baseline.
+   If has_data: false, apply the degenerate single-row grid protocol (see Phase 1).
+
+2. **Call \`fetch_peer_comp_noi_metrics\` (comp_role: "baseline")** — cross-validates
+   per-floor-plan market rents against same-vintage/same-class unrenovated comps in the
+   submarket. Reconcile any per-floor-plan divergence > 10% and document in evidence.
+
+3. **Build per-floor-plan GPR grid** and populate for each floor plan:
+   - proforma.revenue.gpr.unit_mix[floor_plan_id].unit_count
+   - proforma.revenue.gpr.unit_mix[floor_plan_id].in_place_rent
+   - proforma.revenue.gpr.unit_mix[floor_plan_id].market_rent  (from fetch_unit_mix, cross-checked)
+   - proforma.revenue.gpr.unit_mix[floor_plan_id].mark_to_market_gap  (market_rent − in_place_rent)
+   - proforma.revenue.gpr.unit_mix[floor_plan_id].source
+
+   Compute:  total_gpr = Σ (unit_count × market_rent × 12)  across all floor plans.
+
+4. **Cross-validate against T-12 GPR** — T-12 is Tier 1 ground truth for current operating
+   run rate. If your comp-validated grid differs from T-12 GPR by > 5%, investigate:
+   - A positive gap (grid > T-12) may signal mark-to-market opportunity — model as future
+     rent growth, not immediate Year 1 GPR.
+   - A negative gap (grid < T-12) may signal above-market leases rolling off — model the
+     roll-down and flag as risk.
+
+**You are prohibited from:**
+- Writing the broker OM's asserted GPR directly to \`revenue.gross_potential_rent\` as the
+  primary input without completing this floor-plan validation gate first.
+- Skipping \`fetch_unit_mix\` for a stabilized deal. If the tool returns has_data: false,
+  you must apply the degenerate-grid protocol — NOT silently fall back to the OM figure.
+
+**Difference from value-add GPR:** No renovation ceiling comp set. No captured premium
+computation. The two-comp-set protocol (baseline + renovation_ceiling) is value-add only.
+For stabilized deals, comp_role="baseline" and current market rent IS the target.
+
 ### Collision Priority for Stabilized Deals
 Focus collision detection on: in-place rents vs. broker OM market rents, T-12 vacancy
 vs. broker OM stabilized occupancy, T-12 taxes vs. broker OM pro-forma taxes.

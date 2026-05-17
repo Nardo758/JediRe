@@ -329,6 +329,42 @@ For each line item write to proforma_fields with:
     can resolve hierarchical subtotals (e.g., Other Income breakdown-vs-aggregate)
     and surface reconciliation findings correctly
 
+### F-003 — Other Income: Per-Category Breakdown (MANDATORY on every run)
+
+A single Other Income aggregate is never acceptable output. You MUST break Other Income
+into the following categories and write each as a child field of
+\`revenue.other_income.breakdown\`:
+
+  | Category key  | Description |
+  |---------------|-------------|
+  | laundry        | Coin/card laundry, vended services |
+  | parking        | Assigned/reserved/garage spaces, carport fees |
+  | storage        | Dedicated storage units, cage fees |
+  | pet_fees       | Monthly pet rent, non-refundable recurring charges |
+  | rubs           | Ratio Utility Billing System recovery (if in place) |
+  | cable_telecom  | Bulk cable/internet agreements |
+  | misc           | All other ancillary income not captured above |
+
+For each category, populate:
+  - amount_monthly_per_unit: your derived dollar value per unit per month
+  - source: one of rent_roll | t12 | archive_cohort | fee_schedule_projection | none
+  - method_selected: e.g., 'direct_t12', 'per_space_×_rate', 'archive_p50', 'zero_no_program'
+  - notes: 1-2 sentence justification
+
+When \`otherIncomeMonthly\` is absent from DealContext (context.extractedData missing this field):
+  1. Use the T-12 Other Income line item if available — decompose into estimated categories
+     based on property type and what the T-12 detail reveals. Document as source: "t12".
+  2. If T-12 Other Income is also absent, use archive cohort P50 per category for Class B
+     multifamily. Typical range: $40–$80/unit/month total. Document as source: "archive_cohort"
+     with confidence: "low" and note: "DealContext otherIncomeMonthly absent — archive fallback".
+  3. NEVER emit a single aggregate without category attribution in the breakdown object.
+
+Reconciliation gate: sum(categories × 12 × unit_count) must be compared against the T-12
+other_income aggregate when T-12 is available. Write the comparison to:
+  \`revenue.other_income.reconciliation_note\`
+A sum-vs-aggregate divergence > 10% MUST be explained. Unexplained divergences of this
+magnitude indicate either a missing category or a misclassified T-12 line item.
+
 ### Exit Cap Rate
   1. Derive from peer comp sales data if available
   2. Apply 25–75bps spread over entry cap for hold periods < 5 years
@@ -415,6 +451,36 @@ data was found. A missing field is indistinguishable from a tool failure; omissi
 
 The evidence drawer renders \`archive_percentile\` on every run. \`null\` with a reason code is
 informative. Missing entirely is not acceptable.
+
+### F-005 — Minimum Field Set for fetch_archive_assumption_distribution (REQUIRED)
+
+Call \`fetch_archive_assumption_distribution\` for AT MINIMUM the following assumptions on
+every run. No exceptions — a skipped field counts as Tier4/UNANCHORED in quality audit:
+
+  1. vacancy_pct
+  2. rent_growth_pct  (Y1)
+  3. exit_cap_rate
+  4. expense_growth_pct
+  5. noi_margin  (or noi_per_unit if margin unavailable)
+  6. management_fee_pct
+  7. insurance  (annual per unit)
+  8. replacement_reserves  (annual per unit)
+
+For each: if the tool returns found=false (empty archive, n_samples < 5):
+  • Write \`archive_percentile: null\` to the proforma_fields entry for that assumption
+  • Add to evidence data_points:
+      { tier: 3, source: "archive_assumption_distribution",
+        label: "Archive unavailable", value: null, weight: 0,
+        notes: "insufficient_cohort (n=<N returned by tool, or 0 if not present>)" }
+
+**When ALL eight calls return found=false** (no archive seeded for this market context):
+Add to the top-level output \`summary\` field:
+  "Platform archive pending for this market context — all archive_percentile fields set
+   to null (n=0). Assumptions derived from T-1/T-3 sources without cohort anchoring.
+   Recommend re-run after archive is seeded for this submarket/class/vintage combination."
+Also set \`tier_distribution.tier2\` accurately: archive tools returning found=false do not
+count as Tier 2 data points — mark those fields as Tier 3 (platform benchmark) or Tier 4
+(broker OM) depending on what evidence you actually used.
 
 ---
 
@@ -717,6 +783,21 @@ Example: No T12 data, rent roll shows 80% occupancy, market comps show 94%:
     This is the **canonical Tier 1 source for floor-plan-level data** — it includes any
     sponsor rent overrides saved in the Unit Mix tab. Do NOT use fetch_rent_roll for
     per-floor-plan market rent; fetch_rent_roll returns property-wide averages only.
+
+    **F-001 — When fetch_unit_mix returns has_data: false (sparse or absent unit mix):**
+    Do NOT silently skip the floor-plan grid. A missing grid is indistinguishable from an
+    unanalyzed deal. Instead, build a degenerate single-row grid as follows:
+      floor_plan_id: "Default"
+      unit_count: total units from context.totalUnits (fetch_data_matrix) or fetch_rent_roll
+      in_place_rent: property-wide average effective rent from fetch_rent_roll
+      market_rent: same as in_place_rent when no comp data available; refine from
+                   fetch_peer_comp_noi_metrics if comp data exists
+      source: "rent_roll" or "deal_data" — whichever is available; never null
+    Populate \`proforma.revenue.gpr.unit_mix.limitation_note\` with a description of the
+    gap, for example: "Unit mix data absent — single Default row built from property-wide
+    totals. Floor-plan-level precision blocked pending Unit Mix tab population."
+    Set \`proforma.revenue.gpr.confidence\` to "low" and explain the sparsity in
+    \`confidence_rationale\`. A documented sparse grid is always better than a silent void.
 4. \`fetch_assumptions\` — any user-provided overrides from assumptions panel
    Also call \`fetch_learning_adjustments\` here — GET THIS EARLY. Learned bias corrections
    for this market context must be applied before reasoning begins.
@@ -755,10 +836,14 @@ The posture classifications feed into Phase 3 — the subject-specific deltas yo
 ## Phase 3 — Establish subject-specific deltas
 
 11. \`fetch_peer_comp_noi_metrics\` — subject positioning in comp set.
-    For value-add deals, call TWICE per the GPR two-comp-set protocol:
+    For **value-add deals**, call TWICE per the GPR two-comp-set protocol:
       - Call A: comp_role='baseline' — current-state comps to establish current market rent
       - Call B: comp_role='renovation_ceiling' — newer/renovated comps to set post-reno rent ceiling
     See "GPR Investigation — Value-Add Deals" section above for full filtering rules.
+    For **existing/stabilized deals**, call ONCE with comp_role='baseline' to cross-validate
+    per-floor-plan market rents from fetch_unit_mix. See "F-002 — GPR Floor-Plan Grid" in
+    the existing-deal variant for the full protocol. Do NOT call with comp_role='renovation_ceiling'
+    for stabilized deals — there is no renovation ceiling to establish.
 12. \`fetch_data_library_comps\` — broader comp library
 13. \`fetch_proximity_context\` — spatial intelligence (transit, employment, amenities)
 14. \`fetch_m35_event_forecast\` — active events near subject
