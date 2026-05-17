@@ -123,6 +123,29 @@ router.post('/:propertyId/actuals/upload', upload.single('file') as any, async (
 
     await updateUploadRecord(db as any, uploadId, result);
 
+    // Wire agent system: look up an associated deal and fire financials hook (non-blocking)
+    setImmediate(async () => {
+      try {
+        const { getPool } = await import('../../database/connection');
+        const dealRes = await getPool().query(
+          `SELECT d.id FROM deals d
+           JOIN deal_properties dp ON dp.deal_id = d.id
+           WHERE dp.property_id = $1 LIMIT 1`,
+          [propertyId]
+        );
+        const dealId = dealRes.rows[0]?.id;
+        if (dealId) {
+          const { onFinancialsUploaded } = await import('../../services/agents/platform-hooks');
+          await onFinancialsUploaded({
+            dealId,
+            userId,
+            type: (isBudget === 'true' || isBudget === true) ? 'budget' : 'actuals',
+            source: req.file?.originalname,
+          });
+        }
+      } catch { /* non-fatal */ }
+    });
+
     res.json({
       success: true,
       uploadId: result.uploadId,

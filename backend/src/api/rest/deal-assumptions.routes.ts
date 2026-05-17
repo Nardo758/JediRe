@@ -265,6 +265,14 @@ router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
 
     // Bust M08 strategy cache — assumption changes invalidate strategy analysis
     bustM08Cache(dealId);
+
+    // Wire agent system: financials updated (non-blocking)
+    setImmediate(async () => {
+      try {
+        const { onFinancialsUploaded } = await import('../../services/agents/platform-hooks');
+        await onFinancialsUploaded({ dealId, userId: req.user!.userId, type: 'actuals', source: 'manual' });
+      } catch { /* non-fatal */ }
+    });
     
     res.json({
       success: true,

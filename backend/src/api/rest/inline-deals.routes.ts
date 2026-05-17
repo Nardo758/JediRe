@@ -1587,6 +1587,26 @@ router.post('/upload-document', requireAuth, documentUpload.single('file') as an
                 });
               }
             } catch { /* websocket optional */ }
+
+            // Wire agent system: fire after extraction so the detected
+            // document type (category) is known before dispatching.
+            try {
+              const { onFileUploaded, onFinancialsUploaded } = await import('../../services/agents/platform-hooks');
+              await onFileUploaded({
+                dealId: verifiedDealId,
+                userId: req.user!.userId,
+                fileId: docId,
+                filename: req.file!.originalname,
+                category: result.documentType || 'document',
+                mimeType: req.file!.mimetype,
+              });
+              const docTypeLower = (result.documentType || '').toLowerCase();
+              if (docTypeLower.includes('t12') || docTypeLower.includes('financial')) {
+                await onFinancialsUploaded({ dealId: verifiedDealId, userId: req.user!.userId, type: 't12' });
+              } else if (docTypeLower.includes('rent')) {
+                await onFinancialsUploaded({ dealId: verifiedDealId, userId: req.user!.userId, type: 'rent_roll' });
+              }
+            } catch { /* non-fatal */ }
           } catch (e) { console.error('[ExtractionPipeline] Status update error:', e); }
         })
         .catch(err => {

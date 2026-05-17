@@ -166,6 +166,23 @@ router.post('/process', async (req: Request, res: Response) => {
 
     uploadCache.delete(uploadId);
 
+    // Wire agent system: look up an associated deal and fire financials hook (non-blocking)
+    setImmediate(async () => {
+      try {
+        const dealRes = await query(
+          `SELECT d.id FROM deals d
+           JOIN deal_properties dp ON dp.deal_id = d.id
+           WHERE dp.property_id = $1 LIMIT 1`,
+          [propertyId]
+        );
+        const dealId = dealRes.rows[0]?.id;
+        if (dealId) {
+          const { onFinancialsUploaded } = await import('../../services/agents/platform-hooks');
+          await onFinancialsUploaded({ dealId, userId, type: isBudget ? 'budget' : 'actuals', source: dataSource });
+        }
+      } catch { /* non-fatal */ }
+    });
+
     return res.json({
       uploadId: dbUploadId,
       status: result.status,
