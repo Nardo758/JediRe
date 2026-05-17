@@ -1,0 +1,238 @@
+ed--PR-2-Agent-Prompt-Updates-Post-Unit-Mix-Audit-Prerequi_1779037155100.txt
+# PR 2 — Agent Prompt Updates (Post Unit Mix Audit)
+
+## Prerequisites
+
+PR 1 of the unit mix audit must be in production and verified before starting this PR. Specifically:
+
+- [ ] `fetch_unit_mix` tool exists at `backend/src/agents/tools/fetch_unit_mix.ts`
+- [ ] `fetch_unit_mix` is registered in `cashflow.config.ts`
+- [ ] `floorPlanMix` is hydrated in `data-matrix.service.ts` (lines 410-420)
+- [ ] `otherIncomeMonthly` is hydrated in `data-matrix.service.ts`
+- [ ] Regression test for read symmetry is passing
+- [ ] Test deal verified: `fetch_unit_mix` returns sponsor-overridden values when overrides exist in `deal_assumptions.unit_mix_overrides`
+
+Do not proceed with PR 2 until all six items are confirmed.
+
+---
+
+## What PR 2 does
+
+Updates the Cash Flow Agent's prompt to use the new tool and fields PR 1 made available. Two prompt edits:
+
+1. Update floor-plan grid sourcing instructions in `cashflow/system.ts` so the agent calls `fetch_unit_mix` for per-floor-plan data (not `fetch_rent_roll`, which returns property-wide aggregates only)
+2. Update Other Income Method 3 prompt section to reference the now-hydrated `otherIncomeMonthly` field and add the fallback path for sparse data
+
+Estimated effort: 30-60 minutes including verification.
+
+---
+
+## Edit 1 — Floor-plan grid sourcing instructions
+
+**File:** `backend/src/agents/configs/cashflow/system.ts`
+**Section:** Floor-plan grid sourcing (approximately line 938 per the audit reference)
+
+### Find the existing text (likely contains something like)
+
+```
+For per-floor-plan unit data (current rents, unit counts, floor plan groupings),
+call fetch_rent_roll.
+```
+
+### Replace with
+
+```
+**Per-floor-plan unit data sourcing:**
+
+For per-floor-plan unit data (unit counts, current market rents, in-place rents,
+floor plan groupings), call `fetch_unit_mix`. This is the canonical source —
+reads from `deal_assumptions.unit_mix` with sponsor overrides applied via
+`unit_mix_overrides`.
+
+DO NOT call `fetch_rent_roll` for per-floor-plan data. `fetch_rent_roll` returns
+property-wide aggregates only (total units, average rent, total monthly income,
+lease expiration counts, market rent spread). It does NOT return floor-plan
+breakdown. Calling `fetch_rent_roll` and expecting floor-plan detail will
+produce undefined fields and smooth (incorrect) underwriting.
+
+**Tool selection for floor-plan grid output:**
+
+When producing `proforma.revenue.gpr.unit_mix[]`, assemble each `UnitMixEntry`
+from multiple tool outputs:
+
+- `fetch_unit_mix` → unit_count, floor_plan_label, current_market_rent (per floor plan)
+- `fetch_peer_comp_noi_metrics` + `fetch_data_library_comps` → comp_ceiling P25/P50/P75 per floor plan
+- `fetch_owned_asset_actuals` → capture_rate baseline (if available, otherwise platform default 0.78)
+- `fetch_data_matrix.extractedData.capex.capex_schedule` → renovation_cost per floor plan and renovation_scope
+
+Combine these into the per-floor-plan grid output per the canonical UnitMixEntry shape.
+
+**Sponsor override behavior:**
+
+When sponsor edits the Unit Mix tab (PATCH /api/v1/deals/:dealId/financials/override),
+the overrides land in `deal_assumptions.unit_mix_overrides`. The next call to
+`fetch_unit_mix` returns the overridden values automatically. You do not need to
+read overrides separately — they are pre-merged by the tool.
+```
+
+---
+
+## Edit 2 — Other Income Method 3 prompt section
+
+**File:** `backend/src/agents/configs/cashflow/system.ts`
+**Section:** Other Income reasoning method (Section A.5 if structured per v3 prompt patch)
+
+### Find the existing text (likely contains something like)
+
+```
+Method 3 (Rent Roll + Fee Schedule + T-12 Reconciliation):
+Establish current per-category state from rent roll detail.
+```
+
+### Replace with
+
+```
+**Method 3 — Rent Roll + Fee Schedule + T-12 Reconciliation:**
+
+Establish current per-category state from rent roll detail.
+
+**Source for per-category rent roll detail:** Call `fetch_data_matrix` and read
+`extractedData.rentRoll.otherIncomeMonthly` for per-category ancillary income
+(parking, pet, storage, washer/dryer, RUBS, fees, insurance admin, cable, other).
+This field returns per-category monthly dollars when the source rent roll
+included per-category detail.
+
+**Fallback when otherIncomeMonthly is sparse or null:**
+
+If `otherIncomeMonthly` returns fewer than 3 categories itemized, OR is null
+entirely, apply this hybrid logic:
+
+1. For categories present in `otherIncomeMonthly`: standard Method 3 logic
+   (current state × sponsor fee plan × adoption)
+
+2. For categories not in `otherIncomeMonthly` but present in archive cohort
+   norm: source per-category values from CIE findings (when CIE is available)
+   or from `fetch_archive_assumption_distribution` filtered to comparable
+   class/vintage/submarket deals. Each cohort-sourced category carries
+   `source: 'archive_cohort'` in its evidence narrative.
+
+3. For new categories the sponsor is introducing (not in rent roll, not in
+   cohort): Method 1 logic (fee schedule × applicable units × adoption rate
+   from owned-portfolio or archive). Each carries
+   `source: 'fee_schedule_projection'` in evidence narrative.
+
+The output remains a per-category breakdown. Each category's evidence
+narrative names its source. The math engine's hierarchical handling reconciles
+the aggregate against T-12 unchanged.
+
+**Critical unit convention:**
+
+All numeric values for Other Income are total annual dollars, NEVER
+per-unit-per-month. Emit `proforma.revenue.other_income.parking` as $8,648
+annual (not $37 per unit per month). The platform's math engine and write-back
+expect annual dollars across the Other Income field family.
+
+This convention applies to:
+- `proforma.revenue.other_income` (aggregate)
+- `proforma.revenue.other_income.parking`, `.pet`, `.storage`, etc. (per category)
+- All three methods (Method 1, Method 2, Method 3)
+```
+
+---
+
+## Verification steps
+
+After applying both edits, run a verification on a known deal:
+
+### Step 1 — Build and restart
+
+```bash
+cd backend && npm run build && pm2 restart cashflow-agent
+```
+
+### Step 2 — Trigger a Cash Flow Agent run on 464 Bishop
+
+Verify:
+- Agent calls `fetch_unit_mix` early in its tool sequence (Phase 1 or Phase 3 per the orchestration map)
+- Agent does NOT call `fetch_rent_roll` and expect floor-plan data from it
+- Agent's output includes `proforma.revenue.gpr.unit_mix[]` with all floor plans from the rent roll
+
+### Step 3 — Trigger a Cash Flow Agent run on a deal with rent roll ancillary detail
+
+Verify:
+- Agent calls `fetch_data_matrix` and reads `otherIncomeMonthly` for Method 3
+- Agent's `proforma.revenue.other_income` output has per-category breakdown
+- Each category carries source attribution in evidence narrative
+- All Other Income values are total annual dollars (no per-unit-per-month confusion)
+
+### Step 4 — Verify no regression on Method 1 and Method 2
+
+Trigger runs on:
+- A development deal — verify Method 1 selected, no `otherIncomeMonthly` dependency
+- A stabilized acquisition with high T-12 quality and no lift planned — verify Method 2 selected, aggregate-only output
+
+### Step 5 — Confirm DB write-back unchanged
+
+Verify the existing write-back from Task #824 still functions correctly:
+- `proforma.revenue.other_income` → `year1.other_income_dollars` (per the unit-mismatch fix)
+- Per-category fields write to their corresponding year1 keys if mapped
+- `resolution: "agent"` applied correctly
+
+---
+
+## Bump prompt version
+
+After both edits and verification:
+
+1. Update the version constant in `cashflow.config.ts` (or wherever `prompt_versions.cashflow_*` is tracked)
+2. Bump by minor version (e.g., v4.0 → v4.1)
+3. Document the version bump in the commit message
+
+---
+
+## Acceptance criteria
+
+1. Edit 1 applied — agent's prompt references `fetch_unit_mix` for per-floor-plan data
+2. Edit 2 applied — Method 3 references `otherIncomeMonthly` with fallback path
+3. Agent runs successfully on 464 Bishop with `fetch_unit_mix` called and floor-plan grid output produced
+4. Agent runs successfully on Method 3-applicable deal with per-category Other Income breakdown
+5. No regression on Method 1 or Method 2 deals
+6. Write-back to year1 unchanged from Task #824 behavior
+7. Prompt version bumped and documented
+
+---
+
+## Commit message template
+
+```
+Cashflow agent prompt updates referencing fetch_unit_mix and otherIncomeMonthly
+
+Following PR 1 of the unit mix audit (which created fetch_unit_mix and
+hydrated floorPlanMix + otherIncomeMonthly), this PR updates the agent's
+system prompt to use the new tool and fields.
+
+Changes:
+1. Floor-plan grid sourcing — agent now calls fetch_unit_mix for per-floor-plan
+   data instead of expecting it from fetch_rent_roll (which never returned it).
+2. Other Income Method 3 — agent reads otherIncomeMonthly from data-matrix
+   extraction; falls back to archive cohort and fee schedule projection when
+   sparse.
+
+Prompt version bumped to vN.N.
+
+Closes the unit mix audit (Scenario C remediation, both PRs).
+```
+
+---
+
+## What ships after PR 2
+
+Once PR 2 is in production:
+
+1. The agent uses the canonical per-floor-plan source for unit data
+2. Sponsor overrides in the Unit Mix tab flow to the agent on next run
+3. The floor-plan grid in M09 has real data flowing into it
+4. Other Income Method 3 produces per-category breakdown from rent roll detail
+5. The line-item investigation matrix Pass 2 (when authored) can reference the working data plumbing
+
+This closes the unit mix audit completely. The Scenario C divergence diagnosed in the audit is resolved end-to-end.
