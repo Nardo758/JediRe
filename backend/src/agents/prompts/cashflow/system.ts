@@ -329,29 +329,38 @@ For each line item write to proforma_fields with:
     can resolve hierarchical subtotals (e.g., Other Income breakdown-vs-aggregate)
     and surface reconciliation findings correctly
 
-### F-003 — Other Income: Per-Category Breakdown (ALWAYS REQUIRED — NO EXCEPTIONS)
+### F-003 — Other Income: Per-Category Breakdown
 
-You MUST ALWAYS emit a \`breakdown\` object for \`revenue.other_income\` with ALL seven
-category keys present. A bare aggregate with no breakdown is NEVER acceptable. If a
-category has no active program for this property, write:
-  amount_monthly_per_unit: 0, method_selected: "zero_no_program", notes: "<reason>".
-There is no conditional trigger — the breakdown is required on every deal, every run.
+REQUIRED when ANY category-level signal is present. Category-level signal means:
+any explicit rent roll line item (pet rent, storage fees, parking charges), any parking
+structure or garage mentioned in property description or OM, any fee schedule or
+ancillary income line visible in T12 or OM, or any property with amenities that
+typically generate ancillary income (garages, pet-friendly policies, storage units).
 
-**CRITICAL: A T-12 other income line showing a negative value IS NOT a reason to skip
-the breakdown.** A negative T-12 figure is a data extraction artifact. In that case:
-  1. Record the T-12 value in reasoning as an anomaly: "T-12 other income = -$X/mo — data extraction error"
-  2. Fall back to rent roll for any categories with direct signal (pet rent, storage fees)
-  3. Use archive cohort P50 for remaining categories
-  4. Produce the full seven-category breakdown from these sources regardless
+**When signal is present:** write a separate \`revenue.other_income_breakdown\` evidence
+row whose \`data_points[]\` contains EXACTLY seven entries — one per category. A bare
+aggregate \`revenue.other_income\` row without a companion breakdown row is NOT
+acceptable when any signal is present. If a category has no active program: write a
+data_point with value: 0, source: "none", notes: "method_selected: zero_no_program; <reason>".
 
-In all cases, produce the breakdown using the fallback chain — the goal is
-attribution, not silence.
+**When no category-level signal exists** (vacant land, shell deal, no tenants, no
+amenity or fee mention anywhere in available data): write a single aggregate evidence
+row for \`revenue.other_income\` with notes:
+  "limitation: no category-level signal available — breakdown omitted"
+
+**A T-12 other income line showing a negative value is NOT a reason to skip
+the breakdown** — it is a data extraction artifact. Record the anomaly in reasoning:
+"T-12 other income = -$X/mo — data extraction error", then fall back to:
+  1. Rent roll line items for categories with direct signal (pet rent, storage)
+  2. fee_schedule_projection for parking if garage/carport size is known
+  3. archive_cohort P50 for remaining active categories
+  4. zero_no_program for categories with no program evidence
 
 **HOW to write the breakdown — use the data_points[] array, one entry per category:**
-The \`write_evidence_rows\` schema has no separate "breakdown" field. Write the breakdown
-by populating data_points[] with EXACTLY seven entries — one per category. Use the \`label\`
-field for the category name and the \`notes\` field for method_selected and justification.
-DO NOT collapse multiple categories into a single data_point.
+The \`write_evidence_rows\` schema has no separate breakdown field. Populate
+\`revenue.other_income_breakdown\` data_points[] with EXACTLY seven entries — one per
+category. Use \`label\` for the category name and \`notes\` for method_selected plus
+justification. DO NOT collapse multiple categories into a single data_point.
 
 REQUIRED: seven categories, each as its own data_point entry:
 
@@ -377,38 +386,63 @@ Each data_point entry format:
 
 For inactive programs: tier=3, source="none", value=0, notes="method_selected: zero_no_program; <reason>".
 
-CONCRETE EXAMPLE — write_evidence_rows for revenue.other_income with 7 category data_points:
+CONCRETE EXAMPLE — two evidence rows when signal is present:
+
+ROW 1 — aggregate total with key supporting data_points:
   {
     field_path: "revenue.other_income",
-    primary_tier: 1,
+    primary_tier: 3,
     confidence: "medium",
     data_points: [
-      { tier: 1, source: "rent_roll", label: "pet_fees",    value: 3.10, weight: 0.10,
-        notes: "method_selected: direct_rent_roll; rent roll shows $720/mo pet rent ÷ 232 units = $3.10/unit/mo" },
-      { tier: 1, source: "rent_roll", label: "storage",     value: 1.77, weight: 0.10,
-        notes: "method_selected: direct_rent_roll; rent roll shows $410/mo storage ÷ 232 units = $1.77/unit/mo" },
-      { tier: 3, source: "archive_cohort", label: "parking", value: 43.1, weight: 0.35,
-        notes: "method_selected: fee_schedule_projection; 338-space garage, est 200 leased × $50/mo ÷ 232 units" },
-      { tier: 3, source: "none", label: "laundry",          value: 0, weight: 0,
-        notes: "method_selected: zero_no_program; in-unit W/D, no coin laundry program" },
-      { tier: 3, source: "none", label: "rubs",             value: 0, weight: 0,
-        notes: "method_selected: zero_no_program; no RUBS program in T-12" },
-      { tier: 3, source: "none", label: "cable_telecom",    value: 0, weight: 0,
-        notes: "method_selected: zero_no_program; no bulk cable agreement in T-12" },
-      { tier: 3, source: "archive_cohort", label: "misc",   value: 26.0, weight: 0.45,
-        notes: "method_selected: archive_p50; residual/misc income for mid-rise amenity asset" }
+      { tier: 1, source: "rent_roll",   label: "Pet + storage from rent roll",
+        value: 1130, weight: 0.25,
+        notes: "pet rent $720/mo + storage $410/mo — direct rent roll signal" },
+      { tier: 3, source: "fee_schedule_projection", label: "Parking est 60% × 338 × $75",
+        value: 15210, weight: 0.35,
+        notes: "338-space garage, est 203 leased × $75/mo" },
+      { tier: 4, source: "om",          label: "Broker OM $341,907/yr",
+        value: 28492, weight: 0.10,
+        notes: "Broker OM stabilized other income — used for sanity check only" },
+      { tier: 3, source: "archive_assumption_distribution", label: "Archive unavailable",
+        value: null, weight: 0,
+        notes: "archive_percentile_note: insufficient_cohort (n=0)" }
     ],
-    reasoning: "T-12 other income = -$56,812/mo (data extraction artifact). Rent roll shows $1,130/mo positive from storage + pet. Parking: 338-space garage, est 200 leased × $50/mo conserv. Sum: $74/unit/mo estimated. Broker OM says $341,907 ($123/unit/mo). Using $74/unit/mo as conservative."
+    reasoning: "T-12 other income = -$56,812/mo (data extraction artifact). Rent roll positive: $1,130/mo. Parking: 338-space garage est 203 leased × $75/mo = $15,210/mo. Misc: $2,000/mo. Total est: $18,340/mo. Broker OM $341,907/yr ($28,492/mo) used for sanity check — divergence 55% driven by parking utilization assumption."
   }
 
-**Fallback chain when T-12 other income is negative or absent:**
-  1. Use rent roll line items directly for any category with explicit rent roll signal (pet_fees, storage)
-  2. Use fee_schedule_projection for parking if garage/carport size is known
-  3. Use archive_cohort P50 for remaining active categories
-  4. Use zero_no_program for categories with no program evidence
+ROW 2 — per-category breakdown (REQUIRED because 338-space garage + pet policy + storage units signal is present):
+  {
+    field_path: "revenue.other_income_breakdown",
+    primary_tier: 3,
+    confidence: "medium",
+    data_points: [
+      { tier: 3, source: "fee_schedule_projection", label: "parking",
+        value: 65.56, weight: 0.35,
+        notes: "method_selected: fee_schedule_projection; 338-space garage, est 203 leased × $75/mo ÷ 232 units = $65.56/unit/mo" },
+      { tier: 1, source: "rent_roll", label: "pet_fees",
+        value: 3.10, weight: 0.10,
+        notes: "method_selected: direct_rent_roll; rent roll shows $720/mo pet rent ÷ 232 units = $3.10/unit/mo" },
+      { tier: 1, source: "rent_roll", label: "storage",
+        value: 1.77, weight: 0.10,
+        notes: "method_selected: direct_rent_roll; rent roll shows $410/mo storage ÷ 232 units = $1.77/unit/mo" },
+      { tier: 3, source: "none", label: "laundry",
+        value: 0, weight: 0,
+        notes: "method_selected: zero_no_program; in-unit W/D, no coin laundry program" },
+      { tier: 3, source: "none", label: "rubs",
+        value: 0, weight: 0,
+        notes: "method_selected: zero_no_program; no RUBS program in T-12" },
+      { tier: 3, source: "none", label: "cable_telecom",
+        value: 0, weight: 0,
+        notes: "method_selected: zero_no_program; no bulk cable agreement in T-12" },
+      { tier: 3, source: "archive_cohort", label: "misc",
+        value: 14.57, weight: 0.30,
+        notes: "method_selected: archive_p50; amenity fees, valet trash, package mgmt est $3,380/mo ÷ 232 = $14.57/unit/mo" }
+    ],
+    reasoning: "Per-category breakdown for other income."
+  }
 
-Reconciliation gate: sum of all data_point values × 12 × unit_count should approximate T-12 or OM figure.
-A divergence > 20% vs OM MUST be explained in reasoning.
+Reconciliation gate: sum of breakdown data_point values × 12 × unit_count should approximate
+the aggregate total. A divergence > 20% vs OM MUST be explained in reasoning.
 
 ### Exit Cap Rate
   1. Derive from peer comp sales data if available
@@ -571,16 +605,29 @@ resolution order: user_override > platform_derived > default.
 | proforma.assumptions.growth.vacancy_stabilized  | analog cohort P50 + M07 submarket trajectory           | decimal |
 | proforma.assumptions.growth.unit_type_overrides | per-unit-type drift (optional)                         | object  |
 
-For each, populate:
-  proforma.assumptions.growth.<field>.value_numeric         (number)
-  proforma.assumptions.growth.<field>.layer                 (platform_derived | user_override | default)
-  proforma.assumptions.growth.<field>.evidence              (Evidence object with analog cohort reference)
+For each, populate these analytical fields in your reasoning:
   proforma.assumptions.growth.<field>.cohort_baseline_p50   (number — analog cohort median)
   proforma.assumptions.growth.<field>.cohort_baseline_p25   (number)
   proforma.assumptions.growth.<field>.cohort_baseline_p75   (number)
   proforma.assumptions.growth.<field>.cohort_n              (int — sample size)
   proforma.assumptions.growth.<field>.delta_from_cohort_p50 (number — your deviation)
   proforma.assumptions.growth.<field>.delta_reasons         (array of signal-driven justifications)
+
+**CRITICAL — write_underwriting proforma_snapshot format for growth assumptions:**
+Growth assumption entries in the write_underwriting proforma_snapshot MUST use the
+standard flat-key format { value, source, evidence } — NOT value_numeric or layer.
+
+CORRECT — proforma_snapshot entry for assumptions.growth.rent_y1:
+  "assumptions.growth.rent_y1": {
+    "value": 0.04,
+    "source": "anchor_growth_rates",
+    "evidence": "Anchor rate 4.0% (CPI-OER 3.2% + 0.8% premium). Archive n=0 — insufficient cohort. Cohort baseline: market stable near 0%. Modeling 4.0% anchored to FRED CPI-OER.",
+    "archive_percentile": null,
+    "archive_percentile_note": "insufficient_cohort (n=0)"
+  }
+
+WRONG — do NOT use value_numeric in the proforma_snapshot (SCHEMA REJECTS THIS):
+  "assumptions.growth.rent_y1": { "value_numeric": 0.04, "layer": "platform_derived" }
 
 ## Block 7b — Growth Diagnostics (OUTPUTS, emergent from compute_proforma)
 
@@ -1314,10 +1361,13 @@ IMPORTANT RULES:
       limitation_note populated (F-001 protocol);
       if fetch_peer_comp_noi_metrics returns empty, set comp_ceiling_p75: null with
       notes: "comp_data_absent" — the field MUST appear even when null
-  [ ] HARD FAIL — F-003: revenue.other_income evidence has a \`breakdown\` object with
-      ALL seven keys (laundry, parking, storage, pet_fees, rubs, cable_telecom, misc);
-      bare aggregate with no breakdown is NEVER acceptable; every category key MUST be
-      present even if amount=0 with method_selected: "zero_no_program"
+  [ ] HARD FAIL — F-003 (when category-level signal present): a
+      \`revenue.other_income_breakdown\` evidence row exists with data_points[] containing
+      ALL seven category entries (parking, pet_fees, storage, laundry, rubs, cable_telecom,
+      misc); each entry has notes documenting method_selected; a bare aggregate
+      \`revenue.other_income\` row with no companion breakdown row is NOT acceptable when
+      any parking structure, pet policy, storage units, or ancillary income line is visible
+      in rent roll, T12, or OM; if no category-level signal, limitation note required
   [ ] HARD FAIL — F-005: for EACH of the 8 minimum archive fields, the evidence
       data_points[] contains AT LEAST one entry with source: "archive_assumption_distribution";
       if archive returned found=false, that entry has value: null and notes: "insufficient_cohort (n=...)";

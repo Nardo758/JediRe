@@ -505,19 +505,23 @@ reasonable. Broker OM says $341,907/yr ($1,228/unit/yr). Benchmark P50 is $225/u
 
 ---
 
-### Run outcome summary — three-run evolution
+### Run outcome summary — six-run evolution
 
-| Metric | Before `2ea5dda0` | After v1 `8e630d46` | After v2 `4673a000` | After v3 `3de47f80` |
-|--------|-------------------|---------------------|---------------------|---------------------|
-| Run status | **failed** | **succeeded** | **succeeded** | **succeeded** |
-| Evidence rows | 19 (partial) | 22 | 24 | 24 |
-| T12 other-income anomaly detection | silent | detected | detected | detected |
-| `source_label` on unanchored exit cap | `ARCHIVE_COHORT` (false) | `UNANCHORED` (correct) | `UNANCHORED` | `UNANCHORED` |
-| Archive data_point in evidence rows | 0/19 | 0/22 | 0/24 | **18/24** |
-| `archive_percentile_note` in evidence | absent | absent | absent | **present (6/6 queried fields)** |
-| Other income per-category breakdown | absent | absent | absent | **`revenue.other_income_breakdown`: 7 data_points, one per category** |
-| `comp_ceiling_p75` in GPR data_points | absent | absent | absent | absent (comp pipeline empty) |
-| GPR per-floor-plan data_points | 3 aggregate | 2 aggregate | 3 aggregate | 3 aggregate (12+ floor-plan entries pending) |
+| Metric | Before `2ea5dda0` | After v1 `8e630d46` | After v2 `4673a000` | After v3 `3de47f80` | After v4 `d08d8a49` | After v5 `0fe0a8d0` | **After v6 `5b9840ad`** |
+|--------|-------------------|---------------------|---------------------|---------------------|---------------------|---------------------|-------------------------|
+| Run status | **failed** | **succeeded** | **succeeded** | **succeeded** | **FAILED** | **FAILED** | **succeeded** |
+| Duration | 136,521 ms | 105,699 ms | — | 112,000 ms | — | — | **115,948 ms** |
+| Evidence rows | 19 (partial) | 22 | 24 | 24 | — | — | **23** |
+| T12 other-income anomaly detection | silent | detected | detected | detected | — | — | detected |
+| `source_label` on unanchored exit cap | `ARCHIVE_COHORT` (false) | `UNANCHORED` (correct) | `UNANCHORED` | `UNANCHORED` | — | — | `UNANCHORED` |
+| Archive data_point in evidence rows | 0/19 | 0/22 | 0/24 | **18/24** | — | — | **14/23** |
+| `archive_percentile_note` in evidence | absent | absent | absent | **present (6/6 queried fields)** | — | — | **archive_label "Archive unavailable" on all 7 queried fields** |
+| Other income per-category breakdown | absent | absent | absent | **dp=7, 7 categories** | — | — | **dp=7, 7 categories** |
+| `comp_ceiling_p75` in GPR data_points | absent | absent | absent | absent (comp pipeline empty) | — | — | absent (comp pipeline empty) |
+| GPR per-floor-plan data_points | 3 aggregate | 2 aggregate | 3 aggregate | 3 aggregate | — | — | 3 aggregate |
+| Growth proforma_fields key | `value` | `value` | `value` | `value` | **`value = undefined`** (schema fail) | **`value = undefined`** (schema fail) | **`value = "0.04"` (correct), `vn = null`** |
+
+Runs v4 and v5 failed due to a pre-existing inconsistency: prompt spec at former lines 609–616 used `value_numeric` while `ProformaFieldSchema` expects `value`. Fixed in v6 by replacing backtick-delimited format spec with plain text + CORRECT/WRONG examples, removing the ← arrow character that caused TypeScript compile error TS1005.
 
 ---
 
