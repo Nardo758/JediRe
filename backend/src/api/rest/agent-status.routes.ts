@@ -132,6 +132,10 @@ export function createAgentStatusRoutes(pool: Pool): Router {
         // Pull real agent runs (cashflow, research, etc.) as synthetic events.
         // agent_runs.user_id and deals.user_id / org_members.user_id are UUID
         // columns — cast $1 explicitly to avoid "operator does not exist: text = uuid".
+        // agent_runs.user_id is TEXT; d.user_id / om.user_id are UUID.
+        // Cast UUID columns to TEXT so $1 stays unambiguously text throughout —
+        // mixing $1::uuid with r.user_id = $1 in the same query makes PG infer
+        // $1 as UUID, which then breaks the text column comparison.
         pool.query(
           isAdmin
             ? `SELECT r.id,
@@ -150,11 +154,11 @@ export function createAgentStatusRoutes(pool: Pool): Router {
                  LEFT JOIN deals d
                    ON d.id = r.deal_id AND d.archived_at IS NULL
                  LEFT JOIN org_members om
-                   ON om.org_id = d.org_id AND om.user_id = $1::uuid
+                   ON om.org_id = d.org_id AND om.user_id::text = $1
                 WHERE COALESCE(r.completed_at, r.started_at) >= NOW() - INTERVAL '24 hours'
                   AND (
                     r.user_id = $1
-                    OR (r.deal_id IS NOT NULL AND (d.user_id = $1::uuid OR om.user_id IS NOT NULL))
+                    OR (r.deal_id IS NOT NULL AND (d.user_id::text = $1 OR om.user_id IS NOT NULL))
                   )
                 ORDER BY COALESCE(r.completed_at, r.started_at) DESC
                 LIMIT 20`,
