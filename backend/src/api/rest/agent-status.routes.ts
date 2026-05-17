@@ -153,7 +153,7 @@ export function createAgentStatusRoutes(pool: Pool): Router {
                    ON om.org_id = d.org_id AND om.user_id = $1::uuid
                 WHERE COALESCE(r.completed_at, r.started_at) >= NOW() - INTERVAL '24 hours'
                   AND (
-                    r.user_id = $1::uuid
+                    r.user_id = $1
                     OR (r.deal_id IS NOT NULL AND (d.user_id = $1::uuid OR om.user_id IS NOT NULL))
                   )
                 ORDER BY COALESCE(r.completed_at, r.started_at) DESC
