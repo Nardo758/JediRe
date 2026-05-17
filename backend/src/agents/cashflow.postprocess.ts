@@ -344,9 +344,10 @@ export async function cashflowPostProcess(
     if (ctx.dealId && output.proforma_fields && typeof output.proforma_fields === 'object') {
       try {
         // Maps agent proforma_fields key → deal_assumptions.year1 short key.
-        // Three new _dollars keys avoid stomping on _pct fields that store
-        // percentage values for operator entry (management_fee_pct, vacancy_pct,
-        // bad_debt_pct). The new keys are created in JSONB on first write.
+        // Four _dollars keys avoid stomping on _pct / _per_unit fields that store
+        // rate values for operator entry (management_fee_pct, vacancy_pct,
+        // bad_debt_pct, other_income_per_unit). The new keys are created in JSONB
+        // on first write; each holds the agent's annual dollar total directly.
         const AGENT_FIELD_TO_YEAR1: Record<string, string> = {
           'expense.payroll':                'payroll',
           'expense.property_tax':           'real_estate_tax',
@@ -361,7 +362,7 @@ export async function cashflowPostProcess(
           'expense.turnover':               'turnover',
           'revenue.gross_potential_rent':   'gpr',
           'revenue.effective_gross_income': 'egi',
-          'revenue.other_income':           'other_income_per_unit',
+          'revenue.other_income':           'other_income_dollars',    // new: annual dollars, not per-unit-per-month
           'revenue.vacancy_loss':           'vacancy_loss_dollars',    // new: dollars, not pct
           'revenue.bad_debt':               'bad_debt_dollars',        // new: dollars, not pct
           'revenue.concessions':            'concessions',
@@ -413,7 +414,10 @@ export async function cashflowPostProcess(
           const agentValue = effectiveValues[agentKey];
           if (agentValue === null || agentValue === undefined) continue;
 
-          // Skip if operator has a non-null, finite numeric override — it wins
+          // Skip if operator has a non-null, finite numeric override — it wins.
+          // Also emit a divergence note when the agent's value differs from the
+          // operator override by ≥20% — surfaces in collision_summary so the
+          // operator is aware the agent disagrees with their manual entry.
           const existingLv = currentYear1[year1Key] as Record<string, unknown> | undefined;
           const existingOverride = existingLv?.override;
           if (
@@ -422,6 +426,25 @@ export async function cashflowPostProcess(
             typeof existingOverride === 'number' &&
             isFinite(existingOverride as number)
           ) {
+            const numericAgent = typeof agentValue === 'number' ? agentValue : null;
+            if (
+              numericAgent !== null &&
+              existingOverride !== 0 &&
+              Math.abs(numericAgent - existingOverride) / Math.abs(existingOverride) >= 0.2
+            ) {
+              // Log divergence for downstream collision surfacing
+              const pct = Math.round(
+                ((numericAgent - existingOverride) / Math.abs(existingOverride)) * 100
+              );
+              logger.warn('agent_vs_operator_override_divergence', {
+                dealId: ctx.dealId,
+                field: year1Key,
+                agent_value: numericAgent,
+                operator_override: existingOverride,
+                override_source: (existingLv as Record<string, unknown>)?.override_source ?? 'unknown',
+                divergence_pct: pct,
+              });
+            }
             agentSkippedFields.push(year1Key);
             continue;
           }

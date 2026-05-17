@@ -1329,6 +1329,11 @@ export async function applyUserOverride(
   field.override = value;
   field.updated_at = new Date().toISOString();
   (field as LayeredValue<number> & { updated_by?: string }).updated_by = userId;
+  // Stamp origin so agent write-back can distinguish deliberate operator
+  // overrides from system-sourced values (e.g., seeder OM layer).
+  // 'operator' = a human explicitly entered this value via the UI.
+  (field as LayeredValue<number> & { override_source?: string }).override_source =
+    value != null ? 'operator' : undefined;
   if (value != null) {
     field.resolved = value;
     field.resolution = 'override';

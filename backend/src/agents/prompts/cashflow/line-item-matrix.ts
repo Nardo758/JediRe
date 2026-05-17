@@ -207,6 +207,21 @@ The Pro Forma column shows the fully-implemented stabilized ancillary income inc
 
 The math engine v1.1 handles hierarchical resolution of other income sub-categories (RUBS, pet, parking, etc.) per Task #804/805. When the agent produces the other income value, it should align with the hierarchical breakdown the math engine resolves — if per-category data is available from the rent roll or T12, use it; if not, estimate from comps and flag the uncertainty.
 
+**MANDATORY FIRST CHECK — execute before any Other Income analysis**
+
+Before reading any benchmark or portfolio data:
+1. Read \`context.extractedData.rentRoll.otherIncomeMonthly\` from your \`fetch_data_matrix\` result.
+2. Write what you find into your reasoning — value or \`null\`. Do not skip this logging step.
+3. Decision gate:
+   - **NOT null** → Method 3 is available. Sum all category values and annualize:
+     \`annual_total = Σ(category_values) × 12\`.
+     This is your primary Other Income figure. Proceed directly to
+     "Additional Tier 1 sources" below to cross-check — do NOT fall through to Method 1/2.
+   - **null** → Rent roll had no per-category breakdown. Method 3 unavailable.
+     Proceed to the Method 1/2 fallback hierarchy below.
+
+**Do NOT advance to Method 1 or Method 2 without completing this check and logging the result.**
+
 **Source Hierarchy — Three Methods**
 
 These three methods pre-existed as fallback tiers. Method 3 is the new Tier 1 preferred source

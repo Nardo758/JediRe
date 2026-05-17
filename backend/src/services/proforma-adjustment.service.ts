@@ -2255,7 +2255,7 @@ export async function getDealFinancials(
     toDollarRow('concessions_pct',       'concessions',       'Concessions',           _gprForDollars, 'concessions'),
     toDollarRow('bad_debt_pct',          'bad_debt',          'Bad Debt',              _gprForDollars, 'bad_debt_dollars'),
     toDollarRow('non_revenue_units_pct', 'non_revenue_units', 'Non-Revenue Units',     _gprForDollars),
-    toDollarRow('other_income_per_unit', 'other_income',      'Other Income',          _otherIncMul),
+    toDollarRow('other_income_per_unit', 'other_income',      'Other Income',          _otherIncMul, 'other_income_dollars'),
     ...OPEX_FIELDS.map(([k, _l]) => toRow(k, _l)),
     // Canonical $-denominated management fee (consumed by ProFormaSummaryTab).
     toDollarRow('management_fee_pct',    'management_fee',    'Management Fee',        _egiForDollars, 'management_fee_dollars'),
@@ -2292,12 +2292,18 @@ export async function getDealFinancials(
   //
   // `toDollarRow` applies `_otherIncMul = totalUnits × 12` uniformly, treating
   // the stored values as monthly per-unit.  This inflates broker/t12/rentRoll
-  // columns by exactly 12×.  The `resolved` slot is unaffected because it was
-  // derived backward from the seeded EGI (already in monthly/unit convention).
+  // columns by exactly 12×.
+  //
+  // `resolved` is now sourced from `other_income_dollars` (annual total written
+  // by the agent via write-back) when that key is populated.  When the agent has
+  // not run, `resolved` falls back to mul(resolvedNum(other_income_per_unit))
+  // which carries the same 12× inflation and is corrected below.
   //
   // Fix: divide broker, t12, and rentRoll columns by 12 to recover the correct
-  // annual dollar amounts.  Do NOT touch resolved (it is already correct) or
-  // platform (platform is never set for this field — always null).
+  // annual dollar amounts.  Do NOT touch resolved — it is either the agent's
+  // annual total from other_income_dollars (already correct) or is derived
+  // from the seeded EGI backward (already in annual convention).
+  // Platform is never set for this field — always null.
   {
     const _oiRow = year1Rows.find(r => r.field === 'other_income');
     if (_oiRow) {

@@ -1,0 +1,298 @@
+# 464 Bishop Diagnostic — Action Brief
+
+The 464 Bishop diagnostic (run `808e0016`, completed today 15:53 UTC) produced 13 structured findings. Three priorities emerge, sequenced below. Each is a separate task with its own scope.
+
+The diagnostic confirmed PR 1 and PR 2 landed correctly — `fetch_unit_mix` exists, hydration works, math engine v1.1 active, parallel `_dollars` fields exist for management fee, vacancy, and bad debt. The findings are about gaps the architecture work didn't anticipate, not regressions on what was built.
+
+Findings file: `docs/diagnostics/cashflow_diagnostic_464_bishop_findings_20260517.json`
+Summary file: `docs/diagnostics/cashflow_diagnostic_464_bishop_summary_20260517.md`
+
+---
+
+## PRIORITY 1 — F-009 Other Income write-back fix (TODAY)
+
+**Severity:** Critical
+**Estimated effort:** 1 hour including test and deploy
+**Type:** Bug fix completing incomplete Task #824 work
+
+### Background
+
+Task #824 fixed the unit-mismatch bug for management fee, vacancy, and bad debt by adding parallel `_dollars` fields and updating the write-back map. The fix was supposed to include Other Income but didn't. The diagnostic confirms Other Income still writes to `other_income_per_unit`, which `toDollarRow` then multiplies by units × 12, producing 2,784× corruption.
+
+This bug is corrupting deals on every agent run today. It is the same bug Task #824 closed for three other fields and left unclosed for this one.
+
+### What to do
+
+1. **Locate the agent write-back map** in `cashflow.postprocess.ts` — likely line 364 per the diagnostic
+2. **Change the Other Income mapping** from:
+   ```
+   revenue.other_income → other_income_per_unit
+   ```
+   to:
+   ```
+   revenue.other_income → other_income_dollars
+   ```
+3. **Verify `toDollarRow` handles the new field** the same way it does for management_fee_dollars, vacancy_loss_dollars, and bad_debt_dollars — should already be the case from Task #824
+4. **Add or confirm the `other_income_dollars` year1 key handling** in any read paths that consume the field
+5. **Run a test deal end-to-end** to verify the corrupted multiplication no longer occurs
+6. **DB cleanup** — identify deals corrupted by the previous mapping and clear the stale `other_income_per_unit.agent` values:
+   ```sql
+   SELECT deal_id, year1->'other_income_per_unit'->>'agent' as bad_agent_value
+   FROM deal_assumptions
+   WHERE year1->'other_income_per_unit'->'agent' IS NOT NULL;
+   ```
+   For each affected deal, clear the agent slot with a `jsonb_set` setting it to null and re-trigger an agent run to populate the correct `other_income_dollars` field.
+
+### Honest framing for the commit message
+
+This is a fix that should have shipped with Task #824 and didn't. Worth a one-line acknowledgment in the commit:
+
+```
+Complete Task #824 Other Income write-back fix
+
+Task #824 added parallel _dollars fields and updated the write-back map for
+management fee, vacancy, and bad debt to resolve the unit-mismatch bug. Other
+Income was specified in the original task scope but the write-back map
+mapping was not updated. This commit completes the work.
+
+Diagnostic finding F-009 from 464 Bishop diagnostic confirms the bug is
+currently producing 2,784× multiplications on every agent run. DB cleanup
+query identifies affected deals.
+```
+
+### Acceptance criteria
+
+1. `revenue.other_income → other_income_dollars` mapping in place
+2. Test deal: agent emits $X total annual Other Income; year1 stores $X (not $X × 2,784)
+3. F9 Pro Forma displays correct Other Income value with AI badge
+4. DB cleanup script identifies and clears corrupted deals
+5. Commit message acknowledges the gap from Task #824
+
+---
+
+## PRIORITY 2 — F-010 + Ticket B (OVERRIDE LAYER CONTAMINATION)
+
+**Severity:** Critical → High structural
+**Estimated effort:** 1-2 sessions
+**Type:** Structural fix grounded in confirmed production instance
+
+### Background
+
+The diagnostic confirmed a real production instance of the OM-as-override contamination pattern Ticket B was originally drafted to guard against. Specifically: a broker OM value for insurance was installed at the `override` layer (highest priority), permanently blocking the agent's correct $125,000 value from reaching the resolved field.
+
+The agent did its job. The platform's layer hierarchy then silently discarded the agent's reasoning in favor of a value that was never an operator decision — it was a broker assertion misclassified as an operator override.
+
+This is exactly the failure mode Ticket B was specced for, with a concrete instance now in hand. The ticket refresh below replaces the original Ticket B (which was drafted before this evidence existed).
+
+### What to do
+
+#### Step 1 — Confirm the scope of the contamination
+
+Run a database audit to identify all `deal_assumptions.year1` entries where the `override` layer's source is `om`, `broker_om`, or any broker-derived label:
+
+```sql
+SELECT
+  deal_id,
+  jsonb_object_keys(year1) as field_key,
+  year1->jsonb_object_keys(year1)->>'override_source' as override_source
+FROM deal_assumptions
+WHERE EXISTS (
+  SELECT 1 FROM jsonb_each(year1) AS j(key, value)
+  WHERE value->>'override_source' ILIKE '%om%'
+     OR value->>'override_source' ILIKE '%broker%'
+);
+```
+
+Report the count and field distribution.
+
+#### Step 2 — Diagnose the write path
+
+The `override` layer should only be set by genuine operator action (UI override entry). Trace the codepaths that write to the `override` slot to find which writer is misclassifying broker OM values as overrides.
+
+Likely suspects per the diagnostic context:
+- Proforma-seeder full-replace pattern (the same one Ticket B was originally drafted for)
+- Some ingestion path that maps broker OM values to year1 with `layer: 'override'` instead of `layer: 'om'`
+- A migration or backfill script that ran historically
+
+Identify the exact writer.
+
+#### Step 3 — Fix the write classification
+
+The fix depends on what step 2 surfaces. Three patterns possible:
+
+- **If proforma-seeder is the source:** apply the seeder refactor pattern from original Ticket B — replace full-replace with key-level `jsonb_set` that respects the layer hierarchy. Broker OM values land in `om` layer, not `override`.
+- **If an ingestion path is the source:** add explicit layer attribution at the write site. Broker OM ingestion writes to `om` slot; operator actions write to `override` slot. Never confuse the two.
+- **If a historical migration corrupted the data:** the live fix is to remap incorrectly-classified overrides back to their correct layer. Distinct from preventing future contamination.
+
+#### Step 4 — Remediation for currently corrupted data
+
+For each deal where the override layer carries broker OM values (per step 1 audit), move the value to the `om` layer and clear the override slot. Re-run the agent to populate the `agent` layer correctly.
+
+```sql
+-- Per affected deal/field, conceptual pattern (actual SQL depends on JSONB structure)
+UPDATE deal_assumptions
+SET year1 = jsonb_set(
+  jsonb_set(
+    year1,
+    '{<field>, om}',
+    year1->'<field>'->'override'
+  ),
+  '{<field>, override}',
+  'null'::jsonb
+)
+WHERE deal_id IN (<affected list>);
+```
+
+#### Step 5 — Regression test
+
+Add a test that:
+1. Creates a deal with broker OM data ingested
+2. Verifies broker OM values land in `om` layer (not `override`)
+3. Runs the agent
+4. Verifies agent values can reach the resolved field, not blocked by misclassified broker OM
+5. Manually applies a real operator override
+6. Verifies operator override correctly wins over both `om` and `agent`
+
+### Acceptance criteria
+
+1. Database audit complete with corruption scope quantified
+2. Write path source identified with file:line evidence
+3. Fix applied at the write site — broker OM values land in `om` layer going forward
+4. Historical corrupted data remediated (overrides moved to `om` layer where appropriate)
+5. Regression test in place preventing recurrence
+6. Insurance value on 464 Bishop specifically: agent's $125,000 now reaches resolved field
+
+### Connection to original Ticket B
+
+Original Ticket B was the proforma-seeder full-replace refactor. The F-010 evidence may or may not point at that specific code path — if it does, this work IS Ticket B. If the contamination came from a different writer, this work supersedes Ticket B with the actually-correct fix. Either way, after this work ships, Ticket B is closed.
+
+---
+
+## PRIORITY 3 — AGENT PROMPT OPERATIONAL DEPTH (F-001, F-002, F-003, F-005)
+
+**Severity:** Major
+**Estimated effort:** 2-3 sessions of focused prompt iteration
+**Type:** Reasoning-quality improvement, not infrastructure
+
+### Background
+
+The diagnostic surfaced four findings that share a pattern: the prompt mentions a reasoning step, but the agent's actual reasoning doesn't operationalize it. This is qualitatively different from the F-009/F-010 bugs — it's not a code path that's broken; it's a reasoning pattern that's described but not deeply integrated into how the agent works through a deal.
+
+Four specific failures:
+
+- **F-001:** No per-floor-plan unit_mix grid produced. `fetch_unit_mix` was available but 464 Bishop has a single "Default" floor plan row, so the tool returned no detail to split. The agent didn't have a fallback reasoning pattern for this case.
+- **F-002:** Renovation premium was never computed from comp ceiling. The prompt describes the comp-ceiling-driven derivation; the agent took the sponsor's asserted stabilized GPR as input instead. Common Pitfall #1 from the line-item matrix.
+- **F-003:** Other Income Method 3 wasn't applied. `otherIncomeMonthly` data is now hydrated, but the prompt's Method 3 reasoning didn't fire — the agent accepted broker OM's $341,907 (3× P90 benchmark) with one qualitative sentence.
+- **F-005:** 56% of fields at tier4/UNANCHORED. `archive_percentile: null` everywhere. The cohort anchoring infrastructure exists (`fetch_archive_assumption_distribution`); the agent isn't calling it in the reasoning loop.
+
+The shared cause: the prompt describes these patterns; the agent processes them as menu items rather than reasoning patterns. The agent picks the easy path (broker OM aggregate) when the harder path (compute from comp ceiling, run Method 3, query archive cohort) is the specified one.
+
+### What to do
+
+This is iterative prompt engineering, not a one-shot change. The goal is to make four specific reasoning patterns *operationally land* rather than be checklist items.
+
+#### Iteration plan (3 sessions)
+
+**Session 1 — F-002 renovation premium reasoning**
+
+The most concrete failure. The prompt describes the comp-ceiling-driven derivation; the agent didn't perform it. Iterate the prompt against this specific failure:
+
+1. Find the renovation premium section in the system prompt
+2. Identify whether the prompt instructs the agent on the *steps* to perform (compute comp distribution per floor plan, source positioning percentile, compute premium math) or just describes the *concept*
+3. If conceptual, rewrite to be step-by-step procedural with explicit "do not accept sponsor's asserted premium as input" guardrail
+4. Re-run agent on 464 Bishop; verify the data_points[] field is populated with the comp ceiling computation
+5. If still fails, examine whether the agent has access to the comp data — if the tools aren't returning what the prompt expects, this is partly an infrastructure issue too
+
+**Session 2 — F-001 floor-plan grid + F-003 Method 3**
+
+These are paired because both depend on the agent shifting from "accept aggregate from source X" to "synthesize from per-unit detail."
+
+1. For F-001: add explicit fallback reasoning for properties with sparse `fetch_unit_mix` output. When `fetch_unit_mix` returns a single Default floor plan, the agent should investigate why (rent roll parsing limitations? property genuinely uniform? prior data corruption?) and document the limitation rather than silently produce no grid.
+
+2. For F-003: the diagnostic explicitly noted PR2 Edit 2 was never applied — verify the system prompt has the otherIncomeMonthly + Method 3 instructions from the SPEC_TEXT_UPDATES_POST_AUDIT.md document. If missing, apply them. If present but the agent isn't operationalizing, iterate against the specific failure (per-category breakdown, T-12 reconciliation, source attribution per category).
+
+3. Re-run on 464 Bishop; verify per-floor-plan grid is attempted (even if degenerate) and Other Income shows per-category breakdown.
+
+**Session 3 — F-005 cohort anchoring**
+
+The most subtle failure. The agent has access to `fetch_archive_assumption_distribution` but isn't calling it for cohort anchoring on major assumptions.
+
+1. Audit the system prompt for cohort anchoring instructions — likely Section A.5 per v3 patch
+2. Identify whether the prompt instructs the agent to *always* call the archive distribution tool for specific field types (rent growth, exit cap, expense growth) or whether it's framed as "consider calling when appropriate"
+3. If conditional, rewrite to be unconditional for specific field types — "every rent growth assumption populates archive_percentile from `fetch_archive_assumption_distribution` filtered to comparable deals"
+4. Re-run on 464 Bishop; verify archive_percentile is populated on rent growth, exit cap, expense growth at minimum
+
+#### Cross-cutting concern — the menu vs reasoning pattern
+
+After the three sessions, step back and ask: is the broader system prompt encouraging *menu navigation* (pick a method, apply it) rather than *reasoning depth* (work through the deal's specific situation against the available data)? If yes, the higher-leverage edit may be a structural change to how the prompt frames the agent's job rather than specific section edits.
+
+This is the kind of insight only the diagnostic findings can produce. Worth being open to it during the three sessions rather than treating each failure as independent.
+
+### Acceptance criteria
+
+After all three sessions:
+
+1. **F-002 specifically:** 464 Bishop diagnostic re-run shows renovation premium derived from comp ceiling with `data_points[]` populated
+2. **F-001 specifically:** when `fetch_unit_mix` returns sparse data, the agent documents why and produces what detail it can rather than silently emitting a degenerate output
+3. **F-003 specifically:** Other Income shows per-category breakdown with source attribution per category, not single qualitative narrative on broker aggregate
+4. **F-005 specifically:** archive_percentile populated on rent growth, exit cap, expense growth (at minimum); tier4/UNANCHORED rate below 25%
+5. **Cross-cutting:** no new reasoning patterns added to the prompt; existing ones operationally land
+
+### What this is NOT
+
+- Not a rewrite of the system prompt from scratch
+- Not adding new reasoning methods or finding types
+- Not building new tools or hydration paths
+- Not authoring new specs
+
+This is iterating four specific failures from a specific diagnostic against the existing system prompt. The goal is depth, not breadth.
+
+---
+
+## DEFERRED ITEMS
+
+The diagnostic produced clear scoping for several other items. Recommended deferrals:
+
+### M36 ticket — DEFER to MODERATE scope
+
+M36 was called on 464 Bishop and returned `d=2.69`. The infrastructure is functional. Three remaining gaps per F-006:
+- Result not persisted as structured field
+- Agent's response to d > 2.0 is thin
+- Management fee Phase A prior may be miscalibrated below industry standard (the d=2.69 may itself be a false-positive Heroic classification)
+
+These are real issues but not as severe as F-009/F-010. Open as a separate task after Priorities 1-3 ship; can pair well with the Priority 3 agent reasoning work.
+
+### Ticket A (AgentRuntime audit) — HIGH per diagnostic
+
+The diagnostic confirmed two write-back failures on a single deal (F-009 and F-010), supporting the Ticket A premise that there are likely more asymmetric codepaths in `AgentRuntime`. Open Ticket A as parallel work to Priorities 1-3, not gating on them.
+
+### Ticket C (Type-Runtime Consistency audit) — LOW per diagnostic
+
+The diagnostic surfaced no new instances of type-runtime divergence beyond what's already known. Defer Ticket C to a future hygiene pass; not urgent.
+
+### CIE Phase 1 framework — DEFER until Priorities 1-3 complete
+
+The diagnostic's CIE finding type priorities (underpriced_ancillary_fee → missing_ancillary_category → low_ancillary_adoption_rate) confirm the CIE spec's revenue domain design. But CIE Phase 1 is a 3-4 session build; not the highest-priority next thing given F-009 is corrupting deals today and Priority 3 is iterating the agent's reasoning quality.
+
+After Priorities 1-3 ship, CIE Phase 1 framework is the next major build.
+
+---
+
+## SEQUENCING SUMMARY
+
+| Priority | Item | Effort | Type | Run In Parallel With |
+|---|---|---|---|---|
+| 1 | F-009 Other Income write-back | 1 hour | Bug fix | Anything |
+| 2 | F-010 / Ticket B refresh | 1-2 sessions | Structural fix | Priority 3 once Priority 1 ships |
+| 3 | Agent prompt operational depth | 2-3 sessions | Reasoning iteration | Priority 2 |
+| — | Ticket A (AgentRuntime audit) | 1 session | Architecture audit | Anything |
+| — | M36 ticket (moderate) | 1-2 sessions | Investigation + fix | After Priority 3 |
+| — | CIE Phase 1 | 3-4 sessions | New capability | After Priorities 1-3 |
+
+Priority 1 ships today. Priority 2 + Priority 3 run in parallel after Priority 1. CIE and M36 follow.
+
+## One framing point for the team
+
+The diagnostic was designed to validate the architecture work of the past three weeks. It did that — PR 1, PR 2, math engine v1.1, parallel `_dollars` fields all confirmed working. It also surfaced that some of that work is incomplete (F-009 should have shipped with Task #824) and that the agent's reasoning isn't yet using all the infrastructure built for it.
+
+That's a healthy outcome. The next two weeks are about closing the gap between what the platform CAN do and what the agent actually DOES. Less spec authoring, more iteration against real failures. The diagnostic produced the failure list; this brief sequences the response.

@@ -399,11 +399,22 @@ Rules:
      c. Include the bias correction note in evidence data_points with tier=3, weight=0.10
   2. If gap not available: no bias correction; document in evidence that archive is pending
 
-### archive_percentile in Output
-For each assumption where archive data is available, include:
-  archive_percentile: <number 0-100 indicating where assumption falls in archive distribution>
+### archive_percentile in Output (MANDATORY — no exceptions)
 
-This is written into the evidence data_points and reported in the final JSON output.
+For EVERY assumption, \`archive_percentile\` MUST appear in your output — whether or not archive
+data was found. A missing field is indistinguishable from a tool failure; omission is not allowed.
+
+- **Archive available** (n_samples ≥ 5, found=true):
+  Compute: \`archive_percentile = ((your_value − P10) / (P90 − P10)) × 100\`, clamped to [0, 100].
+  Write the numeric result.
+
+- **Archive unavailable** (n_samples < 5 OR found=false):
+  Write \`archive_percentile: null\` AND set:
+  \`archive_percentile_note: "insufficient_cohort (n=<actual_n_returned>)"\`
+  in the evidence data_points. Use n=0 if the tool returned no sample count.
+
+The evidence drawer renders \`archive_percentile\` on every run. \`null\` with a reason code is
+informative. Missing entirely is not acceptable.
 
 ---
 
@@ -983,6 +994,30 @@ Apply this classification to proforma.revenue.gpr evidence confidence field:
 
 When confidence is Low, populate \`confidence_rationale\` in the evidence object explaining
 which specific conditions failed. This is mandatory — do not set Low without a rationale.
+
+### OM GPR Gate — Active Enforcement (run BEFORE writing GPR)
+
+If the broker Offering Memorandum provides a GPR figure (found in
+\`context.brokerClaims.proforma.gpr\` or \`context.extractedData.om.grossPotentialRent\`):
+
+**You are required to run this gate before writing any GPR value:**
+
+1. Compute your comp-ceiling GPR: \`Σ(comp_ceiling_p75[floor_plan] × unit_count[floor_plan]) × 12\`
+   across all floor plans from the renovation_ceiling comp set.
+2. Compare OM GPR to comp-ceiling GPR:
+   - OM GPR > comp_ceiling GPR (P75): OM is above the renovation ceiling.
+     → Use your comp-ceiling-derived value, NOT the OM figure.
+     → Record in evidence.collision: "OM GPR ($X) exceeds renovation ceiling P75 ($Y).
+       Comp-ceiling value used."
+   - OM GPR within comp_ceiling P25–P75: acceptable cross-check.
+     → Comp ceiling is still the primary input — OM GPR may confirm but does not replace it.
+   - OM GPR < comp_ceiling P25: OM is below the comp floor — flag as conservative and
+     investigate whether sponsor is modeling a partial renovation scope.
+
+**NEVER write the OM GPR directly to \`proforma_fields['revenue.gross_potential_rent']\`
+without completing this gate.** The comp ceiling from \`fetch_peer_comp_noi_metrics
+(comp_role: "renovation_ceiling")\` is always the input. Broker projections of renovation
+premium are speculative until validated against the comp ceiling distribution.
 
 ### Value-Add GPR Pitfalls (Do Not Commit)
 
