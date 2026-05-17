@@ -339,14 +339,39 @@ export class AgentRuntime {
     );
     // Enrich context so tools see the correct runId / agentId.
     const ctxWithRun: RunContext = { ...ctx, correlationId: runId, agentId: this.config.agentId };
-    // Fire the rest of the loop in the background using the pre-created runId.
+    // INTENTIONAL: budget.check() is NOT repeated inside _continueRun().
+    // It already ran synchronously above, before the agent_runs row was created.
+    // _continueRun() is private and only ever called from here, so the check
+    // is always guaranteed to have fired before execution begins.
     const done = this._continueRun(runId, input, ctxWithRun);
     return { runId, done };
   }
 
   /**
    * Continue execution for a pre-created run (used by startAsync).
-   * The caller is responsible for having already inserted the agent_runs row.
+   * The caller is responsible for having already inserted the agent_runs row
+   * AND having run budget.check() before calling this method.
+   *
+   * ── Hook symmetry audit (Task #827) ──────────────────────────────────────
+   * Every this.config.* callable must fire in both run() and _continueRun()
+   * unless the divergence is explicitly documented below.
+   *
+   * Hook                │ run() │ _continueRun() │ Notes
+   * ────────────────────┼───────┼────────────────┼──────────────────────────────
+   * postProcess         │  ✓    │  ✓             │ SYMMETRIC — fixed Task #824
+   * outputSchema.parse  │  ✓    │  ✓             │ SYMMETRIC
+   * budget.check        │  ✓    │  ✗             │ INTENTIONAL — runs in
+   *                     │       │                │ startAsync() before row exists;
+   *                     │       │                │ repeating it here would
+   *                     │       │                │ double-check the daily cap
+   * budget.checkRunCap  │ loop  │ loop           │ SYMMETRIC — shared loop()
+   * firstToolCall       │ loop  │ loop           │ SYMMETRIC — shared loop()
+   * tools               │ loop  │ loop           │ SYMMETRIC — shared loop()
+   * capabilities        │ exec  │ exec           │ SYMMETRIC — shared
+   *                     │       │                │ executeTool()
+   *
+   * When adding a new config hook to run(), always add it here too (or
+   * document the divergence with an // INTENTIONAL: comment).
    */
   private async _continueRun(
     runId: string,
