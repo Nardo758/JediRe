@@ -37,12 +37,20 @@ interface LLMProvider {
  * Get configured LLM provider from environment
  */
 function getLLMProvider(): LLMProvider | null {
-  // Check for Claude/Anthropic
-  if (process.env.CLAUDE_API_KEY) {
+  // Check for Claude/Anthropic.
+  // Prefer the AI_INTEGRATIONS proxy key/URL (Replit ModelFarm) so that
+  // proxy-issued keys don't get sent directly to api.anthropic.com (which
+  // returns 404/auth errors).  Falls back to CLAUDE_API_KEY for local dev.
+  const anthropicKey =
+    process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  if (anthropicKey) {
+    const baseUrl = (
+      process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || 'https://api.anthropic.com'
+    ).replace(/\/$/, '');
     return {
       name: 'anthropic',
-      apiKey: process.env.CLAUDE_API_KEY,
-      endpoint: 'https://api.anthropic.com/v1/messages',
+      apiKey: anthropicKey,
+      endpoint: `${baseUrl}/v1/messages`,
       model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5',
     };
   }
