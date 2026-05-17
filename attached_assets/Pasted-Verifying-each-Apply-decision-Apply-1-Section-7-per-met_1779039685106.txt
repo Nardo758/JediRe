@@ -1,0 +1,42 @@
+Verifying each "Apply" decision
+Apply 1 — Section 7 per-method CIE consumption guidance. ✅ Correct.
+v1.2's prompt update spelled out exactly how each accepted CIE finding type maps to agent behavior:
+
+missing_ancillary_category → add the category via Method 1 logic
+underpriced_ancillary_fee → adjust rate to cohort P50 with phase-in
+low_ancillary_adoption_rate → adjust adoption with phase-in
+
+v1.1.1's Section 6.3 describes the bidirectional integration concept but doesn't get this specific about per-finding-type behavior. Adding the per-finding mapping is genuinely additive — it's the operational guidance the agent needs to act on findings consistently. Not redundant with anything already in the spec.
+One refinement worth making at apply time: the per-finding mapping was written before Method 4 existed as Owned-Portfolio Analog. The mapping says "use Method 1 logic" for new categories. But with v1.1.1's Method 4, the more correct mapping is:
+missing_ancillary_category →
+  if hasDirectlyComparableOwnedPortfolio: use Method 4 logic (sponsor's own actuals)
+  else: use Method 1 logic (fee schedule × adoption × applicable units)
+Same logic for the other two finding types. The methods don't change; the finding consumption respects the existing selection hierarchy. Small clarification, not a structural change.
+Apply 2 — Q5 M22 calibration via CIE. ✅ Correct, fully additive.
+v1.2's reframe of Q5 explicitly delegates M22 capex integration to the CI Engine rather than embedding it in the Other Income spec. This is right architecturally — Other Income shouldn't need to know about M22 directly; that knowledge belongs in CIE.
+v1.1.1's open questions section doesn't have this content. Adding it tightens the separation of concerns between the two specs. Apply as written.
+Apply 3 — Changelog v1.2 entry. ⚠️ Needs adjustment, not literal application.
+This is where Replit should be careful. The v1.2 changelog entry as drafted reads as if v1.2 is replacing v1.1.1 wholesale ("Method 4 removed, Method 5 redefined, selection logic simplified"). But Replit is not doing those things — only the two additive items above.
+The changelog entry needs to be rewritten to reflect what's actually being applied. Something like:
+**v1.2 (current)**
+- Section 7 (agent prompt) gains per-finding-type consumption guidance:
+  explicit mapping from accepted CIE finding types to method-specific
+  agent behavior (missing_ancillary_category → Method 4 if owned-portfolio
+  available else Method 1; underpriced_ancillary_fee → rate adjustment
+  with phase-in; low_ancillary_adoption_rate → adoption adjustment with
+  phase-in)
+- Q5 (open questions) reframed: M22 capex calibration delegated to CIE's
+  Section 7.1 priority chain; Other Income spec no longer carries M22
+  integration directly
+- v1.1.1's Method 4 (Owned-Portfolio Analog), Method 5 (CIE active
+  integration), and Section 6.3 (bidirectional CIE integration) are
+  preserved as-is — superior to the v1.2 patch document's framing of
+  these items
+- No structural changes to Methods 1, 2, 3, or to the selection function
+
+**Reconciliation note:** This v1.2 release adopts the additive content from
+the v1.2 patch document (Section 7 per-method guidance, Q5 M22 reframe)
+while preserving the superior v1.1.1 framing of Method 4, Method 5, and
+Section 6.3. The v1.2 patch document is considered fully reconciled and
+should not be reapplied.
+The reconciliation note matters because anyone looking at the changelog later (a new engineer, a future Claude run, you 6 months from now) needs to understand why v1.2 has this hybrid character — adopting some of the v1.2 patch but not all of it. Without the note, it looks inconsistent.
