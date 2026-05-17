@@ -397,7 +397,13 @@ export class AgentRuntime {
       }
 
       const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx: ctxWithRun, accrued });
-      const validated = this.config.outputSchema.parse(result.content ?? {});
+
+      // Post-process (aggregate tool-persisted data from DB) then validate
+      let finalOutput = (result.content ?? {}) as Record<string, unknown>;
+      if (this.config.postProcess) {
+        finalOutput = await this.config.postProcess(finalOutput, ctxWithRun, runId);
+      }
+      const validated = this.config.outputSchema.parse(finalOutput);
 
       await query(
         `UPDATE agent_runs

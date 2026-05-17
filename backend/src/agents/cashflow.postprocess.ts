@@ -369,9 +369,11 @@ export async function cashflowPostProcess(
 
         // Math engine uses different canonical paths for the fields it corrects.
         // When a corrected value exists, prefer it over the agent's raw value.
+        // NOTE: proforma.revenue.base_rental_revenue is net rental income (NRI),
+        // NOT gross potential rent — it deliberately does NOT map to GPR to avoid
+        // overwriting GPR with NRI values. Only EGI has a direct 1-to-1 equivalent.
         const CORRECTED_PATH_TO_AGENT: Record<string, string> = {
-          'proforma.revenue.egi':                 'revenue.effective_gross_income',
-          'proforma.revenue.base_rental_revenue': 'revenue.gross_potential_rent',
+          'proforma.revenue.egi': 'revenue.effective_gross_income',
         };
 
         // Build effective value map: agent's proforma_fields, overlaid with
@@ -405,6 +407,7 @@ export async function cashflowPostProcess(
 
         let agentWriteCount = 0;
         const agentSkippedFields: string[] = [];
+        const agentFailedFields: string[] = [];
 
         for (const [agentKey, year1Key] of Object.entries(AGENT_FIELD_TO_YEAR1)) {
           const agentValue = effectiveValues[agentKey];
@@ -424,27 +427,39 @@ export async function cashflowPostProcess(
           }
 
           // Write agent slot, update resolved, set resolution = "agent".
+          // Each field is wrapped in its own try/catch so a single failure never
+          // prevents remaining fields from being written (per-field isolation).
           // Uses || (jsonb concatenation) to merge the three agent sub-keys into
           // the existing LayeredValue envelope (or create one from scratch for new
-          // keys like management_fee_dollars / concessions). This correctly
-          // preserves existing slots (t12, om, override, platform) while adding
-          // or updating the agent, resolved, and resolution sub-keys.
-          await query(
-            `UPDATE deal_assumptions
-             SET year1 = jsonb_set(
-               COALESCE(year1, '{}'),
-               ARRAY[$2::text],
-               COALESCE(year1->$2::text, '{}') || jsonb_build_object(
-                 'agent',      $3::numeric,
-                 'resolved',   $3::numeric,
-                 'resolution', $4::text
-               ),
-               true
-             )
-             WHERE deal_id = $1`,
-            [ctx.dealId, year1Key, agentValue, 'agent']
-          );
-          agentWriteCount++;
+          // keys like management_fee_dollars / concessions). This preserves existing
+          // slots (t12, om, override, platform) while adding/updating agent,
+          // resolved, and resolution sub-keys.
+          try {
+            await query(
+              `UPDATE deal_assumptions
+               SET year1 = jsonb_set(
+                 COALESCE(year1, '{}'),
+                 ARRAY[$2::text],
+                 COALESCE(year1->$2::text, '{}') || jsonb_build_object(
+                   'agent',      $3::numeric,
+                   'resolved',   $3::numeric,
+                   'resolution', $4::text
+                 ),
+                 true
+               )
+               WHERE deal_id = $1`,
+              [ctx.dealId, year1Key, agentValue, 'agent']
+            );
+            agentWriteCount++;
+          } catch (fieldWriteErr) {
+            agentFailedFields.push(year1Key);
+            logger.warn('[CashflowPostProcess] Agent write-back failed for field (non-fatal, continuing)', {
+              dealId: ctx.dealId,
+              runId,
+              year1Key,
+              err: fieldWriteErr instanceof Error ? fieldWriteErr.message : String(fieldWriteErr),
+            });
+          }
         }
 
         logger.info('[CashflowPostProcess] Agent line-item write-back to deal_assumptions.year1', {
@@ -453,6 +468,7 @@ export async function cashflowPostProcess(
           written: agentWriteCount,
           skipped: agentSkippedFields.length,
           skippedFields: agentSkippedFields,
+          ...(agentFailedFields.length > 0 && { failedFields: agentFailedFields }),
         });
       } catch (agentWriteErr) {
         logger.warn('[CashflowPostProcess] Agent line-item write-back to year1 failed (non-fatal)', {
