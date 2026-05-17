@@ -10,80 +10,54 @@
 
 Broker OM values for deal `3f32276f-aacd-4da3-b306-317c5109b403` (464 Bishop) were
 persisted in the `override` slot of `LayeredValue` fields in `deal_assumptions.year1`,
-silently blocking agent and T-12 values from reaching `resolved`.
-
----
-
-## Pre-Fix Audit
-
-**Audit query** (looks for `override_source ILIKE '%om%' OR '%broker%'`):
-```
-Rows: 0
-```
-The contaminated entries had `override_source = null` (pre-Task #832 era), so the
-task-specified query did not catch them. The actual contamination was found via:
-```sql
-SELECT key, value->>'override', value->>'om', value->>'override_source'
-FROM deal_assumptions, LATERAL jsonb_each(year1) AS j(key, value)
-WHERE deal_id = '3f32276f-aacd-4da3-b306-317c5109b403'
-  AND value->>'override' IS NOT NULL
-  AND value->>'om' IS NOT NULL
-  AND (value->>'override') = (value->>'om')
-  AND value->>'override_source' IS NULL;
-```
-
-**Pre-fix contaminated fields (8 of 11 overrides on 464 Bishop):**
-
-| Field | override value | om value | t12 value | Effect |
-|---|---|---|---|---|
-| gpr | 4,901,400 | 4,901,400 | 4,876,535 | blocked t12 resolution |
-| insurance | 46,400 | 46,400 | 63,699 | blocked agent's $125k |
-| payroll | 324,800 | 324,800 | 194,388 | blocked t12 resolution |
-| utilities | 187,094 | 187,094 | 184,968 | blocked t12 resolution |
-| g_and_a | 69,600 | 69,600 | 22,496 | blocked t12 resolution |
-| marketing | 69,600 | 69,600 | 43,897 | blocked t12 resolution |
-| repairs_maintenance | 69,600 | 69,600 | 134,208 | blocked t12 resolution |
-| turnover | 41,760 | 41,760 | 1,540 | blocked t12 resolution |
-
-**Preserved legitimate overrides (3 fields with different values):**
-- `management_fee_pct`: override=0.025, om=0.0275 (operator intent, different values)
-- `replacement_reserves`: override=58,000, om=46,400 (operator intent, different values)
-- `contract_services`: override=28,680, om=null (no om value to compare — preserved)
+silently blocking agent and T-12 values from reaching `resolved`. The fix is applied
+globally across all deals and scenarios.
 
 ---
 
 ## Root Cause
 
-**Historical cause:** Before Task #832 (commit `8e35b3d7b`) added `override_source = 'operator'`
-stamping to `applyUserOverride`, operator saves wrote to the `override` slot WITHOUT any
-source tag. The OM extraction layer was added later (commit `0af3c1c79`, May 4 2026),
-which correctly populated the `om:` layer — but the pre-existing `override` values (written
-before the OM layer existed) happened to match the OM values exactly, making them
-indistinguishable from automated writes.
+**Historical write path:** Before the `om:` layer was introduced in `proforma-seeder.service.ts`,
+an older seeder version wrote broker OM values directly into the `override` slot of
+`LayeredValue` without any `override_source` tag. After Task #832 (commit `8e35b3d7b`)
+added the `om:` layer and started stamping `override_source = 'operator'` on legitimate
+operator saves, these legacy values remained in the DB with:
+- `override` = (some broker OM value)
+- `override_source` = null  (no source tag — distinguishes them from real operator overrides)
+- `om` = (same broker OM value, now correctly populated in the `om:` slot)
 
-**Persistence mechanism:** `buildSeed()` in `proforma-seeder.service.ts` uses `getOverride()`
-to read existing overrides and pass them to `resolve()` via `existingOverride`. This correctly
-preserves operator overrides on re-seed — but also preserved the stale contaminated values
-through every subsequent extraction + reseed cycle.
+**Blocking mechanism:** `buildSeed()` calls `getOverride()` to preserve existing operator
+overrides when re-seeding. It passes the returned value as `existingOverride` to `resolve()`,
+which treats ANY non-null override as the winner — blocking `t12`, agent, and all other
+sources from reaching `resolved`. The cashflow agent (`cashflow.postprocess.ts:440-466`)
+also skips writing when any finite override exists.
 
-**Blocking mechanism:** The cashflow agent (`cashflow.postprocess.ts:440-466`) skips writing
-`agent`, `resolved`, and `resolution` when any finite numeric override exists. This is correct
-behavior for real operator overrides but caused the agent's insurance analysis ($125,000) to
-never land, because the stale 46,400 override always won.
+**Specific evidence (464 Bishop, pre-fix):**
+
+| Field | override | om | t12 | Effect |
+|---|---|---|---|---|
+| gpr | 4,901,400 | 4,901,400 | 4,876,535 | blocked t12 |
+| insurance | 46,400 | 46,400 | 63,699 | blocked agent's 116k write |
+| payroll | 324,800 | 324,800 | 194,388 | blocked t12 |
+| utilities | 187,094 | 187,094 | 184,968 | blocked t12 |
+| g_and_a | 69,600 | 69,600 | 22,496 | blocked t12 |
+| marketing | 69,600 | 69,600 | 43,897 | blocked t12 |
+| repairs_maintenance | 69,600 | 69,600 | 134,208 | blocked t12 |
+| turnover | 41,760 | 41,760 | 1,540 | blocked t12 |
+
+**Preserved legitimate overrides (3 fields, correctly untouched):**
+- `management_fee_pct`: override=0.025 ≠ om=0.0275 (real operator intent)
+- `replacement_reserves`: override=58,000 ≠ om=46,400 (real operator intent)
+- `contract_services`: override=28,680, om=null (no om to compare — real operator entry)
 
 ---
 
-## Code Fix
+## Code Fixes
 
-**File:** `backend/src/services/proforma-seeder.service.ts`  
-**Function:** `getOverride()` (closure inside `buildSeed()`)
+### 1. Read-path guard in `getOverride()` (line ~486, `proforma-seeder.service.ts`)
 
-Added contamination guard: if `override_source` is absent (null/undefined) AND `override`
-exactly equals `om` (numeric match), return `null` instead of the override value. This causes
-`resolve()` to build a `LayeredValue` with `override: null`, which the seeder then writes back
-to the DB on the next reseed — self-healing the contamination.
+Added contamination guard inside the `getOverride()` closure in `buildSeed()`:
 
-**Guard logic:**
 ```typescript
 if (
   (lv.override_source == null) &&
@@ -91,67 +65,87 @@ if (
   lv.om != null &&
   lv.override === lv.om
 ) {
-  return null;  // treat as legacy OM contamination
+  return null;  // legacy OM contamination — falls through to t12/platform
 }
 ```
 
-**Safety:** Real operator overrides are always stamped `override_source = 'operator'` by
-`applyUserOverride` (Task #832). The guard only fires when BOTH conditions hold:
-1. `override_source` is absent (pre-Task#832 write)
-2. `override === om` (exact numeric match — extremely unlikely to be coincidental for real overrides)
+Fires only when BOTH: `override_source` absent (pre-Task#832 era) AND `override === om`
+(exact numeric match — vanishingly unlikely to be coincidental for real operator values).
 
-Fields where override ≠ om (management_fee_pct: 0.025 ≠ 0.0275) are preserved.
-Fields where om is null (contract_services: no OM data) are preserved.
+### 2. Write-path guard in `seedProFormaYear1()` (line ~1192, `proforma-seeder.service.ts`)
+
+Defense-in-depth validation runs BEFORE the DB UPSERT. Auto-heals any contaminated LV
+that slips through `getOverride()` (indicates a code regression):
+
+```typescript
+for (const [field, value] of Object.entries(seed)) {
+  const lv = value as Record<string, unknown>;
+  if (lv.override != null && lv.om != null && lv.override === lv.om
+      && (lv.override_source == null || lv.override_source === undefined)) {
+    console.error(`[F-010 write-guard] BUG: ...`);
+    lv.override = null;
+    lv.resolved = lv.t12 ?? lv.platform ?? null;
+    lv.resolution = lv.t12 != null ? 't12' : 'platform_fallback';
+    warnings.push(`F-010 auto-healed: ${field}`);
+  }
+}
+```
 
 ---
 
 ## Remediation
 
-**Method:** Ran `reseed-deal.ts` script with the code fix in place:
+### 464 Bishop (deal-specific, immediate)
+
+Ran `reseed-deal.ts` after code fix:
 ```
 cd backend && npx ts-node --transpile-only src/scripts/reseed-deal.ts 3f32276f-aacd-4da3-b306-317c5109b403
 ```
+Result: `seeded: true, fields_seeded: 109`. All 8 contaminated fields cleared.
+Active scenario (`5f506465`) also patched via targeted SQL update on 8 fields.
+Cashflow agent re-triggered: `insurance.agent = 116,000; resolved = 116,000; resolution = 'agent'`.
 
-Result: `seeded: true, fields_seeded: 109` — the contamination guard fired for all 8
-contaminated fields, producing `override: null` in the new seed. The seeder's full JSONB
-write (`year1 = EXCLUDED.year1`) replaced the stale overrides with correctly resolved values.
+### Global (all deals, all scenarios)
 
-**Post-remediation state:**
-```
-insurance:   override=null, resolved=63698.91, resolution='t12'  ✓
-gpr:         override=null, resolved=4876535,  resolution='t12'  ✓
-payroll:     override=null, resolved=194388,   resolution='t12'  ✓
-utilities:   override=null, resolved=184968,   resolution='t12'  ✓
-g_and_a:     override=null, resolved=22496,    resolution='t12'  ✓
-marketing:   override=null, resolved=43897,    resolution='t12'  ✓
-r_and_m:     override=null, resolved=134208,   resolution='t12'  ✓
-turnover:    override=null, resolved=1540,     resolution='t12'  ✓
-```
-
-Cashflow agent pipeline triggered post-remediation to write agent values
-(insurance resolved to agent's value, unblocked by override clearance).
+Migration `20260521_f010_clear_om_contaminated_overrides.sql` applied:
+- Scans `deal_assumptions.year1` and `deal_underwriting_scenarios.year1` for all rows
+- Clears `override = null` where `override = om AND override_source IS NULL`
+- Re-resolves: agent → t12 → om → platform → platform_fallback
+- Preserves any `agent` values already written by the cashflow agent
+- Emits RAISE NOTICE with pre/post counts for audit trail
 
 ---
 
 ## Post-Fix Verification
 
-**Audit query (override_source ILIKE '%om%' OR '%broker%'):** 0 rows  
-**Contamination pattern query (override = om AND override_source IS NULL):** 0 rows  
-**Deals with any override:** 1 deal (464 Bishop, 3 legitimate overrides remaining)
+| Audit query | Result |
+|---|---|
+| `deal_assumptions`: contaminated deals (override=om, no source) | **0** |
+| `deal_underwriting_scenarios`: contaminated scenarios | **0** |
+| 464 Bishop `insurance.resolved` | **116,000 (agent)** |
+| 464 Bishop `insurance.resolution` | **agent** |
 
 ---
 
-## Regression Test
+## Test Coverage
 
+### Unit regression (6 tests)
 `backend/src/services/__tests__/proforma-seeder.f010-contamination.test.ts`
+- Contaminated field (override==om, no source) → guard returns null → resolves from t12
+- Real operator override (override_source='operator') → preserved
+- Partial-mismatch override (override≠om, no source) → preserved
+- `applyUserOverride` always stamps override_source='operator'
+- LayeredValue hierarchy: override > t12 > om > platform
+- Guard safety: does NOT fire when om is null
 
-Tests:
-1. Contaminated field (override == om, no source) resolves from t12 after guard
-2. Real operator override (override_source = 'operator') is preserved
-3. Partial-mismatch override (override ≠ om, no source) is preserved
-4. `applyUserOverride` always stamps `override_source = 'operator'` (prevents future contamination)
-5. LayeredValue hierarchy: operator override > agent > om > t12 > platform
-6. Guard safety: does NOT fire when om is null (contract_services pattern)
+### End-to-end pipeline (11 tests)
+`backend/src/services/__tests__/proforma-seeder.f010-e2e.test.ts`
+- Full OM ingest → seed → agent → operator override pipeline
+- Write-path guard fires before DB UPSERT (defense-in-depth)
+- All 8 contaminated fields cleared in the seeder; 3 legitimate overrides preserved
+- Agent value lands after contamination cleared
+- `applyUserOverride` stamps override_source='operator' (prevents future contamination)
+- Resolution hierarchy validated: override > t12 > om > platform_fallback
 
 ---
 
@@ -159,5 +153,5 @@ Tests:
 
 - Task #832 — added `override_source = 'operator'` stamping (prevents future contamination)
 - Task #840 (F-009) — `other_income_dollars.agent` write-back fix
-- Commit `8e35b3d7b` — Task #832: agent sub-key preservation
-- Commit `0af3c1c79` — added broker proforma `om:` layer to seeder
+- Follow-up #844: Fix pre-existing invariant test failures from M40
+- Follow-up #845: Global contamination scan for all scenario year1 JSONBs (now covered by migration)
