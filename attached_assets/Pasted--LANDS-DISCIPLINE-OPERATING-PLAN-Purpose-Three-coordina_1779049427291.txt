@@ -1,0 +1,593 @@
+# LANDS-DISCIPLINE OPERATING PLAN
+
+**Purpose:** Three coordinated mechanisms to ensure Scenario Management actually lands, given the platform's recent pattern of work drifting between "specced" and "shipped" without clear verification in between.
+
+**Composes three pieces:**
+1. Sequential closure plan for Priorities 1, 2, 3 — with verifiable done-done criteria
+2. Weekly status ritual — template for catching drift early
+3. Scenario Management spec retrofit — verifiable acceptance criteria + Phase Verification Protocol
+
+**Apply in this order:**
+- This week: adopt the status ritual format; run it once to baseline the current state of all in-flight items
+- Weeks 1-3 (approximate): execute the sequential closure plan for Priorities 1, 2, 3
+- Week 4 onward: start Scenario Management Phase 1, using the retrofitted acceptance criteria
+
+---
+
+## PART 1 — SEQUENTIAL CLOSURE PLAN
+
+Three priorities from the 464 Bishop diagnostic. Each has explicit done-done criteria that go beyond "code merged" to "behavior verified in production."
+
+### Priority 1 — F-009 Other Income write-back fix
+
+**Effort:** 1 hour estimated
+**Target completion:** This week
+
+**Done-done criteria:**
+
+1. **Code merged.** `cashflow.postprocess.ts` line 364 changed from `other_income_per_unit` to `other_income_dollars`. PR merged to main. Build green.
+
+2. **Production deployment verified.** PR is in production (not just merged). Verified by checking deployed version matches main HEAD on the production environment.
+
+3. **DB cleanup executed.** The cleanup query identifies affected deals. SQL run to clear corrupted `other_income_per_unit.agent` values. Affected deal count documented (expected: small, since the bug was recent).
+
+4. **Test deal re-run shows correct behavior.** Cashflow agent triggered on at least one affected deal. Year1 inspection confirms:
+   - `year1.other_income_dollars.agent` populated with total annual dollars
+   - `year1.other_income_per_unit.agent` is null (not the corrupted multiplied value)
+   - F9 Pro Forma displays correct Other Income value
+   - Math engine validation passes
+
+5. **Verification query produces clean result.** This query should return zero rows when F-009 is fully resolved:
+   ```sql
+   SELECT deal_id, year1->'other_income_per_unit'->>'agent' as bad_value
+   FROM deal_assumptions
+   WHERE year1->'other_income_per_unit'->'agent' IS NOT NULL
+     AND (year1->'other_income_per_unit'->>'agent')::numeric > 1000;
+   -- Values > $1000 per unit per month are corrupted
+   ```
+
+6. **Audit complete on related fields.** The grep audit specified in the Replit fix response is complete. Other `_per_unit`, `_psf`, `_bps` fields verified against agent emit units. If additional mismatches found, they're either fixed in the same PR or filed as separate tickets.
+
+**Rollback if:**
+- Any agent run on production produces fields with `value > 100x prior baseline`
+- Math engine validation begins failing on snapshots post-deploy
+- Any test deal re-run shows Other Income at wrong magnitude
+
+**Definition of "done done":** All 6 criteria met, documented in a closing note that includes: affected deal count, verification query result (zero rows), grep audit findings count, link to the PR. Once that note exists, F-009 is closed.
+
+---
+
+### Priority 2 — F-010 / Ticket B (Override layer contamination)
+
+**Effort:** 1-2 sessions estimated
+**Target completion:** Week 2-3
+
+**Done-done criteria:**
+
+1. **Audit scope quantified.** The corruption audit query runs and produces a definitive count of affected deals/fields. The result is documented before any fix is applied.
+
+2. **Root cause identified.** The specific code path writing broker OM values to `override` layer is named with file:line evidence. Not "the seeder probably"; the actual writer.
+
+3. **Code fix applied.** Whichever pattern from the ticket applies: per-field jsonb_set, write classification fix at the ingestion site, or migration-driven remediation. PR merged and in production.
+
+4. **Historical data remediated.** Corrupted entries moved from `override` layer to `om` layer (or wherever they should have been). Pre/post counts documented.
+
+5. **464 Bishop insurance value test passes.** The specific case from the diagnostic: agent's $125,000 insurance value can now reach the resolved field. F9 displays the agent's value, not the broker's stale OM value.
+
+6. **Regression test in place.** Test that creates a deal, ingests broker OM data, runs the agent, applies an operator override, and verifies the layer hierarchy resolves correctly. Test runs in CI and fails on any regression.
+
+7. **Verification query produces clean result.** This query should return zero rows when F-010 is resolved:
+   ```sql
+   SELECT deal_id, jsonb_object_keys(year1) as field_key
+   FROM deal_assumptions
+   WHERE EXISTS (
+     SELECT 1 FROM jsonb_each(year1) AS j(key, value)
+     WHERE value->>'override_source' ILIKE '%om%'
+        OR value->>'override_source' ILIKE '%broker%'
+   );
+   -- Broker OM values should not be at override layer
+   ```
+
+**Rollback if:**
+- Migration produces incorrect layer reassignments (audit comparison shows any deal where the migration changed a value the operator had actually overridden)
+- Regression test reveals additional contamination patterns not covered by the fix
+- Any deal's resolved value changes unexpectedly post-fix
+
+**Definition of "done done":** All 7 criteria met. Closing note documents: corrupted entry count pre-fix, count post-fix (should be zero), root cause code path, link to PR, regression test path.
+
+---
+
+### Priority 3 — Agent prompt operational depth
+
+**Effort:** 2-3 sessions estimated
+**Target completion:** Week 2-4 (runs partially in parallel with Priority 2)
+
+This is the hardest priority to define "done done" for, because the failure modes are reasoning-quality not binary correctness. Done-done criteria need to define quality thresholds explicitly.
+
+**Done-done criteria:**
+
+1. **F-002 specifically verified.** Re-run 464 Bishop with the updated prompt. Inspect agent output for renovation premium:
+   - `data_points[]` array populated for floor-plan-level renovation analysis
+   - Comp ceiling values present per floor plan with source attribution
+   - Capture rate sourced from owned-portfolio or platform default (not implicit)
+   - Sponsor's asserted stabilized GPR is NOT taken as direct input
+
+2. **F-001 specifically verified.** Re-run on a property with sparse `fetch_unit_mix` output. Inspect agent behavior:
+   - Agent documents the sparsity in its reasoning
+   - Agent attempts the per-floor-plan grid with what data exists, even if degenerate (one row labeled "Default" with note about limitation)
+   - Agent does NOT silently emit no grid at all
+
+3. **F-003 specifically verified.** Re-run 464 Bishop. Inspect Other Income output:
+   - Per-category breakdown emitted (not single aggregate)
+   - Each category has source attribution (rent_roll, archive_cohort, fee_schedule_projection)
+   - Method selected is documented (`method_selected: 'method_3'`)
+   - Reconciliation against T-12 aggregate is computed and surfaced
+
+4. **F-005 specifically verified.** Re-run 464 Bishop. Inspect cohort anchoring:
+   - `archive_percentile` populated on rent growth, exit cap, expense growth at minimum
+   - Tier4/UNANCHORED rate below 25% across all major assumptions (current state is 56%)
+   - Each anchored field shows `cohort_n` and source reference
+
+5. **Pre-fix diagnosis sequence completed.** Before iterating prompts, the team confirmed:
+   - For F-005: queried `fetch_archive_assumption_distribution` directly with 464 Bishop's parameters; confirmed cohort data exists. If not, the fix is KG content, not prompt
+   - For F-003: confirmed `otherIncomeMonthly` is populated in DealContext for the test deal. If not, the fix is hydration, not prompt
+
+6. **No regression on previously working behavior.** Run the prompt updates against a stabilized acquisition deal where the agent currently works well. Verify Method 2 selection still happens, T-12 aggregate is used, no per-category breakdown is forced. The prompt changes should improve specific failures without breaking what worked.
+
+7. **Cross-cutting observation captured.** After three iteration sessions, the team produces a one-paragraph observation: did the broader prompt structure (menu vs reasoning depth) seem to be the issue, or were the four failures independent? This informs whether a deeper prompt restructure is needed as a follow-on.
+
+**Rollback if:**
+- Prompt iterations cause working deals to produce worse outputs (regression on Method 1 or Method 2 deals)
+- Agent run times increase by more than 50% per iteration
+- Token usage per run increases substantially (agent becomes less efficient)
+
+**Definition of "done done":** All 7 criteria met. Closing note documents: re-run output samples for each failure, before/after metrics on tier4 rate, observation from criterion 7.
+
+---
+
+### Sequential gate to Scenario Management Phase 1
+
+Scenario Management Phase 1 begins ONLY when Priorities 1, 2, 3 are all at "done done."
+
+This is not negotiable in the lands-discipline approach. The case for sequential:
+
+- Scenario Management touches Layer 2 (deal_scenarios table, year1 wrapping). If F-010 layer contamination still exists when scenarios ship, it gets replicated across every scenario.
+- Ticket B's override pattern fix is structurally identical to what scenarios need. Coordinating them as one piece of work is cheaper than doing them separately.
+- The agent prompt's reasoning depth (Priority 3) determines whether scenarios are populated by genuinely intelligent agent runs or by superficial ones. Better to fix reasoning before scenarios capture state.
+
+Estimated total time: 3-4 weeks for sequential closure. Then 4-6 weeks for Scenario Management. Total: 7-10 weeks from now to Scenario Management v1.0 in production.
+
+---
+
+## PART 2 — WEEKLY STATUS RITUAL
+
+A 10-15 minute weekly ritual that catches drift early. Designed to be a written status check, not a meeting. Worth doing every Monday or Friday consistently.
+
+### Status format template
+
+```markdown
+# WEEKLY STATUS — [DATE]
+
+## In-flight items
+
+| Item | State | Last activity | Blocked? | Next action |
+|---|---|---|---|---|
+| Priority 1 (F-009) | <state> | <date> | <yes/no/why> | <action> |
+| Priority 2 (F-010/Ticket B) | <state> | <date> | <yes/no/why> | <action> |
+| Priority 3 (prompt iteration) | <state> | <date> | <yes/no/why> | <action> |
+| ... | | | | |
+
+States:
+- not_started — never picked up
+- in_progress — being actively worked
+- waiting_review — PR open, awaiting review
+- waiting_verification — merged, awaiting done-done verification
+- done_done — verified complete per criteria
+- blocked — cannot progress, reason documented
+
+## Recently completed (since last status)
+
+For each item moved to done_done this week:
+- Item name + closing note link
+- Verification result summary
+- Any open follow-ups discovered during verification
+
+## Supposedly done, verify
+
+Items that were marked "done" at some point in the past but haven't been verified end-to-end against their done-done criteria.
+
+For each item:
+- What was claimed done
+- What verification has happened
+- What verification is still needed
+- Action to close the gap
+
+This section directly catches the Task #824 / F-009 failure mode. Items here are not yet "done done" even if the team or a Replit task says otherwise.
+
+## Drafted but not yet active
+
+Items where specs or plans exist but no execution is in flight. Documents the queue without forcing it to be active.
+
+For each:
+- Item name + spec doc
+- Why it's not active yet (dependency, priority, bandwidth)
+- Trigger condition for moving it to active
+
+## Spec inventory (delta from last week)
+
+New specs authored or revised this week:
+- New: <list>
+- Revised: <list>
+
+This section catches the "spec authoring outpaces execution" pattern. If new specs accumulate weekly while in-flight items don't move to done_done, the operating discipline isn't working.
+
+## Open questions / decisions needed
+
+Things waiting on a decision from Leon to unblock progress.
+
+For each:
+- Question
+- Context / options
+- Date raised
+
+## Risks surfaced this week
+
+New risks identified, or existing risks that escalated.
+
+For each:
+- Risk
+- Mitigation status
+- Owner
+```
+
+### How to use it
+
+**The first run is the baseline.** Run the format against the current state right now. Every item drafted or in flight gets a row. The "supposedly done, verify" section gets populated with items where the actual state is unclear (M36 plausibility, source residual convention integration, various spec applications).
+
+**Subsequent runs are delta + verification.** Each week's status moves items between states and surfaces gaps. Items shouldn't sit in `waiting_verification` for more than two weeks without explicit action.
+
+**The "supposedly done, verify" section is the most important.** It's the institutional memory that catches Task #824-style failures. An item moves OUT of this section only when verification confirms done-done. If verification surfaces gaps, the item moves back to in_progress, not silently to done.
+
+**The ritual takes 10-15 minutes per week.** Less than that and it's not real. More than that and it won't get done consistently. The format above is sized for that window.
+
+### Where to keep it
+
+A markdown file in the repo: `docs/operations/weekly-status.md`. Each week's status is appended to the top (most recent first). The file grows over time as the platform's working history.
+
+Alternative: a Notion page, a Linear cycle review, whatever the team's tooling supports. Format matters more than location.
+
+---
+
+## PART 3 — SCENARIO MANAGEMENT SPEC RETROFIT
+
+Two additions to `SCENARIO_MANAGEMENT_SPEC.md`:
+1. Verifiable acceptance criteria (replacing the current Section 10 list)
+2. New Section 11.5 — Phase Verification Protocol (per-phase verification before declaring complete)
+
+### Retrofitted Section 10 — Verifiable Acceptance Criteria
+
+**Find current Section 10 (Acceptance Criteria — v1.0 MVP).**
+
+**Replace with:**
+
+```markdown
+## 10. VERIFIABLE ACCEPTANCE CRITERIA — v1.0 MVP
+
+Each criterion has a specific verification step. Items are not "done" until
+the verification step produces the expected output.
+
+### Migration and data integrity
+
+1. **Every existing deal has at least one scenario after migration.**
+   Verify: `SELECT COUNT(DISTINCT deal_id) FROM deals` equals
+   `SELECT COUNT(DISTINCT deal_id) FROM deal_scenarios WHERE deleted_at IS NULL`.
+   Expected: equal counts.
+
+2. **One active scenario per deal is enforced uniquely.**
+   Verify: `SELECT deal_id, COUNT(*) FROM deal_scenarios
+   WHERE is_active = TRUE AND deleted_at IS NULL
+   GROUP BY deal_id HAVING COUNT(*) > 1` returns zero rows.
+
+3. **Pre-migration year1 values match post-migration active scenario year1.**
+   Verify: For each deal, JSON diff of pre-migration `deal_assumptions.year1`
+   vs post-migration active scenario's year1. Differences = zero.
+
+### User workflow
+
+4. **Users can create named scenarios via UI with attribution.**
+   Verify: Create scenario "Test Scenario" via UI. Check
+   `deal_scenarios` table: row exists with `name = 'Test Scenario'`,
+   `created_by = 'user'`, `created_by_user_id` populated.
+
+5. **Switching scenarios changes the live state (F9 reflects scenario's year1).**
+   Verify: Create scenario A with vacancy = 5%, scenario B with vacancy = 7%.
+   Activate A: F9 shows 5%. Activate B: F9 shows 7%. No page refresh required.
+
+6. **Override API writes only to the active scenario; other scenarios untouched.**
+   Verify: Deal has scenarios A (active) and B (inactive). Apply override
+   on A: vacancy = 10%. Query both scenarios' year1.
+   A's year1.vacancy_pct.override = 0.10. B's year1.vacancy_pct.override
+   unchanged from pre-override state.
+
+### Agent runtime
+
+7. **Agent runs create new agent-attributed scenarios by default.**
+   Verify: Pre-run scenario count for deal = N. Trigger cashflow agent run.
+   Post-run scenario count = N+1. New scenario has `created_by = 'agent'`,
+   `created_by_agent_run_id` populated.
+
+8. **DealContext cache invalidates correctly when scenarios switch.**
+   Verify: Activate scenario A, trigger agent run, observe DealContext cache
+   hit/miss for the (deal_id, scenario_A_id) key. Switch to scenario B,
+   trigger run, observe cache miss for (deal_id, scenario_B_id) on first
+   run, hit on second.
+
+### Comparison and lifecycle
+
+9. **Comparison view displays two scenarios side-by-side at the Pro Forma level.**
+   Verify: Open comparison view with two scenarios. UI renders both Pro Formas
+   in adjacent columns. Delta percentages computed and displayed. Material
+   differences color-coded.
+
+10. **Soft delete protects against accidental loss; archival reduces UI clutter.**
+    Verify: Soft-delete scenario A: row remains with `deleted_at` populated,
+    no longer appears in default scenario list. Archive scenario B: row
+    remains with `archived_at` populated, appears in "Archived" filter only.
+
+11. **Scenario history visualizes lineage with parent-child relationships.**
+    Verify: Fork scenario A into B, fork B into C. History view shows tree:
+    A → B → C with creation timestamps.
+
+### Backward compatibility
+
+12. **Existing code reading `deal_assumptions.year1` continues working.**
+    Verify: A representative existing read path (F9 GET request, ProForma
+    adjustment service, etc.) returns identical response shape pre- and
+    post-migration. Trigger denormalization, verify
+    `deal_assumptions.year1 = active scenario's year1`.
+
+### Production readiness
+
+13. **No data loss during migration from single-state to scenario model.**
+    Verify: Pre-migration full dump of `deal_assumptions`. Post-migration
+    dump of `deal_assumptions` (denormalized active) and `deal_scenarios`.
+    Comparison query: for every (deal_id, field_path), pre-migration value
+    equals post-migration active scenario value. Differences = zero.
+
+14. **Performance acceptable on production-scale deal counts.**
+    Verify: Migration runs on staging copy of production data in under
+    30 minutes. F9 reads from active scenario complete in under 200ms
+    p95. Comparison view renders in under 2 seconds for typical deals.
+```
+
+### New Section 11.5 — Phase Verification Protocol
+
+**Insert after Section 11 (Implementation Phases).**
+
+```markdown
+## 11.5 PHASE VERIFICATION PROTOCOL
+
+Each phase has a specific verification workflow that must complete before
+the phase is declared done. Verification is more rigorous than acceptance
+criteria — it's the actual workflow run end-to-end against real data with
+documented observations.
+
+### Phase 1 Verification — Foundation
+
+**Workflow:**
+
+1. Run migration on staging database (copy of production)
+2. Execute the data integrity verification queries (criteria 1, 2, 3, 13 above)
+3. Spot-check 10 random deals: confirm active scenario year1 matches
+   pre-migration year1 exactly
+4. Run a representative existing read path (F9 GET) on 5 deals; confirm
+   identical response to pre-migration
+5. Trigger denormalization update on one deal (mutate active scenario);
+   confirm `deal_assumptions.year1` reflects the change
+
+**Pass criteria:**
+- All four data integrity queries return zero diffs
+- Spot-check confirms no value drift
+- Existing read paths produce identical responses
+- Denormalization propagates correctly
+
+**Rollback if:**
+- Any data integrity query produces non-zero diffs
+- Any existing read path returns different data
+- Denormalization fails to propagate
+
+**Documentation deliverable:** Phase 1 closing note in `docs/operations/`
+containing: queries run, results, sample diff outputs (zero), spot-check
+deal list, performance metrics.
+
+### Phase 2 Verification — UI integration
+
+**Workflow:**
+
+1. Create three scenarios for one test deal via UI: "Base Case",
+   "Aggressive", "Conservative"
+2. Switch between them; verify F9 updates correctly each time
+3. Apply override on active scenario; verify it persists and only
+   affects active
+4. Open comparison view with all three scenarios
+5. Verify delta computation correctness against manual calculation
+6. Archive "Conservative"; verify it disappears from default list,
+   appears in archived filter
+7. Restore "Conservative"; verify it returns to default list
+
+**Pass criteria:**
+- All scenario operations succeed via UI
+- F9 reflects active scenario state in real-time
+- Override scope is correctly limited to active scenario
+- Comparison view math is correct (manually verified)
+- Archive/restore lifecycle works
+
+**Rollback if:**
+- UI operations produce server-side errors
+- F9 displays incorrect values after switching
+- Override affects non-active scenarios
+- Comparison view math doesn't match manual calculation
+
+**Documentation deliverable:** Phase 2 closing note with UI screenshots,
+operation log, manual delta calculations vs UI-displayed deltas.
+
+### Phase 3 Verification — Agent runtime integration
+
+**Workflow:**
+
+1. Trigger cashflow agent run on test deal with `scenario_target: "create_new"`
+2. Verify new agent-attributed scenario created
+3. Verify original active scenario unchanged
+4. Switch to new scenario; verify F9 reflects agent's output
+5. Trigger another agent run on same deal with `scenario_target: "active"`
+6. Verify the now-active scenario's agent layer updated in place;
+   no new scenario created
+7. Verify DealContext cache behavior: switch scenarios, observe cache
+   miss/hit patterns
+8. Apply override on active scenario, trigger agent run, verify
+   override layer preserved while agent layer updates
+
+**Pass criteria:**
+- Agent runs target the correct scenario per request parameter
+- DealContext cache invalidates correctly on scenario switch
+- Override layer always preserved across agent runs
+- No regression on agent reasoning quality (compare outputs to
+  pre-scenario agent runs on same deal — should be substantively
+  similar, with differences explainable by scenario state changes)
+
+**Rollback if:**
+- Agent runs land in wrong scenario
+- DealContext cache produces stale reads
+- Override layer is clobbered by agent run
+- Agent outputs drift unexpectedly from pre-scenario baseline
+
+**Documentation deliverable:** Phase 3 closing note with run logs,
+cache hit/miss observations, agent output comparison pre- and
+post-scenario.
+
+### Phase 4 Verification — CIE integration
+
+(Conditional on CIE Phase 1 having shipped — verify only if CIE
+has findings on test deals.)
+
+**Workflow:**
+
+1. Trigger CIE on test deal in scenario A; verify findings produced
+2. Accept one finding; verify state persists on scenario A
+3. Switch to scenario B; trigger CIE on B
+4. Verify findings on B are independent from A
+5. Decline a finding on B that was accepted on A; verify both states
+   coexist independently
+6. Switch back to A; verify A's accepted finding is still accepted
+
+**Pass criteria:**
+- CIE findings scoped to scenario correctly
+- Sponsor decision state independent per scenario
+- Acceptance/decline persists across scenario switches
+
+**Rollback if:**
+- Findings bleed across scenarios
+- Sponsor state lost on scenario switch
+- Accept/decline state corrupted
+
+**Documentation deliverable:** Phase 4 closing note with finding
+state transitions documented per scenario.
+
+### Phase 5 Verification — Archival
+
+**Workflow:**
+
+1. Backdate creation timestamps on test agent-attributed scenarios to
+   simulate 30+ day old scenarios
+2. Run archival job
+3. Verify auto-archive of unreferenced agent-attributed scenarios
+4. Verify referenced scenarios (active history, CIE-finding-bearing,
+   user-attributed) are NOT archived
+5. Backdate further to 90+ days
+6. Verify compression: monthly samples retained, others discarded
+7. Verify discarded scenarios' snapshots remain in
+   `deal_underwriting_snapshots`
+
+**Pass criteria:**
+- Archival policy correctly identifies eligible scenarios
+- Referenced scenarios preserved
+- Audit trail (snapshots) preserved regardless
+
+**Rollback if:**
+- User scenarios archived inappropriately
+- Referenced scenarios discarded
+- Snapshot audit trail compromised
+
+**Documentation deliverable:** Phase 5 closing note with archival
+job execution log, before/after counts, sample of preserved vs
+discarded scenarios.
+
+### Cross-phase regression suite
+
+After each phase ships, run the cumulative regression suite:
+
+- All Phase 1 verification queries still pass
+- All Phase 2 UI operations still work
+- All Phase 3 agent runtime behaviors still correct
+- All Phase 4 CIE behaviors still correct (if shipped)
+- Phase 5 archival doesn't damage earlier phases
+
+This catches phases breaking earlier phases — a common pattern in
+multi-phase builds.
+```
+
+---
+
+## PART 4 — WHAT THIS LOOKS LIKE IN PRACTICE
+
+### Week 1
+- Apply this lands-discipline plan to the repo (`docs/operations/`)
+- Run the first weekly status, populating all sections including baseline of every drafted item
+- Ship Priority 1 (F-009) per its done-done criteria
+- Begin Priority 2 audit phase
+
+### Week 2
+- Weekly status: F-009 verified done-done, moved from in-flight to recent-complete
+- Priority 2 audit complete, fix in progress
+- Begin Priority 3 Session 1 (F-002 renovation premium)
+
+### Week 3
+- Weekly status: Priority 2 verification in progress
+- Priority 3 Session 2 (F-001 + F-003)
+
+### Week 4
+- Weekly status: Priorities 1, 2, 3 should all be at done-done
+- Scenario Management Phase 1 begins per the retrofitted spec
+- New weekly cadence: Scenario Management progress + verification
+
+### Week 5-9 (approximate)
+- Scenario Management phases ship one at a time with verification per Phase Verification Protocol
+- Weekly status tracks each phase against its acceptance criteria
+- No new specs authored unless they're necessary to unblock in-flight work
+
+### Week 10
+- Scenario Management v1.0 ships
+- Retrospective: did the lands-discipline approach work? What did it catch
+  that would have been missed otherwise? What's the operating cadence going forward?
+
+---
+
+## PART 5 — WHY THIS APPROACH
+
+The pattern across the past three weeks is that spec authoring has outpaced
+verification. Most specs are good; several "completed" items haven't been
+verified end-to-end. The 464 Bishop diagnostic was the first systematic
+verification of the platform's state, and it surfaced multiple items
+that had drifted from "supposedly done" to "actually incomplete."
+
+The three mechanisms in this plan address that pattern at different layers:
+
+- **Sequential closure** prevents new architecture from being built on top of unverified prior work
+- **Weekly status ritual** maintains accurate state of every drafted/in-flight item, catches drift within one week instead of three
+- **Verifiable acceptance criteria + Phase Verification Protocol** make "done" claims structurally harder to make falsely
+
+This is a slower path than parallel execution. The case for it: the platform's positioning depends on trust in the underwriting it produces. Every silent failure surfaced (F-009, F-010, the agent reasoning gaps) was an erosion of that trust. Spending three to four weeks closing the trust deficit and establishing operational discipline is cheaper than shipping Scenario Management on top of an unverified foundation and having to refactor when the next diagnostic surfaces more issues.
+
+The cost is real: 7-10 weeks to Scenario Management v1.0 instead of 4-6 weeks with parallel work. The benefit is real: every step is verified, every component is durable, the platform's trust foundation tightens with each completed priority.
+
+This is the high-conviction path. Worth the slower start.
