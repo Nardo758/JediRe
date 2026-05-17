@@ -14,6 +14,8 @@
 
 ### In-Flight / Pending Tasks
 
+> Task IDs (`—`) indicate tasks that exist in the project queue but have not yet been assigned a numbered task ID. IDs will be populated as tasks are picked up. Closed tasks in the "Recently Closed" section carry their assigned IDs.
+
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | — | Seed market events for cities beyond Atlanta | PENDING | Atlanta only; non-Atlanta deals get zero-delta scenarios |
