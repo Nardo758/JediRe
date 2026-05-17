@@ -190,6 +190,10 @@ export async function cashflowPostProcess(
     // proforma_fields in-place. The compact validation report is written to
     // output.math_correction_report for downstream consumers (Task #805 badge UI).
     // Non-fatal: any failure here never blocks agent output.
+    //
+    // Hoisted so the agent write-back block below can prefer math-corrected
+    // values for any revenue subtotals touched by the engine.
+    let correctedSnapshotResolved: Record<string, number> = {};
     if (output.proforma_fields && typeof output.proforma_fields === 'object') {
       try {
         const pfFields = output.proforma_fields as Record<string, any>;
@@ -226,6 +230,9 @@ export async function cashflowPostProcess(
             logger,
           },
         );
+
+        // Hoist corrected values for use by the agent write-back block.
+        correctedSnapshotResolved = corrected_snapshot.resolved;
 
         if (was_corrected) {
           for (const [fieldPath, correctedValue] of Object.entries(corrected_snapshot.resolved)) {
@@ -321,6 +328,137 @@ export async function cashflowPostProcess(
         logger.warn('[CashflowPostProcess] Math engine correctSnapshotMath failed (non-fatal)', {
           runId,
           err: mathErr instanceof Error ? mathErr.message : String(mathErr),
+        });
+      }
+    }
+
+    // ── Agent line-item write-back to deal_assumptions.year1 ──────────────────
+    // Writes the agent's resolved leaf values into year1 so the F9 Proforma
+    // grid reflects them immediately. Operator overrides take precedence: if a
+    // field's override slot is a non-null finite number, the agent write is
+    // skipped for that field. Non-fatal — failures never block agent output.
+    //
+    // resolution: "agent" is the coarse operator-facing label. Full provenance
+    // (residual derivations, archive cohort, source tier) is preserved in
+    // deal_underwriting_snapshots and accessible via the evidence drawer.
+    if (ctx.dealId && output.proforma_fields && typeof output.proforma_fields === 'object') {
+      try {
+        // Maps agent proforma_fields key → deal_assumptions.year1 short key.
+        // Three new _dollars keys avoid stomping on _pct fields that store
+        // percentage values for operator entry (management_fee_pct, vacancy_pct,
+        // bad_debt_pct). The new keys are created in JSONB on first write.
+        const AGENT_FIELD_TO_YEAR1: Record<string, string> = {
+          'expense.payroll':                'payroll',
+          'expense.property_tax':           'real_estate_tax',
+          'expense.insurance':              'insurance',
+          'expense.utilities':              'utilities',
+          'expense.repairs_maintenance':    'repairs_maintenance',
+          'expense.marketing':              'marketing',
+          'expense.admin_general':          'g_and_a',
+          'expense.management_fee':         'management_fee_dollars',  // new: dollars, not pct
+          'expense.replacement_reserves':   'replacement_reserves',
+          'expense.contract_services':      'contract_services',
+          'expense.turnover':               'turnover',
+          'revenue.gross_potential_rent':   'gpr',
+          'revenue.effective_gross_income': 'egi',
+          'revenue.other_income':           'other_income_per_unit',
+          'revenue.vacancy_loss':           'vacancy_loss_dollars',    // new: dollars, not pct
+          'revenue.bad_debt':               'bad_debt_dollars',        // new: dollars, not pct
+          'revenue.concessions':            'concessions',
+        };
+
+        // Math engine uses different canonical paths for the fields it corrects.
+        // When a corrected value exists, prefer it over the agent's raw value.
+        const CORRECTED_PATH_TO_AGENT: Record<string, string> = {
+          'proforma.revenue.egi':                 'revenue.effective_gross_income',
+          'proforma.revenue.base_rental_revenue': 'revenue.gross_potential_rent',
+        };
+
+        // Build effective value map: agent's proforma_fields, overlaid with
+        // math-engine corrections for any fields the engine touched.
+        const pfFieldsForWriteback = output.proforma_fields as Record<string, any>;
+        const effectiveValues: Record<string, number | null> = {};
+
+        for (const agentKey of Object.keys(AGENT_FIELD_TO_YEAR1)) {
+          const field = pfFieldsForWriteback[agentKey];
+          const raw = field?.value;
+          const num =
+            typeof raw === 'number' ? raw
+            : typeof raw === 'string' && raw !== '' && !isNaN(Number(raw)) ? Number(raw)
+            : null;
+          if (num !== null) effectiveValues[agentKey] = num;
+        }
+        // Overlay math-engine-corrected values where available
+        for (const [enginePath, correctedVal] of Object.entries(correctedSnapshotResolved)) {
+          const agentKey = CORRECTED_PATH_TO_AGENT[enginePath];
+          if (agentKey && typeof correctedVal === 'number') {
+            effectiveValues[agentKey] = correctedVal;
+          }
+        }
+
+        // Fetch current year1 once to evaluate per-field override status
+        const { rows: daRows } = await query(
+          `SELECT year1 FROM deal_assumptions WHERE deal_id = $1`,
+          [ctx.dealId]
+        );
+        const currentYear1 = (daRows[0]?.year1 ?? {}) as Record<string, unknown>;
+
+        let agentWriteCount = 0;
+        const agentSkippedFields: string[] = [];
+
+        for (const [agentKey, year1Key] of Object.entries(AGENT_FIELD_TO_YEAR1)) {
+          const agentValue = effectiveValues[agentKey];
+          if (agentValue === null || agentValue === undefined) continue;
+
+          // Skip if operator has a non-null, finite numeric override — it wins
+          const existingLv = currentYear1[year1Key] as Record<string, unknown> | undefined;
+          const existingOverride = existingLv?.override;
+          if (
+            existingOverride !== null &&
+            existingOverride !== undefined &&
+            typeof existingOverride === 'number' &&
+            isFinite(existingOverride as number)
+          ) {
+            agentSkippedFields.push(year1Key);
+            continue;
+          }
+
+          // Write agent slot, update resolved, set resolution = "agent".
+          // Uses || (jsonb concatenation) to merge the three agent sub-keys into
+          // the existing LayeredValue envelope (or create one from scratch for new
+          // keys like management_fee_dollars / concessions). This correctly
+          // preserves existing slots (t12, om, override, platform) while adding
+          // or updating the agent, resolved, and resolution sub-keys.
+          await query(
+            `UPDATE deal_assumptions
+             SET year1 = jsonb_set(
+               COALESCE(year1, '{}'),
+               ARRAY[$2::text],
+               COALESCE(year1->$2::text, '{}') || jsonb_build_object(
+                 'agent',      $3::numeric,
+                 'resolved',   $3::numeric,
+                 'resolution', $4::text
+               ),
+               true
+             )
+             WHERE deal_id = $1`,
+            [ctx.dealId, year1Key, agentValue, 'agent']
+          );
+          agentWriteCount++;
+        }
+
+        logger.info('[CashflowPostProcess] Agent line-item write-back to deal_assumptions.year1', {
+          dealId: ctx.dealId,
+          runId,
+          written: agentWriteCount,
+          skipped: agentSkippedFields.length,
+          skippedFields: agentSkippedFields,
+        });
+      } catch (agentWriteErr) {
+        logger.warn('[CashflowPostProcess] Agent line-item write-back to year1 failed (non-fatal)', {
+          dealId: ctx.dealId,
+          runId,
+          err: agentWriteErr instanceof Error ? agentWriteErr.message : String(agentWriteErr),
         });
       }
     }

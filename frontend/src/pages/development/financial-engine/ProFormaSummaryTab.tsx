@@ -2421,6 +2421,7 @@ const SRC_BADGE: Record<string, { label: string; color: string }> = {
   t12: { label: 'T-12', color: '#94a3b8' },
   om: { label: 'OM', color: '#f59e0b' },
   override: { label: 'Override', color: '#c084fc' },
+  agent: { label: 'AI', color: '#818cf8' },
   platform_fallback: { label: '—', color: '#475569' },
   unseeded: { label: '—', color: '#475569' },
 };
