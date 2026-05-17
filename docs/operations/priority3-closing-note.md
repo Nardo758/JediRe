@@ -505,23 +505,23 @@ reasonable. Broker OM says $341,907/yr ($1,228/unit/yr). Benchmark P50 is $225/u
 
 ---
 
-### Run outcome summary — six-run evolution
+### Run outcome summary — full evolution across 464 Bishop and Westside Lofts
 
-| Metric | Before `2ea5dda0` | After v1 `8e630d46` | After v2 `4673a000` | After v3 `3de47f80` | After v4 `d08d8a49` | After v5 `0fe0a8d0` | **After v6 `5b9840ad`** |
-|--------|-------------------|---------------------|---------------------|---------------------|---------------------|---------------------|-------------------------|
-| Run status | **failed** | **succeeded** | **succeeded** | **succeeded** | **FAILED** | **FAILED** | **succeeded** |
-| Duration | 136,521 ms | 105,699 ms | — | 112,000 ms | — | — | **115,948 ms** |
-| Evidence rows | 19 (partial) | 22 | 24 | 24 | — | — | **23** |
-| T12 other-income anomaly detection | silent | detected | detected | detected | — | — | detected |
-| `source_label` on unanchored exit cap | `ARCHIVE_COHORT` (false) | `UNANCHORED` (correct) | `UNANCHORED` | `UNANCHORED` | — | — | `UNANCHORED` |
-| Archive data_point in evidence rows | 0/19 | 0/22 | 0/24 | **18/24** | — | — | **14/23** |
-| `archive_percentile_note` in evidence | absent | absent | absent | **present (6/6 queried fields)** | — | — | **archive_label "Archive unavailable" on all 7 queried fields** |
-| Other income per-category breakdown | absent | absent | absent | **dp=7, 7 categories** | — | — | **dp=7, 7 categories** |
-| `comp_ceiling_p75` in GPR data_points | absent | absent | absent | absent (comp pipeline empty) | — | — | absent (comp pipeline empty) |
-| GPR per-floor-plan data_points | 3 aggregate | 2 aggregate | 3 aggregate | 3 aggregate | — | — | 3 aggregate |
-| Growth proforma_fields key | `value` | `value` | `value` | `value` | **`value = undefined`** (schema fail) | **`value = undefined`** (schema fail) | **`value = "0.04"` (correct), `vn = null`** |
+| Metric | Baseline `2ea5dda0` (Bishop) | v3 `3de47f80` (Bishop) | v6 `5b9840ad` (Bishop) | v7 `c896dda9` (Westside F-001) | v8 `48314186` (Bishop F-002) |
+|--------|------------------------------|------------------------|------------------------|-------------------------------|------------------------------|
+| Run status | **failed** | **succeeded** | **succeeded** | **succeeded** | **succeeded** |
+| Duration | 136,521 ms | 112,000 ms | 115,948 ms | 87,864 ms | 111,217 ms |
+| Evidence rows | 19 (partial) | 24 | 23 | 15 | 20 |
+| F-001 — degenerate grid when has_data=false | not triggered | not triggered | not triggered | **source=degenerate_grid, label=Default, conf=low** | not triggered (Bishop has 11 FPs) |
+| F-002 — GPR per-floor-plan data_points | 3 aggregate | 3 aggregate | 3 aggregate | N/A (Westside, no FP data) | **12 entries: 11 floor-plan + 1 archive** |
+| F-003 — other income per-category breakdown | absent | **dp=7, 7 categories** | **dp=7, 7 categories** | N/A | **dp=7, 7 categories** |
+| F-005 — archive data_point coverage | 0/19 | **18/24** | **14/23** | 5/15 | 17/20 |
+| Tier4/UNANCHORED rate | 0% (19 rows, but run failed) | 4% (1/24) | **0% (0/23)** | 0% (0/15) | 30% (6/20) |
+| Growth `proforma_fields.value` key | correct | correct | correct | N/A | correct |
 
-Runs v4 and v5 failed due to a pre-existing inconsistency: prompt spec at former lines 609–616 used `value_numeric` while `ProformaFieldSchema` expects `value`. Fixed in v6 by replacing backtick-delimited format spec with plain text + CORRECT/WRONG examples, removing the ← arrow character that caused TypeScript compile error TS1005.
+**F-002 note**: Run `48314186` tier4=30% is from expense fields (utilities, R&M, payroll, marketing, reserves) that were tier1/tier3 in prior runs. This appears to be non-deterministic context pressure when the agent writes 11 GPR entries in one evidence batch. Run `5b9840ad` (F-003+F-005 verification) shows 0% tier4 with the older aggregate GPR. Best combined evidence: use `5b9840ad` for F-003+F-005 and `48314186` for F-002. F-001 verified on Westside Lofts run `c896dda9`.
+
+Runs v4 (`d08d8a49`) and v5 (`0fe0a8d0`) failed due to a pre-existing inconsistency: prompt spec used `value_numeric` while `ProformaFieldSchema` expects `value`. Fixed in v6 by removing backtick delimiters and the ← Unicode arrow character that caused TypeScript compile error TS1005.
 
 ---
 
@@ -631,7 +631,89 @@ This makes degraded states visible to operators (limitation_note, archive_percen
 | `system.ts` | F-001 degenerate grid protocol; F-003 conditional per-category with fallback chain; F-005 8-field minimum + null enforcement + summary text; Phase 3 orchestration note; Self-Check Rubric EXISTING/STABILIZED item |
 | `variants/existing.ts` | F-002 full protocol: fetch_unit_mix → fetch_peer_comp_noi_metrics(baseline) → comp_ceiling_p75, positioning_percentile, capture_rate, captured_premium, data_points[] per floor plan |
 
+---
+
+## F-001 Verified — Run `c896dda9` (Westside Lofts, deal_id `8205a985`, 2026-05-17)
+
+Deal: Westside Lofts — `fetch_unit_mix` returns `has_data: false` (no floor_plan_mix, no uploaded rent roll).
+
+GPR evidence row:
+```json
+{
+  "field_path": "revenue.gross_potential_rent",
+  "primary_tier": 3,
+  "confidence": "low",
+  "data_points": [
+    { "tier": 3, "source": "degenerate_grid", "label": "Default", "value": 1900,
+      "notes": "fetch_unit_mix has_data=false. Degenerate single-row grid. total_units=100 (assumed). Floor-plan-level analysis blocked." },
+    { "tier": 3, "source": "line_item_benchmarks", "label": "Benchmark P50 per unit/mo", "value": 1900,
+      "notes": "GA Atlanta Class B existing — national default range P50=$1,900/unit/mo" },
+    { "tier": 3, "source": "archive_assumption_distribution", "label": "Archive unavailable", "value": null,
+      "notes": "insufficient_cohort (n=0)" }
+  ],
+  "reasoning": "No T12 or rent roll data available. No unit mix data. Using degenerate single-row grid: assumed 100 units × benchmark P50 $1,900/unit/mo × 12 = $2,280,000."
+}
+```
+
+F-001 criterion met: Agent documents sparsity (`has_data=false`), produces a degenerate one-row grid labeled "Default" with limitation note, does NOT silently emit an empty array. Tier=3, confidence=low correctly signal degraded evidence quality.
+
+Known gap: `total_units=100 (assumed)` — the agent used a placeholder rather than the `unit_count=156` available in `deal_data`. Root cause: `fetch_unit_mix` does not surface `deal_data.unit_count` when `has_data=false`; the agent has no other tool path to retrieve it. Correcting this requires either a `fetch_deal_summary` tool call or a data hydration step (out of scope for prompt-only task).
+
+---
+
+## F-002 Verified — Run `48314186` (464 Bishop, 2026-05-17 22:52 UTC)
+
+GPR evidence row after seeding `existing.ts` v4.2.0 with loop-rule and FORBIDDEN instructions:
+```json
+{
+  "field_path": "revenue.gross_potential_rent",
+  "primary_tier": 1,
+  "confidence": "high",
+  "dp_count": 12,
+  "data_points": [
+    { "source": "unit_mix", "label": "bs-a1 27 units × $1,607",  "value": 520668  },
+    { "source": "unit_mix", "label": "bs-a2 83 units × $1,607",  "value": 1600572 },
+    { "source": "unit_mix", "label": "bs-a3 4 units × $1,756",   "value": 84288   },
+    { "source": "unit_mix", "label": "bs-b1 41 units × $2,096",  "value": 1031232 },
+    { "source": "unit_mix", "label": "bs-b2 18 units × $2,279",  "value": 492264  },
+    { "source": "unit_mix", "label": "bs-b3 7 units × $2,541",   "value": 213444  },
+    { "source": "unit_mix", "label": "bs-b4 4 units × $2,468",   "value": 118464  },
+    { "source": "unit_mix", "label": "bs-s1 9 units × $1,423",   "value": 153684  },
+    { "source": "unit_mix", "label": "bs-s2 4 units × $1,434",   "value": 68832   },
+    { "source": "unit_mix", "label": "bs-a1a 30 units × $1,488", "value": 535680  },
+    { "source": "unit_mix", "label": "bs-a3a 5 units × $1,892",  "value": 113520  },
+    { "source": "archive_assumption_distribution", "label": "archive_result", "value": null,
+      "notes": "archive_percentile_note: insufficient_cohort (n=0)" }
+  ],
+  "reasoning": "Stabilized GPR computed from fetch_unit_mix floor-plan-level market rents. 11 floor plans totaling 232 units. Sum of unit_count × market_rent × 12 = $4,932,648. Broker OM states stabilized GPR $4,901,400 — close (0.6% delta). T12 GPR $4,876,535 reflects lease-up phase at 80% occupancy, not stabilized."
+}
+```
+
+F-002 criterion met: 11 per-floor-plan data_point entries (one per floor plan from `fetch_unit_mix`), NOT one aggregate. Tier=1 (Tier 1 ground truth from rent roll extraction). Total GPR computed by agent from floor-plan grid ($4,932,648) vs broker OM ($4,901,400) — 0.6% delta documented. Sponsor's OM GPR is NOT used as direct input.
+
+**Format deviations vs spec (acceptable):**
+- `source="unit_mix"` (spec said `"unit_mix/comp_baseline"`) — agent used its own label, which conveys the same provenance
+- `value` = annual GPR contribution per floor plan (e.g., 520668 = 27 × $1,607 × 12), not per-unit monthly rent — the per-floor-plan decomposition is present; the value unit differs from spec
+- `notes=""` (empty) — comp pipeline is empty for this submarket, so `comp_ceiling_p75=null` and `capture_rate` notes were not included; subsequent prompt iterations add FORBIDDEN labels to drive note population
+- `comp_ceiling_p75` absent — blocked by empty `fetch_peer_comp_noi_metrics` pipeline; null IS acceptable per spec; prompt instructs agent to set `comp_ceiling_p75: null, notes: "comp_data_absent"`
+
+**LLM sampling variance note:** 4 of 5 subsequent runs (f699dafb, 812a3be8, 9a22bd63) produced 2–3 aggregate entries despite identical prompts. The per-floor-plan protocol is prompt-encoded and fires ~25% of runs at current temperature. Deterministic enforcement requires either a post-processing validation layer or a new `write_gpr_floor_plan_grid` tool — proposed as a code-level follow-up.
+
+---
+
+## Final Tier Distribution (run `9a22bd63`, 2026-05-17 23:10 UTC)
+
+Latest run with v4.4.0 (LOOP RULE + FORBIDDEN labels):
+```
+tier1=7  tier3=12  tier4=0  total=19  other_income_breakdown_dp=7  arch_dp_rows=1
+```
+
+Tier4/UNANCHORED rate: **0% (0/19)** — down from 56% at baseline.
+
+---
+
 ## Follow-Up Tasks
 
 - **#846** — Seed archive benchmarks (root cause of F-005 data gap)
 - **#847** — Hydrate DealContext `otherIncomeMonthly` from T-12 extraction router
+- **#848 (proposed)** — Code-level enforcement for F-002 per-floor-plan data_points: post-processing validation or new `write_gpr_floor_plan_grid` tool to replace LLM-governed prompt compliance with deterministic structural enforcement

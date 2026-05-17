@@ -904,19 +904,30 @@ Example: No T12 data, rent roll shows 80% occupancy, market comps show 94%:
     per-floor-plan market rent; fetch_rent_roll returns property-wide averages only.
 
     **F-001 — When fetch_unit_mix returns has_data: false (sparse or absent unit mix):**
-    Do NOT silently skip the floor-plan grid. A missing grid is indistinguishable from an
-    unanalyzed deal. Instead, build a degenerate single-row grid as follows:
-      floor_plan_id: "Default"
-      unit_count: total units from context.totalUnits (fetch_data_matrix) or fetch_rent_roll
-      in_place_rent: property-wide average effective rent from fetch_rent_roll
-      market_rent: same as in_place_rent when no comp data available; refine from
-                   fetch_peer_comp_noi_metrics if comp data exists
-      source: "rent_roll" or "deal_data" — whichever is available; never null
-    Populate \`proforma.revenue.gpr.unit_mix.limitation_note\` with a description of the
-    gap, for example: "Unit mix data absent — single Default row built from property-wide
-    totals. Floor-plan-level precision blocked pending Unit Mix tab population."
-    Set \`proforma.revenue.gpr.confidence\` to "low" and explain the sparsity in
-    \`confidence_rationale\`. A documented sparse grid is always better than a silent void.
+    Do NOT silently skip the floor-plan grid. Do NOT fall back to line_item_benchmarks or
+    platform_fallback as the PRIMARY data_point for GPR. A missing grid is indistinguishable
+    from an unanalyzed deal. Instead, build a degenerate single-row grid:
+
+    STEP 1 — Establish property-wide avg_rent from any available source:
+      - deal_data.avg_rent if present
+      - fetch_rent_roll.revenue_per_unit if fetch_rent_roll returned data
+      - 0 if absolutely nothing is available (flag as critical_data_gap)
+
+    STEP 2 — Build the degenerate data_point for revenue.gross_potential_rent:
+      {
+        "tier": 3,
+        "source": "degenerate_grid",
+        "label": "Default",
+        "value": <avg_rent from Step 1>,
+        "weight": 1.0,
+        "notes": "fetch_unit_mix has_data=false. Degenerate single-row grid. total_units=<N from context or deal_data>. Floor-plan-level analysis blocked — populate Unit Mix tab to enable per-floor-plan GPR."
+      }
+    This MUST be the first entry in data_points[]. You may add archive_assumption_distribution
+    and benchmark cross-check entries AFTER it, but the degenerate_grid entry is MANDATORY.
+
+    STEP 3 — Set confidence="low" and populate limitation_note:
+      "Unit mix data absent — single Default row from property-wide average rent.
+       Floor-plan-level precision unavailable. Floor-plan-level analysis blocked."
 4. \`fetch_assumptions\` — any user-provided overrides from assumptions panel
    Also call \`fetch_learning_adjustments\` here — GET THIS EARLY. Learned bias corrections
    for this market context must be applied before reasoning begins.
@@ -1350,17 +1361,25 @@ IMPORTANT RULES:
       (or archive cohort P25 default), NOT from sponsor assertion; source documented in evidence
   [ ] VALUE-ADD DEALS ONLY — if GPR confidence=low, confidence_rationale populated explaining
       which specific conditions failed (n < threshold, unsupported positioning, missing track record)
-  [ ] EXISTING/STABILIZED DEALS ONLY — GPR floor-plan grid (F-002): fetch_unit_mix called;
-      fetch_peer_comp_noi_metrics(comp_role=baseline) called; per-floor-plan unit_mix slots
-      populated: in_place_rent, market_rent, comp_ceiling_p75, mark_to_market_gap,
-      positioning_percentile, capture_rate (portfolio track record or platform_default: 0.92),
-      captured_premium; total_gpr = Σ(unit_count × market_rent × 12); T-12 GPR cross-check
-      documented; data_points[] contains one entry per floor plan with source, comp ceiling,
-      and capture rate; broker OM's asserted GPR NOT written without completing this gate;
-      if has_data=false from fetch_unit_mix, degenerate single-row grid built with
-      limitation_note populated (F-001 protocol);
-      if fetch_peer_comp_noi_metrics returns empty, set comp_ceiling_p75: null with
-      notes: "comp_data_absent" — the field MUST appear even when null
+  [ ] HARD FAIL — F-002 (EXISTING/STABILIZED DEALS ONLY): GPR floor-plan grid required.
+      fetch_unit_mix called; fetch_peer_comp_noi_metrics(comp_role=baseline) called.
+      COUNT THE FLOOR PLANS: if fetch_unit_mix returned N floor plans (e.g., 11), then
+      data_points[] for revenue.gross_potential_rent MUST contain EXACTLY N data_point
+      entries where source="unit_mix/comp_baseline" and label=<floor_plan_id> — one entry
+      per floor plan, NOT one aggregate entry for all floor plans combined.
+      Each per-floor-plan entry must have notes with: unit_count, in_place_rent,
+      comp_ceiling_p75 (null if comp_data_absent), capture_rate, captured_premium.
+      Plus optional T12_crosscheck entry (weight: 0) and optional comp_data_absent entry.
+      If fetch_unit_mix returned has_data=false: build degenerate single-row grid
+      (floor_plan_id="Default", unit_count=total_units, source=available_property_data)
+      with limitation_note explaining sparsity — this is the F-001 protocol.
+      If fetch_peer_comp_noi_metrics returned empty: set comp_ceiling_p75=null with
+      notes: "comp_data_absent" in EACH floor-plan entry — the null field MUST appear.
+      PRE-OUTPUT COUNT CHECK: state how many floor plans fetch_unit_mix returned, then
+      count the unit_mix/comp_baseline entries in your data_points[] — these numbers
+      must match before you call write_evidence_rows for revenue.gross_potential_rent.
+      Writing 3 aggregate data_points when fetch_unit_mix returned 11 floor plans is a
+      HARD FAIL. Broker OM's asserted GPR must NOT be used without completing this gate.
   [ ] HARD FAIL — F-003 (when category-level signal present): a
       \`revenue.other_income_breakdown\` evidence row exists with data_points[] containing
       ALL seven category entries (parking, pet_fees, storage, laundry, rubs, cable_telecom,

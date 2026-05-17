@@ -73,30 +73,52 @@ the mechanics differ as described below.
      flag as risk in the evidence.
 
 5. **Populate \`data_points[]\` for this analysis** in the evidence row for
-   \`revenue.gross_potential_rent\`. Each floor plan from fetch_unit_mix MUST have its own
-   data_point entry. DO NOT aggregate floor plans. If there are 11 floor plans, data_points
-   MUST have at least 11 entries.
+   \`revenue.gross_potential_rent\`.
 
-   Exact format per floor plan:
-   \`{ tier: 1, source: "unit_mix/comp_baseline", label: "<floor_plan_id>",
-      value: <market_rent_monthly_per_unit>, weight: <unit_count/total_units>,
-      notes: "unit_count=<N>, in_place_rent=<X>, comp_ceiling_p75=<Y or null if comp_absent>,
-              capture_rate=<Z>, captured_premium=<annual_$>" }\`
+   LOOP RULE — one data_point object per floor plan, written separately:
+   Treat this as a for-loop. For every floor_plan_id returned by fetch_unit_mix, you MUST
+   create a SEPARATE object in the data_points array with label = that floor_plan_id.
+   Pseudo-code:
+     for fp in fetch_unit_mix.floor_plans:         // N iterations for N floor plans
+       data_points.push({
+         source: "unit_mix/comp_baseline",
+         label: fp.id,                             // e.g., "bs-a1" NOT "all floor plans"
+         value: fp.market_rent,                    // $/unit/month for THIS floor plan only
+         weight: fp.unit_count / total_units,
+         notes: "unit_count="+fp.unit_count+", in_place_rent="+fp.in_place_rent+
+                ", comp_ceiling_p75="+comp_p75_or_null+", capture_rate="+rate+
+                ", captured_premium="+premium
+       })
+   FORBIDDEN: Packing the full breakdown into the notes of a single aggregated entry.
+   FORBIDDEN: "Per-floor-plan market rent aggregation" as a label — that is one aggregate.
+   FORBIDDEN: Writing fewer data_point objects than the number of floor plans returned.
 
-   CONCRETE EXAMPLE for 3-floor-plan deal:
+   CONCRETE EXAMPLE — 5-floor-plan deal (fetch_unit_mix returned fp-s1, fp-a1, fp-a2, fp-b1, fp-b2):
    data_points: [
-     { tier: 1, source: "unit_mix/comp_baseline", label: "1BR/1BA",
-       value: 1540, weight: 0.50,
-       notes: "unit_count=116, in_place_rent=1440, comp_ceiling_p75=null (comp_data_absent),
-               capture_rate=0.92 (platform_default), captured_premium=110592" },
-     { tier: 1, source: "unit_mix/comp_baseline", label: "2BR/2BA",
-       value: 2025, weight: 0.50,
-       notes: "unit_count=116, in_place_rent=1980, comp_ceiling_p75=null (comp_data_absent),
-               capture_rate=0.92 (platform_default), captured_premium=49824" },
-     { tier: 1, source: "t12", label: "T12_crosscheck",
-       value: 4876535, weight: 0,
-       notes: "T12 GPR annualized cross-check; 1.1% below comp-validated grid — within tolerance" }
+     { "tier": 1, "source": "unit_mix/comp_baseline", "label": "fp-s1",
+       "value": 1200, "weight": 0.086,
+       "notes": "unit_count=20, in_place_rent=1150, comp_ceiling_p75=null (comp_data_absent), capture_rate=0.92 (platform_default), captured_premium=11520" },
+     { "tier": 1, "source": "unit_mix/comp_baseline", "label": "fp-a1",
+       "value": 1540, "weight": 0.345,
+       "notes": "unit_count=80, in_place_rent=1440, comp_ceiling_p75=null (comp_data_absent), capture_rate=0.92 (platform_default), captured_premium=88320" },
+     { "tier": 1, "source": "unit_mix/comp_baseline", "label": "fp-a2",
+       "value": 1680, "weight": 0.259,
+       "notes": "unit_count=60, in_place_rent=1580, comp_ceiling_p75=null (comp_data_absent), capture_rate=0.92 (platform_default), captured_premium=66240" },
+     { "tier": 1, "source": "unit_mix/comp_baseline", "label": "fp-b1",
+       "value": 2025, "weight": 0.172,
+       "notes": "unit_count=40, in_place_rent=1960, comp_ceiling_p75=null (comp_data_absent), capture_rate=0.92 (platform_default), captured_premium=28704" },
+     { "tier": 1, "source": "unit_mix/comp_baseline", "label": "fp-b2",
+       "value": 2400, "weight": 0.138,
+       "notes": "unit_count=32, in_place_rent=2300, comp_ceiling_p75=null (comp_data_absent), capture_rate=0.92 (platform_default), captured_premium=35328" },
+     { "tier": 1, "source": "t12", "label": "T12_crosscheck",
+       "value": 4876535, "weight": 0,
+       "notes": "T12 GPR annualized; total_gpr from grid=4876535; 0.0% delta — aligned" },
+     { "tier": 3, "source": "comp_baseline", "label": "comp_data_absent",
+       "value": null, "weight": 0,
+       "notes": "fetch_peer_comp_noi_metrics returned no comp data for this submarket" }
    ]
+   NOTE: 5 floor plans → 5 "unit_mix/comp_baseline" entries. Each entry has its OWN label.
+   If fetch_unit_mix returned 11 floor plans, your data_points must have 11 such entries.
 
    If fetch_peer_comp_noi_metrics returned comp data, replace null with actual P75 values.
 
