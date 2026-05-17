@@ -276,4 +276,124 @@ describe('AgentRuntime codepath symmetry', () => {
       await expect(done).resolves.toBeDefined();
     });
   });
+
+  // ── P4-01 regression (Task #831) — dataPreamble symmetry ─────────────────────
+  // Root cause: RunContext.dataPreamble was applied in _continueRun() but was
+  // silently dropped in run(). Any synchronous REST-triggered run that supplied
+  // a dataPreamble would execute with an incomplete system prompt.
+  //
+  // These tests intercept the system parameter passed to the LLM adapter and
+  // verify it contains the preamble in BOTH execution paths. If dataPreamble is
+  // ever removed from one path again, one of these tests will fail.
+
+  describe('dataPreamble prepend symmetry (P4-01 regression)', () => {
+    const PREAMBLE = '## Extracted Deal Data\nPurchase Price: $12,500,000\nUnits: 120';
+    const BASE_PROMPT = 'You are a test agent. Always respond with {"ok":true}.';
+
+    // ── Shared helper: captures `system` arg from LLM adapter call ───────────
+    // Creates a fresh mock whose createMessage captures every system string seen.
+    function makeCapturingMock(): { capturedSystems: string[]; mockImpl: ReturnType<typeof vi.fn> } {
+      const capturedSystems: string[] = [];
+      const mockImpl = vi.fn().mockImplementation(async (params: { system: string }) => {
+        capturedSystems.push(params.system);
+        return {
+          id: 'msg-preamble-test',
+          model: 'claude-3-5-haiku-20241022',
+          content: [{ type: 'text', text: '{"ok":true}' }],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 5, output_tokens: 5, cost_usd: 0 },
+        };
+      });
+      return { capturedSystems, mockImpl };
+    }
+
+    it('run() prepends dataPreamble to system prompt', async () => {
+      const { MeteringAdapter } = await import('../MeteringAdapter');
+      const { capturedSystems, mockImpl } = makeCapturingMock();
+      vi.mocked(MeteringAdapter).mockImplementation(() => ({ createMessage: mockImpl }) as any);
+
+      const rec = makeRecorder();
+      const config: AgentConfig = {
+        ...makeConfig(rec),
+        modelName: 'claude-3-5-haiku-20241022' as AgentConfig['modelName'],
+      };
+      const runtime = new AgentRuntime(config, null, rec.budget);
+      await runtime.run({}, { ...ctx, dataPreamble: PREAMBLE, systemPromptOverride: BASE_PROMPT });
+
+      expect(capturedSystems.length).toBeGreaterThan(0);
+      const system = capturedSystems[0];
+      expect(system).toContain(PREAMBLE);
+      expect(system).toContain(BASE_PROMPT);
+      expect(system.indexOf(PREAMBLE)).toBeLessThan(system.indexOf(BASE_PROMPT));
+    });
+
+    it('startAsync() prepends dataPreamble to system prompt', async () => {
+      const { MeteringAdapter } = await import('../MeteringAdapter');
+      const { capturedSystems, mockImpl } = makeCapturingMock();
+      vi.mocked(MeteringAdapter).mockImplementation(() => ({ createMessage: mockImpl }) as any);
+
+      const rec = makeRecorder();
+      const config: AgentConfig = {
+        ...makeConfig(rec),
+        modelName: 'claude-3-5-haiku-20241022' as AgentConfig['modelName'],
+      };
+      const runtime = new AgentRuntime(config, null, rec.budget);
+      const { done } = await runtime.startAsync({}, { ...ctx, dataPreamble: PREAMBLE, systemPromptOverride: BASE_PROMPT });
+      await done;
+
+      expect(capturedSystems.length).toBeGreaterThan(0);
+      const system = capturedSystems[0];
+      expect(system).toContain(PREAMBLE);
+      expect(system).toContain(BASE_PROMPT);
+      expect(system.indexOf(PREAMBLE)).toBeLessThan(system.indexOf(BASE_PROMPT));
+    });
+
+    it('both paths produce identical effective system prompt when dataPreamble is set', async () => {
+      const { MeteringAdapter } = await import('../MeteringAdapter');
+
+      const syncCapture = makeCapturingMock();
+      vi.mocked(MeteringAdapter).mockImplementation(() => ({ createMessage: syncCapture.mockImpl }) as any);
+      const rec1 = makeRecorder();
+      await new AgentRuntime(
+        { ...makeConfig(rec1), modelName: 'claude-3-5-haiku-20241022' as AgentConfig['modelName'] },
+        null, rec1.budget
+      ).run({}, { ...ctx, dataPreamble: PREAMBLE, systemPromptOverride: BASE_PROMPT });
+
+      const asyncCapture = makeCapturingMock();
+      vi.mocked(MeteringAdapter).mockImplementation(() => ({ createMessage: asyncCapture.mockImpl }) as any);
+      const rec2 = makeRecorder();
+      const { done } = await new AgentRuntime(
+        { ...makeConfig(rec2), modelName: 'claude-3-5-haiku-20241022' as AgentConfig['modelName'] },
+        null, rec2.budget
+      ).startAsync({}, { ...ctx, dataPreamble: PREAMBLE, systemPromptOverride: BASE_PROMPT });
+      await done;
+
+      expect(syncCapture.capturedSystems[0]).toBe(asyncCapture.capturedSystems[0]);
+    });
+
+    it('omitting dataPreamble leaves system prompt unchanged in both paths', async () => {
+      const { MeteringAdapter } = await import('../MeteringAdapter');
+      const { capturedSystems, mockImpl } = makeCapturingMock();
+      vi.mocked(MeteringAdapter).mockImplementation(() => ({ createMessage: mockImpl }) as any);
+
+      const rec = makeRecorder();
+      const config: AgentConfig = {
+        ...makeConfig(rec),
+        modelName: 'claude-3-5-haiku-20241022' as AgentConfig['modelName'],
+      };
+      const ctxNoPreamble = { ...ctx, systemPromptOverride: BASE_PROMPT };
+
+      await new AgentRuntime(config, null, rec.budget).run({}, ctxNoPreamble);
+      expect(capturedSystems[0]).toBe(BASE_PROMPT);
+
+      const asyncCapture = makeCapturingMock();
+      vi.mocked(MeteringAdapter).mockImplementation(() => ({ createMessage: asyncCapture.mockImpl }) as any);
+      const rec2 = makeRecorder();
+      const { done } = await new AgentRuntime(
+        { ...config }, null, rec2.budget
+      ).startAsync({}, ctxNoPreamble);
+      await done;
+      expect(asyncCapture.capturedSystems[0]).toBe(BASE_PROMPT);
+    });
+  });
 });

@@ -1,0 +1,328 @@
+{
+  "audit": "Type-Runtime Consistency Audit (Task #831)",
+  "produced_at": "2026-05-17",
+  "auditor": "automated — Task #831",
+  "scope": [
+    "backend/src/agents/runtime/AgentRuntime.ts",
+    "backend/src/agents/cashflow.config.ts",
+    "backend/src/agents/zoning.config.ts",
+    "backend/src/agents/supply.config.ts",
+    "backend/src/agents/research.config.ts",
+    "backend/src/agents/commentary.config.ts",
+    "backend/src/agents/cashflow.postprocess.ts",
+    "backend/src/services/neural-network/data-matrix.service.ts",
+    "backend/src/services/proforma-seeder.service.ts",
+    "backend/src/services/proforma-adjustment.service.ts"
+  ],
+  "legend": {
+    "severity": {
+      "critical": "Causes silent data loss or incorrect agent output on a production code path today",
+      "major": "Causes incorrect behaviour under documented usage conditions; no immediate data loss but reliability risk",
+      "minor": "Degraded experience or dead code; no incorrect data",
+      "informational": "Observation only; no change required"
+    },
+    "status": {
+      "fixed": "Remediation applied in Task #831",
+      "deferred": "Known; remediation tracked in separate ticket",
+      "pre-fixed": "Already addressed in Task #824 / PR 1 / PR 2 before this audit ran",
+      "accepted": "Risk reviewed and accepted; no action taken",
+      "open": "Requires follow-on ticket"
+    }
+  },
+
+  "phase_1_field_declaration_vs_runtime": {
+    "description": "For each declared field in core interfaces, verify at least one production code path assigns it.",
+    "findings": [
+      {
+        "id": "P1-01",
+        "title": "dataPreamble declared in RunContext but never applied in run()",
+        "file": "backend/src/agents/runtime/AgentRuntime.ts",
+        "lines": { "declaration": 88, "applied_in_continue_run": 420, "missing_in_run": 540 },
+        "divergence_proof": "_continueRun() at line 420 prepends ctx.dataPreamble to the system prompt. run() at line 540 loads the prompt then immediately creates ctxWithRun without the prepend. Any synchronous caller (REST-triggered runs via cashflow-underwriting.routes.ts) that passes dataPreamble gets an agent that never sees the preamble.",
+        "severity": "critical",
+        "blast_radius": "All synchronous run() callers that supply dataPreamble lose the deal-context preamble silently. The agent still runs but with a weaker system prompt — evidence quality and field coverage degrade.",
+        "remediation": "Add `if (ctx.dataPreamble) { systemPrompt = ctx.dataPreamble + '\\n\\n---\\n\\n' + systemPrompt; }` in run() immediately after prompt loading, mirroring _continueRun() line 420.",
+        "status": "fixed",
+        "fix_commit_note": "Applied in Task #831 — added dataPreamble prepend block at line 545 of AgentRuntime.ts"
+      },
+      {
+        "id": "P1-02",
+        "title": "floorPlanMix declared in DataMatrix type but not hydrated at runtime",
+        "file": "backend/src/services/neural-network/data-matrix.service.ts",
+        "lines": { "declaration": 252, "hydration": null },
+        "divergence_proof": "rentRoll.floorPlanMix declared at line 252 of the DataMatrix type. Prior to Task #829 the field was never populated; all consumers received undefined.",
+        "severity": "major",
+        "blast_radius": "GPR floor-plan-level evidence tier degraded to Tier 2/3; value-add deals could not produce per-floor-plan rent evidence.",
+        "remediation": "Populate from rent_roll.floor_plan_mix in DataMatrixService. Implemented in Task #829 (PR 1).",
+        "status": "pre-fixed"
+      },
+      {
+        "id": "P1-03",
+        "title": "otherIncomeMonthly declared in DataMatrix type but not mapped in hydration",
+        "file": "backend/src/services/neural-network/data-matrix.service.ts",
+        "lines": { "declaration": 255, "source_available": 449, "mapped_at": null },
+        "divergence_proof": "rent_roll.other_income_monthly is fetched and available in the rent-roll query result (line 449) but was never mapped to the DataMatrix otherIncomeMonthly field, so agents could not read it as Tier 1 other income.",
+        "severity": "major",
+        "blast_radius": "Other income line defaulted to Tier 2/3 benchmarks even when T-12 extraction had per-category actuals.",
+        "remediation": "Map rent_roll.other_income_monthly → DataMatrix.otherIncomeMonthly in DataMatrixService. Implemented in Task #829 (PR 1).",
+        "status": "pre-fixed"
+      }
+    ]
+  },
+
+  "phase_2_tool_registration_vs_invocation": {
+    "description": "For each tool registered in agent configs, verify whether it is referenced in any system prompt or production invocation path.",
+    "methodology": "Cross-referenced cashflow.config.ts tools array against backend/src/agents/prompts/cashflow/system.ts (1546-line prompt, 148 tool references).",
+    "findings": [
+      {
+        "id": "P2-01",
+        "title": "generate_roadmap registered in cashflow.config.ts but absent from system prompt",
+        "file": "backend/src/agents/cashflow.config.ts",
+        "lines": { "registration": 439, "prompt_reference": null },
+        "classification": "prompt-orphaned",
+        "divergence_proof": "grep for 'generate_roadmap' in backend/src/agents/prompts/cashflow/system.ts returns 0 results. The tool is registered at line 439 of cashflow.config.ts but the agent has no instruction for when or how to call it.",
+        "severity": "minor",
+        "blast_radius": "Model may spontaneously call generate_roadmap without structured guidance, producing inconsistent roadmap output; or it may never call it. Neither case causes data corruption.",
+        "remediation": "Either add a Roadmap Mode section to system.ts describing when the agent should call generate_roadmap (preferred) or remove it from the config until the mode is implemented.",
+        "status": "open",
+        "follow_on_ticket": "Required — add to backlog"
+      },
+      {
+        "id": "P2-02",
+        "title": "read_gmail_thread registered in cashflow.config.ts but absent from system prompt",
+        "file": "backend/src/agents/cashflow.config.ts",
+        "lines": { "registration": 430, "prompt_reference": null },
+        "classification": "prompt-orphaned",
+        "divergence_proof": "grep for 'read_gmail_thread' in backend/src/agents/prompts/cashflow/system.ts returns 0 results.",
+        "severity": "minor",
+        "blast_radius": "Tool is effectively dead in the cashflow agent. Model will not call it unless it hallucinates the name. No data corruption risk.",
+        "remediation": "Document as intentionally dormant with a comment in cashflow.config.ts (e.g. 'available for deal-intake mode; not referenced in standard underwriting prompt') or remove from config.",
+        "status": "open",
+        "follow_on_ticket": "Required — add to backlog"
+      },
+      {
+        "id": "P2-03",
+        "title": "goal_seek_target_irr registered in cashflow.config.ts but absent from system prompt",
+        "file": "backend/src/agents/cashflow.config.ts",
+        "lines": { "registration": 423, "prompt_reference": null },
+        "classification": "prompt-orphaned",
+        "divergence_proof": "grep for 'goal_seek' or 'goal-seek' in system.ts returns 0 results. Only evaluate_plausibility (the companion tool) is mentioned at line 794.",
+        "severity": "minor",
+        "blast_radius": "Agent will not goal-seek even on runs that call evaluate_plausibility and get a plausibility failure — the recovery path is incomplete.",
+        "remediation": "Add goal_seek_target_irr to the evaluate_plausibility section of system.ts as the optional follow-on when plausibility score is below threshold.",
+        "status": "open",
+        "follow_on_ticket": "Required — add to backlog"
+      },
+      {
+        "id": "P2-04",
+        "title": "All other cashflow tools are actively referenced in system prompt",
+        "file": "backend/src/agents/cashflow.config.ts",
+        "classification": "actively-invoked",
+        "divergence_proof": "32 of 35 registered cashflow tools found by name in system.ts (148 tool reference occurrences). No other tools are orphaned.",
+        "severity": "informational",
+        "status": "accepted"
+      },
+      {
+        "id": "P2-05",
+        "title": "All tools in zoning, supply, research, commentary configs are prompt-referenced",
+        "classification": "actively-invoked",
+        "divergence_proof": "All tools in zoning.config.ts (7), supply.config.ts (8), research.config.ts (22), commentary.config.ts (7) were confirmed referenced in their respective system prompts or as standard-platform tools (fetchDataMatrix, webSearch, fetchWebpage).",
+        "severity": "informational",
+        "status": "accepted"
+      }
+    ]
+  },
+
+  "phase_3_jsonb_read_write_asymmetry": {
+    "description": "For each JSONB column, map read paths (what consumers expect) against write paths (what producers actually write). Flag missing COALESCE guards and full-replace UPDATE patterns.",
+    "findings": [
+      {
+        "id": "P3-01",
+        "title": "proforma-seeder setFieldOverride() uses full-replace UPDATE on deal_assumptions.year1",
+        "file": "backend/src/services/proforma-seeder.service.ts",
+        "lines": { "update": 1346 },
+        "divergence_proof": "Line 1346: `UPDATE deal_assumptions SET year1 = $2::jsonb WHERE deal_id = $1` replaces the entire year1 JSONB column with a re-serialised in-memory object. Any agent-written sub-keys (agent, resolution, resolved) that were set by cashflow.postprocess.ts write-back (lines 438-452) but were not in the seeder's in-memory seed will be silently clobbered the next time any operator override is saved.",
+        "severity": "major",
+        "blast_radius": "Agent write-back values in year1 are lost on the next operator override save. Affects all fields in AGENT_FIELD_TO_YEAR1 (16 fields). The agent's contributions remain in deal_underwriting_snapshots (the snapshot is not clobbered) so they are recoverable, but the live F9 grid will show platform defaults instead of agent values after any override.",
+        "remediation": "Replace the full-replace UPDATE with per-field jsonb_set calls that merge agent sub-keys rather than overwriting the whole column, or reload year1 from the DB immediately before re-serializing so in-flight agent writes are included.",
+        "status": "deferred",
+        "deferred_rationale": "Scope deferred from Task #824. Requires careful migration path to avoid race conditions between operator saves and agent write-backs. Tracked as a separate backlog item."
+      },
+      {
+        "id": "P3-02",
+        "title": "cashflow.postprocess.ts math-correction write-back uses safe path — clean",
+        "file": "backend/src/agents/cashflow.postprocess.ts",
+        "lines": { "jsonb_set": [280, 288] },
+        "divergence_proof": "Uses `jsonb_set(COALESCE(year1, '{}'), ARRAY[$2::text, 'resolved'], to_jsonb($3::numeric), true)` — COALESCE guards null column, create_missing=true creates intermediate keys, ARRAY path is single-level plus 'resolved'. Fully safe.",
+        "severity": "informational",
+        "status": "accepted"
+      },
+      {
+        "id": "P3-03",
+        "title": "cashflow.postprocess.ts agent write-back uses merge-concat — clean",
+        "file": "backend/src/agents/cashflow.postprocess.ts",
+        "lines": { "jsonb_set": [440, 452] },
+        "divergence_proof": "Uses `jsonb_set(COALESCE(year1, '{}'), ARRAY[$2::text], COALESCE(year1->$2::text, '{}') || jsonb_build_object(...), true)` — concatenation (||) merges only the three agent sub-keys into the existing LayeredValue envelope. Preserves t12/broker/platform layers. Fully safe.",
+        "severity": "informational",
+        "status": "accepted"
+      },
+      {
+        "id": "P3-04",
+        "title": "proforma-adjustment.service.ts unit_mix and unit_mix_overrides use COALESCE — clean",
+        "file": "backend/src/services/proforma-adjustment.service.ts",
+        "lines": { "jsonb_set": [4968, 4973, 4988, 4993, 5006] },
+        "divergence_proof": "All three unit_mix_overrides write paths use `COALESCE(unit_mix_overrides, '{}')` and `COALESCE(unit_mix, '[]')`. Path is single-level array index + field name. No intermediate key creation needed. Fully safe.",
+        "severity": "informational",
+        "status": "accepted"
+      },
+      {
+        "id": "P3-05",
+        "title": "deal-assumptions.routes.ts M22 capex_schedule uses nested jsonb_set correctly — clean",
+        "file": "backend/src/api/rest/deal-assumptions.routes.ts",
+        "lines": { "jsonb_set": [1898, 1907] },
+        "divergence_proof": "Correctly builds intermediate keys one level at a time: outer jsonb_set creates capex_schedule, inner jsonb_set creates floor_plan_costs[plan_id]. Pattern matches the fix applied in Task #824 for the missing-intermediate-key class.",
+        "severity": "informational",
+        "status": "accepted"
+      },
+      {
+        "id": "P3-06",
+        "title": "All per_year_overrides jsonb_set calls in proforma-adjustment.service.ts use COALESCE — clean",
+        "file": "backend/src/services/proforma-adjustment.service.ts",
+        "lines": { "jsonb_set": [5108, 5159, 5190, 5245, 5271, 5297, 5324, 5379, 5405, 5571] },
+        "divergence_proof": "All 10 per_year_overrides update sites use `COALESCE(per_year_overrides, '{}')`. No missing-intermediate-key risk on any of these calls.",
+        "severity": "informational",
+        "status": "accepted"
+      }
+    ]
+  },
+
+  "phase_4_conditional_invocation_patterns": {
+    "description": "Grep for if (this.config.<name>) and similar patterns across AgentRuntime and postprocess layers. Verify each conditional is set consistently across all entry points.",
+    "findings": [
+      {
+        "id": "P4-01",
+        "title": "dataPreamble conditional: applied in _continueRun() but absent from run()",
+        "file": "backend/src/agents/runtime/AgentRuntime.ts",
+        "lines": { "applied_in_continue_run": 420, "missing_in_run": 540 },
+        "divergence_proof": "_continueRun() lines 419-422: `if (ctxWithRun.dataPreamble) { systemPrompt = ctxWithRun.dataPreamble + '\\n\\n---\\n\\n' + systemPrompt; }`. run() lines 527-545: loads system prompt and proceeds directly to loop() construction with no dataPreamble check. The RunContext type declares dataPreamble as optional at types.ts line 88, but only the async entry point honours it.",
+        "severity": "critical",
+        "blast_radius": "Any synchronous caller (REST-triggered underwriting runs) that injects dataPreamble loses it silently. The agent runs but with an incomplete system prompt.",
+        "remediation": "Add the same dataPreamble prepend block in run() immediately after prompt loading, mirroring the _continueRun() pattern.",
+        "status": "fixed",
+        "fix_commit_note": "Applied in Task #831 — lines 545-552 of AgentRuntime.ts"
+      },
+      {
+        "id": "P4-02",
+        "title": "postProcess conditional: symmetric between run() and _continueRun()",
+        "file": "backend/src/agents/runtime/AgentRuntime.ts",
+        "lines": { "run": 562, "continue_run": 428 },
+        "divergence_proof": "Both paths check `if (this.config.postProcess)` before invoking. Set-equality verified by runtime-symmetry.test.ts (Task #827).",
+        "severity": "informational",
+        "status": "accepted"
+      },
+      {
+        "id": "P4-03",
+        "title": "firstToolCall conditional: only applied on loop step i=0 — intended",
+        "file": "backend/src/agents/runtime/AgentRuntime.ts",
+        "lines": { "loop": 629 },
+        "divergence_proof": "`i === 0 && this.config.firstToolCall` correctly restricts forcing to the first turn. Applies symmetrically inside the shared loop() helper used by both run() and _continueRun().",
+        "severity": "informational",
+        "status": "accepted"
+      },
+      {
+        "id": "P4-04",
+        "title": "commentaryPostProcess: missing-field fills use try/catch isolation — safe",
+        "file": "backend/src/agents/commentary.postprocess.ts",
+        "lines": { "fetch_data_matrix_read": 44, "entity_type_fill": 70 },
+        "divergence_proof": "Each fill block is wrapped in try/catch with a logger.warn fallback. Field fills are safe even if DB read fails. No silent failures.",
+        "severity": "informational",
+        "status": "accepted"
+      }
+    ]
+  },
+
+  "phase_5_silent_db_operations": {
+    "description": "Audit jsonb_set calls (COALESCE guards), UPDATE statements without RETURNING/row-count checks, and SET col = jsonb_set(...) patterns where null could wipe a column.",
+    "findings": [
+      {
+        "id": "P5-01",
+        "title": "write_dealcontext uses model-supplied input.deal_id instead of ctx.dealId",
+        "file": "backend/src/agents/tools/write_dealcontext.ts",
+        "lines": { "deal_id_source": 87 },
+        "divergence_proof": "write_dealcontext.ts line 87 uses `input.deal_id` (Zod-validated UUID from model output) while every other write tool (write_projection line 77, write_supply_analysis line 78, write_zoning_analysis line 72, write_underwriting) uses `ctx.dealId`. If the model hallucinates or repeats an incorrect deal UUID, the tool writes silently to the wrong deal.",
+        "severity": "major",
+        "blast_radius": "Research agent could write structured fields to the wrong deal. Existing Zod validation (z.string().uuid()) ensures it is a valid UUID format but not that it matches the current run's deal.",
+        "remediation": "Add a guard: if `input.deal_id !== ctx.dealId` emit a logger.warn and optionally fall back to ctx.dealId. CLAUDE.md documents the write_dealcontext exception (uses input.deal_id by design for flexibility) — the guard preserves flexibility while adding an audit trail for mismatches.",
+        "status": "open",
+        "follow_on_ticket": "Required — add to backlog"
+      },
+      {
+        "id": "P5-02",
+        "title": "proforma-seeder setFieldOverride() full-replace UPDATE has no affected-rows check",
+        "file": "backend/src/services/proforma-seeder.service.ts",
+        "lines": { "update": 1346 },
+        "divergence_proof": "Line 1346: `UPDATE deal_assumptions SET year1 = $2::jsonb WHERE deal_id = $1` — no RETURNING clause, no check on rowCount. If deal_id doesn't exist the update silently no-ops. The caller does not detect this.",
+        "severity": "minor",
+        "blast_radius": "Low in practice — setFieldOverride is invoked from the override API which validates the deal exists first. But silent no-ops on stale/deleted deals are not surfaced to the operator.",
+        "remediation": "Add a rowCount check after the query: if rowCount === 0, throw or log a warning. Also add RETURNING deal_id if further processing depends on confirmation.",
+        "status": "open",
+        "follow_on_ticket": "Low priority — add to backlog"
+      },
+      {
+        "id": "P5-03",
+        "title": "cashflow.postprocess.ts agent write-back: per-field try/catch with explicit logging — safe",
+        "file": "backend/src/agents/cashflow.postprocess.ts",
+        "lines": { "per_field_catch": 454, "outer_catch": 473 },
+        "divergence_proof": "Each of the 16 AGENT_FIELD_TO_YEAR1 writes is wrapped in its own try/catch. Failures are logged to logger.warn with field name. Outer try/catch also present. Intentionally non-fatal.",
+        "severity": "informational",
+        "status": "accepted"
+      },
+      {
+        "id": "P5-04",
+        "title": "All platform-wide jsonb_set calls use COALESCE on target column — safe (P3-01 excepted)",
+        "divergence_proof": "Reviewed 36 jsonb_set call sites across proforma-adjustment.service.ts, cashflow.postprocess.ts, deal-assumptions.routes.ts, unit-mix-propagation.service.ts, unitMixIntelligence.service.ts, traffic-analytics.service.ts, financials-composer.service.ts, concession-environment-engine.ts, email-news-extraction.service.ts, gmail-sync.service.ts, and rent-roll-diff.service.ts. All use COALESCE(column, '{}') or COALESCE(column, '[]') on the target. The only exception is P3-01 (proforma-seeder full-replace) which does not use jsonb_set at all.",
+        "severity": "informational",
+        "status": "accepted"
+      }
+    ]
+  },
+
+  "phase_6_regression_test": {
+    "description": "Regression test added for the most common divergence class: RunContext fields that are conditionally applied in _continueRun() but were absent from run().",
+    "test_file": "backend/src/agents/runtime/__tests__/runtime-symmetry.test.ts",
+    "test_cases_added": [
+      "dataPreamble is prepended to system prompt in run() — verifies P4-01 fix",
+      "dataPreamble is prepended to system prompt in startAsync() — verifies existing behaviour remains",
+      "dataPreamble prepend produces identical effective prompt in both paths — set-equality guard"
+    ],
+    "rationale": "The dataPreamble asymmetry is the same pattern class as the postProcess asymmetry fixed in Task #824. The existing hook-count set-equality invariant does not catch prompt-content divergences (it only counts hook invocations). The new tests directly inspect what system prompt the LLM adapter receives, closing the gap.",
+    "status": "complete"
+  },
+
+  "summary": {
+    "total_findings": 18,
+    "by_severity": {
+      "critical": 2,
+      "major": 3,
+      "minor": 2,
+      "informational": 11
+    },
+    "by_status": {
+      "fixed": 2,
+      "deferred": 1,
+      "pre-fixed": 2,
+      "accepted": 11,
+      "open": 3
+    },
+    "critical_findings_fixed": ["P1-01 / P4-01 — dataPreamble asymmetry in run()"],
+    "critical_findings_deferred": [],
+    "open_follow_on_tickets_required": [
+      "P2-01 — generate_roadmap: add Roadmap Mode section to cashflow system.ts or remove from config",
+      "P2-02 — read_gmail_thread: document as dormant or remove from cashflow config",
+      "P2-03 — goal_seek_target_irr: add to evaluate_plausibility section of system.ts",
+      "P3-01 — proforma-seeder full-replace UPDATE: replace with merge-safe per-field writes (already deferred from Task #824)",
+      "P5-01 — write_dealcontext: add deal_id mismatch guard vs ctx.dealId",
+      "P5-02 — proforma-seeder setFieldOverride: add affected-rows check"
+    ]
+  }
+}

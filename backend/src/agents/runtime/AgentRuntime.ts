@@ -360,6 +360,8 @@ export class AgentRuntime {
    * ────────────────────┼───────┼────────────────┼──────────────────────────────
    * postProcess         │  ✓    │  ✓             │ SYMMETRIC — fixed Task #824
    * outputSchema.parse  │  ✓    │  ✓             │ SYMMETRIC
+   * dataPreamble prepend│  ✓    │  ✓             │ SYMMETRIC — fixed Task #831
+   *                     │       │                │ (was absent from run() before)
    * budget.check        │  ✓    │  ✗             │ INTENTIONAL — runs in
    *                     │       │                │ startAsync() before row exists;
    *                     │       │                │ repeating it here would
@@ -537,6 +539,15 @@ export class AgentRuntime {
           promptRow.rows[0]?.system_prompt ??
           `You are the ${this.config.agentId} agent for JEDI RE. ` +
           `Analyze real estate data and respond with structured JSON.`;
+      }
+
+      // P4-01 (Task #831): mirror the dataPreamble prepend that _continueRun() applies.
+      // RunContext.dataPreamble is an optional extracted-deal-data summary that callers
+      // (e.g. inngest handlers) inject at the front of the system prompt so the agent
+      // sees deal context before the main instructions. It was only applied inside
+      // _continueRun(); any caller going through run() would silently lose it.
+      if (ctx.dataPreamble) {
+        systemPrompt = ctx.dataPreamble + '\n\n---\n\n' + systemPrompt;
       }
 
       // Step 4: Tool-calling loop
