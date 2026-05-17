@@ -1347,10 +1347,94 @@ export async function applyUserOverride(
   // Recompute derived fields (NOI, EGI, Total OpEx, NRI)
   recomputeDerived(seed);
 
+  // ── Per-field jsonb merge-set (replaces full-replace UPDATE) ─────────────
+  // The previous implementation did SET year1 = $full_seed which clobbered
+  // agent sub-keys written by the Cashflow Agent for all 16 AGENT_FIELD_TO_YEAR1
+  // fields on every operator save (finding P3-01 / Task #832).
+  //
+  // New strategy — two-layer merge:
+  //
+  // Layer A (top-level ||): derived fields (nri, egi, total_opex, noi, and
+  //   optionally other_income_per_unit / noi_per_unit) are written as full
+  //   field objects from the in-memory seed.  The agent NEVER writes to these
+  //   fields so there is no race risk; their full objects already contain all
+  //   DB-sourced sub-keys (the seed was read from DB at function entry).
+  //
+  // Layer B (jsonb_set sub-key merge): the operator-targeted field is updated
+  //   at the sub-key level only (override, resolved, resolution, updated_at,
+  //   updated_by, override_source).  All other sub-keys on that field —
+  //   including any `agent` value written by the Cashflow Agent — are
+  //   preserved from the DB's current value via the COALESCE(year1 #> path)
+  //   read inside the SQL expression.
+  //
+  // In PostgreSQL, all `year1` references inside the SET expression read the
+  // PRE-UPDATE column value, so the COALESCE correctly picks up any agent
+  // sub-key written by a concurrent agent run that completed after our initial
+  // SELECT but before this UPDATE.
+
+  // Build derived-fields partial update (Layer A).
+  const derivedUpdate: Record<string, unknown> = {};
+  if (seed.net_rental_income) derivedUpdate.net_rental_income = seed.net_rental_income;
+  if (seed.egi)               derivedUpdate.egi               = seed.egi;
+  if (seed.total_opex)        derivedUpdate.total_opex        = seed.total_opex;
+  if (seed.noi)               derivedUpdate.noi               = seed.noi;
+  // other_income_per_unit: only if recomputeDerived touched it (resolution !== override)
+  if (seed.other_income_per_unit && seed.other_income_per_unit.resolution !== 'override') {
+    derivedUpdate.other_income_per_unit = seed.other_income_per_unit;
+  }
+  // noi_per_unit: optional field, only if present in seed
+  if ((seed as Record<string, unknown>).noi_per_unit) {
+    derivedUpdate.noi_per_unit = (seed as Record<string, unknown>).noi_per_unit;
+  }
+  // Remove target field from derivedUpdate if it overlaps (edge case: operator
+  // targets a derived-field key directly).  Layer B will set it correctly.
+  const rootKey = parts[0];
+  delete derivedUpdate[rootKey];
+
+  // Build target-field sub-key delta (Layer B — only changed sub-keys).
+  const targetDelta: Record<string, unknown> = {
+    override:        (field as Record<string, unknown>).override,
+    resolved:        (field as Record<string, unknown>).resolved,
+    resolution:      (field as Record<string, unknown>).resolution,
+    updated_at:      (field as Record<string, unknown>).updated_at,
+    updated_by:      userId,
+    override_source: value != null ? 'operator' : null,
+  };
+
   await pool.query(
-    `UPDATE deal_assumptions SET year1 = $2::jsonb, updated_at = NOW() WHERE deal_id = $1`,
-    [dealId, JSON.stringify(seed)]
+    `UPDATE deal_assumptions
+     SET year1 = jsonb_set(
+       year1 || $3::jsonb,
+       $2::text[],
+       COALESCE(year1 #> $2::text[], '{}') || $4::jsonb,
+       true
+     ),
+     updated_at = NOW()
+     WHERE deal_id = $1`,
+    [dealId, parts, JSON.stringify(derivedUpdate), JSON.stringify(targetDelta)]
   );
+
+  // ── Version snapshot ──────────────────────────────────────────────────────
+  // Persist a deal version entry so the override is visible in the version
+  // history / saved-versions panel.  Fire-and-catch: version save failures
+  // must not roll back the operator's override.
+  try {
+    const { DealVersionsService } = await import('./proforma/deal-versions.service');
+    const dvs = new DealVersionsService();
+    await dvs.saveVersion({
+      dealId,
+      userId,
+      snapshot:  seed as unknown as Record<string, unknown>,
+      trigger:   'user_save',
+      note:      `operator_override:${fieldPath}`,
+      divergences: [],
+    });
+  } catch (vErr) {
+    logger.warn('applyUserOverride: version snapshot failed (non-fatal)', {
+      dealId, fieldPath,
+      error: vErr instanceof Error ? vErr.message : String(vErr),
+    });
+  }
 }
 
 /**
