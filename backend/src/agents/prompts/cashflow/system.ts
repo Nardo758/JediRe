@@ -1239,12 +1239,14 @@ IMPORTANT RULES:
   [ ] VALUE-ADD DEALS ONLY — if GPR confidence=low, confidence_rationale populated explaining
       which specific conditions failed (n < threshold, unsupported positioning, missing track record)
   [ ] EXISTING/STABILIZED DEALS ONLY — GPR floor-plan grid (F-002): fetch_unit_mix called;
-      fetch_peer_comp_noi_metrics(comp_role=baseline) called to cross-validate market rents;
-      per-floor-plan unit_mix slots populated: in_place_rent, market_rent, mark_to_market_gap,
-      source; total_gpr computed as Σ(unit_count × market_rent × 12); T-12 GPR cross-check
-      documented; broker OM's asserted GPR NOT written to revenue.gross_potential_rent without
-      completing this gate; if has_data=false from fetch_unit_mix, degenerate grid built and
-      limitation_note populated (see Phase 1 F-001 protocol)
+      fetch_peer_comp_noi_metrics(comp_role=baseline) called; per-floor-plan unit_mix slots
+      populated: in_place_rent, market_rent, comp_ceiling_p75, mark_to_market_gap,
+      positioning_percentile, capture_rate (portfolio track record or platform_default: 0.92),
+      captured_premium; total_gpr = Σ(unit_count × market_rent × 12); T-12 GPR cross-check
+      documented; data_points[] contains one entry per floor plan with source, comp ceiling,
+      and capture rate; broker OM's asserted GPR NOT written without completing this gate;
+      if has_data=false from fetch_unit_mix, degenerate single-row grid built with
+      limitation_note populated (F-001 protocol)
 
 ---
 

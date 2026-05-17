@@ -26,46 +26,68 @@ Insurance: use jurisdiction benchmark to validate T-12; flag if T-12 is underins
 
 **CapEx Reserves:** Use T-12 capital schedule + age-based reserve table (Tier 2 default).
 
-### F-002 — GPR Floor-Plan Grid (REQUIRED for stabilized deals)
+### F-002 — GPR Floor-Plan Grid with Comp Ceiling and Capture Rate (REQUIRED for stabilized deals)
 
 For stabilized/existing deals, GPR must be derived from a per-floor-plan validation grid,
-NOT from the broker OM's asserted total GPR figure.
+NOT from the broker OM's asserted total GPR figure. Stabilized deals still require comp
+ceiling values and capture rate analysis — the terminology is analogous to value-add but
+the mechanics differ as described below.
 
 **Required protocol:**
 
 1. **Call \`fetch_unit_mix\`** — per-floor-plan unit_count, in_place_rent, and market_rent
    with any sponsor overrides applied. This is the Tier 1 floor-plan baseline.
-   If has_data: false, apply the degenerate single-row grid protocol (see Phase 1).
+   If has_data: false, apply the degenerate single-row grid protocol (see Phase 1 F-001).
 
-2. **Call \`fetch_peer_comp_noi_metrics\` (comp_role: "baseline")** — cross-validates
-   per-floor-plan market rents against same-vintage/same-class unrenovated comps in the
-   submarket. Reconcile any per-floor-plan divergence > 10% and document in evidence.
+2. **Call \`fetch_peer_comp_noi_metrics\` (comp_role: "baseline")** — stabilized comps of
+   the same class, vintage (±10 yr), and submarket. From this comp set derive:
+   - \`comp_ceiling_p25/p50/p75\`: the distribution of market rents in the comp set, which
+     establishes the credible upper bound (P75) for underwriting market rent per floor plan.
+     The P75 comp rent IS the effective comp ceiling for a stabilized deal.
+   - \`positioning_percentile\`: where the subject's in-place rent sits in the comp distribution.
+   Reconcile any per-floor-plan divergence > 10% between fetch_unit_mix market rents and
+   the comp set and document in evidence.
 
 3. **Build per-floor-plan GPR grid** and populate for each floor plan:
-   - proforma.revenue.gpr.unit_mix[floor_plan_id].unit_count
-   - proforma.revenue.gpr.unit_mix[floor_plan_id].in_place_rent
-   - proforma.revenue.gpr.unit_mix[floor_plan_id].market_rent  (from fetch_unit_mix, cross-checked)
-   - proforma.revenue.gpr.unit_mix[floor_plan_id].mark_to_market_gap  (market_rent − in_place_rent)
-   - proforma.revenue.gpr.unit_mix[floor_plan_id].source
+   - \`unit_mix[fp].unit_count\`
+   - \`unit_mix[fp].in_place_rent\` — current weighted average effective rent
+   - \`unit_mix[fp].market_rent\` — from fetch_unit_mix, cross-checked against comp P50
+   - \`unit_mix[fp].comp_ceiling_p75\` — P75 of baseline comp market rents (credible max)
+   - \`unit_mix[fp].mark_to_market_gap\` — market_rent − in_place_rent (per unit/mo)
+   - \`unit_mix[fp].capture_rate\` — the fraction of mark-to-market gap the operator can
+     realistically capture at next lease rollover. For stabilized Class B with normal
+     turnover cadence: 90–100% capture within 12–24 months. Source from
+     fetch_owned_asset_actuals track record if available; otherwise document as
+     "platform_default: 0.92" in evidence. This is the stabilized-deal analog to value-add
+     capture rate — it quantifies how much mark-to-market upside flows into forward GPR.
+   - \`unit_mix[fp].captured_premium\` — mark_to_market_gap × capture_rate × unit_count × 12
+   - \`unit_mix[fp].source\`
 
-   Compute:  total_gpr = Σ (unit_count × market_rent × 12)  across all floor plans.
+   Compute: \`total_gpr = Σ (unit_count × market_rent × 12)\` across all floor plans.
 
-4. **Cross-validate against T-12 GPR** — T-12 is Tier 1 ground truth for current operating
-   run rate. If your comp-validated grid differs from T-12 GPR by > 5%, investigate:
-   - A positive gap (grid > T-12) may signal mark-to-market opportunity — model as future
-     rent growth, not immediate Year 1 GPR.
-   - A negative gap (grid < T-12) may signal above-market leases rolling off — model the
-     roll-down and flag as risk.
+4. **Cross-validate against T-12 GPR** — T-12 is Tier 1 ground truth for current run rate.
+   If your comp-validated grid differs from T-12 GPR by > 5%, investigate and document:
+   - Positive gap (grid > T-12): mark-to-market opportunity — model capture into Y1/Y2
+     rent growth rather than inflating base GPR immediately.
+   - Negative gap (grid < T-12): above-market leases rolling off — model the roll-down and
+     flag as risk in the evidence.
+
+5. **Populate \`data_points[]\` for this analysis** in the evidence row for
+   \`revenue.gross_potential_rent\`. Each floor plan MUST have its own data_point entry:
+   \`{ tier: 1, source: "unit_mix/comp_baseline", label: "<fp_id>",
+      value: <market_rent>, weight: 0.50,
+      notes: "comp_ceiling_p75=<X>, positioning_pct=<Y>, capture_rate=<Z>" }\`
 
 **You are prohibited from:**
-- Writing the broker OM's asserted GPR directly to \`revenue.gross_potential_rent\` as the
-  primary input without completing this floor-plan validation gate first.
-- Skipping \`fetch_unit_mix\` for a stabilized deal. If the tool returns has_data: false,
-  you must apply the degenerate-grid protocol — NOT silently fall back to the OM figure.
+- Writing the broker OM's asserted GPR directly to \`revenue.gross_potential_rent\` without
+  completing this floor-plan validation gate first.
+- Skipping \`fetch_unit_mix\` for a stabilized deal — apply the degenerate-grid protocol
+  (F-001) when has_data: false; do NOT fall back silently to the OM figure.
 
-**Difference from value-add GPR:** No renovation ceiling comp set. No captured premium
-computation. The two-comp-set protocol (baseline + renovation_ceiling) is value-add only.
-For stabilized deals, comp_role="baseline" and current market rent IS the target.
+**How this differs from value-add GPR:** No second comp call with comp_role="renovation_ceiling"
+is needed. No renovation upside to price. But comp_ceiling_p75, positioning_percentile, and
+capture_rate are still required because they quantify the mark-to-market dynamic and must
+appear in data_points[] for downstream quality audit.
 
 ### Collision Priority for Stabilized Deals
 Focus collision detection on: in-place rents vs. broker OM market rents, T-12 vacancy

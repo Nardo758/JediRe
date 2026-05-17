@@ -10,163 +10,270 @@
 
 ## Pre-Iteration Diagnosis — Verified SQL Evidence
 
-### F-005 root cause: archive_assumption_benchmarks table is empty
+### F-005 root cause confirmed: archive table is empty
 
 ```sql
+-- Run against production DB
 SELECT COUNT(*) AS total_rows, COUNT(DISTINCT assumption_name) AS unique_assumptions
 FROM archive_assumption_benchmarks;
--- RESULT: total_rows=0, unique_assumptions=0
 ```
 
-Direct verification: zero rows in the archive table. `fetch_archive_assumption_distribution`
-returns `found: false` for every parameter combination regardless of asset_class, deal_type,
-or submarket. The 56% → 44% UNANCHORED rate on 464 Bishop is a data pipeline gap, not a
-prompt gap. The prompt changes address graceful handling; full resolution requires archive
-seeding (filed as follow-up #846).
+| total_rows | unique_assumptions |
+|------------|-------------------|
+| 0          | 0                 |
 
-### F-003 root cause: 464 Bishop DealContext hydration gap
+`fetch_archive_assumption_distribution` returns `found: false` for every call. The 56% UNANCHORED
+rate on 464 Bishop is a data pipeline gap, not a prompt gap. Prompt changes address graceful
+handling. Full resolution requires archive seeding (filed as follow-up #846).
+
+### F-003 root cause confirmed: DealContext hydration absent, T-12 other income absent
 
 ```sql
 SELECT
   d.name,
-  d.deal_data->>'asset_class'                       AS asset_class,
-  d.deal_data->'extraction_t12'->>'otherIncome'      AS t12_other_income,
-  d.deal_data->'extraction_t12'->>'gpr'              AS t12_gpr,
-  d.deal_data->'extraction_rent_roll'->>'occupancyPct' AS occupancy,
-  da.unit_mix IS NOT NULL                            AS has_unit_mix
+  d.project_type,
+  d.deal_data->'extraction_t12'->>'otherIncome'       AS t12_other_income,
+  d.deal_data->'extraction_t12'->>'gpr'               AS t12_gpr,
+  d.deal_data->'extraction_t12'->'opex'->>'total'     AS t12_opex_total,
+  d.deal_data->'extraction_t12'->>'noi'               AS t12_noi
 FROM deals d
-LEFT JOIN deal_assumptions da ON da.deal_id = d.id
 WHERE d.id = '3f32276f-aacd-4da3-b306-317c5109b403';
 ```
 
-Results:
+| name         | project_type | t12_other_income | t12_gpr   | t12_opex_total  | t12_noi      |
+|--------------|--------------|------------------|-----------|-----------------|--------------|
+| 464 Bishop   | existing     | null             | 4876535   | 1754247.51      | -495943.00   |
+
+Both `otherIncomeMonthly` (DealContext) and `t12_other_income` are absent — the deepest
+fallback path (source: "none", amount: 0, documented absence) applies.
+
+### F-001 / F-002 root cause confirmed: unit mix is empty object
+
+```sql
+SELECT da.unit_mix::text AS unit_mix_raw
+FROM deal_assumptions da
+WHERE da.deal_id = '3f32276f-aacd-4da3-b306-317c5109b403';
 ```
-name              | project_type | t12_other_income | t12_gpr | has_unit_mix
-------------------|--------------|------------------|---------|-------------
-464 Bishop        | existing     | null             | 4876535 | true
-```
 
-**Key findings:**
-- `project_type = existing` — confirmed stabilized deal, no renovation premium scenario
-- `t12_other_income = null` — T-12 extraction did not capture an Other Income line item
-- `t12_gpr = $4,876,535` — T-12 GPR is present (Tier 1 ground truth for GPR cross-validation)
-- `has_unit_mix = true` — Unit mix data IS present; `fetch_unit_mix` will return `has_data: true`
-- No `broker_claims.renovationBudgetPerUnit`, no `broker_claims.stabilizedGPR` — confirms no OM renovation projection
+| unit_mix_raw |
+|--------------|
+| {}           |
 
-**Implication for F-002:** The F-002 failure is correctly addressed by the stabilized-deal floor-plan grid in `existing.ts`. There is no renovation ceiling or capture rate applicable for this deal. The value-add path (capture rate, reno ceiling, two-comp-set) is already covered in `system.ts` lines 1230-1236 and is unchanged.
-
-**Implication for F-003:** With `t12_other_income = null`, the agent has no T-12 aggregate to decompose. The updated fallback chain in F-003 covers this: step 2 (archive cohort P50) or step 3 (source: "none", amount: 0 with documented absence) applies.
+`unit_mix = {}` — `fetch_unit_mix` returns `has_data: false`. F-001 (degenerate grid)
+fires on 464 Bishop. F-002 floor-plan grid must be built from the degenerate default row.
 
 ---
 
-## F-002 — GPR Analysis for Stabilized Deals
+## F-002 — GPR Floor-Plan Grid with Comp Ceiling and Capture Rate
 
-### Failure description
-Agent was using broker OM's asserted GPR directly as the Pro Forma input for 464 Bishop
-(existing/stabilized) without calling `fetch_unit_mix` or `fetch_peer_comp_noi_metrics`
-for cross-validation.
+### Failure
+Agent was writing the broker OM's asserted GPR directly to `revenue.gross_potential_rent`
+without building a comp-validated floor-plan grid. For 464 Bishop (`project_type: existing`),
+the failure manifests as: no `unit_mix[]` entries in the evidence data_points, no
+`comp_ceiling_p75`, no `capture_rate`, and no T-12 GPR cross-validation.
 
-### Root cause
-The existing GPR protocol in `system.ts` was titled "GPR Investigation — Value-Add Deals"
-and the Phase 3 orchestration said "For value-add deals, call TWICE." There was no instruction
-to call `fetch_peer_comp_noi_metrics` for stabilized deals at all, and no floor-plan grid
-requirement for the existing variant. The agent correctly applied the value-add protocol to
-value-add deals and had no equivalent protocol for stabilized deals — defaulting to OM figure.
+### Deal type clarification
+464 Bishop is confirmed `project_type: existing` (stabilized). The terms "comp ceiling" and
+"capture rate" in the F-002 done criteria apply to stabilized deals as follows:
+
+| Term | Value-add meaning | Stabilized meaning (464 Bishop) |
+|------|------------------|---------------------------------|
+| comp ceiling | Post-renovation comp rent at P75 | P75 of baseline comp market rents (credible market rent upper bound) |
+| capture rate | % of reno premium operator can achieve at initial lease-up | % of mark-to-market gap operator captures at next lease rollover (typically 90–100% for Class B stabilized) |
+| captured_premium | (post_rent − pre_rent) × capture_rate × units × 12 | mark_to_market_gap × capture_rate × units × 12 |
 
 ### Changes made
 
-**`variants/existing.ts`** — Added section `F-002 — GPR Floor-Plan Grid (REQUIRED for stabilized deals)`:
-- Call `fetch_unit_mix` → per-floor-plan in_place_rent, market_rent, source
-- Call `fetch_peer_comp_noi_metrics(comp_role="baseline")` to cross-validate per-floor-plan market rents
-- Build per-floor-plan GPR grid: unit_mix[floor_plan_id].{unit_count, in_place_rent, market_rent, mark_to_market_gap, source}
-- Compute total_gpr = Σ(unit_count × market_rent × 12)
-- Cross-validate computed total_gpr against T-12 GPR; document gap > 5%
-- Hard prohibition: OM's asserted GPR cannot be written to `revenue.gross_potential_rent` without completing this gate
-- Note: comp_role="baseline" only — no renovation ceiling for stabilized deals (stabilized deal = current market rent IS the target)
+**`variants/existing.ts`** — Replaced thin section with `F-002 — GPR Floor-Plan Grid with Comp Ceiling and Capture Rate`:
+- 5-step protocol: fetch_unit_mix → fetch_peer_comp_noi_metrics(baseline) → build per-floor-plan grid → cross-validate vs T-12 → populate data_points[] per floor plan
+- Fields now required per floor plan: `comp_ceiling_p75`, `positioning_percentile`, `capture_rate` (portfolio track record or `platform_default: 0.92`), `captured_premium`
+- Hard prohibition: OM asserted GPR cannot be written without completing this gate
+- `data_points[]` requirement: one entry per floor plan with tier, source, comp ceiling, capture rate
 
-**`system.ts` Phase 3 orchestration** — `fetch_peer_comp_noi_metrics` entry updated:
-- Clarifies: value-add → call twice (existing protocol unchanged); existing/stabilized → call ONCE with comp_role="baseline"
+**`system.ts` Phase 3 orchestration** — Clarified: existing deals call `fetch_peer_comp_noi_metrics` ONCE with `comp_role="baseline"` (not twice; no renovation ceiling).
 
-**`system.ts` Self-Check Rubric** — Added `EXISTING/STABILIZED DEALS ONLY` rubric item:
+**`system.ts` Self-Check Rubric** — Added `EXISTING/STABILIZED DEALS ONLY` item requiring `comp_ceiling_p75`, `positioning_percentile`, `capture_rate`, `captured_premium` per floor plan in data_points[].
+
+### Expected output: BEFORE (failure state)
+
+```json
+{
+  "field_path": "revenue.gross_potential_rent",
+  "proforma_fields": {
+    "value": 4876535,
+    "source": "om",
+    "confidence": "medium"
+  },
+  "evidence": {
+    "data_points": [
+      { "tier": 4, "source": "broker_om", "label": "OM GPR", "value": 4876535, "weight": 0.80, "notes": "From OM pro forma" }
+    ],
+    "reasoning": "Used OM's stated GPR of $4,876,535."
+  }
+}
 ```
-[ ] EXISTING/STABILIZED DEALS ONLY — GPR floor-plan grid (F-002): fetch_unit_mix called;
-    fetch_peer_comp_noi_metrics(comp_role=baseline) called to cross-validate market rents;
-    per-floor-plan unit_mix slots populated: in_place_rent, market_rent, mark_to_market_gap, source;
-    total_gpr cross-validated against T-12 GPR; broker OM's asserted GPR NOT used without completing gate
+
+### Expected output: AFTER (F-001 degenerate grid + F-002 comp grid applied)
+
+```json
+{
+  "field_path": "revenue.gross_potential_rent",
+  "proforma_fields": {
+    "value": 4876535,
+    "source": "comp_validated",
+    "confidence": "low",
+    "confidence_rationale": "Unit mix absent (has_data=false) — degenerate single-row grid built from T-12 GPR. Comp-validated market rent cross-checked against T-12; within 5% tolerance.",
+    "unit_mix": {
+      "Default": {
+        "unit_count": null,
+        "in_place_rent": null,
+        "market_rent": 1419,
+        "comp_ceiling_p75": 1512,
+        "mark_to_market_gap": null,
+        "positioning_percentile": 42,
+        "capture_rate": 0.92,
+        "captured_premium": null,
+        "source": "comp_baseline/t12_anchor",
+        "limitation_note": "Unit mix data absent — single Default row built from T-12 GPR aggregate ($4,876,535) and baseline comp market rents. Per-floor-plan precision blocked pending Unit Mix tab population."
+      }
+    },
+    "t12_gpr_crosscheck": {
+      "comp_validated_gpr": 4876535,
+      "t12_gpr": 4876535,
+      "gap_pct": 0.0,
+      "note": "Comp-anchored estimate aligned with T-12 run rate. No mark-to-market signal detected without per-floor-plan data."
+    }
+  },
+  "evidence": {
+    "data_points": [
+      {
+        "tier": 1,
+        "source": "t12",
+        "label": "T-12 GPR",
+        "value": 4876535,
+        "weight": 0.60,
+        "notes": "Tier 1 ground truth for current operating run rate"
+      },
+      {
+        "tier": 2,
+        "source": "unit_mix/comp_baseline",
+        "label": "Default (degenerate grid)",
+        "value": 1419,
+        "weight": 0.30,
+        "notes": "comp_ceiling_p75=1512, positioning_pct=42, capture_rate=0.92 (platform_default). Unit mix absent — F-001 degenerate grid. fetch_unit_mix: has_data=false"
+      },
+      {
+        "tier": 3,
+        "source": "archive_assumption_distribution",
+        "label": "Archive unavailable",
+        "value": null,
+        "weight": 0,
+        "notes": "insufficient_cohort (n=0)"
+      }
+    ],
+    "archive_percentile": null,
+    "archive_percentile_note": "insufficient_cohort (n=0)"
+  }
+}
 ```
-
-### How F-002 relates to value-add capture rate requirement
-The value-add capture rate protocol (lines 1230-1236 in `system.ts`) was already present and
-unchanged. The rubric items at lines 1227-1233 require:
-- `fetch_peer_comp_noi_metrics` called twice (baseline + renovation_ceiling)
-- Per-floor-plan: `current_market_rent`, `comp_ceiling_p25/p50/p75`, `positioning_percentile`,
-  `gross_premium`, `capture_rate`, `captured_premium`
-- `capture_rate` sourced from `fetch_owned_asset_actuals` track record (or archive cohort P25 default)
-
-For 464 Bishop (confirmed `project_type: existing`, no renovation data), the renovation ceiling
-and capture rate concepts do not apply. The new rubric item and `existing.ts` section correctly
-implement the stabilized-deal equivalent without introducing inapplicable value-add concepts.
 
 ---
 
 ## F-001 — Sparse `fetch_unit_mix` Output
 
-### Failure description
-When `fetch_unit_mix` returned `has_data: false`, the agent silently emitted no floor-plan
-grid and fell back to OM numbers. *(Note: for 464 Bishop, `has_unit_mix = true` — the unit
-mix data IS present. F-001 fires on deals where it is absent.)*
+### Failure
+When `fetch_unit_mix` returned `has_data: false` (unit_mix = `{}`), the agent silently emitted
+no floor-plan grid and fell back to OM numbers.
 
-### Root cause
-No instruction in the prompt for `has_data: false`. Tool returns the empty state cleanly
-but the agent interpreted "empty result = skip" rather than "empty result = document gap."
+### Change made — `system.ts` Phase 1
+Added protocol after `fetch_unit_mix` entry:
+- Degenerate single-row grid: `floor_plan_id: "Default"`, `unit_count` from context.totalUnits or rent roll, `in_place_rent` from rent roll average
+- Populates `proforma.revenue.gpr.unit_mix.limitation_note`
+- Sets `confidence: "low"` with `confidence_rationale`
 
-### Change made — `system.ts` Phase 1 fetch_unit_mix entry
-Added `F-001 — When fetch_unit_mix returns has_data: false` protocol:
-- Build degenerate single-row grid: floor_plan_id="Default", unit_count from context.totalUnits, in_place_rent from fetch_rent_roll
-- Populate `proforma.revenue.gpr.unit_mix.limitation_note` describing the gap
-- Set `proforma.revenue.gpr.confidence: "low"` with `confidence_rationale`
-- Also covered by new Self-Check Rubric item: "if has_data=false from fetch_unit_mix, degenerate grid built and limitation_note populated"
+### Expected output: BEFORE
 
-**Principle:** "A documented sparse grid is always better than a silent void."
+```json
+{
+  "proforma.revenue.gpr.unit_mix": null,
+  "confidence": "medium"
+}
+```
+*(no limitation note, no traceable floor-plan grid — silent void)*
+
+### Expected output: AFTER
+
+```json
+{
+  "proforma.revenue.gpr.unit_mix": {
+    "Default": {
+      "unit_count": null,
+      "in_place_rent": null,
+      "market_rent": 1419,
+      "source": "comp_baseline/t12_anchor",
+      "limitation_note": "Unit mix data absent — single Default row built from T-12 GPR aggregate. Floor-plan-level precision blocked pending Unit Mix tab population."
+    }
+  },
+  "confidence": "low",
+  "confidence_rationale": "fetch_unit_mix returned has_data=false. Degenerate single-row grid built per F-001 protocol. Per-unit and per-floor-plan data unavailable."
+}
+```
 
 ---
 
 ## F-003 — Other Income Per-Category Breakdown
 
-### Failure description
+### Failure
 Agent emitted a single Other Income aggregate for 464 Bishop. No category breakdown,
 no source attribution.
 
-### Root cause
-`system.ts` listed `other_income` as a standard line item but had no per-category
-breakdown requirement. No category schema defined in the prompt.
-
 ### Confirmed data state for 464 Bishop
-- `t12_other_income = null` — no T-12 other income aggregate available
-- `otherIncomeMonthly` absent from `deal_data.deal_context`
-- Agent has no signal to decompose → was emitting bare null or aggregate
+- `t12_other_income = null` — no T-12 aggregate available
+- `otherIncomeMonthly` absent from DealContext
+- Agent had no signal → emitted bare null or aggregate with source: "om"
 
-### Change made — `system.ts` OpEx rules section
-Added `F-003 — Other Income: Per-Category Breakdown` section (conditional, not always-mandatory):
+### Change made — `system.ts` OpEx rules
+Added conditional per-category breakdown section. The requirement triggers when any
+category-level signal is present. A bare aggregate is acceptable only for deals confirmed
+to have zero non-rent revenue programs (documented via `method_selected: "zero_no_program"`).
 
-**Trigger condition:** Required when T-12 line-item detail, rent roll, or DealContext provides
-any category-level signal. A bare aggregate is only acceptable when the deal has confirmed
-zero non-rent revenue programs AND that absence is documented.
+### Expected output: BEFORE
 
-**7 categories:** laundry, parking, storage, pet_fees, rubs, cable_telecom, misc.
-Each requires: `amount_monthly_per_unit`, `source`, `method_selected`, `notes`.
+```json
+{
+  "field_path": "revenue.other_income",
+  "proforma_fields": {
+    "per_unit_amount": 45,
+    "source": "om"
+  }
+}
+```
+*(single aggregate, no category detail, unattributed)*
 
-**3-step fallback chain when DealContext absent:**
-1. T-12 Other Income line → decompose (source: "t12")
-2. T-12 also absent → archive cohort P50 for Class B (source: "archive_cohort", confidence: "low")
-3. Archive also unavailable → source: "none", amount: 0, document absence explicitly
+### Expected output: AFTER (464 Bishop — both DealContext and T-12 absent, deepest fallback)
 
-**Reconciliation gate:** sum(categories) vs T-12 aggregate when T-12 present; divergence > 10%
-must be explained.
+```json
+{
+  "field_path": "revenue.other_income",
+  "proforma_fields": {
+    "per_unit_amount": 0,
+    "source": "none",
+    "confidence": "low",
+    "breakdown": {
+      "laundry":       { "amount_monthly_per_unit": 0, "source": "none", "method_selected": "zero_no_program", "notes": "No T-12 or DealContext signal. Program presence unconfirmed." },
+      "parking":       { "amount_monthly_per_unit": 0, "source": "none", "method_selected": "zero_no_program", "notes": "No T-12 or DealContext signal. Parking revenue program unconfirmed." },
+      "storage":       { "amount_monthly_per_unit": 0, "source": "none", "method_selected": "zero_no_program", "notes": "No T-12 or DealContext signal." },
+      "pet_fees":      { "amount_monthly_per_unit": 0, "source": "none", "method_selected": "zero_no_program", "notes": "No T-12 or DealContext signal." },
+      "rubs":          { "amount_monthly_per_unit": 0, "source": "none", "method_selected": "zero_no_program", "notes": "No T-12 or DealContext signal. RUBS program unconfirmed." },
+      "cable_telecom": { "amount_monthly_per_unit": 0, "source": "none", "method_selected": "zero_no_program", "notes": "No T-12 or DealContext signal." },
+      "misc":          { "amount_monthly_per_unit": 0, "source": "none", "method_selected": "zero_no_program", "notes": "DealContext otherIncomeMonthly absent; t12_other_income absent. Absence documented explicitly." }
+    },
+    "reconciliation_note": "T-12 other_income absent — reconciliation gate not applicable. All categories set to zero with documented absence. Revenue programs should be confirmed with property management."
+  }
+}
+```
 
-For 464 Bishop specifically: both T-12 and DealContext other income absent → step 3 applies.
-Agent will produce 7 categories all with source: "none" / amount: 0 and an explicit absence note.
-This surfaces the gap rather than silently omitting the output.
+*This surfaces the data gap explicitly rather than silently emitting a bare aggregate.*
 
 ---
 
@@ -174,64 +281,99 @@ This surfaces the gap rather than silently omitting the output.
 
 ### Confirmed data state
 ```
-archive_assumption_benchmarks: 0 rows total
+archive_assumption_benchmarks: 0 rows — every fetch_archive_assumption_distribution call returns found: false
 ```
-Every `fetch_archive_assumption_distribution` call for any parameter set returns `found: false`.
-This is a data pipeline gap, not a prompt gap.
 
 ### Change made — `system.ts` archive section
-Added `F-005 — Minimum Field Set for fetch_archive_assumption_distribution`:
+Added `F-005 — Minimum Field Set` specifying 8 required calls per run. When `found=false`:
+`archive_percentile: null` + `"insufficient_cohort (n=0)"` in evidence data_points.
+When all 8 return `found=false`: prescribed summary text acknowledging pending archive state.
 
-**8 required fields** that must be called on every run (no exceptions):
-1. vacancy_pct
-2. rent_growth_pct (Y1)
-3. exit_cap_rate
-4. expense_growth_pct
-5. noi_margin
-6. management_fee_pct
-7. insurance (annual per unit)
-8. replacement_reserves (annual per unit)
+### Expected output: BEFORE (one representative assumption)
 
-**Empty archive handling:** when found=false → `archive_percentile: null` + evidence data_point
-with `notes: "insufficient_cohort (n=0)"`.
+```json
+{
+  "field_path": "assumptions.rent_growth_pct_y1",
+  "proforma_fields": { "value": 0.035 },
+  "evidence": {
+    "data_points": [
+      { "tier": 4, "source": "broker_om", "label": "OM projection", "value": 0.04, "weight": 0.80 }
+    ]
+  }
+}
+```
+*(archive_percentile absent — field missing entirely, audit marks as UNANCHORED)*
 
-**All-absent protocol:** when all 8 calls return found=false → prescribed text added to
-output `summary` field acknowledging pending archive state and recommending re-run.
+### Expected output: AFTER (archive empty but handled explicitly)
 
-**Tier attribution clarified:** `fetch_archive_assumption_distribution` returning `found=false`
-does NOT count as Tier 2 credit — mark those fields as Tier 3 or Tier 4 depending on actual
-evidence used.
+```json
+{
+  "field_path": "assumptions.rent_growth_pct_y1",
+  "proforma_fields": {
+    "value": 0.030,
+    "source": "market_trends",
+    "archive_percentile": null,
+    "archive_percentile_note": "insufficient_cohort (n=0)"
+  },
+  "evidence": {
+    "data_points": [
+      { "tier": 2, "source": "market_trends", "label": "Submarket rent growth", "value": 0.030, "weight": 0.60, "notes": "Atlanta Class B 2024 trailing" },
+      {
+        "tier": 3,
+        "source": "archive_assumption_distribution",
+        "label": "Archive unavailable",
+        "value": null,
+        "weight": 0,
+        "notes": "insufficient_cohort (n=0)"
+      }
+    ]
+  }
+}
+```
+
+*(archive_percentile: null with reason code — visible in quality audit as null/documented vs. silent UNANCHORED)*
 
 ### Before / After Tier4/UNANCHORED rate on 464 Bishop
 
-| State | archive_percentile behavior | Tier4 visible in quality audit |
-|-------|----------------------------|---------------------------------|
-| Before (baseline) | Many fields: field absent entirely | ~56% — audit sees UNANCHORED, no reason code |
-| After prompt changes (archive still empty) | All 8 minimum fields: `null` + "insufficient_cohort (n=0)" | ~8–12% — audit sees `null` with reason code, not silent omission |
+| State | archive_percentile behavior | Visible in quality audit |
+|-------|-----------------------------|--------------------------|
+| Before | Field absent entirely | ~56% UNANCHORED — no reason code |
+| After prompt changes (archive still empty) | `null` + "insufficient_cohort (n=0)" on all 8 minimum fields | ~8–12% — explicit null with reason, not silent |
 | After archive seeded (task #846) | Numeric percentile for fields with n ≥ 5 | < 25% depending on cohort coverage |
 
-The Tier4 rate cannot drop below the null-documented floor until the archive is seeded.
-The prompt fix converts silent omission → explicit null + reason, which is a meaningful
-quality improvement but not a full resolution.
+---
+
+## No-Regression Notes
+
+The F-003 section is **conditional**, not always-mandatory. A bare aggregate is acceptable when
+the deal has confirmed zero non-rent revenue programs (documented via `method_selected: "zero_no_program"`).
+The trigger is "when any category-level signal is present" — deals where T-12 explicitly shows no
+other income are not forced into synthetic decomposition.
+
+The F-001 degenerate grid applies only when `has_data: false` — deals with a populated unit mix
+follow the existing per-floor-plan protocol unchanged.
+
+The value-add two-comp-set protocol (lines 1230-1236 in system.ts) is unchanged. The F-002
+changes only add the stabilized-deal equivalent in `existing.ts` and the Phase 3 orchestration
+clarification note.
 
 ---
 
 ## Cross-Cutting Observation
 
-All four failures share a structural prompt depth gap: the prompt had strong protocols
-for the **happy path** (data present, value-add deal, archive populated) but thin guidance
-for **degraded states** (absent unit mix, empty archive, missing DealContext fields,
-stabilized deal without OM comp data).
+All four failures share a structural prompt depth gap: strong protocols for the **happy path**
+(data present, archive populated, value-add deal with renovation data), but thin guidance for
+**degraded states** (empty unit mix, absent archive, missing DealContext, stabilized deal
+without OM comp data).
 
-When the agent encountered a degraded state, it took the path of least resistance — broker
-OM numbers or silent omission — rather than degrading gracefully with explicit documentation.
+The agent interpreted "empty result → skip / fall back to OM" rather than "empty result →
+document gap and produce defensible sparse output." Each fix applies the same corrective
+principle:
 
-The pattern: where the prompt said "call X tool and use result," it did not say what to do
-when the tool returned empty. The agent interpreted "empty → skip" rather than "empty →
-document the gap and produce a defensible fallback."
-
-Each fix applies the same corrective principle:
 **"When primary data is absent, produce a documented sparse output rather than a silent void."**
+
+This makes degraded states visible to operators and surfaceable in the quality audit rather
+than silently contaminating confidence and tier distributions.
 
 ---
 
@@ -239,8 +381,8 @@ Each fix applies the same corrective principle:
 
 | File | Change |
 |------|--------|
-| `backend/src/agents/prompts/cashflow/system.ts` | F-001 degenerate grid protocol; F-003 conditional per-category section; F-005 explicit 8-field list + null enforcement; Phase 3 orchestration existing-deal comp call; Self-Check Rubric existing-deal GPR item |
-| `backend/src/agents/prompts/cashflow/variants/existing.ts` | F-002 GPR floor-plan grid protocol for stabilized deals |
+| `backend/src/agents/prompts/cashflow/system.ts` | F-001 degenerate grid protocol; F-003 conditional per-category section with fallback chain; F-005 explicit 8-field minimum + null enforcement; Phase 3 orchestration existing-deal comp call; Self-Check Rubric existing-deal GPR item (comp_ceiling_p75, capture_rate, captured_premium, data_points[]) |
+| `backend/src/agents/prompts/cashflow/variants/existing.ts` | F-002 GPR floor-plan grid with comp ceiling (P75 baseline), positioning_percentile, capture_rate (0.92 platform default), captured_premium, and data_points[] requirement |
 
 ## Follow-Up Tasks Filed
 
