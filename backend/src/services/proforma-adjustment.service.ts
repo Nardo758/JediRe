@@ -2193,12 +2193,23 @@ export async function getDealFinancials(
     outField: string,
     label: string,
     multiplier: number | null,
+    dollarsKey?: string,
   ): OperatingStatementRow {
     const field = lv(year1Seed, srcKey);
+    // When an explicit dollar-denominated LayeredValue key exists (written by
+    // the agent via write-back), prefer its resolved amount and resolution over
+    // the pct×multiplier derivation. Broker/platform/t12 source layers are
+    // still taken from the pct field so historical comparisons are unaffected.
+    const dollarField = dollarsKey ? lv(year1Seed, dollarsKey) : null;
+    const dollarResolved = dollarField ? resolvedNum(dollarField) : null;
+    const dollarResolution = dollarField ? (dollarField.resolution as string | null) ?? null : null;
+
     const mul = (n: number | null): number | null =>
       n != null && multiplier != null ? n * multiplier : null;
-    const resolved = mul(resolvedNum(field));
-    const resolution = field ? (field.resolution as string | null) ?? null : null;
+    const resolved = dollarResolved ?? mul(resolvedNum(field));
+    const resolution =
+      (dollarResolved != null ? dollarResolution : null) ??
+      (field ? (field.resolution as string | null) ?? null : null);
     const platformVal = mul(layerNum(field, 'platform'));
 
     let benchmarkPosition: 'above' | 'below' | 'within' | null = null;
@@ -2239,14 +2250,14 @@ export async function getDealFinancials(
     ...REVENUE_FIELDS.map(([k, _l]) => toRow(k, _l)),
     // Canonical $-denominated revenue deductions (consumed by ProFormaSummaryTab).
     toDollarRow('loss_to_lease_pct',     'loss_to_lease',     'Loss to Lease',         _gprForDollars),
-    toDollarRow('vacancy_pct',           'vacancy_loss',      'Vacancy & Credit Loss', _gprForDollars),
+    toDollarRow('vacancy_pct',           'vacancy_loss',      'Vacancy & Credit Loss', _gprForDollars, 'vacancy_loss_dollars'),
     toDollarRow('concessions_pct',       'concessions',       'Concessions',           _gprForDollars),
-    toDollarRow('bad_debt_pct',          'bad_debt',          'Bad Debt',              _gprForDollars),
+    toDollarRow('bad_debt_pct',          'bad_debt',          'Bad Debt',              _gprForDollars, 'bad_debt_dollars'),
     toDollarRow('non_revenue_units_pct', 'non_revenue_units', 'Non-Revenue Units',     _gprForDollars),
     toDollarRow('other_income_per_unit', 'other_income',      'Other Income',          _otherIncMul),
     ...OPEX_FIELDS.map(([k, _l]) => toRow(k, _l)),
     // Canonical $-denominated management fee (consumed by ProFormaSummaryTab).
-    toDollarRow('management_fee_pct',    'management_fee',    'Management Fee',        _egiForDollars),
+    toDollarRow('management_fee_pct',    'management_fee',    'Management Fee',        _egiForDollars, 'management_fee_dollars'),
     ...NOI_FIELDS.map(([k, _l]) => toRow(k, _l)),
   ];
 
