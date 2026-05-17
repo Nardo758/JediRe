@@ -108,7 +108,9 @@ Renovation premium derivation reverses the intuitive sourcing order. The comp se
   ```
   Where `historical_capture_rate` comes from S3 — buyer's actual capture on similar repositioning programs. Typical capture rates are 70-90%.
 
-- **Per-unit walk mechanics — S2 (rent roll) + S4 (anchor growth rates via `fetch_anchor_growth_rates`).** Rent roll provides per-unit lease end dates and current contract rent. Anchor growth rates provide monthly market drift. These are inputs to the walk; not separate projections.
+- **Per-unit walk mechanics — S2 (rent roll via fetch_unit_mix for per-floor-plan + fetch_rent_roll for property-wide context) + S4 (anchor growth rates via `fetch_anchor_growth_rates`).** `fetch_unit_mix` provides per-floor-plan unit counts and in-place rents; `fetch_rent_roll` provides property-wide rent roll context (occupancy, lease maturity, market rent spread). Anchor growth rates provide monthly market drift. These are inputs to the walk; not separate projections.
+
+  **Important (NEW v1.3):** Per-floor-plan detail is available only via `fetch_unit_mix`, which reads from `deal_assumptions.unit_mix` (canonical) and applies sponsor overrides. `fetch_rent_roll` returns property-wide aggregates only and does NOT provide per-floor-plan data. Agents calling `fetch_rent_roll` and expecting floor-plan breakdown will see undefined fields.
 
 - **Owned-portfolio anchoring — S3 for retention rate, renewal cap, and capture rate.** Buyer's portfolio (`fetch_owned_asset_actuals`) is the primary source for the per-unit walk's behavioral parameters.
 
@@ -181,6 +183,8 @@ If filtered comparables produce n < 4 for either set, broaden one dimension at a
 
 9. **Cohort comparison without filtering for hold period stage.** Filter cohort to deals that completed at least one stabilized year before archive entry.
 
+10. **Reading per-floor-plan data from the wrong source.** The legacy `fetch_rent_roll` tool returns property-wide aggregates only — total units, average rent, total monthly income. It does not return per-floor-plan breakdown. Agents that expect floor-plan detail from `fetch_rent_roll` will receive undefined fields and produce smoothed (incorrect) underwriting. Always call `fetch_unit_mix` for per-floor-plan data. This pitfall is the primary source of the Scenario C divergence identified in the unit mix audit: agents calling the wrong tool for floor-plan data silently produced aggregate-smoothed underwriting without any error signal.
+
 **Confidence Rules**
 
 - **High** confidence: renovation ceiling comparables pass filter rules with n ≥ 5 per floor plan, sponsor positioning at P50 or with strong justification for P75+, buyer's owned-portfolio capture rate evidence with n ≥ 2, sponsor execution track record, walk-produced stabilized GPR within cohort P25-P75.
@@ -217,12 +221,25 @@ Per-floor-plan grid slots (regime-aware UI output, GPR only):
 - `proforma.revenue.gpr.unit_mix[floor_plan_id].yield_on_cost`
 - `proforma.revenue.gpr.unit_mix[floor_plan_id].evidence`
 
+**Source for unit_mix[] grid (NEW v1.3):** The agent assembles each `UnitMixEntry` by combining outputs from multiple tools:
+- Unit count, floor plan label, current market rent: from `fetch_unit_mix`
+- Comp ceiling P25/P50/P75: from `fetch_peer_comp_noi_metrics` and `fetch_data_library_comps`
+- Capture rate baseline: from `fetch_owned_asset_actuals` (if available) or platform default
+- Renovation cost per unit: from `fetch_data_matrix.extractedData.capex.capex_schedule` (or sponsor-provided M22 schedule)
+- Renovation scope: from M22 capex_schedule scope descriptor
+
+The agent's job is to assemble these into the `unit_mix[]` array per floor plan. Failure modes include: emitting unit_mix without calling fetch_unit_mix (per-floor-plan data unavailable), using fetch_rent_roll for per-floor-plan data (returns property aggregate only), or smoothing capture rates uniformly across floor plans (use S3 owned-portfolio per-floor-plan when available).
+
 Per-year projections (feeding Projections tab):
 
 - `proforma.revenue.gpr.year_by_year[y].aggregate` (Y1 through Y_exit)
 - `proforma.revenue.gpr.year_by_year[y].unit_mix[floor_plan_id]` (per-floor-plan year-by-year from the walk)
 
 ---
+
+## NOTES ON v1.3 UPDATE
+
+**v1.3 update (current):** Source references in the Value-Add GPR cell updated post unit mix audit. The cell now distinguishes `fetch_unit_mix` (canonical per-floor-plan source) from `fetch_rent_roll` (property-wide aggregates only). The per-unit walk mechanics bullet in the Source Hierarchy section explicitly names both tools and explains the role of each. A new "Source for unit_mix[] grid" subsection in Output Slots Populated names which tool contributes each field of the `UnitMixEntry`. New Common Pitfall #10 codifies the source-confusion failure mode — agents reading per-floor-plan data from `fetch_rent_roll` instead of `fetch_unit_mix` will produce smoothed (incorrect) underwriting without any error signal. No changes to investigation questions, comparable filtering rules, confidence rules, or matrix structure.
 
 ## NOTES ON v1.2 ALIGNMENT
 

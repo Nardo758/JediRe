@@ -158,6 +158,12 @@ The UI consumes the agent's output per the field catalog.
 
 ### 5.1 Floor-Plan Grid (GPR) data shape
 
+The UI consumes the agent's output per the field catalog. Pattern A requires the per-floor-plan grid output slots from the patched Pass 1 reference cell, extended with cost and yield-on-cost fields.
+
+**Agent input source (NEW v1.3):** The agent populates `proforma.revenue.gpr.unit_mix[]` by calling `fetch_unit_mix` (canonical per-floor-plan source) for unit counts, current market rents, in-place rents, and floor plan groupings. The agent calls `fetch_peer_comp_noi_metrics` and `fetch_data_library_comps` for comp ceiling data per floor plan. The agent calls `fetch_owned_asset_actuals` for historical capture rates. The composite output is the `unit_mix[]` array consumed by the UI.
+
+**Important:** `fetch_unit_mix` is the only canonical source for per-floor-plan unit data. The legacy `fetch_rent_roll` returns property-wide aggregates only and does not provide per-floor-plan detail. The agent must call `fetch_unit_mix` for any floor-plan-grid output.
+
 ```typescript
 proforma.revenue.gpr.unit_mix: UnitMixEntry[]
 
@@ -268,7 +274,9 @@ This spec extends the existing M09 Pro Forma component, does not replace it. Cha
 
 7. **Yield-on-cost computation.** Pure derivation; no agent involvement. Computed at render time from grid state.
 
-8. **Property yield-on-cost callout.** The aggregate footer's property yield-on-cost displays prominently as the deck headline number.
+8. **Source-of-truth coordination.** The Floor-Plan Grid reads from `deal_assumptions.unit_mix` (with overrides applied via `unit_mix_overrides`). The agent reads from the same canonical source via `fetch_unit_mix`. Sponsor overrides in the Unit Mix tab flow to the agent on the next run. This single-source-of-truth pattern was established in PR 1 of the data plumbing audit (Item 1: create fetch_unit_mix tool).
+
+9. **Property yield-on-cost callout.** The aggregate footer's property yield-on-cost displays prominently as the deck headline number.
 
 ---
 
@@ -398,7 +406,12 @@ Show all three layers (archive cohort, owned portfolio, M22 capex_schedule) in t
 
 ## 12. CHANGELOG
 
-**v1.2 (current)**
+**v1.3 (current)**
+- Added agent input source clarification in Section 5.1: agent populates unit_mix[] via fetch_unit_mix (canonical), fetch_peer_comp_noi_metrics + fetch_data_library_comps (comp ceiling), and fetch_owned_asset_actuals (capture rates)
+- Added Section 7 item 8: source-of-truth coordination between Floor-Plan Grid, Unit Mix tab, and agent; existing item 8 renumbered to item 9
+- No structural changes to the grid; only source reference precision
+
+**v1.2 (archival)**
 - Removed Pattern B (simple regime expand for non-GPR line items)
 - Collapsed to two patterns: floor_plan_grid (GPR) and single_value (everything else)
 - Simplified line-item pattern assignment table — every non-GPR row is single_value across all deal types
