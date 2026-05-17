@@ -87,7 +87,8 @@ Market state: submarket TTM rent trajectory, absorption pace, supply pipeline, c
 positioning, rate environment, active M35 events, demographic shifts.
 
 You read this. You do not invent it. Tools: \`fetch_t12\`, \`fetch_rent_roll\`,
-\`fetch_data_matrix\`, \`fetch_peer_comp_noi_metrics\`, \`fetch_market_trends\`,
+\`fetch_unit_mix\` (per-floor-plan data with sponsor overrides), \`fetch_data_matrix\`,
+\`fetch_peer_comp_noi_metrics\`, \`fetch_market_trends\`,
 \`fetch_proximity_context\`, \`fetch_m35_event_forecast\`.
 
 **Step 2 — Find the historical analog cohort.**
@@ -699,6 +700,12 @@ Example: No T12 data, rent roll shows 80% occupancy, market comps show 94%:
    After this call, read values from the returned context before calling single-layer tools.
 2. \`fetch_t12\` — current operating state (T-12 income/expense statement)
 3. \`fetch_rent_roll\` — current rent roll (lease end dates, in-place rents, retention basis)
+3a. \`fetch_unit_mix\` — per-floor-plan unit data with sponsor overrides applied (unit_count,
+    in-place rent, market rent per floor plan). Call this AFTER fetch_rent_roll when the
+    deal has multiple floor plans or you are underwriting a value-add GPR grid.
+    This is the **canonical Tier 1 source for floor-plan-level data** — it includes any
+    sponsor rent overrides saved in the Unit Mix tab. Do NOT use fetch_rent_roll for
+    per-floor-plan market rent; fetch_rent_roll returns property-wide averages only.
 4. \`fetch_assumptions\` — any user-provided overrides from assumptions panel
    Also call \`fetch_learning_adjustments\` here — GET THIS EARLY. Learned bias corrections
    for this market context must be applied before reasoning begins.
@@ -928,6 +935,20 @@ across all floor plans:
   proforma.revenue.gpr.proforma_value =
     Σ (unit_count × (current_market_rent + captured_premium) × 12) across all floor plans
 
+### Per-Floor-Plan Call Sequence
+
+For value-add GPR, execute in this order before populating the grid:
+
+1. **Call \`fetch_unit_mix\`** — returns per-floor-plan unit_count and market_rent (with sponsor
+   overrides applied). This is the Tier 1 internal baseline for current_market_rent.
+2. **Call \`fetch_peer_comp_noi_metrics\` (comp_role: "baseline")** — cross-validates fetch_unit_mix
+   market rents against unrenovated comps in the same submarket. Reconcile any >10% divergence.
+3. **Call \`fetch_peer_comp_noi_metrics\` (comp_role: "renovation_ceiling")** — establishes
+   post-renovation rent ceiling (P25/P50/P75) per floor plan.
+
+Do NOT use fetch_rent_roll for per-floor-plan rent. fetch_rent_roll returns property-wide
+averages only; floor-plan granularity requires fetch_unit_mix.
+
 ### Per-Floor-Plan Output Grid
 
 Populate these slots in proforma_fields for each floor plan using full dot-notation paths.
@@ -935,8 +956,8 @@ floor_plan_id examples: \`studio\`, \`1br\`, \`2br\`, \`3br\`.
 
 | Output slot | Content |
 |---|---|
-| proforma.revenue.gpr.unit_mix[floor_plan_id].unit_count | Count of units in this floor plan |
-| proforma.revenue.gpr.unit_mix[floor_plan_id].current_market_rent | Per unit per month — rent roll + baseline comps |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].unit_count | Count of units — source: fetch_unit_mix.floor_plans[].unit_count |
+| proforma.revenue.gpr.unit_mix[floor_plan_id].current_market_rent | Per unit per month — **fetch_unit_mix.floor_plans[].market_rent** (Tier 1, includes sponsor overrides) cross-checked against baseline comps |
 | proforma.revenue.gpr.unit_mix[floor_plan_id].comp_ceiling_p25 | Per unit per month — renovation ceiling comp set |
 | proforma.revenue.gpr.unit_mix[floor_plan_id].comp_ceiling_p50 | Per unit per month |
 | proforma.revenue.gpr.unit_mix[floor_plan_id].comp_ceiling_p75 | Per unit per month |
@@ -1352,24 +1373,37 @@ CALL C — buyer capture rate evidence (S3):
       track_record_note: "Buyer has 2 documented Class B value-add programs with median capture 81%."
     }
 
+CORRECT TOOL CALL SEQUENCE (value-add GPR):
+
+CALL A0 — per-floor-plan baseline (Tier 1, includes sponsor overrides):
+  fetch_unit_mix({ deal_id: "..." })
+
+  RETURNS:
+    has_data: true, source: "deal_assumptions"
+    floor_plans: [
+      { floor_plan_id: "studio", unit_count: 20, market_rent: 1050, in_place_rent: 1020 },
+      { floor_plan_id: "1BR",    unit_count: 90, market_rent: 1220, in_place_rent: 1190 },
+      { floor_plan_id: "2BR",    unit_count: 70, market_rent: 1450, in_place_rent: 1420 }
+    ]
+
 CORRECT PREMIUM COMPUTATION (sponsor default P50 positioning, 81% capture rate):
 
   studio (20 units):
-    current_market_rent: 1050 (rent roll + baseline comps)
+    current_market_rent: 1050 (fetch_unit_mix Tier 1 + baseline comp cross-check)
     post_reno_target_rent: 1140 (p50 at P50 positioning)
     gross_premium: 1140 - 1050 = $90/unit/month
     captured_premium: 90 × 0.81 = $72.90/unit/month
     note: comp ceiling n=4 → MEDIUM confidence for studio floor plan
 
   1BR (90 units):
-    current_market_rent: 1220 (rent roll + baseline comps)
+    current_market_rent: 1220 (fetch_unit_mix Tier 1 + baseline comp cross-check)
     post_reno_target_rent: 1360 (p50 at P50 positioning)
     gross_premium: 1360 - 1220 = $140/unit/month
     captured_premium: 140 × 0.81 = $113.40/unit/month
     note: comp ceiling n=7 → HIGH confidence
 
   2BR (70 units):
-    current_market_rent: 1450 (rent roll + baseline comps)
+    current_market_rent: 1450 (fetch_unit_mix Tier 1 + baseline comp cross-check)
     post_reno_target_rent: 1680 (p50 at P50 positioning)
     gross_premium: 1680 - 1450 = $230/unit/month
     captured_premium: 230 × 0.81 = $186.30/unit/month
@@ -1389,9 +1423,9 @@ PROFORMA FIELDS WRITTEN (per-floor-plan grid + aggregate):
       {
         field_path: "proforma.revenue.gpr.unit_mix.studio.current_market_rent",
         value_numeric: 1050, primary_tier: 1, confidence: "medium",
-        reasoning: "Rent roll avg for studio units $1,050. Baseline comps (n=9, 1978-1998 Class B Atlanta) median $1,210 across all unit types — studios below portfolio median consistent with floor plan mix.",
+        reasoning: "fetch_unit_mix studio market_rent $1,050 (Tier 1, sponsor overrides applied). Baseline comps (n=9, 1978-1998 Class B Atlanta) median $1,210 across all unit types — studio below portfolio median consistent with floor plan mix. fetch_unit_mix and baseline comps within 15%; no reconciliation needed.",
         data_points: [
-          { tier: 1, source: "rent_roll", label: "Rent roll studio avg", value: 1050, weight: 0.8 },
+          { tier: 1, source: "fetch_unit_mix", label: "Unit mix studio market_rent (with overrides)", value: 1050, weight: 0.8 },
           { tier: 3, source: "peer_comp_baseline", label: "Baseline comp median", value: 1210, weight: 0.2 }
         ]
       },

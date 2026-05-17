@@ -207,11 +207,38 @@ The Pro Forma column shows the fully-implemented stabilized ancillary income inc
 
 The math engine v1.1 handles hierarchical resolution of other income sub-categories (RUBS, pet, parking, etc.) per Task #804/805. When the agent produces the other income value, it should align with the hierarchical breakdown the math engine resolves — if per-category data is available from the rent roll or T12, use it; if not, estimate from comps and flag the uncertainty.
 
-**Source Hierarchy**
-- Primary (Tier 1): T12 other income detail — separate RUBS, parking, pet fees, laundry, cable if T12 has line detail. If T12 is aggregated, still use as the floor for existing programs.
-- Rent roll supplemental (Tier 1): Rent roll may show per-unit ancillary charges (RUBS, pet deposits, parking fees). Use as current-state evidence.
-- Secondary (Tier 2): Owned-portfolio ancillary income yield on comparable assets that have implemented similar programs (RUBS rollout, pet fee program).
-- Benchmark (Tier 3): fetch_line_item_benchmarks for other_income — by program type (RUBS $/unit/mo, parking $/stall/mo, pet $/pet/mo).
+**Source Hierarchy — Three Methods**
+
+**Method 1 — Extraction-derived per-category breakdown (Tier 1, preferred)**
+The uploaded rent roll may contain ancillary income detail broken out by category. After
+\`fetch_data_matrix\` runs, check:
+  \`context.extractedData.rentRoll.otherIncomeMonthly\`
+This is a \`Record<string, number>\` where keys are category names (parking, pet, laundry,
+storage, rubs, etc.) and values are total monthly $ for each category, extracted from the
+uploaded rent roll document.
+
+**Null check — Method 3 fallback rule:**
+If \`context.extractedData.rentRoll.otherIncomeMonthly\` is null or undefined, the uploaded
+rent roll did not contain per-category ancillary detail. In this case degrade to a
+Method 1+2 hybrid:
+  1. Use T12 aggregate other income as the floor (existing programs baseline)
+  2. Cross-check against owned portfolio actuals for programs of the same type (Method 1 below)
+  3. If no portfolio evidence, anchor to fetch_line_item_benchmarks P50 by program type (Method 2)
+  Flag evidence.confidence as Medium when this fallback path is used — exact category
+  breakdown is unavailable.
+
+**Method 2 — T12 and rent roll document level (Tier 1)**
+- T12 other income detail — separate RUBS, parking, pet fees, laundry, cable if T12 has line
+  detail. If T12 is aggregated, still use as the floor for existing programs.
+- Rent roll supplemental: per-unit ancillary charges if visible at the row level. This is the
+  raw row data, distinct from the extracted \`otherIncomeMonthly\` aggregate above.
+
+**Method 3 — Portfolio actuals and benchmarks (Tier 2–3 fallback)**
+- Owned-portfolio ancillary income yield on comparable assets that have implemented similar
+  programs (RUBS rollout, pet fee program).
+- Benchmark: fetch_line_item_benchmarks for other_income — by program type (RUBS $/unit/mo,
+  parking $/stall/mo, pet $/pet/mo).
+
 - Source you do NOT trust here: Broker OM ancillary income projections if they include programs not currently in place. Broker projections of "future RUBS revenue" without a documented implementation plan are speculative.
 
 **Investigation Questions**
