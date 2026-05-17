@@ -209,38 +209,46 @@ The math engine v1.1 handles hierarchical resolution of other income sub-categor
 
 **Source Hierarchy — Three Methods**
 
-**Method 1 — Extraction-derived per-category breakdown (Tier 1, preferred)**
-The uploaded rent roll may contain ancillary income detail broken out by category. After
-\`fetch_data_matrix\` runs, check:
-  \`context.extractedData.rentRoll.otherIncomeMonthly\`
+These three methods pre-existed as fallback tiers. Method 3 is the new Tier 1 preferred source
+added by Task #829 data plumbing. When Method 3 is available use it first; when null, degrade
+to the Method 1+2 hybrid per the null-check rule below.
+
+**Method 1 — Owned-portfolio actuals (Tier 2 fallback)**
+Ancillary income yield from comparable assets in the operator's owned portfolio that have
+implemented programs of the same type (RUBS rollout, pet fee program).
+Use when: Method 3 is null AND operator has ≥ 2 comparable portfolio assets with documented
+ancillary programs.
+
+**Method 2 — Platform benchmarks (Tier 3 fallback)**
+fetch_line_item_benchmarks for other_income — by program type (RUBS $/unit/mo, parking
+$/stall/mo, pet $/pet/mo).
+Use when: Method 3 is null AND Method 1 is unavailable (no portfolio actuals for this program
+type), or to cross-check Method 1.
+
+**Method 3 — Extraction-derived per-category breakdown (Tier 1, preferred)**
+After \`fetch_data_matrix\` runs, check the extracted rent roll field:
+  \`fetch_data_matrix → context.extractedData.rentRoll.otherIncomeMonthly\`
 This is a \`Record<string, number>\` where keys are category names (parking, pet, laundry,
 storage, rubs, etc.) and values are total monthly $ for each category, extracted from the
 uploaded rent roll document.
 
-**Null check — Method 1 fallback rule:**
+**Null check — Method 3 fallback rule:**
 If \`context.extractedData.rentRoll.otherIncomeMonthly\` is null or undefined, the uploaded
-rent roll did not contain per-category ancillary detail. In this case degrade to a
-Method 2+3 hybrid:
-  1. Use Method 2 (T12 aggregate other income) as the floor for existing programs. If T12 is
-     also unavailable (development deal), this floor is $0.
-  2. Augment with Method 3 sources: choose between owned-portfolio actuals vs benchmarks
-     (fetch_line_item_benchmarks) based on which has higher data confidence for this deal —
-     if the operator has ≥ 2 comparable portfolio assets with documented ancillary programs,
-     portfolio actuals take precedence; otherwise use fetch_line_item_benchmarks P50 by program type.
+rent roll did not contain per-category ancillary detail. Degrade to a Method 1+2 hybrid:
+  1. Use T12 aggregate other income as the floor for existing programs (if T12 also
+     unavailable — development deal — this floor is $0).
+  2. Augment with Method 1 or Method 2 based on higher data confidence: if the operator
+     has ≥ 2 comparable portfolio assets with documented ancillary programs, use Method 1
+     (portfolio actuals); otherwise use Method 2 (fetch_line_item_benchmarks P50 per
+     program type).
   Flag evidence.confidence as Medium when this fallback path is used — exact per-category
   breakdown is unavailable.
 
-**Method 2 — T12 and rent roll document level (Tier 1)**
+**Additional Tier 1 sources (always consult alongside Method 3)**
 - T12 other income detail — separate RUBS, parking, pet fees, laundry, cable if T12 has line
-  detail. If T12 is aggregated, still use as the floor for existing programs.
-- Rent roll supplemental: per-unit ancillary charges if visible at the row level. This is the
-  raw row data, distinct from the extracted \`otherIncomeMonthly\` aggregate above.
-
-**Method 3 — Portfolio actuals and benchmarks (Tier 2–3 fallback)**
-- Owned-portfolio ancillary income yield on comparable assets that have implemented similar
-  programs (RUBS rollout, pet fee program).
-- Benchmark: fetch_line_item_benchmarks for other_income — by program type (RUBS $/unit/mo,
-  parking $/stall/mo, pet $/pet/mo).
+  detail. If T12 is aggregated, use as floor cross-check.
+- Rent roll supplemental: per-unit ancillary charges visible at the row level (raw row data,
+  distinct from the extracted \`otherIncomeMonthly\` aggregate above).
 
 - Source you do NOT trust here: Broker OM ancillary income projections if they include programs not currently in place. Broker projections of "future RUBS revenue" without a documented implementation plan are speculative.
 
