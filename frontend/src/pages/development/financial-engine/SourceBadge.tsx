@@ -19,6 +19,7 @@ export const SOURCE_META: Record<string, { label: string; color: string; bg: str
   unit_mix:             { label: 'Unit Mix',       color: '#22d3ee', bg: '#083344' },
   capsule:              { label: 'Capsule',        color: '#a78bfa', bg: '#1e1b4b' },
   synthesized:          { label: 'Synthesized',    color: '#94a3b8', bg: '#1e293b' },
+  agent:                { label: 'AI',             color: '#818cf8', bg: '#1e1b4b' },
 };
 
 export function SourceBadge({ source }: { source: string | null }) {

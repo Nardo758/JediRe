@@ -2140,6 +2140,7 @@ export async function getDealFinancials(
     tax_bill: 85,
     rent_roll: 80,
     box_score: 75,
+    agent: 72,
     platform: 70,
     platform_fallback: 65,
     om: 60,
