@@ -1206,9 +1206,15 @@ export async function seedProFormaYear1(
           ` Auto-healing: clearing override and re-resolving from t12/platform.`
         );
         lv.override = null;
+        // Re-resolve following the standard priority: t12 → om → platform → null.
+        // om is included so OM-only fields (no t12) still resolve to a sensible
+        // value rather than being downgraded to platform_fallback incorrectly.
         if ('t12' in lv && lv.t12 != null) {
           lv.resolved = lv.t12;
           lv.resolution = 't12';
+        } else if ('om' in lv && lv.om != null) {
+          lv.resolved = lv.om;
+          lv.resolution = 'om';
         } else if ('platform' in lv && lv.platform != null) {
           lv.resolved = lv.platform;
           lv.resolution = 'platform_fallback';
