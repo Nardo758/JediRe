@@ -2125,6 +2125,7 @@ export async function getDealFinancials(
     ['water_sewer', 'Water & Sewer'],
     ['electric', 'Electric'],
     ['gas_fuel', 'Gas / Fuel'],
+    ['utilities', 'Utilities'],
     ['insurance', 'Insurance'],
     ['real_estate_tax', 'Property Tax'],
     ['management_fee_pct', 'Management Fee (%)'],
@@ -2419,26 +2420,42 @@ export async function getDealFinancials(
     // between the stated total and the sum of all other known broker opex
     // items.  This keeps the broker column internally consistent:
     //   totalOpexAnnual = Σ(all broker opex lines)
-    // Only applied when the broker slot is still empty after the loop above
-    // and the residual is positive (guards against floating-point drift and
-    // mis-classified OM formats).
+    //
+    // Critically: compute the residual using ONLY broker_claims values
+    // (not the display-layer row's broker column) to avoid the EGI mismatch
+    // where management_fee.broker is computed from the resolved EGI rather
+    // than the broker's own stated EGI.  Using the broker's stabilizedEgi
+    // (or falling back to the back-fill computed _bpEgi) for management fee
+    // gives an internally consistent residual that stays positive.
     const _csBrokerRow = _byField('contract_services');
     if (_csBrokerRow && _csBrokerRow.broker == null) {
       const _bpTotalOpexAnnual = _bpNum('totalOpexAnnual');
       if (_bpTotalOpexAnnual != null) {
-        // Sum every opex line item's broker column except contract_services itself.
-        // Includes management_fee and replacement_reserves which are set by
-        // toDollarRow/toRow (not by _bpOpexMap) before this block executes.
-        const _otherOpexFields = [
-          'payroll', 'repairs_maintenance', 'turnover', 'marketing',
-          'g_and_a', 'utilities', 'insurance', 'real_estate_tax',
-          'replacement_reserves', 'management_fee',
-          'water_sewer', 'electric', 'gas_fuel',
-        ];
-        const _knownSum = _otherOpexFields.reduce(
-          (s, f) => s + (_byField(f)?.broker ?? 0), 0,
-        );
-        const _residual = _bpTotalOpexAnnual - _knownSum;
+        // Management fee: use broker's own stated EGI, not the resolved EGI
+        const _bpStatedEgi = _bpNum('stabilizedEgi') ?? _bpEgi;
+        const _bpMgmtPct   = _bpNum('managementFeePct');
+        const _bpMgmtFee   = _bpMgmtPct != null && _bpStatedEgi != null
+          ? _bpMgmtPct * _bpStatedEgi : null;
+
+        // Replacement reserves: perUnit × totalUnits
+        const _bpRRpu  = _bpNum('replacementReservesPerUnit');
+        const _bpRRAnn = _bpRRpu != null && totalUnits > 0 ? _bpRRpu * totalUnits : null;
+
+        // Direct broker_claims opex fields (matching _bpOpexMap list, minus contract_services)
+        const _bpDirectSum = [
+          _bpNum('payrollAnnual'),
+          _bpNum('repairsMaintenanceAnnual'),
+          _bpNum('turnoverAnnual'),
+          _bpNum('marketingAnnual'),
+          _bpNum('gAndAAnnual'),
+          _bpNum('utilitiesAnnual'),
+          _bpNum('insuranceAnnual'),
+          _bpNum('realEstateTaxesAnnual'),
+          _bpRRAnn,
+          _bpMgmtFee,
+        ].reduce((s, v) => s + (v ?? 0), 0);
+
+        const _residual = _bpTotalOpexAnnual - _bpDirectSum;
         if (_residual > 0) _csBrokerRow.broker = Math.round(_residual);
       }
     }
@@ -2477,9 +2494,10 @@ export async function getDealFinancials(
     // 'management_fee' is the canonical $-denominated row produced by
     //   toDollarRow('management_fee_pct', …, _egiForDollars)
     //   — do NOT use the raw 'management_fee_pct' row (it holds a fraction).
-    // 'utilities' (combined) is intentionally excluded: it is NOT in OPEX_FIELDS;
-    //   decomposed 'water_sewer' + 'electric' + 'gas_fuel' are the canonical fields.
-    //   Including both would double-count on deals that populate all four.
+    // Utilities: prefer the decomposed fields (water_sewer, electric, gas_fuel)
+    //   when any of them has a resolved value; fall back to the combined
+    //   'utilities' row when all three are null (OM-only deals where no T12
+    //   sub-breakdown was available).  Including both would double-count.
     const OPEX_LEAF_FIELDS = [
       'payroll', 'repairs_maintenance', 'turnover', 'contract_services',
       'marketing', 'g_and_a',
@@ -2493,12 +2511,22 @@ export async function getDealFinancials(
       'loss_to_lease', 'vacancy_loss', 'concessions', 'bad_debt', 'non_revenue_units',
     ];
 
+    // Utilities fallback: when all three decomposed utility fields are null,
+    // include the combined 'utilities' resolved value in the leaf sum.
+    const _hasDecomposedUtils = ['water_sewer', 'electric', 'gas_fuel']
+      .some(f => (_rf(f)?.resolved ?? null) != null);
+    const _utilFallback = !_hasDecomposedUtils
+      ? (_rf('utilities')?.resolved ?? null)
+      : null;
+
     // total_opex — sum of opex leaf resolved values (skip if operator override present)
-    const _hasAnyLeafOpex = OPEX_LEAF_FIELDS.some(f => (_rf(f)?.resolved ?? null) != null);
+    const _hasAnyLeafOpex =
+      OPEX_LEAF_FIELDS.some(f => (_rf(f)?.resolved ?? null) != null) ||
+      _utilFallback != null;
     if (_hasAnyLeafOpex && !_hasOperatorOverride('total_opex')) {
       const _leafOpexSum = OPEX_LEAF_FIELDS.reduce(
         (s, f) => { const v = _rf(f)?.resolved; return v != null ? s + v : s; }, 0,
-      );
+      ) + (_utilFallback ?? 0);
       const _topexRow = _rf('total_opex');
       if (_topexRow && Math.abs(_leafOpexSum - (_topexRow.resolved ?? 0)) > 1) {
         _topexRow.resolved = Math.round(_leafOpexSum);
