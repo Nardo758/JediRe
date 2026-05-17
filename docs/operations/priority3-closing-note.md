@@ -505,17 +505,93 @@ reasonable. Broker OM says $341,907/yr ($1,228/unit/yr). Benchmark P50 is $225/u
 
 ---
 
-### Run outcome summary
+### Run outcome summary — three-run evolution
 
-| Metric | Before `2ea5dda0` | After `8e630d46` |
-|--------|-------------------|-----------------|
-| Run status | **failed** | **succeeded** |
-| Evidence rows | 19 (partial) | 22 (complete) |
-| T12 anomaly detection (other income) | silent | detected, flagged |
-| `source_label` on unanchored exit cap | `"ARCHIVE_COHORT"` (false) | `"UNANCHORED"` (correct) |
-| `archive_percentile_note` | absent | absent (blocked by #846) |
-| Per-category `breakdown` object | absent | absent (blocked by #847) |
-| `comp_ceiling_p75` in GPR data_points | absent | absent (blocked by comp pipeline) |
+| Metric | Before `2ea5dda0` | After v1 `8e630d46` | After v2 `4673a000` | After v3 `3de47f80` |
+|--------|-------------------|---------------------|---------------------|---------------------|
+| Run status | **failed** | **succeeded** | **succeeded** | **succeeded** |
+| Evidence rows | 19 (partial) | 22 | 24 | 24 |
+| T12 other-income anomaly detection | silent | detected | detected | detected |
+| `source_label` on unanchored exit cap | `ARCHIVE_COHORT` (false) | `UNANCHORED` (correct) | `UNANCHORED` | `UNANCHORED` |
+| Archive data_point in evidence rows | 0/19 | 0/22 | 0/24 | **18/24** |
+| `archive_percentile_note` in evidence | absent | absent | absent | **present (6/6 queried fields)** |
+| Other income per-category breakdown | absent | absent | absent | **`revenue.other_income_breakdown`: 7 data_points, one per category** |
+| `comp_ceiling_p75` in GPR data_points | absent | absent | absent | absent (comp pipeline empty) |
+| GPR per-floor-plan data_points | 3 aggregate | 2 aggregate | 3 aggregate | 3 aggregate (12+ floor-plan entries pending) |
+
+---
+
+## Third Run Evidence — `3de47f80` (2026-05-17 22:07:00 UTC, 112s)
+
+### F-003 — RESOLVED: `revenue.other_income_breakdown` evidence row
+
+```json
+{
+  "field_path": "revenue.other_income_breakdown",
+  "primary_tier": 3,
+  "confidence": "medium",
+  "dp_count": 7,
+  "data_points": [
+    { "tier": 3, "label": "parking",      "value": 65.56, "source": "fee_schedule_projection",
+      "weight": 0.35, "notes": "method_selected: fee_schedule_projection; 338-space garage, est 203 leased × $75/mo ÷ 232 units = $65.56/unit/mo" },
+    { "tier": 1, "label": "pet_fees",     "value": 3.10,  "source": "rent_roll",
+      "weight": 0.10, "notes": "method_selected: direct_rent_roll; rent roll shows $720/mo pet rent ÷ 232 units = $3.10/unit/mo" },
+    { "tier": 1, "label": "storage",      "value": 1.77,  "source": "rent_roll",
+      "weight": 0.10, "notes": "method_selected: direct_rent_roll; rent roll shows $410/mo storage ÷ 232 units = $1.77/unit/mo" },
+    { "tier": 3, "label": "laundry",      "value": 0,     "source": "none",
+      "weight": 0,    "notes": "method_selected: zero_no_program; in-unit W/D, no coin laundry program" },
+    { "tier": 3, "label": "rubs",         "value": 0,     "source": "none",
+      "weight": 0,    "notes": "method_selected: zero_no_program; no RUBS program in T-12" },
+    { "tier": 3, "label": "cable_telecom","value": 0,     "source": "none",
+      "weight": 0,    "notes": "method_selected: zero_no_program; no bulk cable agreement in T-12" },
+    { "tier": 3, "label": "misc",         "value": 14.57, "source": "archive_cohort",
+      "weight": 0.30, "notes": "method_selected: archive_p50; amenity fees, valet trash, package mgmt est $3,380/mo ÷ 232 = $14.57/unit/mo" }
+  ]
+}
+```
+
+All seven required categories present. Each has `method_selected` documented. Two Tier-1 entries from direct rent roll signals; two Tier-3 from projection and archive; three zero_no_program entries for absent programs.
+
+### F-005 — RESOLVED: archive data_point coverage
+
+All 6 queried archive fields now have `archive_percentile_note: insufficient_cohort (n=0)`:
+
+```
+field_path                         dp_count  archive_dp_count  archive_note
+assumptions.growth.expense_y1      2         1                 archive_percentile_note: insufficient_cohort (n=0)
+assumptions.growth.rent_y1         3         1                 archive_percentile_note: insufficient_cohort (n=0)
+exit.cap_rate                       3         1                 archive_percentile_note: insufficient_cohort (n=0)
+expense.insurance                   4         1                 archive_percentile_note: insufficient_cohort (n=0)
+expense.management_fee              3         1                 archive_percentile_note: insufficient_cohort (n=0)
+expense.replacement_reserves        3         1                 archive_percentile_note: insufficient_cohort (n=0)
+```
+
+18/24 total evidence rows contain an `archive_assumption_distribution` data_point (vs 0/19 and 0/22 in the two prior runs).
+
+### F-002 — Per-floor-plan data_points: still 3 aggregate entries
+
+GPR data_points in run `3de47f80`:
+```json
+[
+  { "tier": 1, "label": "Unit mix market rent annualized", "value": 4932648, "source": "fetch_unit_mix", "weight": 0.8 },
+  { "tier": 1, "label": "Rent roll monthly GPR × 12",     "value": 4932300, "source": "rent_roll",     "weight": 0.15 },
+  { "tier": 4, "label": "Broker OM stabilized GPR",        "value": 4901400, "source": "om",           "weight": 0.05 }
+]
+```
+
+The floor-plan-level individual entries (11 entries, one per floor plan) are not yet appearing. The aggregate computation ($4,932,648) is correct and T12 cross-check ($4,932,300, 0.01% delta) is present. `comp_ceiling_p75` and `capture_rate` fields remain absent — blocked by empty comp pipeline (no `fetch_peer_comp_noi_metrics` data seeded for this submarket).
+
+### F-001 — Cannot demonstrate on 464 Bishop
+
+464 Bishop has `extraction_rent_roll.floor_plan_mix` populated with 11 floor plans — `fetch_unit_mix` returns `has_data: true`. The degenerate single-row grid protocol fires only when `has_data: false`. No deal in the current database has both `unit_mix={}` and empty `extraction_rent_roll.floor_plan_mix`. The protocol is in the prompt; behavioral demonstration requires a deal with genuinely absent unit mix data.
+
+### Third run tier distribution
+
+```
+tier1=4  tier3=19  tier4=1  total=24  has_archive_dp=18
+```
+
+vs. baseline (run `2ea5dda0`): `tier1=4  tier3=15  tier4=0  total=19  has_archive_dp=0`
 
 ---
 

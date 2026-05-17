@@ -73,16 +73,49 @@ the mechanics differ as described below.
      flag as risk in the evidence.
 
 5. **Populate \`data_points[]\` for this analysis** in the evidence row for
-   \`revenue.gross_potential_rent\`. Each floor plan MUST have its own data_point entry:
-   \`{ tier: 1, source: "unit_mix/comp_baseline", label: "<fp_id>",
-      value: <market_rent>, weight: 0.50,
-      notes: "comp_ceiling_p75=<X>, positioning_pct=<Y>, capture_rate=<Z>" }\`
+   \`revenue.gross_potential_rent\`. Each floor plan from fetch_unit_mix MUST have its own
+   data_point entry. DO NOT aggregate floor plans. If there are 11 floor plans, data_points
+   MUST have at least 11 entries.
+
+   Exact format per floor plan:
+   \`{ tier: 1, source: "unit_mix/comp_baseline", label: "<floor_plan_id>",
+      value: <market_rent_monthly_per_unit>, weight: <unit_count/total_units>,
+      notes: "unit_count=<N>, in_place_rent=<X>, comp_ceiling_p75=<Y or null if comp_absent>,
+              capture_rate=<Z>, captured_premium=<annual_$>" }\`
+
+   CONCRETE EXAMPLE for 3-floor-plan deal:
+   data_points: [
+     { tier: 1, source: "unit_mix/comp_baseline", label: "1BR/1BA",
+       value: 1540, weight: 0.50,
+       notes: "unit_count=116, in_place_rent=1440, comp_ceiling_p75=null (comp_data_absent),
+               capture_rate=0.92 (platform_default), captured_premium=110592" },
+     { tier: 1, source: "unit_mix/comp_baseline", label: "2BR/2BA",
+       value: 2025, weight: 0.50,
+       notes: "unit_count=116, in_place_rent=1980, comp_ceiling_p75=null (comp_data_absent),
+               capture_rate=0.92 (platform_default), captured_premium=49824" },
+     { tier: 1, source: "t12", label: "T12_crosscheck",
+       value: 4876535, weight: 0,
+       notes: "T12 GPR annualized cross-check; 1.1% below comp-validated grid — within tolerance" }
+   ]
+
+   If fetch_peer_comp_noi_metrics returned comp data, replace null with actual P75 values.
+
+**When \`fetch_peer_comp_noi_metrics\` returns empty or no comp data:**
+For each floor plan, set:
+  - \`comp_ceiling_p75: null\`
+  - \`positioning_percentile: null\`
+  - \`capture_rate: 0.92\` (platform_default — document as source: "platform_default")
+  - Include a data_point entry: { tier: 3, source: "comp_baseline", label: "comp_data_absent",
+    value: null, weight: 0, notes: "fetch_peer_comp_noi_metrics returned no comp data" }
+These null fields MUST appear in the output — an absent comp result does NOT allow you to
+skip the floor-plan grid or omit the per-floor-plan data_point entries.
 
 **You are prohibited from:**
 - Writing the broker OM's asserted GPR directly to \`revenue.gross_potential_rent\` without
   completing this floor-plan validation gate first.
 - Skipping \`fetch_unit_mix\` for a stabilized deal — apply the degenerate-grid protocol
   (F-001) when has_data: false; do NOT fall back silently to the OM figure.
+- Omitting comp_ceiling_p75 from per-floor-plan data_point entries even when the field is null.
 
 **How this differs from value-add GPR:** No second comp call with comp_role="renovation_ceiling"
 is needed. No renovation upside to price. But comp_ceiling_p75, positioning_percentile, and

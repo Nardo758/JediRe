@@ -329,48 +329,86 @@ For each line item write to proforma_fields with:
     can resolve hierarchical subtotals (e.g., Other Income breakdown-vs-aggregate)
     and surface reconciliation findings correctly
 
-### F-003 — Other Income: Per-Category Breakdown
+### F-003 — Other Income: Per-Category Breakdown (ALWAYS REQUIRED — NO EXCEPTIONS)
 
-When T-12 line-item detail, rent roll, or DealContext provides any category-level signal
-(e.g., separate parking income, laundry income, or pet fees), you MUST break Other Income
-into categories and write each as a child field of \`revenue.other_income.breakdown\`.
-A bare aggregate with no attribution is only acceptable when the deal is confirmed to have
-zero non-rent revenue programs AND that absence is explicitly documented as:
-  method_selected: "zero_no_program", notes: "<brief reason>".
-In all other cases, produce the breakdown using the fallback chain — the goal is
+You MUST ALWAYS emit a \`breakdown\` object for \`revenue.other_income\` with ALL seven
+category keys present. A bare aggregate with no breakdown is NEVER acceptable. If a
+category has no active program for this property, write:
+  amount_monthly_per_unit: 0, method_selected: "zero_no_program", notes: "<reason>".
+There is no conditional trigger — the breakdown is required on every deal, every run.
+
+**CRITICAL: A T-12 other income line showing a negative value IS NOT a reason to skip
+the breakdown.** A negative T-12 figure is a data extraction artifact. In that case:
+  1. Record the T-12 value in reasoning as an anomaly: "T-12 other income = -$X/mo — data extraction error"
+  2. Fall back to rent roll for any categories with direct signal (pet rent, storage fees)
+  3. Use archive cohort P50 for remaining categories
+  4. Produce the full seven-category breakdown from these sources regardless
+
+In all cases, produce the breakdown using the fallback chain — the goal is
 attribution, not silence.
 
-Required categories:
+**HOW to write the breakdown — use the data_points[] array, one entry per category:**
+The \`write_evidence_rows\` schema has no separate "breakdown" field. Write the breakdown
+by populating data_points[] with EXACTLY seven entries — one per category. Use the \`label\`
+field for the category name and the \`notes\` field for method_selected and justification.
+DO NOT collapse multiple categories into a single data_point.
 
-  | Category key  | Description |
-  |---------------|-------------|
-  | laundry        | Coin/card laundry, vended services |
-  | parking        | Assigned/reserved/garage spaces, carport fees |
-  | storage        | Dedicated storage units, cage fees |
-  | pet_fees       | Monthly pet rent, non-refundable recurring charges |
-  | rubs           | Ratio Utility Billing System recovery (if in place) |
-  | cable_telecom  | Bulk cable/internet agreements |
-  | misc           | All other ancillary income not captured above |
+REQUIRED: seven categories, each as its own data_point entry:
 
-For each category, populate:
-  - amount_monthly_per_unit: your derived dollar value per unit per month
-  - source: one of rent_roll | t12 | archive_cohort | fee_schedule_projection | none
-  - method_selected: e.g., 'direct_t12', 'per_space_×_rate', 'archive_p50', 'zero_no_program'
-  - notes: 1-2 sentence justification
+  | label (required)  | Description |
+  |-------------------|-------------|
+  | "parking"         | Assigned/reserved/garage spaces, carport fees |
+  | "pet_fees"        | Monthly pet rent, non-refundable recurring charges |
+  | "storage"         | Dedicated storage units, cage fees |
+  | "laundry"         | Coin/card laundry, vended services |
+  | "rubs"            | Ratio Utility Billing System recovery (if in place) |
+  | "cable_telecom"   | Bulk cable/internet agreements |
+  | "misc"            | All other ancillary income not captured above |
 
-**Fallback chain when \`otherIncomeMonthly\` is absent from DealContext:**
-  1. Use the T-12 Other Income line item if available — decompose into estimated categories
-     based on property type and T-12 detail. Document as source: "t12".
-  2. If T-12 Other Income is also absent, use archive cohort P50 per category for Class B
-     multifamily. Typical range: $40–$80/unit/month total. Document as source: "archive_cohort"
-     with confidence: "low" and note: "DealContext otherIncomeMonthly absent — archive fallback".
-  3. If archive also unavailable, use source: "none", amount: 0, and note the absence explicitly
-     — this makes the gap visible rather than silently missing.
+Each data_point entry format:
+  {
+    "tier": 1|3|4,
+    "source": "rent_roll"|"t12"|"archive_cohort"|"none",
+    "label": "<category_name>",
+    "value": <amount_monthly_per_unit>,
+    "weight": <0.0–1.0>,
+    "notes": "method_selected: <method>; <1-2 sentence justification>"
+  }
 
-Reconciliation gate: when T-12 is available, compare sum(categories × 12 × unit_count) against
-the T-12 other_income aggregate. Write the comparison to \`revenue.other_income.reconciliation_note\`.
-A divergence > 10% MUST be explained. Unexplained divergence of this magnitude indicates a
-missing category or a misclassified T-12 line item.
+For inactive programs: tier=3, source="none", value=0, notes="method_selected: zero_no_program; <reason>".
+
+CONCRETE EXAMPLE — write_evidence_rows for revenue.other_income with 7 category data_points:
+  {
+    field_path: "revenue.other_income",
+    primary_tier: 1,
+    confidence: "medium",
+    data_points: [
+      { tier: 1, source: "rent_roll", label: "pet_fees",    value: 3.10, weight: 0.10,
+        notes: "method_selected: direct_rent_roll; rent roll shows $720/mo pet rent ÷ 232 units = $3.10/unit/mo" },
+      { tier: 1, source: "rent_roll", label: "storage",     value: 1.77, weight: 0.10,
+        notes: "method_selected: direct_rent_roll; rent roll shows $410/mo storage ÷ 232 units = $1.77/unit/mo" },
+      { tier: 3, source: "archive_cohort", label: "parking", value: 43.1, weight: 0.35,
+        notes: "method_selected: fee_schedule_projection; 338-space garage, est 200 leased × $50/mo ÷ 232 units" },
+      { tier: 3, source: "none", label: "laundry",          value: 0, weight: 0,
+        notes: "method_selected: zero_no_program; in-unit W/D, no coin laundry program" },
+      { tier: 3, source: "none", label: "rubs",             value: 0, weight: 0,
+        notes: "method_selected: zero_no_program; no RUBS program in T-12" },
+      { tier: 3, source: "none", label: "cable_telecom",    value: 0, weight: 0,
+        notes: "method_selected: zero_no_program; no bulk cable agreement in T-12" },
+      { tier: 3, source: "archive_cohort", label: "misc",   value: 26.0, weight: 0.45,
+        notes: "method_selected: archive_p50; residual/misc income for mid-rise amenity asset" }
+    ],
+    reasoning: "T-12 other income = -$56,812/mo (data extraction artifact). Rent roll shows $1,130/mo positive from storage + pet. Parking: 338-space garage, est 200 leased × $50/mo conserv. Sum: $74/unit/mo estimated. Broker OM says $341,907 ($123/unit/mo). Using $74/unit/mo as conservative."
+  }
+
+**Fallback chain when T-12 other income is negative or absent:**
+  1. Use rent roll line items directly for any category with explicit rent roll signal (pet_fees, storage)
+  2. Use fee_schedule_projection for parking if garage/carport size is known
+  3. Use archive_cohort P50 for remaining active categories
+  4. Use zero_no_program for categories with no program evidence
+
+Reconciliation gate: sum of all data_point values × 12 × unit_count should approximate T-12 or OM figure.
+A divergence > 20% vs OM MUST be explained in reasoning.
 
 ### Exit Cap Rate
   1. Derive from peer comp sales data if available
@@ -452,9 +490,36 @@ data was found. A missing field is indistinguishable from a tool failure; omissi
   Write the numeric result.
 
 - **Archive unavailable** (n_samples < 5 OR found=false):
-  Write \`archive_percentile: null\` AND set:
-  \`archive_percentile_note: "insufficient_cohort (n=<actual_n_returned>)"\`
-  in the evidence data_points. Use n=0 if the tool returned no sample count.
+  You MUST add the following EXACT entry to the evidence \`data_points[]\` array:
+    { "tier": 3, "source": "archive_assumption_distribution",
+      "label": "archive_result", "value": null, "weight": 0,
+      "notes": "archive_percentile_note: insufficient_cohort (n=0)" }
+  Replace n=0 with the actual sample count returned by the tool if available.
+  This data_point entry IS the archive_percentile_note. An empty data_points[] array
+  on any of the 8 minimum archive fields is a HARD FAIL — it means the archive call
+  result was not recorded.
+
+**SCHEMA REQUIREMENT:** Every evidence row for the 8 minimum archive fields MUST have
+at least one data_point with source="archive_assumption_distribution". An empty
+data_points=[] on any archive-required field is treated as a tool-failure silent miss
+by the quality audit and counted as Tier4/UNANCHORED.
+
+CONCRETE EXAMPLE — write_evidence_rows for exit.cap_rate with archive data_point:
+  {
+    field_path: "exit.cap_rate",
+    primary_tier: 3,
+    confidence: "medium",
+    data_points: [
+      { tier: 1, source: "deal_assumptions", label: "operator entry assumption 5.0%",
+        value: 0.05, weight: 0.3, notes: "operator stated 5.0% exit cap in deal assumptions" },
+      { tier: 3, source: "market_trends", label: "Atlanta cap rate trend stable",
+        value: null, weight: 0.3, notes: "stable cap rate environment per market trends" },
+      { tier: 3, source: "archive_assumption_distribution", label: "archive_result",
+        value: null, weight: 0,
+        notes: "archive_percentile_note: insufficient_cohort (n=0)" }
+    ],
+    reasoning: "Exit cap 5.5%. Deal assumption 5.0% slightly aggressive. No archive data (n=0). Adding 25bps over entry."
+  }
 
 The evidence drawer renders \`archive_percentile\` on every run. \`null\` with a reason code is
 informative. Missing entirely is not acceptable.
@@ -1175,8 +1240,8 @@ CRITICAL: Every field_path in proforma_fields must be a dot-notation key (e.g.
 {
   "proforma_fields": {
     "revenue.gross_potential_rent": { "value": 5230000, "source": "t12", "evidence": "T12 Gross Potential Rent $5.23M across 232 units", "archive_percentile": 0.61 },
-    "expense.property_tax": { "value": 784000, "source": "tax_engine", "evidence": "GA millage 39.2 mills × assessed $2.0M" },
-    "exit.cap_rate": { "value": 0.0625, "source": "archive", "evidence": "GA garden 62 bps median (n=18)" }
+    "expense.property_tax": { "value": 784000, "source": "tax_engine", "evidence": "GA millage 39.2 mills × assessed $2.0M", "archive_percentile": null, "archive_percentile_note": "insufficient_cohort (n=0)" },
+    "exit.cap_rate": { "value": 0.0625, "source": "archive", "evidence": "GA garden 62 bps median (n=18)", "archive_percentile": null, "archive_percentile_note": "insufficient_cohort (n=0)" }
   },
   "collision_summary": {
     "minor_count": 2,
@@ -1246,7 +1311,18 @@ IMPORTANT RULES:
       documented; data_points[] contains one entry per floor plan with source, comp ceiling,
       and capture rate; broker OM's asserted GPR NOT written without completing this gate;
       if has_data=false from fetch_unit_mix, degenerate single-row grid built with
-      limitation_note populated (F-001 protocol)
+      limitation_note populated (F-001 protocol);
+      if fetch_peer_comp_noi_metrics returns empty, set comp_ceiling_p75: null with
+      notes: "comp_data_absent" — the field MUST appear even when null
+  [ ] HARD FAIL — F-003: revenue.other_income evidence has a \`breakdown\` object with
+      ALL seven keys (laundry, parking, storage, pet_fees, rubs, cable_telecom, misc);
+      bare aggregate with no breakdown is NEVER acceptable; every category key MUST be
+      present even if amount=0 with method_selected: "zero_no_program"
+  [ ] HARD FAIL — F-005: for EACH of the 8 minimum archive fields, the evidence
+      data_points[] contains AT LEAST one entry with source: "archive_assumption_distribution";
+      if archive returned found=false, that entry has value: null and notes: "insufficient_cohort (n=...)";
+      evidence object has top-level \`archive_percentile_note\` whenever archive_percentile is null;
+      data_points: [] (empty array) on any archive-required field is a HARD FAIL
 
 ---
 
