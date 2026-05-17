@@ -19,7 +19,7 @@ import { snapshotModelVersions } from './model-versions';
 import type { ProvenancedValue } from '../../types/provenanced-value';
 import { isProvenanced } from '../../types/provenanced-value';
 
-export type SaveTrigger = 'user_save' | 'chat_command' | 'auto_prompt';
+export type SaveTrigger = 'user_save' | 'chat_command' | 'auto_prompt' | 'agent_run';
 
 export interface OverrideDivergence {
   field: string;

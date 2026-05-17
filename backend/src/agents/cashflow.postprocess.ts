@@ -532,6 +532,55 @@ export async function cashflowPostProcess(
           skippedFields: agentSkippedFields,
           ...(agentFailedFields.length > 0 && { failedFields: agentFailedFields }),
         });
+
+        // ── Agent-run version snapshot ───────────────────────────────────────
+        // Save a point-in-time version after the agent finishes writing so
+        // operators can see a before/after in the version history panel.
+        // Only fires when at least one field was actually written (no-ops skipped).
+        // Fire-and-catch: version save failure must never block agent output.
+        if (ctx.dealId && agentWriteCount > 0) {
+          try {
+            // Read post-write year1 from the active scenario; fall back to
+            // deal_assumptions for deals that pre-date the M40 migration.
+            const snapRes = await query(
+              `SELECT year1 FROM deal_underwriting_scenarios
+                WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+               LIMIT 1`,
+              [ctx.dealId]
+            );
+            let snapshot: Record<string, unknown> = {};
+            if ((snapRes.rowCount ?? 0) > 0) {
+              snapshot = (snapRes.rows[0]?.year1 ?? {}) as Record<string, unknown>;
+            } else {
+              const daRes = await query(
+                `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+                [ctx.dealId]
+              );
+              snapshot = (daRes.rows[0]?.year1 ?? {}) as Record<string, unknown>;
+            }
+
+            const { DealVersionsService } = await import('../services/proforma/deal-versions.service');
+            const dvs = new DealVersionsService();
+            await dvs.saveVersion({
+              dealId:      ctx.dealId,
+              userId:      ctx.userId ?? null,
+              snapshot,
+              trigger:     'agent_run',
+              note:        `agent_run:${runId}`,
+              divergences: [],
+            });
+            logger.info('[CashflowPostProcess] Agent-run version snapshot saved', {
+              dealId: ctx.dealId,
+              runId,
+            });
+          } catch (versionErr) {
+            logger.warn('[CashflowPostProcess] Agent-run version snapshot failed (non-fatal)', {
+              dealId: ctx.dealId,
+              runId,
+              err: versionErr instanceof Error ? versionErr.message : String(versionErr),
+            });
+          }
+        }
       } catch (agentWriteErr) {
         logger.warn('[CashflowPostProcess] Agent line-item write-back to year1 failed (non-fatal)', {
           dealId: ctx.dealId,
