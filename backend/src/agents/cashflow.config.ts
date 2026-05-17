@@ -60,6 +60,7 @@ import { goalSeekTargetIrrTool } from './tools/goal_seek_target_irr';
 import { fetchAnchorGrowthRatesTool } from './tools/fetch_anchor_growth_rates';
 import { fetchCountyTaxRulesTool } from './tools/fetch_county_tax_rules';
 import { fetchOperatorStanceTool } from './tools/fetch_operator_stance';
+import { fetchUnitMixTool } from './tools/fetch_unit_mix';
 import { generateRoadmapTool } from './tools/generate_roadmap';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
@@ -375,13 +376,15 @@ export async function buildCompositePrompt(
 
 export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   agentId: 'cashflow',
-  agentVersion: '3.2.0',
+  agentVersion: '3.3.0',
   promptVersion: 'cashflow-v8.0-core',
   postProcess: cashflowPostProcess,
   tools: [
     // Tier 1: Deal documents
     fetchT12Tool,
     fetchRentRollTool,
+    // Canonical floor-plan-level source — includes sponsor overrides from Unit Mix tab
+    fetchUnitMixTool,
     fetchAssumptionsTool,
     // Tier 2: Portfolio actuals
     fetchOwnedAssetActualsTool,

@@ -251,6 +251,8 @@ export interface DataMatrixContext {
       egiInPlaceAnnualized?: number;
       floorPlanMix?: Array<{ beds: number; count: number; marketRent?: number; effectiveRent?: number }>;
       expirationCurve?: { months0_3?: number; months3_6?: number; months6_12?: number; months12plus?: number; mtm?: number };
+      /** Per-category ancillary income from extraction_rent_roll.other_income_monthly (monthly $) */
+      otherIncomeMonthly?: Record<string, number>;
     };
     // Broker claims from OM
     brokerClaims?: Record<string, unknown>;
@@ -417,6 +419,43 @@ export class DataMatrixService {
                 gprMonthly: rr.gpr_monthly,
                 lossToLease: rr.loss_to_lease_monthly,
                 egiInPlaceAnnualized: rr.egi_in_place_annualized,
+                // floor_plan_mix → floorPlanMix (object keyed by plan name → typed array)
+                floorPlanMix: (() => {
+                  const fpm = rr.floor_plan_mix;
+                  if (!fpm || typeof fpm !== 'object') return undefined;
+                  const entries = Object.entries(fpm as Record<string, unknown>);
+                  if (entries.length === 0) return undefined;
+                  return entries
+                    .map(([planName, v]) => {
+                      const d = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
+                      const count = +(d.count ?? 0);
+                      if (!Number.isFinite(count) || count <= 0) return null;
+                      // Derive bed count from plan name: Studio/Eff=0, "1BR"→1, "2BR"→2, etc.
+                      const bedMatch = planName.match(/(\d)/);
+                      const bedsFromName = bedMatch ? parseInt(bedMatch[1], 10) : 0;
+                      const isStudio = /studio|eff/i.test(planName);
+                      return {
+                        beds: isStudio ? 0 : bedsFromName,
+                        count,
+                        marketRent: d.avg_market_rent != null && Number(d.avg_market_rent) > 0
+                          ? Number(d.avg_market_rent) : undefined,
+                        effectiveRent: d.avg_effective_rent != null
+                          ? Number(d.avg_effective_rent) : undefined,
+                      };
+                    })
+                    .filter((x): x is NonNullable<typeof x> => x !== null);
+                })(),
+                // other_income_monthly → otherIncomeMonthly (per-category monthly $ amounts)
+                otherIncomeMonthly: (() => {
+                  const oim = rr.other_income_monthly;
+                  if (!oim || typeof oim !== 'object') return undefined;
+                  const result: Record<string, number> = {};
+                  for (const [cat, val] of Object.entries(oim as Record<string, unknown>)) {
+                    const n = Number(val);
+                    if (Number.isFinite(n)) result[cat] = n;
+                  }
+                  return Object.keys(result).length > 0 ? result : undefined;
+                })(),
               } : undefined,
               brokerClaims: bc ?? undefined,
             };
