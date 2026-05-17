@@ -423,7 +423,7 @@ export function createContextAwarenessRoutes(pool: Pool): Router {
           pool.query<{ status: string; cnt: string }>(`
             SELECT status, COUNT(*) AS cnt
             FROM agent_runs
-            WHERE created_at > NOW() - INTERVAL '24 hours'
+            WHERE started_at > NOW() - INTERVAL '24 hours'
             GROUP BY status
             ORDER BY status
           `),
