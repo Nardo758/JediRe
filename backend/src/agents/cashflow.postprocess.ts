@@ -10,6 +10,7 @@
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
+import { VARIABLE_META } from '../services/sigma/sigma-engine';
 import { getStanceForDeal, applyStanceToProformaFields, applyStanceReblend, suggestAgentInferredStance } from '../services/operatorStance.service';
 import type { OperatorStancePatch } from '../types/operator-stance';
 import { normalizeProformaFields } from './utils/evidenceNormalizer';
@@ -659,6 +660,80 @@ export async function cashflowPostProcess(
       ? { message: err.message, stack: err.stack?.split('\n').slice(0, 3).join('; ') }
       : { raw: String(err) };
     logger.error('[CashflowPostProcess] Error during aggregation, falling back to raw output', { errInfo });
+  }
+
+  // ── Deterministic plausibility chip enrichment (Task #879 / M36) ────────
+  // Guarantee every required evidence assumption carries plausibility_band,
+  // plausibility_score, and plausibility_color regardless of LLM tool-call
+  // compliance. Runs on every output; is idempotent; does not overwrite values
+  // already set by get_plausibility_score tool calls during the agent run.
+  //
+  // Single-variable plausibility: d-score = |z| = |value − prior| / std
+  // Band thresholds (same as sigma-engine computePlausibility):
+  //   d ≤ 1.0 → Realistic / green
+  //   d ≤ 1.5 → Stretch   / amber
+  //   d ≤ 2.0 → Aggressive / amber
+  //   d ≤ 3.0 → Heroic    / red
+  //   d  > 3.0 → Unrealistic / red
+  try {
+    const PLAUSIBILITY_REQUIRED: Record<string, string> = {
+      'revenue.rent_growth_y1':           'rentGrowthY1',
+      'revenue.rent_growth_stabilized':   'rentGrowthStabilized',
+      'revenue.vacancy_rate':             'vacancyAtStabilization',
+      'revenue.vacancy':                  'vacancyAtStabilization',
+      'revenue.vacancy_loss_pct':         'vacancyAtStabilization',
+      'revenue.loss_to_lease_pct':        'lossToLeasePct',
+      'revenue.concessions_pct':          'concessionsPct',
+      'capital_structure.exit_cap_rate':  'exitCapRate',
+      'expenses.expense_growth_rate':     'expenseGrowthRate',
+      'expenses.opex_per_unit':           'opexPerUnit',
+      'expenses.management_fee_pct':      'managementFeePct',
+    };
+    const bandFromD = (d: number): string =>
+      d <= 1.0 ? 'Realistic'
+      : d <= 1.5 ? 'Stretch'
+      : d <= 2.0 ? 'Aggressive'
+      : d <= 3.0 ? 'Heroic'
+      : 'Unrealistic';
+    const colorFromBand = (band: string): string =>
+      band === 'Realistic' ? 'green'
+      : band === 'Stretch' || band === 'Aggressive' ? 'amber'
+      : 'red';
+
+    if (output.proforma_fields && typeof output.proforma_fields === 'object') {
+      const pf = output.proforma_fields as Record<string, Record<string, unknown>>;
+      let enriched = 0;
+      for (const [fieldPath, varKey] of Object.entries(PLAUSIBILITY_REQUIRED)) {
+        const entry = pf[fieldPath];
+        if (!entry || typeof entry !== 'object') continue;
+        // Skip if already enriched (LLM called get_plausibility_score)
+        if (entry.plausibility_band != null) continue;
+        const meta = VARIABLE_META[varKey];
+        if (!meta) continue;
+        const raw = entry.value;
+        const numVal = typeof raw === 'number' ? raw
+          : typeof raw === 'string' && raw !== '' && !isNaN(Number(raw)) ? Number(raw)
+          : null;
+        if (numVal === null) continue;
+        const d = Math.abs((numVal - meta.prior) / meta.std);
+        const band  = bandFromD(d);
+        const color = colorFromBand(band);
+        entry.plausibility_score = parseFloat(d.toFixed(3));
+        entry.plausibility_band  = band;
+        entry.plausibility_color = color;
+        enriched++;
+      }
+      if (enriched > 0) {
+        logger.info('[CashflowPostProcess] Plausibility chips back-filled for missing fields', {
+          runId, enriched,
+        });
+      }
+    }
+  } catch (plauErr) {
+    logger.warn('[CashflowPostProcess] Plausibility enrichment failed (non-fatal)', {
+      runId,
+      err: plauErr instanceof Error ? plauErr.message : String(plauErr),
+    });
   }
 
   // ── Deterministic role-framing selection (Task #878) ─────────────────────

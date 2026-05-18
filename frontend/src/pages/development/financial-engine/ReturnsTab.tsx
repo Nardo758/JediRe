@@ -1668,7 +1668,25 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 6, padding: '8px 10px', flexWrap: 'wrap' }}>
-                  {(cso.pareto_frontier as NonNullable<typeof cso.pareto_frontier>).map((alt) => {
+                  {(() => {
+                    // Re-sort Pareto frontier at render time based on the CURRENT VIEWER's
+                    // platform role — not the stored role_rank (which was computed at agent
+                    // run time for the deal owner and may be wrong for LP/lender collaborators).
+                    const rawFrontier = cso.pareto_frontier as NonNullable<typeof cso.pareto_frontier>;
+                    const sorted = [...rawFrontier].sort((a, b) => {
+                      if (platformRole === 'lp') {
+                        const ia = a.lp_irr ?? -Infinity;
+                        const ib = b.lp_irr ?? -Infinity;
+                        if (Math.abs(ia - ib) > 0.0005) return ib - ia;
+                        return (b.lp_distribution_yield ?? 0) - (a.lp_distribution_yield ?? 0);
+                      } else if (platformRole === 'lender') {
+                        return (b.dscr_min ?? 0) - (a.dscr_min ?? 0);
+                      } else {
+                        return (b.primary_metric_value ?? -Infinity) - (a.primary_metric_value ?? -Infinity);
+                      }
+                    });
+                    return sorted.map((altRaw, sortIdx) => {
+                    const alt = { ...altRaw, role_rank: sortIdx + 1 };
                     const bandColor = alt.plausibility_color === 'green' ? BT.text.green
                                     : alt.plausibility_color === 'amber' ? BT.text.amber
                                     : alt.plausibility_color === 'red'   ? BT.text.red
@@ -1785,7 +1803,8 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
                         )}
                       </div>
                     );
-                  })}
+                  });
+                  })()}
                 </div>
               </div>
             )}
