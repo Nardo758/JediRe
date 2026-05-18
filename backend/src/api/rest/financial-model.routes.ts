@@ -81,16 +81,33 @@ function mapProformaJsonToSnapshot(
   };
 
   // ── Results: summary ────────────────────────────────────────────────────
-  // Prefer flat old-format keys (which have computed results). Also check
-  // agent_runs.output top-level fields for any structured numeric results.
+  // Resolution order: output.summary nested object → output top-level fields
+  // → proforma_json flat keys (old format). The type guard ensures we only
+  // treat output.summary as structured data when it actually is an object
+  // (current runs produce a text narrative; future runs may produce structured).
   const outFields = (agentOutput ?? {}) as Record<string, unknown>;
-  const irrFromOutput = extractVal(outFields.irr) ?? extractVal(outFields.five_yr_irr);
-  const noiFromOutput = extractVal(outFields.noi) ?? extractVal(outFields.noi_year1);
-  const dscrFromOutput = extractVal(outFields.dscr) ?? extractVal(outFields.dscr_year1) ?? extractVal(outFields.year1_dscr);
-  const cocFromOutput = extractVal(outFields.cash_on_cash) ?? extractVal(outFields.cashOnCash) ?? extractVal(outFields.avg_cash_on_cash);
-  const emFromOutput = extractVal(outFields.equity_multiple) ?? extractVal(outFields.equityMultiple);
-  const lpIrrFromOutput = extractVal(outFields.lp_irr) ?? extractVal(outFields.lpIrr);
-  const gpIrrFromOutput = extractVal(outFields.gp_irr) ?? extractVal(outFields.gpIrr);
+  const summaryObj: Record<string, unknown> =
+    outFields.summary != null &&
+    typeof outFields.summary === 'object' &&
+    !Array.isArray(outFields.summary)
+      ? (outFields.summary as Record<string, unknown>)
+      : {};
+  const pickNum = (...keys: string[]): number | undefined => {
+    for (const key of keys) {
+      const fromSummary = extractVal(summaryObj[key]);
+      if (fromSummary != null) return fromSummary;
+      const fromOutput = extractVal(outFields[key]);
+      if (fromOutput != null) return fromOutput;
+    }
+    return undefined;
+  };
+  const irrFromOutput = pickNum('irr', 'five_yr_irr');
+  const noiFromOutput = pickNum('noi', 'noi_year1');
+  const dscrFromOutput = pickNum('dscr', 'dscr_year1', 'year1_dscr');
+  const cocFromOutput = pickNum('cash_on_cash', 'cashOnCash', 'avg_cash_on_cash');
+  const emFromOutput = pickNum('equity_multiple', 'equityMultiple');
+  const lpIrrFromOutput = pickNum('lp_irr', 'lpIrr');
+  const gpIrrFromOutput = pickNum('gp_irr', 'gpIrr');
 
   const irr = v('five_yr_irr') ?? irrFromOutput;
   const cashOnCash = v('avg_cash_on_cash') ?? cocFromOutput;
