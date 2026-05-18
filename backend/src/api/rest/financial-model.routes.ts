@@ -109,14 +109,49 @@ function mapProformaJsonToSnapshot(
   const lpIrrFromOutput = pickNum('lp_irr', 'lpIrr');
   const gpIrrFromOutput = pickNum('gp_irr', 'gpIrr');
 
+  // ── Computed fallbacks (new-format proforma_json has evidence fields but no ──
+  // ── pre-computed result metrics, so derive them from first principles)      ──
+  //
+  // NOI = EGI − sum(all expense lines from proforma_json)
+  // Annual Debt Service = standard amortizing mortgage payment (monthly × 12)
+  // DSCR = NOI ÷ Annual Debt Service
+  // IRR is not computable without a full DCF; left undefined for new-format runs.
+
+  const expenseSum = (() => {
+    const vals = Object.values(expenses).map(e => e ?? 0);
+    if (vals.every(e => e === 0)) return undefined;
+    return vals.reduce((sum, e) => sum + e, 0);
+  })();
+
+  const computedNoi: number | undefined =
+    effectiveGrossIncome != null && expenseSum != null
+      ? effectiveGrossIncome - expenseSum
+      : undefined;
+
+  const computedAds: number | undefined = (() => {
+    if (loanAmount == null || interestRate == null) return undefined;
+    const n = (amortizationYears ?? 30) * 12;
+    const r = interestRate / 12;
+    if (r === 0) return (loanAmount / n) * 12;
+    return ((loanAmount * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)) * 12;
+  })();
+
+  const computedDscr: number | undefined = (() => {
+    const resolvedNoi = computedNoi;
+    const resolvedAds = computedAds;
+    if (resolvedNoi == null || resolvedAds == null || resolvedAds === 0) return undefined;
+    return resolvedNoi / resolvedAds;
+  })();
+
+  // Final resolution: stored value → agent output → computed from field data
   const irr = v('five_yr_irr') ?? irrFromOutput;
   const cashOnCash = v('avg_cash_on_cash') ?? cocFromOutput;
-  const noi = v('noi_year1') ?? noiFromOutput;
-  const dscr = v('dscr_year1') ?? v('year1_dscr') ?? dscrFromOutput;
+  const noi = v('noi_year1') ?? noiFromOutput ?? computedNoi;
+  const annualDebtService = v('annual_debt_service') ?? computedAds;
+  const dscr = v('dscr_year1') ?? v('year1_dscr') ?? dscrFromOutput ?? computedDscr;
   const equityMultiple = v('equity_multiple') ?? v('equity') ?? emFromOutput;
   const lpIrr = lpIrrFromOutput;
   const gpIrr = gpIrrFromOutput;
-  const annualDebtService = v('annual_debt_service');
 
   // ── Preserve unmapped fields ────────────────────────────────────────────
   const mappedKeys = new Set([
