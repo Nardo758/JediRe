@@ -491,7 +491,10 @@ Include the full optimize_capital_structure output in your response nested as:
 
 After calling optimize_capital_structure, you MUST also call run_joint_goal_seek with the
 same noi_year1, purchase_price, hold_years, exit_cap_rate, and deal_strategy parameters.
-Set platform_role to match the requesting user's role ('sponsor', 'lp', or 'lender').
+Always pass deal_id (the current deal UUID) so the server can resolve the user's platform
+role from the investors table deterministically. Also set platform_role to match the
+requesting user's role ('sponsor', 'lp', or 'lender') as a fallback in case the DB lookup
+returns no match (e.g. the user has no investor record yet).
 
 run_joint_goal_seek evaluates all 5 debt product bundles (HUD 221(d)(4), Agency Fixed,
 Agency Floating, Bridge, CMBS) and returns up to 3 ranked alternatives.

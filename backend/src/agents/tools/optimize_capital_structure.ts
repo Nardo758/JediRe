@@ -239,8 +239,10 @@ function evaluateLtv(
   if (dscrMin < 1.30) constraintsViolated.push(`DSCR ${dscrMin.toFixed(2)} < 1.30`);
   if (!allCfPositive) constraintsViolated.push('annual cash flow negative in ≥1 year');
   if (breakevenOcc > 0.85) constraintsViolated.push(`break-even occupancy ${(breakevenOcc * 100).toFixed(1)}% > 85%`);
-  if (ltv < 0.50) constraintsViolated.push('LTV below 50% floor');
-  if (ltv > 0.85) constraintsViolated.push('LTV above 85% ceiling');
+  const ltvFloor   = input.ltv_min ?? 0.50;
+  const ltvCeiling = input.ltv_max ?? 0.85;
+  if (ltv < ltvFloor)   constraintsViolated.push(`LTV below ${(ltvFloor * 100).toFixed(0)}% floor`);
+  if (ltv > ltvCeiling) constraintsViolated.push(`LTV above ${(ltvCeiling * 100).toFixed(0)}% ceiling`);
 
   const feasible = constraintsViolated.length === 0;
 
@@ -348,7 +350,9 @@ function buildDiagnosticScan(
   primaryMetric: string,
 ): LtvEval[] {
   const scan: LtvEval[] = [];
-  for (let ltv100 = 50; ltv100 <= 85; ltv100 += 5) {
+  const scanLo = Math.round((input.ltv_min ?? 0.50) * 100);
+  const scanHi = Math.round((input.ltv_max ?? 0.85) * 100);
+  for (let ltv100 = scanLo; ltv100 <= scanHi; ltv100 += 5) {
     scan.push(evaluateLtv(ltv100 / 100, input, primaryMetric));
   }
   return scan;
@@ -411,8 +415,10 @@ export async function optimizeCapitalStructure(
   // ── Step 4: infeasibility reason ────────────────────────────────────────
   let infeasibilityReason: string | null = null;
   if (infeasible) {
-    const loEval = evaluateLtv(0.50, input, primaryMetric);
-    infeasibilityReason = `No LTV in [50%, 85%] satisfies all constraints. ${loEval.constraintsViolated.join('; ')}. Deal economics do not support leverage at the minimum 50% LTV.`;
+    const ltvFloorPct = ((input.ltv_min ?? 0.50) * 100).toFixed(0);
+    const ltvCeilPct  = ((input.ltv_max ?? 0.85) * 100).toFixed(0);
+    const loEval = evaluateLtv(input.ltv_min ?? 0.50, input, primaryMetric);
+    infeasibilityReason = `No LTV in [${ltvFloorPct}%, ${ltvCeilPct}%] satisfies all constraints. ${loEval.constraintsViolated.join('; ')}. Deal economics do not support leverage at the minimum ${ltvFloorPct}% LTV.`;
   }
 
   // ── Step 5: confidence ──────────────────────────────────────────────────
@@ -477,7 +483,9 @@ function buildNarrative(
     : `$${(v / 1e3).toFixed(0)}K`;
 
   if (infeasible) {
-    return `Capital structure optimization could not find a feasible LTV in the [50%, 85%] range. ${infeasibilityReason ?? ''} Recommend reviewing deal economics — consider re-pricing, improving NOI, or relaxing individual constraints with lender negotiation.`;
+    const ltvFloorPct = ((input.ltv_min ?? 0.50) * 100).toFixed(0);
+    const ltvCeilPct  = ((input.ltv_max ?? 0.85) * 100).toFixed(0);
+    return `Capital structure optimization could not find a feasible LTV in the [${ltvFloorPct}%, ${ltvCeilPct}%] range. ${infeasibilityReason ?? ''} Recommend reviewing deal economics — consider re-pricing, improving NOI, or relaxing individual constraints with lender negotiation.`;
   }
 
   const ltv = best!.ltv;

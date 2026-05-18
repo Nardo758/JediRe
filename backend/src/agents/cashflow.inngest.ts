@@ -37,6 +37,7 @@ import {
 import type { CashflowAgentOutput } from './cashflow.config';
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
+import { VARIABLE_META, computePlausibility } from '../services/sigma/sigma-engine';
 import type { RunContext } from './runtime/types';
 
 // ── Tier gating ─────────────────────────────────────────────────────────────
@@ -543,48 +544,63 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
           'expenses.management_fee_pct':      { key: 'managementFeePct',        label: 'Management Fee %' },
         };
 
-        // Hardcoded priors/stds matching VARIABLE_META (avoids importing at inngest runtime)
-        const VARIABLE_META_INLINE: Record<string, { prior: number; std: number }> = {
-          rentGrowthY1:           { prior: 0.03,   std: 0.015 },
-          rentGrowthStabilized:   { prior: 0.025,  std: 0.012 },
-          vacancyAtStabilization: { prior: 0.07,   std: 0.025 },
-          lossToLeasePct:         { prior: 0.03,   std: 0.015 },
-          concessionsPct:         { prior: 0.02,   std: 0.01 },
-          expenseGrowthRate:      { prior: 0.03,   std: 0.01 },
-          exitCapRate:            { prior: 0.0625, std: 0.012 },
-          opexPerUnit:            { prior: 7000,   std: 2500 },
-          managementFeePct:       { prior: 0.05,   std: 0.01 },
-        };
-
-        const anomalies: { path: string; label: string; value: number; z: number }[] = [];
-
+        // Build M36 assumption vector from proforma fields
+        // Each entry maps a proforma field path to a VARIABLE_META key
+        const assumptionVec: Record<string, number> = {};
         for (const [path, fieldData] of Object.entries(proformaFields)) {
           const mapping = ANOMALY_MAP[path];
           if (!mapping) continue;
-          const meta = VARIABLE_META_INLINE[mapping.key];
-          if (!meta) continue;
+          if (!VARIABLE_META[mapping.key]) continue;
           const rawVal = fieldData?.value;
           if (rawVal == null || typeof rawVal !== 'number') continue;
-
-          const z = Math.abs((rawVal - meta.prior) / meta.std);
-          if (z > 2.0) {
-            anomalies.push({ path, label: mapping.label, value: rawVal, z });
-          }
+          assumptionVec[mapping.key] = rawVal;
         }
 
-        if (anomalies.length === 0) return { anomalies: 0 };
+        if (Object.keys(assumptionVec).length === 0) return { anomalies: 0 };
+
+        // Compute per-dimension Mahalanobis residuals from the M36 regime distribution.
+        // contribution[k] = ((value_k − prior_k) / std_k)² — the chi-squared residual
+        // for dimension k. Threshold 4.0 ↔ |z| > 2σ from the regime center.
+        const plau = computePlausibility(assumptionVec);
+        const RESIDUAL_THRESHOLD = 4.0; // z² > 4 ↔ |z| > 2σ
+
+        const anomalies: {
+          path: string; label: string; value: number;
+          z: number; varKey: string; contribution: number;
+        }[] = [];
+
+        for (const [varKey, contribution] of Object.entries(plau.contributions)) {
+          if (contribution < RESIDUAL_THRESHOLD) continue;
+          const meta = VARIABLE_META[varKey];
+          if (!meta) continue;
+          const rawVal = assumptionVec[varKey];
+          if (rawVal == null) continue;
+          // First proforma path that maps to this variable key
+          const path = Object.keys(ANOMALY_MAP).find(p => ANOMALY_MAP[p].key === varKey);
+          if (!path) continue;
+          const label = ANOMALY_MAP[path]?.label ?? varKey;
+          anomalies.push({
+            path, label, value: rawVal,
+            z: Math.sqrt(contribution),
+            varKey, contribution,
+          });
+        }
+
+        if (anomalies.length === 0) return { anomalies: 0, dScore: plau.dScore, band: plau.band };
 
         // Emit one deal_alert per anomaly (de-dup by path + run_id)
         for (const anom of anomalies) {
-          const direction = (() => {
-            const fieldData = proformaFields[anom.path];
-            const mapping = ANOMALY_MAP[anom.path]!;
-            const meta = VARIABLE_META_INLINE[mapping.key]!;
-            return (anom.value > meta.prior) ? 'above' : 'below';
-          })();
+          const meta = VARIABLE_META[anom.varKey]!;
+          const direction = anom.value > meta.prior ? 'above' : 'below';
           const sigmas = anom.z.toFixed(1);
-          const title  = `Assumption Anomaly: ${anom.label} is ${sigmas}σ ${direction} market norm`;
-          const msg    = `The underwritten ${anom.label} (${anom.value}) is ${sigmas} standard deviations ${direction} the market-regime center. Values this far from the distribution are rarely achieved and should be verified against Tier-1 deal documents.`;
+          const title  = `Assumption Anomaly: ${anom.label} is ${sigmas}σ ${direction} M36 regime center`;
+          const msg    =
+            `The underwritten ${anom.label} (${anom.value}) is ${sigmas} standard deviations ` +
+            `${direction} the M36 regime distribution center ` +
+            `(regime prior: ${meta.prior}, σ: ${meta.std}, ` +
+            `chi-squared residual: ${anom.contribution.toFixed(2)}). ` +
+            `Values this far from the regime distribution are rarely achieved in stabilized deals ` +
+            `and should be verified against Tier-1 deal documents.`;
 
           await query(
             `INSERT INTO deal_alerts
@@ -604,10 +620,13 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
               title,
               msg,
               JSON.stringify({
-                agent_run_id: runResult.runId,
-                field_path:   anom.path,
-                value:        anom.value,
-                z_score:      anom.z,
+                agent_run_id:  runResult.runId,
+                field_path:    anom.path,
+                value:         anom.value,
+                z_score:       anom.z,
+                contribution:  anom.contribution,
+                regime_prior:  meta.prior,
+                regime_std:    meta.std,
                 direction,
               }),
               anom.path,
@@ -618,8 +637,14 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
           });
         }
 
-        logger.info('cashflow.inngest: anomaly detection complete', { dealId, anomalyCount: anomalies.length });
-        return { anomalies: anomalies.length };
+        logger.info('cashflow.inngest: anomaly detection complete', {
+          dealId,
+          anomalyCount:   anomalies.length,
+          dScore:         plau.dScore.toFixed(3),
+          band:           plau.band,
+          topContributors: plau.topContributors,
+        });
+        return { anomalies: anomalies.length, dScore: plau.dScore, band: plau.band };
       } catch (err) {
         logger.warn('cashflow.inngest: anomaly detection step failed (non-fatal)', { err, dealId });
         return { skipped: true, err: String(err) };

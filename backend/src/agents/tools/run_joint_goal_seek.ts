@@ -30,6 +30,7 @@ import { z } from 'zod';
 import { logger } from '../../utils/logger';
 import { optimizeCapitalStructure } from './optimize_capital_structure';
 import { DEBT_BUNDLES, computePlausibility } from '../../services/sigma/sigma-engine';
+import { query } from '../../database/connection';
 
 // ─── Trade-off summaries per bundle ──────────────────────────────────────────
 
@@ -217,8 +218,17 @@ const InputSchema = z.object({
   selling_costs_pct: z.number().min(0).max(0.10).default(0.02).describe(
     'Selling costs as pct of gross sale value (default 2%).'
   ),
+  deal_id: z.string().uuid().optional().describe(
+    'Deal UUID for server-side platform role resolution (recommended). When provided, ' +
+    'the tool queries the investors table (investors.type) for the deal\'s primary user ' +
+    'to determine platform_role deterministically: lp→lp, gp/co_invest→sponsor. ' +
+    'Falls back to LLM-provided platform_role if the lookup returns null or fails. ' +
+    'Always supply deal_id when available to prevent role misclassification.'
+  ),
   platform_role: z.enum(['sponsor', 'lp', 'lender']).default('sponsor').describe(
-    'Requesting user role — determines sort order of the Pareto frontier.\n' +
+    'Requesting user role — determines sort order of the Pareto frontier. ' +
+    'Override: if deal_id is supplied, the server resolves role from the DB (investors.type) ' +
+    'and this value is used only as fallback.\n' +
     '  sponsor: sorted by GP primary metric (IRR, CoC, etc.) descending\n' +
     '  lp:      sorted by LP IRR descending (computed from year-by-year LP\n' +
     '           cash flows at 90% LP equity split), with LP distribution\n' +
@@ -364,6 +374,44 @@ export async function runJointGoalSeek(
   const evaluated = rawResults.filter(Boolean) as NonNullable<(typeof rawResults)[number]>[];
   const feasibleEvaluated = evaluated.filter(e => !e.result.infeasible);
 
+  // ── Resolve platform role server-side (deterministic override) ───────────
+  //
+  // When deal_id is provided, query the investors table to get the user's
+  // investor type and map it to the sorting role, overriding whatever the
+  // LLM supplied in platform_role. This prevents role misclassification if
+  // the model omits or misstates the role.
+  //
+  //   investors.type → platform_role:
+  //     'lp'           → 'lp'
+  //     'gp'           → 'sponsor'
+  //     'co_invest'    → 'sponsor'
+  //     (other/null)   → fall back to LLM-provided platform_role
+  //
+  let resolvedRole: 'sponsor' | 'lp' | 'lender' = input.platform_role ?? 'sponsor';
+  if (input.deal_id) {
+    try {
+      const roleRow = await query(
+        `SELECT i.type AS investor_type
+           FROM investors i
+           JOIN deals d ON d.user_id = i.user_id
+          WHERE d.id = $1
+          LIMIT 1`,
+        [input.deal_id],
+      );
+      const dbType = roleRow.rows[0]?.investor_type as string | undefined;
+      if (dbType === 'lp') {
+        resolvedRole = 'lp';
+      } else if (dbType === 'gp' || dbType === 'co_invest') {
+        resolvedRole = 'sponsor';
+      }
+      // 'lender' is not represented in the investors table — keep LLM-provided role
+    } catch (err) {
+      logger.warn('[run_joint_goal_seek] DB role lookup failed, using prompt-provided role', {
+        err: String(err), deal_id: input.deal_id, fallback: resolvedRole,
+      });
+    }
+  }
+
   // ── Role-aware sort ───────────────────────────────────────────────────────
   //
   // sponsor: maximize GP primary metric (IRR, CoC, etc.) — sort DESC
@@ -371,7 +419,7 @@ export async function runJointGoalSeek(
   //          with LP distribution yield as tiebreaker — both sort DESC
   // lender:  maximize DSCR robustness — sort resulting_dscr_min DESC
   //
-  const role = input.platform_role ?? 'sponsor';
+  const role = resolvedRole;
   let sortKey: string;
 
   // Sort only feasible bundles; infeasible go at the end (if included)
