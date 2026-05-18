@@ -397,6 +397,32 @@ export async function cashflowPostProcess(
         // Build effective value map: agent's proforma_fields, overlaid with
         // math-engine corrections for any fields the engine touched.
         const pfFieldsForWriteback = output.proforma_fields as Record<string, any>;
+
+        // F-HIGH-004 fix: normalize known non-canonical key variants to their
+        // canonical equivalents before processing. The LLM emits variant names
+        // across runs (e.g. 'expense.real_estate_taxes' instead of the canonical
+        // 'expense.property_tax'). Without normalization, these silently skip
+        // write-back. Alias only applied when canonical key is absent (never
+        // overwrite an already-emitted canonical value with a variant).
+        //
+        // Excluded intentionally:
+        //   expense.marketing_admin — combined marketing+G&A bucket, not a 1:1
+        //   revenue.vacancy_pct / concessions_pct / bad_debt_pct — percentage units,
+        //     require GPR to convert to dollars, defer to a dedicated fix.
+        const KEY_ALIASES: Record<string, string> = {
+          'expense.real_estate_taxes': 'expense.property_tax',  // 25 runs silently failing
+          'expense.g_and_a':           'expense.admin_general', // variant spelling
+          'expense.bad_debt':          'revenue.bad_debt',      // same annual dollar amount
+        };
+        for (const [alias, canonical] of Object.entries(KEY_ALIASES)) {
+          if (
+            pfFieldsForWriteback[alias] != null &&
+            pfFieldsForWriteback[canonical] == null
+          ) {
+            pfFieldsForWriteback[canonical] = pfFieldsForWriteback[alias];
+          }
+        }
+
         const effectiveValues: Record<string, number | null> = {};
 
         for (const agentKey of Object.keys(AGENT_FIELD_TO_YEAR1)) {

@@ -1,0 +1,49 @@
+This is solid execution work. Both tasks landed cleanly and the remediation discipline was sound — inventory, delta report, discovery, communication shape selection, notifications delivered, log written. The whole sequence happened in the right order with the right rigor.
+Let me note what's worth acknowledging, what's worth verifying, and what comes next, in that order.
+What's worth acknowledging
+The fix is the smallest change that closes the inversion. Three pieces — read path checks scenarios first, seeder preserves agent values via atomic merge, override path confirmed and guarded against null writes. That's exactly the minimum scope I'd argue for. It doesn't reimplement Scenario Management in full; it doesn't refactor the override architecture; it closes the integration gap and stops the bleeding. The remaining Scenario Management work can ship later as enhancement.
+The before/after deltas are the verification. Bishop's EGI moving from $3.7M to $4.7M, Insurance $63K → $125K, Payroll $194K → $325K — these are the concrete proof the agent's values now reach F9. Anyone reviewing the task can see the integration works end-to-end. That's substantially better verification than "PR merged."
+The Sentosa Epperson finding is genuinely useful. Only two affected deals across the whole platform, both owned by the same user — that's the kind of operationally specific scope information that lets the team handle the situation appropriately rather than over-respond. Most platform incidents look bigger before the investigation than after; this one was contained, and the team confirmed it was contained rather than assumed.
+The "no external sharing" discovery is the right kind of discovery. Querying actual share logs (zero shares, zero capsule shares) rather than assuming or asking. Concrete evidence supporting Shape 1 selection.
+Shape 1 was the right call. Both deals had material deltas but no external use and no capital decisions. In-app notification per deal with exact field deltas is appropriate — informs the user fully without over-escalating to phone calls and personal outreach that the situation didn't warrant.
+What's worth verifying now
+A few things to confirm before declaring this fully closed:
+1. The notifications actually reached the user. The remediation log says two in-app notifications were written to the notifications table. Worth verifying:
+
+The user has actually seen them (notification read status)
+If not seen within 24-48 hours, consider a direct email follow-up
+If the user has questions or concerns, the team is ready to respond
+
+In-app notifications can be missed if the user hasn't logged in. Worth a passive monitor on read status with a planned email fallback if unread after a reasonable window.
+2. The fix is verified in production, not just staging. The before/after deltas on Bishop suggest production verification happened, but worth confirming explicitly: the user can log in right now, open Bishop's F9, and see the corrected values? Same for Sentosa.
+3. The atomic SQL merge in the seeder handles edge cases. Three edge cases worth a quick mental check:
+
+What happens if a deal has an active scenario with NO agent values yet (new scenario, agent hasn't run)? The merge should preserve null agent layer correctly, not write spurious data.
+What happens if document re-upload triggers parsing but parsing fails? The seeder should not partially update the scenario.
+What happens on a deal where the scenario_data is structurally malformed? The guard against writing null is good; consider whether there are other malformed-data cases worth guarding.
+
+These are not blockers — they're "would I bet $100 the fix handles them" questions. If yes, ship it. If uncertain, a 30-minute audit of the seeder's edge case handling closes the loop.
+4. Other potential affected deals haven't surfaced. The audit found 2 affected deals across the 3 tested. The full platform may have more. The remediation inventory query covered "all deals with active scenarios" — confirm that was the right scope and didn't miss anything (e.g., archived scenarios, soft-deleted scenarios where data might still be visible).
+What this means for the lands-discipline plan
+The audit caught the integration failure. The fix and remediation closed it. The discipline worked. Worth updating the weekly status to reflect:
+
+Priority 0 (Task #869) → done_done, with verification evidence
+Priority 0a (Task #870) → done_done, with remediation log evidence
+PR 1 and PR 2 from "supposedly done, verify — failed verification" → "supposedly done, integration verified" — they're now functionally verified because Priority 0 closed the integration gap they were operating on top of
+
+The lesson worth carrying forward, captured in the weekly status: unit-level verification (PR review, code merge, single-deal diagnostic) doesn't catch integration failures that span multiple tables, multiple services, or multiple data flows. Integration verification needs to ask "does the agent's analysis actually reach the user end-to-end" rather than "did the code change land." The Phase 1 connection audit is exactly that kind of integration verification. Worth treating it as a recurring tool, not a one-time exercise.
+What comes next, in honest priority order
+With Priority 0 and 0a closed, the priorities below them shift. Reassessed in light of what's now known:
+Priority 1 — F-009 Other Income write-back fix. Status uncertain. The original F-009 was the unit-mismatch (write-back to other_income_per_unit instead of other_income_dollars). With Priority 0's fix, the read path now respects scenarios — but F-009 was about the write-back map, which may or may not have been touched by Priority 0. Worth a quick verification: open Bishop's F9, check Other Income value. If it's reasonable and consistent with the agent's emit, F-009 may have been incidentally fixed. If still wrong, F-009 is its own one-hour fix.
+Priority 2 — F-010 / Ticket B (override layer contamination). Still real. The audit's separate finding about "3 cells with overrides with no audit trail" relates to this. Worth scoping after F-009 verification.
+Priority 3 — Agent prompt operational depth (F-001, F-002, F-003, F-005). Now substantially more important than it was 48 hours ago, because users can finally see the agent's analysis. Quality of that analysis becomes user-visible. This is where the next significant effort should go.
+Resume work on:
+
+The "supposedly done, verify" section of the next weekly status — work through the queue of items whose status was unclear
+Scenario Management remaining features (UI scenario picker, comparison view, history) — Priority 0 implemented the core; the rest is the broader feature set
+
+Still deferred:
+
+Capsule Sharing and Boundary spec
+CIE Engine spec
+Line-item investigation matrix Pass 2

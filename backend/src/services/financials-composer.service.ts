@@ -1460,7 +1460,22 @@ function buildOSRows(
   const l2lPick   = chooseSource(um.lossToLeaseFromUnitMix, platformL2L);
   const concPick  = chooseSource(um.concessionsFromUnitMix, platformConcessions);
   const nruPick   = chooseSource<number>(null, platformNRU);
-  const otherPick = chooseSource<number>(null, platformOtherIncome);
+
+  // F-009 fix: prefer the agent's annual dollar total from other_income_dollars
+  // (written by postprocess via revenue.other_income → other_income_dollars mapping)
+  // over the per-unit-per-month extraction value × units × 12.
+  // If the operator has a manual override on other_income_per_unit, respect it —
+  // that override is an explicit annual-basis entry that should not be displaced.
+  const oiDollarsLV   = lv('other_income_dollars');
+  const oiPerUnitLV   = lv('other_income_per_unit');
+  const hasOiOverride = oiPerUnitLV.override != null && typeof oiPerUnitLV.override === 'number' && isFinite(oiPerUnitLV.override);
+  const agentOiDollars: number | null =
+    !hasOiOverride && oiDollarsLV.resolved != null && typeof oiDollarsLV.resolved === 'number'
+      ? oiDollarsLV.resolved
+      : null;
+  const otherPick = agentOiDollars != null
+    ? { resolved: agentOiDollars, source: oiDollarsLV.resolution ?? 'agent' }
+    : chooseSource<number>(null, platformOtherIncome);
 
   // Bad Debt: per spec, T-12 or Rent Roll. Use the LayeredValue's resolution to
   // determine source honestly.
