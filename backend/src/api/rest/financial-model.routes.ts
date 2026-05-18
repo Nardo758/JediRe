@@ -109,25 +109,45 @@ function mapProformaJsonToSnapshot(
   const lpIrrFromOutput = pickNum('lp_irr', 'lpIrr');
   const gpIrrFromOutput = pickNum('gp_irr', 'gpIrr');
 
-  // ── Computed fallbacks (new-format proforma_json has evidence fields but no ──
-  // ── pre-computed result metrics, so derive them from first principles)      ──
+  // ── Parsed fallbacks from narrative summary (new-format agent runs) ─────────
   //
-  // NOI = EGI − sum(all expense lines from proforma_json)
-  // Annual Debt Service = standard amortizing mortgage payment (monthly × 12)
-  // DSCR = NOI ÷ Annual Debt Service
-  // IRR is not computable without a full DCF; left undefined for new-format runs.
+  // New-format proforma_json carries evidence fields (e.g. exit.cap_rate: {value,...})
+  // but NOT pre-computed result metrics. The CashFlow Agent reliably writes these into
+  // the text narrative when the deal has a computable return:
+  //   • "5-yr IRR 18.1%" / "Projected 5-yr IRR 18.1%" / "5-yr IRR estimated at -7.5%"
+  //   • "$1.5M NOI" / "~$2.0M NOI" / "NOI projected ~$2.0M"
+  // When a deal does not pencil the agent omits IRR/NOI, so undefined → "—" in the
+  // Compare tab is correct behaviour (not a data gap).
+  //
+  // Annual Debt Service is computed from loan parameters (exact amortization formula)
+  // and is used only for DSCR when a reliable parsed NOI is available.
 
-  const expenseSum = (() => {
-    const vals = Object.values(expenses).map(e => e ?? 0);
-    if (vals.every(e => e === 0)) return undefined;
-    return vals.reduce((sum, e) => sum + e, 0);
+  const summaryText: string =
+    typeof outFields.summary === 'string' ? outFields.summary : '';
+
+  const parsedSummaryMetrics = (() => {
+    const out: { irr?: number; noi?: number } = {};
+
+    // IRR: "5-yr IRR 18.1%" | "Projected 5-yr IRR 18.1%" | "5-yr IRR estimated at -7.5%"
+    const irrMatch = summaryText.match(
+      /(?:5-yr|5\s*year)\s+IRR\s+(?:estimated\s+at\s+|of\s+|:\s*)?([-\d.]+)%/i,
+    );
+    if (irrMatch) out.irr = parseFloat(irrMatch[1]) / 100;
+
+    // NOI: "$1.5M NOI" | "~$2.0M NOI" | "NOI projected ~$2.0M" | "stabilized NOI...~$X.XM"
+    const noiMatch =
+      summaryText.match(/\$\s*([\d.]+)\s*([KMkm])\s+NOI\b/i) ||
+      summaryText.match(/\bNOI\b[^.]*?~?\$\s*([\d.]+)\s*([KMkm])/i);
+    if (noiMatch) {
+      const num = parseFloat(noiMatch[1]);
+      const suffix = noiMatch[2].toUpperCase();
+      out.noi = num * (suffix === 'M' ? 1e6 : suffix === 'K' ? 1e3 : 1);
+    }
+
+    return out;
   })();
 
-  const computedNoi: number | undefined =
-    effectiveGrossIncome != null && expenseSum != null
-      ? effectiveGrossIncome - expenseSum
-      : undefined;
-
+  // Annual Debt Service from standard amortizing mortgage formula (monthly payment × 12)
   const computedAds: number | undefined = (() => {
     if (loanAmount == null || interestRate == null) return undefined;
     const n = (amortizationYears ?? 30) * 12;
@@ -136,17 +156,16 @@ function mapProformaJsonToSnapshot(
     return ((loanAmount * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)) * 12;
   })();
 
-  const computedDscr: number | undefined = (() => {
-    const resolvedNoi = computedNoi;
-    const resolvedAds = computedAds;
-    if (resolvedNoi == null || resolvedAds == null || resolvedAds === 0) return undefined;
-    return resolvedNoi / resolvedAds;
-  })();
+  // DSCR: only compute when we have a reliable NOI (parsed from narrative) + ADS
+  const computedDscr: number | undefined =
+    parsedSummaryMetrics.noi != null && computedAds != null && computedAds > 0
+      ? parsedSummaryMetrics.noi / computedAds
+      : undefined;
 
-  // Final resolution: stored value → agent output → computed from field data
-  const irr = v('five_yr_irr') ?? irrFromOutput;
+  // Final resolution: stored flat key → agent output field → parsed from narrative
+  const irr = v('five_yr_irr') ?? irrFromOutput ?? parsedSummaryMetrics.irr;
   const cashOnCash = v('avg_cash_on_cash') ?? cocFromOutput;
-  const noi = v('noi_year1') ?? noiFromOutput ?? computedNoi;
+  const noi = v('noi_year1') ?? noiFromOutput ?? parsedSummaryMetrics.noi;
   const annualDebtService = v('annual_debt_service') ?? computedAds;
   const dscr = v('dscr_year1') ?? v('year1_dscr') ?? dscrFromOutput ?? computedDscr;
   const equityMultiple = v('equity_multiple') ?? v('equity') ?? emFromOutput;
