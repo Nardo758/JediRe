@@ -1,0 +1,347 @@
+# CAPSULE AUDIT — PHASE 1: OPERATIONAL CONNECTION AUDIT
+
+## Objective
+
+Verify that every cell in the Pro Forma surface is wired to a real producer (agent emit, document extraction, computed subtotal, platform default, or operator override) and that every value the agent emits or the platform extracts lands in at least one cell.
+
+This is the foundation phase. Phase 2 (math audit) operates on a connected system. Running math audits on disconnected cells produces false findings — a cell showing zero may be disconnected, not mathematically wrong. Connection audit catches this entire class of issue before math audit begins.
+
+## Why this phase exists
+
+The 464 Bishop diagnostic surfaced F-009 (Other Income write-back to wrong field) and F-010 (broker OM contaminating override layer). Both were connection issues that presented as math issues. The pattern is broader than two instances:
+
+- Task #824 closed for three fields but not Other Income (incomplete connection)
+- PR 1 hydrated `floorPlanMix` and `otherIncomeMonthly` but the diagnostic suggests `floorPlanMix` may not produce a per-floor-plan grid for properties with sparse rent roll data (connection conditional on data shape)
+- Several `_per_unit` and `_psf` fields may have similar unit-mismatch patterns that haven't surfaced because the corruption isn't yet 100× visible
+
+This audit catches the pattern systematically rather than waiting for the next diagnostic to surface it deal by deal.
+
+## Scope
+
+**In scope:**
+- Every cell visible in the Pro Forma surface (F9 grid and any related views)
+- Every field the cashflow agent emits in `proforma_fields`
+- Every value the platform extracts from source documents that should appear in Pro Forma cells
+- Every override path the operator can use
+- Every computed subtotal and aggregation
+- Connection verification on 3-5 test deals across deal types
+
+**Out of scope (for Phase 1):**
+- Math correctness (Phase 2)
+- Source attribution quality (Phase 3 — provenance audit)
+- Layered value resolution correctness (Phase 3)
+- Reasoning quality (Phase 4)
+
+## Test deals
+
+Run the audit on 3-5 deals spanning deal types and data conditions:
+
+1. **464 Bishop** (acquisition_valueadd) — already has diagnostic findings; serves as the baseline
+2. **A stabilized acquisition** — with high-quality T-12, no Other Income lift planned. Tests Method 2 path
+3. **A development or lease-up deal** — no operating history. Tests Method 1 path
+4. **A value-add with rich rent roll detail** — multiple floor plans, populated `otherIncomeMonthly`. Tests the Method 3 path and floor-plan grid emit
+5. **(Optional) A deal with operator overrides** — tests override layer connections specifically
+
+If fewer than 5 deals are available across these types, prioritize: 464 Bishop + one stabilized + one with rich rent roll. The deal-type diversity matters more than deal count.
+
+## Approach
+
+For each test deal:
+
+1. Trigger a cashflow agent run with full instrumentation
+2. Capture the agent's emitted `proforma_fields` (the producer side)
+3. Capture the post-processing write-back (the path mapping)
+4. Capture the F9 Pro Forma rendering (the consumer side)
+5. Walk the connection from each cell back to its producer and forward from each producer to its cells
+6. Document findings per-cell with severity
+
+Tooling: the same instrumentation used for the 464 Bishop diagnostic works here. Inspect agent output JSON, year1 JSONB state, F9 GET response, and the rendered surface.
+
+## Phase 1A — Producer inventory
+
+Before walking connections, inventory the producers.
+
+### Agent emit inventory
+
+For each test deal:
+- List every key path in `proforma_fields` from the agent's output
+- Record the value at each path
+- Record the source label on each (`agent`, `agent_method_3`, etc.)
+- Record the unit convention apparent from the value (annual dollars / per unit per month / percentage / etc.)
+
+This inventory becomes the "producer side" reference. Every agent emit needs to be traceable to a Pro Forma cell.
+
+### Document extraction inventory
+
+For each test deal:
+- List every field in `extractedData` from `fetch_data_matrix` for the deal
+- Specifically: `extractedData.t12.*`, `extractedData.rentRoll.*`, `extractedData.om.*`
+- Record which fields are populated, which are null, which are undefined
+- Pay particular attention to: `floorPlanMix`, `otherIncomeMonthly`, per-line-item OpEx breakdowns
+
+This inventory checks whether the parsers and hydration are producing the data the agent and Pro Forma expect.
+
+### Override layer inventory
+
+For each test deal:
+- Query `deal_assumptions.year1` for entries where any layer (override, agent, platform, t12, om) is populated
+- Record the layer structure per field
+- Specifically check for: override entries with broker-labeled sources (the F-010 signature)
+
+### Platform default inventory
+
+For each test deal:
+- Identify which fields are populated by platform defaults (i.e., no agent, override, or document layer present)
+- Record the default values used
+- Cross-reference with platform defaults configuration
+
+## Phase 1B — Cell inventory
+
+For each test deal, inventory every cell visible in the Pro Forma surface.
+
+For each cell:
+- Cell name/label (as user sees it)
+- Cell field path (in the data model)
+- Pro Forma section (Revenue, OpEx, Below-the-Line, Returns, etc.)
+- Display value at the time of audit
+- Source attribution shown in evidence drawer (if any)
+
+This inventory is the "consumer side" reference. Every cell needs a documented producer.
+
+## Phase 1C — Connection walk
+
+For each cell in the cell inventory, walk backward to its producer:
+
+### Connection elements to verify per cell
+
+1. **Producer identification.** Which producer category produced this value?
+   - Agent emit
+   - Document extraction (t12 / rent_roll / om)
+   - Operator override
+   - Computed subtotal (math engine)
+   - Platform default
+
+2. **Specific path verification.** What's the exact path from producer to cell?
+   - For agent emit: `proforma_fields.<field>` → write-back map → `year1.<field>.<layer>` → F9 read path → cell
+   - For document extraction: `extractedData.<source>.<field>` → DealContext assembly → agent read or direct year1 population → cell
+   - For override: `year1.<field>.override` → resolution chain → cell
+   - For computed: math engine config → cell subtotal
+
+3. **Path completeness.** Does the path actually fire end-to-end?
+   - Is the producer producing? (value present, not null/undefined)
+   - Is the write-back/hydration mapping the producer to the right path?
+   - Is the read path reading from the right path?
+   - Is the cell rendering the read value?
+
+4. **Unit convention agreement.** Does every step in the path agree on the unit?
+   - Producer's unit (annual dollars / per unit per month / etc.)
+   - Path's expected unit (per the field name and write-back/read conventions)
+   - Consumer's expected unit (per the cell display logic)
+   - Mismatches are F-009-class bugs
+
+5. **Failure mode.** When the path doesn't fire end-to-end, where does it break?
+
+### Output table per cell
+
+| Cell | Section | Producer Category | Specific Path | Path Fires? | Unit Agrees? | Failure Mode |
+|---|---|---|---|---|---|---|
+| Vacancy % | Revenue | Document (t12) | `t12.vacancy_pct` → write-back → `year1.vacancy_pct.t12` → F9 read | ✓ | ✓ | None |
+| Other Income | Revenue | Agent emit | `proforma_fields.revenue.other_income` → write-back → `year1.other_income_per_unit.agent` → F9 read | ⚠️ | ✗ | Unit mismatch (F-009) |
+| Floor-Plan Grid | Revenue | Agent emit | `proforma_fields.revenue.gpr.unit_mix[]` → ? | ✗ | N/A | No grid emitted for sparse rent rolls |
+| ... | | | | | | |
+
+## Phase 1D — Orphan check (reverse walk)
+
+For each producer in the producer inventory, walk forward to its consumers.
+
+This catches the inverse of Phase 1C: values being produced that no cell consumes.
+
+For each producer:
+
+1. **Cells that consume.** Which Pro Forma cells display this producer's output?
+2. **Cells expected to consume but don't.** Per the field name and platform conventions, which cells should consume this but don't?
+3. **Reasoning surface that consumes.** Is the value also surfaced anywhere else (evidence drawer, CIE input, scenario diff)?
+
+### Output table per producer
+
+| Producer | Field/Path | Consuming Cells | Expected But Missing | Orphan? |
+|---|---|---|---|---|
+| Agent emit | `revenue.other_income` | Other Income aggregate | Per-category breakdown cells (if Method 3) | Conditional |
+| Document extraction | `extractedData.rentRoll.otherIncomeMonthly` | None observed | Method 3 reasoning input | Possible orphan |
+| ... | | | | |
+
+## Phase 1E — Cross-deal pattern detection
+
+After the per-deal connection walks complete, compare findings across deals.
+
+### Patterns to check
+
+1. **Connection issues consistent across deals.** A cell that fails to connect on every test deal is a systemic issue (priority: high).
+
+2. **Connection issues deal-type-specific.** A cell that connects on stabilized but not on value-add suggests deal-type-dependent connection logic. Worth understanding whether intentional.
+
+3. **Connection issues data-shape-dependent.** A cell that connects when `floorPlanMix` has multiple entries but not when it has only "Default" suggests connection logic doesn't handle sparse data (the F-001 pattern).
+
+4. **Unit convention violations consistent across fields.** If multiple `_per_unit` fields show unit mismatches, the broader pattern (Task #824's scope was incomplete) is confirmed.
+
+5. **Orphan producers consistent across deals.** A value the parsers extract but no cell consumes, on every test deal, is dead data plumbing.
+
+## Phase 2 — Structured findings output
+
+Save findings to two files:
+
+### File 1 — Connection audit findings (JSON)
+
+`/tmp/capsule_audit_phase1_findings_{timestamp}.json`
+
+```json
+{
+  "audit_phase": "1_connection",
+  "timestamp": "ISO8601",
+  "test_deals": [
+    {
+      "deal_id": "string",
+      "deal_classification": "string",
+      "agent_run_id": "string"
+    }
+  ],
+
+  "summary": {
+    "total_cells_audited": number,
+    "cells_fully_connected": number,
+    "cells_with_connection_issues": number,
+    "orphan_producers": number,
+    "cross_deal_patterns_detected": number,
+    "overall_assessment": "string"
+  },
+
+  "cell_findings": [
+    {
+      "cell_label": "string",
+      "section": "Revenue | OpEx | Below-the-Line | Returns | ...",
+      "field_path": "string",
+      "producer_category": "agent | document | override | computed | platform_default",
+      "specific_path": "string",
+      "path_fires_end_to_end": boolean,
+      "unit_convention_agrees": boolean,
+      "failure_mode": "string or null",
+      "severity": "critical | major | minor | informational",
+      "affected_deals": ["deal_id"],
+      "recommendation": {
+        "action": "string",
+        "target_file": "string",
+        "proposed_change": "string",
+        "priority": "ship_blocker | next_iteration | nice_to_have"
+      }
+    }
+  ],
+
+  "orphan_findings": [
+    {
+      "producer": "string",
+      "field_path": "string",
+      "expected_consumers": ["string"],
+      "observed_consumers": ["string"],
+      "severity": "major | minor | informational",
+      "recommendation": "string"
+    }
+  ],
+
+  "cross_deal_patterns": [
+    {
+      "pattern_name": "string",
+      "pattern_description": "string",
+      "affected_cells": ["cell_label"],
+      "affected_deals": ["deal_id"],
+      "severity": "critical | major | minor",
+      "recommendation": "string"
+    }
+  ],
+
+  "downstream_decisions": {
+    "phase_2_math_audit_blocking_findings": ["finding_id"],
+    "phase_2_math_audit_ready_when": "string (description of when Phase 2 can begin)",
+    "priorities_to_open_as_tickets": ["finding_id"]
+  }
+}
+```
+
+### File 2 — Executive summary (Markdown)
+
+`/tmp/capsule_audit_phase1_summary_{timestamp}.md`
+
+Under 1,500 words. Structure:
+
+1. **Headline finding** — single most important connection issue
+2. **Critical findings** — cells that fail to connect on production deals
+3. **Major findings** — connection issues affecting subsets of deals or data shapes
+4. **Orphan producers** — values produced but not consumed
+5. **Cross-deal patterns** — systemic connection issues
+6. **Phase 2 readiness** — what must be fixed before math audit can run meaningfully
+7. **Recommended ticket batch** — connection issues that should be opened as tickets immediately
+
+## Failure handling
+
+**If an agent run fails on a test deal:**
+- Document the failure
+- Continue with other test deals
+- Note the failure as a finding (the run-failure cell connections cannot be audited; this is itself a connection audit signal)
+
+**If a deal type isn't available for testing:**
+- Document the gap
+- Note as a coverage limitation
+- Audit findings are valid for the deal types actually tested
+
+**If instrumentation doesn't capture what's needed:**
+- Document the instrumentation gap
+- Use whatever signal is available
+- Flag the instrumentation gap as a meta-finding (we can't audit what we can't see)
+
+## Success criteria
+
+1. All test deals have completed agent runs (success or documented failure)
+2. Producer inventory and cell inventory complete for each deal
+3. Connection walk completed for every Pro Forma cell
+4. Orphan check completed for every producer
+5. Cross-deal pattern detection completed
+6. JSON output well-formed
+7. Markdown summary under 1,500 words
+8. Every connection finding has a recommendation with specific file path
+9. Phase 2 readiness assessment made — clear statement of when math audit can proceed
+
+## Specific things to look for (informed by prior findings)
+
+These are not exhaustive — the audit should still walk every cell — but these are known patterns worth particular attention:
+
+1. **Other Income write-back path.** Verify the F-009 fix landed completely (`revenue.other_income → other_income_dollars`, not `other_income_per_unit`). Verify across multiple deals not just 464 Bishop.
+
+2. **Other `_per_unit` and `_psf` fields.** Walk each one's path; verify unit conventions agree end-to-end. Candidates: `repairs_maintenance_per_unit`, `payroll_per_unit`, `marketing_per_unit`, `capex_reserves_per_unit`, anything else with similar naming.
+
+3. **Floor-plan grid emission.** Verify per-floor-plan cells connect to `proforma.revenue.gpr.unit_mix[]` agent emit. Verify behavior on deals with sparse rent roll (single Default floor plan). Confirm whether the agent attempts the grid in that case or silently emits nothing.
+
+4. **Other Income per-category breakdown.** Verify `otherIncomeMonthly` from `fetch_data_matrix` reaches Method 3 reasoning. Verify per-category cells (parking, pet, storage, etc.) connect to per-category agent emit when Method 3 fires.
+
+5. **Override layer attribution.** Verify broker OM values land in `om` layer, not `override` layer. The F-010 fix may have shipped or may still be in flight; either way, audit confirms current state.
+
+6. **Cohort anchoring fields.** Verify `archive_percentile` and `cohort_n` fields populate on rent growth, exit cap, expense growth cells. F-005 suggested these are unpopulated on most fields — audit confirms scope.
+
+7. **Source residual convention markers.** If shipped, verify residual sources are labeled correctly. If not yet shipped, audit confirms scope of remaining work.
+
+8. **Computed subtotals.** Verify NOI, EGI, Total OpEx, and other subtotals connect to the math engine's recompute path. Confirm `was_math_corrected` flag fires when corrections happen.
+
+## What this enables
+
+Phase 1 output produces:
+
+- A connection table that becomes the source of truth for "what should connect to what"
+- A prioritized list of broken connections (immediate tickets)
+- A clean foundation for Phase 2 (math audit) — math audit operates only on connected cells
+- A baseline for future regression testing — automated tests can verify the connection table holds over time
+
+This phase doesn't ship code fixes itself. It produces a structured findings list that gets triaged. Some findings become immediate tickets (the F-009-class); some become Phase 2 inputs; some become Phase 3 or Phase 4 inputs.
+
+## Effort estimate
+
+1-2 sessions for the audit execution. Per test deal: roughly 30-45 minutes to walk connections methodically. With 3-5 test deals plus the cross-deal pattern detection, total time: 2-4 hours of focused work plus the time for the agent runs themselves.
+
+The fixes that follow are separate effort, scoped per finding. Some findings (F-009-class) are one-hour fixes; some (systemic patterns) are larger.
