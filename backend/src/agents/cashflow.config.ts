@@ -39,7 +39,7 @@ import { detectCollisionTool } from './tools/detect_collision';
 import { writeUnderwritingTool } from './tools/write_underwriting';
 import { writeEvidenceRowsTool } from './tools/write_evidence_rows';
 import { requestWalkthroughNarrativeTool } from './tools/request_walkthrough_narrative';
-import { readGmailThreadTool } from './tools/read_gmail_thread';
+
 import { fetchArchiveAssumptionDistributionTool } from './tools/fetch_archive_assumption_distribution';
 import { fetchArchiveAchievementVsAssumptionTool } from './tools/fetch_archive_achievement_vs_assumption';
 import { fetchLineItemBenchmarksTool } from './tools/fetch_line_item_benchmarks';
@@ -426,8 +426,9 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchCountyTaxRulesTool,
     // OperatorStance — meta-layer modulating agent discretion (call after fetch_data_matrix)
     fetchOperatorStanceTool,
-    // Email/deal intake
-    readGmailThreadTool,
+    // read_gmail_thread is intentionally NOT registered here — it belongs to the deal-intake
+    // pipeline (email-intake.function.ts / Inngest), not the underwriting agent. Registering
+    // it in the cashflow config would expose Gmail credentials to an unintended call surface.
     // Analysis & output
     detectCollisionTool,
     computeProformaTool,

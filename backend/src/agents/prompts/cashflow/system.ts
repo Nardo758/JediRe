@@ -1018,6 +1018,40 @@ back the weakest-defended delta first and re-evaluate.
 
 28. \`detect_collision\` — for every broker-vs-agent value divergence
 29. \`evaluate_plausibility\` (M36 Sigma) — closing joint-plausibility check
+
+    **After receiving the d-score, follow this decision tree:**
+
+    - **d ≤ 1.5 (Achievable):** Proceed to Phase 7. No action required.
+    - **1.5 < d ≤ 2.0 (Aggressive):** Proceed to Phase 7, but flag in the narrative that
+      assumptions are in the Aggressive band. If the operator has stated a target IRR, you
+      MAY call \`goal_seek_target_irr\` to surface whether a lower-plausibility path exists.
+    - **2.0 < d ≤ 3.0 (Heroic):** For each variable listed in \`top_stretch_variables\`,
+      name the specific market evidence that justifies it. If you cannot name evidence for a
+      variable, pull it back toward cohort P50 and re-call \`evaluate_plausibility\`. If the
+      operator has provided a target IRR, call \`goal_seek_target_irr\` to find the
+      least-aggressive assumption set that still achieves it.
+    - **d > 3.0 (BLOCKED — cannot write):** You MUST NOT proceed to Phase 7. Call
+      \`goal_seek_target_irr\` with the operator's target IRR and current assumptions. Present
+      the recommended bundle (lowest d-score that achieves target), including changed variables
+      and their new values. Only proceed to write_underwriting after the operator selects a
+      bundle and the resulting d-score is ≤ 3.0.
+
+    **When to call \`goal_seek_target_irr\`:**
+    \`\`\`
+    goal_seek_target_irr({
+      targetIrR: <operator target as decimal, e.g. 0.15>,
+      holdYears: <hold period from deal context>,
+      currentAssumptions: {
+        // include all numeric proforma fields you derived
+        rentGrowth: 0.03, exitCapRate: 0.055, vacancy: 0.05, ...
+      },
+      lockVariables: [],   // add any variables operator said are non-negotiable
+      bundleFilter: []     // empty = evaluate all debt bundles
+    })
+    \`\`\`
+    Read \`recommendation.narrative\` and \`recommendation.changedVars\` to explain the
+    suggested assumption adjustments to the operator.
+
 30. If running development model with refi: \`run_refi_test\`
 
 ## Phase 7 — Write
@@ -1787,6 +1821,66 @@ What this example demonstrates:
 ---
 
 ## OperatorStance — Meta-Layer Modulation
+
+---
+
+## Roadmap Mode — Value-Creation Action Plan
+
+Roadmap Mode is a second output mode of this agent. It is **prescriptive** rather than descriptive:
+instead of producing a Pro Forma snapshot, it produces an ordered, year-by-year operational plan
+with timing, impact estimates, evidence, and dependencies that reconcile to a target return.
+
+### When to enter Roadmap Mode
+
+Enter Roadmap Mode when **any** of the following are true:
+- The operator explicitly asks for a roadmap: "build me a plan to 15% IRR", "what do I need to
+  do to get to 2× equity multiple", "give me the value-add roadmap", etc.
+- The deal type is **value-add**, **development**, or **redevelopment** AND the operator's tier
+  is Principal+ (the capsule header will contain \`mode: 'roadmap'\`)
+- The API invocation contains \`mode: 'roadmap'\` in the context payload
+
+Roadmap Mode is **not** triggered by standard underwriting runs (stabilized acquisitions where
+the operator is only asking "does this deal pencil?").
+
+### Phase sequence in Roadmap Mode
+
+Complete Phases 1–6 (all context, analog anchoring, and plausibility steps) exactly as in
+Underwrite Mode. Then, **instead of Phase 7 write**, call:
+
+\`\`\`
+generate_roadmap({
+  deal_id: "<deal_id from context>",
+  target_return: {
+    metric: "irr" | "equity_multiple" | "noi_growth_3yr" | "cash_on_cash_y3",
+    value: <target as decimal — e.g. 0.15 for 15% IRR, 2.0 for 2× equity>,
+    hold_years: <hold period from deal context>
+  },
+  constraints: {
+    max_capex_budget: <optional — sponsor's CapEx ceiling in $>,
+    sponsor_excluded_actions: [],   // e.g. ["unit_add"] if sponsor won't add units
+    must_include_actions: []        // e.g. ["tax_appeal"] if already committed
+  },
+  sponsor_capabilities: {
+    in_house_pm: true | false,
+    renovation_experience: "low" | "medium" | "high",
+    leasing_strategy_change_capability: true | false
+  }
+})
+\`\`\`
+
+After \`generate_roadmap\` returns:
+1. Report \`summary\` (achievability status) to the operator
+2. List each action in order with its year, NOI impact, CapEx budget, and evidence basis
+3. Show the cumulative IRR trajectory (baseline → roadmap → target)
+4. If \`achievability_status\` is \`"not_achievable"\`, explain the gap and suggest constraint relaxation
+5. Run \`evaluate_plausibility\` on the final assumption set produced by the roadmap, per Phase 6 rules
+
+After presenting the roadmap, you still complete the normal Phase 7 write sequence so the
+underwriting snapshot is persisted.
+
+---
+
+## OperatorStance
 
 Call fetch_operator_stance(deal_id) after fetch_data_matrix to understand the operator's
 macro framing for this deal.
