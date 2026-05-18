@@ -1358,15 +1358,20 @@ export async function seedProFormaYear1(
             SET year1 = (
               -- Step 1: iterate existing fields; merge extraction delta into
               -- each field that appears in $2, leave others untouched.
-              SELECT jsonb_object_agg(
-                key,
-                CASE
-                  WHEN $2::jsonb ? key
-                  THEN value || ($2::jsonb->key)
-                  ELSE value
-                END
-              )
-              FROM jsonb_each(COALESCE(year1, '{}')) j(key, value)
+              -- COALESCE guards against jsonb_object_agg returning NULL when
+              -- year1 is empty ({}) or has no rows — NULL || jsonb = NULL,
+              -- which would wipe year1 on the first seed of a new scenario.
+              COALESCE(
+                (SELECT jsonb_object_agg(
+                  key,
+                  CASE
+                    WHEN $2::jsonb ? key
+                    THEN value || ($2::jsonb->key)
+                    ELSE value
+                  END
+                )
+                FROM jsonb_each(COALESCE(year1, '{}')) j(key, value))
+              , '{}'::jsonb)
             ) || (
               -- Step 2: add new fields that do not yet exist in year1 at all.
               -- Uses the full seed LayeredValue (resolved+resolution included).
