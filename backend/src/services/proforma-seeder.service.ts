@@ -1716,13 +1716,20 @@ export async function ensureDealAssumptionsSeeded(
     })
   );
 
-  // Check for existing seed
+  // Check for an existing *proforma* seed, not just any year1 data.
+  // seedCapitalStructureDefaults (called above) writes capital-structure keys
+  // into year1 before this check runs. If we only test year1 != null, those
+  // keys would satisfy the gate and prevent seedProFormaYear1 from ever running
+  // on first-load deals with extraction capsules. We test for 'noi' (a key
+  // written exclusively by seedProFormaYear1) as the proforma-seed sentinel.
   const existing = await pool.query(
-    `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+    `SELECT year1->>'noi' IS NOT NULL AS has_proforma_seed
+       FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
     [dealId]
   ).catch(() => ({ rows: [] }));
 
-  const hasExistingSeed = existing.rows[0]?.year1 != null;
+  const hasExistingSeed = existing.rows[0]?.has_proforma_seed === true
+    || existing.rows[0]?.has_proforma_seed === 'true';
 
   if (hasExistingSeed && !opts.forceReseed) {
     return { seeded: false, skipped: true, reason: 'year1 already seeded' };
