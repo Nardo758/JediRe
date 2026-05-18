@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { SectionPanel, DataRow, Bd } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps, ModelVersion } from './types';
@@ -58,6 +58,20 @@ export function CompareTab({ dealId, versions = [] }: FinancialEngineTabProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>(
     versions.length >= 2 ? [versions[0].id, versions[1].id] : versions.length === 1 ? [versions[0].id] : []
   );
+
+  // Auto-select the two most recent versions when `versions` first populates
+  // after an async fetch. The useState initializer above only runs at mount,
+  // when versions is typically still empty, so nothing gets selected without this.
+  // Uses the functional updater so `selectedIds` doesn't need to be a dep —
+  // the update is a no-op if a selection already exists or versions is empty.
+  useEffect(() => {
+    setSelectedIds(prev => {
+      if (prev.length > 0 || versions.length === 0) return prev;
+      return versions.length >= 2
+        ? [versions[0].id, versions[1].id]
+        : [versions[0].id];
+    });
+  }, [versions]);
 
   const toggleVersion = (id: string) => {
     setSelectedIds(prev => {
