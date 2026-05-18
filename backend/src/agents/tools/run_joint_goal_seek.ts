@@ -163,6 +163,10 @@ export async function runJointGoalSeek(
           deal_strategy:      input.deal_strategy,
           gpr_year1:          input.gpr_year1,
           selling_costs_pct:  input.selling_costs_pct,
+          // Enforce bundle-specific product LTV ceiling (e.g. 83% HUD, 75% Agency, 70% Bridge/CMBS)
+          ltv_max:            bundle.ltv,
+          // Bridge and CMBS typically require 55%+ to make sense; others start at 50%
+          ltv_min:            bundle.id === 'bridge' || bundle.id === 'cmbs' ? 0.50 : 0.50,
         });
       } catch (err) {
         logger.warn('[run_joint_goal_seek] Bundle evaluation failed', {
@@ -194,22 +198,56 @@ export async function runJointGoalSeek(
   const feasible  = evaluated.filter(e => !e.result.infeasible);
 
   // ── Role-aware sort ───────────────────────────────────────────────
+  //
+  // sponsor: maximize primary metric return (GP IRR / CoC / profit at exit)
+  //          → sort by primary_metric_value DESC
+  //
+  // lp:      maximize risk-adjusted return for limited partners
+  //          LPs need both upside and downside protection, so we use a
+  //          composite: primary_metric × (1 − aggression_penalty), where the
+  //          penalty = max(0, plausibility_d_score − 1.5) × 0.15, capped at 0.40.
+  //          A d-score of 2.5σ (Aggressive) results in a 15% haircut on the
+  //          metric, effectively ranking safer bundles above aggressive ones
+  //          with equal headline returns.  This is the LP's "trustworthiness"
+  //          view of each alternative.
+  //
+  // lender:  maximize DSCR robustness — sort by resulting_dscr_min DESC.
+  //          Lenders care about the safety margin over debt service above all.
+  //
   const role = input.platform_role ?? 'sponsor';
   let sortKey: string;
 
+  function lpRiskAdjustedScore(
+    metricVal: number | null,
+    dScore: number,
+  ): number {
+    const mv = metricVal ?? 0;
+    const aggPenalty = Math.min(0.40, Math.max(0, dScore - 1.5) * 0.15);
+    return mv * (1 - aggPenalty);
+  }
+
   let sorted: typeof evaluated;
   if (role === 'lender') {
-    sortKey = 'dscr_min (descending — DSCR robustness)';
+    sortKey = 'resulting_dscr_min (descending — DSCR robustness first)';
     sorted = [...evaluated].sort((a, b) => {
-      const da = a.result.resulting_dscr_min ?? 0;
-      const db = b.result.resulting_dscr_min ?? 0;
       if (a.result.infeasible && !b.result.infeasible) return 1;
       if (!a.result.infeasible && b.result.infeasible) return -1;
+      const da = a.result.resulting_dscr_min ?? 0;
+      const db = b.result.resulting_dscr_min ?? 0;
       return db - da;
     });
+  } else if (role === 'lp') {
+    sortKey = 'risk-adjusted return (primary_metric × aggression-discount — LP trustworthiness view)';
+    sorted = [...evaluated].sort((a, b) => {
+      if (a.result.infeasible && !b.result.infeasible) return 1;
+      if (!a.result.infeasible && b.result.infeasible) return -1;
+      const sa = lpRiskAdjustedScore(a.result.primary_metric_value, a.plau.dScore);
+      const sb = lpRiskAdjustedScore(b.result.primary_metric_value, b.plau.dScore);
+      return sb - sa;
+    });
   } else {
-    // sponsor and lp: sorted by primary_metric_value descending
-    sortKey = 'primary_metric_value (descending — best return first)';
+    // sponsor / gp: maximize raw return metric (GP perspective, no penalty)
+    sortKey = 'primary_metric_value (descending — best GP return first)';
     sorted = [...evaluated].sort((a, b) => {
       if (a.result.infeasible && !b.result.infeasible) return 1;
       if (!a.result.infeasible && b.result.infeasible) return -1;
@@ -239,11 +277,16 @@ export async function runJointGoalSeek(
       ? ` ⚠ Infeasible: ${item.result.infeasibility_reason ?? 'constraints not satisfied'}.`
       : '';
 
+    // For LP: include the risk-adjusted score in the trade-off summary
+    const lpAdjStr = role === 'lp' && item.result.primary_metric_value != null
+      ? ` LP-adj: ${(lpRiskAdjustedScore(item.result.primary_metric_value, item.plau.dScore) * 100).toFixed(1)}% (${item.plau.dScore.toFixed(1)}σ plausibility discount).`
+      : '';
+
     return {
       bundle_id:          item.bundle.id,
       bundle_name:        item.bundle.name,
       optimal_ltv:        item.result.optimal_ltv,
-      trade_off_summary:  `${tradeOffBase}${metricStr}${dscrStr}${feasStr}`,
+      trade_off_summary:  `${tradeOffBase}${metricStr}${dscrStr}${lpAdjStr}${feasStr}`,
       primary_metric:     item.result.primary_metric,
       primary_metric_value: item.result.primary_metric_value,
       dscr_min:           item.result.resulting_dscr_min,

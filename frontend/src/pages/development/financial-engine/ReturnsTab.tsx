@@ -1684,14 +1684,26 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
                       : alt.primary_metric === 'stabilized_value' ? 'Stab. Value'
                       : 'Profit';
                     return (
-                      <div key={alt.bundle_id} style={{
+                      <div key={alt.bundle_id}
+                        title={`Click to preview ${alt.bundle_name} structure in the financial engine`}
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('capitalStructure:previewBundle', {
+                            detail: { bundleId: alt.bundle_id, bundleData: alt },
+                          }));
+                        }}
+                        style={{
                         flex: '1 1 220px', minWidth: 200, maxWidth: 340,
                         border: `1px solid ${BT.text.cyan}30`,
                         borderTop: `3px solid ${bandColor}`,
                         borderRadius: 4,
                         background: alt.feasible ? `${BT.text.cyan}05` : `${BT.text.red}05`,
                         padding: '6px 10px',
-                      }}>
+                        cursor: 'pointer',
+                        transition: 'background 0.15s',
+                      }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = alt.feasible ? `${BT.text.cyan}12` : `${BT.text.red}12`; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = alt.feasible ? `${BT.text.cyan}05` : `${BT.text.red}05`; }}
+                      >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                           <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan }}>
                             #{alt.role_rank} {alt.bundle_name}

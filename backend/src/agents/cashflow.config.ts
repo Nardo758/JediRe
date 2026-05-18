@@ -477,12 +477,21 @@ Include the pareto_frontier array from the run_joint_goal_seek result as:
 This field is consumed by the Returns tab Alternative Structures section. It must be present
 for the LP/lender/sponsor role-aware comparison cards to render.
 
-## Plausibility Chips for Evidence Drawer (Optional but Recommended)
+## Plausibility Chips for Evidence Drawer (Required Step)
 
-After establishing key assumptions (rentGrowthY1, vacancyAtStabilization, exitCapRate,
-expenseGrowthRate, lossToLeasePct), you MAY call get_plausibility_score for each to
-annotate the evidence with aggressiveness context. The result is surfaced as green/amber/red
-chips in the F9 evidence drawer. Call at most 5-8 times to avoid budget waste.
+After establishing key assumptions, you MUST call get_plausibility_score for each of the
+following proforma variables before completing the analysis:
+  - rentGrowthY1        (field: revenue.rent_growth_y1)
+  - vacancyAtStabilization (field: revenue.vacancy_rate or revenue.vacancy)
+  - exitCapRate         (field: capital_structure.exit_cap_rate)
+  - expenseGrowthRate   (field: expenses.expense_growth_rate)
+  - lossToLeasePct      (field: revenue.loss_to_lease_pct) — if present in deal data
+
+The result (band + color) is surfaced as green/amber/red chips in the F9 evidence drawer.
+Store the score as plausibility_band and plausibility_score on the corresponding
+proforma_fields entry so they persist to the evidence metadata.
+
+If a variable is not present in the deal data, skip it — do not fabricate a value.
 `;
 
   const combined = variantPrompt

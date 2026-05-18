@@ -137,6 +137,14 @@ const InputSchema = z.object({
   primary_metric_override: z.enum(['irr', 'cash_on_cash', 'stabilized_value', 'profit_at_exit']).optional().describe(
     'Override the strategy-derived metric. Used when the agent has a specific optimization goal.'
   ),
+  ltv_max: z.number().min(0.50).max(0.95).optional().describe(
+    'Maximum LTV ceiling for bisection search (default 0.85). ' +
+    'Pass the debt product\'s own LTV cap (e.g., 0.83 for HUD 221(d)(4), 0.75 for Agency, 0.70 for Bridge/CMBS) ' +
+    'to enforce product-specific constraints. run_joint_goal_seek passes bundle.ltv automatically.'
+  ),
+  ltv_min: z.number().min(0.30).max(0.70).optional().describe(
+    'Minimum LTV floor for bisection search (default 0.50).'
+  ),
 });
 
 export type OptimizeCapitalStructureInput = z.infer<typeof InputSchema>;
@@ -363,7 +371,11 @@ export async function optimizeCapitalStructure(
     ?? 'irr') as 'irr' | 'cash_on_cash' | 'stabilized_value' | 'profit_at_exit';
 
   // ── Step 1: bisect to find the highest feasible LTV ──────────────────────
-  const bisectResult = bisectMaxFeasibleLtv(input, primaryMetric);
+  const bisectResult = bisectMaxFeasibleLtv(
+    input, primaryMetric,
+    input.ltv_min ?? 0.50,
+    input.ltv_max ?? 0.85,
+  );
   const infeasible = bisectResult === null;
 
   // ── Step 2: for non-monotone metrics, find the true peak in feasible range ─
@@ -381,8 +393,8 @@ export async function optimizeCapitalStructure(
   // ── Step 3: determine binding constraints ────────────────────────────────
   const bindingConstraints: string[] = [];
   if (optimalEval) {
-    if (optimalEval.ltv === 0.85) {
-      bindingConstraints.push('LTV ceiling at 85%');
+    if (optimalEval.ltv >= (input.ltv_max ?? 0.85) - 0.001) {
+      bindingConstraints.push(`LTV ceiling at ${((input.ltv_max ?? 0.85) * 100).toFixed(0)}%`);
     } else if (bisectResult && bisectResult.ltv < 0.85) {
       // There is a binding constraint just above the optimal
       const slightlyAbove = evaluateLtv(
