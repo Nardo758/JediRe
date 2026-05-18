@@ -415,7 +415,8 @@ Parameters to pass:
 Strategy → primary metric mapping is deterministic (the tool handles this automatically):
   value-add, redevelopment, redevelopment_full → Levered IRR
   existing, stabilized, redevelopment_partial   → Year-1 Cash-on-Cash
-  lease-up, development, flip                   → Profit at Exit
+  lease-up, development                         → Stabilized Value
+  flip                                          → Profit at Exit
 
 Include the full optimize_capital_structure output in your response nested as:
   proforma.capital_structure.optimization

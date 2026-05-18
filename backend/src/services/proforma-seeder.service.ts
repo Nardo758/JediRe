@@ -1651,9 +1651,12 @@ export async function seedCapitalStructureDefaults(
   };
 
   try {
+    // Non-destructive merge: defaults go first, existing year1 values overwrite
+    // on top. This preserves any override-layer entries the user or Apply flow
+    // has already written (e.g. ltv_pct.override set by PATCH /financials/override).
     const result = await pool.query(
       `UPDATE deal_assumptions
-          SET year1      = COALESCE(year1, '{}') || $2::jsonb,
+          SET year1      = $2::jsonb || COALESCE(year1, '{}'),
               updated_at = NOW()
         WHERE deal_id = $1`,
       [dealId, JSON.stringify(defaults)]
@@ -1664,7 +1667,7 @@ export async function seedCapitalStructureDefaults(
         `INSERT INTO deal_assumptions (deal_id, year1, source_type, source_date, created_at, updated_at)
          VALUES ($1, $2::jsonb, 'platform_seeded', NOW(), NOW(), NOW())
          ON CONFLICT (deal_id) DO UPDATE
-           SET year1      = COALESCE(deal_assumptions.year1, '{}') || $2::jsonb,
+           SET year1      = $2::jsonb || COALESCE(deal_assumptions.year1, '{}'),
                updated_at = NOW()`,
         [dealId, JSON.stringify(defaults)]
       );
