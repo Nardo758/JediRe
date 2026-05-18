@@ -661,6 +661,22 @@ export async function cashflowPostProcess(
     logger.error('[CashflowPostProcess] Error during aggregation, falling back to raw output', { errInfo });
   }
 
+  // ── Deterministic role-framing selection (Task #878) ─────────────────────
+  // The model always generates three role_framing variants (sponsor/lp/lender).
+  // Here we deterministically promote the requesting user's variant to
+  // `active_role_framing` so downstream consumers (API response, UI, saved run
+  // output) always have a single, pre-selected string without needing to know
+  // the requesting user's role at read time.
+  // Non-fatal: any failure here never blocks output delivery.
+  try {
+    const effectiveRole = (ctx.platformRole ?? 'sponsor') as 'sponsor' | 'lp' | 'lender';
+    const rf = output.role_framing as Record<string, string> | undefined;
+    if (rf && typeof rf === 'object') {
+      const selected = rf[effectiveRole] ?? rf['sponsor'] ?? '';
+      output.active_role_framing = selected;
+    }
+  } catch (_) { /* non-fatal */ }
+
   return output;
 }
 

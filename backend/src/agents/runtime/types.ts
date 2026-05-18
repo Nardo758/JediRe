@@ -86,6 +86,15 @@ export interface RunContext {
    * modifying their stored prompts.
    */
   dataPreamble?: string;
+
+  /**
+   * The requesting user's platform role (Task #878).
+   * 'sponsor' | 'lp' | 'lender' — carried through the run so postProcess
+   * can deterministically select the role-appropriate framing from the
+   * three-variant role_framing output field and surface it as active_role_framing.
+   * Defaults to 'sponsor' when not set.
+   */
+  platformRole?: string;
 }
 
 // ── Tool definitions ──────────────────────────────────────────────────────────

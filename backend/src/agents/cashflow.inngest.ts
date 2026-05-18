@@ -346,6 +346,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
           research_run_id: (event as unknown as ResearchCompletedEvent).data.runId,
         },
         systemPromptOverride,
+        platformRole: requestingUserRole,
       };
 
       const output = await cashflowRuntime.run(

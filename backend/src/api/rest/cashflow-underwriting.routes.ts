@@ -130,6 +130,7 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
         request_id: crypto.randomUUID(),
       },
       systemPromptOverride,
+      platformRole: requestingUserRole,
     };
 
     const { runId, done } = await cashflowRuntime.startAsync({ deal_id }, ctx);

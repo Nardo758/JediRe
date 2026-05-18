@@ -13,7 +13,7 @@ export interface JWTPayload {
   userId: string;
   email: string;
   role: string;
-  user_type?: 'human' | 'agent';
+  user_type?: 'human' | 'agent' | 'human_sponsor' | 'human_lp' | 'human_lender';
   agent_id?: string;
   capabilities?: string[];
 }
