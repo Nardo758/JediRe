@@ -591,11 +591,12 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       if (!Array.isArray(data)) return;
       const mapped: ModelVersion[] = data.map((row: any) => {
         const snap = row.layered_state_snapshot ?? row.layeredStateSnapshot ?? {};
+        const isAgent = row.save_trigger === 'agent_run';
         return {
           id: row.id,
           name: row.note || `v${row.version_number}`,
           timestamp: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
-          source: 'user',
+          source: isAgent ? 'agent' : 'user',
           dealType: resolvedDealType,
           assumptions: snap.assumptions ?? snap,
           results: snap.results,

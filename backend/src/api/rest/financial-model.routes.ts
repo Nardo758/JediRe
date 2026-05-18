@@ -2,10 +2,102 @@ import { Router, Request, Response } from 'express';
 import { financialModelEngine } from '../../services/financial-model-engine.service';
 import { excelExportService } from '../../services/excel-export.service';
 import { getPool } from '../../database/connection';
-import { dealVersionsService, type SaveTrigger } from '../../services/proforma/deal-versions.service';
+import { dealVersionsService, type SaveTrigger, type DealVersionRow } from '../../services/proforma/deal-versions.service';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { requireDealAccess } from '../../middleware/deal-access';
 import type { ProFormaAssumptions } from '../../services/financial-model-engine.service';
+
+// ──────────────────────────────────────────────────────────────────────────
+// Agent Version Helpers
+//
+// Reads deal_underwriting_snapshots + agent_runs and returns synthetic
+// DealVersionRow objects so the frontend version picker can surface
+// CashFlow Agent runs alongside user-saved versions.
+// ──────────────────────────────────────────────────────────────────────────
+
+function extractVal(entry: unknown): number | undefined {
+  if (entry == null) return undefined;
+  if (typeof entry === 'number') return entry;
+  if (typeof entry === 'object' && 'value' in (entry as object)) {
+    const v = (entry as Record<string, unknown>).value;
+    if (typeof v === 'number') return v;
+  }
+  return undefined;
+}
+
+function mapProformaJsonToSnapshot(pj: Record<string, unknown>): { assumptions: Record<string, unknown>; results: Record<string, unknown> } {
+  const v = (key: string) => extractVal(pj[key]);
+
+  const exitCapRate = v('exit.cap_rate') ?? v('exit_cap_rate_pct');
+  const interestRate = v('debt.first_lien_rate') ?? v('interest_rate_pct');
+  const loanAmount = v('debt.first_lien_amount') ?? v('loan_amount');
+  const vacancyRaw = v('assumptions.growth.vacancy_stabilized') ?? v('vacancy_rate_pct');
+  const stabilizedOccupancy = vacancyRaw != null ? 1 - vacancyRaw : undefined;
+  const opexGrowthPct = v('assumptions.growth.expense_y1') ?? v('annual_expense_growth_pct');
+  const purchasePrice = v('purchase_price');
+  const capRate = v('year1_cap_rate');
+  const holdPeriod = v('hold_period_years');
+  const irr = v('five_yr_irr');
+  const cashOnCash = v('avg_cash_on_cash');
+  const noi = v('noi_year1');
+  const dscr = v('dscr_year1') ?? v('year1_dscr');
+
+  return {
+    assumptions: {
+      acquisition: { purchasePrice, capRate },
+      disposition: { exitCapRate },
+      holdPeriod,
+      revenue: { stabilizedOccupancy },
+      financing: { loanAmount, interestRate },
+      opexGrowthPct,
+    },
+    results: {
+      summary: { irr, cashOnCash, noi, dscr },
+    },
+  };
+}
+
+async function getAgentVersionRows(dealId: string): Promise<DealVersionRow[]> {
+  const pool = getPool();
+  const result = await pool.query<{
+    id: string;
+    deal_id: string;
+    agent_run_id: string;
+    proforma_json: Record<string, unknown>;
+    created_at: string;
+    agent_version: string | null;
+  }>(
+    `SELECT dus.id, dus.deal_id, dus.agent_run_id, dus.proforma_json, dus.created_at,
+            ar.agent_version
+       FROM deal_underwriting_snapshots dus
+       LEFT JOIN agent_runs ar ON ar.id = dus.agent_run_id
+      WHERE dus.deal_id = $1
+      ORDER BY dus.created_at DESC
+      LIMIT 5`,
+    [dealId]
+  );
+
+  return result.rows.map((row, idx) => {
+    const date = new Date(row.created_at);
+    const dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const versionLabel = row.agent_version ? `Agent ${row.agent_version}` : 'Agent';
+    const note = `${versionLabel} — ${dateLabel}`;
+    const snap = mapProformaJsonToSnapshot(row.proforma_json ?? {});
+
+    return {
+      id: `agent-${row.id}`,
+      deal_id: row.deal_id,
+      version_number: 900 - idx,
+      created_at: row.created_at,
+      created_by: null,
+      layered_state_snapshot: snap,
+      model_versions: row.agent_version ? { cashflow_agent: row.agent_version } : {},
+      override_divergences: [],
+      save_trigger: 'agent_run' as SaveTrigger,
+      note,
+    };
+  });
+}
 
 const router = Router();
 
@@ -33,8 +125,12 @@ router.get(
   requireDealAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const versions = await dealVersionsService.listVersions(req.params.dealId);
-      return res.json({ success: true, data: versions });
+      const { dealId } = req.params;
+      const [userVersions, agentVersions] = await Promise.all([
+        dealVersionsService.listVersions(dealId),
+        getAgentVersionRows(dealId),
+      ]);
+      return res.json({ success: true, data: [...userVersions, ...agentVersions] });
     } catch (error: any) {
       console.error('List versions error:', error.message);
       return res.status(500).json({ error: error.message });
