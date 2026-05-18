@@ -178,7 +178,9 @@ async function getAgentVersionRows(dealId: string): Promise<DealVersionRow[]> {
     `SELECT dus.id, dus.deal_id, dus.agent_run_id, dus.proforma_json, dus.created_at,
             ar.agent_version, ar.completed_at, ar.output AS agent_output
        FROM deal_underwriting_snapshots dus
-       LEFT JOIN agent_runs ar ON ar.id = dus.agent_run_id
+       INNER JOIN agent_runs ar ON ar.id = dus.agent_run_id
+                               AND ar.completed_at IS NOT NULL
+                               AND ar.status = 'succeeded'
       WHERE dus.deal_id = $1
       ORDER BY dus.created_at DESC
       LIMIT 5`,
