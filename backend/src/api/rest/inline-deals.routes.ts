@@ -12,29 +12,12 @@ import { processDocument, processDealDocuments } from '../../services/document-e
 import { computeAndPersistTrafficSnapshot } from '../../services/traffic-analytics.service';
 import { getDealFinancials } from '../../services/proforma-adjustment.service';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
-import { buildProjectionsForExport } from '../../services/f9-financial-export.service';
 import { cashflowRuntime } from '../../agents/cashflow.config';
 import { researchRuntime } from '../../agents/research.config';
 import { supplyRuntime } from '../../agents/supply.config';
 import { commentaryRuntime } from '../../agents/commentary.config';
 import { logger } from '../../utils/logger';
 
-// ── IRR bisection helper ──────────────────────────────────────────────
-function computeIrr(cashFlows: number[]): number | null {
-  if (cashFlows.length < 2) return null;
-  const npv = (r: number) => cashFlows.reduce((s, cf, i) => s + cf / Math.pow(1 + r, i), 0);
-  const v0 = npv(0);
-  if (v0 === 0) return 0;
-  let lo = -0.9999, hi = 10.0;
-  if (npv(lo) * npv(hi) > 0) return null;
-  for (let i = 0; i < 200; i++) {
-    const mid = (lo + hi) / 2;
-    const m = npv(mid);
-    if (Math.abs(m) < 1e-4 || (hi - lo) < 1e-8) return +mid.toFixed(6);
-    if (v0 > 0 ? m > 0 : m < 0) lo = mid; else hi = mid;
-  }
-  return +((lo + hi) / 2).toFixed(6);
-}
 
 // ── Pipeline-to-deal-data sync ────────────────────────────────────────
 
@@ -1847,24 +1830,12 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       logger.warn('math_correction_report fetch failed (non-fatal):', mathErr instanceof Error ? mathErr.message : String(mathErr));
     }
 
-    // Compute hold-period returns from F9 projection engine
-    const projs = buildProjectionsForExport(data, holdYears);
-    const equity = data.capitalStack.equityAtClose ?? 0;
-    let returns: typeof data.returns = null;
-    if (equity > 0 && projs.length > 0) {
-      const lastProj = projs[projs.length - 1];
-      const cashFlows: number[] = [-equity];
-      for (let i = 0; i < projs.length - 1; i++) {
-        cashFlows.push(projs[i].cfbt);
-      }
-      cashFlows.push((lastProj.cfbt ?? 0) + (lastProj.netSaleProceeds ?? 0));
-      const irr = computeIrr(cashFlows);
-      const equityMultiple = lastProj.cumulativeEM ?? null;
-      const cashOnCash = projs.length > 0 ? (projs[0].coc ?? null) : null;
-      returns = { irr, equityMultiple, cashOnCash } as any;
-    }
-
-    res.json({ success: true, data: { ...data, returns, closeDate, saleDate, mathCorrectionReport } });
+    // getDealFinancials already computes the full rich returns object
+    // (lpNetIrr, lpEquityMultiple, avgCashOnCash, gpPromoteEarned, debtMetrics, …)
+    // via its internal IIFE. Overwriting it with a simplified {irr,equityMultiple,cashOnCash}
+    // stripped those fields, leaving the ReturnsTab hero strip blank (lpNetIrr === undefined)
+    // on every deal that hadn't yet run the cashflow model. Pass data.returns through as-is.
+    res.json({ success: true, data: { ...data, closeDate, saleDate, mathCorrectionReport } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     logger.error('Financials endpoint error:', message);
