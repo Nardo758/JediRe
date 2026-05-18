@@ -2,7 +2,7 @@
  * optimize_capital_structure Tool
  *
  * Maximizes a strategy-implied primary metric (IRR, cash-on-cash, stabilized
- * value, or profit-at-exit) by performing a single-variable bisection over
+ * value, or profit-at-exit) by performing a true single-variable bisection over
  * LTV in [0.50, 0.85], subject to five hard-rule constraints:
  *
  *   1. DSCR ≥ 1.30 every year of the hold period
@@ -10,6 +10,13 @@
  *   3. LTV ≥ 0.50
  *   4. Break-even occupancy ≤ 0.85
  *   5. Annual cash flow after debt service positive every year
+ *
+ * Algorithm: bisection on the feasibility boundary (highest feasible LTV)
+ * to tolerance 0.0001. For IRR and CoC the metric is monotone-increasing in
+ * LTV within the feasible region, so the maximum is always at the boundary.
+ * For stabilized_value and profit_at_exit bisection still finds the binding
+ * constraint, then a secondary scan within [lo_bound − 0.05, lo_bound]
+ * confirms the peak metric value.
  *
  * Distinct from goal_seek_target_irr which solves *to* a target IRR by
  * adjusting multiple variables across debt bundles.  This tool *maximizes*
@@ -224,7 +231,7 @@ function evaluateLtv(
   const feasible = constraintsViolated.length === 0;
 
   let metricValue: number | null = null;
-  if (feasible || constraintsViolated.length === 0) {
+  if (feasible) {
     switch (primaryMetric) {
       case 'irr':
         metricValue = computeIrr(cashFlows);
@@ -256,12 +263,89 @@ function evaluateLtv(
   };
 }
 
+// ─── Bisection optimizer ──────────────────────────────────────────────────────
+
+/**
+ * Bisect to find the highest feasible LTV in [loStart, hiStart].
+ * Assumption: the feasible region is contiguous at the low end (feasible for
+ * lower LTVs, infeasible above some threshold) — true for DSCR + CF constraints.
+ *
+ * Returns null if even loStart is infeasible.
+ */
+function bisectMaxFeasibleLtv(
+  input: OptimizeCapitalStructureInput,
+  primaryMetric: string,
+  loStart = 0.50,
+  hiStart = 0.85,
+  tolerance = 0.0001,
+): { ltv: number; eval: LtvEval } | null {
+  const evalLo = evaluateLtv(loStart, input, primaryMetric);
+  if (!evalLo.feasible) return null;
+
+  const evalHi = evaluateLtv(hiStart, input, primaryMetric);
+  if (evalHi.feasible) return { ltv: hiStart, eval: evalHi };
+
+  let lo = loStart;
+  let hi = hiStart;
+  for (let iter = 0; iter < 60 && (hi - lo) > tolerance; iter++) {
+    const mid = (lo + hi) / 2;
+    if (evaluateLtv(mid, input, primaryMetric).feasible) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+
+  const optLtv = Math.round(lo * 10000) / 10000;
+  return { ltv: optLtv, eval: evaluateLtv(optLtv, input, primaryMetric) };
+}
+
+/**
+ * For metrics that are not strictly monotone in LTV (stabilized_value,
+ * profit_at_exit), scan within the feasible region to confirm the true peak.
+ * Uses a coarse 20-point scan across the feasible interval.
+ */
+function findPeakInFeasibleRegion(
+  input: OptimizeCapitalStructureInput,
+  primaryMetric: string,
+  loBound: number,
+  hiBound: number,
+): LtvEval {
+  const steps = 20;
+  const step = (hiBound - loBound) / steps;
+  let best: LtvEval = evaluateLtv(loBound, input, primaryMetric);
+
+  for (let i = 1; i <= steps; i++) {
+    const ltv = Math.min(loBound + step * i, hiBound);
+    const ev = evaluateLtv(ltv, input, primaryMetric);
+    if (ev.feasible && ev.metricValue != null) {
+      if (best.metricValue == null || ev.metricValue > best.metricValue) {
+        best = ev;
+      }
+    }
+  }
+  return best;
+}
+
+// ─── Diagnostic scan (for ltv_scan field — 5% steps) ─────────────────────────
+
+function buildDiagnosticScan(
+  input: OptimizeCapitalStructureInput,
+  primaryMetric: string,
+): LtvEval[] {
+  const scan: LtvEval[] = [];
+  for (let ltv100 = 50; ltv100 <= 85; ltv100 += 5) {
+    scan.push(evaluateLtv(ltv100 / 100, input, primaryMetric));
+  }
+  return scan;
+}
+
 // ─── Main optimizer ───────────────────────────────────────────────────────────
 
 export async function optimizeCapitalStructure(
   input: OptimizeCapitalStructureInput,
 ): Promise<OptimizeCapitalStructureOutput> {
-  logger.info('[optimize_capital_structure] Starting LTV optimization', {
+  logger.info('[optimize_capital_structure] Starting LTV bisection', {
     strategy: input.deal_strategy,
     noi: input.noi_year1,
     purchasePrice: input.purchase_price,
@@ -272,60 +356,67 @@ export async function optimizeCapitalStructure(
     ?? STRATEGY_METRIC_MAP[input.deal_strategy.toLowerCase().replace(/\s/g, '-')]
     ?? 'irr') as 'irr' | 'cash_on_cash' | 'stabilized_value' | 'profit_at_exit';
 
-  const LTV_STEP = 0.01;
-  const scan: LtvEval[] = [];
+  // ── Step 1: bisect to find the highest feasible LTV ──────────────────────
+  const bisectResult = bisectMaxFeasibleLtv(input, primaryMetric);
+  const infeasible = bisectResult === null;
 
-  for (let ltv100 = 50; ltv100 <= 85; ltv100++) {
-    const ltv = ltv100 / 100;
-    scan.push(evaluateLtv(ltv, input, primaryMetric));
-  }
-
-  const feasible = scan.filter(s => s.feasible);
-  const infeasible = feasible.length === 0;
-
+  // ── Step 2: for non-monotone metrics, find the true peak in feasible range ─
   let optimalEval: LtvEval | null = null;
   if (!infeasible) {
-    optimalEval = feasible.reduce((best, cur) => {
-      if (best.metricValue == null) return cur;
-      if (cur.metricValue == null) return best;
-      return cur.metricValue > best.metricValue ? cur : best;
-    });
+    const maxFeasibleLtv = bisectResult!.ltv;
+    if (primaryMetric === 'stabilized_value' || primaryMetric === 'profit_at_exit') {
+      optimalEval = findPeakInFeasibleRegion(input, primaryMetric, 0.50, maxFeasibleLtv);
+    } else {
+      // IRR and CoC are monotone-increasing in leverage within feasible region
+      optimalEval = bisectResult!.eval;
+    }
   }
 
+  // ── Step 3: determine binding constraints ────────────────────────────────
   const bindingConstraints: string[] = [];
   if (optimalEval) {
-    const justBelowFeasible = scan.find(s => s.ltv === optimalEval!.ltv + LTV_STEP);
-    if (justBelowFeasible && !justBelowFeasible.feasible) {
-      bindingConstraints.push(...justBelowFeasible.constraintsViolated);
+    if (optimalEval.ltv === 0.85) {
+      bindingConstraints.push('LTV ceiling at 85%');
+    } else if (bisectResult && bisectResult.ltv < 0.85) {
+      // There is a binding constraint just above the optimal
+      const slightlyAbove = evaluateLtv(
+        Math.min(optimalEval.ltv + 0.01, 0.85),
+        input,
+        primaryMetric,
+      );
+      if (!slightlyAbove.feasible) {
+        bindingConstraints.push(...slightlyAbove.constraintsViolated);
+      }
     }
-    if (optimalEval.ltv === 0.85) bindingConstraints.push('LTV ceiling at 85%');
   }
 
+  // ── Step 4: infeasibility reason ────────────────────────────────────────
   let infeasibilityReason: string | null = null;
   if (infeasible) {
-    const allViolations = scan.flatMap(s => s.constraintsViolated);
-    const counts: Record<string, number> = {};
-    for (const v of allViolations) counts[v] = (counts[v] ?? 0) + 1;
-    const topViolation = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-    infeasibilityReason = topViolation
-      ? `No LTV in [50%, 85%] satisfies all constraints. Most frequent violation: ${topViolation[0]}`
-      : 'Deal economics do not support leverage constraints at any LTV.';
+    const loEval = evaluateLtv(0.50, input, primaryMetric);
+    infeasibilityReason = `No LTV in [50%, 85%] satisfies all constraints. ${loEval.constraintsViolated.join('; ')}. Deal economics do not support leverage at the minimum 50% LTV.`;
   }
 
+  // ── Step 5: confidence ──────────────────────────────────────────────────
   const confidence = infeasible
     ? 'low'
     : optimalEval && (optimalEval.dscrMin ?? 0) >= 1.50 && (optimalEval.breakevenOcc ?? 1) <= 0.75
       ? 'high' : 'medium';
 
+  // ── Step 6: narrative ───────────────────────────────────────────────────
   const narrative = buildNarrative(input, primaryMetric, optimalEval, infeasible, infeasibilityReason);
+
+  // ── Step 7: diagnostic scan (5% steps, for UI visualization) ───────────
+  const diagScan = buildDiagnosticScan(input, primaryMetric);
 
   const equity = optimalEval ? input.purchase_price * (1 - optimalEval.ltv) : null;
 
-  logger.info('[optimize_capital_structure] Result', {
+  logger.info('[optimize_capital_structure] Bisection result', {
     primaryMetric,
     optimalLtv: optimalEval?.ltv,
     metricValue: optimalEval?.metricValue,
     infeasible,
+    bindingConstraints,
   });
 
   return {
@@ -341,7 +432,7 @@ export async function optimizeCapitalStructure(
     confidence,
     infeasible,
     infeasibility_reason: infeasibilityReason,
-    ltv_scan: scan.map(s => ({
+    ltv_scan: diagScan.map(s => ({
       ltv: s.ltv,
       feasible: s.feasible,
       metric_value: s.feasible ? s.metricValue : null,
@@ -385,34 +476,34 @@ function buildNarrative(
     return fmt$(v);
   };
 
-  return `Optimal leverage for a ${input.deal_strategy} strategy is ${fmtPct(ltv)} LTV (${fmt$(debt)} debt / ${fmt$(equity)} equity), maximizing ${metricLabel[primaryMetric]} at ${metricFmt(best!.metricValue ?? 0)}. Minimum DSCR across the ${input.hold_years}-year hold is ${best!.dscrMin?.toFixed(2) ?? '—'}×, maintaining a ${((( best!.dscrMin ?? 1.30) - 1.30) * 100).toFixed(0)}bps cushion above the 1.30× covenant floor. Break-even occupancy is ${fmtPct(best!.breakevenOcc ?? 0)}, comfortably below the 85% constraint. At ${fmtPct(input.debt_rate)} interest with ${input.amortization_years > 0 ? `${input.amortization_years}-year amortization` : 'full IO'}, the structure supports the deal's return objectives.`;
+  return `Bisection found optimal leverage for a ${input.deal_strategy} strategy at ${fmtPct(ltv)} LTV (${fmt$(debt)} debt / ${fmt$(equity)} equity), maximizing ${metricLabel[primaryMetric]} at ${metricFmt(best!.metricValue ?? 0)}. Minimum DSCR across the ${input.hold_years}-year hold is ${best!.dscrMin?.toFixed(2) ?? '—'}×, maintaining a ${(((best!.dscrMin ?? 1.30) - 1.30) * 100).toFixed(0)}bps cushion above the 1.30× covenant floor. Break-even occupancy is ${fmtPct(best!.breakevenOcc ?? 0)}, comfortably below the 85% constraint. At ${fmtPct(input.debt_rate)} interest with ${input.amortization_years > 0 ? `${input.amortization_years}-year amortization` : 'full IO'}, the structure supports the deal's return objectives.`;
 }
 
 // ─── Tool registration ────────────────────────────────────────────────────────
 
 export const optimizeCapitalStructureTool = {
   name: 'optimize_capital_structure',
-  description: `Maximize the deal's strategy-implied return metric by finding the optimal LTV.
+  description: `Maximize the deal's strategy-implied return metric by finding the optimal LTV via bisection.
 
-Scans LTV from 50% to 85% in 1% steps and selects the leverage point that
-maximizes the primary metric subject to five hard constraints:
+Uses bisection on the feasibility boundary to find the highest LTV where all
+five hard constraints are satisfied simultaneously:
   1. DSCR ≥ 1.30 every year
-  2. LTV ≤ 85%  3. LTV ≥ 50%
+  2. LTV ≤ 85%
+  3. LTV ≥ 50%
   4. Break-even occupancy ≤ 85%
   5. Annual cash flow positive every year
 
-Strategy → primary metric mapping:
-  value-add, redevelopment → IRR
-  existing, stabilized → Cash-on-Cash
+IMPORTANT: Call this tool AFTER compute_proforma so that noi_year1 and
+purchase_price are known. The strategy → metric mapping is deterministic:
+  value-add, redevelopment → IRR (maximized at highest feasible LTV)
+  existing, stabilized → Cash-on-Cash (maximized at highest feasible LTV)
   lease-up, development → Stabilized Value
   flip → Profit at Exit
 
-Call AFTER compute_proforma so that noi_year1 and purchase_price are known.
-Use the agent's best estimates for debt_rate, exit_cap_rate, and noi_growth_rate.
-
-Input: { "noi_year1": 500000, "purchase_price": 7500000, "hold_years": 5,
-         "debt_rate": 0.065, "exit_cap_rate": 0.055, "deal_strategy": "value-add",
-         "gpr_year1": 950000 }`,
+Example call:
+{ "noi_year1": 500000, "purchase_price": 7500000, "hold_years": 5,
+  "debt_rate": 0.065, "exit_cap_rate": 0.055, "deal_strategy": "value-add",
+  "gpr_year1": 950000 }`,
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
   execute: optimizeCapitalStructure,

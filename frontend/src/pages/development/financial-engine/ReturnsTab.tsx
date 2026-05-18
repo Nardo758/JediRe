@@ -167,12 +167,42 @@ function HeroTile({ label, value, hurdle, actual, isX, isNum, baseColor }: {
 }
 
 // ─── Main ReturnsTab ─────────────────────────────────────────────────────────
-export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProps) {
+export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh }: FinancialEngineTabProps) {
   const ret    = f9Financials?.returns;
   const cap    = f9Financials?.capitalStack;
   const wf     = f9Financials?.waterfall;
   const capData = f9Financials?.capital;
   const proj   = f9Financials?.projections;
+
+  // Capital structure Apply state
+  const [applyState, setApplyState] = useState<'idle' | 'applying' | 'success' | 'error'>('idle');
+  const [applyError, setApplyError] = useState<string | null>(null);
+
+  const applyCapitalStructure = async (optimalLtv: number, optimalRate: number) => {
+    if (!dealId) return;
+    setApplyState('applying');
+    setApplyError(null);
+    try {
+      const res = await fetch(`/api/deals/${dealId}/assumptions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ltc: optimalLtv,
+          interestRate: optimalRate,
+          sourceType: 'agent_override',
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      setApplyState('success');
+      onF9Refresh?.();
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : 'Unknown error');
+      setApplyState('error');
+    }
+  };
 
   // Local hurdle state (no server persistence needed)
   const [irrHurdle,     setIrrHurdle]     = useState(0.12);
@@ -1150,21 +1180,39 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
                 {cso && !cso.infeasible && cso.optimal_ltv != null && (
                   <div style={{ padding: '6px 10px', background: `${BT.text.cyan}08`, borderTop: `1px solid ${BT.border.subtle}` }}>
                     <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 4 }}>
-                      Agent recommends {((cso.optimal_ltv as number) * 100).toFixed(1)}% LTV to maximize {metricLabel(cso.primary_metric as string)}.
+                      Agent recommends {((cso.optimal_ltv as number) * 100).toFixed(1)}% LTV at {((cso.optimal_rate as number) * 100).toFixed(2)}% to maximize {metricLabel(cso.primary_metric as string)}.
                     </div>
-                    <button
-                      onClick={() => onTabChange?.(5)}
-                      style={{
-                        width: '100%', padding: '5px 8px',
-                        background: `${BT.text.cyan}18`,
-                        border: `1px solid ${BT.text.cyan}`,
-                        color: BT.text.cyan,
-                        fontFamily: MONO, fontSize: 9, fontWeight: 600,
-                        cursor: 'pointer', borderRadius: 3,
-                      }}
-                    >
-                      Apply in Debt Advisor →
-                    </button>
+                    {applyState === 'success' ? (
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, padding: '4px 0' }}>
+                        ✓ Applied — capital stack updated. View results in Debt Advisor.
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          disabled={applyState === 'applying'}
+                          onClick={() => applyCapitalStructure(
+                            cso.optimal_ltv as number,
+                            cso.optimal_rate as number,
+                          )}
+                          style={{
+                            width: '100%', padding: '5px 8px',
+                            background: applyState === 'applying' ? `${BT.text.muted}18` : `${BT.text.cyan}18`,
+                            border: `1px solid ${applyState === 'applying' ? BT.text.muted : BT.text.cyan}`,
+                            color: applyState === 'applying' ? BT.text.muted : BT.text.cyan,
+                            fontFamily: MONO, fontSize: 9, fontWeight: 600,
+                            cursor: applyState === 'applying' ? 'not-allowed' : 'pointer',
+                            borderRadius: 3,
+                          }}
+                        >
+                          {applyState === 'applying' ? 'Applying…' : `Apply ${((cso.optimal_ltv as number) * 100).toFixed(1)}% LTV to Deal →`}
+                        </button>
+                        {applyState === 'error' && applyError && (
+                          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.red, marginTop: 3 }}>
+                            ⚠ {applyError}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>

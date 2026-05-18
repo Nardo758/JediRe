@@ -1534,7 +1534,105 @@ export async function seedCapitalStructureDefaults(
     });
   }
 
+  const now = new Date().toISOString();
+
+  // ── Canonical LayeredValue entries for capital structure fields ──────────
+  // These are written at the 'platform' layer so F9's data quality audit can
+  // see them and the proforma-adjustment service can resolve them as defaults.
+  const canonicalLvFields: Record<string, unknown> = {
+    ltv_pct: {
+      resolved: 0.75,
+      platform: 0.75,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+    gp_equity_pct: {
+      resolved: 0.10,
+      platform: 0.10,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+    lp_equity_pct: {
+      resolved: 0.90,
+      platform: 0.90,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+    preferred_return_pct: {
+      resolved: 0.08,
+      platform: 0.08,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+    gp_promote_pct: {
+      resolved: 0.20,
+      platform: 0.20,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+    gp_promote_threshold_pct: {
+      resolved: 0.08,
+      platform: 0.08,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+    gp_catchup_pct: {
+      resolved: 0.50,
+      platform: 0.50,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+    debt_rate: {
+      resolved: debtRate,
+      platform: debtRate,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+    amortization_years: {
+      resolved: DEFAULT_AMORTIZATION,
+      platform: DEFAULT_AMORTIZATION,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+    io_period_months: {
+      resolved: 0,
+      platform: 0,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+    loan_term_years: {
+      resolved: DEFAULT_LOAN_TERM,
+      platform: DEFAULT_LOAN_TERM,
+      broker: null,
+      override: null,
+      resolvedFrom: 'platform',
+      alertLevel: 'ok',
+    },
+  };
+
+  // ── Metadata block (supplemental, non-LayeredValue) ───────────────────────
   const defaults = {
+    ...canonicalLvFields,
     _capital_structure_defaults: {
       ltv_pct:                  0.75,
       gp_equity_pct:            0.10,
@@ -1547,7 +1645,7 @@ export async function seedCapitalStructureDefaults(
       io_period_months:         0,
       loan_term_years:          DEFAULT_LOAN_TERM,
       debt_rate:                debtRate,
-      seeded_at:                new Date().toISOString(),
+      seeded_at:                now,
       resolution:               'platform',
     },
   };
@@ -1571,6 +1669,22 @@ export async function seedCapitalStructureDefaults(
         [dealId, JSON.stringify(defaults)]
       );
     }
+
+    // ── Also write to deal_assumptions direct columns if currently NULL ──
+    // This ensures composeCapitalStack reads live defaults from ltc/interest_rate
+    // even before the Debt Advisor is opened for the first time.
+    await pool.query(
+      `UPDATE deal_assumptions
+          SET interest_rate = COALESCE(interest_rate, $2),
+              ltc           = COALESCE(ltc, $3),
+              updated_at    = NOW()
+        WHERE deal_id = $1`,
+      [dealId, debtRate, 0.75]
+    ).catch(err =>
+      logger.warn('[seedCapitalStructureDefaults] Direct column update failed', {
+        dealId, error: err instanceof Error ? err.message : String(err),
+      })
+    );
 
     logger.info('[seedCapitalStructureDefaults] Capital structure defaults seeded', {
       dealId, debtRate, ltv: 0.75,

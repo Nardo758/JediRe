@@ -1948,6 +1948,10 @@ export interface DealFinancials {
     reTaxSource: 'taxes_tab' | 'proforma' | 'estimate';
     debtSource: 'debt_tab' | 'capital_stack' | 'estimate';
   }> | null;
+  /** Platform-seeded capital structure defaults (LayeredValue-shaped fields from year1 JSONB) */
+  capitalStructureDefaults: Record<string, unknown> | null;
+  /** Agent-generated capital structure optimization result from optimize_capital_structure tool */
+  capitalStructureOptimization: Record<string, unknown> | null;
 }
 
 /**

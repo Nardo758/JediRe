@@ -386,9 +386,41 @@ export async function buildCompositePrompt(
   );
   const variantPrompt: string = variantRow.rows[0]?.system_prompt ?? '';
 
-  return variantPrompt
+  const capitalStructureInstruction = `
+
+## Capital Structure Optimization (Required Step)
+
+After calling compute_proforma and establishing noi_year1 and purchase_price, you MUST call
+optimize_capital_structure. This is not optional — every cashflow agent run must include a
+capital structure optimization pass.
+
+Parameters to pass:
+- noi_year1: stabilized Year-1 NOI from compute_proforma result (annual $)
+- purchase_price: deal purchase price from assumptions
+- hold_years: deal hold period in years (default 5)
+- exit_cap_rate: exit cap rate (from deal data or platform default 0.055)
+- debt_rate: current interest rate from deal assumptions or _capital_structure_defaults.debt_rate
+- amortization_years: amortization schedule (default 30)
+- io_period_months: IO period (default 0)
+- noi_growth_rate: projected NOI growth rate (default 0.03)
+- deal_strategy: the deal's investment strategy exactly as classified (e.g., "value-add", "stabilized", "development", "flip", "lease-up", "redevelopment")
+- gpr_year1: Gross Potential Rent Year-1 from compute_proforma (for break-even occupancy)
+- selling_costs_pct: deal selling costs pct (default 0.02)
+
+Strategy → primary metric mapping is deterministic (the tool handles this automatically):
+  value-add, redevelopment, redevelopment_full → Levered IRR
+  existing, stabilized, redevelopment_partial   → Year-1 Cash-on-Cash
+  lease-up, development                         → Stabilized Value
+  flip                                          → Profit at Exit
+
+Include the full optimize_capital_structure output in your response as capital_structure_optimization.
+`;
+
+  const combined = variantPrompt
     ? `${corePrompt}\n\n## Deal-Type Addendum (${dealType})\n${variantPrompt}`
     : corePrompt;
+
+  return `${combined}${capitalStructureInstruction}`;
 }
 
 // ── Agent config ──────────────────────────────────────────────────
