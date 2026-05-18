@@ -1538,7 +1538,7 @@ export async function applyUserOverride(
       dealId,
       userId,
       snapshot:  seed as unknown as Record<string, unknown>,
-      trigger:   'user_save',
+      trigger:   'operator_override',
       note:      `operator_override:${fieldPath}`,
       divergences: [],
     });

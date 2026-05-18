@@ -28,6 +28,59 @@ function toArr<T>(v: unknown): T[] {
   return Array.isArray(v) ? v : [];
 }
 
+// ── Operator-override version history helpers ─────────────────────────────────
+// Maps the last segment of a fieldPath (e.g. "management_fee_pct") to a
+// human-readable label for the version history dropdown.
+const OVERRIDE_FIELD_LABELS: Record<string, string> = {
+  // Revenue
+  gpr:                  'Gross Potential Rent',
+  loss_to_lease:        'Loss to Lease',
+  vacancy_loss:         'Vacancy',
+  vacancy:              'Vacancy',
+  concessions:          'Concessions',
+  bad_debt:             'Bad Debt',
+  non_revenue_units:    'Non-Revenue Units',
+  net_rental_income:    'Net Rental Income',
+  other_income:         'Other Income',
+  egi:                  'Effective Gross Income',
+  // Controllable Opex
+  payroll:              'Payroll',
+  repairs_maintenance:  'Repairs & Maintenance',
+  turnover:             'Turnover',
+  contract_services:    'Contract Services',
+  marketing:            'Marketing',
+  utilities:            'Utilities',
+  g_and_a:              'G&A',
+  // Non-controllable Opex
+  management_fee:       'Management Fee',
+  management_fee_pct:   'Management Fee',
+  insurance:            'Insurance',
+  real_estate_tax:      'Real Estate Tax',
+  real_estate_taxes:    'Real Estate Tax',
+  total_opex:           'Total Opex',
+  // Common underwriting fields
+  rent_growth:          'Rent Growth',
+  exit_cap_rate:        'Exit Cap Rate',
+  capex:                'CapEx',
+  capex_per_unit:       'CapEx / Unit',
+  noi:                  'NOI',
+  purchase_price:       'Purchase Price',
+  loan_amount:          'Loan Amount',
+};
+
+/** Converts "operator_override:some.nested.field_name" → "Override: Field Name" */
+function formatOverrideNote(note: string | null): string {
+  if (!note) return 'Override saved';
+  const match = note.match(/^operator_override:(.+)$/);
+  if (!match) return note;
+  const raw = match[1];
+  const segment = raw.split('.').pop() ?? raw;
+  const label = OVERRIDE_FIELD_LABELS[segment];
+  if (label) return `Override: ${label}`;
+  // Fallback: convert snake_case to Title Case
+  return `Override: ${segment.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`;
+}
+
 // ── Normalize ModelResults from any source (DB, build, version load) ─────────
 // The engine stores sourcesAndUses.sources / .uses as Record<string,number>
 // objects; ModelResults and all tabs expect {label,amount}[] arrays.
@@ -591,12 +644,16 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       if (!Array.isArray(data)) return;
       const mapped: ModelVersion[] = data.map((row: any) => {
         const snap = row.layered_state_snapshot ?? row.layeredStateSnapshot ?? {};
-        const isAgent = row.save_trigger === 'agent_run';
+        const isAgent    = row.save_trigger === 'agent_run';
+        const isOverride = row.save_trigger === 'operator_override'
+          || (typeof row.note === 'string' && row.note.startsWith('operator_override:'));
         return {
           id: row.id,
-          name: row.note || `v${row.version_number}`,
+          name: isOverride
+            ? formatOverrideNote(row.note)
+            : (row.note || `v${row.version_number}`),
           timestamp: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
-          source: isAgent ? 'agent' : 'user',
+          source: isAgent ? 'agent' : isOverride ? 'operator_override' : 'user',
           dealType: resolvedDealType,
           assumptions: snap.assumptions ?? snap,
           results: snap.results,
@@ -1351,19 +1408,23 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                 minWidth: 180, maxHeight: 200, overflow: 'auto', borderRadius: 2,
                 boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
               }}>
-                {versions.length > 0 ? versions.map(v => (
+                {versions.length > 0 ? versions.map(v => {
+                  const isOvr = v.source === 'operator_override';
+                  return (
                   <button key={v.id} onClick={() => handleLoadVersion(v)} style={{
                     display: 'block', width: '100%', textAlign: 'left', background: 'transparent',
                     border: 'none', color: v.id === activeVersion?.id ? BT.met.financial : BT.text.primary,
                     fontFamily: MONO, fontSize: 9, padding: '4px 8px', cursor: 'pointer',
                     borderBottom: `1px solid ${BT.border.subtle}`,
+                    borderLeft: isOvr ? `2px solid ${BT.text.amber}` : '2px solid transparent',
                   }}>
                     {v.name}
-                    <span style={{ float: 'right', color: BT.text.muted, fontSize: 8 }}>
-                      {v.source === 'user' ? 'User' : v.source}
+                    <span style={{ float: 'right', fontSize: 8, color: isOvr ? BT.text.amber : BT.text.muted }}>
+                      {isOvr ? 'Override' : v.source === 'user' ? 'User' : v.source}
                     </span>
                   </button>
-                )) : (
+                  );
+                }) : (
                   <div style={{ padding: '8px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>No saved versions</div>
                 )}
               </div>
