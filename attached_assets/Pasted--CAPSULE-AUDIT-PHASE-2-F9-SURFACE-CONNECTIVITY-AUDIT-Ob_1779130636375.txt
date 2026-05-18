@@ -1,0 +1,426 @@
+# CAPSULE AUDIT — PHASE 2: F9 SURFACE CONNECTIVITY AUDIT
+
+## Objective
+
+Verify every tab in the F9 Pro Forma surface is correctly wired to its data source, populating with the right data, for the right deals. The Phase 1 Connection Audit caught the main Pro Forma grid's inversion (closed by Priority 0). This audit catches the rest of the F9 surface — every other tab that may have inherited the same architectural assumption Priority 0 just fixed for the main grid.
+
+## Why this audit exists
+
+After Priority 0 shipped:
+- Main Pro Forma grid: now correctly reads from active scenario for the two affected deals (Bishop, Sentosa). Working.
+- Other F9 tabs on Bishop and Sentosa: reportedly blank.
+- Same tabs on Westside Lofts and other unaffected deals: reportedly populated.
+
+The pattern points to: Priority 0 fixed the main grid's read path to be scenario-aware, but other F9 tabs likely still read from `deal_assumptions` directly. They were working on unaffected deals because the data they expected was where it was always supposed to be. On the Priority 0 deals, the canonical data moved to the active scenario; the tabs that didn't get scenario-aware read paths now see empty data.
+
+This is the original Priority 0 inversion at a finer grain — main grid fixed, other tabs not. This audit catches the rest of the pattern.
+
+## Scope
+
+**In scope:**
+- Every tab visible in the F9 Pro Forma surface
+- Every API endpoint and read path each tab depends on
+- Every database location read paths access
+- Comparative testing across affected and unaffected deals
+- Root cause classification per blank tab
+
+**Out of scope (for this phase):**
+- Math correctness in populated tabs (separate phase)
+- Source provenance quality (separate phase)
+- Override resolution correctness (separate phase)
+- Agent reasoning quality (separate phase)
+
+## Test deals
+
+Run the audit on at least four deals split into two groups:
+
+### Affected group (Priority 0 deals, active scenario present)
+1. **464 Bishop** — primary Priority 0 deal; the most operationally important to verify
+2. **Sentosa Epperson** — second Priority 0 deal; confirms findings aren't Bishop-specific
+
+### Control group (no active scenario, unaffected by Priority 0)
+3. **Westside Lofts** — the working baseline from Phase 1 audit
+4. **One additional unaffected deal** — to confirm Westside isn't an outlier
+
+The two groups are essential. Findings only have meaning by comparison:
+- Tab blank on affected, populated on control → Priority 0 fallout (scenario-aware read path missing)
+- Tab blank on both groups → never-built, infrastructure-gap, or universal bug
+- Tab populated on affected, blank on control → unusual pattern, possibly different bug
+- Tab populated on both groups → working correctly
+
+If a fourth unaffected deal isn't readily available, three deals (Bishop + Sentosa + Westside) is acceptable but findings about Westside-as-outlier can't be ruled out.
+
+## Phase A — Tab enumeration
+
+Before walking any code, produce the definitive list of every tab visible in the F9 Pro Forma surface.
+
+### Approach
+
+1. Open the F9 surface in a running environment on a working deal (Westside Lofts or another unaffected deal where the surface is functional)
+2. Walk the UI systematically, recording every tab, sub-tab, panel, drawer, modal, and view that's part of F9
+3. Cross-reference against the spec ecosystem:
+   - PRO_FORMA_REGIME_INPUT_UI_SPEC v1.3 (mentions Stabilized Potential, Floor-Plan Grid, Post-Stabilization views)
+   - M09 Pro Forma module specifications
+   - Existing F9 component files in the frontend codebase
+4. Capture each tab's identity:
+   - Display name (what user sees)
+   - Internal name / component name (for code references)
+   - Parent surface (main view, drawer, modal)
+   - Brief description of what the tab is supposed to show
+
+### Output
+
+A canonical tab inventory table:
+
+| Tab Name | Internal Name | Parent Surface | Purpose | First Documented In |
+|---|---|---|---|---|
+| Pro Forma (main grid) | F9MainGrid | F9 root | Year-1 underwriting values | (existing) |
+| Stabilized Potential | StabilizedPotentialView | F9 root | Lift potential per regime input UI | UI Spec v1.2 |
+| Floor-Plan Grid | FloorPlanGridView | Stabilized Potential | Per-floor-plan rent analysis | UI Spec v1.2 |
+| Returns / IRR | ReturnsView | F9 root | IRR, equity multiple, cash-on-cash | (?) |
+| ... | ... | ... | ... | ... |
+
+The cross-reference with specs is itself diagnostic:
+- Tab in specs but not in production → never-built finding
+- Tab in production but not in specs → undocumented surface, worth noting
+- Tab in both → expected; subject to read-path audit in Phase B
+
+## Phase B — Read path identification per tab
+
+For each tab in the inventory from Phase A, document the read path systematically.
+
+### Per-tab documentation
+
+For each tab:
+
+1. **API endpoint called.** Which endpoint(s) does the tab call to fetch its data?
+2. **Request parameters.** What does the tab send? (deal_id, scenario_id, time period, etc.)
+3. **Response shape expected.** What data shape does the tab consume? Document the TypeScript interface or expected JSON structure.
+4. **Database read source.** Where does the endpoint read from?
+   - `deal_assumptions.year1`
+   - `deal_underwriting_scenarios` (active scenario)
+   - `deal_underwriting_snapshots`
+   - `deals.deal_data` extraction capsules
+   - Multiple tables joined
+   - Computed at request time (no direct DB source)
+5. **Scenario awareness.** After Priority 0, does the endpoint check the active scenario first?
+   - **Yes** — endpoint uses the pattern Priority 0 established (active scenario → fallback to deal_assumptions)
+   - **No** — endpoint reads only from `deal_assumptions.year1` (pre-Priority-0 pattern)
+   - **N/A** — endpoint doesn't read from either; reads from elsewhere
+6. **Dependencies.** What other data does the tab need beyond its primary read source?
+   - Source documents (for evidence drawer)
+   - Comparable cohort data (Layer 3 KG)
+   - M22 actuals (when present)
+   - CIE findings (when present)
+
+### Output per tab
+
+| Tab | API Endpoint | Read Source | Scenario-Aware? | Dependencies | Notes |
+|---|---|---|---|---|---|
+| Main Pro Forma | GET /api/v1/deals/:dealId/financials | active_scenario → deal_assumptions | Yes (post-Priority-0) | source docs (evidence drawer) | Working |
+| Returns | GET /api/v1/deals/:dealId/returns | deal_assumptions.year1 | No | debt/equity assumptions | Likely blank on Priority 0 deals |
+| Sensitivities | GET /api/v1/deals/:dealId/sensitivities | deal_assumptions.year1 | No | sensitivity ranges, M10 engine | Likely blank or partial |
+| ... | ... | ... | ... | ... | ... |
+
+The "Scenario-Aware?" column is the key diagnostic. Every "No" is a candidate for the same fix Priority 0 applied to the main grid.
+
+## Phase C — Comparative testing across deal states
+
+For each tab × deal combination, observe the actual state in production.
+
+### Approach
+
+1. Open each test deal in a running production environment (or staging with production data copy)
+2. Navigate through every tab in the inventory
+3. Document the state observed for each tab × deal combination
+
+### State categories
+
+- **Fully populated** — tab renders with complete data
+- **Partially populated** — some sections populated, others empty
+- **Blank with placeholder** — tab renders structure (headers, labels) but no data
+- **Blank with no structure** — tab fails to render at all
+- **Error state** — tab shows error message or broken UI
+- **Inaccessible** — tab not reachable (broken navigation)
+
+### Output matrix
+
+| Tab | Bishop (P0) | Sentosa (P0) | Westside (control) | Unaffected #2 (control) | Pattern |
+|---|---|---|---|---|---|
+| Main Pro Forma | Fully populated | Fully populated | Fully populated | Fully populated | Working |
+| Returns | Blank w/ placeholder | Blank w/ placeholder | Fully populated | Fully populated | P0 fallout |
+| Sensitivities | Blank no structure | Blank no structure | Partially populated | Partially populated | Pre-existing issue + P0 fallout |
+| Evidence drawer | Fully populated | Partially populated | Fully populated | Fully populated | Sentosa-specific issue |
+| Scenario picker | Visible | Visible | Visible | Visible | Working |
+| Post-Stabilization | Blank no structure | Blank no structure | Blank no structure | Blank no structure | Never built |
+| ... | ... | ... | ... | ... | ... |
+
+The "Pattern" column captures the diagnostic interpretation per the four-cell logic:
+- Affected-blank, control-populated → "P0 fallout"
+- Both-blank → "Never built" or "Infrastructure gap"
+- Affected-populated, control-blank → "Possible Westside outlier; investigate"
+- Both-populated → "Working"
+- Variations within group → "Deal-specific issue"
+
+## Phase D — Root cause classification
+
+For each blank or partial tab, classify the root cause.
+
+### Classification categories
+
+**RC-1 — Scenario-aware read path missing.** The tab reads from `deal_assumptions` directly. Data lives in active scenario for Priority 0 deals. Fix: update read path to check active scenario first, same pattern Priority 0 established for the main grid.
+
+**RC-2 — Agent emit gap.** The tab depends on fields the agent doesn't compute. Even with scenario-aware read paths, the data isn't there. Fix: extend agent prompt to emit the missing fields, OR identify if the platform should compute these from other sources.
+
+**RC-3 — Infrastructure gap.** The tab depends on a module or computation that isn't shipped. Fix: build the missing infrastructure, OR remove the tab from the UI until ready.
+
+**RC-4 — Conditional rendering issue.** Data is present but UI doesn't display it. State management, CSS, or component logic bug. Fix: frontend bug fix.
+
+**RC-5 — Never built.** Tab is placeholder UI with no real data wiring. Documented in specs but never implemented. Fix: build it or remove it.
+
+**RC-6 — Deal-state-specific issue.** The tab works in some deal states but not others. Examples: tab requires a specific deal classification, requires M22 actuals (absent on most deals), requires CIE findings (absent until CIE ships). Fix: graceful degradation when state is absent, or document the dependency clearly.
+
+**RC-7 — Unknown / requires further investigation.** Audit can't determine root cause without deeper diagnostic. Surface as an open question rather than guess.
+
+### Output per blank tab
+
+For each tab classified as blank or partial in Phase C:
+
+```
+Tab: <Tab Name>
+Affected deals: <list>
+Control deals: <state on control>
+Root cause classification: RC-X
+Classification rationale: <evidence>
+Fix scope: <small / medium / large>
+Fix pattern: <description of the change needed>
+Effort estimate: <hours or sessions>
+Priority: <ship_blocker / next_iteration / nice_to_have>
+```
+
+## Phase E — Cross-tab pattern detection
+
+After per-tab classification completes, look for systemic patterns.
+
+### Patterns to detect
+
+1. **Multiple tabs share root cause RC-1 (scenario-aware read path missing).** This is the most likely systemic pattern. If 4-6 tabs all have this cause, the fix is one structural change applied uniformly, not 4-6 individual fixes.
+
+2. **Multiple tabs share an agent emit gap (RC-2) on the same field.** If three tabs all depend on exit cap rate and the agent doesn't reliably emit it, the agent prompt change is one edit fixing all three tabs.
+
+3. **Tabs that work on Westside but break specifically on Bishop AND Sentosa.** This is the Priority 0 fallout signature. The systematic fix is applying Priority 0's pattern to other read paths.
+
+4. **Tabs that work universally on control deals but show different blank patterns on the two affected deals.** Suggests Bishop-specific and Sentosa-specific issues that Priority 0 may have introduced or revealed. Worth investigating per-deal.
+
+### Output
+
+| Pattern | Affected Tabs | Root Cause Shared | Recommended Fix | Effort |
+|---|---|---|---|---|
+| P0 fallout — scenario-aware read paths missing | Returns, Sensitivities, Projections, Stabilized Potential | RC-1 | Extend Priority 0's pattern to additional endpoints | 1 session |
+| Agent doesn't emit exit cap reliably | Returns, Sensitivities | RC-2 | Agent prompt update | 1-2 hours |
+| Post-Stabilization never built | Post-Stabilization view | RC-5 | Build per UI Spec v1.3 OR remove from UI | medium |
+| ... | ... | ... | ... | ... |
+
+The patterns drive prioritization. The systemic fix for P0 fallout closes multiple tabs at once and should ship first. Per-tab issues queue after.
+
+## Phase F — Structured findings output
+
+Save findings to two files.
+
+### File 1 — Audit findings (JSON)
+
+`/tmp/capsule_audit_phase2_findings_{timestamp}.json`
+
+```json
+{
+  "audit_phase": "2_f9_surface_connectivity",
+  "timestamp": "ISO8601",
+  "test_deals": {
+    "affected_group": [
+      { "deal_id": "string", "deal_name": "string", "scenario_state": "active" }
+    ],
+    "control_group": [
+      { "deal_id": "string", "deal_name": "string", "scenario_state": "none" }
+    ]
+  },
+
+  "summary": {
+    "total_tabs_inventoried": number,
+    "tabs_working_on_all_deals": number,
+    "tabs_with_p0_fallout": number,
+    "tabs_never_built": number,
+    "tabs_with_pre_existing_issues": number,
+    "tabs_requiring_further_investigation": number,
+    "systemic_patterns_detected": number,
+    "overall_assessment": "string"
+  },
+
+  "tab_inventory": [
+    {
+      "tab_name": "string",
+      "internal_name": "string",
+      "parent_surface": "string",
+      "documented_in_spec": "string or null",
+      "exists_in_production": boolean,
+      "api_endpoint": "string",
+      "read_source": "string",
+      "scenario_aware": boolean,
+      "dependencies": ["string"]
+    }
+  ],
+
+  "state_matrix": [
+    {
+      "tab_name": "string",
+      "states_by_deal": {
+        "<deal_id_1>": "fully_populated | partial | blank_with_placeholder | blank_no_structure | error | inaccessible",
+        "<deal_id_2>": "..."
+      },
+      "pattern": "string"
+    }
+  ],
+
+  "root_cause_classifications": [
+    {
+      "tab_name": "string",
+      "root_cause_code": "RC-1 to RC-7",
+      "root_cause_description": "string",
+      "rationale": "string",
+      "affected_deals": ["deal_id"],
+      "control_deals_state": "string",
+      "fix_pattern": "string",
+      "effort_estimate_hours": number,
+      "priority": "ship_blocker | next_iteration | nice_to_have"
+    }
+  ],
+
+  "systemic_patterns": [
+    {
+      "pattern_name": "string",
+      "description": "string",
+      "affected_tabs": ["tab_name"],
+      "shared_root_cause": "string",
+      "recommended_fix": "string",
+      "effort_estimate": "string",
+      "priority": "string"
+    }
+  ],
+
+  "open_questions": [
+    {
+      "question": "string",
+      "context": "string",
+      "investigation_needed": "string"
+    }
+  ],
+
+  "downstream_decisions": {
+    "p0_fallout_scope": "string (how many tabs affected, recommended fix approach)",
+    "remediation_message_to_users": "string (whether Bishop/Sentosa users need additional communication about other tabs being fixed)",
+    "next_audit_phase_readiness": "string"
+  }
+}
+```
+
+### File 2 — Executive summary (Markdown)
+
+`/tmp/capsule_audit_phase2_summary_{timestamp}.md`
+
+Under 1,500 words. Structure:
+
+1. **Headline finding** — primary pattern detected (most likely: extent of Priority 0 fallout)
+2. **Tab inventory summary** — count of tabs, count working, count broken, breakdown by root cause
+3. **State matrix** — abbreviated version showing affected vs control patterns
+4. **Critical findings** — tabs with ship-blocker priority fixes
+5. **Systemic patterns** — fixes that close multiple tabs with one change
+6. **Per-tab findings** — abbreviated list with severity
+7. **User impact assessment** — how the blank tabs affect Bishop/Sentosa users specifically
+8. **Recommended fix sequencing** — which fixes ship first
+
+## Failure handling
+
+**If a tab can't be accessed during the audit:**
+- Document as "inaccessible" with reason (navigation broken, auth failure, etc.)
+- Continue auditing other tabs
+- Flag as finding in itself
+
+**If the affected group's deals can't be tested in production safely:**
+- Use staging environment with copies of the production deals
+- Document the testing environment in findings
+- Note any environment-specific limitations
+
+**If the audit reveals a tab that doesn't exist but is referenced in code:**
+- Surface as a finding (zombie reference, dead code, or partially-built feature)
+- Don't try to test what doesn't exist
+
+**If the audit reveals more than 10 tabs in the inventory:**
+- Continue auditing all of them
+- Note the platform's surface complexity as itself a finding worth team discussion
+
+## Success criteria
+
+1. Tab inventory is comprehensive — confirmed by cross-reference against specs and code
+2. Every tab in the inventory has a documented read path
+3. State matrix completed for every tab × deal combination
+4. Every blank or partial tab has a root cause classification
+5. Systemic patterns identified
+6. JSON output well-formed
+7. Markdown summary under 1,500 words
+8. Each fix recommendation has specific file path or component reference
+9. Downstream decisions section addresses Bishop/Sentosa user impact
+
+## Specific things to look for
+
+These are not exhaustive — the audit walks every tab regardless — but these are known patterns worth particular attention given the conversation history:
+
+1. **The Stabilized Potential view and Floor-Plan Grid.** UI Spec v1.3 specifies these but Phase 1 audit suggested the floor-plan grid may not be working on deals with sparse rent roll. Audit confirms.
+
+2. **The Post-Stabilization view.** UI Spec v1.3 mentions it. Likely never built. Audit confirms.
+
+3. **The Returns / IRR tab.** Phase 1 audit found 6+ field types (exit cap, debt amounts, interest rates) that the agent computes but nothing consumes. If Returns is one of the consumers, this audit confirms the gap.
+
+4. **The Evidence drawer.** Phase 1 audit didn't fully cover this. Worth checking whether evidence drawer is scenario-aware post-Priority-0.
+
+5. **The Sensitivities tab.** M10 Scenario Engine is referenced in userMemories. Whether Sensitivities depends on M10 being shipped, and whether M10 is in production, are open questions worth resolving.
+
+6. **The Assumptions / Layered Values detail view.** This tab surfaces the resolution chain to users (override > agent > platform > t12 > om). It's the most direct user-facing manifestation of the layered architecture. Worth verifying it shows correct layer attribution post-Priority-0.
+
+7. **CIE findings panel.** The Capsule Sharing spec and Other Income v1.2 reference CIE findings flowing into the surface. CIE Phase 1 hasn't shipped — the panel should either gracefully degrade (no findings yet) or be hidden until ready.
+
+## What this enables
+
+Phase 2 output produces:
+
+- A definitive map of every F9 tab and its data dependencies
+- A prioritized list of broken tabs with fixes
+- A clear assessment of Priority 0's scope and fallout
+- Input to Bishop and Sentosa user communication (do they need to know other tabs are coming back?)
+- A baseline for testing Priority 0's pattern is correctly extended to all read paths
+
+The findings drive immediate fix work. Some findings (systemic Priority 0 fallout) get batched into one structural fix. Some (per-tab issues) get individual tickets. Some (never-built tabs) become design decisions about scope.
+
+## Effort estimate
+
+1-2 sessions for the audit execution. Per deal: roughly 30 minutes to navigate every tab and document state. With 4 deals plus the inventory and read-path documentation, total time: 3-5 hours of focused work.
+
+The fixes that follow are separate effort, scoped per finding. The systemic Priority 0 fallout fix is likely 1-2 sessions if the pattern is uniform; per-tab issues are individual smaller efforts.
+
+## Relationship to remaining audit phases
+
+After Phase 2 completes:
+
+- **Math Integrity Audit (originally Phase 1B-style)** — verify subtotal correctness, sign conventions, hierarchical reconciliation. Comes after surface connectivity is fully closed.
+- **Layered Value and Override Audit** — verify override hierarchy, resolution correctness, audit trail completeness. Could ship in parallel with math audit.
+- **Reasoning and Methodology Audit** — verify agent reasoning conforms to specs. Most interpretive; comes after mechanical phases close.
+
+Phase 2's findings inform the others — particularly the math audit, since math audit operates on a system whose surfaces are confirmed connected.
+
+## One framing observation
+
+The Phase 1 connection audit caught the original table inversion. Priority 0 fixed the main grid. This Phase 2 audit catches the residual surfaces that the same fix didn't extend to. The pattern is iterative:
+
+- Phase 1 caught one inversion (main grid)
+- Phase 2 catches the rest of the surface (other tabs)
+- Future phases catch math, overrides, reasoning
+
+Each phase narrows the trust gap. The platform's trust foundation tightens with each completed phase. The pace is the lands-discipline plan's pace — verification before more building — and it's working as designed.
