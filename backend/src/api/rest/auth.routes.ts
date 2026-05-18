@@ -49,12 +49,22 @@ router.post('/register', async (req: Request, res: Response, next) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create user with platform_role
+    // Derive the canonical user_type from the platform_role (Task #878).
+    // human_sponsor | human_lp | human_lender are the extended human sub-types;
+    // legacy 'human' is kept valid for old rows but new registrations always use sub-types.
+    const userTypeMap: Record<string, string> = {
+      sponsor: 'human_sponsor',
+      lp: 'human_lp',
+      lender: 'human_lender',
+    };
+    const userType = userTypeMap[platformRole] ?? 'human_sponsor';
+
+    // Create user with both platform_role and user_type set consistently.
     const result = await query(
-      `INSERT INTO users (email, password_hash, first_name, last_name, platform_role)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, email, first_name, last_name, role, platform_role, created_at`,
-      [email, passwordHash, firstName, lastName, platformRole]
+      `INSERT INTO users (email, password_hash, first_name, last_name, platform_role, user_type)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, email, first_name, last_name, role, platform_role, user_type, created_at`,
+      [email, passwordHash, firstName, lastName, platformRole, userType]
     );
 
     const user = result.rows[0];

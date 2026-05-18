@@ -1,6 +1,19 @@
 -- Task #878: Complete role-capability seeding
--- Adds LP-specific and lender-specific view capabilities that are exposed
--- on the ReturnsTab panels. Idempotent (ON CONFLICT DO NOTHING).
+-- Adds shared view capabilities + LP-specific and lender-specific view
+-- capabilities exposed on the ReturnsTab panels. Idempotent (ON CONFLICT DO NOTHING).
+
+-- Shared view capabilities: all roles can view the main financial surfaces
+INSERT INTO role_capabilities (platform_role, capability) VALUES
+  ('sponsor', 'view:proforma'),
+  ('sponsor', 'view:underwriting'),
+  ('sponsor', 'view:scenarios'),
+  ('lp',      'view:proforma'),
+  ('lp',      'view:underwriting'),
+  ('lp',      'view:scenarios'),
+  ('lender',  'view:proforma'),
+  ('lender',  'view:underwriting'),
+  ('lender',  'view:scenarios')
+ON CONFLICT DO NOTHING;
 
 -- LP: full set of read surfaces relevant to a passive investor
 INSERT INTO role_capabilities (platform_role, capability) VALUES

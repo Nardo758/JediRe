@@ -7,6 +7,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { extractTokenFromHeader, verifyAccessToken } from '../auth/jwt';
+import { getPool } from '../database/connection';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -134,16 +135,25 @@ export function requireRole(...roles: string[]) {
 }
 
 /**
- * Require a specific capability (for agent tokens).
- * Human users pass unconditionally — capability enforcement only applies to agent tokens.
- * Usage: router.post('/path', requireAuth, requireCapability('write:zoning_analysis'), handler)
+ * Require a specific capability.
+ *
+ * - Agent tokens: checked synchronously against JWT capabilities claim.
+ * - Human users (human_sponsor | human_lp | human_lender | human): checked
+ *   against the role-capability matrix (role_capabilities table) keyed by
+ *   users.platform_role, with per-user overrides from user_capabilities as
+ *   fallback. This is the same two-tier resolution as rbac.requireCapability
+ *   but lives here so all protected routes can use a single, consistent import.
+ *
+ * Usage: router.post('/path', requireAuth, requireCapability('edit:capital_structure'), handler)
  */
 export function requireCapability(required: string) {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     if (!req.user) {
       res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
       return;
     }
+
+    // Agent tokens: verify against JWT-embedded capabilities claim.
     if (req.user.user_type === 'agent') {
       const caps = req.user.capabilities ?? [];
       if (!caps.includes(required) && !caps.includes('read:all') && !caps.includes('write:all')) {
@@ -153,8 +163,42 @@ export function requireCapability(required: string) {
         });
         return;
       }
+      next();
+      return;
     }
-    next();
+
+    // Human users: resolve capability from role-capability matrix OR per-user override.
+    try {
+      const pool = getPool();
+      const result = await pool.query(
+        `SELECT 1
+         FROM users u
+         WHERE u.id = $1
+           AND (
+             EXISTS (
+               SELECT 1 FROM role_capabilities rc
+               WHERE rc.platform_role = u.platform_role AND rc.capability = $2
+             )
+             OR EXISTS (
+               SELECT 1 FROM user_capabilities uc
+               WHERE uc.user_id = $1 AND uc.capability = $2
+             )
+           )`,
+        [req.user.userId, required]
+      );
+      if (result.rows.length === 0) {
+        res.status(403).json({
+          error: 'Forbidden',
+          message: `Requires capability: ${required}`,
+          capability: required,
+        });
+        return;
+      }
+      next();
+    } catch (err) {
+      console.error('[auth.requireCapability] DB error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   };
 }
 
