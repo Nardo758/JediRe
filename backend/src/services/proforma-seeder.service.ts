@@ -1304,57 +1304,79 @@ export async function seedProFormaYear1(
     // deal_assumptions.year1 automatically, so all existing readers remain correct.
     // For deals without an active scenario, write directly to deal_assumptions.
     //
-    // SCENARIO PATH: extraction-layer sub-key merge only.
+    // SCENARIO PATH: atomic extraction-layer sub-key merge via SQL.
+    //
     // Only the document-sourced slots (t12, om, rent_roll, tax_bill, box_score,
     // aged_ar, platform, warning) are written from the new seed.  Sub-keys owned
     // by the cashflow agent (agent, resolved, resolution, override, override_source,
-    // updated_by, updated_at) are NEVER touched — they are merged from the
-    // existing scenario year1 by construction.
+    // updated_by, updated_at) are NEVER in the extractionDelta and are therefore
+    // preserved from the DB's current year1 value — by construction.
+    //
+    // Atomicity / lost-update guarantee
+    // ─────────────────────────────────
+    // PostgreSQL evaluates all expressions in a SET clause against the
+    // PRE-UPDATE row.  The `year1` references inside the SQL below therefore
+    // always read the value that was committed to the DB at the moment this
+    // statement executes — INCLUDING any concurrent agent write that completed
+    // after our earlier SELECT but before this UPDATE.  No application-level
+    // read-merge-write is performed; the merge happens entirely inside the DB.
+    //
     // The four agent-only fields (bad_debt_dollars, vacancy_loss_dollars,
-    // other_income_dollars, management_fee_dollars) live in the existing scenario
-    // year1 and are preserved because we start from that base.
+    // other_income_dollars, management_fee_dollars) exist only in the DB's
+    // year1; they are not in extractionDelta or seedJson, so they are
+    // preserved by the jsonb_object_agg over jsonb_each(year1) in Step 1.
     if (activeScenId) {
-      // Sub-keys that belong to extraction sources — safe to overwrite.
+      // Step A: build the extraction-only delta — only t12/om/rent_roll/...
+      // sub-keys per field.  Agent-protected sub-keys are never present here.
       const EXTRACTION_SUBKEYS = new Set([
         't12', 'om', 'rent_roll', 'tax_bill', 'box_score', 'aged_ar', 'platform', 'warning',
       ]);
-
-      // Build merged year1: existing scenario year1 + extraction sub-keys from new seed.
-      const existingScenYear1 = (existingSeed as Record<string, unknown>) ?? {};
-      const mergedYear1: Record<string, unknown> = { ...existingScenYear1 };
-
+      const extractionDelta: Record<string, Record<string, unknown>> = {};
       for (const [fieldKey, seedValue] of Object.entries(seed as unknown as Record<string, unknown>)) {
-        if (!seedValue || typeof seedValue !== 'object') {
-          // Scalar helpers (e.g. _unit_count): add if absent, never overwrite.
-          if (!(fieldKey in mergedYear1)) mergedYear1[fieldKey] = seedValue;
-          continue;
-        }
+        if (!seedValue || typeof seedValue !== 'object') continue; // skip scalars
         const seedLv = seedValue as Record<string, unknown>;
-        const existingLv = mergedYear1[fieldKey];
-
-        if (!existingLv || typeof existingLv !== 'object') {
-          // New field — agent hasn't written here yet. Add the full LayeredValue.
-          mergedYear1[fieldKey] = { ...seedLv };
-        } else {
-          // Existing field — apply only extraction sub-keys.
-          // agent/resolved/resolution/override/override_source/updated_by/updated_at
-          // are NOT in EXTRACTION_SUBKEYS and are therefore NEVER overwritten.
-          const existingLvRec = existingLv as Record<string, unknown>;
-          const merged = { ...existingLvRec };
-          for (const [subKey, subVal] of Object.entries(seedLv)) {
-            if (EXTRACTION_SUBKEYS.has(subKey)) {
-              merged[subKey] = subVal;
-            }
-          }
-          mergedYear1[fieldKey] = merged;
+        const extractionOnly: Record<string, unknown> = {};
+        for (const sk of EXTRACTION_SUBKEYS) {
+          if (sk in seedLv) extractionOnly[sk] = seedLv[sk];
         }
+        if (Object.keys(extractionOnly).length > 0) extractionDelta[fieldKey] = extractionOnly;
       }
 
+      // Step B: atomic SQL merge.
+      //
+      // $2 = extractionDelta  — {field: {t12:.., om:.., platform:..}, ...}
+      //   For EXISTING fields: value || ($2->key) merges only extraction
+      //   sub-keys into the DB field; agent/resolved/resolution/override
+      //   remain untouched because they are not present in $2.
+      //
+      // $3 = full seed JSON — used only for NEW fields (those absent from
+      //   the DB year1).  For new fields the agent has never written values
+      //   yet, so the full seed LayeredValue (with resolved/resolution from
+      //   buildSeed) is the correct initial state.
       await pool.query(
         `UPDATE deal_underwriting_scenarios
-           SET year1 = $2::jsonb, updated_at = NOW()
-         WHERE id = $1`,
-        [activeScenId, JSON.stringify(mergedYear1)]
+            SET year1 = (
+              -- Step 1: iterate existing fields; merge extraction delta into
+              -- each field that appears in $2, leave others untouched.
+              SELECT jsonb_object_agg(
+                key,
+                CASE
+                  WHEN $2::jsonb ? key
+                  THEN value || ($2::jsonb->key)
+                  ELSE value
+                END
+              )
+              FROM jsonb_each(COALESCE(year1, '{}')) j(key, value)
+            ) || (
+              -- Step 2: add new fields that do not yet exist in year1 at all.
+              -- Uses the full seed LayeredValue (resolved+resolution included).
+              SELECT COALESCE(jsonb_object_agg(dk, dv), '{}'::jsonb)
+              FROM jsonb_each($3::jsonb) jd(dk, dv)
+              WHERE NOT (COALESCE(year1, '{}') ? dk)
+            ),
+            updated_at = NOW()
+          WHERE id = $1`,
+        [activeScenId, JSON.stringify(extractionDelta), JSON.stringify(seed)]
       );
       // Keep deal_assumptions metadata columns (non-year1) in sync separately.
       // The trigger handles year1; we own total_units, vacancy_pct, source_type.
