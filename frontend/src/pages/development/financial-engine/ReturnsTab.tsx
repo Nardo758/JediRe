@@ -1684,9 +1684,9 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
                       } else {
                         // Sponsor: always sort by GP levered equity IRR regardless of strategy
                         // metric (which may be stabilized_value or profit_at_exit — dollar amounts,
-                        // not return rates). Fall back to primary_metric_value only if gp_irr absent.
-                        const ia = (a as any).gp_irr ?? a.primary_metric_value ?? -Infinity;
-                        const ib = (b as any).gp_irr ?? b.primary_metric_value ?? -Infinity;
+                        // not return rates). Null gp_irr (old persisted runs) → sort to bottom.
+                        const ia = a.gp_irr ?? -Infinity;
+                        const ib = b.gp_irr ?? -Infinity;
                         return ib - ia;
                       }
                     });

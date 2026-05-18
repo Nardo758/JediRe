@@ -496,6 +496,7 @@ export interface F9DealFinancials {
       trade_off_summary: string;
       primary_metric: string;
       primary_metric_value: number | null;
+      gp_irr?: number | null;
       dscr_min: number | null;
       breakeven_occ?: number | null;
       optimal_rate: number;

@@ -223,6 +223,10 @@ export const CashflowOutputSchema = z.object({
           trade_off_summary: z.string(),
           primary_metric: z.string(),
           primary_metric_value: z.number().nullable(),
+          gp_irr: z.number().nullable().optional().describe(
+            'GP levered equity IRR — always computed regardless of strategy metric. ' +
+            'Primary sponsor-side Pareto ranking criterion.'
+          ),
           dscr_min: z.number().nullable(),
           breakeven_occ: z.number().nullable().optional(),
           optimal_rate: z.number(),
