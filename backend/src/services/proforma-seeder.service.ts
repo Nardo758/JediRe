@@ -1169,15 +1169,28 @@ export async function seedProFormaYear1(
       deal.state_code as string | null,
     );
 
-    // Load existing seed (preserves user overrides)
+    // P0 fix: load existingSeed preferring the active scenario year1.
+    // The scenario is the canonical write target for the cashflow agent, so its
+    // year1 contains the most up-to-date agent sub-keys. Reading from
+    // deal_assumptions can miss those values when the seeder runs after an agent
+    // write (the trigger syncs scenario→deal_assumptions, but an older seeder run
+    // may have overwrote deal_assumptions in the interim).
+    const activeScenRes = await pool.query(
+      `SELECT id, year1 FROM deal_underwriting_scenarios
+        WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] as any[] }));
+    const activeScenId: string | null = activeScenRes.rows[0]?.id ?? null;
+
     const existing = await pool.query(
       `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
       [dealId]
-    ).catch(() => ({ rows: [] }));
-    const existingSeed = existing.rows[0]?.year1
-      ? (typeof existing.rows[0].year1 === 'string'
-          ? JSON.parse(existing.rows[0].year1)
-          : existing.rows[0].year1)
+    ).catch(() => ({ rows: [] as any[] }));
+
+    // Prefer scenario year1 (has agent sub-keys); fall back to deal_assumptions.
+    const rawExistingSeed = activeScenRes.rows[0]?.year1 ?? existing.rows[0]?.year1 ?? null;
+    const existingSeed = rawExistingSeed
+      ? (typeof rawExistingSeed === 'string' ? JSON.parse(rawExistingSeed) : rawExistingSeed)
       : null;
 
     const bcRaw = capsule?.broker_claims;
@@ -1286,30 +1299,65 @@ export async function seedProFormaYear1(
       }
     }
 
-    // Upsert — write year1 JSONB and sync key fields to legacy columns
-    await pool.query(
-      `INSERT INTO deal_assumptions
-         (deal_id, year1, total_units, vacancy_pct, other_income_per_unit,
-          source_type, source_date, created_at, updated_at)
-       VALUES ($1, $2::jsonb, $3, $4,
-               COALESCE($5::numeric, 50),
-               'platform_seeded', NOW(), NOW(), NOW())
-       ON CONFLICT (deal_id) DO UPDATE SET
-         year1 = EXCLUDED.year1,
-         total_units = EXCLUDED.total_units,
-         vacancy_pct = EXCLUDED.vacancy_pct,
-         other_income_per_unit = EXCLUDED.other_income_per_unit,
-         source_type = 'platform_seeded',
-         source_date = NOW(),
-         updated_at = NOW()`,
-      [
-        dealId,
-        JSON.stringify(seed),
-        seed._unit_count,
-        seed.vacancy_pct?.resolved != null ? Math.round(seed.vacancy_pct.resolved * 10000) / 100 : null,
-        seed.other_income_per_unit?.resolved
-      ]
-    );
+    // P0 fix: write year1 to the active scenario when one exists.
+    // The trigger (trg_sync_underwriting_scenario) propagates the change to
+    // deal_assumptions.year1 automatically, so all existing readers remain correct.
+    // For deals without an active scenario, write directly to deal_assumptions.
+    if (activeScenId) {
+      await pool.query(
+        `UPDATE deal_underwriting_scenarios
+           SET year1 = $2::jsonb, updated_at = NOW()
+         WHERE id = $1`,
+        [activeScenId, JSON.stringify(seed)]
+      );
+      // Keep deal_assumptions metadata columns (non-year1) in sync separately.
+      // The trigger handles year1; we own total_units, vacancy_pct, source_type.
+      await pool.query(
+        `INSERT INTO deal_assumptions
+           (deal_id, total_units, vacancy_pct, other_income_per_unit,
+            source_type, source_date, created_at, updated_at)
+         VALUES ($1, $2, $3, COALESCE($4::numeric, 50),
+                 'platform_seeded', NOW(), NOW(), NOW())
+         ON CONFLICT (deal_id) DO UPDATE SET
+           total_units            = EXCLUDED.total_units,
+           vacancy_pct            = EXCLUDED.vacancy_pct,
+           other_income_per_unit  = EXCLUDED.other_income_per_unit,
+           source_type            = 'platform_seeded',
+           source_date            = NOW(),
+           updated_at             = NOW()`,
+        [
+          dealId,
+          seed._unit_count,
+          seed.vacancy_pct?.resolved != null ? Math.round(seed.vacancy_pct.resolved * 10000) / 100 : null,
+          seed.other_income_per_unit?.resolved,
+        ]
+      );
+    } else {
+      // No active scenario — write year1 directly to deal_assumptions (legacy path).
+      await pool.query(
+        `INSERT INTO deal_assumptions
+           (deal_id, year1, total_units, vacancy_pct, other_income_per_unit,
+            source_type, source_date, created_at, updated_at)
+         VALUES ($1, $2::jsonb, $3, $4,
+                 COALESCE($5::numeric, 50),
+                 'platform_seeded', NOW(), NOW(), NOW())
+         ON CONFLICT (deal_id) DO UPDATE SET
+           year1                  = EXCLUDED.year1,
+           total_units            = EXCLUDED.total_units,
+           vacancy_pct            = EXCLUDED.vacancy_pct,
+           other_income_per_unit  = EXCLUDED.other_income_per_unit,
+           source_type            = 'platform_seeded',
+           source_date            = NOW(),
+           updated_at             = NOW()`,
+        [
+          dealId,
+          JSON.stringify(seed),
+          seed._unit_count,
+          seed.vacancy_pct?.resolved != null ? Math.round(seed.vacancy_pct.resolved * 10000) / 100 : null,
+          seed.other_income_per_unit?.resolved,
+        ]
+      );
+    }
 
     const fieldsSeeded = Object.values(seed).filter(
       (v: unknown) => v && typeof v === 'object' && 'resolved' in v && (v as LayeredValue<number>).resolved != null

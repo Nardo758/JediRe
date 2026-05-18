@@ -218,24 +218,43 @@ export async function composeDealFinancials(
   const brokerProforma = brokerClaims.proforma && typeof brokerClaims.proforma === 'object' ? brokerClaims.proforma as Record<string, any> : null;
   const extractionOm = dealData?.extraction_om && typeof dealData.extraction_om === 'object' ? dealData.extraction_om as Record<string, any> : null;
 
-  // 2. Load deal_assumptions (year1 proforma JSON)
-  const assRes = await pool.query(
-    `SELECT year1, source_type, source_date, updated_at FROM deal_assumptions WHERE deal_id = $1`,
-    [dealId]
-  );
+  // 2. Load year1 proforma JSON.
+  // P0 fix: prefer the active underwriting scenario (canonical write target for
+  // the cashflow agent) so agent-computed values reach the F9 grid.
+  // Falls back to deal_assumptions.year1 for deals that pre-date the scenario
+  // layer or that have no active scenario row.
+  const [scenRes, assRes] = await Promise.all([
+    pool.query(
+      `SELECT year1 FROM deal_underwriting_scenarios
+        WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+        LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] as any[] })),
+    pool.query(
+      `SELECT year1, source_type, source_date, updated_at FROM deal_assumptions WHERE deal_id = $1`,
+      [dealId]
+    ),
+  ]);
   const year1Row = assRes.rows[0] ?? null;
-  let year1Data = year1Row?.year1 ?? null;
+  let year1Data = scenRes.rows[0]?.year1 ?? year1Row?.year1 ?? null;
 
   // Lazy seed: if no year1 data exists, seed from extraction capsules.
   if (!year1Data && totalUnits > 0) {
     try {
       await seedProFormaYear1(pool, dealId);
-      // Re-read after seeding
-      const retry = await pool.query(
-        `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
-        [dealId]
-      );
-      year1Data = retry.rows[0]?.year1 ?? null;
+      // Re-read after seeding — scenario is preferred if it now exists.
+      const [retrySc, retryDa] = await Promise.all([
+        pool.query(
+          `SELECT year1 FROM deal_underwriting_scenarios
+            WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL LIMIT 1`,
+          [dealId]
+        ).catch(() => ({ rows: [] as any[] })),
+        pool.query(
+          `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+          [dealId]
+        ),
+      ]);
+      year1Data = retrySc.rows[0]?.year1 ?? retryDa.rows[0]?.year1 ?? null;
     } catch (seedErr: any) {
       console.warn('[composer] Lazy seed failed (non-fatal):', seedErr?.message ?? seedErr);
     }
