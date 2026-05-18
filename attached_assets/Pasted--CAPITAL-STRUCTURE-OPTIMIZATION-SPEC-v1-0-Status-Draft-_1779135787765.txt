@@ -1,0 +1,562 @@
+# CAPITAL STRUCTURE OPTIMIZATION SPEC v1.0
+
+**Status:** Draft v1.0 — three-phase product specification
+**Owner:** Leon / JEDI RE
+**Module designation:** Spans existing modules and adds new capabilities; suggest umbrella tag M37-M39 for the three phases
+**Purpose:** Add capital structure capability to the platform in three product phases — defaults and simple optimization first (sponsors only), user_type extension second (sponsor/LP/lender), full M36 joint distribution engine third.
+
+**Pairs with:**
+- `M36_Joint_Distribution_Engine_Spec.md` (Phase 3 implements; Phases 1-2 don't depend on it)
+- `AGENT_PLATFORM_SPEC.md` (Phase 2 extends existing user_type infrastructure)
+- `LANDS_DISCIPLINE_OPERATING_PLAN.md` (this spec follows the verification discipline)
+- `JEDI_RE_MEMORY_ARCHITECTURE_MAP.md` (Phase 1's defaults populate via Layer 2; user_type discrimination affects Layer 4 composition)
+- Existing ProForma engine and Goal Seek infrastructure
+- Existing FRED API integration for current debt rates
+
+---
+
+## 0. EXECUTIVE FRAMING
+
+### What this spec covers
+
+A capital structure capability for the platform delivered in three product phases:
+
+- **Phase 1 — Defaults + simple optimization (sponsor users only).** Defaults populate at deal creation. Cash flow agent does single-variable Goal Seek optimization. 3-5 sessions.
+- **Phase 2 — User_type extension.** Sponsor / LP / lender as differentiated human user types. 3-4 sessions.
+- **Phase 3 — M36 joint distribution engine.** Full joint distribution math, capital stack bundles. ~17 sessions per M36 spec.
+
+### What this spec deliberately doesn't do
+
+- Doesn't reinvent the M36 engine — M36 has its own spec for the math; this spec describes the product wrapper
+- Doesn't address platform-wide multi-tenancy (Phase 2 extends user_type but doesn't redesign access control broadly)
+- Doesn't replace the LP-focused or lender-focused features specced elsewhere (Capsule Sharing and Boundary spec)
+
+### A discipline note
+
+The lands-discipline operating plan we adopted said no new specs unless they unblock in-flight work. This spec is new architectural work. The decision to author it now, and to start Phase 1 in parallel with priority closure, was made deliberately with awareness of the tradeoff.
+
+The case for parallel execution: Phase 1 is small enough to ship without crowding priority work; the platform has product-timing reasons to ship capital structure capability sooner rather than later; the defaults work uses mostly existing infrastructure.
+
+The case against: the platform's recent history (Task #824 incomplete, Phase 2 audit blank tabs on remediated deals) shows specs accumulating faster than verification. Adding work to an unstable foundation has cost.
+
+Both cases are real. This spec proceeds on the parallel-execution choice, but the team's planning should be eyes-open about the tradeoff. If priority closure slips, Phase 1 should slip with it rather than landing on top of incomplete prior work.
+
+---
+
+## 1. PHASE 1 — DEFAULTS + SIMPLE OPTIMIZATION (SPONSOR USERS ONLY)
+
+### 1.1 Scope
+
+When a new deal is created, the platform populates capital structure defaults so F9 tabs (Returns, Waterfall) render meaningfully on first load. When the cash flow agent runs, it performs single-variable Goal Seek optimization against the existing ProForma engine, producing capital structure recommendations the sponsor can review and accept.
+
+**In scope:**
+- Default values populated at deal creation: 10/90 GP/LP split, 75% LTV at current market debt rate from FRED
+- Cash flow agent integration with existing Goal Seek infrastructure
+- Single-variable optimization: find LTV that maximizes the strategy-implied primary metric, subject to hard-rule constraints
+- Strategy-to-metric mapping (value-add → IRR, stabilized → cash-on-cash, development → stabilized value, flip → profit at exit)
+- UI surfacing of agent recommendations with accept/decline/modify per the existing LayeredValue pattern
+
+**Out of scope (deferred to later phases):**
+- Joint distribution optimization (Phase 3)
+- Capital stack bundle selection across multiple debt products (Phase 3)
+- LP and lender user types (Phase 2)
+- Waterfall structure optimization beyond default 10/90 (Phase 3)
+- Plausibility scoring (Phase 3)
+
+### 1.2 Default values
+
+At deal creation, populate `deal_assumptions.year1` with these defaults at the `platform` layer:
+
+**Debt structure:**
+- `ltv_pct`: 0.75 (75% loan-to-value)
+- `debt_rate`: current 10-year Treasury + 200bps spread (sourced from FRED `DGS10` + standard CRE spread)
+- `amortization_years`: 30
+- `io_period_months`: 0 (full amortization from day 1)
+- `interest_only`: false
+- `loan_term_years`: 5
+
+**Equity structure:**
+- `gp_equity_pct`: 0.10 (10% sponsor equity)
+- `lp_equity_pct`: 0.90 (90% LP equity)
+- `preferred_return_pct`: 0.08 (8% LP preferred return)
+- `gp_promote_threshold_pct`: 0.08 (above 8% LP return)
+- `gp_promote_pct`: 0.20 (20% to GP above threshold)
+- `gp_catchup_pct`: 0.50 (50% catchup to GP after pref)
+
+These defaults render the Returns and Waterfall tabs with sensible structure. The sponsor sees the capital structure clearly, knows what's a default vs what's been customized, and can override via the Debt Advisor and LP Configuration surfaces.
+
+### 1.3 Strategy-to-metric mapping
+
+The optimization function the cash flow agent uses depends on the deal's strategy classification:
+
+| Deal Strategy | Primary Metric | Why |
+|---|---|---|
+| Value-add (acquisition_valueadd) | IRR | Time-weighted return; matches the strategy's hold-and-exit pattern |
+| Stabilized hold (acquisition_stabilized) | Cash-on-cash | Operating-period income matters more than exit timing |
+| Development | Stabilized value | Construction → stabilization → exit; cap rate × NOI at stabilization is the value driver |
+| Flip / short hold | Profit at exit | Short hold makes IRR misleading; absolute dollars matter |
+| Redevelopment (full repositioning) | IRR | Similar to value-add; longer cycle, IRR captures the time dimension |
+| Redevelopment (partial) | Cash-on-cash | Closer to stabilized hold |
+| Lease-up | Stabilized value | Pre-stabilization optimization focuses on getting to stabilization |
+
+The mapping is deterministic based on the deal's classification (set at deal creation via Research Agent or sponsor input).
+
+### 1.4 Hard-rule constraints
+
+The optimization is bounded by hard rules that the optimal structure must satisfy:
+
+1. **DSCR ≥ 1.30 in every year** (project DSCR over hold period; structure fails if any year violates)
+2. **LTV ≤ 0.85** (no over-leverage above lender comfort thresholds)
+3. **LTV ≥ 0.50** (avoid under-leverage that leaves equity on table for IRR-maximization)
+4. **Break-even occupancy ≤ 0.85** (structure must have operating margin for execution risk)
+5. **Annual cash flow positive in every year** (no negative cash flow years post-acquisition)
+
+If the Goal Seek can't find a structure satisfying all five rules, the agent surfaces this explicitly ("no LTV in [0.50, 0.85] range satisfies DSCR ≥ 1.30 in year 3; consider extending IO period or reducing acquisition price"). The agent does not silently relax constraints.
+
+### 1.5 Cash flow agent integration
+
+The cash flow agent's reasoning flow extends to include capital structure optimization:
+
+**Before optimization runs:**
+1. Agent runs standard underwriting reasoning (rents, expenses, NOI) per existing flow
+2. Agent emits projected NOI and EGI per the existing pattern
+3. Optimization runs against the projected operating cash flows
+
+**Optimization flow:**
+1. Identify the deal's strategy and primary metric
+2. Hold all operating assumptions fixed at agent's projected values
+3. Call existing Goal Seek tool with:
+   - Target: maximize primary metric
+   - Variable: LTV (Phase 1 single-variable; Phase 3 multi-variable)
+   - Constraints: hard rules from §1.4
+4. Receive optimal LTV
+5. Compute resulting debt amount, interest expense, debt service, equity check, projected returns
+6. Emit recommendation as `proforma.capital_structure.optimization` field
+
+**Agent output for capital structure:**
+
+```typescript
+proforma.capital_structure.optimization: {
+  source: 'agent_optimization',
+  primary_metric: 'irr' | 'cash_on_cash' | 'stabilized_value' | 'profit_at_exit',
+  optimal_ltv: number,
+  optimal_debt_amount: number,
+  optimal_rate: number,
+  resulting_dscr_min: number,
+  resulting_dscr_year: number,
+  primary_metric_value: number,
+  evidence_narrative: string,
+  constraints_binding: string[],   // which constraints prevented further optimization
+  confidence: 'high' | 'medium' | 'low'
+}
+```
+
+### 1.6 UI surfacing
+
+In the Returns tab (and Capital Structure section if it exists separately):
+
+- **Default structure section** — shows the platform defaults with subtle indication these are defaults requiring sponsor confirmation
+- **Agent recommendation section** — shows the agent's optimization with "Apply" button to adopt
+- **Sponsor's structure section** — shows whatever the sponsor has set (overrides), if anything
+
+The three sections render whichever are populated. A fresh deal shows just defaults. Post-agent-run shows defaults + agent recommendation. After sponsor accepts or modifies, shows sponsor's structure as primary.
+
+The visual treatment follows the existing LayeredValue pattern: source badges, accept/decline buttons, evidence drawer with optimization narrative.
+
+### 1.7 Verifiable acceptance criteria
+
+1. **Defaults populate at deal creation.** New deal has `ltv_pct: 0.75`, `gp_equity_pct: 0.10`, `lp_equity_pct: 0.90` at `platform` layer immediately after creation. Verify by: create test deal, query year1, confirm values present.
+
+2. **Defaults render in F9.** Returns tab shows 75% LTV in capital structure section without requiring agent run or sponsor input. Verify by: open new deal's F9, observe Returns tab populated.
+
+3. **Cash flow agent calls Goal Seek.** Agent run trace shows Goal Seek tool invocation with target metric and constraints. Verify by: trigger agent run, inspect run steps in `agent_run_steps`, confirm `tool_name: 'goal_seek'` step present.
+
+4. **Optimization produces recommendation in agent output.** Agent emits `proforma.capital_structure.optimization` with non-null optimal LTV, debt amount, primary metric value. Verify by: query latest agent run output, confirm capital_structure.optimization populated.
+
+5. **Strategy-to-metric mapping fires correctly.** Value-add deal optimizes for IRR; stabilized deal optimizes for cash-on-cash. Verify by: run agent on one of each deal type, confirm primary_metric field matches expected.
+
+6. **Hard-rule constraints enforced.** No agent run produces an optimal LTV that violates the five hard rules. Verify by: run agent on 5 test deals, confirm every resulting structure satisfies DSCR ≥ 1.30, LTV in [0.50, 0.85], break-even ≤ 0.85, annual cash flow positive.
+
+7. **Constraints-binding surfacing.** When optimization hits a hard rule, the `constraints_binding` field names which rule. Verify by: construct test deal where DSCR floor binds, run agent, confirm `constraints_binding` contains 'dscr_floor'.
+
+8. **Sponsor accept flow works.** Sponsor clicks "Apply" on agent recommendation, override layer updates, F9 re-renders with agent's optimal values as the resolved capital structure. Verify by: UI test on test deal.
+
+9. **No regression on existing agent behavior.** Cash flow agent's pre-existing reasoning (rents, expenses, NOI) unchanged. Verify by: run agent on test deal pre- and post-Phase 1 deploy, confirm non-capital-structure fields match.
+
+10. **Performance acceptable.** Goal Seek invocation adds < 30 seconds to agent run time. Verify by: measure agent run duration before and after Phase 1 deploy.
+
+### 1.8 Phase 1 verification protocol
+
+After implementation completes, execute this workflow before declaring done:
+
+1. Create a fresh test deal (value-add classification)
+2. Query year1 immediately — verify defaults populated
+3. Open F9 Returns tab — verify capital structure section renders with default values
+4. Trigger cash flow agent run
+5. Inspect agent run trace — verify Goal Seek invocation
+6. Inspect agent output — verify `capital_structure.optimization` populated with IRR as primary metric
+7. Verify the optimal LTV is in [0.50, 0.85] range
+8. Verify the optimal structure satisfies all five hard rules
+9. Click "Apply" on agent recommendation in UI
+10. Verify override layer updated, F9 reflects agent's optimal LTV as resolved value
+11. Repeat steps 1-10 on a stabilized acquisition deal — verify primary_metric is cash_on_cash, not IRR
+12. Repeat on a development deal — verify primary_metric is stabilized_value
+
+Closing note documents: deal IDs tested, agent run IDs, before/after F9 screenshots, performance measurements.
+
+### 1.9 Effort estimate
+
+3-5 sessions of implementation:
+
+- Defaults population logic: 0.5 session
+- Cash flow agent integration with Goal Seek: 1-1.5 sessions
+- UI surfacing of optimization output: 1 session
+- Strategy-to-metric mapping configuration: 0.5 session
+- Verification and testing: 1 session
+
+### 1.10 Dependencies
+
+**Hard dependencies:**
+- Existing ProForma engine (referenced as `/api/v1/proforma/:dealId` per CLAUDE.md)
+- Goal Seek tool/infrastructure (referenced in M36 spec; verify it exists outside M36's context)
+- FRED API integration for current 10-year Treasury rate
+- Cash flow agent runtime
+- LayeredValue source badges and override flow
+
+**Soft dependencies:**
+- Priority 0 fix (table inversion) — fully shipped; this work writes to active scenario
+- F-009 fix — verify before Phase 1; Other Income write-back affects optimization outputs
+- F9 tab connectivity audit findings — Returns tab must be connected per Phase 2 audit before this work is user-visible
+
+### 1.11 Verification before Phase 1 starts
+
+Two specific things to verify before implementation begins:
+
+1. **Does standalone Goal Seek infrastructure exist outside M36?** The M36 spec mentions `/api/sigma/goal-seek`, but M36 is largely unbuilt. Verify there's a Goal Seek capability accessible to the cash flow agent today, not just the one M36 specs. If not, Phase 1 includes building a simple Goal Seek wrapper before integration can proceed.
+
+2. **Is the existing ProForma engine capable of computing IRR, cash-on-cash, stabilized value, and profit-at-exit?** Phase 1 assumes the ProForma can return these as outputs for the Goal Seek to optimize against. Verify these four metrics are all computable per the existing engine. If one is missing, Phase 1 either adds it or constrains the strategy mapping to the metrics that work.
+
+---
+
+## 2. PHASE 2 — USER_TYPE EXTENSION TO LP AND LENDER
+
+### 2.1 Scope
+
+Extend the existing `users.user_type` infrastructure (currently `'agent' | 'human'` with agent sub-types) to differentiate human users by role: sponsor, LP, lender. Add capability flags per role. Differentiate default surfaces per role.
+
+**In scope:**
+- Schema migration adding sponsor / LP / lender as user_type values
+- Capability flags per role (view:gp_returns, view:lp_returns, view:lender_dscr_panel, etc.)
+- Onboarding flow captures role at signup
+- F9 default surface differs by role (sponsor sees GP-perspective Returns; LP sees LP-perspective Returns; lender sees DSCR-and-coverage-focused view)
+- Same underlying underwriting data, different framing per role
+
+**Out of scope:**
+- Multi-tenancy across organizations (separate concern)
+- Role switching mid-session
+- Role-specific deal access controls (deals don't yet have shared-with-multiple-users semantics; Capsule Sharing spec handles that separately)
+
+### 2.2 The framing principle
+
+Each role asks a different question of the same underlying underwriting:
+
+| Role | Primary Question | Key Surface |
+|---|---|---|
+| Sponsor | Should I do this deal? | GP-perspective Returns (IRR to GP, GP equity check, promote earned) |
+| LP | Should I commit capital to this deal? | LP-perspective Returns (LP preferred return clarity, LP IRR, risk distribution) |
+| Lender | Can I responsibly lend against this deal? | DSCR throughout hold, LTV-trended-by-year, refinance scenario, exit cap stress |
+
+Same underwriting. Same numbers underneath. Different framings of which numbers to surface and which secondary analyses to emphasize.
+
+### 2.3 Schema changes
+
+Extend `users.user_type` enum:
+
+```sql
+-- Current state per AGENT_PLATFORM_SPEC.md Phase 1:
+-- user_type values include 'agent_*' types and presumably 'human'
+
+-- Migration adds:
+ALTER TYPE user_type ADD VALUE 'human_sponsor';
+ALTER TYPE user_type ADD VALUE 'human_lp';
+ALTER TYPE user_type ADD VALUE 'human_lender';
+-- Keep 'human' as backward-compat default; migration assigns existing humans to 'human_sponsor'
+
+-- Add capability flags table if not existing
+CREATE TABLE user_capabilities (
+  user_type TEXT NOT NULL,
+  capability TEXT NOT NULL,
+  PRIMARY KEY (user_type, capability)
+);
+
+-- Seed capabilities
+INSERT INTO user_capabilities VALUES
+  ('human_sponsor', 'view:gp_returns'),
+  ('human_sponsor', 'edit:capital_structure'),
+  ('human_sponsor', 'edit:operating_assumptions'),
+  ('human_lp', 'view:lp_returns'),
+  ('human_lp', 'view:lp_distribution_schedule'),
+  ('human_lp', 'view:risk_distribution'),
+  ('human_lender', 'view:dscr_panel'),
+  ('human_lender', 'view:ltv_trend'),
+  ('human_lender', 'view:exit_cap_stress'),
+  ('human_lender', 'view:refi_scenarios')
+  ;
+-- All three see: 'view:proforma', 'view:underwriting', 'view:scenarios'
+```
+
+### 2.4 Onboarding flow
+
+At signup, capture user role:
+
+```
+What's your role on the platform?
+○ Sponsor — I underwrite and operate real estate deals
+○ Limited Partner — I review deals to commit capital
+○ Lender — I evaluate deals for financing
+```
+
+Assign user_type accordingly. Default to `human_sponsor` if not specified (backward-compat with existing platform users).
+
+Sponsor onboarding flow remains as today (continues to existing tier selection — Scout/Operator/Principal/Institutional). LP and lender onboarding gets dedicated flows in Phase 2.5 (a soft sub-phase covering the specific onboarding journey).
+
+### 2.5 Surface differentiation
+
+Per role, the F9 default tab and surface emphasis differs:
+
+**Sponsor default surfaces:**
+- F9 default: Pro Forma main grid (existing)
+- Returns tab emphasis: GP returns (IRR to GP, equity multiple to GP, promote earned)
+- Capital Structure tab: full access (edit LTV, debt terms, equity tranches)
+
+**LP default surfaces:**
+- F9 default: Returns tab opened to LP-perspective view
+- LP-perspective view shows: LP preferred return projection, LP IRR, LP equity multiple, distribution schedule by year, risk distribution (downside scenarios)
+- Capital Structure tab: read-only; LP cannot edit sponsor's structure choices
+
+**Lender default surfaces:**
+- F9 default: DSCR panel (new tab or section)
+- DSCR panel shows: DSCR by year, lowest year, sensitivity to NOI variance, sensitivity to rate environment, LTV trended through hold period, refinance scenarios at multiple points
+- Pro Forma main grid: visible but de-emphasized; lender's primary focus is the coverage view
+
+Each role can navigate to other tabs. The defaults reflect the primary question their role is asking.
+
+### 2.6 The role-discrimination question for the agent
+
+The cash flow agent's reasoning doesn't fundamentally change per role — the underwriting is what it is. But the agent's *output framing* and *primary recommendation* should respect the user's role:
+
+- Sponsor running the agent: agent's recommendation prioritizes GP returns
+- LP running the agent on a shared deal: agent's recommendation frames the deal from LP perspective (does this hit my hurdle?)
+- Lender running the agent: agent's recommendation focuses on coverage (does this satisfy my underwriting box?)
+
+This is implemented as a per-role variant of the agent's output framing, not as a per-role agent. Same agent, same reasoning, different summary surface.
+
+### 2.7 Verifiable acceptance criteria
+
+1. **Migration adds three human user types.** Schema query confirms `'human_sponsor'`, `'human_lp'`, `'human_lender'` as valid user_type values.
+
+2. **Capability flags exist per role.** Query `user_capabilities` table — at least 3 capabilities defined for each new user type.
+
+3. **Onboarding captures role.** New signup flow shows three radio options; selecting LP creates user with `user_type: 'human_lp'`.
+
+4. **Existing users default correctly.** Migration assigns existing humans to `human_sponsor`; no user has null user_type post-migration.
+
+5. **LP user's F9 default differs from sponsor's.** Open same deal as LP user — F9 opens to Returns tab in LP-perspective view, not Pro Forma main grid.
+
+6. **Lender user sees DSCR panel.** Lender user opens deal — DSCR panel renders with year-by-year coverage; LTV trend chart present.
+
+7. **Capability enforcement works.** LP user attempts to edit capital structure — blocked with 403; sponsor user can edit successfully.
+
+8. **Same underlying data across roles.** Sponsor and LP viewing same deal see the same NOI, EGI, agent's projection — just framed differently. Verify by inspecting raw data; values must match across role views.
+
+### 2.8 Phase 2 verification protocol
+
+After implementation:
+
+1. Create three test users — one each as sponsor, LP, lender
+2. Each user signs up via the new flow; verify user_type assigned correctly
+3. Share a test deal with all three (via Capsule Sharing if shipped, or direct admin grant if not)
+4. Each user opens the deal — verify default F9 surface matches role
+5. Sponsor edits capital structure — succeeds
+6. LP attempts to edit capital structure — blocked
+7. Lender opens DSCR panel — verify renders with year-by-year data
+8. Trigger cash flow agent run while each user is viewing the deal — verify agent output framing reflects current user's role
+9. Verify the underlying data is identical across the three views (raw query confirms same numbers)
+
+Closing note documents: user IDs, deal ID, F9 screenshots per role, capability test results.
+
+### 2.9 Effort estimate
+
+3-4 sessions:
+
+- Schema migration + capability table: 0.5 session
+- Onboarding flow extension: 1 session
+- Per-role F9 surface routing: 1 session
+- LP-perspective and lender-perspective views: 1-1.5 sessions
+- Verification: 0.5 session
+
+### 2.10 Dependencies
+
+**Hard dependencies:**
+- Phase 1 shipped (capital structure exists to differentiate views over)
+- Existing user_type schema and authentication
+- Capability middleware (`requireCapability` per AGENT_PLATFORM_SPEC)
+
+**Soft dependencies:**
+- Capsule Sharing spec for deal-sharing semantics (or admin-grant fallback for testing)
+- Scenario Management for deal-state context (Phase 2 reads from active scenario per role)
+
+### 2.11 Verification before Phase 2 starts
+
+One thing to verify before implementation begins:
+
+**Confirm Phase 1 is fully shipped and verified.** Phase 2 differentiates the surface presentation of capital structure data. If Phase 1 hasn't produced that data correctly, Phase 2 differentiates broken data. Don't start Phase 2 until Phase 1's verification criteria all pass.
+
+---
+
+## 3. PHASE 3 — M36 JOINT DISTRIBUTION ENGINE
+
+### 3.1 Scope
+
+Upgrade the capital structure optimization from single-variable Goal Seek to full M36 joint distribution engine. Capital stack bundles, plausibility scoring, regime detection, factor decomposition, cross-bundle ranking.
+
+This phase is M36's own spec implementation. Rather than restate M36, this section identifies how the cash flow agent and the existing UI integrate with M36 once built.
+
+**In scope:**
+- All of M36 spec's 17-session implementation
+- Cash flow agent's tool list gains `query_capital_stack_bundles`, `run_joint_goal_seek`, `get_plausibility_score`
+- Agent's reasoning extends to multi-bundle optimization
+- UI gains capital stack comparison view
+- Plausibility scoring surfaces in evidence drawer
+- Anomaly detection wired
+
+**Out of scope:**
+- Re-spec of M36 itself (existing spec)
+- Stress testing UI beyond what M36 spec describes
+- Cross-deal correlation analysis (M36's scope is per-deal)
+
+### 3.2 Integration with Phase 1 and Phase 2
+
+When Phase 3 ships, the cash flow agent's capital structure reasoning changes:
+
+**Before Phase 3:**
+- Single-variable Goal Seek finds optimal LTV against fixed structure
+- Output is one optimal LTV per deal
+
+**After Phase 3:**
+- Joint multi-variable Goal Seek across debt products (Agency Fixed, HUD, Bridge, CMBS, etc.)
+- Each capital stack bundle has its own Σ_bundle
+- Output is Pareto frontier across bundles ranked by (target_hit, lowest d, lowest variance)
+- Recommendation includes plausibility score and constraint analysis
+
+The UI changes:
+
+**Before Phase 3:**
+- Returns tab shows single agent recommendation
+- Sponsor sees one optimal structure
+
+**After Phase 3:**
+- Returns tab shows recommendation with "alternative structures" section
+- Sponsor sees primary recommendation plus 2-3 alternatives across debt products
+- Each alternative has trade-off characterization (e.g., "HUD: lower rate, longer closing timeline" vs "Bridge: faster close, floating rate exposure")
+
+Role differentiation from Phase 2 carries through. Sponsor sees alternatives ranked by GP returns; LP sees the same alternatives ranked by LP returns and risk distribution; lender sees alternatives ranked by DSCR robustness.
+
+### 3.3 Effort and dependencies
+
+Per M36 spec: 17 sessions across six phases. Existing M36 spec is the canonical reference.
+
+**Dependencies:**
+- M36's own internal dependencies (per its spec)
+- Phase 1 capital structure capability shipped (so users have something to upgrade)
+- Phase 2 user_type differentiation (so M36's outputs frame correctly per role)
+
+### 3.4 Phase 3 verification protocol
+
+Per M36 spec's own verification, with these additions specific to product integration:
+
+1. Cash flow agent run with M36 active produces multi-bundle Pareto frontier
+2. UI Returns tab renders primary recommendation plus alternatives
+3. Sponsor view ranks by GP returns; LP view ranks by LP returns
+4. Plausibility score appears in evidence drawer for every assumption
+5. Anomaly detection on residuals produces alerts visible in deal capsule
+
+### 3.5 Phase 3 timing
+
+Phase 3 starts after Phase 2 ships AND priority work (Priorities 1-3 from lands-discipline plan, plus F9 tab fixes from Phase 2 audit) is closed.
+
+This sequencing is non-negotiable. Phase 3 is a major engineering investment (17 sessions). Starting it on top of unstable foundations multiplies risk. Phase 1 and Phase 2 deliver real product capability without M36; the strategic upgrade can wait.
+
+---
+
+## 4. CROSS-PHASE CONSIDERATIONS
+
+### 4.1 Data preservation across phases
+
+User overrides applied in Phase 1 (sponsor's manually set capital structure) must survive Phase 2 and Phase 3 implementations. The override layer hierarchy (override > agent > platform > t12 > om) preserves them; the implementation must respect this.
+
+When Phase 3's M36 produces alternative bundle recommendations, the sponsor's existing override on capital structure is the primary; M36's recommendations appear as alternatives the sponsor can consider but don't auto-replace the override.
+
+### 4.2 Scenario integration
+
+Per the Scenario Management spec, capital structure values live in `deal_assumptions.year1` at the active scenario level. Phase 1's defaults populate the active scenario's `platform` layer. Phase 2 differentiates views without changing underlying scenario data. Phase 3's recommendations write to the agent layer of the active scenario.
+
+Sponsor can create "Aggressive Leverage" scenario with 80% LTV alongside "Conservative" scenario at 60% LTV; both inherit the Phase 1 defaults at creation but get sponsor overrides per scenario.
+
+### 4.3 Override audit trail
+
+Per F-010 / Ticket B work, every override must have source attribution. Phase 1's defaults are sourced as `platform`. Phase 3's M36 recommendations are sourced as `agent_optimization` with the agent run ID for traceability. Sponsor's manual edits are sourced as `override` with user attribution.
+
+### 4.4 Performance budget
+
+Each phase has a performance budget that subsequent phases must respect:
+
+- **Phase 1:** Agent run time ≤ 30 seconds added by Goal Seek invocation
+- **Phase 2:** Surface routing per role ≤ 200ms additional load time
+- **Phase 3:** Multi-bundle optimization ≤ 2 minutes agent run time (per M36 spec's targets)
+
+If any phase exceeds its budget, the implementation requires architectural review before shipping.
+
+---
+
+## 5. WHAT THIS SPEC DOES NOT ADDRESS
+
+- **Multi-organization access control.** Each user has one workspace; cross-organization deal sharing is the Capsule Sharing spec's domain
+- **Lender's specific underwriting box checks.** Lender role gets a DSCR panel; deeper lender-specific analytics (covenant analysis, loan-to-cost vs loan-to-value distinction, special purpose entity structuring) are post-v1 work
+- **LP's portfolio-level diligence.** LP role gets per-deal LP views; cross-deal portfolio analytics for LPs is separate work
+- **Waterfall structure customization beyond defaults.** Phase 1 ships standard 10/90 with 8% pref and 20% promote; custom waterfall structures (multi-tier waterfalls, IRR hurdles, GP catch-up variations) are Phase 3+ work
+- **Refinance and exit timing optimization.** Phase 1's optimization is single-point (current capital structure); time-varying optimization (when to refinance, when to exit) is Phase 3 territory connected to M36's regime detection
+- **Tax structure optimization.** Cost segregation, depreciation strategy, opportunity zone considerations are out of scope across all phases
+
+---
+
+## 6. WEEKLY STATUS INTEGRATION
+
+This spec affects the lands-discipline operating plan's weekly status:
+
+**In flight while Phase 1 ships:**
+- Phase 1 capital structure work
+- Current Priorities 1, 2, 3 (continuing per existing plan)
+- Phase 2 F9 tab fixes (continuing per existing plan)
+
+**Tension to monitor:**
+- If Phase 1 development slips, the parallel-execution choice is being validated against. The discipline question is whether to push Phase 1 through or pause it for priority closure.
+- The weekly status should explicitly track whether Phase 1's parallel execution is interfering with priority work or proceeding cleanly.
+
+**Deferred (per spec):**
+- Phase 2 starts after Phase 1 ships and verifies
+- Phase 3 starts after Phase 2 ships AND priority work closes
+
+---
+
+## 7. SUMMARY
+
+| Phase | Scope | Effort | Dependencies | Start Trigger |
+|---|---|---|---|---|
+| Phase 1 | Defaults + simple Goal Seek for sponsors | 3-5 sessions | Existing ProForma + Goal Seek | This week (parallel to priorities) |
+| Phase 2 | User_type extension to LP and lender | 3-4 sessions | Phase 1 shipped | Phase 1 verified done |
+| Phase 3 | M36 joint distribution engine | 17 sessions | Phase 2 shipped + priorities closed | After Phase 2 + priority closure |
+
+Total: ~24-26 sessions for full capability, sequenced over ~3-4 months at current execution pace. Phase 1 alone delivers immediate user-facing value in 1-2 weeks; Phase 2 expands user base; Phase 3 upgrades the analytical sophistication.
+
+The phasing matches the lands-discipline principle: ship the smallest valuable increment first, verify before expanding, defer architectural investment until foundations are stable.
