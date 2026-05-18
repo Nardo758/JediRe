@@ -1663,7 +1663,7 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
                     ALTERNATIVE STRUCTURES  ·  M36 PARETO FRONTIER
                   </span>
                   <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
-                    sorted by {platformRole === 'lender' ? 'DSCR robustness' : 'return metric'}
+                    sorted by {platformRole === 'lender' ? 'DSCR robustness' : platformRole === 'lp' ? 'LP IRR + distribution yield' : 'GP IRR'}
                     {' '}· {(cso.pareto_frontier as NonNullable<typeof cso.pareto_frontier>).length} alternative{(cso.pareto_frontier as NonNullable<typeof cso.pareto_frontier>).length !== 1 ? 's' : ''}
                   </span>
                 </div>
