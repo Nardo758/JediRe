@@ -1128,10 +1128,12 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh }: F
                         indent
                       />
                       <div style={{ padding: '3px 10px', borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontFamily: MONO, fontSize: 7, color: confidenceColor(cso.confidence as string) }}>
-                          {(cso.confidence as string).toUpperCase()} CONFIDENCE
-                        </span>
-                        {(cso.constraints_binding as string[]).length > 0 && (
+                        {typeof cso.confidence === 'string' && (
+                          <span style={{ fontFamily: MONO, fontSize: 7, color: confidenceColor(cso.confidence) }}>
+                            {cso.confidence.toUpperCase()} CONFIDENCE
+                          </span>
+                        )}
+                        {Array.isArray(cso.constraints_binding) && cso.constraints_binding.length > 0 && (
                           <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.amber }}>
                             ⚠ {(cso.constraints_binding as string[]).join(', ')}
                           </span>

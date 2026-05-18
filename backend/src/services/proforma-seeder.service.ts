@@ -1514,24 +1514,53 @@ export async function seedCapitalStructureDefaults(
   const FALLBACK_DEBT_RATE = 0.065;
   const DEFAULT_AMORTIZATION = 30;
   const DEFAULT_LOAN_TERM = 5;
+  // Rate cache TTL: 24 hours. Avoids a blocking FRED HTTP call on every
+  // /financials request when defaults are already fresh.
+  const RATE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
   let debtRate = FALLBACK_DEBT_RATE;
 
+  // ── Check if recently seeded (rate cache) ──────────────────────────────────
+  // If _capital_structure_defaults.seeded_at is within TTL, reuse the stored
+  // debt_rate instead of calling FRED again.
   try {
-    const { FREDApiClient } = await import('../utils/fred-api.client');
-    const fred = new FREDApiClient();
-    const dgs10 = await fred.getLatest('DGS10');
-    if (dgs10 && dgs10.value !== '.' && dgs10.value !== '') {
-      const tenYear = parseFloat(dgs10.value);
-      if (!isNaN(tenYear) && tenYear > 0) {
-        debtRate = Math.round((tenYear / 100 + CRE_SPREAD_BPS / 10000) * 10000) / 10000;
+    const staleCheck = await pool.query<{ debt_rate: string | null; seeded_at: string | null }>(
+      `SELECT year1->'_capital_structure_defaults'->>'debt_rate' AS debt_rate,
+              year1->'_capital_structure_defaults'->>'seeded_at' AS seeded_at
+         FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+      [dealId]
+    );
+    const row = staleCheck.rows[0];
+    if (row?.seeded_at && row?.debt_rate) {
+      const ageMs = Date.now() - new Date(row.seeded_at).getTime();
+      if (ageMs < RATE_CACHE_TTL_MS && !isNaN(parseFloat(row.debt_rate))) {
+        // Defaults are fresh — skip FRED fetch; just re-seed with cached rate.
+        debtRate = parseFloat(row.debt_rate);
+        // Skip early here so we still re-write the LV block (idempotent).
       }
     }
-  } catch (err) {
-    warnings.push(`FRED unavailable — using fallback debt_rate ${FALLBACK_DEBT_RATE}`);
-    logger.warn('[seedCapitalStructureDefaults] FRED fetch failed, using fallback', {
-      dealId, error: err instanceof Error ? err.message : String(err),
-    });
+  } catch {
+    // Non-fatal — fall through to FRED fetch
+  }
+
+  // Only call FRED when cached rate is absent or stale
+  if (debtRate === FALLBACK_DEBT_RATE) {
+    try {
+      const { FREDApiClient } = await import('../utils/fred-api.client');
+      const fred = new FREDApiClient();
+      const dgs10 = await fred.getLatest('DGS10');
+      if (dgs10 && dgs10.value !== '.' && dgs10.value !== '') {
+        const tenYear = parseFloat(dgs10.value);
+        if (!isNaN(tenYear) && tenYear > 0) {
+          debtRate = Math.round((tenYear / 100 + CRE_SPREAD_BPS / 10000) * 10000) / 10000;
+        }
+      }
+    } catch (err) {
+      warnings.push(`FRED unavailable — using fallback debt_rate ${FALLBACK_DEBT_RATE}`);
+      logger.warn('[seedCapitalStructureDefaults] FRED fetch failed, using fallback', {
+        dealId, error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const now = new Date().toISOString();

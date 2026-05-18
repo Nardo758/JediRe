@@ -396,6 +396,23 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
         return { logged: false };
       }
       try {
+        // ── Capital structure optimization telemetry ──────────────────────
+        // Warn when the agent completed without outputting optimization data.
+        // This is a prompt-compliance signal — if the cashflow run skipped the
+        // optimize_capital_structure call, downstream ReturnsTab will show no
+        // Agent Recommendation panel. Log once per run so it's queryable.
+        const hasOptimization = !!(
+          (runResult as Record<string, unknown>).proforma &&
+          ((runResult as Record<string, unknown>).proforma as Record<string, unknown>)?.capital_structure
+        );
+        if (!hasOptimization) {
+          logger.warn('cashflow.inngest: run missing proforma.capital_structure.optimization', {
+            dealId,
+            runId: runResult.runId,
+            fields_written: runResult.fields_written,
+          });
+        }
+
         await query(
           `INSERT INTO audit_log
              (actor_id, actor_type, action, resource_type, resource_id, metadata, agent_run_id)
@@ -412,6 +429,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
               investment_rating: runResult.investment_rating,
               has_t12_data: runResult.has_t12_data,
               has_rent_roll: runResult.has_rent_roll,
+              has_capital_structure_optimization: hasOptimization,
               run_id: runResult.runId,
             }),
             runResult.runId,
