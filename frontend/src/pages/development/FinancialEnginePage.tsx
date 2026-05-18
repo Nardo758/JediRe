@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, Component } from 'react';
 import { useParams } from 'react-router-dom';
+import { useUserRole } from '../../hooks/useUserRole';
 import { Brain, Send, ChevronUp, ChevronDown } from 'lucide-react';
 import {
   BT, BT_CSS,
@@ -415,6 +416,7 @@ interface FinancialEnginePageProps {
 }
 
 export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDealType }: FinancialEnginePageProps) {
+  const platformRole = useUserRole();
   const params = useParams<{ id?: string; dealId?: string }>();
   const resolvedDealId = dealId || params.dealId || params.id || '';
   // Resolve deal type from prop → deal record → platform default.
@@ -429,7 +431,11 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   // When ROADMAP is hidden the custom-tabs strip starts one index earlier.
   const effectiveBuiltinCount = isRoadmapEligible ? BUILTIN_TAB_COUNT : BUILTIN_TAB_COUNT - 1;
 
-  const [activeTab, setActiveTab] = useState(0);
+  // LP and lender users land on RETURNS (tab 5) by default — their primary surface.
+  // Sponsors (GPs) land on OVERVIEW (tab 0) as before.
+  const [activeTab, setActiveTab] = useState(() =>
+    (platformRole === 'lp' || platformRole === 'lender') ? 5 : 0
+  );
   const [kpiLoading, setKpiLoading] = useState(false);
   const [building, setBuilding] = useState(false);
   const [assumptions, setAssumptions] = useState<ModelAssumptions | null>(null);
@@ -1309,7 +1315,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     severeCollisionFields: evidenceSummary?.collision_summary?.severe_collision_fields ?? null,
     materialCollisionFields: evidenceSummary?.collision_summary?.material_collision_fields ?? null,
     minorCollisionFields: evidenceSummary?.collision_summary?.minor_collision_fields ?? null,
-  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary, lvCostTreatmentView, handleLvTreatmentViewChange]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits mergedFinancials — closure reads it from enclosing scope; re-running on listed deps is the desired trigger
+    platformRole,
+  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary, lvCostTreatmentView, handleLvTreatmentViewChange, platformRole]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits mergedFinancials — closure reads it from enclosing scope; re-running on listed deps is the desired trigger
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>

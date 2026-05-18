@@ -820,6 +820,13 @@ export interface FinancialEngineTabProps {
   materialCollisionFields?: string[] | null;
   /** Field paths with minor collisions only — used when MIN pill is clicked */
   minorCollisionFields?: string[] | null;
+  /**
+   * Platform role of the viewing user (Task #878).
+   * 'sponsor' = full GP view (default).
+   * 'lp'      = LP-centric returns view: preferred return, IRR, distribution schedule prominently.
+   * 'lender'  = Lender DSCR/LTV panel prominently.
+   */
+  platformRole?: 'sponsor' | 'lp' | 'lender';
 }
 
 // ─── F9 Debt Stack (v2) ───────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { Mail, Lock, User, Loader, Eye, EyeOff, Check, X, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Mail, Lock, User, Loader, Eye, EyeOff, Check, X, ArrowLeft, ArrowRight, Building2, TrendingUp, Landmark } from 'lucide-react';
 
 interface RegisterFormProps {
   onSwitchToLogin: () => void;
@@ -30,6 +30,35 @@ const experienceLevels = [
   { id: 'institution', label: 'Institution/Fund' },
 ];
 
+type PlatformRole = 'sponsor' | 'lp' | 'lender';
+
+const roleOptions: { id: PlatformRole; label: string; subtitle: string; description: string; color: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  {
+    id: 'sponsor',
+    label: 'Sponsor / GP',
+    subtitle: 'General Partner',
+    description: 'I source, acquire, and operate deals. I need full underwriting, capital structure, and operating assumption controls.',
+    color: 'blue',
+    Icon: Building2,
+  },
+  {
+    id: 'lp',
+    label: 'LP Investor',
+    subtitle: 'Limited Partner',
+    description: 'I invest capital into deals as a limited partner. I want to see returns, preferred return coverage, and distribution schedules.',
+    color: 'purple',
+    Icon: TrendingUp,
+  },
+  {
+    id: 'lender',
+    label: 'Lender',
+    subtitle: 'Debt Provider',
+    description: 'I provide debt financing. I need DSCR coverage, LTV analysis, and exit cap stress tests.',
+    color: 'amber',
+    Icon: Landmark,
+  },
+];
+
 export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
@@ -40,6 +69,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [agreeUpdates, setAgreeUpdates] = useState(false);
+  const [platformRole, setPlatformRole] = useState<PlatformRole>('sponsor');
   const [investmentFocus, setInvestmentFocus] = useState<string[]>([]);
   const [experienceLevel, setExperienceLevel] = useState('');
   const [markets, setMarkets] = useState<string[]>([]);
@@ -49,6 +79,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
 
   const { register } = useAuth();
   const navigate = useNavigate();
+
+  const TOTAL_STEPS = 4;
 
   const validatePassword = (pwd: string): PasswordValidation => ({
     minLength: pwd.length >= 8,
@@ -71,7 +103,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   const strength = getPasswordStrength();
 
   const canProceedStep1 = name && email && password && confirmPassword && passwordsMatch && agreeTerms;
-  const canProceedStep2 = investmentFocus.length > 0 && experienceLevel;
+  const canProceedStep3 = investmentFocus.length > 0 && experienceLevel;
 
   const toggleInvestmentFocus = (id: string) => {
     setInvestmentFocus(prev =>
@@ -95,7 +127,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
     setLoading(true);
 
     try {
-      const result = await register(email, password, name);
+      const result = await register(email, password, name, platformRole);
       if (result.success) {
         navigate('/app');
       } else {
@@ -110,7 +142,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
 
   const renderProgressBar = () => (
     <div className="flex items-center justify-center gap-2 mb-6">
-      {[1, 2, 3].map((s) => (
+      {[1, 2, 3, 4].map((s) => (
         <div key={s} className="flex items-center">
           <div
             className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm ${
@@ -121,8 +153,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
           >
             {s < step ? <Check className="w-4 h-4" /> : s}
           </div>
-          {s < 3 && (
-            <div className={`w-12 h-1 mx-1 ${s < step ? 'bg-blue-600' : 'bg-gray-200'}`} />
+          {s < TOTAL_STEPS && (
+            <div className={`w-10 h-1 mx-1 ${s < step ? 'bg-blue-600' : 'bg-gray-200'}`} />
           )}
         </div>
       ))}
@@ -144,6 +176,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
     <div className="w-full">
       {renderProgressBar()}
 
+      {/* Step 1 — Account Details */}
       {step === 1 && (
         <>
           <div className="text-center mb-6">
@@ -319,7 +352,77 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
         </>
       )}
 
+      {/* Step 2 — Role Selection */}
       {step === 2 && (
+        <>
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">How Do You Participate?</h2>
+            <p className="text-gray-500 text-sm">We tailor the platform experience to your role</p>
+          </div>
+
+          <div className="space-y-3">
+            {roleOptions.map((opt) => {
+              const selected = platformRole === opt.id;
+              const colorMap: Record<string, { border: string; bg: string; icon: string; badge: string }> = {
+                blue:   { border: 'border-blue-500',   bg: 'bg-blue-50',   icon: 'text-blue-600',   badge: 'bg-blue-600' },
+                purple: { border: 'border-purple-500', bg: 'bg-purple-50', icon: 'text-purple-600', badge: 'bg-purple-600' },
+                amber:  { border: 'border-amber-500',  bg: 'bg-amber-50',  icon: 'text-amber-600',  badge: 'bg-amber-600' },
+              };
+              const c = colorMap[opt.color];
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setPlatformRole(opt.id)}
+                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
+                    selected ? `${c.border} ${c.bg}` : 'border-gray-200 hover:border-gray-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      selected ? c.bg : 'bg-gray-100'
+                    }`}>
+                      <opt.Icon className={`w-5 h-5 ${selected ? c.icon : 'text-gray-500'}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-gray-900">{opt.label}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full text-white ${selected ? c.badge : 'bg-gray-400'}`}>
+                          {opt.subtitle}
+                        </span>
+                        {selected && <Check className={`w-4 h-4 ml-auto ${c.icon}`} />}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">{opt.description}</p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep(3)}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              <span>Continue</span>
+              <ArrowRight className="w-5 h-5" />
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Step 3 — Investment Profile */}
+      {step === 3 && (
         <>
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-1">Tell Us About Your Investments</h2>
@@ -424,7 +527,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setStep(1)}
+                onClick={() => setStep(2)}
                 className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -432,8 +535,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
               </button>
               <button
                 type="button"
-                onClick={() => setStep(3)}
-                disabled={!canProceedStep2}
+                onClick={() => setStep(4)}
+                disabled={!canProceedStep3}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span>Continue</span>
@@ -444,7 +547,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
         </>
       )}
 
-      {step === 3 && (
+      {/* Step 4 — Plan Selection */}
+      {step === 4 && (
         <>
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-1">Choose Your Plan</h2>
@@ -461,9 +565,9 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                 $97<span className="text-sm font-normal text-gray-500">/month</span>
               </div>
               <ul className="text-sm text-gray-600 space-y-1">
-                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Supply & Demand Analysis</li>
-                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Price & Market Insights</li>
-                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> News & Event Monitoring</li>
+                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Supply &amp; Demand Analysis</li>
+                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Price &amp; Market Insights</li>
+                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> News &amp; Event Monitoring</li>
               </ul>
             </div>
 
@@ -481,7 +585,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setStep(2)}
+                onClick={() => setStep(3)}
                 className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <ArrowLeft className="w-5 h-5" />

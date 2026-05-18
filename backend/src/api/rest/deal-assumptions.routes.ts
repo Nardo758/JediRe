@@ -9,6 +9,7 @@ import { Router, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { requireCapability } from '../../middleware/rbac';
 import { moduleEventBus, ModuleEventType } from '../../services/module-wiring/module-event-bus';
 import { bustM08Cache } from '../../services/m08-strategies.service';
 import { 
@@ -1010,7 +1011,7 @@ router.post('/:dealId/financials/reparse', requireAuth, async (req: Authenticate
  *   year  — hold year (1-10); null or omitted = year 1 seed override
  *   value — numeric override, or null to clear (falls back to priority resolution)
  */
-router.patch('/:dealId/financials/override', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.patch('/:dealId/financials/override', requireAuth, requireCapability('edit:capital_structure'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
     const { field, year = null, value, strValue, rationale } = req.body as {

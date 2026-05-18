@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { getPool } from '../../database/connection';
 import { requireAuth, requireAuthOrApiKey, AuthenticatedRequest } from '../../middleware/auth';
+import { requireCapability } from '../../middleware/rbac';
 import { refreshAllDqaAlerts } from '../../services/data-quality-agent.service';
 import { validate, createDealSchema, updateDealSchema } from './validation';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
@@ -1988,7 +1989,7 @@ router.get('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedRe
  *     the same numbers.
  * After write, recalculates the deal's GPR from the updated unit mix.
  */
-router.patch('/:dealId/financials/override', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+router.patch('/:dealId/financials/override', requireAuth, requireCapability('edit:operating_assumptions'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const { dealId } = req.params;
     const userId = req.user!.userId;

@@ -44,9 +44,9 @@ export function useAuth() {
     }
   };
 
-  const register = async (email: string, password: string, name: string) => {
+  const register = async (email: string, password: string, name: string, platformRole?: string) => {
     try {
-      const { token, user: userData } = await authAPI.register(email, password, name);
+      const { token, user: userData } = await authAPI.register(email, password, name, platformRole);
       localStorage.setItem('auth_token', token);
       setStoreToken(token);
       setUser(userData);

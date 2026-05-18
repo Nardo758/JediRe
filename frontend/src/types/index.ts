@@ -5,6 +5,8 @@ export * from './opus.types';
 export * from './asset';
 export * from './financial.types';
 
+export type PlatformRole = 'sponsor' | 'lp' | 'lender';
+
 // User type
 export interface User {
   id: string;
@@ -12,6 +14,7 @@ export interface User {
   name?: string;
   subscription?: any;
   role?: string;
+  platformRole?: PlatformRole;
 }
 
 // Search result

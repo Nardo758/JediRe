@@ -34,6 +34,12 @@ router.post('/register', async (req: Request, res: Response, next) => {
 
     const { email, password, firstName, lastName } = value;
 
+    // Optional platform_role from registration wizard (sponsor | lp | lender).
+    // Defaults to 'sponsor' — backward compat with existing callers that omit it.
+    const rawRole = req.body.platformRole ?? req.body.platform_role ?? 'sponsor';
+    const platformRole: 'sponsor' | 'lp' | 'lender' =
+      ['sponsor', 'lp', 'lender'].includes(rawRole) ? rawRole : 'sponsor';
+
     // Check if user exists
     const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
@@ -43,15 +49,28 @@ router.post('/register', async (req: Request, res: Response, next) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Create user with platform_role
     const result = await query(
-      `INSERT INTO users (email, password_hash, first_name, last_name)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, email, first_name, last_name, role, created_at`,
-      [email, passwordHash, firstName, lastName]
+      `INSERT INTO users (email, password_hash, first_name, last_name, platform_role)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, first_name, last_name, role, platform_role, created_at`,
+      [email, passwordHash, firstName, lastName, platformRole]
     );
 
     const user = result.rows[0];
+
+    // Seed capabilities based on platform_role.
+    // Sponsors get full edit access; LP/lender are view-only on capital structure.
+    const sponsorCaps = ['edit:capital_structure', 'edit:operating_assumptions', 'view:returns'];
+    const baseCaps = ['view:returns'];
+    const capsToGrant = platformRole === 'sponsor' ? sponsorCaps : baseCaps;
+    for (const cap of capsToGrant) {
+      await query(
+        `INSERT INTO user_capabilities (user_id, capability, granted_by)
+         VALUES ($1, $2, 'system') ON CONFLICT DO NOTHING`,
+        [user.id, cap]
+      );
+    }
 
     // Generate tokens
     const tokens = generateTokenPair({
@@ -67,7 +86,7 @@ router.post('/register', async (req: Request, res: Response, next) => {
       [user.id, tokens.refreshToken]
     );
 
-    logger.info('User registered:', email);
+    logger.info('User registered:', email, `platform_role=${platformRole}`);
 
     res.status(201).json({
       user: {
@@ -76,6 +95,7 @@ router.post('/register', async (req: Request, res: Response, next) => {
         firstName: user.first_name,
         lastName: user.last_name,
         role: user.role,
+        platformRole: user.platform_role,
       },
       tokens,
     });
@@ -146,6 +166,7 @@ router.post('/login', async (req: Request, res: Response, next) => {
         lastName: user.last_name,
         role: user.role,
         avatarUrl: user.avatar_url,
+        platformRole: user.platform_role ?? 'sponsor',
       },
       tokens,
     });
@@ -232,7 +253,8 @@ router.post('/logout', requireAuth, async (req: AuthenticatedRequest, res: Respo
 router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const result = await query(
-      `SELECT u.id, u.email, u.first_name, u.last_name, u.avatar_url, u.role, 
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.avatar_url, u.role,
+              u.platform_role,
               u.email_verified, u.created_at, u.last_login_at, u.phone,
               COALESCE(ucb.subscription_tier, 'scout') as subscription_tier,
               u.notification_preferences
@@ -255,6 +277,7 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response, 
       lastName: user.last_name,
       avatarUrl: user.avatar_url,
       role: user.role,
+      platformRole: user.platform_role ?? 'sponsor',
       phone: user.phone || '',
       tier: user.subscription_tier,
       emailVerified: user.email_verified,

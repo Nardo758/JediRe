@@ -250,6 +250,15 @@ export const CashflowOutputSchema = z.object({
     note: z.string(),
   })).optional(),
   value_add_gpr_confidence_rationale_gaps: z.array(z.string()).optional(),
+  // ── Role-aware summary framing (Task #878) ──
+  // Describes the analysis from the perspective of the requesting user's platform role.
+  // Sponsor: full deal context. LP: return-focused, pref coverage, distribution schedule.
+  // Lender: DSCR, LTV, debt service coverage, exit-cap stress.
+  role_framing: z.object({
+    sponsor: z.string().describe('Sponsor/GP-oriented 1-2 sentence synthesis'),
+    lp: z.string().describe('LP-oriented 1-2 sentence synthesis focusing on preferred return and IRR'),
+    lender: z.string().describe('Lender-oriented 1-2 sentence synthesis focusing on DSCR and LTV coverage'),
+  }).optional(),
   // ── Pro Forma Math Engine v1.1 correction report ──
   math_correction_report: z.object({
     passed: z.boolean(),

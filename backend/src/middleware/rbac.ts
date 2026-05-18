@@ -114,6 +114,39 @@ export function requireOrgRoleForOrg(...roles: string[]) {
   };
 }
 
+/**
+ * requireCapability(capability)
+ * Checks user_capabilities table. LP and lender users lack edit:capital_structure
+ * and edit:operating_assumptions — those routes return 403 for them.
+ */
+export function requireCapability(capability: string) {
+  return async (req: OrgAuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    try {
+      const pool = getPool();
+      const result = await pool.query(
+        'SELECT 1 FROM user_capabilities WHERE user_id = $1 AND capability = $2',
+        [req.user.userId, capability]
+      );
+      if (result.rows.length === 0) {
+        res.status(403).json({
+          error: 'Forbidden',
+          message: `Requires capability: ${capability}`,
+          capability,
+        });
+        return;
+      }
+      next();
+    } catch (error) {
+      console.error('Capability middleware error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  };
+}
+
 export function requireDealPermission(...perms: string[]) {
   return async (req: OrgAuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     if (!req.user) {

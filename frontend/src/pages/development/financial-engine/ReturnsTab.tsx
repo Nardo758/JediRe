@@ -166,8 +166,241 @@ function HeroTile({ label, value, hurdle, actual, isX, isNum, baseColor }: {
   );
 }
 
+// ─── LP View Banner ──────────────────────────────────────────────────────────
+function LpViewBanner({ lpIrr, lpEm, prefRate, prefAchieved }: {
+  lpIrr: number | null; lpEm: number | null; prefRate: number; prefAchieved: boolean;
+}) {
+  return (
+    <div style={{
+      padding: '8px 14px',
+      background: `${BT.text.purple}12`,
+      borderBottom: `1px solid ${BT.text.purple}40`,
+      borderLeft: `3px solid ${BT.text.purple}`,
+      display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+    }}>
+      <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.purple, letterSpacing: 0.8 }}>
+        LP VIEW
+      </span>
+      <div style={{ display: 'flex', gap: 16 }}>
+        <div>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LP IRR</span>
+          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.met.financial, marginLeft: 6 }}>
+            {fmtIrr(lpIrr)}
+          </span>
+        </div>
+        <div>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LP EM</span>
+          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.cyan, marginLeft: 6 }}>
+            {fmtEm(lpEm)}
+          </span>
+        </div>
+        <div>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>PREF</span>
+          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.amber, marginLeft: 6 }}>
+            {fmtIrr(prefRate)}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>PREF STATUS</span>
+          <span style={{
+            fontFamily: MONO, fontSize: 9, fontWeight: 700,
+            color: prefAchieved ? BT.text.green : BT.text.red,
+            marginLeft: 4,
+          }}>
+            {prefAchieved ? '✓ COVERED' : '✗ SHORTFALL'}
+          </span>
+        </div>
+      </div>
+      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginLeft: 'auto' }}>
+        Viewing as Limited Partner — capital structure edits restricted
+      </span>
+    </div>
+  );
+}
+
+// ─── Lender DSCR Panel ───────────────────────────────────────────────────────
+function LenderDscrPanel({ ret, proj }: {
+  ret: any; proj: any[];
+}) {
+  const dscrY1   = ret?.debtMetrics?.coverage?.dscrY1 ?? ret?.minDscr ?? null;
+  const dscrMin  = ret?.debtMetrics?.coverage?.dscrMin?.value ?? ret?.minDscr ?? null;
+  const dscrAvg  = ret?.debtMetrics?.coverage?.dscrAvg ?? ret?.avgDscr ?? null;
+  const ltvClose = ret?.debtMetrics?.structural?.ltvAtClose ?? null;
+  const ltvMat   = ret?.debtMetrics?.structural?.ltvAtMaturity ?? ret?.maturityLtv ?? null;
+
+  // Build year-by-year DSCR from projections if available
+  const yearlyDscr: { yr: number; dscr: number | null }[] = proj.slice(0, 10).map(r => ({
+    yr: r.year,
+    dscr: r.dscr ?? null,
+  })).filter(r => r.dscr != null);
+
+  const dscrColor = (v: number | null) => {
+    if (v == null) return BT.text.muted;
+    if (v >= 1.25) return BT.text.green;
+    if (v >= 1.20) return BT.text.amber;
+    return BT.text.red;
+  };
+
+  return (
+    <div style={{
+      margin: '0', borderBottom: `1px solid ${BT.border.subtle}`,
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '6px 14px',
+        background: `${BT.text.orange}12`,
+        borderBottom: `1px solid ${BT.text.orange}40`,
+        borderLeft: `3px solid ${BT.text.orange}`,
+        display: 'flex', alignItems: 'center', gap: 16,
+      }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.8 }}>
+          LENDER VIEW
+        </span>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <div>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>DSCR Y1</span>
+            <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: dscrColor(dscrY1), marginLeft: 6 }}>
+              {fmtDscr(dscrY1)}
+            </span>
+          </div>
+          <div>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>DSCR MIN</span>
+            <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: dscrColor(dscrMin), marginLeft: 6 }}>
+              {fmtDscr(dscrMin)}
+            </span>
+          </div>
+          <div>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LTV CLOSE</span>
+            <span style={{
+              fontFamily: MONO, fontSize: 11, fontWeight: 700, marginLeft: 6,
+              color: ltvClose != null && ltvClose > 0.80 ? BT.text.amber : BT.text.primary,
+            }}>
+              {ltvClose != null ? `${(ltvClose * 100).toFixed(1)}%` : '—'}
+            </span>
+          </div>
+          <div>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LTV MATURITY</span>
+            <span style={{
+              fontFamily: MONO, fontSize: 11, fontWeight: 700, marginLeft: 6,
+              color: ltvMat != null && ltvMat > 0.75 ? BT.text.amber : BT.text.primary,
+            }}>
+              {ltvMat != null ? `${(ltvMat * 100).toFixed(1)}%` : '—'}
+            </span>
+          </div>
+        </div>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginLeft: 'auto' }}>
+          Viewing as Lender — edit access restricted
+        </span>
+      </div>
+
+      {/* DSCR by Year table + stress thresholds */}
+      <div style={{ display: 'grid', gridTemplateColumns: yearlyDscr.length > 0 ? '1fr 1fr' : '1fr', gap: 0 }}>
+        {yearlyDscr.length > 0 && (
+          <div>
+            <div style={{ padding: '3px 10px 2px', background: `${BT.text.orange}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>
+                DSCR BY YEAR
+              </span>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: MONO }}>
+                <thead>
+                  <tr style={{ background: BT.bg.header }}>
+                    {['Year', 'DSCR', 'Status'].map(h => (
+                      <th key={h} style={{ padding: '2px 6px', textAlign: 'right', color: BT.text.muted, fontWeight: 600, borderBottom: `1px solid ${BT.border.subtle}`, fontSize: 8 }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {yearlyDscr.map(({ yr, dscr }) => (
+                    <tr key={yr} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                      <td style={{ padding: '2px 6px', color: BT.text.secondary, textAlign: 'right' }}>Yr {yr}</td>
+                      <td style={{ padding: '2px 6px', textAlign: 'right', color: dscrColor(dscr), fontWeight: 600 }}>
+                        {fmtDscr(dscr)}
+                      </td>
+                      <td style={{ padding: '2px 6px', textAlign: 'right' }}>
+                        {dscr! >= 1.25
+                          ? <span style={{ color: BT.text.green, fontSize: 8 }}>✓ OK</span>
+                          : dscr! >= 1.20
+                            ? <span style={{ color: BT.text.amber, fontSize: 8 }}>⚠ THIN</span>
+                            : <span style={{ color: BT.text.red, fontSize: 8 }}>✗ BREACH</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        <div>
+          <div style={{ padding: '3px 10px 2px', background: `${BT.text.orange}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>
+              COVERAGE THRESHOLDS
+            </span>
+          </div>
+          <div style={{ padding: '4px 10px' }}>
+            {([
+              { label: 'Min DSCR (Agency/LifeCo)',  threshold: 1.25, value: dscrMin },
+              { label: 'Min DSCR (Bridge)',          threshold: 1.20, value: dscrMin },
+              { label: 'Avg DSCR',                  threshold: 1.30, value: dscrAvg },
+              { label: 'LTV at Close (max 80%)',    threshold: 0.80, value: ltvClose, isPct: true, reverse: true },
+              { label: 'LTV at Maturity (max 75%)', threshold: 0.75, value: ltvMat, isPct: true, reverse: true },
+            ] as const).map(({ label, threshold, value, isPct, reverse }) => {
+              const pass = value != null ? (reverse ? value <= threshold : value >= threshold) : null;
+              const display = value == null ? '—'
+                : isPct ? `${(value * 100).toFixed(1)}%`
+                : fmtDscr(value);
+              const threshDisplay = isPct ? `${(threshold * 100).toFixed(0)}%` : fmtDscr(threshold);
+              return (
+                <div key={label} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '2px 0', borderBottom: `1px solid ${BT.border.subtle}20`,
+                }}>
+                  <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>{label}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                      thr: {threshDisplay}
+                    </span>
+                    <span style={{
+                      fontFamily: MONO, fontSize: 9, fontWeight: 600,
+                      color: pass == null ? BT.text.muted : pass ? BT.text.green : BT.text.red,
+                    }}>
+                      {display}
+                    </span>
+                    {pass != null && (
+                      <span style={{ color: pass ? BT.text.green : BT.text.red, fontSize: 9 }}>
+                        {pass ? '✓' : '✗'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Exit Cap Stress */}
+      {ret?.capitalStructureOptimization && (
+        <div style={{ padding: '4px 10px', borderTop: `1px solid ${BT.border.subtle}` }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+            Exit Cap Stress — LTV optimized to{' '}
+            {ret.capitalStructureOptimization.optimal_ltv != null
+              ? `${(ret.capitalStructureOptimization.optimal_ltv * 100).toFixed(1)}%`
+              : '—'}
+            {' '}· confidence: {ret.capitalStructureOptimization.confidence ?? '—'}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main ReturnsTab ─────────────────────────────────────────────────────────
-export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh }: FinancialEngineTabProps) {
+export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, platformRole }: FinancialEngineTabProps) {
   const ret    = f9Financials?.returns;
   const cap    = f9Financials?.capitalStack;
   const wf     = f9Financials?.waterfall;
@@ -282,6 +515,23 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh }: F
           Click values to edit · green = above hurdle · red = below hurdle
         </span>
       </div>
+
+      {/* ── LP View Banner ──────────────────────────────────────────────── */}
+      {platformRole === 'lp' && (
+        <LpViewBanner
+          lpIrr={ret?.lpIrr ?? capData?.metrics?.lpIrr ?? null}
+          lpEm={ret?.lpEm ?? null}
+          prefRate={prefRate}
+          prefAchieved={lpTranches.length > 0
+            ? lpTranches.every(t => t.prefAchieved)
+            : false}
+        />
+      )}
+
+      {/* ── Lender DSCR Panel ───────────────────────────────────────────── */}
+      {platformRole === 'lender' && (
+        <LenderDscrPanel ret={ret} proj={Array.isArray(proj) ? proj : []} />
+      )}
 
       {/* ── Leasing Cost Treatment Banner ──────────────────────────────────── */}
       {(() => {
