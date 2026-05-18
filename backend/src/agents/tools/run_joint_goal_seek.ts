@@ -336,6 +336,8 @@ export async function runJointGoalSeek(
           // Enforce bundle-specific product LTV ceiling (HUD=83%, Agency=75%, Bridge/CMBS=70%)
           ltv_max:            bundle.ltv,
           ltv_min:            0.50,
+          // Enforce bundle-specific DSCR covenant floor (HUD=1.11, Agency=1.25, Bridge=1.20, CMBS=1.25)
+          dscr_floor:         bundle.minDscr,
         });
       } catch (err) {
         logger.warn('[run_joint_goal_seek] Bundle evaluation failed', {

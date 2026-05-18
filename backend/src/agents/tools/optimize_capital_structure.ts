@@ -145,6 +145,11 @@ const InputSchema = z.object({
   ltv_min: z.number().min(0.30).max(0.70).optional().describe(
     'Minimum LTV floor for bisection search (default 0.50).'
   ),
+  dscr_floor: z.number().min(1.0).max(2.0).optional().describe(
+    'Minimum DSCR covenant floor (default 1.30). Pass bundle.minDscr to enforce ' +
+    'product-specific requirements: HUD 221(d)(4) = 1.11, Agency = 1.25, ' +
+    'Bridge = 1.20, CMBS = 1.25. run_joint_goal_seek passes this automatically.'
+  ),
 });
 
 export type OptimizeCapitalStructureInput = z.infer<typeof InputSchema>;
@@ -236,7 +241,8 @@ function evaluateLtv(
   const opex = Math.max(0, gpr * 0.93 - input.noi_year1);
   const breakevenOcc = gpr > 0 ? (opex + ioPmtY1) / gpr : 1;
 
-  if (dscrMin < 1.30) constraintsViolated.push(`DSCR ${dscrMin.toFixed(2)} < 1.30`);
+  const dscrFloor = input.dscr_floor ?? 1.30;
+  if (dscrMin < dscrFloor) constraintsViolated.push(`DSCR ${dscrMin.toFixed(2)} < ${dscrFloor.toFixed(2)}`);
   if (!allCfPositive) constraintsViolated.push('annual cash flow negative in ≥1 year');
   if (breakevenOcc > 0.85) constraintsViolated.push(`break-even occupancy ${(breakevenOcc * 100).toFixed(1)}% > 85%`);
   const ltvFloor   = input.ltv_min ?? 0.50;
@@ -387,7 +393,7 @@ export async function optimizeCapitalStructure(
   if (!infeasible) {
     const maxFeasibleLtv = bisectResult!.ltv;
     if (primaryMetric === 'stabilized_value' || primaryMetric === 'profit_at_exit') {
-      optimalEval = findPeakInFeasibleRegion(input, primaryMetric, 0.50, maxFeasibleLtv);
+      optimalEval = findPeakInFeasibleRegion(input, primaryMetric, input.ltv_min ?? 0.50, maxFeasibleLtv);
     } else {
       // IRR and CoC are monotone-increasing in leverage within feasible region
       optimalEval = bisectResult!.eval;
@@ -397,12 +403,13 @@ export async function optimizeCapitalStructure(
   // ── Step 3: determine binding constraints ────────────────────────────────
   const bindingConstraints: string[] = [];
   if (optimalEval) {
-    if (optimalEval.ltv >= (input.ltv_max ?? 0.85) - 0.001) {
-      bindingConstraints.push(`LTV ceiling at ${((input.ltv_max ?? 0.85) * 100).toFixed(0)}%`);
-    } else if (bisectResult && bisectResult.ltv < 0.85) {
+    const ltvCeiling = input.ltv_max ?? 0.85;
+    if (optimalEval.ltv >= ltvCeiling - 0.001) {
+      bindingConstraints.push(`LTV ceiling at ${(ltvCeiling * 100).toFixed(0)}%`);
+    } else if (bisectResult && bisectResult.ltv < ltvCeiling) {
       // There is a binding constraint just above the optimal
       const slightlyAbove = evaluateLtv(
-        Math.min(optimalEval.ltv + 0.01, 0.85),
+        Math.min(optimalEval.ltv + 0.01, ltvCeiling),
         input,
         primaryMetric,
       );
@@ -502,7 +509,9 @@ function buildNarrative(
     return fmt$(v);
   };
 
-  return `Bisection found optimal leverage for a ${input.deal_strategy} strategy at ${fmtPct(ltv)} LTV (${fmt$(debt)} debt / ${fmt$(equity)} equity), maximizing ${metricLabel[primaryMetric]} at ${metricFmt(best!.metricValue ?? 0)}. Minimum DSCR across the ${input.hold_years}-year hold is ${best!.dscrMin?.toFixed(2) ?? '—'}×, maintaining a ${(((best!.dscrMin ?? 1.30) - 1.30) * 100).toFixed(0)}bps cushion above the 1.30× covenant floor. Break-even occupancy is ${fmtPct(best!.breakevenOcc ?? 0)}, comfortably below the 85% constraint. At ${fmtPct(input.debt_rate)} interest with ${input.amortization_years > 0 ? `${input.amortization_years}-year amortization` : 'full IO'}, the structure supports the deal's return objectives.`;
+  const dscrFloorNarrative = input.dscr_floor ?? 1.30;
+  const ltvCeilingNarrative = input.ltv_max ?? 0.85;
+  return `Bisection found optimal leverage for a ${input.deal_strategy} strategy at ${fmtPct(ltv)} LTV (${fmt$(debt)} debt / ${fmt$(equity)} equity), maximizing ${metricLabel[primaryMetric]} at ${metricFmt(best!.metricValue ?? 0)}. Minimum DSCR across the ${input.hold_years}-year hold is ${best!.dscrMin?.toFixed(2) ?? '—'}×, maintaining a ${(((best!.dscrMin ?? dscrFloorNarrative) - dscrFloorNarrative) * 100).toFixed(0)}bps cushion above the ${dscrFloorNarrative.toFixed(2)}× covenant floor. Break-even occupancy is ${fmtPct(best!.breakevenOcc ?? 0)}, comfortably below the ${(ltvCeilingNarrative * 100).toFixed(0)}% ceiling. At ${fmtPct(input.debt_rate)} interest with ${input.amortization_years > 0 ? `${input.amortization_years}-year amortization` : 'full IO'}, the structure supports the deal's return objectives.`;
 }
 
 // ─── Tool registration ────────────────────────────────────────────────────────
