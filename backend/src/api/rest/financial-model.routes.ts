@@ -25,34 +25,123 @@ function extractVal(entry: unknown): number | undefined {
   return undefined;
 }
 
-function mapProformaJsonToSnapshot(pj: Record<string, unknown>): { assumptions: Record<string, unknown>; results: Record<string, unknown> } {
+// Maps proforma_json (both old flat-number format and new evidence-object format)
+// plus optional agent_runs.output structured data into the ModelAssumptions +
+// ModelResults shape expected by CompareTab. Unmapped proforma_json keys are
+// preserved under assumptions._agentFields so no data is silently dropped.
+function mapProformaJsonToSnapshot(
+  pj: Record<string, unknown>,
+  agentOutput?: Record<string, unknown> | null,
+): { assumptions: Record<string, unknown>; results: Record<string, unknown> } {
   const v = (key: string) => extractVal(pj[key]);
 
-  const exitCapRate = v('exit.cap_rate') ?? v('exit_cap_rate_pct');
-  const interestRate = v('debt.first_lien_rate') ?? v('interest_rate_pct');
-  const loanAmount = v('debt.first_lien_amount') ?? v('loan_amount');
-  const vacancyRaw = v('assumptions.growth.vacancy_stabilized') ?? v('vacancy_rate_pct');
-  const stabilizedOccupancy = vacancyRaw != null ? 1 - vacancyRaw : undefined;
-  const opexGrowthPct = v('assumptions.growth.expense_y1') ?? v('annual_expense_growth_pct');
+  // ── Assumptions: acquisition ────────────────────────────────────────────
   const purchasePrice = v('purchase_price');
   const capRate = v('year1_cap_rate');
+
+  // ── Assumptions: disposition ────────────────────────────────────────────
+  const exitCapRate = v('exit.cap_rate') ?? v('exit_cap_rate_pct');
+
+  // ── Assumptions: hold ───────────────────────────────────────────────────
   const holdPeriod = v('hold_period_years');
-  const irr = v('five_yr_irr');
-  const cashOnCash = v('avg_cash_on_cash');
-  const noi = v('noi_year1');
-  const dscr = v('dscr_year1') ?? v('year1_dscr');
+
+  // ── Assumptions: revenue ────────────────────────────────────────────────
+  const vacancyRaw = v('assumptions.growth.vacancy_stabilized') ?? v('vacancy_rate_pct');
+  const stabilizedOccupancy = vacancyRaw != null ? 1 - vacancyRaw : undefined;
+  const collectionLoss = v('revenue.bad_debt');
+  const grossPotentialRent = v('revenue.gross_potential_rent');
+  const effectiveGrossIncome = v('revenue.effective_gross_income');
+  const vacancyLoss = v('revenue.vacancy_loss');
+  const otherIncome = v('revenue.other_income');
+
+  // ── Assumptions: financing ──────────────────────────────────────────────
+  const loanAmount = v('debt.first_lien_amount') ?? v('loan_amount');
+  const interestRate = v('debt.first_lien_rate') ?? v('interest_rate_pct');
+  const amortizationYears = v('amortization_years');
+
+  // ── Assumptions: growth ─────────────────────────────────────────────────
+  const opexGrowthPct = v('assumptions.growth.expense_y1') ?? v('annual_expense_growth_pct');
+  const rentGrowthPct = v('assumptions.growth.rent_y1') ?? v('annual_rent_growth_pct');
+
+  // ── Assumptions: expenses ───────────────────────────────────────────────
+  const expenses: Record<string, number | undefined> = {
+    payroll: v('expense.payroll'),
+    turnover: v('expense.turnover'),
+    insurance: v('expense.insurance'),
+    marketing: v('expense.marketing'),
+    utilities: v('expense.utilities'),
+    propertyTax: v('expense.property_tax') ?? v('taxes_per_unit'),
+    managementFee: v('expense.management_fee') ?? (() => {
+      const pct = v('management_fee_pct');
+      return pct != null && effectiveGrossIncome != null ? pct * effectiveGrossIncome : undefined;
+    })(),
+    contractServices: v('expense.contract_services'),
+    repairsMaintenance: v('expense.repairs_maintenance'),
+    replacementReserves: v('expense.replacement_reserves'),
+  };
+
+  // ── Results: summary ────────────────────────────────────────────────────
+  // Prefer flat old-format keys (which have computed results). Also check
+  // agent_runs.output top-level fields for any structured numeric results.
+  const outFields = (agentOutput ?? {}) as Record<string, unknown>;
+  const irrFromOutput = extractVal(outFields.irr) ?? extractVal(outFields.five_yr_irr);
+  const noiFromOutput = extractVal(outFields.noi) ?? extractVal(outFields.noi_year1);
+  const dscrFromOutput = extractVal(outFields.dscr) ?? extractVal(outFields.dscr_year1) ?? extractVal(outFields.year1_dscr);
+  const cocFromOutput = extractVal(outFields.cash_on_cash) ?? extractVal(outFields.cashOnCash) ?? extractVal(outFields.avg_cash_on_cash);
+  const emFromOutput = extractVal(outFields.equity_multiple) ?? extractVal(outFields.equityMultiple);
+  const lpIrrFromOutput = extractVal(outFields.lp_irr) ?? extractVal(outFields.lpIrr);
+  const gpIrrFromOutput = extractVal(outFields.gp_irr) ?? extractVal(outFields.gpIrr);
+
+  const irr = v('five_yr_irr') ?? irrFromOutput;
+  const cashOnCash = v('avg_cash_on_cash') ?? cocFromOutput;
+  const noi = v('noi_year1') ?? noiFromOutput;
+  const dscr = v('dscr_year1') ?? v('year1_dscr') ?? dscrFromOutput;
+  const equityMultiple = v('equity_multiple') ?? v('equity') ?? emFromOutput;
+  const lpIrr = lpIrrFromOutput;
+  const gpIrr = gpIrrFromOutput;
+  const annualDebtService = v('annual_debt_service');
+
+  // ── Preserve unmapped fields ────────────────────────────────────────────
+  const mappedKeys = new Set([
+    'purchase_price', 'year1_cap_rate',
+    'exit.cap_rate', 'exit_cap_rate_pct',
+    'hold_period_years',
+    'assumptions.growth.vacancy_stabilized', 'vacancy_rate_pct',
+    'revenue.bad_debt', 'revenue.gross_potential_rent', 'revenue.effective_gross_income',
+    'revenue.vacancy_loss', 'revenue.other_income',
+    'debt.first_lien_amount', 'loan_amount', 'debt.first_lien_rate', 'interest_rate_pct',
+    'amortization_years',
+    'assumptions.growth.expense_y1', 'annual_expense_growth_pct',
+    'assumptions.growth.rent_y1', 'annual_rent_growth_pct',
+    'expense.payroll', 'expense.turnover', 'expense.insurance', 'expense.marketing',
+    'expense.utilities', 'expense.property_tax', 'taxes_per_unit',
+    'expense.management_fee', 'management_fee_pct',
+    'expense.contract_services', 'expense.repairs_maintenance', 'expense.replacement_reserves',
+    'five_yr_irr', 'avg_cash_on_cash', 'noi_year1', 'dscr_year1', 'year1_dscr',
+    'equity_multiple', 'equity', 'annual_debt_service',
+    'ltv_pct', 'units', 'gross_revenue_year1', 'insurance_per_unit',
+  ]);
+  const agentFields: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(pj)) {
+    if (!mappedKeys.has(key)) {
+      agentFields[key] = val;
+    }
+  }
 
   return {
     assumptions: {
       acquisition: { purchasePrice, capRate },
       disposition: { exitCapRate },
       holdPeriod,
-      revenue: { stabilizedOccupancy },
-      financing: { loanAmount, interestRate },
+      revenue: { stabilizedOccupancy, collectionLoss, grossPotentialRent, effectiveGrossIncome, vacancyLoss, otherIncome },
+      financing: { loanAmount, interestRate, amortizationYears },
       opexGrowthPct,
+      rentGrowthPct,
+      expenses,
+      _agentFields: Object.keys(agentFields).length > 0 ? agentFields : undefined,
     },
     results: {
-      summary: { irr, cashOnCash, noi, dscr },
+      summary: { irr, cashOnCash, noi, dscr, equityMultiple, lpIrr, gpIrr, annualDebtService },
     },
   };
 }
@@ -66,9 +155,11 @@ async function getAgentVersionRows(dealId: string): Promise<DealVersionRow[]> {
     proforma_json: Record<string, unknown>;
     created_at: string;
     agent_version: string | null;
+    completed_at: string | null;
+    agent_output: Record<string, unknown> | null;
   }>(
     `SELECT dus.id, dus.deal_id, dus.agent_run_id, dus.proforma_json, dus.created_at,
-            ar.agent_version
+            ar.agent_version, ar.completed_at, ar.output AS agent_output
        FROM deal_underwriting_snapshots dus
        LEFT JOIN agent_runs ar ON ar.id = dus.agent_run_id
       WHERE dus.deal_id = $1
@@ -78,20 +169,22 @@ async function getAgentVersionRows(dealId: string): Promise<DealVersionRow[]> {
   );
 
   return result.rows.map((row, idx) => {
-    const date = new Date(row.created_at);
+    const ts = row.completed_at ?? row.created_at;
+    const date = new Date(ts);
     const dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const versionLabel = row.agent_version ? `Agent ${row.agent_version}` : 'Agent';
-    const note = `${versionLabel} — ${dateLabel}`;
-    const snap = mapProformaJsonToSnapshot(row.proforma_json ?? {});
+    const ver = row.agent_version ?? '';
+    const versionTag = ver ? (ver.startsWith('v') ? `Agent ${ver}` : `Agent v${ver}`) : 'Agent';
+    const note = `${versionTag} — ${dateLabel}`;
+    const snap = mapProformaJsonToSnapshot(row.proforma_json ?? {}, row.agent_output);
 
     return {
       id: `agent-${row.id}`,
       deal_id: row.deal_id,
       version_number: 900 - idx,
-      created_at: row.created_at,
+      created_at: ts,
       created_by: null,
       layered_state_snapshot: snap,
-      model_versions: row.agent_version ? { cashflow_agent: row.agent_version } : {},
+      model_versions: ver ? { cashflow_agent: ver } : {},
       override_divergences: [],
       save_trigger: 'agent_run' as SaveTrigger,
       note,
