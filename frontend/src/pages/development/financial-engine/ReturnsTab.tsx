@@ -1719,27 +1719,70 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
                             {alt.plausibility_band ?? '—'}
                           </span>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 10px', marginBottom: 5 }}>
-                          {([
-                            { l: 'LTV',      v: alt.optimal_ltv != null ? `${((alt.optimal_ltv) * 100).toFixed(1)}%` : '—' },
-                            { l: 'Rate',     v: alt.optimal_rate != null ? `${((alt.optimal_rate) * 100).toFixed(2)}%` : '—' },
-                            { l: metricLabel, v: metricFmt, bold: true },
-                            { l: 'Min DSCR', v: alt.dscr_min != null ? `${alt.dscr_min.toFixed(2)}×` : '—' },
-                          ] as const).map(({ l, v, bold }) => (
-                            <div key={l}>
-                              <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, display: 'block' }}>{l}</span>
-                              <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: (bold as boolean | undefined) ? 700 : 500, color: BT.text.primary }}>{v}</span>
-                            </div>
-                          ))}
-                        </div>
+                        {(() => {
+                            const lpIrrFmt = alt.lp_irr != null
+                              ? `${(alt.lp_irr * 100).toFixed(1)}%`
+                              : '—';
+                            const lpYieldFmt = alt.lp_distribution_yield != null
+                              ? `${(alt.lp_distribution_yield * 100).toFixed(1)}%`
+                              : '—';
+                            const rows: { l: string; v: string; bold?: boolean }[] = platformRole === 'lp'
+                              ? [
+                                  { l: 'LTV',               v: alt.optimal_ltv != null ? `${(alt.optimal_ltv * 100).toFixed(1)}%` : '—' },
+                                  { l: 'Rate',              v: alt.optimal_rate != null ? `${(alt.optimal_rate * 100).toFixed(2)}%` : '—' },
+                                  { l: 'LP IRR',            v: lpIrrFmt, bold: true },
+                                  { l: 'LP Yield',          v: lpYieldFmt },
+                                  { l: 'Min DSCR',          v: alt.dscr_min != null ? `${alt.dscr_min.toFixed(2)}×` : '—' },
+                                  { l: 'GP ' + metricLabel, v: metricFmt },
+                                ]
+                              : [
+                                  { l: 'LTV',        v: alt.optimal_ltv != null ? `${(alt.optimal_ltv * 100).toFixed(1)}%` : '—' },
+                                  { l: 'Rate',       v: alt.optimal_rate != null ? `${(alt.optimal_rate * 100).toFixed(2)}%` : '—' },
+                                  { l: metricLabel,  v: metricFmt, bold: true },
+                                  { l: 'Min DSCR',   v: alt.dscr_min != null ? `${alt.dscr_min.toFixed(2)}×` : '—' },
+                                ];
+                            return (
+                              <div key="metric-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 10px', marginBottom: 5 }}>
+                                {rows.map(({ l, v, bold }) => (
+                                  <div key={l}>
+                                    <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, display: 'block' }}>{l}</span>
+                                    <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: bold ? 700 : 500, color: BT.text.primary }}>{v}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         {!alt.feasible && (
                           <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.red, marginBottom: 3 }}>
                             ⚠ Infeasible with current deal economics
                           </div>
                         )}
-                        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, lineHeight: 1.45 }}>
+                        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, lineHeight: 1.45, marginBottom: 6 }}>
                           {(alt.trade_off_summary ?? '').slice(0, 160)}{(alt.trade_off_summary ?? '').length > 160 ? '…' : ''}
                         </div>
+                        {alt.feasible && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.dispatchEvent(new CustomEvent('capitalStructure:applyBundle', {
+                                detail: { bundleId: alt.bundle_id, bundleData: alt },
+                              }));
+                            }}
+                            style={{
+                              width: '100%',
+                              fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                              color: BT.text.cyan,
+                              background: `${BT.text.cyan}12`,
+                              border: `1px solid ${BT.text.cyan}40`,
+                              borderRadius: 3,
+                              padding: '3px 0',
+                              cursor: 'pointer',
+                              letterSpacing: 0.5,
+                            }}
+                          >
+                            APPLY STRUCTURE
+                          </button>
+                        )}
                       </div>
                     );
                   })}

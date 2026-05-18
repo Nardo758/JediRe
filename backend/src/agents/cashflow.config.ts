@@ -230,8 +230,14 @@ export const CashflowOutputSchema = z.object({
           lp_equity: z.number().nullable().optional().describe(
             'LP equity at optimal LTV (equity × 0.90)'
           ),
+          lp_irr: z.number().nullable().optional().describe(
+            'LP IRR computed from year-by-year LP cash flows (90% equity split). ' +
+            'Primary LP ranking criterion — explicitly models LP cash flows: ' +
+            '-lp_equity, [annual LP operating CF × 0.90], lp_exit_proceeds.'
+          ),
           lp_distribution_yield: z.number().nullable().optional().describe(
-            'LP NOI distribution yield = noi_year1 / lp_equity — primary LP ranking metric'
+            'LP distribution coverage yield = noi_year1 / lp_equity. ' +
+            'Secondary LP ranking criterion (NOI return on LP equity dollar).'
           ),
           plausibility_score: z.number(),
           plausibility_band: z.string(),

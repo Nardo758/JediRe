@@ -9,16 +9,21 @@
  * stack alternatives.
  *
  * Role-aware sorting:
- *   sponsor / gp   → ranked by primary metric value (IRR, CoC, etc.) descending
- *   lp             → ranked by primary metric value descending (IRR proxy for LP)
+ *   sponsor / gp   → ranked by primary metric value (GP IRR / CoC) descending
+ *   lp             → ranked by LP IRR descending (year-by-year LP cash flow model
+ *                    with 90% LP equity split), with LP distribution yield as
+ *                    secondary tiebreaker (NOI / LP equity)
  *   lender         → ranked by dscr_min descending (DSCR robustness first)
  *
- * Each alternative includes:
- *   bundle_id, bundle_name, optimal_ltv, trade_off_summary, primary_metric_value,
- *   dscr_min, plausibility_score, plausibility_band, feasible
+ * LP IRR is computed from actual year-by-year LP cash flows:
+ *   - LP equity = total equity × 0.90
+ *   - LP operating CF = (NOI − debt service) × 0.90 per year
+ *   - LP exit = (gross_sale − selling_costs − remaining_loan) × 0.90
+ *   - LP IRR = internal rate of return on [−lp_equity, cf1, …, cfN + lp_exit]
  *
  * Output is placed in:
  *   proforma.capital_structure.optimization.pareto_frontier[]
+ * (only feasible bundles included; infeasible bundles are excluded by default)
  */
 
 import { z } from 'zod';
@@ -49,6 +54,142 @@ const BUNDLE_TRADE_OFF: Record<string, string> = {
     'predictable long-term cash flows.',
 };
 
+// ─── LP IRR financial model ───────────────────────────────────────────────────
+
+/**
+ * Bisection-based IRR solver — same algorithm as optimize_capital_structure.ts.
+ * Solves for r where NPV(cash_flows, r) = 0.
+ */
+function irrBisect(cashFlows: number[]): number | null {
+  if (cashFlows.length < 2) return null;
+  const npv = (r: number) =>
+    cashFlows.reduce((s, cf, i) => s + cf / Math.pow(1 + r, i), 0);
+  const v0 = npv(0);
+  if (Math.abs(v0) < 1e-4) return 0;
+  let lo = -0.9999, hi = 10.0;
+  if (npv(lo) * npv(hi) > 0) return null;
+  for (let iter = 0; iter < 200; iter++) {
+    const mid = (lo + hi) / 2;
+    const m = npv(mid);
+    if (Math.abs(m) < 1e-4 || hi - lo < 1e-10) return parseFloat(mid.toFixed(6));
+    if (v0 > 0 ? m > 0 : m < 0) lo = mid; else hi = mid;
+  }
+  return parseFloat(((lo + hi) / 2).toFixed(6));
+}
+
+/**
+ * Compute LP IRR and distribution coverage for a given bundle + deal parameters.
+ *
+ * @param optimal_ltv  LTV from the bisection optimizer (0–1)
+ * @param bundle_rate  Bundle interest rate (decimal)
+ * @param io_period_years  IO period in years
+ * @param amort_years  Amortization term in years
+ * @param lp_equity_pct  LP equity fraction (default 0.90)
+ *
+ * Returns:
+ *   lp_irr                — LP IRR on [−lp_equity, yr1_lp_cf, …, yrN_lp_cf + lp_exit_proceeds]
+ *   lp_distribution_yield — NOI Year-1 / LP equity (LP cash-on-cash at start of hold)
+ *   lp_equity             — LP equity at optimal LTV
+ */
+function computeLpMetrics(params: {
+  noi_year1: number;
+  purchase_price: number;
+  optimal_ltv: number;
+  bundle_rate: number;
+  io_period_years: number;
+  amort_years: number;
+  hold_years: number;
+  exit_cap_rate: number;
+  noi_growth_rate: number;
+  selling_costs_pct: number;
+  lp_equity_pct?: number;
+}): {
+  lp_irr: number | null;
+  lp_distribution_yield: number | null;
+  lp_equity: number | null;
+} {
+  const {
+    noi_year1,
+    purchase_price,
+    optimal_ltv,
+    bundle_rate,
+    io_period_years,
+    amort_years,
+    hold_years,
+    exit_cap_rate,
+    noi_growth_rate,
+    selling_costs_pct,
+    lp_equity_pct = 0.90,
+  } = params;
+
+  if (!optimal_ltv || optimal_ltv <= 0 || optimal_ltv >= 1 || purchase_price <= 0) {
+    return { lp_irr: null, lp_distribution_yield: null, lp_equity: null };
+  }
+
+  const loan        = purchase_price * optimal_ltv;
+  const totalEquity = purchase_price * (1 - optimal_ltv);
+  const lpEquity    = totalEquity * lp_equity_pct;
+
+  if (lpEquity <= 0) return { lp_irr: null, lp_distribution_yield: null, lp_equity: null };
+
+  // Annual debt service (IO vs amortizing)
+  const ioPmt = loan * bundle_rate;
+  let amortPmt = ioPmt;
+  if (amort_years > 0 && bundle_rate > 0) {
+    const r = bundle_rate / 12;
+    const n = amort_years * 12;
+    const mPmt = loan * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
+    amortPmt = mPmt * 12;
+  }
+
+  // Build LP cash flow stream
+  const lpCfs: number[] = [-lpEquity]; // Year-0: LP equity investment (outflow)
+
+  for (let y = 1; y <= hold_years; y++) {
+    const noi         = noi_year1 * Math.pow(1 + noi_growth_rate, y - 1);
+    const debtService = y <= io_period_years ? ioPmt : amortPmt;
+    const cfAfterDebt = noi - debtService;
+    const lpOpCf      = Math.max(0, cfAfterDebt) * lp_equity_pct;
+
+    if (y < hold_years) {
+      lpCfs.push(lpOpCf);
+    } else {
+      // Exit year: LP gets their equity fraction of net sale proceeds
+      const exitNoi       = noi * (1 + noi_growth_rate);
+      const grossSale     = exit_cap_rate > 0 ? exitNoi / exit_cap_rate : 0;
+      const sellingCosts  = grossSale * selling_costs_pct;
+
+      // Remaining loan balance at exit (simplified)
+      const yearsAmort = Math.max(0, hold_years - io_period_years);
+      let remainingBalance = loan;
+      if (yearsAmort > 0 && amort_years > 0 && bundle_rate > 0) {
+        const r    = bundle_rate / 12;
+        const paid = yearsAmort * 12;
+        const mPmt = amortPmt / 12;
+        remainingBalance = loan * Math.pow(1 + r, paid)
+          - mPmt * (Math.pow(1 + r, paid) - 1) / r;
+        remainingBalance = Math.max(0, remainingBalance);
+      }
+
+      const netSale     = grossSale - sellingCosts - remainingBalance;
+      const lpExitShare = Math.max(0, netSale * lp_equity_pct);
+
+      lpCfs.push(lpOpCf + lpExitShare);
+    }
+  }
+
+  const lp_irr               = irrBisect(lpCfs);
+  const lp_distribution_yield = lpEquity > 0
+    ? parseFloat((noi_year1 / lpEquity).toFixed(4))
+    : null;
+
+  return {
+    lp_irr:               lp_irr != null ? parseFloat(lp_irr.toFixed(5)) : null,
+    lp_distribution_yield,
+    lp_equity:            parseFloat(lpEquity.toFixed(2)),
+  };
+}
+
 // ─── Input / Output schemas ───────────────────────────────────────────────────
 
 const InputSchema = z.object({
@@ -77,50 +218,60 @@ const InputSchema = z.object({
     'Selling costs as pct of gross sale value (default 2%).'
   ),
   platform_role: z.enum(['sponsor', 'lp', 'lender']).default('sponsor').describe(
-    'Requesting user role — determines sort order of the Pareto frontier. ' +
-    'sponsor/lp: sorted by primary metric value descending. ' +
-    'lender: sorted by dscr_min descending (DSCR robustness first).'
+    'Requesting user role — determines sort order of the Pareto frontier.\n' +
+    '  sponsor: sorted by GP primary metric (IRR, CoC, etc.) descending\n' +
+    '  lp:      sorted by LP IRR descending (computed from year-by-year LP\n' +
+    '           cash flows at 90% LP equity split), with LP distribution\n' +
+    '           yield (NOI/LP equity) as secondary tiebreaker\n' +
+    '  lender:  sorted by dscr_min descending (DSCR robustness first)'
   ),
   bundle_filter: z.array(z.string()).optional().describe(
     'Optional subset of bundle IDs to evaluate. Default: all 5 bundles.'
   ),
   max_alternatives: z.number().int().min(1).max(5).default(3).describe(
-    'Maximum number of alternatives to return (default 3).'
+    'Maximum number of alternatives to return (default 3, feasible only).'
+  ),
+  include_infeasible: z.boolean().default(false).describe(
+    'If true, include infeasible bundles at the end of the frontier (after feasible). ' +
+    'Default: false — infeasible bundles are excluded.'
   ),
 });
 
 const ParetoItemSchema = z.object({
-  bundle_id: z.string(),
-  bundle_name: z.string(),
-  optimal_ltv: z.number().nullable(),
-  trade_off_summary: z.string(),
-  primary_metric: z.string(),
-  primary_metric_value: z.number().nullable(),
-  dscr_min: z.number().nullable(),
-  breakeven_occ: z.number().nullable(),
-  optimal_rate: z.number(),
-  equity_at_optimal: z.number().nullable(),
-  lp_equity: z.number().nullable().describe('LP equity at optimal LTV (lp_equity = equity × 0.90)'),
-  lp_distribution_yield: z.number().nullable().describe(
-    'LP NOI distribution yield = noi_year1 / lp_equity. ' +
-    'Primary LP ranking metric: measures the LP\'s annual NOI return on their equity dollar — ' +
-    'a direct proxy for distribution coverage. Higher is better for LPs seeking cash flow coverage.'
+  bundle_id:            z.string(),
+  bundle_name:          z.string(),
+  optimal_ltv:          z.number().nullable(),
+  trade_off_summary:    z.string(),
+  primary_metric:       z.string(),
+  primary_metric_value: z.number().nullable().describe('GP-perspective primary metric (IRR, CoC, etc.)'),
+  lp_irr:               z.number().nullable().describe(
+    'LP IRR computed from year-by-year LP cash flows (90% equity split, annual operating CF + exit proceeds). ' +
+    'Primary LP ranking criterion.'
   ),
-  plausibility_score: z.number().describe('Mahalanobis d-score for this bundle\'s assumption set'),
-  plausibility_band: z.string().describe('Realistic | Stretch | Aggressive | Heroic | Unrealistic'),
-  plausibility_color: z.enum(['green', 'amber', 'red']),
-  feasible: z.boolean(),
+  lp_distribution_yield: z.number().nullable().describe(
+    'LP distribution coverage yield = noi_year1 / lp_equity. ' +
+    'Secondary LP ranking criterion (NOI return on LP equity dollar).'
+  ),
+  lp_equity:            z.number().nullable().describe('LP equity at optimal LTV (equity × 0.90)'),
+  dscr_min:             z.number().nullable(),
+  breakeven_occ:        z.number().nullable(),
+  optimal_rate:         z.number(),
+  equity_at_optimal:    z.number().nullable(),
+  plausibility_score:   z.number().describe("Mahalanobis d-score for this bundle's assumption set"),
+  plausibility_band:    z.string().describe('Realistic | Stretch | Aggressive | Heroic | Unrealistic'),
+  plausibility_color:   z.enum(['green', 'amber', 'red']),
+  feasible:             z.boolean(),
   infeasibility_reason: z.string().nullable(),
-  role_rank: z.number().describe('1-based rank for the requesting role (1 = best)'),
+  role_rank:            z.number().describe('1-based rank for the requesting role (1 = best)'),
 });
 
 const OutputSchema = z.object({
-  pareto_frontier: z.array(ParetoItemSchema),
-  role: z.string(),
-  sort_key: z.string().describe('Field used for role-aware sorting'),
+  pareto_frontier:  z.array(ParetoItemSchema),
+  role:             z.string(),
+  sort_key:         z.string().describe('Field used for role-aware sorting'),
   bundles_evaluated: z.number(),
-  feasible_count: z.number(),
-  note: z.string(),
+  feasible_count:   z.number(),
+  note:             z.string(),
 });
 
 export type RunJointGoalSeekInput  = z.infer<typeof InputSchema>;
@@ -152,7 +303,7 @@ export async function runJointGoalSeek(
     bundles: bundles.map(b => b.id),
   });
 
-  // Evaluate each bundle via the existing bisection optimizer
+  // ── Evaluate each bundle via the bisection optimizer ───────────────────────
   const rawResults = await Promise.all(
     bundles.map(async (bundle) => {
       let result;
@@ -169,10 +320,9 @@ export async function runJointGoalSeek(
           deal_strategy:      input.deal_strategy,
           gpr_year1:          input.gpr_year1,
           selling_costs_pct:  input.selling_costs_pct,
-          // Enforce bundle-specific product LTV ceiling (e.g. 83% HUD, 75% Agency, 70% Bridge/CMBS)
+          // Enforce bundle-specific product LTV ceiling (HUD=83%, Agency=75%, Bridge/CMBS=70%)
           ltv_max:            bundle.ltv,
-          // Bridge and CMBS typically require 55%+ to make sense; others start at 50%
-          ltv_min:            bundle.id === 'bridge' || bundle.id === 'cmbs' ? 0.50 : 0.50,
+          ltv_min:            0.50,
         });
       } catch (err) {
         logger.warn('[run_joint_goal_seek] Bundle evaluation failed', {
@@ -182,97 +332,102 @@ export async function runJointGoalSeek(
       }
 
       // Plausibility score for this bundle's assumption set
-      const plausInput = {
-        ltv:          result.optimal_ltv ?? bundle.ltv,
-        interestRate: bundle.rate,
+      const plau = computePlausibility({
+        ltv:           result.optimal_ltv ?? bundle.ltv,
+        interestRate:  bundle.rate,
         ioPeriodYears: bundle.ioPeriod,
-        amortYears:   bundle.amortYears,
-        exitCapRate:  input.exit_cap_rate,
-        holdYears:    input.hold_years,
-      };
-      const plau = computePlausibility(plausInput);
+        amortYears:    bundle.amortYears,
+        exitCapRate:   input.exit_cap_rate,
+        holdYears:     input.hold_years,
+      });
 
-      return {
-        bundle,
-        result,
-        plau,
-      };
+      // LP metrics: IRR + distribution yield from year-by-year LP cash flow model
+      const lpMetrics = result.optimal_ltv != null && !result.infeasible
+        ? computeLpMetrics({
+            noi_year1:         input.noi_year1,
+            purchase_price:    input.purchase_price,
+            optimal_ltv:       result.optimal_ltv,
+            bundle_rate:       bundle.rate,
+            io_period_years:   bundle.ioPeriod,
+            amort_years:       bundle.amortYears,
+            hold_years:        input.hold_years,
+            exit_cap_rate:     input.exit_cap_rate,
+            noi_growth_rate:   input.noi_growth_rate,
+            selling_costs_pct: input.selling_costs_pct ?? 0.02,
+          })
+        : { lp_irr: null, lp_distribution_yield: null, lp_equity: result.lp_equity };
+
+      return { bundle, result, plau, lpMetrics };
     })
   );
 
   const evaluated = rawResults.filter(Boolean) as NonNullable<(typeof rawResults)[number]>[];
-  const feasible  = evaluated.filter(e => !e.result.infeasible);
+  const feasibleEvaluated = evaluated.filter(e => !e.result.infeasible);
 
-  // ── Role-aware sort ───────────────────────────────────────────────
+  // ── Role-aware sort ───────────────────────────────────────────────────────
   //
-  // sponsor: maximize primary metric return (GP IRR / CoC / profit at exit)
-  //          → sort by primary_metric_value DESC
-  //
-  // lp:      maximize risk-adjusted return for limited partners
-  //          LPs need both upside and downside protection, so we use a
-  //          composite: primary_metric × (1 − aggression_penalty), where the
-  //          penalty = max(0, plausibility_d_score − 1.5) × 0.15, capped at 0.40.
-  //          A d-score of 2.5σ (Aggressive) results in a 15% haircut on the
-  //          metric, effectively ranking safer bundles above aggressive ones
-  //          with equal headline returns.  This is the LP's "trustworthiness"
-  //          view of each alternative.
-  //
-  // lender:  maximize DSCR robustness — sort by resulting_dscr_min DESC.
-  //          Lenders care about the safety margin over debt service above all.
+  // sponsor: maximize GP primary metric (IRR, CoC, etc.) — sort DESC
+  // lp:      maximize LP IRR (year-by-year LP cash flow model, 90% equity split)
+  //          with LP distribution yield as tiebreaker — both sort DESC
+  // lender:  maximize DSCR robustness — sort resulting_dscr_min DESC
   //
   const role = input.platform_role ?? 'sponsor';
   let sortKey: string;
 
-  let sorted: typeof evaluated;
-  if (role === 'lender') {
-    sortKey = 'resulting_dscr_min (descending — DSCR robustness first)';
-    sorted = [...evaluated].sort((a, b) => {
-      if (a.result.infeasible && !b.result.infeasible) return 1;
-      if (!a.result.infeasible && b.result.infeasible) return -1;
-      const da = a.result.resulting_dscr_min ?? 0;
-      const db = b.result.resulting_dscr_min ?? 0;
-      return db - da;
-    });
-  } else if (role === 'lp') {
-    // LP sort: primary = LP NOI distribution yield (noi_year1 / lp_equity_at_optimal).
-    // This is the LP's annual NOI yield on their equity — a direct distribution coverage
-    // proxy. Higher leverage (HUD 83%) means more LP equity deployed but the ratio matters:
-    // a bundle requiring less LP equity for the same NOI delivers higher coverage per dollar.
-    // Secondary tiebreaker: dscr_min descending (safety margin for LP preferred return).
-    sortKey = 'LP distribution yield (noi_year1 / lp_equity) descending, DSCR tiebreaker';
-    sorted = [...evaluated].sort((a, b) => {
-      if (a.result.infeasible && !b.result.infeasible) return 1;
-      if (!a.result.infeasible && b.result.infeasible) return -1;
-      const lpEquityA = a.result.lp_equity ?? (a.result.equity_at_optimal ?? 0) * 0.90;
-      const lpEquityB = b.result.lp_equity ?? (b.result.equity_at_optimal ?? 0) * 0.90;
-      const yieldA = lpEquityA > 0 ? input.noi_year1 / lpEquityA : 0;
-      const yieldB = lpEquityB > 0 ? input.noi_year1 / lpEquityB : 0;
-      if (Math.abs(yieldA - yieldB) > 0.001) return yieldB - yieldA;
-      // Tiebreaker: DSCR robustness
-      return (b.result.resulting_dscr_min ?? 0) - (a.result.resulting_dscr_min ?? 0);
-    });
-  } else {
-    // sponsor / gp: maximize raw return metric (GP perspective, no penalty)
-    sortKey = 'primary_metric_value (descending — best GP return first)';
-    sorted = [...evaluated].sort((a, b) => {
-      if (a.result.infeasible && !b.result.infeasible) return 1;
-      if (!a.result.infeasible && b.result.infeasible) return -1;
-      const va = a.result.primary_metric_value ?? -Infinity;
-      const vb = b.result.primary_metric_value ?? -Infinity;
-      return vb - va;
-    });
-  }
+  // Sort only feasible bundles; infeasible go at the end (if included)
+  const sortFeasible = (candidates: typeof feasibleEvaluated): typeof feasibleEvaluated => {
+    if (role === 'lender') {
+      sortKey = 'resulting_dscr_min descending (DSCR robustness — lender perspective)';
+      return [...candidates].sort((a, b) =>
+        (b.result.resulting_dscr_min ?? 0) - (a.result.resulting_dscr_min ?? 0));
 
-  const top = sorted.slice(0, input.max_alternatives ?? 3);
+    } else if (role === 'lp') {
+      sortKey = 'LP IRR descending (year-by-year LP cash flows, 90% equity split), ' +
+                'LP distribution yield (NOI/LP equity) as tiebreaker';
+      return [...candidates].sort((a, b) => {
+        const lpIrrA = a.lpMetrics.lp_irr ?? -Infinity;
+        const lpIrrB = b.lpMetrics.lp_irr ?? -Infinity;
+        if (Math.abs(lpIrrA - lpIrrB) > 0.0005) return lpIrrB - lpIrrA;
+        // Tiebreaker: LP distribution yield (NOI / LP equity)
+        const yA = a.lpMetrics.lp_distribution_yield ?? 0;
+        const yB = b.lpMetrics.lp_distribution_yield ?? 0;
+        return yB - yA;
+      });
 
+    } else {
+      // sponsor / gp
+      sortKey = 'primary_metric_value descending (GP IRR / CoC / profit — sponsor perspective)';
+      return [...candidates].sort((a, b) =>
+        (b.result.primary_metric_value ?? -Infinity) - (a.result.primary_metric_value ?? -Infinity));
+    }
+  };
+
+  const sortedFeasible  = sortFeasible(feasibleEvaluated);
+  const infeasibleItems = evaluated.filter(e => e.result.infeasible);
+
+  // Build the display list: feasible first, then optionally infeasible
+  const displayList = input.include_infeasible
+    ? [...sortedFeasible, ...infeasibleItems]
+    : sortedFeasible;
+
+  const top = displayList.slice(0, input.max_alternatives ?? 3);
+
+  // ── Build Pareto frontier items ───────────────────────────────────────────
   const paretoFrontier = top.map((item, idx) => {
     const tradeOffBase = BUNDLE_TRADE_OFF[item.bundle.id] ?? item.bundle.description;
 
-    // Append metric result to trade-off summary for agent consumption
     const metricStr = item.result.primary_metric_value != null
       ? (item.result.primary_metric === 'irr' || item.result.primary_metric === 'cash_on_cash'
-          ? ` Result: ${(item.result.primary_metric_value * 100).toFixed(1)}% ${item.result.primary_metric.toUpperCase()}.`
-          : ` Result: $${Math.round(item.result.primary_metric_value).toLocaleString()} ${item.result.primary_metric}.`)
+          ? ` GP ${item.result.primary_metric.toUpperCase()}: ${(item.result.primary_metric_value * 100).toFixed(1)}%.`
+          : ` ${item.result.primary_metric}: $${Math.round(item.result.primary_metric_value).toLocaleString()}.`)
+      : '';
+
+    const lpIrrStr = item.lpMetrics.lp_irr != null
+      ? ` LP IRR: ${(item.lpMetrics.lp_irr * 100).toFixed(1)}%.`
+      : '';
+
+    const lpYieldStr = item.lpMetrics.lp_distribution_yield != null
+      ? ` LP dist. yield: ${(item.lpMetrics.lp_distribution_yield * 100).toFixed(1)}% (NOI/LP equity).`
       : '';
 
     const dscrStr = item.result.resulting_dscr_min != null
@@ -283,53 +438,46 @@ export async function runJointGoalSeek(
       ? ` ⚠ Infeasible: ${item.result.infeasibility_reason ?? 'constraints not satisfied'}.`
       : '';
 
-    // Compute LP distribution yield for this bundle
-    const lpEquityAtOptimal = item.result.lp_equity ?? (item.result.equity_at_optimal != null ? item.result.equity_at_optimal * 0.90 : null);
-    const lpDistributionYield = lpEquityAtOptimal != null && lpEquityAtOptimal > 0
-      ? parseFloat((input.noi_year1 / lpEquityAtOptimal).toFixed(4))
-      : null;
-
-    // For LP: annotate trade-off summary with distribution yield
-    const lpYieldStr = role === 'lp' && lpDistributionYield != null
-      ? ` LP dist. yield: ${(lpDistributionYield * 100).toFixed(1)}% (NOI/LP equity).`
-      : '';
+    // Trade-off summary includes role-relevant metrics
+    const roleStr = role === 'lp' ? `${lpIrrStr}${lpYieldStr}` : metricStr;
 
     return {
-      bundle_id:            item.bundle.id,
-      bundle_name:          item.bundle.name,
-      optimal_ltv:          item.result.optimal_ltv,
-      trade_off_summary:    `${tradeOffBase}${metricStr}${dscrStr}${lpYieldStr}${feasStr}`,
-      primary_metric:       item.result.primary_metric,
-      primary_metric_value: item.result.primary_metric_value,
-      dscr_min:             item.result.resulting_dscr_min,
-      breakeven_occ:        item.result.resulting_breakeven_occ,
-      optimal_rate:         item.bundle.rate,
-      equity_at_optimal:    item.result.equity_at_optimal,
-      lp_equity:            lpEquityAtOptimal,
-      lp_distribution_yield: lpDistributionYield,
-      plausibility_score:   parseFloat(item.plau.dScore.toFixed(3)),
-      plausibility_band:    item.plau.band,
-      plausibility_color:   bandToColor(item.plau.band),
-      feasible:             !item.result.infeasible,
-      infeasibility_reason: item.result.infeasibility_reason,
-      role_rank:            idx + 1,
+      bundle_id:             item.bundle.id,
+      bundle_name:           item.bundle.name,
+      optimal_ltv:           item.result.optimal_ltv,
+      trade_off_summary:     `${tradeOffBase}${roleStr}${dscrStr}${feasStr}`,
+      primary_metric:        item.result.primary_metric,
+      primary_metric_value:  item.result.primary_metric_value,
+      lp_irr:                item.lpMetrics.lp_irr,
+      lp_distribution_yield: item.lpMetrics.lp_distribution_yield,
+      lp_equity:             item.lpMetrics.lp_equity,
+      dscr_min:              item.result.resulting_dscr_min,
+      breakeven_occ:         item.result.resulting_breakeven_occ,
+      optimal_rate:          item.bundle.rate,
+      equity_at_optimal:     item.result.equity_at_optimal,
+      plausibility_score:    parseFloat(item.plau.dScore.toFixed(3)),
+      plausibility_band:     item.plau.band,
+      plausibility_color:    bandToColor(item.plau.band),
+      feasible:              !item.result.infeasible,
+      infeasibility_reason:  item.result.infeasibility_reason,
+      role_rank:             idx + 1,
     };
   });
 
   logger.info('[run_joint_goal_seek] Pareto frontier built', {
     role,
     alternativesCount: paretoFrontier.length,
-    feasibleCount: feasible.length,
+    feasibleCount: feasibleEvaluated.length,
     bundlesEvaluated: evaluated.length,
   });
 
   return {
-    pareto_frontier: paretoFrontier,
+    pareto_frontier:   paretoFrontier,
     role,
-    sort_key: sortKey,
+    sort_key:          sortKey!,
     bundles_evaluated: evaluated.length,
-    feasible_count: feasible.length,
-    note: `${paretoFrontier.length} alternative(s) ranked by ${role === 'lender' ? 'DSCR robustness' : 'return metric'} for ${role} perspective. Include as proforma.capital_structure.optimization.pareto_frontier in output.`,
+    feasible_count:    feasibleEvaluated.length,
+    note: `${paretoFrontier.length} feasible alternative(s) ranked for ${role} role by ${role === 'lp' ? 'LP IRR' : role === 'lender' ? 'DSCR robustness' : 'GP return metric'}. Include as proforma.capital_structure.optimization.pareto_frontier in output.`,
   };
 }
 
@@ -341,12 +489,20 @@ Run this AFTER optimize_capital_structure to get up to 3 ranked capital stack al
 across all 5 debt products (HUD 221(d)(4), Agency Fixed, Agency Floating, Bridge, CMBS).
 
 Each alternative includes:
-  bundle_id, bundle_name, optimal_ltv, trade_off_summary, primary_metric_value,
+  bundle_id, bundle_name, optimal_ltv, trade_off_summary
+  primary_metric_value (GP perspective)
+  lp_irr                (LP IRR from year-by-year LP cash flows — LP ranking criterion)
+  lp_distribution_yield (NOI / LP equity — LP distribution coverage)
   dscr_min, plausibility_score, plausibility_band, feasible
 
 Role-aware sorting:
-  sponsor / lp  → ranked by primary metric value descending (best return first)
-  lender        → ranked by dscr_min descending (DSCR robustness first)
+  sponsor → ranked by GP primary metric (IRR/CoC) descending
+  lp      → ranked by LP IRR descending (computed from actual LP cash flow model
+             with 90% equity split and bundle-specific debt structure);
+             LP distribution yield used as tiebreaker
+  lender  → ranked by dscr_min descending (DSCR robustness first)
+
+Only feasible bundles are returned by default (set include_infeasible=true to include all).
 
 Include the result in your output as:
   proforma.capital_structure.optimization.pareto_frontier

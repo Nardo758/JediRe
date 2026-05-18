@@ -501,6 +501,7 @@ export interface F9DealFinancials {
       optimal_rate: number;
       equity_at_optimal?: number | null;
       lp_equity?: number | null;
+      lp_irr?: number | null;
       lp_distribution_yield?: number | null;
       plausibility_score: number;
       plausibility_band: string;

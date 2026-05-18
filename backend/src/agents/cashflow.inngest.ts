@@ -589,7 +589,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
           await query(
             `INSERT INTO deal_alerts
                (deal_id, user_id, alert_type, severity, title, message, source_type, source_ref, metadata, is_read, is_dismissed)
-             SELECT $1, d.user_id, 'cashflow.assumption_anomaly', 'yellow', $2, $3, 'agent', 'cashflow', $4, FALSE, FALSE
+             SELECT $1, d.user_id, 'cashflow.assumption_anomaly', 'medium', $2, $3, 'agent', 'cashflow', $4, FALSE, FALSE
              FROM deals d
              WHERE d.id = $1
                AND NOT EXISTS (
