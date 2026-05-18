@@ -1745,8 +1745,11 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
   const breakdownSum = seed.other_income_breakdown
     ? Object.values(seed.other_income_breakdown).reduce((s, lv) => s + (lv?.resolved ?? 0), 0)
     : 0;
-  const userLinesAnnual = (seed.other_income_user_lines ?? [])
-    .reduce((s, l) => s + (Number.isFinite(l.monthly) ? l.monthly * 12 : 0), 0);
+  const _userLines = seed.other_income_user_lines;
+  const userLinesAnnual = Array.isArray(_userLines)
+    ? _userLines.reduce((s: number, l: { monthly?: unknown }) =>
+        s + (Number.isFinite(l.monthly) ? (l.monthly as number) * 12 : 0), 0)
+    : 0;
   const otherIncome = breakdownSum + userLinesAnnual;
 
   // v31 spec: bad debt folds into NRI (deducted from GPR), not from EGI.

@@ -5392,7 +5392,13 @@ export async function applyFinancialsOverride(
       [dealId, `{${pyKey}}`, JSON.stringify(pyEntry)]
     );
   } else if (targetYear === 1 || year == null) {
-    // Year 1 override — write into the LayeredValue seed via proforma-seeder
+    // Step 3 (P0 — Task #869): Year-1 LayeredValue override.
+    // applyUserOverride writes year1.{field}.override into the active
+    // underwriting scenario (deal_underwriting_scenarios) when one exists.
+    // The DB trigger (trg_sync_underwriting_scenario) propagates the merged
+    // year1 to deal_assumptions.year1 automatically, so all existing readers
+    // see the override without any additional writes.
+    // Falls back to deal_assumptions for deals without an active scenario.
     await applyUserOverride(pool, dealId, year1Key, typeof value === 'number' ? value : null, userId);
   } else {
     // Per-year override (year 2-30) — stored in deal_assumptions.per_year_overrides JSONB
