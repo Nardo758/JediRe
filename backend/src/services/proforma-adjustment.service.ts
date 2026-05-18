@@ -4435,18 +4435,27 @@ export async function getDealFinancials(
 
   let capitalStructureOptimization: Record<string, unknown> | null = null;
   try {
+    // Primary path: proforma.capital_structure.optimization (new contract).
+    // Fallback path: capital_structure_optimization at top level (legacy runs).
     const agentRunRes = await pool.query<{ output: Record<string, unknown> }>(
       `SELECT output
          FROM agent_runs
         WHERE deal_id = $1
           AND agent_type = 'cashflow'
-          AND (output->>'capital_structure_optimization') IS NOT NULL
+          AND (
+            (output->'proforma'->'capital_structure'->>'optimization') IS NOT NULL
+            OR (output->>'capital_structure_optimization') IS NOT NULL
+          )
         ORDER BY created_at DESC
         LIMIT 1`,
       [dealId]
     );
     if (agentRunRes.rows.length > 0) {
-      const raw = agentRunRes.rows[0].output?.capital_structure_optimization;
+      const out = agentRunRes.rows[0].output ?? {};
+      // Prefer new canonical path; fall back to legacy top-level key
+      const newPath = (out.proforma as Record<string, unknown> | null)
+        ?.capital_structure as Record<string, unknown> | null;
+      const raw = newPath?.optimization ?? out.capital_structure_optimization;
       if (raw && typeof raw === 'object') {
         capitalStructureOptimization = raw as Record<string, unknown>;
       }
@@ -4909,6 +4918,9 @@ const FIELD_MAP: Record<string, string> = {
   utilities: 'utilities', gAndA: 'g_and_a', managementFeePct: 'management_fee_pct',
   insurance: 'insurance', realEstateTax: 'real_estate_tax',
   replacementReserves: 'replacement_reserves', totalOpex: 'total_opex', noi: 'noi',
+  // Capital structure year1 LayeredValue overrides (seeded by seedCapitalStructureDefaults)
+  ltvPct: 'ltv_pct', debtRate: 'debt_rate',
+  gpEquityPct: 'gp_equity_pct', lpEquityPct: 'lp_equity_pct',
   // Traffic signal overrides: T-01/T-05/T-06 stored in per_year_overrides; trigger derived vacancy recomputation
   t01WeeklyTours: 't01_weekly_tours', t05ClosingRatio: 't05_closing_ratio',
   t06WeeklyLeases: 't06_weekly_leases',

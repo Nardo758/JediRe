@@ -36,9 +36,14 @@ const STRATEGY_METRIC_MAP: Record<string, string> = {
   'existing':              'cash_on_cash',
   'stabilized':            'cash_on_cash',
   'redevelopment_partial': 'cash_on_cash',
-  'lease-up':              'stabilized_value',
-  'lease_up':              'stabilized_value',
-  'development':           'stabilized_value',
+  // lease-up and development strategies are value-creation plays where
+  // profit_at_exit (net sale proceeds minus equity deployed) is the correct
+  // maximization target — it varies with LTV due to positive leverage.
+  // stabilized_value (= noi/cap) is constant w.r.t. LTV and produces
+  // unintuitive results (always pins to 50% floor in peak-scan).
+  'lease-up':              'profit_at_exit',
+  'lease_up':              'profit_at_exit',
+  'development':           'profit_at_exit',
   'flip':                  'profit_at_exit',
 };
 

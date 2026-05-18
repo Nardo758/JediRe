@@ -178,24 +178,37 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh }: F
   const [applyState, setApplyState] = useState<'idle' | 'applying' | 'success' | 'error'>('idle');
   const [applyError, setApplyError] = useState<string | null>(null);
 
+  // Apply the agent's recommended capital structure to the deal via the F9
+  // override pipeline (PATCH /financials/override). Writes year1 LV override
+  // entries for ltvPct, debtRate, gpEquityPct, lpEquityPct, plus scalar column
+  // writes for ltcPct and interestRate so composeCapitalStack picks them up.
   const applyCapitalStructure = async (optimalLtv: number, optimalRate: number) => {
     if (!dealId) return;
     setApplyState('applying');
     setApplyError(null);
-    try {
-      const res = await fetch(`/api/deals/${dealId}/assumptions`, {
-        method: 'PUT',
+
+    const patchField = async (field: string, value: number) => {
+      const res = await fetch(`/api/v1/deals/${dealId}/financials/override`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ltc: optimalLtv,
-          interestRate: optimalRate,
-          sourceType: 'agent_override',
-        }),
+        body: JSON.stringify({ field, value, year: null }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+        throw new Error(`${field}: ${(body as { error?: string }).error ?? `HTTP ${res.status}`}`);
       }
+    };
+
+    try {
+      // Write year1 LayeredValue override-layer entries (F9 data-quality trail)
+      await patchField('ltvPct', optimalLtv);
+      await patchField('debtRate', optimalRate);
+      await patchField('gpEquityPct', 0.10);
+      await patchField('lpEquityPct', 0.90);
+      // Also write direct scalar columns so composeCapitalStack reads them immediately
+      await patchField('ltcPct', optimalLtv);
+      await patchField('interestRate', optimalRate);
+
       setApplyState('success');
       onF9Refresh?.();
     } catch (err) {

@@ -181,23 +181,28 @@ export const CashflowOutputSchema = z.object({
   summary: z.string().describe('3-5 sentence synthesis of key findings'),
   completed_at: z.string(),
   // ── Capital Structure Optimization result (from optimize_capital_structure tool) ──
-  capital_structure_optimization: z.object({
-    primary_metric: z.enum(['irr', 'cash_on_cash', 'stabilized_value', 'profit_at_exit']),
-    optimal_ltv: z.number().nullable(),
-    optimal_debt_amount: z.number().nullable(),
-    optimal_rate: z.number(),
-    resulting_dscr_min: z.number().nullable(),
-    resulting_breakeven_occ: z.number().nullable(),
-    primary_metric_value: z.number().nullable(),
-    evidence_narrative: z.string(),
-    constraints_binding: z.array(z.string()),
-    confidence: z.enum(['high', 'medium', 'low']),
-    infeasible: z.boolean(),
-    infeasibility_reason: z.string().nullable(),
-    equity_at_optimal: z.number().nullable(),
-    gp_equity: z.number().nullable(),
-    lp_equity: z.number().nullable(),
-  }).optional().describe('LTV optimization result from optimize_capital_structure tool'),
+  // Persisted as proforma.capital_structure.optimization in agent_runs.output.
+  proforma: z.object({
+    capital_structure: z.object({
+      optimization: z.object({
+        primary_metric: z.enum(['irr', 'cash_on_cash', 'stabilized_value', 'profit_at_exit']),
+        optimal_ltv: z.number().nullable(),
+        optimal_debt_amount: z.number().nullable(),
+        optimal_rate: z.number(),
+        resulting_dscr_min: z.number().nullable(),
+        resulting_breakeven_occ: z.number().nullable(),
+        primary_metric_value: z.number().nullable(),
+        evidence_narrative: z.string(),
+        constraints_binding: z.array(z.string()),
+        confidence: z.enum(['high', 'medium', 'low']),
+        infeasible: z.boolean(),
+        infeasibility_reason: z.string().nullable(),
+        equity_at_optimal: z.number().nullable(),
+        gp_equity: z.number().nullable(),
+        lp_equity: z.number().nullable(),
+      }).optional(),
+    }).optional(),
+  }).optional().describe('Structured proforma outputs including capital structure optimization'),
   // ── Optional run metadata (inngest handler + backward compat) ──
   investment_rating: z.enum(['strong', 'adequate', 'marginal', 'weak']).nullable().optional(),
   has_t12_data: z.boolean().optional(),
@@ -410,10 +415,11 @@ Parameters to pass:
 Strategy → primary metric mapping is deterministic (the tool handles this automatically):
   value-add, redevelopment, redevelopment_full → Levered IRR
   existing, stabilized, redevelopment_partial   → Year-1 Cash-on-Cash
-  lease-up, development                         → Stabilized Value
-  flip                                          → Profit at Exit
+  lease-up, development, flip                   → Profit at Exit
 
-Include the full optimize_capital_structure output in your response as capital_structure_optimization.
+Include the full optimize_capital_structure output in your response nested as:
+  proforma.capital_structure.optimization
+(i.e., the top-level "proforma" key, then "capital_structure", then "optimization")
 `;
 
   const combined = variantPrompt

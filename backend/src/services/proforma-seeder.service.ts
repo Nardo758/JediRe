@@ -1703,9 +1703,11 @@ export async function ensureDealAssumptionsSeeded(
   dealId: string,
   opts: { forceReseed?: boolean } = {}
 ): Promise<{ seeded: boolean; skipped: boolean; reason?: string }> {
-  // Capital structure defaults are seeded unconditionally — no extraction required.
-  // Fire-and-forget: non-critical, idempotent. Only refreshes rate if FRED is available.
-  seedCapitalStructureDefaults(pool, dealId).catch(err =>
+  // Capital structure defaults are seeded unconditionally and awaited so that
+  // the first getDealFinancials call sees them deterministically (no race).
+  // FRED fetch is guarded internally with its own try/catch; this await
+  // never throws to the caller.
+  await seedCapitalStructureDefaults(pool, dealId).catch(err =>
     logger.warn('[ensureDealAssumptionsSeeded] seedCapitalStructureDefaults failed', {
       dealId, error: err instanceof Error ? err.message : String(err),
     })
