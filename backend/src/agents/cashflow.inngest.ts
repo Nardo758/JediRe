@@ -320,9 +320,21 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
 
       // Build deal-type-aware system prompt (core + variant) so the model
       // receives instructions calibrated to the specific project strategy.
+      // Fetch requesting user's platform_role for role-aware cashflow framing (Task #878).
+      let requestingUserRole: string | undefined;
+      if (userId) {
+        try {
+          const roleRes = await query(
+            'SELECT platform_role FROM users WHERE id = $1 LIMIT 1',
+            [userId]
+          );
+          requestingUserRole = (roleRes.rows[0]?.platform_role as string | undefined) ?? 'sponsor';
+        } catch (_) { /* non-fatal — falls back to sponsor framing */ }
+      }
+
       const systemPromptOverride = await buildCompositePrompt({
         property_type: dealCtx.property_type ?? '',
-      }, dealId);
+      }, dealId, requestingUserRole);
 
       const ctx: RunContext = {
         dealId,

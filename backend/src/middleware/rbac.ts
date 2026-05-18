@@ -116,8 +116,22 @@ export function requireOrgRoleForOrg(...roles: string[]) {
 
 /**
  * requireCapability(capability)
- * Checks user_capabilities table. LP and lender users lack edit:capital_structure
- * and edit:operating_assumptions — those routes return 403 for them.
+ *
+ * Two-tier capability resolution (Task #878):
+ *
+ * 1. Role-capability matrix (role_capabilities table):
+ *    Resolved from the user's platform_role. This is the primary, role-level
+ *    grant and is always checked first.
+ *
+ * 2. Per-user override (user_capabilities table):
+ *    Supports ad-hoc grants (e.g. admin-granted custom access). Checked as a
+ *    fallback so that individual overrides remain effective.
+ *
+ * A user has the capability if EITHER lookup returns a row.
+ *
+ * LP and lender users have no edit:capital_structure / edit:operating_assumptions
+ * in their role matrix, so those routes return 403 for them unless an explicit
+ * per-user override was inserted.
  */
 export function requireCapability(capability: string) {
   return async (req: OrgAuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -127,8 +141,21 @@ export function requireCapability(capability: string) {
     }
     try {
       const pool = getPool();
+      // Check role-capability matrix OR per-user override in one round-trip.
       const result = await pool.query(
-        'SELECT 1 FROM user_capabilities WHERE user_id = $1 AND capability = $2',
+        `SELECT 1
+         FROM users u
+         WHERE u.id = $1
+           AND (
+             EXISTS (
+               SELECT 1 FROM role_capabilities rc
+               WHERE rc.platform_role = u.platform_role AND rc.capability = $2
+             )
+             OR EXISTS (
+               SELECT 1 FROM user_capabilities uc
+               WHERE uc.user_id = $1 AND uc.capability = $2
+             )
+           )`,
         [req.user.userId, capability]
       );
       if (result.rows.length === 0) {

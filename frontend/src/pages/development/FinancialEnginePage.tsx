@@ -431,11 +431,20 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   // When ROADMAP is hidden the custom-tabs strip starts one index earlier.
   const effectiveBuiltinCount = isRoadmapEligible ? BUILTIN_TAB_COUNT : BUILTIN_TAB_COUNT - 1;
 
-  // LP and lender users land on RETURNS (tab 5) by default — their primary surface.
-  // Sponsors (GPs) land on OVERVIEW (tab 0) as before.
-  const [activeTab, setActiveTab] = useState(() =>
-    (platformRole === 'lp' || platformRole === 'lender') ? 5 : 0
-  );
+  const [activeTab, setActiveTab] = useState(0);
+
+  // LP and lender users default to RETURNS (tab 5).
+  // User data is loaded asynchronously after mount, so a lazy useState initializer
+  // would read the pre-load default ('sponsor') and produce the wrong tab.
+  // Using useRef to ensure we only route once (on first role resolution) and never
+  // override a tab the user has manually navigated to.
+  const roleTabInitialized = useRef(false);
+  useEffect(() => {
+    if (!roleTabInitialized.current && (platformRole === 'lp' || platformRole === 'lender')) {
+      setActiveTab(prev => prev === 0 ? 5 : prev);
+      roleTabInitialized.current = true;
+    }
+  }, [platformRole]);
   const [kpiLoading, setKpiLoading] = useState(false);
   const [building, setBuilding] = useState(false);
   const [assumptions, setAssumptions] = useState<ModelAssumptions | null>(null);
