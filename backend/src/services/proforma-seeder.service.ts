@@ -1303,12 +1303,58 @@ export async function seedProFormaYear1(
     // The trigger (trg_sync_underwriting_scenario) propagates the change to
     // deal_assumptions.year1 automatically, so all existing readers remain correct.
     // For deals without an active scenario, write directly to deal_assumptions.
+    //
+    // SCENARIO PATH: extraction-layer sub-key merge only.
+    // Only the document-sourced slots (t12, om, rent_roll, tax_bill, box_score,
+    // aged_ar, platform, warning) are written from the new seed.  Sub-keys owned
+    // by the cashflow agent (agent, resolved, resolution, override, override_source,
+    // updated_by, updated_at) are NEVER touched — they are merged from the
+    // existing scenario year1 by construction.
+    // The four agent-only fields (bad_debt_dollars, vacancy_loss_dollars,
+    // other_income_dollars, management_fee_dollars) live in the existing scenario
+    // year1 and are preserved because we start from that base.
     if (activeScenId) {
+      // Sub-keys that belong to extraction sources — safe to overwrite.
+      const EXTRACTION_SUBKEYS = new Set([
+        't12', 'om', 'rent_roll', 'tax_bill', 'box_score', 'aged_ar', 'platform', 'warning',
+      ]);
+
+      // Build merged year1: existing scenario year1 + extraction sub-keys from new seed.
+      const existingScenYear1 = (existingSeed as Record<string, unknown>) ?? {};
+      const mergedYear1: Record<string, unknown> = { ...existingScenYear1 };
+
+      for (const [fieldKey, seedValue] of Object.entries(seed as unknown as Record<string, unknown>)) {
+        if (!seedValue || typeof seedValue !== 'object') {
+          // Scalar helpers (e.g. _unit_count): add if absent, never overwrite.
+          if (!(fieldKey in mergedYear1)) mergedYear1[fieldKey] = seedValue;
+          continue;
+        }
+        const seedLv = seedValue as Record<string, unknown>;
+        const existingLv = mergedYear1[fieldKey];
+
+        if (!existingLv || typeof existingLv !== 'object') {
+          // New field — agent hasn't written here yet. Add the full LayeredValue.
+          mergedYear1[fieldKey] = { ...seedLv };
+        } else {
+          // Existing field — apply only extraction sub-keys.
+          // agent/resolved/resolution/override/override_source/updated_by/updated_at
+          // are NOT in EXTRACTION_SUBKEYS and are therefore NEVER overwritten.
+          const existingLvRec = existingLv as Record<string, unknown>;
+          const merged = { ...existingLvRec };
+          for (const [subKey, subVal] of Object.entries(seedLv)) {
+            if (EXTRACTION_SUBKEYS.has(subKey)) {
+              merged[subKey] = subVal;
+            }
+          }
+          mergedYear1[fieldKey] = merged;
+        }
+      }
+
       await pool.query(
         `UPDATE deal_underwriting_scenarios
            SET year1 = $2::jsonb, updated_at = NOW()
          WHERE id = $1`,
-        [activeScenId, JSON.stringify(seed)]
+        [activeScenId, JSON.stringify(mergedYear1)]
       );
       // Keep deal_assumptions metadata columns (non-year1) in sync separately.
       // The trigger handles year1; we own total_units, vacancy_pct, source_type.
@@ -1334,6 +1380,7 @@ export async function seedProFormaYear1(
       );
     } else {
       // No active scenario — write year1 directly to deal_assumptions (legacy path).
+      // Task #838 re-application above has already woven agent sub-keys into seed.
       await pool.query(
         `INSERT INTO deal_assumptions
            (deal_id, year1, total_units, vacancy_pct, other_income_per_unit,
