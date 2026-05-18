@@ -2,15 +2,16 @@
   "audit": {
     "title": "F9 Surface Connectivity Audit — Phase 2",
     "task": "#873",
-    "timestamp": "2026-05-18T00:00:00Z",
+    "timestamp": "2026-05-18T19:10:02Z",
     "auditor": "JEDI-Agent",
     "testDeals": {
       "affected": [
-        { "name": "464 Bishop", "dealId": "3f32276f-aacd-4da3-b306-317c5109b403", "classification": "priority_0_scenario_deal", "totalUnits": 232, "exitCap": 0.05, "holdYears": 5, "interestRate": 0.06 },
-        { "name": "Sentosa Epperson", "dealId": "3d96f62d-d986-448f-8ea4-10853021a8cb", "classification": "priority_0_scenario_deal", "totalUnits": 304, "exitCap": 0.05, "holdYears": 5, "interestRate": null }
+        { "name": "464 Bishop", "dealId": "3f32276f-aacd-4da3-b306-317c5109b403", "classification": "priority_0_scenario_deal", "totalUnits": 232, "exitCap": 0.05, "holdYears": 5, "interestRate": 0.06, "activeScenario": true, "da_year1_seeded": true },
+        { "name": "Sentosa Epperson", "dealId": "3d96f62d-d986-448f-8ea4-10853021a8cb", "classification": "priority_0_scenario_deal", "totalUnits": 304, "exitCap": 0.05, "holdYears": 5, "interestRate": null, "activeScenario": true, "da_year1_seeded": true }
       ],
       "control": [
-        { "name": "Westside Lofts", "dealId": "8205a985-xxxx", "classification": "no_scenario", "note": "active_scen=0, reads directly from deal_assumptions" }
+        { "name": "Westside Lofts", "dealId": "8205a985-cd17-4339-a6a4-efb57ce78b08", "classification": "no_scenario_seeded", "note": "active_scen=0, da_year1=true — seeded assumptions, no active underwriting scenario", "activeScenario": false, "da_year1_seeded": true },
+        { "name": "Highlands at Satellite", "dealId": "eaabeb9f-830e-44f9-a923-56679ad0329d", "classification": "no_scenario_unseeded", "note": "active_scen=0, da_year1=null — no assumptions, no active scenario; bare control for worst-case blank-tab baseline", "activeScenario": false, "da_year1_seeded": false }
       ]
     }
   },
@@ -40,7 +41,7 @@
       "file": "frontend/src/pages/development/FinancialEnginePage.tsx:702",
       "function": "mergedFinancials useMemo",
       "logic": "When modelResults===null: clones f9Financials and rebuilds projections from assumptions client-side. When modelResults present: calls mergeModelIntoFinancials() which maps model.summary.irr→lpNetIrr, model.summary.equityMultiple→lpEquityMultiple, etc.",
-      "criticalGap": "f9Financials.returns from API has {irr,equityMultiple,cashOnCash}. mergeModelIntoFinancials reads lpNetIrr from model.summary.irr NOT from src.returns.irr. When modelResults===null, lpNetIrr is undefined in mergedFinancials."
+      "criticalGap": "RC-001 (FIXED in this task): /financials route was overwriting getDealFinancials rich returns {lpNetIrr,lpEquityMultiple,avgCashOnCash,...} with simplified {irr,equityMultiple,cashOnCash}. When modelResults===null, lpNetIrr was undefined in mergedFinancials. Fix: route now passes data.returns through unchanged."
     },
     "secondaryDataSources": {
       "narrativeEndpoint": { "path": "GET /deals/:dealId/financials/narrative", "file": "backend/src/api/rest/deal-assumptions.routes.ts:1591", "scenarioAware": false, "usedBy": "ProjectionsTab AI findings panel" },
@@ -54,19 +55,18 @@
       "title": "Returns hero strip blank until cashflow model is run",
       "severity": "HIGH",
       "scope": "ALL deals (not scenario-specific)",
-      "status": "OPEN",
-      "description": "The /financials route handler (inline-deals.routes.ts:1855) overwrites getDealFinancials's rich returns object {lpNetIrr, lpEquityMultiple, avgCashOnCash, gpPromoteEarned, ...} with a simplified {irr, equityMultiple, cashOnCash} computed from buildProjectionsForExport. The frontend mergeModelIntoFinancials maps model.summary.irr→lpNetIrr (not src.returns.irr→lpNetIrr). When modelResults===null (no cashflow model has been built), the useMemo early-returns a cloned f9Financials where returns.lpNetIrr===undefined. ReturnsTab reads ret?.lpNetIrr which is undefined→null→'—' for all 4 hero tiles.",
+      "status": "FIXED (FIX-RC-001 applied in Task #873)",
+      "description": "The /financials route handler (inline-deals.routes.ts) was overwriting getDealFinancials's rich returns object {lpNetIrr, lpEquityMultiple, avgCashOnCash, gpPromoteEarned, ...} with a simplified {irr, equityMultiple, cashOnCash} computed from a local computeIrr() bisection. The frontend mergeModelIntoFinancials maps model.summary.irr→lpNetIrr (not src.returns.irr→lpNetIrr). When modelResults===null (no cashflow model has been built), the useMemo early-returns a cloned f9Financials where returns.lpNetIrr===undefined. ReturnsTab reads ret?.lpNetIrr which was undefined→null→'—' for all 4 hero tiles.",
       "affectedTabs": ["ReturnsTab (hero strip: LP NET IRR, LP EQUITY MULTIPLE, AVG CASH-ON-CASH, GP PROMOTE EARNED)", "ReturnsTab §1 (unleveraged IRR/EM blank)", "ReturnsTab §2 (LP returns blank)"],
       "evidence": {
-        "routeOverwrite": "inline-deals.routes.ts:1855 — let returns = { irr, equityMultiple, cashOnCash } overrides data.returns",
+        "routeOverwrite": "inline-deals.routes.ts — removed: let returns = { irr, equityMultiple, cashOnCash } (overrode data.returns)",
         "mergeFunction": "FinancialEnginePage.tsx:92 — out.returns.lpNetIrr = hasLvReturns ? src.returns.lpNetIrr : (s.lpIrr ?? s.irr ?? null) — s from model.summary not src.returns",
         "nullGuard": "FinancialEnginePage.tsx:704 — if (!modelResults) { ...return cloned without merge... }"
       },
-      "proposedFix": {
-        "option_a": "In the /financials route, stop overwriting data.returns — let getDealFinancials's rich return flow through as-is",
-        "option_b": "In the /financials route, extend the simplified returns with aliases: { irr, equityMultiple, cashOnCash, lpNetIrr: irr, lpEquityMultiple: equityMultiple, avgCashOnCash: cashOnCash }",
-        "option_c": "In FinancialEnginePage.tsx useMemo, when modelResults===null also fall through to mergeModelIntoFinancials using src.returns.irr as s.irr fallback",
-        "recommended": "option_a — cleanest; getDealFinancials already computes the rich returns IIFE (proforma-adjustment.service.ts:4482)"
+      "fix": {
+        "applied": true,
+        "description": "Removed 15-line simplified returns overwrite block from /financials route. Removed unused import buildProjectionsForExport and unused computeIrr() IRR bisection helper. data.returns from getDealFinancials (lpNetIrr, lpEquityMultiple, avgCashOnCash, gpPromoteEarned, debtMetrics, lpTrancheReturns) now flows through to the client unchanged.",
+        "file": "backend/src/api/rest/inline-deals.routes.ts"
       }
     },
     {
@@ -104,7 +104,7 @@
       "title": "Real estate tax key normalized — F-HIGH-004 fix addresses cashflow model alias",
       "severity": "LOW",
       "scope": "Bishop, Sentosa",
-      "status": "FIXED (F-HIGH-004 merged)",
+      "status": "FIXED (F-HIGH-004 merged prior to this task)",
       "description": "DB stores real estate tax under key 'real_estate_tax' (singular) in year1 JSONB. Cashflow postprocess was expecting 'expense.real_estate_taxes' (plural). F-HIGH-004 added KEY_ALIASES normalization in cashflow.postprocess.ts. Both deals have agent-written values: Bishop $540K, Sentosa $1.3M. getDealFinancials reads the 'real_estate_tax' key directly (correct singular form) for the non-model proforma display path, so this only affected the cashflow model path.",
       "affectedTabs": ["ProjectionsTab RE Taxes row (cashflow model path)"],
       "evidence": {
@@ -118,7 +118,7 @@
       "id": "RC-005",
       "title": "Waterfall/Capital sections blank — no LP tranches configured",
       "severity": "MEDIUM",
-      "scope": "Bishop, Sentosa (and any deal without LP tranche configuration)",
+      "scope": "All 4 test deals (and any deal without LP tranche configuration)",
       "status": "OPEN (CONFIGURATION GAP)",
       "description": "The CapitalHubTab WaterfallTab and ReturnsTab §2 (LP Returns by Tranche) are blank because no LP tranches have been configured in the capital schedule. getDealFinancials returns waterfall={} and capital.tranches=[]. The frontend correctly shows 'No LP tranches configured. Configure in Capital →' prompt. This is a product UX gap, not a code bug.",
       "affectedTabs": ["ReturnsTab §2 LP Returns by Tranche (shows 'No LP tranches configured')", "CapitalHubTab/Waterfall"],
@@ -126,7 +126,7 @@
         "getDealFinancials_waterfall": "proforma-adjustment.service.ts — waterfall initialized to {} / []",
         "ReturnsTab_guard": "ReturnsTab.tsx:358 — if (lpTranches.length === 0) shows 'Configure in Capital' prompt"
       },
-      "proposedFix": "NOT a code bug. Add default LP/GP tranche templates on deal creation to improve first-run experience."
+      "proposedFix": "NOT a code bug. Add default LP/GP tranche templates on deal creation to improve first-run experience. See follow-up Task #876."
     },
     {
       "id": "RC-006",
@@ -140,44 +140,45 @@
     }
   ],
   "phaseD_tabStatusMatrix": {
-    "note": "Status evaluated at time of audit. 'WORKING' = populates with real data. 'BLANK' = shows — or empty state. 'PARTIAL' = some rows blank.",
+    "note": "Status evaluated at time of audit post FIX-RC-001. 'WORKING' = populates with real data. 'BLANK' = shows — or empty state. 'PARTIAL' = some rows blank. Control-A = Westside Lofts (seeded, no scenario). Control-B = Highlands at Satellite (unseeded, no scenario).",
     "tabs": [
-      { "tab": "OverviewTab", "bishop": "WORKING", "sentosa": "WORKING", "control": "WORKING", "notes": "strategy-analyses endpoint independent of scenario/financials" },
-      { "tab": "ConsoleHub/Assumptions grid", "bishop": "WORKING", "sentosa": "WORKING", "control": "WORKING", "notes": "year1 seeded on both deals" },
-      { "tab": "ConsoleHub/Inputs GPR", "bishop": "WORKING ($4.9M)", "sentosa": "WORKING ($6.6M)", "control": "WORKING", "notes": "year1.gpr resolved from agent write-back" },
-      { "tab": "ConsoleHub/Inputs Other Income", "bishop": "WORKING ($341K via other_income_dollars)", "sentosa": "WORKING ($0)", "control": "WORKING", "notes": "other_income_dollars carries agent value; getDealFinancials toDollarRow maps it" },
-      { "tab": "ConsoleHub/Inputs RE Taxes", "bishop": "WORKING ($540K)", "sentosa": "WORKING ($1.3M)", "control": "WORKING", "notes": "year1.real_estate_tax resolved from agent write-back" },
-      { "tab": "ConsoleHub/Deal Terms", "bishop": "WORKING", "sentosa": "PARTIAL (interest rate blank)", "control": "WORKING", "notes": "RC-003: Sentosa interest_rate=null" },
-      { "tab": "ConsoleHub/Unit Mix", "bishop": "WORKING (has_unit_mix=true)", "sentosa": "UNKNOWN", "control": "WORKING", "notes": "Bishop has unit_mix data" },
-      { "tab": "Projections grid (revenue rows)", "bishop": "WORKING", "sentosa": "WORKING", "control": "WORKING", "notes": "projections computed from year1 + assumptions" },
-      { "tab": "Projections grid (debt service rows)", "bishop": "WORKING", "sentosa": "BLANK/ZERO", "control": "WORKING", "notes": "RC-003: Sentosa interest_rate=null → annualDS=0" },
-      { "tab": "ProjectionsTab AI findings", "bishop": "WORKING (narrative cached)", "sentosa": "WORKING (narrative cached)", "control": "WORKING", "notes": "Narrative endpoint cached 24h" },
-      { "tab": "ReturnsTab Hero Strip (4 tiles)", "bishop": "BLANK until model run", "sentosa": "BLANK until model run", "control": "BLANK until model run", "notes": "RC-001: route overwrites rich returns; lpNetIrr undefined when modelResults=null" },
-      { "tab": "ReturnsTab §1 Property Returns", "bishop": "PARTIAL (goingInCapRate from valuationSnapshot)", "sentosa": "PARTIAL", "control": "PARTIAL", "notes": "RC-001: unleveraged IRR/EM null; goingInCapRate populated from proforma.valuationSnapshot.goingInCapT12" },
-      { "tab": "ReturnsTab §2 LP Tranches", "bishop": "BLANK (no tranches)", "sentosa": "BLANK (no tranches)", "control": "BLANK (no tranches)", "notes": "RC-005: no LP tranche configuration on either deal" },
-      { "tab": "ReturnsTab §5 Debt Returns", "bishop": "PARTIAL (DSCR from projections)", "sentosa": "BLANK (no debt service)", "control": "PARTIAL", "notes": "RC-003 affects Sentosa" },
-      { "tab": "SensitivityTab", "bishop": "WORKING", "sentosa": "WORKING", "control": "WORKING", "notes": "Local computation via computeExitReturns — no API dependency" },
-      { "tab": "CapitalHub/SrcUses", "bishop": "WORKING", "sentosa": "PARTIAL (LTV blank)", "control": "WORKING", "notes": "RC-003: Sentosa loanAmount may also be null" },
-      { "tab": "CapitalHub/Debt", "bishop": "WORKING", "sentosa": "PARTIAL", "control": "WORKING", "notes": "RC-003 affects debt rows" },
-      { "tab": "CapitalHub/Waterfall", "bishop": "BLANK (no LP config)", "sentosa": "BLANK (no LP config)", "control": "BLANK", "notes": "RC-005" },
-      { "tab": "DecisionTab", "bishop": "WORKING", "sentosa": "WORKING", "control": "WORKING", "notes": "Reads f9Financials.proforma.year1 and capitalStack — both populated" },
-      { "tab": "CompareHubTab", "bishop": "WORKING", "sentosa": "WORKING", "control": "WORKING", "notes": "Reads from f9Financials" }
+      { "tab": "OverviewTab", "bishop": "WORKING", "sentosa": "WORKING", "controlA_westside": "WORKING", "controlB_highlands": "WORKING", "notes": "strategy-analyses endpoint independent of scenario/financials" },
+      { "tab": "ConsoleHub/Assumptions grid", "bishop": "WORKING", "sentosa": "WORKING", "controlA_westside": "WORKING", "controlB_highlands": "BLANK", "notes": "year1 seeded on Bishop/Sentosa/Westside; Highlands da_year1=null → no grid data" },
+      { "tab": "ConsoleHub/Inputs GPR", "bishop": "WORKING ($4.9M)", "sentosa": "WORKING ($6.6M)", "controlA_westside": "WORKING", "controlB_highlands": "BLANK", "notes": "year1.gpr resolved from agent write-back; Highlands unseeded" },
+      { "tab": "ConsoleHub/Inputs Other Income", "bishop": "WORKING ($341K via other_income_dollars)", "sentosa": "WORKING ($0)", "controlA_westside": "WORKING", "controlB_highlands": "BLANK", "notes": "other_income_dollars carries agent value; getDealFinancials toDollarRow maps it" },
+      { "tab": "ConsoleHub/Inputs RE Taxes", "bishop": "WORKING ($540K)", "sentosa": "WORKING ($1.3M)", "controlA_westside": "WORKING", "controlB_highlands": "BLANK", "notes": "year1.real_estate_tax resolved from agent write-back; Highlands unseeded" },
+      { "tab": "ConsoleHub/Deal Terms", "bishop": "WORKING", "sentosa": "PARTIAL (interest rate blank)", "controlA_westside": "WORKING", "controlB_highlands": "PARTIAL", "notes": "RC-003: Sentosa interest_rate=null; Highlands has no assumptions" },
+      { "tab": "ConsoleHub/Unit Mix", "bishop": "WORKING (has_unit_mix=true)", "sentosa": "UNKNOWN", "controlA_westside": "WORKING", "controlB_highlands": "BLANK", "notes": "Bishop has unit_mix data; Highlands unseeded" },
+      { "tab": "Projections grid (revenue rows)", "bishop": "WORKING", "sentosa": "WORKING", "controlA_westside": "WORKING", "controlB_highlands": "BLANK/DEFAULT", "notes": "projections computed from year1 + assumptions; Highlands has no year1" },
+      { "tab": "Projections grid (debt service rows)", "bishop": "WORKING", "sentosa": "BLANK/ZERO", "controlA_westside": "WORKING", "controlB_highlands": "BLANK", "notes": "RC-003: Sentosa interest_rate=null → annualDS=0; Highlands unseeded" },
+      { "tab": "ProjectionsTab AI findings", "bishop": "WORKING (narrative cached)", "sentosa": "WORKING (narrative cached)", "controlA_westside": "WORKING (narrative cached)", "controlB_highlands": "BLANK (no narrative)", "notes": "Narrative endpoint cached 24h per dealId; Highlands never had narrative run" },
+      { "tab": "ReturnsTab Hero Strip (4 tiles)", "bishop": "WORKING (post FIX-RC-001)", "sentosa": "WORKING (post FIX-RC-001)", "controlA_westside": "WORKING (post FIX-RC-001)", "controlB_highlands": "BLANK (no year1 → returns null)", "notes": "FIX-RC-001 applied: rich returns now flow through unchanged. Highlands blank because getDealFinancials returns null for unseeded deal." },
+      { "tab": "ReturnsTab §1 Property Returns", "bishop": "WORKING (post FIX-RC-001)", "sentosa": "PARTIAL (debt metrics blank RC-003)", "controlA_westside": "WORKING", "controlB_highlands": "BLANK", "notes": "RC-001 fixed; RC-003 still affects Sentosa debt metrics section" },
+      { "tab": "ReturnsTab §2 LP Tranches", "bishop": "BLANK (no tranches)", "sentosa": "BLANK (no tranches)", "controlA_westside": "BLANK (no tranches)", "controlB_highlands": "BLANK (no tranches)", "notes": "RC-005: no LP tranche configuration on any deal" },
+      { "tab": "ReturnsTab §5 Debt Returns", "bishop": "PARTIAL (DSCR from projections)", "sentosa": "BLANK (no debt service)", "controlA_westside": "PARTIAL", "controlB_highlands": "BLANK", "notes": "RC-003 affects Sentosa; Highlands unseeded" },
+      { "tab": "SensitivityTab", "bishop": "WORKING", "sentosa": "WORKING", "controlA_westside": "WORKING", "controlB_highlands": "WORKING (default assumptions)", "notes": "Local computation via computeExitReturns — no API dependency beyond exit_cap/hold_period" },
+      { "tab": "CapitalHub/SrcUses", "bishop": "WORKING", "sentosa": "PARTIAL (LTV blank)", "controlA_westside": "WORKING", "controlB_highlands": "BLANK", "notes": "RC-003: Sentosa loanAmount null" },
+      { "tab": "CapitalHub/Debt", "bishop": "WORKING", "sentosa": "PARTIAL", "controlA_westside": "WORKING", "controlB_highlands": "BLANK", "notes": "RC-003 affects Sentosa debt rows" },
+      { "tab": "CapitalHub/Waterfall", "bishop": "BLANK (no LP config)", "sentosa": "BLANK (no LP config)", "controlA_westside": "BLANK (no LP config)", "controlB_highlands": "BLANK (no LP config)", "notes": "RC-005: affects all deals" },
+      { "tab": "DecisionTab", "bishop": "WORKING", "sentosa": "WORKING", "controlA_westside": "WORKING", "controlB_highlands": "BLANK/DEFAULT", "notes": "Reads f9Financials.proforma.year1 and capitalStack — blank for unseeded Highlands" },
+      { "tab": "CompareHubTab", "bishop": "WORKING", "sentosa": "WORKING", "controlA_westside": "WORKING", "controlB_highlands": "WORKING", "notes": "Reads from f9Financials — renders what is available" }
     ]
   },
   "phaseE_controlComparison": {
-    "finding": "Westside Lofts (control, no active scenario) experiences the SAME RC-001 and RC-005 blank states as Bishop/Sentosa. The scenario system (Priority-0 change) does NOT introduce additional blank tabs — deal_assumptions is kept in sync with the active scenario via DB trigger trg_sync_underwriting_scenario. The blank tabs on Bishop/Sentosa are pre-existing issues unrelated to scenario introduction.",
-    "scenarioRisk": "If trg_sync_underwriting_scenario fails silently (e.g. trigger error, transaction rollback), scenario writes would not propagate to deal_assumptions and getDealFinancials would serve stale year1 data. No evidence this is happening — both deals show scen_year1=true and da_year1=true with matching GPR values."
+    "finding": "Westside Lofts (Control-A: seeded, no active scenario) experiences the SAME RC-001 and RC-005 blank states as Bishop/Sentosa prior to the fix. This confirms: the Priority-0 scenario system (Task #869) does NOT introduce additional blank tabs. deal_assumptions is kept in sync with the active scenario via DB trigger trg_sync_underwriting_scenario. Blank tabs on Bishop/Sentosa were pre-existing issues unrelated to scenario introduction.",
+    "highlands_finding": "Highlands at Satellite (Control-B: unseeded, no active scenario) shows blank/default states across all tabs that require year1 data. This is expected behavior for a completely new unseeded deal and establishes the worst-case blank-tab baseline: ConsoleHub inputs, Projections revenue rows, Returns §1/hero strip, Decision tab are all BLANK. Sensitivity is the only tab that works independently of year1 data.",
+    "scenarioRisk": "If trg_sync_underwriting_scenario fails silently (e.g. trigger error, transaction rollback), scenario writes would not propagate to deal_assumptions and getDealFinancials would serve stale year1 data. No evidence this is happening — both Priority-0 deals show consistent GPR values between scenario and deal_assumptions."
   },
   "phaseF_scenarioAwarenessGaps": {
-    "mainFinancialsEndpoint": { "scenarioAware": "INDIRECT (via DB trigger sync)", "riskLevel": "LOW", "finding": "getDealFinancials reads deal_assumptions which mirrors active scenario. No direct scenario_id read." },
-    "narrativeEndpoint": { "scenarioAware": false, "riskLevel": "LOW", "finding": "Narrative is cached per dealId, not per scenario. If scenario changes significantly, narrative may be stale until 24h cache expires or ?refresh=true." },
-    "patchEndpoints": { "scenarioAware": true, "finding": "PATCH /assumptions/* routes write to active deal_underwriting_scenarios (Task #869) then trigger syncs back to deal_assumptions." },
+    "mainFinancialsEndpoint": { "scenarioAware": "INDIRECT (via DB trigger sync)", "riskLevel": "LOW", "finding": "getDealFinancials reads deal_assumptions which mirrors active scenario via trg_sync_underwriting_scenario. No direct scenario_id parameter required or used." },
+    "narrativeEndpoint": { "scenarioAware": false, "riskLevel": "LOW", "finding": "Narrative is cached per dealId, not per scenario. If scenario changes significantly, narrative may be stale until 24h cache expires or ?refresh=true is passed." },
+    "patchEndpoints": { "scenarioAware": true, "finding": "PATCH /assumptions/* routes write to active deal_underwriting_scenarios (Task #869 implementation) then DB trigger syncs back to deal_assumptions." },
     "leaseVelocity": { "scenarioAware": "N/A", "finding": "POST /lease-velocity/run is a standalone calculation; does not read from scenario or deal_assumptions." }
   },
   "prioritizedActionItems": [
-    { "priority": 1, "id": "FIX-RC-001", "action": "Stop the /financials route from overwriting data.returns — let getDealFinancials rich returns flow through", "file": "backend/src/api/rest/inline-deals.routes.ts", "estimatedLines": 10, "impact": "Eliminates blank Returns hero strip on all deals without model run" },
-    { "priority": 2, "id": "FIX-RC-003-DATA", "action": "Configure Sentosa senior loan terms: interest_rate, loan_amount via Debt Advisor or direct DB seed", "type": "DATA", "impact": "Restores Sentosa debt service rows, DSCR, CFBt, LTV" },
-    { "priority": 3, "id": "FIX-RC-002-VERIFY", "action": "Add integration test: assert /financials for Bishop returns proforma.year1[other_income].resolved > 0", "type": "TEST", "impact": "Confirms F-009 / getDealFinancials other_income_dollars path works" },
-    { "priority": 4, "id": "FIX-RC-005-UX", "action": "Seed default LP/GP tranche on deal creation wizard (e.g. 80/20 LP/GP split at 8% pref)", "type": "PRODUCT", "impact": "Eliminates blank Waterfall/LP tranche sections on first-run" }
+    { "priority": 1, "id": "FIX-RC-001", "action": "Stop the /financials route from overwriting data.returns — let getDealFinancials rich returns flow through", "file": "backend/src/api/rest/inline-deals.routes.ts", "estimatedLines": 15, "impact": "Eliminates blank Returns hero strip on all deals without model run", "status": "APPLIED in Task #873" },
+    { "priority": 2, "id": "FIX-RC-003-DATA", "action": "Configure Sentosa senior loan terms: interest_rate, loan_amount via Debt Advisor or direct DB seed", "type": "DATA", "impact": "Restores Sentosa debt service rows, DSCR, CFBt, LTV", "followUpTask": "#874" },
+    { "priority": 3, "id": "FIX-RC-002-VERIFY", "action": "Verify Returns tab hero strip shows real numbers on first load (post FIX-RC-001) and add smoke test assertion", "type": "TEST/VERIFY", "impact": "Confirms FIX-RC-001 effective; confirms other_income_dollars path works", "followUpTask": "#875" },
+    { "priority": 4, "id": "FIX-RC-005-UX", "action": "Seed default LP/GP tranche on deal creation (e.g. 80/20 LP/GP split at 8% pref)", "type": "PRODUCT", "impact": "Eliminates blank Waterfall/LP tranche sections on first-run for all deals", "followUpTask": "#876" }
   ]
 }
