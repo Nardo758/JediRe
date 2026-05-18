@@ -219,17 +219,30 @@ export async function composeDealFinancials(
   const extractionOm = dealData?.extraction_om && typeof dealData.extraction_om === 'object' ? dealData.extraction_om as Record<string, any> : null;
 
   // 2. Load year1 proforma JSON.
-  // P0 fix: prefer the active underwriting scenario (canonical write target for
-  // the cashflow agent) so agent-computed values reach the F9 grid.
+  // P0 fix (Task #869): prefer the active underwriting scenario (canonical
+  // write target for the cashflow agent) so agent-computed values reach F9.
   // Falls back to deal_assumptions.year1 for deals that pre-date the scenario
   // layer or that have no active scenario row.
+  //
+  // Error policy: scenario query failures are logged at ERROR level and
+  // counted in the telemetry note below — they do NOT silently degrade to
+  // deal_assumptions without a trace, so data-source regressions are visible.
+  type ScenRow = { year1: unknown };
+  type ScenResult = { rows: ScenRow[] };
+  const EMPTY_SCEN: ScenResult = { rows: [] };
+
   const [scenRes, assRes] = await Promise.all([
-    pool.query(
+    pool.query<ScenRow>(
       `SELECT year1 FROM deal_underwriting_scenarios
         WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
         LIMIT 1`,
       [dealId]
-    ).catch(() => ({ rows: [] as any[] })),
+    ).catch((err: unknown) => {
+      logger.error('[composer][P0] scenario year1 query failed; falling back to deal_assumptions', {
+        dealId, error: err instanceof Error ? err.message : String(err),
+      });
+      return EMPTY_SCEN;
+    }),
     pool.query(
       `SELECT year1, source_type, source_date, updated_at FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
@@ -244,11 +257,16 @@ export async function composeDealFinancials(
       await seedProFormaYear1(pool, dealId);
       // Re-read after seeding — scenario is preferred if it now exists.
       const [retrySc, retryDa] = await Promise.all([
-        pool.query(
+        pool.query<ScenRow>(
           `SELECT year1 FROM deal_underwriting_scenarios
             WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL LIMIT 1`,
           [dealId]
-        ).catch(() => ({ rows: [] as any[] })),
+        ).catch((err: unknown) => {
+          logger.error('[composer][P0] post-seed scenario re-read failed; falling back to deal_assumptions', {
+            dealId, error: err instanceof Error ? err.message : String(err),
+          });
+          return EMPTY_SCEN;
+        }),
         pool.query(
           `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
           [dealId]

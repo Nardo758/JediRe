@@ -1175,17 +1175,38 @@ export async function seedProFormaYear1(
     // deal_assumptions can miss those values when the seeder runs after an agent
     // write (the trigger syncs scenario→deal_assumptions, but an older seeder run
     // may have overwrote deal_assumptions in the interim).
-    const activeScenRes = await pool.query(
+    // P0 fix (Task #869): read active scenario first.
+    // Error policy: failures are logged at ERROR; the seeder falls back to
+    // deal_assumptions so the build-seed step does not crash, but the
+    // empty activeScenId means the scenario write path is skipped and the
+    // legacy deal_assumptions path is used instead — preserving correctness
+    // at the cost of not updating the scenario. This is surfaced in logs.
+    type ActiveScenRow = { id: string; year1: unknown };
+    type ActiveScenResult = { rows: ActiveScenRow[] };
+    const EMPTY_SCEN_RESULT: ActiveScenResult = { rows: [] };
+
+    const activeScenRes = await pool.query<ActiveScenRow>(
       `SELECT id, year1 FROM deal_underwriting_scenarios
         WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL LIMIT 1`,
       [dealId]
-    ).catch(() => ({ rows: [] as any[] }));
+    ).catch((err: unknown) => {
+      logger.error('[seeder][P0] scenario row query failed; will fall back to deal_assumptions write', {
+        dealId, error: err instanceof Error ? err.message : String(err),
+      });
+      return EMPTY_SCEN_RESULT;
+    });
     const activeScenId: string | null = activeScenRes.rows[0]?.id ?? null;
 
-    const existing = await pool.query(
+    type ExistingRow = { year1: unknown };
+    const existing = await pool.query<ExistingRow>(
       `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
       [dealId]
-    ).catch(() => ({ rows: [] as any[] }));
+    ).catch((err: unknown) => {
+      logger.error('[seeder][P0] deal_assumptions year1 query failed', {
+        dealId, error: err instanceof Error ? err.message : String(err),
+      });
+      return { rows: [] as ExistingRow[] };
+    });
 
     // Prefer scenario year1 (has agent sub-keys); fall back to deal_assumptions.
     const rawExistingSeed = activeScenRes.rows[0]?.year1 ?? existing.rows[0]?.year1 ?? null;
