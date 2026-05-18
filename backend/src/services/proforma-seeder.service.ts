@@ -1186,6 +1186,59 @@ export async function seedProFormaYear1(
     const bpProforma = bpRaw && typeof bpRaw === 'object' ? bpRaw as Record<string, unknown> : null;
     const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma);
 
+    // Task #838 — Re-apply Cashflow Agent sub-keys after re-seed.
+    //
+    // buildSeed preserves operator overrides (via getOverride()) but has no
+    // equivalent for agent-written values.  Without this step, uploading a new
+    // document would silently erase every AI analysis result (resolution='agent')
+    // from the 16 AGENT_FIELD_TO_YEAR1 fields.
+    //
+    // Rules:
+    //   1. Only re-apply when existingSeed[field].resolution === 'agent'
+    //      (the agent was the winning source before the re-seed).
+    //   2. Skip re-application if the newly-built field already has a live
+    //      operator override — override beats agent.
+    //   3. For agent-created fields that buildSeed never produces
+    //      (management_fee_dollars, vacancy_loss_dollars, bad_debt_dollars,
+    //      other_income_dollars): copy the entire LayeredValue so these fields
+    //      are not silently dropped from the JSONB on every re-seed.
+    if (existingSeed) {
+      const seedRecord = seed as unknown as Record<string, unknown>;
+      for (const [fieldKey, rawLv] of Object.entries(existingSeed as Record<string, unknown>)) {
+        if (!rawLv || typeof rawLv !== 'object') continue;
+        const lv = rawLv as Record<string, unknown>;
+        const agentVal = lv.agent;
+        if (
+          agentVal === null || agentVal === undefined ||
+          typeof agentVal !== 'number' || !isFinite(agentVal as number) ||
+          lv.resolution !== 'agent'
+        ) {
+          continue;
+        }
+
+        const newField = seedRecord[fieldKey];
+        if (newField !== null && newField !== undefined && typeof newField === 'object') {
+          // Field exists in the new seed: re-apply agent sub-key only if no
+          // operator override is winning (override === non-null finite number).
+          const newLv = newField as Record<string, unknown>;
+          const hasOperatorOverride =
+            newLv.override !== null &&
+            newLv.override !== undefined &&
+            typeof newLv.override === 'number' &&
+            isFinite(newLv.override as number);
+          if (!hasOperatorOverride) {
+            newLv.agent      = agentVal;
+            newLv.resolved   = agentVal;
+            newLv.resolution = 'agent';
+          }
+        } else if (newField === undefined) {
+          // Agent-created field not produced by buildSeed — copy verbatim so
+          // it survives the re-seed write without being dropped.
+          seedRecord[fieldKey] = { ...lv };
+        }
+      }
+    }
+
     // F-010 write-path guard: validate seed before DB write. If any field
     // slipped through getOverride() with override === om AND no override_source,
     // auto-heal here so contaminated data can NEVER reach the database.
