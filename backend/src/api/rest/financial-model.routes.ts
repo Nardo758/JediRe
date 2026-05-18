@@ -126,7 +126,13 @@ function mapProformaJsonToSnapshot(
     typeof outFields.summary === 'string' ? outFields.summary : '';
 
   const parsedSummaryMetrics = (() => {
-    const out: { irr?: number; noi?: number } = {};
+    const out: { irr?: number; noi?: number; purchasePrice?: number; cashOnCash?: number } = {};
+
+    const parseMagnitude = (numStr: string, suffix: string): number => {
+      const n = parseFloat(numStr);
+      const s = suffix.toUpperCase();
+      return n * (s === 'B' ? 1e9 : s === 'M' ? 1e6 : s === 'K' ? 1e3 : 1);
+    };
 
     // IRR: "5-yr IRR 18.1%" | "Projected 5-yr IRR 18.1%" | "5-yr IRR estimated at -7.5%"
     const irrMatch = summaryText.match(
@@ -136,13 +142,22 @@ function mapProformaJsonToSnapshot(
 
     // NOI: "$1.5M NOI" | "~$2.0M NOI" | "NOI projected ~$2.0M" | "stabilized NOI...~$X.XM"
     const noiMatch =
-      summaryText.match(/\$\s*([\d.]+)\s*([KMkm])\s+NOI\b/i) ||
-      summaryText.match(/\bNOI\b[^.]*?~?\$\s*([\d.]+)\s*([KMkm])/i);
-    if (noiMatch) {
-      const num = parseFloat(noiMatch[1]);
-      const suffix = noiMatch[2].toUpperCase();
-      out.noi = num * (suffix === 'M' ? 1e6 : suffix === 'K' ? 1e3 : 1);
-    }
+      summaryText.match(/\$\s*([\d.]+)\s*([KMBkm])\s+NOI\b/i) ||
+      summaryText.match(/\bNOI\b[^.]*?~?\$\s*([\d.]+)\s*([KMBkm])/i);
+    if (noiMatch) out.noi = parseMagnitude(noiMatch[1], noiMatch[2]);
+
+    // Cash-on-cash: "cash-on-cash X%" | "cash on cash: X%" | "CoC X%"
+    // (not yet written by v3.x agent, but pattern is included for forward-compatibility)
+    const cocMatch = summaryText.match(/cash.on.cash\s*(?:of\s*|:\s*)?([-\d.]+)%/i) ||
+                     summaryText.match(/\bCoC\s*(?:of\s*|:\s*)?([-\d.]+)%/i);
+    if (cocMatch) out.cashOnCash = parseFloat(cocMatch[1]) / 100;
+
+    // Purchase price: "on $50M purchase price" | "$50M assumed basis" | "$50M purchase price"
+    // Used to derive equity → cash-on-cash when not written explicitly by the agent.
+    const ppMatch =
+      summaryText.match(/on\s+\$\s*([\d.]+)\s*([KMBkm])\s+purchase\s+price/i) ||
+      summaryText.match(/\$\s*([\d.]+)\s*([KMBkm])\s+(?:assumed\s+basis|purchase\s+price)/i);
+    if (ppMatch) out.purchasePrice = parseMagnitude(ppMatch[1], ppMatch[2]);
 
     return out;
   })();
@@ -162,9 +177,23 @@ function mapProformaJsonToSnapshot(
       ? parsedSummaryMetrics.noi / computedAds
       : undefined;
 
-  // Final resolution: stored flat key → agent output field → parsed from narrative
+  // Cash-on-cash: (NOI − ADS) / equity  when equity is derivable from parsed purchase price.
+  // equity = purchasePrice − loanAmount; falls back to undefined if either is missing.
+  const computedCashOnCash: number | undefined = (() => {
+    const resolvedNoi = parsedSummaryMetrics.noi;
+    const resolvedAds = computedAds;
+    const resolvedPurchasePrice =
+      parsedSummaryMetrics.purchasePrice ?? v('purchase_price') ?? purchasePrice;
+    if (resolvedNoi == null || resolvedAds == null || resolvedPurchasePrice == null) return undefined;
+    const equity = resolvedPurchasePrice - (loanAmount ?? 0);
+    if (equity <= 0) return undefined;
+    return (resolvedNoi - resolvedAds) / equity;
+  })();
+
+  // Final resolution: stored flat key → agent output field → parsed/computed from narrative
   const irr = v('five_yr_irr') ?? irrFromOutput ?? parsedSummaryMetrics.irr;
-  const cashOnCash = v('avg_cash_on_cash') ?? cocFromOutput;
+  const cashOnCash =
+    v('avg_cash_on_cash') ?? cocFromOutput ?? parsedSummaryMetrics.cashOnCash ?? computedCashOnCash;
   const noi = v('noi_year1') ?? noiFromOutput ?? parsedSummaryMetrics.noi;
   const annualDebtService = v('annual_debt_service') ?? computedAds;
   const dscr = v('dscr_year1') ?? v('year1_dscr') ?? dscrFromOutput ?? computedDscr;
