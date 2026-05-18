@@ -13,12 +13,23 @@
  *   2. Operator saves an override on a DIFFERENT field: vacancy_pct → 0.12.
  *   3. After the save, insurance.agent MUST still be 125_280.
  *
+ * Coverage:
+ *   - deal_assumptions fallback path (no active M40 scenario)   ← primary path
+ *   - deal_underwriting_scenarios active-scenario path (M40)    ← scenario path
+ *
  * Because the real SQL (`COALESCE(year1 #> path, '{}') || $4::jsonb`) cannot
  * be executed in a mock environment, the test:
  *   (a) Captures the raw params passed to the UPDATE query.
  *   (b) Simulates the DB-side JSONB merge in JavaScript.
  *   (c) Asserts on the simulated result — which is exactly what a real PG
  *       execution would produce.
+ *
+ * NOTE — Integration test gap (flagged by code review):
+ *   These are mock-driven unit tests; they do not execute real PostgreSQL JSONB
+ *   operations against a live database.  The JS simulateMerge() replicates PG
+ *   JSONB merge semantics faithfully, but a pg-backed integration test that
+ *   issues the real UPDATE and re-reads year1 would provide deeper confidence.
+ *   That is tracked as a follow-up (Task #861 — CI validation step).
  *
  * Additional assertions lock the structural properties that MAKE the SQL safe:
  *   - derivedUpdate (Layer A) must not include non-derived fields.
@@ -179,6 +190,49 @@ function makePool(year1: Record<string, unknown>): {
       //     COALESCE(...) || $4::jsonb, true) WHERE deal_id = $1
       // params[0] = dealId, params[1] = parts[], params[2] = derivedUpdateJson, params[3] = fieldForDbJson
       if (sql.includes('UPDATE deal_assumptions')) {
+        capturedUpdate = {
+          sql,
+          dealId:        params![0] as string,
+          parts:         params![1] as string[],
+          derivedUpdate: JSON.parse(params![2] as string),
+          fieldForDb:    JSON.parse(params![3] as string),
+        };
+        return { rows: [], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    }),
+  };
+
+  return { pool, getCaptured: () => capturedUpdate };
+}
+
+/**
+ * Variant pool for the M40 active-underwriting-scenario path.
+ *
+ * Returns `{ rows: [{ id: scenarioId, year1 }] }` for the scenarios SELECT so
+ * applyUserOverride takes the `activeScenarioId` branch and issues the UPDATE
+ * against `deal_underwriting_scenarios` instead of `deal_assumptions`.
+ *
+ * Params order is identical to the deal_assumptions path:
+ *   [scenarioId, parts[], derivedUpdateJson, fieldForDbJson]
+ */
+function makeScenarioPool(
+  year1: Record<string, unknown>,
+  scenarioId = 'scenario-test-001',
+): {
+  pool:        { query: ReturnType<typeof vi.fn> };
+  getCaptured: () => CapturedUpdate | undefined;
+} {
+  let capturedUpdate: CapturedUpdate | undefined;
+
+  const pool = {
+    query: vi.fn(async (sql: string, params?: unknown[]) => {
+      // M40: scenarios SELECT — return an active scenario so the scenario branch fires
+      if (sql.includes('deal_underwriting_scenarios') && sql.includes('SELECT')) {
+        return { rows: [{ id: scenarioId, year1 }] };
+      }
+      // Capture the scenarios UPDATE
+      if (sql.includes('UPDATE deal_underwriting_scenarios')) {
         capturedUpdate = {
           sql,
           dealId:        params![0] as string,
@@ -439,5 +493,60 @@ describe('applyUserOverride — agent sub-key preservation (Task #839 regression
         expect(targetLv.resolution, `${field}.resolution changed`).toBe('agent');
       },
     );
+  });
+
+  // ── M40 active-scenario path (deal_underwriting_scenarios) ────────────────
+  // applyUserOverride writes to the active underwriting scenario when one exists
+  // (M40 feature).  The same JSONB sub-key merge is used, so agent sub-keys must
+  // be equally preserved through that code path.
+
+  describe('M40 active-scenario path — insurance.agent survives via deal_underwriting_scenarios UPDATE', () => {
+    const SCENARIO_ID = 'scenario-test-839';
+
+    it('UPDATE targets deal_underwriting_scenarios (not deal_assumptions)', async () => {
+      const baseYear1 = makeYear1() as unknown as Record<string, unknown>;
+      const { pool, getCaptured } = makeScenarioPool(baseYear1, SCENARIO_ID);
+
+      await applyUserOverride(pool as never, DEAL_ID, 'vacancy_pct', 0.12, USER_ID);
+
+      const captured = getCaptured();
+      expect(captured, 'UPDATE was not issued — scenario path may have failed').toBeDefined();
+      expect(captured!.sql).toMatch(/UPDATE deal_underwriting_scenarios/i);
+    });
+
+    it('insurance.agent is preserved when writing via the scenario path', async () => {
+      const baseYear1 = makeYear1() as unknown as Record<string, unknown>;
+      const { pool, getCaptured } = makeScenarioPool(baseYear1, SCENARIO_ID);
+
+      await applyUserOverride(pool as never, DEAL_ID, 'vacancy_pct', 0.12, USER_ID);
+
+      const captured = getCaptured()!;
+      const finalYear1 = simulateMerge(baseYear1, captured);
+      const ins = finalYear1.insurance as Record<string, unknown>;
+
+      expect(ins.agent).toBe(AGENT_INSURANCE);
+      expect(ins.resolution).toBe('agent');
+    });
+
+    it('scenario-path UPDATE SQL uses jsonb_set sub-key merge (not full-replace)', async () => {
+      const baseYear1 = makeYear1() as unknown as Record<string, unknown>;
+      const { pool, getCaptured } = makeScenarioPool(baseYear1, SCENARIO_ID);
+
+      await applyUserOverride(pool as never, DEAL_ID, 'vacancy_pct', 0.12, USER_ID);
+
+      const { sql } = getCaptured()!;
+      expect(sql).toMatch(/jsonb_set/i);
+      expect(sql).toMatch(/COALESCE/i);
+      expect(sql).not.toMatch(/SET year1\s*=\s*\$2::jsonb/i);
+    });
+
+    it('fieldForDb written to scenario does NOT contain agent sub-key', async () => {
+      const baseYear1 = makeYear1() as unknown as Record<string, unknown>;
+      const { pool, getCaptured } = makeScenarioPool(baseYear1, SCENARIO_ID);
+
+      await applyUserOverride(pool as never, DEAL_ID, 'vacancy_pct', 0.12, USER_ID);
+
+      expect(getCaptured()!.fieldForDb).not.toHaveProperty('agent');
+    });
   });
 });
