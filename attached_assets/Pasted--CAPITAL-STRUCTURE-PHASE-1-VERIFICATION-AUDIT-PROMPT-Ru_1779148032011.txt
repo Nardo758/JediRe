@@ -1,0 +1,442 @@
+# CAPITAL STRUCTURE PHASE 1 — VERIFICATION AUDIT PROMPT
+
+**Run this audit after Capital Structure Optimization Phase 1 is reported as shipped.**
+
+## Objective
+
+Verify that Phase 1 of the Capital Structure Optimization spec landed correctly. The spec specified 10 acceptance criteria and a Phase Verification Protocol. This audit walks both end-to-end against production data, classifies any failures by root cause, and produces a clear ship-or-rollback decision.
+
+This is forward-looking verification — it runs after implementation completes, before the work is declared "done done" per the lands-discipline operating plan.
+
+## Why this audit exists
+
+Prior verifications on this platform have produced false positives — work reported as shipped but not actually reaching users (Priority 0 table inversion, Phase 2 audit blank tabs on remediated deals, Task #824 incomplete unit-mismatch fix). The pattern is that unit-level verification (PR merged, code reviewed) doesn't catch integration failures that span multiple services or data flows.
+
+This audit catches integration-level failures before they reach users. It checks each acceptance criterion against actual production behavior on multiple deals across deal types, not just one happy-path test.
+
+## Scope
+
+**In scope:**
+- All 10 verifiable acceptance criteria from Capital Structure spec Section 1.7
+- The Phase Verification Protocol workflow from Section 1.8
+- Test execution on at least 4 deals spanning strategy types
+- Integration behavior across deal creation, agent run, UI surfacing, and override application
+- Performance verification
+
+**Out of scope:**
+- Phase 2 work (user_type extension) — separate verification when that ships
+- Phase 3 work (M36 engine) — separate verification when that ships
+- Pre-existing platform issues unrelated to Phase 1
+
+## Test deals
+
+Run the audit on at least 4 deals spanning strategy classifications. The strategy diversity is essential because the strategy-to-metric mapping is the core of Phase 1's reasoning — a value-add deal optimizes for IRR, a stabilized deal optimizes for cash-on-cash. If only one strategy is tested, the mapping logic isn't actually verified.
+
+### Required strategy coverage
+
+1. **A value-add acquisition** (e.g., 464 Bishop or similar). Expected optimization: IRR-maximizing.
+2. **A stabilized acquisition** (e.g., a core hold). Expected optimization: cash-on-cash-maximizing.
+3. **A development deal** (ground-up construction or major pre-stabilization repositioning). Expected optimization: stabilized-value-maximizing.
+4. **A flip / short-hold deal** (acquisition with planned exit in ≤ 3 years). Expected optimization: profit-at-exit-maximizing.
+
+If a strategy classification has zero deals on the platform, document the gap. The audit's coverage on that strategy is limited but the others still produce valid findings.
+
+### Optional additional coverage
+
+5. **A redevelopment deal** (lease-up or repositioning). Expected optimization: depends on subclassification per spec.
+6. **A deal with existing operator overrides on capital structure.** Tests that Phase 1's defaults don't clobber pre-existing overrides.
+7. **A deal where the optimization is expected to hit a constraint binding** (e.g., DSCR floor). Tests the constraints-binding surfacing logic.
+
+The four required deals are the minimum. Adding optional coverage strengthens the audit.
+
+## Phase A — Defaults population verification
+
+For each test deal, verify that capital structure defaults populated correctly.
+
+### What to check
+
+1. **Existing deals:** For each test deal already in production before Phase 1 deployed, verify that the post-deploy state includes the defaults at the platform layer:
+   - `year1.ltv_pct.platform = 0.75`
+   - `year1.gp_equity_pct.platform = 0.10`
+   - `year1.lp_equity_pct.platform = 0.90`
+   - `year1.preferred_return_pct.platform = 0.08`
+   - `year1.debt_rate.platform = <current FRED 10yr + 200bps>`
+
+   The migration (or backfill) should have populated these on existing deals. If existing deals show `null` at the platform layer for these fields, the migration didn't run or didn't cover existing deals.
+
+2. **New deals:** Create one fresh test deal post-deploy. Verify the defaults populate immediately at deal creation (before any agent run, before any sponsor input). Query `deal_assumptions.year1` directly within seconds of deal creation to confirm.
+
+3. **Override layer preservation:** For the test deal with existing operator overrides on capital structure (optional coverage #6), verify the overrides are still at the `override` layer post-deploy. Defaults populated at `platform` layer should NOT clobber existing overrides.
+
+### Expected output
+
+Per-deal table:
+
+| Deal ID | Pre-deploy capital structure state | Post-deploy capital structure state | Defaults present at platform layer? | Existing overrides preserved? |
+|---|---|---|---|---|
+| 464 Bishop | (initial state) | LTV 0.75 / GP 0.10 / LP 0.90 / Pref 0.08 / Rate 0.0625 | Yes | N/A (no prior overrides) |
+| ... | ... | ... | ... | ... |
+
+### Failure modes to flag
+
+- **F-defaults-1:** Defaults missing from existing deals (migration didn't backfill)
+- **F-defaults-2:** Defaults missing from new deals (creation hook didn't populate)
+- **F-defaults-3:** Defaults clobber existing overrides (write hierarchy violation)
+- **F-defaults-4:** Defaults populate at wrong layer (e.g., `override` instead of `platform`)
+- **F-defaults-5:** Defaults populate with wrong values (e.g., FRED rate not current)
+
+## Phase B — F9 rendering verification
+
+For each test deal, open the F9 Returns tab and capital structure section.
+
+### What to check
+
+1. **Returns tab populates with default capital structure values.** Before any agent run, the Returns tab should render with the default LTV, GP/LP split, preferred return, and computed implications (DSCR projection, debt service, equity check).
+
+2. **No blank capital structure on any test deal.** This was the original problem statement — RC-003 and RC-005 from the Phase 2 audit identified blank tabs on deals without configured structure. Phase 1's fix should eliminate this entirely.
+
+3. **Source attribution shows "platform default."** The capital structure values render with source badges indicating they're platform defaults requiring sponsor confirmation, not analyzed values.
+
+4. **Empty state messaging is removed where defaults now populate.** If the UI previously showed "configure your capital structure" or similar empty state, that messaging should be gone (replaced by the default values with edit affordance).
+
+### Expected output
+
+Per-deal table:
+
+| Deal ID | Returns tab state (pre-agent-run) | Capital structure section state | Source badges visible? | Empty state messaging removed? |
+|---|---|---|---|---|
+| 464 Bishop | Fully populated | LTV 75%, 10/90 GP/LP, 8% pref | Yes ("Platform default") | Yes |
+| ... | ... | ... | ... | ... |
+
+### Failure modes to flag
+
+- **F-render-1:** Returns tab still blank despite defaults populated (read path doesn't see defaults — Priority 0 inversion pattern recurring)
+- **F-render-2:** Defaults render but without source attribution (LayeredValue UI integration incomplete)
+- **F-render-3:** Empty state messaging persists alongside default values (UI conditional logic stale)
+- **F-render-4:** Capital structure renders on some tabs but not others (partial connection — same pattern as Phase 2 audit's findings)
+
+## Phase C — Cash flow agent integration verification
+
+For each test deal, trigger a cash flow agent run and inspect behavior.
+
+### What to check
+
+1. **Agent invokes Goal Seek.** In the agent's run trace (`agent_run_steps` or equivalent log), confirm a step with `tool_name: 'goal_seek'` or similar. The agent must actually call the optimization tool.
+
+2. **Goal Seek input is correctly constructed.** Inspect the input passed to Goal Seek:
+   - Target metric matches the deal's strategy (IRR for value-add, cash-on-cash for stabilized, etc.)
+   - Variable is LTV (Phase 1 single-variable)
+   - Constraints include all five hard rules from spec §1.4
+   - Operating cash flow inputs are the agent's projected values (not raw extraction or platform defaults)
+
+3. **Goal Seek returns within performance budget.** From invocation to result, the call completes in ≤ 30 seconds per spec §1.10. Measure and record.
+
+4. **Agent's output schema includes capital_structure.optimization.** The agent emits `proforma.capital_structure.optimization` with all required fields per spec §1.5:
+   - `source: 'agent_optimization'`
+   - `primary_metric: <expected for strategy>`
+   - `optimal_ltv: <number in [0.50, 0.85]>`
+   - `optimal_debt_amount: <number>`
+   - `optimal_rate: <number>`
+   - `resulting_dscr_min: <number ≥ 1.30>`
+   - `primary_metric_value: <number>`
+   - `evidence_narrative: <string>`
+   - `constraints_binding: <array>`
+   - `confidence: 'high' | 'medium' | 'low'`
+
+5. **No silent constraint relaxation.** If the optimization hits a hard rule, `constraints_binding` names the rule. If no solution exists within constraints, the agent surfaces this explicitly rather than returning a structure that violates them.
+
+### Expected output
+
+Per-deal table:
+
+| Deal ID | Strategy | Goal Seek invoked? | Primary metric matches strategy? | Optimal LTV in range? | All hard rules satisfied? | Constraints binding (if any) | Agent run duration |
+|---|---|---|---|---|---|---|---|
+| 464 Bishop | value-add | Yes | Yes (IRR) | Yes (0.72) | Yes | None | 47s |
+| Stabilized test | stabilized | Yes | Yes (cash_on_cash) | Yes (0.68) | Yes | None | 41s |
+| Development test | development | Yes | Yes (stabilized_value) | Yes (0.78) | Yes | None | 52s |
+| Flip test | flip | Yes | Yes (profit_at_exit) | Yes (0.75) | Yes | None | 38s |
+
+### Failure modes to flag
+
+- **F-agent-1:** Goal Seek not invoked (integration didn't fire)
+- **F-agent-2:** Wrong target metric for strategy (mapping logic incorrect or not wired)
+- **F-agent-3:** Optimization variable wrong or missing
+- **F-agent-4:** Hard rule constraint missing from Goal Seek call (under-constrained optimization)
+- **F-agent-5:** Optimal LTV outside [0.50, 0.85] range (constraint violation)
+- **F-agent-6:** Hard rule violated in result (DSCR < 1.30, negative cash flow year, break-even > 0.85)
+- **F-agent-7:** Performance budget exceeded (> 30s additional run time)
+- **F-agent-8:** Agent output schema incomplete (missing fields per spec §1.5)
+- **F-agent-9:** Silent constraint relaxation (result violates rule but `constraints_binding` is empty)
+
+## Phase D — Strategy-to-metric mapping verification
+
+This phase is the most diagnostic. It confirms the core reasoning logic is correct.
+
+### What to check
+
+For each strategy classification, the agent's optimization must use the correct primary metric per the spec's mapping table:
+
+| Deal Strategy | Expected Primary Metric |
+|---|---|
+| acquisition_valueadd | irr |
+| acquisition_stabilized | cash_on_cash |
+| development | stabilized_value |
+| flip | profit_at_exit |
+| redevelopment (full) | irr |
+| redevelopment (partial) | cash_on_cash |
+| lease_up | stabilized_value |
+
+For each strategy in the test deal set, verify the agent's output `primary_metric` field matches the expected value.
+
+### Expected output
+
+| Strategy | Test Deal | Agent's primary_metric | Expected | Match? |
+|---|---|---|---|---|
+| acquisition_valueadd | 464 Bishop | irr | irr | Yes |
+| acquisition_stabilized | (stabilized test) | cash_on_cash | cash_on_cash | Yes |
+| development | (dev test) | stabilized_value | stabilized_value | Yes |
+| flip | (flip test) | profit_at_exit | profit_at_exit | Yes |
+
+### Failure modes to flag
+
+- **F-mapping-1:** Wrong metric for strategy (e.g., value-add deal optimizing for cash-on-cash)
+- **F-mapping-2:** Default fallback to IRR for unrecognized strategy (mapping table incomplete)
+- **F-mapping-3:** Metric correct but optimization doesn't actually maximize it (sanity check the result against the metric)
+
+## Phase E — Sponsor accept flow verification
+
+For each test deal where the agent produced a recommendation, walk through the sponsor's accept flow in the UI.
+
+### What to check
+
+1. **UI shows the agent's recommendation in the Returns tab.** With "Apply" or "Accept" button visible.
+
+2. **Clicking Apply writes to the override layer.** Inspect `year1.<field>.override` after click — should show agent's optimal values with appropriate source attribution (`source: 'sponsor_accepted_agent_recommendation'` or similar).
+
+3. **F9 re-renders with applied values.** The resolved capital structure (top of the layer hierarchy) now reflects the accepted recommendation. DSCR projection, debt service, returns recalculated using the accepted LTV.
+
+4. **Original agent layer preserved.** The agent's recommendation remains at the `agent` layer (not destroyed by the override). If the sponsor later reverts, the recommendation is still recoverable.
+
+5. **Decline flow.** Reject the recommendation on a different test deal. Verify the override layer is NOT written. Defaults remain in place. Agent recommendation remains visible but not applied.
+
+6. **Modify flow.** On a third test deal, modify the recommendation (sponsor adjusts LTV from agent's 0.72 to 0.70). Verify the override layer reflects the sponsor's value, not the agent's. Source attribution captures it as a sponsor modification.
+
+### Expected output
+
+| Deal | Action | Override layer state pre-action | Override layer state post-action | F9 reflects change? | Agent layer preserved? |
+|---|---|---|---|---|---|
+| Test 1 | Apply | Empty | Agent's optimal values, sponsor-accepted source | Yes | Yes |
+| Test 2 | Decline | Empty | Empty | N/A | Yes |
+| Test 3 | Modify | Empty | Sponsor's modified values, sponsor-modified source | Yes | Yes |
+
+### Failure modes to flag
+
+- **F-accept-1:** Apply button missing from UI
+- **F-accept-2:** Apply doesn't write to override layer (write path broken)
+- **F-accept-3:** Apply writes but F9 doesn't re-render (read-path-doesn't-respect-override pattern)
+- **F-accept-4:** Apply destroys agent layer (override hierarchy violation)
+- **F-accept-5:** Decline writes to override layer (should not — defaults stay)
+- **F-accept-6:** Modify doesn't capture user attribution
+
+## Phase F — Regression verification
+
+Phase 1 must not regress prior agent behavior on non-capital-structure fields.
+
+### What to check
+
+For one test deal that was working correctly pre-Phase-1 (Bishop is the natural choice given its remediation status):
+
+1. **Capture the agent's pre-Phase-1 output** (from the most recent run before Phase 1 deploy). Record:
+   - Vacancy projection
+   - Other Income projection
+   - All operating expense line items
+   - NOI projection
+   - Subtotal correctness
+
+2. **Trigger an agent run post-Phase 1 deploy.** Record the same fields.
+
+3. **Diff the two.** Non-capital-structure fields should match within tolerance (small differences from FRED data refresh acceptable; large differences indicate regression).
+
+### Expected output
+
+| Field | Pre-Phase-1 value | Post-Phase-1 value | Delta | Within tolerance? |
+|---|---|---|---|---|
+| Vacancy projection | 0.052 | 0.052 | 0% | Yes |
+| Other Income | $342,000 | $342,000 | 0% | Yes |
+| Insurance | $125,280 | $125,280 | 0% | Yes |
+| Year 1 NOI | $1,412,500 | $1,412,500 | 0% | Yes |
+| ... | ... | ... | ... | ... |
+
+### Failure modes to flag
+
+- **F-regression-1:** Operating values changed unexpectedly (Phase 1 introduced changes to non-capital-structure reasoning)
+- **F-regression-2:** Agent run failed on previously-working deal (Phase 1 broke something)
+- **F-regression-3:** Math engine validation failures on post-Phase-1 snapshots that didn't exist pre-Phase-1
+
+## Phase G — Cross-deal pattern detection
+
+After per-deal verification, look for patterns.
+
+### Patterns to check
+
+1. **Failures consistent across all deals.** A failure on every test deal is a systemic issue (priority: critical).
+
+2. **Failures specific to one strategy.** A failure only on value-add deals suggests the strategy-specific code path has a bug.
+
+3. **Failures specific to deal data shape.** A failure only on deals with rich rent roll detail vs sparse data suggests conditional logic doesn't handle one shape.
+
+4. **Constraints binding consistently on the same rule across deals.** If DSCR floor binds on every deal, the deals' underwriting may be over-leveraged at 75% default, OR the constraint may be miscalibrated.
+
+5. **Performance degradation patterns.** If Goal Seek consistently takes > 20 seconds on all deals, the implementation may have an inefficiency worth addressing.
+
+## Phase H — Structured findings output
+
+### File 1 — Audit findings (JSON)
+
+`/tmp/capital_structure_phase1_audit_{timestamp}.json`
+
+```json
+{
+  "audit_name": "capital_structure_phase1_verification",
+  "timestamp": "ISO8601",
+  "spec_version": "v1.0",
+  "test_deals": [
+    {
+      "deal_id": "string",
+      "deal_name": "string",
+      "strategy": "string",
+      "agent_run_id": "string"
+    }
+  ],
+
+  "summary": {
+    "total_acceptance_criteria": 10,
+    "criteria_passed": <number>,
+    "criteria_failed": <number>,
+    "criteria_partial": <number>,
+    "critical_failures": <number>,
+    "performance_within_budget": <boolean>,
+    "regression_detected": <boolean>,
+    "overall_status": "pass | fail | partial",
+    "ship_recommendation": "ship | rollback | conditional_ship"
+  },
+
+  "acceptance_criteria_results": [
+    {
+      "criterion_number": 1,
+      "criterion_description": "Defaults populate at deal creation",
+      "verification_method": "string",
+      "result": "pass | fail | partial",
+      "evidence": "string",
+      "affected_deals": ["deal_id"]
+    }
+    // ... all 10 criteria
+  ],
+
+  "phase_results": [
+    {
+      "phase": "A | B | C | D | E | F | G",
+      "phase_name": "string",
+      "deals_tested": <number>,
+      "deals_passed": <number>,
+      "failure_modes_observed": ["F-defaults-1", "..."],
+      "notes": "string"
+    }
+  ],
+
+  "failure_details": [
+    {
+      "failure_id": "F-defaults-1 | F-agent-3 | etc",
+      "description": "string",
+      "affected_deals": ["deal_id"],
+      "severity": "critical | major | minor",
+      "rollback_required": <boolean>,
+      "recommendation": "string",
+      "specific_fix_target": "string (file or component)"
+    }
+  ],
+
+  "cross_deal_patterns": [
+    {
+      "pattern_name": "string",
+      "description": "string",
+      "affected_deals": ["deal_id"],
+      "implication": "string"
+    }
+  ],
+
+  "ship_or_rollback_decision": {
+    "decision": "ship | rollback | conditional_ship",
+    "blocking_failures": ["F-..."],
+    "non_blocking_failures": ["F-..."],
+    "conditions_if_conditional": ["string"],
+    "rationale": "string"
+  }
+}
+```
+
+### File 2 — Executive summary (Markdown)
+
+`/tmp/capital_structure_phase1_summary_{timestamp}.md`
+
+Under 1,500 words. Structure:
+
+1. **Headline finding** — most important verification outcome
+2. **Acceptance criteria summary** — count passed / failed / partial
+3. **Critical failures** — anything blocking ship
+4. **Failures by phase** — what went wrong where
+5. **Performance** — was the 30-second Goal Seek budget met
+6. **Regression analysis** — did Phase 1 break anything that worked before
+7. **Cross-deal patterns** — systemic issues across multiple deals
+8. **Ship-or-rollback recommendation** — explicit decision with rationale
+
+## Success criteria for this audit
+
+1. All 4 required strategy classifications tested
+2. All 10 acceptance criteria evaluated against actual production behavior
+3. All 6 phases (A-G plus pattern detection) completed
+4. JSON output well-formed
+5. Markdown summary under 1,500 words
+6. Every failure has severity classification and specific fix recommendation
+7. Ship-or-rollback recommendation made with explicit rationale
+
+## Decision criteria
+
+**Ship Phase 1 if:**
+- All 10 acceptance criteria pass on all 4 strategy types
+- No critical failures
+- No regression detected on previously-working behavior
+- Performance within 30-second budget
+
+**Rollback Phase 1 if:**
+- Any critical failure on existing deals (broke things that worked)
+- Regression detected (non-capital-structure fields changed unexpectedly)
+- Default population missing on existing deals (migration didn't complete)
+
+**Conditional ship if:**
+- Strategy-to-metric mapping works for some strategies but not all (ship for working strategies, fix others before extending)
+- Performance acceptable but at upper bound (ship with monitoring)
+- One acceptance criterion is partial pass (e.g., source badges render on most fields but not all — ship with bug ticket filed)
+
+## What this audit deliberately doesn't do
+
+1. Doesn't verify Phase 2 work (user_type differentiation hasn't shipped yet)
+2. Doesn't verify Phase 3 work (M36 hasn't shipped)
+3. Doesn't verify the broader lands-discipline weekly status items
+4. Doesn't verify Phase 2 audit findings beyond what intersects Capital Structure Phase 1
+5. Doesn't generate user communication for any failures (separate work if rollback occurs)
+
+## Effort estimate
+
+1-2 sessions for the audit execution. Per deal: roughly 20-30 minutes to walk through Phases A through F. With 4-7 test deals plus cross-deal pattern detection, total time: 2-4 hours of focused work.
+
+## What this enables
+
+The audit's output produces:
+- A clear ship-or-rollback decision based on objective criteria
+- A prioritized list of failures with fix recommendations if found
+- Confirmation that Phase 1 actually closes RC-003 and RC-005 from the Phase 2 audit
+- Baseline for tracking whether Phase 2 (user_type extension) can safely start
+- Documentation that Phase 1's verification was thorough enough to declare "done done" per lands-discipline
+
+If the audit passes cleanly, Phase 1 moves to done_done in the weekly status. If it fails, the failures become tickets and Phase 1 stays in_progress or moves to rollback.
