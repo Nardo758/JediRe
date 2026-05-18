@@ -171,6 +171,10 @@ const OutputSchema = z.object({
   resulting_dscr_min: z.number().nullable(),
   resulting_breakeven_occ: z.number().nullable(),
   primary_metric_value: z.number().nullable(),
+  gp_irr: z.number().nullable().describe(
+    'GP levered equity IRR — always computed from [-equity, yr1_cfads, …, yrN_cfads+netSale], ' +
+    'independent of primaryMetric. Use this (not primary_metric_value) for sponsor-side ranking.'
+  ),
   evidence_narrative: z.string(),
   constraints_binding: z.array(z.string()),
   confidence: z.enum(['high', 'medium', 'low']),
@@ -190,6 +194,7 @@ interface LtvEval {
   ltv: number;
   feasible: boolean;
   metricValue: number | null;
+  gpIrr: number | null;
   dscrMin: number | null;
   breakevenOcc: number | null;
   constraintsViolated: string[];
@@ -274,10 +279,16 @@ function evaluateLtv(
     }
   }
 
+  // GP IRR is always computed from the levered equity cashflows regardless of
+  // the primaryMetric optimization target. This guarantees sponsor-side Pareto
+  // ranking is always based on GP return rate (not stabilized_value dollar amounts).
+  const gpIrr = computeIrr(cashFlows);
+
   return {
     ltv,
     feasible,
     metricValue,
+    gpIrr,
     dscrMin: dscrMin === Infinity ? null : dscrMin,
     breakevenOcc,
     constraintsViolated,
@@ -458,6 +469,7 @@ export async function optimizeCapitalStructure(
     resulting_dscr_min: optimalEval?.dscrMin ?? null,
     resulting_breakeven_occ: optimalEval?.breakevenOcc ?? null,
     primary_metric_value: optimalEval?.metricValue ?? null,
+    gp_irr: optimalEval?.gpIrr ?? null,
     evidence_narrative: narrative,
     constraints_binding: bindingConstraints,
     confidence,
@@ -510,8 +522,8 @@ function buildNarrative(
   };
 
   const dscrFloorNarrative = input.dscr_floor ?? 1.30;
-  const ltvCeilingNarrative = input.ltv_max ?? 0.85;
-  return `Bisection found optimal leverage for a ${input.deal_strategy} strategy at ${fmtPct(ltv)} LTV (${fmt$(debt)} debt / ${fmt$(equity)} equity), maximizing ${metricLabel[primaryMetric]} at ${metricFmt(best!.metricValue ?? 0)}. Minimum DSCR across the ${input.hold_years}-year hold is ${best!.dscrMin?.toFixed(2) ?? '—'}×, maintaining a ${(((best!.dscrMin ?? dscrFloorNarrative) - dscrFloorNarrative) * 100).toFixed(0)}bps cushion above the ${dscrFloorNarrative.toFixed(2)}× covenant floor. Break-even occupancy is ${fmtPct(best!.breakevenOcc ?? 0)}, comfortably below the ${(ltvCeilingNarrative * 100).toFixed(0)}% ceiling. At ${fmtPct(input.debt_rate)} interest with ${input.amortization_years > 0 ? `${input.amortization_years}-year amortization` : 'full IO'}, the structure supports the deal's return objectives.`;
+  const gpIrrStr = best?.gpIrr != null ? ` GP IRR: ${(best.gpIrr * 100).toFixed(1)}%.` : '';
+  return `Bisection found optimal leverage for a ${input.deal_strategy} strategy at ${fmtPct(ltv)} LTV (${fmt$(debt)} debt / ${fmt$(equity)} equity), maximizing ${metricLabel[primaryMetric]} at ${metricFmt(best!.metricValue ?? 0)}.${gpIrrStr} Minimum DSCR across the ${input.hold_years}-year hold is ${best!.dscrMin?.toFixed(2) ?? '—'}×, maintaining a ${(((best!.dscrMin ?? dscrFloorNarrative) - dscrFloorNarrative) * 100).toFixed(0)}bps cushion above the ${dscrFloorNarrative.toFixed(2)}× covenant floor. Break-even occupancy is ${fmtPct(best!.breakevenOcc ?? 0)}, comfortably below the 85% break-even occupancy threshold. At ${fmtPct(input.debt_rate)} interest with ${input.amortization_years > 0 ? `${input.amortization_years}-year amortization` : 'full IO'}, the structure supports the deal's return objectives.`;
 }
 
 // ─── Tool registration ────────────────────────────────────────────────────────

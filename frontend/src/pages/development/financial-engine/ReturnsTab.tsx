@@ -1682,7 +1682,12 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
                       } else if (platformRole === 'lender') {
                         return (b.dscr_min ?? 0) - (a.dscr_min ?? 0);
                       } else {
-                        return (b.primary_metric_value ?? -Infinity) - (a.primary_metric_value ?? -Infinity);
+                        // Sponsor: always sort by GP levered equity IRR regardless of strategy
+                        // metric (which may be stabilized_value or profit_at_exit — dollar amounts,
+                        // not return rates). Fall back to primary_metric_value only if gp_irr absent.
+                        const ia = (a as any).gp_irr ?? a.primary_metric_value ?? -Infinity;
+                        const ib = (b as any).gp_irr ?? b.primary_metric_value ?? -Infinity;
+                        return ib - ia;
                       }
                     });
                     return sorted.map((altRaw, sortIdx) => {

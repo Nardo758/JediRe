@@ -257,6 +257,10 @@ const ParetoItemSchema = z.object({
   trade_off_summary:    z.string(),
   primary_metric:       z.string(),
   primary_metric_value: z.number().nullable().describe('GP-perspective primary metric (IRR, CoC, etc.)'),
+  gp_irr:               z.number().nullable().describe(
+    'GP levered equity IRR — always computed regardless of strategy metric. ' +
+    'Primary sponsor-side Pareto ranking criterion.'
+  ),
   lp_irr:               z.number().nullable().describe(
     'LP IRR computed from year-by-year LP cash flows (90% equity split, annual operating CF + exit proceeds). ' +
     'Primary LP ranking criterion.'
@@ -461,10 +465,19 @@ export async function runJointGoalSeek(
       });
 
     } else {
-      // sponsor / gp
-      sortKey = 'primary_metric_value descending (GP IRR / CoC / profit — sponsor perspective)';
-      return [...candidates].sort((a, b) =>
-        (b.result.primary_metric_value ?? -Infinity) - (a.result.primary_metric_value ?? -Infinity));
+      // sponsor / gp — always rank by GP levered equity IRR, independent of the
+      // strategy-mapped primaryMetric (which can be stabilized_value/profit_at_exit
+      // for development/lease-up/flip strategies — dollar amounts, not return rates).
+      sortKey = 'gp_irr descending (GP levered equity IRR — sponsor perspective)';
+      return [...candidates].sort((a, b) => {
+        const ia = a.result.gp_irr ?? -Infinity;
+        const ib = b.result.gp_irr ?? -Infinity;
+        if (Math.abs(ia - ib) > 0.0005) return ib - ia;
+        // Tiebreaker: cash-on-cash (year-1 CFADS / equity)
+        const cocA = (a.result.primary_metric === 'cash_on_cash') ? (a.result.primary_metric_value ?? 0) : 0;
+        const cocB = (b.result.primary_metric === 'cash_on_cash') ? (b.result.primary_metric_value ?? 0) : 0;
+        return cocB - cocA;
+      });
     }
   };
 
@@ -514,6 +527,7 @@ export async function runJointGoalSeek(
       trade_off_summary:     `${tradeOffBase}${roleStr}${dscrStr}${feasStr}`,
       primary_metric:        item.result.primary_metric,
       primary_metric_value:  item.result.primary_metric_value,
+      gp_irr:                item.result.gp_irr,
       lp_irr:                item.lpMetrics.lp_irr,
       lp_distribution_yield: item.lpMetrics.lp_distribution_yield,
       lp_equity:             item.lpMetrics.lp_equity,
