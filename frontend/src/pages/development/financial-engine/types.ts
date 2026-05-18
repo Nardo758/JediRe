@@ -489,6 +489,24 @@ export interface F9DealFinancials {
     equity_at_optimal: number | null;
     gp_equity: number | null;
     lp_equity: number | null;
+    pareto_frontier?: Array<{
+      bundle_id: string;
+      bundle_name: string;
+      optimal_ltv: number | null;
+      trade_off_summary: string;
+      primary_metric: string;
+      primary_metric_value: number | null;
+      dscr_min: number | null;
+      breakeven_occ?: number | null;
+      optimal_rate: number;
+      equity_at_optimal?: number | null;
+      plausibility_score: number;
+      plausibility_band: string;
+      plausibility_color?: 'green' | 'amber' | 'red';
+      feasible: boolean;
+      infeasibility_reason?: string | null;
+      role_rank: number;
+    }>;
   } | null;
   /** Subject property traffic history — M07 §6.  Null until first rent roll uploaded for this deal. */
   subjectHistory?: F9SubjectHistory | null;
@@ -707,6 +725,9 @@ export interface EvidenceFieldMeta {
   confidence: string;
   has_collision: boolean;
   collision_magnitude: 'minor' | 'material' | 'severe' | null;
+  plausibility_band?: string;
+  plausibility_score?: number;
+  plausibility_color?: 'green' | 'amber' | 'red';
 }
 
 /**

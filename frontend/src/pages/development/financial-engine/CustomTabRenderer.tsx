@@ -223,21 +223,49 @@ const ProvenanceBadge: React.FC<{
   const label = `${(source ?? 'src').toString().slice(0, 6).toUpperCase()}${
     typeof confidence === 'number' ? ' · ' + (confidence * 100).toFixed(0) + '%' : ''
   }`;
+  const plausibilityBand = (meta as EvidenceFieldMeta | undefined)?.plausibility_band;
+  const plausibilityColor = (meta as EvidenceFieldMeta | undefined)?.plausibility_color;
+  const plausChipColor = plausibilityColor === 'green' ? BT.text.green
+    : plausibilityColor === 'amber' ? BT.text.amber
+    : plausibilityColor === 'red'   ? BT.text.red
+    : plausibilityBand === 'Realistic' ? BT.text.green
+    : plausibilityBand === 'Stretch' || plausibilityBand === 'Aggressive' ? BT.text.amber
+    : plausibilityBand ? BT.text.red
+    : null;
+
   return (
-    <span
-      title={`${fieldRef} · source=${source ?? '?'} · confidence=${confidence ?? '?'} · quality=${qualityFlag ?? '?'}`}
-      style={{
-        display: 'inline-block', marginLeft: 4,
-        fontFamily: MONO, fontSize: 8, fontWeight: 700,
-        padding: '0 4px', borderRadius: 2,
-        background: colour + '20',
-        color: colour,
-        border: `1px solid ${colour}40`,
-        verticalAlign: 'middle',
-      }}
-    >
-      {label}
-    </span>
+    <>
+      <span
+        title={`${fieldRef} · source=${source ?? '?'} · confidence=${confidence ?? '?'} · quality=${qualityFlag ?? '?'}`}
+        style={{
+          display: 'inline-block', marginLeft: 4,
+          fontFamily: MONO, fontSize: 8, fontWeight: 700,
+          padding: '0 4px', borderRadius: 2,
+          background: colour + '20',
+          color: colour,
+          border: `1px solid ${colour}40`,
+          verticalAlign: 'middle',
+        }}
+      >
+        {label}
+      </span>
+      {plausibilityBand && plausChipColor && (
+        <span
+          title={`Plausibility: ${plausibilityBand} · z=${(meta as EvidenceFieldMeta).plausibility_score?.toFixed(2) ?? '?'}`}
+          style={{
+            display: 'inline-block', marginLeft: 3,
+            fontFamily: MONO, fontSize: 7, fontWeight: 700,
+            padding: '0 4px', borderRadius: 10,
+            background: plausChipColor + '18',
+            color: plausChipColor,
+            border: `1px solid ${plausChipColor}50`,
+            verticalAlign: 'middle',
+          }}
+        >
+          {plausibilityBand}
+        </span>
+      )}
+    </>
   );
 };
 

@@ -1654,6 +1654,87 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
                 )}
               </div>
             </div>
+
+            {/* §11 ALTERNATIVE STRUCTURES — M36 Pareto Frontier */}
+            {Array.isArray(cso?.pareto_frontier) && (cso.pareto_frontier as NonNullable<typeof cso.pareto_frontier>).length > 0 && (
+              <div style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+                <div style={{ padding: '3px 10px 2px', background: `${BT.text.cyan}06`, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.cyan, letterSpacing: 0.5 }}>
+                    ALTERNATIVE STRUCTURES  ·  M36 PARETO FRONTIER
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+                    sorted by {platformRole === 'lender' ? 'DSCR robustness' : 'return metric'}
+                    {' '}· {(cso.pareto_frontier as NonNullable<typeof cso.pareto_frontier>).length} alternative{(cso.pareto_frontier as NonNullable<typeof cso.pareto_frontier>).length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6, padding: '8px 10px', flexWrap: 'wrap' }}>
+                  {(cso.pareto_frontier as NonNullable<typeof cso.pareto_frontier>).map((alt) => {
+                    const bandColor = alt.plausibility_color === 'green' ? BT.text.green
+                                    : alt.plausibility_color === 'amber' ? BT.text.amber
+                                    : alt.plausibility_color === 'red'   ? BT.text.red
+                                    : alt.plausibility_band === 'Realistic' ? BT.text.green
+                                    : alt.plausibility_band === 'Stretch' || alt.plausibility_band === 'Aggressive' ? BT.text.amber
+                                    : BT.text.red;
+                    const metricFmt = alt.primary_metric_value == null ? '—'
+                      : (alt.primary_metric === 'irr' || alt.primary_metric === 'cash_on_cash')
+                        ? `${(alt.primary_metric_value * 100).toFixed(1)}%`
+                        : `$${Math.round(alt.primary_metric_value).toLocaleString()}`;
+                    const metricLabel = alt.primary_metric === 'irr' ? 'IRR'
+                      : alt.primary_metric === 'cash_on_cash' ? 'CoC'
+                      : alt.primary_metric === 'stabilized_value' ? 'Stab. Value'
+                      : 'Profit';
+                    return (
+                      <div key={alt.bundle_id} style={{
+                        flex: '1 1 220px', minWidth: 200, maxWidth: 340,
+                        border: `1px solid ${BT.text.cyan}30`,
+                        borderTop: `3px solid ${bandColor}`,
+                        borderRadius: 4,
+                        background: alt.feasible ? `${BT.text.cyan}05` : `${BT.text.red}05`,
+                        padding: '6px 10px',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan }}>
+                            #{alt.role_rank} {alt.bundle_name}
+                          </span>
+                          <span style={{
+                            fontFamily: MONO, fontSize: 7, fontWeight: 700,
+                            color: bandColor,
+                            padding: '1px 5px',
+                            border: `1px solid ${bandColor}60`,
+                            borderRadius: 10,
+                            background: `${bandColor}14`,
+                          }}>
+                            {alt.plausibility_band ?? '—'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 10px', marginBottom: 5 }}>
+                          {([
+                            { l: 'LTV',      v: alt.optimal_ltv != null ? `${((alt.optimal_ltv) * 100).toFixed(1)}%` : '—' },
+                            { l: 'Rate',     v: alt.optimal_rate != null ? `${((alt.optimal_rate) * 100).toFixed(2)}%` : '—' },
+                            { l: metricLabel, v: metricFmt, bold: true },
+                            { l: 'Min DSCR', v: alt.dscr_min != null ? `${alt.dscr_min.toFixed(2)}×` : '—' },
+                          ] as const).map(({ l, v, bold }) => (
+                            <div key={l}>
+                              <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, display: 'block' }}>{l}</span>
+                              <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: (bold as boolean | undefined) ? 700 : 500, color: BT.text.primary }}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {!alt.feasible && (
+                          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.red, marginBottom: 3 }}>
+                            ⚠ Infeasible with current deal economics
+                          </div>
+                        )}
+                        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, lineHeight: 1.45 }}>
+                          {(alt.trade_off_summary ?? '').slice(0, 160)}{(alt.trade_off_summary ?? '').length > 160 ? '…' : ''}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
           </div>
         );
       })()}

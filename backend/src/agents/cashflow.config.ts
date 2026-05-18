@@ -63,6 +63,9 @@ import { fetchCountyTaxRulesTool } from './tools/fetch_county_tax_rules';
 import { fetchOperatorStanceTool } from './tools/fetch_operator_stance';
 import { fetchUnitMixTool } from './tools/fetch_unit_mix';
 import { generateRoadmapTool } from './tools/generate_roadmap';
+import { queryCapitalStackBundlesTool } from './tools/query_capital_stack_bundles';
+import { runJointGoalSeekTool } from './tools/run_joint_goal_seek';
+import { getPlausibilityScoreTool } from './tools/get_plausibility_score';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -200,6 +203,27 @@ export const CashflowOutputSchema = z.object({
         equity_at_optimal: z.number().nullable(),
         gp_equity: z.number().nullable(),
         lp_equity: z.number().nullable(),
+        pareto_frontier: z.array(z.object({
+          bundle_id: z.string(),
+          bundle_name: z.string(),
+          optimal_ltv: z.number().nullable(),
+          trade_off_summary: z.string(),
+          primary_metric: z.string(),
+          primary_metric_value: z.number().nullable(),
+          dscr_min: z.number().nullable(),
+          breakeven_occ: z.number().nullable().optional(),
+          optimal_rate: z.number(),
+          equity_at_optimal: z.number().nullable().optional(),
+          plausibility_score: z.number(),
+          plausibility_band: z.string(),
+          plausibility_color: z.enum(['green', 'amber', 'red']).optional(),
+          feasible: z.boolean(),
+          infeasibility_reason: z.string().nullable().optional(),
+          role_rank: z.number(),
+        })).optional().describe(
+          'M36 Pareto frontier — up to 3 ranked capital stack alternatives from run_joint_goal_seek. ' +
+          'Role-sorted: sponsor/LP by return metric, lender by DSCR robustness.'
+        ),
       }).optional(),
     }).optional(),
   }).optional().describe('Structured proforma outputs including capital structure optimization'),
@@ -437,6 +461,28 @@ Strategy → primary metric mapping is deterministic (the tool handles this auto
 Include the full optimize_capital_structure output in your response nested as:
   proforma.capital_structure.optimization
 (i.e., the top-level "proforma" key, then "capital_structure", then "optimization")
+
+## M36 Pareto Frontier — Alternative Capital Stacks (Required Step)
+
+After calling optimize_capital_structure, you MUST also call run_joint_goal_seek with the
+same noi_year1, purchase_price, hold_years, exit_cap_rate, and deal_strategy parameters.
+Set platform_role to match the requesting user's role ('sponsor', 'lp', or 'lender').
+
+run_joint_goal_seek evaluates all 5 debt product bundles (HUD 221(d)(4), Agency Fixed,
+Agency Floating, Bridge, CMBS) and returns up to 3 ranked alternatives.
+
+Include the pareto_frontier array from the run_joint_goal_seek result as:
+  proforma.capital_structure.optimization.pareto_frontier
+
+This field is consumed by the Returns tab Alternative Structures section. It must be present
+for the LP/lender/sponsor role-aware comparison cards to render.
+
+## Plausibility Chips for Evidence Drawer (Optional but Recommended)
+
+After establishing key assumptions (rentGrowthY1, vacancyAtStabilization, exitCapRate,
+expenseGrowthRate, lossToLeasePct), you MAY call get_plausibility_score for each to
+annotate the evidence with aggressiveness context. The result is surfaced as green/amber/red
+chips in the F9 evidence drawer. Call at most 5-8 times to avoid budget waste.
 `;
 
   const combined = variantPrompt
@@ -521,6 +567,10 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     goalSeekTargetIrrTool,
     // Capital Structure Optimization — call after compute_proforma
     optimizeCapitalStructureTool,
+    // M36 Phase 3: multi-bundle Pareto frontier + per-variable plausibility chips
+    queryCapitalStackBundlesTool,
+    runJointGoalSeekTool,
+    getPlausibilityScoreTool,
     // M36 Proforma Anchor Growth Rates (line-item macro anchoring)
     fetchAnchorGrowthRatesTool,
     fetchCountyTaxRulesTool,

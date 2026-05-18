@@ -513,6 +513,119 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
       return { alerted: true, severe_count: severeCount };
     });
 
+    // ── Step 6b: Anomaly detection — emit medium alerts for >2σ assumptions ──
+    await step.run('detect-anomalies', async () => {
+      if (!runResult.runId) return { skipped: true };
+      try {
+        // Load proforma_fields from agent_run output
+        const runRow = await query(
+          `SELECT output FROM agent_runs WHERE id = $1 LIMIT 1`,
+          [runResult.runId]
+        );
+        const runOutput = runRow.rows[0]?.output as Record<string, unknown> | undefined;
+        if (!runOutput) return { skipped: true, reason: 'no output' };
+
+        const proformaFields = runOutput.proforma_fields as Record<string, { value?: unknown }> | undefined;
+        if (!proformaFields) return { skipped: true, reason: 'no proforma_fields' };
+
+        // Map proforma field paths → VARIABLE_META keys + labels
+        const ANOMALY_MAP: Record<string, { key: string; label: string }> = {
+          'revenue.rent_growth_y1':           { key: 'rentGrowthY1',            label: 'Y1 Rent Growth' },
+          'revenue.rent_growth_stabilized':   { key: 'rentGrowthStabilized',    label: 'Stabilized Rent Growth' },
+          'revenue.vacancy_rate':             { key: 'vacancyAtStabilization',  label: 'Stabilized Vacancy' },
+          'revenue.vacancy':                  { key: 'vacancyAtStabilization',  label: 'Stabilized Vacancy' },
+          'revenue.vacancy_loss_pct':         { key: 'vacancyAtStabilization',  label: 'Stabilized Vacancy' },
+          'revenue.loss_to_lease_pct':        { key: 'lossToLeasePct',          label: 'Loss-to-Lease %' },
+          'revenue.concessions_pct':          { key: 'concessionsPct',          label: 'Concessions %' },
+          'expenses.expense_growth_rate':     { key: 'expenseGrowthRate',       label: 'Expense Growth Rate' },
+          'capital_structure.exit_cap_rate':  { key: 'exitCapRate',             label: 'Exit Cap Rate' },
+          'expenses.opex_per_unit':           { key: 'opexPerUnit',             label: 'OpEx Per Unit' },
+          'expenses.management_fee_pct':      { key: 'managementFeePct',        label: 'Management Fee %' },
+        };
+
+        // Hardcoded priors/stds matching VARIABLE_META (avoids importing at inngest runtime)
+        const VARIABLE_META_INLINE: Record<string, { prior: number; std: number }> = {
+          rentGrowthY1:           { prior: 0.03,   std: 0.015 },
+          rentGrowthStabilized:   { prior: 0.025,  std: 0.012 },
+          vacancyAtStabilization: { prior: 0.07,   std: 0.025 },
+          lossToLeasePct:         { prior: 0.03,   std: 0.015 },
+          concessionsPct:         { prior: 0.02,   std: 0.01 },
+          expenseGrowthRate:      { prior: 0.03,   std: 0.01 },
+          exitCapRate:            { prior: 0.0625, std: 0.012 },
+          opexPerUnit:            { prior: 7000,   std: 2500 },
+          managementFeePct:       { prior: 0.05,   std: 0.01 },
+        };
+
+        const anomalies: { path: string; label: string; value: number; z: number }[] = [];
+
+        for (const [path, fieldData] of Object.entries(proformaFields)) {
+          const mapping = ANOMALY_MAP[path];
+          if (!mapping) continue;
+          const meta = VARIABLE_META_INLINE[mapping.key];
+          if (!meta) continue;
+          const rawVal = fieldData?.value;
+          if (rawVal == null || typeof rawVal !== 'number') continue;
+
+          const z = Math.abs((rawVal - meta.prior) / meta.std);
+          if (z > 2.0) {
+            anomalies.push({ path, label: mapping.label, value: rawVal, z });
+          }
+        }
+
+        if (anomalies.length === 0) return { anomalies: 0 };
+
+        // Emit one deal_alert per anomaly (de-dup by path + run_id)
+        for (const anom of anomalies) {
+          const direction = (() => {
+            const fieldData = proformaFields[anom.path];
+            const mapping = ANOMALY_MAP[anom.path]!;
+            const meta = VARIABLE_META_INLINE[mapping.key]!;
+            return (anom.value > meta.prior) ? 'above' : 'below';
+          })();
+          const sigmas = anom.z.toFixed(1);
+          const title  = `Assumption Anomaly: ${anom.label} is ${sigmas}σ ${direction} market norm`;
+          const msg    = `The underwritten ${anom.label} (${anom.value}) is ${sigmas} standard deviations ${direction} the market-regime center. Values this far from the distribution are rarely achieved and should be verified against Tier-1 deal documents.`;
+
+          await query(
+            `INSERT INTO deal_alerts
+               (deal_id, user_id, alert_type, severity, title, message, source_type, source_ref, metadata, is_read, is_dismissed)
+             SELECT $1, d.user_id, 'cashflow.assumption_anomaly', 'yellow', $2, $3, 'agent', 'cashflow', $4, FALSE, FALSE
+             FROM deals d
+             WHERE d.id = $1
+               AND NOT EXISTS (
+                 SELECT 1 FROM deal_alerts
+                 WHERE deal_id = $1
+                   AND alert_type = 'cashflow.assumption_anomaly'
+                   AND metadata->>'field_path' = $5
+                   AND metadata->>'agent_run_id' = $6
+               )`,
+            [
+              dealId,
+              title,
+              msg,
+              JSON.stringify({
+                agent_run_id: runResult.runId,
+                field_path:   anom.path,
+                value:        anom.value,
+                z_score:      anom.z,
+                direction,
+              }),
+              anom.path,
+              runResult.runId,
+            ]
+          ).catch(err => {
+            logger.warn('cashflow.inngest: failed to write anomaly alert', { err, path: anom.path });
+          });
+        }
+
+        logger.info('cashflow.inngest: anomaly detection complete', { dealId, anomalyCount: anomalies.length });
+        return { anomalies: anomalies.length };
+      } catch (err) {
+        logger.warn('cashflow.inngest: anomaly detection step failed (non-fatal)', { err, dealId });
+        return { skipped: true, err: String(err) };
+      }
+    });
+
     // ── Step 7: Emit downstream event ──────────────────────────────
     if (runResult.runId) {
       await step.sendEvent('emit-cashflow-completed', {
