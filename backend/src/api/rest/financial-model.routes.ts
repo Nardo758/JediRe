@@ -6,6 +6,7 @@ import { dealVersionsService, type SaveTrigger, type DealVersionRow } from '../.
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { requireDealAccess } from '../../middleware/deal-access';
 import type { ProFormaAssumptions } from '../../services/financial-model-engine.service';
+import { parseSummaryMetrics, computeAnnualDebtService } from './financial-model.snapshot-parser';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Agent Version Helpers
@@ -125,51 +126,11 @@ function mapProformaJsonToSnapshot(
   const summaryText: string =
     typeof outFields.summary === 'string' ? outFields.summary : '';
 
-  const parsedSummaryMetrics = (() => {
-    const out: { irr?: number; noi?: number; purchasePrice?: number; cashOnCash?: number } = {};
+  const parsedSummaryMetrics = parseSummaryMetrics(summaryText);
 
-    const parseMagnitude = (numStr: string, suffix: string): number => {
-      const n = parseFloat(numStr);
-      const s = suffix.toUpperCase();
-      return n * (s === 'B' ? 1e9 : s === 'M' ? 1e6 : s === 'K' ? 1e3 : 1);
-    };
-
-    // IRR: "5-yr IRR 18.1%" | "Projected 5-yr IRR 18.1%" | "5-yr IRR estimated at -7.5%"
-    const irrMatch = summaryText.match(
-      /(?:5-yr|5\s*year)\s+IRR\s+(?:estimated\s+at\s+|of\s+|:\s*)?([-\d.]+)%/i,
-    );
-    if (irrMatch) out.irr = parseFloat(irrMatch[1]) / 100;
-
-    // NOI: "$1.5M NOI" | "~$2.0M NOI" | "NOI projected ~$2.0M" | "stabilized NOI...~$X.XM"
-    const noiMatch =
-      summaryText.match(/\$\s*([\d.]+)\s*([KMBkm])\s+NOI\b/i) ||
-      summaryText.match(/\bNOI\b[^.]*?~?\$\s*([\d.]+)\s*([KMBkm])/i);
-    if (noiMatch) out.noi = parseMagnitude(noiMatch[1], noiMatch[2]);
-
-    // Cash-on-cash: "cash-on-cash X%" | "cash on cash: X%" | "CoC X%"
-    // (not yet written by v3.x agent, but pattern is included for forward-compatibility)
-    const cocMatch = summaryText.match(/cash.on.cash\s*(?:of\s*|:\s*)?([-\d.]+)%/i) ||
-                     summaryText.match(/\bCoC\s*(?:of\s*|:\s*)?([-\d.]+)%/i);
-    if (cocMatch) out.cashOnCash = parseFloat(cocMatch[1]) / 100;
-
-    // Purchase price: "on $50M purchase price" | "$50M assumed basis" | "$50M purchase price"
-    // Used to derive equity → cash-on-cash when not written explicitly by the agent.
-    const ppMatch =
-      summaryText.match(/on\s+\$\s*([\d.]+)\s*([KMBkm])\s+purchase\s+price/i) ||
-      summaryText.match(/\$\s*([\d.]+)\s*([KMBkm])\s+(?:assumed\s+basis|purchase\s+price)/i);
-    if (ppMatch) out.purchasePrice = parseMagnitude(ppMatch[1], ppMatch[2]);
-
-    return out;
-  })();
-
-  // Annual Debt Service from standard amortizing mortgage formula (monthly payment × 12)
-  const computedAds: number | undefined = (() => {
-    if (loanAmount == null || interestRate == null) return undefined;
-    const n = (amortizationYears ?? 30) * 12;
-    const r = interestRate / 12;
-    if (r === 0) return (loanAmount / n) * 12;
-    return ((loanAmount * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)) * 12;
-  })();
+  // Annual Debt Service from standard amortizing mortgage formula (monthly payment × 12).
+  // Defensive: interestRate > 1 is treated as percent (e.g. 6.05 → 0.0605) by the utility.
+  const computedAds = computeAnnualDebtService(loanAmount, interestRate, amortizationYears);
 
   // DSCR: only compute when we have a reliable NOI (parsed from narrative) + ADS
   const computedDscr: number | undefined =
