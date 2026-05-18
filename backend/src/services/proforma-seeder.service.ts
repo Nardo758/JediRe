@@ -1405,25 +1405,36 @@ export async function seedProFormaYear1(
         [activeScenId, JSON.stringify(extractionDelta), JSON.stringify(seed)]
       );
       // Keep deal_assumptions metadata columns (non-year1) in sync separately.
-      // The trigger handles year1; we own total_units, vacancy_pct, source_type.
+      // The trigger trg_sync_underwriting_scenario handles year1 mirroring on
+      // scenario UPDATEs, but only if a deal_assumptions row already exists —
+      // trigger fires UPDATE with no target if the row is missing, leaving
+      // year1 = NULL on the subsequent INSERT.  To guard this edge case
+      // (active scenario exists, deal_assumptions row does not yet exist),
+      // we populate year1 from the current scenario seed on INSERT only.
+      // ON CONFLICT (row already exists) leaves year1 untouched — the trigger
+      // already fired before this statement and has synced the correct value.
       await pool.query(
         `INSERT INTO deal_assumptions
            (deal_id, total_units, vacancy_pct, other_income_per_unit,
-            source_type, source_date, created_at, updated_at)
+            source_type, source_date, year1, created_at, updated_at)
          VALUES ($1, $2, $3, COALESCE($4::numeric, 50),
-                 'platform_seeded', NOW(), NOW(), NOW())
+                 'platform_seeded', NOW(), $5::jsonb, NOW(), NOW())
          ON CONFLICT (deal_id) DO UPDATE SET
            total_units            = EXCLUDED.total_units,
            vacancy_pct            = EXCLUDED.vacancy_pct,
            other_income_per_unit  = EXCLUDED.other_income_per_unit,
            source_type            = 'platform_seeded',
            source_date            = NOW(),
-           updated_at             = NOW()`,
+           updated_at             = NOW()
+           -- year1 intentionally excluded: trigger already synced it from
+           -- the scenario UPDATE above; overwriting from seed would clobber
+           -- agent sub-keys that the trigger just mirrored.`,
         [
           dealId,
           seed._unit_count,
           seed.vacancy_pct?.resolved != null ? Math.round(seed.vacancy_pct.resolved * 10000) / 100 : null,
           seed.other_income_per_unit?.resolved,
+          JSON.stringify(seed),
         ]
       );
     } else {
