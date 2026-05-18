@@ -1030,11 +1030,17 @@ back the weakest-defended delta first and re-evaluate.
       variable, pull it back toward cohort P50 and re-call \`evaluate_plausibility\`. If the
       operator has provided a target IRR, call \`goal_seek_target_irr\` to find the
       least-aggressive assumption set that still achieves it.
-    - **d > 3.0 (BLOCKED — cannot write):** You MUST NOT proceed to Phase 7. Call
-      \`goal_seek_target_irr\` with the operator's target IRR and current assumptions. Present
-      the recommended bundle (lowest d-score that achieves target), including changed variables
-      and their new values. Only proceed to write_underwriting after the operator selects a
-      bundle and the resulting d-score is ≤ 3.0.
+    - **d > 3.0 (BLOCKED — cannot write):** You MUST NOT proceed to Phase 7. Before
+      calling \`goal_seek_target_irr\`, confirm the operator's target IRR is known:
+      - If the operator stated a target IRR (in the conversation or deal context), use it.
+      - If no target IRR is known, **stop and ask the operator**: "The assumption set is
+        outside the plausible range (d = X.X). To find an achievable path, what target IRR
+        are you underwriting to?" Do not write until you have a target and a bundle with
+        d ≤ 3.0.
+      Once the target is known, call \`goal_seek_target_irr\` with the operator's target IRR
+      and current assumptions. Present the recommended bundle (lowest d-score that achieves
+      target), including changed variables and their new values. Only proceed to
+      write_underwriting after the operator selects a bundle and the resulting d-score is ≤ 3.0.
 
     **When to call \`goal_seek_target_irr\`:**
     \`\`\`
