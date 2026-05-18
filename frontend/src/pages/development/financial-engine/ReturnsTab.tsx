@@ -1098,7 +1098,7 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh }: F
                         value={cso.optimal_debt_amount != null ? `$${Math.round(cso.optimal_debt_amount as number).toLocaleString()}` : '—'}
                       />
                       <KvRow label="Rate"
-                        value={`${((cso.optimal_rate as number) * 100).toFixed(2)}%`}
+                        value={cso.optimal_rate != null ? `${((cso.optimal_rate as number) * 100).toFixed(2)}%` : '—'}
                       />
                       <KvRow label={metricLabel(cso.primary_metric as string)}
                         value={(() => {
@@ -1111,7 +1111,7 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh }: F
                       />
                       <KvRow label="Min DSCR"
                         value={cso.resulting_dscr_min != null ? `${(cso.resulting_dscr_min as number).toFixed(2)}×` : '—'}
-                        color={(cso.resulting_dscr_min as number) < 1.20 ? BT.text.red : undefined}
+                        color={cso.resulting_dscr_min != null && (cso.resulting_dscr_min as number) < 1.20 ? BT.text.red : undefined}
                       />
                       <KvRow label="Breakeven Occ"
                         value={cso.resulting_breakeven_occ != null ? `${((cso.resulting_breakeven_occ as number) * 100).toFixed(1)}%` : '—'}
@@ -1139,10 +1139,10 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh }: F
                           </span>
                         )}
                       </div>
-                      {cso.evidence_narrative && (
+                      {typeof cso.evidence_narrative === 'string' && cso.evidence_narrative.length > 0 && (
                         <div style={{ padding: '6px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
                           <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, lineHeight: 1.5 }}>
-                            {cso.evidence_narrative as string}
+                            {cso.evidence_narrative}
                           </div>
                         </div>
                       )}

@@ -314,6 +314,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
           has_t12_data: cached.has_t12_data ?? false,
           has_rent_roll: cached.has_rent_roll ?? false,
           collision_summary: cached.collision_summary ?? { minor_count: 0, material_count: 0, severe_count: 0 },
+          has_capital_structure_optimization: !!(cached.proforma?.capital_structure?.optimization),
         };
       }
 
@@ -386,6 +387,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
         has_t12_data: typed.has_t12_data ?? dealCtx.hasT12Data,
         has_rent_roll: typed.has_rent_roll ?? dealCtx.hasRentRoll,
         collision_summary: typed.collision_summary ?? { minor_count: 0, material_count: 0, severe_count: 0 },
+        has_capital_structure_optimization: !!(typed.proforma?.capital_structure?.optimization),
       };
     });
 
@@ -401,10 +403,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
         // This is a prompt-compliance signal — if the cashflow run skipped the
         // optimize_capital_structure call, downstream ReturnsTab will show no
         // Agent Recommendation panel. Log once per run so it's queryable.
-        const hasOptimization = !!(
-          (runResult as Record<string, unknown>).proforma &&
-          ((runResult as Record<string, unknown>).proforma as Record<string, unknown>)?.capital_structure
-        );
+        const hasOptimization = runResult.has_capital_structure_optimization ?? false;
         if (!hasOptimization) {
           logger.warn('cashflow.inngest: run missing proforma.capital_structure.optimization', {
             dealId,
