@@ -1,0 +1,415 @@
+# PRIORITY 0 — TABLE INVERSION FIX BRIEF
+
+## What this is
+
+Response brief for the critical finding from the Phase 1 Connection Audit: the cashflow agent writes its analysis to `deal_underwriting_scenarios`, but the F9 Pro Forma grid reads from `deal_assumptions`. The two tables are not synced. Every deal with an active scenario has been displaying values to the user that do not reflect the agent's analysis.
+
+This is a customer-facing data integrity failure, not a technical debt issue. The brief covers:
+1. The design decision and technical fix
+2. Remediation plan for affected deals
+3. User communication framework (three shapes; team selects based on impact assessment)
+4. Sequencing changes for the rest of the in-flight work
+
+This supersedes Priorities 1, 2, 3 from the lands-discipline plan in urgency until the inversion is closed and remediation is complete.
+
+---
+
+## PART 1 — DESIGN DECISION
+
+### The technical situation
+
+Two tables:
+
+**`deal_assumptions`** — holds `year1` as the user-visible state. F9 Pro Forma grid reads from here. Document parsers, the proforma-seeder, and operator overrides write here.
+
+**`deal_underwriting_scenarios`** — holds the agent's analysis. Cashflow agent writes here on every run. No read path from F9 to this table.
+
+The intended architecture (per the recent Scenario Management spec) is for scenarios to be canonical and year1 to be a derived view of the active scenario. The current implementation has the two tables disconnected.
+
+The Westside Lofts finding is the evidence the intended architecture is correct: it's the only deal where the agent's values reach F9, and it works because Westside has no active scenario record. The deal without scenarios works; the deals with scenarios don't.
+
+### The design decision
+
+**Scenarios canonical, year1 derived.** This is the Scenario Management spec's design direction, applied as the immediate fix. Specifically:
+
+1. F9 reads from the active scenario's data, not from `deal_assumptions.year1`
+2. Cashflow agent writes to the active scenario (as it currently does)
+3. Operator overrides write to the active scenario's override layer
+4. The proforma-seeder, when triggered by document re-upload, updates the active scenario's document-derived layers (`t12`, `om`, `rent_roll`) but does NOT overwrite the agent layer
+5. `deal_assumptions.year1` remains, but as a denormalized view of the active scenario's resolved values, maintained by trigger or by explicit sync rather than as primary state
+
+The smallest change that closes the inversion: change the F9 read path. Everything else can follow incrementally.
+
+### Implementation steps
+
+**Step 1 — F9 read path changes to scenarios.**
+
+The F9 Pro Forma endpoint currently queries `deal_assumptions.year1` for the deal. Change to query the active scenario for the deal:
+
+```typescript
+// Before
+const year1 = await db.query(
+  'SELECT year1 FROM deal_assumptions WHERE deal_id = $1',
+  [dealId]
+);
+
+// After
+const activeScenario = await db.query(
+  `SELECT scenario_data FROM deal_underwriting_scenarios
+   WHERE deal_id = $1 AND is_active = TRUE
+   ORDER BY created_at DESC LIMIT 1`,
+  [dealId]
+);
+const year1 = activeScenario?.scenario_data?.year1;
+```
+
+The query specifics depend on the actual schema of `deal_underwriting_scenarios`, which the audit didn't fully document. The implementer should:
+1. Read the current `deal_underwriting_scenarios` schema
+2. Identify where the agent's `proforma_fields` output lands within that schema
+3. Read those values via the F9 read path
+4. Apply the resolution chain (override > agent > platform > t12 > om) to produce the final cell value
+
+**Step 2 — Seeder respects agent layer.**
+
+The proforma-seeder, when triggered by document re-upload or re-seed, currently rebuilds `deal_assumptions.year1` from extraction data. It must change to:
+- Update the active scenario's document-derived layers (t12, om, rent_roll) with new extractions
+- Preserve the agent layer in the active scenario
+- Preserve the override layer in the active scenario
+
+This is similar to the Ticket B refactor (proforma-seeder full-replace → per-key jsonb_set respecting layer hierarchy), but applied to scenarios as the canonical state.
+
+**Step 3 — Operator override writes to scenario.**
+
+The override API currently writes to `deal_assumptions.year1`. Change to write to the active scenario's override layer.
+
+**Step 4 — Denormalization (optional, recommended).**
+
+For backward compatibility, keep `deal_assumptions.year1` updated as a denormalized view of the active scenario's resolved values. Maintained by trigger on scenario writes or explicit sync after agent runs.
+
+This preserves any existing reader code paths that depend on `deal_assumptions.year1` until they can be migrated to scenarios directly.
+
+### Implementation effort
+
+- Step 1 (F9 read path): 2-4 hours
+- Step 2 (seeder respect agent layer): 1 session
+- Step 3 (override writes to scenario): 2-4 hours
+- Step 4 (denormalization): 2-4 hours
+- Verification on test deals: 2-4 hours
+
+Total: 1-2 focused sessions for the technical fix. Plus the remediation work in Part 2.
+
+### Verification before deploying
+
+Before the fix reaches production:
+
+1. Run the fix in a staging environment with copies of affected production deals
+2. Verify F9 now shows agent-computed values for Bishop (NOI in the $1.4M+ range, not $820K)
+3. Verify Westside Lofts behavior is unchanged (it was already working; the fix should not regress it)
+4. Verify operator overrides still work (write an override; verify F9 displays it; verify it survives a subsequent agent run)
+5. Verify document re-upload no longer erases agent values (re-upload a T-12; verify agent layer persists in scenario)
+
+The verification should produce a closing note with before/after F9 values for each test deal. The before/after diff is what gets used in user communication.
+
+---
+
+## PART 2 — REMEDIATION PLAN
+
+### Step 1 — Identify all affected deals
+
+Query to identify every deal where the agent has written to a scenario but F9 has been showing different values:
+
+```sql
+SELECT
+  d.deal_id,
+  d.deal_name,
+  d.created_by_user_id,
+  s.scenario_id,
+  s.created_at as scenario_last_updated,
+  da.updated_at as assumptions_last_updated
+FROM deals d
+JOIN deal_underwriting_scenarios s ON s.deal_id = d.deal_id AND s.is_active = TRUE
+LEFT JOIN deal_assumptions da ON da.deal_id = d.deal_id
+WHERE s.scenario_data IS NOT NULL
+  AND s.scenario_data ? 'proforma_fields'
+ORDER BY s.created_at DESC;
+```
+
+This produces the affected deal inventory. For each, capture:
+- Deal identity
+- User who owns it
+- When the scenario was last updated (proxy for when wrong values would have been displayed)
+- A diff of what F9 was showing vs what the agent computed
+
+### Step 2 — Compute the per-deal impact
+
+For each affected deal, produce a diff comparing:
+- The values F9 was displaying (from `deal_assumptions.year1`)
+- The values the agent had computed (from the scenario's `proforma_fields`)
+
+The diff identifies which fields were wrong and by how much. Focus on the headline values: NOI, EGI, GPR, Other Income, key OpEx categories.
+
+The diff drives user communication: a deal with <5% deltas on headline values has minor impact; >20% has major impact; the Bishop pattern (3.66× NOI) is severe impact.
+
+### Step 3 — Decide what to surface per deal
+
+For each affected deal, the team decides: when the fix ships, what do users see in F9?
+
+Two options per deal:
+- **Surface the agent's existing analysis.** The scenario already has the agent's values. After the fix, F9 reflects them automatically. User sees their first correct F9 view since the scenario was created.
+- **Re-run the agent.** Trigger a fresh agent run after the fix is in place. The new run uses the corrected data flow throughout. Better quality but adds latency to remediation.
+
+Default: surface existing analysis. Re-run only for deals where the existing scenario's analysis is stale or known to have issues.
+
+### Step 4 — Remediate the wrong-state denormalization (if Step 4 of Part 1 is implemented)
+
+If the denormalization approach (Part 1 Step 4) is implemented, `deal_assumptions.year1` needs to be one-time-corrected to match the active scenario's resolved values. After the trigger is in place, normal operation maintains the denormalization; the one-time correction handles legacy state.
+
+### Step 5 — Track remediation completion per deal
+
+For each affected deal, document:
+- Deal ID
+- User notified (yes/no)
+- Communication shape used (see Part 3)
+- Remediation method (surface existing / re-run / other)
+- F9 verified correct after fix (yes/no)
+- User confirmed they understand the change (yes/no)
+
+This becomes the remediation audit trail.
+
+---
+
+## PART 3 — USER COMMUNICATION FRAMEWORK
+
+The right communication shape depends on what users actually did with the platform-displayed values. The team needs to answer four discovery questions before selecting:
+
+### Discovery questions
+
+**Q1 — How long has the inversion been in production?**
+The team needs to identify when the scenario-writing code path was introduced vs when F9 was switched to read from `deal_assumptions`. The window between those is the exposure period.
+
+**Q2 — Which deals have been externally used?**
+For each affected deal, determine whether the user:
+- Generated a pitch deck or LP memo from platform data
+- Shared a capsule externally
+- Used the F9 Pro Forma directly in any document, presentation, or financial decision
+- Made capital allocation decisions based on F9 values
+
+This question can be answered by: review of capsule share logs, review of artifact generation logs (if Piece 5 of Capsule Sharing spec is built), or direct user conversation.
+
+**Q3 — Were any decisions made based on the wrong values?**
+For deals where Q2 indicates external use, dig deeper. Was a financing committed? Was equity raised? Was an offer made? The answer determines whether the user has downstream stakeholders to communicate with.
+
+**Q4 — How material were the deltas per affected deal?**
+The audit shows Bishop had a 3.66× NOI understatement. Other deals may have smaller deltas. The materiality threshold for user-impactful communication:
+- <5% on headline values: minor impact (Shape 1)
+- 5-20% on headline values: moderate impact (Shape 2)
+- >20% on headline values or >50% on any individual line item: severe impact (Shape 3)
+
+### Communication Shape 1 — Internal-only impact (minor)
+
+For deals where the user hasn't externally used the F9 values OR the deltas are minor:
+
+**In-app notification:**
+```
+Subject: Pro Forma values updated — your deal [DEAL_NAME]
+
+We identified a data flow issue where the platform's Pro Forma was
+displaying source data instead of the AI agent's analysis. We've
+fixed the issue, and your Pro Forma now reflects the agent's
+analytical output as intended.
+
+Summary of changes for [DEAL_NAME]:
+- Previous NOI displayed: $[X]
+- Corrected NOI: $[Y]
+- Delta: [Z]%
+
+The corrected values are what the agent had been computing all
+along — they were just not surfacing in the F9 display. Review the
+updated Pro Forma at your convenience.
+
+If you have any questions, reply to this email or use the support
+chat.
+```
+
+**Effort:** in-app notification + email. No follow-up required unless the user reaches out.
+
+### Communication Shape 2 — External-deck impact (moderate)
+
+For deals where the user has likely generated external materials but no capital decisions are known to be in flight:
+
+**Personal email from the team, not automated:**
+```
+Subject: Important update on [DEAL_NAME] Pro Forma
+
+[User name],
+
+I'm writing personally to let you know we identified an issue
+with the Pro Forma display on [DEAL_NAME] that I need to walk
+you through.
+
+The platform's AI agent has been performing its analysis correctly,
+but a data flow bug caused the F9 Pro Forma grid to display source
+data instead of the agent's output. We've fixed the issue today.
+
+The summary of what changed on [DEAL_NAME]:
+[Specific deltas on headline values]
+
+We know you've used this deal in [context — pitch deck, LP memo,
+etc.]. The previous Pro Forma values may have appeared in those
+materials. We want to help you address that:
+
+1. [Link to updated Pro Forma]
+2. [Updated artifact, if applicable]
+3. We can join a call to discuss the changes and how to communicate
+   them with anyone who saw the prior materials.
+
+Please reply when you have time and we'll set up a call.
+
+[Sender, with title]
+```
+
+**Effort:** personal outreach, follow-up call with each affected user, possible support during their downstream communication.
+
+### Communication Shape 3 — Capital-decision impact (severe)
+
+For deals where capital decisions are known or likely to have been made:
+
+**Phone call before anything else.** Do not lead with email. Call the user directly to walk them through the issue. Have legal review the situation before any written communication goes out. The phone call is to:
+1. Inform them of the issue verbally
+2. Understand the specific decisions made and their downstream stakeholders
+3. Coordinate the response with their interests in mind
+
+After the call, written follow-up that the legal team has reviewed. Specific to the situation; no template that fits.
+
+The team should be prepared for the possibility of:
+- The user disclosing to their LPs or investors
+- The user requesting a formal incident report
+- Compensation discussions if capital was deployed against wrong information
+- Reputational management coordination
+
+### Selecting the shape per deal
+
+For each affected deal, the team uses Q1-Q4 to select a shape:
+
+- Q3 yes (capital decisions made) → Shape 3
+- Q2 yes (external use) AND Q4 moderate-to-severe → Shape 2 minimum, possibly Shape 3
+- Q2 yes AND Q4 minor → Shape 1 with personal note added
+- Q2 no → Shape 1
+
+Default to the more serious shape when uncertain. The cost of over-communicating is small; the cost of under-communicating on a capital-decision impact is large.
+
+### One thing not to do
+
+Do not send a single blanket communication to all affected users. Each deal's situation is different. A blanket message either over-communicates for low-impact cases (creating unnecessary alarm) or under-communicates for high-impact cases (failing to honor the seriousness).
+
+Per-deal triage with shape selection is more work but is the right call.
+
+---
+
+## PART 4 — SEQUENCING CHANGES
+
+The audit's findings change the sequencing of all in-flight work. Updated priority order:
+
+### Immediate (this week)
+
+**Priority 0** — Table inversion fix (this brief).
+- Steps 1-3 of Part 1 implementation
+- Verification on test deals
+- Deploy
+
+### Following Priority 0 (week 2)
+
+**Priority 0a** — Remediation execution.
+- Affected deal inventory
+- Per-deal impact computation
+- Per-deal shape selection
+- User communication execution
+- Remediation tracking
+
+### After remediation in flight (weeks 2-3)
+
+**Priority 1** — F-009 Other Income write-back fix.
+- Still real, still ships.
+- Smaller scope than originally — Priority 0 may have already addressed the broader pattern.
+- Verify F-009 is closed in the post-Priority-0 state. If still an issue, ship the targeted fix.
+
+**Priority 2** — F-010 / Ticket B (override layer contamination).
+- Still needed.
+- Should be straightforward to fix after Priority 0 since override writes now go through scenarios.
+
+**Priority 3** — Agent prompt operational depth (F-001, F-002, F-003, F-005).
+- Less urgent than it was.
+- Once Priority 0 closes, users finally see the agent's analysis. The quality of that analysis (Priority 3 work) becomes visible. At that point, the prompt iteration work has user-facing impact.
+
+### Deferred until above closes (weeks 4+)
+
+- Scenario Management spec full implementation. (Priority 0 implements the core piece; the rest of the spec is the broader feature set.)
+- Capsule Sharing and Boundary spec.
+- CIE Engine spec.
+- Line-item investigation matrix Pass 2.
+
+### Spec authoring pause
+
+No new spec authoring until Priority 0, 0a, and the remediation are complete. The platform's accumulated spec backlog is meaningfully larger than its current execution bandwidth. New specs at this point make the situation worse.
+
+This applies to me as well. I should not be drafting new specs until the platform has caught up. If new architectural questions arise, the answer is to capture them as design memos (one page, no implementation detail) rather than full specs.
+
+---
+
+## PART 5 — WEEKLY STATUS IMPLICATIONS
+
+The audit's findings affect the lands-discipline weekly status ritual.
+
+### Items moving in the status
+
+**Moving to "supposedly done, verify — failed verification":**
+- PR 1 (Task #829) and PR 2 (Task #830) — these were specced as wiring `fetch_unit_mix` and `otherIncomeMonthly` correctly. They did, structurally. But the connection audit shows the data isn't reaching users because of the table inversion. The verification that was done (the 464 Bishop diagnostic) confirmed the pieces worked individually but didn't catch the integration failure. This is exactly the failure mode the lands-discipline plan was designed to surface.
+
+**New items in "in flight":**
+- Priority 0 — Table inversion fix
+- Priority 0a — Remediation
+
+**Items deferred to "drafted but not active":**
+- Scenario Management spec (paused; Priority 0 implements its core)
+- Capsule Sharing spec (paused)
+- CIE spec (paused)
+- Other Income spec patches beyond v1.2 (paused)
+
+**Items now lower priority:**
+- F-009, F-010, agent prompt operational depth — still real, but no longer the top of the queue
+
+### The honest framing
+
+The lands-discipline plan correctly identified that the platform was at risk of spec authoring outpacing execution. The audit confirms that risk was real. The plan's mechanisms (sequential closure, weekly status, verifiable acceptance criteria) caught the problem early enough to course-correct.
+
+This is the plan working, not the plan failing. The course correction is the table inversion fix taking precedence and new spec authoring pausing until execution catches up.
+
+---
+
+## PART 6 — WHAT THIS BRIEF EXPLICITLY DOES NOT INCLUDE
+
+1. **Specific user communication for any deal.** The communication framework is here; the per-deal communication depends on the team's discovery answers (Q1-Q4 in Part 3). I don't have those answers.
+
+2. **Legal language for severe-impact deals.** Counsel should review any communication for capital-decision-impact deals.
+
+3. **Specific remediation per affected deal beyond the framework.** Once the affected deal inventory exists, per-deal decisions get made by the team based on each deal's situation.
+
+4. **A complete rewrite of the Scenario Management spec.** The full spec stays as authored. Priority 0 implements its design direction at the minimum scope needed to close the inversion. The remaining spec features (UI scenario picker, comparison view, history, archival) can ship later.
+
+5. **Promises about external user impact.** Until the team completes discovery (Q1-Q4), the scope of external user impact is unknown. The brief intentionally doesn't characterize it.
+
+---
+
+## PART 7 — IMMEDIATE NEXT STEPS
+
+In order:
+
+1. **Today:** Read this brief. Confirm the design path (scenarios canonical) is the right direction.
+2. **Today:** Open Priority 0 as a numbered task. Estimated 1-2 sessions of implementation.
+3. **This week:** Implementation and verification on test deals.
+4. **This week:** Discovery on Q1-Q4 for each affected deal in parallel with implementation.
+5. **End of this week:** Deploy Priority 0 to production. Begin Priority 0a remediation.
+6. **Next week:** Per-deal user communication using the shape framework.
+7. **Following weeks:** Resume Priorities 1, 2, 3 in adjusted order.
+
+The platform's most important work this week is closing the inversion and remediating the impact. Everything else waits.
