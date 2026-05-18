@@ -500,6 +500,8 @@ export interface F9DealFinancials {
       breakeven_occ?: number | null;
       optimal_rate: number;
       equity_at_optimal?: number | null;
+      lp_equity?: number | null;
+      lp_distribution_yield?: number | null;
       plausibility_score: number;
       plausibility_band: string;
       plausibility_color?: 'green' | 'amber' | 'red';

@@ -100,6 +100,12 @@ const ParetoItemSchema = z.object({
   breakeven_occ: z.number().nullable(),
   optimal_rate: z.number(),
   equity_at_optimal: z.number().nullable(),
+  lp_equity: z.number().nullable().describe('LP equity at optimal LTV (lp_equity = equity × 0.90)'),
+  lp_distribution_yield: z.number().nullable().describe(
+    'LP NOI distribution yield = noi_year1 / lp_equity. ' +
+    'Primary LP ranking metric: measures the LP\'s annual NOI return on their equity dollar — ' +
+    'a direct proxy for distribution coverage. Higher is better for LPs seeking cash flow coverage.'
+  ),
   plausibility_score: z.number().describe('Mahalanobis d-score for this bundle\'s assumption set'),
   plausibility_band: z.string().describe('Realistic | Stretch | Aggressive | Heroic | Unrealistic'),
   plausibility_color: z.enum(['green', 'amber', 'red']),
@@ -217,15 +223,6 @@ export async function runJointGoalSeek(
   const role = input.platform_role ?? 'sponsor';
   let sortKey: string;
 
-  function lpRiskAdjustedScore(
-    metricVal: number | null,
-    dScore: number,
-  ): number {
-    const mv = metricVal ?? 0;
-    const aggPenalty = Math.min(0.40, Math.max(0, dScore - 1.5) * 0.15);
-    return mv * (1 - aggPenalty);
-  }
-
   let sorted: typeof evaluated;
   if (role === 'lender') {
     sortKey = 'resulting_dscr_min (descending — DSCR robustness first)';
@@ -237,13 +234,22 @@ export async function runJointGoalSeek(
       return db - da;
     });
   } else if (role === 'lp') {
-    sortKey = 'risk-adjusted return (primary_metric × aggression-discount — LP trustworthiness view)';
+    // LP sort: primary = LP NOI distribution yield (noi_year1 / lp_equity_at_optimal).
+    // This is the LP's annual NOI yield on their equity — a direct distribution coverage
+    // proxy. Higher leverage (HUD 83%) means more LP equity deployed but the ratio matters:
+    // a bundle requiring less LP equity for the same NOI delivers higher coverage per dollar.
+    // Secondary tiebreaker: dscr_min descending (safety margin for LP preferred return).
+    sortKey = 'LP distribution yield (noi_year1 / lp_equity) descending, DSCR tiebreaker';
     sorted = [...evaluated].sort((a, b) => {
       if (a.result.infeasible && !b.result.infeasible) return 1;
       if (!a.result.infeasible && b.result.infeasible) return -1;
-      const sa = lpRiskAdjustedScore(a.result.primary_metric_value, a.plau.dScore);
-      const sb = lpRiskAdjustedScore(b.result.primary_metric_value, b.plau.dScore);
-      return sb - sa;
+      const lpEquityA = a.result.lp_equity ?? (a.result.equity_at_optimal ?? 0) * 0.90;
+      const lpEquityB = b.result.lp_equity ?? (b.result.equity_at_optimal ?? 0) * 0.90;
+      const yieldA = lpEquityA > 0 ? input.noi_year1 / lpEquityA : 0;
+      const yieldB = lpEquityB > 0 ? input.noi_year1 / lpEquityB : 0;
+      if (Math.abs(yieldA - yieldB) > 0.001) return yieldB - yieldA;
+      // Tiebreaker: DSCR robustness
+      return (b.result.resulting_dscr_min ?? 0) - (a.result.resulting_dscr_min ?? 0);
     });
   } else {
     // sponsor / gp: maximize raw return metric (GP perspective, no penalty)
@@ -277,28 +283,36 @@ export async function runJointGoalSeek(
       ? ` ⚠ Infeasible: ${item.result.infeasibility_reason ?? 'constraints not satisfied'}.`
       : '';
 
-    // For LP: include the risk-adjusted score in the trade-off summary
-    const lpAdjStr = role === 'lp' && item.result.primary_metric_value != null
-      ? ` LP-adj: ${(lpRiskAdjustedScore(item.result.primary_metric_value, item.plau.dScore) * 100).toFixed(1)}% (${item.plau.dScore.toFixed(1)}σ plausibility discount).`
+    // Compute LP distribution yield for this bundle
+    const lpEquityAtOptimal = item.result.lp_equity ?? (item.result.equity_at_optimal != null ? item.result.equity_at_optimal * 0.90 : null);
+    const lpDistributionYield = lpEquityAtOptimal != null && lpEquityAtOptimal > 0
+      ? parseFloat((input.noi_year1 / lpEquityAtOptimal).toFixed(4))
+      : null;
+
+    // For LP: annotate trade-off summary with distribution yield
+    const lpYieldStr = role === 'lp' && lpDistributionYield != null
+      ? ` LP dist. yield: ${(lpDistributionYield * 100).toFixed(1)}% (NOI/LP equity).`
       : '';
 
     return {
-      bundle_id:          item.bundle.id,
-      bundle_name:        item.bundle.name,
-      optimal_ltv:        item.result.optimal_ltv,
-      trade_off_summary:  `${tradeOffBase}${metricStr}${dscrStr}${lpAdjStr}${feasStr}`,
-      primary_metric:     item.result.primary_metric,
+      bundle_id:            item.bundle.id,
+      bundle_name:          item.bundle.name,
+      optimal_ltv:          item.result.optimal_ltv,
+      trade_off_summary:    `${tradeOffBase}${metricStr}${dscrStr}${lpYieldStr}${feasStr}`,
+      primary_metric:       item.result.primary_metric,
       primary_metric_value: item.result.primary_metric_value,
-      dscr_min:           item.result.resulting_dscr_min,
-      breakeven_occ:      item.result.resulting_breakeven_occ,
-      optimal_rate:       item.bundle.rate,
-      equity_at_optimal:  item.result.equity_at_optimal,
-      plausibility_score: parseFloat(item.plau.dScore.toFixed(3)),
-      plausibility_band:  item.plau.band,
-      plausibility_color: bandToColor(item.plau.band),
-      feasible:           !item.result.infeasible,
+      dscr_min:             item.result.resulting_dscr_min,
+      breakeven_occ:        item.result.resulting_breakeven_occ,
+      optimal_rate:         item.bundle.rate,
+      equity_at_optimal:    item.result.equity_at_optimal,
+      lp_equity:            lpEquityAtOptimal,
+      lp_distribution_yield: lpDistributionYield,
+      plausibility_score:   parseFloat(item.plau.dScore.toFixed(3)),
+      plausibility_band:    item.plau.band,
+      plausibility_color:   bandToColor(item.plau.band),
+      feasible:             !item.result.infeasible,
       infeasibility_reason: item.result.infeasibility_reason,
-      role_rank:          idx + 1,
+      role_rank:            idx + 1,
     };
   });
 

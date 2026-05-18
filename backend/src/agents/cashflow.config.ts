@@ -159,6 +159,19 @@ const ProformaFieldSchema = z.object({
   archive_percentile: z.number().min(0).max(100).nullable().optional().describe(
     'Where this assumption falls in the archive distribution (0=P10, 50=P50, 100=P90). Null if < 5 samples.'
   ),
+  // M36 Phase 3: per-field plausibility chip written by get_plausibility_score.
+  // These MUST be preserved through Zod parse so they flow to evidence metadata
+  // and surface as green/amber/red chips in the F9 evidence drawer.
+  plausibility_band: z.string().optional().describe(
+    'Plausibility band for this assumption: Realistic | Stretch | Aggressive | Heroic | Unrealistic. ' +
+    'Written by get_plausibility_score; surfaced as a chip in the F9 evidence drawer.'
+  ),
+  plausibility_score: z.number().optional().describe(
+    'Mahalanobis d-score (|z|) for this assumption vs the market-regime distribution.'
+  ),
+  plausibility_color: z.enum(['green', 'amber', 'red']).optional().describe(
+    'UI chip color: green = Realistic, amber = Stretch/Aggressive, red = Heroic/Unrealistic.'
+  ),
 });
 
 export const CashflowOutputSchema = z.object({
@@ -214,6 +227,12 @@ export const CashflowOutputSchema = z.object({
           breakeven_occ: z.number().nullable().optional(),
           optimal_rate: z.number(),
           equity_at_optimal: z.number().nullable().optional(),
+          lp_equity: z.number().nullable().optional().describe(
+            'LP equity at optimal LTV (equity × 0.90)'
+          ),
+          lp_distribution_yield: z.number().nullable().optional().describe(
+            'LP NOI distribution yield = noi_year1 / lp_equity — primary LP ranking metric'
+          ),
           plausibility_score: z.number(),
           plausibility_band: z.string(),
           plausibility_color: z.enum(['green', 'amber', 'red']).optional(),
