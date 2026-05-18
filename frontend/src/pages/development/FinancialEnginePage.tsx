@@ -22,63 +22,11 @@ import { apiClient } from '../../services/api.client';
 import { useDealStore } from '../../stores/dealStore';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
+import { formatOverrideNote } from './financial-engine/field-labels';
 
 // ── Safe array coercion — guards against the API returning objects/nulls ──────
 function toArr<T>(v: unknown): T[] {
   return Array.isArray(v) ? v : [];
-}
-
-// ── Operator-override version history helpers ─────────────────────────────────
-// Maps the last segment of a fieldPath (e.g. "management_fee_pct") to a
-// human-readable label for the version history dropdown.
-const OVERRIDE_FIELD_LABELS: Record<string, string> = {
-  // Revenue
-  gpr:                  'Gross Potential Rent',
-  loss_to_lease:        'Loss to Lease',
-  vacancy_loss:         'Vacancy',
-  vacancy:              'Vacancy',
-  concessions:          'Concessions',
-  bad_debt:             'Bad Debt',
-  non_revenue_units:    'Non-Revenue Units',
-  net_rental_income:    'Net Rental Income',
-  other_income:         'Other Income',
-  egi:                  'Effective Gross Income',
-  // Controllable Opex
-  payroll:              'Payroll',
-  repairs_maintenance:  'Repairs & Maintenance',
-  turnover:             'Turnover',
-  contract_services:    'Contract Services',
-  marketing:            'Marketing',
-  utilities:            'Utilities',
-  g_and_a:              'G&A',
-  // Non-controllable Opex
-  management_fee:       'Management Fee',
-  management_fee_pct:   'Management Fee',
-  insurance:            'Insurance',
-  real_estate_tax:      'Real Estate Tax',
-  real_estate_taxes:    'Real Estate Tax',
-  total_opex:           'Total Opex',
-  // Common underwriting fields
-  rent_growth:          'Rent Growth',
-  exit_cap_rate:        'Exit Cap Rate',
-  capex:                'CapEx',
-  capex_per_unit:       'CapEx / Unit',
-  noi:                  'NOI',
-  purchase_price:       'Purchase Price',
-  loan_amount:          'Loan Amount',
-};
-
-/** Converts "operator_override:some.nested.field_name" → "Override: Field Name" */
-function formatOverrideNote(note: string | null): string {
-  if (!note) return 'Override saved';
-  const match = note.match(/^operator_override:(.+)$/);
-  if (!match) return note;
-  const raw = match[1];
-  const segment = raw.split('.').pop() ?? raw;
-  const label = OVERRIDE_FIELD_LABELS[segment];
-  if (label) return `Override: ${label}`;
-  // Fallback: convert snake_case to Title Case
-  return `Override: ${segment.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`;
 }
 
 // ── Normalize ModelResults from any source (DB, build, version load) ─────────
