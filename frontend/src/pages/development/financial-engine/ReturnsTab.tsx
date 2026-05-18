@@ -166,168 +166,122 @@ function HeroTile({ label, value, hurdle, actual, isX, isNum, baseColor }: {
   );
 }
 
-// ─── LP View Banner ──────────────────────────────────────────────────────────
-function LpViewBanner({ lpIrr, lpEm, prefRate, prefAchieved }: {
-  lpIrr: number | null; lpEm: number | null; prefRate: number; prefAchieved: boolean;
+// ─── LP Focus Panel (Task #878) ──────────────────────────────────────────────
+// Full LP-centric panel: hero metrics + preferred return by year +
+// cumulative distribution schedule + downside NOI haircut section.
+function LpFocusPanel({ lpIrr, lpEm, prefRate, capData, ret, proj }: {
+  lpIrr: number | null;
+  lpEm: number | null;
+  prefRate: number;
+  capData: any;
+  ret: any;
+  proj: any[];
 }) {
-  return (
-    <div style={{
-      padding: '8px 14px',
-      background: `${BT.text.purple}12`,
-      borderBottom: `1px solid ${BT.text.purple}40`,
-      borderLeft: `3px solid ${BT.text.purple}`,
-      display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-    }}>
-      <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.purple, letterSpacing: 0.8 }}>
-        LP VIEW
-      </span>
-      <div style={{ display: 'flex', gap: 16 }}>
-        <div>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LP IRR</span>
-          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.met.financial, marginLeft: 6 }}>
-            {fmtIrr(lpIrr)}
-          </span>
-        </div>
-        <div>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LP EM</span>
-          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.cyan, marginLeft: 6 }}>
-            {fmtEm(lpEm)}
-          </span>
-        </div>
-        <div>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>PREF</span>
-          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.amber, marginLeft: 6 }}>
-            {fmtIrr(prefRate)}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>PREF STATUS</span>
-          <span style={{
-            fontFamily: MONO, fontSize: 9, fontWeight: 700,
-            color: prefAchieved ? BT.text.green : BT.text.red,
-            marginLeft: 4,
-          }}>
-            {prefAchieved ? '✓ COVERED' : '✗ SHORTFALL'}
-          </span>
-        </div>
-      </div>
-      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginLeft: 'auto' }}>
-        Viewing as Limited Partner — capital structure edits restricted
-      </span>
-    </div>
+  const schedule: any[] = Array.isArray(capData?.schedule) ? capData.schedule : [];
+  const overallPrefAchieved = schedule.length > 0
+    ? schedule.every((p: any) => (p.prefPaid ?? 0) >= (p.prefAccrued ?? 0) * 0.99)
+    : false;
+
+  // Cumulative LP distributions by year
+  let cumLpDist = 0;
+  const scheduleRows = schedule.map((row: any, i: number) => {
+    cumLpDist += row.lpDist ?? 0;
+    const gap = (row.prefAccrued ?? 0) - (row.prefPaid ?? 0);
+    const covered = gap <= (row.prefAccrued ?? 0) * 0.01;
+    return { year: row.year ?? i + 1, prefAccrued: row.prefAccrued ?? 0, prefPaid: row.prefPaid ?? 0, lpDist: row.lpDist ?? 0, cumLpDist, covered, gap };
+  });
+
+  // Downside NOI haircut: estimate how much NOI can drop before preferred return shortfalls
+  // Use last year NOI from projections or ret data
+  const noi1 = ret?.noiYear1 ?? ret?.noi ?? proj[0]?.noi ?? null;
+  const equityIn = capData?.equityAtClose ?? ret?.totalEquity ?? null;
+  const prefDollar = equityIn != null ? equityIn * prefRate : null;
+  const noiFlex = noi1 != null && prefDollar != null
+    ? Math.max(0, (noi1 - prefDollar) / noi1)
+    : null;
+
+  const TH = ({ children }: { children: React.ReactNode }) => (
+    <th style={{ padding: '2px 8px', textAlign: 'right', color: BT.text.muted, fontWeight: 600, borderBottom: `1px solid ${BT.border.subtle}`, fontSize: 8, fontFamily: MONO }}>
+      {children}
+    </th>
   );
-}
-
-// ─── Lender DSCR Panel ───────────────────────────────────────────────────────
-function LenderDscrPanel({ ret, proj }: {
-  ret: any; proj: any[];
-}) {
-  const dscrY1   = ret?.debtMetrics?.coverage?.dscrY1 ?? ret?.minDscr ?? null;
-  const dscrMin  = ret?.debtMetrics?.coverage?.dscrMin?.value ?? ret?.minDscr ?? null;
-  const dscrAvg  = ret?.debtMetrics?.coverage?.dscrAvg ?? ret?.avgDscr ?? null;
-  const ltvClose = ret?.debtMetrics?.structural?.ltvAtClose ?? null;
-  const ltvMat   = ret?.debtMetrics?.structural?.ltvAtMaturity ?? ret?.maturityLtv ?? null;
-
-  // Build year-by-year DSCR from projections if available
-  const yearlyDscr: { yr: number; dscr: number | null }[] = proj.slice(0, 10).map(r => ({
-    yr: r.year,
-    dscr: r.dscr ?? null,
-  })).filter(r => r.dscr != null);
-
-  const dscrColor = (v: number | null) => {
-    if (v == null) return BT.text.muted;
-    if (v >= 1.25) return BT.text.green;
-    if (v >= 1.20) return BT.text.amber;
-    return BT.text.red;
-  };
+  const TD = ({ children, color, bold }: { children: React.ReactNode; color?: string; bold?: boolean }) => (
+    <td style={{ padding: '2px 8px', textAlign: 'right', color: color ?? BT.text.primary, fontWeight: bold ? 700 : 400, fontFamily: MONO, fontSize: 9, borderBottom: `1px solid ${BT.border.subtle}20` }}>
+      {children}
+    </td>
+  );
 
   return (
-    <div style={{
-      margin: '0', borderBottom: `1px solid ${BT.border.subtle}`,
-    }}>
-      {/* Header */}
+    <div style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+      {/* ─ Hero bar ─────────────────────────────────────────────── */}
       <div style={{
-        padding: '6px 14px',
-        background: `${BT.text.orange}12`,
-        borderBottom: `1px solid ${BT.text.orange}40`,
-        borderLeft: `3px solid ${BT.text.orange}`,
-        display: 'flex', alignItems: 'center', gap: 16,
+        padding: '8px 14px',
+        background: `${BT.text.purple}12`,
+        borderBottom: `1px solid ${BT.text.purple}30`,
+        borderLeft: `3px solid ${BT.text.purple}`,
+        display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
       }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.8 }}>
-          LENDER VIEW
+        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.purple, letterSpacing: 0.8 }}>
+          LP VIEW
         </span>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <div>
-            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>DSCR Y1</span>
-            <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: dscrColor(dscrY1), marginLeft: 6 }}>
-              {fmtDscr(dscrY1)}
-            </span>
+        {[
+          { label: 'LP IRR',      value: fmtIrr(lpIrr),   color: BT.met.financial },
+          { label: 'LP EM',       value: fmtEm(lpEm),     color: BT.text.cyan },
+          { label: 'PREF RATE',   value: fmtIrr(prefRate), color: BT.text.amber },
+        ].map(({ label, value, color }) => (
+          <div key={label}>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{label} </span>
+            <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color }}>{value}</span>
           </div>
-          <div>
-            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>DSCR MIN</span>
-            <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: dscrColor(dscrMin), marginLeft: 6 }}>
-              {fmtDscr(dscrMin)}
-            </span>
-          </div>
-          <div>
-            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LTV CLOSE</span>
-            <span style={{
-              fontFamily: MONO, fontSize: 11, fontWeight: 700, marginLeft: 6,
-              color: ltvClose != null && ltvClose > 0.80 ? BT.text.amber : BT.text.primary,
-            }}>
-              {ltvClose != null ? `${(ltvClose * 100).toFixed(1)}%` : '—'}
-            </span>
-          </div>
-          <div>
-            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LTV MATURITY</span>
-            <span style={{
-              fontFamily: MONO, fontSize: 11, fontWeight: 700, marginLeft: 6,
-              color: ltvMat != null && ltvMat > 0.75 ? BT.text.amber : BT.text.primary,
-            }}>
-              {ltvMat != null ? `${(ltvMat * 100).toFixed(1)}%` : '—'}
-            </span>
-          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>PREF STATUS </span>
+          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: overallPrefAchieved ? BT.text.green : BT.text.red }}>
+            {overallPrefAchieved ? '✓ FULLY COVERED' : '✗ SHORTFALL'}
+          </span>
         </div>
         <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginLeft: 'auto' }}>
-          Viewing as Lender — edit access restricted
+          Limited Partner view — capital structure edits restricted
         </span>
       </div>
 
-      {/* DSCR by Year table + stress thresholds */}
-      <div style={{ display: 'grid', gridTemplateColumns: yearlyDscr.length > 0 ? '1fr 1fr' : '1fr', gap: 0 }}>
-        {yearlyDscr.length > 0 && (
+      {/* ─ Tables ───────────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: scheduleRows.length > 0 ? '1fr 1fr' : '1fr', gap: 0 }}>
+
+        {/* Preferred return projection by year + cumulative distributions */}
+        {scheduleRows.length > 0 && (
           <div>
-            <div style={{ padding: '3px 10px 2px', background: `${BT.text.orange}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
-              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>
-                DSCR BY YEAR
+            <div style={{ padding: '3px 10px 2px', background: `${BT.text.purple}08`, borderBottom: `1px solid ${BT.border.subtle}`, borderRight: `1px solid ${BT.border.subtle}` }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.purple, letterSpacing: 0.5 }}>
+                PREF RETURN BY YEAR · CUMULATIVE DISTRIBUTIONS
               </span>
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: MONO }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: BT.bg.header }}>
-                    {['Year', 'DSCR', 'Status'].map(h => (
-                      <th key={h} style={{ padding: '2px 6px', textAlign: 'right', color: BT.text.muted, fontWeight: 600, borderBottom: `1px solid ${BT.border.subtle}`, fontSize: 8 }}>
-                        {h}
-                      </th>
-                    ))}
+                    <TH>Yr</TH>
+                    <TH>Pref Accrued</TH>
+                    <TH>Pref Paid</TH>
+                    <TH>Gap</TH>
+                    <TH>LP Dist</TH>
+                    <TH>Cum. Dist</TH>
+                    <TH>Status</TH>
                   </tr>
                 </thead>
                 <tbody>
-                  {yearlyDscr.map(({ yr, dscr }) => (
-                    <tr key={yr} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                      <td style={{ padding: '2px 6px', color: BT.text.secondary, textAlign: 'right' }}>Yr {yr}</td>
-                      <td style={{ padding: '2px 6px', textAlign: 'right', color: dscrColor(dscr), fontWeight: 600 }}>
-                        {fmtDscr(dscr)}
-                      </td>
-                      <td style={{ padding: '2px 6px', textAlign: 'right' }}>
-                        {dscr! >= 1.25
-                          ? <span style={{ color: BT.text.green, fontSize: 8 }}>✓ OK</span>
-                          : dscr! >= 1.20
-                            ? <span style={{ color: BT.text.amber, fontSize: 8 }}>⚠ THIN</span>
-                            : <span style={{ color: BT.text.red, fontSize: 8 }}>✗ BREACH</span>
-                        }
-                      </td>
+                  {scheduleRows.map(({ year, prefAccrued, prefPaid, lpDist, cumLpDist, covered, gap }) => (
+                    <tr key={year}>
+                      <TD color={BT.text.secondary}>{year}</TD>
+                      <TD>{fmt$(prefAccrued)}</TD>
+                      <TD color={covered ? BT.text.green : BT.text.amber}>{fmt$(prefPaid)}</TD>
+                      <TD color={gap > 0 ? BT.text.red : BT.text.muted}>{gap > 0 ? `(${fmt$(gap)})` : '—'}</TD>
+                      <TD color={BT.met.financial} bold>{fmt$(lpDist)}</TD>
+                      <TD color={BT.text.cyan}>{fmt$(cumLpDist)}</TD>
+                      <TD>{covered
+                        ? <span style={{ color: BT.text.green, fontSize: 8 }}>✓ OK</span>
+                        : <span style={{ color: BT.text.amber, fontSize: 8 }}>⚠ SHORT</span>
+                      }</TD>
                     </tr>
                   ))}
                 </tbody>
@@ -335,66 +289,284 @@ function LenderDscrPanel({ ret, proj }: {
             </div>
           </div>
         )}
+
+        {/* Downside NOI haircut */}
         <div>
-          <div style={{ padding: '3px 10px 2px', background: `${BT.text.orange}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
-            <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>
-              COVERAGE THRESHOLDS
+          <div style={{ padding: '3px 10px 2px', background: `${BT.text.purple}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.purple, letterSpacing: 0.5 }}>
+              DOWNSIDE / NOI HAIRCUT ANALYSIS
             </span>
           </div>
-          <div style={{ padding: '4px 10px' }}>
-            {([
-              { label: 'Min DSCR (Agency/LifeCo)',  threshold: 1.25, value: dscrMin },
-              { label: 'Min DSCR (Bridge)',          threshold: 1.20, value: dscrMin },
-              { label: 'Avg DSCR',                  threshold: 1.30, value: dscrAvg },
-              { label: 'LTV at Close (max 80%)',    threshold: 0.80, value: ltvClose, isPct: true, reverse: true },
-              { label: 'LTV at Maturity (max 75%)', threshold: 0.75, value: ltvMat, isPct: true, reverse: true },
-            ] as const).map(({ label, threshold, value, isPct, reverse }) => {
-              const pass = value != null ? (reverse ? value <= threshold : value >= threshold) : null;
-              const display = value == null ? '—'
-                : isPct ? `${(value * 100).toFixed(1)}%`
-                : fmtDscr(value);
-              const threshDisplay = isPct ? `${(threshold * 100).toFixed(0)}%` : fmtDscr(threshold);
-              return (
-                <div key={label} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '2px 0', borderBottom: `1px solid ${BT.border.subtle}20`,
-                }}>
-                  <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>{label}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-                      thr: {threshDisplay}
-                    </span>
-                    <span style={{
-                      fontFamily: MONO, fontSize: 9, fontWeight: 600,
-                      color: pass == null ? BT.text.muted : pass ? BT.text.green : BT.text.red,
-                    }}>
-                      {display}
-                    </span>
-                    {pass != null && (
-                      <span style={{ color: pass ? BT.text.green : BT.text.red, fontSize: 9 }}>
-                        {pass ? '✓' : '✗'}
-                      </span>
-                    )}
-                  </div>
+          <div style={{ padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {noi1 != null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>Year-1 NOI (base)</span>
+                <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: BT.text.primary }}>{fmt$(noi1)}</span>
+              </div>
+            )}
+            {prefDollar != null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>Annual pref $ (equity × {fmtIrr(prefRate)})</span>
+                <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: BT.text.amber }}>{fmt$(prefDollar)}</span>
+              </div>
+            )}
+            {noiFlex != null && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: `1px solid ${BT.border.subtle}` }}>
+                  <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>NOI buffer above pref</span>
+                  <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: noiFlex >= 0.15 ? BT.text.green : noiFlex >= 0.05 ? BT.text.amber : BT.text.red }}>
+                    {fmtIrr(noiFlex)}
+                  </span>
                 </div>
-              );
-            })}
+                {([10, 20, 30] as const).map((pct) => {
+                  const haircut = noi1! * (pct / 100);
+                  const stressed = noi1! - haircut;
+                  const prefStillCovered = stressed >= prefDollar!;
+                  return (
+                    <div key={pct} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>NOI −{pct}% → {fmt$(stressed)}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 600, color: prefStillCovered ? BT.text.green : BT.text.red }}>
+                        {prefStillCovered ? '✓ pref covered' : '✗ pref breach'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+            {noi1 == null && prefDollar == null && (
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>Run underwriting to see NOI haircut analysis</span>
+            )}
           </div>
         </div>
+
+      </div>
+    </div>
+  );
+}
+
+// ─── Lender Focus Panel (Task #878) ──────────────────────────────────────────
+// Thresholds: DSCR ≥1.30 = green, ≥1.20 = amber, <1.20 = red (lender underwriting standards).
+// Includes DSCR by year (min highlighted), LTV trend through hold, exit-cap stress scenarios.
+function LenderDscrPanel({ ret, proj }: {
+  ret: any; proj: any[];
+}) {
+  const dscrY1   = ret?.debtMetrics?.coverage?.dscrY1 ?? ret?.minDscr ?? null;
+  const dscrMin  = ret?.debtMetrics?.coverage?.dscrMin?.value ?? ret?.minDscr ?? null;
+  const dscrMinYr = ret?.debtMetrics?.coverage?.dscrMin?.year ?? ret?.minDscrYear ?? null;
+  const dscrAvg  = ret?.debtMetrics?.coverage?.dscrAvg ?? ret?.avgDscr ?? null;
+  const ltvClose = ret?.debtMetrics?.structural?.ltvAtClose ?? null;
+  const ltvMat   = ret?.debtMetrics?.structural?.ltvAtMaturity ?? ret?.maturityLtv ?? null;
+  const ltvStab  = ret?.debtMetrics?.structural?.ltvAtStab ?? null;
+
+  // Correct lender thresholds: ≥1.30 = green, ≥1.20 = amber (warning), <1.20 = red (breach)
+  const dscrColor = (v: number | null) => {
+    if (v == null) return BT.text.muted;
+    if (v >= 1.30) return BT.text.green;
+    if (v >= 1.20) return BT.text.amber;
+    return BT.text.red;
+  };
+  const dscrStatus = (v: number) => {
+    if (v >= 1.30) return <span style={{ color: BT.text.green, fontSize: 8 }}>✓ OK</span>;
+    if (v >= 1.20) return <span style={{ color: BT.text.amber, fontSize: 8 }}>⚠ THIN</span>;
+    return <span style={{ color: BT.text.red, fontSize: 8 }}>✗ BREACH</span>;
+  };
+
+  // Year-by-year DSCR from projections
+  const yearlyDscr = proj.slice(0, 10).map(r => ({ yr: r.year as number, dscr: r.dscr as number | null, ltv: r.ltv as number | null })).filter(r => r.dscr != null);
+  // LTV trend from projections (may be sparse)
+  const ltvTrend = proj.slice(0, 10).map(r => ({ yr: r.year as number, ltv: r.ltv as number | null })).filter(r => r.ltv != null);
+  const hasDscr = yearlyDscr.length > 0;
+  const hasLtv  = ltvTrend.length > 0;
+
+  // Exit-cap stress scenarios
+  // Use last projection year NOI; test base, +25, +50, +100 bps cap rate expansion
+  const lastProj = proj.length > 0 ? proj[proj.length - 1] : null;
+  const exitNoi = lastProj?.noi ?? ret?.noiYear1 ?? null;
+  const baseExitCap = ret?.capitalStructureOptimization?.exit_cap_rate ?? ret?.exitCapRate ?? null;
+  const loanBalance = ret?.debtMetrics?.structural?.remainingBalance ?? null;
+
+  const exitStressRows = baseExitCap != null && exitNoi != null ? (
+    [0, 25, 50, 100].map(bps => {
+      const capRate = baseExitCap + bps / 10000;
+      const saleVal = exitNoi / capRate;
+      const stressedLtv = loanBalance != null ? loanBalance / saleVal : null;
+      return { bps, capRate, saleVal, stressedLtv };
+    })
+  ) : [];
+
+  const TH = ({ children, align }: { children: React.ReactNode; align?: 'left' | 'right' }) => (
+    <th style={{ padding: '2px 8px', textAlign: align ?? 'right', color: BT.text.muted, fontWeight: 600, borderBottom: `1px solid ${BT.border.subtle}`, fontSize: 8, fontFamily: MONO }}>
+      {children}
+    </th>
+  );
+  const TD = ({ children, color, bold, align }: { children: React.ReactNode; color?: string; bold?: boolean; align?: 'left' | 'right' }) => (
+    <td style={{ padding: '2px 8px', textAlign: align ?? 'right', color: color ?? BT.text.primary, fontWeight: bold ? 700 : 400, fontFamily: MONO, fontSize: 9, borderBottom: `1px solid ${BT.border.subtle}20` }}>
+      {children}
+    </td>
+  );
+
+  return (
+    <div style={{ margin: '0', borderBottom: `1px solid ${BT.border.subtle}` }}>
+      {/* Hero bar */}
+      <div style={{
+        padding: '6px 14px',
+        background: `${BT.text.orange}12`,
+        borderBottom: `1px solid ${BT.text.orange}40`,
+        borderLeft: `3px solid ${BT.text.orange}`,
+        display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
+      }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.8 }}>
+          LENDER VIEW
+        </span>
+        {[
+          { label: 'DSCR Y1',     value: fmtDscr(dscrY1),  color: dscrColor(dscrY1) },
+          { label: `DSCR MIN${dscrMinYr ? ` (Yr${dscrMinYr})` : ''}`, value: fmtDscr(dscrMin), color: dscrColor(dscrMin) },
+          { label: 'DSCR AVG',    value: fmtDscr(dscrAvg),  color: dscrColor(dscrAvg) },
+          { label: 'LTV CLOSE',   value: ltvClose != null ? `${(ltvClose * 100).toFixed(1)}%` : '—',
+            color: ltvClose != null && ltvClose > 0.80 ? BT.text.amber : BT.text.primary },
+          { label: 'LTV MATURITY', value: ltvMat != null ? `${(ltvMat * 100).toFixed(1)}%` : '—',
+            color: ltvMat != null && ltvMat > 0.75 ? BT.text.amber : BT.text.primary },
+        ].map(({ label, value, color }) => (
+          <div key={label}>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{label} </span>
+            <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color }}>{value}</span>
+          </div>
+        ))}
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginLeft: 'auto' }}>
+          Lender view — edit access restricted · thresholds: ≥1.30 OK · ≥1.20 thin · &lt;1.20 breach
+        </span>
       </div>
 
-      {/* Exit Cap Stress */}
-      {ret?.capitalStructureOptimization && (
-        <div style={{ padding: '4px 10px', borderTop: `1px solid ${BT.border.subtle}` }}>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-            Exit Cap Stress — LTV optimized to{' '}
-            {ret.capitalStructureOptimization.optimal_ltv != null
-              ? `${(ret.capitalStructureOptimization.optimal_ltv * 100).toFixed(1)}%`
-              : '—'}
-            {' '}· confidence: {ret.capitalStructureOptimization.confidence ?? '—'}
-          </span>
-        </div>
-      )}
+      {/* Three-column grid: DSCR by year | LTV trend | Exit-cap stress */}
+      <div style={{ display: 'grid', gridTemplateColumns: [hasDscr, hasLtv || ltvClose != null, exitStressRows.length > 0].filter(Boolean).length > 1 ? '1fr 1fr 1fr' : '1fr', gap: 0 }}>
+
+        {/* DSCR by year */}
+        {hasDscr && (
+          <div>
+            <div style={{ padding: '3px 10px 2px', background: `${BT.text.orange}08`, borderBottom: `1px solid ${BT.border.subtle}`, borderRight: `1px solid ${BT.border.subtle}` }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>DSCR BY YEAR</span>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr style={{ background: BT.bg.header }}><TH>Yr</TH><TH>DSCR</TH><TH>Status</TH></tr></thead>
+              <tbody>
+                {yearlyDscr.map(({ yr, dscr }) => {
+                  const isMin = yr === dscrMinYr;
+                  return (
+                    <tr key={yr} style={{ background: isMin ? `${BT.text.amber}08` : undefined }}>
+                      <TD color={BT.text.secondary}>{yr}</TD>
+                      <TD color={dscrColor(dscr)} bold={isMin}>{fmtDscr(dscr)}</TD>
+                      <TD>{dscrStatus(dscr!)}</TD>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* LTV trend through hold */}
+        {(hasLtv || ltvClose != null) && (
+          <div>
+            <div style={{ padding: '3px 10px 2px', background: `${BT.text.orange}08`, borderBottom: `1px solid ${BT.border.subtle}`, borderRight: `1px solid ${BT.border.subtle}` }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>LTV TREND THROUGH HOLD</span>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr style={{ background: BT.bg.header }}><TH>Period</TH><TH>LTV</TH><TH>Status</TH></tr></thead>
+              <tbody>
+                {ltvClose != null && (
+                  <tr>
+                    <TD color={BT.text.secondary} align="right">Close</TD>
+                    <TD color={ltvClose > 0.80 ? BT.text.amber : BT.text.primary} bold>{`${(ltvClose * 100).toFixed(1)}%`}</TD>
+                    <TD>{ltvClose > 0.80 ? <span style={{ color: BT.text.amber, fontSize: 8 }}>⚠ HIGH</span> : <span style={{ color: BT.text.green, fontSize: 8 }}>✓ OK</span>}</TD>
+                  </tr>
+                )}
+                {ltvStab != null && (
+                  <tr>
+                    <TD color={BT.text.secondary} align="right">Stab.</TD>
+                    <TD color={ltvStab > 0.75 ? BT.text.amber : BT.text.primary}>{`${(ltvStab * 100).toFixed(1)}%`}</TD>
+                    <TD>{ltvStab > 0.75 ? <span style={{ color: BT.text.amber, fontSize: 8 }}>⚠</span> : <span style={{ color: BT.text.green, fontSize: 8 }}>✓</span>}</TD>
+                  </tr>
+                )}
+                {ltvTrend.map(({ yr, ltv }) => (
+                  <tr key={yr}>
+                    <TD color={BT.text.secondary} align="right">Yr {yr}</TD>
+                    <TD color={ltv! > 0.75 ? BT.text.amber : BT.text.primary}>{`${(ltv! * 100).toFixed(1)}%`}</TD>
+                    <TD>{ltv! > 0.80 ? <span style={{ color: BT.text.red, fontSize: 8 }}>✗ HIGH</span>
+                        : ltv! > 0.75 ? <span style={{ color: BT.text.amber, fontSize: 8 }}>⚠</span>
+                        : <span style={{ color: BT.text.green, fontSize: 8 }}>✓</span>}</TD>
+                  </tr>
+                ))}
+                {ltvMat != null && (
+                  <tr style={{ background: `${BT.text.orange}06` }}>
+                    <TD color={BT.text.secondary} align="right">Maturity</TD>
+                    <TD color={ltvMat > 0.75 ? BT.text.amber : BT.text.primary} bold>{`${(ltvMat * 100).toFixed(1)}%`}</TD>
+                    <TD>{ltvMat > 0.75 ? <span style={{ color: BT.text.amber, fontSize: 8 }}>⚠ HIGH</span> : <span style={{ color: BT.text.green, fontSize: 8 }}>✓ OK</span>}</TD>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Exit-cap stress scenarios */}
+        {exitStressRows.length > 0 && (
+          <div>
+            <div style={{ padding: '3px 10px 2px', background: `${BT.text.orange}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>EXIT-CAP STRESS SCENARIOS</span>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr style={{ background: BT.bg.header }}><TH>Shift</TH><TH>Cap</TH><TH>Sale Val</TH><TH>Stress LTV</TH></tr></thead>
+              <tbody>
+                {exitStressRows.map(({ bps, capRate, saleVal, stressedLtv }) => (
+                  <tr key={bps} style={{ background: bps === 0 ? `${BT.text.cyan}06` : undefined }}>
+                    <TD color={bps === 0 ? BT.text.cyan : BT.text.secondary}>{bps === 0 ? 'Base' : `+${bps}bps`}</TD>
+                    <TD>{`${(capRate * 100).toFixed(2)}%`}</TD>
+                    <TD color={BT.text.primary}>{`$${(saleVal / 1e6).toFixed(2)}M`}</TD>
+                    <TD color={stressedLtv != null && stressedLtv > 0.80 ? BT.text.red : stressedLtv != null && stressedLtv > 0.75 ? BT.text.amber : BT.text.green} bold>
+                      {stressedLtv != null ? `${(stressedLtv * 100).toFixed(1)}%` : '—'}
+                    </TD>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {baseExitCap != null && (
+              <div style={{ padding: '3px 10px', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                Base exit cap: {(baseExitCap * 100).toFixed(2)}% · Exit NOI: {exitNoi != null ? fmt$(exitNoi) : '—'}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Coverage thresholds summary (always shown) */}
+        {exitStressRows.length === 0 && (
+          <div>
+            <div style={{ padding: '3px 10px 2px', background: `${BT.text.orange}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>COVERAGE THRESHOLDS</span>
+            </div>
+            <div style={{ padding: '4px 10px' }}>
+              {([
+                { label: 'DSCR Y1 (thr: 1.25)',          value: dscrY1,  threshold: 1.25, reverse: false, isPct: false },
+                { label: 'DSCR Min (thr: 1.20)',          value: dscrMin, threshold: 1.20, reverse: false, isPct: false },
+                { label: 'DSCR Avg (thr: 1.30)',          value: dscrAvg, threshold: 1.30, reverse: false, isPct: false },
+                { label: 'LTV at Close (max 80%)',        value: ltvClose, threshold: 0.80, reverse: true,  isPct: true },
+                { label: 'LTV at Maturity (max 75%)',     value: ltvMat,  threshold: 0.75, reverse: true,  isPct: true },
+              ] as const).map(({ label, value, threshold, reverse, isPct }) => {
+                const pass = value != null ? (reverse ? value <= threshold : value >= threshold) : null;
+                const display = value == null ? '—' : isPct ? `${(value * 100).toFixed(1)}%` : fmtDscr(value);
+                return (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0', borderBottom: `1px solid ${BT.border.subtle}20` }}>
+                    <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>{label}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: pass == null ? BT.text.muted : pass ? BT.text.green : BT.text.red }}>
+                      {display} {pass != null && (pass ? '✓' : '✗')}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }
@@ -516,15 +688,15 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
         </span>
       </div>
 
-      {/* ── LP View Banner ──────────────────────────────────────────────── */}
+      {/* ── LP Focus Panel ──────────────────────────────────────────────── */}
       {platformRole === 'lp' && (
-        <LpViewBanner
+        <LpFocusPanel
           lpIrr={ret?.lpIrr ?? capData?.metrics?.lpIrr ?? null}
           lpEm={ret?.lpEm ?? null}
           prefRate={prefRate}
-          prefAchieved={lpTranches.length > 0
-            ? lpTranches.every(t => t.prefAchieved)
-            : false}
+          capData={capData}
+          ret={ret}
+          proj={Array.isArray(proj) ? proj : []}
         />
       )}
 

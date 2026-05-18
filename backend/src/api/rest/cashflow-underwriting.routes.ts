@@ -107,9 +107,17 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
        ORDER BY dp.created_at ASC LIMIT 1`,
       [deal_id]
     );
+    // Fetch requesting user's platform_role to tailor the role_framing prompt section.
+    const userRoleRes = await query(
+      `SELECT platform_role FROM users WHERE id = $1 LIMIT 1`,
+      [req.user!.userId]
+    );
+    const requestingUserRole = (userRoleRes.rows[0]?.platform_role as string | undefined) ?? 'sponsor';
+
     const systemPromptOverride = await buildCompositePrompt(
       (dealRow.rows[0] as Record<string, unknown>) ?? {},
-      deal_id
+      deal_id,
+      requestingUserRole
     );
 
     const ctx: RunContext = {

@@ -348,12 +348,19 @@ export function getAllowedTriggerModes(tier: string): string[] {
  * ambiguity when multiple prompt_types are active simultaneously.
  * Returns the concatenated text — or the core-only text if no variant is found.
  *
+ * @param platformRole  Optional requesting user's role ('sponsor' | 'lp' | 'lender').
+ *                      When provided, a role-context block is appended so the agent
+ *                      can tailor the role_framing output fields (Task #878).
+ *                      The agent always generates all three role_framing variants;
+ *                      the platform_role tells it which to emphasise.
+ *
  * Used by both cashflow.inngest.ts (event-driven runs) and
  * cashflow-underwriting.routes.ts (manual REST-triggered runs).
  */
 export async function buildCompositePrompt(
   dealRow: Record<string, unknown>,
-  dealId?: string
+  dealId?: string,
+  platformRole?: string
 ): Promise<string> {
   // Augment dealRow with deal_category, year_built, and investment_thesis when not
   // already present.  Both call sites (inngest + REST route) may only pass a subset
@@ -436,7 +443,31 @@ Include the full optimize_capital_structure output in your response nested as:
     ? `${corePrompt}\n\n## Deal-Type Addendum (${dealType})\n${variantPrompt}`
     : corePrompt;
 
-  return `${combined}${capitalStructureInstruction}`;
+  // ── Role-Aware Summary Instruction (Task #878) ──────────────────────────────
+  // Always generate all three role_framing variants.  The requesting user's role
+  // is provided so the agent can de-emphasise sponsor GP metrics for LP/lender
+  // users and lead with the most relevant signals for each audience.
+  const effectiveRole = platformRole ?? 'sponsor';
+  const roleEmphasisHint: Record<string, string> = {
+    sponsor: 'emphasis on IRR, equity multiple, promote, and capital structure efficiency',
+    lp: 'emphasis on preferred return coverage, LP IRR, LP equity multiple, and distribution schedule by year',
+    lender: 'emphasis on DSCR coverage (Y1, min, avg), LTV at close and maturity, break-even occupancy, and exit-cap stress',
+  };
+  const emphasis = roleEmphasisHint[effectiveRole] ?? roleEmphasisHint['sponsor'];
+
+  const roleFramingInstruction = `
+
+## Role-Aware Summary (Required — Task #878)
+
+You MUST populate the \`role_framing\` output field with all three sub-fields:
+- \`role_framing.sponsor\`: 1-2 sentence GP/sponsor synthesis — focus on levered IRR, equity multiple, and capital structure efficiency.
+- \`role_framing.lp\`:      1-2 sentence LP synthesis — focus on preferred return coverage (is the pref fully paid?), LP IRR, LP equity multiple, and cumulative LP distributions.
+- \`role_framing.lender\`:  1-2 sentence lender synthesis — focus on min DSCR, Y1 DSCR, LTV at close, and whether coverage holds under a +100bps cap rate stress.
+
+The requesting user's platform role is **${effectiveRole}** — give ${emphasis} in your executive summary as well, but always generate all three role_framing variants regardless.
+`;
+
+  return `${combined}${capitalStructureInstruction}${roleFramingInstruction}`;
 }
 
 // ── Agent config ──────────────────────────────────────────────────
