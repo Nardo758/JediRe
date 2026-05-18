@@ -57,6 +57,7 @@ import { fetchDataLibraryCompsTool } from './tools/fetch_data_library_comps';
 import { fetchTaxIntelTool } from './tools/fetch_tax_intel';
 import { evaluatePlausibilityTool } from './tools/evaluate_plausibility';
 import { goalSeekTargetIrrTool } from './tools/goal_seek_target_irr';
+import { optimizeCapitalStructureTool } from './tools/optimize_capital_structure';
 import { fetchAnchorGrowthRatesTool } from './tools/fetch_anchor_growth_rates';
 import { fetchCountyTaxRulesTool } from './tools/fetch_county_tax_rules';
 import { fetchOperatorStanceTool } from './tools/fetch_operator_stance';
@@ -179,6 +180,24 @@ export const CashflowOutputSchema = z.object({
   }),
   summary: z.string().describe('3-5 sentence synthesis of key findings'),
   completed_at: z.string(),
+  // ── Capital Structure Optimization result (from optimize_capital_structure tool) ──
+  capital_structure_optimization: z.object({
+    primary_metric: z.enum(['irr', 'cash_on_cash', 'stabilized_value', 'profit_at_exit']),
+    optimal_ltv: z.number().nullable(),
+    optimal_debt_amount: z.number().nullable(),
+    optimal_rate: z.number(),
+    resulting_dscr_min: z.number().nullable(),
+    resulting_breakeven_occ: z.number().nullable(),
+    primary_metric_value: z.number().nullable(),
+    evidence_narrative: z.string(),
+    constraints_binding: z.array(z.string()),
+    confidence: z.enum(['high', 'medium', 'low']),
+    infeasible: z.boolean(),
+    infeasibility_reason: z.string().nullable(),
+    equity_at_optimal: z.number().nullable(),
+    gp_equity: z.number().nullable(),
+    lp_equity: z.number().nullable(),
+  }).optional().describe('LTV optimization result from optimize_capital_structure tool'),
   // ── Optional run metadata (inngest handler + backward compat) ──
   investment_rating: z.enum(['strong', 'adequate', 'marginal', 'weak']).nullable().optional(),
   has_t12_data: z.boolean().optional(),
@@ -376,8 +395,8 @@ export async function buildCompositePrompt(
 
 export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   agentId: 'cashflow',
-  agentVersion: '3.3.0',
-  promptVersion: 'cashflow-v8.0-core',
+  agentVersion: '3.4.0',
+  promptVersion: 'cashflow-v8.1-capital-structure',
   postProcess: cashflowPostProcess,
   tools: [
     // Tier 1: Deal documents
@@ -421,6 +440,8 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     // M36 Sigma (plausibility + goal-seeking)
     evaluatePlausibilityTool,
     goalSeekTargetIrrTool,
+    // Capital Structure Optimization — call after compute_proforma
+    optimizeCapitalStructureTool,
     // M36 Proforma Anchor Growth Rates (line-item macro anchoring)
     fetchAnchorGrowthRatesTool,
     fetchCountyTaxRulesTool,

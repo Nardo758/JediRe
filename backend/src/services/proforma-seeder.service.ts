@@ -1495,16 +1495,108 @@ export async function seedProFormaYear1(
 
 
 /**
- * Ensure deal_assumptions.year1 is seeded for a deal with extraction data.
- * Idempotent: if the row already exists with a non-null year1, skips re-seeding
- * unless forceReseed=true. Callers use this as a safety net so getDealFinancials
- * never returns null data for a deal that has extraction capsules.
+ * Seed sensible capital structure defaults for a deal.
+ *
+ * Writes ten platform-layer fields into deal_assumptions.year1 under the
+ * `_capital_structure_defaults` key (does NOT overwrite operator overrides).
+ * Fetches the current DGS10 rate from FRED and adds 200 bps CRE spread to
+ * derive debt_rate; falls back to 6.5% if FRED is unavailable.
+ *
+ * Safe to call on any deal regardless of extraction capsule availability.
+ * Idempotent — repeating the call only refreshes the platform rate.
  */
+export async function seedCapitalStructureDefaults(
+  pool: Pool,
+  dealId: string,
+): Promise<{ seeded: boolean; debt_rate: number; warnings: string[] }> {
+  const warnings: string[] = [];
+  const CRE_SPREAD_BPS = 200;
+  const FALLBACK_DEBT_RATE = 0.065;
+  const DEFAULT_AMORTIZATION = 30;
+  const DEFAULT_LOAN_TERM = 5;
+
+  let debtRate = FALLBACK_DEBT_RATE;
+
+  try {
+    const { FREDApiClient } = await import('../utils/fred-api.client');
+    const fred = new FREDApiClient();
+    const dgs10 = await fred.getLatest('DGS10');
+    if (dgs10 && dgs10.value !== '.' && dgs10.value !== '') {
+      const tenYear = parseFloat(dgs10.value);
+      if (!isNaN(tenYear) && tenYear > 0) {
+        debtRate = Math.round((tenYear / 100 + CRE_SPREAD_BPS / 10000) * 10000) / 10000;
+      }
+    }
+  } catch (err) {
+    warnings.push(`FRED unavailable — using fallback debt_rate ${FALLBACK_DEBT_RATE}`);
+    logger.warn('[seedCapitalStructureDefaults] FRED fetch failed, using fallback', {
+      dealId, error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  const defaults = {
+    _capital_structure_defaults: {
+      ltv_pct:                  0.75,
+      gp_equity_pct:            0.10,
+      lp_equity_pct:            0.90,
+      preferred_return_pct:     0.08,
+      gp_promote_threshold_pct: 0.08,
+      gp_promote_pct:           0.20,
+      gp_catchup_pct:           0.50,
+      amortization_years:       DEFAULT_AMORTIZATION,
+      io_period_months:         0,
+      loan_term_years:          DEFAULT_LOAN_TERM,
+      debt_rate:                debtRate,
+      seeded_at:                new Date().toISOString(),
+      resolution:               'platform',
+    },
+  };
+
+  try {
+    const result = await pool.query(
+      `UPDATE deal_assumptions
+          SET year1      = COALESCE(year1, '{}') || $2::jsonb,
+              updated_at = NOW()
+        WHERE deal_id = $1`,
+      [dealId, JSON.stringify(defaults)]
+    );
+
+    if ((result.rowCount ?? 0) === 0) {
+      await pool.query(
+        `INSERT INTO deal_assumptions (deal_id, year1, source_type, source_date, created_at, updated_at)
+         VALUES ($1, $2::jsonb, 'platform_seeded', NOW(), NOW(), NOW())
+         ON CONFLICT (deal_id) DO UPDATE
+           SET year1      = COALESCE(deal_assumptions.year1, '{}') || $2::jsonb,
+               updated_at = NOW()`,
+        [dealId, JSON.stringify(defaults)]
+      );
+    }
+
+    logger.info('[seedCapitalStructureDefaults] Capital structure defaults seeded', {
+      dealId, debtRate, ltv: 0.75,
+    });
+
+    return { seeded: true, debt_rate: debtRate, warnings };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    logger.error('[seedCapitalStructureDefaults] Failed to write defaults', { dealId, error: msg });
+    return { seeded: false, debt_rate: debtRate, warnings: [...warnings, `Write failed: ${msg}`] };
+  }
+}
+
 export async function ensureDealAssumptionsSeeded(
   pool: Pool,
   dealId: string,
   opts: { forceReseed?: boolean } = {}
 ): Promise<{ seeded: boolean; skipped: boolean; reason?: string }> {
+  // Capital structure defaults are seeded unconditionally — no extraction required.
+  // Fire-and-forget: non-critical, idempotent. Only refreshes rate if FRED is available.
+  seedCapitalStructureDefaults(pool, dealId).catch(err =>
+    logger.warn('[ensureDealAssumptionsSeeded] seedCapitalStructureDefaults failed', {
+      dealId, error: err instanceof Error ? err.message : String(err),
+    })
+  );
+
   // Check for existing seed
   const existing = await pool.query(
     `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,

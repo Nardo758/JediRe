@@ -989,6 +989,190 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
         </div>
       )}
 
+      {/* § 10 — Capital Structure */}
+      {(() => {
+        const csd  = f9Financials?.capitalStructureDefaults;
+        const cso  = f9Financials?.capitalStructureOptimization;
+        const confidenceColor = (c: string) =>
+          c === 'high' ? BT.text.green : c === 'medium' ? BT.text.amber : BT.text.red;
+        const metricLabel = (m: string) =>
+          m === 'irr' ? 'IRR' : m === 'cash_on_cash' ? 'Cash-on-Cash' : m === 'stabilized_value' ? 'Stabilized Value' : 'Profit at Exit';
+        return (
+          <div style={{ margin: '8px 12px 0', border: `1px solid ${BT.text.cyan}30`, borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ padding: '5px 12px', background: `${BT.text.cyan}12`, borderBottom: `1px solid ${BT.text.cyan}30` }}>
+              <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan, letterSpacing: 0.8 }}>
+                § 10  CAPITAL STRUCTURE
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: cso ? '1fr 1fr 1fr' : '1fr 1fr', gap: 0 }}>
+
+              {/* ── Platform Defaults ── */}
+              <div style={{ borderRight: `1px solid ${BT.border.subtle}` }}>
+                <div style={{ padding: '3px 10px 2px', background: `${BT.text.muted}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.muted, letterSpacing: 0.5 }}>PLATFORM DEFAULTS</span>
+                </div>
+                {csd ? (
+                  <>
+                    <KvRow label="Debt Rate"            value={`${(csd.debt_rate * 100).toFixed(2)}%`} sub="DGS10 + 200bps" bold />
+                    <KvRow label="Default LTV"          value={`${(csd.ltv_pct * 100).toFixed(0)}%`} />
+                    <KvRow label="Amortization"         value={`${csd.amortization_years}yr`} />
+                    <KvRow label="IO Period"            value={csd.io_period_months > 0 ? `${csd.io_period_months}mo` : 'None'} />
+                    <KvRow label="Loan Term"            value={`${csd.loan_term_years}yr`} />
+                    <KvRow label="Pref Return"          value={`${(csd.preferred_return_pct * 100).toFixed(0)}%`} />
+                    <KvRow label="GP Promote"           value={`${(csd.gp_promote_pct * 100).toFixed(0)}%`} sub={`above ${(csd.gp_promote_threshold_pct * 100).toFixed(0)}%`} />
+                    <KvRow label="GP / LP Split"        value={`${(csd.gp_equity_pct * 100).toFixed(0)} / ${(csd.lp_equity_pct * 100).toFixed(0)}`} />
+                    <div style={{ padding: '2px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+                        Seeded {new Date(csd.seeded_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ padding: '10px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+                    Defaults not yet seeded for this deal.
+                  </div>
+                )}
+              </div>
+
+              {/* ── Agent Recommendation ── (only when optimization exists) */}
+              {cso && (
+                <div style={{ borderRight: `1px solid ${BT.border.subtle}` }}>
+                  <div style={{ padding: '3px 10px 2px', background: `${BT.text.cyan}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+                    <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.cyan, letterSpacing: 0.5 }}>AGENT RECOMMENDATION</span>
+                  </div>
+                  {cso.infeasible ? (
+                    <div style={{ padding: '10px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.red }}>
+                      ⚠ Infeasible: {cso.infeasibility_reason ?? 'Constraints cannot be satisfied'}
+                    </div>
+                  ) : (
+                    <>
+                      <KvRow label="Optimal LTV"
+                        value={cso.optimal_ltv != null ? `${((cso.optimal_ltv as number) * 100).toFixed(1)}%` : '—'}
+                        bold color={BT.text.cyan}
+                      />
+                      <KvRow label="Optimal Debt"
+                        value={cso.optimal_debt_amount != null ? `$${Math.round(cso.optimal_debt_amount as number).toLocaleString()}` : '—'}
+                      />
+                      <KvRow label="Rate"
+                        value={`${((cso.optimal_rate as number) * 100).toFixed(2)}%`}
+                      />
+                      <KvRow label={metricLabel(cso.primary_metric as string)}
+                        value={(() => {
+                          const v = cso.primary_metric_value as number | null;
+                          if (v == null) return '—';
+                          if (cso.primary_metric === 'irr' || cso.primary_metric === 'cash_on_cash') return `${(v * 100).toFixed(2)}%`;
+                          return `$${Math.round(v).toLocaleString()}`;
+                        })()}
+                        bold color={BT.text.green}
+                      />
+                      <KvRow label="Min DSCR"
+                        value={cso.resulting_dscr_min != null ? `${(cso.resulting_dscr_min as number).toFixed(2)}×` : '—'}
+                        color={(cso.resulting_dscr_min as number) < 1.20 ? BT.text.red : undefined}
+                      />
+                      <KvRow label="Breakeven Occ"
+                        value={cso.resulting_breakeven_occ != null ? `${((cso.resulting_breakeven_occ as number) * 100).toFixed(1)}%` : '—'}
+                      />
+                      <KvRow label="Equity Required"
+                        value={cso.equity_at_optimal != null ? `$${Math.round(cso.equity_at_optimal as number).toLocaleString()}` : '—'}
+                      />
+                      <KvRow label="  GP Equity"
+                        value={cso.gp_equity != null ? `$${Math.round(cso.gp_equity as number).toLocaleString()}` : '—'}
+                        indent
+                      />
+                      <KvRow label="  LP Equity"
+                        value={cso.lp_equity != null ? `$${Math.round(cso.lp_equity as number).toLocaleString()}` : '—'}
+                        indent
+                      />
+                      <div style={{ padding: '3px 10px', borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontFamily: MONO, fontSize: 7, color: confidenceColor(cso.confidence as string) }}>
+                          {(cso.confidence as string).toUpperCase()} CONFIDENCE
+                        </span>
+                        {(cso.constraints_binding as string[]).length > 0 && (
+                          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.amber }}>
+                            ⚠ {(cso.constraints_binding as string[]).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                      {cso.evidence_narrative && (
+                        <div style={{ padding: '6px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, lineHeight: 1.5 }}>
+                            {cso.evidence_narrative as string}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── Your Structure ── */}
+              <div>
+                <div style={{ padding: '3px 10px 2px', background: `${BT.text.amber}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.amber, letterSpacing: 0.5 }}>YOUR STRUCTURE</span>
+                </div>
+                {f9Financials?.capitalStack ? (
+                  <>
+                    <KvRow label="Purchase Price"
+                      value={f9Financials.capitalStack.purchasePrice != null ? `$${Math.round(f9Financials.capitalStack.purchasePrice).toLocaleString()}` : '—'}
+                      bold
+                    />
+                    <KvRow label="Loan Amount"
+                      value={f9Financials.capitalStack.loanAmount != null ? `$${Math.round(f9Financials.capitalStack.loanAmount).toLocaleString()}` : '—'}
+                      bold
+                    />
+                    <KvRow label="LTC"
+                      value={f9Financials.capitalStack.ltcPct != null ? `${((f9Financials.capitalStack.ltcPct) * 100).toFixed(1)}%` : '—'}
+                    />
+                    <KvRow label="Equity at Close"
+                      value={f9Financials.capitalStack.equityAtClose != null ? `$${Math.round(f9Financials.capitalStack.equityAtClose).toLocaleString()}` : '—'}
+                    />
+                    <KvRow label="Interest Rate"
+                      value={f9Financials.capitalStack.interestRate != null ? `${((f9Financials.capitalStack.interestRate) * 100).toFixed(2)}%` : '—'}
+                    />
+                    <div style={{ padding: '2px 10px 4px', borderBottom: `1px solid ${BT.border.subtle}`, textAlign: 'right' }}>
+                      <span
+                        style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, cursor: 'pointer', letterSpacing: 0.3 }}
+                        onClick={() => onTabChange?.(5)}
+                      >
+                        Edit in DEBT ADVISOR →
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ padding: '10px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+                    No capital stack configured.{' '}
+                    <span style={{ color: BT.text.cyan, cursor: 'pointer' }} onClick={() => onTabChange?.(5)}>
+                      Configure in Debt Advisor →
+                    </span>
+                  </div>
+                )}
+                {cso && !cso.infeasible && cso.optimal_ltv != null && (
+                  <div style={{ padding: '6px 10px', background: `${BT.text.cyan}08`, borderTop: `1px solid ${BT.border.subtle}` }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 4 }}>
+                      Agent recommends {((cso.optimal_ltv as number) * 100).toFixed(1)}% LTV to maximize {metricLabel(cso.primary_metric as string)}.
+                    </div>
+                    <button
+                      onClick={() => onTabChange?.(5)}
+                      style={{
+                        width: '100%', padding: '5px 8px',
+                        background: `${BT.text.cyan}18`,
+                        border: `1px solid ${BT.text.cyan}`,
+                        color: BT.text.cyan,
+                        fontFamily: MONO, fontSize: 9, fontWeight: 600,
+                        cursor: 'pointer', borderRadius: 3,
+                      }}
+                    >
+                      Apply in Debt Advisor →
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Source footnote */}
       <div style={{ padding: '8px 12px 0', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
         All metrics sourced from backend projection engine (GET /financials?hold=N).

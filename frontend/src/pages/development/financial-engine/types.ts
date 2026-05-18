@@ -448,6 +448,48 @@ export interface F9DealFinancials {
       totalGpFees: number;
     };
   } | null;
+  /**
+   * Platform capital structure defaults — seeded at deal creation.
+   * Populated from deal_assumptions.year1._capital_structure_defaults.
+   * Present for every deal immediately after creation (no extraction required).
+   */
+  capitalStructureDefaults?: {
+    ltv_pct: number;
+    gp_equity_pct: number;
+    lp_equity_pct: number;
+    preferred_return_pct: number;
+    gp_promote_threshold_pct: number;
+    gp_promote_pct: number;
+    gp_catchup_pct: number;
+    amortization_years: number;
+    io_period_months: number;
+    loan_term_years: number;
+    debt_rate: number;
+    seeded_at: string;
+    resolution: 'platform';
+  } | null;
+  /**
+   * Capital structure optimization result from the Cashflow Agent.
+   * Populated after an agent run that called optimize_capital_structure.
+   * Null until the first agent run completes.
+   */
+  capitalStructureOptimization?: {
+    primary_metric: 'irr' | 'cash_on_cash' | 'stabilized_value' | 'profit_at_exit';
+    optimal_ltv: number | null;
+    optimal_debt_amount: number | null;
+    optimal_rate: number;
+    resulting_dscr_min: number | null;
+    resulting_breakeven_occ: number | null;
+    primary_metric_value: number | null;
+    evidence_narrative: string;
+    constraints_binding: string[];
+    confidence: 'high' | 'medium' | 'low';
+    infeasible: boolean;
+    infeasibility_reason: string | null;
+    equity_at_optimal: number | null;
+    gp_equity: number | null;
+    lp_equity: number | null;
+  } | null;
   /** Subject property traffic history — M07 §6.  Null until first rent roll uploaded for this deal. */
   subjectHistory?: F9SubjectHistory | null;
   /** Lease Velocity Engine output — null until backend LV engine ships (M07 prereq). */

@@ -4417,6 +4417,40 @@ export async function getDealFinancials(
     return rows;
   })();
 
+  // ── Capital Structure: defaults (from year1Seed) + optimization (from latest agent run) ──
+  const capitalStructureDefaults = (() => {
+    const raw = (year1Seed as Record<string, unknown>)._capital_structure_defaults;
+    if (!raw || typeof raw !== 'object') return null;
+    return raw as {
+      ltv_pct: number; gp_equity_pct: number; lp_equity_pct: number;
+      preferred_return_pct: number; gp_promote_threshold_pct: number; gp_promote_pct: number;
+      gp_catchup_pct: number; amortization_years: number; io_period_months: number;
+      loan_term_years: number; debt_rate: number; seeded_at: string; resolution: 'platform';
+    };
+  })();
+
+  let capitalStructureOptimization: Record<string, unknown> | null = null;
+  try {
+    const agentRunRes = await pool.query<{ output: Record<string, unknown> }>(
+      `SELECT output
+         FROM agent_runs
+        WHERE deal_id = $1
+          AND agent_type = 'cashflow'
+          AND (output->>'capital_structure_optimization') IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [dealId]
+    );
+    if (agentRunRes.rows.length > 0) {
+      const raw = agentRunRes.rows[0].output?.capital_structure_optimization;
+      if (raw && typeof raw === 'object') {
+        capitalStructureOptimization = raw as Record<string, unknown>;
+      }
+    }
+  } catch (_err) {
+    // Non-fatal — optimization is optional
+  }
+
   // ── Valuation Snapshot (6 key metrics for the Pro Forma gateway strip) ─────
   const _vsGprRow = year1Rows.find(r => r.field === 'gpr');
   const _vsEgiRow = year1Rows.find(r => r.field === 'egi');
@@ -4846,6 +4880,8 @@ export async function getDealFinancials(
     waterfall,
     capital,
     projections,
+    capitalStructureDefaults,
+    capitalStructureOptimization,
   };
 }
 
