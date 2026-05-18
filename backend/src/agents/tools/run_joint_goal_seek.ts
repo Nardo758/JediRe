@@ -218,17 +218,20 @@ const InputSchema = z.object({
   selling_costs_pct: z.number().min(0).max(0.10).default(0.02).describe(
     'Selling costs as pct of gross sale value (default 2%).'
   ),
-  deal_id: z.string().uuid().optional().describe(
-    'Deal UUID for server-side platform role resolution (recommended). When provided, ' +
-    'the tool queries the investors table (investors.type) for the deal\'s primary user ' +
-    'to determine platform_role deterministically: lp→lp, gp/co_invest→sponsor. ' +
+  requesting_user_id: z.string().uuid().optional().describe(
+    'UUID of the user making this request (recommended). When provided, ' +
+    'the tool queries investors.type for THIS specific user to resolve platform_role ' +
+    'deterministically: lp→lp, gp/co_invest→sponsor. This is NOT the deal owner — ' +
+    'it is the authenticated user currently viewing the deal. In collaborative/multi-user ' +
+    'scenarios this prevents mis-ranking LP/lender users under the owner\'s sponsor role. ' +
     'Falls back to LLM-provided platform_role if the lookup returns null or fails. ' +
-    'Always supply deal_id when available to prevent role misclassification.'
+    'The user ID is injected into your system prompt as REQUESTING_USER_ID.'
   ),
   platform_role: z.enum(['sponsor', 'lp', 'lender']).default('sponsor').describe(
     'Requesting user role — determines sort order of the Pareto frontier. ' +
-    'Override: if deal_id is supplied, the server resolves role from the DB (investors.type) ' +
-    'and this value is used only as fallback.\n' +
+    'Authoritative fallback used when requesting_user_id is absent or the investors ' +
+    'table has no record for that user (e.g. the user has not yet set up an investor ' +
+    'profile). Always provide requesting_user_id as the primary signal.\n' +
     '  sponsor: sorted by GP primary metric (IRR, CoC, etc.) descending\n' +
     '  lp:      sorted by LP IRR descending (computed from year-by-year LP\n' +
     '           cash flows at 90% LP equity split), with LP distribution\n' +
@@ -388,28 +391,41 @@ export async function runJointGoalSeek(
   //     (other/null)   → fall back to LLM-provided platform_role
   //
   let resolvedRole: 'sponsor' | 'lp' | 'lender' = input.platform_role ?? 'sponsor';
-  if (input.deal_id) {
+  if (input.requesting_user_id) {
     try {
+      // Look up investor type for the REQUESTING USER specifically.
+      // This query uses requesting_user_id directly — NOT deals.user_id — so in
+      // collaborative scenarios an LP or lender viewing a GP-owned deal is ranked
+      // correctly for their own perspective, not misclassified as the deal owner.
       const roleRow = await query(
-        `SELECT i.type AS investor_type
-           FROM investors i
-           JOIN deals d ON d.user_id = i.user_id
-          WHERE d.id = $1
+        `SELECT type AS investor_type
+           FROM investors
+          WHERE user_id = $1
           LIMIT 1`,
-        [input.deal_id],
+        [input.requesting_user_id],
       );
       const dbType = roleRow.rows[0]?.investor_type as string | undefined;
       if (dbType === 'lp') {
         resolvedRole = 'lp';
+        logger.info('[run_joint_goal_seek] DB resolved role: lp', { requesting_user_id: input.requesting_user_id });
       } else if (dbType === 'gp' || dbType === 'co_invest') {
         resolvedRole = 'sponsor';
+        logger.info('[run_joint_goal_seek] DB resolved role: sponsor', { requesting_user_id: input.requesting_user_id, dbType });
+      } else {
+        // 'lender' is not in investors table, or no record found — use LLM-provided fallback
+        logger.info('[run_joint_goal_seek] DB role lookup: no matching investor type, using fallback', {
+          requesting_user_id: input.requesting_user_id, dbType, fallback: resolvedRole,
+        });
       }
-      // 'lender' is not represented in the investors table — keep LLM-provided role
     } catch (err) {
       logger.warn('[run_joint_goal_seek] DB role lookup failed, using prompt-provided role', {
-        err: String(err), deal_id: input.deal_id, fallback: resolvedRole,
+        err: String(err), requesting_user_id: input.requesting_user_id, fallback: resolvedRole,
       });
     }
+  } else {
+    logger.info('[run_joint_goal_seek] No requesting_user_id provided, using prompt-supplied platform_role', {
+      platform_role: resolvedRole,
+    });
   }
 
   // ── Role-aware sort ───────────────────────────────────────────────────────

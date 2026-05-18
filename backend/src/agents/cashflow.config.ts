@@ -409,7 +409,8 @@ export function getAllowedTriggerModes(tier: string): string[] {
 export async function buildCompositePrompt(
   dealRow: Record<string, unknown>,
   dealId?: string,
-  platformRole?: string
+  platformRole?: string,
+  requestingUserId?: string,
 ): Promise<string> {
   // Augment dealRow with deal_category, year_built, and investment_thesis when not
   // already present.  Both call sites (inngest + REST route) may only pass a subset
@@ -491,10 +492,11 @@ Include the full optimize_capital_structure output in your response nested as:
 
 After calling optimize_capital_structure, you MUST also call run_joint_goal_seek with the
 same noi_year1, purchase_price, hold_years, exit_cap_rate, and deal_strategy parameters.
-Always pass deal_id (the current deal UUID) so the server can resolve the user's platform
-role from the investors table deterministically. Also set platform_role to match the
-requesting user's role ('sponsor', 'lp', or 'lender') as a fallback in case the DB lookup
-returns no match (e.g. the user has no investor record yet).
+Always pass requesting_user_id (see REQUESTING_USER_ID in your Execution Context above) so
+the server can resolve the user's platform role from the investors table deterministically
+for the ACTUAL REQUESTER, not the deal owner. This prevents mis-ranking LP/lender users
+in collaborative scenarios. Also set platform_role to match the requesting user's role
+('sponsor', 'lp', or 'lender') as a fallback when the DB lookup returns no match.
 
 run_joint_goal_seek evaluates all 5 debt product bundles (HUD 221(d)(4), Agency Fixed,
 Agency Floating, Bridge, CMBS) and returns up to 3 ranked alternatives.
@@ -550,7 +552,15 @@ You MUST populate the \`role_framing\` output field with all three sub-fields:
 The requesting user's platform role is **${effectiveRole}** — give ${emphasis} in your executive summary as well, but always generate all three role_framing variants regardless.
 `;
 
-  return `${combined}${capitalStructureInstruction}${roleFramingInstruction}`;
+  // ── Requesting User Context — injected for deterministic tool calls ──────────
+  // The user ID is surfaced so the agent can pass requesting_user_id to
+  // run_joint_goal_seek for server-side role resolution without relying on
+  // LLM inference. This is the AUTHENTICATED requester, not the deal owner.
+  const userContextBlock = requestingUserId
+    ? `\n\n## Execution Context\nREQUESTING_USER_ID: ${requestingUserId}\nThis is the authenticated user ID. Pass it as requesting_user_id when calling run_joint_goal_seek.`
+    : '';
+
+  return `${combined}${capitalStructureInstruction}${roleFramingInstruction}${userContextBlock}`;
 }
 
 // ── Agent config ──────────────────────────────────────────────────
