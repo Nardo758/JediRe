@@ -14,6 +14,7 @@
 import { getPool } from '../database/connection';
 import { logger } from '../utils/logger';
 import { buildRecipientDealContext } from './recipient-context.service';
+import { decryptToken } from './encryption';
 import type { RecipientDealContext } from './recipient-context.service';
 
 export interface AgentQueryRequest {
@@ -112,10 +113,16 @@ export async function executeRecipientQuery(
 
   const connection = connectionResult.rows[0];
 
-  // 2. Extract the API key (stored as encrypted:...)
-  const rawKey = connection.api_key_encrypted.replace(/^encrypted:/, '');
-  if (!rawKey || rawKey === connection.api_key_encrypted) {
-    throw new Error('API key not properly configured. Please reconnect your API key.');
+  // 2. Decrypt the API key (AES-256-GCM via services/encryption.ts)
+  let rawKey: string;
+  try {
+    rawKey = decryptToken(connection.api_key_encrypted);
+  } catch (decryptErr: any) {
+    logger.error('Failed to decrypt recipient API key', {
+      error: decryptErr?.message,
+      connectionId: connection.connection_id,
+    });
+    throw new Error('API key decryption failed. The key may have been corrupted or the encryption key rotated. Please reconnect your API key.');
   }
 
   // 3. Build recipient context
@@ -177,7 +184,7 @@ export async function executeRecipientQuery(
   const platformMargin = costBasis * 0.3; // 30% margin
   const totalCharged = costBasis + platformMargin;
 
-  // 7. Log usage to recipient_query_log
+  // 7. Log usage to recipient_query_log (before Stripe to capture even if Stripe fails)
   try {
     await pool.query(
       `INSERT INTO recipient_query_log
@@ -191,7 +198,60 @@ export async function executeRecipientQuery(
     logger.warn('Failed to log recipient query', { error: logErr?.message, connectionId: connection.connection_id });
   }
 
-  // 8. Update connection usage counters
+  // 8. Report to Stripe metered billing (per-query platform fee, not LLM costs)
+  if (connection.stripe_customer_id && process.env.STRIPE_SECRET_KEY) {
+    try {
+      const Stripe = (await import('stripe')).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+      // Report the number of queries (unit-based metering)
+      await stripe.billing.meterEvents.create({
+        event_name: 'capsule_query_count',
+        payload: {
+          stripe_customer_id: connection.stripe_customer_id,
+          value: '1',
+        },
+      });
+
+      // Report token usage as separate meter events for informational billing
+      // This enables future per-token pricing models
+      await stripe.billing.meterEvents.create({
+        event_name: 'capsule_input_tokens',
+        payload: {
+          stripe_customer_id: connection.stripe_customer_id,
+          value: String(tokensInput),
+        },
+      });
+
+      await stripe.billing.meterEvents.create({
+        event_name: 'capsule_output_tokens',
+        payload: {
+          stripe_customer_id: connection.stripe_customer_id,
+          value: String(tokensOutput),
+        },
+      });
+
+      logger.debug('Recipient query metered to Stripe', {
+        connectionId: connection.connection_id,
+        stripeCustomerId: connection.stripe_customer_id,
+        tokensInput,
+        tokensOutput,
+      });
+    } catch (stripeErr: any) {
+      logger.warn('Stripe metering failed (usage will be retried or reconciled later)', {
+        error: stripeErr?.message,
+        connectionId: connection.connection_id,
+      });
+    }
+  } else {
+    logger.debug('Stripe metering skipped (no stripe_customer_id or STRIPE_SECRET_KEY)', {
+      connectionId: connection.connection_id,
+      hasStripeCustomer: !!connection.stripe_customer_id,
+      hasStripeKey: !!process.env.STRIPE_SECRET_KEY,
+    });
+  }
+
+  // 9. Update connection usage counters
   try {
     await pool.query(
       `UPDATE recipient_api_connections

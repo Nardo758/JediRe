@@ -12,6 +12,7 @@ import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { executeRecipientQuery } from '../../services/recipient-agent-executor.service';
+import { encryptToken } from '../../services/encryption';
 import * as crypto from 'crypto';
 
 const router = Router();
@@ -223,6 +224,51 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
       return res.status(403).json({ error: 'Agent interaction not enabled for this share' });
     }
 
+    // Create or resolve Stripe customer
+    let stripeCustomerId: string | null = null;
+    try {
+      if (process.env.STRIPE_SECRET_KEY) {
+        const Stripe = (await import('stripe')).default;
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+        // Look for an existing customer with this email (from the share)
+        const shareWithEmail = await pool.query(
+          `SELECT recipient_email, share_id FROM capsule_shares WHERE share_id = $1 LIMIT 1`,
+          [share.share_id]
+        );
+        const recipientEmail = shareWithEmail.rows[0]?.recipient_email;
+
+        if (recipientEmail) {
+          const existing = await stripe.customers.list({
+            email: recipientEmail,
+            limit: 1,
+          });
+          stripeCustomerId = existing.data[0]?.id ?? null;
+        }
+
+        if (!stripeCustomerId) {
+          // Create a new customer for this recipient
+          const customer = await stripe.customers.create({
+            email: recipientEmail ?? undefined,
+            metadata: {
+              source: 'capsule_share',
+              share_id: share.share_id,
+            },
+          });
+          stripeCustomerId = customer.id;
+          logger.info('Created Stripe customer for capsule recipient', {
+            shareId: share.share_id,
+            stripeCustomerId,
+          });
+        }
+      }
+    } catch (stripeErr: any) {
+      logger.warn('Stripe customer creation failed (non-fatal)', {
+        error: stripeErr?.message,
+        shareId: share.share_id,
+      });
+    }
+
     // Validate the API key against the provider before storing
     try {
       if (provider === 'anthropic') {
@@ -255,23 +301,24 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
       });
     }
 
-    // Store the encrypted key (base64-encoded AES-GCM or simple base64 for now)
-    const encryptedKey = Buffer.from(api_key).toString('base64');
+    // Store the key encrypted with AES-256-GCM
+    const encryptedKey = encryptToken(api_key);
 
     const connectionResult = await pool.query(
       `INSERT INTO recipient_api_connections
          (share_id, provider, api_key_encrypted, stripe_customer_id)
-       VALUES ($1, $2, $3, NULL)
+       VALUES ($1, $2, $3, $4)
        RETURNING connection_id, connected_at`,
-      [share.share_id, provider, `encrypted:${encryptedKey}`]
+      [share.share_id, provider, encryptedKey, stripeCustomerId]
     );
 
     const connection = connectionResult.rows[0];
 
-    logger.info('API key connected to capsule', {
+    logger.info('API key connected to capsule (AES-256-GCM)', {
       shareId: share.share_id,
       connectionId: connection.connection_id,
       provider,
+      hasStripeCustomer: !!stripeCustomerId,
     });
 
     return res.status(201).json({
@@ -279,7 +326,7 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
       provider,
       connected_at: connection.connected_at,
       status: 'connected',
-      note: 'API key validated and stored. You can now query the agent via POST /capsules/:accessToken/query',
+      note: 'API key validated and encrypted at rest (AES-256-GCM). You can now query the agent via POST /capsules/:accessToken/query',
     });
   } catch (err: any) {
     logger.error('Failed to connect API key', { error: err?.message });
