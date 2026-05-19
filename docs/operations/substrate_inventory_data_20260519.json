@@ -1,0 +1,300 @@
+{
+  "meta": {
+    "date": "2026-05-19",
+    "task": "#894",
+    "method": "live_db_queries + static_code_trace + audit_doc_synthesis",
+    "db_queried_at": "2026-05-19T00:00:00Z"
+  },
+  "gaps": {
+    "gap1_deal_capsule_completeness": {
+      "title": "Deal Capsule Completeness",
+      "spec_ref": "docs/architecture/deal-capsule-blueprint.md",
+      "typed_lv_fields_total": 33,
+      "typed_lv_fields_smoke_pass": 33,
+      "ui_unbound_fields": 12,
+      "field_population_survey": {
+        "deals_sampled": 5,
+        "source_documents": { "populated": 0, "pct": 0 },
+        "cie_findings": { "populated": 0, "pct": 0 },
+        "extraction_t12": { "populated": 2, "pct": 40, "deals": ["464 Bishop", "Sentosa Epperson"] },
+        "extraction_rent_roll": { "populated": 2, "pct": 40, "deals": ["464 Bishop", "Sentosa Epperson"] },
+        "extraction_om": { "populated": 1, "pct": 20, "deals": ["464 Bishop"] }
+      },
+      "schema_gaps": [
+        "source_documents (never written)",
+        "cie_findings (never written)",
+        "per-span page/character references (not in schema)"
+      ],
+      "blocking_consequence": "State A evidence cannot be cited; CIE arbitrage output has no storage slot; DQA findings cannot be linked to originating document location",
+      "severity": "HIGH"
+    },
+    "gap2_event_wiring": {
+      "title": "Event Wiring",
+      "spec_refs": [
+        "docs/architecture/EVENT_PROPAGATION_AUDIT.md",
+        "docs/architecture/EVENT_WIRING_SYNTHESIS.md"
+      ],
+      "event_subtypes_defined": 16,
+      "consuming_modules_audited": 8,
+      "total_cells": 128,
+      "m35_services_shipped": [
+        "m35-events.service.ts",
+        "m35-forecast.service.ts",
+        "m35-backtest.service.ts",
+        "m35-impact.service.ts",
+        "m35-causality.service.ts",
+        "m35-playbook.service.ts",
+        "m35-traffic-api.service.ts"
+      ],
+      "canonical_schema": "key_events + event_forecasts (established in EVENT_PROPAGATION_AUDIT Section 11)",
+      "legacy_schema_still_in_use": "demand_events (CA tool fetch_m35_event_forecast.ts:112 — EP-02)",
+      "consolidated_backlog": [
+        {
+          "id": "W-01",
+          "description": "CA schema repoint: demand_events → key_events + event_forecasts",
+          "resolves": ["EP-02"],
+          "files": ["backend/src/agents/tools/fetch_m35_event_forecast.ts (lines 92-130)"],
+          "status": "UNBLOCKED",
+          "leverage_cells": 16,
+          "notes": "All 16 CA M35 cells currently return nothing; W-01 unblocks them all"
+        },
+        {
+          "id": "W-02",
+          "description": "LIUS M35 bridge: replace hardcoded −0.0025 exit_cap_trajectory + window_months→hold_year mapping",
+          "resolves": ["EP-03", "TM-03", "FA-02", "CE-01"],
+          "files": [
+            "backend/src/services/lius/trajectory-engine.ts (line 84)",
+            "backend/src/services/lius/m35-bridge.ts (NEW)"
+          ],
+          "status": "UNBLOCKED_PHASE_A",
+          "notes": "Phase B (Bayesian empirical from historical_observations) gated on D2 M26 archive landing"
+        },
+        {
+          "id": "W-03",
+          "description": "M07 M35 ingestion: baseline exclusion window in trafficCalibrationJob",
+          "resolves": ["EP-05"],
+          "files": ["backend/src/jobs/trafficCalibrationJob.ts"],
+          "status": "ADJACENT_TO_TE_FIX1",
+          "notes": "TE FIX-1 (Inngest cron wrapper) must land first"
+        },
+        {
+          "id": "W-04",
+          "description": "M09 proforma: rent_control_passage + tax_abatement event blocks",
+          "resolves": ["EP-04"],
+          "files": ["backend/src/services/proforma-adjustment.service.ts"],
+          "status": "INDEPENDENT"
+        },
+        {
+          "id": "W-05",
+          "description": "M25 JEDI supply score: event_forecasts JOIN key_events secondary query",
+          "resolves": ["EP-07", "FA-01"],
+          "files": ["backend/src/services/jedi-score.service.ts (lines 269-291)"],
+          "status": "ADJACENT_TO_TE_FIX4",
+          "notes": "Same file as TE FIX-4 (line 345 — different function); must be serial dispatch"
+        },
+        {
+          "id": "W-07",
+          "description": "M14 macro wiring: rate-environment + cycle-intelligence M14_macro channel (merged EP Fix7 + CE-03)",
+          "resolves": ["EP-06", "CE-03"],
+          "files": [
+            "backend/src/services/debt-advisor/rate-environment.service.ts",
+            "backend/src/services/cycle-intelligence.service.ts"
+          ],
+          "status": "UNBLOCKED",
+          "notes": "Merged — two audits targeted same files; single dispatch"
+        },
+        {
+          "id": "W-09",
+          "description": "ExitCapitalModule frontend: replace 21-year hardcoded arrays with live trajectory endpoint",
+          "resolves": ["CE-04", "CE-14", "CE-15"],
+          "files": [
+            "frontend/.../ExitStrategyTabs.tsx (lines 265-268)",
+            "frontend/.../ExitCapitalModule.tsx (lines 108-158)",
+            "frontend/.../ConvergenceChart.tsx"
+          ],
+          "status": "STACKED_ON_W02",
+          "notes": "W-02 must land before frontend wiring has live data to show"
+        },
+        {
+          "id": "W-10",
+          "description": "CE-12 RSS: supply/buyer pressure M35-aware in ExitStrategyTabs",
+          "resolves": ["CE-12"],
+          "files": ["frontend/.../ExitStrategyTabs.tsx", "frontend/.../ExitCapitalModule.tsx"],
+          "status": "ADJACENT_TO_TE_FIX4",
+          "notes": "Sequential dependency: TE FIX-4 → W-05 → W-10"
+        }
+      ],
+      "severity": "HIGH"
+    },
+    "gap3_archive_data_depth": {
+      "title": "Archive Data Depth",
+      "spec_ref": "docs/operations/weekly-status.md + cashflow_diagnostic_464_bishop_summary_20260517.md",
+      "table_row_counts": {
+        "archive_assumption_benchmarks": 0,
+        "historical_observations": 0,
+        "deal_historical_outcomes": 0,
+        "expense_inflation_observations": 0,
+        "rent_inflation_observations": 0,
+        "line_item_benchmarks": 0,
+        "macro_anchor_observations": 5,
+        "metric_correlations": 9831,
+        "benchmark_projects": "not_counted",
+        "m28_historical_events": "not_counted",
+        "insurance_cost_observations": "not_counted",
+        "tax_assessment_observations": "not_counted",
+        "spatial_correlations": "not_counted",
+        "traffic_correlation_signals": "not_counted",
+        "municipal_benchmarks": "not_counted"
+      },
+      "metric_correlations_note": "9,831 rows are market-level pairwise correlations for F4 signal display; NOT per-deal assumption benchmarks",
+      "f005_finding": {
+        "deal": "464 Bishop",
+        "assumptions_total": 23,
+        "unanchored": 13,
+        "unanchored_pct": 56.5,
+        "archive_percentile_null": true,
+        "cohort_n_null": true,
+        "affected_assumptions": ["rent growth 3%", "expense growth 3%", "exit cap 5%"]
+      },
+      "historical_observations_schema_note": "5 rezone columns added (Task #763/768) for Phase B rezone calibration; Phase B engine live; corpus empty — Phase B fallback to Phase A linear",
+      "severity": "HIGH"
+    },
+    "gap4_historical_correlations": {
+      "title": "Historical Correlations",
+      "spec_ref": "docs/architecture/ROADMAP_M36_M38.md + sigma-engine.ts",
+      "sigma_engine_file": "backend/src/services/sigma/sigma-engine.ts",
+      "computePlausibility_implemented": true,
+      "sigma_type": "HEURISTIC_PHASE_A",
+      "sigma_note": "Line 9: 'Phase B will replace with empirical estimation.' — hand-calibrated values baked into service file",
+      "stored_sigma_matrix_table": null,
+      "covariance_tables_found": [],
+      "market_correlation_tables": ["metric_correlations (9831 rows)", "spatial_correlations", "traffic_correlation_signals"],
+      "pending_items": {
+        "mahalanobisD_per_variable": "PENDING Phase 2",
+        "perVariableContribution": "PENDING Phase 2",
+        "empirical_sigma_from_deals": "PENDING Phase 2",
+        "regime_detection": "PENDING Phase 2"
+      },
+      "deal_journey_status": "PENDING M36 Phase A — aggressiveness slot defined, not filled",
+      "d04_correlation_engine_ttl": "7 days (staleness flag surfaced to UI)",
+      "severity": "MEDIUM"
+    },
+    "gap5_f9_proforma_residual": {
+      "title": "F9 ProForma Residual",
+      "spec_refs": [
+        "docs/architecture/PROFORMA_SUBSYSTEM_AUDIT.md",
+        "docs/architecture/DORMANT_IMPROVEMENTS_AUDIT.md",
+        "docs/diagnostics/cashflow_diagnostic_464_bishop_summary_20260517.md"
+      ],
+      "open_findings": [
+        {
+          "id": "RC-002",
+          "description": "other_income_dollars key missing in seed output",
+          "status": "OPEN",
+          "evidence": "other_income and other_income_dollars null in live DB sample rows"
+        },
+        {
+          "id": "RC-006",
+          "description": "Dual engine PF-01: financials-composer.service.ts (2543 lines) + proforma-adjustment.service.ts (4931 lines) both claim M09 responsibility",
+          "status": "OPEN",
+          "evidence": "Both files present in EVENT_PROPAGATION_AUDIT Section 2 files-of-record"
+        }
+      ],
+      "closed_findings": [
+        { "id": "S1-01", "description": "Custom opex filter gap (12 revenue lines in opex bucket)", "status": "CLOSED_2026-05-09", "evidence": "464 Bishop NOI +$486,108; Sentosa +$1,051,906; 0 residuals" }
+      ],
+      "monitor_findings": [
+        { "id": "S1-03", "description": "GPR T-12 priority", "status": "VERIFY_NEEDED_LOW" },
+        { "id": "S1-05", "description": "IC-04 tax tie-break", "status": "MONITOR" }
+      ],
+      "pareto_frontier_population": {
+        "deals_checked": 3,
+        "deals_with_pareto_frontier": 0,
+        "note": "F-jgs-1 postprocessor shipped 2026-05-19; no cashflow run has fired it on a live deal yet"
+      },
+      "severity": "MEDIUM"
+    },
+    "gap6_workspace_composability": {
+      "title": "Workspace Composability",
+      "workspace_tables_found": [],
+      "tab_config_tables_found": [],
+      "layout_tables_found": [],
+      "tab_structure": "STATIC_COMPILE_TIME",
+      "tab_structure_file": "frontend/src/pages/development/financial-engine/FinancialEnginePage.tsx",
+      "tabs": ["F1 Overview", "F2 Zoning", "F3 Market", "F4 Supply", "F5 Strategy", "F6 Traffic", "F8 Debt", "F9 ProForma", "F10 Risk", "F11 Tools"],
+      "per_deal_tab_config": false,
+      "dynamic_tab_reorder": false,
+      "pin_views": false,
+      "save_layout_per_operator": false,
+      "existing_cross_tab_surface": "DealJourneyOverlay (JOURNEY button in F9 header — modal, not composable workspace)",
+      "consequence_for_goal_seek": "Pareto frontier bundles cannot be compared side-by-side; no slot to pin a what-if bundle alongside baseline projections",
+      "severity": "MEDIUM"
+    },
+    "gap7_broader_goal_seek": {
+      "title": "Broader Goal Seek",
+      "framing": "Substrate dependency analysis — not current-state mapping",
+      "shipped": {
+        "id": "F-jgs-1",
+        "description": "5-bundle Pareto frontier postprocessor as cashflow-run fallback",
+        "shipped_date": "2026-05-19",
+        "mechanism": "run_joint_goal_seek postprocessor fires after every cashflow run",
+        "output_path": "proforma.capital_structure.optimization.pareto_frontier",
+        "role_resolution": "deterministic from investors.type",
+        "plausibility_scoring": "heuristic Phase A Sigma",
+        "deals_with_pareto_populated": 0
+      },
+      "pending": {
+        "joint_distribution_math": "PENDING Phase 2",
+        "empirical_sigma_matrix": "PENDING Phase 2 (blocked by Gap 4)",
+        "regime_detection": "PENDING Phase 2",
+        "per_variable_aggressiveness_decomposition": "PENDING Phase 2",
+        "rest_endpoints": "POST /api/sigma/plausibility and POST /api/sigma/goal-seek not built"
+      },
+      "substrate_dependencies": [
+        {
+          "substrate": "Gap 3 — Archive Depth",
+          "current_state": "0 rows in archive_assumption_benchmarks + deal_historical_outcomes",
+          "required_for": "Cohort bounds validation — goal-seek bundles cannot be confirmed within historical norms for asset class / market tier"
+        },
+        {
+          "substrate": "Gap 4 — Historical Correlations / Empirical Sigma",
+          "current_state": "Heuristic Phase A only; no stored Sigma matrix",
+          "required_for": "Reliable Mahalanobis aggressiveness scores; per-variable contribution decomposition"
+        },
+        {
+          "substrate": "Gap 2 — Event Wiring (W-01, W-02)",
+          "current_state": "CA has zero M35 access; exit cap trajectory hardcoded",
+          "required_for": "Goal-seek bundles must incorporate event-adjusted exit cap (W-02) and agent must be able to read event signals when reasoning about bundles (W-01)"
+        },
+        {
+          "substrate": "Gap 6 — Workspace Composability",
+          "current_state": "Static tab structure; no side-by-side comparison surface",
+          "required_for": "Operator comparison of Pareto frontier bundles; what-if layout pinning"
+        }
+      ],
+      "severity": "MEDIUM",
+      "dependency_chain_note": "Full goal-seek (historically-anchored, event-adjusted, empirically-plausible, operator-comparable) requires Gaps 3+4+2+6 resolved in approximate order: W-01/W-02 first (unblock event awareness), then archive corpus (anchor bounds), then empirical Sigma (reliable plausibility), then workspace (operator comparison surface)"
+    }
+  },
+  "severity_summary": {
+    "HIGH": ["gap1_deal_capsule_completeness", "gap2_event_wiring", "gap3_archive_data_depth"],
+    "MEDIUM": ["gap4_historical_correlations", "gap5_f9_proforma_residual", "gap6_workspace_composability", "gap7_broader_goal_seek"]
+  },
+  "quick_wins": [
+    {
+      "action": "Dispatch W-01 (CA schema repoint)",
+      "effort": "XS (1 file, ~40 lines)",
+      "leverage": "16 M35 cells unblocked for Cashflow Agent"
+    },
+    {
+      "action": "Dispatch W-07 (M14 macro wiring merged)",
+      "effort": "S (2 files, 1 dispatch replaces 2 planned)",
+      "leverage": "Debt + Exit Timing + Exit Strategy gain event awareness"
+    },
+    {
+      "action": "Force-fire cashflow run on 464 Bishop to populate first Pareto frontier",
+      "effort": "XS (trigger existing endpoint)",
+      "leverage": "Validates F-jgs-1 postprocessor end-to-end; first live pareto_frontier in DB"
+    }
+  ]
+}
