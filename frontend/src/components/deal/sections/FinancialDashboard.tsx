@@ -75,7 +75,7 @@ function buildSysPrompt(model: any, ms: Record<string, string>, ctxData?: { fina
     if (parts.length > 0) ctxBlock = `\nLIVE CONTEXT DATA:\n${parts.join('\n')}`;
   }
 
-  return `You are JEDI — elite real estate financial modeling AI embedded in JEDI RE. You can modify the live deal model.
+  return `You are JEDI — elite real estate financial modeling AI embedded in JediRe. You can modify the live deal model.
 DEAL: ${model?.propertyName || 'Unknown'} | ${model?.meta || ''}
 CONNECTED MODULES: ${conn}
 MODEL: Purchase ${fmt$(acq.purchasePrice || 0)} | ${acq.units || 0} units | Occ ${fmtPct(rev.currentOccupancy || 0)}\u2192${fmtPct(rev.stabilizedOccupancy || 0)} | ${loan.name || 'N/A'} @ ${fmtPct(loan.rate || 0)} IO:${loan.ioYears || 0}yr | IRR Base:${base.irr || 0}% Best:${scenarios.best?.irr || 0}% Worst:${scenarios.worst?.irr || 0}%${ctxBlock}

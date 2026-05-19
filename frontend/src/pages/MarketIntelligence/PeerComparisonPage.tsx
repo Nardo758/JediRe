@@ -473,7 +473,7 @@ export default function PeerComparisonPage({ embedded = false, onViewDetail }: P
       {!embedded && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 28, padding: "0 10px", background: T.topBar, borderBottom: `1px solid ${T.borderS}`, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: T.amber, letterSpacing: 2 }}>JEDI RE</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: T.amber, letterSpacing: 2 }}>JediRe</span>
             <span style={{ fontSize: 9, color: T.muted }}>|</span>
             <span style={{ fontSize: 9, color: T.secondary }}>F4 · PEER COMPARISON</span>
           </div>

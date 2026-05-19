@@ -456,7 +456,7 @@ export async function buildCompositePrompt(
   );
   const corePrompt: string =
     coreRow.rows[0]?.system_prompt ??
-    'You are the CashFlow Agent for JEDI RE. Analyze real estate data and return structured JSON.';
+    'You are the CashFlow Agent for JediRe. Analyze real estate data and return structured JSON.';
 
   const variantRow = await query(
     `SELECT system_prompt FROM prompt_versions

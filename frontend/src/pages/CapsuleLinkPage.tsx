@@ -34,10 +34,17 @@ interface CapsuleInfo {
   created_at: string;
 }
 
+interface SenderBranding {
+  company_name: string | null;
+  logo_url: string | null;
+}
+
 interface DealBookData {
   share: ShareInfo;
   capsule: CapsuleInfo;
   overlay: Record<string, unknown>;
+  attribution_visible: boolean;
+  sender_branding: SenderBranding;
 }
 
 interface ConvMessage {
@@ -375,7 +382,7 @@ function ErrorScreen({ title, detail }: { title: string; detail: string }) {
       <Shield style={{ width: 48, height: 48, color: MUTED, marginBottom: 20 }} />
       <h1 style={{ color: TEXT, fontSize: 20, fontFamily: MONO, fontWeight: 700, marginBottom: 8, textAlign: 'center' }}>{title}</h1>
       <p style={{ color: MUTED, fontSize: 13, textAlign: 'center', maxWidth: 400, lineHeight: 1.6 }}>{detail}</p>
-      <div style={{ marginTop: 32, fontSize: 10, fontFamily: MONO, color: MUTED }}>JEDI RE · Deal Intelligence</div>
+      <div style={{ marginTop: 32, fontSize: 10, fontFamily: MONO, color: MUTED }}>JediRe · Deal Intelligence</div>
     </div>
   );
 }
@@ -634,9 +641,34 @@ export default function CapsuleLinkPage() {
       <header style={{ position: 'sticky', top: 0, zIndex: 50, background: '#0d1117', borderBottom: `1px solid ${BORDER}` }}>
         <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 16px', height: 46, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontFamily: MONO, fontWeight: 700, color: BLUE, letterSpacing: '0.15em', fontSize: 13 }}>JEDI RE</span>
-            <span style={{ color: BORDER }}>|</span>
-            <span style={{ color: MUTED, fontSize: 11 }}>Deal Intelligence Platform</span>
+            {data.sender_branding.logo_url && (
+              <img
+                src={data.sender_branding.logo_url}
+                alt="logo"
+                style={{ height: 22, objectFit: 'contain', borderRadius: 2 }}
+              />
+            )}
+            {data.sender_branding.company_name ? (
+              <>
+                <span style={{ fontFamily: MONO, fontWeight: 700, color: TEXT, letterSpacing: '0.05em', fontSize: 13 }}>
+                  {data.sender_branding.company_name}
+                </span>
+                {data.attribution_visible && (
+                  <>
+                    <span style={{ color: BORDER }}>|</span>
+                    <span style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: '0.1em' }}>
+                      Powered by JediRe
+                    </span>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <span style={{ fontFamily: MONO, fontWeight: 700, color: BLUE, letterSpacing: '0.15em', fontSize: 13 }}>JediRe</span>
+                <span style={{ color: BORDER }}>|</span>
+                <span style={{ color: MUTED, fontSize: 11 }}>Deal Intelligence Platform</span>
+              </>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {hasAnyModifications && (
@@ -1407,7 +1439,7 @@ export default function CapsuleLinkPage() {
                 <SectionLabel label="Deal & Market Intelligence" badge="M06 Pipeline" />
                 <div style={{ background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: 'hidden' }}>
                   {[
-                    { emoji: '📊', headline: 'Platform market data captured at snapshot time', source: 'JEDI RE', age: fmtDate(capsule.snapshot_taken_at), sentiment: 'LIVE', color: GREEN },
+                    { emoji: '📊', headline: 'Platform market data captured at snapshot time', source: 'JediRe', age: fmtDate(capsule.snapshot_taken_at), sentiment: 'LIVE', color: GREEN },
                     { emoji: '🏗️', headline: `Supply pipeline: ${L2.units_under_construction ? `${L2.units_under_construction} units under construction` : 'data in snapshot'}`, source: 'Platform', age: '', sentiment: 'NEUTRAL', color: MUTED },
                     { emoji: '💼', headline: `Employment growth: ${fmtPct(L2.employment_growth)} submarket trend`, source: 'Platform', age: '', sentiment: L2.employment_growth && Number(L2.employment_growth) > 2 ? 'POSITIVE' : 'NEUTRAL', color: L2.employment_growth && Number(L2.employment_growth) > 2 ? GREEN : MUTED },
                     { emoji: '🏘️', headline: `Submarket vacancy: ${fmtPct(L2.submarket_vacancy)} | Market cap rate: ${fmtPct(L2.market_cap_rate_avg)}`, source: 'CoStar', age: '', sentiment: 'NEUTRAL', color: MUTED },
@@ -1553,6 +1585,15 @@ export default function CapsuleLinkPage() {
 
         </div>
       </main>
+
+      {/* ── Page footer attribution ───────────────────────────────────────────── */}
+      {data.attribution_visible && (
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 32px', textAlign: 'center' }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, color: MUTED, letterSpacing: '0.12em' }}>
+            POWERED BY JEDIRE · DEAL INTELLIGENCE PLATFORM
+          </span>
+        </div>
+      )}
 
       {/* ── Sticky footer reset bar ───────────────────────────────────────────── */}
       {hasAnyModifications && (

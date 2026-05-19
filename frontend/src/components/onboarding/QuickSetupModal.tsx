@@ -269,7 +269,7 @@ export default function QuickSetupModal({ isOpen, onClose, onComplete }: QuickSe
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Quick Setup</h2>
             <p className="text-sm text-gray-600 mt-1">
-              Help us personalize JEDI RE for you (optional)
+              Help us personalize JediRe for you (optional)
             </p>
           </div>
           <button

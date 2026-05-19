@@ -19,6 +19,7 @@ import { IntelligenceSettings } from './settings/IntelligenceSettings';
 import { AIModelSettings } from './settings/AIModelSettings';
 import { NotificationSettings } from './settings/NotificationSettings';
 import { SubscriptionSettings } from './settings/SubscriptionSettings';
+import { BrandingSettings } from './settings/BrandingSettings';
 import { DataLibrarySettings } from './settings/DataLibrarySettings';
 import SkillsSettingsPage from './settings/SkillsSettingsPage';
 import { TemplatesSettings } from './settings/TemplatesSettings';
@@ -34,7 +35,7 @@ type SettingsTab =
   | 'profile' | 'subscription' 
   | 'markets' | 'property-types' | 'intelligence' | 'ai-model' | 'skills'
   | 'data-library' | 'news-connections'
-  | 'integrations' | 'notifications' | 'templates';
+  | 'integrations' | 'notifications' | 'templates' | 'branding';
 
 interface NavItem {
   key: SettingsTab;
@@ -64,6 +65,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'integrations', label: 'INTEGRATIONS', icon: '🔗', description: 'Gmail, email sync', group: 'platform' },
   { key: 'notifications', label: 'NOTIFICATIONS', icon: '🔔', description: 'Alerts, channels', group: 'platform' },
   { key: 'templates', label: 'TEMPLATES', icon: '📋', description: 'Pro forma, reports', group: 'platform' },
+  { key: 'branding', label: 'BRANDING', icon: '🏷️', description: 'Company name, logo, attribution', group: 'platform' },
 ];
 
 const GROUP_LABELS: Record<string, string> = {
@@ -416,6 +418,8 @@ export function SettingsPage() {
         return <NotificationSettings />;
       case 'templates':
         return <TemplatesSettings />;
+      case 'branding':
+        return <BrandingSettings />;
       default:
         return <ProfileSection />;
     }

@@ -79,6 +79,7 @@ async function createExternalShareInternal(
     expires_at,
     preview_text,
     preview_metadata,
+    show_attribution_override,
   } = body;
 
   const resolvedShareMode = (share_mode as string) === 'shareable_link' ? 'shareable_link' : 'specific_recipient';
@@ -109,9 +110,11 @@ async function createExternalShareInternal(
               NULLIF(u.full_name, ''),
               NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), ''),
               u.email
-            ) AS sender_display_name
+            ) AS sender_display_name,
+            COALESCE(ucb.subscription_tier, u.subscription_tier, 'scout') AS subscription_tier
      FROM deal_capsules dc
      JOIN users u ON u.id = dc.user_id
+     LEFT JOIN user_credit_balances ucb ON ucb.user_id = dc.user_id
      WHERE dc.id = $1 AND dc.user_id = $2 LIMIT 1`,
     [capsuleId, userId]
   );
@@ -137,13 +140,24 @@ async function createExternalShareInternal(
 
   const { token, hash } = generateAccessToken();
 
+  // Tier-gate: only principal/institutional can set show_attribution_override = false
+  const senderTier: string = capsuleRow.subscription_tier ?? 'scout';
+  const canRemoveAttribution = ['principal', 'institutional'].includes(senderTier);
+  let resolvedAttributionOverride: boolean | null = null;
+  if (show_attribution_override !== undefined && show_attribution_override !== null) {
+    if (canRemoveAttribution) {
+      resolvedAttributionOverride = Boolean(show_attribution_override);
+    }
+    // Silently ignore false attribution override for lower tiers — do not 403 the share
+  }
+
   const shareResult = await pool.query(
     `INSERT INTO capsule_external_shares
        (capsule_id, shared_by_user_id, share_type, share_mode, label,
         recipient_email, recipient_name,
         allow_document_download, allow_agent_interaction, expires_at, access_token,
-        preview_text, preview_metadata, capsule_snapshot)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        preview_text, preview_metadata, capsule_snapshot, show_attribution_override)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING share_id, created_at`,
     [
       capsuleId,
@@ -160,6 +174,7 @@ async function createExternalShareInternal(
       preview_text ?? null,
       preview_metadata ? JSON.stringify(preview_metadata) : null,
       JSON.stringify(capsuleSnapshot),
+      resolvedAttributionOverride,
     ]
   );
 
@@ -178,7 +193,7 @@ async function createExternalShareInternal(
   let emailQueued = false;
   if (resolvedShareMode === 'specific_recipient' && recipient_email) {
     try {
-      const senderName = capsuleRow.sender_display_name as string ?? 'A JEDI RE user';
+      const senderName = capsuleRow.sender_display_name as string ?? 'A JediRe user';
       emailQueued = await emailService.sendShareInvitation({
         to: recipient_email as string,
         senderName,
@@ -329,6 +344,7 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
               ces.expires_at, ces.revoked_at, ces.recipient_email,
               ces.preview_text, ces.preview_metadata,
               ces.capsule_snapshot,
+              ces.show_attribution_override,
               COALESCE(rso.overlay_data, '{}'::jsonb) AS overlay_data
        FROM capsule_external_shares ces
        LEFT JOIN recipient_session_overlays rso ON rso.access_token_hash = ces.access_token
@@ -365,11 +381,39 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
       capsuleData = capsuleResult.rows[0];
     }
 
+    // Resolve sender branding + tier for attribution decision
+    const senderBrandingResult = await pool.query(
+      `SELECT COALESCE(ucb.subscription_tier, u.subscription_tier, 'scout') AS tier,
+              ubs.company_name,
+              ubs.logo_url,
+              COALESCE(ubs.show_attribution, true) AS show_attribution
+       FROM deal_capsules dc
+       JOIN users u ON u.id = dc.user_id
+       LEFT JOIN user_credit_balances ucb ON ucb.user_id = dc.user_id
+       LEFT JOIN user_branding_settings ubs ON ubs.user_id = dc.user_id
+       WHERE dc.id = $1`,
+      [share.capsule_id]
+    );
+
+    const senderBranding = senderBrandingResult.rows[0] ?? null;
+    const senderTier: string = senderBranding?.tier ?? 'scout';
+    const attributionEligible = ['principal', 'institutional'].includes(senderTier);
+
+    let attributionVisible: boolean;
+    if (share.show_attribution_override !== null && share.show_attribution_override !== undefined) {
+      attributionVisible = Boolean(share.show_attribution_override);
+    } else if (attributionEligible && senderBranding?.show_attribution === false) {
+      attributionVisible = false;
+    } else {
+      attributionVisible = true;
+    }
+
     logger.info('Deal book served', {
       capsuleId: share.capsule_id,
       shareId: share.share_id,
       shareType: share.share_type,
       fromSnapshot: !!share.capsule_snapshot,
+      attributionVisible,
     });
 
     return res.json({
@@ -399,6 +443,12 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
       },
       // Recipient's session-scoped overlay (empty object if no modifications yet)
       overlay: (share.overlay_data as Record<string, unknown>) ?? {},
+      // Attribution + sender branding for recipient-facing header/footer
+      attribution_visible: attributionVisible,
+      sender_branding: {
+        company_name: senderBranding?.company_name ?? null,
+        logo_url: senderBranding?.logo_url ?? null,
+      },
     });
   } catch (err: any) {
     logger.error('Failed to serve deal book', { error: err?.message });

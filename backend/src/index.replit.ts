@@ -37,6 +37,7 @@ import marketMetricsRouter from './api/rest/market-metrics.routes';
 import f40PerformanceRoutes from './api/rest/f40-performance.routes';
 import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
 import settingsAiRouter from './api/rest/settings-ai.routes';
+import settingsBrandingRouter from './api/rest/settings-branding.routes';
 import billingRouter from './api/rest/billing.routes';
 
 import healthRouter from './api/rest/inline-health.routes';
@@ -531,6 +532,7 @@ app.use('/api/v1', requireAuth, propertyProxyRoutes);
 app.use('/api/v1/leasing-traffic', requireAuth, leasingTrafficRoutes);
 app.use('/api/v1/preferences', requireAuth, preferencesRouter);
 app.use('/api/v1/settings/ai-preferences', settingsAiRouter);
+app.use('/api/v1/settings/branding', settingsBrandingRouter);
 app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
 app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
 app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);

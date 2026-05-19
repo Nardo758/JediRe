@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Share2, CheckCircle, Copy, AlertTriangle, Loader2, ExternalLink, Link, User } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 
@@ -18,6 +18,11 @@ interface ShareResult {
   share_type: string;
   share_id: string;
   email_queued: boolean;
+}
+
+interface BrandingSettings {
+  can_remove_attribution: boolean;
+  show_attribution: boolean;
 }
 
 type ShareMode = 'specific_recipient' | 'shareable_link';
@@ -75,10 +80,24 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
     preview_text: '',
     expires_at: '',
   });
+  const [showAttributionOverride, setShowAttributionOverride] = useState<boolean>(true);
+  const [brandingSettings, setBrandingSettings] = useState<BrandingSettings | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareResult, setShareResult] = useState<ShareResult | null>(null);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    apiClient.get('/api/v1/settings/branding')
+      .then(res => {
+        const d = res.data?.data;
+        if (d) {
+          setBrandingSettings({ can_remove_attribution: d.can_remove_attribution, show_attribution: d.show_attribution });
+          setShowAttributionOverride(d.show_attribution ?? true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,6 +116,9 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
       }
       if (shareForm.preview_text.trim()) payload.preview_text = shareForm.preview_text.trim();
       if (shareForm.expires_at) payload.expires_at = shareForm.expires_at;
+      if (brandingSettings?.can_remove_attribution) {
+        payload.show_attribution_override = showAttributionOverride;
+      }
       const res = await apiClient.post(`/api/v1/deals/${capsuleId}/share/external`, payload);
       setShareResult(res.data);
       onShareCreated?.();
@@ -426,6 +448,32 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                 onBlur={e => { e.currentTarget.style.borderColor = BORDER_MID; }}
               />
             </div>
+
+            {/* Attribution override — principal/institutional only */}
+            {brandingSettings?.can_remove_attribution && (
+              <label style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                padding: '10px 12px',
+                background: BG_ROW,
+                border: `1px solid ${BORDER_MID}`,
+                borderRadius: 2,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={showAttributionOverride}
+                  onChange={e => setShowAttributionOverride(e.target.checked)}
+                  style={{ marginTop: 1, accentColor: AMBER, flexShrink: 0 }}
+                />
+                <div>
+                  <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, letterSpacing: 0.6, color: TEXT_MID }}>
+                    SHOW JEDIRE ATTRIBUTION
+                  </div>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: TEXT_DIM, marginTop: 3, lineHeight: 1.4 }}>
+                    Display "Powered by JediRe" on this share's landing page
+                  </div>
+                </div>
+              </label>
+            )}
 
             {/* Error */}
             {shareError && (

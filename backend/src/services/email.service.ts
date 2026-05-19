@@ -97,7 +97,7 @@ function buildShareInvitationHtml(params: {
 
         <!-- Header -->
         <tr><td style="background:#0f172a;padding:24px 32px;">
-          <p style="margin:0;color:#94a3b8;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;">JEDI RE</p>
+          <p style="margin:0;color:#94a3b8;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;">JediRe</p>
           <h1 style="margin:6px 0 0 0;color:#ffffff;font-size:20px;font-weight:600;">Deal shared with you</h1>
         </td></tr>
 
@@ -120,7 +120,7 @@ function buildShareInvitationHtml(params: {
         <!-- Footer -->
         <tr><td style="border-top:1px solid #e5e7eb;padding:20px 32px;background:#f9fafb;">
           ${expiryLine}
-          <p style="color:#9ca3af;font-size:12px;margin:8px 0 0 0;">This deal was shared via JEDI RE, an AI-powered real estate intelligence platform. If you didn't expect this, you can ignore this email.</p>
+          <p style="color:#9ca3af;font-size:12px;margin:8px 0 0 0;">This deal was shared via JediRe, an AI-powered real estate intelligence platform. If you didn't expect this, you can ignore this email.</p>
         </td></tr>
 
       </table>
@@ -138,7 +138,7 @@ function buildShareInvitationText(params: {
   expiresAt?: string | null;
 }): string {
   const lines: string[] = [
-    `${params.senderName} shared a deal with you on JEDI RE`,
+    `${params.senderName} shared a deal with you on JediRe`,
     '',
     `Deal: ${params.dealName}`,
   ];
@@ -149,7 +149,7 @@ function buildShareInvitationText(params: {
   if (params.expiresAt) {
     lines.push('', `This link expires on ${new Date(params.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`);
   }
-  lines.push('', '---', 'Shared via JEDI RE. If you didn\'t expect this, ignore this email.');
+  lines.push('', '---', 'Shared via JediRe. If you didn\'t expect this, ignore this email.');
   return lines.join('\n');
 }
 
