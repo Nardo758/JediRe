@@ -55,7 +55,8 @@ router.put('/', requireAuth, async (req: Request, res: Response) => {
     const tier: string = tierResult.rows[0]?.tier ?? 'scout';
     const canRemoveAttribution = ATTRIBUTION_ELIGIBLE_TIERS.includes(tier);
 
-    const resolvedAttribution = (show_attribution !== undefined && canRemoveAttribution)
+    // Only allow overriding attribution for eligible tiers
+    const resolvedAttribution: boolean | null = (show_attribution !== undefined && canRemoveAttribution)
       ? Boolean(show_attribution)
       : null;
 
@@ -63,20 +64,19 @@ router.put('/', requireAuth, async (req: Request, res: Response) => {
       ? 'Attribution toggle requires Principal or higher tier — setting ignored'
       : null;
 
+    // Resolve company_name / logo_url — explicit null clears the field; undefined is treated as null (full save from UI)
+    const resolvedCompanyName = company_name != null ? String(company_name).slice(0, 120) : null;
+    const resolvedLogoUrl = logo_url != null ? String(logo_url) : null;
+
     await query(
       `INSERT INTO user_branding_settings (user_id, company_name, logo_url, show_attribution, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
+       VALUES ($1, $2, $3, COALESCE($4, TRUE), NOW())
        ON CONFLICT (user_id) DO UPDATE SET
-         company_name      = COALESCE($2, user_branding_settings.company_name),
-         logo_url          = COALESCE($3, user_branding_settings.logo_url),
-         show_attribution  = COALESCE($4, user_branding_settings.show_attribution),
+         company_name      = $2,
+         logo_url          = $3,
+         show_attribution  = CASE WHEN $4 IS NULL THEN user_branding_settings.show_attribution ELSE $4 END,
          updated_at        = NOW()`,
-      [
-        userId,
-        company_name !== undefined ? (company_name ? String(company_name).slice(0, 120) : null) : null,
-        logo_url !== undefined ? (logo_url ? String(logo_url) : null) : null,
-        resolvedAttribution,
-      ]
+      [userId, resolvedCompanyName, resolvedLogoUrl, resolvedAttribution]
     );
 
     const updated = await query(

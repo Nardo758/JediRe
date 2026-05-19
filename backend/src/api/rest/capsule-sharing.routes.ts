@@ -399,13 +399,17 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
     const senderTier: string = senderBranding?.tier ?? 'scout';
     const attributionEligible = ['principal', 'institutional'].includes(senderTier);
 
+    // Attribution resolution order (strict tier-first):
+    // 1. Non-eligible tier → always show, ignore any stored override
+    // 2. Eligible + per-share override set → use override
+    // 3. Eligible + no override → fall back to account-level setting (default: true)
     let attributionVisible: boolean;
-    if (share.show_attribution_override !== null && share.show_attribution_override !== undefined) {
-      attributionVisible = Boolean(share.show_attribution_override);
-    } else if (attributionEligible && senderBranding?.show_attribution === false) {
-      attributionVisible = false;
-    } else {
+    if (!attributionEligible) {
       attributionVisible = true;
+    } else if (share.show_attribution_override !== null && share.show_attribution_override !== undefined) {
+      attributionVisible = Boolean(share.show_attribution_override);
+    } else {
+      attributionVisible = senderBranding?.show_attribution !== false;
     }
 
     logger.info('Deal book served', {
