@@ -33,6 +33,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { RecipientProvider, applyOverlay } from '../contexts/RecipientContext';
 import type { RecipientDealBook } from '../contexts/RecipientContext';
+import { RecipientAssumptionsPanel } from '../components/deal/RecipientAssumptionsPanel';
 import { 
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
@@ -1602,6 +1603,8 @@ const DealDetailPage: React.FC = () => {
 
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
           <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            {/* Recipient assumptions editor — visible only inside RecipientProvider */}
+            {isRecipient && <RecipientAssumptionsPanel />}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BG, padding: '0 8px' }}>
               {/* Data gap awareness now lives on the GAPS / CLOSE DEAL header button */}
               <ActiveComponent deal={deal} dealId={effectiveDealId} dealType={dealType} embedded={true} isRecipient={isRecipient} onUpdate={() => !isRecipient && dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />

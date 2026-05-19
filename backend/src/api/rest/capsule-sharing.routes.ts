@@ -667,6 +667,15 @@ router.get('/deals/:dealId/deal-book', async (req: Request, res: Response) => {
     );
     const branding = brandingResult.rows[0] ?? null;
 
+    // Extract deal_assumptions and year1 from embedded capsule data
+    const dealData    = (capsule.deal_data   ?? {}) as Record<string, unknown>;
+    const modOutputs  = (capsule.module_outputs ?? {}) as Record<string, unknown>;
+    const dealAssumptions = (dealData.assumptions as Record<string, unknown> | undefined) ?? {};
+    const year1 =
+      (modOutputs.year1 as Record<string, unknown> | undefined) ??
+      ((modOutputs.cashflow as Record<string, unknown> | undefined)?.year1 as Record<string, unknown> | undefined) ??
+      null;
+
     return res.json({
       capsule_id: capsule.id,
       property_address: capsule.property_address,
@@ -674,10 +683,12 @@ router.get('/deals/:dealId/deal-book', async (req: Request, res: Response) => {
       status: capsule.status,
       jedi_score: capsule.jedi_score,
       collision_score: capsule.collision_score,
-      deal_data: capsule.deal_data ?? {},
+      deal_data: dealData,
+      deal_assumptions: dealAssumptions,
+      year1,
       platform_intel: capsule.platform_intel ?? {},
       user_adjustments: capsule.user_adjustments ?? {},
-      module_outputs: capsule.module_outputs ?? {},
+      module_outputs: modOutputs,
       created_at: capsule.created_at,
       overlay_data: share.overlay_data ?? {},
       share_permissions: {
