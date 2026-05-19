@@ -17,6 +17,7 @@
 import { z } from 'zod';
 import { classifyRateEnvironment } from '../../services/debt-advisor/rate-environment.service';
 import { logger } from '../../utils/logger';
+import { logSofrFallback } from '../../services/monitoring/sofr-freshness.service';
 import type { ToolDefinition } from '../runtime/types';
 
 const InputSchema = z.object({});
@@ -109,10 +110,18 @@ export const fetchRateEnvironmentTool: ToolDefinition<
         m11_available: true,
       };
     } catch (err: any) {
+      const reason = err?.message ?? 'Unknown error';
       logger.debug('fetch_rate_environment: M11 unavailable, returning stub', {
         runId:  ctx.dealId,
-        error:  err?.message,
+        error:  reason,
       });
+
+      logSofrFallback({
+        dealId: ctx.dealId,
+        reason: `M11 classifyRateEnvironment failed: ${reason}`,
+        timestamp: new Date().toISOString(),
+      });
+
       return {
         classification:        'Flat',
         sofr_pct:              5.30,

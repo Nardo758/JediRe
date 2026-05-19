@@ -18,12 +18,15 @@
 
 import { z } from 'zod';
 import { cycleIntelligenceService } from '../../services/cycle-intelligence.service';
+import { msaResolver } from '../../services/msa-resolver.service';
 import { logger } from '../../utils/logger';
 import type { ToolDefinition } from '../runtime/types';
 
 const InputSchema = z.object({
-  market_id: z.string()
-    .describe('MSA identifier used in m28_cycle_snapshots, e.g. "atlanta-msa", "orlando-msa"'),
+  market_id: z.string().optional()
+    .describe('MSA identifier used in m28_cycle_snapshots, e.g. "atlanta-msa", "orlando-msa". Optional if deal_id is provided for automatic resolution.'),
+  deal_id: z.string().optional()
+    .describe('Deal ID to resolve MSA automatically. Used when market_id is not known.'),
   horizon_months: z.number().int().min(6).max(60).default(12)
     .describe('Forecast horizon for rent-growth and cap-rate predictions'),
 });
@@ -84,29 +87,62 @@ export const fetchCycleIntelligenceTool: ToolDefinition<
   requiresCapability: 'read:all',
 
   execute: async (input, ctx) => {
-    try {
-      const [snapshot, divergence, rentGrowth, capRate, phaseStrategy] = await Promise.all([
-        cycleIntelligenceService.getCyclePhase(input.market_id),
-        cycleIntelligenceService.getDivergence(input.market_id),
-        cycleIntelligenceService.predictRentGrowth(input.market_id, input.horizon_months),
-        cycleIntelligenceService.predictCapRateMovement(input.market_id, input.horizon_months),
-        cycleIntelligenceService.getPhaseOptimalStrategy(input.market_id),
-      ]);
+    // Declare marketId at function scope so the catch block can reference it
+    let marketId = input.market_id;
 
-      if (!snapshot) {
+    try {
+      // Resolve market_id: explicit, from deal ctx, or auto-resolve via msaResolver
+      const dealId = input.deal_id ?? ctx.dealId;
+      if (!marketId && dealId) {
+        const resolved = await msaResolver.resolve(dealId);
+        if (resolved) {
+          marketId = resolved;
+          logger.info('fetch_cycle_intelligence: resolved market_id from deal', {
+            dealId,
+            marketId,
+          });
+        }
+      }
+
+      if (!marketId) {
         return {
-          market_id:            input.market_id,
+          market_id:            'unknown',
           lag_phase:            'unknown',
           lead_phase:           'unknown',
           divergence:           0,
           divergence_signal:    'HOLD',
-          divergence_narrative: `No cycle snapshot found for market_id "${input.market_id}". Available markets may differ — check m28_cycle_snapshots.`,
+          divergence_narrative: 'No market_id provided and could not resolve from deal data.',
           confidence:           0,
           rent_growth: { baseline_pct: 4.0, bull_pct: 5.0, bear_pct: 3.0, confidence: 0 },
           cap_rate_forecast: { current_cap: 5.25, predicted_cap: 5.25, change_bps: 0, direction: 'stable', confidence: 0 },
           phase_strategy:       null,
           m14_available:        false,
-          note: `No m28_cycle_snapshots row for market_id "${input.market_id}". Treat cycle as neutral. Do not cite M14 cycle phase in reasoning.`,
+          note: 'No market_id could be resolved. Treat cycle as neutral.',
+        };
+      }
+
+      const [snapshot, divergence, rentGrowth, capRate, phaseStrategy] = await Promise.all([
+        cycleIntelligenceService.getCyclePhase(marketId),
+        cycleIntelligenceService.getDivergence(marketId),
+        cycleIntelligenceService.predictRentGrowth(marketId, input.horizon_months),
+        cycleIntelligenceService.predictCapRateMovement(marketId, input.horizon_months),
+        cycleIntelligenceService.getPhaseOptimalStrategy(marketId),
+      ]);
+
+      if (!snapshot) {
+        return {
+          market_id:            marketId,
+          lag_phase:            'unknown',
+          lead_phase:           'unknown',
+          divergence:           0,
+          divergence_signal:    'HOLD',
+          divergence_narrative: `No cycle snapshot found for market_id "${marketId}". Available markets may differ — check m28_cycle_snapshots.`,
+          confidence:           0,
+          rent_growth: { baseline_pct: 4.0, bull_pct: 5.0, bear_pct: 3.0, confidence: 0 },
+          cap_rate_forecast: { current_cap: 5.25, predicted_cap: 5.25, change_bps: 0, direction: 'stable', confidence: 0 },
+          phase_strategy:       null,
+          m14_available:        false,
+          note: `No m28_cycle_snapshots row for market_id "${marketId}". Treat cycle as neutral. Do not cite M14 cycle phase in reasoning.`,
         };
       }
 
@@ -116,14 +152,14 @@ export const fetchCycleIntelligenceTool: ToolDefinition<
 
       logger.debug('fetch_cycle_intelligence', {
         runId:     ctx.dealId,
-        marketId:  input.market_id,
+        marketId:  marketId,
         lagPhase:  snapshot.lag_phase,
         leadPhase: snapshot.lead_phase,
         divSignal,
       });
 
       return {
-        market_id:            input.market_id,
+        market_id:            marketId,
         lag_phase:            snapshot.lag_phase,
         lead_phase:           snapshot.lead_phase,
         divergence:           divergence?.divergence ?? 0,
@@ -159,7 +195,7 @@ export const fetchCycleIntelligenceTool: ToolDefinition<
         error:  err?.message,
       });
       return {
-        market_id:            input.market_id,
+        market_id:            marketId,
         lag_phase:            'unknown',
         lead_phase:           'unknown',
         divergence:           0,

@@ -2,7 +2,7 @@
 
 **Status:** Draft architecture spec — implementation contract for sequenced build sessions
 **Owner:** Leon / JEDI RE
-**Pairs with:** `DEAL_JOURNEY_FRAMEWORK.md`, `TRAFFIC_ENGINE_STATE_AUDIT.md`, `Causal_Discipline_Addendum.md`, `ROADMAP_M36_M38.md`, M22 Post-Close pipeline spec (forthcoming)
+**Pairs with:** `DEAL_JOURNEY_FRAMEWORK.md`, `TRAFFIC_ENGINE_STATE_AUDIT.md`, `Causal_Discipline_Addendum.md`, `ROADMAP_M36_M38.md`, `M09_PROFORMA_SPEC.md`, M22 Post-Close pipeline spec (forthcoming)
 **Window covered:** 2018 → present, with full multi-signal coverage from 2020 forward
 
 ---

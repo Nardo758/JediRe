@@ -132,11 +132,13 @@ export interface DivergenceResult {
 
 export interface ConstructionCostIndex {
   market_id: string;
-  base_index: number;
-  tariff_premium_pct: number;
-  yoy_change: number;
-  forecast_12mo: number;
+  available: boolean;
+  base_index: number | null;
+  tariff_premium_pct: number | null;
+  yoy_change: number | null;
+  forecast_12mo: number | null;
   updated_at: string;
+  note?: string;
 }
 
 export interface ValueForecast {
@@ -168,14 +170,15 @@ export interface PhaseOptimalStrategy {
 }
 
 export interface MacroRiskScore {
-  score: number; // 0-100
+  available: boolean;
+  score: number | null; // 0-100 when available, null when unavailable
   components: {
     geopolitical_risk: number;
     trade_policy_uncertainty: number;
     consumer_confidence: number;
     banking_stress: number;
-  };
-  level: 'low' | 'medium' | 'high' | 'extreme';
+  } | null;
+  level: 'low' | 'medium' | 'high' | 'extreme' | 'unavailable';
   narrative: string;
   as_of_date: string;
 }

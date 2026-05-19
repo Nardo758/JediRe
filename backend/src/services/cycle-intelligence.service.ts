@@ -317,14 +317,20 @@ export class CycleIntelligenceService {
     marketId: string
   ): Promise<ConstructionCostIndex> {
     // TODO: Implement actual construction cost tracking
-    // For now, return mock data structure
+    // Data sources needed:
+    //   - RSMeans building cost data (quarterly by MSA, by property type)
+    //   - Tariff premium estimates (tariff_surcharge_maps table or external)
+    //   - Local labor cost indices
+    //   - Material cost indices (lumber, steel, concrete, drywall)
     return {
       market_id: marketId,
-      base_index: 285.7,
-      tariff_premium_pct: 11.2,
-      yoy_change: 5.8,
-      forecast_12mo: 3.5,
+      available: false,
+      base_index: null,
+      tariff_premium_pct: null,
+      yoy_change: null,
+      forecast_12mo: null,
       updated_at: new Date().toISOString(),
+      note: 'Construction cost index not yet wired. Requires RSMeans data integration (M28-Phase 2).',
     };
   }
 
@@ -360,23 +366,18 @@ export class CycleIntelligenceService {
   async getMacroRiskScore(): Promise<MacroRiskScore> {
     // TODO: Implement actual risk scoring
     // Components: geopolitical, trade policy, consumer confidence, banking stress
-    
-    const score = 45; // 0-100
-    const level = 
-      score < 25 ? 'low' :
-      score < 50 ? 'medium' :
-      score < 75 ? 'high' : 'extreme';
+    // Data sources needed:
+    //   - Geopolitical Risk Index (GPR) — monthly by country
+    //   - Trade Policy Uncertainty Index (TPU) — monthly
+    //   - Consumer Confidence Index (CCI) — monthly by MSA
+    //   - Fed Financial Stress Index — weekly
 
     return {
-      score,
-      components: {
-        geopolitical_risk: 40,
-        trade_policy_uncertainty: 55,
-        consumer_confidence: 42,
-        banking_stress: 35,
-      },
-      level,
-      narrative: 'Moderate macro risk. Trade policy uncertainty elevated due to tariffs, but banking system stable and consumer confidence holding.',
+      available: false,
+      score: null,
+      components: null,
+      level: 'unavailable',
+      narrative: 'Macro risk scoring not yet wired. Requires GPR, TPU, CCI, and Fed stress index integrations (M28-Phase 2).',
       as_of_date: new Date().toISOString(),
     };
   }

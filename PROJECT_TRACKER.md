@@ -1,6 +1,6 @@
 ﻿# JediRE Project Tracker â€” Complete
 
-**Last Updated:** 2026-05-01
+**Last Updated:** 2026-05-15
 
 This tracker consolidates all active work streams. The platform has evolved from the original MVP plan (map + 3 agents) into a full real estate inference system with M36 Joint Distribution Engine, M37 Analog Engine, M38 Calibration Ledger, and the F9 Financial Engine.
 
@@ -26,6 +26,56 @@ Data Ingestion â”€â”€â†’ F9 Financial Engine â”€â”€â�
 ---
 
 ## Active Work Streams
+
+### Stream 9: Affiliate Partnership Research (Brainstorm)
+Just starting — no commitments yet. Exploring fashion affiliate programs for potential future products:
+
+**Major fashion retailers with affiliate programs:**
+| Retailer | Commission | Entry |
+|---|---|---|
+| **Lyst** | 5–10% | Shopify app / partner network |
+| **SSENSE** | 6–7% | affiliates@ssense.com or Sovrn/Skimlinks/AdmitAd |
+| **Farfetch** | From 6% | Affiliate networks |
+| **Net-a-Porter** | Up to 6% | Skimlinks |
+| **Nordstrom** | 2–11% | Affiliate networks |
+| **ASOS** | 5–7% | Affiliate networks |
+| **Everlane** | 5–10% | Affiliate networks |
+| **Reformation** | 5–8% | Affiliate networks |
+
+**Aggregator networks** (most retailers join these):
+- Skimlinks, Sovrn, ShareASale, RewardStyle/LTK
+
+**Next steps:**
+- [ ] Identify which product/audience this would serve
+- [ ] Research application process for specific retailers
+- [ ] Evaluate commission structures vs. effort
+
+### Stream 10: M09 Pro Forma — Stabilized Potential Engine (Spec Complete)
+Spec committed: `docs/architecture/M09_PROFORMA_SPEC.md`
+
+The Pro Forma shifts from a "shorter Projections" to the **Stabilized Potential** — one stabilized year as the destination, with a Current → Stabilized bridge decomposing into Δ_market + Δ_platform + Δ_operator + Δ_capex.
+
+**Key changes from old framing:**
+- 4-column layout (Current | Pro Forma | Δ | Driver) replaces prior view
+- Stabilized year = computed per-model-type (not fixed offset), reads from Lease Velocity Engine
+- Bridge decomposition = 4 component breakdown per line, must sum to Δ within $1
+- Every cell carries LayeredValue source badge + alert level
+- Conflict surfacing when operator override exceeds platform expectation × 1.5×
+- M25 JEDI Score refactored to 5 bridge-plausibility sub-scores
+
+**Build order:**
+| Session | Scope | Dependencies |
+|---|---|---|
+| 9.1 | Layout reframe — 4 columns with mock bridge data | None |
+| 9.2 | Stabilized year resolution rule | Lease Velocity Engine V1 shipped |
+| 9.3 | Bridge decomposition rendering (hover-to-expand) | Lease Velocity Engine outputs → M09 |
+| 9.4 | LayeredValue source badge + alert level | LayeredValue live ✓ |
+| 9.5 | Per-model-type variant routing | M02 + M03 reachable from M09 |
+| 9.6 | Conflict surfacing | None |
+| 9.7 | 4-strategy side-by-side | M08 v2 backend |
+| 9.8 | Live Actuals column | deal_monthly_actuals table |
+
+**Downstream rewrites:** jedi-framework-v31.jsx proFormaVsProjections (delete), Deal Capsule alerts, investor deck v2, CLAUDE.md, FEATURE_EXPANSION.md
 
 ### Stream 1: F9 Financial Engine (Deployed)
 The core deal financial model pipeline. Building, displaying, and editing proformas.

@@ -157,6 +157,7 @@ import unitMixPropagationRoutes from './api/rest/unit-mix-propagation.routes';
 import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
 import financialDocumentsRoutes from './api/rest/financial-documents.routes';
 import sourceDocumentsRoutes from './api/rest/source-documents.routes';
+import capsuleSharingRoutes from './api/rest/capsule-sharing.routes';
 import jediRoutes from './api/rest/jedi.routes';
 import agentChatRouter from './routes/agent-chat.routes';
 import m35ConnectorsRouter from './routes/m35-connectors.routes';
@@ -486,9 +487,14 @@ app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/proforma', requireAuth, stabilizedPotentialRouter);
 app.use('/api/v1/proforma', requireAuth, proformaRouter);
+app.use('/api/v1/proforma', requireAuth, stabilizedPotentialRouter);
 app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/deals', financialDocumentsRoutes);
 app.use('/api/v1/deals', requireAuth, sourceDocumentsRoutes);
+// Capsule Sharing: mounted at both /api/v1/deals (deal-scoped paths like /:dealId/share)
+// and /api/v1 (capsule-scoped paths like /capsules/:accessToken)
+app.use('/api/v1/deals', requireAuth, capsuleSharingRoutes);
+app.use('/api/v1', capsuleSharingRoutes); // capsule routes don't need auth (token-based)
 
 // Scene storage for 3D scenes â€” must be BEFORE documentsFilesRoutes so
 // /:dealId/files/3d-scene wins match against /:dealId/files/:fileId (Express first-match)
