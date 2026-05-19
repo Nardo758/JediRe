@@ -723,6 +723,9 @@ export interface F9NarrativeBlock {
   status: 'ok' | 'warn' | 'info';
 }
 
+import type { SourceDocument } from '../../../hooks/useSourceDocuments';
+export type { SourceDocument };
+
 /** Per-field evidence metadata from the underwriting evidence system */
 export interface EvidenceFieldMeta {
   tier: number;
@@ -845,6 +848,8 @@ export interface FinancialEngineTabProps {
   materialCollisionFields?: string[] | null;
   /** Field paths with minor collisions only — used when MIN pill is clicked */
   minorCollisionFields?: string[] | null;
+  /** Source documents catalogue from GET /api/v1/deals/:dealId/source-documents */
+  sourceDocuments?: SourceDocument[];
   /**
    * Platform role of the viewing user (Task #878).
    * 'sponsor' = full GP view (default).

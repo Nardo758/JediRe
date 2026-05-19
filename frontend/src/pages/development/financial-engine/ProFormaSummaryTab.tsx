@@ -13,6 +13,8 @@ import type { GprUnitMixEntry } from '../../../components/f9/FloorPlanGrid';
 import { RegimeExpand } from '../../../components/f9/RegimeExpand';
 import { ReconciliationChip } from '../../../components/f9/ReconciliationChip';
 import type { HierarchicalResolution } from '../../../components/f9/ReconciliationChip';
+import { SourceDocPill } from '../../../components/f9/SourceDocPill';
+import type { SourceDocument } from '../../../hooks/useSourceDocuments';
 import { isPatternB } from '../../../config/m09_line_item_patterns';
 
 const MONO = BT.font.mono;
@@ -407,7 +409,19 @@ function applyEvidenceFilter(
   return rows;
 }
 
-export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh, lvCostTreatmentView, onLvTreatmentViewChange }: FinancialEngineTabProps) {
+/** Maps a ProForma row source string to a source_documents document_type key. */
+function mapSourceToDocType(source: string | null | undefined): string | null {
+  if (!source) return null;
+  const s = source.toLowerCase();
+  if (s === 't12' || s === 't-12' || s === 't12_actuals') return 't12';
+  if (s === 'rent_roll' || s === 'rentroll') return 'rent_roll';
+  if (s === 'om' || s === 'offering_memorandum' || s === 'offering') return 'om';
+  if (s === 'broker') return 'om';
+  if (s === 'tax_bill' || s === 'taxbill') return 'tax_bill';
+  return null;
+}
+
+export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh, lvCostTreatmentView, onLvTreatmentViewChange, sourceDocuments }: FinancialEngineTabProps) {
   const viewMode             = useDealStore(s => s.viewMode);
   const setViewMode          = useDealStore(s => s.setViewMode);
   // Number of columns in the table. Expansion/sub-rows use this so they
@@ -479,6 +493,14 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     }
     return m;
   }, [visibleDqaAlerts]);
+
+  const byDocType = useMemo<Record<string, SourceDocument>>(() => {
+    if (!sourceDocuments) return {};
+    return sourceDocuments.reduce<Record<string, SourceDocument>>((acc, doc) => {
+      if (!acc[doc.document_type]) acc[doc.document_type] = doc;
+      return acc;
+    }, {});
+  }, [sourceDocuments]);
 
   const dqaCriticalCount = dqaAlerts.filter(a => a.severity === 'critical').length;
   const dqaWarningCount  = dqaAlerts.filter(a => a.severity === 'warning' && a.classification !== 'NOT_IN_DOC').length;
@@ -1218,6 +1240,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   onDqaClick={setDqaDrawer}
                   onToggleAncillary={() => setGprExpanded(v => !v)}
                   ancillaryOpen={gprExpanded}
+                  sourceDoc={byDocType[mapSourceToDocType(byField['gpr']?.source) ?? ''] ?? null}
                 />
                 {gprExpanded && (
                   <tr style={{ background: '#040b12' }}>
@@ -1270,6 +1293,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     onDqaClick={setDqaDrawer}
                     onToggleAncillary={showPreNriPatternB ? () => toggleRegimeExpand(r.field) : undefined}
                     ancillaryOpen={showPreNriPatternB ? preNriBOpen : undefined}
+                    sourceDoc={byDocType[mapSourceToDocType(r.source) ?? ''] ?? null}
                   />
                   {showPreNriPatternB && preNriBOpen && (
                     <RegimeExpand
@@ -1333,6 +1357,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     onDqaClick={setDqaDrawer}
                     labelAdornment={<ReconciliationChip resolution={otherIncomeResolution} compact />}
                     overrideResolvedValue={otherIncomeResolution != null ? otherIncomeResolution.resolved_value : undefined}
+                    sourceDoc={byDocType[mapSourceToDocType(r.source) ?? ''] ?? null}
                   />
 
                   {/* Pattern B — regime expand (value_add / redevelopment) */}
@@ -1565,6 +1590,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   onDqaClick={setDqaDrawer}
                   onToggleAncillary={showPatternB ? () => toggleRegimeExpand(r.field) : undefined}
                   ancillaryOpen={showPatternB ? bOpen : undefined}
+                  sourceDoc={byDocType[mapSourceToDocType(r.source) ?? ''] ?? null}
                 />
                 {showPatternB && bOpen && (
                   <RegimeExpand
@@ -1651,7 +1677,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 stanceModulated={!!(stanceByPath['expenseGrowth'])}
                 stanceTrace={stanceByPath['expenseGrowth']?.trace}
                 dqaAlerts={dqaByRow[r.field]}
-                onDqaClick={setDqaDrawer} />
+                onDqaClick={setDqaDrawer}
+                sourceDoc={byDocType[mapSourceToDocType(r.source) ?? ''] ?? null} />
             ))}
             <tr style={{ background: '#0d0a14' }}>
               <td style={{ padding: '4px 8px', color: '#c084fc', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#0d0a14' }}>─── NON-CONTROLLABLE OPEX ───</td>
@@ -1716,7 +1743,12 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac', fontSize: 9 }}>
                   {egiResolved && noiRow.resolved ? `${((noiRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
                 </td>
-                <td style={{ padding: '7px 8px' }}><SourceBadge source={noiRow.source} /></td>
+                <td style={{ padding: '7px 8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <SourceBadge source={noiRow.source} />
+                    <SourceDocPill doc={byDocType[mapSourceToDocType(noiRow.source) ?? ''] ?? null} />
+                  </div>
+                </td>
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac', fontSize: 9 }}>
                   {noiRow.perUnit != null ? `$${noiRow.perUnit.toLocaleString()}/unit` : '—'}
                 </td>
@@ -1818,7 +1850,12 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
                   {egiResolved && reservesRow.resolved ? `${((Math.abs(reservesRow.resolved) / egiResolved) * 100).toFixed(1)}%` : '—'}
                 </td>
-                <td style={{ padding: '4px 8px' }}><SourceBadge source={reservesRow.source} /></td>
+                <td style={{ padding: '4px 8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <SourceBadge source={reservesRow.source} />
+                    <SourceDocPill doc={byDocType[mapSourceToDocType(reservesRow.source) ?? ''] ?? null} />
+                  </div>
+                </td>
                 <td style={{ padding: '4px 4px', textAlign: 'right' }}>
                   {reservesPuDraft !== null ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
@@ -2887,6 +2924,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
    * Does not affect edit/save behaviour — only the display.
    */
   overrideResolvedValue?: number | null;
+  /** Matched source document (from source_documents catalogue) for this row — null when none. */
+  sourceDoc?: SourceDocument | null;
 }) {
   const viewMode          = useDealStore(s => s.viewMode);
   const platformColSource = useDealStore(s => s.platformColSource);
@@ -3194,6 +3233,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <SourceBadge source={row.source} />
+          <SourceDocPill doc={sourceDoc ?? null} />
           {evidenceResolved && (
             <span
               title={TIER_TOOLTIP[evidenceResolved.meta.tier]}

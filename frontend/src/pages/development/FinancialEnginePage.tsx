@@ -24,6 +24,7 @@ import { useDealStore } from '../../stores/dealStore';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
 import { formatOverrideNote } from './financial-engine/field-labels';
+import { useSourceDocuments } from '../../hooks/useSourceDocuments';
 
 // ── Safe array coercion — guards against the API returning objects/nulls ──────
 function toArr<T>(v: unknown): T[] {
@@ -660,6 +661,9 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     // Route through dealStore event bus (consistent with assumption:changed pattern)
     useDealStore.getState().emitLeasingCostTreatmentChanged(t);
   }, []);
+
+  // ── Source Documents — fetch extraction provenance catalogue ─────────────
+  const { documents: sourceDocuments } = useSourceDocuments(resolvedDealId);
 
   // ── Evidence Summary — fetch collision/confidence/tier stats ─────────────
   useEffect(() => {
@@ -1325,7 +1329,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     materialCollisionFields: evidenceSummary?.collision_summary?.material_collision_fields ?? null,
     minorCollisionFields: evidenceSummary?.collision_summary?.minor_collision_fields ?? null,
     platformRole,
-  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary, lvCostTreatmentView, handleLvTreatmentViewChange, platformRole]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits mergedFinancials — closure reads it from enclosing scope; re-running on listed deps is the desired trigger
+    sourceDocuments,
+  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary, lvCostTreatmentView, handleLvTreatmentViewChange, platformRole, sourceDocuments]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits mergedFinancials — closure reads it from enclosing scope; re-running on listed deps is the desired trigger
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
