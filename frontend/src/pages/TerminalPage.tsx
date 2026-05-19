@@ -21,6 +21,7 @@ import { M35EventCard, type M35EventCardData } from "../components/m35/M35EventC
 import { MorningBriefWidget } from "../components/dashboard/MorningBriefWidget";
 import { useContextAnalysis } from '../hooks/useContextAwareness';
 import { usePublishContextInsight } from '../contexts/ContextInsightsContext';
+import { ShareCapsuleModal } from '../components/capsule/ShareCapsuleModal';
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -642,6 +643,12 @@ export default function TerminalPage() {
   const [mapSelDeal, setMapSelDeal] = useState<string|null>(null);
   const [selDealId, setSelDealId] = useState<string|null>(null);
 
+  // Pipeline share modal state
+  const [pipelineShareCapsuleId, setPipelineShareCapsuleId] = useState<string|null>(null);
+  const [pipelineShareDealName, setPipelineShareDealName] = useState('');
+  const [pipelineShareFetching, setPipelineShareFetching] = useState(false);
+  const [pipelineShareError, setPipelineShareError] = useState<string|null>(null);
+
   // Floating window dashboard system
   const DASH_STORAGE_KEY = "jedi-dash-windows";
   const loadWinState = (): Record<string, WinState> => { try { const s = localStorage.getItem(DASH_STORAGE_KEY); return s ? JSON.parse(s) : {}; } catch { return {}; } };
@@ -1131,6 +1138,22 @@ export default function TerminalPage() {
   const dockWidget = useCallback((id: string) => {
     setFloatWidgets(prev => prev.filter(w => w !== id));
   }, []);
+  const openPipelineShare = useCallback(async (d: LiveDeal) => {
+    setPipelineShareError(null);
+    setPipelineShareFetching(true);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${d.id}/capsule`);
+      const capsuleId: string | undefined = res.data?.id ?? res.data?.capsule?.id;
+      if (!capsuleId) throw new Error('No capsule found for this deal. Open it to generate one first.');
+      setPipelineShareDealName(d.name);
+      setPipelineShareCapsuleId(capsuleId);
+    } catch (err: any) {
+      setPipelineShareError(err.response?.data?.error ?? err.message ?? 'Could not find capsule for this deal');
+    } finally {
+      setPipelineShareFetching(false);
+    }
+  }, []);
+
   const toggleSort = useCallback((c:string)=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc");}}, [sortBy]);
   const toggleTheme = useCallback(()=>{const n=theme==="dark"?"light":"dark";setTheme(n);localStorage.setItem("jedi-theme",n);}, [theme]);
 
@@ -1244,13 +1267,14 @@ export default function TerminalPage() {
         {selDealId&&(()=>{const d=sorted.find(x=>x.id===selDealId);return d?(
           <div style={{position:"sticky",bottom:0,background:T.bg.header,borderTop:`1px solid ${T.border.medium}`,padding:"8px 12px",display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:11,fontWeight:700,color:T.text.amber}}>{d.name}</span>
+            <button onClick={(e)=>{e.stopPropagation();openPipelineShare(d);}} disabled={pipelineShareFetching} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.bg.input,color:T.text.cyan,border:`1px solid ${T.text.cyan}44`,padding:"5px 14px",cursor:"pointer",letterSpacing:0.4,opacity:pipelineShareFetching?0.5:1}}>{pipelineShareFetching?"LOADING…":"↗ SHARE"}</button>
             <button onClick={()=>navigate(`/deals/${d.id}/detail`)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"5px 14px",cursor:"pointer",letterSpacing:0.4}}>OPEN DEAL CAPSULE →</button>
             <button onClick={()=>setSelDealId(null)} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 8px",cursor:"pointer"}}>ESC</button>
           </div>
         ):null;})()}
       </div>
     </div>
-  ), [T, fStage, fStrat, mapOpen, sorted, gc, sortBy, sortDir, dealsLoading, selDealId, flashes, navigate, toggleSort]);
+  ), [T, fStage, fStrat, mapOpen, sorted, gc, sortBy, sortDir, dealsLoading, selDealId, flashes, navigate, toggleSort, openPipelineShare, pipelineShareFetching]);
 
   // ─── MAP SIDEBAR ───────────────────────────────────────────
   // Tab-aware map: F2 shows pipeline deals, F3 shows owned assets
@@ -3001,6 +3025,19 @@ export default function TerminalPage() {
         </div>
       )}
 
+      {pipelineShareCapsuleId && (
+        <ShareCapsuleModal
+          capsuleId={pipelineShareCapsuleId}
+          propertyAddress={pipelineShareDealName}
+          onClose={() => { setPipelineShareCapsuleId(null); setPipelineShareDealName(''); }}
+        />
+      )}
+      {pipelineShareError && (
+        <div style={{position:"fixed",bottom:56,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:"#1A0A0A",border:"1px solid #FF475766",padding:"8px 16px",display:"flex",alignItems:"center",gap:10,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",fontFamily:"'JetBrains Mono',monospace",maxWidth:480}}>
+          <span style={{fontSize:10,color:"#FF4757"}}>⚠ {pipelineShareError}</span>
+          <button onClick={()=>setPipelineShareError(null)} style={{fontFamily:"inherit",fontSize:10,color:"#8B95A5",background:"transparent",border:"none",cursor:"pointer",padding:0,marginLeft:4}}>✕</button>
+        </div>
+      )}
       {/* ═══ STATUS BAR — 20px ═══ */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:20,background:T.bg.topBar,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>
         <div style={{display:"flex",gap:12}}>
