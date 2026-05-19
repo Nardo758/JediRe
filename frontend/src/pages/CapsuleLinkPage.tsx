@@ -1136,7 +1136,7 @@ export default function CapsuleLinkPage() {
                     { label: 'Value-Add Plan', value: str(L1.value_add_plan ?? strategyMO.value_add_plan) },
                     { label: 'Renovation Scope', value: str(L1.renovation_scope ?? strategyMO.renovation_scope) },
                     { label: 'Renovation Budget', value: L1.renovation_budget ? fmtM(L1.renovation_budget) : str(strategyMO.renovation_budget) },
-                    { label: 'Lease-Up Timeline', value: str(L1.lease_up_timeline ?? strategyMO.lease_up_months ? `${strategyMO.lease_up_months} months` : null) },
+                    { label: 'Lease-Up Timeline', value: str(L1.lease_up_timeline ?? (strategyMO.lease_up_months != null ? `${strategyMO.lease_up_months} months` : null)) },
                     { label: 'Stabilized Occupancy Target', value: fmtPct(L1.stabilized_occupancy ?? strategyMO.stabilized_occupancy) },
                   ].map((row, i) => (
                     <InfoRow key={i} label={row.label} value={row.value} />
