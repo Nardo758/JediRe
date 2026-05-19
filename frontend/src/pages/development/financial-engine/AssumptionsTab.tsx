@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { SourceDocPill } from '../../../components/f9/SourceDocPill';
+import type { SourceDocument } from '../../../hooks/useSourceDocuments';
 import { RenovationAssumptionsSection } from './RenovationAssumptionsSection';
 import {
   Lock, Download, AlertTriangle, TrendingUp, Zap,
@@ -416,6 +418,18 @@ interface RowDef {
   getPlatform:   (f: DealFinancials, yr: number) => number|null;
   getResolved?:  (f: DealFinancials, yr: number) => number|null;
   getConfidence: (f: DealFinancials) => number|null;
+}
+
+// Map row.source string → source_documents document_type key.
+// Mirrors mapSourceToDocType in ProFormaSummaryTab.tsx.
+function mapSourceToDocType(source: string | null | undefined): string | null {
+  if (!source) return null;
+  const s = source.toLowerCase();
+  if (s === 't12' || s === 't-12') return 't12';
+  if (s === 'rent_roll' || s === 'rentroll') return 'rent_roll';
+  if (s === 'om' || s === 'offering_memorandum' || s === 'broker') return 'om';
+  if (s === 'tax_bill' || s === 'taxbill') return 'tax_bill';
+  return null;
 }
 
 // Build a RowDef from a backend OSRow + FieldMeta
@@ -1554,7 +1568,7 @@ function KeystonePanel({
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResults, onAssumptionsChange, onTabChange, onF9Refresh, onLvTreatmentViewChange, f9Financials }: FinancialEngineTabProps) {
+export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResults, onAssumptionsChange, onTabChange, onF9Refresh, onLvTreatmentViewChange, f9Financials, sourceDocuments }: FinancialEngineTabProps) {
   const setConfidenceBands = useDealStore(s => s.setConfidenceBands);
   const classifyFieldOverride = useDealStore(s => s.classifyFieldOverride);
   const upsertValidationFlag = useDealStore(s => s.upsertValidationFlag);
@@ -1586,6 +1600,15 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     }
     return map;
   }, [stanceAffectedFields]);
+
+  // Source-document pill lookup — O(1) by document_type
+  const byDocType = useMemo<Record<string, SourceDocument>>(() => {
+    const map: Record<string, SourceDocument> = {};
+    for (const doc of (sourceDocuments ?? [])) {
+      if (!map[doc.document_type]) map[doc.document_type] = doc;
+    }
+    return map;
+  }, [sourceDocuments]);
 
   const [closeDate, setCloseDate] = useState('');
   const [saleDate,  setSaleDate]  = useState('');
@@ -2972,6 +2995,11 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                                 </span>
                               )}
                               <span className="truncate">{rd.label}</span>
+                              {financials && (() => {
+                                const docType = mapSourceToDocType(y1(financials, rd.key)?.source);
+                                const doc = docType ? (byDocType[docType] ?? null) : null;
+                                return <SourceDocPill doc={doc} />;
+                              })()}
                               {stanceByRowKey[rd.key] && (
                                 <span
                                   title={stanceByRowKey[rd.key].trace}

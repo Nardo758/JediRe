@@ -1,0 +1,48 @@
+Task: Close Gap 1 cleanup — backfill source_documents for existing deals 
+and extend pill wiring to AssumptionsHubTab.
+
+Background:
+Gap 1's main work shipped: backend write path, REST endpoint, agent tool, 
+and frontend pill wiring on ProFormaSummaryTab. Two cleanup items remain:
+1. The 5 existing production deals (Bishop, Sentosa, Westside Lofts, 
+   plus 2 others) have no source_documents catalogue entries because the 
+   write path didn't exist when they were originally extracted
+2. AssumptionsHubTab has the same data and structure as ProFormaSummaryTab 
+   but no pill wiring
+
+Item 1 — Backfill script:
+- Walk all production deals with deal_files entries
+- For each deal_files row where extraction_status = 'done', call 
+  writeSourceDocument() to populate the source_documents catalogue
+- Script lives at backend/scripts/backfill-source-documents.ts
+- Same idempotent pattern as backfill-cs-defaults.ts (re-running is safe 
+  due to upsert by file_id)
+- Verification: post-run query confirms source_documents populated on all 
+  5 deals
+
+Item 2 — AssumptionsHubTab pill wiring:
+- Same pattern as ProFormaSummaryTab (already in place)
+- Use existing useSourceDocuments hook
+- Pass sourceDocuments through tab props (FinancialEnginePage.tsx already 
+  populates this)
+- Wire SourceDocPill into the appropriate DataRow call sites — identify 
+  which rows in AssumptionsHubTab have a row.source that maps to an 
+  extracted document type
+- Same mapSourceToDocType helper applies; may need to extend if 
+  AssumptionsHubTab has additional source types not seen in 
+  ProFormaSummaryTab
+
+Verification:
+- Open a deal with extractions in AssumptionsHubTab — pills render on 
+  source-backed rows
+- Open the 5 backfilled deals in ProFormaSummaryTab — pills now render 
+  on the appropriate rows (verifies backfill worked)
+- Run the backfill script twice — confirm no duplicate source_documents 
+  entries
+
+Closing note documents:
+- Backfill script execution result
+- Source_documents row counts pre and post backfill per deal
+- AssumptionsHubTab pill coverage
+- Any rows in AssumptionsHubTab without obvious source mapping (for 
+  follow-up if needed)
