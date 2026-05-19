@@ -115,7 +115,7 @@ function applyOverlay(capsule: CapsuleInfo, overlay: Record<string, unknown>): C
   const result = JSON.parse(JSON.stringify(capsule)) as CapsuleInfo;
   for (const [path, value] of Object.entries(overlay)) {
     const parts = path.split('.');
-    let obj: any = result;
+    let obj: Record<string, unknown> = result as Record<string, unknown>;
     for (let i = 0; i < parts.length - 1; i++) {
       if (obj[parts[i]] == null || typeof obj[parts[i]] !== 'object') {
         obj[parts[i]] = {};
@@ -612,7 +612,8 @@ export default function CapsuleLinkPage() {
   // Overrides are stored at recipient_overrides.capital_stack.* to avoid polluting the
   // financial data path selection above.
   const senderCapStack = (senderFin?.capital_stack ?? senderFin?.capitalStack ?? {}) as Record<string, unknown>;
-  const _overlayCapStack = ((C.recipient_overrides as any)?.capital_stack ?? {}) as Record<string, unknown>;
+  const _recipientOverrides = (C.recipient_overrides as Record<string, unknown> | undefined);
+  const _overlayCapStack = (_recipientOverrides?.capital_stack as Record<string, unknown> | undefined) ?? {};
   const capitalStack: Record<string, unknown> = {
     ...(fin?.capital_stack ?? fin?.capitalStack ?? senderCapStack) as Record<string, unknown>,
     ..._overlayCapStack,
@@ -916,7 +917,7 @@ export default function CapsuleLinkPage() {
                   <KpiTile label="Equity Multiple" value={fmtX(returns?.equity_multiple ?? returns?.em ?? fin?.equity_multiple)} accent={GREEN} />
                   <KpiTile label="Cash-on-Cash Y1" value={fmtPct(returns?.coc ?? returns?.cash_on_cash ?? fin?.coc)} />
                   <KpiTile label="Unlevered IRR" value={fmtPct(returns?.unlevered_irr ?? fin?.unlevered_irr)} />
-                  <KpiTile label="Y1 NOI" value={fmtM(fin?.noi ?? fin?.year1_noi ?? (y1 as any)?.find?.((r: any) => r.field === 'noi')?.resolved)} />
+                  <KpiTile label="Y1 NOI" value={fmtM(fin?.noi ?? fin?.year1_noi ?? (y1 ?? []).find((r: Record<string, unknown>) => r.field === 'noi')?.resolved)} />
                   <KpiTile label="Exit Value" value={fmtM(returns?.exit_value ?? fin?.exit_value)} />
                 </div>
               </div>
@@ -1132,7 +1133,7 @@ export default function CapsuleLinkPage() {
                   <SectionLabel label="Evidence Narrative" badge="AI-Generated" />
                   <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 20 }}>
                     <p style={{ fontSize: 13, color: TEXT, lineHeight: 1.8 }}>
-                      {String(MO.evidence_narrative ?? (MO.evidence as any)?.narrative ?? 'Evidence detail available — connect agent to explore.')}
+                      {String(MO.evidence_narrative ?? (MO.evidence as Record<string, unknown> | undefined)?.narrative ?? 'Evidence detail available — connect agent to explore.')}
                     </p>
                   </div>
                 </div>
@@ -1402,6 +1403,32 @@ export default function CapsuleLinkPage() {
 
         </div>
       </main>
+
+      {/* ── Sticky footer reset bar — visible when recipient has any modifications ── */}
+      {hasAnyModifications && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 60,
+          background: '#0d1117', borderTop: `1px solid ${BORDER}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 20px', gap: 12,
+        }}>
+          <div style={{ fontSize: 11, fontFamily: MONO, color: MUTED }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: BLUE, display: 'inline-block', marginRight: 6, verticalAlign: 'middle' }} />
+            {Object.keys(overlay).length} field{Object.keys(overlay).length !== 1 ? 's' : ''} modified from sender's original
+          </div>
+          <button
+            onClick={() => resetOverlay()}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'rgba(239,68,68,0.1)', border: `1px solid rgba(239,68,68,0.3)`,
+              borderRadius: 5, padding: '5px 12px',
+              fontSize: 11, fontFamily: MONO, color: '#EF4444', cursor: 'pointer',
+            }}
+          >
+            <RotateCcw size={10} /> Reset all modifications
+          </button>
+        </div>
+      )}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

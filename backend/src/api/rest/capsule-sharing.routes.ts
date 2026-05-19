@@ -506,13 +506,16 @@ router.delete('/capsule-links/:accessToken/overlay', async (req: Request, res: R
       return res.status(404).json({ error: 'Capsule not found or expired' });
     }
 
+    let updatedOverlay: Record<string, unknown> = {};
     if (path) {
-      await pool.query(
+      const result = await pool.query(
         `UPDATE recipient_session_overlays
          SET overlay_data = overlay_data - $2, updated_at = NOW()
-         WHERE access_token_hash = $1`,
+         WHERE access_token_hash = $1
+         RETURNING overlay_data`,
         [tokenHash, path]
       );
+      updatedOverlay = result.rows[0]?.overlay_data ?? {};
     } else {
       await pool.query(
         `UPDATE recipient_session_overlays
@@ -520,8 +523,9 @@ router.delete('/capsule-links/:accessToken/overlay', async (req: Request, res: R
          WHERE access_token_hash = $1`,
         [tokenHash]
       );
+      updatedOverlay = {};
     }
-    return res.json({ overlay_data: {} });
+    return res.json({ overlay_data: updatedOverlay });
   } catch (err: any) {
     logger.error('Failed to reset overlay', { error: err?.message });
     return res.status(500).json({ error: err?.message ?? 'Failed to reset overlay' });
