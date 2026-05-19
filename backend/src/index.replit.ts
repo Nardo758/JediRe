@@ -454,9 +454,14 @@ import newsConnectionsRoutes from './api/rest/news-connections.routes';
 app.use('/api/v1/news-connections', newsConnectionsRoutes);
 
 // Capsule Sharing — MUST be mounted here, before any app.use('/api/v1', requireAuth, ...)
-// handlers, so that the token-based recipient endpoints (GET /api/v1/capsules/:accessToken,
-// POST /api/v1/capsules/:accessToken/connect_api, etc.) are reachable without authentication.
-// The authenticated owner actions live at /api/v1/capsules-ext (mounted again below with requireAuth).
+// handlers, so that the token-based recipient endpoints
+//   GET  /api/v1/capsule-links/:accessToken
+//   POST /api/v1/capsule-links/:accessToken/connect_api
+//   POST /api/v1/capsule-links/:accessToken/query
+// are reachable without authentication.
+// Using the /capsule-links/ namespace (not /capsules/) avoids any overlap with
+// the authenticated capsule CRUD routes at /api/v1/capsules/:id (createCapsuleRoutes).
+// The authenticated capsule-owner share actions live at /api/v1/capsules-ext (below).
 app.use('/api/v1', capsuleSharingRoutes);
 
 // Building Envelope - requires auth

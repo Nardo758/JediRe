@@ -11,10 +11,10 @@
  *     POST   /:capsuleId/shares/:shareId/revoke
  *
  *   Mounted at /api/v1 (token-based, no platform auth)
- *     GET    /capsules/:accessToken
- *     POST   /capsules/:accessToken/connect_api
- *     POST   /capsules/:accessToken/query
- *     DELETE /capsules/:accessToken/connect_api
+ *     GET    /capsule-links/:accessToken
+ *     POST   /capsule-links/:accessToken/connect_api
+ *     POST   /capsule-links/:accessToken/query
+ *     DELETE /capsule-links/:accessToken/connect_api
  *
  * @version 1.1.0
  * @date 2026-05-19
@@ -113,7 +113,7 @@ router.post('/:capsuleId/share/external', requireAuth, async (req: Authenticated
     const share = shareResult.rows[0];
 
     const baseUrl = process.env.PUBLIC_URL ?? `${req.protocol}://${req.get('host')}`;
-    const capsuleUrl = `${baseUrl}/capsules/${token}`;
+    const capsuleUrl = `${baseUrl}/capsule-link/${token}`;
 
     logger.info('External share created', {
       capsuleId,
@@ -140,9 +140,9 @@ router.post('/:capsuleId/share/external', requireAuth, async (req: Authenticated
   }
 });
 
-// ─── GET /capsules/:accessToken ───────────────────────────────────────────────
+// ─── GET /capsule-links/:accessToken ─────────────────────────────────────────
 
-router.get('/capsules/:accessToken', async (req, res: Response) => {
+router.get('/capsule-links/:accessToken', async (req, res: Response) => {
   const { accessToken } = req.params;
 
   try {
@@ -194,7 +194,7 @@ router.get('/capsules/:accessToken', async (req, res: Response) => {
       preview_metadata: share.preview_metadata ?? null,
       must_connect_api: true,
       next_step: share.share_type === 'external_agent_enabled'
-        ? 'Connect an API key via POST /capsules/:accessToken/connect_api, then query via POST /capsules/:accessToken/query'
+        ? 'Connect an API key via POST /capsule-links/:accessToken/connect_api, then query via POST /capsule-links/:accessToken/query'
         : 'Share type does not support agent interaction',
     });
   } catch (err: any) {
@@ -203,9 +203,9 @@ router.get('/capsules/:accessToken', async (req, res: Response) => {
   }
 });
 
-// ─── POST /capsules/:accessToken/connect_api ─────────────────────────────────
+// ─── POST /capsule-links/:accessToken/connect_api ────────────────────────────
 
-router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => {
+router.post('/capsule-links/:accessToken/connect_api', async (req, res: Response) => {
   const { accessToken } = req.params;
   const { provider, api_key } = req.body;
 
@@ -334,7 +334,7 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
       provider,
       connected_at: connection.connected_at,
       status: 'connected',
-      note: 'API key validated and encrypted at rest (AES-256-GCM). You can now query the agent via POST /capsules/:accessToken/query',
+      note: 'API key validated and encrypted at rest (AES-256-GCM). You can now query the agent via POST /capsule-links/:accessToken/query',
     });
   } catch (err: any) {
     logger.error('Failed to connect API key', { error: err?.message });
@@ -342,9 +342,9 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
   }
 });
 
-// ─── POST /capsules/:accessToken/query ───────────────────────────────────────
+// ─── POST /capsule-links/:accessToken/query ───────────────────────────────────
 
-router.post('/capsules/:accessToken/query', async (req, res: Response) => {
+router.post('/capsule-links/:accessToken/query', async (req, res: Response) => {
   const { accessToken } = req.params;
   const { message } = req.body;
 
@@ -375,9 +375,9 @@ router.post('/capsules/:accessToken/query', async (req, res: Response) => {
   }
 });
 
-// ─── DELETE /capsules/:accessToken/connect_api ────────────────────────────────
+// ─── DELETE /capsule-links/:accessToken/connect_api ──────────────────────────
 
-router.delete('/capsules/:accessToken/connect_api', async (req, res: Response) => {
+router.delete('/capsule-links/:accessToken/connect_api', async (req, res: Response) => {
   const { accessToken } = req.params;
 
   try {

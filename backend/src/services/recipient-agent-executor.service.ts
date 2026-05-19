@@ -108,7 +108,7 @@ export async function executeRecipientQuery(
   );
 
   if (connectionResult.rows.length === 0) {
-    throw new Error('No active API connection found for this capsule. Connect an API key first via POST /capsules/:accessToken/connect_api');
+    throw new Error('No active API connection found for this capsule. Connect an API key first via POST /capsule-links/:accessToken/connect_api');
   }
 
   const connection = connectionResult.rows[0];
