@@ -144,7 +144,7 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                 value={shareForm.recipient_email}
                 onChange={e => setShareForm(f => ({ ...f, recipient_email: e.target.value }))}
                 placeholder="investor@example.com"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
 
@@ -155,7 +155,7 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                 value={shareForm.recipient_name}
                 onChange={e => setShareForm(f => ({ ...f, recipient_name: e.target.value }))}
                 placeholder="Jane Smith"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
 
@@ -194,7 +194,7 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                 onChange={e => setShareForm(f => ({ ...f, preview_text: e.target.value.slice(0, 500) }))}
                 placeholder="Short note to the recipient about this deal…"
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
               />
               <div className="text-xs text-gray-400 text-right mt-0.5">{shareForm.preview_text.length}/500</div>
             </div>
@@ -208,7 +208,7 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                 value={shareForm.expires_at}
                 onChange={e => setShareForm(f => ({ ...f, expires_at: e.target.value }))}
                 min={new Date().toISOString().split('T')[0]}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
 
