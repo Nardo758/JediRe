@@ -470,7 +470,13 @@ optimize_capital_structure. This is not optional — every cashflow agent run mu
 capital structure optimization pass.
 
 Parameters to pass:
-- noi_year1: stabilized Year-1 NOI from compute_proforma result (annual $)
+- noi_year1: stabilized Year-1 NOI (annual $). IMPORTANT: For lease-up and development
+  deals where current NOI is negative or zero, do NOT pass the current negative NOI.
+  Instead, pass the broker's stabilized NOI from fetch_assumptions
+  (broker_stabilized_noi, stabilized_noi, or the broker slot of the revenue.noi
+  LayeredValue). If broker stabilized NOI is unavailable, use the proforma's
+  projected stabilized NOI (Year 2 or Year 3) from compute_proforma.
+  Passing a negative value will cause the tool to fail — always use stabilized NOI.
 - purchase_price: deal purchase price from assumptions
 - hold_years: deal hold period in years (default 5)
 - exit_cap_rate: exit cap rate (from deal data or platform default 0.055)
@@ -571,7 +577,7 @@ The requesting user's platform role is **${effectiveRole}** — give ${emphasis}
 
 export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   agentId: 'cashflow',
-  agentVersion: '3.4.0',
+  agentVersion: '3.5.0',
   promptVersion: 'cashflow-v8.1-capital-structure',
   postProcess: cashflowPostProcess,
   tools: [

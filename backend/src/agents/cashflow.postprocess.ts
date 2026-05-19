@@ -638,6 +638,185 @@ export async function cashflowPostProcess(
       }
     }
 
+    // ── Capital Structure Optimization Postprocessor Fallback (Task #889) ─────
+    // The agent skipped optimize_capital_structure in 615/615 production runs.
+    // Run it deterministically here whenever the agent output lacks the
+    // optimization block, so the Returns tab always has a recommendation.
+    // Non-fatal: failure must never block the agent response.
+    if (ctx.dealId) {
+      try {
+        const csSection = (output.proforma as Record<string, unknown> | undefined)
+          ?.capital_structure as Record<string, unknown> | undefined;
+        const hasOptimization = csSection?.optimization != null &&
+          typeof csSection.optimization === 'object';
+
+        if (!hasOptimization) {
+          // Extract current NOI from proforma_fields
+          const pf = output.proforma_fields as Record<string, Record<string, unknown>> | undefined;
+          const noiPaths = [
+            'revenue.noi', 'income.noi', 'noi', 'net_operating_income',
+            'revenue.net_operating_income',
+          ];
+          let noiYear1: number | null = null;
+          for (const p of noiPaths) {
+            const entry = pf?.[p];
+            if (!entry) continue;
+            const raw = entry.value ?? entry.resolved ?? entry.agent;
+            if (typeof raw === 'number' && !isNaN(raw)) { noiYear1 = raw; break; }
+            if (typeof raw === 'string' && raw !== '' && !isNaN(Number(raw))) {
+              noiYear1 = Number(raw); break;
+            }
+          }
+
+          // Query deal for purchase_price, strategy, and broker NOI fallback
+          const dealRow = await query(
+            `SELECT da.year1, da.noi_stabilized, d.deal_category, d.deal_data,
+                    d.strategy, d.project_type, d.development_type
+               FROM deal_assumptions da
+               JOIN deals d ON d.id = da.deal_id
+              WHERE da.deal_id = $1 LIMIT 1`,
+            [ctx.dealId],
+          );
+
+          if (dealRow.rows.length > 0) {
+            const yr1 = (dealRow.rows[0].year1 ?? {}) as Record<string, unknown>;
+            const dealData = (dealRow.rows[0].deal_data ?? {}) as Record<string, unknown>;
+            const dealCategory = (dealRow.rows[0].deal_category ?? '') as string;
+
+            const resolveLv = (key: string): number | null => {
+              const lv = yr1[key] as Record<string, unknown> | undefined;
+              if (!lv) return null;
+              const v = lv.resolved ?? lv.override ?? lv.agent ?? lv.platform ?? lv.broker;
+              if (typeof v === 'number') return v;
+              if (typeof v === 'string' && !isNaN(Number(v))) return Number(v);
+              return null;
+            };
+
+            const purchasePrice = resolveLv('purchase_price')
+              ?? (typeof dealData.purchase_price === 'number' ? dealData.purchase_price : null)
+              ?? (typeof dealData.purchase_price === 'string' && !isNaN(Number(dealData.purchase_price))
+                  ? Number(dealData.purchase_price) : null);
+
+            const dealStrategy = (dealRow.rows[0].strategy as string | undefined)
+              ?? (dealRow.rows[0].project_type as string | undefined)
+              ?? (dealRow.rows[0].development_type as string | undefined)
+              ?? (dealData.strategy as string | undefined)
+              ?? (dealData.investmentStrategy as string | undefined)
+              ?? (dealData.deal_strategy as string | undefined)
+              ?? dealCategory
+              ?? 'existing';
+
+            // If current NOI from proforma_fields is null/negative, try to find a
+            // positive NOI from the database. Applies to any strategy — not just
+            // lease-up — so that deals with negative current NOI (lease-up,
+            // construction, value-add in progress) still get a valid optimization.
+            if (noiYear1 === null || noiYear1 <= 0) {
+              // 1. Try year1['noi'] LV slots: om (OM extraction) → broker → platform → resolved
+              const yr1NoiRaw = yr1['noi'] as Record<string, unknown> | number | undefined;
+              if (typeof yr1NoiRaw === 'number' && yr1NoiRaw > 0) {
+                noiYear1 = yr1NoiRaw;
+              } else if (yr1NoiRaw && typeof yr1NoiRaw === 'object') {
+                for (const slot of ['om', 'broker', 'platform', 'resolved', 'agent']) {
+                  const v = (yr1NoiRaw as Record<string, unknown>)[slot];
+                  if (typeof v === 'number' && v > 0) { noiYear1 = v; break; }
+                  if (typeof v === 'string' && !isNaN(Number(v)) && Number(v) > 0) {
+                    noiYear1 = Number(v); break;
+                  }
+                }
+              }
+              // 2. Try dotted revenue.noi LV field (om → broker → platform → resolved)
+              if (!noiYear1 || noiYear1 <= 0) {
+                const noiLv = yr1['revenue.noi'] as Record<string, unknown> | undefined;
+                for (const slot of ['om', 'broker', 'platform', 'resolved']) {
+                  const v = noiLv?.[slot];
+                  if (typeof v === 'number' && v > 0) { noiYear1 = v; break; }
+                  if (typeof v === 'string' && !isNaN(Number(v)) && Number(v) > 0) {
+                    noiYear1 = Number(v); break;
+                  }
+                }
+              }
+              // 3. Try da.noi_stabilized direct column
+              if (!noiYear1 || noiYear1 <= 0) {
+                const daNoiStab = dealRow.rows[0].noi_stabilized;
+                const daNoiStabNum = typeof daNoiStab === 'string' ? parseFloat(daNoiStab)
+                  : typeof daNoiStab === 'number' ? daNoiStab : NaN;
+                if (!isNaN(daNoiStabNum) && daNoiStabNum > 0) noiYear1 = daNoiStabNum;
+              }
+              // 4. Misc direct year1 keys
+              if (!noiYear1 || noiYear1 <= 0) {
+                for (const k of ['broker_stabilized_noi', 'stabilized_noi', 'noi_stabilized']) {
+                  const v = yr1[k];
+                  if (typeof v === 'number' && v > 0) { noiYear1 = v; break; }
+                }
+              }
+            }
+
+            if (noiYear1 && noiYear1 > 0 && purchasePrice && purchasePrice > 0) {
+              const exitCapRate = resolveLv('exit_cap_rate') ?? 0.055;
+              const rawHold = resolveLv('hold_years') ?? resolveLv('hold_period') ?? 5;
+              const holdYears = Math.max(1, Math.min(30, Math.round(rawHold)));
+              const debtRate = resolveLv('debt_rate') ?? resolveLv('interest_rate') ?? 0.065;
+
+              let gprYear1: number | undefined;
+              for (const gp of ['revenue.gpr', 'revenue.gross_potential_rent', 'gpr']) {
+                const entry = pf?.[gp];
+                const raw = entry?.value ?? entry?.resolved;
+                if (typeof raw === 'number' && raw > 0) { gprYear1 = raw; break; }
+              }
+
+              const { optimizeCapitalStructure } = await import('./tools/optimize_capital_structure');
+              const optResult = await optimizeCapitalStructure({
+                noi_year1:          noiYear1,
+                purchase_price:     purchasePrice,
+                hold_years:         holdYears,
+                exit_cap_rate:      exitCapRate,
+                debt_rate:          debtRate,
+                amortization_years: 30,
+                io_period_months:   0,
+                noi_growth_rate:    0.03,
+                deal_strategy:      dealStrategy,
+                selling_costs_pct:  0.02,
+                ...(gprYear1 !== undefined ? { gpr_year1: gprYear1 } : {}),
+              });
+
+              if (!output.proforma || typeof output.proforma !== 'object') {
+                output.proforma = {};
+              }
+              const proformaOut = output.proforma as Record<string, unknown>;
+              if (!proformaOut.capital_structure || typeof proformaOut.capital_structure !== 'object') {
+                proformaOut.capital_structure = {};
+              }
+              (proformaOut.capital_structure as Record<string, unknown>).optimization = optResult;
+
+              logger.info('[CashflowPostProcess] CS optimization injected by postprocessor (agent skipped)', {
+                dealId:        ctx.dealId,
+                runId,
+                strategy:      dealStrategy,
+                noiYear1,
+                purchasePrice,
+                optimalLtv:    optResult.optimal_ltv,
+                primaryMetric: optResult.primary_metric,
+                infeasible:    optResult.infeasible,
+              });
+            } else {
+              logger.warn('[CashflowPostProcess] CS optimization postprocessor skipped — insufficient inputs', {
+                dealId: ctx.dealId,
+                runId,
+                noiYear1,
+                purchasePrice,
+              });
+            }
+          }
+        }
+      } catch (csErr) {
+        logger.warn('[CashflowPostProcess] CS optimization postprocessor failed (non-fatal)', {
+          dealId: ctx.dealId,
+          runId,
+          err: csErr instanceof Error ? csErr.message : String(csErr),
+        });
+      }
+    }
+
     // Ensure required string fields
     if (typeof output.summary !== 'string' || output.summary === '') {
       // If summary is an object, try to extract a string from it

@@ -1702,6 +1702,24 @@ export async function seedCapitalStructureDefaults(
       );
     }
 
+    // ── Also write CS defaults to the active underwriting scenario ────────────
+    // The trg_sync_underwriting_scenario trigger propagates scenario.year1 →
+    // deal_assumptions.year1 on every agent write-back, clobbering any CS keys
+    // we just wrote above. Writing to the scenario directly means the defaults
+    // survive the sync trigger. Non-destructive merge: existing scenario values
+    // (user overrides, agent values) always win over defaults.
+    await pool.query(
+      `UPDATE deal_underwriting_scenarios
+          SET year1      = $2::jsonb || COALESCE(year1, '{}'),
+              updated_at = NOW()
+        WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL`,
+      [dealId, JSON.stringify(defaults)]
+    ).catch(err =>
+      logger.warn('[seedCapitalStructureDefaults] Scenario year1 write failed (non-fatal)', {
+        dealId, error: err instanceof Error ? err.message : String(err),
+      })
+    );
+
     // ── Also write to deal_assumptions direct columns if currently NULL ──
     // This ensures composeCapitalStack reads live defaults from ltc/interest_rate
     // even before the Debt Advisor is opened for the first time.
