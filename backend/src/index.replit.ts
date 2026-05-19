@@ -267,6 +267,10 @@ app.use('/api/v1/admin-api', adminApiKeyRouter);
 app.use('/api/v1/supply', requireAuth, supplyRoutes);
 
 app.use('/api/v1', dataRouter);
+// Capsule sharing routes mounted here (second, early mount) so that the
+// unauthenticated GET /api/v1/deals/:dealId/deal-book endpoint is reachable
+// before the authenticated dealsRouter at the next line intercepts the request.
+app.use('/api/v1', capsuleSharingRoutes);
 app.use('/api/v1/deals', dealsRouter);
 app.use('/api/v1/tasks', tasksRouter);
 app.use('/api/v1/inbox', inboxRouter);

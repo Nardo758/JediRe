@@ -169,7 +169,7 @@ async function createExternalShareInternal(
 
   // External recipient — generate token + shortcode and create the share record.
   const { token, hash } = generateAccessToken();
-  const shortcode = generateShortcode();
+  let shortcode = generateShortcode();
 
   // Tier-gate: only principal/institutional can set show_attribution_override = false
   const senderTier: string = capsuleRow.subscription_tier ?? 'scout';
@@ -189,39 +189,58 @@ async function createExternalShareInternal(
     ?? (forwardedHost ? `https://${forwardedHost}` : null)
     ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
     ?? `${req.protocol}://${req.get('host')}`;
-  const capsuleUrl = `${baseUrl}/share/${shortcode}`;
+  let capsuleUrl = `${baseUrl}/share/${shortcode}`;
 
-  const shareResult = await pool.query(
-    `INSERT INTO capsule_external_shares
-       (capsule_id, shared_by_user_id, share_type, share_mode, label,
-        recipient_email, recipient_name,
-        allow_document_download, allow_agent_interaction, expires_at, access_token,
-        preview_text, preview_metadata, capsule_snapshot, show_attribution_override,
-        share_url, shortcode)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-     RETURNING share_id, created_at`,
-    [
-      capsuleId,
-      userId,
-      shareType,
-      resolvedShareMode,
-      label ? (label as string).trim().slice(0, 200) : null,
-      recipient_email ?? null,
-      recipient_name ?? null,
-      allow_document_download !== false,
-      allow_agent_interaction !== false,
-      expires_at ?? null,
-      hash,
-      preview_text ?? null,
-      preview_metadata ? JSON.stringify(preview_metadata) : null,
-      null, // Phase 1: no frozen snapshot; live data served from deal_capsules
-      resolvedAttributionOverride,
-      capsuleUrl,
-      shortcode,
-    ]
-  );
-
-  const share = shareResult.rows[0];
+  // Retry loop for shortcode uniqueness — max 3 attempts.
+  // Collision probability is ~1 in 3.5T so retries will almost never fire.
+  let shareRow: { share_id: string; created_at: string } | null = null;
+  for (let attempt = 0; attempt <= 2; attempt++) {
+    try {
+      const result = await pool.query(
+        `INSERT INTO capsule_external_shares
+           (capsule_id, shared_by_user_id, share_type, share_mode, label,
+            recipient_email, recipient_name,
+            allow_document_download, allow_agent_interaction, expires_at, access_token,
+            preview_text, preview_metadata, capsule_snapshot, show_attribution_override,
+            share_url, shortcode)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+         RETURNING share_id, created_at`,
+        [
+          capsuleId,
+          userId,
+          shareType,
+          resolvedShareMode,
+          label ? (label as string).trim().slice(0, 200) : null,
+          recipient_email ?? null,
+          recipient_name ?? null,
+          allow_document_download !== false,
+          allow_agent_interaction !== false,
+          expires_at ?? null,
+          hash,
+          preview_text ?? null,
+          preview_metadata ? JSON.stringify(preview_metadata) : null,
+          null, // Phase 1: no frozen snapshot; live data served from deal_capsules
+          resolvedAttributionOverride,
+          capsuleUrl,
+          shortcode,
+        ]
+      );
+      shareRow = result.rows[0];
+      break;
+    } catch (insertErr: any) {
+      const isShortcodeConflict =
+        insertErr.code === '23505' &&
+        String(insertErr.constraint ?? insertErr.detail ?? '').toLowerCase().includes('shortcode');
+      if (attempt < 2 && isShortcodeConflict) {
+        shortcode = generateShortcode();
+        capsuleUrl = `${baseUrl}/share/${shortcode}`;
+        continue;
+      }
+      throw insertErr;
+    }
+  }
+  if (!shareRow) throw new Error('Failed to create share record after retries');
+  const share = shareRow;
 
   // Fire share invitation email for specific-recipient shares.
   // Shareable links have no known recipient at creation time — no email sent.
@@ -572,12 +591,123 @@ router.delete('/shares/:shortcode/overlay', async (req: Request, res: Response) 
   }
 });
 
+// Shared rate-limit store for both /deals/:dealId/deal-book and /capsule-links/:token/deal-book
+const dealBookRateLimitStore = new Map<string, number[]>();
+
+// ─── GET /deals/:dealId/deal-book ────────────────────────────────────────────
+// Spec Step 1: token-authenticated deal-book endpoint keyed by capsule_id.
+// Authenticates via Authorization: Bearer <token> or ?token= query param.
+// :dealId is treated as the capsule UUID (deal_capsules has no deal_id column).
+// Rate limit: 30 per hour per IP (matches /capsule-links/:token/deal-book).
+
+router.get('/deals/:dealId/deal-book', async (req: Request, res: Response) => {
+  const { dealId: capsuleId } = req.params;
+  const raw = req.headers.authorization?.startsWith('Bearer ')
+    ? req.headers.authorization.slice(7)
+    : (req.query.token as string | undefined);
+  if (!raw) return res.status(401).json({ error: 'Access token required' });
+
+  const pool = getPool();
+  try {
+    const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    const rateKey = `deal_book:${clientIp}`;
+    const now = Date.now();
+    const hits = (dealBookRateLimitStore.get(rateKey) ?? []).filter(t => now - t < 3_600_000);
+    if (hits.length >= 30) return res.status(429).json({ error: 'Rate limit exceeded — try again later' });
+    hits.push(now);
+    dealBookRateLimitStore.set(rateKey, hits);
+
+    const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
+    const shareResult = await pool.query(
+      `SELECT ces.share_id, ces.capsule_id, ces.share_type,
+              ces.allow_document_download, ces.allow_agent_interaction,
+              ces.expires_at, ces.revoked_at, ces.recipient_email,
+              ces.preview_text, ces.show_attribution_override,
+              COALESCE(rso.overlay_data, '{}'::jsonb) AS overlay_data
+       FROM capsule_external_shares ces
+       LEFT JOIN recipient_session_overlays rso ON rso.access_token_hash = ces.access_token
+       WHERE ces.access_token = $1
+         AND ces.capsule_id = $2
+         AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
+       LIMIT 1`,
+      [tokenHash, capsuleId]
+    );
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal link is invalid, expired, or has been revoked.' });
+    }
+    const share = shareResult.rows[0];
+
+    const capsuleResult = await pool.query(
+      `SELECT id, property_address, asset_class, status,
+              jedi_score, collision_score,
+              deal_data, platform_intel, user_adjustments, module_outputs, created_at
+       FROM deal_capsules WHERE id = $1 LIMIT 1`,
+      [share.capsule_id]
+    );
+    if (capsuleResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal content not found.' });
+    }
+    const capsule = capsuleResult.rows[0];
+
+    const brandingResult = await pool.query(
+      `SELECT COALESCE(u.subscription_tier,'scout') AS tier,
+              COALESCE(
+                NULLIF(u.full_name,''),
+                NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), ''),
+                u.email
+              ) AS sender_display_name,
+              ubs.company_name, ubs.logo_url,
+              COALESCE(ubs.show_attribution, true) AS show_attribution
+       FROM deal_capsules dc
+       JOIN users u ON u.id = dc.user_id
+       LEFT JOIN user_branding_settings ubs ON ubs.user_id = dc.user_id
+       WHERE dc.id = $1`,
+      [share.capsule_id]
+    );
+    const branding = brandingResult.rows[0] ?? null;
+
+    return res.json({
+      capsule_id: capsule.id,
+      property_address: capsule.property_address,
+      asset_class: capsule.asset_class,
+      status: capsule.status,
+      jedi_score: capsule.jedi_score,
+      collision_score: capsule.collision_score,
+      deal_data: capsule.deal_data ?? {},
+      platform_intel: capsule.platform_intel ?? {},
+      user_adjustments: capsule.user_adjustments ?? {},
+      module_outputs: capsule.module_outputs ?? {},
+      created_at: capsule.created_at,
+      overlay_data: share.overlay_data ?? {},
+      share_permissions: {
+        share_type: share.share_type,
+        allow_agent_interaction: share.allow_agent_interaction,
+        allow_document_download: share.allow_document_download,
+        expires_at: share.expires_at ?? null,
+        preview_text: share.preview_text ?? null,
+        recipient_email: share.recipient_email ?? null,
+      },
+      sender_display_name: branding?.sender_display_name ?? null,
+      show_attribution: (() => {
+        const tier: string = branding?.tier ?? 'scout';
+        const eligible = ['principal','institutional'].includes(tier);
+        if (!eligible) return true;
+        if (share.show_attribution_override !== null && share.show_attribution_override !== undefined)
+          return Boolean(share.show_attribution_override);
+        return branding?.show_attribution !== false;
+      })(),
+    });
+  } catch (err: any) {
+    logger.error('Failed to serve /deals/:dealId/deal-book', { error: err?.message, capsuleId });
+    return res.status(500).json({ error: err?.message ?? 'Internal server error' });
+  }
+});
+
 // ─── GET /capsule-links/:accessToken/deal-book ───────────────────────────────
 // Returns the full capsule content for external display.
 // Rate limit: 30 per hour per IP (less aggressive than token resolution).
 // Public — no platform auth required; share token is the credential.
-
-const dealBookRateLimitStore = new Map<string, number[]>();
 
 router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Response) => {
   const { accessToken } = req.params;

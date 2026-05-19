@@ -539,6 +539,8 @@ const DealDetailPage: React.FC = () => {
   const [eventConcentration, setEventConcentration] = useState<{topEventName:string;irrShare:number;isConcentrated:boolean}|null>(null);
 
   const [showCloseDealModal, setShowCloseDealModal] = useState(false);
+  // Recipient "Save your work" CTA — null = checking, true = platform user, false = anonymous
+  const [recipientIsPlatformUser, setRecipientIsPlatformUser] = useState<boolean | null>(null);
   const [closingDeal, setClosingDeal] = useState(false);
 
   // ── Share capsule — owner-only, hidden from recipients (who access via CapsuleLinkPage) ─
@@ -688,6 +690,17 @@ const DealDetailPage: React.FC = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, shortcode, tokenParam]);
+
+  // Recipient CTA: check if the viewer is a logged-in platform user via /me.
+  // Used to show "Add to Pipeline" vs "Sign Up Free" in the recipient footer banner.
+  useEffect(() => {
+    if (!isRecipient) { setRecipientIsPlatformUser(null); return; }
+    const storedToken = localStorage.getItem('auth_token');
+    if (!storedToken) { setRecipientIsPlatformUser(false); return; }
+    fetch('/api/v1/me', { headers: { Authorization: `Bearer ${storedToken}` } })
+      .then(r => setRecipientIsPlatformUser(r.ok))
+      .catch(() => setRecipientIsPlatformUser(false));
+  }, [isRecipient]);
 
   const fetchGeographicContext = async (id: string) => {
     try {
@@ -1591,7 +1604,7 @@ const DealDetailPage: React.FC = () => {
           <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BG, padding: '0 8px' }}>
               {/* Data gap awareness now lives on the GAPS / CLOSE DEAL header button */}
-              <ActiveComponent deal={deal} dealId={effectiveDealId} dealType={dealType} embedded={true} onUpdate={() => !isRecipient && dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
+              <ActiveComponent deal={deal} dealId={effectiveDealId} dealType={dealType} embedded={true} isRecipient={isRecipient} onUpdate={() => !isRecipient && dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
             </div>
 
             {showUnitMixCTA && (
@@ -1629,6 +1642,45 @@ const DealDetailPage: React.FC = () => {
         {/* ── Bottom Panel + Skills Bar (shared with Terminal Dashboard) ── */}
         <BottomPanel />
         <SkillsBar />
+
+        {/* ── Recipient "Save your work" CTA — fixed bottom banner ── */}
+        {isRecipient && (
+          <div style={{
+            position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 300,
+            background: BG_NAV, borderTop: `1px solid ${BORDER}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 24px', fontFamily: MONO,
+          }}>
+            <span style={{ fontSize: 11, color: TEXT_DIM, letterSpacing: 0.5 }}>
+              {recipientIsPlatformUser === true
+                ? 'YOU\'RE VIEWING A SHARED DEAL — SAVE IT TO YOUR PIPELINE:'
+                : 'YOU\'RE VIEWING A SHARED DEAL — CREATE A FREE ACCOUNT TO SAVE:'}
+            </span>
+            {recipientIsPlatformUser === true ? (
+              <button
+                onClick={() => navigate('/deals')}
+                style={{
+                  background: AMBER, color: '#0A0E17', border: 'none', borderRadius: 4,
+                  padding: '6px 18px', fontSize: 11, fontWeight: 700, fontFamily: MONO,
+                  letterSpacing: 1, cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                + ADD TO PIPELINE
+              </button>
+            ) : (
+              <button
+                onClick={() => navigate('/auth')}
+                style={{
+                  background: '#4A90D9', color: '#fff', border: 'none', borderRadius: 4,
+                  padding: '6px 18px', fontSize: 11, fontWeight: 700, fontFamily: MONO,
+                  letterSpacing: 1, cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                SIGN UP FREE →
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Close Deal Modal ── */}
