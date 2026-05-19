@@ -1,0 +1,33 @@
+Worth flagging before declaring complete
+A few items worth verifying or considering before treating this as done:
+1. The validation step. Both the landing page work and the Connect API Key work have shipped but neither has been validated end-to-end by an actual recipient interaction. The bot ran builds clean and confirmed endpoints respond correctly to test calls. What hasn't happened is a real end-to-end flow — open the landing page in incognito, click through to deal view, connect a real API key, submit a real query, see real Stripe meter events fire.
+Worth doing this validation yourself with your own external email and a test Anthropic API key. The kind of issues that surface during real flow validation (like the JSX structure bug the bot caught during build) won't all be caught by static code review. Same pattern as the localhost URL bug from earlier sessions — only surfaces when you actually click through.
+2. The "Create free account" tertiary CTA still doesn't lead anywhere meaningful. The landing page now has two functional CTAs (View Deal works, Connect API Key works) and one text link (Create free account) that presumably routes to a sign-up flow. Whether that sign-up flow handles the share context properly — converting the recipient into a platform user with the deal forked to their pipeline — is unclear from this session's work.
+If a recipient clicks "Create free account" right now, what happens? Worth knowing before treating the landing page as fully functional. If the sign-up flow doesn't handle share context, the tertiary CTA is misleading.
+3. The conversation is session-state only. Worth being explicit that recipients who have a meaningful agent conversation lose it when they close the browser. For one-time evaluations this is fine. For recipients who want to come back over a week of due diligence and reference their earlier conversation, this is a gap. Worth flagging as known limitation rather than discovered later.
+4. The Disconnect button behavior. The bot mentions there's a Disconnect button in the panel footer. Worth knowing what happens when a recipient clicks it. Does it just remove the connection so they can connect a different key? Does it clear conversation state? Does it require confirmation? These are small UX questions but worth being deliberate about.
+What's actually left
+After this session, the queue from earlier conversations:
+Functional but pending validation:
+
+Real recipient testing end-to-end
+Sign-up flow with share context (currently text link only)
+
+Cleanup work:
+
+Task A (retire old /capsule-link/:token URL format entirely)
+Pipeline page share button (sender-side)
+Email provider connection (NoOp → SendGrid/Postmark when ready)
+
+Deferred from earlier specs:
+
+Piece 3 forked workspace for platform-to-platform sharing
+Piece 5 Excel + pitch deck export
+Multi-provider beyond Anthropic for recipient connections
+
+Substrate gaps that predate the recipient work:
+
+Gap 3 archive depth seeding
+Gap 4 historical correlations
+Gap 6 workspace composability (Mode 4)
+Gap 7 broader Goal Seek
