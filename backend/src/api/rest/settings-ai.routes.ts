@@ -32,7 +32,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       [userId]
     );
 
-    const tier = result.rows.length > 0 ? result.rows[0].subscription_tier : 'scout';
+    const tier = result.rows.length > 0 ? result.rows[0].subscription_tier : 'free';
     const currentPreference = result.rows.length > 0 ? (result.rows[0].llm_preference || 'auto') : 'auto';
 
     const options = PREFERENCE_OPTIONS.map(opt => ({
@@ -74,7 +74,7 @@ router.put('/', requireAuth, async (req: Request, res: Response) => {
       [userId]
     );
 
-    const tier = result.rows.length > 0 ? result.rows[0].subscription_tier : 'scout';
+    const tier = result.rows.length > 0 ? result.rows[0].subscription_tier : 'free';
 
     if (preference === 'powerful' && !['principal', 'institutional'].includes(tier)) {
       return res.status(403).json({
@@ -86,7 +86,7 @@ router.put('/', requireAuth, async (req: Request, res: Response) => {
     if (result.rows.length === 0) {
       await query(
         `INSERT INTO user_credit_balances (user_id, subscription_tier, llm_preference, credits_included_monthly, credits_remaining, credits_used_this_period, period_start, period_end)
-         VALUES ($1, 'scout', $2, 100, 100, 0, NOW(), NOW() + INTERVAL '1 month')`,
+         VALUES ($1, 'free', $2, 100, 100, 0, NOW(), NOW() + INTERVAL '1 month')`,
         [userId, preference]
       );
     } else {
@@ -120,7 +120,7 @@ router.get('/surfaces', requireAuth, async (req: Request, res: Response) => {
       `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
       [userId]
     );
-    const tier = tierRow.rows[0]?.subscription_tier ?? 'scout';
+    const tier = tierRow.rows[0]?.subscription_tier ?? 'free';
 
     const overrides = await modelPreferenceService.getAllForUser(userId);
     const overrideMap = new Map(
@@ -194,7 +194,7 @@ router.put('/surfaces', requireAuth, async (req: Request, res: Response) => {
         `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
         [userId]
       );
-      const tier = tierRow.rows[0]?.subscription_tier ?? 'scout';
+      const tier = tierRow.rows[0]?.subscription_tier ?? 'free';
       if (modelDef.requiredTiers && !modelDef.requiredTiers.includes(tier)) {
         return res.status(403).json({
           success: false,
@@ -232,7 +232,7 @@ router.post('/surfaces/test', requireAuth, async (req: Request, res: Response) =
       `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
       [userId]
     );
-    const tier = tierRow.rows[0]?.subscription_tier ?? 'scout';
+    const tier = tierRow.rows[0]?.subscription_tier ?? 'free';
     if (modelDef.requiredTiers && !modelDef.requiredTiers.includes(tier)) {
       return res.status(403).json({
         success: false,

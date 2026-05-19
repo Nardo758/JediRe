@@ -124,7 +124,7 @@ async function createExternalShareInternal(
               NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), ''),
               u.email
             ) AS sender_display_name,
-            COALESCE(u.subscription_tier, 'scout') AS subscription_tier
+            COALESCE(u.subscription_tier, 'free') AS subscription_tier
      FROM deal_capsules dc
      JOIN users u ON u.id = dc.user_id
      WHERE dc.id = $1 AND dc.user_id = $2 LIMIT 1`,
@@ -172,7 +172,7 @@ async function createExternalShareInternal(
   let shortcode = generateShortcode();
 
   // Tier-gate: only principal/institutional can set show_attribution_override = false
-  const senderTier: string = capsuleRow.subscription_tier ?? 'scout';
+  const senderTier: string = capsuleRow.subscription_tier ?? 'free';
   const canRemoveAttribution = ['principal', 'institutional'].includes(senderTier);
   let resolvedAttributionOverride: boolean | null = null;
   if (show_attribution_override !== undefined && show_attribution_override !== null) {
@@ -436,7 +436,7 @@ router.get('/shares/:shortcode', async (req: Request, res: Response) => {
     const capsuleData: Record<string, unknown> = capsuleResult.rows[0];
 
     const senderBrandingResult = await pool.query(
-      `SELECT COALESCE(u.subscription_tier, 'scout') AS tier,
+      `SELECT COALESCE(u.subscription_tier, 'free') AS tier,
               ubs.company_name, ubs.logo_url,
               COALESCE(ubs.show_attribution, true) AS show_attribution
        FROM deal_capsules dc
@@ -447,7 +447,7 @@ router.get('/shares/:shortcode', async (req: Request, res: Response) => {
     );
 
     const senderBranding = senderBrandingResult.rows[0] ?? null;
-    const senderTier: string = senderBranding?.tier ?? 'scout';
+    const senderTier: string = senderBranding?.tier ?? 'free';
     const attributionEligible = ['principal', 'institutional'].includes(senderTier);
 
     let attributionVisible: boolean;
@@ -651,7 +651,7 @@ router.get('/deals/:dealId/deal-book', async (req: Request, res: Response) => {
     const capsule = capsuleResult.rows[0];
 
     const brandingResult = await pool.query(
-      `SELECT COALESCE(u.subscription_tier,'scout') AS tier,
+      `SELECT COALESCE(u.subscription_tier,'free') AS tier,
               COALESCE(
                 NULLIF(u.full_name,''),
                 NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), ''),
@@ -701,7 +701,7 @@ router.get('/deals/:dealId/deal-book', async (req: Request, res: Response) => {
       },
       sender_display_name: branding?.sender_display_name ?? null,
       show_attribution: (() => {
-        const tier: string = branding?.tier ?? 'scout';
+        const tier: string = branding?.tier ?? 'free';
         const eligible = ['principal','institutional'].includes(tier);
         if (!eligible) return true;
         if (share.show_attribution_override !== null && share.show_attribution_override !== undefined)
@@ -775,7 +775,7 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
 
     // Resolve sender branding + tier for attribution decision
     const senderBrandingResult = await pool.query(
-      `SELECT COALESCE(u.subscription_tier, 'scout') AS tier,
+      `SELECT COALESCE(u.subscription_tier, 'free') AS tier,
               ubs.company_name,
               ubs.logo_url,
               COALESCE(ubs.show_attribution, true) AS show_attribution
@@ -787,7 +787,7 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
     );
 
     const senderBranding = senderBrandingResult.rows[0] ?? null;
-    const senderTier: string = senderBranding?.tier ?? 'scout';
+    const senderTier: string = senderBranding?.tier ?? 'free';
     const attributionEligible = ['principal', 'institutional'].includes(senderTier);
 
     // Attribution resolution order (strict tier-first):
