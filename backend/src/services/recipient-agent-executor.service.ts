@@ -276,3 +276,145 @@ export async function executeRecipientQuery(
     total_charged_usd: Math.round(totalCharged * 100) / 100,
   };
 }
+
+/**
+ * Shortcode variant — same logic but resolves connection via shortcode
+ * instead of hashing a raw access token. Shortcode IS the credential for
+ * recipients who accessed the deal via /share/:shortcode.
+ */
+export async function executeRecipientQueryByShortcode(
+  shortcode: string,
+  message: string
+): Promise<AgentQueryResponse> {
+  const pool = getPool();
+
+  const connectionResult = await pool.query<ConnectionRow>(
+    `SELECT rc.connection_id, rc.share_id, rc.provider, rc.api_key_encrypted,
+            rc.stripe_customer_id, rc.disconnected_at,
+            ces.access_token AS share_token_hash
+     FROM recipient_api_connections rc
+     JOIN capsule_external_shares ces ON ces.share_id = rc.share_id
+     WHERE ces.shortcode = $1
+       AND ces.revoked_at IS NULL
+       AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
+       AND rc.disconnected_at IS NULL
+     ORDER BY rc.connected_at DESC
+     LIMIT 1`,
+    [shortcode]
+  );
+
+  if (connectionResult.rows.length === 0) {
+    throw new Error('No active API connection found for this share. Connect an API key first.');
+  }
+
+  const connection = connectionResult.rows[0];
+  const tokenHash = (connection as any).share_token_hash ?? null;
+
+  let rawKey: string;
+  try {
+    rawKey = decryptToken(connection.api_key_encrypted);
+  } catch (decryptErr: any) {
+    logger.error('Failed to decrypt recipient API key (shortcode path)', {
+      error: decryptErr?.message,
+      connectionId: connection.connection_id,
+    });
+    throw new Error('API key decryption failed. Please reconnect your API key.');
+  }
+
+  const context = await buildRecipientDealContext(connection.share_id, tokenHash);
+  if (!context) {
+    throw new Error('Deal data not found for this capsule.');
+  }
+
+  const systemPrompt = buildRecipientSystemPrompt(context);
+
+  let aiResponse = '';
+  let tokensInput = 0;
+  let tokensOutput = 0;
+
+  if (connection.provider === 'anthropic') {
+    const { Anthropic } = await import('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: rawKey });
+    const result = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: message }],
+    });
+    aiResponse = result.content.map((block: any) => block.text ?? '').join('\n');
+    tokensInput = (result as any).usage?.input_tokens ?? 0;
+    tokensOutput = (result as any).usage?.output_tokens ?? 0;
+  } else if (connection.provider === 'openai') {
+    const OpenAI = await import('openai');
+    const client = new OpenAI.default({ apiKey: rawKey });
+    const result = await client.chat.completions.create({
+      model: 'gpt-4o',
+      max_tokens: 4096,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: message },
+      ],
+    });
+    aiResponse = result.choices[0]?.message?.content ?? '';
+    tokensInput = result.usage?.prompt_tokens ?? 0;
+    tokensOutput = result.usage?.completion_tokens ?? 0;
+  } else {
+    throw new Error(`Unsupported provider: ${connection.provider}`);
+  }
+
+  const COST_INPUT_PER_TOKEN = connection.provider === 'anthropic' ? 3.0 / 1_000_000 : 2.5 / 1_000_000;
+  const COST_OUTPUT_PER_TOKEN = connection.provider === 'anthropic' ? 15.0 / 1_000_000 : 10.0 / 1_000_000;
+  const costBasis = (tokensInput * COST_INPUT_PER_TOKEN) + (tokensOutput * COST_OUTPUT_PER_TOKEN);
+  const platformMargin = costBasis * 0.3;
+  const totalCharged = costBasis + platformMargin;
+
+  try {
+    await pool.query(
+      `INSERT INTO recipient_query_log
+         (connection_id, tokens_input, tokens_output, cost_basis_usd,
+          platform_margin_usd, total_charged_usd, query_category, response_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [connection.connection_id, tokensInput, tokensOutput, costBasis,
+       platformMargin, totalCharged, 'deal_query', 'success']
+    );
+  } catch (logErr: any) {
+    logger.warn('Failed to log recipient query (shortcode path)', { error: logErr?.message });
+  }
+
+  if (connection.stripe_customer_id && process.env.STRIPE_SECRET_KEY) {
+    try {
+      const Stripe = (await import('stripe')).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      await stripe.billing.meterEvents.create({
+        event_name: 'capsule_query_count',
+        payload: { stripe_customer_id: connection.stripe_customer_id, value: '1' },
+      });
+    } catch (stripeErr: any) {
+      logger.warn('Stripe metering failed (shortcode path)', { error: stripeErr?.message });
+    }
+  }
+
+  try {
+    await pool.query(
+      `UPDATE recipient_api_connections
+       SET total_queries = total_queries + 1,
+           total_tokens_consumed = total_tokens_consumed + $2,
+           total_charges_usd = total_charges_usd + $3,
+           platform_margin_usd = platform_margin_usd + $4,
+           last_used_at = NOW()
+       WHERE connection_id = $1`,
+      [connection.connection_id, tokensInput + tokensOutput, totalCharged, platformMargin]
+    );
+  } catch (updateErr: any) {
+    logger.warn('Failed to update connection counters (shortcode path)', { error: updateErr?.message });
+  }
+
+  return {
+    response: aiResponse,
+    tokens_input: tokensInput,
+    tokens_output: tokensOutput,
+    cost_basis_usd: Math.round(costBasis * 100) / 100,
+    platform_margin_usd: Math.round(platformMargin * 100) / 100,
+    total_charged_usd: Math.round(totalCharged * 100) / 100,
+  };
+}

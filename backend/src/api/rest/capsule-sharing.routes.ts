@@ -28,7 +28,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
-import { executeRecipientQuery } from '../../services/recipient-agent-executor.service';
+import { executeRecipientQuery, executeRecipientQueryByShortcode } from '../../services/recipient-agent-executor.service';
 import { encryptToken } from '../../services/encryption';
 import { emailService } from '../../services/email.service';
 import { NotificationService } from '../../services/NotificationService';
@@ -1193,6 +1193,203 @@ router.delete('/capsule-links/:accessToken/connect_api', async (req, res: Respon
       return res.status(404).json({ error: 'No active connection found for this capsule' });
     }
 
+    return res.json({
+      connection_id: result.rows[0].connection_id,
+      disconnected_at: result.rows[0].disconnected_at,
+      status: 'disconnected',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message ?? 'Failed to disconnect' });
+  }
+});
+
+// ─── Shortcode-native agent endpoints ────────────────────────────────────────
+// Recipients access via /share/:shortcode — they never hold the raw access
+// token, so these endpoints resolve everything directly from the shortcode.
+
+router.get('/shares/:shortcode/connection', async (req: Request, res: Response) => {
+  const { shortcode } = req.params;
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT rc.connection_id, rc.provider, rc.total_queries,
+              rc.total_charges_usd, rc.connected_at, rc.last_used_at
+       FROM recipient_api_connections rc
+       JOIN capsule_external_shares ces ON ces.share_id = rc.share_id
+       WHERE ces.shortcode = $1
+         AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
+         AND rc.disconnected_at IS NULL
+       ORDER BY rc.connected_at DESC
+       LIMIT 1`,
+      [shortcode]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ connected: false });
+    }
+    const row = result.rows[0];
+    return res.json({
+      connected: true,
+      connection_id: row.connection_id,
+      provider: row.provider,
+      total_queries: row.total_queries,
+      total_charges_usd: parseFloat(row.total_charges_usd ?? '0'),
+      connected_at: row.connected_at,
+      last_used_at: row.last_used_at,
+    });
+  } catch (err: any) {
+    logger.error('Failed to check connection status', { error: err?.message });
+    return res.status(500).json({ error: 'Failed to check connection status' });
+  }
+});
+
+router.post('/shares/:shortcode/connect_api', async (req: Request, res: Response) => {
+  const { shortcode } = req.params;
+  const { provider, api_key } = req.body;
+
+  if (!provider || !api_key) {
+    return res.status(400).json({ error: 'provider and api_key are required' });
+  }
+  if (!['anthropic', 'openai'].includes(provider)) {
+    return res.status(400).json({ error: 'provider must be anthropic or openai' });
+  }
+
+  try {
+    const pool = getPool();
+    const shareResult = await pool.query(
+      `SELECT share_id, share_type, recipient_email FROM capsule_external_shares
+       WHERE shortcode = $1 AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW())
+       LIMIT 1`,
+      [shortcode]
+    );
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Share link is invalid or expired' });
+    }
+    const share = shareResult.rows[0];
+    if (share.share_type !== 'external_agent_enabled') {
+      return res.status(403).json({ error: 'Agent interaction not enabled for this share' });
+    }
+
+    // Stripe customer
+    let stripeCustomerId: string | null = null;
+    try {
+      if (process.env.STRIPE_SECRET_KEY) {
+        const Stripe = (await import('stripe')).default;
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+        if (share.recipient_email) {
+          const existing = await stripe.customers.list({ email: share.recipient_email, limit: 1 });
+          stripeCustomerId = existing.data[0]?.id ?? null;
+        }
+        if (!stripeCustomerId) {
+          const customer = await stripe.customers.create({
+            email: share.recipient_email ?? undefined,
+            metadata: { source: 'capsule_share', share_id: share.share_id },
+          });
+          stripeCustomerId = customer.id;
+        }
+      }
+    } catch (stripeErr: any) {
+      logger.warn('Stripe customer creation failed (non-fatal)', { error: stripeErr?.message });
+    }
+
+    // Validate key
+    try {
+      if (provider === 'anthropic') {
+        const { Anthropic } = await import('@anthropic-ai/sdk');
+        const testClient = new Anthropic({ apiKey: api_key });
+        await testClient.messages.create({
+          model: 'claude-sonnet-4-20250514', max_tokens: 1,
+          system: 'Respond with a single word: ok',
+          messages: [{ role: 'user', content: 'test' }],
+        });
+      } else if (provider === 'openai') {
+        const OpenAI = await import('openai');
+        const testClient = new OpenAI.default({ apiKey: api_key });
+        await testClient.chat.completions.create({
+          model: 'gpt-4o-mini', max_tokens: 1,
+          messages: [{ role: 'user', content: 'test' }],
+        });
+      }
+    } catch (validationErr: any) {
+      return res.status(400).json({
+        error: 'API key validation failed',
+        detail: validationErr?.message ?? 'Provider rejected the key. Check it is valid and has model access.',
+      });
+    }
+
+    const { encryptToken } = await import('../../services/encryption');
+    const encryptedKey = encryptToken(api_key);
+
+    const connectionResult = await pool.query(
+      `INSERT INTO recipient_api_connections
+         (share_id, provider, api_key_encrypted, stripe_customer_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING connection_id, connected_at`,
+      [share.share_id, provider, encryptedKey, stripeCustomerId]
+    );
+    const connection = connectionResult.rows[0];
+
+    logger.info('API key connected via shortcode (AES-256-GCM)', {
+      shareId: share.share_id, connectionId: connection.connection_id, provider,
+    });
+
+    return res.status(201).json({
+      connection_id: connection.connection_id,
+      provider,
+      connected_at: connection.connected_at,
+      status: 'connected',
+    });
+  } catch (err: any) {
+    logger.error('Failed to connect API key (shortcode path)', { error: err?.message });
+    return res.status(500).json({ error: err?.message ?? 'Failed to connect API key' });
+  }
+});
+
+router.post('/shares/:shortcode/query', async (req: Request, res: Response) => {
+  const { shortcode } = req.params;
+  const { message } = req.body;
+  if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    return res.status(400).json({ error: 'message is required' });
+  }
+  if (message.length > 10000) {
+    return res.status(400).json({ error: 'Message too long (max 10,000 characters)' });
+  }
+  try {
+    const result = await executeRecipientQueryByShortcode(shortcode, message.trim());
+    return res.json({
+      response: result.response,
+      usage: {
+        tokens_input: result.tokens_input,
+        tokens_output: result.tokens_output,
+        cost_basis_usd: result.cost_basis_usd,
+        platform_margin_usd: result.platform_margin_usd,
+        total_charged_usd: result.total_charged_usd,
+      },
+    });
+  } catch (err: any) {
+    logger.error('Recipient query failed (shortcode path)', { error: err?.message });
+    return res.status(400).json({ error: err?.message ?? 'Query failed' });
+  }
+});
+
+router.delete('/shares/:shortcode/connect_api', async (req: Request, res: Response) => {
+  const { shortcode } = req.params;
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `UPDATE recipient_api_connections rc
+       SET disconnected_at = NOW()
+       FROM capsule_external_shares ces
+       WHERE ces.shortcode = $1
+         AND ces.share_id = rc.share_id
+         AND rc.disconnected_at IS NULL
+       RETURNING rc.connection_id, rc.disconnected_at`,
+      [shortcode]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No active connection found for this share' });
+    }
     return res.json({
       connection_id: result.rows[0].connection_id,
       disconnected_at: result.rows[0].disconnected_at,

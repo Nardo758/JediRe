@@ -34,6 +34,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { RecipientProvider, applyOverlay } from '../contexts/RecipientContext';
 import type { RecipientDealBook } from '../contexts/RecipientContext';
 import { RecipientAssumptionsPanel } from '../components/deal/RecipientAssumptionsPanel';
+import RecipientAgentPanel from '../components/deal/RecipientAgentPanel';
 import { 
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
@@ -692,6 +693,18 @@ const DealDetailPage: React.FC = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, shortcode, tokenParam]);
+
+  // Recipient API connection state — drives RecipientAgentPanel visibility
+  const [recipientApiConnected, setRecipientApiConnected] = useState(false);
+  const agentEnabled = recipientBook?.share.share_type === 'external_agent_enabled';
+
+  useEffect(() => {
+    if (!isRecipient || !shortcode || !agentEnabled) { setRecipientApiConnected(false); return; }
+    fetch(`/api/v1/shares/${shortcode}/connection`)
+      .then(r => r.ok ? r.json() : { connected: false })
+      .then(body => setRecipientApiConnected(body.connected === true))
+      .catch(() => setRecipientApiConnected(false));
+  }, [isRecipient, shortcode, agentEnabled]);
 
   // Recipient CTA: check if the viewer is a logged-in platform user via /me.
   // Used to show "Add to Pipeline" vs "Sign Up Free" in the recipient footer banner.
@@ -1710,6 +1723,14 @@ const DealDetailPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* ── Recipient Agent Panel — floating chat bubble (agent-enabled shares only) ── */}
+      {isRecipient && agentEnabled && shortcode && recipientApiConnected && (
+        <RecipientAgentPanel
+          shortcode={shortcode}
+          onDisconnect={() => setRecipientApiConnected(false)}
+        />
+      )}
 
       {/* ── Close Deal Modal ── */}
       {showCloseDealModal && (

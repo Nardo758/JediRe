@@ -1,0 +1,65 @@
+Task: Connect API Key flow for recipients on the landing page.
+
+The landing page currently surfaces "Connect API Key" as a secondary 
+action with a SOON badge. Behind this badge is real backend 
+infrastructure that's been shipped (executeRecipientQuery, AES-256-GCM 
+encryption, Stripe metering wrapper, recipient_api_connections schema). 
+The gap is the frontend flow that turns the SOON badge into a working 
+connection experience.
+
+What needs to ship:
+
+1. Connection modal triggered from the landing page CTA
+   - Header: "Connect your API key to interact with the agent"
+   - Provider selection (currently Anthropic; future-proof for OpenAI 
+     etc.)
+   - API key input (password field, validation on format)
+   - Pricing display: estimated per-query cost in plain language
+   - Privacy assurance: "Your key is encrypted and never visible to 
+     the sender or other parties"
+   - Submit → calls POST /api/v1/capsules/:accessToken/connect_api 
+     (existing endpoint)
+   - Success state → "You're connected. Ask the agent questions from 
+     within the deal view."
+
+2. Recipient query interface within DealDetailPage when accessed via 
+   access token
+   - Investigate: does DealDetailPage already have an agent chat 
+     interface for platform users? If yes, reuse it with the 
+     recipient query endpoint. If no, scope a minimal chat surface 
+     for recipients specifically.
+   - Query submission calls POST /api/v1/capsules/:accessToken/query 
+     (existing endpoint via executeRecipientQuery)
+   - Display agent response inline
+   - Show running token usage / cost estimate to recipient
+
+3. Connection state persistence
+   - Once recipient connects API key, the SOON badge on landing page 
+     disappears and CTA changes to "Ask the agent" or similar
+   - Recipient can disconnect via account-like settings (probably a 
+     small panel within the deal view)
+
+Investigation first:
+1. Confirm POST /capsules/:accessToken/connect_api works end-to-end 
+   from the frontend (returns encrypted storage, generates Stripe 
+   customer, etc.)
+2. Identify any existing chat/query UI in the platform that can be 
+   reused for the recipient query interface
+3. Identify how recipient query history should be displayed (per-
+   session, persistent, etc.)
+
+Verification:
+- Recipient opens landing page, clicks Connect API Key (SOON badge 
+  becomes functional)
+- Modal renders, recipient enters test API key
+- Submission encrypts key, stores in recipient_api_connections, 
+  registers Stripe customer
+- Recipient enters deal view, sees agent interface
+- Submits query, agent responds with deal-scoped context
+- Stripe meter events fire correctly
+- Closing/revoking share invalidates the connection appropriately
+
+Out of scope:
+- Multi-provider beyond Anthropic (deferred)
+- Sign-up flow (separate work)
+- Disconnect/reconnect UX polish (defer to follow-up)

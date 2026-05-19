@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { BT } from '@/components/deal/bloomberg-ui';
+import RecipientConnectModal from '../components/capsule/RecipientConnectModal';
 
 const mono: React.CSSProperties = {
   fontFamily: "'JetBrains Mono', 'SF Mono', Monaco, monospace",
@@ -53,6 +54,8 @@ export default function ShareLandingPage() {
   const [data, setData] = useState<ShareLandingData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [agentConnected, setAgentConnected] = useState(false);
 
   useEffect(() => {
     if (!shortcode) { setError('Invalid share link.'); setLoading(false); return; }
@@ -67,6 +70,15 @@ export default function ShareLandingPage() {
       .then(d => { setData(d); setLoading(false); })
       .catch(e => { setError(e.message ?? 'Failed to load share.'); setLoading(false); });
   }, [shortcode]);
+
+  // After share data loads, check if an API key is already connected
+  useEffect(() => {
+    if (!shortcode || !data?.share.agent_enabled) return;
+    fetch(`/api/v1/shares/${shortcode}/connection`)
+      .then(r => r.ok ? r.json() : { connected: false })
+      .then(body => setAgentConnected(body.connected === true))
+      .catch(() => {});
+  }, [shortcode, data?.share.agent_enabled]);
 
   const page: React.CSSProperties = {
     minHeight: '100vh',
@@ -276,41 +288,66 @@ export default function ShareLandingPage() {
               <span style={{ fontSize: 14 }}>→</span>
             </button>
 
-            {/* SECONDARY — Connect API key */}
-            <button
-              disabled
-              title="Coming soon"
-              style={{
-                width: '100%',
-                padding: '13px 24px',
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: 1.5,
-                background: 'transparent',
-                color: BT.text.muted,
-                border: `1px solid ${BT.border.medium}`,
-                cursor: 'not-allowed',
-                opacity: 0.5,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                ...mono,
-              }}
-            >
-              CONNECT API KEY
-              <span style={{
-                fontSize: 8,
-                fontWeight: 700,
-                letterSpacing: 1,
-                padding: '2px 6px',
-                background: 'rgba(100,116,139,0.15)',
-                border: '1px solid rgba(100,116,139,0.3)',
-                color: '#64748B',
-              }}>
-                SOON
-              </span>
-            </button>
+            {/* SECONDARY — Connect API key (only shown for agent-enabled shares) */}
+            {share.agent_enabled && (
+              agentConnected ? (
+                <button
+                  onClick={() => navigate(`/share/${shortcode}/deal`)}
+                  style={{
+                    width: '100%',
+                    padding: '13px 24px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: 1.5,
+                    background: 'rgba(16,185,129,0.08)',
+                    color: '#10B981',
+                    border: '1px solid rgba(16,185,129,0.3)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    ...mono,
+                  }}
+                >
+                  <span>✓</span>
+                  AGENT CONNECTED — OPEN DEAL VIEW →
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowConnectModal(true)}
+                  style={{
+                    width: '100%',
+                    padding: '13px 24px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: 1.5,
+                    background: 'transparent',
+                    color: BT.text.cyan,
+                    border: `1px solid ${BT.text.cyan}`,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    ...mono,
+                  }}
+                >
+                  CONNECT API KEY
+                  <span style={{
+                    fontSize: 8,
+                    fontWeight: 700,
+                    letterSpacing: 1,
+                    padding: '2px 6px',
+                    background: 'rgba(6,182,212,0.1)',
+                    border: `1px solid rgba(6,182,212,0.3)`,
+                    color: BT.text.cyan,
+                  }}>
+                    AI
+                  </span>
+                </button>
+              )
+            )}
 
             {/* TERTIARY — Sign up */}
             <div style={{ textAlign: 'center', paddingTop: 4 }}>
@@ -368,6 +405,19 @@ export default function ShareLandingPage() {
         </div>
       </div>
 
+      {/* ── Connect API Key Modal ── */}
+      {showConnectModal && shortcode && (
+        <RecipientConnectModal
+          shortcode={shortcode}
+          onConnected={() => {
+            setAgentConnected(true);
+            setShowConnectModal(false);
+            navigate(`/share/${shortcode}/deal`);
+          }}
+          onClose={() => setShowConnectModal(false)}
+        />
+      )}
     </div>
   );
 }
+
