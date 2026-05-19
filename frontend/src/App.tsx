@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useCallback } from 'react';
+import React, { Suspense, lazy, useEffect, useCallback, useState } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -101,12 +101,66 @@ function useResponsiveZoom() {
   }, [applyZoom]);
 }
 
+function ForkSuccessBanner() {
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const msg = sessionStorage.getItem('jedi_fork_success');
+    if (msg) {
+      sessionStorage.removeItem('jedi_fork_success');
+      setMessage(msg);
+      const timer = setTimeout(() => setMessage(null), 7000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  if (!message) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: 24,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: 9999,
+      background: '#0f2620',
+      border: '1px solid #10B981',
+      borderLeft: '4px solid #10B981',
+      color: '#D1FAE5',
+      padding: '12px 20px',
+      borderRadius: 4,
+      fontSize: 13,
+      fontFamily: "'JetBrains Mono', 'SF Mono', Monaco, monospace",
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+      maxWidth: 520,
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    }}>
+      <span style={{ color: '#10B981', fontWeight: 700 }}>✓</span>
+      <span>
+        Deal added to your pipeline: <strong>{message}</strong>
+      </span>
+      <button
+        onClick={() => setMessage(null)}
+        style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#6EE7B7', cursor: 'pointer', fontSize: 16, lineHeight: 1, flexShrink: 0 }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 function AppContent() {
   useResponsiveZoom();
   const { isOpen, currentInfo, closeArchitecture } = useArchitecture();
 
   return (
     <>
+      <ForkSuccessBanner />
       <Routes>
         <Route path="/login" element={<AuthPage />} />
         

@@ -129,7 +129,32 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
     try {
       const result = await register(email, password, name, platformRole);
       if (result.success) {
-        navigate('/app');
+        const pendingShare = sessionStorage.getItem('jedi_pending_share');
+        if (pendingShare) {
+          sessionStorage.removeItem('jedi_pending_share');
+          try {
+            const token = localStorage.getItem('auth_token');
+            const forkRes = await fetch(`/api/v1/shares/${pendingShare}/fork`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+            });
+            if (forkRes.ok) {
+              const forkData = await forkRes.json();
+              sessionStorage.setItem(
+                'jedi_fork_success',
+                forkData.property_address ?? 'Shared Deal'
+              );
+            }
+          } catch {
+            // fork is best-effort; don't block navigation
+          }
+          navigate('/terminal/pipeline');
+        } else {
+          navigate('/app');
+        }
       } else {
         setError(result.error || 'Registration failed');
       }

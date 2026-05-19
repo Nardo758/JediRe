@@ -1400,6 +1400,117 @@ router.delete('/shares/:shortcode/connect_api', async (req: Request, res: Respon
   }
 });
 
+// ─── POST /shares/:shortcode/fork — authenticated user forks deal into pipeline ──
+// Called immediately after registration/login when the user arrived from a
+// share landing page. Creates a new pipeline deal seeded from the capsule data.
+// Requires platform auth (the user just registered/logged in).
+
+router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { shortcode } = req.params;
+  const userId = req.user?.userId ?? (req as any).user?.id;
+
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const pool = getPool();
+
+    // Resolve the share — must be valid, not revoked, not expired
+    const shareResult = await pool.query(
+      `SELECT ces.share_id, ces.capsule_id, ces.share_type, ces.expires_at
+       FROM capsule_external_shares ces
+       WHERE ces.shortcode = $1
+         AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
+       LIMIT 1`,
+      [shortcode]
+    );
+
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Share link is invalid, expired, or has been revoked.' });
+    }
+
+    const { capsule_id: capsuleId } = shareResult.rows[0];
+
+    // Fetch capsule data
+    const capsuleResult = await pool.query(
+      `SELECT property_address, asset_class, jedi_score,
+              deal_data, platform_intel, user_adjustments, module_outputs
+       FROM deal_capsules WHERE id = $1 LIMIT 1`,
+      [capsuleId]
+    );
+
+    if (capsuleResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal content not found.' });
+    }
+
+    const capsule = capsuleResult.rows[0];
+    const propertyAddress = capsule.property_address ?? 'Shared Deal';
+    const assetClass = capsule.asset_class ?? null;
+
+    // Build seeded deal_data from the capsule, tagging the fork origin
+    const sourceDealData = (capsule.deal_data as Record<string, unknown>) ?? {};
+    const seededDealData: Record<string, unknown> = {
+      ...sourceDealData,
+      forked_from_share: shortcode,
+      forked_from_capsule: capsuleId,
+      forked_at: new Date().toISOString(),
+      ...(capsule.jedi_score != null && { jedi_score: capsule.jedi_score }),
+    };
+
+    // Check if the user has already forked this share to avoid duplicates
+    const dupeCheck = await pool.query(
+      `SELECT id FROM deals
+       WHERE user_id = $1
+         AND deal_data->>'forked_from_share' = $2
+       LIMIT 1`,
+      [userId, shortcode]
+    );
+
+    if (dupeCheck.rows.length > 0) {
+      logger.info('Share fork skipped — already forked', { userId, shortcode, existingDealId: dupeCheck.rows[0].id });
+      return res.json({
+        deal_id: dupeCheck.rows[0].id,
+        property_address: propertyAddress,
+        already_existed: true,
+      });
+    }
+
+    // Create the pipeline deal (no boundary required — minimal insert)
+    const insertResult = await pool.query(
+      `INSERT INTO deals (
+         user_id, name, status, deal_category,
+         address, property_address,
+         strategy, deal_data
+       ) VALUES ($1, $2, 'active', 'pipeline', $3, $4, $5, $6)
+       RETURNING id, name`,
+      [
+        userId,
+        propertyAddress,
+        propertyAddress,
+        propertyAddress,
+        assetClass,
+        JSON.stringify(seededDealData),
+      ]
+    );
+
+    const newDeal = insertResult.rows[0];
+
+    logger.info('Deal forked from share', {
+      userId, shortcode, capsuleId, newDealId: newDeal.id,
+    });
+
+    return res.status(201).json({
+      deal_id: newDeal.id,
+      deal_name: newDeal.name,
+      property_address: propertyAddress,
+      already_existed: false,
+    });
+  } catch (err: any) {
+    logger.error('Failed to fork deal from share', { error: err?.message, shortcode });
+    return res.status(500).json({ error: err?.message ?? 'Failed to fork deal' });
+  }
+});
+
 // ─── GET /:capsuleId/shares ───────────────────────────────────────────────────
 
 router.get('/:capsuleId/shares', requireAuth, async (req: AuthenticatedRequest, res: Response) => {

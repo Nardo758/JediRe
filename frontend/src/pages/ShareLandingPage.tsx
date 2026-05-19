@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { BT } from '@/components/deal/bloomberg-ui';
 import RecipientConnectModal from '../components/capsule/RecipientConnectModal';
 
@@ -349,12 +349,15 @@ export default function ShareLandingPage() {
               )
             )}
 
-            {/* TERTIARY — Sign up */}
+            {/* TERTIARY — Sign up / Log in */}
             <div style={{ textAlign: 'center', paddingTop: 4 }}>
               <span style={{ fontSize: 10, color: BT.text.muted }}>
                 Want full access to JediRe?{' '}
-                <a
-                  href="/register"
+                <Link
+                  to={`/login?mode=register`}
+                  onClick={() => {
+                    if (shortcode) sessionStorage.setItem('jedi_pending_share', shortcode);
+                  }}
                   style={{
                     color: BT.text.cyan,
                     textDecoration: 'none',
@@ -365,7 +368,21 @@ export default function ShareLandingPage() {
                   onMouseLeave={e => (e.target as HTMLAnchorElement).style.textDecoration = 'none'}
                 >
                   Create a free account →
-                </a>
+                </Link>
+                <span style={{ color: BT.text.muted }}> or </span>
+                <Link
+                  to="/login"
+                  onClick={() => {
+                    if (shortcode) sessionStorage.setItem('jedi_pending_share', shortcode);
+                  }}
+                  style={{
+                    color: BT.text.muted,
+                    textDecoration: 'underline',
+                    fontWeight: 600,
+                  }}
+                >
+                  log in
+                </Link>
               </span>
             </div>
           </div>
