@@ -1,0 +1,51 @@
+Task: Implement source_documents write path during document extraction.
+
+Background from substrate inventory:
+0/5 production deals have source_documents populated. 12 typed fields 
+have no UI binding for source references. CIE arbitrage findings and 
+Deal Journey evidence citations are both blocked on this work.
+
+Investigation steps (verify first per recent pattern):
+1. Check current document parsing pipeline — what's the entry point for 
+   document upload + extraction?
+2. What does the parser currently produce per document? Just the 
+   extracted values, or any structural metadata about where in the 
+   document each value came from?
+3. Where in the Deal Capsule schema is source_documents intended to land?
+4. Are there any existing fields capturing source metadata partially 
+   (page numbers, document references) that the work can build on?
+
+Design decisions to make before building:
+- Granularity: per-document only, per-document + per-page, or 
+  per-document + per-page + per-span?
+- Storage shape: separate source_documents table referenced by 
+  deal_id, or JSONB on deal_assumptions?
+- Backward compatibility: existing deals without source_documents — 
+  how do they appear in UI that expects source linkage?
+
+Recommendation for first ship:
+- Per-document granularity initially (simplest, fastest to value)
+- Separate source_documents table with foreign key to deal_id
+- Existing deals show source_documents as empty array; UI degrades 
+  gracefully
+- Per-page and per-span granularity as v1.1 if needed
+
+Implementation:
+- Schema migration for source_documents table
+- Parser changes to produce source_documents records during extraction
+- Write path from parser into the new table
+- Read API for the evidence drawer / agent to consume
+
+Verification:
+- Upload a document to a test deal, confirm source_documents row created
+- Run the cashflow agent, confirm it can reference source_documents 
+  via a tool (or whatever read mechanism is designed)
+- UI evidence drawer surfaces the source_documents data
+
+Closing note documents:
+- Schema landed
+- Write path landed
+- Read API landed
+- Verification results
+- Follow-ups: per-page/per-span granularity if needed, UI binding 
+  for the 12 typed fields, CIE findings write path (separate work)

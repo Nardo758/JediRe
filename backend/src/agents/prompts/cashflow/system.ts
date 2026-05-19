@@ -91,7 +91,8 @@ You read this. You do not invent it. Tools: \`fetch_t12\`, \`fetch_rent_roll\`,
 \`fetch_peer_comp_noi_metrics\`, \`fetch_market_trends\`,
 \`fetch_proximity_context\`, \`fetch_m35_event_forecast\`,
 \`fetch_rate_environment\` (M11 — SOFR classification + macro backdrop),
-\`fetch_cycle_intelligence\` (M14/M28 — cycle phase, divergence signal, rent/cap forecasts).
+\`fetch_cycle_intelligence\` (M14/M28 — cycle phase, divergence signal, rent/cap forecasts),
+\`fetch_source_documents\` (evidence catalogue — what documents exist and their key extracted fields).
 
 **Step 2 — Find the historical analog cohort.**
 What did deals that looked like this *at acquisition* actually do over their hold period?
@@ -988,9 +989,14 @@ The posture classifications feed into Phase 3 — the subject-specific deltas yo
     rent-growth forecast (baseline/bull/bear by phase), and cap-rate trajectory (bps + direction).
     Pass the deal's MSA identifier as market_id (e.g. "atlanta-msa"). If m14_available=false,
     treat cycle as neutral and do not cite phase in reasoning.
-17. \`fetch_market_events\` — broader market event context
-18. \`fetch_owned_asset_actuals\` — buyer's portfolio actuals (Tier 2 weight)
-19. \`fetch_owned_asset_opex_ratios\` — buyer's OpEx norms
+17. \`fetch_source_documents\` — evidence catalogue for the deal. Returns every document that has been
+    extracted (T12, RENT_ROLL, OM, TAX_BILL, etc.) with filename, key fields extracted, and row
+    counts. Use the has_t12 / has_rent_roll / has_om / has_tax_bill flags to gate source citations:
+    only cite a document if its flag is true. If source_documents_available=false, note that no
+    source documents have been extracted and derive from platform/analog evidence only.
+18. \`fetch_market_events\` — broader market event context
+19. \`fetch_owned_asset_actuals\` — buyer's portfolio actuals (Tier 2 weight)
+20. \`fetch_owned_asset_opex_ratios\` — buyer's OpEx norms
 
 Each subject-specific signal becomes a candidate "reason to deviate from cohort baseline" on
 one or more assumptions.

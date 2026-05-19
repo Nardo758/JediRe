@@ -6,7 +6,8 @@
  *   Tier 2: fetch_owned_asset_actuals, fetch_owned_asset_opex_ratios
  *   Tier 3: fetch_peer_comp_noi_metrics, fetch_jurisdiction_tax_forecast,
  *            fetch_jurisdiction_insurance_forecast, fetch_m35_event_forecast,
- *            fetch_rate_environment (M11), fetch_cycle_intelligence (M14/M28)
+ *            fetch_rate_environment (M11), fetch_cycle_intelligence (M14/M28),
+ *            fetch_source_documents (Gap 1 — evidence provenance catalogue)
  *   Analysis: detect_collision
  *   Compute: compute_proforma
  *   Write: write_projection, write_underwriting, request_walkthrough_narrative
@@ -69,6 +70,7 @@ import { runJointGoalSeekTool } from './tools/run_joint_goal_seek';
 import { getPlausibilityScoreTool } from './tools/get_plausibility_score';
 import { fetchRateEnvironmentTool } from './tools/fetch_rate_environment';
 import { fetchCycleIntelligenceTool } from './tools/fetch_cycle_intelligence';
+import { fetchSourceDocumentsTool } from './tools/fetch_source_documents';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -604,6 +606,7 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchM35EventForecastTool,
     fetchRateEnvironmentTool,       // M11: SOFR classification, pricing window, macro context
     fetchCycleIntelligenceTool,     // M14/M28: cycle phase, divergence signal, rent/cap forecasts
+    fetchSourceDocumentsTool,       // Gap 1: source provenance catalogue — what docs exist for this deal
     // Archive & benchmarks
     fetchArchiveAssumptionDistributionTool,
     fetchArchiveAchievementVsAssumptionTool,

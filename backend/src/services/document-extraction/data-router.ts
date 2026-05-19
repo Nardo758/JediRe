@@ -290,7 +290,74 @@ export async function routeExtractionResult(
     }
   }
 
+  // Gap 1: source_documents write path (substrate inventory 2026-05-19)
+  // After every successful extraction, upsert a per-document catalogue entry
+  // into deals.deal_data.source_documents so the evidence drawer, agent tool,
+  // and CIE arbitrage engine can cite exact source provenance.
+  // Best-effort: failure must never surface to the caller.
+  try {
+    await writeSourceDocument(pool, ctx, result.documentType, rowsInserted);
+  } catch (srcErr) {
+    alerts.push(`source_documents write failed (non-fatal): ${srcErr instanceof Error ? srcErr.message : 'unknown'}`);
+  }
+
   return { rowsInserted, capsuleUpdated, libraryUpdated, proformaSeeded, crossValidationVariances, alerts };
+}
+
+const SOURCE_DOC_KEY_FIELDS: Record<string, string[]> = {
+  T12:               ['gpr', 'noi', 'vacancy_loss', 'opex', 'monthly_actuals_12mo'],
+  RENT_ROLL:         ['unit_mix', 'in_place_rents', 'occupancy', 'other_income_monthly'],
+  OM:                ['asking_price', 'units', 'year_built', 'noi', 'broker_proforma'],
+  TAX_BILL:          ['assessed_value', 'annual_tax', 'tax_year'],
+  AGED_RECEIVABLES:  ['total_outstanding', 'bucket_30d', 'bucket_60d', 'bucket_90d_plus'],
+  BOX_SCORE:         ['occupancy_pct', 'move_ins', 'move_outs', 'renewals'],
+  CONCESSION_BURNOFF:['concession_months', 'effective_rent', 'burnoff_schedule'],
+  T30_LTO:           ['lease_transactions_30d', 'traffic_count', 'conversion_rate'],
+  OTHER_INCOME:      ['other_income_sources', 'total_other_income_monthly'],
+};
+
+async function writeSourceDocument(
+  pool: Pool,
+  ctx: RouteContext,
+  documentType: string,
+  rowsInserted: number,
+): Promise<void> {
+  const record = {
+    file_id:        ctx.documentId ?? null,
+    filename:       ctx.filename,
+    document_type:  documentType,
+    mime_type:      ctx.mimeType   ?? null,
+    file_size_bytes:ctx.fileSize   ?? null,
+    extracted_at:   new Date().toISOString(),
+    key_fields:     SOURCE_DOC_KEY_FIELDS[documentType] ?? ['extracted_summary'],
+    rows_inserted:  rowsInserted,
+    source_ref:     ctx.filename,
+  };
+
+  // Upsert semantics: strip any prior entry for this file_id (re-extraction
+  // of the same file) then append the fresh record.
+  await pool.query(
+    `UPDATE deals
+        SET deal_data   = jsonb_set(
+              COALESCE(deal_data, '{}'),
+              '{source_documents}',
+              (
+                SELECT COALESCE(
+                  jsonb_agg(elem) FILTER (
+                    WHERE ($2::text IS NULL)
+                       OR (elem->>'file_id' IS DISTINCT FROM $2::text)
+                  ),
+                  '[]'::jsonb
+                )
+                FROM jsonb_array_elements(
+                  COALESCE(deal_data->'source_documents', '[]'::jsonb)
+                ) AS elem
+              ) || jsonb_build_array($3::jsonb)
+            ),
+            updated_at  = NOW()
+      WHERE id = $1`,
+    [ctx.dealId, ctx.documentId ?? null, JSON.stringify(record)]
+  );
 }
 
 async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
