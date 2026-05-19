@@ -26,6 +26,7 @@ import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { executeRecipientQuery } from '../../services/recipient-agent-executor.service';
 import { encryptToken } from '../../services/encryption';
+import { emailService } from '../../services/email.service';
 import * as crypto from 'crypto';
 
 const router = Router();
@@ -98,9 +99,16 @@ async function createExternalShareInternal(
   const pool = getPool();
 
   const capsuleCheck = await pool.query(
-    `SELECT id, property_address, asset_class, status, jedi_score, collision_score,
-            deal_data, platform_intel, user_adjustments, module_outputs, created_at
-     FROM deal_capsules WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    `SELECT dc.id, dc.property_address, dc.asset_class, dc.status, dc.jedi_score, dc.collision_score,
+            dc.deal_data, dc.platform_intel, dc.user_adjustments, dc.module_outputs, dc.created_at,
+            COALESCE(
+              NULLIF(u.full_name, ''),
+              NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), ''),
+              u.email
+            ) AS sender_display_name
+     FROM deal_capsules dc
+     JOIN users u ON u.id = dc.user_id
+     WHERE dc.id = $1 AND dc.user_id = $2 LIMIT 1`,
     [capsuleId, userId]
   );
   if (capsuleCheck.rows.length === 0) {
@@ -153,15 +161,40 @@ async function createExternalShareInternal(
 
   const share = shareResult.rows[0];
   const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
-  const baseUrl = process.env.PUBLIC_URL
+  const baseUrl = process.env.PUBLIC_BASE_URL
+    ?? process.env.FRONTEND_URL
+    ?? process.env.PUBLIC_URL
     ?? (forwardedHost ? `https://${forwardedHost}` : null)
     ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
     ?? `${req.protocol}://${req.get('host')}`;
   const capsuleUrl = `${baseUrl}/capsule-link/${token}`;
 
+  // Fire share invitation email for specific-recipient shares.
+  // Shareable links have no known recipient at creation time — no email sent.
+  let emailQueued = false;
+  if (resolvedShareMode === 'specific_recipient' && recipient_email) {
+    try {
+      const senderName = capsuleRow.sender_display_name as string ?? 'A JEDI RE user';
+      emailQueued = await emailService.sendShareInvitation({
+        to: recipient_email as string,
+        senderName,
+        dealName: capsuleRow.property_address ?? 'a deal',
+        previewPitch: preview_text as string | null ?? null,
+        capsuleUrl,
+        expiresAt: expires_at as string | null ?? null,
+        accessType: shareType,
+      });
+    } catch (emailErr) {
+      logger.warn('Share invitation email failed (non-fatal)', {
+        capsuleId, shareId: share.share_id, error: (emailErr as Error).message,
+      });
+    }
+  }
+
   logger.info('External share created', {
     capsuleId, shareId: share.share_id,
-    recipientEmail: recipient_email, shareType, shareMode: resolvedShareMode, hasPreview: !!preview_text,
+    recipientEmail: recipient_email, shareType, shareMode: resolvedShareMode,
+    hasPreview: !!preview_text, emailQueued,
   });
 
   res.status(201).json({
@@ -176,6 +209,7 @@ async function createExternalShareInternal(
     preview_text: preview_text ?? null,
     preview_metadata: preview_metadata ?? null,
     created_at: share.created_at,
+    email_queued: emailQueued,
   });
 }
 

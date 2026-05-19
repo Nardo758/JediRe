@@ -1,0 +1,73 @@
+Three issues to address with the share link delivery flow.
+
+Issue 1 (blocking) — Share links use hardcoded localhost URL.
+The current implementation generates links like 
+http://localhost:4000/capsule-link/[token]. This breaks for any 
+recipient who isn't on the dev machine.
+
+Fix: 
+- Add PUBLIC_BASE_URL environment variable (or use whatever 
+  convention the platform uses for public-facing URLs)
+- Update share creation logic to construct links using this 
+  variable instead of localhost
+- Default to whatever the production domain will be; for dev 
+  use a sensible local default (probably the dev server's 
+  actual accessible URL, not localhost)
+- Investigate first: check if any similar URL-construction 
+  pattern exists elsewhere in the codebase (e.g., for 
+  password reset emails, magic links, etc.) and follow that 
+  convention
+
+Issue 2 — Email sending infrastructure (built now, provider deferred).
+The platform should have the structural pieces in place for 
+sending share invitation emails, even though the actual email 
+provider isn't connected yet.
+
+Build:
+1. Email service abstraction in backend/src/services/email.service.ts
+   - sendEmail(to, subject, html, text) interface
+   - Provider implementation as a swappable layer (interface 
+     pattern, with a NoOpEmailProvider as the default)
+2. Email template for share invitations:
+   - Subject: "[Sender Name] shared a deal with you: [Deal Name]"
+   - HTML body with sender context, deal identity, preview 
+     pitch, prominent View Deal button, trust signals, 
+     footer with expiry info
+   - Plain text alternative for clients that don't render HTML
+3. Hook into share creation:
+   - When share_mode = 'specific_recipient' and recipient_email 
+     is set, enqueue an email send after share creation
+   - For shareable links (no recipient), no email send
+4. Configuration:
+   - EMAIL_PROVIDER env var (default 'noop')
+   - When 'noop', emails are logged but not sent
+   - When set to a real provider name (e.g., 'sendgrid', 'postmark'), 
+     the provider implementation is used
+   - Document in the closing note which providers to add when 
+     ready to actually send
+
+Issue 3 — Update Specific Recipient flow success state.
+With email infrastructure in place (even stubbed), the success 
+state should reflect what actually happened:
+- If EMAIL_PROVIDER is 'noop': success state says "Share created 
+  for [email]. Email delivery is not yet enabled — copy the link 
+  below to send manually."
+- If EMAIL_PROVIDER is configured: success state says "Invitation 
+  emailed to [email]. You can also copy the link below to send 
+  via another channel."
+- Either way, show the link with copy button
+
+Verification:
+- Create a specific recipient share with email — confirm an 
+  email send is attempted (logged in noop mode, sent in 
+  configured mode)
+- Confirm the link in the email (or logged) uses the public 
+  base URL, not localhost
+- Create a shareable link — confirm no email send attempted
+- Open the link in incognito as a recipient — confirm it 
+  actually resolves and shows the recipient experience
+
+Don't connect a real email provider in this task. Just build 
+the abstraction with the noop default. Connecting SendGrid (or 
+similar) is a follow-up task for when you're ready to actually 
+send.

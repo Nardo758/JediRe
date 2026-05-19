@@ -17,6 +17,7 @@ interface ShareResult {
   recipient_email: string | null;
   share_type: string;
   share_id: string;
+  email_queued: boolean;
 }
 
 type ShareMode = 'specific_recipient' | 'shareable_link';
@@ -101,7 +102,17 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                   <CheckCircle className="w-5 h-5 flex-shrink-0" />
                   <span className="text-sm font-medium">Shareable link created</span>
                 </div>
-                <p className="text-xs text-green-600 pl-7">Anyone with this link can access the deal.{shareResult.label ? ` Label: ${shareResult.label}` : ''}</p>
+                <p className="text-xs text-green-600 pl-7">
+                  Anyone with this link can access the deal.{shareResult.label ? ` Label: ${shareResult.label}` : ''}
+                </p>
+              </div>
+            ) : shareResult.email_queued ? (
+              <div className="flex flex-col gap-1 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+                <div className="flex items-center gap-2 text-green-700">
+                  <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                  <span className="text-sm font-medium">Invitation emailed to {shareResult.recipient_email}</span>
+                </div>
+                <p className="text-xs text-green-600 pl-7">You can also copy the link below to send via another channel.</p>
               </div>
             ) : (
               <div className="flex flex-col gap-1 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
@@ -109,7 +120,7 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                   <CheckCircle className="w-5 h-5 flex-shrink-0" />
                   <span className="text-sm font-medium">Share created for {shareResult.recipient_email}</span>
                 </div>
-                <p className="text-xs text-green-600 pl-7">Copy the link below and send it to them.</p>
+                <p className="text-xs text-green-600 pl-7">Email delivery is not yet enabled — copy the link below and send it to them.</p>
               </div>
             )}
 
