@@ -4,8 +4,11 @@
  * Builds a scoped-down DealContext for non-platform recipients.
  * Scrubs sender-private data: owned-portfolio, other deals, full knowledge graph.
  *
- * @version 1.0.0
- * @date 2026-05-19
+ * Phase A update: accepts optional tokenHash to compose recipient's session overlay
+ * into the agent context's scenario assumptions.
+ *
+ * @version 1.1.0
+ * @date 2026-05-27
  */
 
 import { getPool } from '../database/connection';
@@ -46,11 +49,46 @@ export interface RecipientDealContext {
     delta_from_cohort_p50: number | null;
     cohort_comparison_status: string | null;
   };
+  // Recipient overlay that was merged in (null if no overlay or no tokenHash provided)
+  recipient_overlay: Record<string, unknown> | null;
   // Explicitly null — fields excluded for recipient privacy
   sender_owned_portfolio: null;
   other_scenarios: null;
   full_knowledge_graph: null;
   other_deals: null;
+}
+
+/**
+ * Merge overlay flat-key map into a context's scenario assumptions.
+ * Only merges keys that map to assumption fields (user_adjustments.*, deal_data.*).
+ */
+function mergeOverlayIntoAssumptions(
+  assumptions: Record<string, any>,
+  overlay: Record<string, unknown>,
+): Record<string, any> {
+  const merged = { ...assumptions };
+
+  const OVERLAY_TO_ASSUMPTION: Record<string, string> = {
+    'user_adjustments.target_irr': 'target_irr',
+    'user_adjustments.preferred_hold_period': 'hold_period',
+    'user_adjustments.hold_period': 'hold_period',
+    'user_adjustments.max_ltv': 'max_ltv',
+    'user_adjustments.rent_growth': 'rent_growth',
+    'deal_data.exit_cap_assumption': 'exit_cap',
+    'deal_data.hold_period': 'hold_period',
+    'module_outputs.financial.capital_stack.rate': 'debt_rate',
+    'module_outputs.financial.capital_stack.ltv': 'ltv',
+    'module_outputs.financial.capital_stack.term': 'loan_term',
+    'module_outputs.financial.capital_stack.amortization': 'amortization',
+  };
+
+  for (const [overlayKey, assumptionKey] of Object.entries(OVERLAY_TO_ASSUMPTION)) {
+    if (overlay[overlayKey] != null) {
+      merged[assumptionKey] = overlay[overlayKey];
+    }
+  }
+
+  return merged;
 }
 
 /**
@@ -110,6 +148,7 @@ export function buildRecipientContextFromSnapshot(
       delta_from_cohort_p50: null,
       cohort_comparison_status: null,
     },
+    recipient_overlay: null,
     sender_owned_portfolio: null,
     other_scenarios: null,
     full_knowledge_graph: null,
@@ -123,9 +162,13 @@ export function buildRecipientContextFromSnapshot(
  * for shares created before the snapshot migration.
  *
  * @param shareId — capsule_external_shares.share_id
+ * @param tokenHash — SHA-256 of the raw access token; when provided, overlay is fetched and merged
  * @returns RecipientDealContext or null if deal/share not found
  */
-export async function buildRecipientDealContext(shareId: string): Promise<RecipientDealContext | null> {
+export async function buildRecipientDealContext(
+  shareId: string,
+  tokenHash?: string,
+): Promise<RecipientDealContext | null> {
   const pool = getPool();
 
   try {
@@ -135,11 +178,16 @@ export async function buildRecipientDealContext(shareId: string): Promise<Recipi
       [shareId]
     );
     if (snapshotResult.rows.length > 0 && snapshotResult.rows[0].capsule_snapshot) {
-      return buildRecipientContextFromSnapshot(
+      const context = buildRecipientContextFromSnapshot(
         snapshotResult.rows[0].capsule_snapshot,
         shareId,
         snapshotResult.rows[0].capsule_id,
       );
+      // Merge recipient overlay if tokenHash is provided
+      if (tokenHash) {
+        await mergeOverlayIntoContext(context, tokenHash);
+      }
+      return context;
     }
 
     // Fetch deal + share info (legacy path — no snapshot)
@@ -243,7 +291,7 @@ export async function buildRecipientDealContext(shareId: string): Promise<Recipi
       // Non-critical
     }
 
-    return {
+    const context: RecipientDealContext = {
       deal_id: deal.deal_id,
       deal_name: deal.deal_name,
       property: {
@@ -262,14 +310,52 @@ export async function buildRecipientDealContext(shareId: string): Promise<Recipi
         cap_rate_forecast: null,
       },
       cohort,
+      recipient_overlay: null,
       // Privacy-scrubbed
       sender_owned_portfolio: null,
       other_scenarios: null,
       full_knowledge_graph: null,
       other_deals: null,
     };
+
+    // Merge recipient overlay if tokenHash is provided
+    if (tokenHash) {
+      await mergeOverlayIntoContext(context, tokenHash);
+    }
+
+    return context;
   } catch (err: any) {
     logger.error('Failed to build recipient deal context', { error: err?.message, shareId });
     return null;
+  }
+}
+
+/**
+ * Fetch recipient overlay and merge it into the context's scenario assumptions.
+ * Mutates context in-place. Non-fatal on failure.
+ */
+async function mergeOverlayIntoContext(
+  context: RecipientDealContext,
+  tokenHash: string,
+): Promise<void> {
+  const pool = getPool();
+  try {
+    const overlayResult = await pool.query(
+      `SELECT overlay_data FROM recipient_session_overlays WHERE access_token_hash = $1 LIMIT 1`,
+      [tokenHash]
+    );
+    const overlayData = (overlayResult.rows[0]?.overlay_data ?? {}) as Record<string, unknown>;
+    if (Object.keys(overlayData).length > 0) {
+      context.scenario.assumptions = mergeOverlayIntoAssumptions(
+        context.scenario.assumptions,
+        overlayData,
+      );
+      context.recipient_overlay = overlayData;
+    }
+  } catch (err: any) {
+    logger.warn('Failed to merge recipient overlay into context (non-fatal)', {
+      error: err?.message,
+      tokenHash: tokenHash.slice(0, 8) + '...',
+    });
   }
 }

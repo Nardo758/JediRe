@@ -125,8 +125,8 @@ export async function executeRecipientQuery(
     throw new Error('API key decryption failed. The key may have been corrupted or the encryption key rotated. Please reconnect your API key.');
   }
 
-  // 3. Build recipient context
-  const context = await buildRecipientDealContext(connection.share_id);
+  // 3. Build recipient context — pass tokenHash so overlay is merged into scenario assumptions
+  const context = await buildRecipientDealContext(connection.share_id, tokenHash);
   if (!context) {
     throw new Error('Deal data not found for this capsule. It may have been deleted.');
   }

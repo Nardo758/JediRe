@@ -12,11 +12,15 @@
  *
  *   Mounted at /api/v1 (token-based, no platform auth)
  *     GET    /capsule-links/:accessToken
+ *     GET    /capsule-links/:accessToken/deal-book
+ *     GET    /capsule-links/:accessToken/overlay
+ *     PATCH  /capsule-links/:accessToken/overlay
+ *     DELETE /capsule-links/:accessToken/overlay
  *     POST   /capsule-links/:accessToken/connect_api
  *     POST   /capsule-links/:accessToken/query
  *     DELETE /capsule-links/:accessToken/connect_api
  *
- * @version 1.1.0
+ * @version 1.2.0
  * @date 2026-05-19
  */
 
@@ -324,8 +328,10 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
               ces.allow_document_download, ces.allow_agent_interaction,
               ces.expires_at, ces.revoked_at, ces.recipient_email,
               ces.preview_text, ces.preview_metadata,
-              ces.capsule_snapshot
+              ces.capsule_snapshot,
+              COALESCE(rso.overlay_data, '{}'::jsonb) AS overlay_data
        FROM capsule_external_shares ces
+       LEFT JOIN recipient_session_overlays rso ON rso.access_token_hash = ces.access_token
        WHERE ces.access_token = $1
          AND ces.revoked_at IS NULL
          AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
@@ -391,10 +397,134 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
         snapshot_taken_at: (capsuleData.snapshot_taken_at as string) ?? null,
         created_at: capsuleData.created_at,
       },
+      // Recipient's session-scoped overlay (empty object if no modifications yet)
+      overlay: (share.overlay_data as Record<string, unknown>) ?? {},
     });
   } catch (err: any) {
     logger.error('Failed to serve deal book', { error: err?.message });
     return res.status(500).json({ error: 'Failed to load deal book.' });
+  }
+});
+
+// ─── GET /capsule-links/:accessToken/overlay ─────────────────────────────────
+// Returns the recipient's current session overlay (or {} if none yet).
+
+router.get('/capsule-links/:accessToken/overlay', async (req: Request, res: Response) => {
+  const { accessToken } = req.params;
+  try {
+    const pool = getPool();
+    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+
+    const shareCheck = await pool.query(
+      `SELECT 1 FROM capsule_external_shares
+       WHERE access_token = $1 AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
+      [tokenHash]
+    );
+    if (shareCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Capsule not found or expired' });
+    }
+
+    const overlayResult = await pool.query(
+      `SELECT overlay_data FROM recipient_session_overlays WHERE access_token_hash = $1 LIMIT 1`,
+      [tokenHash]
+    );
+    return res.json({ overlay_data: overlayResult.rows[0]?.overlay_data ?? {} });
+  } catch (err: any) {
+    logger.error('Failed to get overlay', { error: err?.message });
+    return res.status(500).json({ error: err?.message ?? 'Failed to get overlay' });
+  }
+});
+
+// ─── PATCH /capsule-links/:accessToken/overlay ────────────────────────────────
+// Merges a flat-key patch object into the recipient's overlay.
+// e.g. { "user_adjustments.preferred_hold_period": 7, "deal_data.exit_cap_assumption": 5.5 }
+// Returns the full updated overlay_data.
+
+router.patch('/capsule-links/:accessToken/overlay', async (req: Request, res: Response) => {
+  const { accessToken } = req.params;
+  const patch = req.body;
+
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+    return res.status(400).json({ error: 'Request body must be a flat key-value object' });
+  }
+  if (Object.keys(patch).length === 0) {
+    return res.status(400).json({ error: 'Patch object must contain at least one key' });
+  }
+
+  try {
+    const pool = getPool();
+    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+
+    const shareCheck = await pool.query(
+      `SELECT share_id FROM capsule_external_shares
+       WHERE access_token = $1 AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
+      [tokenHash]
+    );
+    if (shareCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Capsule not found or expired' });
+    }
+    const shareId = shareCheck.rows[0].share_id;
+
+    // Upsert: create overlay row if absent; merge patch into existing data on conflict
+    const result = await pool.query(
+      `INSERT INTO recipient_session_overlays (access_token_hash, share_id, overlay_data)
+       VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (access_token_hash) DO UPDATE
+         SET overlay_data = recipient_session_overlays.overlay_data || $3::jsonb,
+             updated_at   = NOW()
+       RETURNING overlay_data`,
+      [tokenHash, shareId, JSON.stringify(patch)]
+    );
+    return res.json({ overlay_data: result.rows[0].overlay_data });
+  } catch (err: any) {
+    logger.error('Failed to patch overlay', { error: err?.message });
+    return res.status(500).json({ error: err?.message ?? 'Failed to update overlay' });
+  }
+});
+
+// ─── DELETE /capsule-links/:accessToken/overlay ───────────────────────────────
+// ?path=user_adjustments.target_irr  → removes a single key
+// (no path param)                    → clears the entire overlay
+
+router.delete('/capsule-links/:accessToken/overlay', async (req: Request, res: Response) => {
+  const { accessToken } = req.params;
+  const { path } = req.query as { path?: string };
+
+  try {
+    const pool = getPool();
+    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+
+    const shareCheck = await pool.query(
+      `SELECT 1 FROM capsule_external_shares
+       WHERE access_token = $1 AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
+      [tokenHash]
+    );
+    if (shareCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Capsule not found or expired' });
+    }
+
+    if (path) {
+      await pool.query(
+        `UPDATE recipient_session_overlays
+         SET overlay_data = overlay_data - $2, updated_at = NOW()
+         WHERE access_token_hash = $1`,
+        [tokenHash, path]
+      );
+    } else {
+      await pool.query(
+        `UPDATE recipient_session_overlays
+         SET overlay_data = '{}', updated_at = NOW()
+         WHERE access_token_hash = $1`,
+        [tokenHash]
+      );
+    }
+    return res.json({ overlay_data: {} });
+  } catch (err: any) {
+    logger.error('Failed to reset overlay', { error: err?.message });
+    return res.status(500).json({ error: err?.message ?? 'Failed to reset overlay' });
   }
 });
 
