@@ -1,0 +1,63 @@
+Architectural pivot: the snapshot pattern is wrong for this product. 
+The recipient should access the live deal capsule with permission 
+scoping, not a frozen snapshot.
+
+What needs to change:
+
+1. Stop the in-progress snapshot synthesis fix. Don't fix what 
+   deal_capsules contains, don't change snapshot synthesis code. 
+   The snapshot mechanism is being deprecated entirely.
+
+2. The recipient deal-book endpoint should query live deal data:
+   - deals.deal_data (broker claims, market intelligence, etc.)
+   - deal_assumptions (all assumption fields including year1 JSONB)
+   - deal_capsules (whatever's actually there, even if stub)
+   - source_documents catalogue
+   - Module outputs from their actual sources
+   - Same data the sender's platform UI would query for this deal
+   
+3. Apply the same privacy filtering currently applied to snapshot 
+   composition: scrub sender's other deals, owned portfolio, 
+   other scenarios, full KG. Just apply it to live data at query 
+   time instead of pre-applying at snapshot time.
+
+4. The session overlay system stays exactly as built. Recipient 
+   modifications continue to go into recipient_session_overlays. 
+   The composition at render time is now: live deal data + 
+   recipient overlay. No snapshot layer.
+
+5. The agent runtime stays exactly as built. executeRecipientQuery 
+   reasons against live deal data + recipient overlay, with 
+   existing privacy scoping.
+
+6. The capsule_snapshot column on capsule_shares: stop populating 
+   it at share creation. Existing shares with snapshots can have 
+   them ignored (the deal-book endpoint reads from live tables 
+   regardless). Migration to remove the column can come later.
+
+What stays unchanged:
+- Session overlay infrastructure
+- AES-256-GCM API key encryption  
+- Stripe Token Billing for recipient agent queries
+- Re-share prevention (recipients still can't share)
+- Sender-curated preview at resolution endpoint (resolution still 
+  returns only preview, not deal data)
+- F1-F11 tab surface
+- Recipient agent runtime
+- Privacy scoping (just applied at query time instead of snapshot 
+  time)
+
+Verification after change:
+- Open the existing problem share (a7907c45...) — confirm recipient 
+  now sees the same content the sender sees on the platform
+- Modify a deal assumption on the sender side, refresh the 
+  recipient link — confirm the change is visible to recipient
+- Modify a field in recipient view — confirm it goes to session 
+  overlay, doesn't affect sender's deal
+- Recipient agent query — confirm it reasons against live data + 
+  overlay, with privacy scoping intact
+
+The bypass concern from earlier in this work cycle: still 
+addressed by the existing rate limits and metadata stripping on 
+the resolution endpoint. Deal-book endpoint is gated by valid 
+access token; rate limit appropriately if not already.

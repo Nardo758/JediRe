@@ -1,0 +1,65 @@
+Two corrections to the landing page work:
+
+1. Platform name is "JediRe" — one word, that capitalization. 
+Not "JEDI RE." Update all references in the landing page, share 
+resolution responses, email templates, and anywhere else the 
+platform name appears.
+
+2. "Powered by JediRe" attribution is removable for higher 
+subscription tiers (paid white-label feature).
+
+Implementation:
+
+Subscription tier flag:
+- Standard tiers (Scout, Operator): cannot remove attribution. 
+  "Powered by JediRe" always renders in landing page footer 
+  and any other recipient-facing surfaces.
+- Premium tiers (Principal, Institutional): can remove 
+  attribution. Sender chooses whether to show or hide it.
+
+Investigation:
+1. Confirm current subscription tier model — does the user/
+   organization record already track tier? Is there a tier 
+   table with capability flags, or is tier determined by 
+   payment plan only?
+2. Identify how to add a per-tier capability: 
+   can_remove_attribution boolean.
+3. Identify whether the toggle should be per-share or 
+   account-default. Probably account-default with optional 
+   per-share override.
+
+Sender-side UI:
+- Account settings section for branding includes (for eligible 
+  tiers): "JediRe Attribution" toggle. Default: visible.
+- For non-eligible tiers: section shows "JediRe attribution 
+  visible — upgrade to Principal or higher to customize."
+- Optional per-share override in the share creation modal: 
+  "Show JediRe attribution on this share" (defaults to account 
+  setting).
+
+Share resolution endpoint:
+- Returns attribution_visible: boolean as part of the share 
+  resolution response
+- Determined by: sender's tier capability + sender's account 
+  setting + per-share override (if applicable)
+
+Landing page rendering:
+- If attribution_visible is true: render "Powered by JediRe" 
+  in the secondary position as currently designed
+- If false: omit the attribution entirely. Header is purely 
+  sender branding. Footer omits "Powered by JediRe."
+- The sender's logo and company name remain regardless (those 
+  aren't optional — they're the recipient's trust signal)
+
+Default for senders on premium tiers: attribution visible. 
+Removal is an active choice the sender makes, not a default. 
+This preserves the JediRe brand for senders who haven't 
+explicitly opted out.
+
+Implementation sequence:
+- Phase A: Account settings for branding (logo, company name) — 
+  ships for all tiers
+- Phase B: Tier-gated attribution toggle in account settings — 
+  ships for eligible tiers only
+- Phase C: Share resolution returns attribution_visible flag
+- Phase D: Landing page renders both states correctly

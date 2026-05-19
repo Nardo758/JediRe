@@ -1,0 +1,69 @@
+Two foundational improvements to the share flow before continuing 
+with feature additions:
+
+WORKSTREAM A — Email-routed sharing (platform user detection)
+
+At share creation, when the sender enters a recipient email, the 
+system should detect whether that email belongs to an existing 
+platform user and route accordingly.
+
+Investigation:
+1. Confirm the platform user table location and email lookup pattern
+2. Identify whether an in-platform notification system exists 
+   (notifications, invitations, shared items inbox)
+3. If yes, integrate share invitations into it. If no, scope the 
+   minimum viable notification surface
+
+Implementation:
+- Share creation endpoint checks recipient email against user table
+- If platform user match: creates an in-platform share invitation 
+  (not an external capsule link). Notification surfaces to recipient 
+  user when they log in: "Sender shared [Deal Name] with you"
+- If no match: existing external capsule link flow runs as built
+- Notification "accept" action handed off to Workstream B (Add to 
+  Pipeline) — for now, accept can be a stub that the next workstream 
+  completes
+
+WORKSTREAM C — Production URL structure
+
+The current share URLs are Replit dev preview URLs (long random 
+subdomain, long token visible in path). Need professional branded 
+URLs for actual recipient distribution.
+
+Investigation:
+1. Identify the production domain (or required domain decision)
+2. Check current URL generation chain — already has PUBLIC_BASE_URL 
+   support per email infrastructure work
+3. Design a user-friendly URL pattern. Suggestion: 
+   {domain}/share/{shortcode} where shortcode is a shorter 
+   alphanumeric (6-8 chars) mapped to the full token in DB
+
+Implementation:
+- Add a shortcode field to capsule_shares (unique, 6-8 chars)
+- Update share creation to generate shortcode alongside the token
+- Update URL generation to use shortcode in the public-facing URL
+- Update share resolution endpoint to accept both shortcode and 
+  full token (backward compat)
+- Set PUBLIC_BASE_URL appropriately when deployed to production
+
+Out of scope for this session:
+- Workstream B (Add to Pipeline) — separate follow-up
+- Workstream D (Sign up + export for non-platform users) — separate 
+  follow-up
+- Actually deploying to production with a custom domain — that's a 
+  Leon-side deployment decision
+
+Verification:
+- Sender creates share to a recipient email that matches a platform 
+  user — confirm in-platform notification created, no external 
+  capsule link generated
+- Sender creates share to a recipient email that doesn't match — 
+  confirm external capsule link generated with new URL structure
+- The URL is shorter, professional-looking, doesn't expose the 
+  full SHA-256 hash in the path
+- Recipient receives email (or copies link) and opens it — works 
+  identically to current external recipient flow
+
+Investigation first, then implementation, then verification. 
+Closing note documents what landed and what's queued for 
+Workstream B and D.

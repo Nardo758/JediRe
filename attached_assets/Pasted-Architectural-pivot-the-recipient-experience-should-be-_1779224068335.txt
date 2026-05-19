@@ -1,0 +1,88 @@
+Architectural pivot — the recipient experience should be 
+DealDetailPage itself with permission scoping, not a parallel 
+F1-F11 surface in CapsuleLinkPage.
+
+What changes:
+
+1. DealDetailPage accepts two auth modes:
+   - Platform auth (existing) — sender accessing their own deal, 
+     full edit, full agent, full features
+   - Access token auth (new) — recipient accessing via 
+     /share/:shortcode, permission-scoped view with session 
+     overlay for modifications
+   
+2. Permission scoping at the data layer (live deal data, sender 
+   private fields scrubbed, session overlay composed in for 
+   recipient modifications):
+   - Sender's owned portfolio, other deals, full KG → not 
+     returned for recipient auth
+   - Session overlay modifications → composed into rendered 
+     state for recipient
+   - Agent runs → via executeRecipientQuery with recipient's 
+     Stripe-metered API key
+   - Write operations (Save, Add to Pipeline, modify deal 
+     record) → disabled or routed to session overlay
+   
+3. UI affordances that change for recipient mode:
+   - Save button → "Save your work" prompts non-platform users 
+     to sign up; platform users get "Add to Pipeline" (forks the 
+     deal to their workspace)
+   - Share button → hidden (recipients can't re-share)
+   - Permission-private sections → hidden cleanly with no 
+     visible "you can't see this" indicators
+   - Edit affordances → present (recipient can modify); 
+     modifications create session overlays, not persisting to 
+     sender's deal
+   - Reset button → resets recipient's modifications back to 
+     sender's current values
+
+4. Replace CapsuleDetailPage with a Shares panel/tab on 
+   DealDetailPage:
+   - Lists all active shares for this deal
+   - Revoke, edit, expiration management
+   - "Preview as recipient" button → opens DealDetailPage with 
+     access token auth in a new tab, so sender sees exactly 
+     what recipient sees
+   
+5. Retire standalone CapsuleLinkPage:
+   - The work invested in F1-F11 rendering in CapsuleLinkPage 
+     is replaced by DealDetailPage rendering with access token 
+     auth
+   - The session overlay infrastructure transfers (table, API, 
+     composition logic) — just applied at the DealDetailPage 
+     level instead
+   - The /share/:shortcode route now renders DealDetailPage 
+     with access token auth, not CapsuleLinkPage
+
+6. Retire standalone CapsuleDetailPage:
+   - Functionality folded into DealDetailPage's Shares panel
+   - /capsules/:id either retires or redirects to 
+     /deals/:dealId/detail with the Shares tab active
+
+This is a meaningful refactor. Investigation steps:
+
+1. Confirm DealDetailPage's current auth model and rendering 
+   structure — what would need to change to accept access token 
+   auth?
+2. Identify the permission-scoping logic currently in the 
+   capsule-link deal-book endpoint — does it transfer cleanly 
+   to a "permission-aware DealDetailPage data loader"?
+3. Identify the session overlay infrastructure currently 
+   integrated into CapsuleLinkPage — what's reusable?
+4. Identify the components in CapsuleLinkPage that are pure 
+   duplication of DealDetailPage components vs. genuinely 
+   needed unique work
+5. Scope the migration — how many sessions to ship this 
+   pivot cleanly?
+
+After investigation, propose a phased approach:
+- Phase 1: DealDetailPage accepts access token auth, renders 
+  with permission scoping (the substantive architectural work)
+- Phase 2: Shares panel added to DealDetailPage with preview 
+  button
+- Phase 3: Standalone CapsuleLinkPage and CapsuleDetailPage 
+  retired
+
+Don't start building until the investigation is complete and 
+the phased plan is reviewed. This is too substantial a pivot 
+to execute reflexively.
