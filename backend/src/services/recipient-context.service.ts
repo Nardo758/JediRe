@@ -54,16 +54,95 @@ export interface RecipientDealContext {
 }
 
 /**
+ * Build a recipient-scoped deal context directly from a frozen snapshot.
+ * Used when the share was created under the v1 snapshot architecture.
+ * No live DB queries — the snapshot IS the privacy boundary.
+ */
+export function buildRecipientContextFromSnapshot(
+  snapshot: Record<string, unknown>,
+  shareId: string,
+  capsuleId: string,
+): RecipientDealContext {
+  const dealData = (snapshot.deal_data as Record<string, unknown>) ?? {};
+  const platformIntel = (snapshot.platform_intel as Record<string, unknown>) ?? {};
+  const moduleOutputs = (snapshot.module_outputs as Record<string, unknown>) ?? {};
+
+  const fin = moduleOutputs.financial as Record<string, unknown> | undefined;
+  const sourceDocs = (dealData.source_documents as Array<Record<string, unknown>>) ?? [];
+
+  return {
+    deal_id: capsuleId,
+    deal_name: (snapshot.property_address as string) ?? 'Unknown Property',
+    property: {
+      city: (dealData.city ?? dealData.property_city) as string | null ?? null,
+      state: (dealData.state ?? dealData.property_state) as string | null ?? null,
+      property_type: (snapshot.asset_class ?? dealData.property_type) as string | null ?? null,
+      total_units: dealData.units != null ? Number(dealData.units) : null,
+      year_built: dealData.year_built != null ? Number(dealData.year_built) : null,
+    },
+    scenario: {
+      scenario_id: (fin?.scenario_id as string) ?? null,
+      scenario_name: (fin?.scenario_name as string) ?? 'Shared Scenario',
+      assumptions: {
+        hold_period: dealData.hold_period ?? null,
+        target_irr: dealData.target_irr ?? null,
+        exit_cap: dealData.exit_cap_assumption ?? null,
+        ...(fin?.assumptions as Record<string, unknown> ?? {}),
+      },
+    },
+    source_documents: sourceDocs.map((d: Record<string, unknown>) => ({
+      file_id: (d.file_id as string) ?? '',
+      filename: (d.filename as string) ?? '',
+      document_type: (d.document_type as string) ?? '',
+      mime_type: (d.mime_type as string) ?? null,
+      extracted_at: (d.extracted_at as string) ?? '',
+      key_fields: (d.key_fields as string[]) ?? [],
+    })),
+    market: {
+      market_id: (platformIntel.market_id as string) ?? null,
+      cycle_phase: (platformIntel.cycle_phase as string) ?? null,
+      rent_growth_baseline: platformIntel.rent_growth != null ? Number(platformIntel.rent_growth) : null,
+      cap_rate_forecast: platformIntel.market_cap_rate_avg != null ? Number(platformIntel.market_cap_rate_avg) : null,
+    },
+    cohort: {
+      cohort_baseline_p50: null,
+      cohort_n: null,
+      delta_from_cohort_p50: null,
+      cohort_comparison_status: null,
+    },
+    sender_owned_portfolio: null,
+    other_scenarios: null,
+    full_knowledge_graph: null,
+    other_deals: null,
+  };
+}
+
+/**
  * Build a recipient-scoped deal context from a capsule share.
+ * Prefers frozen snapshot when available; falls back to live DB queries
+ * for shares created before the snapshot migration.
  *
- * @param shareId — capsule_shares.share_id
+ * @param shareId — capsule_external_shares.share_id
  * @returns RecipientDealContext or null if deal/share not found
  */
 export async function buildRecipientDealContext(shareId: string): Promise<RecipientDealContext | null> {
   const pool = getPool();
 
   try {
-    // Fetch deal + share info
+    // Check for frozen snapshot first
+    const snapshotResult = await pool.query(
+      `SELECT capsule_id, capsule_snapshot FROM capsule_external_shares WHERE share_id = $1 LIMIT 1`,
+      [shareId]
+    );
+    if (snapshotResult.rows.length > 0 && snapshotResult.rows[0].capsule_snapshot) {
+      return buildRecipientContextFromSnapshot(
+        snapshotResult.rows[0].capsule_snapshot,
+        shareId,
+        snapshotResult.rows[0].capsule_id,
+      );
+    }
+
+    // Fetch deal + share info (legacy path — no snapshot)
     const dealResult = await pool.query(
       `SELECT
          dc.id AS deal_id,

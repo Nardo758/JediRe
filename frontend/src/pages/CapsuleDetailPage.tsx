@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Share2, Download, TrendingUp, Building2, 
   DollarSign, AlertTriangle, CheckCircle, Target,
   BarChart3, MessageSquare, Loader2, Activity, ChevronDown, ChevronUp, ArrowRight, Zap,
-  X, Copy, ExternalLink
+  X, Copy, ExternalLink, Users2, RotateCcw, ShieldOff, Clock, Plus
 } from 'lucide-react';
 import { ThreeColumnComparison } from '../components/deal/ThreeColumnComparison';
 import { apiClient } from '../services/api.client';
@@ -12,7 +12,20 @@ import { useAuthStore } from '../stores/authStore';
 import { M11DebtAdvisorTab } from '../components/m35/M11DebtAdvisorTab';
 import { M35KeyEventsHub } from '../components/m35/M35KeyEventsHub';
 
-type TabId = 'overview' | 'layers' | 'collision' | 'training' | 'ai-agent' | 'intelligence' | 'debt-advisor';
+type TabId = 'overview' | 'layers' | 'collision' | 'training' | 'ai-agent' | 'intelligence' | 'debt-advisor' | 'shares';
+
+interface ShareItem {
+  share_id: string;
+  share_type: 'external_view' | 'external_agent_enabled';
+  recipient_email: string;
+  recipient_name: string | null;
+  created_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  preview_text: string | null;
+  share_status: 'active' | 'revoked' | 'expired';
+  access_token_hint?: string;
+}
 
 interface CapsuleData {
   id: string;
@@ -285,6 +298,43 @@ const CapsuleDetailPage: React.FC = () => {
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Shares management state (#901)
+  const [shares, setShares] = useState<ShareItem[] | null>(null);
+  const [sharesLoading, setSharesLoading] = useState(false);
+  const [revokeLoadingId, setRevokeLoadingId] = useState<string | null>(null);
+
+  const loadShares = useCallback(async () => {
+    if (!id) return;
+    setSharesLoading(true);
+    try {
+      const res = await apiClient.get(`/api/v1/capsules-ext/${id}/shares`);
+      setShares(res.data.shares ?? []);
+    } catch {
+      setShares([]);
+    } finally {
+      setSharesLoading(false);
+    }
+  }, [id]);
+
+  const revokeShare = useCallback(async (shareId: string) => {
+    if (!id) return;
+    setRevokeLoadingId(shareId);
+    try {
+      await apiClient.post(`/api/v1/capsules-ext/${id}/shares/${shareId}/revoke`);
+      setShares(prev =>
+        prev?.map(s =>
+          s.share_id === shareId
+            ? { ...s, share_status: 'revoked' as const, revoked_at: new Date().toISOString() }
+            : s
+        ) ?? null
+      );
+    } catch (err: any) {
+      console.error('Failed to revoke share:', err.response?.data?.error ?? err.message);
+    } finally {
+      setRevokeLoadingId(null);
+    }
+  }, [id]);
+
   const handleShareSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!capsule || !id) return;
@@ -321,6 +371,13 @@ const CapsuleDetailPage: React.FC = () => {
     setShareError(null);
     setShareForm({ recipient_email: '', recipient_name: '', share_type: 'external_agent_enabled', preview_text: '', expires_at: '' });
   };
+
+  // Load shares when Shares tab becomes active
+  useEffect(() => {
+    if (activeTab === 'shares' && shares === null) {
+      loadShares();
+    }
+  }, [activeTab, shares, loadShares]);
 
   useEffect(() => {
     if (!id) return;
@@ -467,7 +524,8 @@ const CapsuleDetailPage: React.FC = () => {
               { id: 'training' as const, label: 'Training', icon: Target },
               { id: 'ai-agent' as const, label: 'AI Agent', icon: MessageSquare },
               { id: 'intelligence' as const, label: 'Intelligence', icon: Activity },
-              { id: 'debt-advisor' as const, label: 'M11 Advisor', icon: Zap }
+              { id: 'debt-advisor' as const, label: 'M11 Advisor', icon: Zap },
+              { id: 'shares' as const, label: 'Shares', icon: Users2 },
             ] satisfies { id: TabId; label: string; icon: typeof BarChart3 }[]).map((tab) => {
               const Icon = tab.icon;
               return (
@@ -987,6 +1045,165 @@ const CapsuleDetailPage: React.FC = () => {
               <p className="text-sm" style={{ color: '#6B7A8D' }}>AI-optimized debt structure driven by M08 strategy detection. Bridge-to-perm plan with DSCR recovery timeline.</p>
             </div>
             <M11DebtAdvisorTab />
+          </div>
+        )}
+
+        {/* ── Shares management tab (#901) ──────────────────────────────── */}
+        {activeTab === 'shares' && (
+          <div className="space-y-6">
+            {/* Header row */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">External Shares</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Frozen snapshots — recipients see the deal as it was at share creation time.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={loadShares}
+                  disabled={sharesLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${sharesLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+                <button
+                  onClick={() => setShowShareModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Share
+                </button>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              {sharesLoading ? (
+                <div className="flex items-center justify-center py-16 gap-3 text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Loading shares...
+                </div>
+              ) : !shares || shares.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <Users2 className="w-10 h-10 text-gray-300" />
+                  <p className="text-gray-500 text-sm font-medium">No shares yet</p>
+                  <p className="text-gray-400 text-xs">Create a share link to give external parties access to a frozen snapshot of this capsule.</p>
+                  <button
+                    onClick={() => setShowShareModal(true)}
+                    className="mt-2 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Create First Share
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        {['Recipient', 'Type', 'Status', 'Created', 'Expires', 'Actions'].map(h => (
+                          <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {shares.map(share => {
+                        const isActive = share.share_status === 'active';
+                        const isRevoked = share.share_status === 'revoked';
+                        const created = new Date(share.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                        const expires = share.expires_at
+                          ? new Date(share.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                          : 'No expiry';
+                        const isExpiringSoon = share.expires_at && isActive &&
+                          new Date(share.expires_at).getTime() - Date.now() < 7 * 86_400_000;
+
+                        return (
+                          <tr key={share.share_id} className={`transition-colors ${isRevoked ? 'bg-gray-50 opacity-60' : 'hover:bg-gray-50'}`}>
+                            <td className="px-5 py-4">
+                              <div className="font-medium text-gray-900">{share.recipient_email}</div>
+                              {share.recipient_name && (
+                                <div className="text-xs text-gray-500 mt-0.5">{share.recipient_name}</div>
+                              )}
+                              {share.preview_text && (
+                                <div className="text-xs text-gray-400 mt-1 truncate max-w-xs italic">"{share.preview_text.slice(0, 60)}{share.preview_text.length > 60 ? '…' : ''}"</div>
+                              )}
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+                                share.share_type === 'external_agent_enabled'
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  : 'bg-gray-100 text-gray-600 border border-gray-200'
+                              }`}>
+                                {share.share_type === 'external_agent_enabled' ? '⚡ Agent Enabled' : '👁 View Only'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4">
+                              {isActive && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                                  Active
+                                </span>
+                              )}
+                              {isRevoked && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                                  <ShieldOff className="w-3 h-3" />
+                                  Revoked
+                                </span>
+                              )}
+                              {share.share_status === 'expired' && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-600">
+                                  <Clock className="w-3 h-3" />
+                                  Expired
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-4 text-gray-500 tabular-nums">{created}</td>
+                            <td className="px-5 py-4">
+                              <span className={`tabular-nums ${isExpiringSoon ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
+                                {expires}
+                                {isExpiringSoon && <span className="ml-1 text-xs text-amber-500">soon</span>}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="flex items-center gap-2">
+                                {isActive && (
+                                  <button
+                                    onClick={() => revokeShare(share.share_id)}
+                                    disabled={revokeLoadingId === share.share_id}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
+                                  >
+                                    {revokeLoadingId === share.share_id
+                                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                                      : <ShieldOff className="w-3 h-3" />
+                                    }
+                                    Revoke
+                                  </button>
+                                )}
+                                {isRevoked && (
+                                  <span className="text-xs text-gray-400">
+                                    Revoked {share.revoked_at ? new Date(share.revoked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {/* Footer stats */}
+                  <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center gap-6 text-xs text-gray-500">
+                    <span>{shares.filter(s => s.share_status === 'active').length} active</span>
+                    <span>{shares.filter(s => s.share_status === 'revoked').length} revoked</span>
+                    <span>{shares.filter(s => s.share_type === 'external_agent_enabled').length} agent-enabled</span>
+                    <span className="ml-auto text-gray-400">Recipients see a frozen snapshot — your changes after share creation are not visible to them.</span>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

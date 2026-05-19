@@ -91,12 +91,30 @@ async function createExternalShareInternal(
   const pool = getPool();
 
   const capsuleCheck = await pool.query(
-    `SELECT 1 FROM deal_capsules WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    `SELECT id, property_address, asset_class, status, jedi_score, collision_score,
+            deal_data, platform_intel, user_adjustments, module_outputs, created_at
+     FROM deal_capsules WHERE id = $1 AND user_id = $2 LIMIT 1`,
     [capsuleId, userId]
   );
   if (capsuleCheck.rows.length === 0) {
     res.status(403).json({ error: 'Capsule not found or access denied' }); return;
   }
+
+  // Build frozen snapshot — recipient view is served from this; sender changes
+  // after share creation do not propagate to existing shares.
+  const capsuleRow = capsuleCheck.rows[0];
+  const capsuleSnapshot = {
+    property_address: capsuleRow.property_address,
+    asset_class: capsuleRow.asset_class,
+    status: capsuleRow.status,
+    jedi_score: capsuleRow.jedi_score,
+    collision_score: capsuleRow.collision_score,
+    deal_data: capsuleRow.deal_data ?? {},
+    platform_intel: capsuleRow.platform_intel ?? {},
+    user_adjustments: capsuleRow.user_adjustments ?? {},
+    module_outputs: capsuleRow.module_outputs ?? {},
+    snapshot_taken_at: new Date().toISOString(),
+  };
 
   const { token, hash } = generateAccessToken();
 
@@ -104,8 +122,8 @@ async function createExternalShareInternal(
     `INSERT INTO capsule_external_shares
        (capsule_id, shared_by_user_id, share_type, recipient_email, recipient_name,
         allow_document_download, allow_agent_interaction, expires_at, access_token,
-        preview_text, preview_metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        preview_text, preview_metadata, capsule_snapshot)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING share_id, created_at`,
     [
       capsuleId,
@@ -119,6 +137,7 @@ async function createExternalShareInternal(
       hash,
       preview_text ?? null,
       preview_metadata ? JSON.stringify(preview_metadata) : null,
+      JSON.stringify(capsuleSnapshot),
     ]
   );
 
@@ -254,7 +273,8 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
       `SELECT ces.share_id, ces.capsule_id, ces.share_type,
               ces.allow_document_download, ces.allow_agent_interaction,
               ces.expires_at, ces.revoked_at, ces.recipient_email,
-              ces.preview_text, ces.preview_metadata
+              ces.preview_text, ces.preview_metadata,
+              ces.capsule_snapshot
        FROM capsule_external_shares ces
        WHERE ces.access_token = $1
          AND ces.revoked_at IS NULL
@@ -269,27 +289,31 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
 
     const share = shareResult.rows[0];
 
-    const capsuleResult = await pool.query(
-      `SELECT id, property_address, asset_class, status,
-              jedi_score, collision_score,
-              deal_data, platform_intel, user_adjustments, module_outputs,
-              created_at, updated_at
-       FROM deal_capsules
-       WHERE id = $1
-       LIMIT 1`,
-      [share.capsule_id]
-    );
-
-    if (capsuleResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Capsule content not found.' });
+    // Serve from frozen snapshot when available (v1 architecture).
+    // Fall back to live deal_capsules query for shares created before the snapshot migration.
+    let capsuleData: Record<string, unknown>;
+    if (share.capsule_snapshot) {
+      capsuleData = share.capsule_snapshot;
+    } else {
+      const capsuleResult = await pool.query(
+        `SELECT id, property_address, asset_class, status,
+                jedi_score, collision_score,
+                deal_data, platform_intel, user_adjustments, module_outputs,
+                created_at
+         FROM deal_capsules WHERE id = $1 LIMIT 1`,
+        [share.capsule_id]
+      );
+      if (capsuleResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Capsule content not found.' });
+      }
+      capsuleData = capsuleResult.rows[0];
     }
-
-    const capsule = capsuleResult.rows[0];
 
     logger.info('Deal book served', {
       capsuleId: share.capsule_id,
       shareId: share.share_id,
       shareType: share.share_type,
+      fromSnapshot: !!share.capsule_snapshot,
     });
 
     return res.json({
@@ -304,17 +328,18 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
         recipient_email: share.recipient_email,
       },
       capsule: {
-        id: capsule.id,
-        property_address: capsule.property_address,
-        asset_class: capsule.asset_class,
-        status: capsule.status,
-        jedi_score: capsule.jedi_score,
-        collision_score: capsule.collision_score,
-        deal_data: capsule.deal_data ?? {},
-        platform_intel: capsule.platform_intel ?? {},
-        user_adjustments: capsule.user_adjustments ?? {},
-        module_outputs: capsule.module_outputs ?? {},
-        created_at: capsule.created_at,
+        id: share.capsule_id,
+        property_address: capsuleData.property_address,
+        asset_class: capsuleData.asset_class,
+        status: capsuleData.status,
+        jedi_score: capsuleData.jedi_score ?? null,
+        collision_score: capsuleData.collision_score ?? null,
+        deal_data: (capsuleData.deal_data as Record<string, unknown>) ?? {},
+        platform_intel: (capsuleData.platform_intel as Record<string, unknown>) ?? {},
+        user_adjustments: (capsuleData.user_adjustments as Record<string, unknown>) ?? {},
+        module_outputs: (capsuleData.module_outputs as Record<string, unknown>) ?? {},
+        snapshot_taken_at: (capsuleData.snapshot_taken_at as string) ?? null,
+        created_at: capsuleData.created_at,
       },
     });
   } catch (err: any) {
