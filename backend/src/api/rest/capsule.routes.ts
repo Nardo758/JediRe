@@ -5,6 +5,15 @@ import {
 } from '../../models/deal-capsule-updated';
 import { getReplacementCostServiceV2 } from '../../services/inflation';
 
+const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function resolveUserId(req: Request, candidate?: string): string | null {
+  const authed = (req as any).user?.userId;
+  if (authed && _UUID_RE.test(authed)) return authed;
+  if (candidate && _UUID_RE.test(candidate)) return candidate;
+  return null;
+}
+
 export function createCapsuleRoutes(pool: Pool): Router {
   const router = Router();
 
@@ -151,16 +160,16 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.get('/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { user_id } = req.query;
+      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
 
-      if (!user_id) {
-        return res.status(400).json({ error: 'Missing required parameter: user_id' });
+      if (!resolvedUserId) {
+        return res.status(401).json({ error: 'Authentication required' });
       }
 
       const result = await pool.query(
         `SELECT * FROM deal_capsules 
          WHERE id = $1 AND user_id = $2`,
-        [id, user_id]
+        [id, resolvedUserId]
       );
 
       if (result.rows.length === 0) {
@@ -316,10 +325,10 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.delete('/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { user_id } = req.query;
+      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
 
-      if (!user_id) {
-        return res.status(400).json({ error: 'Missing required parameter: user_id' });
+      if (!resolvedUserId) {
+        return res.status(401).json({ error: 'Authentication required' });
       }
 
       const client = await pool.connect();
@@ -334,7 +343,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
           `DELETE FROM deal_capsules 
            WHERE id = $1 AND user_id = $2
            RETURNING id`,
-          [id, user_id]
+          [id, resolvedUserId]
         );
 
         if (result.rows.length === 0) {
@@ -448,10 +457,10 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.delete('/:id/documents/:documentId', async (req: Request, res: Response) => {
     try {
       const { id, documentId } = req.params;
-      const { user_id } = req.query;
+      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
 
-      if (!user_id) {
-        return res.status(400).json({ error: 'Missing required parameter: user_id' });
+      if (!resolvedUserId) {
+        return res.status(401).json({ error: 'Authentication required' });
       }
 
       const result = await pool.query(
@@ -459,7 +468,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
          WHERE id = $1 AND capsule_id = $2 
          AND capsule_id IN (SELECT id FROM deal_capsules WHERE user_id = $3)
          RETURNING file_name`,
-        [documentId, id, user_id]
+        [documentId, id, resolvedUserId]
       );
 
       if (result.rows.length === 0) {
@@ -549,10 +558,10 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.delete('/:id/share/:shareId', async (req: Request, res: Response) => {
     try {
       const { id, shareId } = req.params;
-      const { user_id } = req.query;
+      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
 
-      if (!user_id) {
-        return res.status(400).json({ error: 'Missing required parameter: user_id' });
+      if (!resolvedUserId) {
+        return res.status(401).json({ error: 'Authentication required' });
       }
 
       const result = await pool.query(
@@ -560,7 +569,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
          WHERE id = $1 AND capsule_id = $2 
          AND capsule_id IN (SELECT id FROM deal_capsules WHERE user_id = $3)
          RETURNING shared_with`,
-        [shareId, id, user_id]
+        [shareId, id, resolvedUserId]
       );
 
       if (result.rows.length === 0) {
@@ -624,15 +633,16 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.get('/:id/activity', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { user_id, limit = 50, offset = 0 } = req.query;
+      const { limit = 50, offset = 0 } = req.query;
+      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
 
-      if (!user_id) {
-        return res.status(400).json({ error: 'Missing required parameter: user_id' });
+      if (!resolvedUserId) {
+        return res.status(401).json({ error: 'Authentication required' });
       }
 
       const capsuleResult = await pool.query(
         `SELECT id FROM deal_capsules WHERE id = $1 AND user_id = $2`,
-        [id, user_id]
+        [id, resolvedUserId]
       );
 
       if (capsuleResult.rows.length === 0) {
@@ -668,10 +678,10 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.get('/:id/replacement-cost', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { user_id } = req.query;
+      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
 
-      if (!user_id) {
-        return res.status(400).json({ error: 'Missing required parameter: user_id' });
+      if (!resolvedUserId) {
+        return res.status(401).json({ error: 'Authentication required' });
       }
 
       // Get capsule with deal data
@@ -679,7 +689,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
         `SELECT id, deal_data, platform_intel, property_address 
          FROM deal_capsules 
          WHERE id = $1 AND user_id = $2`,
-        [id, user_id]
+        [id, resolvedUserId]
       );
 
       if (capsuleResult.rows.length === 0) {
