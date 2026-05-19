@@ -9,7 +9,6 @@ import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { PricingPage } from './pages/PricingPage';
 
 const Design3DPage = lazy(() => import('./pages/Design3DPage').then(m => ({ default: m.Design3DPage })));
-const CapsuleLinkPage = lazy(() => import('./pages/CapsuleLinkPage'));
 import AuthPage from './pages/AuthPage';
 import { ShowcaseLandingPage } from './pages/ShowcaseLandingPage';
 import { DealShowcasePage } from './pages/DealShowcasePage';
@@ -116,12 +115,8 @@ function AppContent() {
         <Route path="/showcase/modules" element={<ModuleShowcasePage />} />
         <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
 
-        {/* Capsule Link — public external share landing page (no auth required) */}
-        <Route path="/capsule-link/:token" element={
-          <Suspense fallback={<PageLoadingFallback />}>
-            <CapsuleLinkPage />
-          </Suspense>
-        } />
+        {/* Capsule Link — legacy token URL; renders DealDetailPage in recipient mode (Phase 1 backward compat) */}
+        <Route path="/capsule-link/:token" element={<DealDetailPage />} />
 
         {/* Pricing page */}
         <Route path="/pricing" element={<PricingPage />} />

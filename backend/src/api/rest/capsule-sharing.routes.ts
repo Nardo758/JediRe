@@ -134,22 +134,40 @@ async function createExternalShareInternal(
     res.status(403).json({ error: 'Capsule not found or access denied' }); return;
   }
 
-  // Build frozen snapshot — recipient view is served from this; sender changes
-  // after share creation do not propagate to existing shares.
+  // Phase 1 live-data pivot: no frozen snapshot stored.
+  // Recipients are served live data from deal_capsules on every request.
   const capsuleRow = capsuleCheck.rows[0];
-  const capsuleSnapshot = {
-    property_address: capsuleRow.property_address,
-    asset_class: capsuleRow.asset_class,
-    status: capsuleRow.status,
-    jedi_score: capsuleRow.jedi_score,
-    collision_score: capsuleRow.collision_score,
-    deal_data: capsuleRow.deal_data ?? {},
-    platform_intel: capsuleRow.platform_intel ?? {},
-    user_adjustments: capsuleRow.user_adjustments ?? {},
-    module_outputs: capsuleRow.module_outputs ?? {},
-    snapshot_taken_at: new Date().toISOString(),
-  };
 
+  // Platform user detection — early return if recipient has a JediRe account.
+  // Spec: send in-platform notification; do NOT create an external share/token.
+  if (resolvedShareMode === 'specific_recipient' && recipient_email) {
+    try {
+      const userResult = await pool.query(
+        'SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+        [recipient_email as string]
+      );
+      if (userResult.rows.length > 0) {
+        const recipientUserId = userResult.rows[0].id;
+        const notifService = new NotificationService(pool);
+        await notifService.createNotification({
+          userId: recipientUserId,
+          type: NotificationType.INFO_CAPSULE_SHARE_RECEIVED,
+          title: 'Deal shared with you',
+          message: `${capsuleRow.sender_display_name ?? 'A JediRe user'} shared "${capsuleRow.property_address ?? 'a deal'}" with you`,
+          actionLabel: 'View in Pipeline',
+          metadata: { capsuleId },
+        });
+        logger.info('Share routed in-platform via notification', { capsuleId, recipientUserId });
+        res.status(200).json({ routed_to_platform: true }); return;
+      }
+    } catch (notifErr) {
+      logger.warn('Failed to send in-platform share notification (non-fatal)', {
+        error: (notifErr as Error).message,
+      });
+    }
+  }
+
+  // External recipient — generate token + shortcode and create the share record.
   const { token, hash } = generateAccessToken();
   const shortcode = generateShortcode();
 
@@ -172,36 +190,6 @@ async function createExternalShareInternal(
     ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
     ?? `${req.protocol}://${req.get('host')}`;
   const capsuleUrl = `${baseUrl}/share/${shortcode}`;
-
-  // Platform user detection — notify recipient in-app if they have a JediRe account.
-  // External share is always created; routed_to_platform is additive context for the sender.
-  let routedToPlatform = false;
-  if (resolvedShareMode === 'specific_recipient' && recipient_email) {
-    try {
-      const userResult = await pool.query(
-        'SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
-        [recipient_email as string]
-      );
-      if (userResult.rows.length > 0) {
-        const recipientUserId = userResult.rows[0].id;
-        const notifService = new NotificationService(pool);
-        await notifService.createNotification({
-          userId: recipientUserId,
-          type: NotificationType.INFO_CAPSULE_SHARE_RECEIVED,
-          title: 'Deal shared with you',
-          message: `${capsuleRow.sender_display_name ?? 'A JediRe user'} shared "${capsuleRow.property_address ?? 'a deal'}" with you`,
-          actionUrl: `/share/${shortcode}`,
-          actionLabel: 'View Deal',
-          metadata: { capsuleId, shortcode },
-        });
-        routedToPlatform = true;
-      }
-    } catch (notifErr) {
-      logger.warn('Failed to send in-platform share notification (non-fatal)', {
-        error: (notifErr as Error).message,
-      });
-    }
-  }
 
   const shareResult = await pool.query(
     `INSERT INTO capsule_external_shares
@@ -226,7 +214,7 @@ async function createExternalShareInternal(
       hash,
       preview_text ?? null,
       preview_metadata ? JSON.stringify(preview_metadata) : null,
-      JSON.stringify(capsuleSnapshot),
+      null, // Phase 1: no frozen snapshot; live data served from deal_capsules
       resolvedAttributionOverride,
       capsuleUrl,
       shortcode,
@@ -278,7 +266,6 @@ async function createExternalShareInternal(
     preview_metadata: preview_metadata ?? null,
     created_at: share.created_at,
     email_queued: emailQueued,
-    routed_to_platform: routedToPlatform,
   });
 }
 
@@ -415,23 +402,19 @@ router.get('/shares/:shortcode', async (req: Request, res: Response) => {
 
     const share = shareResult.rows[0];
 
-    let capsuleData: Record<string, unknown>;
-    if (share.capsule_snapshot) {
-      capsuleData = share.capsule_snapshot;
-    } else {
-      const capsuleResult = await pool.query(
-        `SELECT id, property_address, asset_class, status,
-                jedi_score, collision_score,
-                deal_data, platform_intel, user_adjustments, module_outputs,
-                created_at
-         FROM deal_capsules WHERE id = $1 LIMIT 1`,
-        [share.capsule_id]
-      );
-      if (capsuleResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Deal content not found.' });
-      }
-      capsuleData = capsuleResult.rows[0];
+    // Phase 1 live-data pivot: always read from deal_capsules (never frozen snapshot).
+    const capsuleResult = await pool.query(
+      `SELECT id, property_address, asset_class, status,
+              jedi_score, collision_score,
+              deal_data, platform_intel, user_adjustments, module_outputs,
+              created_at
+       FROM deal_capsules WHERE id = $1 LIMIT 1`,
+      [share.capsule_id]
+    );
+    if (capsuleResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal content not found.' });
     }
+    const capsuleData: Record<string, unknown> = capsuleResult.rows[0];
 
     const senderBrandingResult = await pool.query(
       `SELECT COALESCE(u.subscription_tier, 'scout') AS tier,
@@ -635,25 +618,19 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
 
     const share = shareResult.rows[0];
 
-    // Serve from frozen snapshot when available (v1 architecture).
-    // Fall back to live deal_capsules query for shares created before the snapshot migration.
-    let capsuleData: Record<string, unknown>;
-    if (share.capsule_snapshot) {
-      capsuleData = share.capsule_snapshot;
-    } else {
-      const capsuleResult = await pool.query(
-        `SELECT id, property_address, asset_class, status,
-                jedi_score, collision_score,
-                deal_data, platform_intel, user_adjustments, module_outputs,
-                created_at
-         FROM deal_capsules WHERE id = $1 LIMIT 1`,
-        [share.capsule_id]
-      );
-      if (capsuleResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Capsule content not found.' });
-      }
-      capsuleData = capsuleResult.rows[0];
+    // Phase 1 live-data pivot: always read from deal_capsules (never frozen snapshot).
+    const capsuleTokenResult = await pool.query(
+      `SELECT id, property_address, asset_class, status,
+              jedi_score, collision_score,
+              deal_data, platform_intel, user_adjustments, module_outputs,
+              created_at
+       FROM deal_capsules WHERE id = $1 LIMIT 1`,
+      [share.capsule_id]
+    );
+    if (capsuleTokenResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Capsule content not found.' });
     }
+    const capsuleData: Record<string, unknown> = capsuleTokenResult.rows[0];
 
     // Resolve sender branding + tier for attribution decision
     const senderBrandingResult = await pool.query(
@@ -689,7 +666,6 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
       capsuleId: share.capsule_id,
       shareId: share.share_id,
       shareType: share.share_type,
-      fromSnapshot: !!share.capsule_snapshot,
       attributionVisible,
     });
 

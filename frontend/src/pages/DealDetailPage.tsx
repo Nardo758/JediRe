@@ -31,6 +31,7 @@ import { logSwallowedError } from '../utils/swallowedError';
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { RecipientProvider, applyOverlay } from '../contexts/RecipientContext';
 import type { RecipientDealBook } from '../contexts/RecipientContext';
 import { 
   DollarSign, Bot, TrendingUp,
@@ -503,12 +504,16 @@ const DealTypeBadge: React.FC<{
 };
 
 const DealDetailPage: React.FC = () => {
-  const { dealId, shortcode } = useParams<{ dealId?: string; shortcode?: string }>();
-  const isRecipient = !!shortcode;
+  const { dealId, shortcode, token: tokenParam } = useParams<{ dealId?: string; shortcode?: string; token?: string }>();
+  const isRecipient = !!(shortcode || tokenParam);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { fetchDealContext } = useDealStore();
   const [recipientBook, setRecipientBook] = useState<RecipientDealBook | null>(null);
+
+  // Effective deal ID — capsule.id in recipient mode (no platform dealId), platform dealId otherwise.
+  // Used everywhere modules need a stable identity (DealModuleProvider, ActiveComponent).
+  const effectiveDealId = isRecipient ? (recipientBook?.capsule?.id ?? '') : (dealId ?? '');
 
   // Neural network context awareness — drives the GAPS / CLOSE DEAL
   // header button rendered further down. Skipped in recipient mode (no auth).
@@ -659,8 +664,9 @@ const DealDetailPage: React.FC = () => {
   }, [dealId, closeForm]);
   
   useEffect(() => {
-    if (isRecipient && shortcode) {
-      loadRecipientData(shortcode);
+    if (isRecipient) {
+      if (shortcode) loadRecipientData(shortcode);
+      else if (tokenParam) loadRecipientDataByToken(tokenParam);
     } else if (dealId) {
       loadDeal(dealId);
       fetchGeographicContext(dealId);
@@ -681,7 +687,7 @@ const DealDetailPage: React.FC = () => {
         .catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dealId, shortcode]);
+  }, [dealId, shortcode, tokenParam]);
 
   const fetchGeographicContext = async (id: string) => {
     try {
@@ -805,7 +811,8 @@ const DealDetailPage: React.FC = () => {
       const book: RecipientDealBook = await res.json();
       setRecipientBook(book);
       const capsule = book.capsule;
-      const dealData = (capsule.deal_data ?? {}) as Record<string, unknown>;
+      const base = (capsule.deal_data ?? {}) as Record<string, unknown>;
+      const dealData = applyOverlay(base, book.overlay);
       setDeal({
         ...dealData,
         id: capsule.id,
@@ -821,6 +828,72 @@ const DealDetailPage: React.FC = () => {
       });
     } catch (err) {
       console.error('[Recipient] Error loading deal book:', err);
+      setDeal(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadRecipientDataByToken = async (tok: string) => {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/v1/capsule-links/${tok}/deal-book`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error('[Recipient] Failed to load deal book by token:', body.error);
+        setDeal(null);
+        return;
+      }
+      const raw = await res.json();
+      const book: RecipientDealBook = {
+        shortcode: '',
+        access_token: tok,
+        share: {
+          share_type: raw.share_permissions?.share_type ?? 'external_view',
+          allow_agent_interaction: raw.share_permissions?.allow_agent_interaction ?? false,
+          allow_document_download: raw.share_permissions?.allow_document_download ?? false,
+          expires_at: raw.share_permissions?.expires_at ?? null,
+          preview_text: raw.share_permissions?.preview_text ?? null,
+          recipient_email: raw.share_permissions?.recipient_email ?? null,
+        },
+        capsule: {
+          id: raw.capsule_id ?? '',
+          property_address: raw.property_address ?? '',
+          asset_class: raw.asset_class ?? '',
+          status: raw.status ?? '',
+          jedi_score: raw.jedi_score ?? null,
+          collision_score: raw.collision_score ?? null,
+          deal_data: raw.deal_data ?? {},
+          platform_intel: raw.platform_intel ?? {},
+          user_adjustments: raw.user_adjustments ?? {},
+          module_outputs: raw.module_outputs ?? {},
+          snapshot_taken_at: null,
+          created_at: raw.created_at ?? '',
+        },
+        overlay: raw.overlay_data ?? {},
+        attribution_visible: raw.show_attribution ?? true,
+        sender_display_name: raw.sender_display_name ?? null,
+        sender_branding: { company_name: null, logo_url: null },
+      };
+      setRecipientBook(book);
+      const capsule = book.capsule;
+      const base = (capsule.deal_data ?? {}) as Record<string, unknown>;
+      const dealData = applyOverlay(base, book.overlay);
+      setDeal({
+        ...dealData,
+        id: capsule.id,
+        name: (dealData.name as string) || capsule.property_address,
+        address: (dealData.address as string) || capsule.property_address,
+        location: (dealData.location as string) || capsule.property_address,
+        asset_class: capsule.asset_class,
+        status: capsule.status,
+        project_type: (dealData.project_type as string) || 'existing',
+        pipeline_stage: dealData.pipeline_stage ?? null,
+        jedi_score: capsule.jedi_score,
+        collision_score: capsule.collision_score,
+      });
+    } catch (err) {
+      console.error('[Recipient] Error loading deal book by token:', err);
       setDeal(null);
     } finally {
       setLoading(false);
@@ -966,8 +1039,8 @@ const DealDetailPage: React.FC = () => {
   const MONO = "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace";
   const SANS = "'IBM Plex Sans',-apple-system,sans-serif";
 
-  return (
-    <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
+  const pageContent = (
+    <DealModuleProvider dealId={effectiveDealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
 
         {/* ── Bar 1: Top Status Bar (JEDI RE branding + context label + status metrics) ── */}
@@ -1518,7 +1591,7 @@ const DealDetailPage: React.FC = () => {
           <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BG, padding: '0 8px' }}>
               {/* Data gap awareness now lives on the GAPS / CLOSE DEAL header button */}
-              <ActiveComponent deal={deal} dealId={dealId} dealType={dealType} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
+              <ActiveComponent deal={deal} dealId={effectiveDealId} dealType={dealType} embedded={true} onUpdate={() => !isRecipient && dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
             </div>
 
             {showUnitMixCTA && (
@@ -1748,6 +1821,11 @@ const DealDetailPage: React.FC = () => {
       )}
     </DealModuleProvider>
   );
+
+  if (isRecipient && recipientBook) {
+    return <RecipientProvider dealBook={recipientBook}>{pageContent}</RecipientProvider>;
+  }
+  return pageContent;
 };
 
 export default DealDetailPage;
