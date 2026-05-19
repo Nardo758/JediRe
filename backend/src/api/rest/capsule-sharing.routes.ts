@@ -46,177 +46,130 @@ function generateAccessToken(): { token: string; hash: string } {
 // Used to distinguish the two in the /capsules/:param routes.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// ─── createExternalShareInternal — single source of truth for share creation ──
+//
+// Called by both /:capsuleId/share/external and /deals/:dealId/share/external.
+// Centralising here ensures validation, ownership check, token generation, and
+// the INSERT stay in sync regardless of which path is used.
+//
+// API contract note: :dealId in the /deals/ alias is treated as a capsule UUID.
+// deal_capsules rows have no separate deal_id column — capsules are standalone.
+// Callers passing a true deal UUID (not a capsule UUID) will receive 403.
+
+async function createExternalShareInternal(
+  capsuleId: string,
+  userId: string,
+  body: Record<string, unknown>,
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const {
+    recipient_email,
+    recipient_name,
+    share_type,
+    allow_document_download,
+    allow_agent_interaction,
+    expires_at,
+    preview_text,
+    preview_metadata,
+  } = body;
+
+  if (!recipient_email) {
+    res.status(400).json({ error: 'recipient_email is required' }); return;
+  }
+  const shareType = (share_type as string) ?? 'external_view';
+  if (!['external_view', 'external_agent_enabled'].includes(shareType)) {
+    res.status(400).json({ error: 'share_type must be external_view or external_agent_enabled' }); return;
+  }
+  if (preview_text && typeof preview_text === 'string' && preview_text.length > 500) {
+    res.status(400).json({ error: 'preview_text must not exceed 500 characters' }); return;
+  }
+  if (preview_metadata && (typeof preview_metadata !== 'object' || Array.isArray(preview_metadata))) {
+    res.status(400).json({ error: 'preview_metadata must be a JSON object' }); return;
+  }
+
+  const pool = getPool();
+
+  const capsuleCheck = await pool.query(
+    `SELECT 1 FROM deal_capsules WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    [capsuleId, userId]
+  );
+  if (capsuleCheck.rows.length === 0) {
+    res.status(403).json({ error: 'Capsule not found or access denied' }); return;
+  }
+
+  const { token, hash } = generateAccessToken();
+
+  const shareResult = await pool.query(
+    `INSERT INTO capsule_external_shares
+       (capsule_id, shared_by_user_id, share_type, recipient_email, recipient_name,
+        allow_document_download, allow_agent_interaction, expires_at, access_token,
+        preview_text, preview_metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     RETURNING share_id, created_at`,
+    [
+      capsuleId,
+      userId,
+      shareType,
+      recipient_email,
+      recipient_name ?? null,
+      allow_document_download !== false,
+      allow_agent_interaction !== false,
+      expires_at ?? null,
+      hash,
+      preview_text ?? null,
+      preview_metadata ? JSON.stringify(preview_metadata) : null,
+    ]
+  );
+
+  const share = shareResult.rows[0];
+  const baseUrl = process.env.PUBLIC_URL ?? `${req.protocol}://${req.get('host')}`;
+  const capsuleUrl = `${baseUrl}/capsule-link/${token}`;
+
+  logger.info('External share created', {
+    capsuleId, shareId: share.share_id,
+    recipientEmail: recipient_email, shareType, hasPreview: !!preview_text,
+  });
+
+  res.status(201).json({
+    share_id: share.share_id,
+    capsule_url: capsuleUrl,
+    access_token: token,
+    recipient_email,
+    share_type: shareType,
+    expires_at: expires_at ?? null,
+    preview_text: preview_text ?? null,
+    preview_metadata: preview_metadata ?? null,
+    created_at: share.created_at,
+  });
+}
+
 // ─── POST /:capsuleId/share/external ─────────────────────────────────────────
 
 router.post('/:capsuleId/share/external', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const { capsuleId } = req.params;
   const userId = req.user?.userId ?? (req as any).user?.id;
-
   try {
-    const {
-      recipient_email,
-      recipient_name,
-      share_type,
-      allow_document_download,
-      allow_agent_interaction,
-      expires_at,
-      preview_text,
-      preview_metadata,
-    } = req.body;
-
-    if (!recipient_email) {
-      return res.status(400).json({ error: 'recipient_email is required' });
-    }
-
-    const shareType = share_type ?? 'external_view';
-    if (!['external_view', 'external_agent_enabled'].includes(shareType)) {
-      return res.status(400).json({ error: 'share_type must be external_view or external_agent_enabled' });
-    }
-
-    if (preview_text && typeof preview_text === 'string' && preview_text.length > 500) {
-      return res.status(400).json({ error: 'preview_text must not exceed 500 characters' });
-    }
-    if (preview_metadata && (typeof preview_metadata !== 'object' || Array.isArray(preview_metadata))) {
-      return res.status(400).json({ error: 'preview_metadata must be a JSON object' });
-    }
-
-    const pool = getPool();
-
-    // Verify capsule ownership
-    const capsuleCheck = await pool.query(
-      `SELECT 1 FROM deal_capsules WHERE id = $1 AND user_id = $2 LIMIT 1`,
-      [capsuleId, userId]
-    );
-    if (capsuleCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Capsule not found or access denied' });
-    }
-
-    const { token, hash } = generateAccessToken();
-
-    const shareResult = await pool.query(
-      `INSERT INTO capsule_external_shares
-         (capsule_id, shared_by_user_id, share_type, recipient_email, recipient_name,
-          allow_document_download, allow_agent_interaction, expires_at, access_token,
-          preview_text, preview_metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       RETURNING share_id, created_at`,
-      [
-        capsuleId,
-        userId,
-        shareType,
-        recipient_email,
-        recipient_name ?? null,
-        allow_document_download !== false,
-        allow_agent_interaction !== false,
-        expires_at ?? null,
-        hash,
-        preview_text ?? null,
-        preview_metadata ? JSON.stringify(preview_metadata) : null,
-      ]
-    );
-
-    const share = shareResult.rows[0];
-
-    const baseUrl = process.env.PUBLIC_URL ?? `${req.protocol}://${req.get('host')}`;
-    const capsuleUrl = `${baseUrl}/capsule-link/${token}`;
-
-    logger.info('External share created', {
-      capsuleId,
-      shareId: share.share_id,
-      recipientEmail: recipient_email,
-      shareType,
-      hasPreview: !!preview_text,
-    });
-
-    return res.status(201).json({
-      share_id: share.share_id,
-      capsule_url: capsuleUrl,
-      access_token: token,
-      recipient_email,
-      share_type: shareType,
-      expires_at: expires_at ?? null,
-      preview_text: preview_text ?? null,
-      preview_metadata: preview_metadata ?? null,
-      created_at: share.created_at,
-    });
+    await createExternalShareInternal(capsuleId, userId, req.body, req, res);
   } catch (err: any) {
     logger.error('Failed to create external share', { error: err?.message, capsuleId });
-    return res.status(500).json({ error: err?.message ?? 'Failed to create share' });
+    if (!res.headersSent) res.status(500).json({ error: err?.message ?? 'Failed to create share' });
   }
 });
 
 // ─── POST /deals/:dealId/share/external (spec-required alias) ────────────────
-// Alias for /:capsuleId/share/external — task spec references /deals/:dealId/share/external.
-// Treats :dealId as the capsule ID (deal_capsules are standalone entities with no
-// separate deal_id column). Mounted at /api/v1 so the full path is
-// POST /api/v1/deals/:dealId/share/external.
+// Task spec references POST /api/v1/deals/:dealId/share/external.
+// :dealId is treated as the capsule UUID — see createExternalShareInternal for
+// the API contract note on this naming.
 
 router.post('/deals/:dealId/share/external', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  req.params.capsuleId = req.params.dealId;
-  // Re-use the same handler by injecting capsuleId — delegate via internal redirect
-  const { dealId } = req.params;
-  const capsuleId = dealId;
+  const capsuleId = req.params.dealId;
   const userId = req.user?.userId ?? (req as any).user?.id;
-
   try {
-    const {
-      recipient_email, recipient_name, share_type,
-      allow_document_download, allow_agent_interaction,
-      expires_at, preview_text, preview_metadata,
-    } = req.body;
-
-    if (!recipient_email) {
-      return res.status(400).json({ error: 'recipient_email is required' });
-    }
-    const shareType = share_type ?? 'external_view';
-    if (!['external_view', 'external_agent_enabled'].includes(shareType)) {
-      return res.status(400).json({ error: 'share_type must be external_view or external_agent_enabled' });
-    }
-    if (preview_text && typeof preview_text === 'string' && preview_text.length > 500) {
-      return res.status(400).json({ error: 'preview_text must not exceed 500 characters' });
-    }
-    if (preview_metadata && (typeof preview_metadata !== 'object' || Array.isArray(preview_metadata))) {
-      return res.status(400).json({ error: 'preview_metadata must be a JSON object' });
-    }
-
-    const pool = getPool();
-    const capsuleCheck = await pool.query(
-      `SELECT 1 FROM deal_capsules WHERE id = $1 AND user_id = $2 LIMIT 1`,
-      [capsuleId, userId]
-    );
-    if (capsuleCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Capsule not found or access denied' });
-    }
-
-    const { token, hash } = generateAccessToken();
-    const shareResult = await pool.query(
-      `INSERT INTO capsule_external_shares
-         (capsule_id, shared_by_user_id, share_type, recipient_email, recipient_name,
-          allow_document_download, allow_agent_interaction, expires_at, access_token,
-          preview_text, preview_metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       RETURNING share_id, created_at`,
-      [
-        capsuleId, userId, shareType, recipient_email, recipient_name ?? null,
-        allow_document_download !== false, allow_agent_interaction !== false,
-        expires_at ?? null, hash, preview_text ?? null,
-        preview_metadata ? JSON.stringify(preview_metadata) : null,
-      ]
-    );
-    const share = shareResult.rows[0];
-    const baseUrl = process.env.PUBLIC_URL ?? `${req.protocol}://${req.get('host')}`;
-    const capsuleUrl = `${baseUrl}/capsule-link/${token}`;
-
-    logger.info('External share created (via /deals/ alias)', { capsuleId, shareId: share.share_id, shareType });
-    return res.status(201).json({
-      share_id: share.share_id, capsule_url: capsuleUrl, access_token: token,
-      recipient_email, share_type: shareType, expires_at: expires_at ?? null,
-      preview_text: preview_text ?? null, preview_metadata: preview_metadata ?? null,
-      created_at: share.created_at,
-    });
+    await createExternalShareInternal(capsuleId, userId, req.body, req, res);
   } catch (err: any) {
     logger.error('Failed to create external share (deals alias)', { error: err?.message, capsuleId });
-    return res.status(500).json({ error: err?.message ?? 'Failed to create share' });
+    if (!res.headersSent) res.status(500).json({ error: err?.message ?? 'Failed to create share' });
   }
 });
 
