@@ -227,6 +227,102 @@ async function handleTokenResolution(req: Request, res: Response) {
   }
 }
 
+// ─── GET /capsule-links/:accessToken/deal-book ───────────────────────────────
+// Returns the full capsule content for external display.
+// Rate limit: 30 per hour per IP (less aggressive than token resolution).
+// Public — no platform auth required; share token is the credential.
+
+const dealBookRateLimitStore = new Map<string, number[]>();
+
+router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Response) => {
+  const { accessToken } = req.params;
+  try {
+    const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    const rateKey = `deal_book:${clientIp}`;
+    const now = Date.now();
+    const hits = (dealBookRateLimitStore.get(rateKey) ?? []).filter(t => now - t < 3_600_000);
+    if (hits.length >= 30) {
+      return res.status(429).json({ error: 'Too many requests. Please wait before refreshing.' });
+    }
+    hits.push(now);
+    dealBookRateLimitStore.set(rateKey, hits);
+
+    const pool = getPool();
+    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+
+    const shareResult = await pool.query(
+      `SELECT ces.share_id, ces.capsule_id, ces.share_type,
+              ces.allow_document_download, ces.allow_agent_interaction,
+              ces.expires_at, ces.revoked_at, ces.recipient_email,
+              ces.preview_text, ces.preview_metadata
+       FROM capsule_external_shares ces
+       WHERE ces.access_token = $1
+         AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Capsule link is invalid, expired, or has been revoked.' });
+    }
+
+    const share = shareResult.rows[0];
+
+    const capsuleResult = await pool.query(
+      `SELECT id, property_address, asset_class, status,
+              jedi_score, collision_score,
+              deal_data, platform_intel, user_adjustments, module_outputs,
+              created_at, updated_at
+       FROM deal_capsules
+       WHERE id = $1
+       LIMIT 1`,
+      [share.capsule_id]
+    );
+
+    if (capsuleResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Capsule content not found.' });
+    }
+
+    const capsule = capsuleResult.rows[0];
+
+    logger.info('Deal book served', {
+      capsuleId: share.capsule_id,
+      shareId: share.share_id,
+      shareType: share.share_type,
+    });
+
+    return res.json({
+      share: {
+        share_type: share.share_type,
+        agent_enabled: share.share_type === 'external_agent_enabled',
+        allow_document_download: share.allow_document_download,
+        allow_agent_interaction: share.allow_agent_interaction,
+        expires_at: share.expires_at,
+        preview_text: share.preview_text ?? null,
+        preview_metadata: share.preview_metadata ?? null,
+        recipient_email: share.recipient_email,
+      },
+      capsule: {
+        id: capsule.id,
+        property_address: capsule.property_address,
+        asset_class: capsule.asset_class,
+        status: capsule.status,
+        jedi_score: capsule.jedi_score,
+        collision_score: capsule.collision_score,
+        deal_data: capsule.deal_data ?? {},
+        platform_intel: capsule.platform_intel ?? {},
+        user_adjustments: capsule.user_adjustments ?? {},
+        module_outputs: capsule.module_outputs ?? {},
+        created_at: capsule.created_at,
+      },
+    });
+  } catch (err: any) {
+    logger.error('Failed to serve deal book', { error: err?.message });
+    return res.status(500).json({ error: 'Failed to load deal book.' });
+  }
+});
+
 // ─── GET /capsules/:accessToken (spec-required endpoint with UUID passthrough) ─
 // If the param is a UUID (capsule detail request), passes to next middleware so
 // the authenticated capsule.routes handler can process it.
