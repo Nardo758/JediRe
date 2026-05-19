@@ -37,12 +37,29 @@
           "description": "Per-span page/character offset references absent from schema — no JSONB key in deal_data for doc page or character range"
         }
       ],
+      "expected_vs_actual_table": {
+        "description": "5 most recent non-deleted deals — all required Capsule dimensions",
+        "deals": [
+          { "name": "[CS-AUDIT] Flip Test",    "has_year1": true,  "has_t12": false, "has_rr": false, "has_om": false, "has_source_docs": false, "has_cie": false, "has_active_scenario": true,  "lv_attribution": "platform-defaults only (no extraction)" },
+          { "name": "[CS-AUDIT] Value-Add Test","has_year1": true,  "has_t12": false, "has_rr": false, "has_om": false, "has_source_docs": false, "has_cie": false, "has_active_scenario": true,  "lv_attribution": "platform-defaults only (no extraction)" },
+          { "name": "464 Bishop",               "has_year1": true,  "has_t12": true,  "has_rr": true,  "has_om": true,  "has_source_docs": false, "has_cie": false, "has_active_scenario": false, "lv_attribution": "gpr=override, vacancy/noi/opex resolved from t12+extraction; source_documents null" },
+          { "name": "Sentosa Epperson",         "has_year1": true,  "has_t12": true,  "has_rr": true,  "has_om": false, "has_source_docs": false, "has_cie": false, "has_active_scenario": false, "lv_attribution": "gpr=t12, noi/opex from t12; source_documents null" },
+          { "name": "Highlands at Satellite",   "has_year1": false, "has_t12": false, "has_rr": false, "has_om": false, "has_source_docs": false, "has_cie": false, "has_active_scenario": false, "lv_attribution": "no extraction, no seed" }
+        ],
+        "coverage_summary": {
+          "active_scenario_present": "2 / 5 (40%) — CS-AUDIT test deals only",
+          "lv_extraction_attribution": "2 / 5 have multi-layer LV resolution (464 Bishop, Sentosa); 2 / 5 platform-defaults only; 1 / 5 unseeded",
+          "source_documents": "0 / 5",
+          "cie_findings": "0 / 5"
+        }
+      },
       "missing_elements": [
         "source_documents write path in document-extraction pipeline",
         "cie_findings write path (CIE arbitrage has no storage slot)",
         "Per-span page + character offset fields in deal_data schema",
         "UI bindings for 12 blueprint fields (invisible to Cashflow Agent prompt builder)",
-        "Deal Journey State A evidence citations (cannot cite source document)"
+        "Deal Journey State A evidence citations (cannot cite source document)",
+        "active_scenario wiring for production deals (464 Bishop, Sentosa have no active scenario row)"
       ],
       "leverage_rating": "HIGH",
       "leverage_rationale": "source_documents and cie_findings are upstream of CIE arbitrage, Deal Journey State A evidence, and DQA document linkage. All three downstream features are blocked until writes exist. S effort unblocks three features.",
@@ -102,6 +119,81 @@
         "W-09: ExitCapitalModule 21-year hardcoded arrays → live trajectory (STACKED on W-02)",
         "W-10: CE-12 RSS supply/buyer pressure M35-aware (ADJACENT to TE FIX-4)"
       ],
+      "per_module_wiring_matrix": {
+        "description": "Status per consuming module × event interface. Source: EVENT_PROPAGATION_AUDIT.md + EVENT_WIRING_SYNTHESIS.md",
+        "status_definitions": {
+          "WIRED": "canonical key_events + event_forecasts query implemented and called in production",
+          "PARTIALLY_WIRED": "some event consumption exists but not all subtypes or channels covered",
+          "STUBBED": "hardcoded placeholder values present; live event data not consumed",
+          "NOT_WIRED": "no event consumption — spec exists but no query implemented",
+          "ABSENT": "module not in EPA scope; confirmed zero consumers on its channel"
+        },
+        "modules": [
+          {
+            "module": "CA (Cashflow Agent)",
+            "interface_file": "backend/src/agents/tools/fetch_m35_event_forecast.ts:112",
+            "status": "NOT_WIRED",
+            "finding": "EP-02",
+            "detail": "Reads demand_events (legacy, wrong schema). All 16 subtypes return nothing. Fix: W-01 (UNBLOCKED, XS)."
+          },
+          {
+            "module": "M07 (Traffic Engine)",
+            "interface_file": "backend/src/services/trafficPredictionEngine.ts + backend/src/jobs/trafficCalibrationJob.ts",
+            "status": "PARTIALLY_WIRED",
+            "finding": "EP-05",
+            "detail": "m35-traffic-api.service.ts exists. Baseline exclusion window in calibration job NOT_WIRED. Fix: W-03 (ADJACENT to TE FIX-1)."
+          },
+          {
+            "module": "M08 (Strategy Advisor)",
+            "interface_file": "backend/src/services/m08-strategies.service.ts",
+            "status": "NOT_WIRED",
+            "finding": "EP-06 (via M14 channel dependency)",
+            "detail": "No event queries found. Receives M07 traffic output but not M35 events directly."
+          },
+          {
+            "module": "M09 (ProForma Direct)",
+            "interface_file": "backend/src/services/proforma-adjustment.service.ts",
+            "status": "NOT_WIRED",
+            "finding": "EP-04",
+            "detail": "rent_control_passage + tax_abatement event blocks missing. Fix: W-04 (INDEPENDENT)."
+          },
+          {
+            "module": "M11 (Debt Advisor)",
+            "interface_file": "backend/src/services/debt-advisor/rate-environment.service.ts",
+            "status": "ABSENT",
+            "finding": "CE-03",
+            "detail": "M14_macro channel has zero registered consumers. rate-environment.service.ts + cycle-intelligence.service.ts do not query key_events. Fix: W-07 (UNBLOCKED, merged dispatch)."
+          },
+          {
+            "module": "M14 (Macro / Cycle Intelligence)",
+            "interface_file": "backend/src/services/cycle-intelligence.service.ts + backend/src/services/debt-advisor/rate-environment.service.ts",
+            "status": "NOT_WIRED",
+            "finding": "EP-06 / CE-03",
+            "detail": "Phase determination does not consume recession_indicator or rate_move from key_events. Fix: W-07 (UNBLOCKED, merged)."
+          },
+          {
+            "module": "M20 / Exit Strategy (Exit Timing)",
+            "interface_file": "frontend/src/components/.../ExitCapitalModule.tsx + ExitStrategyTabs.tsx",
+            "status": "STUBBED",
+            "finding": "CE-01 / CE-14",
+            "detail": "21-year hardcoded arrays for cap rates, rent growth, supply, T10 (lines 108-158). trajectory-engine.ts:84 hardcoded to -0.0025. Fix: W-09 (STACKED on W-02) + W-02 (UNBLOCKED Phase A)."
+          },
+          {
+            "module": "M25 (JEDI Score)",
+            "interface_file": "backend/src/services/jedi-score.service.ts:269-291",
+            "status": "NOT_WIRED",
+            "finding": "EP-07 / FA-01",
+            "detail": "calculateSupplyScore() reads news_events (wrong table). Fix: W-05 (ADJACENT to TE FIX-4, same file)."
+          },
+          {
+            "module": "LIUS (Trajectory Engine)",
+            "interface_file": "backend/src/services/lius/trajectory-engine.ts:84",
+            "status": "STUBBED",
+            "finding": "EP-03 / CE-01",
+            "detail": "exit_cap_trajectory = -0.0025 hardcoded constant. m35-bridge.ts (new file) needed for window_months→hold_year mapping. Fix: W-02 (UNBLOCKED Phase A)."
+          }
+        ]
+      },
       "consolidated_backlog_ref": "docs/architecture/EVENT_WIRING_SYNTHESIS.md Section 4",
       "leverage_rating": "HIGH",
       "leverage_rationale": "W-01 is 1 file, 40 lines, unblocks all 16 M35 cells for the Cashflow Agent (leverage = 16.0). W-07 is a merged 2-file dispatch. Both are unblocked today with no file collisions.",
@@ -152,6 +244,21 @@
           "activation_threshold": "5 rows with rezone_outcome IS NOT NULL"
         }
       ],
+      "dimension_breakdown": {
+        "description": "archive_assumption_benchmarks breakdown by submarket / deal type / strategy / year — all dimensions at 0 rows. Thin dimension threshold: n < 30.",
+        "by_submarket": { "rows": 0, "distinct_submarkets": 0, "thin": true, "note": "No submarket has any coverage" },
+        "by_deal_type": {
+          "existing": 0, "value_add": 0, "development": 0, "redevelopment": 0, "flip": 0,
+          "thin": true,
+          "platform_deal_distribution": "existing=3, value_add=1, flip=1 (from deals table — zero coverage for any strategy)"
+        },
+        "by_year": { "min_year": null, "max_year": null, "thin": true, "note": "No observations in any year" },
+        "thin_dimensions_flagged": ["ALL — every dimension is at n=0, which is below the n<30 threshold for reliable agent anchoring"],
+        "macro_anchor_observations_breakdown": {
+          "total_rows": 5,
+          "note": "5 rows exist in macro_anchor_observations — macro-level data only, not per-deal or per-submarket assumption benchmarks"
+        }
+      },
       "missing_elements": [
         "rent_inflation_observations corpus (0 rows — blocks cohort anchoring for rentGrowthY1)",
         "expense_inflation_observations corpus (0 rows — blocks expenseGrowthRate anchoring)",
