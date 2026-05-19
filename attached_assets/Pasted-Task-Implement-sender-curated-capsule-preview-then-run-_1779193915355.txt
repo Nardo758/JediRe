@@ -1,0 +1,64 @@
+Task: Implement sender-curated capsule preview, then run validation 
+against the result.
+
+Background:
+The capsule resolution endpoint currently returns zero deal data 
+(correctly stripped to prevent bypass). This creates a conversion 
+problem: recipients clicking the link see "connect your API key" 
+with no context motivating them to do so.
+
+Fix design (informed by Task 1 audit findings):
+Sender writes a short pitch when creating the external share. Pitch is 
+stored on capsule_shares itself, never queried from deals at resolution 
+time. Preserves the security property while solving the UX problem.
+
+Implementation:
+
+1. Schema migration adding to capsule_shares table:
+   - preview_text: TEXT (sender-written pitch, up to 500 chars)
+   - preview_metadata: JSONB (optional structured fields the sender 
+     chooses to expose: strategy, asset_class, region, deal_size_range)
+   
+2. Share creation endpoint extension:
+   - POST /api/v1/deals/:dealId/share/external accepts optional 
+     preview_text and preview_metadata in body
+   - Sender chooses what to expose; platform never auto-populates from 
+     deal data
+   - Validation: preview_text length cap, preview_metadata schema check
+
+3. Capsule resolution endpoint update:
+   - GET /api/v1/capsules/:accessToken now returns:
+     - Existing share settings
+     - preview_text if set (else null)
+     - preview_metadata if set (else null)
+     - "Connect your API key to access the full analysis" instruction
+   - Still does NOT touch deals table at resolution time
+   - Rate limiting from Task 1 remains in place
+
+4. UI update for share creation (if frontend share UI exists):
+   - Add preview pitch field to share creation form
+   - Optional, default empty
+   - Character counter
+
+Then run end-to-end validation per the original Task 2 plan:
+
+[Original Task 2 validation steps 1-8 from RECIPIENT_BYPASS_AUDIT_AND_VALIDATION.md]
+
+Verification adds:
+- Create a share with a preview_text — confirm resolution returns it
+- Create a share without preview_text — confirm resolution returns 
+  the "connect to access" instruction only (existing behavior)
+- Confirm preview_text is stored on capsule_shares, not derived from 
+  deals at resolution time (inspect SQL query path)
+- Confirm bypass still blocked: external bot using the access token 
+  cannot reach deal data beyond what the sender chose to expose in 
+  preview
+
+Closing note documents:
+- Preview field implementation
+- All 8 validation steps results
+- Encryption verified
+- Stripe metering verified  
+- Privacy verified at runtime
+- UX baseline established
+- Any remaining issues for follow-up
