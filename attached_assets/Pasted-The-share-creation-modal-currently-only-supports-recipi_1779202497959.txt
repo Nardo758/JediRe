@@ -1,0 +1,52 @@
+The share creation modal currently only supports recipient-specific 
+shares (recipient_email is required). Add a second mode: shareable 
+links that don't require a specific recipient at creation time.
+
+UX:
+1. Top of modal, add a mode toggle:
+   - "Share with specific recipient" (current default)
+   - "Generate shareable link"
+
+2. When "Generate shareable link" is selected:
+   - Hide recipient_email and recipient_name fields
+   - Show a "Label" field (optional) for sender's tracking 
+     ("LP outreach Q2", "Lender list - Atlanta deals", etc.)
+   - Change button text to "Generate Shareable Link"
+   - On submit, generate the link and show it in a copy-able 
+     format with copy-to-clipboard button
+
+3. When "Share with specific recipient" is selected:
+   - Current behavior preserved
+   - Button text stays "Create Share Link" or change to "Send 
+     Share Invitation" depending on whether the platform 
+     actually emails the recipient
+
+Backend changes if needed:
+1. capsule_shares.recipient_email should be nullable (if not 
+   already)
+2. Add capsule_shares.label field (TEXT, optional, max 200 chars) 
+   for the sender's tracking label
+3. Add capsule_shares.share_mode field with values 
+   ('specific_recipient', 'shareable_link') to distinguish 
+   the two cases for analytics and UI
+4. Share creation endpoint accepts share_mode parameter; 
+   validates recipient_email is required if share_mode = 
+   'specific_recipient' but optional if 'shareable_link'
+
+For recipient-side behavior:
+- Shareable links work identically to recipient-specific 
+  shares once someone opens them
+- recipient_api_connections table captures the actual recipient 
+  identity when they connect their API key
+- If a recipient connects to a shareable link, the platform now 
+  knows their identity even though it wasn't specified at share 
+  creation
+
+Place this share button on the Pipeline page as well as the 
+Capsules section, so sponsors can initiate either share type 
+from wherever they're working with deals.
+
+Investigation first per the standard pattern — confirm 
+recipient_email is currently NOT NULL constrained vs nullable, 
+and confirm what currently happens at share creation when 
+recipient identity needs to be captured later.

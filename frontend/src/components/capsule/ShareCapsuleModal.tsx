@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Share2, CheckCircle, Copy, AlertTriangle, Loader2, ExternalLink } from 'lucide-react';
+import { X, Share2, CheckCircle, Copy, AlertTriangle, Loader2, ExternalLink, Link, User } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 
 interface ShareCapsuleModalProps {
@@ -12,10 +12,14 @@ interface ShareCapsuleModalProps {
 interface ShareResult {
   capsule_url: string;
   access_token: string;
-  recipient_email: string;
+  share_mode: string;
+  label: string | null;
+  recipient_email: string | null;
   share_type: string;
   share_id: string;
 }
+
+type ShareMode = 'specific_recipient' | 'shareable_link';
 
 const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
   capsuleId,
@@ -23,9 +27,11 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
   onClose,
   onShareCreated,
 }) => {
+  const [shareMode, setShareMode] = useState<ShareMode>('specific_recipient');
   const [shareForm, setShareForm] = useState({
     recipient_email: '',
     recipient_name: '',
+    label: '',
     share_type: 'external_agent_enabled' as 'external_view' | 'external_agent_enabled',
     preview_text: '',
     expires_at: '',
@@ -41,10 +47,15 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
     setShareError(null);
     try {
       const payload: Record<string, unknown> = {
-        recipient_email: shareForm.recipient_email,
+        share_mode: shareMode,
         share_type: shareForm.share_type,
       };
-      if (shareForm.recipient_name.trim()) payload.recipient_name = shareForm.recipient_name.trim();
+      if (shareMode === 'specific_recipient') {
+        payload.recipient_email = shareForm.recipient_email;
+        if (shareForm.recipient_name.trim()) payload.recipient_name = shareForm.recipient_name.trim();
+      } else {
+        if (shareForm.label.trim()) payload.label = shareForm.label.trim();
+      }
       if (shareForm.preview_text.trim()) payload.preview_text = shareForm.preview_text.trim();
       if (shareForm.expires_at) payload.expires_at = shareForm.expires_at;
       const res = await apiClient.post(`/api/v1/deals/${capsuleId}/share/external`, payload);
@@ -65,6 +76,10 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
     });
   };
 
+  const canSubmit = shareMode === 'specific_recipient'
+    ? !!shareForm.recipient_email
+    : true;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg relative">
@@ -82,7 +97,11 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
           <div className="px-6 py-6 flex flex-col gap-4">
             <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
               <CheckCircle className="w-5 h-5 flex-shrink-0" />
-              <span className="text-sm font-medium">Share created — send this link to {shareResult.recipient_email}</span>
+              <span className="text-sm font-medium">
+                {shareResult.share_mode === 'shareable_link'
+                  ? `Shareable link generated${shareResult.label ? ` — ${shareResult.label}` : ''}`
+                  : `Share created — send this link to ${shareResult.recipient_email}`}
+              </span>
             </div>
 
             <div>
@@ -134,33 +153,88 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4">
+
+            {/* ── Mode toggle ── */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Recipient Email <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="email"
-                required
-                value={shareForm.recipient_email}
-                onChange={e => setShareForm(f => ({ ...f, recipient_email: e.target.value }))}
-                placeholder="investor@example.com"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-2">Share Mode</label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  {
+                    mode: 'specific_recipient' as ShareMode,
+                    icon: <User size={14} />,
+                    label: 'Specific Recipient',
+                    desc: 'Email required at creation',
+                  },
+                  {
+                    mode: 'shareable_link' as ShareMode,
+                    icon: <Link size={14} />,
+                    label: 'Shareable Link',
+                    desc: 'Anyone with the link can open',
+                  },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.mode}
+                    type="button"
+                    onClick={() => setShareMode(opt.mode)}
+                    className={`flex flex-col gap-1 p-3 rounded-lg border-2 text-left cursor-pointer transition-colors ${shareMode === opt.mode ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                  >
+                    <span className={`flex items-center gap-1.5 text-sm font-medium ${shareMode === opt.mode ? 'text-blue-700' : 'text-gray-700'}`}>
+                      {opt.icon}{opt.label}
+                    </span>
+                    <span className={`text-xs leading-snug ${shareMode === opt.mode ? 'text-blue-600' : 'text-gray-400'}`}>{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Name</label>
-              <input
-                type="text"
-                value={shareForm.recipient_name}
-                onChange={e => setShareForm(f => ({ ...f, recipient_name: e.target.value }))}
-                placeholder="Jane Smith"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
+            {/* ── Recipient fields (specific_recipient only) ── */}
+            {shareMode === 'specific_recipient' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Recipient Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={shareForm.recipient_email}
+                    onChange={e => setShareForm(f => ({ ...f, recipient_email: e.target.value }))}
+                    placeholder="investor@example.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Name</label>
+                  <input
+                    type="text"
+                    value={shareForm.recipient_name}
+                    onChange={e => setShareForm(f => ({ ...f, recipient_name: e.target.value }))}
+                    placeholder="Jane Smith"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </>
+            )}
 
+            {/* ── Label field (shareable_link only) ── */}
+            {shareMode === 'shareable_link' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Label <span className="text-gray-400 font-normal">(optional, max 200 chars)</span>
+                </label>
+                <input
+                  type="text"
+                  value={shareForm.label}
+                  onChange={e => setShareForm(f => ({ ...f, label: e.target.value.slice(0, 200) }))}
+                  placeholder="LP outreach Q2, Lender list — Atlanta deals…"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            )}
+
+            {/* ── Share type ── */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Share Type</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Access Type</label>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { value: 'external_agent_enabled', label: 'Agent Enabled', desc: 'Recipient can query AI with their own API key' },
@@ -185,6 +259,7 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
               </div>
             </div>
 
+            {/* ── Preview pitch ── */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Preview Pitch <span className="text-gray-400 font-normal">(optional, max 500 chars)</span>
@@ -199,6 +274,7 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
               <div className="text-xs text-gray-400 text-right mt-0.5">{shareForm.preview_text.length}/500</div>
             </div>
 
+            {/* ── Expires on ── */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Expires On <span className="text-gray-400 font-normal">(optional)</span>
@@ -229,11 +305,13 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={shareLoading || !shareForm.recipient_email}
+                disabled={shareLoading || !canSubmit}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {shareLoading ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Creating…</>
+                ) : shareMode === 'shareable_link' ? (
+                  <><Link className="w-4 h-4" /> Generate Shareable Link</>
                 ) : (
                   <><ExternalLink className="w-4 h-4" /> Create Share Link</>
                 )}

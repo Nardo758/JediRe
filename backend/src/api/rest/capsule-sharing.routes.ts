@@ -67,6 +67,8 @@ async function createExternalShareInternal(
     recipient_email,
     recipient_name,
     share_type,
+    share_mode,
+    label,
     allow_document_download,
     allow_agent_interaction,
     expires_at,
@@ -74,12 +76,17 @@ async function createExternalShareInternal(
     preview_metadata,
   } = body;
 
-  if (!recipient_email) {
-    res.status(400).json({ error: 'recipient_email is required' }); return;
+  const resolvedShareMode = (share_mode as string) === 'shareable_link' ? 'shareable_link' : 'specific_recipient';
+
+  if (resolvedShareMode === 'specific_recipient' && !recipient_email) {
+    res.status(400).json({ error: 'recipient_email is required for specific_recipient shares' }); return;
   }
   const shareType = (share_type as string) ?? 'external_view';
   if (!['external_view', 'external_agent_enabled'].includes(shareType)) {
     res.status(400).json({ error: 'share_type must be external_view or external_agent_enabled' }); return;
+  }
+  if (label && typeof label === 'string' && label.length > 200) {
+    res.status(400).json({ error: 'label must not exceed 200 characters' }); return;
   }
   if (preview_text && typeof preview_text === 'string' && preview_text.length > 500) {
     res.status(400).json({ error: 'preview_text must not exceed 500 characters' }); return;
@@ -120,16 +127,19 @@ async function createExternalShareInternal(
 
   const shareResult = await pool.query(
     `INSERT INTO capsule_external_shares
-       (capsule_id, shared_by_user_id, share_type, recipient_email, recipient_name,
+       (capsule_id, shared_by_user_id, share_type, share_mode, label,
+        recipient_email, recipient_name,
         allow_document_download, allow_agent_interaction, expires_at, access_token,
         preview_text, preview_metadata, capsule_snapshot)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING share_id, created_at`,
     [
       capsuleId,
       userId,
       shareType,
-      recipient_email,
+      resolvedShareMode,
+      label ? (label as string).trim().slice(0, 200) : null,
+      recipient_email ?? null,
       recipient_name ?? null,
       allow_document_download !== false,
       allow_agent_interaction !== false,
@@ -147,14 +157,16 @@ async function createExternalShareInternal(
 
   logger.info('External share created', {
     capsuleId, shareId: share.share_id,
-    recipientEmail: recipient_email, shareType, hasPreview: !!preview_text,
+    recipientEmail: recipient_email, shareType, shareMode: resolvedShareMode, hasPreview: !!preview_text,
   });
 
   res.status(201).json({
     share_id: share.share_id,
     capsule_url: capsuleUrl,
     access_token: token,
-    recipient_email,
+    share_mode: resolvedShareMode,
+    label: label ? (label as string).trim().slice(0, 200) : null,
+    recipient_email: recipient_email ?? null,
     share_type: shareType,
     expires_at: expires_at ?? null,
     preview_text: preview_text ?? null,
@@ -593,7 +605,8 @@ router.get('/:capsuleId/shares', requireAuth, async (req: AuthenticatedRequest, 
     }
 
     const result = await pool.query(
-      `SELECT ces.share_id, ces.share_type, ces.recipient_email, ces.recipient_name,
+      `SELECT ces.share_id, ces.share_type, ces.share_mode, ces.label,
+              ces.recipient_email, ces.recipient_name,
               ces.created_at, ces.revoked_at, ces.expires_at,
               ces.preview_text, ces.preview_metadata,
               CASE WHEN ces.revoked_at IS NOT NULL THEN 'revoked'
