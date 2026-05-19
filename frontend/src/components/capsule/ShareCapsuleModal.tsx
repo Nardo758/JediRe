@@ -313,7 +313,7 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                 ) : shareMode === 'shareable_link' ? (
                   <><Link className="w-4 h-4" /> Generate Shareable Link</>
                 ) : (
-                  <><ExternalLink className="w-4 h-4" /> Create Share Link</>
+                  <><ExternalLink className="w-4 h-4" /> Share</>
                 )}
               </button>
             </div>
