@@ -22,6 +22,44 @@ interface ShareResult {
 
 type ShareMode = 'specific_recipient' | 'shareable_link';
 
+const MONO = "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace";
+const BG      = '#0D1117';
+const BG_PANEL = '#111827';
+const BG_ROW   = '#0A0F1A';
+const BORDER   = '#1E2A3A';
+const BORDER_MID = '#2A3441';
+const TEXT     = '#E8E6E1';
+const TEXT_MID = '#9EA8B4';
+const TEXT_DIM = '#6B7585';
+const AMBER    = '#F59E0B';
+const GREEN    = '#10B981';
+const RED      = '#EF4444';
+const BLUE     = '#3B82F6';
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '6px 10px',
+  background: BG_ROW,
+  border: `1px solid ${BORDER_MID}`,
+  borderRadius: 2,
+  color: TEXT,
+  fontFamily: MONO,
+  fontSize: 11,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontFamily: MONO,
+  fontSize: 9,
+  fontWeight: 600,
+  letterSpacing: 0.8,
+  color: TEXT_DIM,
+  textTransform: 'uppercase' as const,
+  marginBottom: 5,
+};
+
 const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
   capsuleId,
   propertyAddress,
@@ -82,137 +120,192 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
     : true;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg relative">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0,0,0,0.72)', padding: 16,
+    }}>
+      <div style={{
+        background: BG_PANEL,
+        border: `1px solid ${BORDER_MID}`,
+        borderRadius: 0,
+        width: '100%',
+        maxWidth: 520,
+        maxHeight: '90vh',
+        overflowY: 'auto',
+        position: 'relative',
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 16px',
+          borderBottom: `1px solid ${BORDER}`,
+          background: BG,
+        }}>
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Share Capsule</h2>
-            <p className="text-sm text-gray-500 mt-0.5">{propertyAddress}</p>
+            <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 0.8, color: AMBER }}>
+              SHARE CAPSULE
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 9, color: TEXT_DIM, marginTop: 2, letterSpacing: 0.4 }}>
+              {propertyAddress}
+            </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-            <X className="w-5 h-5" />
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_DIM, padding: 4, lineHeight: 1 }}
+          >
+            <X size={14} />
           </button>
         </div>
 
         {shareResult ? (
-          <div className="px-6 py-6 flex flex-col gap-4">
-            {shareResult.share_mode === 'shareable_link' ? (
-              <div className="flex flex-col gap-1 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-                <div className="flex items-center gap-2 text-green-700">
-                  <CheckCircle className="w-5 h-5 flex-shrink-0" />
-                  <span className="text-sm font-medium">Shareable link created</span>
-                </div>
-                <p className="text-xs text-green-600 pl-7">
-                  Anyone with this link can access the deal.{shareResult.label ? ` Label: ${shareResult.label}` : ''}
-                </p>
+          /* ── Success state ── */
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Status banner */}
+            <div style={{
+              background: `${GREEN}12`,
+              border: `1px solid ${GREEN}40`,
+              borderRadius: 2,
+              padding: '10px 14px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <CheckCircle size={14} color={GREEN} />
+                <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: GREEN, letterSpacing: 0.6 }}>
+                  {shareResult.share_mode === 'shareable_link'
+                    ? 'SHAREABLE LINK CREATED'
+                    : shareResult.email_queued
+                      ? `INVITATION EMAILED — ${shareResult.recipient_email}`
+                      : `SHARE CREATED — ${shareResult.recipient_email}`}
+                </span>
               </div>
-            ) : shareResult.email_queued ? (
-              <div className="flex flex-col gap-1 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-                <div className="flex items-center gap-2 text-green-700">
-                  <CheckCircle className="w-5 h-5 flex-shrink-0" />
-                  <span className="text-sm font-medium">Invitation emailed to {shareResult.recipient_email}</span>
-                </div>
-                <p className="text-xs text-green-600 pl-7">You can also copy the link below to send via another channel.</p>
+              <div style={{ fontFamily: MONO, fontSize: 9, color: TEXT_DIM, paddingLeft: 22 }}>
+                {shareResult.share_mode === 'shareable_link'
+                  ? `Anyone with this link can access the deal.${shareResult.label ? ` Label: ${shareResult.label}` : ''}`
+                  : shareResult.email_queued
+                    ? 'You can also copy the link below to send via another channel.'
+                    : 'Email delivery not yet enabled — copy the link and send directly.'}
               </div>
-            ) : (
-              <div className="flex flex-col gap-1 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-                <div className="flex items-center gap-2 text-green-700">
-                  <CheckCircle className="w-5 h-5 flex-shrink-0" />
-                  <span className="text-sm font-medium">Share created for {shareResult.recipient_email}</span>
-                </div>
-                <p className="text-xs text-green-600 pl-7">Email delivery is not yet enabled — copy the link below and send it to them.</p>
-              </div>
-            )}
+            </div>
 
+            {/* Link row */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Capsule Link</label>
-              <div className="flex items-center gap-2">
+              <div style={labelStyle}>Capsule Link</div>
+              <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   readOnly
                   value={shareResult.capsule_url}
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 font-mono"
+                  style={{ ...inputStyle, flex: 1, color: TEXT_MID }}
                 />
                 <button
                   onClick={handleCopy}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${copied ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                  style={{
+                    fontFamily: MONO, fontSize: 9, fontWeight: 600,
+                    padding: '6px 12px', letterSpacing: 0.6,
+                    background: copied ? `${GREEN}18` : BG_ROW,
+                    border: `1px solid ${copied ? GREEN : BORDER_MID}`,
+                    color: copied ? GREEN : TEXT_MID,
+                    borderRadius: 2, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    flexShrink: 0,
+                  }}
                 >
-                  <Copy className="w-4 h-4" />
-                  {copied ? 'Copied!' : 'Copy'}
+                  <Copy size={10} />
+                  {copied ? 'COPIED' : 'COPY'}
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Share Type</div>
-                <div className="font-medium text-gray-700">
+            {/* Meta row */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ background: BG_ROW, border: `1px solid ${BORDER}`, padding: '8px 12px' }}>
+                <div style={labelStyle}>Share Type</div>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: TEXT }}>
                   {shareResult.share_type === 'external_agent_enabled' ? 'Agent Enabled' : 'View Only'}
                 </div>
               </div>
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Share ID</div>
-                <div className="font-mono text-xs text-gray-600 truncate">{shareResult.share_id}</div>
+              <div style={{ background: BG_ROW, border: `1px solid ${BORDER}`, padding: '8px 12px' }}>
+                <div style={labelStyle}>Share ID</div>
+                <div style={{ fontFamily: MONO, fontSize: 9, color: TEXT_DIM, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {shareResult.share_id}
+                </div>
               </div>
             </div>
 
-            <div className="flex gap-3 pt-2">
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
               <button
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                style={{
+                  flex: 1, fontFamily: MONO, fontSize: 9, fontWeight: 600, letterSpacing: 0.6,
+                  padding: '8px 0', background: 'transparent',
+                  border: `1px solid ${BORDER_MID}`, color: TEXT_MID, borderRadius: 2, cursor: 'pointer',
+                }}
               >
-                Done
+                DONE
               </button>
               <button
                 onClick={() => setShareResult(null)}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                style={{
+                  flex: 1, fontFamily: MONO, fontSize: 9, fontWeight: 600, letterSpacing: 0.6,
+                  padding: '8px 0', background: `${AMBER}18`,
+                  border: `1px solid ${AMBER}60`, color: AMBER, borderRadius: 2, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}
               >
-                <Share2 className="w-4 h-4" />
-                Share Again
+                <Share2 size={10} />
+                SHARE AGAIN
               </button>
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4">
+          /* ── Form state ── */
+          <form onSubmit={handleSubmit} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-            {/* ── Mode toggle ── */}
+            {/* Mode toggle */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Share Mode</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div style={labelStyle}>Share Mode</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {([
-                  {
-                    mode: 'specific_recipient' as ShareMode,
-                    icon: <User size={14} />,
-                    label: 'Specific Recipient',
-                    desc: 'Email required at creation',
-                  },
-                  {
-                    mode: 'shareable_link' as ShareMode,
-                    icon: <Link size={14} />,
-                    label: 'Shareable Link',
-                    desc: 'Anyone with the link can open',
-                  },
-                ] as const).map(opt => (
-                  <button
-                    key={opt.mode}
-                    type="button"
-                    onClick={() => setShareMode(opt.mode)}
-                    className={`flex flex-col gap-1 p-3 rounded-lg border-2 text-left cursor-pointer transition-colors ${shareMode === opt.mode ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
-                  >
-                    <span className={`flex items-center gap-1.5 text-sm font-medium ${shareMode === opt.mode ? 'text-blue-700' : 'text-gray-700'}`}>
-                      {opt.icon}{opt.label}
-                    </span>
-                    <span className={`text-xs leading-snug ${shareMode === opt.mode ? 'text-blue-600' : 'text-gray-400'}`}>{opt.desc}</span>
-                  </button>
-                ))}
+                  { mode: 'specific_recipient' as ShareMode, icon: <User size={10} />, label: 'SPECIFIC RECIPIENT', desc: 'Email required at creation' },
+                  { mode: 'shareable_link' as ShareMode, icon: <Link size={10} />, label: 'SHAREABLE LINK', desc: 'Anyone with link can open' },
+                ] as const).map(opt => {
+                  const active = shareMode === opt.mode;
+                  return (
+                    <button
+                      key={opt.mode}
+                      type="button"
+                      onClick={() => setShareMode(opt.mode)}
+                      style={{
+                        display: 'flex', flexDirection: 'column', gap: 4,
+                        padding: '10px 12px', textAlign: 'left', cursor: 'pointer',
+                        background: active ? `${AMBER}12` : BG_ROW,
+                        border: `1px solid ${active ? AMBER : BORDER_MID}`,
+                        borderRadius: 2,
+                        transition: 'border-color 0.1s',
+                      }}
+                    >
+                      <span style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: 0.6,
+                        color: active ? AMBER : TEXT_MID,
+                      }}>
+                        {opt.icon}{opt.label}
+                      </span>
+                      <span style={{ fontFamily: MONO, fontSize: 8, color: active ? `${AMBER}90` : TEXT_DIM, letterSpacing: 0.3 }}>
+                        {opt.desc}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* ── Recipient fields (specific_recipient only) ── */}
+            {/* Recipient fields */}
             {shareMode === 'specific_recipient' && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Recipient Email <span className="text-red-500">*</span>
+                  <label style={labelStyle}>
+                    Recipient Email <span style={{ color: RED }}>*</span>
                   </label>
                   <input
                     type="email"
@@ -220,120 +313,167 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                     value={shareForm.recipient_email}
                     onChange={e => setShareForm(f => ({ ...f, recipient_email: e.target.value }))}
                     placeholder="investor@example.com"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    style={inputStyle}
+                    onFocus={e => { e.currentTarget.style.borderColor = AMBER; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = BORDER_MID; }}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Name</label>
+                  <label style={labelStyle}>Recipient Name</label>
                   <input
                     type="text"
                     value={shareForm.recipient_name}
                     onChange={e => setShareForm(f => ({ ...f, recipient_name: e.target.value }))}
                     placeholder="Jane Smith"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    style={inputStyle}
+                    onFocus={e => { e.currentTarget.style.borderColor = AMBER; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = BORDER_MID; }}
                   />
                 </div>
               </>
             )}
 
-            {/* ── Label field (shareable_link only) ── */}
+            {/* Label field (shareable link only) */}
             {shareMode === 'shareable_link' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Label <span className="text-gray-400 font-normal">(optional, max 200 chars)</span>
+                <label style={labelStyle}>
+                  Label <span style={{ color: TEXT_DIM, fontWeight: 400 }}>(optional, max 200)</span>
                 </label>
                 <input
                   type="text"
                   value={shareForm.label}
                   onChange={e => setShareForm(f => ({ ...f, label: e.target.value.slice(0, 200) }))}
                   placeholder="LP outreach Q2, Lender list — Atlanta deals…"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  style={inputStyle}
+                  onFocus={e => { e.currentTarget.style.borderColor = AMBER; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = BORDER_MID; }}
                 />
               </div>
             )}
 
-            {/* ── Share type ── */}
+            {/* Access type */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Access Type</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div style={labelStyle}>Access Type</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {[
-                  { value: 'external_agent_enabled', label: 'Agent Enabled', desc: 'Recipient can query AI with their own API key' },
-                  { value: 'external_view', label: 'View Only', desc: 'Read-only access, no agent interaction' },
-                ].map(opt => (
-                  <label
-                    key={opt.value}
-                    className={`flex flex-col gap-1 p-3 rounded-lg border-2 cursor-pointer transition-colors ${shareForm.share_type === opt.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
-                  >
-                    <input
-                      type="radio"
-                      name="share_type"
-                      value={opt.value}
-                      checked={shareForm.share_type === opt.value}
-                      onChange={() => setShareForm(f => ({ ...f, share_type: opt.value as typeof f.share_type }))}
-                      className="sr-only"
-                    />
-                    <span className={`text-sm font-medium ${shareForm.share_type === opt.value ? 'text-blue-700' : 'text-gray-700'}`}>{opt.label}</span>
-                    <span className={`text-xs leading-snug ${shareForm.share_type === opt.value ? 'text-blue-600' : 'text-gray-400'}`}>{opt.desc}</span>
-                  </label>
-                ))}
+                  { value: 'external_agent_enabled', label: 'AGENT ENABLED', desc: 'Recipient can query AI with their own API key' },
+                  { value: 'external_view', label: 'VIEW ONLY', desc: 'Read-only access, no agent interaction' },
+                ].map(opt => {
+                  const active = shareForm.share_type === opt.value;
+                  return (
+                    <label
+                      key={opt.value}
+                      style={{
+                        display: 'flex', flexDirection: 'column', gap: 4,
+                        padding: '10px 12px', cursor: 'pointer',
+                        background: active ? `${BLUE}10` : BG_ROW,
+                        border: `1px solid ${active ? BLUE : BORDER_MID}`,
+                        borderRadius: 2,
+                        transition: 'border-color 0.1s',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="share_type"
+                        value={opt.value}
+                        checked={active}
+                        onChange={() => setShareForm(f => ({ ...f, share_type: opt.value as typeof f.share_type }))}
+                        style={{ display: 'none' }}
+                      />
+                      <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: 0.6, color: active ? BLUE : TEXT_MID }}>
+                        {opt.label}
+                      </span>
+                      <span style={{ fontFamily: MONO, fontSize: 8, color: active ? `${BLUE}99` : TEXT_DIM, letterSpacing: 0.3, lineHeight: 1.4 }}>
+                        {opt.desc}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
-            {/* ── Preview pitch ── */}
+            {/* Preview pitch */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Preview Pitch <span className="text-gray-400 font-normal">(optional, max 500 chars)</span>
+              <label style={labelStyle}>
+                Preview Pitch <span style={{ color: TEXT_DIM, fontWeight: 400 }}>(optional, max 500)</span>
               </label>
               <textarea
                 value={shareForm.preview_text}
                 onChange={e => setShareForm(f => ({ ...f, preview_text: e.target.value.slice(0, 500) }))}
                 placeholder="Short note to the recipient about this deal…"
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                style={{ ...inputStyle, resize: 'none', lineHeight: 1.5 }}
+                onFocus={e => { e.currentTarget.style.borderColor = AMBER; }}
+                onBlur={e => { e.currentTarget.style.borderColor = BORDER_MID; }}
               />
-              <div className="text-xs text-gray-400 text-right mt-0.5">{shareForm.preview_text.length}/500</div>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: TEXT_DIM, textAlign: 'right', marginTop: 3 }}>
+                {shareForm.preview_text.length}/500
+              </div>
             </div>
 
-            {/* ── Expires on ── */}
+            {/* Expiry */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Expires On <span className="text-gray-400 font-normal">(optional)</span>
+              <label style={labelStyle}>
+                Expires On <span style={{ color: TEXT_DIM, fontWeight: 400 }}>(optional)</span>
               </label>
               <input
                 type="date"
                 value={shareForm.expires_at}
                 onChange={e => setShareForm(f => ({ ...f, expires_at: e.target.value }))}
                 min={new Date().toISOString().split('T')[0]}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                style={{ ...inputStyle, colorScheme: 'dark' }}
+                onFocus={e => { e.currentTarget.style.borderColor = AMBER; }}
+                onBlur={e => { e.currentTarget.style.borderColor = BORDER_MID; }}
               />
             </div>
 
+            {/* Error */}
             {shareError && (
-              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                {shareError}
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                background: `${RED}10`, border: `1px solid ${RED}40`,
+                borderRadius: 2, padding: '8px 12px',
+              }}>
+                <AlertTriangle size={12} color={RED} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontFamily: MONO, fontSize: 9, color: RED, lineHeight: 1.5 }}>{shareError}</span>
               </div>
             )}
 
-            <div className="flex gap-3 pt-1">
+            {/* Submit row */}
+            <div style={{ display: 'flex', gap: 8, paddingTop: 2 }}>
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                style={{
+                  flex: 1, fontFamily: MONO, fontSize: 9, fontWeight: 600, letterSpacing: 0.6,
+                  padding: '8px 0', background: 'transparent',
+                  border: `1px solid ${BORDER_MID}`, color: TEXT_MID, borderRadius: 2, cursor: 'pointer',
+                }}
               >
-                Cancel
+                CANCEL
               </button>
               <button
                 type="submit"
                 disabled={shareLoading || !canSubmit}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                style={{
+                  flex: 1, fontFamily: MONO, fontSize: 9, fontWeight: 600, letterSpacing: 0.6,
+                  padding: '8px 0',
+                  background: shareLoading || !canSubmit ? `${AMBER}08` : `${AMBER}18`,
+                  border: `1px solid ${shareLoading || !canSubmit ? BORDER_MID : AMBER}`,
+                  color: shareLoading || !canSubmit ? TEXT_DIM : AMBER,
+                  borderRadius: 2,
+                  cursor: shareLoading || !canSubmit ? 'not-allowed' : 'pointer',
+                  opacity: shareLoading || !canSubmit ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  transition: 'opacity 0.1s',
+                }}
               >
                 {shareLoading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Creating…</>
+                  <><Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} /> CREATING…</>
                 ) : shareMode === 'shareable_link' ? (
-                  <><Link className="w-4 h-4" /> Generate Link</>
+                  <><Link size={10} /> GENERATE LINK</>
                 ) : (
-                  <><ExternalLink className="w-4 h-4" /> Share</>
+                  <><ExternalLink size={10} /> SHARE</>
                 )}
               </button>
             </div>
