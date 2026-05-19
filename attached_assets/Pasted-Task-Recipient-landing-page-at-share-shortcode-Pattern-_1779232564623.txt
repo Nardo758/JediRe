@@ -1,0 +1,65 @@
+Task: Recipient landing page at /share/:shortcode
+
+Pattern: recipient lands here before entering the deal view. Page 
+provides trust signal, orientation, and clear action options. The 
+deal view itself moves to /share/:shortcode/deal (or equivalent).
+
+Per prior conversation:
+- Sender-branded header (sender company logo + name, primary 
+  position) with "Powered by JediRe" secondary attribution
+- Attribution is tier-gated: standard tiers always show, 
+  Principal/Institutional can hide
+- Sender's preview pitch displayed prominently (from 
+  capsule_shares.preview_text)
+- Deal identity: name, asset class, market
+- Action options: View the deal (primary), Connect API key 
+  (secondary), Sign up for full access (tertiary)
+- Mobile-first responsive
+- Footer: link expiration, support contact
+
+Investigation:
+1. Confirm current /share/:shortcode behavior with the recent 
+   Task #907 Phase 1 work. After shipping that, does the route 
+   land directly on DealDetailPage with access token auth, or 
+   somewhere else?
+2. Identify sender branding storage — does the user/organization 
+   record support company name + logo upload? If not, scope that 
+   as part of this work.
+3. Identify subscription tier model — how is tier queried for 
+   the sender at share resolution time?
+4. Identify any existing landing-page-style components in the 
+   platform that establish the design language for this surface.
+
+Implementation phases:
+- Phase A: Sender branding infrastructure (account settings for 
+  company name + logo upload, storage, retrieval)
+- Phase B: Tier-gated attribution toggle (capability flag on 
+  tier, sender account setting, share resolution returns 
+  attribution_visible)
+- Phase C: Landing page itself at /share/:shortcode rendering 
+  sender branding, preview pitch, deal identity, action options
+- Phase D: Move deal view to /share/:shortcode/deal (or similar 
+  pattern), update share URL generation
+
+These phases ship together as one coordinated build.
+
+Deferred to follow-up tasks:
+- Connect API key flow UI (the actual modal/page when recipient 
+  clicks the secondary option)
+- Sign-up flow with share context (when recipient clicks tertiary 
+  option, account creation that converts session overlay to 
+  forked deal)
+- These have their own complexity; the landing page surfaces 
+  them as options but doesn't need to implement them fully in 
+  this build.
+
+Verification:
+- Open a share link as a recipient — confirm landing page renders 
+  with sender branding, preview pitch, action options
+- Click "View the deal" — confirm enters DealDetailPage with 
+  access token auth as before
+- Open on mobile — confirm responsive layout works
+- For senders on premium tiers, toggle attribution off — confirm 
+  "Powered by JediRe" disappears from landing page
+- For senders on standard tiers — confirm attribution always 
+  renders, settings option grayed out with upgrade prompt
