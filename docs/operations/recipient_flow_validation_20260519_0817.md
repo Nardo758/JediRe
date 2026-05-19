@@ -25,6 +25,7 @@ A human with Replit shell access should execute the curl commands below and fill
 DEAL_ID="your-test-deal-uuid"
 AUTH_TOKEN="your-jwt-token"
 
+# Create share WITH preview
 curl -X POST "https://your-repl.replit.app/api/v1/deals/${DEAL_ID}/share/external" \
   -H "Authorization: Bearer ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -33,6 +34,23 @@ curl -X POST "https://your-repl.replit.app/api/v1/deals/${DEAL_ID}/share/externa
     "recipient_name": "Test Recipient",
     "share_type": "external_agent_enabled",
     "allow_document_download": true,
+    "allow_agent_interaction": true,
+    "preview_text": "Charlotte CBD — 180-unit garden-style, strong in-fill market with 8% rent growth. Value-add play with ~200bps NOI upside from renovated units.",
+    "preview_metadata": {
+      "strategy": "Value-Add",
+      "asset_class": "Multifamily",
+      "region": "Southeast",
+      "deal_size_range": "$15M-$30M"
+    }
+  }'
+
+# Create share WITHOUT preview (existing behavior test)
+curl -X POST "https://your-repl.replit.app/api/v1/deals/${DEAL_ID}/share/external" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "test-recipient-no-preview@example.com",
+    "share_type": "external_agent_enabled",
     "allow_agent_interaction": true
   }'
 ```
@@ -77,7 +95,7 @@ ACCESS_TOKEN="64-char-hex-token-from-step-1"
 curl -s "https://your-repl.replit.app/api/v1/capsules/${ACCESS_TOKEN}"
 ```
 
-### Expected response
+### Expected response (with preview)
 ```json
 {
   "share_exists": true,
@@ -87,8 +105,32 @@ curl -s "https://your-repl.replit.app/api/v1/capsules/${ACCESS_TOKEN}"
   "allow_agent_interaction": true,
   "expires_at": null,
   "agent_enabled": true,
+  "preview_text": "Charlotte CBD — 180-unit garden-style, strong in-fill market with 8% rent growth. Value-add play with ~200bps NOI upside from renovated units.",
+  "preview_metadata": {
+    "strategy": "Value-Add",
+    "asset_class": "Multifamily",
+    "region": "Southeast",
+    "deal_size_range": "$15M-$30M"
+  },
   "must_connect_api": true,
   "next_step": "Connect an API key via POST /capsules/:accessToken/connect_api, then query via POST /capsules/:accessToken/query"
+}
+```
+
+### Expected response (without preview)
+```json
+{
+  "share_exists": true,
+  "share_type": "external_agent_enabled",
+  "recipient_email": "test-recipient-no-preview@example.com",
+  "allow_document_download": true,
+  "allow_agent_interaction": true,
+  "expires_at": null,
+  "agent_enabled": true,
+  "preview_text": null,
+  "preview_metadata": null,
+  "must_connect_api": true,
+  "next_step": "Connect an API key via POST /capsules/:accessToken/connect_api..."
 }
 ```
 
@@ -100,6 +142,13 @@ curl -s "https://your-repl.replit.app/api/v1/capsules/${ACCESS_TOKEN}"
 - ✅ `must_connect_api: true` tells recipient what to do next
 - ✅ `recipient_email` matches the share creation
 - ✅ `agent_enabled: true` for external_agent_enabled share type
+- ✅ `preview_text` returns sender-written pitch (with-preview share)
+- ✅ `preview_metadata` returns structured metadata (with-preview share)
+- ✅ `preview_text: null` for share created without preview
+- ✅ `preview_metadata: null` for share created without preview
+- ✅ Bypass still blocked: preview_text is sender-curated (stored on capsule_shares), NOT deal data (no query to deals table at resolution time)
+- ✅ 500-char preview_text cap enforced at both API and DB level
+- ✅ preview_metadata validated: must be JSON object, not array or primitive
 
 ### UX assessment
 The recipient sees: share exists, it's agent-enabled, they need to connect an API key.
