@@ -5,7 +5,8 @@
  *   Tier 1: fetch_t12, fetch_rent_roll, fetch_assumptions
  *   Tier 2: fetch_owned_asset_actuals, fetch_owned_asset_opex_ratios
  *   Tier 3: fetch_peer_comp_noi_metrics, fetch_jurisdiction_tax_forecast,
- *            fetch_jurisdiction_insurance_forecast, fetch_m35_event_forecast
+ *            fetch_jurisdiction_insurance_forecast, fetch_m35_event_forecast,
+ *            fetch_rate_environment (M11), fetch_cycle_intelligence (M14/M28)
  *   Analysis: detect_collision
  *   Compute: compute_proforma
  *   Write: write_projection, write_underwriting, request_walkthrough_narrative
@@ -66,6 +67,8 @@ import { generateRoadmapTool } from './tools/generate_roadmap';
 import { queryCapitalStackBundlesTool } from './tools/query_capital_stack_bundles';
 import { runJointGoalSeekTool } from './tools/run_joint_goal_seek';
 import { getPlausibilityScoreTool } from './tools/get_plausibility_score';
+import { fetchRateEnvironmentTool } from './tools/fetch_rate_environment';
+import { fetchCycleIntelligenceTool } from './tools/fetch_cycle_intelligence';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -599,6 +602,8 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchJurisdictionTaxForecastTool,
     fetchJurisdictionInsuranceForecastTool,
     fetchM35EventForecastTool,
+    fetchRateEnvironmentTool,       // M11: SOFR classification, pricing window, macro context
+    fetchCycleIntelligenceTool,     // M14/M28: cycle phase, divergence signal, rent/cap forecasts
     // Archive & benchmarks
     fetchArchiveAssumptionDistributionTool,
     fetchArchiveAchievementVsAssumptionTool,

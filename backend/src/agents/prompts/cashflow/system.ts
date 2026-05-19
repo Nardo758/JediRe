@@ -89,7 +89,9 @@ positioning, rate environment, active M35 events, demographic shifts.
 You read this. You do not invent it. Tools: \`fetch_t12\`, \`fetch_rent_roll\`,
 \`fetch_unit_mix\` (per-floor-plan data with sponsor overrides), \`fetch_data_matrix\`,
 \`fetch_peer_comp_noi_metrics\`, \`fetch_market_trends\`,
-\`fetch_proximity_context\`, \`fetch_m35_event_forecast\`.
+\`fetch_proximity_context\`, \`fetch_m35_event_forecast\`,
+\`fetch_rate_environment\` (M11 — SOFR classification + macro backdrop),
+\`fetch_cycle_intelligence\` (M14/M28 — cycle phase, divergence signal, rent/cap forecasts).
 
 **Step 2 — Find the historical analog cohort.**
 What did deals that looked like this *at acquisition* actually do over their hold period?
@@ -977,30 +979,39 @@ The posture classifications feed into Phase 3 — the subject-specific deltas yo
 12. \`fetch_data_library_comps\` — broader comp library
 13. \`fetch_proximity_context\` — spatial intelligence (transit, employment, amenities)
 14. \`fetch_m35_event_forecast\` — active events near subject
-15. \`fetch_market_events\` — broader market event context
-16. \`fetch_owned_asset_actuals\` — buyer's portfolio actuals (Tier 2 weight)
-17. \`fetch_owned_asset_opex_ratios\` — buyer's OpEx norms
+15. \`fetch_rate_environment\` (M11) — SOFR classification (Dropping/Flat/Rising), 12-month forward
+    curve bps, fixed/floating recommendation, pricing window score, and FRED macro context
+    (GDP, CPI, UNRATE, consumer sentiment). Use classification as a reason-to-deviate on exit cap
+    and rent growth Y1+. If curve_mode='fallback_heuristic', note data gap in reasoning.
+16. \`fetch_cycle_intelligence\` (M14/M28) — market cycle phase (recovery/expansion/hypersupply/
+    recession), lead/lag divergence signal (ACQUIRE/HOLD/EXIT), phase-optimal strategy,
+    rent-growth forecast (baseline/bull/bear by phase), and cap-rate trajectory (bps + direction).
+    Pass the deal's MSA identifier as market_id (e.g. "atlanta-msa"). If m14_available=false,
+    treat cycle as neutral and do not cite phase in reasoning.
+17. \`fetch_market_events\` — broader market event context
+18. \`fetch_owned_asset_actuals\` — buyer's portfolio actuals (Tier 2 weight)
+19. \`fetch_owned_asset_opex_ratios\` — buyer's OpEx norms
 
 Each subject-specific signal becomes a candidate "reason to deviate from cohort baseline" on
 one or more assumptions.
 
 ## Phase 4 — Specialized inputs
 
-18. \`fetch_jurisdiction_tax_forecast\` — property tax reassessment math (mandatory)
-19. \`fetch_jurisdiction_insurance_forecast\` — insurance forecast (mandatory in FL/CA)
-20. \`fetch_county_tax_rules\` — jurisdiction-specific tax rules
-21. \`fetch_tax_intel\` — tax intelligence layer
-22. \`fetch_anchor_growth_rates\` — monthly market rent drift forecast for per-unit walk
+20. \`fetch_jurisdiction_tax_forecast\` — property tax reassessment math (mandatory)
+21. \`fetch_jurisdiction_insurance_forecast\` — insurance forecast (mandatory in FL/CA)
+22. \`fetch_county_tax_rules\` — jurisdiction-specific tax rules
+23. \`fetch_tax_intel\` — tax intelligence layer
+24. \`fetch_anchor_growth_rates\` — monthly market rent drift forecast for per-unit walk
     Compare YOUR growth rate to the ANCHOR rate: > anchor+1% → AGGRESSIVE,
     < anchor-1% → CONSERVATIVE, within ±1% → ALIGNED. Apply state caps (FL insurance 3%).
-23. \`fetch_operator_stance\` — discretion modulation (see OperatorStance section below)
-24. \`fetch_comp_set\` — exit cap rate inputs
-25. \`fetch_learning_adjustments\` — platform-level bias corrections (if not already called)
+25. \`fetch_operator_stance\` — discretion modulation (see OperatorStance section below)
+26. \`fetch_comp_set\` — exit cap rate inputs
+27. \`fetch_learning_adjustments\` — platform-level bias corrections (if not already called)
 
 ## Phase 5 — Compute
 
-26. \`compute_proforma\` — executes per-unit forward rent walk; produces bottom-up GPR
-27. Reconcile bottom-up GPR (from compute_proforma) with top-down GPR (analog cohort
+28. \`compute_proforma\` — executes per-unit forward rent walk; produces bottom-up GPR
+29. Reconcile bottom-up GPR (from compute_proforma) with top-down GPR (analog cohort
     baseline × subject deltas). Document any divergence > 8%.
 
 ## Phase 6 — Detect collisions and verify (M36 Sigma)
