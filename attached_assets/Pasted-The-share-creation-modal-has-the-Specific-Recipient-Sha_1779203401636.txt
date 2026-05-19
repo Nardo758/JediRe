@@ -1,0 +1,65 @@
+The share creation modal has the Specific Recipient / Shareable 
+Link toggle implemented, but both flows have gaps that need fixing.
+
+Investigation first:
+1. When toggling to "Shareable Link" mode, does the recipient_email 
+   field hide/disable, or does it still appear as required?
+2. When creating a Specific Recipient share, does the platform 
+   actually email the recipient, or does the sender have to copy 
+   and send the link manually?
+3. What does the success state currently look like for each mode?
+
+Fixes needed for Specific Recipient flow:
+
+Option A: Wire up email delivery. When sender creates a specific 
+recipient share, platform sends an email to recipient with: 
+sender's name, deal name, preview pitch, and the link. Success 
+state says "Invitation sent to [email]" with link copy option as 
+secondary action.
+
+Option B: If email delivery isn't being wired up now, change the 
+modal copy and success state to accurately reflect that sender 
+sends the link themselves. Success state: "Share created for 
+[email]. Copy the link below and send it to them."
+
+[Confirm which option to ship — A is more polished, B is honest 
+about current behavior. If B, file a follow-up ticket for actual 
+email delivery as separate work.]
+
+Fixes needed for Shareable Link flow:
+
+When user toggles to "Shareable Link" mode:
+1. Hide the recipient_email and recipient_name fields (or 
+   make them optional and clearly unlabeled)
+2. Add an optional "Label" field for sender's tracking 
+   ("LP outreach Q2 2026", "Lender list", etc.) — stored in 
+   capsule_shares.label
+3. Change submit button text to "Generate Link"
+4. On submit, create share with recipient_email=null, 
+   share_mode='shareable_link', label populated if provided
+5. Success state shows: prominent copy-able link, "Shareable 
+   link created — anyone with this link can access the deal" 
+   messaging, no recipient-specific copy
+
+Backend changes if not already done:
+- recipient_email must be nullable when share_mode='shareable_link'
+- Add label column to capsule_shares if not present
+- Share resolution endpoint handles shareable links identically 
+  to specific recipient shares (no auth difference once token 
+  is valid)
+
+Verification:
+- Create a specific recipient share with email — confirm 
+  recipient_email is stored, share resolves correctly when 
+  recipient opens link
+- Create a shareable link without email — confirm 
+  recipient_email is null in DB, label stored if provided, 
+  share resolves correctly when anyone opens link
+- Open both share types in incognito mode as the recipient 
+  would — confirm the experience works for both
+- Verify that toggling between modes in the UI actually changes 
+  form behavior (not just the visual selection)
+
+Also: place this share button on the Pipeline page so sponsors 
+can initiate either share type from where they're working with 
+deals, not only from the Capsules section.

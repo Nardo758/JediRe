@@ -95,14 +95,23 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
 
         {shareResult ? (
           <div className="px-6 py-6 flex flex-col gap-4">
-            <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-              <CheckCircle className="w-5 h-5 flex-shrink-0" />
-              <span className="text-sm font-medium">
-                {shareResult.share_mode === 'shareable_link'
-                  ? `Shareable link generated${shareResult.label ? ` — ${shareResult.label}` : ''}`
-                  : `Share created — send this link to ${shareResult.recipient_email}`}
-              </span>
-            </div>
+            {shareResult.share_mode === 'shareable_link' ? (
+              <div className="flex flex-col gap-1 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+                <div className="flex items-center gap-2 text-green-700">
+                  <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                  <span className="text-sm font-medium">Shareable link created</span>
+                </div>
+                <p className="text-xs text-green-600 pl-7">Anyone with this link can access the deal.{shareResult.label ? ` Label: ${shareResult.label}` : ''}</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+                <div className="flex items-center gap-2 text-green-700">
+                  <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                  <span className="text-sm font-medium">Share created for {shareResult.recipient_email}</span>
+                </div>
+                <p className="text-xs text-green-600 pl-7">Copy the link below and send it to them.</p>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Capsule Link</label>
@@ -311,7 +320,7 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                 {shareLoading ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Creating…</>
                 ) : shareMode === 'shareable_link' ? (
-                  <><Link className="w-4 h-4" /> Generate Shareable Link</>
+                  <><Link className="w-4 h-4" /> Generate Link</>
                 ) : (
                   <><ExternalLink className="w-4 h-4" /> Share</>
                 )}
