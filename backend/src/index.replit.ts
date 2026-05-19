@@ -159,6 +159,7 @@ import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
 import financialDocumentsRoutes from './api/rest/financial-documents.routes';
 import sourceDocumentsRoutes from './api/rest/source-documents.routes';
 import capsuleSharingRoutes from './api/rest/capsule-sharing.routes';
+import dealSharesRoutes from './api/rest/deal-shares.routes';
 import jediRoutes from './api/rest/jedi.routes';
 import agentChatRouter from './routes/agent-chat.routes';
 import m35ConnectorsRouter from './routes/m35-connectors.routes';
@@ -458,17 +459,6 @@ app.use('/api/v1/lead-lag', leadLagRoutes);
 import newsConnectionsRoutes from './api/rest/news-connections.routes';
 app.use('/api/v1/news-connections', newsConnectionsRoutes);
 
-// Capsule Sharing — MUST be mounted here, before any app.use('/api/v1', requireAuth, ...)
-// handlers, so that the token-based recipient endpoints
-//   GET  /api/v1/capsule-links/:accessToken
-//   POST /api/v1/capsule-links/:accessToken/connect_api
-//   POST /api/v1/capsule-links/:accessToken/query
-// are reachable without authentication.
-// Using the /capsule-links/ namespace (not /capsules/) avoids any overlap with
-// the authenticated capsule CRUD routes at /api/v1/capsules/:id (createCapsuleRoutes).
-// The authenticated capsule-owner share actions live at /api/v1/capsules-ext (below).
-app.use('/api/v1', capsuleSharingRoutes);
-
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -507,6 +497,11 @@ app.use('/api/v1/proforma', requireAuth, stabilizedPotentialRouter);
 app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/deals', financialDocumentsRoutes);
 app.use('/api/v1/deals', requireAuth, sourceDocumentsRoutes);
+// Deal-level share management (Task B) — owner-only endpoints.
+// GET  /api/v1/deals/:dealId/shares
+// POST /api/v1/deals/:dealId/shares/:shareId/revoke
+app.use('/api/v1/deals', requireAuth, dealSharesRoutes);
+
 // Capsule Sharing: authenticated capsule-owner actions at /api/v1/capsules-ext.
 // Token-based recipient actions are already mounted above (before requireAuth handlers).
 app.use('/api/v1/capsules-ext', requireAuth, capsuleSharingRoutes);

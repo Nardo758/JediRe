@@ -1277,4 +1277,36 @@ router.post('/:capsuleId/shares/:shareId/revoke', requireAuth, async (req: Authe
   }
 });
 
+// ─── GET /:capsuleId/resolve-deal — Task B redirect helper ───────────────────
+// Resolves a capsule_id to its linked deal_id. Used by CapsuleRedirectPage to
+// redirect old /capsules/:id bookmarks to /deals/:dealId/detail?tab=shares.
+// Requires auth (inline requireAuth — this router is mounted both publicly and
+// at /capsules-ext with requireAuth, so the inline guard covers both cases).
+
+router.get('/:capsuleId/resolve-deal', requireAuth, async (req: Request, res: Response) => {
+  const { capsuleId } = req.params;
+  const userId = (req as AuthenticatedRequest).user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const pool = getPool();
+    const result = await pool.query<{ deal_id: string }>(
+      `SELECT deal_data->>'deal_id' AS deal_id
+       FROM deal_capsules
+       WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [capsuleId, userId],
+    );
+
+    if (result.rows.length === 0 || !result.rows[0].deal_id) {
+      return res.status(404).json({ error: 'Capsule not found or no associated deal' });
+    }
+
+    return res.json({ deal_id: result.rows[0].deal_id });
+  } catch (err: any) {
+    logger.error('Failed to resolve capsule to deal', { error: err?.message, capsuleId });
+    return res.status(500).json({ error: err?.message ?? 'Internal server error' });
+  }
+});
+
 export default router;

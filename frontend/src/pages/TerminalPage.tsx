@@ -148,8 +148,7 @@ interface RankedPortfolioAsset {
 const PORTFOLIO_NAV = [
   {key:"F1",label:"DASHBOARD"},
   {key:"F2",label:"PIPELINE"},
-  {key:"F3",label:"CAPSULES"},
-  {key:"F4",label:"PORTFOLIO"},
+  {key:"F3",label:"PORTFOLIO"},
   {key:"F5",label:"MARKETS"},
   {key:"F6",label:"EMAIL"},
   {key:"F7",label:"NEWS"},
@@ -159,7 +158,7 @@ const PORTFOLIO_NAV = [
 ];
 
 const FKEY_SLUG: Record<string,string> = {
-  F1:"dashboard", F2:"pipeline", F3:"capsules", F4:"portfolio", F5:"markets",
+  F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"portfolio", F5:"markets",
   F6:"email",     F7:"news",     F8:"strategies", F9:"admin", F10:"settings",
 };
 const SLUG_FKEY: Record<string,string> = Object.fromEntries(
@@ -839,7 +838,6 @@ export default function TerminalPage() {
     const slug = FKEY_SLUG[fkey] || "dashboard";
     const label = PORTFOLIO_NAV.find(n=>n.key===fkey)?.label || "DASHBOARD";
     document.title = `JediRE | ${label}`;
-    if (slug === "capsules") { navigate("/capsules"); return; }
     const target = `/terminal/${slug}`;
     if (window.location.pathname !== target) navigate(target, { replace: true });
   }, [fkey]); // eslint-disable-line react-hooks/exhaustive-deps

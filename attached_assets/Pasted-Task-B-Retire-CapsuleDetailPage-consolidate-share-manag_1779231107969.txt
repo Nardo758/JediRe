@@ -1,0 +1,72 @@
+Task B — Retire CapsuleDetailPage, consolidate share management into 
+DealDetailPage.
+
+Investigation first per the standard pattern:
+
+1. Audit CapsuleDetailPage current state — confirm the inventory 
+from earlier diagnostic:
+   - Shares tab: the only genuine functional feature
+   - Overview, Three Layers, Collision, Training, AI Agent, 
+     Intelligence, M11 Debt Advisor: duplicated or placeholder
+
+2. Identify all inbound references to /capsules/:id:
+   - Nav links (F3 CAPSULES added earlier in TerminalPage.tsx, 
+     TerminalChrome.tsx, MainLayout.tsx, CommandPanel.tsx)
+   - Internal route generations
+   - Any external documentation that points to this URL pattern
+
+3. Audit deal_capsules table consumers:
+   - Identify every code path that reads from deal_capsules
+   - For each, determine if the read is legitimate (boundary/geo 
+     data, for example) or legacy (was reading stub data that no 
+     longer matters)
+
+Implementation:
+
+Phase 1 — Add Shares panel to DealDetailPage:
+- New "Shares" tab on DealDetailPage with the existing Shares 
+  table content from CapsuleDetailPage
+- Includes: active shares list, revoke action, edit settings, 
+  expiration management, and a "Preview as recipient" button 
+  that opens DealDetailPage with the share's access token in a 
+  new tab
+- Verify functional parity with CapsuleDetailPage's current 
+  Shares tab
+
+Phase 2 — Delete CapsuleDetailPage:
+- Remove the component file
+- Retire the /capsules/:id route (redirect to /deals/:dealId/detail?tab=shares 
+  if the deal_id can be resolved from the capsule_id, otherwise 404)
+- Remove F3 CAPSULES nav link from TerminalPage.tsx, 
+  TerminalChrome.tsx, MainLayout.tsx, CommandPanel.tsx
+- Update any inbound references found in the audit
+
+Phase 3 — Surface deal_capsules table decision:
+- Based on the audit, propose one of: deprecate (drop migration), 
+  narrow purpose (e.g., boundary data only), or leave as legacy
+- Don't drop in this session — surface the analysis and propose. 
+  Dropping is a separate migration with its own verification.
+
+Verification:
+- Open a deal, find the Shares tab, create/revoke/preview shares 
+  through DealDetailPage
+- Confirm /capsules/:id either redirects appropriately or returns 
+  404 cleanly
+- Confirm F3 CAPSULES nav is gone from all four locations
+- Confirm no internal navigation depends on the removed page
+
+Also address while in flight (from Phase 1 code review):
+- Duplicate capsuleSharingRoutes mount: refactor to single mount 
+  at the position that works (the earlier position that bypasses 
+  the dealsRouter auth interception). Document why this position 
+  matters with a comment.
+- Token query param not handled in DealDetailPage recipient 
+  detection: either add ?token= support, or confirm no shares 
+  generate that pattern and document the limitation.
+
+Closing note documents:
+- Shares panel implementation in DealDetailPage
+- CapsuleDetailPage deletion and route retirement
+- deal_capsules table analysis and recommendation
+- Mount and query param cleanup status
+- What's queued for Task A (URL format retirement)

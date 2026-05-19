@@ -125,7 +125,6 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
     { label: 'Dashboard',         path: '/dashboard',                icon: '📊' },
     { label: 'Pipeline',          path: '/deals',                    icon: '📋' },
     { label: 'Portfolio Assets',  path: '/assets-owned',             icon: '🏢' },
-    { label: 'Deal Capsules',     path: '/capsules',                 icon: '💊' },
     { label: 'Market Intelligence', path: '/market-intelligence',    icon: '📈' },
     { label: 'Compete',           path: '/competitive-intelligence', icon: '🎯' },
     { label: 'News Intelligence', path: '/news-intel',               icon: '📰' },

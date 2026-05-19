@@ -24,7 +24,7 @@ import { CommandCenterPage } from './pages/admin/CommandCenterPage';
 import AdminToolsPage from './pages/admin/AdminToolsPage';
 import DealDetailPage from './pages/DealDetailPage';
 import DealCapsulesPage from './pages/DealCapsulesPage';
-import CapsuleDetailPage from './pages/CapsuleDetailPage';
+import CapsuleRedirectPage from './pages/CapsuleRedirectPage';
 import M35EventDetailPage from './pages/m35/M35EventDetailPage';
 import M35ConnectorAdminPage from './pages/m35/M35ConnectorAdminPage';
 import PlaybookLibraryPage from './pages/m35/PlaybookLibraryPage';
@@ -144,7 +144,7 @@ function AppContent() {
         <Route path="/properties/:id" element={<PropertyDetailsPage />} />
         <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
         <Route path="/capsules" element={<DealCapsulesPage />} />
-        <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
+        <Route path="/capsules/:id" element={<CapsuleRedirectPage />} />
         <Route path="/events/:eventId" element={<M35EventDetailPage />} />
         <Route path="/playbooks" element={<PlaybookLibraryPage />} />
         <Route path="/admin/events" element={<AdminEventsPage />} />
