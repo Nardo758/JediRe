@@ -810,6 +810,55 @@ export async function cashflowPostProcess(
                 primaryMetric: optResult.primary_metric,
                 infeasible:    optResult.infeasible,
               });
+
+              // ── M36 Joint Goal Seek (Pareto Frontier) fallback ────────────────
+              // Run run_joint_goal_seek across all 5 debt bundles to populate
+              // proforma.capital_structure.optimization.pareto_frontier whenever
+              // the agent skipped it (F-jgs-1). Reuses the same resolved inputs.
+              // Non-fatal: wrapped in its own try/catch so JGS failures never
+              // degrade the CS optimization result already written above.
+              try {
+                const csOpt = proformaOut.capital_structure as Record<string, unknown>;
+                const optBlock = csOpt.optimization as Record<string, unknown> | undefined;
+                const hasParetoFrontier = optBlock?.pareto_frontier != null;
+
+                if (!hasParetoFrontier) {
+                  const { runJointGoalSeek } = await import('./tools/run_joint_goal_seek');
+                  const jgsResult = await runJointGoalSeek({
+                    noi_year1:         noiYear1,
+                    purchase_price:    purchasePrice,
+                    hold_years:        holdYears,
+                    exit_cap_rate:     exitCapRate,
+                    noi_growth_rate:   0.03,
+                    deal_strategy:     dealStrategy,
+                    selling_costs_pct: 0.02,
+                    ...(gprYear1 !== undefined ? { gpr_year1: gprYear1 } : {}),
+                  });
+
+                  csOpt.optimization = {
+                    ...(optBlock ?? {}),
+                    pareto_frontier:          jgsResult.pareto_frontier,
+                    pareto_role:              jgsResult.role,
+                    pareto_sort_key:          jgsResult.sort_key,
+                    pareto_bundles_evaluated: jgsResult.bundles_evaluated,
+                    pareto_feasible_count:    jgsResult.feasible_count,
+                  };
+
+                  logger.info('[CashflowPostProcess] JGS Pareto frontier injected by postprocessor (agent skipped)', {
+                    dealId:           ctx.dealId,
+                    runId,
+                    strategy:         dealStrategy,
+                    feasibleCount:    jgsResult.feasible_count,
+                    bundlesEvaluated: jgsResult.bundles_evaluated,
+                  });
+                }
+              } catch (jgsErr) {
+                logger.warn('[CashflowPostProcess] JGS Pareto frontier postprocessor failed (non-fatal)', {
+                  dealId: ctx.dealId,
+                  runId,
+                  err: jgsErr instanceof Error ? jgsErr.message : String(jgsErr),
+                });
+              }
             } else {
               logger.warn('[CashflowPostProcess] CS optimization postprocessor skipped — insufficient inputs', {
                 dealId: ctx.dealId,

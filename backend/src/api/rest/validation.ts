@@ -40,6 +40,7 @@ export const createDealSchema = z.object({
   tier: z.enum(['basic', 'professional', 'enterprise']).optional(),
   deal_category: z.enum(['pipeline', 'owned']).optional(),
   development_type: z.string().optional(),
+  strategy: z.string().nullable().optional(),
   property_type_id: z.number().int().positive().nullable().optional(),
   property_type_key: z.string().optional(),
   address: z.string().nullable().optional(),

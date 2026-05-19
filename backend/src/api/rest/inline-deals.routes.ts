@@ -283,7 +283,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     const {
       name, boundary, projectType, project_type, projectIntent, targetUnits,
       budget, timelineStart, timelineEnd, tier,
-      deal_category, development_type, address, description,
+      deal_category, development_type, strategy, address, description,
       property_type_key, documentFileIds, uploaded_documents
     } = req.body;
 
@@ -304,6 +304,37 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       }
     }
 
+    // F-strategy-1: Derive strategy deterministically at creation time so
+    // deals.strategy is never null. Explicit body value wins; otherwise a
+    // simple keyword scan of projectIntent provides a non-null default.
+    // KNOWN_STRATEGIES in the postprocessor recognises all values below.
+    let resolvedStrategy: string = strategy || 'existing';
+    if (!strategy) {
+      const intentLower = (projectIntent || '').toLowerCase();
+      if (
+        intentLower.includes('value-add') ||
+        intentLower.includes('value add') ||
+        intentLower.includes('renovation')
+      ) {
+        resolvedStrategy = 'value-add';
+      } else if (
+        intentLower.includes('development') ||
+        intentLower.includes('construction') ||
+        intentLower.includes('ground-up') ||
+        intentLower.includes('ground up')
+      ) {
+        resolvedStrategy = 'development';
+      } else if (
+        intentLower.includes('lease-up') ||
+        intentLower.includes('lease up') ||
+        intentLower.includes('lease_up')
+      ) {
+        resolvedStrategy = 'lease-up';
+      } else if (intentLower.includes('flip')) {
+        resolvedStrategy = 'flip';
+      }
+    }
+
     const userTier = tier || 'basic';
 
     const orgResult = await client.query(
@@ -319,9 +350,9 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier, status,
-        deal_category, development_type, address, description, org_id
+        deal_category, development_type, address, description, org_id, strategy
       )
-      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14, $15)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14, $15, $16)
       RETURNING *
     `, [
       req.user!.userId,
@@ -339,6 +370,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       address || null,
       description || null,
       userOrgId,
+      resolvedStrategy,
     ]);
 
     const row = result.rows[0];
