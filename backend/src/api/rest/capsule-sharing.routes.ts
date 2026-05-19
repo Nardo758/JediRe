@@ -50,6 +50,8 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
       allow_document_download,
       allow_agent_interaction,
       expires_at,
+      preview_text,
+      preview_metadata,
     } = req.body;
 
     // Validate required fields
@@ -60,6 +62,14 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
     const shareType = share_type ?? 'external_view';
     if (!['external_view', 'external_agent_enabled'].includes(shareType)) {
       return res.status(400).json({ error: 'share_type must be external_view or external_agent_enabled' });
+    }
+
+    // Validate sender-curated preview
+    if (preview_text && typeof preview_text === 'string' && preview_text.length > 500) {
+      return res.status(400).json({ error: 'preview_text must not exceed 500 characters' });
+    }
+    if (preview_metadata && (typeof preview_metadata !== 'object' || Array.isArray(preview_metadata))) {
+      return res.status(400).json({ error: 'preview_metadata must be a JSON object' });
     }
 
     const pool = getPool();
@@ -80,8 +90,9 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
     const shareResult = await pool.query(
       `INSERT INTO capsule_shares
          (deal_id, shared_by_user_id, share_type, recipient_email, recipient_name,
-          allow_document_download, allow_agent_interaction, expires_at, access_token)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          allow_document_download, allow_agent_interaction, expires_at, access_token,
+          preview_text, preview_metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING share_id, created_at`,
       [
         dealId,
@@ -93,6 +104,8 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
         allow_agent_interaction !== false, // default true
         expires_at ?? null,
         hash,
+        preview_text ?? null,
+        preview_metadata ? JSON.stringify(preview_metadata) : null,
       ]
     );
 
@@ -107,6 +120,7 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
       shareId: share.share_id,
       recipientEmail: recipient_email,
       shareType,
+      hasPreview: !!preview_text,
     });
 
     return res.status(201).json({
@@ -116,6 +130,8 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
       recipient_email,
       share_type: shareType,
       expires_at: expires_at ?? null,
+      preview_text: preview_text ?? null,
+      preview_metadata: preview_metadata ?? null,
       created_at: share.created_at,
     });
   } catch (err: any) {
@@ -155,9 +171,10 @@ router.get('/capsules/:accessToken', async (req, res: Response) => {
     const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
 
     const shareResult = await pool.query(
-      `SELECT cs.share_id, cs.share_type, cs.allow_document_download,
+      `SELECT cs.share_type, cs.allow_document_download,
               cs.allow_agent_interaction, cs.expires_at, cs.revoked_at,
-              cs.recipient_email
+              cs.recipient_email,
+              cs.preview_text, cs.preview_metadata
        FROM capsule_shares cs
        WHERE cs.access_token = $1
          AND cs.revoked_at IS NULL
@@ -180,7 +197,9 @@ router.get('/capsules/:accessToken', async (req, res: Response) => {
       allow_agent_interaction: share.allow_agent_interaction,
       expires_at: share.expires_at,
       agent_enabled: share.share_type === 'external_agent_enabled',
-      // No deal metadata returned here — recipient must connect API key to get context
+      // Sender-curated preview (stored on capsule_shares, never derived from deals)
+      preview_text: share.preview_text ?? null,
+      preview_metadata: share.preview_metadata ?? null,
       must_connect_api: true,
       next_step: share.share_type === 'external_agent_enabled'
         ? 'Connect an API key via POST /capsules/:accessToken/connect_api, then query via POST /capsules/:accessToken/query'
@@ -442,6 +461,7 @@ router.get('/:dealId/shares', requireAuth, async (req: AuthenticatedRequest, res
     const result = await pool.query(
       `SELECT cs.share_id, cs.share_type, cs.recipient_email, cs.recipient_name,
               cs.created_at, cs.revoked_at, cs.expires_at,
+              cs.preview_text, cs.preview_metadata,
               CASE WHEN cs.revoked_at IS NOT NULL THEN 'revoked'
                    WHEN cs.expires_at IS NOT NULL AND cs.expires_at < NOW() THEN 'expired'
                    ELSE 'active'
