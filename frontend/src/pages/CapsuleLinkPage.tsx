@@ -128,10 +128,15 @@ function applyOverlay(capsule: CapsuleInfo, overlay: Record<string, unknown>): C
 }
 
 const SECTION_RESET_PREFIXES: Record<string, string[]> = {
-  f1: ['user_adjustments.'],
+  f1: ['user_adjustments.target_irr', 'user_adjustments.preferred_hold_period', 'user_adjustments.max_ltv'],
   f5: ['recipient_overrides.capital_stack.'],
   f6: ['recipient_overrides.capital_stack.', 'user_adjustments.max_ltv'],
-  f9: ['deal_data.exit_cap', 'user_adjustments.rent_growth'],
+  f9: [
+    'deal_data.exit_cap_assumption',
+    'user_adjustments.rent_growth',
+    'user_adjustments.vacancy_assumption',
+    'user_adjustments.expense_growth',
+  ],
 };
 
 function sectionOverlayKeys(tab: string, overlay: Record<string, unknown>): string[] {
@@ -1021,7 +1026,7 @@ export default function CapsuleLinkPage() {
                     { label: 'Loan-to-Value', value: fmtPct(capitalStack.ltv ?? L3.max_ltv) },
                     { label: 'Debt Yield', value: fmtPct(debtAdvisorMO.debt_yield ?? capitalStack.debt_yield) },
                     { label: 'Breakeven Occupancy', value: fmtPct(debtAdvisorMO.breakeven_occupancy) },
-                    { label: 'IO Period', value: str(debtAdvisorMO.io_period_months) ? `${debtAdvisorMO.io_period_months} mo` : '—' },
+                    { label: 'IO Period', value: debtAdvisorMO.io_period_months != null ? `${debtAdvisorMO.io_period_months} mo` : '—' },
                     { label: 'Prepayment', value: str(debtAdvisorMO.prepayment_structure ?? capitalStack.prepayment) },
                   ].map((row, i) => <InfoRow key={i} label={row.label} value={row.value} />)}
                 </div>
@@ -1230,7 +1235,29 @@ export default function CapsuleLinkPage() {
                 onReset={() => resetTab('f9')}
               />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                <EditableKpiTile label="Exit Cap Rate" path="deal_data.exit_cap_assumption" rawValue={L1.exit_cap_assumption} senderRaw={senderL1.exit_cap_assumption} fmt={fmtPct} overlay={overlay} onPatch={patchOverlay} onReset={resetOverlay} />
+                <EditableKpiTile
+                  label="Exit Cap Rate" path="deal_data.exit_cap_assumption"
+                  rawValue={L1.exit_cap_assumption} senderRaw={senderL1.exit_cap_assumption}
+                  fmt={fmtPct} overlay={overlay} onPatch={patchOverlay} onReset={resetOverlay}
+                />
+                <EditableKpiTile
+                  label="Rent Growth (ann.)" path="user_adjustments.rent_growth"
+                  rawValue={L3.rent_growth ?? L2.market_rent_growth}
+                  senderRaw={senderL3.rent_growth ?? L2.market_rent_growth}
+                  fmt={fmtPct} overlay={overlay} onPatch={patchOverlay} onReset={resetOverlay} accent={GREEN}
+                />
+                <EditableKpiTile
+                  label="Vacancy Assumption" path="user_adjustments.vacancy_assumption"
+                  rawValue={L3.vacancy_assumption ?? L3.adjusted_vacancy ?? L2.submarket_vacancy}
+                  senderRaw={senderL3.vacancy_assumption ?? senderL3.adjusted_vacancy ?? L2.submarket_vacancy}
+                  fmt={fmtPct} overlay={overlay} onPatch={patchOverlay} onReset={resetOverlay}
+                />
+                <EditableKpiTile
+                  label="Expense Growth (ann.)" path="user_adjustments.expense_growth"
+                  rawValue={L3.expense_growth ?? L3.opex_growth}
+                  senderRaw={senderL3.expense_growth ?? senderL3.opex_growth}
+                  fmt={fmtPct} overlay={overlay} onPatch={patchOverlay} onReset={resetOverlay}
+                />
                 <KpiTile label="Hold Period" value={fmtYrs(L3.preferred_hold_period)} sub="from F1" />
                 <KpiTile label="Target IRR" value={fmtPct(L3.target_irr ?? returns?.irr)} accent={GREEN} sub="from F1" />
               </div>
