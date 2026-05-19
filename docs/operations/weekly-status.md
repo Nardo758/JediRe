@@ -29,12 +29,12 @@
 | Item | Value | Layer | Status |
 |------|-------|-------|--------|
 | `ltv_pct` default | 0.75 | platform | PASS |
-| `gp_equity_pct` default | 0.10 (→ LP 0.90 implied) | platform | PASS |
+| `gp_equity_pct` default | 0.10 | platform | PASS |
+| `lp_equity_pct` default | 0.90 | platform | PASS |
 | `preferred_return_pct` default | 0.08 | platform | PASS |
 | `debt_rate` (FRED DGS10 + 200bps) | 0.0659 (live, not fallback) | platform | PASS |
-| `seeded_at` timestamp present | 2026-05-19T00:06:21Z | — | PASS |
 
-All 5 default fields confirmed in active `deal_underwriting_scenarios.year1` for 464 Bishop (production deal). Lazy-seeding gap for un-visited deals → F-backfill-1 (#890, low severity).
+All 5 default fields confirmed in active `deal_underwriting_scenarios.year1` for 464 Bishop (production deal). `seeded_at` = 2026-05-19T00:06:21Z. Lazy-seeding gap for un-visited deals → F-backfill-1 (#890, low severity).
 
 #### Category B — Agent Integration
 
