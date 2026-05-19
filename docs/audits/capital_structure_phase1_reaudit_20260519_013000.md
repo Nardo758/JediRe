@@ -194,3 +194,32 @@ All 5 critical failures from the prior audit are resolved with live production D
 *Full JSON findings: `docs/audits/capital_structure_phase1_reaudit_20260519_013000.json`*  
 *Prior audit: `docs/audits/capital_structure_phase1_audit_20260518_235711.json` (if committed)*  
 *Live run IDs: 37887cbe, 0c07cfe4, c417f979, d44e4016*
+
+---
+
+## Post-Review Hardening (Code Review Comments)
+
+Two additional code improvements applied based on reviewer feedback:
+
+### Fix 4 — INNER JOIN → LEFT JOIN on `deal_assumptions`
+
+The postprocessor fallback query was changed from:
+```sql
+FROM deal_assumptions da JOIN deals d ON d.id = da.deal_id WHERE da.deal_id = $1
+```
+to:
+```sql
+FROM deals d LEFT JOIN deal_assumptions da ON da.deal_id = d.id WHERE d.id = $1
+```
+
+**Impact:** Deals without a `deal_assumptions` row (e.g. newly created pipeline deals before first `getDealFinancials()` call) now produce a DB row. The optimizer can still run using `deals.deal_data.purchase_price` and `deals.strategy`/`project_type`. Previously, these deals would silently skip the optimization injection.
+
+### Fix 5 — Strategy Normalization Before Optimizer Call
+
+Added `KNOWN_STRATEGIES` set in the postprocessor. Before calling `optimizeCapitalStructure()`, the resolved strategy is checked against the set. Any unrecognized value (e.g. `'portfolio'`, `'pipeline'`, or an arbitrary `deal_category` string) is normalized to `'existing'`, which maps to `cash_on_cash` — the safest default for an unknown strategy type. This prevents unrecognized values from flowing to the optimizer and silently defaulting to IRR.
+
+Known strategies: `existing`, `stabilized`, `value-add`, `value_add`, `development`, `flip`, `lease-up`, `lease_up`.
+
+---
+
+*These changes are included in the committed diff. Audit score remains 9/10 PASS. Ship recommendation unchanged: **SHIP**.*

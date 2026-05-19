@@ -668,13 +668,16 @@ export async function cashflowPostProcess(
             }
           }
 
-          // Query deal for purchase_price, strategy, and broker NOI fallback
+          // Query deal for purchase_price, strategy, and broker NOI fallback.
+          // Use LEFT JOIN so deals without a deal_assumptions row still produce
+          // a row from the deals table — we can still optimize using deal_data
+          // fields (purchase_price, strategy) even without a year1 snapshot.
           const dealRow = await query(
             `SELECT da.year1, da.noi_stabilized, d.deal_category, d.deal_data,
                     d.strategy, d.project_type, d.development_type
-               FROM deal_assumptions da
-               JOIN deals d ON d.id = da.deal_id
-              WHERE da.deal_id = $1 LIMIT 1`,
+               FROM deals d
+               LEFT JOIN deal_assumptions da ON da.deal_id = d.id
+              WHERE d.id = $1 LIMIT 1`,
             [ctx.dealId],
           );
 
@@ -697,14 +700,23 @@ export async function cashflowPostProcess(
               ?? (typeof dealData.purchase_price === 'string' && !isNaN(Number(dealData.purchase_price))
                   ? Number(dealData.purchase_price) : null);
 
-            const dealStrategy = (dealRow.rows[0].strategy as string | undefined)
+            // Known strategy values recognized by STRATEGY_METRIC_MAP.
+            // Any unknown value (e.g. 'portfolio', 'pipeline', or an arbitrary
+            // deal_category string) is normalized to 'existing' so the optimizer
+            // defaults to cash_on_cash rather than silently falling through to IRR.
+            const KNOWN_STRATEGIES = new Set([
+              'existing', 'stabilized', 'value-add', 'value_add',
+              'development', 'flip', 'lease-up', 'lease_up',
+            ]);
+            const rawStrategy = (dealRow.rows[0].strategy as string | undefined)
               ?? (dealRow.rows[0].project_type as string | undefined)
               ?? (dealRow.rows[0].development_type as string | undefined)
               ?? (dealData.strategy as string | undefined)
               ?? (dealData.investmentStrategy as string | undefined)
-              ?? (dealData.deal_strategy as string | undefined)
-              ?? dealCategory
-              ?? 'existing';
+              ?? (dealData.deal_strategy as string | undefined);
+            const dealStrategy = rawStrategy && KNOWN_STRATEGIES.has(rawStrategy)
+              ? rawStrategy
+              : 'existing';
 
             // If current NOI from proforma_fields is null/negative, try to find a
             // positive NOI from the database. Applies to any strategy — not just
