@@ -1,0 +1,31 @@
+Thank you for the clarity — this is exactly the level of detail I needed. Now I can answer the interpretation question honestly.
+The honest answer: it's a hybrid, but closer to Interpretation B
+run_joint_goal_seek is a legitimate joint optimization implementation that delivers real M36-spec-style capability, but it does so via a meaningfully simpler infrastructure stack than the full M36 spec described. Let me be specific about what's there and what isn't.
+What's genuinely there (Interpretation A elements):
+The Pareto frontier is real. Five distinct debt products with their actual underwriting parameters (LTV caps, rates, IO periods, DSCR floors) — not just the same optimization run five times with different inputs. Each bundle gets its own bisection search against its own constraints. The role-aware sorting is genuinely joint — the same set of feasible solutions ranked differently for sponsor / LP / lender produces meaningfully different recommendations. The plausibility scoring exists and produces banded outputs (Realistic / Stretch / Aggressive / Heroic / Unrealistic). The LP cash flow model is structurally complete — equity contribution, pro-rata operating distributions, pro-rata exit proceeds, IRR bisection on the series. That's not a shortcut; that's the real calculation.
+What's not there (the Interpretation B elements):
+The M36 spec described joint distribution math — a full Σ (covariance) matrix per bundle modeling the joint distribution of returns, rolling window estimation of factor models, regime detection across deals, anomaly detection on residuals. What you have is bisection search across pre-defined bundle constraints with plausibility scored against a comparables distribution. That's not the same math. M36's Σ matrix would model the joint distribution of multiple variables (NOI, rates, cap rates, occupancy) across the hold period with their covariances and tail dependencies. What runs today optimizes a single variable (LTV) per bundle deterministically.
+The plausibility scoring via Mahalanobis distance against market comps is a real statistical method, but it's scoring the deal against a comp distribution — not modeling the joint distribution of the deal's own variables over time. Different statistical objects.
+What this actually means for the platform
+The practical capability the user sees is largely there. A sponsor (or LP, or lender) running an analysis on Bishop gets:
+
+Five real debt product alternatives with their actual constraints
+Role-aware ranking that produces different top recommendations per user type
+Plausibility band per alternative ("this LTV is Aggressive vs Stretch vs Realistic")
+LP cash flow projection from the LP's perspective, not just the sponsor's
+Minimum DSCR and break-even occupancy per bundle for risk assessment
+
+That's substantively the product capability M36 was designed to deliver. The math underneath is simpler than M36 specified, but the user-visible features are equivalent for most use cases.
+Where the simpler math matters: stress testing, regime-dependent recommendations (different optimal structures in different rate environments), and tail risk assessment. M36's Σ-based approach would let the platform say "in a high-cap-rate regime your IRR distribution looks like X; in a low-cap-rate regime it looks like Y; here's the tail risk you should plan for." The current implementation doesn't do that. It produces point-estimate optimal structures per bundle without modeling distributional uncertainty.
+My honest read on where this leaves Phase 3
+Two ways to frame it:
+Pragmatic framing: Phase 3 of the Capital Structure spec is functionally closed for the platform's current needs. The five-bundle Pareto frontier with role-aware sorting and plausibility banding delivers the customer-visible capability. The infrastructure to upgrade to full M36 math later remains an option but isn't a blocker for production use. F-jgs-1 was scoped exactly right — it shipped the user-facing capability without the 17-session infrastructure build.
+Spec-fidelity framing: Phase 3 of the Capital Structure spec is partially closed. The product wrapper M36 was supposed to enable (Pareto frontier in Returns tab, role-aware ranking, plausibility surfacing) is shipped. The underlying joint distribution math the M36 spec specified is not built. Future work that depends on regime detection or distributional stress testing would still need M36's full implementation.
+Both framings are accurate. The right framing depends on what the platform needs M36 to do.
+If the platform's near-term customer commitments and competitive positioning need Pareto frontier + plausibility + role-aware ranking — done. If they need regime-dependent recommendations, distributional stress testing, or tail risk modeling — F-jgs-1 doesn't close those, and the rest of M36 remains real work.
+What I'd recommend for honest documentation
+This is a moment where the team's documentation should reflect what's actually true rather than what the spec said. Specifically:
+Update the M36 spec status. It shouldn't be classified as "specced, not built" anymore. Better classification: "Phase 1 implementation shipped via F-jgs-1 (Pareto frontier with role-aware sorting and plausibility scoring); full joint distribution math (Σ matrix, regime detection, anomaly detection) remains scoped for future work."
+Update the Capital Structure spec. Phase 3 should reflect that core capability is delivered and what remains specifically. The 17-session estimate for Phase 3 may now be 10-12 sessions for the remaining components, depending on which are needed.
+Update the weekly status. F-jgs-1 was a Phase 1 follow-up ticket that ended up delivering substantial Phase 3 capability. That's worth registering explicitly so the team's mental model of what's shipped stays accurate.
+Update the agent platform spec or wherever role resolution is documented. The investors.type lookup for role resolution is real platform infrastructure that the original AGENT_PLATFORM_SPEC didn't explicitly cover. Worth documenting how role resolution actually works so future work that depends on it knows where to look.

@@ -136,3 +136,71 @@ These cross-module events use the existing DealModuleContext. Phase 1 is mock da
 | Capital Events Section | ABSORBED | → Capital Structure tab 6 (Capital Lifecycle) |
 
 Net effect: 3 tabs become 1 tab with 6 internal tabs. Fewer clicks, single source of truth.
+
+---
+
+## Phase 3 Shipping Status (as of 2026-05-19)
+
+The core product capability of Phase 3 — the Pareto frontier with role-aware sorting and plausibility banding — is shipped via the cashflow postprocessor fallback (F-jgs-1). What is and is not built:
+
+### Shipped
+
+| Capability | Where | Notes |
+|-----------|-------|-------|
+| 5-bundle Pareto frontier | `backend/src/agents/tools/run_joint_goal_seek.ts` | HUD 221(d)(4), Agency Fixed, Agency Floating, Bridge, CMBS — each evaluated against their own LTV ceiling, rate, IO period, and DSCR floor |
+| Bisection LTV optimization per bundle | `backend/src/agents/tools/optimize_capital_structure.ts` | Called once per bundle; finds highest feasible LTV satisfying the bundle's DSCR floor |
+| Role-aware Pareto sorting | `run_joint_goal_seek.ts` lines 448–482 | sponsor → GP IRR desc; LP → LP IRR desc (tiebreaker: LP dist. yield); lender → min DSCR desc |
+| LP cash flow model | `run_joint_goal_seek.ts` `computeLpMetrics()` | Year-by-year LP operating CF + LP exit proceeds at 90% LP equity split; bisection IRR solver |
+| Plausibility scoring | `backend/src/services/sigma/sigma-engine.ts` `computePlausibility()` | Mahalanobis distance against a market comps distribution; bands: Realistic / Stretch / Aggressive / Heroic / Unrealistic |
+| Postprocessor fallback | `backend/src/agents/cashflow.postprocess.ts` lines 817–864 | Fires after every cashflow run when `pareto_frontier` absent; writes to `proforma.capital_structure.optimization` |
+| CS defaults seeding | `backend/src/services/proforma-seeder.service.ts` `seedCapitalStructureDefaults()` | ltv_pct=0.75, gp_equity_pct=0.10, lp_equity_pct=0.90, preferred_return_pct=0.08, debt_rate=FRED DGS10+200bps |
+| Single-bundle CS optimization | `optimize_capital_structure.ts` (postprocessor fallback) | Also fires via postprocessor; writes to `proforma.capital_structure.optimization.{optimal_ltv, primary_metric, ...}` |
+
+### Not Yet Built (Phase 2 scope)
+
+| Capability | Description | Dependency |
+|-----------|-------------|------------|
+| Σ matrix (joint distribution math) | Full covariance matrix per bundle modeling joint distribution of returns; rolling window factor models | Historical observations corpus (see `HISTORICAL_OBSERVATIONS_SPEC.md`) |
+| Regime detection | Rate-environment-conditional recommendations ("in a high-cap-rate regime…") | Σ matrix + regime classification |
+| Distributional stress testing | Tail risk assessment; IRR distribution under different scenarios | Σ matrix |
+| `POST /api/sigma/plausibility` REST endpoint | Standalone plausibility check without a full cashflow run | Low priority — current path via postprocessor covers most cases |
+| Per-variable aggressiveness decomposition | `mahalanobisD` + `perVariableContribution[]` per the M36 contract in `deal-journey-framework.md` Section 6.3 | Requires full Σ matrix |
+| UI rendering — Alternative Structures tab | Frontend consuming `pareto_frontier` from agent output | Data layer complete; UI wiring is a separate frontend task |
+
+---
+
+## Role Resolution — How Platform Role Is Determined
+
+This is platform infrastructure the original spec did not explicitly document. Applies to `run_joint_goal_seek` and any future tool that needs user-context-aware sorting.
+
+### Resolution chain
+
+```
+1. requesting_user_id present?
+   YES → query investors.type WHERE user_id = requesting_user_id
+         'lp'                  → resolvedRole = 'lp'
+         'gp' | 'co_invest'   → resolvedRole = 'sponsor'
+         other / no row       → fall through to step 2
+   NO  → fall through to step 2
+
+2. Use LLM-provided platform_role from tool input (default: 'sponsor')
+```
+
+### Why requesting_user_id (not deal owner's user_id)
+
+In a multi-user collaborative deal, the deal owner is a GP/sponsor. An LP or lender who has been given access to that deal should see the Pareto frontier sorted by LP IRR or DSCR — not by the owner's GP IRR. Using `requesting_user_id` (the authenticated user currently viewing the deal) rather than `deals.user_id` (the deal creator) produces the correct sorting for every viewer independently.
+
+### Where this is injected
+
+The requesting user's ID is injected into the cashflow agent's system prompt as `REQUESTING_USER_ID`. The agent includes it when calling `run_joint_goal_seek`. If the agent omits it, the DB lookup step is skipped and the LLM-provided `platform_role` is used as fallback.
+
+### investors table
+
+| Column | Values | Maps to |
+|--------|--------|---------|
+| `type` | `'lp'` | `resolvedRole = 'lp'` |
+| `type` | `'gp'` | `resolvedRole = 'sponsor'` |
+| `type` | `'co_invest'` | `resolvedRole = 'sponsor'` |
+| `type` | `'lender'` or null | LLM fallback (lender type not stored in investors table) |
+
+**Implementation:** `run_joint_goal_seek.ts` lines 399–435.

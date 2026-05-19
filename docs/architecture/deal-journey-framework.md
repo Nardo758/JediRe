@@ -8,7 +8,7 @@
 
 ## 1. Purpose
 
-The platform has substantial infrastructure for analyzing deals — Pro Forma columns (broker / T-12 / rent roll / platform), Assumptions (forward-looking levers), Year 1 (resolved first-year snapshot), Projections (multi-year forecast), Strategy Arbitrage (M08), JEDI Score (M25), Risk (M14), OperatorStance (meta-layer modulating Cashflow Agent discretion), and the in-progress M36 plausibility / M37 analog / M38 calibration stack.
+The platform has substantial infrastructure for analyzing deals — Pro Forma columns (broker / T-12 / rent roll / platform), Assumptions (forward-looking levers), Year 1 (resolved first-year snapshot), Projections (multi-year forecast), Strategy Arbitrage (M08), JEDI Score (M25), Risk (M14), OperatorStance (meta-layer modulating Cashflow Agent discretion), and the partially-shipped M36 plausibility / M37 analog / M38 calibration stack (M36 Phase 1 — Pareto frontier with role-aware sorting and plausibility scoring — shipped 2026-05-19 via postprocessor fallback; full joint distribution math pending).
 
 What's missing is a **unified semantic model** that names the underwriter's actual mental task: "this deal is at point A today; my thesis says it gets to point B; here's the path; here are the levers; here's how aggressive my path is." The data exists across modules; the framework that names and integrates it does not.
 
@@ -243,9 +243,9 @@ Array<{
 - `mahalanobisD: number` — d² from historical center (or hand-calibrated heuristic Σ at Phase A)
 - `band: 'Realistic' | 'Stretch' | 'Aggressive' | 'Heroic'` — per `M36_Joint_Distribution_Engine_Spec.md` Section 4.4 thresholds (≤1, ≤2, ≤3, >3)
 - `perVariableContribution: Array<{ variable, contribution, direction }>` — from the d² decomposition formula in the spec
-- `paretoFrontier?: Array<...>` — optional, populated only when Cashflow Agent runs goal-seek
+- `paretoFrontier?: Array<...>` — optional, populated only when Cashflow Agent runs goal-seek. **SHIPPED (2026-05-19):** `run_joint_goal_seek` postprocessor fallback fires after every cashflow run; 5-bundle Pareto frontier with role-aware sorting and per-bundle plausibility scoring now writes to `proforma.capital_structure.optimization.pareto_frontier`. Role resolved deterministically from `investors.type` (see Capital Structure Engine doc for role resolution details). Full joint distribution math (Σ matrix, regime detection) is Phase 2.
 
-**Backend deliverable:** `POST /api/sigma/plausibility` and `POST /api/sigma/goal-seek` per `ROADMAP_M36_M38.md` Phase A scope.
+**Backend deliverable:** `POST /api/sigma/plausibility` and `POST /api/sigma/goal-seek` per `ROADMAP_M36_M38.md` Phase A scope. Partial implementation ships via cashflow postprocessor; REST endpoints not yet built.
 
 ### 6.4 M38 Calibration Contract
 
@@ -292,7 +292,7 @@ The overlay cross-references existing tabs rather than duplicating them — clic
 | **0 — Spec** | This document committed; vocabulary anchored | None | DONE |
 | **1 — Composed views** | `useDealJourney(dealContext)` selector + Journey overlay UI surface | LOCKED slots only | DONE (Task #711) |
 | **2 — DQA-grounded State A** | `stateA.dataQualityFindings` from `data_quality_alerts` | DQA Phase 1 build | DONE (Task #711, DQA Phase 2 #707) |
-| **3 — M36 Aggressiveness slot fills** | `aggressiveness.*` from M36 Phase A heuristic Σ | M36 Phase A complete | PENDING |
+| **3 — M36 Aggressiveness slot fills** | `aggressiveness.*` from M36 Phase A heuristic Σ; `paretoFrontier` from `run_joint_goal_seek` | M36 Phase A complete | PARTIAL — Pareto frontier + plausibility scoring shipped 2026-05-19 (F-jgs-1 postprocessor fallback); per-variable aggressiveness decomposition (`mahalanobisD`, `perVariableContribution`) still PENDING |
 | **4 — M07 confidence bands** | `path.yearByYear[*].confidenceBand` from percentile output | M07 backend percentile wiring | PENDING |
 | **5 — M35 event-adjusted path** | `path.eventAdjustedTrajectory` from M35 event impact computation | M35 Section 2.3 integration | PENDING |
 | **6 — M38 calibration** | `calibration.*` from M38 Calibration Ledger | M38 Phase E build | PENDING |

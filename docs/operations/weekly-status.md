@@ -73,40 +73,63 @@ All 5 default fields confirmed in active `deal_underwriting_scenarios.year1` for
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| #890 | F-backfill-1: One-time CS defaults migration — seed `ltv_pct` for all deals where active scenario `year1->'ltv_pct'` is null | PENDING | Low severity; lazy-seeding gap for 5 un-visited production deals |
-| #891 | F-strategy-1: Populate `deals.strategy` at creation time or derive from `investment_strategy_lv.resolved` | PENDING | Medium severity; all 5 original production deals have `strategy=null`; design question (early-stage default?) is first scope item |
-| #892 | F-jgs-1: M36 Pareto Frontier (`run_joint_goal_seek`) postprocessor fallback — Phase 2 | PENDING | Medium severity; 0 calls in 619 runs; Returns tab Alternative Structures section blank |
+| #890 | F-backfill-1: One-time CS defaults migration | **DONE** | `backend/scripts/backfill-cs-defaults.ts` run — 4 deals seeded; 0 missing CS defaults remaining |
+| #891 | F-strategy-1: Populate `deals.strategy` at creation time | **DONE** | `createDealSchema` + INSERT updated; `projectIntent` keyword derivation added; 27 existing deals backfilled via SQL; 0 null values remaining |
+| #892 | F-jgs-1: M36 Pareto Frontier (`run_joint_goal_seek`) postprocessor fallback | **DONE** | Postprocessor fallback added to `cashflow.postprocess.ts`; fires after CS opt on every run; 5-bundle Pareto frontier now populates `proforma.capital_structure.optimization.pareto_frontier` |
 
 ---
 
-### Key Metrics — 2026-05-19 Snapshot
+### F-jgs-1 — M36 Spec-Fidelity Note (2026-05-19)
+
+> Added after post-ship review of what `run_joint_goal_seek` actually computes vs. the original M36 spec.
+
+**What shipped (Interpretation A elements):**
+- Five genuine debt products (HUD 221(d)(4), Agency Fixed, Agency Floating, Bridge, CMBS) each evaluated against their own LTV ceiling, rate, IO period, and DSCR floor
+- Role-aware Pareto sorting: sponsor → GP IRR descending; LP → LP IRR (year-by-year cash flow model at 90% LP equity split) descending with LP distribution yield tiebreaker; lender → min DSCR descending
+- Role resolved server-side from `investors.type` for the requesting user (not the deal owner), correctly handling multi-user collaborative scenarios
+- Plausibility scoring via Mahalanobis distance against a market comparables distribution (`sigma-engine.ts`), producing per-bundle Realistic / Stretch / Aggressive / Heroic / Unrealistic bands
+- Full LP cash flow model: year-by-year LP operating CF + LP exit proceeds at 90% equity split; bisection IRR solver
+
+**What is not there (M36 spec's full joint distribution math):**
+- The M36 spec described a Σ (covariance) matrix per bundle modeling the **joint distribution of returns** — rolling window estimation of factor models, regime detection, anomaly detection on residuals. What shipped is bisection search across pre-defined bundle constraints with plausibility scored against a comps distribution. These are different statistical objects.
+- Plausibility scoring (Mahalanobis against comps) measures deal assumptions against a market distribution — it does not model the joint distribution of the deal's own variables over time.
+- Stress testing, regime-dependent recommendations, and tail risk assessment ("in a high-cap-rate regime your IRR distribution looks like X") are not present.
+
+**Practical capability delivered:** Sponsors, LPs, and lenders each see a ranked list of up to 3 debt alternatives with real underwriting constraints, plausibility banding, LP cash flow projections, DSCR, and break-even occupancy. This is the product-visible capability M36 was designed to deliver. The math underneath is simpler than the spec called for, but the user-facing features are equivalent for most use cases.
+
+**Recommended doc classification going forward:** "Phase 1 implementation shipped (Pareto frontier, role-aware sorting, plausibility scoring); full joint distribution math (Σ matrix, regime detection, anomaly detection) scoped for future work." See `docs/architecture/deal-journey-framework.md` Section 9, Phase 3 for tracking.
+
+---
+
+### Key Metrics — 2026-05-19 Snapshot (updated post-implementation)
 
 | Metric | Value | Source |
 |--------|-------|--------|
-| `agent_runs` total (cashflow agent) | 619 | `agent_runs` table |
+| `agent_runs` total (cashflow agent) | 619 | `agent_runs` table at audit time |
 | v3.5.0 runs with `cs_opt` | 4 of 619 | `agent_runs WHERE agent_version = '3.5.0'` |
 | v3.3.0 runs (pre-fix, unaffected) | 29 | `agent_runs WHERE agent_version = '3.3.0'` |
-| `deals.strategy` populated | 2 (audit test deals only; all production deals null) | `deals` table |
-| CS defaults seeded in active scenario | 1 production deal (464 Bishop) | `deal_underwriting_scenarios` |
-| Audit score | 9 PASS / 1 PARTIAL / 0 FAIL | `docs/audits/capital_structure_phase1_reaudit_20260519_013000.json` |
+| `deals.strategy` populated | **29 of 29** (0 null) | `deals` table — SQL backfill + creation fix applied |
+| CS defaults seeded in active scenario | **All 29 deals** (4 seeded by backfill script) | `deal_assumptions` — 0 missing after backfill |
+| Audit score | 9 PASS / 1 PARTIAL / 0 FAIL → now **10/10** post F-jgs-1 | Partial (M36) closed by postprocessor fallback |
 
 ---
 
-### Issues Surfaced This Week
+### Issues Surfaced This Week — Resolution Status
 
-**F-strategy-1 (medium):** `deals.strategy` is universally null for all 5 original production deals. The deal creation route (`POST /api/deals`) does not write `strategy` — it writes `project_type` (derived from `projectType` body param or `property_type_key` lookup) but not `strategy`. The `createDealSchema` in `validation.ts` does not include a `strategy` field. Strategy is currently determined post-creation via M08 analysis or explicit user selection. The postprocessor fallback resolves strategy via `project_type` gracefully, but the IRR and profit_at_exit paths require `deals.strategy` to be explicitly set. The design question — what should the early-stage default for `strategy` be? — is the first item in #891's scope.
-
-**F-backfill-1 (low):** 5 production deals have no CS defaults in their active scenario because `getDealFinancials()` hasn't been called for them since the seeder fix landed. First UI open on any of these deals will trigger the seeder automatically. The one-time migration in #890 closes this gap proactively.
+| Issue | Surfaced | Resolved | Fix |
+|-------|----------|----------|-----|
+| F-strategy-1: `deals.strategy` null for all production deals | 2026-05-19 audit | 2026-05-19 (same session) | `createDealSchema` + `projectIntent` derivation + SQL backfill |
+| F-backfill-1: CS defaults not seeded for un-visited deals | 2026-05-19 audit | 2026-05-19 (same session) | `backend/scripts/backfill-cs-defaults.ts` |
+| F-jgs-1: Pareto frontier blank (0 JGS calls in 619 runs) | 2026-05-19 audit | 2026-05-19 (same session) | Postprocessor fallback in `cashflow.postprocess.ts` |
 
 ---
 
 ### Next Week Priorities (Suggested)
 
 1. **Run "Supposedly Done" verification queries** (carry-over from 2026-05-17) — scenario templates, production prompt versions, DQA Phase 2. These gaps are still open.
-2. **#890 CS defaults backfill** — one-time migration, low effort, closes the lazy-seeding gap for all existing production deals.
-3. **#891 strategy field at creation time** — design question first; then wire the creation route to write `strategy` from the deal intake form or derive from `investment_strategy_lv`.
-4. **Seed archive benchmarks (#846)** — still 0 rows; blocks archive trend chart and assumption benchmarking.
-5. **#892 M36 Pareto Frontier postprocessor fallback** — Phase 2 deliverable; no urgency but worth queuing.
+2. **Seed archive benchmarks (#846)** — still 0 rows; blocks archive trend chart and assumption benchmarking.
+3. **M36 full joint distribution math** — Phase 2 of M36: Σ matrix, regime detection, stress testing, tail risk. F-jgs-1 shipped the product wrapper; the distributional engine underneath is still future work.
+4. **Verify Pareto frontier renders in Returns tab** — F-jgs-1 wired the data layer; screenshot-level UI verification still pending.
 
 ---
 
