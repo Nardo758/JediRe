@@ -1,0 +1,202 @@
+# SUBSTRATE INVENTORY — AGENT TASK PROMPT
+
+**Purpose:** Produce a current-state map of the platform's substrate across six gaps. Output is a brief, prioritized inventory designed to inform what to build next.
+
+**Target output size:** Under 1,500 words. Readable in 15 minutes. Actionable in 30.
+
+**Critical: this is not a verification audit.** Prior audits ran the platform and observed behavior. This task reads the architecture and queries production schema to produce a structural map. Synthesis (what's high-leverage, what should be prioritized) is part of the output, not a separate human task afterward.
+
+---
+
+## What to inventory
+
+Six substrate gaps. For each, produce:
+
+1. **What exists today** — current state with concrete evidence (file paths, schema state, row counts, data depth)
+2. **What's missing relative to design intent** — specific gaps with evidence
+3. **Leverage rating** — how many downstream agent capabilities depend on filling this gap (1-5 scale where 5 = compounds across most agent reasoning patterns)
+4. **One-thing-first recommendation** — if only one improvement could be made to this gap, what would it be?
+
+---
+
+## Gap 1 — Deal Capsule completeness
+
+**What it is:** The structured artifact the agent reasons against on every deal. Per spec, should contain property info, parsed values, source documents, evidence linkage, scenarios, CIE findings, source references.
+
+**Inventory approach:**
+- Read the Deal Capsule schema (likely in `deal_assumptions`, `deal_underwriting_scenarios`, `deals`, related tables)
+- Query 3-5 production deals across deal types — what fields are populated vs null/empty?
+- Cross-reference against `jedi_re_full_platform_vision.md` and `CLAUDE.md` for the intended Deal Capsule structure
+- Document the population rate per field across the sampled deals
+
+**Specifically check:**
+- Source documents accessible from deal capsule? (per the Capsule Sharing spec's Piece 1)
+- Source references (document/page/span) linked to parsed values? (per Piece 2)
+- Active scenario consistently present? (post-Priority-0)
+- CIE findings present? (likely absent — CIE not yet built)
+- Layered value source attribution complete across fields?
+
+**Output:** Table of expected fields vs actual population across sampled deals. Specific list of fields that are designed but not populated.
+
+---
+
+## Gap 2 — Event wiring on traffic, debt, and exit modules
+
+**What it is:** Modules that should respond to events (new lease signs, debt market shift, comparable transaction closes) but currently produce static projections. Per `TRAFFIC_ENGINE_CALIBRATION_SPEC.md`, M07 has the calibration spec with M35 integration section. M11 (capital structure) and M20 (exit timing) presumably need similar.
+
+**Inventory approach:**
+- Read M35 Key Events Engine spec / `Event_Impact_Engine_Spec.md` / `Event_Visualization_Placement_Spec.md`
+- Check whether M35 endpoints exist (likely partial or absent per prior repo searches)
+- For M07, M11, M20: identify the event-consumption interfaces. Are they stubbed, partial, or wired?
+- Check if `proximityFactor` and `temporalFactor` APIs exist (referenced in TRAFFIC_ENGINE_CALIBRATION_SPEC as M35 dependencies)
+
+**Specifically check:**
+- M35 production status (specced / partial / shipped)
+- M07 Traffic event integration: stubbed or wired?
+- M11 Capital Structure event integration: any event consumption at all?
+- M20 Exit Timing event integration: same question
+
+**Output:** Per-module event wiring status table. Identification of which events should flow where but currently don't.
+
+---
+
+## Gap 3 — Archive data library depth
+
+**What it is:** Layer 3 of the memory architecture. The cohort distributions the agent anchors reasoning against. F-005 from Bishop diagnostic showed 56% of major assumptions UNANCHORED — direct evidence this gap is binding.
+
+**Inventory approach:**
+- Query the archive (likely a table or set of tables holding historical deal data — probably named something like `archive_deals`, `archive_assumptions`, `deal_archive`)
+- Get total row counts
+- Get counts by submarket, by deal type, by strategy, by year
+- Identify thin dimensions where row count is below ~30 (rough floor for statistical cohort reasoning)
+
+**Specifically check:**
+- How many archive deals exist total?
+- For Bishop's submarket (Atlanta), how many comparable archive deals?
+- For value-add strategy specifically, how many archive deals?
+- For the intersection (value-add + Atlanta + similar vintage), how many?
+
+**Output:** Archive depth matrix by dimension. Explicit list of thin cohorts where the agent's anchoring would currently be unreliable.
+
+---
+
+## Gap 4 — Historical correlations
+
+**What it is:** Correlation structure between variables across the archive. Foundation for joint reasoning (M36's Σ matrix work). F-jgs-1 shipped Pareto frontier without this; full joint distribution work would need it.
+
+**Inventory approach:**
+- Check if any correlation infrastructure exists (likely minimal)
+- Check if Σ (covariance) matrices are stored anywhere per bundle, per submarket, per strategy
+- Cross-reference M36 spec Section 2 for what should exist
+- Check if the platform has the data infrastructure to compute correlations (does archive data have the time series needed?)
+
+**Specifically check:**
+- Are any correlations computed and stored today? (Suspected: no)
+- Does the archive have the variable history needed to compute correlations later?
+- What's the smallest set of correlations that would meaningfully expand current reasoning?
+
+**Output:** Honest assessment of correlation infrastructure (likely "not mapped"). Identification of which 5-10 correlations would have highest leverage if mapped.
+
+---
+
+## Gap 5 — F9 ProForma wiring residual
+
+**What it is:** What remains after Priority 0 (table inversion fix), Phase 2 F9 audit fixes, and Phase 1 capital structure work. Building on prior audit findings.
+
+**Inventory approach:**
+- Pull the most recent Phase 2 F9 audit findings file
+- Pull the Capital Structure Phase 1 verification audit findings
+- Identify items classified as "monitoring," "low priority," or "not blocking" that haven't been closed
+- Identify tabs/cells that haven't been audited at all (the Phase 2 audit covered specific surfaces — what's outside that coverage?)
+
+**Specifically check:**
+- RC-002 (other_income_dollars key) — still monitoring or resolved?
+- RC-006 (two code paths for financial composition) — still present?
+- Tabs not covered by Phase 2 audit — any that exist but weren't audited?
+- The 1 PARTIAL from Capital Structure Phase 1 audit — what specifically partial?
+
+**Output:** Residual F9 work list with current status per item.
+
+---
+
+## Gap 6 — Workspace composability (NEW)
+
+**What it is:** Infrastructure for Opus to author new tabs / views / outputs per deal that persist with the deal as first-class objects (Google Docs pattern — saved when user saves, ephemeral until then).
+
+**Inventory approach:**
+- Check whether anything like a "deal workspace" or "custom views" infrastructure exists
+- Check whether F9 tabs are configured statically (fixed list in code) or dynamically (per-deal configurations from DB)
+- Check whether there's a way for an agent to define a new analytical view that the platform can render
+- Check whether there's any persistence layer for user-created analytical artifacts beyond the standard ProForma fields
+
+**Specifically check:**
+- Is the F9 tab list static or dynamic?
+- Is there any "user-created content on a deal" infrastructure?
+- Could a user "save an analysis" today? What happens?
+- What computational primitives are exposed as tools the agent could compose into new outputs?
+
+**Output:** Honest assessment (likely "infrastructure does not exist yet"). Identification of the minimum primitives that would enable mode 4 workspace expansion.
+
+---
+
+## Structure of the output
+
+Produce two files:
+
+### File 1 — Substrate inventory brief (Markdown)
+
+`/tmp/substrate_inventory_brief_{timestamp}.md`
+
+Hard cap: 1,500 words. Structure:
+
+1. **Headline finding** — single sentence: what's the most leverage-positive substrate gap to address?
+2. **Per-gap inventory** — six sections, each ~150-200 words:
+   - Gap name
+   - What exists today (concrete evidence, file paths, schema state)
+   - What's missing (specific, not vague)
+   - Leverage rating (1-5) with one-line rationale
+   - One-thing-first recommendation
+3. **Prioritization recommendation** — ranked list of the six gaps by leverage × urgency, with rationale for the ranking. Explicit recommendation for which 1-2 should be the next focus and why.
+4. **Honest "I couldn't determine" notes** — anything the inventory tried to assess but couldn't from architectural reading alone. Flagged for follow-up rather than guessed at.
+
+### File 2 — Inventory data (JSON)
+
+`/tmp/substrate_inventory_data_{timestamp}.json`
+
+Structured backing data for the brief. Each gap as an object with:
+- `gap_id`: 1-6
+- `gap_name`: string
+- `current_state_evidence`: { file_paths: [], schema_queries_run: [], row_counts: {}, ... }
+- `missing_elements`: [{ element: string, evidence_of_absence: string }]
+- `leverage_rating`: 1-5
+- `leverage_rationale`: string
+- `one_thing_first`: { action: string, estimated_effort_sessions: number }
+- `dependencies`: [other_gap_ids that should be addressed first]
+
+The JSON is for reference if the brief needs backing detail; the brief is the primary deliverable.
+
+---
+
+## What this task explicitly doesn't do
+
+- Doesn't run verification audits on the platform (prior audits cover that)
+- Doesn't produce a comprehensive map — produces a leverage-focused brief
+- Doesn't make platform feature recommendations beyond substrate
+- Doesn't draft specs for filling the gaps — just identifies them with one-thing-first recommendations
+- Doesn't synthesize for a team — output is for one person to read in 15 minutes
+
+## Constraints on agent execution
+
+- Maximum 90 minutes of execution time
+- If a gap's investigation hits a blocker (can't find the relevant schema, can't access the relevant data), document the blocker and move on rather than spending the full time on one gap
+- Prefer concrete evidence over speculation. If something can't be determined from architecture reading, say so in the "I couldn't determine" section rather than guessing
+- The 1,500 word cap on the brief is hard. Cut detail to fit; don't expand the brief past it.
+
+## Success criteria
+
+1. All six gaps assessed (even if with "I couldn't determine" for some)
+2. Brief under 1,500 words
+3. JSON output well-formed
+4. Prioritization recommendation makes an explicit call rather than equivocating
+5. One-thing-first recommendation per gap is specific (file/component/action, not vague)
+6. Honest about what wasn't determinable
