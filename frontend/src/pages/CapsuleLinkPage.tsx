@@ -131,11 +131,9 @@ function applyOverlay(capsule: CapsuleInfo, overlay: Record<string, unknown>): C
 const SECTION_RESET_PREFIXES: Record<string, string[]> = {
   overview: ['user_adjustments.'],
   proforma: ['deal_data.exit_cap'],
-  capital: [
-    'module_outputs.financial.capital_stack.',
-    'module_outputs.financial.capitalStack.',
-    'user_adjustments.max_ltv',
-  ],
+  // Capital debt terms are stored under recipient_overrides.capital_stack.* to avoid
+  // conflicting with the module_outputs.financial vs. module_outputs.proforma selection.
+  capital: ['recipient_overrides.capital_stack.', 'user_adjustments.max_ltv'],
 };
 
 function sectionOverlayKeys(section: string, overlay: Record<string, unknown>): string[] {
@@ -488,9 +486,14 @@ export default function CapsuleLinkPage() {
     if (keys.length === 0) return;
     const previous = { ...overlay };
     setOverlay(prev => { const next = { ...prev }; keys.forEach(k => delete next[k]); return next; });
-    for (const k of keys) {
-      fetch(`/api/v1/capsule-links/${token}/overlay?path=${encodeURIComponent(k)}`, { method: 'DELETE' })
-        .catch(() => {});
+    try {
+      await Promise.all(
+        keys.map(k =>
+          fetch(`/api/v1/capsule-links/${token}/overlay?path=${encodeURIComponent(k)}`, { method: 'DELETE' })
+        )
+      );
+    } catch {
+      setOverlay(previous);
     }
   }, [token, overlay]);
 
@@ -593,12 +596,27 @@ export default function CapsuleLinkPage() {
   const L3 = C.user_adjustments;
   const MO = C.module_outputs;
 
-  const fin = (MO.financial ?? MO.proforma) as Record<string, unknown> | undefined;
+  // Select the financial branch that contains real model output (returns, year1, projections, etc.).
+  // If the overlay created a shallow module_outputs.financial object (e.g. only capital_stack keys),
+  // we fall back to module_outputs.proforma so the rest of the financial UI stays intact.
+  const _finFin = MO.financial as Record<string, unknown> | undefined;
+  const _finPro = MO.proforma as Record<string, unknown> | undefined;
+  const REAL_FIN_KEYS = ['returns', 'year1', 'proforma_year1', 'projections', 'noi', 'irr', 'equity_multiple'];
+  const fin = (_finFin && REAL_FIN_KEYS.some(k => k in _finFin))
+    ? _finFin
+    : (_finPro ?? _finFin);
   const senderFin = (senderMO.financial ?? senderMO.proforma) as Record<string, unknown> | undefined;
   const returns = (fin?.returns ?? fin) as Record<string, unknown> | undefined;
   const y1 = (fin?.year1 ?? fin?.proforma_year1) as Array<Record<string, unknown>> | undefined;
-  const capitalStack = (fin?.capital_stack ?? fin?.capitalStack) as Record<string, unknown> | undefined;
-  const senderCapStack = (senderFin?.capital_stack ?? senderFin?.capitalStack) as Record<string, unknown> | undefined;
+  // Capital stack: merge sender's base data with recipient's overlay overrides.
+  // Overrides are stored at recipient_overrides.capital_stack.* to avoid polluting the
+  // financial data path selection above.
+  const senderCapStack = (senderFin?.capital_stack ?? senderFin?.capitalStack ?? {}) as Record<string, unknown>;
+  const _overlayCapStack = ((C.recipient_overrides as any)?.capital_stack ?? {}) as Record<string, unknown>;
+  const capitalStack: Record<string, unknown> = {
+    ...(fin?.capital_stack ?? fin?.capitalStack ?? senderCapStack) as Record<string, unknown>,
+    ..._overlayCapStack,
+  };
 
   const rawCollision = (MO.collision_analysis ?? MO.collision) as Record<string, unknown> | undefined;
   const collisionAnalyses = (rawCollision && 'analyses' in rawCollision ? rawCollision.analyses : rawCollision) as Record<string, { score: number; insight: string; recommended_action: string }> | undefined;
@@ -1028,7 +1046,7 @@ export default function CapsuleLinkPage() {
                       <div style={{ padding: '10px 14px', background: '#0d1117', fontSize: 10, fontFamily: MONO, color: BLUE, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Debt Terms</div>
                       <EditableDebtRow
                         label="Rate"
-                        path="module_outputs.financial.capital_stack.rate"
+                        path="recipient_overrides.capital_stack.rate"
                         rawValue={capitalStack.rate ?? capitalStack.interestRate}
                         senderRaw={senderCapStack?.rate ?? senderCapStack?.interestRate}
                         fmt={fmtPct}
@@ -1038,7 +1056,7 @@ export default function CapsuleLinkPage() {
                       />
                       <EditableDebtRow
                         label="Term"
-                        path="module_outputs.financial.capital_stack.term"
+                        path="recipient_overrides.capital_stack.term"
                         rawValue={capitalStack.term}
                         senderRaw={senderCapStack?.term}
                         fmt={v => v != null && !isNaN(Number(v)) ? `${v} yr` : '—'}
@@ -1048,7 +1066,7 @@ export default function CapsuleLinkPage() {
                       />
                       <EditableDebtRow
                         label="Amortization"
-                        path="module_outputs.financial.capital_stack.amortization"
+                        path="recipient_overrides.capital_stack.amortization"
                         rawValue={capitalStack.amortization}
                         senderRaw={senderCapStack?.amortization}
                         fmt={v => v != null && !isNaN(Number(v)) ? `${v} yr` : '—'}

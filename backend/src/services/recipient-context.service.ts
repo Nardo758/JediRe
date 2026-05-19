@@ -76,10 +76,12 @@ function mergeOverlayIntoAssumptions(
     'user_adjustments.rent_growth': 'rent_growth',
     'deal_data.exit_cap_assumption': 'exit_cap',
     'deal_data.hold_period': 'hold_period',
-    'module_outputs.financial.capital_stack.rate': 'debt_rate',
-    'module_outputs.financial.capital_stack.ltv': 'ltv',
-    'module_outputs.financial.capital_stack.term': 'loan_term',
-    'module_outputs.financial.capital_stack.amortization': 'amortization',
+    // Debt term overrides live under recipient_overrides.capital_stack.* —
+    // a dedicated namespace that avoids polluting the module_outputs financial branch.
+    'recipient_overrides.capital_stack.rate': 'debt_rate',
+    'recipient_overrides.capital_stack.ltv': 'ltv',
+    'recipient_overrides.capital_stack.term': 'loan_term',
+    'recipient_overrides.capital_stack.amortization': 'amortization',
   };
 
   for (const [overlayKey, assumptionKey] of Object.entries(OVERLAY_TO_ASSUMPTION)) {
