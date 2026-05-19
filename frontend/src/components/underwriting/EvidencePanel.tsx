@@ -16,6 +16,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BT, BT_CSS } from '../deal/bloomberg-ui';
 import { SourceBadge, ConfidenceBadge } from '../primitives/SourceBadge';
+import { useSourceDocuments } from '../../hooks/useSourceDocuments';
 
 interface EvidencePoint {
   tier: 1 | 2 | 3 | 4;
@@ -134,6 +135,7 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
   const [archiveEnabled, setArchiveEnabled] = useState(false);
   const [cohortContext, setCohortContext] = useState<CohortContext | null>(null);
   const [showOutlierJustification, setShowOutlierJustification] = useState(false);
+  const { documents: sourceDocs } = useSourceDocuments(dealId);
 
   useEffect(() => {
     let mounted = true;
@@ -327,6 +329,75 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
                             </span>
                           </div>
                         ))}
+                    </div>
+                  )}
+
+                  {/* ── SOURCE DOCUMENTS ── */}
+                  {sourceDocs.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{
+                        fontFamily: mono, fontSize: 7, color: BT.text.muted,
+                        letterSpacing: 0.5, marginBottom: 6,
+                      }}>
+                        SOURCE DOCUMENTS
+                      </div>
+                      {sourceDocs.slice(0, 4).map(doc => (
+                        <div key={doc.file_id} style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '4px 8px',
+                          background: BT.bg.header, borderRadius: 3, marginBottom: 3,
+                        }}>
+                          {/* Doc type badge */}
+                          <span style={{
+                            fontFamily: mono, fontSize: 6, fontWeight: 700,
+                            color: BT.accent.doc,
+                            background: `${BT.accent.doc}18`,
+                            border: `1px solid ${BT.accent.doc}44`,
+                            borderRadius: 2, padding: '0 3px', lineHeight: '14px',
+                            flexShrink: 0,
+                          }}>
+                            {doc.document_type}
+                          </span>
+                          {/* Filename */}
+                          <span style={{
+                            fontFamily: mono, fontSize: 7, color: BT.text.secondary,
+                            flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {doc.filename}
+                          </span>
+                          {/* Extraction date */}
+                          <span style={{
+                            fontFamily: mono, fontSize: 6, color: BT.text.muted,
+                            flexShrink: 0,
+                          }}>
+                            {doc.extracted_at?.slice(0, 10)}
+                          </span>
+                          {/* View link */}
+                          <a
+                            href={`/api/v1/deals/${dealId}/documents/${doc.file_id}/download`}
+                            download
+                            style={{
+                              fontFamily: mono, fontSize: 6, fontWeight: 700,
+                              color: BT.text.amber, textDecoration: 'none',
+                              cursor: 'pointer', flexShrink: 0,
+                              border: `1px solid ${BT.text.amber}44`,
+                              borderRadius: 2, padding: '0 4px', lineHeight: '14px',
+                            }}
+                            onClick={e => e.stopPropagation()}
+                          >
+                            ↓ VIEW
+                          </a>
+                        </div>
+                      ))}
+                      {sourceDocs.length > 4 && (
+                        <div style={{
+                          fontFamily: mono, fontSize: 7, color: BT.text.muted,
+                          textAlign: 'center', padding: '3px 0',
+                        }}>
+                          +{sourceDocs.length - 4} more documents
+                        </div>
+                      )}
                     </div>
                   )}
 

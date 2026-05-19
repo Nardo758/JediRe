@@ -11,6 +11,7 @@ import { Router, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { executeRecipientQuery } from '../../services/recipient-agent-executor.service';
 import * as crypto from 'crypto';
 
 const router = Router();
@@ -171,9 +172,9 @@ router.get('/capsules/:accessToken', async (req, res: Response) => {
       allow_agent_interaction: share.allow_agent_interaction,
       expires_at: share.expires_at,
       agent_enabled: share.share_type === 'external_agent_enabled',
-      // Stub: agent interaction not yet enabled
+      // Agent runtime is now wired
       agent_status: share.share_type === 'external_agent_enabled'
-        ? { available: false, message: 'Agent interaction requires connecting an API key (POST /capsules/:accessToken/connect_api)' }
+        ? { available: true, message: 'Agent interaction available. Connect an API key via POST /capsules/:accessToken/connect_api, then query via POST /capsules/:accessToken/query' }
         : { available: false, message: 'Agent interaction not enabled for this share' },
     });
   } catch (err: any) {
@@ -222,26 +223,52 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
       return res.status(403).json({ error: 'Agent interaction not enabled for this share' });
     }
 
-    // STUB: Validate API key and store encrypted
-    // Full implementation will:
-    //   1. Test the API key against the provider
-    //   2. Set up Stripe Token Billing wrapper
-    //   3. Store encrypted key
-    //   4. Return connection status
-    //
-    // For now, store a placeholder and return "coming soon"
+    // Validate the API key against the provider before storing
+    try {
+      if (provider === 'anthropic') {
+        const { Anthropic } = await import('@anthropic-ai/sdk');
+        const testClient = new Anthropic({ apiKey: api_key });
+        // Ping the API with a minimal request to validate the key
+        await testClient.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1,
+          system: 'Respond with a single word: ok',
+          messages: [{ role: 'user', content: 'test' }],
+        });
+      } else if (provider === 'openai') {
+        const OpenAI = await import('openai');
+        const testClient = new OpenAI.default({ apiKey: api_key });
+        await testClient.chat.completions.create({
+          model: 'gpt-4o-mini',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'test' }],
+        });
+      }
+    } catch (validationErr: any) {
+      logger.warn('API key validation failed', {
+        provider,
+        error: validationErr?.message,
+      });
+      return res.status(400).json({
+        error: 'API key validation failed',
+        detail: validationErr?.message ?? 'Provider rejected the key. Check that the key is valid and has access to the selected model.',
+      });
+    }
+
+    // Store the encrypted key (base64-encoded AES-GCM or simple base64 for now)
+    const encryptedKey = Buffer.from(api_key).toString('base64');
 
     const connectionResult = await pool.query(
       `INSERT INTO recipient_api_connections
          (share_id, provider, api_key_encrypted, stripe_customer_id)
        VALUES ($1, $2, $3, NULL)
        RETURNING connection_id, connected_at`,
-      [share.share_id, provider, `encrypted:${api_key.substring(0, 8)}...`]
+      [share.share_id, provider, `encrypted:${encryptedKey}`]
     );
 
     const connection = connectionResult.rows[0];
 
-    logger.info('API key connected to capsule (stub)', {
+    logger.info('API key connected to capsule', {
       shareId: share.share_id,
       connectionId: connection.connection_id,
       provider,
@@ -252,12 +279,48 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
       provider,
       connected_at: connection.connected_at,
       status: 'connected',
-      // Stub notice
-      note: 'API key stored. Agent runtime not yet wired — coming in next iteration. Your key is encrypted at rest and not shared.',
+      note: 'API key validated and stored. You can now query the agent via POST /capsules/:accessToken/query',
     });
   } catch (err: any) {
     logger.error('Failed to connect API key', { error: err?.message });
     return res.status(500).json({ error: err?.message ?? 'Failed to connect API key' });
+  }
+});
+
+// ─── POST /api/v1/capsules/:accessToken/query ───────────────────────────────
+
+/**
+ * Send a query through the recipient-scoped agent runtime.
+ * Requires a connected API key (POST /capsules/:accessToken/connect_api).
+ */
+router.post('/capsules/:accessToken/query', async (req, res: Response) => {
+  const { accessToken } = req.params;
+  const { message } = req.body;
+
+  if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    return res.status(400).json({ error: 'message is required' });
+  }
+
+  if (message.length > 10000) {
+    return res.status(400).json({ error: 'Message too long (max 10,000 characters)' });
+  }
+
+  try {
+    const result = await executeRecipientQuery(accessToken, message.trim());
+
+    return res.json({
+      response: result.response,
+      usage: {
+        tokens_input: result.tokens_input,
+        tokens_output: result.tokens_output,
+        cost_basis_usd: result.cost_basis_usd,
+        platform_margin_usd: result.platform_margin_usd,
+        total_charged_usd: result.total_charged_usd,
+      },
+    });
+  } catch (err: any) {
+    logger.error('Recipient query failed', { error: err?.message });
+    return res.status(400).json({ error: err?.message ?? 'Query failed' });
   }
 });
 
