@@ -17,6 +17,10 @@ import * as crypto from 'crypto';
 
 const router = Router();
 
+// In-memory store for capsule resolution rate limiting
+// (server restart resets counters — acceptable for this enforcement)
+const rateLimitStore = new Map<string, number[]>();
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -132,18 +136,29 @@ router.get('/capsules/:accessToken', async (req, res: Response) => {
   try {
     const pool = getPool();
 
+    // In-memory rate limiting — 5 resolutions per 10 minutes per IP
+    // (Resets on server restart, which is acceptable for this enforcement)
+    const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    const rateKey = `capsule_resolve:${clientIp}`;
+    const now = Date.now();
+    const rateWindows = (rateLimitStore as Map<string, number[]>).get(rateKey) ?? [];
+    const recent = rateWindows.filter(t => now - t < 600_000);
+    if (recent.length >= 5) {
+      return res.status(429).json({
+        error: 'Too many capsule resolution attempts. Please wait before retrying.',
+      });
+    }
+    recent.push(now);
+    (rateLimitStore as Map<string, number[]>).set(rateKey, recent);
+
     // Hash the provided token to look up in DB
     const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
 
     const shareResult = await pool.query(
-      `SELECT cs.share_id, cs.deal_id, cs.share_type, cs.allow_document_download,
+      `SELECT cs.share_id, cs.share_type, cs.allow_document_download,
               cs.allow_agent_interaction, cs.expires_at, cs.revoked_at,
-              d.name AS deal_name, d.deal_data->>'property_city' AS city,
-              d.deal_data->>'property_state' AS state,
-              d.deal_data->>'property_type' AS property_type,
-              d.deal_data->>'total_units' AS total_units
+              cs.recipient_email
        FROM capsule_shares cs
-       JOIN deals d ON d.id = cs.deal_id
        WHERE cs.access_token = $1
          AND cs.revoked_at IS NULL
          AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
@@ -156,27 +171,20 @@ router.get('/capsules/:accessToken', async (req, res: Response) => {
     }
 
     const share = shareResult.rows[0];
-    const dealData = share.deal_data ?? {};
 
     return res.json({
-      share_id: share.share_id,
-      deal_id: share.deal_id,
-      deal_name: share.deal_name,
-      deal_summary: {
-        city: share.city ?? dealData?.property_city ?? null,
-        state: share.state ?? dealData?.property_state ?? null,
-        property_type: share.property_type ?? dealData?.property_type ?? null,
-        total_units: share.total_units ?? dealData?.total_units ?? null,
-      },
+      share_exists: true,
       share_type: share.share_type,
+      recipient_email: share.recipient_email,
       allow_document_download: share.allow_document_download,
       allow_agent_interaction: share.allow_agent_interaction,
       expires_at: share.expires_at,
       agent_enabled: share.share_type === 'external_agent_enabled',
-      // Agent runtime is now wired
-      agent_status: share.share_type === 'external_agent_enabled'
-        ? { available: true, message: 'Agent interaction available. Connect an API key via POST /capsules/:accessToken/connect_api, then query via POST /capsules/:accessToken/query' }
-        : { available: false, message: 'Agent interaction not enabled for this share' },
+      // No deal metadata returned here — recipient must connect API key to get context
+      must_connect_api: true,
+      next_step: share.share_type === 'external_agent_enabled'
+        ? 'Connect an API key via POST /capsules/:accessToken/connect_api, then query via POST /capsules/:accessToken/query'
+        : 'Share type does not support agent interaction',
     });
   } catch (err: any) {
     logger.error('Failed to resolve capsule', { error: err?.message });
