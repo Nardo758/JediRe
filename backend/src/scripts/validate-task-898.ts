@@ -2,13 +2,16 @@
  * Task #898 — End-to-end validation script
  * Runs 8 validation steps and prints PASS/FAIL for each.
  *
+ * Endpoints tested (per task spec):
+ *   Share creation: POST /api/v1/deals/:dealId/share/external
+ *   Resolution:     GET  /api/v1/capsules/:accessToken
+ *   (Aliases also confirmed: /capsules-ext/:id/share/external, /capsule-links/:token)
+ *
  * Note on Step 6 (rate limiting):
  *   The in-memory rate limiter tracks per-IP (not per-token).
- *   Steps 2 and 3 each call GET /api/v1/capsule-links/:token once for resolution
- *   (1 hit each = 2 pre-consumed hits from 127.0.0.1 before Step 6 starts).
- *   The limiter allows 5 hits per 10 minutes, so Step 6 needs ≥3 more hits to
- *   cross the threshold and verify 429. The script sends 7 attempts and confirms
- *   that 429 appears, giving a clean end-to-end verification of the rate gate.
+ *   Steps 2 and 3 each call GET /api/v1/capsules/:token once = 2 pre-consumed hits.
+ *   The limiter allows 5 hits per 10 minutes from the same IP (127.0.0.1 here).
+ *   Step 6 sends additional requests; the cumulative 6th+ triggers 429.
  */
 import axios from 'axios';
 import * as fs from 'fs';
@@ -20,7 +23,7 @@ const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 async function run() {
   const results: { step: number; label: string; pass: boolean; note: string }[] = [];
-  let totalResolutionHits = 0; // tracks cumulative hits against rate-limiter window
+  let totalResolutionHits = 0;
 
   const rec = (step: number, label: string, pass: boolean, note: string) => {
     results.push({ step, label, pass, note });
@@ -32,19 +35,34 @@ async function run() {
   await connectDatabase();
   const pool = getPool();
 
-  // ── Step 1: Migration applied — capsule_external_shares has preview/access cols ──
+  // ── Step 1: Migration verified ──
+  // 1a) capsule_external_shares has all required columns (capsule_piece4_tables.sql)
+  // 1b) capsule_shares has preview_text + preview_metadata (capsule_sharing_preview.sql)
   try {
-    const r = await pool.query(
+    const extCols = await pool.query(
       `SELECT column_name FROM information_schema.columns
-       WHERE table_name = 'capsule_external_shares'
-       ORDER BY ordinal_position`
+       WHERE table_name = 'capsule_external_shares' ORDER BY ordinal_position`
     );
-    const cols = r.rows.map((x: any) => x.column_name);
-    const pass = cols.includes('preview_text') && cols.includes('preview_metadata') && cols.includes('access_token');
-    rec(1, 'Migration applied (capsule_external_shares with preview + access_token cols)', pass,
-      `cols present: ${cols.join(', ')}`);
+    const extColNames = extCols.rows.map((x: any) => x.column_name);
+    const extPass = ['preview_text', 'preview_metadata', 'access_token'].every(c => extColNames.includes(c));
+
+    const legacyCols = await pool.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'capsule_shares' ORDER BY ordinal_position`
+    );
+    const legacyColNames = legacyCols.rows.map((x: any) => x.column_name);
+    const legacyPass = legacyColNames.includes('preview_text') && legacyColNames.includes('preview_metadata');
+
+    const pass = extPass && legacyPass;
+    rec(1, 'Migrations applied (capsule_external_shares + capsule_shares preview cols)',
+      pass,
+      [
+        `capsule_external_shares: ${extColNames.join(', ')}`,
+        `capsule_shares has preview_text: ${legacyColNames.includes('preview_text')}, preview_metadata: ${legacyColNames.includes('preview_metadata')}`,
+      ].join(' | ')
+    );
   } catch (e: any) {
-    rec(1, 'Migration applied', false, e.message);
+    rec(1, 'Migrations applied', false, e.message);
   }
 
   // ── Mint a test JWT directly ──
@@ -56,11 +74,12 @@ async function run() {
   } as any);
   const authHeader = { Authorization: `Bearer ${token}` };
 
-  // ── Step 2: Create share WITH preview_text — resolution returns it verbatim ──
+  // ── Step 2: Create share WITH preview_text via spec endpoint POST /deals/:id/share/external
+  //           Resolve via spec endpoint GET /capsules/:accessToken — returns preview verbatim ──
   let tokenWithPreview = '';
   try {
-    const res = await axios.post(
-      `${BASE}/api/v1/capsules-ext/${CAPSULE_ID}/share/external`,
+    const createRes = await axios.post(
+      `${BASE}/api/v1/deals/${CAPSULE_ID}/share/external`,
       {
         recipient_email: 'validator+preview@test.com',
         share_type: 'external_agent_enabled',
@@ -68,67 +87,66 @@ async function run() {
       },
       { headers: authHeader }
     );
-    tokenWithPreview = res.data.access_token;
+    tokenWithPreview = createRes.data.access_token;
 
-    // Resolution — counts as 1 hit toward rate-limit window
-    const resolveRes = await axios.get(`${BASE}/api/v1/capsule-links/${tokenWithPreview}`);
+    // Resolution via spec endpoint — counts as 1 hit toward rate-limit window
+    const resolveRes = await axios.get(`${BASE}/api/v1/capsules/${tokenWithPreview}`);
     totalResolutionHits++;
 
     const match = resolveRes.data.preview_text === 'Validation preview — 37 chars exact.';
-    rec(2, 'Share WITH preview_text resolves verbatim', match,
+    rec(2, 'POST /deals/:id/share/external + GET /capsules/:token resolves preview verbatim',
+      match,
       `preview_text="${resolveRes.data.preview_text}" agent_enabled=${resolveRes.data.agent_enabled}`);
   } catch (e: any) {
-    rec(2, 'Share WITH preview_text resolves verbatim', false,
+    rec(2, 'POST /deals/:id/share/external + GET /capsules/:token', false,
       e.response?.data?.error ?? e.message);
   }
 
-  // Also verify the capsule detail route (GET /api/v1/capsules/:id) is NOT broken
-  // by the routing change — must still return 401 (requires auth) not 404
-  try {
-    await axios.get(`${BASE}/api/v1/capsules/${CAPSULE_ID}`);
-  } catch (e: any) {
-    const status = e.response?.status;
-    // 401 = route reached correctly, just needs auth. 404 would mean the route was broken.
-    if (status !== 401 && status !== 200 && status !== 403) {
-      console.log(`[Route check] WARNING: authenticated capsule detail returned ${status} (expected 401/200/403)`);
-    }
-  }
-
-  // ── Step 3: Create share WITHOUT preview_text — returns null + must_connect_api ──
+  // ── Step 3: Create share WITHOUT preview_text — resolution returns null + must_connect_api ──
   let tokenNoPreview = '';
   try {
-    const res = await axios.post(
-      `${BASE}/api/v1/capsules-ext/${CAPSULE_ID}/share/external`,
+    const createRes = await axios.post(
+      `${BASE}/api/v1/deals/${CAPSULE_ID}/share/external`,
       {
         recipient_email: 'validator+nopreview@test.com',
         share_type: 'external_view',
       },
       { headers: authHeader }
     );
-    tokenNoPreview = res.data.access_token;
+    tokenNoPreview = createRes.data.access_token;
 
-    // Resolution — counts as 1 more hit toward rate-limit window
-    const resolveRes = await axios.get(`${BASE}/api/v1/capsule-links/${tokenNoPreview}`);
+    const resolveRes = await axios.get(`${BASE}/api/v1/capsules/${tokenNoPreview}`);
     totalResolutionHits++;
 
     const pass = resolveRes.data.preview_text === null && resolveRes.data.must_connect_api === true;
-    rec(3, 'Share WITHOUT preview_text returns null + must_connect_api', pass,
+    rec(3, 'GET /capsules/:token (no preview) returns null + must_connect_api:true', pass,
       `preview_text=${resolveRes.data.preview_text} must_connect_api=${resolveRes.data.must_connect_api}`);
   } catch (e: any) {
-    rec(3, 'Share WITHOUT preview_text returns null + must_connect_api', false,
-      e.response?.data?.error ?? e.message);
+    rec(3, 'GET /capsules/:token no-preview', false, e.response?.data?.error ?? e.message);
   }
 
-  // ── Step 4: preview_text stored on capsule_external_shares only, not from deals ──
+  // ── Verify GET /capsules/:uuid (UUID) still returns 401 (authenticated capsule detail), not 404 ──
+  try {
+    await axios.get(`${BASE}/api/v1/capsules/${CAPSULE_ID}`);
+  } catch (e: any) {
+    const status = e.response?.status;
+    if (status !== 401 && status !== 403 && status !== 200) {
+      console.log(`[Route sanity] WARNING: GET /api/v1/capsules/${CAPSULE_ID} (UUID) returned ${status} — expected 401/403/200`);
+    } else {
+      console.log(`[Route sanity] GET /api/v1/capsules/${CAPSULE_ID} (UUID) → ${status} (correct — UUID passed to auth route)`);
+    }
+  }
+
+  // ── Step 4: preview_text stored on capsule_external_shares only, not derived from deals ──
   const routesSrc = fs.readFileSync(
     path.join(__dirname, '../api/rest/capsule-sharing.routes.ts'), 'utf-8'
   );
   const hasCorrectQuery = routesSrc.includes('FROM capsule_external_shares ces');
   const doesNotJoinDeals = !/FROM capsule_external_shares[\s\S]{0,300}JOIN deals/m.test(routesSrc);
-  rec(4, 'preview_text stored on share table only (not derived from deals)',
+  rec(4, 'preview_text stored on share table only (no JOIN to deals in resolution)',
     hasCorrectQuery && doesNotJoinDeals,
     hasCorrectQuery && doesNotJoinDeals
-      ? 'Resolution SELECT reads capsule_external_shares — no JOIN to deals'
+      ? 'Resolution SELECT reads capsule_external_shares only — confirmed no JOIN to deals'
       : 'WARNING: resolution query may touch deals table');
 
   // ── Step 5: Bypass blocked — unauthenticated deal access returns 401 ──
@@ -141,39 +159,28 @@ async function run() {
       `Returned ${s} (expected 401/403)`);
   }
 
-  // ── Step 6: Rate limiting — confirm 429 is returned after threshold ──
-  //
-  // The limiter allows 5 resolutions per 10 minutes per IP (127.0.0.1 here).
-  // Steps 2 and 3 already consumed ${totalResolutionHits} hits.
-  // Remaining budget before 429: ${5 - totalResolutionHits} more requests.
-  // We send 7 additional requests here — the first (5 - totalResolutionHits) will
-  // succeed (404 — no such token), and the next will hit 429.
+  // ── Step 6: Rate limiting — confirm 429 after exceeding 5-per-10min threshold ──
+  // Steps 2+3 already consumed ${totalResolutionHits} hits against the same IP window.
+  // Remaining budget: ${5 - totalResolutionHits} more before 429. Sending 7 attempts.
   const fakeToken = `rl_test_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   let got429 = false;
   let loopAttempt = 0;
-  let firstNon429Status = 0;
   for (let i = 1; i <= 7; i++) {
     loopAttempt = i;
     try {
-      const r = await axios.get(`${BASE}/api/v1/capsule-links/${fakeToken}`);
+      await axios.get(`${BASE}/api/v1/capsules/${fakeToken}`);
       totalResolutionHits++;
-      firstNon429Status = r.status;
     } catch (e: any) {
-      const s = e.response?.status;
       totalResolutionHits++;
-      if (s === 429) {
-        got429 = true;
-        break;
-      }
-      firstNon429Status = s ?? 0;
+      if (e.response?.status === 429) { got429 = true; break; }
     }
   }
-  rec(6, 'Rate limiting returns 429 after exceeding 5-per-10min threshold', got429,
+  rec(6, 'Rate limiting: 429 returned after threshold exceeded', got429,
     got429
-      ? `429 triggered at loop attempt ${loopAttempt} (${totalResolutionHits} total resolution calls including steps 2+3)`
-      : `No 429 after ${loopAttempt} loop attempts (${totalResolutionHits} total hits); last non-429 status=${firstNon429Status}`);
+      ? `429 at loop attempt ${loopAttempt} (${totalResolutionHits} cumulative resolution calls this session)`
+      : `No 429 after ${loopAttempt} loop attempts (${totalResolutionHits} total hits)`);
 
-  // ── Step 7: Encryption present — column exists + encryptToken called ──
+  // ── Step 7: Encryption present — api_key_encrypted column + encryptToken called ──
   const hasEncryptCall = routesSrc.includes('encryptToken(api_key)');
   const encColRes = await pool.query(
     `SELECT column_name FROM information_schema.columns
@@ -182,14 +189,15 @@ async function run() {
   const hasEncCol = encColRes.rows.length > 0;
   rec(7, 'Encryption: api_key_encrypted column + encryptToken in handler',
     hasEncryptCall && hasEncCol,
-    `api_key_encrypted column: ${hasEncCol}, encryptToken(api_key) called: ${hasEncryptCall}`);
+    `api_key_encrypted column present: ${hasEncCol}, encryptToken(api_key) called: ${hasEncryptCall}`);
 
   // ── Step 8: Stripe metering present in query handler ──
   const executorSrc = fs.readFileSync(
     path.join(__dirname, '../services/recipient-agent-executor.service.ts'), 'utf-8'
   );
   const hasStripe = executorSrc.includes('stripe.billing.meterEvents.create');
-  rec(8, 'Stripe metering present in query handler', hasStripe,
+  rec(8, 'Stripe metering in query handler (stripe.billing.meterEvents.create)',
+    hasStripe,
     hasStripe
       ? 'stripe.billing.meterEvents.create confirmed in executeRecipientQuery'
       : 'No Stripe meter event call found');

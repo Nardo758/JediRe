@@ -20,7 +20,7 @@
  * @date 2026-05-19
  */
 
-import { Router, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
@@ -40,6 +40,11 @@ function generateAccessToken(): { token: string; hash: string } {
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
   return { token: raw, hash };
 }
+
+// UUID pattern: 8-4-4-4-12 hex chars separated by dashes.
+// Access tokens are 64-char hex strings (no dashes); capsule IDs are UUIDs.
+// Used to distinguish the two in the /capsules/:param routes.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ─── POST /:capsuleId/share/external ─────────────────────────────────────────
 
@@ -140,34 +145,103 @@ router.post('/:capsuleId/share/external', requireAuth, async (req: Authenticated
   }
 });
 
-// ─── GET /capsule-links/:accessToken ─────────────────────────────────────────
+// ─── POST /deals/:dealId/share/external (spec-required alias) ────────────────
+// Alias for /:capsuleId/share/external — task spec references /deals/:dealId/share/external.
+// Treats :dealId as the capsule ID (deal_capsules are standalone entities with no
+// separate deal_id column). Mounted at /api/v1 so the full path is
+// POST /api/v1/deals/:dealId/share/external.
 
-router.get('/capsule-links/:accessToken', async (req, res: Response) => {
-  const { accessToken } = req.params;
+router.post('/deals/:dealId/share/external', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  req.params.capsuleId = req.params.dealId;
+  // Re-use the same handler by injecting capsuleId — delegate via internal redirect
+  const { dealId } = req.params;
+  const capsuleId = dealId;
+  const userId = req.user?.userId ?? (req as any).user?.id;
 
   try {
-    const pool = getPool();
+    const {
+      recipient_email, recipient_name, share_type,
+      allow_document_download, allow_agent_interaction,
+      expires_at, preview_text, preview_metadata,
+    } = req.body;
 
+    if (!recipient_email) {
+      return res.status(400).json({ error: 'recipient_email is required' });
+    }
+    const shareType = share_type ?? 'external_view';
+    if (!['external_view', 'external_agent_enabled'].includes(shareType)) {
+      return res.status(400).json({ error: 'share_type must be external_view or external_agent_enabled' });
+    }
+    if (preview_text && typeof preview_text === 'string' && preview_text.length > 500) {
+      return res.status(400).json({ error: 'preview_text must not exceed 500 characters' });
+    }
+    if (preview_metadata && (typeof preview_metadata !== 'object' || Array.isArray(preview_metadata))) {
+      return res.status(400).json({ error: 'preview_metadata must be a JSON object' });
+    }
+
+    const pool = getPool();
+    const capsuleCheck = await pool.query(
+      `SELECT 1 FROM deal_capsules WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [capsuleId, userId]
+    );
+    if (capsuleCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Capsule not found or access denied' });
+    }
+
+    const { token, hash } = generateAccessToken();
+    const shareResult = await pool.query(
+      `INSERT INTO capsule_external_shares
+         (capsule_id, shared_by_user_id, share_type, recipient_email, recipient_name,
+          allow_document_download, allow_agent_interaction, expires_at, access_token,
+          preview_text, preview_metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING share_id, created_at`,
+      [
+        capsuleId, userId, shareType, recipient_email, recipient_name ?? null,
+        allow_document_download !== false, allow_agent_interaction !== false,
+        expires_at ?? null, hash, preview_text ?? null,
+        preview_metadata ? JSON.stringify(preview_metadata) : null,
+      ]
+    );
+    const share = shareResult.rows[0];
+    const baseUrl = process.env.PUBLIC_URL ?? `${req.protocol}://${req.get('host')}`;
+    const capsuleUrl = `${baseUrl}/capsule-link/${token}`;
+
+    logger.info('External share created (via /deals/ alias)', { capsuleId, shareId: share.share_id, shareType });
+    return res.status(201).json({
+      share_id: share.share_id, capsule_url: capsuleUrl, access_token: token,
+      recipient_email, share_type: shareType, expires_at: expires_at ?? null,
+      preview_text: preview_text ?? null, preview_metadata: preview_metadata ?? null,
+      created_at: share.created_at,
+    });
+  } catch (err: any) {
+    logger.error('Failed to create external share (deals alias)', { error: err?.message, capsuleId });
+    return res.status(500).json({ error: err?.message ?? 'Failed to create share' });
+  }
+});
+
+// ─── Token resolution handler (shared by /capsules/:token and /capsule-links/:token) ──
+
+async function handleTokenResolution(req: Request, res: Response) {
+  const { accessToken } = req.params;
+  try {
+    const pool = getPool();
     const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
     const rateKey = `capsule_resolve:${clientIp}`;
     const now = Date.now();
     const rateWindows = rateLimitStore.get(rateKey) ?? [];
     const recent = rateWindows.filter(t => now - t < 600_000);
     if (recent.length >= 5) {
-      return res.status(429).json({
-        error: 'Too many capsule resolution attempts. Please wait before retrying.',
-      });
+      return res.status(429).json({ error: 'Too many capsule resolution attempts. Please wait before retrying.' });
     }
     recent.push(now);
     rateLimitStore.set(rateKey, recent);
 
     const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
-
     const shareResult = await pool.query(
       `SELECT ces.share_type, ces.allow_document_download,
               ces.allow_agent_interaction, ces.expires_at, ces.revoked_at,
-              ces.recipient_email,
-              ces.preview_text, ces.preview_metadata
+              ces.recipient_email, ces.preview_text, ces.preview_metadata
        FROM capsule_external_shares ces
        WHERE ces.access_token = $1
          AND ces.revoked_at IS NULL
@@ -175,13 +249,10 @@ router.get('/capsule-links/:accessToken', async (req, res: Response) => {
        LIMIT 1`,
       [tokenHash]
     );
-
     if (shareResult.rows.length === 0) {
       return res.status(404).json({ error: 'Capsule not found or has been revoked/expired' });
     }
-
     const share = shareResult.rows[0];
-
     return res.json({
       share_exists: true,
       share_type: share.share_type,
@@ -201,6 +272,27 @@ router.get('/capsule-links/:accessToken', async (req, res: Response) => {
     logger.error('Failed to resolve capsule', { error: err?.message });
     return res.status(500).json({ error: 'Failed to resolve capsule' });
   }
+}
+
+// ─── GET /capsules/:accessToken (spec-required endpoint with UUID passthrough) ─
+// If the param is a UUID (capsule detail request), passes to next middleware so
+// the authenticated capsule.routes handler can process it.
+// If it's a 64-char hex access token, resolves as a share record.
+// This ensures GET /api/v1/capsules/:id (UUID) and GET /api/v1/capsules/:token (hex)
+// both work correctly without route collision.
+
+router.get('/capsules/:accessToken', async (req: Request, res: Response, next: NextFunction) => {
+  const { accessToken } = req.params;
+  if (UUID_RE.test(accessToken)) {
+    return next(); // capsule UUID — let authenticated capsule.routes handle it
+  }
+  return handleTokenResolution(req, res);
+});
+
+// ─── GET /capsule-links/:accessToken ─────────────────────────────────────────
+
+router.get('/capsule-links/:accessToken', (req: Request, res: Response) => {
+  return handleTokenResolution(req, res);
 });
 
 // ─── POST /capsule-links/:accessToken/connect_api ────────────────────────────

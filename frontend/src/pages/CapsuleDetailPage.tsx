@@ -298,7 +298,7 @@ const CapsuleDetailPage: React.FC = () => {
       if (shareForm.recipient_name.trim()) payload.recipient_name = shareForm.recipient_name.trim();
       if (shareForm.preview_text.trim()) payload.preview_text = shareForm.preview_text.trim();
       if (shareForm.expires_at) payload.expires_at = shareForm.expires_at;
-      const res = await apiClient.post(`/api/v1/capsules-ext/${id}/share/external`, payload);
+      const res = await apiClient.post(`/api/v1/deals/${id}/share/external`, payload);
       setShareResult(res.data);
     } catch (err: any) {
       setShareError(err.response?.data?.error ?? err.message ?? 'Failed to create share');
