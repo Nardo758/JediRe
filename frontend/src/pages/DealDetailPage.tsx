@@ -37,6 +37,7 @@ import {
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
   Landmark, HardHat, Shield, Box, FileText, Briefcase,
   CheckCircle, X, Loader2, AlertTriangle, ChevronDown, HelpCircle,
+  Share2,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -44,6 +45,7 @@ import { apiClient } from '../services/api.client';
 import { useDealStore, useDealTypeConfig, useDealType } from '../stores/dealStore';
 import { useDealJourney } from '../stores/dealJourney.selector';
 import { DealJourneyOverlay } from '../components/deal/DealJourneyOverlay';
+import { ShareCapsuleModal } from '../components/capsule/ShareCapsuleModal';
 import type { DealContext } from '../stores/dealContext.types';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
@@ -487,6 +489,9 @@ const DealDetailPage: React.FC = () => {
 
   const [showCloseDealModal, setShowCloseDealModal] = useState(false);
   const [closingDeal, setClosingDeal] = useState(false);
+
+  // ── Share capsule — owner-only, hidden from recipients (who access via CapsuleLinkPage) ─
+  const [showShareModal, setShowShareModal] = useState(false);
 
   // ── Deal Journey — accessible from all F-key screens via the shared header ─
   const [showJourneyOverlay, setShowJourneyOverlay] = useState(false);
@@ -1310,8 +1315,29 @@ const DealDetailPage: React.FC = () => {
             );
           })}
 
-          {/* Right side: JOURNEY + search */}
+          {/* Right side: SHARE + JOURNEY + search */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
+            {/* SHARE — create a frozen capsule share link; hidden from recipients (they use CapsuleLinkPage) */}
+            <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', padding: '0 10px' }}>
+              <button
+                onClick={() => setShowShareModal(true)}
+                title="Share this deal as a frozen capsule snapshot"
+                style={{
+                  fontFamily: MONO, fontSize: 9, fontWeight: 600,
+                  padding: '2px 8px', letterSpacing: 0.6,
+                  background: showShareModal ? `${AMBER}20` : 'transparent',
+                  border: `1px solid ${showShareModal ? AMBER : BORDER}`,
+                  color: showShareModal ? AMBER : TEXT_MID,
+                  cursor: 'pointer',
+                  borderRadius: 2,
+                  transition: 'color 0.1s, border-color 0.1s',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                }}
+              >
+                <Share2 size={10} />
+                SHARE
+              </button>
+            </div>
             {/* JOURNEY — A→B deal framework overlay, accessible from all F-key screens */}
             <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', padding: '0 10px' }}>
               <button
@@ -1607,6 +1633,14 @@ const DealDetailPage: React.FC = () => {
         <DealJourneyOverlay
           journey={dealJourney}
           onClose={() => setShowJourneyOverlay(false)}
+        />
+      )}
+      {/* Share Capsule Modal — owner-only; recipients access via CapsuleLinkPage, never this page */}
+      {showShareModal && dealId && (
+        <ShareCapsuleModal
+          capsuleId={dealId}
+          propertyAddress={deal?.address || deal?.name || dealId}
+          onClose={() => setShowShareModal(false)}
         />
       )}
     </DealModuleProvider>
