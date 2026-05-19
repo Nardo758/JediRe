@@ -1,0 +1,57 @@
+Recipient capsule experience — full set of F-modules with sender's 
+view as the default state, recipient modifications opt-in and 
+session-scoped.
+
+Flow:
+
+1. Recipient opens the capsule link and lands on F1 (or whichever 
+is the default first tab)
+
+2. All modules load with the sender's configuration and analysis 
+state at share time. This is "the sender's view" — what the sender 
+sees in the platform, frozen at share moment.
+
+3. Recipient can navigate freely through F1-F11, reading the sender's 
+analysis. Read-only state by default.
+
+4. When recipient wants to modify something (adjust assumption, run 
+their own scenario, change capital structure), the action is 
+allowed and creates a session-scoped overlay. The recipient enters 
+"modified view" for that field/module.
+
+5. Modified fields are visually distinct (subtle indicator — small 
+dot, "modified" pill, or color tint). Clear that this is the 
+recipient's edit, not the sender's value.
+
+6. Reset options: per field, per module, and globally (reset all 
+modifications and return to sender's view).
+
+7. Toggle: recipient can switch between "sender's view" and "my 
+view" to compare what they changed vs sender's original analysis.
+
+Implementation:
+
+- Session-scoped overlay table keyed by access token captures 
+  recipient's modifications: assumption changes, scenario adjustments, 
+  capital structure overrides, anything the recipient configures 
+  in their session
+
+- Module read paths compose: source data + sender's snapshot at 
+  share time + recipient's session overlay (in that order, with 
+  overlay winning). When recipient is in "sender's view," overlay 
+  is ignored and only sender's snapshot is shown
+
+- Recipient agent queries reason against composed state (source + 
+  sender + recipient's overlay), using executeRecipientQuery with 
+  Stripe metering as already built
+
+- Session persistence: recipient's overlay persists within their 
+  access token's lifetime (until share is revoked, share expires, 
+  or token is invalidated). Across browser sessions within that 
+  window, modifications persist. After revocation/expiration, 
+  overlay is irrelevant.
+
+Investigation first per the standard pattern — confirm what shape 
+the existing "sender's snapshot" is in (it should be the frozen 
+state captured at share creation, which is what the Piece 4 
+foundation built). The recipient session overlay is the new piece.

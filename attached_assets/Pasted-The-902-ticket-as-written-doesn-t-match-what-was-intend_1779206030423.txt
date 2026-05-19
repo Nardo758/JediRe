@@ -1,0 +1,46 @@
+The #902 ticket as written doesn't match what was intended. Two 
+specific corrections:
+
+1. The recipient surface should be the full F1-F11 module set, 
+not the current 6-section layout. The recipient gets the entire 
+platform's analytical surface with the deal preloaded — same 
+modules a sender sees, just accessed via recipient access token.
+
+2. Interactivity should be the default state, not opt-in via a 
+"My View" toggle. The recipient lands on the full F-modules with 
+sender's values as the starting state, and can edit anything 
+immediately. There's no "viewing mode" vs "editing mode" — there's 
+just "the workspace, with this deal preloaded, with sender's 
+configuration as the initial state."
+
+The overlay pattern is correct (session-scoped writes, don't 
+persist to sender's deal). The visual distinction for modified 
+fields is correct (subtle indicator, sender's original value on 
+hover, per-field reset). The architecture of source + sender 
+snapshot + recipient overlay is correct.
+
+What needs to change:
+- The starting state of the recipient view is fully interactive, 
+  not read-only
+- There's no toggle between "sender's view" and "my view" — 
+  there's just "the workspace" with overlay indicators showing 
+  what the recipient has modified
+- A "reset to sender's value" affordance per field, per module, 
+  and globally — same as currently planned, just framed as 
+  "reset modifications" rather than "switch to sender's view 
+  mode"
+- The recipient surface needs to expand from the current 6 
+  sections to the full F1-F11 module set (this is the larger 
+  piece of the rework)
+
+If expanding to F1-F11 is too much for this single task, scope 
+it as two phases:
+- Phase A: fix the interactivity model on the current 6-section 
+  surface (remove the "view mode" toggle, make editing the 
+  default behavior, use overlay indicators instead of view 
+  switching)
+- Phase B: expand the surface from 6 sections to full F1-F11 
+  modules
+
+Both phases ship. Just be honest about which phase the work is 
+in rather than landing on the wrong interpretation of the spec.

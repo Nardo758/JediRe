@@ -1,0 +1,53 @@
+The #902 ticket is fundamentally aligned with the right architecture 
+(Pattern A — portable capsule artifact with session overlay for 
+recipient modifications). Two specific corrections to the ticket 
+scope and behavior:
+
+1. Interactivity is the default state, not opt-in via toggle.
+   
+   Remove the "Sender's View / My View" toggle pattern. The recipient 
+   lands on the workspace with sender's values as initial state, fully 
+   interactive immediately. The only UI distinction is:
+   - Modified fields show subtle indicator (blue dot)
+   - Hover shows sender's original value
+   - Per-field × button resets that field
+   - Per-module reset link clears module-level overlay
+   - Global "Reset all modifications" button (in section header or 
+     footer)
+   
+   There's no "mode" the recipient is in. They're just in the 
+   workspace, with their modifications visible via indicators.
+
+2. The recipient surface should be the full F1-F11 module set, not 
+   the current 6-section layout.
+   
+   The capsule includes state for all F1-F11 modules at share time. 
+   The recipient surface renders all of them. The overlay pattern 
+   applies across all modules — modifications in any module create 
+   session-scoped overlays that compose into the rendered state.
+   
+   The investigation step should confirm:
+   - What does the current 6-section layout map to in the F1-F11 
+     module structure (likely it's a subset or rearrangement)
+   - What additional state needs to be captured in the snapshot at 
+     share time to support all 11 modules
+   - What's the existing module rendering code that can be reused 
+     for the recipient view (the modules already render for senders; 
+     can the same components be used?)
+
+Architecturally everything else in #902 stays as written:
+- recipient_session_overlays table keyed by access token
+- GET/PATCH/DELETE overlay API
+- Compose overlay in deal-book response (snapshot + overlay → 
+  rendered state)
+- Update agent context composition to include overlay
+- Reset controls per field/module/global
+
+If expanding to F1-F11 makes the ticket too large for one session, 
+phase it:
+- Phase 1: implement overlay + interactivity-by-default on current 
+  6-section surface (matches #902's current scope, just with the 
+  interactivity correction)
+- Phase 2: expand surface to full F1-F11 modules
+
+Both phases ship. Pattern A architecture preserved throughout.
