@@ -66,19 +66,19 @@ export async function buildRecipientDealContext(shareId: string): Promise<Recipi
     // Fetch deal + share info
     const dealResult = await pool.query(
       `SELECT
-         d.id AS deal_id,
-         d.name AS deal_name,
-         d.deal_data->>'property_city' AS property_city,
-         d.deal_data->>'property_state' AS property_state,
-         d.deal_data->>'property_type' AS property_type,
-         d.deal_data->>'total_units' AS total_units,
-         d.deal_data->>'year_built' AS year_built,
-         d.msa_id AS market_id
-       FROM deals d
-       JOIN capsule_shares cs ON cs.deal_id = d.id
-       WHERE cs.share_id = $1
-         AND cs.revoked_at IS NULL
-         AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
+         dc.id AS deal_id,
+         dc.property_address AS deal_name,
+         COALESCE(dc.deal_data->>'city', dc.deal_data->>'property_city') AS property_city,
+         COALESCE(dc.deal_data->>'state', dc.deal_data->>'property_state') AS property_state,
+         COALESCE(dc.asset_class, dc.deal_data->>'property_type') AS property_type,
+         COALESCE(dc.deal_data->>'units', dc.deal_data->>'total_units') AS total_units,
+         dc.deal_data->>'year_built' AS year_built,
+         NULL::TEXT AS market_id
+       FROM deal_capsules dc
+       JOIN capsule_external_shares ces ON ces.capsule_id = dc.id
+       WHERE ces.share_id = $1
+         AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
        LIMIT 1`,
       [shareId]
     );
@@ -89,30 +89,8 @@ export async function buildRecipientDealContext(shareId: string): Promise<Recipi
 
     const deal = dealResult.rows[0];
 
-    // Fetch the shared scenario (if any)
-    let scenario = { scenario_id: null, scenario_name: null, assumptions: {} };
-    const scenarioResult = await pool.query(
-      `SELECT cs.scenario_id, us.name AS scenario_name
-       FROM capsule_shares cs
-       LEFT JOIN deal_scenarios us ON us.scenario_id = cs.scenario_id AND us.deal_id = cs.deal_id
-       WHERE cs.share_id = $1
-       LIMIT 1`,
-      [shareId]
-    );
-
-    if (scenarioResult.rows.length > 0 && scenarioResult.rows[0].scenario_id) {
-      const sResult = await pool.query(
-        `SELECT scenario_data FROM deal_scenarios WHERE scenario_id = $1 LIMIT 1`,
-        [scenarioResult.rows[0].scenario_id]
-      );
-      if (sResult.rows.length > 0) {
-        scenario = {
-          scenario_id: scenarioResult.rows[0].scenario_id,
-          scenario_name: scenarioResult.rows[0].scenario_name ?? 'Shared Scenario',
-          assumptions: sResult.rows[0].scenario_data ?? {},
-        };
-      }
-    }
+    // Capsule shares don't carry a linked scenario
+    const scenario = { scenario_id: null, scenario_name: null, assumptions: {} };
 
     // Fetch source documents
     const sourceDocsResult = await pool.query(

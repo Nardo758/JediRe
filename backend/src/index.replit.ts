@@ -453,6 +453,12 @@ app.use('/api/v1/lead-lag', leadLagRoutes);
 import newsConnectionsRoutes from './api/rest/news-connections.routes';
 app.use('/api/v1/news-connections', newsConnectionsRoutes);
 
+// Capsule Sharing — MUST be mounted here, before any app.use('/api/v1', requireAuth, ...)
+// handlers, so that the token-based recipient endpoints (GET /api/v1/capsules/:accessToken,
+// POST /api/v1/capsules/:accessToken/connect_api, etc.) are reachable without authentication.
+// The authenticated owner actions live at /api/v1/capsules-ext (mounted again below with requireAuth).
+app.use('/api/v1', capsuleSharingRoutes);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -491,10 +497,9 @@ app.use('/api/v1/proforma', requireAuth, stabilizedPotentialRouter);
 app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/deals', financialDocumentsRoutes);
 app.use('/api/v1/deals', requireAuth, sourceDocumentsRoutes);
-// Capsule Sharing: mounted at both /api/v1/deals (deal-scoped paths like /:dealId/share)
-// and /api/v1 (capsule-scoped paths like /capsules/:accessToken)
-app.use('/api/v1/deals', requireAuth, capsuleSharingRoutes);
-app.use('/api/v1', capsuleSharingRoutes); // capsule routes don't need auth (token-based)
+// Capsule Sharing: authenticated capsule-owner actions at /api/v1/capsules-ext.
+// Token-based recipient actions are already mounted above (before requireAuth handlers).
+app.use('/api/v1/capsules-ext', requireAuth, capsuleSharingRoutes);
 
 // Scene storage for 3D scenes â€” must be BEFORE documentsFilesRoutes so
 // /:dealId/files/3d-scene wins match against /:dealId/files/:fileId (Express first-match)

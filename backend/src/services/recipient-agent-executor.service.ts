@@ -98,10 +98,10 @@ export async function executeRecipientQuery(
     `SELECT rc.connection_id, rc.share_id, rc.provider, rc.api_key_encrypted,
             rc.stripe_customer_id, rc.disconnected_at
      FROM recipient_api_connections rc
-     JOIN capsule_shares cs ON cs.share_id = rc.share_id
-     WHERE cs.access_token = $1
-       AND cs.revoked_at IS NULL
-       AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
+     JOIN capsule_external_shares ces ON ces.share_id = rc.share_id
+     WHERE ces.access_token = $1
+       AND ces.revoked_at IS NULL
+       AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
        AND rc.disconnected_at IS NULL
      LIMIT 1`,
     [tokenHash]

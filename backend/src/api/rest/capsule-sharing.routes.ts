@@ -2,8 +2,21 @@
  * Capsule Sharing Routes — Piece 4 Foundation
  *
  * External share creation, access token resolution, and API key connection.
+ * Uses capsule_external_shares table (references deal_capsules, not deals).
  *
- * @version 1.0.0
+ * Route groups:
+ *   Mounted at /api/v1/capsules-ext (authenticated, capsule-owner actions)
+ *     POST   /:capsuleId/share/external
+ *     GET    /:capsuleId/shares
+ *     POST   /:capsuleId/shares/:shareId/revoke
+ *
+ *   Mounted at /api/v1 (token-based, no platform auth)
+ *     GET    /capsules/:accessToken
+ *     POST   /capsules/:accessToken/connect_api
+ *     POST   /capsules/:accessToken/query
+ *     DELETE /capsules/:accessToken/connect_api
+ *
+ * @version 1.1.0
  * @date 2026-05-19
  */
 
@@ -18,28 +31,20 @@ import * as crypto from 'crypto';
 const router = Router();
 
 // In-memory store for capsule resolution rate limiting
-// (server restart resets counters — acceptable for this enforcement)
 const rateLimitStore = new Map<string, number[]>();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Generate a cryptographically random access token.
- * Returns the raw token (for the URL) and a SHA-256 hash (for DB storage).
- */
 function generateAccessToken(): { token: string; hash: string } {
   const raw = crypto.randomBytes(32).toString('hex');
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
   return { token: raw, hash };
 }
 
-// ─── POST /api/v1/deals/:dealId/share/external ───────────────────────────────
+// ─── POST /:capsuleId/share/external ─────────────────────────────────────────
 
-/**
- * Create an external share (capsule) for a non-platform recipient.
- */
-router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  const { dealId } = req.params;
+router.post('/:capsuleId/share/external', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { capsuleId } = req.params;
   const userId = req.user?.userId ?? (req as any).user?.id;
 
   try {
@@ -54,7 +59,6 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
       preview_metadata,
     } = req.body;
 
-    // Validate required fields
     if (!recipient_email) {
       return res.status(400).json({ error: 'recipient_email is required' });
     }
@@ -64,7 +68,6 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
       return res.status(400).json({ error: 'share_type must be external_view or external_agent_enabled' });
     }
 
-    // Validate sender-curated preview
     if (preview_text && typeof preview_text === 'string' && preview_text.length > 500) {
       return res.status(400).json({ error: 'preview_text must not exceed 500 characters' });
     }
@@ -74,34 +77,32 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
 
     const pool = getPool();
 
-    // Verify deal ownership
-    const dealCheck = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2 LIMIT 1`,
-      [dealId, userId]
+    // Verify capsule ownership
+    const capsuleCheck = await pool.query(
+      `SELECT 1 FROM deal_capsules WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [capsuleId, userId]
     );
-    if (dealCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Deal not found or access denied' });
+    if (capsuleCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Capsule not found or access denied' });
     }
 
-    // Generate access token
     const { token, hash } = generateAccessToken();
 
-    // Create share
     const shareResult = await pool.query(
-      `INSERT INTO capsule_shares
-         (deal_id, shared_by_user_id, share_type, recipient_email, recipient_name,
+      `INSERT INTO capsule_external_shares
+         (capsule_id, shared_by_user_id, share_type, recipient_email, recipient_name,
           allow_document_download, allow_agent_interaction, expires_at, access_token,
           preview_text, preview_metadata)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING share_id, created_at`,
       [
-        dealId,
+        capsuleId,
         userId,
         shareType,
         recipient_email,
         recipient_name ?? null,
-        allow_document_download !== false, // default true
-        allow_agent_interaction !== false, // default true
+        allow_document_download !== false,
+        allow_agent_interaction !== false,
         expires_at ?? null,
         hash,
         preview_text ?? null,
@@ -111,12 +112,11 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
 
     const share = shareResult.rows[0];
 
-    // Return capsule URL with raw token (not hash)
     const baseUrl = process.env.PUBLIC_URL ?? `${req.protocol}://${req.get('host')}`;
     const capsuleUrl = `${baseUrl}/capsules/${token}`;
 
     logger.info('External share created', {
-      dealId,
+      capsuleId,
       shareId: share.share_id,
       recipientEmail: recipient_email,
       shareType,
@@ -126,7 +126,7 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
     return res.status(201).json({
       share_id: share.share_id,
       capsule_url: capsuleUrl,
-      access_token: token, // raw token for sender to share with recipient
+      access_token: token,
       recipient_email,
       share_type: shareType,
       expires_at: expires_at ?? null,
@@ -135,29 +135,23 @@ router.post('/:dealId/share/external', requireAuth, async (req: AuthenticatedReq
       created_at: share.created_at,
     });
   } catch (err: any) {
-    logger.error('Failed to create external share', { error: err?.message, dealId });
+    logger.error('Failed to create external share', { error: err?.message, capsuleId });
     return res.status(500).json({ error: err?.message ?? 'Failed to create share' });
   }
 });
 
-// ─── GET /api/v1/capsules/:accessToken ────────────────────────────────────────
+// ─── GET /capsules/:accessToken ───────────────────────────────────────────────
 
-/**
- * Resolve a capsule share by access token.
- * Returns deal metadata respecting share settings.
- */
 router.get('/capsules/:accessToken', async (req, res: Response) => {
   const { accessToken } = req.params;
 
   try {
     const pool = getPool();
 
-    // In-memory rate limiting — 5 resolutions per 10 minutes per IP
-    // (Resets on server restart, which is acceptable for this enforcement)
     const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
     const rateKey = `capsule_resolve:${clientIp}`;
     const now = Date.now();
-    const rateWindows = (rateLimitStore as Map<string, number[]>).get(rateKey) ?? [];
+    const rateWindows = rateLimitStore.get(rateKey) ?? [];
     const recent = rateWindows.filter(t => now - t < 600_000);
     if (recent.length >= 5) {
       return res.status(429).json({
@@ -165,20 +159,19 @@ router.get('/capsules/:accessToken', async (req, res: Response) => {
       });
     }
     recent.push(now);
-    (rateLimitStore as Map<string, number[]>).set(rateKey, recent);
+    rateLimitStore.set(rateKey, recent);
 
-    // Hash the provided token to look up in DB
     const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
 
     const shareResult = await pool.query(
-      `SELECT cs.share_type, cs.allow_document_download,
-              cs.allow_agent_interaction, cs.expires_at, cs.revoked_at,
-              cs.recipient_email,
-              cs.preview_text, cs.preview_metadata
-       FROM capsule_shares cs
-       WHERE cs.access_token = $1
-         AND cs.revoked_at IS NULL
-         AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
+      `SELECT ces.share_type, ces.allow_document_download,
+              ces.allow_agent_interaction, ces.expires_at, ces.revoked_at,
+              ces.recipient_email,
+              ces.preview_text, ces.preview_metadata
+       FROM capsule_external_shares ces
+       WHERE ces.access_token = $1
+         AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
        LIMIT 1`,
       [tokenHash]
     );
@@ -197,7 +190,6 @@ router.get('/capsules/:accessToken', async (req, res: Response) => {
       allow_agent_interaction: share.allow_agent_interaction,
       expires_at: share.expires_at,
       agent_enabled: share.share_type === 'external_agent_enabled',
-      // Sender-curated preview (stored on capsule_shares, never derived from deals)
       preview_text: share.preview_text ?? null,
       preview_metadata: share.preview_metadata ?? null,
       must_connect_api: true,
@@ -211,11 +203,8 @@ router.get('/capsules/:accessToken', async (req, res: Response) => {
   }
 });
 
-// ─── POST /api/v1/capsules/:accessToken/connect_api ──────────────────────────
+// ─── POST /capsules/:accessToken/connect_api ─────────────────────────────────
 
-/**
- * Connect an API key to a capsule share (stub for Piece 4).
- */
 router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => {
   const { accessToken } = req.params;
   const { provider, api_key } = req.body;
@@ -234,7 +223,7 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
     const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
 
     const shareResult = await pool.query(
-      `SELECT share_id, share_type FROM capsule_shares
+      `SELECT share_id, share_type, recipient_email FROM capsule_external_shares
        WHERE access_token = $1 AND revoked_at IS NULL
          AND (expires_at IS NULL OR expires_at > NOW())
        LIMIT 1`,
@@ -258,12 +247,7 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
         const Stripe = (await import('stripe')).default;
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-        // Look for an existing customer with this email (from the share)
-        const shareWithEmail = await pool.query(
-          `SELECT recipient_email, share_id FROM capsule_shares WHERE share_id = $1 LIMIT 1`,
-          [share.share_id]
-        );
-        const recipientEmail = shareWithEmail.rows[0]?.recipient_email;
+        const recipientEmail = share.recipient_email;
 
         if (recipientEmail) {
           const existing = await stripe.customers.list({
@@ -274,7 +258,6 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
         }
 
         if (!stripeCustomerId) {
-          // Create a new customer for this recipient
           const customer = await stripe.customers.create({
             email: recipientEmail ?? undefined,
             metadata: {
@@ -296,12 +279,11 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
       });
     }
 
-    // Validate the API key against the provider before storing
+    // Validate the API key against the provider
     try {
       if (provider === 'anthropic') {
         const { Anthropic } = await import('@anthropic-ai/sdk');
         const testClient = new Anthropic({ apiKey: api_key });
-        // Ping the API with a minimal request to validate the key
         await testClient.messages.create({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 1,
@@ -328,7 +310,6 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
       });
     }
 
-    // Store the key encrypted with AES-256-GCM
     const encryptedKey = encryptToken(api_key);
 
     const connectionResult = await pool.query(
@@ -361,12 +342,8 @@ router.post('/capsules/:accessToken/connect_api', async (req, res: Response) => 
   }
 });
 
-// ─── POST /api/v1/capsules/:accessToken/query ───────────────────────────────
+// ─── POST /capsules/:accessToken/query ───────────────────────────────────────
 
-/**
- * Send a query through the recipient-scoped agent runtime.
- * Requires a connected API key (POST /capsules/:accessToken/connect_api).
- */
 router.post('/capsules/:accessToken/query', async (req, res: Response) => {
   const { accessToken } = req.params;
   const { message } = req.body;
@@ -398,11 +375,8 @@ router.post('/capsules/:accessToken/query', async (req, res: Response) => {
   }
 });
 
-// ─── DELETE /api/v1/capsules/:accessToken/connect_api ────────────────────────
+// ─── DELETE /capsules/:accessToken/connect_api ────────────────────────────────
 
-/**
- * Disconnect an API key from a capsule share.
- */
 router.delete('/capsules/:accessToken/connect_api', async (req, res: Response) => {
   const { accessToken } = req.params;
 
@@ -413,9 +387,9 @@ router.delete('/capsules/:accessToken/connect_api', async (req, res: Response) =
     const result = await pool.query(
       `UPDATE recipient_api_connections rc
        SET disconnected_at = NOW()
-       FROM capsule_shares cs
-       WHERE cs.access_token = $1
-         AND cs.share_id = rc.share_id
+       FROM capsule_external_shares ces
+       WHERE ces.access_token = $1
+         AND ces.share_id = rc.share_id
          AND rc.disconnected_at IS NULL
        RETURNING rc.connection_id, rc.disconnected_at`,
       [tokenHash]
@@ -435,41 +409,35 @@ router.delete('/capsules/:accessToken/connect_api', async (req, res: Response) =
   }
 });
 
-// ─── Share listing for sender ─────────────────────────────────────────────────
+// ─── GET /:capsuleId/shares ───────────────────────────────────────────────────
 
-/**
- * GET /api/v1/deals/:dealId/shares
- *
- * Lists all shares for a deal (deal owner only).
- */
-router.get('/:dealId/shares', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  const { dealId } = req.params;
+router.get('/:capsuleId/shares', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { capsuleId } = req.params;
   const userId = req.user?.userId ?? (req as any).user?.id;
 
   try {
     const pool = getPool();
 
-    // Verify ownership
-    const dealCheck = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2 LIMIT 1`,
-      [dealId, userId]
+    const capsuleCheck = await pool.query(
+      `SELECT 1 FROM deal_capsules WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [capsuleId, userId]
     );
-    if (dealCheck.rows.length === 0) {
+    if (capsuleCheck.rows.length === 0) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
     const result = await pool.query(
-      `SELECT cs.share_id, cs.share_type, cs.recipient_email, cs.recipient_name,
-              cs.created_at, cs.revoked_at, cs.expires_at,
-              cs.preview_text, cs.preview_metadata,
-              CASE WHEN cs.revoked_at IS NOT NULL THEN 'revoked'
-                   WHEN cs.expires_at IS NOT NULL AND cs.expires_at < NOW() THEN 'expired'
+      `SELECT ces.share_id, ces.share_type, ces.recipient_email, ces.recipient_name,
+              ces.created_at, ces.revoked_at, ces.expires_at,
+              ces.preview_text, ces.preview_metadata,
+              CASE WHEN ces.revoked_at IS NOT NULL THEN 'revoked'
+                   WHEN ces.expires_at IS NOT NULL AND ces.expires_at < NOW() THEN 'expired'
                    ELSE 'active'
               END AS share_status
-       FROM capsule_shares cs
-       WHERE cs.deal_id = $1
-       ORDER BY cs.created_at DESC`,
-      [dealId]
+       FROM capsule_external_shares ces
+       WHERE ces.capsule_id = $1
+       ORDER BY ces.created_at DESC`,
+      [capsuleId]
     );
 
     return res.json({ shares: result.rows, count: result.rows.length });
@@ -478,35 +446,30 @@ router.get('/:dealId/shares', requireAuth, async (req: AuthenticatedRequest, res
   }
 });
 
-// ─── Revoke share ─────────────────────────────────────────────────────────────
+// ─── POST /:capsuleId/shares/:shareId/revoke ─────────────────────────────────
 
-/**
- * POST /api/v1/deals/:dealId/shares/:shareId/revoke
- *
- * Revokes a share. Subsequent access returns 404.
- */
-router.post('/:dealId/shares/:shareId/revoke', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  const { dealId, shareId } = req.params;
+router.post('/:capsuleId/shares/:shareId/revoke', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { capsuleId, shareId } = req.params;
   const userId = req.user?.userId ?? (req as any).user?.id;
 
   try {
     const pool = getPool();
 
     const result = await pool.query(
-      `UPDATE capsule_shares
+      `UPDATE capsule_external_shares
        SET revoked_at = NOW()
-       WHERE share_id = $1 AND deal_id = $2
+       WHERE share_id = $1 AND capsule_id = $2
          AND shared_by_user_id = $3
          AND revoked_at IS NULL
        RETURNING share_id, revoked_at`,
-      [shareId, dealId, userId]
+      [shareId, capsuleId, userId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Share not found or already revoked' });
     }
 
-    logger.info('Share revoked', { dealId, shareId });
+    logger.info('Share revoked', { capsuleId, shareId });
 
     return res.json({
       share_id: result.rows[0].share_id,
