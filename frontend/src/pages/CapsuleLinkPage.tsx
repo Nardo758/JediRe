@@ -131,7 +131,11 @@ function applyOverlay(capsule: CapsuleInfo, overlay: Record<string, unknown>): C
 const SECTION_RESET_PREFIXES: Record<string, string[]> = {
   overview: ['user_adjustments.'],
   proforma: ['deal_data.exit_cap'],
-  capital: ['module_outputs.financial.capital_stack.', 'module_outputs.financial.capitalStack.'],
+  capital: [
+    'module_outputs.financial.capital_stack.',
+    'module_outputs.financial.capitalStack.',
+    'user_adjustments.max_ltv',
+  ],
 };
 
 function sectionOverlayKeys(section: string, overlay: Record<string, unknown>): string[] {
@@ -538,6 +542,13 @@ export default function CapsuleLinkPage() {
     }
   };
 
+  // ── All hooks must be declared before any early return ───────────────────────
+  // Compose sender snapshot + recipient overlay; null when data hasn't loaded yet
+  const composed = useMemo(
+    () => (data ? applyOverlay(data.capsule, overlay) : null),
+    [data, overlay],
+  );
+
   // ── Loading ───────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -574,14 +585,13 @@ export default function CapsuleLinkPage() {
   const senderL3 = capsule.user_adjustments;
   const senderMO = capsule.module_outputs;
 
-  // Composed capsule = sender snapshot + recipient overlay
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const composed = useMemo(() => applyOverlay(capsule, overlay), [capsule, overlay]);
+  // composed is guaranteed non-null here because data is non-null (checked above)
+  const C = composed as ReturnType<typeof applyOverlay>;
 
-  const L1 = composed.deal_data;
-  const L2 = composed.platform_intel;
-  const L3 = composed.user_adjustments;
-  const MO = composed.module_outputs;
+  const L1 = C.deal_data;
+  const L2 = C.platform_intel;
+  const L3 = C.user_adjustments;
+  const MO = C.module_outputs;
 
   const fin = (MO.financial ?? MO.proforma) as Record<string, unknown> | undefined;
   const senderFin = (senderMO.financial ?? senderMO.proforma) as Record<string, unknown> | undefined;
