@@ -21,19 +21,20 @@ type ThemeTokens = typeof DARK;
 const PORTFOLIO_NAV = [
   {key:"F1",label:"DASHBOARD"},
   {key:"F2",label:"PIPELINE"},
-  {key:"F3",label:"PORTFOLIO"},
-  {key:"F4",label:"MARKETS"},
-  {key:"F5",label:"EMAIL"},
-  {key:"F6",label:"NEWS"},
-  {key:"F7",label:"STRATEGIES"},
-  {key:"F8",label:"REPORTS"},
-  {key:"F9",label:"ADMIN"},
-  {key:"F10",label:"SETTINGS"},
+  {key:"F3",label:"CAPSULES"},
+  {key:"F4",label:"PORTFOLIO"},
+  {key:"F5",label:"MARKETS"},
+  {key:"F6",label:"EMAIL"},
+  {key:"F7",label:"NEWS"},
+  {key:"F8",label:"STRATEGIES"},
+  {key:"F9",label:"REPORTS"},
+  {key:"F10",label:"ADMIN"},
+  {key:"F11",label:"SETTINGS"},
 ];
 
 const FKEY_SLUG: Record<string,string> = {
-  F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"markets",
-  F5:"email",     F6:"news",     F7:"strategies", F8:"reports", F9:"admin", F10:"settings",
+  F1:"dashboard", F2:"pipeline", F3:"capsules", F4:"portfolio", F5:"markets",
+  F6:"email",     F7:"news",     F8:"strategies", F9:"reports", F10:"admin", F11:"settings",
 };
 
 const STATIC_NEWS = [
@@ -368,6 +369,7 @@ export function TerminalChrome({
       onFkeyChange(key);
     } else {
       const slug = FKEY_SLUG[key] || "dashboard";
+      if (slug === "capsules") { navigate("/capsules"); return; }
       navigate(`/terminal/${slug}`);
     }
   };

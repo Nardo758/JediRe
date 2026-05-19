@@ -94,8 +94,9 @@ const PORTFOLIO_NAV = [
   { key: 'F5', label: 'COMPETE',   path: '/competitive-intelligence' },
   { key: 'F6', label: 'NEWS',      path: '/news-intel' },
   { key: 'F7', label: 'OPPS',      path: '/opportunities' },
-  { key: 'F8', label: 'REPORTS',   path: '/reports' },
-  { key: 'F9', label: 'SETTINGS',  path: '/settings' },
+  { key: 'F8', label: 'CAPSULES',  path: '/capsules' },
+  { key: 'F9', label: 'REPORTS',   path: '/reports' },
+  { key: 'F10', label: 'SETTINGS', path: '/settings' },
 ];
 
 const DEAL_NAV = [
