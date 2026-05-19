@@ -4,6 +4,112 @@
 
 ---
 
+## Week of 2026-05-19
+
+**Operator:** Agent  
+**Date:** 2026-05-19  
+**Type:** Post-deploy — Capital Structure Phase 1 close-out + audit
+
+---
+
+### Recently Closed (2026-05-19)
+
+| Task | Closed | Closing Note | Status |
+|------|--------|-------------|--------|
+| #889 — Capital Structure Phase 1: Defaults + LTV Optimization (re-audit) | 2026-05-19 | `docs/audits/capital_structure_phase1_reaudit_20260519_013000.md` | DONE-DONE — 9/10 AC pass; 1 partial (M36 Phase 2 item, non-blocking); SHIP |
+
+---
+
+### Capital Structure Phase 1 Audit Results
+
+> Verification phases A / B / C from the re-audit (`#889`). Each item shows the per-criterion state confirmed in the production DB.
+
+#### Category A — Defaults Seeding
+
+| Item | Value | Layer | Status |
+|------|-------|-------|--------|
+| `ltv_pct` default | 0.75 | platform | PASS |
+| `gp_equity_pct` default | 0.10 (→ LP 0.90 implied) | platform | PASS |
+| `preferred_return_pct` default | 0.08 | platform | PASS |
+| `debt_rate` (FRED DGS10 + 200bps) | 0.0659 (live, not fallback) | platform | PASS |
+| `seeded_at` timestamp present | 2026-05-19T00:06:21Z | — | PASS |
+
+All 5 default fields confirmed in active `deal_underwriting_scenarios.year1` for 464 Bishop (production deal). Lazy-seeding gap for un-visited deals → F-backfill-1 (#890, low severity).
+
+#### Category B — Agent Integration
+
+| Item | Status | Evidence |
+|------|--------|----------|
+| `optimize_capital_structure` fires on every cashflow run | PASS | 4 v3.5.0 `agent_runs` rows in DB, all with `proforma.capital_structure.optimization` |
+| Strategy-to-metric mapping — existing → cash_on_cash | PASS | Run `37887cbe` (464 Bishop) |
+| Strategy-to-metric mapping — development → stabilized_value | PASS | Run `0c07cfe4` (Jaguar) |
+| Strategy-to-metric mapping — value-add → irr | PASS | Run `c417f979` ([CS-AUDIT] Value-Add) |
+| Strategy-to-metric mapping — flip → profit_at_exit (infeasible) | PASS | Run `d44e4016` ([CS-AUDIT] Flip) |
+| Prompt updated (v3.5.0, negative-NOI guidance) | PASS | `cashflow.config.ts` |
+| Optimization completes within 30s | PASS | All 4 runs <100ms |
+
+#### Category C — F9 Rendering
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Platform defaults present in data layer (Returns tab source) | PASS | `ltv_pct`, `gp_equity_pct`, `preferred_return_pct`, `debt_rate` all in active scenario `year1` |
+| Optimization recommendation block in `agent_runs.output` | PASS | 4 v3.5.0 rows with `cs_opt`; total `runs_with_cs_opt`: 4 of 619 |
+| End-to-end UI render (Returns tab visual) | PARTIAL | Data layer confirmed correct; screenshot-level UI verification not run in automated audit |
+
+---
+
+### Supposedly Done — Verified (2026-05-19)
+
+> Items previously in "Supposedly Done — Verify" that have now been confirmed by the Phase 1 re-audit.
+
+| Item | Prior State | Current State | Evidence |
+|------|------------|---------------|----------|
+| PR 1 — `seedCapitalStructureDefaults` writes to active scenario `year1` (not clobbered by sync trigger) | FAIL (first audit 2026-05-18) | **VERIFIED** | `seeded_at` in DB; active scenario confirmed; 464 Bishop run `37887cbe` |
+| PR 2 — Postprocessor fallback calls `optimizeCapitalStructure()` deterministically after every cashflow run | FAIL (first audit 2026-05-18) | **VERIFIED** | 4 v3.5.0 runs in `agent_runs`: `37887cbe`, `0c07cfe4`, `c417f979`, `d44e4016` |
+
+---
+
+### In-Flight / Pending Tasks (2026-05-19 additions)
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| #890 | F-backfill-1: One-time CS defaults migration — seed `ltv_pct` for all deals where active scenario `year1->'ltv_pct'` is null | PENDING | Low severity; lazy-seeding gap for 5 un-visited production deals |
+| #891 | F-strategy-1: Populate `deals.strategy` at creation time or derive from `investment_strategy_lv.resolved` | PENDING | Medium severity; all 5 original production deals have `strategy=null`; design question (early-stage default?) is first scope item |
+| #892 | F-jgs-1: M36 Pareto Frontier (`run_joint_goal_seek`) postprocessor fallback — Phase 2 | PENDING | Medium severity; 0 calls in 619 runs; Returns tab Alternative Structures section blank |
+
+---
+
+### Key Metrics — 2026-05-19 Snapshot
+
+| Metric | Value | Source |
+|--------|-------|--------|
+| `agent_runs` total (cashflow agent) | 619 | `agent_runs` table |
+| v3.5.0 runs with `cs_opt` | 4 of 619 | `agent_runs WHERE agent_version = '3.5.0'` |
+| v3.3.0 runs (pre-fix, unaffected) | 29 | `agent_runs WHERE agent_version = '3.3.0'` |
+| `deals.strategy` populated | 2 (audit test deals only; all production deals null) | `deals` table |
+| CS defaults seeded in active scenario | 1 production deal (464 Bishop) | `deal_underwriting_scenarios` |
+| Audit score | 9 PASS / 1 PARTIAL / 0 FAIL | `docs/audits/capital_structure_phase1_reaudit_20260519_013000.json` |
+
+---
+
+### Issues Surfaced This Week
+
+**F-strategy-1 (medium):** `deals.strategy` is universally null for all 5 original production deals. The deal creation route (`POST /api/deals`) does not write `strategy` — it writes `project_type` (derived from `projectType` body param or `property_type_key` lookup) but not `strategy`. The `createDealSchema` in `validation.ts` does not include a `strategy` field. Strategy is currently determined post-creation via M08 analysis or explicit user selection. The postprocessor fallback resolves strategy via `project_type` gracefully, but the IRR and profit_at_exit paths require `deals.strategy` to be explicitly set. The design question — what should the early-stage default for `strategy` be? — is the first item in #891's scope.
+
+**F-backfill-1 (low):** 5 production deals have no CS defaults in their active scenario because `getDealFinancials()` hasn't been called for them since the seeder fix landed. First UI open on any of these deals will trigger the seeder automatically. The one-time migration in #890 closes this gap proactively.
+
+---
+
+### Next Week Priorities (Suggested)
+
+1. **Run "Supposedly Done" verification queries** (carry-over from 2026-05-17) — scenario templates, production prompt versions, DQA Phase 2. These gaps are still open.
+2. **#890 CS defaults backfill** — one-time migration, low effort, closes the lazy-seeding gap for all existing production deals.
+3. **#891 strategy field at creation time** — design question first; then wire the creation route to write `strategy` from the deal intake form or derive from `investment_strategy_lv`.
+4. **Seed archive benchmarks (#846)** — still 0 rows; blocks archive trend chart and assumption benchmarking.
+5. **#892 M36 Pareto Frontier postprocessor fallback** — Phase 2 deliverable; no urgency but worth queuing.
+
+---
+
 ## Week of 2026-05-17 (Baseline Run)
 
 **Operator:** Agent  
