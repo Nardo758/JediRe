@@ -31,6 +31,8 @@ import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { executeRecipientQuery } from '../../services/recipient-agent-executor.service';
 import { encryptToken } from '../../services/encryption';
 import { emailService } from '../../services/email.service';
+import { NotificationService } from '../../services/NotificationService';
+import { NotificationType } from '../../types/notification.types';
 import * as crypto from 'crypto';
 
 const router = Router();
@@ -44,6 +46,17 @@ function generateAccessToken(): { token: string; hash: string } {
   const raw = crypto.randomBytes(32).toString('hex');
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
   return { token: raw, hash };
+}
+
+const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+function generateShortcode(): string {
+  const bytes = crypto.randomBytes(6);
+  let result = '';
+  for (const byte of bytes) {
+    result += BASE62[byte % 62];
+  }
+  return result.slice(0, 7);
 }
 
 // UUID pattern: 8-4-4-4-12 hex chars separated by dashes.
@@ -138,6 +151,7 @@ async function createExternalShareInternal(
   };
 
   const { token, hash } = generateAccessToken();
+  const shortcode = generateShortcode();
 
   // Tier-gate: only principal/institutional can set show_attribution_override = false
   const senderTier: string = capsuleRow.subscription_tier ?? 'scout';
@@ -157,7 +171,37 @@ async function createExternalShareInternal(
     ?? (forwardedHost ? `https://${forwardedHost}` : null)
     ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
     ?? `${req.protocol}://${req.get('host')}`;
-  const capsuleUrl = `${baseUrl}/capsule-link/${token}`;
+  const capsuleUrl = `${baseUrl}/share/${shortcode}`;
+
+  // Platform user detection — notify recipient in-app if they have a JediRe account.
+  // External share is always created; routed_to_platform is additive context for the sender.
+  let routedToPlatform = false;
+  if (resolvedShareMode === 'specific_recipient' && recipient_email) {
+    try {
+      const userResult = await pool.query(
+        'SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+        [recipient_email as string]
+      );
+      if (userResult.rows.length > 0) {
+        const recipientUserId = userResult.rows[0].id;
+        const notifService = new NotificationService(pool);
+        await notifService.createNotification({
+          userId: recipientUserId,
+          type: NotificationType.INFO_CAPSULE_SHARE_RECEIVED,
+          title: 'Deal shared with you',
+          message: `${capsuleRow.sender_display_name ?? 'A JediRe user'} shared "${capsuleRow.property_address ?? 'a deal'}" with you`,
+          actionUrl: `/share/${shortcode}`,
+          actionLabel: 'View Deal',
+          metadata: { capsuleId, shortcode },
+        });
+        routedToPlatform = true;
+      }
+    } catch (notifErr) {
+      logger.warn('Failed to send in-platform share notification (non-fatal)', {
+        error: (notifErr as Error).message,
+      });
+    }
+  }
 
   const shareResult = await pool.query(
     `INSERT INTO capsule_external_shares
@@ -165,8 +209,8 @@ async function createExternalShareInternal(
         recipient_email, recipient_name,
         allow_document_download, allow_agent_interaction, expires_at, access_token,
         preview_text, preview_metadata, capsule_snapshot, show_attribution_override,
-        share_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        share_url, shortcode)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      RETURNING share_id, created_at`,
     [
       capsuleId,
@@ -185,6 +229,7 @@ async function createExternalShareInternal(
       JSON.stringify(capsuleSnapshot),
       resolvedAttributionOverride,
       capsuleUrl,
+      shortcode,
     ]
   );
 
@@ -221,6 +266,8 @@ async function createExternalShareInternal(
   res.status(201).json({
     share_id: share.share_id,
     capsule_url: capsuleUrl,
+    share_url: capsuleUrl,
+    shortcode,
     access_token: token,
     share_mode: resolvedShareMode,
     label: label ? (label as string).trim().slice(0, 200) : null,
@@ -231,6 +278,7 @@ async function createExternalShareInternal(
     preview_metadata: preview_metadata ?? null,
     created_at: share.created_at,
     email_queued: emailQueued,
+    routed_to_platform: routedToPlatform,
   });
 }
 
@@ -316,6 +364,230 @@ async function handleTokenResolution(req: Request, res: Response) {
     return res.status(500).json({ error: 'Failed to resolve capsule' });
   }
 }
+
+// ─── GET /shares/:shortcode — shortcode resolution + deal-book ───────────────
+// Resolves a 7-char shortcode to the deal-book payload.
+// The shortcode is the credential; no raw access token is returned.
+// Recipients use the shortcode for all overlay operations via PATCH/DELETE below.
+
+const shortcodeRateLimitStore = new Map<string, number[]>();
+
+router.get('/shares/:shortcode', async (req: Request, res: Response) => {
+  const { shortcode } = req.params;
+  try {
+    const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    const rateKey = `share_resolve:${clientIp}`;
+    const now = Date.now();
+    const hits = (shortcodeRateLimitStore.get(rateKey) ?? []).filter(t => now - t < 3_600_000);
+    if (hits.length >= 60) {
+      return res.status(429).json({ error: 'Too many requests. Please wait before refreshing.' });
+    }
+    hits.push(now);
+    shortcodeRateLimitStore.set(rateKey, hits);
+
+    const pool = getPool();
+
+    const shareResult = await pool.query(
+      `SELECT ces.share_id, ces.capsule_id, ces.share_type, ces.access_token,
+              ces.allow_document_download, ces.allow_agent_interaction,
+              ces.expires_at, ces.recipient_email, ces.preview_text, ces.preview_metadata,
+              ces.capsule_snapshot, ces.show_attribution_override,
+              COALESCE(
+                NULLIF(u.full_name, ''),
+                NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), ''),
+                u.email
+              ) AS sender_display_name,
+              COALESCE(rso.overlay_data, '{}'::jsonb) AS overlay_data
+       FROM capsule_external_shares ces
+       LEFT JOIN deal_capsules dc ON dc.id = ces.capsule_id
+       LEFT JOIN users u ON u.id = dc.user_id
+       LEFT JOIN recipient_session_overlays rso ON rso.access_token_hash = ces.access_token
+       WHERE ces.shortcode = $1
+         AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
+       LIMIT 1`,
+      [shortcode]
+    );
+
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Share link is invalid, expired, or has been revoked.' });
+    }
+
+    const share = shareResult.rows[0];
+
+    let capsuleData: Record<string, unknown>;
+    if (share.capsule_snapshot) {
+      capsuleData = share.capsule_snapshot;
+    } else {
+      const capsuleResult = await pool.query(
+        `SELECT id, property_address, asset_class, status,
+                jedi_score, collision_score,
+                deal_data, platform_intel, user_adjustments, module_outputs,
+                created_at
+         FROM deal_capsules WHERE id = $1 LIMIT 1`,
+        [share.capsule_id]
+      );
+      if (capsuleResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Deal content not found.' });
+      }
+      capsuleData = capsuleResult.rows[0];
+    }
+
+    const senderBrandingResult = await pool.query(
+      `SELECT COALESCE(u.subscription_tier, 'scout') AS tier,
+              ubs.company_name, ubs.logo_url,
+              COALESCE(ubs.show_attribution, true) AS show_attribution
+       FROM deal_capsules dc
+       JOIN users u ON u.id = dc.user_id
+       LEFT JOIN user_branding_settings ubs ON ubs.user_id = dc.user_id
+       WHERE dc.id = $1`,
+      [share.capsule_id]
+    );
+
+    const senderBranding = senderBrandingResult.rows[0] ?? null;
+    const senderTier: string = senderBranding?.tier ?? 'scout';
+    const attributionEligible = ['principal', 'institutional'].includes(senderTier);
+
+    let attributionVisible: boolean;
+    if (!attributionEligible) {
+      attributionVisible = true;
+    } else if (share.show_attribution_override !== null && share.show_attribution_override !== undefined) {
+      attributionVisible = Boolean(share.show_attribution_override);
+    } else {
+      attributionVisible = senderBranding?.show_attribution !== false;
+    }
+
+    logger.info('Deal book served via shortcode', {
+      capsuleId: share.capsule_id,
+      shortcode,
+      shareType: share.share_type,
+    });
+
+    return res.json({
+      shortcode,
+      share: {
+        share_type: share.share_type,
+        agent_enabled: share.share_type === 'external_agent_enabled',
+        allow_document_download: share.allow_document_download,
+        allow_agent_interaction: share.allow_agent_interaction,
+        expires_at: share.expires_at,
+        preview_text: share.preview_text ?? null,
+        preview_metadata: share.preview_metadata ?? null,
+        recipient_email: share.recipient_email,
+      },
+      capsule: {
+        id: share.capsule_id,
+        property_address: capsuleData.property_address,
+        asset_class: capsuleData.asset_class,
+        status: capsuleData.status,
+        jedi_score: capsuleData.jedi_score ?? null,
+        collision_score: capsuleData.collision_score ?? null,
+        deal_data: (capsuleData.deal_data as Record<string, unknown>) ?? {},
+        platform_intel: (capsuleData.platform_intel as Record<string, unknown>) ?? {},
+        user_adjustments: (capsuleData.user_adjustments as Record<string, unknown>) ?? {},
+        module_outputs: (capsuleData.module_outputs as Record<string, unknown>) ?? {},
+        snapshot_taken_at: (capsuleData.snapshot_taken_at as string) ?? null,
+        created_at: capsuleData.created_at,
+      },
+      overlay: (share.overlay_data as Record<string, unknown>) ?? {},
+      attribution_visible: attributionVisible,
+      sender_display_name: share.sender_display_name ?? null,
+      sender_branding: {
+        company_name: senderBranding?.company_name ?? null,
+        logo_url: senderBranding?.logo_url ?? null,
+      },
+    });
+  } catch (err: any) {
+    logger.error('Failed to serve deal book via shortcode', { error: err?.message });
+    return res.status(500).json({ error: 'Failed to load share.' });
+  }
+});
+
+// ─── PATCH /shares/:shortcode/overlay ────────────────────────────────────────
+
+router.patch('/shares/:shortcode/overlay', async (req: Request, res: Response) => {
+  const { shortcode } = req.params;
+  const patch = req.body;
+
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+    return res.status(400).json({ error: 'Request body must be a flat key-value object' });
+  }
+  if (Object.keys(patch).length === 0) {
+    return res.status(400).json({ error: 'Patch object must contain at least one key' });
+  }
+
+  try {
+    const pool = getPool();
+    const shareResult = await pool.query(
+      `SELECT share_id, access_token FROM capsule_external_shares
+       WHERE shortcode = $1 AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
+      [shortcode]
+    );
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Share not found or expired' });
+    }
+    const { share_id: shareId, access_token: tokenHash } = shareResult.rows[0];
+
+    const result = await pool.query(
+      `INSERT INTO recipient_session_overlays (access_token_hash, share_id, overlay_data)
+       VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (access_token_hash) DO UPDATE
+         SET overlay_data = recipient_session_overlays.overlay_data || $3::jsonb,
+             updated_at   = NOW()
+       RETURNING overlay_data`,
+      [tokenHash, shareId, JSON.stringify(patch)]
+    );
+    return res.json({ overlay_data: result.rows[0].overlay_data });
+  } catch (err: any) {
+    logger.error('Failed to patch overlay via shortcode', { error: err?.message });
+    return res.status(500).json({ error: err?.message ?? 'Failed to update overlay' });
+  }
+});
+
+// ─── DELETE /shares/:shortcode/overlay ───────────────────────────────────────
+
+router.delete('/shares/:shortcode/overlay', async (req: Request, res: Response) => {
+  const { shortcode } = req.params;
+  const { path } = req.query as { path?: string };
+
+  try {
+    const pool = getPool();
+    const shareResult = await pool.query(
+      `SELECT access_token FROM capsule_external_shares
+       WHERE shortcode = $1 AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
+      [shortcode]
+    );
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Share not found or expired' });
+    }
+    const tokenHash = shareResult.rows[0].access_token;
+
+    let updatedOverlay: Record<string, unknown> = {};
+    if (path) {
+      const result = await pool.query(
+        `UPDATE recipient_session_overlays
+         SET overlay_data = overlay_data - $2, updated_at = NOW()
+         WHERE access_token_hash = $1
+         RETURNING overlay_data`,
+        [tokenHash, path]
+      );
+      updatedOverlay = result.rows[0]?.overlay_data ?? {};
+    } else {
+      await pool.query(
+        `UPDATE recipient_session_overlays
+         SET overlay_data = '{}', updated_at = NOW()
+         WHERE access_token_hash = $1`,
+        [tokenHash]
+      );
+    }
+    return res.json({ overlay_data: updatedOverlay });
+  } catch (err: any) {
+    logger.error('Failed to reset overlay via shortcode', { error: err?.message });
+    return res.status(500).json({ error: err?.message ?? 'Failed to reset overlay' });
+  }
+});
 
 // ─── GET /capsule-links/:accessToken/deal-book ───────────────────────────────
 // Returns the full capsule content for external display.

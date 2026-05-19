@@ -30,6 +30,7 @@ export enum NotificationType {
   INFO_COLLABORATOR_ADDED = 'info_collaborator_added',
   INFO_COMMENT_MENTION = 'info_comment_mention',
   INFO_TASK_ASSIGNED = 'info_task_assigned',
+  INFO_CAPSULE_SHARE_RECEIVED = 'info_capsule_share_received',
 
   // Data corpus (historical observations)
   DATA_CORPUS_UPLOAD_REQUIRED = 'data_corpus_upload_required',

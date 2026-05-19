@@ -31,6 +31,7 @@ import { logSwallowedError } from '../utils/swallowedError';
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import type { RecipientDealBook } from '../contexts/RecipientContext';
 import { 
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
@@ -330,7 +331,17 @@ const TrafficScreen = (props: ScreenProps) => (
   </div>
 );
 
-const DealTopStatusBar: React.FC<{ dealName: string; isDark: boolean; onToggleTheme: () => void }> = ({ dealName, isDark, onToggleTheme }) => {
+interface RecipientInfo {
+  senderDisplayName: string | null;
+  expiresAt: string | null;
+}
+
+const DealTopStatusBar: React.FC<{
+  dealName: string;
+  isDark: boolean;
+  onToggleTheme: () => void;
+  recipientInfo?: RecipientInfo;
+}> = ({ dealName, isDark, onToggleTheme, recipientInfo }) => {
   const [clock, setClock] = React.useState('');
   React.useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString('en-GB', { hour12: false }));
@@ -338,6 +349,13 @@ const DealTopStatusBar: React.FC<{ dealName: string; isDark: boolean; onToggleTh
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
+
+  const fmtExpiry = (iso: string | null): string => {
+    if (!iso) return 'No expiry';
+    try {
+      return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch { return 'No expiry'; }
+  };
 
   return (
     <div style={{
@@ -352,16 +370,41 @@ const DealTopStatusBar: React.FC<{ dealName: string; isDark: boolean; onToggleTh
         <span style={{ fontSize: 9, color: '#8B95A5', fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', flexShrink: 0 }}>
           {dealName}
         </span>
+        {recipientInfo && (
+          <>
+            <span style={{ fontSize: 9, color: '#4A5568', flexShrink: 0 }}>·</span>
+            <span style={{ fontSize: 9, color: '#00BCD4', letterSpacing: 0.6, flexShrink: 0 }}>
+              SHARED VIEW
+            </span>
+          </>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <span style={{ fontSize: 9, color: '#00D26A', display: 'flex', alignItems: 'center', gap: 3 }}>
-          <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#00D26A', animation: 'glow 2s infinite' }} />
-          5 AGT
-        </span>
-        <span style={{ fontSize: 9, color: '#00BCD4' }}>MAIL: 5</span>
-        <span style={{ fontSize: 9, color: '#8B95A5' }}>
-          KAFKA: <span style={{ color: '#E8ECF1', fontWeight: 600 }}>312/s</span>
-        </span>
+        {recipientInfo ? (
+          <>
+            {recipientInfo.senderDisplayName && (
+              <span style={{ fontSize: 9, color: '#8B95A5' }}>
+                FROM <span style={{ color: '#E8ECF1', fontWeight: 600 }}>{recipientInfo.senderDisplayName}</span>
+              </span>
+            )}
+            <span style={{ fontSize: 9, color: '#8B95A5' }}>
+              EXPIRES <span style={{ color: recipientInfo.expiresAt ? '#F5A623' : '#6B7A90', fontWeight: 600 }}>
+                {fmtExpiry(recipientInfo.expiresAt)}
+              </span>
+            </span>
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: 9, color: '#00D26A', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#00D26A', animation: 'glow 2s infinite' }} />
+              5 AGT
+            </span>
+            <span style={{ fontSize: 9, color: '#00BCD4' }}>MAIL: 5</span>
+            <span style={{ fontSize: 9, color: '#8B95A5' }}>
+              KAFKA: <span style={{ color: '#E8ECF1', fontWeight: 600 }}>312/s</span>
+            </span>
+          </>
+        )}
         <span style={{ fontSize: 9, color: '#8B95A5', flexShrink: 0 }}>
           {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
         </span>
@@ -460,14 +503,17 @@ const DealTypeBadge: React.FC<{
 };
 
 const DealDetailPage: React.FC = () => {
-  const { dealId } = useParams<{ dealId: string }>();
+  const { dealId, shortcode } = useParams<{ dealId?: string; shortcode?: string }>();
+  const isRecipient = !!shortcode;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { fetchDealContext } = useDealStore();
+  const [recipientBook, setRecipientBook] = useState<RecipientDealBook | null>(null);
+
   // Neural network context awareness — drives the GAPS / CLOSE DEAL
-  // header button rendered further down.
+  // header button rendered further down. Skipped in recipient mode (no auth).
   const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    dealId ? { context: 'deal_overview', dealId } : null
+    !isRecipient && dealId ? { context: 'deal_overview', dealId } : null
   );
   const config = useDealTypeConfig();
   const dealType = useDealType();
@@ -613,7 +659,9 @@ const DealDetailPage: React.FC = () => {
   }, [dealId, closeForm]);
   
   useEffect(() => {
-    if (dealId) {
+    if (isRecipient && shortcode) {
+      loadRecipientData(shortcode);
+    } else if (dealId) {
       loadDeal(dealId);
       fetchGeographicContext(dealId);
       // Fetch events context for banner
@@ -632,9 +680,8 @@ const DealDetailPage: React.FC = () => {
         })
         .catch(() => {});
     }
-  // hook intentionally omits fetchGeographicContext, loadDeal — they're inline functions recreated each render; including them would cause an infinite re-fetch loop. The functions close over the listed primitive deps.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dealId]);
+  }, [dealId, shortcode]);
 
   const fetchGeographicContext = async (id: string) => {
     try {
@@ -740,6 +787,41 @@ const DealDetailPage: React.FC = () => {
       if (fallback) {
         setDeal(fallback);
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadRecipientData = async (code: string) => {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/v1/shares/${code}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error('[Recipient] Failed to load share:', body.error);
+        setDeal(null);
+        return;
+      }
+      const book: RecipientDealBook = await res.json();
+      setRecipientBook(book);
+      const capsule = book.capsule;
+      const dealData = (capsule.deal_data ?? {}) as Record<string, unknown>;
+      setDeal({
+        ...dealData,
+        id: capsule.id,
+        name: (dealData.name as string) || capsule.property_address,
+        address: (dealData.address as string) || capsule.property_address,
+        location: (dealData.location as string) || capsule.property_address,
+        asset_class: capsule.asset_class,
+        status: capsule.status,
+        project_type: (dealData.project_type as string) || 'existing',
+        pipeline_stage: dealData.pipeline_stage ?? null,
+        jedi_score: capsule.jedi_score,
+        collision_score: capsule.collision_score,
+      });
+    } catch (err) {
+      console.error('[Recipient] Error loading deal book:', err);
+      setDeal(null);
     } finally {
       setLoading(false);
     }
@@ -889,7 +971,15 @@ const DealDetailPage: React.FC = () => {
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
 
         {/* ── Bar 1: Top Status Bar (JEDI RE branding + context label + status metrics) ── */}
-        <DealTopStatusBar dealName={deal?.name || deal?.address || 'DEAL'} isDark={isDark} onToggleTheme={() => setTheme(isDark ? 'light' : 'dark')} />
+        <DealTopStatusBar
+          dealName={deal?.name || deal?.address || 'DEAL'}
+          isDark={isDark}
+          onToggleTheme={() => setTheme(isDark ? 'light' : 'dark')}
+          recipientInfo={isRecipient ? {
+            senderDisplayName: recipientBook?.sender_display_name ?? null,
+            expiresAt: recipientBook?.share?.expires_at ?? null,
+          } : undefined}
+        />
 
         {/* ── Bar 2: Deal Context Bar (📍 name · address · JEDI score │ ▶ TRADE AREA │ SUBMARKET │ MSA) ── */}
         {deal && (
@@ -908,7 +998,18 @@ const DealDetailPage: React.FC = () => {
               {dealType && (
                 <>
                   <span style={{ color: BORDER, margin: '0 6px', fontSize: 9 }}>·</span>
-                  <DealTypeBadge current={dealType} onChange={handleDealTypeChange} saving={savingDealType} />
+                  {isRecipient ? (
+                    <span style={{
+                      fontSize: 8, fontWeight: 700, letterSpacing: 0.8, padding: '1px 6px', textTransform: 'uppercase',
+                      color: dealType === 'development' ? '#10B981' : dealType === 'redevelopment' ? '#8B5CF6' : '#F5A623',
+                      border: `1px solid ${dealType === 'development' ? '#10B98144' : dealType === 'redevelopment' ? '#8B5CF644' : '#F5A62344'}`,
+                      fontFamily: "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace",
+                    }}>
+                      {dealType.toUpperCase()}
+                    </span>
+                  ) : (
+                    <DealTypeBadge current={dealType} onChange={handleDealTypeChange} saving={savingDealType} />
+                  )}
                 </>
               )}
               {deal.pipeline_stage && (
@@ -919,7 +1020,7 @@ const DealDetailPage: React.FC = () => {
                   </span>
                 </>
               )}
-              {deal && isOwnedDeal(deal.status, deal.pipeline_stage) && (
+              {!isRecipient && deal && isOwnedDeal(deal.status, deal.pipeline_stage) && (
                 <>
                   <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>
                   <button
@@ -953,7 +1054,7 @@ const DealDetailPage: React.FC = () => {
                   </button>
                 </>
               )}
-              {(() => {
+              {!isRecipient && (() => {
                 const gaps = contextAnalysis?.gaps ?? [];
                 const unanswered = (contextAnalysis?.immediateQuestions ?? []).filter(q => !q.available);
                 const criticalGaps = gaps.filter(g => g.relevance === 'critical');
@@ -1317,27 +1418,29 @@ const DealDetailPage: React.FC = () => {
 
           {/* Right side: SHARE + JOURNEY + search */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
-            {/* SHARE — create a frozen capsule share link; hidden from recipients (they use CapsuleLinkPage) */}
-            <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', padding: '0 10px' }}>
-              <button
-                onClick={() => setShowShareModal(true)}
-                title="Share this deal as a frozen capsule snapshot"
-                style={{
-                  fontFamily: MONO, fontSize: 9, fontWeight: 600,
-                  padding: '2px 8px', letterSpacing: 0.6,
-                  background: showShareModal ? `${AMBER}20` : 'transparent',
-                  border: `1px solid ${showShareModal ? AMBER : BORDER}`,
-                  color: showShareModal ? AMBER : TEXT_MID,
-                  cursor: 'pointer',
-                  borderRadius: 2,
-                  transition: 'color 0.1s, border-color 0.1s',
-                  display: 'flex', alignItems: 'center', gap: 5,
-                }}
-              >
-                <Share2 size={10} />
-                SHARE
-              </button>
-            </div>
+            {/* SHARE — hidden in recipient mode */}
+            {!isRecipient && (
+              <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', padding: '0 10px' }}>
+                <button
+                  onClick={() => setShowShareModal(true)}
+                  title="Share this deal as a frozen capsule snapshot"
+                  style={{
+                    fontFamily: MONO, fontSize: 9, fontWeight: 600,
+                    padding: '2px 8px', letterSpacing: 0.6,
+                    background: showShareModal ? `${AMBER}20` : 'transparent',
+                    border: `1px solid ${showShareModal ? AMBER : BORDER}`,
+                    color: showShareModal ? AMBER : TEXT_MID,
+                    cursor: 'pointer',
+                    borderRadius: 2,
+                    transition: 'color 0.1s, border-color 0.1s',
+                    display: 'flex', alignItems: 'center', gap: 5,
+                  }}
+                >
+                  <Share2 size={10} />
+                  SHARE
+                </button>
+              </div>
+            )}
             {/* JOURNEY — A→B deal framework overlay, accessible from all F-key screens */}
             <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', padding: '0 10px' }}>
               <button

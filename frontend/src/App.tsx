@@ -160,6 +160,7 @@ function AppContent() {
         <Route path="/terminal/property/:id" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
 
         {/* ═══ Deal workflow pages — own internal nav, no layout chrome ═══ */}
+        <Route path="/share/:shortcode" element={<DealDetailPage />} />
         <Route path="/deals/create" element={<CreateDealPage />} />
         <Route path="/deals/:dealId/detail" element={<DealDetailPage />} />
         <Route path="/deals/:dealId/flywheel" element={<DealFlywheelDashboard />} />
