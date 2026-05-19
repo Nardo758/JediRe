@@ -4,7 +4,7 @@ import { BT } from '@/components/deal/bloomberg-ui';
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono', 'SF Mono', Monaco, monospace" };
 
-const PREMIUM_TIERS = ['principal', 'institutional'];
+const PREMIUM_TIERS = ['enterprise'];
 
 interface BrandingData {
   company_name: string | null;
@@ -171,7 +171,7 @@ export function BrandingSettings() {
             <div style={{ fontSize: 10, color: BT.text.muted, lineHeight: 1.5, ...mono }}>
               {canRemove
                 ? 'When enabled, recipients see "Powered by JediRe" on shared deals.'
-                : 'JediRe attribution is visible on all your shared deals. Upgrade to Principal or higher to customize.'}
+                : 'JediRe attribution is visible on all your shared deals. Upgrade to Enterprise to customize.'}
             </div>
           </div>
           {canRemove ? (
@@ -194,7 +194,7 @@ export function BrandingSettings() {
               border: '1px solid rgba(234,179,8,0.25)',
               color: '#EAB308',
             }}>
-              PRINCIPAL+
+              ENTERPRISE
             </div>
           )}
         </div>

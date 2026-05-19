@@ -4,7 +4,7 @@ import { query } from '../../database/connection';
 
 const router = Router();
 
-const ATTRIBUTION_ELIGIBLE_TIERS = ['principal', 'institutional'];
+const ATTRIBUTION_ELIGIBLE_TIERS = ['enterprise'];
 
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -12,7 +12,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     const result = await query(
       `SELECT ubs.company_name, ubs.logo_url, ubs.show_attribution,
-              COALESCE(u.subscription_tier, 'scout') AS tier
+              COALESCE(u.subscription_tier, 'free') AS tier
        FROM users u
        LEFT JOIN user_branding_settings ubs ON ubs.user_id = u.id
        WHERE u.id = $1`,
@@ -20,7 +20,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     );
 
     const row = result.rows[0];
-    const tier: string = row?.tier ?? 'scout';
+    const tier: string = row?.tier ?? 'free';
     const canRemoveAttribution = ATTRIBUTION_ELIGIBLE_TIERS.includes(tier);
 
     res.json({
@@ -45,12 +45,12 @@ router.put('/', requireAuth, async (req: Request, res: Response) => {
     const { company_name, logo_url, show_attribution } = req.body;
 
     const tierResult = await query(
-      `SELECT COALESCE(u.subscription_tier, 'scout') AS tier
+      `SELECT COALESCE(u.subscription_tier, 'free') AS tier
        FROM users u
        WHERE u.id = $1`,
       [userId]
     );
-    const tier: string = tierResult.rows[0]?.tier ?? 'scout';
+    const tier: string = tierResult.rows[0]?.tier ?? 'free';
     const canRemoveAttribution = ATTRIBUTION_ELIGIBLE_TIERS.includes(tier);
 
     // Only allow overriding attribution for eligible tiers
