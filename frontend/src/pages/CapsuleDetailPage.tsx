@@ -4,7 +4,7 @@ import {
   ArrowLeft, Share2, Download, TrendingUp, Building2, 
   DollarSign, AlertTriangle, CheckCircle, Target,
   BarChart3, MessageSquare, Loader2, Activity, ChevronDown, ChevronUp, ArrowRight, Zap,
-  X, Users2, RotateCcw, ShieldOff, Clock, Plus
+  X, Users2, RotateCcw, ShieldOff, Clock, Plus, Copy, Check, Link
 } from 'lucide-react';
 import { ThreeColumnComparison } from '../components/deal/ThreeColumnComparison';
 import { apiClient } from '../services/api.client';
@@ -18,14 +18,16 @@ type TabId = 'overview' | 'layers' | 'collision' | 'training' | 'ai-agent' | 'in
 interface ShareItem {
   share_id: string;
   share_type: 'external_view' | 'external_agent_enabled';
-  recipient_email: string;
+  share_mode: 'specific_recipient' | 'shareable_link';
+  label: string | null;
+  recipient_email: string | null;
   recipient_name: string | null;
   created_at: string;
   expires_at: string | null;
   revoked_at: string | null;
   preview_text: string | null;
   share_status: 'active' | 'revoked' | 'expired';
-  access_token_hint?: string;
+  share_url: string | null;
 }
 
 interface CapsuleData {
@@ -285,6 +287,7 @@ const CapsuleDetailPage: React.FC = () => {
   const [shares, setShares] = useState<ShareItem[] | null>(null);
   const [sharesLoading, setSharesLoading] = useState(false);
   const [revokeLoadingId, setRevokeLoadingId] = useState<string | null>(null);
+  const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
 
   const loadShares = useCallback(async () => {
     if (!id) return;
@@ -1065,11 +1068,27 @@ const CapsuleDetailPage: React.FC = () => {
                           : 'No expiry';
                         const isExpiringSoon = share.expires_at && isActive &&
                           new Date(share.expires_at).getTime() - Date.now() < 7 * 86_400_000;
+                        const isCopied = copiedShareId === share.share_id;
+
+                        const copyLink = () => {
+                          if (!share.share_url) return;
+                          navigator.clipboard.writeText(share.share_url).then(() => {
+                            setCopiedShareId(share.share_id);
+                            setTimeout(() => setCopiedShareId(null), 2000);
+                          });
+                        };
 
                         return (
                           <tr key={share.share_id} className={`transition-colors ${isRevoked ? 'bg-gray-50 opacity-60' : 'hover:bg-gray-50'}`}>
                             <td className="px-5 py-4">
-                              <div className="font-medium text-gray-900">{share.recipient_email}</div>
+                              {share.share_mode === 'shareable_link' ? (
+                                <div className="flex items-center gap-1.5 text-gray-700 font-medium">
+                                  <Link className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                                  {share.label || 'Shareable link'}
+                                </div>
+                              ) : (
+                                <div className="font-medium text-gray-900">{share.recipient_email}</div>
+                              )}
                               {share.recipient_name && (
                                 <div className="text-xs text-gray-500 mt-0.5">{share.recipient_name}</div>
                               )}
@@ -1115,6 +1134,20 @@ const CapsuleDetailPage: React.FC = () => {
                             </td>
                             <td className="px-5 py-4">
                               <div className="flex items-center gap-2">
+                                {share.share_url && (
+                                  <button
+                                    onClick={copyLink}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-md transition-colors ${
+                                      isCopied
+                                        ? 'text-green-600 border-green-200 bg-green-50'
+                                        : 'text-gray-600 border-gray-200 hover:bg-gray-50'
+                                    }`}
+                                    title={share.share_url}
+                                  >
+                                    {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                    {isCopied ? 'Copied!' : 'Copy link'}
+                                  </button>
+                                )}
                                 {isActive && (
                                   <button
                                     onClick={() => revokeShare(share.share_id)}
@@ -1128,7 +1161,7 @@ const CapsuleDetailPage: React.FC = () => {
                                     Revoke
                                   </button>
                                 )}
-                                {isRevoked && (
+                                {isRevoked && !share.share_url && (
                                   <span className="text-xs text-gray-400">
                                     Revoked {share.revoked_at ? new Date(share.revoked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                                   </span>

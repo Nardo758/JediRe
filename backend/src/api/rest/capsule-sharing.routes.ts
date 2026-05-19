@@ -150,13 +150,23 @@ async function createExternalShareInternal(
     // Silently ignore false attribution override for lower tiers — do not 403 the share
   }
 
+  const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+  const baseUrl = process.env.PUBLIC_BASE_URL
+    ?? process.env.FRONTEND_URL
+    ?? process.env.PUBLIC_URL
+    ?? (forwardedHost ? `https://${forwardedHost}` : null)
+    ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
+    ?? `${req.protocol}://${req.get('host')}`;
+  const capsuleUrl = `${baseUrl}/capsule-link/${token}`;
+
   const shareResult = await pool.query(
     `INSERT INTO capsule_external_shares
        (capsule_id, shared_by_user_id, share_type, share_mode, label,
         recipient_email, recipient_name,
         allow_document_download, allow_agent_interaction, expires_at, access_token,
-        preview_text, preview_metadata, capsule_snapshot, show_attribution_override)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        preview_text, preview_metadata, capsule_snapshot, show_attribution_override,
+        share_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      RETURNING share_id, created_at`,
     [
       capsuleId,
@@ -174,18 +184,11 @@ async function createExternalShareInternal(
       preview_metadata ? JSON.stringify(preview_metadata) : null,
       JSON.stringify(capsuleSnapshot),
       resolvedAttributionOverride,
+      capsuleUrl,
     ]
   );
 
   const share = shareResult.rows[0];
-  const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
-  const baseUrl = process.env.PUBLIC_BASE_URL
-    ?? process.env.FRONTEND_URL
-    ?? process.env.PUBLIC_URL
-    ?? (forwardedHost ? `https://${forwardedHost}` : null)
-    ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
-    ?? `${req.protocol}://${req.get('host')}`;
-  const capsuleUrl = `${baseUrl}/capsule-link/${token}`;
 
   // Fire share invitation email for specific-recipient shares.
   // Shareable links have no known recipient at creation time — no email sent.
@@ -833,6 +836,7 @@ router.get('/:capsuleId/shares', requireAuth, async (req: AuthenticatedRequest, 
               ces.recipient_email, ces.recipient_name,
               ces.created_at, ces.revoked_at, ces.expires_at,
               ces.preview_text, ces.preview_metadata,
+              ces.share_url,
               CASE WHEN ces.revoked_at IS NOT NULL THEN 'revoked'
                    WHEN ces.expires_at IS NOT NULL AND ces.expires_at < NOW() THEN 'expired'
                    ELSE 'active'
