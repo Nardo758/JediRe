@@ -111,10 +111,9 @@ async function createExternalShareInternal(
               NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), ''),
               u.email
             ) AS sender_display_name,
-            COALESCE(ucb.subscription_tier, u.subscription_tier, 'scout') AS subscription_tier
+            COALESCE(u.subscription_tier, 'scout') AS subscription_tier
      FROM deal_capsules dc
      JOIN users u ON u.id = dc.user_id
-     LEFT JOIN user_credit_balances ucb ON ucb.user_id = dc.user_id
      WHERE dc.id = $1 AND dc.user_id = $2 LIMIT 1`,
     [capsuleId, userId]
   );
@@ -383,13 +382,12 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
 
     // Resolve sender branding + tier for attribution decision
     const senderBrandingResult = await pool.query(
-      `SELECT COALESCE(ucb.subscription_tier, u.subscription_tier, 'scout') AS tier,
+      `SELECT COALESCE(u.subscription_tier, 'scout') AS tier,
               ubs.company_name,
               ubs.logo_url,
               COALESCE(ubs.show_attribution, true) AS show_attribution
        FROM deal_capsules dc
        JOIN users u ON u.id = dc.user_id
-       LEFT JOIN user_credit_balances ucb ON ucb.user_id = dc.user_id
        LEFT JOIN user_branding_settings ubs ON ubs.user_id = dc.user_id
        WHERE dc.id = $1`,
       [share.capsule_id]

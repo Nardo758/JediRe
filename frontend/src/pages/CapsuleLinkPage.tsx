@@ -1590,7 +1590,7 @@ export default function CapsuleLinkPage() {
       {data.attribution_visible && (
         <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 32px', textAlign: 'center' }}>
           <span style={{ fontFamily: MONO, fontSize: 9, color: MUTED, letterSpacing: '0.12em' }}>
-            POWERED BY JEDIRE · DEAL INTELLIGENCE PLATFORM
+            Powered by JediRe · Deal Intelligence Platform
           </span>
         </div>
       )}
