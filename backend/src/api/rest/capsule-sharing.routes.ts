@@ -152,7 +152,11 @@ async function createExternalShareInternal(
   );
 
   const share = shareResult.rows[0];
-  const baseUrl = process.env.PUBLIC_URL ?? `${req.protocol}://${req.get('host')}`;
+  const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+  const baseUrl = process.env.PUBLIC_URL
+    ?? (forwardedHost ? `https://${forwardedHost}` : null)
+    ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
+    ?? `${req.protocol}://${req.get('host')}`;
   const capsuleUrl = `${baseUrl}/capsule-link/${token}`;
 
   logger.info('External share created', {
