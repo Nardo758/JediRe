@@ -18,17 +18,22 @@ import { logger } from '../utils/logger';
 import {
   resolveMsa,
   resolveSubmarket,
+  resolveProperty,
   canonicalMsaKey,
   canonicalSubmarketKey,
+  canonicalPropertyKey,
   type MsaResolution,
   type SubmarketResolution,
+  type PropertyResolution,
 } from '../api/rest/_market-resolution';
 
 export type AgentSentimentLabel = 'bullish' | 'neutral' | 'bearish';
 export type SentimentSource = 'agent_run' | 'cron_snapshot' | 'backfill' | 'broker_om';
 
+export type SentimentEntityType = 'msa' | 'submarket' | 'property';
+
 export interface SentimentSnapshotInput {
-  entityType: 'msa' | 'submarket';
+  entityType: SentimentEntityType;
   entityId: string;
   agentScore: -1 | 0 | 1 | null;
   source: SentimentSource;
@@ -71,7 +76,7 @@ export interface SentimentAnomaly {
 }
 
 export interface SentimentTrendResult {
-  entityType: 'msa' | 'submarket';
+  entityType: SentimentEntityType;
   entityId: string;
   windowMonths: number;
   points: SentimentTrendPoint[];
@@ -211,6 +216,38 @@ async function buildNewsScopeForSubmarket(
   };
 }
 
+/**
+ * News scope for a property. Primary tokens = property name slug + raw name.
+ * Geography tokens = state, city, county, plus parent-MSA tokens when
+ * `msa_id` is set. If we have no primary tokens (unnamed property) or no
+ * geography disambiguator, computeNews30dAvg will return NULL — which is the
+ * correct fail-loud behavior (don't fabricate a property-specific sentiment
+ * line from generic city news).
+ */
+async function buildNewsScopeForProperty(
+  resolved: PropertyResolution,
+  parentMsa: MsaResolution | null,
+): Promise<NewsScope> {
+  const primary: string[] = [];
+  if (resolved.name) {
+    const slug = resolved.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (slug) primary.push(slug);
+    primary.push(resolved.name.toLowerCase());
+  }
+  const geography: string[] = [];
+  if (resolved.state) geography.push(resolved.state.toLowerCase());
+  if (resolved.city) geography.push(resolved.city.toLowerCase());
+  if (resolved.county) geography.push(resolved.county.toLowerCase());
+  if (parentMsa) {
+    geography.push(parentMsa.primaryCity.toLowerCase());
+    for (const sc of parentMsa.stateCodes) geography.push(sc.toLowerCase());
+  }
+  return {
+    primaryTokens: Array.from(new Set(primary.filter(Boolean))),
+    geographyTokens: Array.from(new Set(geography.filter(Boolean))),
+  };
+}
+
 async function latestMacroConsumerSentiment(): Promise<number | null> {
   try {
     const r = await query(
@@ -312,7 +349,7 @@ async function computeNews30dAvgAt(
  * caller passed a numeric PK, a CBSA code, a UUID, or a slug.
  */
 async function resolveEntityForStorage(
-  entityType: 'msa' | 'submarket',
+  entityType: SentimentEntityType,
   rawEntityId: string,
 ): Promise<{ canonicalId: string; resolvedName: string | null; newsScope: NewsScope | null }> {
   const pool = getPool();
@@ -326,21 +363,34 @@ async function resolveEntityForStorage(
         newsScope: msa ? await buildNewsScopeForMsa(msa) : null,
       };
     }
-    const sub = await resolveSubmarket(client, rawEntityId, null);
-    let parentMsa: MsaResolution | null = null;
-    if (sub && sub.source === 'submarket') {
-      const r = await client.query(
-        `SELECT m.id::text AS msa_id_text FROM submarkets s JOIN msas m ON m.id = s.msa_id WHERE s.id = $1 LIMIT 1`,
-        [Number(sub.id)],
-      );
-      if (r.rows.length > 0) {
-        parentMsa = await resolveMsa(client, String(r.rows[0].msa_id_text));
+    if (entityType === 'submarket') {
+      const sub = await resolveSubmarket(client, rawEntityId, null);
+      let parentMsa: MsaResolution | null = null;
+      if (sub && sub.source === 'submarket') {
+        const r = await client.query(
+          `SELECT m.id::text AS msa_id_text FROM submarkets s JOIN msas m ON m.id = s.msa_id WHERE s.id = $1 LIMIT 1`,
+          [Number(sub.id)],
+        );
+        if (r.rows.length > 0) {
+          parentMsa = await resolveMsa(client, String(r.rows[0].msa_id_text));
+        }
       }
+      return {
+        canonicalId: canonicalSubmarketKey(sub, rawEntityId),
+        resolvedName: sub?.name ?? null,
+        newsScope: sub ? await buildNewsScopeForSubmarket(sub, parentMsa) : null,
+      };
+    }
+    // property
+    const prop = await resolveProperty(client, rawEntityId);
+    let parentMsa: MsaResolution | null = null;
+    if (prop && prop.msaId !== null) {
+      parentMsa = await resolveMsa(client, String(prop.msaId));
     }
     return {
-      canonicalId: canonicalSubmarketKey(sub, rawEntityId),
-      resolvedName: sub?.name ?? null,
-      newsScope: sub ? await buildNewsScopeForSubmarket(sub, parentMsa) : null,
+      canonicalId: canonicalPropertyKey(prop, rawEntityId),
+      resolvedName: prop?.name ?? null,
+      newsScope: prop ? await buildNewsScopeForProperty(prop, parentMsa) : null,
     };
   } finally {
     client.release();
@@ -469,7 +519,7 @@ function blendScore(
 }
 
 export async function getSentimentTrend(
-  entityType: 'msa' | 'submarket',
+  entityType: SentimentEntityType,
   entityId: string,
   windowMonths: number,
 ): Promise<SentimentTrendResult & { canonicalEntityId: string; resolvedEntityName: string | null }> {
@@ -671,24 +721,24 @@ async function fetchTopDriverNews(ids: string[]): Promise<SentimentTopNews[]> {
 export async function snapshotAllActiveEntities(): Promise<{
   written: number;
   failed: number;
-  byType: { msa: number; submarket: number };
+  byType: { msa: number; submarket: number; property: number };
 }> {
   let written = 0;
   let failed = 0;
-  const byType = { msa: 0, submarket: 0 };
+  const byType = { msa: 0, submarket: 0, property: 0 };
 
   try {
     const r = await query(
       `SELECT DISTINCT ON (entity_type, entity_id)
               entity_type, entity_id, commentary
          FROM market_commentary
-        WHERE entity_type IN ('msa','submarket')
+        WHERE entity_type IN ('msa','submarket','property')
           AND (tab_context = 'commentary' OR tab_context IS NULL)
         ORDER BY entity_type, entity_id, generated_at DESC`,
     );
 
     for (const row of r.rows) {
-      const entityType = String(row.entity_type) as 'msa' | 'submarket';
+      const entityType = String(row.entity_type) as SentimentEntityType;
       const entityId = String(row.entity_id);
 
       // Per-row guard: a single malformed commentary blob must NOT abort the

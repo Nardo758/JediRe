@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Loader2, Brain, TrendingUp, AlertTriangle, CheckCircle2, FileText } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import { BT } from '../../../components/deal/bloomberg-ui';
+import { MarketSentimentTrend } from '../../../components/terminal/commentary';
 
 const MONO = "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace";
 
@@ -9,6 +10,10 @@ interface CommentaryPanelProps {
   dealId: string;
   dealName: string;
 }
+
+// Property-level sentiment uses the same entityId the commentary endpoint
+// receives (dealId). The backend resolver collapses dealId → properties.id via
+// properties.deal_id so the trend row keys stay stable.
 
 interface CommentaryItem {
   id: string;
@@ -18,7 +23,7 @@ interface CommentaryItem {
   created_at: string;
 }
 
-export function CommentaryPanel({ dealId }: CommentaryPanelProps) {
+export function CommentaryPanel({ dealId, dealName }: CommentaryPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [commentary, setCommentary] = useState<CommentaryItem | null>(null);
@@ -98,6 +103,12 @@ export function CommentaryPanel({ dealId }: CommentaryPanelProps) {
 
       {expanded && (
         <div style={{ padding: '8px 10px 10px', borderTop: '1px solid #1e293b' }}>
+          <MarketSentimentTrend
+            entityType="property"
+            entityId={dealId}
+            entityName={dealName}
+          />
+
           {loading && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748b', fontFamily: MONO, fontSize: 9 }}>
               <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />

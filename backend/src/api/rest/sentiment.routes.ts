@@ -19,8 +19,8 @@ sentimentRouter.get('/trend/:entityType/:entityId', async (req: Request, res: Re
   const entityType = req.params.entityType;
   const entityId = req.params.entityId;
 
-  if (entityType !== 'msa' && entityType !== 'submarket') {
-    res.status(400).json({ success: false, error: "entityType must be 'msa' or 'submarket'" });
+  if (entityType !== 'msa' && entityType !== 'submarket' && entityType !== 'property') {
+    res.status(400).json({ success: false, error: "entityType must be 'msa', 'submarket', or 'property'" });
     return;
   }
 

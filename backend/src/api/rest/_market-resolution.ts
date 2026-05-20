@@ -24,6 +24,25 @@ export type SubmarketResolution = {
   state: string | null;
 };
 
+/**
+ * Property resolution. `id` is the canonical UUID from `properties.id` even
+ * when the caller passed a deal UUID (we look up via `properties.deal_id`
+ * because `CommentaryPanel.tsx` passes dealId as the entity id). `dealId` is
+ * populated whenever a parent deal row is linked so downstream consumers can
+ * tell the two apart.
+ */
+export type PropertyResolution = {
+  id: string;
+  name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  county: string | null;
+  submarketId: string | null;
+  msaId: number | null;
+  dealId: string | null;
+};
+
 export const slugify = (s: string): string =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
@@ -48,6 +67,9 @@ export const canonicalMsaKey = (resolved: MsaResolution | null, raw: string): st
 
 export const canonicalSubmarketKey = (resolved: SubmarketResolution | null, raw: string): string =>
   resolved ? `submarket:${resolved.source}:${String(resolved.id)}` : `submarket:${raw.toLowerCase()}`;
+
+export const canonicalPropertyKey = (resolved: PropertyResolution | null, raw: string): string =>
+  resolved ? `property:${resolved.id}` : `property:${raw.toLowerCase()}`;
 
 export const resolveMsa = async (
   client: DbClient,
@@ -184,6 +206,53 @@ export const resolveSubmarket = async (
         state: null,
       };
     }
+  }
+
+  return null;
+};
+
+/**
+ * Resolve a property by UUID (properties.id), parent deal UUID
+ * (properties.deal_id — what `CommentaryPanel.tsx` actually passes today), or
+ * by name slug. Numeric inputs are rejected because properties are keyed by
+ * UUID; there is no integer surrogate in the schema.
+ */
+export const resolveProperty = async (
+  client: DbClient,
+  propertyId: string,
+): Promise<PropertyResolution | null> => {
+  if (!propertyId) return null;
+
+  const SELECT = `SELECT id::text AS id, name, address_line1, city, state_code,
+                         county, submarket_id, msa_id, deal_id::text AS deal_id
+                    FROM properties`;
+
+  const toRes = (row: Record<string, unknown>): PropertyResolution => ({
+    id: String(row.id),
+    name: row.name ? String(row.name) : null,
+    address: row.address_line1 ? String(row.address_line1) : null,
+    city: row.city ? String(row.city) : null,
+    state: row.state_code ? String(row.state_code) : null,
+    county: row.county ? String(row.county) : null,
+    submarketId: row.submarket_id ? String(row.submarket_id) : null,
+    msaId: row.msa_id === null || row.msa_id === undefined ? null : Number(row.msa_id),
+    dealId: row.deal_id ? String(row.deal_id) : null,
+  });
+
+  if (UUID_RE.test(propertyId)) {
+    const direct = await client.query(`${SELECT} WHERE id = $1::uuid LIMIT 1`, [propertyId]);
+    if (direct.rows.length > 0) return toRes(direct.rows[0]);
+
+    const viaDeal = await client.query(`${SELECT} WHERE deal_id = $1::uuid LIMIT 1`, [propertyId]);
+    if (viaDeal.rows.length > 0) return toRes(viaDeal.rows[0]);
+    return null;
+  }
+
+  const wanted = propertyId.toLowerCase();
+  const all = await client.query(`${SELECT} WHERE name IS NOT NULL`, []);
+  for (const row of all.rows) {
+    const nm = row.name ? String(row.name) : '';
+    if (slugify(nm) === wanted) return toRes(row);
   }
 
   return null;

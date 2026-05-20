@@ -742,7 +742,11 @@ IMPORTANT CITATION RULES:
       logger.warn('Commentary Agent: failed to cache result in market_commentary', { error: err });
     }
 
-    if (result.entityType === 'msa' || result.entityType === 'submarket') {
+    if (
+      result.entityType === 'msa' ||
+      result.entityType === 'submarket' ||
+      result.entityType === 'property'
+    ) {
       await recordSentimentSnapshot({
         entityType: result.entityType,
         entityId: result.entityId,

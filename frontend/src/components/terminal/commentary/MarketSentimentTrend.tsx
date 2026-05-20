@@ -78,7 +78,7 @@ interface SentimentTrendResponse {
 }
 
 interface MarketSentimentTrendProps {
-  entityType: 'msa' | 'submarket';
+  entityType: 'msa' | 'submarket' | 'property';
   entityId: string;
   entityName?: string;
   windowMonths?: 12 | 18 | 24;
