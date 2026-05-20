@@ -597,6 +597,46 @@ router.post('/ingest-rows', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'Body must contain a non-empty rows array' });
   }
 
+  // Allowlist of every valid snake_case column in historical_observations.
+  // Any field sent by the client that isn't in this set is silently dropped
+  // so unknown field names never blow up the INSERT/UPDATE.
+  const VALID_COLS = new Set([
+    'msa_id','submarket_id','parcel_id','latitude','longitude',
+    'geography_level','observation_date','observation_window',
+    'commute_shed_workers','commute_shed_wage_pct',
+    'mobility_visits_monthly','mobility_unique_visitors','mobility_visits_psf',
+    'active_event_count','event_employer_jobs_added','event_employer_jobs_lost',
+    'event_supply_units_delivered','event_supply_units_announced','event_subtypes',
+    'msa_employment_total','msa_employment_growth_yoy','msa_avg_wage',
+    'msa_wage_growth_yoy','msa_unemployment_rate','msa_population',
+    'msa_household_growth_yoy','msa_in_migration_net','msa_treasury_10y','msa_fed_funds_rate',
+    'submarket_avg_asking_rent','submarket_avg_effective_rent','submarket_vacancy_rate',
+    'submarket_concession_pct','submarket_under_construction','submarket_pipeline_units_24mo',
+    'submarket_class_a_share',
+    'property_occupancy','property_avg_rent','property_concession_per_unit',
+    'property_unit_count','property_year_built','property_class',
+    'property_asking_rent','property_signing_velocity',
+    'realized_rent_change_t3','realized_rent_change_t12','realized_rent_change_t24',
+    'realized_occupancy_change_t3','realized_occupancy_change_t12',
+    'realized_concession_change_t12',
+    'realized_signing_velocity_t3','realized_signing_velocity_t12',
+    'realized_cap_rate_change_t12_bps','realized_cap_rate_change_t24_bps',
+    'realized_walkins_psf_t12',
+    'source_signals','signal_freshness_days','is_subject_property',
+    'realization_complete','realization_complete_date',
+    'data_quality_flags','data_quality_tier',
+    'capital_event_type','capital_event_amount','capital_event_metadata',
+    'redistribution_restricted',
+    'costar_submarket_rent','costar_submarket_vacancy','costar_submarket_absorption',
+    'costar_submarket_concession_pct','costar_submarket_new_supply',
+    'market_survey_source','market_survey_snapshot',
+    'deal_id',
+    'rezone_upzoning_event_count','rezone_approval_event_count',
+    'rezone_moratorium_active','rezone_outcome','rezone_window_months',
+  ]);
+
+  const SKIP_ALWAYS = new Set(['id','created_at','updated_at']);
+
   const pool = getPool();
   let inserted = 0;
   let updated = 0;
@@ -640,11 +680,9 @@ router.post('/ingest-rows', async (req: Request, res: Response) => {
         const params: unknown[] = [mergedSignals];
         let idx = params.length;
 
-        const SKIP_COLS = new Set(['id', 'parcel_id', 'observation_date', 'geography_level',
-          'source_signals', 'created_at', 'updated_at']);
-
         for (const [col, val] of Object.entries(row)) {
-          if (SKIP_COLS.has(col) || val === null || val === undefined) continue;
+          if (SKIP_ALWAYS.has(col) || col === 'source_signals') continue;
+          if (!VALID_COLS.has(col) || val === null || val === undefined) continue;
           idx++;
           params.push(val);
           assignments.push(`${col} = $${idx}`);
@@ -663,9 +701,14 @@ router.post('/ingest-rows', async (req: Request, res: Response) => {
           geography_level: geographyLevel,
           observation_window: 'monthly',
           is_subject_property: false,
-          ...row,
-          source_signals: newSignals,
         };
+
+        for (const [col, val] of Object.entries(row)) {
+          if (SKIP_ALWAYS.has(col) || val === null || val === undefined) continue;
+          if (!VALID_COLS.has(col)) continue;
+          allFields[col] = val;
+        }
+        allFields['source_signals'] = newSignals;
 
         const cols = Object.keys(allFields);
         const vals = Object.values(allFields);
