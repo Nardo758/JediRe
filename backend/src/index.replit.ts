@@ -628,11 +628,14 @@ app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
 app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
 app.use('/api/v1/calibration', requireAuth, m07CalibrationRouter);
 app.use('/api/v1/macro', requireAuth, macroIndicatorsRouter);
-app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
-// Archive management routes
+// Archive management routes — mounted BEFORE the catch-all `/api/v1` requireAuth
+// below so that /ingest-rows (which uses x-ingest-secret instead of JWT) is reachable.
+// Individual archive routes still carry their own per-route requireAuth guards.
 import archiveRouter from './api/rest/archive.routes';
 app.use('/api/v1/archive', archiveRouter);
+
+app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 // Cloud storage integration routes
 import cloudStorageRouter from './api/rest/cloud-storage.routes';
