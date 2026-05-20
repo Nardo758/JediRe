@@ -104,7 +104,12 @@ router.get('/events', async (req: Request, res: Response) => {
       })
       .slice(0, Number(limit));
 
-    // Transform to NewsEvent format expected by frontend
+    // Transform to NewsEvent format expected by frontend.
+    // sentiment_score / sentiment_label are surfaced here so the Sentiment
+    // Trend chart + top-driver tooltips (Task #388) get a single, stable
+    // shape regardless of whether the article came from RSS (no score yet)
+    // or from a stored news_items row. RSS articles fall back to null and
+    // the chart treats them as "not yet scored".
     const events = deduped.map((article, idx) => ({
       id: article.id || `event_${idx}`,
       event_category: article.category || 'real-estate',
@@ -122,6 +127,8 @@ router.get('/events', async (req: Request, res: Response) => {
       impact_severity: 'moderate',
       extraction_confidence: 0.9,
       corroboration_count: 0,
+      sentiment_score: article.sentiment_score ?? null,
+      sentiment_label: article.sentiment_label ?? null,
       published_at: article.publishedAt?.toISOString?.() || article.publishedAt || new Date().toISOString(),
     }));
 

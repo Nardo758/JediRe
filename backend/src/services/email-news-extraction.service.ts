@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 import { query, getPool } from '../database/connection';
 import axios from 'axios';
 import { createEvent, type M35EventCategory, type M35EventScope } from './m35-events.service';
+import { fromExistingScore, scoreNewsItem, type SentimentLabel } from './news-sentiment-scorer.service';
 
 export interface ExtractedNewsEvent {
   // Event details
@@ -245,6 +246,25 @@ export async function storeNewsEvent(
     // Find market
     const marketId = await findMarketId(newsEvent.city, newsEvent.state);
 
+    // ── Sentiment scoring (Task #388) ───────────────────────────────────────
+    // The email-extraction LLM already produces a -1..+1 sentiment as part of
+    // ExtractedNewsEvent. We accept that as the canonical score and only
+    // re-score (via news-sentiment-scorer) when it's missing — that way one
+    // article never gets two LLM calls. The label is always normalized to
+    // bullish|neutral|bearish so the Sentiment Trend chart and top-driver
+    // tooltips both speak the same vocabulary.
+    let sentimentScore: number;
+    let sentimentLabel: SentimentLabel;
+    if (typeof newsEvent.sentiment === 'number' && Number.isFinite(newsEvent.sentiment)) {
+      const normalized = fromExistingScore(newsEvent.sentiment);
+      sentimentScore = normalized.score;
+      sentimentLabel = normalized.label;
+    } else {
+      const scored = await scoreNewsItem(newsEvent.title, newsEvent.summary);
+      sentimentScore = scored.score;
+      sentimentLabel = scored.label;
+    }
+
     // Store to news_items table
     const result = await query(
       `INSERT INTO news_items (
@@ -275,8 +295,8 @@ export async function storeNewsEvent(
         new Date(),
         newsEvent.eventType,
         [newsEvent.eventType, 'email_intelligence'], // Tags
-        newsEvent.sentiment || 0,
-        getSentimentLabel(newsEvent.sentiment || 0),
+        sentimentScore,
+        sentimentLabel,
         newsEvent.impactScore || 50,
         {
           emailId,
@@ -305,17 +325,6 @@ export async function storeNewsEvent(
     logger.error('Error storing news event:', error);
     return null;
   }
-}
-
-/**
- * Get sentiment label from score
- */
-function getSentimentLabel(score: number): string {
-  if (score >= 0.5) return 'very_positive';
-  if (score >= 0.2) return 'positive';
-  if (score >= -0.2) return 'neutral';
-  if (score >= -0.5) return 'negative';
-  return 'very_negative';
 }
 
 /**
