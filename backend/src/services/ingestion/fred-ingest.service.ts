@@ -42,6 +42,18 @@ const FRED_SERIES: FREDSeries[] = [
   { metricId: 'M_CASE_SHILLER_HPI', seriesId: 'ATXRNSA', source: 'fred_sp', geographyType: 'metro', geographyId: 'atlanta-ga-ga', geographyName: 'Atlanta-Sandy Springs-Roswell, GA', periodType: 'monthly', observationStart: '2000-01-01' },
   { metricId: 'M_HOUSING_STARTS', seriesId: 'HOUST', source: 'fred_census', geographyType: 'national', geographyId: 'US', geographyName: 'United States', periodType: 'monthly', observationStart: '2000-01-01' },
   { metricId: 'M_LEISURE_HOSPITALITY_EMP', seriesId: 'ATLA013LEIHN', source: 'fred_bls', geographyType: 'metro', geographyId: 'atlanta-ga-ga', geographyName: 'Atlanta-Sandy Springs-Roswell, GA', periodType: 'monthly', observationStart: '2000-01-01' },
+
+  // ── CRE-adjacent national series (Gap 3 archive depth) ──────────────────
+  // Rental market health — critical for multifamily cycle positioning
+  { metricId: 'CRE_RENTAL_VACANCY_RATE', seriesId: 'RRVRUSQ156N', source: 'fred_census', geographyType: 'national', geographyId: 'US', geographyName: 'United States', periodType: 'quarterly', observationStart: '2000-01-01' },
+  { metricId: 'CRE_HOMEOWNER_VACANCY',   seriesId: 'USHVAC',       source: 'fred_census', geographyType: 'national', geographyId: 'US', geographyName: 'United States', periodType: 'quarterly', observationStart: '2000-01-01' },
+
+  // Multifamily supply — 5+ unit housing starts as pipeline proxy
+  { metricId: 'CRE_MF_HOUSING_STARTS', seriesId: 'HOUST5F', source: 'fred_census', geographyType: 'national', geographyId: 'US', geographyName: 'United States', periodType: 'monthly', observationStart: '2000-01-01' },
+
+  // Rent cost-of-living — CPI rent component tracks effective rent inflation
+  { metricId: 'CRE_RENT_CPI',    seriesId: 'CUUR0000SEHA', source: 'fred_bls', geographyType: 'national', geographyId: 'US', geographyName: 'United States', periodType: 'monthly', observationStart: '2000-01-01' },
+  { metricId: 'CRE_RENT_CPI_SA', seriesId: 'CUSR0000SEHA', source: 'fred_bls', geographyType: 'national', geographyId: 'US', geographyName: 'United States', periodType: 'monthly', observationStart: '2000-01-01' },
 ];
 
 export async function ingestFRED(apiKey: string): Promise<IngestionResult> {
