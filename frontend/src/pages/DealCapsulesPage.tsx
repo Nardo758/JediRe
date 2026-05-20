@@ -3,6 +3,7 @@ import { Plus, Search, Filter, Download, Share2, TrendingUp, Loader2, AlertTrian
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import { useAuthStore } from '../stores/authStore';
+import { PinToWorkspaceButton } from '../components/workspace/PinToWorkspaceButton';
 
 // ═══════════════════════════════════════════════════════════════
 // BLOOMBERG DESIGN SYSTEM TOKENS
@@ -475,7 +476,10 @@ const DealCapsulesPage: React.FC = () => {
                   </div>
 
                   {/* Export dropdown cell */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, position: 'relative' }}>
+                    <PinToWorkspaceButton
+                      payload={{ panel_type: 'deal_summary', entity_id: capsule.id, label: capsule.property_address }}
+                    />
                     <button
                       onClick={(e) => { e.stopPropagation(); setOpenDropdown(isDropdownOpen ? null : capsule.id); }}
                       disabled={isExporting}

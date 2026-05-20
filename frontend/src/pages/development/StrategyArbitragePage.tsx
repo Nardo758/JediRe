@@ -15,6 +15,7 @@ import { useCorrelationReport } from '../../hooks/useCorrelationReport';
 import { CustomScreenTab } from '../../components/deal/sections/CustomScreenTab';
 import { useDealStore } from '../../stores/dealStore';
 import { apiClient } from '../../services/api.client';
+import { PinToWorkspaceButton } from '../../components/workspace/PinToWorkspaceButton';
 
 const MONO = BT.font.mono;
 const TAB_LABELS = ['M08 v2 ANALYSIS', 'SIGNAL MATRIX', 'CUSTOM SCREENS'];
@@ -165,7 +166,12 @@ function LegacySignalMatrixTab({ city, state: st }: { city: string; state: strin
         padding: '6px 10px', marginBottom: 4,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>SIGNAL STABILITY · 36M ROLLING</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>SIGNAL STABILITY · 36M ROLLING</span>
+            <PinToWorkspaceButton
+              payload={{ panel_type: 'market_chart', entity_id: `${city}, ${st}`, label: `${city} Market Signals` }}
+            />
+          </div>
           {stabilityLoading
             ? <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>computing…</span>
             : (

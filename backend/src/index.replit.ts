@@ -159,6 +159,7 @@ import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
 import financialDocumentsRoutes from './api/rest/financial-documents.routes';
 import sourceDocumentsRoutes from './api/rest/source-documents.routes';
 import capsuleSharingRoutes from './api/rest/capsule-sharing.routes';
+import workspaceRouter from './api/rest/workspace.routes';
 import dealSharesRoutes from './api/rest/deal-shares.routes';
 import jediRoutes from './api/rest/jedi.routes';
 import agentChatRouter from './routes/agent-chat.routes';
@@ -450,6 +451,7 @@ app.use('/', messageRouter.createRouter());
 
 // Correlations - public read, admin-key-protected compute
 app.use('/api/v1/correlations', correlationRouter);
+app.use('/api/v1/workspaces', workspaceRouter);
 
 // Lead/Lag Discovery - public read, admin-key-protected compute
 import leadLagRoutes from './api/rest/lead-lag.routes';

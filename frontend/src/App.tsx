@@ -47,6 +47,8 @@ const F4CommentarySpecPage = lazy(() => import('./pages/docs/F4CommentarySpecPag
 const TimeSeriesExplorerPage = lazy(() => import('./pages/TimeSeriesExplorerPage'));
 const DriverAnalysisPage = lazy(() => import('./pages/DriverAnalysisPage'));
 const PropertyCardPage = lazy(() => import('./pages/PropertyCardPage'));
+const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
+const WorkspaceListPage = lazy(() => import('./pages/WorkspaceListPage'));
 
 /**
  * Redirect legacy /deals/:id/:module routes to /deals/:id/detail?tab=:module
@@ -208,6 +210,8 @@ function AppContent() {
         <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
         <Route path="/capsules" element={<DealCapsulesPage />} />
         <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
+        <Route path="/workspaces" element={<Suspense fallback={<PageLoadingFallback />}><WorkspaceListPage /></Suspense>} />
+        <Route path="/workspaces/:id" element={<Suspense fallback={<PageLoadingFallback />}><WorkspacePage /></Suspense>} />
         <Route path="/events/:eventId" element={<M35EventDetailPage />} />
         <Route path="/playbooks" element={<PlaybookLibraryPage />} />
         <Route path="/admin/events" element={<AdminEventsPage />} />
