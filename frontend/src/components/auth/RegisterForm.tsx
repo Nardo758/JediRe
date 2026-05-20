@@ -131,7 +131,6 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
       if (result.success) {
         const pendingShare = sessionStorage.getItem('jedi_pending_share');
         if (pendingShare) {
-          sessionStorage.removeItem('jedi_pending_share');
           let forkAddress: string | null = null;
           try {
             const token = localStorage.getItem('auth_token');
@@ -145,9 +144,11 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
             if (forkRes.ok) {
               const forkData = await forkRes.json();
               forkAddress = forkData.property_address ?? 'Shared Deal';
+              sessionStorage.removeItem('jedi_pending_share');
             }
+            // If fork failed (non-ok), leave jedi_pending_share so the user can retry
           } catch {
-            // fork is best-effort; don't block navigation
+            // fork is best-effort; don't block navigation; keep pending share for retry
           }
           navigate('/terminal/pipeline', {
             state: forkAddress ? { forkSuccess: forkAddress } : undefined,
