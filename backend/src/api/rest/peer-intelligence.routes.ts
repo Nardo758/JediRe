@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { peerIntelligenceService, type SubmarketCharacter, type UseCase } from '../../services/sigma/peer-intelligence';
+import { persistCharacter, persistCharacters } from '../../services/sigma/peer-characters-seed';
+import { getPool } from '../../database/connection';
 
 const router = Router();
 
@@ -92,16 +94,24 @@ router.get('/:subjectSubmarketId/combined', (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/peers/characters
- * Register submarket character vectors.
+ * Register submarket character vectors (in-memory + DB persist).
  */
-router.post('/characters', (req: Request, res: Response) => {
+router.post('/characters', async (req: Request, res: Response) => {
   try {
     const body = req.body;
+    const pool = getPool();
     if (Array.isArray(body)) {
       peerIntelligenceService.bulkRegisterCharacters(body as SubmarketCharacter[]);
+      // Persist to DB (non-fatal if table not yet created)
+      persistCharacters(pool, body as SubmarketCharacter[]).catch(err => {
+        console.warn('[M39] Failed to persist bulk characters to DB:', err?.message);
+      });
       return res.json({ success: true, data: { count: body.length } });
     }
     peerIntelligenceService.registerCharacter(body as SubmarketCharacter);
+    persistCharacter(pool, body as SubmarketCharacter).catch(err => {
+      console.warn('[M39] Failed to persist character to DB:', err?.message);
+    });
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message ?? 'Character error' });

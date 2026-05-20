@@ -1404,6 +1404,15 @@ async function startServer() {
   }
 
   try {
+    const { seedPeerCharacters } = await import('./services/sigma/peer-characters-seed');
+    const m39Pool = getPool();
+    const m39Result = await seedPeerCharacters(m39Pool);
+    console.log(`[M39 Peer Intelligence] Character vectors loaded: ${m39Result.loaded} registered, ${m39Result.seeded} newly seeded`);
+  } catch (error) {
+    console.error('[M39 Peer Intelligence] Startup seed failed (non-fatal):', error);
+  }
+
+  try {
     const { initRateSheets } = await import('./services/tax/rateSheets/loader');
     initRateSheets();
   } catch (error) {

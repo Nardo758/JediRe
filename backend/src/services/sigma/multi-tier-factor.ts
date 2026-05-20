@@ -560,6 +560,19 @@ export class MultiTierFactorDecomposition {
 
   // ─── API Helpers ─────────────────────────────────────────────────────
 
+  /**
+   * Directly register pre-computed submarket factors (used by the startup
+   * seed so M39 peer ranking can find candidates without needing live OLS
+   * estimation data).
+   */
+  registerSubmarketFactors(factors: SubmarketFactors): void {
+    this.submarketResults.set(factors.submarketId, factors);
+    if (this.nationalFactorNames.length === 0 && Object.keys(factors.nationalLoadings).length > 0) {
+      this.nationalFactorNames = Object.keys(factors.nationalLoadings);
+    }
+    log.info({ submarketId: factors.submarketId, msaId: factors.msaId }, 'Submarket factors registered');
+  }
+
   getSubmarketFactors(submarketId: string): SubmarketFactors | undefined {
     return this.submarketResults.get(submarketId);
   }
