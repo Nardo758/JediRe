@@ -84,10 +84,16 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
 
   // F9 returns: prefer F9 projection engine (IRR bisection + EM from hold-period CFs),
   // fallback to legacy modelResults.summary if F9 engine hasn't populated yet.
+  //
+  // FIELD ALIGNMENT FIX: mergeModelIntoFinancials writes lpNetIrr / lpEquityMultiple /
+  // avgCashOnCash onto f9Financials.returns — the legacy irr / equityMultiple / cashOnCash
+  // keys were never written, so those reads were dead code paths that always fell through
+  // to summary. Use the correct LP-net field names so treatment-aware returns from the
+  // LV engine path are surfaced in the top KPI tiles and DEAL LEVEL column.
   const f9Returns = f9Financials?.returns ?? null;
-  const displayIrr = f9Returns?.irr ?? summary?.irr ?? null;
-  const displayEM  = f9Returns?.equityMultiple ?? summary?.equityMultiple ?? null;
-  const displayCoC = f9Returns?.cashOnCash ?? summary?.cashOnCash ?? null;
+  const displayIrr = f9Returns?.lpNetIrr        ?? summary?.lpIrr  ?? summary?.irr          ?? null;
+  const displayEM  = f9Returns?.lpEquityMultiple ?? summary?.lpEm   ?? summary?.equityMultiple ?? null;
+  const displayCoC = f9Returns?.avgCashOnCash    ?? summary?.lpCoC  ?? summary?.cashOnCash    ?? null;
 
   const SUB_TABS: { k: OverviewSubTab; l: string }[] = [
     { k: 'summary', l: 'EXECUTIVE SUMMARY' },

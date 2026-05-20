@@ -268,15 +268,31 @@ function normalizeBuildResponse(raw: any): ModelResults {
     return s.dscr ?? dm.dscr ?? 0;
   })();
 
+  // Derive initial equity for running EM computation.
+  // The deterministic runner puts totalEquity in summary; the LLM path may also include it.
+  // Fall back to purchasePrice − loanAmount when available.
+  const initialEquity: number | null = (() => {
+    if (s.totalEquity != null && s.totalEquity > 0) return s.totalEquity;
+    if (s.purchasePrice != null && s.loanAmount != null && s.purchasePrice > s.loanAmount) {
+      return s.purchasePrice - s.loanAmount;
+    }
+    return null;
+  })();
+
   // Map annual cash flow
+  // cumulativeReturn and runningEM are NOT in the backend AnnualCashFlowRow —
+  // they are computed here as running totals from the cashFlow column.
+  let runningCumulativeCf = 0;
   const annualCashFlow = af.map((r: any, i: number) => {
-    const equityCf = r.equityCashFlow ?? r.leveredCashFlow ?? r.preTaxCashFlow ?? 0;
+    const equityCf = r.equityCashFlow ?? r.leveredCashFlow ?? r.preTaxCashFlow ?? r.cfads ?? 0;
     // Total operating expenses from individual categories if available
     const totalOpex = r.totalExpenses ?? r.operatingExpenses ?? 0;
     // If operatingExpenses is a Record, sum it
     const opexTotal = typeof totalOpex === 'object'
       ? Object.values(totalOpex as Record<string, number>).reduce((a: number, b: number) => a + b, 0)
       : Number(totalOpex);
+
+    runningCumulativeCf += equityCf;
 
     return {
       year: r.year ?? i + 1,
@@ -291,6 +307,11 @@ function normalizeBuildResponse(raw: any): ModelResults {
       cashFlow: equityCf,
       lpDistribution: r.lpDistribution ?? r.leveredCashFlow,
       gpDistribution: r.gpDistribution,
+      // Computed running totals — not returned by backend, derived from cashFlow
+      cumulativeReturn: runningCumulativeCf,
+      runningEM: initialEquity != null && initialEquity > 0
+        ? (initialEquity + runningCumulativeCf) / initialEquity
+        : null,
     };
   });
 
@@ -334,9 +355,19 @@ function normalizeBuildResponse(raw: any): ModelResults {
       exitValue: s.exitValue ?? 0,
       totalProfit: raw.lpProfit ?? s.totalProfit,
       lpIrr: s.lpIrr ?? s.irr,
-      lpEm: s.lpEm ?? s.equityMultiple,
+      // lpEquityMultiple is the deterministic runner's field name; lpEm is the LLM path
+      lpEm: s.lpEm ?? s.lpEquityMultiple ?? s.equityMultiple,
       lpCoC: avgCoC,
-      lpProfit: raw.lpProfit,
+      lpProfit: raw.lpProfit ?? s.lpProfit,
+      // LP/GP distribution totals and GP partner returns — backend fields confirmed in
+      // deterministic-model-runner.ts (lines 1710, 1712, 1726–1729). The LLM path may
+      // also return these; both spellings are tried.
+      lpTotalDistributions: s.lpTotalDistributions ?? null,
+      gpIrr: s.gpIrr ?? null,
+      // gpEquityMultiple is the deterministic runner's field name; gpEm is the LLM path
+      gpEm: s.gpEm ?? s.gpEquityMultiple ?? null,
+      gpTotalDistributions: s.gpTotalDistributions ?? null,
+      gpPromoteEarned: s.gpPromoteEarned ?? null,
     },
     annualCashFlow,
     sourcesAndUses: {
