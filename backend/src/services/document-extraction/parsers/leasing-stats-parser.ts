@@ -43,6 +43,8 @@ const NEW_LEASE_HEADER_PATTERNS = [
 ];
 
 const ACTIVITY_COL_MAP: Record<string, string> = {
+  'floor_plan': 'floor_plan|floor_plan_group|floorplan|floor plan group|name',
+  'units': 'units|unit_count|total_units',
   'move_ins': 'move-ins',
   'move_outs': 'move-outs',
   'net_change': 'net change',
@@ -64,9 +66,11 @@ function findActivityCol(headers: string[], activityField: string): number | nul
   const patterns = ACTIVITY_COL_MAP[activityField] || activityField;
   const pList = patterns.split('|');
   for (let i = 0; i < headers.length; i++) {
+    if (!headers[i]) continue;
     const h = normalizeHeader(headers[i]);
     for (const p of pList) {
-      if (h.includes(normalizeHeader(p))) return i;
+      const np = normalizeHeader(p);
+      if (h.includes(np) || np.includes(h)) return i;
     }
   }
   return null;
@@ -99,7 +103,8 @@ function parseLeasingSection(
 
   for (let r = leasingStartRow + 1; r <= maxRow; r++) {
     const rowValues: string[] = [];
-    for (let c = range.s.c; c <= Math.min(range.e.c, range.s.c + 15); c++) {
+    const maxCol = Math.min(range.e.c, 30);
+    for (let c = range.s.c; c <= maxCol; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
       if (cell && cell.v != null) {
         rowValues.push(String(cell.v).trim().toLowerCase());
@@ -116,7 +121,7 @@ function parseLeasingSection(
 
   // Parse headers
   const headers: string[] = [];
-  for (let c = range.s.c; c <= Math.min(range.e.c, range.s.c + 20); c++) {
+  for (let c = range.s.c; c <= Math.min(range.e.c, 30); c++) {
     const cell = sheet[XLSX.utils.encode_cell({ r: headerRow, c })];
     headers.push(cell && cell.v != null ? String(cell.v).trim() : '');
   }
@@ -136,13 +141,18 @@ function parseLeasingSection(
 
   for (let r = headerRow + 1; r <= Math.min(range.e.r, headerRow + 40); r++) {
     const rowValues: string[] = [];
-    for (let c = range.s.c; c <= Math.min(range.e.c, range.s.c + 15); c++) {
+    const maxCol = Math.min(range.e.c, 30);
+    for (let c = range.s.c; c <= maxCol; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
       rowValues.push(cell && cell.v != null ? String(cell.v).trim() : '');
     }
 
-    const fp = rowValues[0];
-    const totalUnitsStr = rowValues[1];
+    // Find floor plan and units columns dynamically
+    const fpColIdx = findActivityCol(headers, 'floor_plan');
+    const unitsColIdx = findActivityCol(headers, 'units');
+
+    const fp = fpColIdx !== null && fpColIdx < rowValues.length ? rowValues[fpColIdx] : (rowValues[0] || '');
+    const totalUnitsStr = unitsColIdx !== null && unitsColIdx < rowValues.length ? rowValues[unitsColIdx] : (rowValues[1] || '');
 
     // Skip empty rows, subtotal rows, or section header rows
     if (!fp || !totalUnitsStr) continue;
@@ -188,7 +198,8 @@ function parseNewLeaseSection(
 
   for (let r = startRow + 1; r <= Math.min(range.e.r, startRow + 10); r++) {
     const rowValues: string[] = [];
-    for (let c = range.s.c; c <= Math.min(range.e.c, range.s.c + 15); c++) {
+    const maxCol = Math.min(range.e.c, 30);
+    for (let c = range.s.c; c <= maxCol; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
       if (cell && cell.v != null) {
         rowValues.push(String(cell.v).trim().toLowerCase());
@@ -222,7 +233,8 @@ function parseNewLeaseSection(
 
   for (let r = headerRow + 1; r <= Math.min(range.e.r, headerRow + 200); r++) {
     const rowValues: string[] = [];
-    for (let c = range.s.c; c <= Math.min(range.e.c, range.s.c + 15); c++) {
+    const maxCol = Math.min(range.e.c, 30);
+    for (let c = range.s.c; c <= maxCol; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
       rowValues.push(cell && cell.v != null ? String(cell.v).trim() : '');
     }
@@ -275,6 +287,145 @@ function parseNewLeaseSection(
   return leases;
 }
 
+// ─── BoxScoreSummary format parser ──────────────────────────────────────────
+//
+// The BoxScoreSummary is a compressed single-sheet report with sections:
+//   "Availability"     — units, occupancy, avg rent, sqft per floor plan
+//   "Resident Activity" — move-ins, move-outs, transfers, cancels per floor plan
+//   "Conversion Ratios" — calls, walk-ins, tours, web leads
+//
+// This parser extracts from "Resident Activity" as a proxy for leasing velocity.
+
+function parseBoxScoreSummary(sheet: XLSX.WorkSheet): {
+  activity: LeasingStatsActivity[];
+  period: { start: string; end: string } | null;
+  occupancy: { units: number; occupied: number } | null;
+} | null {
+  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+
+  // Find sections by title row
+  let availabilityHeaderRow = -1;
+  let activityHeaderRow = -1;
+  let period: { start: string; end: string } | null = null;
+
+  // First pass: locate sections
+  for (let r = 0; r <= Math.min(range.e.r, 100); r++) {
+    const cellVal = (sheet[XLSX.utils.encode_cell({ r, c: 0 })]?.v as string) || '';
+
+    // Check for period date in the header area
+    const dateMatch = cellVal.match(/date\s*=\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s*\-\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+    if (dateMatch) {
+      const s = parseDate(dateMatch[1]);
+      const e = parseDate(dateMatch[2]);
+      if (s && e) period = { start: s, end: e };
+    }
+
+    if (/^availability$/i.test(cellVal.trim())) {
+      availabilityHeaderRow = r;
+    } else if (/^resident\s+activity$/i.test(cellVal.trim())) {
+      activityHeaderRow = r;
+    }
+  }
+
+  if (activityHeaderRow < 0) return null;
+
+  // Parse header row (row after section title)
+  const headerRowIndex = activityHeaderRow + 1;
+  const headerRow: string[] = [];
+  for (let c = 0; c <= Math.min(range.e.c, 15); c++) {
+    const cell = sheet[XLSX.utils.encode_cell({ r: headerRowIndex, c })];
+    headerRow.push(cell?.v != null ? String(cell.v).trim().toLowerCase() : '');
+  }
+
+  // Column index finder
+  const findCol = (pattern: RegExp): number | null => {
+    for (let i = 0; i < headerRow.length; i++) {
+      if (pattern.test(headerRow[i])) return i;
+    }
+    return null;
+  };
+
+  const fpCol = 1; // "Name" column (index 1)
+  const unitCol = findCol(/^units$/);
+  const moveInCol = findCol(/move\s*in/);
+  const moveOutCol = findCol(/move\s*out/);
+  const cancelCol = findCol(/cancel/i);
+  const transferCol = findCol(/transfer/i);
+
+  // Parse data rows until next section or end
+  const activity: LeasingStatsActivity[] = [];
+  let dataRowStart = headerRowIndex + 1;
+
+  for (let r = dataRowStart; r <= Math.min(range.e.r, dataRowStart + 30); r++) {
+    const fp = (sheet[XLSX.utils.encode_cell({ r, c: fpCol })]?.v as string) || '';
+    if (!fp) continue;
+
+    // Stop at totals or next section
+    const trimmed = fp.trim().toLowerCase();
+    if (/^total[\s]*$|conversion/i.test(trimmed)) break;
+
+    // Skip code-like entries (A1AC0C91 format)
+    const code = (sheet[XLSX.utils.encode_cell({ r, c: 0 })]?.v as string) || '';
+    if (/^[A-Z0-9]{5,}$/i.test(code.replace(/[\s\-_]/g, ''))) {
+      // This is a code row, use the name column for floor plan
+    }
+
+    const units = unitCol !== null ? parseNum(sheet[XLSX.utils.encode_cell({ r, c: unitCol })]?.v) : null;
+    if (units === null || units === 0) continue;
+
+    const moveIns = moveInCol !== null ? parseNum(sheet[XLSX.utils.encode_cell({ r, c: moveInCol })]?.v) ?? 0 : 0;
+    const moveOuts = moveOutCol !== null ? parseNum(sheet[XLSX.utils.encode_cell({ r, c: moveOutCol })]?.v) ?? 0 : 0;
+
+    activity.push({
+      floor_plan: fp,
+      units,
+      move_ins: moveIns,
+      move_outs: moveOuts,
+      net_change: moveIns - moveOuts,
+      units_reserved: 0,
+      signed_renewals: 0,
+      transferring: transferCol !== null ? parseNum(sheet[XLSX.utils.encode_cell({ r, c: transferCol })]?.v) ?? 0 : 0,
+      cancelled_denied: cancelCol !== null ? parseNum(sheet[XLSX.utils.encode_cell({ r, c: cancelCol })]?.v) ?? 0 : 0,
+      net_leases: moveIns,
+      waitlist: 0,
+      waitlist_cancelled: 0,
+      net_waitlist: 0,
+    });
+  }
+
+  // Compute occupancy from Availability section
+  let totalUnits = 0;
+  let totalOccupied = 0;
+  if (availabilityHeaderRow >= 0) {
+    const availHeaderRow = availabilityHeaderRow + 1;
+    const availHeaders: string[] = [];
+    for (let c = 0; c <= Math.min(range.e.c, 15); c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r: availHeaderRow, c })];
+      availHeaders.push(cell?.v != null ? String(cell.v).trim().toLowerCase() : '');
+    }
+
+    const availUnitCol = availHeaders.findIndex(h => h === 'units');
+    const occupiedCol = availHeaders.findIndex(h => /occupied/.test(h) && !/vacant|notice/.test(h));
+
+    for (let r = availHeaderRow + 1; r <= Math.min(range.e.r, availHeaderRow + 25); r++) {
+      const code = (sheet[XLSX.utils.encode_cell({ r, c: 0 })]?.v as string) || '';
+      if (/^total[s]?$/i.test(code.trim())) {
+        if (availUnitCol >= 0) totalUnits = parseNum(sheet[XLSX.utils.encode_cell({ r, c: availUnitCol })]?.v) ?? 0;
+        if (occupiedCol >= 0) totalOccupied = parseNum(sheet[XLSX.utils.encode_cell({ r, c: occupiedCol })]?.v) ?? 0;
+        break;
+      }
+    }
+  }
+
+  if (activity.length === 0) return null;
+
+  return {
+    activity,
+    period,
+    occupancy: totalUnits > 0 ? { units: totalUnits, occupied: totalOccupied } : null,
+  };
+}
+
 export function parseLeasingStats(buffer: Buffer, filename: string): ExtractionResult {
   const warnings: string[] = [];
 
@@ -291,39 +442,54 @@ export function parseLeasingStats(buffer: Buffer, filename: string): ExtractionR
     let allActivity: LeasingStatsActivity[] = [];
     let allNewLeases: LeasingStatsLease[] = [];
     let reportingPeriod: { start: string; end: string } | null = null;
+    let boxScoreOccupancy: { units: number; occupied: number } | null = null;
 
-    for (const sheetName of workbook.SheetNames) {
-      const sheet = workbook.Sheets[sheetName];
-
-      // Find "Leasing" section
-      let leasingSectionRow = findSectionStartRow(sheet, /leasing/i, 0, 100);
-      if (leasingSectionRow < 0) {
-        // Try broader search
-        leasingSectionRow = findSectionStartRow(sheet, /move[\s_-]*in.*move[\s_-]*out/i, 0, 150);
+    // First pass: try BoxScoreSummary format (single-sheet "Resident Activity" section)
+    if (workbook.SheetNames.length === 1) {
+      const summarySheet = workbook.Sheets[workbook.SheetNames[0]];
+      const summaryResult = parseBoxScoreSummary(summarySheet);
+      if (summaryResult && summaryResult.activity.length > 0) {
+        allActivity = summaryResult.activity;
+        reportingPeriod = summaryResult.period;
+        boxScoreOccupancy = summaryResult.occupancy;
       }
+    }
 
-      if (leasingSectionRow >= 0) {
-        const result = parseLeasingSection(sheet, leasingSectionRow);
-        if (result) {
-          allActivity = [...allActivity, ...result.activity];
-          if (result.period && !reportingPeriod) {
-            reportingPeriod = result.period;
+    // Second pass: full BoxScore format (multi-section "Leasing Activity" + "New Resident Detail")
+    if (allActivity.length === 0) {
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+
+        // Find "Leasing" section
+        let leasingSectionRow = findSectionStartRow(sheet, /leasing/i, 0, 100);
+        if (leasingSectionRow < 0) {
+          // Try broader search
+          leasingSectionRow = findSectionStartRow(sheet, /move[\s_-]*in.*move[\s_-]*out/i, 0, 150);
+        }
+
+        if (leasingSectionRow >= 0) {
+          const result = parseLeasingSection(sheet, leasingSectionRow);
+          if (result) {
+            allActivity = [...allActivity, ...result.activity];
+            if (result.period && !reportingPeriod) {
+              reportingPeriod = result.period;
+            }
           }
         }
-      }
 
-      // Find new leases/residents section
-      const newLeaseRow = findSectionStartRow(sheet, /new[\s_-]*resident/i, 0, 200);
-      if (newLeaseRow < 0) {
-        // Alternative header patterns
-        const altRow = findSectionStartRow(sheet, /vacant[\s_-]*units[\s_-]*leased/i, 0, 200);
-        if (altRow >= 0) {
-          const leases = parseNewLeaseSection(sheet, altRow);
+        // Find new leases/residents section
+        const newLeaseRow = findSectionStartRow(sheet, /new[\s_-]*resident/i, 0, 200);
+        if (newLeaseRow < 0) {
+          // Alternative header patterns
+          const altRow = findSectionStartRow(sheet, /vacant[\s_-]*units[\s_-]*leased/i, 0, 200);
+          if (altRow >= 0) {
+            const leases = parseNewLeaseSection(sheet, altRow);
+            allNewLeases = [...allNewLeases, ...leases];
+          }
+        } else {
+          const leases = parseNewLeaseSection(sheet, newLeaseRow);
           allNewLeases = [...allNewLeases, ...leases];
         }
-      } else {
-        const leases = parseNewLeaseSection(sheet, newLeaseRow);
-        allNewLeases = [...allNewLeases, ...leases];
       }
     }
 
@@ -336,8 +502,8 @@ export function parseLeasingStats(buffer: Buffer, filename: string): ExtractionR
 
     // Get total units / occupied from the last activity row (totals row)
     const totalActivityRow = allActivity.find(a => /^total/i.test(a.floor_plan));
-    const totalUnits = totalActivityRow?.units || allActivity.reduce((s, a) => s + a.units, 0);
-    const totalOccupied = 0; // Not available in leasing section
+    const totalUnits = boxScoreOccupancy?.units || totalActivityRow?.units || allActivity.reduce((s, a) => s + a.units, 0);
+    const totalOccupied = boxScoreOccupancy?.occupied || 0; // Not available in leasing section (but BoxScoreSummary has it)
 
     const data: LeasingStatsData = {
       reporting_period: reportingPeriod || { start: '', end: '' },
