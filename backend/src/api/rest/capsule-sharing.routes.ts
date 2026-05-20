@@ -1778,6 +1778,25 @@ router.get('/:capsuleId/export/excel', requireAuth, async (req: AuthenticatedReq
   }
 });
 
+// ─── SSRF-safe logo fetch helper ─────────────────────────────────────────────
+async function safeFetchLogoBuffer(rawUrl: string): Promise<Buffer | null> {
+  let parsed: URL;
+  try { parsed = new URL(rawUrl); } catch { return null; }
+  if (parsed.protocol !== 'https:') return null;
+  const h = parsed.hostname.toLowerCase();
+  const BLOCKED_EXACT = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '169.254.169.254', 'metadata.google.internal']);
+  if (BLOCKED_EXACT.has(h)) return null;
+  if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|fc00:|fc[0-9a-f]{2}:|fd)/i.test(h)) return null;
+  if (h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.localhost')) return null;
+  try {
+    const r = await (globalThis.fetch as typeof fetch)(rawUrl, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return null;
+    return Buffer.from(await r.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 // ─── GET /:capsuleId/export/pdf — PDF pitch deck download ────────────────────
 
 router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -1807,20 +1826,8 @@ router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedReque
     const address: string = capsule.property_address ?? 'Undisclosed Address';
     const assetClass: string = capsule.asset_class ?? '';
 
-    // Fetch logo buffer BEFORE piping so we can embed it synchronously in PDFKit
-    let logoBuffer: Buffer | null = null;
-    if (capsule.logo_url && typeof capsule.logo_url === 'string') {
-      try {
-        const logoRes = await (globalThis.fetch as typeof fetch)(capsule.logo_url, {
-          signal: AbortSignal.timeout(5000),
-        });
-        if (logoRes.ok) {
-          logoBuffer = Buffer.from(await logoRes.arrayBuffer());
-        }
-      } catch {
-        // logo fetch failed — continue without it
-      }
-    }
+    // Fetch logo buffer BEFORE piping — safe helper rejects private IPs/non-HTTPS
+    const logoBuffer = capsule.logo_url ? await safeFetchLogoBuffer(String(capsule.logo_url)) : null;
 
     const fmtMoney = (v: unknown): string => {
       const n = parseFloat(String(v ?? ''));
@@ -1955,14 +1962,274 @@ router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedReque
       });
     }
 
-    // Footer
+    // Footer page 2
     doc.fillColor(MID).font('Helvetica').fontSize(8)
       .text(`${companyName} · JEDI RE Platform · ${new Date().toLocaleDateString()}`, 50, H - 50, { width: W - 100, align: 'center' });
+
+    // ── Page 3: Visual Metrics Scorecard ──
+    doc.addPage();
+    doc.rect(0, 0, W, H).fill(NAVY);
+    doc.rect(0, 0, W, 8).fill(AMBER_PDF);
+    doc.rect(0, 8, W, 50).fill(SLATE);
+
+    doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(13).text('METRICS SCORECARD', 50, 22);
+    doc.fillColor(LIGHT).font('Helvetica').fontSize(9).text(address, 50, 40);
+
+    // Percentage metrics bar chart
+    const pctMetrics: [string, number | null][] = [
+      ['Going-In Cap Rate', dd.cap_rate ?? dd.going_in_cap_rate ? parseFloat(String(dd.cap_rate ?? dd.going_in_cap_rate)) : null],
+      ['Exit Cap Rate',     dd.exit_cap_rate ?? dd.exitCapRate   ? parseFloat(String(dd.exit_cap_rate ?? dd.exitCapRate))   : null],
+      ['LTV',              dd.ltv ?? dd.loan_to_value           ? parseFloat(String(dd.ltv ?? dd.loan_to_value))           : null],
+      ['Vacancy Rate',     dd.vacancy_rate ?? dd.vacancy         ? parseFloat(String(dd.vacancy_rate ?? dd.vacancy))        : null],
+    ].filter(([, v]) => v !== null && !isNaN(v as number)) as [string, number][];
+
+    const BAR_X = 50, BAR_W = W - 100, BAR_MAX_VAL = 100;
+    let by = 82;
+    doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(10).text('PERCENTAGE METRICS', BAR_X, by);
+    doc.rect(BAR_X, by + 16, BAR_W, 1).fill(AMBER_PDF + '60');
+    by += 24;
+
+    pctMetrics.forEach(([label, rawVal]) => {
+      const val = Math.min(rawVal > 1 ? rawVal : rawVal * 100, BAR_MAX_VAL);
+      const barLen = Math.max((val / BAR_MAX_VAL) * BAR_W, 4);
+      doc.fillColor(LIGHT).font('Helvetica').fontSize(9).text(label, BAR_X, by + 2, { width: 180 });
+      doc.rect(BAR_X + 190, by, BAR_W - 190 - 60, 14).fill('#1A2A3E');
+      doc.rect(BAR_X + 190, by, Math.min(barLen, BAR_W - 190 - 60), 14).fill(AMBER_PDF);
+      doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(9)
+        .text(`${val.toFixed(2)}%`, BAR_X + BAR_W - 55, by + 2, { width: 55, align: 'right' });
+      by += 24;
+    });
+
+    // Dollar metrics scorecard tiles
+    const dollarMetrics: [string, string][] = [
+      ['ASKING PRICE', fmtMoney(dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice)],
+      ['ANNUAL NOI',   fmtMoney(dd.noi ?? dd.annual_noi)],
+    ].filter(([, v]) => v !== '—') as [string, string][];
+
+    if (dollarMetrics.length > 0) {
+      by += 20;
+      doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(10).text('KEY FINANCIAL FIGURES', BAR_X, by);
+      doc.rect(BAR_X, by + 16, BAR_W, 1).fill(AMBER_PDF + '60');
+      by += 28;
+      const tileW = (BAR_W - 20) / 2;
+      dollarMetrics.forEach(([label, value], i) => {
+        const tx = BAR_X + i * (tileW + 20);
+        doc.rect(tx, by, tileW, 70).fill(SLATE);
+        doc.rect(tx, by, tileW, 4).fill(AMBER_PDF);
+        doc.fillColor(MID).font('Helvetica').fontSize(8).text(label, tx + 12, by + 12, { width: tileW - 24 });
+        doc.fillColor(WHITE).font('Helvetica-Bold').fontSize(18).text(value, tx + 12, by + 26, { width: tileW - 24 });
+      });
+      by += 90;
+    }
+
+    // JEDI score callout
+    if (capsule.jedi_score != null) {
+      doc.rect(BAR_X, by + 10, BAR_W, 80).fill(SLATE);
+      doc.rect(BAR_X, by + 10, 8, 80).fill(AMBER_PDF);
+      doc.fillColor(MID).font('Helvetica').fontSize(8).text('JEDI INTELLIGENCE SCORE', BAR_X + 24, by + 22, { width: 200 });
+      doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(42)
+        .text(String(capsule.jedi_score), BAR_X + 24, by + 32, { width: 100 });
+      doc.fillColor(LIGHT).font('Helvetica').fontSize(9)
+        .text('Synthesized deal quality score derived from market, financial,\nand zoning intelligence across 18 capability modules.', BAR_X + 140, by + 32, { width: BAR_W - 164 });
+    }
+
+    // Footer page 3
+    doc.fillColor(MID).font('Helvetica').fontSize(8)
+      .text(`${companyName} · CONFIDENTIAL · ${new Date().toLocaleDateString()}`, 50, H - 50, { width: W - 100, align: 'center' });
 
     doc.end();
     return;
   } catch (err: any) {
     logger.error('Capsule PDF export failed', { error: err?.message, capsuleId });
+    if (!res.headersSent) return res.status(500).json({ error: err?.message ?? 'Export failed' });
+  }
+});
+
+// ─── GET /capsule-links/:accessToken/export/excel — share-token XLSX export ───
+// No platform auth — share token is the credential. Rate-limit inherited from
+// general deal-book store.
+
+router.get('/capsule-links/:accessToken/export/excel', async (req: Request, res: Response) => {
+  const { accessToken } = req.params;
+  try {
+    const pool = getPool();
+    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+
+    const shareResult = await pool.query(
+      `SELECT capsule_id FROM capsule_external_shares
+       WHERE access_token = $1 AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
+      [tokenHash]
+    );
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid or expired share link' });
+    }
+
+    const capsuleId = shareResult.rows[0].capsule_id;
+    const result = await pool.query(
+      `SELECT property_address, asset_class, jedi_score, collision_score,
+              deal_data, platform_intel, user_adjustments, module_outputs, created_at
+       FROM deal_capsules WHERE id = $1 LIMIT 1`,
+      [capsuleId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Capsule not found' });
+
+    const wb = buildCapsuleWorkbook(result.rows[0]);
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', bookSST: true });
+    const safeName = (result.rows[0].property_address ?? capsuleId)
+      .replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 60);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_capsule.xlsx"`);
+    res.setHeader('Content-Length', buf.length);
+    return res.send(buf);
+  } catch (err: any) {
+    logger.error('Share-token Excel export failed', { error: err?.message });
+    if (!res.headersSent) return res.status(500).json({ error: err?.message ?? 'Export failed' });
+  }
+});
+
+// ─── GET /capsule-links/:accessToken/export/pdf — share-token PDF export ──────
+
+router.get('/capsule-links/:accessToken/export/pdf', async (req: Request, res: Response) => {
+  const { accessToken } = req.params;
+  try {
+    const pool = getPool();
+    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+
+    const shareResult = await pool.query(
+      `SELECT ces.capsule_id, ubs.company_name, ubs.logo_url
+       FROM capsule_external_shares ces
+       JOIN deal_capsules dc ON dc.id = ces.capsule_id
+       LEFT JOIN user_branding_settings ubs ON ubs.user_id = dc.user_id
+       WHERE ces.access_token = $1 AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW()) LIMIT 1`,
+      [tokenHash]
+    );
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid or expired share link' });
+    }
+
+    const { capsule_id: capsuleId, company_name, logo_url } = shareResult.rows[0];
+    const result = await pool.query(
+      `SELECT property_address, asset_class, jedi_score, collision_score,
+              deal_data, platform_intel, created_at
+       FROM deal_capsules WHERE id = $1 LIMIT 1`,
+      [capsuleId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Capsule not found' });
+
+    const capsule = result.rows[0];
+    const dd = flattenLV((capsule.deal_data as Record<string, unknown>) ?? {});
+    const pi = flattenLV((capsule.platform_intel as Record<string, unknown>) ?? {});
+    const companyName: string = company_name ?? 'JEDI RE';
+    const address: string = capsule.property_address ?? 'Undisclosed Address';
+    const assetClass: string = capsule.asset_class ?? '';
+    const logoBuffer = logo_url ? await safeFetchLogoBuffer(String(logo_url)) : null;
+
+    const fmtM = (v: unknown): string => {
+      const n = parseFloat(String(v ?? ''));
+      if (isNaN(n)) return '—';
+      if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+      if (Math.abs(n) >= 1_000) return `$${n.toLocaleString()}`;
+      return `$${n}`;
+    };
+    const fmtP = (v: unknown): string => {
+      const n = parseFloat(String(v ?? ''));
+      if (isNaN(n)) return '—';
+      return `${(n > 1 ? n : n * 100).toFixed(2)}%`;
+    };
+
+    const safeName = address.replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 60);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_capsule.pdf"`);
+
+    const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: address, Author: companyName } });
+    doc.pipe(res);
+
+    const W = 595.28, H = 841.89;
+    const NAVY_ST = '#0D1B2A', AMBER_ST = '#F0B429', SLATE_ST = '#1A2A3E';
+    const WHITE_ST = '#FFFFFF', LIGHT_ST = '#E8ECF1', MID_ST = '#8B9CB0';
+
+    // Cover page
+    doc.rect(0, 0, W, H).fill(NAVY_ST);
+    doc.rect(0, 0, W, 8).fill(AMBER_ST);
+
+    if (logoBuffer) {
+      try {
+        doc.image(logoBuffer, 50, 50, { fit: [120, 40], align: 'left' });
+        doc.fillColor(MID_ST).font('Helvetica').fontSize(9).text('DEAL CAPSULE — CONFIDENTIAL', 50, 96);
+      } catch {
+        doc.fillColor(AMBER_ST).font('Helvetica-Bold').fontSize(14).text(companyName.toUpperCase(), 50, 60, { width: W - 100 });
+        doc.fillColor(MID_ST).font('Helvetica').fontSize(9).text('DEAL CAPSULE — CONFIDENTIAL', 50, 80);
+      }
+    } else {
+      doc.fillColor(AMBER_ST).font('Helvetica-Bold').fontSize(14).text(companyName.toUpperCase(), 50, 60, { width: W - 100 });
+      doc.fillColor(MID_ST).font('Helvetica').fontSize(9).text('DEAL CAPSULE — CONFIDENTIAL', 50, 80);
+    }
+
+    doc.rect(50, 140, W - 100, 2).fill(AMBER_ST);
+    doc.fillColor(WHITE_ST).font('Helvetica-Bold').fontSize(26).text(address, 50, 160, { width: W - 100, lineGap: 4 });
+    if (assetClass) doc.fillColor(AMBER_ST).font('Helvetica-Bold').fontSize(11).text(assetClass.toUpperCase(), 50, doc.y + 10);
+
+    if (capsule.jedi_score != null) {
+      doc.rect(50, 300, 120, 80).fill(SLATE_ST);
+      doc.fillColor(AMBER_ST).font('Helvetica-Bold').fontSize(36).text(String(capsule.jedi_score), 50, 312, { width: 120, align: 'center' });
+      doc.fillColor(MID_ST).font('Helvetica').fontSize(8).text('JEDI SCORE', 50, 352, { width: 120, align: 'center' });
+    }
+    doc.fillColor(MID_ST).font('Helvetica').fontSize(8)
+      .text(`Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, 50, H - 80, { width: W - 100 });
+
+    // Metrics page
+    doc.addPage();
+    doc.rect(0, 0, W, H).fill(WHITE_ST);
+    doc.rect(0, 0, W, 8).fill(AMBER_ST);
+    doc.rect(0, 8, W, 50).fill(NAVY_ST);
+    doc.fillColor(AMBER_ST).font('Helvetica-Bold').fontSize(13).text('KEY METRICS', 50, 22);
+    doc.fillColor(LIGHT_ST).font('Helvetica').fontSize(9).text(address, 50, 40);
+
+    const metricsList: [string, string][] = [
+      ['Purchase Price / Asking Price', fmtM(dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice)],
+      ['Annual NOI', fmtM(dd.noi ?? dd.annual_noi)],
+      ['Going-In Cap Rate', fmtP(dd.cap_rate ?? dd.going_in_cap_rate)],
+      ['Exit Cap Rate', fmtP(dd.exit_cap_rate ?? dd.exitCapRate)],
+      ['Hold Period', dd.hold_period ?? dd.holdPeriod ? `${dd.hold_period ?? dd.holdPeriod} years` : '—'],
+      ['LTV', fmtP(dd.ltv ?? dd.loan_to_value)],
+      ['Total Units', String(dd.total_units ?? dd.totalUnits ?? '—')],
+      ['Asset Class', assetClass || '—'],
+    ];
+
+    let my2 = 80;
+    metricsList.forEach(([label, value], i) => {
+      const rowBg = i % 2 === 0 ? '#F8F9FA' : WHITE_ST;
+      doc.rect(50, my2, W - 100, 28).fill(rowBg);
+      doc.fillColor('#333333').font('Helvetica').fontSize(10).text(label, 60, my2 + 8, { width: 220 });
+      doc.fillColor(NAVY_ST).font('Helvetica-Bold').fontSize(10).text(value, 300, my2 + 8, { width: 200, align: 'right' });
+      my2 += 28;
+    });
+
+    const piEntries2 = Object.entries(pi)
+      .filter(([, v]) => v !== null && v !== undefined && typeof v !== 'object').slice(0, 6);
+    if (piEntries2.length > 0) {
+      my2 += 20;
+      doc.fillColor(NAVY_ST).font('Helvetica-Bold').fontSize(11).text('MARKET INTELLIGENCE', 50, my2);
+      doc.rect(50, my2 + 16, W - 100, 1).fill(AMBER_ST);
+      my2 += 24;
+      piEntries2.forEach(([k, v], i) => {
+        const rowBg = i % 2 === 0 ? '#F8F9FA' : WHITE_ST;
+        doc.rect(50, my2, W - 100, 24).fill(rowBg);
+        doc.fillColor('#555555').font('Helvetica').fontSize(9).text(humanizeKey(k), 60, my2 + 6, { width: 220 });
+        doc.fillColor(NAVY_ST).font('Helvetica-Bold').fontSize(9).text(String(v ?? '—'), 300, my2 + 6, { width: 200, align: 'right' });
+        my2 += 24;
+      });
+    }
+
+    doc.fillColor(MID_ST).font('Helvetica').fontSize(8)
+      .text(`${companyName} · JEDI RE Platform · ${new Date().toLocaleDateString()}`, 50, H - 50, { width: W - 100, align: 'center' });
+
+    doc.end();
+    return;
+  } catch (err: any) {
+    logger.error('Share-token PDF export failed', { error: err?.message });
     if (!res.headersSent) return res.status(500).json({ error: err?.message ?? 'Export failed' });
   }
 });

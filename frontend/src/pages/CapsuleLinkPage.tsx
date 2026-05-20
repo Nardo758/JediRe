@@ -15,7 +15,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Send, ChevronDown, ChevronRight, Loader2, Bot, User, AlertCircle, ShieldOff, Download, FileSpreadsheet, FileText } from 'lucide-react';
-import * as XLSX from 'xlsx';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const BG       = '#0A0E17';
@@ -495,6 +494,7 @@ export default function CapsuleLinkPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeLayer, setActiveLayer] = useState<'deal' | 'intel' | 'adjustments'>('deal');
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportingFmt, setExportingFmt] = useState<'excel' | 'pdf' | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -505,63 +505,26 @@ export default function CapsuleLinkPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const handleExcelExport = useCallback((capsule: DealBookCapsule) => {
+  const downloadExport = useCallback(async (format: 'excel' | 'pdf', propertyAddress: string | null) => {
+    if (!accessToken) return;
     setExportOpen(false);
-    const wb = XLSX.utils.book_new();
-
-    const flat = (obj: Record<string, unknown>): Record<string, unknown> => {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(obj)) {
-        if (v && typeof v === 'object' && !Array.isArray(v) && 'resolved' in (v as Record<string, unknown>)) {
-          out[k] = (v as Record<string, unknown>).resolved;
-        } else { out[k] = v; }
-      }
-      return out;
-    };
-    const hk = (k: string) => k.replace(/_lv$/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const toKV = (obj: Record<string, unknown>) =>
-      Object.entries(flat(obj))
-        .filter(([, v]) => v !== null && v !== undefined && typeof v !== 'object')
-        .map(([k, v]) => [hk(k), typeof v === 'number' ? v : String(v ?? '')]);
-
-    const dd = flat(capsule.deal_data);
-    const summaryRows = [
-      ['Property Address', capsule.property_address ?? ''],
-      ['Asset Class', capsule.asset_class ?? ''],
-      ['JEDI Score', capsule.jedi_score ?? ''],
-      ['Collision Score', capsule.collision_score ?? ''],
-      ['', ''],
-      ['Purchase Price / Asking Price', String(dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice ?? '—')],
-      ['Annual NOI', String(dd.noi ?? dd.annual_noi ?? '—')],
-      ['Going-In Cap Rate', String(dd.cap_rate ?? dd.going_in_cap_rate ?? '—')],
-      ['Exit Cap Rate', String(dd.exit_cap_rate ?? dd.exitCapRate ?? '—')],
-      ['Hold Period (Years)', String(dd.hold_period ?? dd.holdPeriod ?? '—')],
-      ['LTV', String(dd.ltv ?? dd.loan_to_value ?? '—')],
-    ];
-    const ws1 = XLSX.utils.aoa_to_sheet([['METRIC', 'VALUE'], ...summaryRows]);
-    ws1['!cols'] = [{ wch: 32 }, { wch: 26 }];
-    XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
-
-    const ddRows = toKV(capsule.deal_data);
-    if (ddRows.length > 0) {
-      const ws2 = XLSX.utils.aoa_to_sheet([['FIELD', 'VALUE'], ...ddRows]);
-      ws2['!cols'] = [{ wch: 30 }, { wch: 30 }];
-      XLSX.utils.book_append_sheet(wb, ws2, 'Deal Data');
+    setExportingFmt(format);
+    try {
+      const res = await fetch(`/api/v1/capsule-links/${accessToken}/export/${format}`);
+      if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+      const blob = await res.blob();
+      const ext = format === 'excel' ? 'xlsx' : 'pdf';
+      const safeName = (propertyAddress ?? 'deal').replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 50);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${safeName}_capsule.${ext}`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+    } finally {
+      setExportingFmt(null);
     }
-    const piRows = toKV(capsule.platform_intel);
-    if (piRows.length > 0) {
-      const ws3 = XLSX.utils.aoa_to_sheet([['FIELD', 'VALUE'], ...piRows]);
-      ws3['!cols'] = [{ wch: 30 }, { wch: 30 }];
-      XLSX.utils.book_append_sheet(wb, ws3, 'Market Intel');
-    }
-    const safeName = (capsule.property_address ?? 'deal').replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 50);
-    XLSX.writeFile(wb, `${safeName}_capsule.xlsx`);
-  }, []);
-
-  const handlePrintPdf = useCallback(() => {
-    setExportOpen(false);
-    window.print();
-  }, []);
+  }, [accessToken]);
 
   useEffect(() => {
     if (!accessToken) { setError('Missing access token.'); setLoading(false); return; }
@@ -748,31 +711,41 @@ export default function CapsuleLinkPage() {
                     minWidth: 180, boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                   }}>
                     <button
-                      onClick={() => handleExcelExport(capsule)}
+                      onClick={() => downloadExport('excel', capsule.property_address)}
+                      disabled={!!exportingFmt}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 10,
                         width: '100%', padding: '10px 14px', background: 'none', border: 'none',
-                        color: TEXT, fontSize: 10, fontFamily: MONO, cursor: 'pointer', textAlign: 'left',
+                        color: TEXT, fontSize: 10, fontFamily: MONO,
+                        cursor: exportingFmt ? 'not-allowed' : 'pointer', textAlign: 'left',
                       }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#1A2A3A'}
+                      onMouseEnter={e => { if (!exportingFmt) e.currentTarget.style.background = '#1A2A3A'; }}
                       onMouseLeave={e => e.currentTarget.style.background = 'none'}
                     >
-                      <FileSpreadsheet size={13} color="#3FB950" />
+                      {exportingFmt === 'excel'
+                        ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} color="#3FB950" />
+                        : <FileSpreadsheet size={13} color="#3FB950" />
+                      }
                       Excel Workbook (.xlsx)
                     </button>
                     <div style={{ height: 1, background: BORDER, margin: '0 14px' }} />
                     <button
-                      onClick={handlePrintPdf}
+                      onClick={() => downloadExport('pdf', capsule.property_address)}
+                      disabled={!!exportingFmt}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 10,
                         width: '100%', padding: '10px 14px', background: 'none', border: 'none',
-                        color: TEXT, fontSize: 10, fontFamily: MONO, cursor: 'pointer', textAlign: 'left',
+                        color: TEXT, fontSize: 10, fontFamily: MONO,
+                        cursor: exportingFmt ? 'not-allowed' : 'pointer', textAlign: 'left',
                       }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#1A2A3A'}
+                      onMouseEnter={e => { if (!exportingFmt) e.currentTarget.style.background = '#1A2A3A'; }}
                       onMouseLeave={e => e.currentTarget.style.background = 'none'}
                     >
-                      <FileText size={13} color="#F85149" />
-                      Print / Save as PDF
+                      {exportingFmt === 'pdf'
+                        ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} color="#F85149" />
+                        : <FileText size={13} color="#F85149" />
+                      }
+                      Pitch Deck (.pdf)
                     </button>
                   </div>
                 )}
