@@ -9,6 +9,7 @@ import { parseConcessionBurnoff } from './parsers/concession-burnoff-parser';
 import { parseLTO } from './parsers/lto-parser';
 import { parseTaxBill, parseTaxBillAsync } from './parsers/tax-bill-parser';
 import { parseOtherIncome } from './parsers/other-income-parser';
+import { parseLeasingStats } from './parsers/leasing-stats-parser';
 import { parseOM } from './parsers/om-parser';
 import { routeExtractionResult } from './data-router';
 import { DocumentType, ExtractionResult, PipelineResult } from './types';
@@ -24,6 +25,7 @@ function getParser(docType: DocumentType): ((buffer: Buffer, filename: string) =
     case 'T30_LTO': return parseLTO;
     case 'TAX_BILL': return parseTaxBill;
     case 'OTHER_INCOME': return parseOtherIncome;
+    case 'LEASING_STATS': return parseLeasingStats;
     default: return null;
   }
 }
