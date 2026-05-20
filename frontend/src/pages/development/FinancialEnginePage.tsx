@@ -60,6 +60,16 @@ function normalizeModelResults(raw: ModelResults): ModelResults {
   if (raw.waterfallDistributions != null && !Array.isArray(raw.waterfallDistributions)) {
     (raw as any).waterfallDistributions = [];
   }
+  // Backend persists the deterministic runner's field names (lpEquityMultiple /
+  // gpEquityMultiple) on result.summary, but OverviewTab reads summary.lpEm /
+  // summary.gpEm. normalizeBuildResponse already aliases these on the build
+  // path; we must do the same on the DB-load path or LP/GP EM render as "—"
+  // on every page reload until the user triggers a rebuild.
+  if (raw.summary) {
+    const s = raw.summary as Record<string, unknown>;
+    if (s.lpEm == null && typeof s.lpEquityMultiple === 'number') s.lpEm = s.lpEquityMultiple;
+    if (s.gpEm == null && typeof s.gpEquityMultiple === 'number') s.gpEm = s.gpEquityMultiple;
+  }
   return raw;
 }
 
@@ -111,7 +121,13 @@ function mergeModelIntoFinancials(
   out.returns.totalGpPromote    = s.gpPromoteEarned ?? null;
   out.returns.gpCoInvestIrr     = s.gpIrr ?? null;
   out.returns.gpCoInvestEm      = s.gpEm ?? null;
-  out.returns.gpAllInMultiple   = s.gpEm != null ? s.gpEm * 1.3 : null;
+  // gpAllInMultiple is LP+GP combined including fees/promote attribution —
+  // not derivable from gpEm alone. Previous code multiplied gpEm × 1.3 with
+  // no derivation, producing a confidently-wrong number on the ReturnsTab
+  // KPI tile. Same pattern as stabilizedCapRate above: return null rather
+  // than fabricate. Wire the real calculation when waterfall attribution
+  // surfaces totalGpFees / totalGpPromote per the type contract.
+  out.returns.gpAllInMultiple   = null;
   out.returns.peakEquityDeployed = null;
   out.returns.prefAccrued       = null;
   out.returns.prefPaid          = null;
@@ -241,31 +257,47 @@ function normalizeBuildResponse(raw: any): ModelResults {
   const s = raw.summary ?? {};
   const af = raw.annualCashFlow ?? [];
 
-  // Derive scalar cashOnCash from first positive year or fallback to 0
+  // Derive scalar cashOnCash. Schema differs between runners:
+  //   deterministic: s.cashOnCashByYear (number[]) + s.avgCoC (number)
+  //   LLM:           s.cashOnCash       (number[])
+  // Prefer the runner-injected scalar avgCoC; otherwise average non-zero years
+  // from whichever array shape is present.
   const avgCoC = (() => {
-    const arr = s.cashOnCashByYear;
-    if (!Array.isArray(arr) || arr.length === 0) return 0;
+    if (typeof s.avgCoC === 'number') return s.avgCoC;
+    const arr = (Array.isArray(s.cashOnCashByYear) ? s.cashOnCashByYear
+              : Array.isArray(s.cashOnCash)        ? s.cashOnCash
+              : null) as number[] | null;
+    if (!arr || arr.length === 0) return 0;
     const nonZero = arr.filter((v: number) => v > 0);
     return nonZero.length > 0
       ? nonZero.reduce((a: number, b: number) => a + b, 0) / nonZero.length
       : 0;
   })();
 
-  // Y1 NOI from noiByYear, else from first cashflow row
+  // Y1 NOI. Schema differs:
+  //   deterministic: s.noiByYear[0] + s.noiYear1
+  //   LLM:           s.noiYear1
+  // Final fallback: first row of annualCashFlow.
   const noiY1 = (() => {
-    const arr = s.noiByYear;
-    if (Array.isArray(arr) && arr.length > 0) return arr[0];
+    if (Array.isArray(s.noiByYear) && s.noiByYear.length > 0) return s.noiByYear[0];
+    if (typeof s.noiYear1 === 'number') return s.noiYear1;
     return af[0]?.netOperatingIncome ?? 0;
   })();
 
-  // Average DSCR from debtMetrics.dscrByYear or scalar
+  // Average DSCR. Schema differs:
+  //   deterministic: s.dscrByYear (number[]) + s.dscr (number scalar)
+  //   LLM:           s.dscr       (number[])
+  // Coerce to scalar regardless of shape so OverviewTab's `.toFixed(2)` is safe.
   const avgDscr = (() => {
     const dm = raw.debtMetrics ?? {};
-    if (Array.isArray(dm.dscrByYear) && dm.dscrByYear.length > 0) {
-      const arr = dm.dscrByYear as number[];
-      return arr.reduce((a: number, b: number) => a + b, 0) / arr.length;
-    }
-    return s.dscr ?? dm.dscr ?? 0;
+    const fromArr = (arr: unknown): number | null =>
+      Array.isArray(arr) && arr.length > 0
+        ? (arr as number[]).reduce((a, b) => a + b, 0) / arr.length
+        : null;
+    return fromArr(s.dscrByYear)
+        ?? fromArr(dm.dscrByYear)
+        ?? (Array.isArray(s.dscr) ? fromArr(s.dscr) : (typeof s.dscr === 'number' ? s.dscr : null))
+        ?? (typeof dm.dscr === 'number' ? dm.dscr : 0);
   })();
 
   // Derive initial equity for running EM computation.
@@ -353,7 +385,9 @@ function normalizeBuildResponse(raw: any): ModelResults {
       exitCapRate: s.exitCapRate ?? null,
       goingInCapRate: s.goingInCapRate ?? null,
       exitValue: s.exitValue ?? 0,
-      totalProfit: raw.lpProfit ?? s.totalProfit,
+      // totalProfit is injected from the deterministic runner; raw.lpProfit is
+      // a legacy LLM-path location kept as a defensive fallback.
+      totalProfit: s.totalProfit ?? raw.lpProfit ?? s.lpProfit,
       lpIrr: s.lpIrr ?? s.irr,
       // lpEquityMultiple is the deterministic runner's field name; lpEm is the LLM path
       lpEm: s.lpEm ?? s.lpEquityMultiple ?? s.equityMultiple,
@@ -493,6 +527,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   // F9 Cache (Task #493): true when local assumptions have drifted from the last build.
   const [staleModel, setStaleModel] = useState(false);
+  // Surfaced to the user when handleBuildModel throws. Cleared on the next
+  // build attempt. Without this, build failures silently leave every
+  // modelResults-derived field blank with no indication of why.
+  const [buildError, setBuildError] = useState<string | null>(null);
   // Hash from the last known build — echoed by POST /build and GET /latest responses.
   // Used as the assumptionsHash query param on subsequent GET /latest calls so the
   // backend can detect cross-session staleness (another session built a newer model).
@@ -852,6 +890,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const handleBuildModel = useCallback(async () => {
     if (!resolvedDealId || !assumptions) return;
     setBuilding(true);
+    setBuildError(null);
     try {
       // The build endpoint calls Claude and can take >30 s — override the global 30 s timeout.
       const res = await apiClient.post(
@@ -873,8 +912,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         const returnedHash = (res as any)?.data?.assumptionsHash as string | undefined;
         if (returnedHash) setLastBuiltHash(returnedHash);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Model build failed:', e);
+      const serverMsg = e?.response?.data?.error ?? e?.response?.data?.message;
+      setBuildError(serverMsg || e?.message || 'Unknown error');
     } finally {
       setBuilding(false);
     }
@@ -1565,7 +1606,21 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
             border: 'none', color: building ? BT.text.muted : BT.bg.terminal,
             fontFamily: MONO, fontSize: 9, padding: '2px 10px', cursor: building ? 'default' : 'pointer',
             borderRadius: 2, fontWeight: 700, opacity: !assumptions ? 0.4 : 1,
-          }}>{building ? 'BUILDING...' : 'BUILD MODEL'}</button>
+          }}>{building ? 'BUILDING...' : (buildError ? 'RETRY BUILD' : 'BUILD MODEL')}</button>
+
+          {buildError && !building && (
+            <span
+              title={buildError}
+              style={{
+                fontFamily: MONO, fontSize: 8, color: BT.text.red,
+                border: `1px solid ${BT.text.red}`, borderRadius: 2,
+                padding: '1px 5px', letterSpacing: 0.5, maxWidth: 360,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}
+            >
+              BUILD FAILED — {buildError}
+            </span>
+          )}
 
           {staleModel && (
             <span title="Assumptions have changed since the last build" style={{

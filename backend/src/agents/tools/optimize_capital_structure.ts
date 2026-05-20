@@ -25,6 +25,7 @@
 
 import { z } from 'zod';
 import { logger } from '../../utils/logger';
+import { ABSOLUTE_MAX_HOLD_YEARS } from '../../services/hold-period-profiles';
 
 // ─── Strategy → primary metric mapping ────────────────────────────────────────
 
@@ -107,7 +108,10 @@ const InputSchema = z.object({
   purchase_price: z.number().positive().describe(
     'Property purchase price ($)'
   ),
-  hold_years: z.number().int().min(1).max(30).default(5).describe(
+  // ABSOLUTE_MAX_HOLD_YEARS is the outer ceiling across all profiles. Per-deal
+  // bounds (e.g. bridge max 5yr) are enforced at the route layer via
+  // resolveMaxHold() — Zod cannot see deal context here.
+  hold_years: z.number().int().min(1).max(ABSOLUTE_MAX_HOLD_YEARS).default(5).describe(
     'Hold period in years'
   ),
   exit_cap_rate: z.number().min(0.02).max(0.20).default(0.055).describe(

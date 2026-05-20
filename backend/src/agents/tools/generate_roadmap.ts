@@ -1,6 +1,7 @@
 /** CashFlow Agent Tool: generate_roadmap — prescriptive action plan to a target return. */
 
 import { z } from 'zod';
+import { ABSOLUTE_MAX_HOLD_YEARS } from '../../services/hold-period-profiles';
 import { generateRoadmap } from '../../services/roadmap/roadmap-engine';
 import { logger } from '../../utils/logger';
 
@@ -15,7 +16,10 @@ const InputSchema = z.object({
     value: z.number().positive().describe(
       'Target value — IRR/CoC/NOI-growth as decimal (e.g. 0.15 for 15%), equity multiple as ratio (e.g. 2.0)'
     ),
-    hold_years: z.number().int().min(1).max(30).describe(
+    // ABSOLUTE_MAX_HOLD_YEARS is the outer ceiling across all profiles. Per-deal
+    // bounds (e.g. bridge max 5yr) are enforced at the route layer via
+    // resolveMaxHold() — Zod cannot see deal context here.
+    hold_years: z.number().int().min(1).max(ABSOLUTE_MAX_HOLD_YEARS).describe(
       'Holding period in years'
     ),
   }).describe('Target return specification'),

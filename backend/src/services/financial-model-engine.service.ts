@@ -232,6 +232,22 @@ export interface FinancialModelResult {
     totalDebt: number;
     dscr: number[];
     debtYield: number[];
+    // Partition + scalar fields populated from the deterministic runner after
+    // verification. The LLM schema does not emit these, but the F9 Overview tab
+    // (Returns Breakdown, Year table) reads them directly. Optional because
+    // they're injected post-LLM-call.
+    avgCoC?: number | null;
+    lpIrr?: number | null;
+    gpIrr?: number | null;
+    lpEquityMultiple?: number | null;
+    gpEquityMultiple?: number | null;
+    lpCoC?: number | null;
+    gpCoC?: number | null;
+    lpTotalDistributions?: number;
+    lpProfit?: number;
+    gpTotalDistributions?: number;
+    gpPromoteEarned?: number;
+    totalProfit?: number;
   };
   annualCashFlow: Array<{
     year: number;
@@ -619,6 +635,27 @@ export class FinancialModelEngineService {
         }
 
         const deterministicResult = runModel(modelAssumptions, { skipSensitivity: true });
+
+        // Merge LP/GP partition + scalar summary fields from the deterministic
+        // runner into the LLM result. The LLM schema does not emit these, but
+        // the F9 Overview tab (top KPIs, Returns Breakdown, Year table) reads
+        // them. The deterministic runner is the canonical source for partition
+        // math, so copying its summary fields is the single-source-of-truth
+        // pattern already used for `result.evidence` / `result.reasoning`.
+        const detSum = deterministicResult.summary;
+        result.summary.avgCoC               = detSum.avgCoC;
+        result.summary.lpIrr                = detSum.lpIrr;
+        result.summary.gpIrr                = detSum.gpIrr;
+        result.summary.lpEquityMultiple     = detSum.lpEquityMultiple;
+        result.summary.gpEquityMultiple     = detSum.gpEquityMultiple;
+        result.summary.lpCoC                = detSum.lpCoC;
+        result.summary.gpCoC                = detSum.gpCoC;
+        result.summary.lpTotalDistributions = detSum.lpTotalDistributions;
+        result.summary.lpProfit             = detSum.lpProfit;
+        result.summary.gpTotalDistributions = detSum.gpTotalDistributions;
+        result.summary.gpPromoteEarned      = detSum.gpPromoteEarned;
+        result.summary.totalProfit          = detSum.totalProfit;
+
         const checks = runIntegrityChecks(modelAssumptions, deterministicResult);
         // Only INV-* checks are hard invariants that halt the build.
         // SOFT checks (e.g. DSCR_BREACH) may have status='error' but are advisory only.
