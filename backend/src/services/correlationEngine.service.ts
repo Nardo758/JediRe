@@ -3186,6 +3186,187 @@ export class CorrelationEngineService {
     }
   }
 
+  // ── Task #919: Historical As-Of Correlation Compute ────────────────────────
+
+  /**
+   * Computes Pearson correlation for a metric pair using data up to (and including)
+   * `asOfDate`. Only appends to `correlation_history` — does NOT overwrite
+   * `metric_correlations`. Used for deep historical backfill.
+   */
+  private async computePairCorrelationAsOf(
+    rawMetricA: string,
+    rawMetricB: string,
+    geographyType: string,
+    geographyId: string,
+    windowMonths: number,
+    asOfDate: Date
+  ): Promise<boolean> {
+    const [metricA, metricB] = [rawMetricA, rawMetricB].sort();
+    const dateStr = asOfDate.toISOString().slice(0, 10);
+    try {
+      const dataRes = await this.pool.query(
+        `WITH ts_a AS (
+           SELECT period_date, value as val_a
+           FROM metric_time_series
+           WHERE metric_id = $1 AND geography_type = $2 AND geography_id = $3
+             AND period_date <= $5::date
+             AND period_date >= ($5::date - INTERVAL '${windowMonths} months')
+           ORDER BY period_date
+         ),
+         ts_b AS (
+           SELECT period_date, value as val_b
+           FROM metric_time_series
+           WHERE metric_id = $4 AND geography_type = $2 AND geography_id = $3
+             AND period_date <= $5::date
+             AND period_date >= ($5::date - INTERVAL '${windowMonths} months')
+           ORDER BY period_date
+         )
+         SELECT ts_a.period_date, ts_a.val_a, ts_b.val_b
+         FROM ts_a
+         FULL OUTER JOIN ts_b ON ts_a.period_date = ts_b.period_date
+         WHERE ts_a.val_a IS NOT NULL AND ts_b.val_b IS NOT NULL
+         ORDER BY ts_a.period_date`,
+        [metricA, geographyType, geographyId, metricB, dateStr]
+      );
+
+      const data = dataRes.rows;
+      if (data.length < 12) return false;
+
+      const correlation = this.computePearsonCorrelation(
+        data.map((d: any) => d.val_a),
+        data.map((d: any) => d.val_b)
+      );
+
+      const n = data.length;
+      const pValue = this.computePValue(correlation.r, n);
+      const obsStart = data[0]?.period_date || null;
+      const obsEnd = data[data.length - 1]?.period_date || null;
+
+      await this.pool.query(
+        `INSERT INTO correlation_history
+         (metric_a, metric_b, geography_type, geography_id, window_months,
+          computed_at, computed_date, correlation_r, p_value, sample_size, observation_start, observation_end)
+         VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $6::date, $7, $8, $9, $10, $11)
+         ON CONFLICT (metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
+         DO NOTHING`,
+        [metricA, metricB, geographyType, geographyId, windowMonths,
+          dateStr, correlation.r, pValue, n, obsStart, obsEnd]
+      );
+
+      return true;
+    } catch (error) {
+      logger.error(`Error in computePairCorrelationAsOf ${metricA}-${metricB}@${dateStr}: ${String(error)}`);
+      return false;
+    }
+  }
+
+  /**
+   * Computes all metric-pair correlations for a geography AS OF a historical date.
+   * Only writes to `correlation_history` (no metric_correlations overwrite).
+   * Used for deep historical backfill to build multi-point sparkline series.
+   */
+  async computeTimeSeriesCorrelationsAsOf(
+    geographyType: string,
+    geographyId: string,
+    windowMonths: number,
+    asOfDate: Date
+  ): Promise<{ computed: number; skipped: number }> {
+    const metricsRes = await this.pool.query(
+      `SELECT DISTINCT metric_id
+       FROM metric_time_series
+       WHERE geography_type = $1 AND geography_id = $2
+         AND period_date <= $3::date
+       GROUP BY metric_id
+       HAVING COUNT(*) >= 12`,
+      [geographyType, geographyId, asOfDate.toISOString().slice(0, 10)]
+    );
+
+    const metrics: string[] = metricsRes.rows.map((r: any) => r.metric_id);
+    if (metrics.length < 2) return { computed: 0, skipped: 0 };
+
+    let computed = 0;
+    let skipped = 0;
+    for (let i = 0; i < metrics.length; i++) {
+      for (let j = i + 1; j < metrics.length; j++) {
+        const ok = await this.computePairCorrelationAsOf(
+          metrics[i], metrics[j], geographyType, geographyId, windowMonths, asOfDate
+        );
+        if (ok) computed++; else skipped++;
+      }
+    }
+    return { computed, skipped };
+  }
+
+  /**
+   * Returns all metric pairs for a geography with their history point count,
+   * latest r value, and computed stability score. Used by the M08 pair-level UI.
+   */
+  async getGeographyPairsWithStability(
+    geographyType: string,
+    geographyId: string | null,
+    windowMonths: number = 36,
+    limit: number = 30
+  ): Promise<Array<{
+    metric_a: string;
+    metric_b: string;
+    history_points: number;
+    latest_r: number;
+    latest_date: string;
+    stability_score: number | null;
+  }>> {
+    try {
+      const res = await this.pool.query<{
+        metric_a: string; metric_b: string; history_points: string;
+        stddev_r: string | null; latest_r: string; latest_date: string;
+      }>(
+        `SELECT
+           h.metric_a, h.metric_b,
+           h.history_points, h.stddev_r,
+           l.correlation_r AS latest_r,
+           h.latest_date::text AS latest_date
+         FROM (
+           SELECT metric_a, metric_b,
+             COUNT(*)::text AS history_points,
+             STDDEV_POP(correlation_r::float)::text AS stddev_r,
+             MAX(computed_date) AS latest_date
+           FROM correlation_history
+           WHERE geography_type = $1
+             AND (geography_id = $2 OR ($2::text IS NULL AND geography_id IS NULL))
+             AND window_months = $3
+           GROUP BY metric_a, metric_b
+         ) h
+         JOIN correlation_history l
+           ON l.metric_a = h.metric_a AND l.metric_b = h.metric_b
+             AND l.computed_date = h.latest_date
+             AND l.geography_type = $1
+             AND (l.geography_id = $2 OR ($2::text IS NULL AND l.geography_id IS NULL))
+             AND l.window_months = $3
+         ORDER BY h.history_points::int DESC, ABS(l.correlation_r::float) DESC
+         LIMIT $4`,
+        [geographyType, geographyId, windowMonths, limit]
+      );
+
+      return res.rows.map(row => {
+        const pts = parseInt(row.history_points);
+        const stddev = row.stddev_r != null ? parseFloat(row.stddev_r) : null;
+        const stability_score = pts >= 3 && stddev != null
+          ? Math.max(0, Math.min(1, 1 - stddev / 0.3))
+          : null;
+        return {
+          metric_a: row.metric_a,
+          metric_b: row.metric_b,
+          history_points: pts,
+          latest_r: parseFloat(row.latest_r),
+          latest_date: row.latest_date,
+          stability_score,
+        };
+      });
+    } catch (error) {
+      logger.error(`Error in getGeographyPairsWithStability: ${String(error)}`);
+      return [];
+    }
+  }
+
   // ── Task #919: Correlation History ─────────────────────────────────────────
 
   /**

@@ -355,6 +355,27 @@ router.post('/seed-presets', requireAdminApiKey, async (_req: Request, res: Resp
   }
 });
 
+// Task #919 — GET /history/pairs — all tracked pairs with per-pair stability scores
+// Must be registered BEFORE /history to avoid express treating "pairs" as a query
+router.get('/history/pairs', async (req: Request, res: Response) => {
+  try {
+    const geographyType = (req.query.geography_type as string) || 'msa';
+    const geographyIdRaw = req.query.geography_id as string | undefined;
+    const geographyId = geographyIdRaw || null;
+    const windowMonths = parseInt((req.query.window_months as string) || '36', 10);
+    const limitParam = parseInt((req.query.limit as string) || '30', 10);
+    const limit = Math.max(1, Math.min(limitParam, 100));
+
+    const pairs = await engine.getGeographyPairsWithStability(
+      geographyType, geographyId, windowMonths, limit
+    );
+    return res.json({ success: true, count: pairs.length, data: pairs });
+  } catch (error: any) {
+    console.error('Correlation history/pairs error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Task #919 — GET /history — sparkline + stability for a metric pair
 router.get('/history', async (req: Request, res: Response) => {
   try {

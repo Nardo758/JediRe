@@ -181,6 +181,40 @@ export class LeadLagDiscoveryService {
         confidenceLevel = 'medium';
       }
 
+      // Task #919: Adjust confidence based on correlation_history depth + stability.
+      // Pairs with shallow history (< 3 points) stay at their sample-size tier.
+      // Pairs with ≥ 3 points and low stability (stddev-based) are downgraded one tier.
+      // Pairs with ≥ 5 stable points upgrade medium → high if sample sizes are borderline.
+      try {
+        const [sortedA, sortedB] = [metricAId, metricBId].sort();
+        const histRes = await this.pool.query<{ history_points: string; stddev_r: string | null }>(
+          `SELECT COUNT(*)::text AS history_points,
+                  STDDEV_POP(correlation_r::float)::text AS stddev_r
+           FROM correlation_history
+           WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3`,
+          [sortedA, sortedB, geographyType]
+        );
+        if (histRes.rows.length > 0) {
+          const pts = parseInt(histRes.rows[0].history_points, 10);
+          const stddevRaw = histRes.rows[0].stddev_r;
+          const stddev = stddevRaw != null ? parseFloat(stddevRaw) : null;
+          if (pts >= 3 && stddev != null) {
+            // stability_score: 1 − (stddev / 0.3), clamped 0–1
+            const stabilityScore = Math.max(0, Math.min(1, 1 - stddev / 0.3));
+            if (stabilityScore < 0.5) {
+              // Volatile history — downgrade by one tier
+              if (confidenceLevel === 'high') confidenceLevel = 'medium';
+              else if (confidenceLevel === 'medium') confidenceLevel = 'low';
+            } else if (stabilityScore >= 0.8 && pts >= 5 && confidenceLevel === 'medium') {
+              // Historically stable with sufficient depth — upgrade medium → high
+              confidenceLevel = 'high';
+            }
+          }
+        }
+      } catch (_histErr) {
+        // Non-fatal: proceed with sample-size-based confidence
+      }
+
       return {
         metricAId,
         metricBId,

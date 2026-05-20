@@ -61,24 +61,37 @@ function StabilitySparkBar({ score }: { score: number | null }) {
 
 // ─── Legacy Signal Matrix Tab ─────────────────────────────────────────────────
 
+interface PairStability {
+  metric_a: string;
+  metric_b: string;
+  history_points: number;
+  latest_r: number;
+  latest_date: string;
+  stability_score: number | null;
+}
+
 function LegacySignalMatrixTab({ city, state: st }: { city: string; state: string }) {
   const { report, loading, error } = useCorrelationReport(city, st);
   const [stability, setStability] = useState<StabilityData | null>(null);
   const [stabilityLoading, setStabilityLoading] = useState(true);
+  const [pairs, setPairs] = useState<PairStability[]>([]);
+  const [pairsLoading, setPairsLoading] = useState(true);
 
   useEffect(() => {
-    if (!city) { setStabilityLoading(false); return; }
+    if (!city) { setStabilityLoading(false); setPairsLoading(false); return; }
     setStabilityLoading(true);
+    setPairsLoading(true);
     // Geography ID format used by the correlation engine: {city-slug}-{state}-{state}
     // e.g. Atlanta + GA → atlanta-ga-ga
     const stLower = st.toLowerCase();
     const geoId = `${city.toLowerCase().replace(/\s+/g, '-')}-${stLower}-${stLower}`;
+
+    // Fetch geography-level stability summary
     apiClient.get('/api/v1/correlations/history', {
       params: { geography_type: 'msa', geography_id: geoId, window_months: 36 },
     })
       .then(res => {
         const d = res.data?.data as StabilityData | undefined;
-        // Fall back to national data if MSA has no history yet
         if (d && d.data_points > 0) {
           setStability(d);
         } else {
@@ -92,6 +105,25 @@ function LegacySignalMatrixTab({ city, state: st }: { city: string; state: strin
       })
       .catch(() => setStability(null))
       .finally(() => setStabilityLoading(false));
+
+    // Fetch pair-level stability list — try MSA first, fall back to national
+    apiClient.get('/api/v1/correlations/history/pairs', {
+      params: { geography_type: 'msa', geography_id: geoId, window_months: 36, limit: 20 },
+    })
+      .then(res => {
+        const rows = (res.data?.data ?? []) as PairStability[];
+        if (rows.length > 0) {
+          setPairs(rows);
+        } else {
+          return apiClient.get('/api/v1/correlations/history/pairs', {
+            params: { geography_type: 'national', geography_id: 'US', window_months: 36, limit: 20 },
+          }).then(r => {
+            setPairs((r.data?.data ?? []) as PairStability[]);
+          });
+        }
+      })
+      .catch(() => setPairs([]))
+      .finally(() => setPairsLoading(false));
   }, [city, st]);
 
   if (loading) return (
@@ -157,6 +189,70 @@ function LegacySignalMatrixTab({ city, state: st }: { city: string; state: strin
         {!stabilityLoading && !stability?.pair_count && (
           <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginTop: 3 }}>
             Nightly job seeds history · first run pending
+          </div>
+        )}
+      </div>
+
+      {/* Task #919 — Pair-level stability list */}
+      <div style={{
+        background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`,
+        padding: '6px 10px', marginBottom: 4,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+            TRACKED METRIC PAIRS · 36M WINDOW
+          </span>
+          {pairsLoading
+            ? <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>loading…</span>
+            : <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{pairs.length} pairs</span>
+          }
+        </div>
+        {pairsLoading && (
+          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, textAlign: 'center', padding: '6px 0' }}>
+            computing…
+          </div>
+        )}
+        {!pairsLoading && pairs.length === 0 && (
+          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, textAlign: 'center', padding: '6px 0', fontStyle: 'italic' }}>
+            No pair history yet — nightly job running
+          </div>
+        )}
+        {!pairsLoading && pairs.length > 0 && (
+          <div style={{ maxHeight: 160, overflowY: 'auto' }}>
+            {/* Header row */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr 48px 56px 52px',
+              gap: 4, padding: '2px 4px',
+              borderBottom: `1px solid ${BT.border.subtle}`, marginBottom: 2,
+            }}>
+              {['METRIC A', 'METRIC B', 'r', 'STABILITY', 'PTS'].map(h => (
+                <span key={h} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, textTransform: 'uppercase' }}>{h}</span>
+              ))}
+            </div>
+            {pairs.map((p, idx) => {
+              const sc = p.stability_score;
+              const col = stabilityColor(sc);
+              const lbl = sc !== null ? stabilityLabel(sc) : 'SHALLOW';
+              const rAbs = Math.abs(p.latest_r);
+              const rColor = rAbs >= 0.5 ? BT.text.green : rAbs >= 0.3 ? BT.text.amber : BT.text.muted;
+              return (
+                <div key={idx} style={{
+                  display: 'grid', gridTemplateColumns: '1fr 1fr 48px 56px 52px',
+                  gap: 4, padding: '3px 4px',
+                  background: idx % 2 === 0 ? 'transparent' : `${BT.border.subtle}40`,
+                  alignItems: 'center',
+                }}>
+                  <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.metric_a}>{p.metric_a}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.metric_b}>{p.metric_b}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: rColor }}>{p.latest_r.toFixed(2)}</span>
+                  <span style={{
+                    fontFamily: MONO, fontSize: 8, fontWeight: 700, color: col,
+                    background: `${col}18`, padding: '0px 3px', borderRadius: 2,
+                  }}>{lbl}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{p.history_points}pt</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
