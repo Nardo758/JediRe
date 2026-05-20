@@ -230,6 +230,82 @@ async function latestMacroConsumerSentiment(): Promise<number | null> {
 }
 
 /**
+ * Point-in-time macro UMCSI: closest m28_rate_environment snapshot at or
+ * before `asOfDate`. Used by the historical backfill so that each
+ * back-populated row carries the UMCSI that was actually current on its
+ * own generated_at, not today's reading.
+ */
+async function macroConsumerSentimentAt(asOfDate: Date): Promise<number | null> {
+  try {
+    const r = await query(
+      `SELECT consumer_sentiment
+         FROM m28_rate_environment
+        WHERE consumer_sentiment IS NOT NULL
+          AND snapshot_date <= $1::date
+        ORDER BY snapshot_date DESC
+        LIMIT 1`,
+      [asOfDate.toISOString()],
+    );
+    const row = r.rows[0] as { consumer_sentiment: string | null } | undefined;
+    if (!row || row.consumer_sentiment === null) return null;
+    return Number(row.consumer_sentiment);
+  } catch (err) {
+    logger.warn('sentiment-history: macro consumer sentiment as-of lookup failed', { err });
+    return null;
+  }
+}
+
+/**
+ * Point-in-time 30-day news sentiment average, ending at `asOfDate`.
+ * Mirrors `computeNews30dAvg` (same scoping rules — both primary AND
+ * geography tokens required) but anchored to a historical date so the
+ * backfilled trend line reflects what news looked like back then.
+ */
+async function computeNews30dAvgAt(
+  scope: NewsScope,
+  asOfDate: Date,
+): Promise<{ avg: number | null; count: number | null; topIds: string[] }> {
+  if (scope.primaryTokens.length === 0) return { avg: null, count: null, topIds: [] };
+  if (scope.geographyTokens.length === 0) return { avg: null, count: null, topIds: [] };
+  if (!(await newsSentimentColumnsAvailable())) return { avg: null, count: null, topIds: [] };
+
+  try {
+    const r = await query(
+      `SELECT
+         AVG(sentiment_score)::numeric(5,3) AS avg_score,
+         COUNT(*)::int                       AS cnt,
+         ARRAY(
+           SELECT id::text FROM news_items
+            WHERE published_at >= $3::timestamptz - INTERVAL '30 days'
+              AND published_at <= $3::timestamptz
+              AND sentiment_score IS NOT NULL
+              AND tags ?| $1::text[]
+              AND tags ?| $2::text[]
+            ORDER BY ABS(sentiment_score) DESC NULLS LAST, published_at DESC
+            LIMIT 5
+         ) AS top_ids
+       FROM news_items
+       WHERE published_at >= $3::timestamptz - INTERVAL '30 days'
+         AND published_at <= $3::timestamptz
+         AND sentiment_score IS NOT NULL
+         AND tags ?| $1::text[]
+         AND tags ?| $2::text[]`,
+      [scope.primaryTokens, scope.geographyTokens, asOfDate.toISOString()],
+    );
+    const row = r.rows[0] as { avg_score: string | null; cnt: number | null; top_ids: string[] | null } | undefined;
+    if (!row || row.cnt === null || row.cnt === 0) return { avg: null, count: 0, topIds: [] };
+    return {
+      avg: row.avg_score === null ? null : Number(row.avg_score),
+      count: Number(row.cnt),
+      topIds: row.top_ids ?? [],
+    };
+  } catch (err) {
+    logger.warn('sentiment-history: news 30d as-of average failed', { err });
+    return { avg: null, count: null, topIds: [] };
+  }
+}
+
+/**
  * Resolve the entity once and return both the canonical storage key and the
  * news scope used for that entity. Called by every read/write path so the
  * `(entity_type, entity_id)` row key is consistent regardless of whether the
@@ -657,4 +733,166 @@ export async function snapshotAllActiveEntities(): Promise<{
   }
 
   return { written, failed, byType };
+}
+
+export interface BackfillOptions {
+  /** When true, compute everything but skip the INSERT. */
+  dryRun?: boolean;
+  /** Optional limit on rows processed (useful for spot-checks). */
+  limit?: number;
+}
+
+export interface BackfillResult {
+  considered: number;
+  written: number;
+  skippedExisting: number;
+  failed: number;
+  byType: { msa: number; submarket: number };
+}
+
+/**
+ * One-shot historical backfill (Task #389).
+ *
+ * Walks every (entity_type, entity_id, tab_context) row in market_commentary,
+ * derives the canonical storage key, and inserts a `market_sentiment_history`
+ * snapshot at the commentary's own `generated_at` — anchored to point-in-time
+ * macro UMCSI and point-in-time 30d news averages so the trend chart is
+ * usable from the moment this script runs instead of after a full year of
+ * cron snapshots accumulate.
+ *
+ * Idempotent: re-running is safe. A snapshot is skipped if a 'backfill' row
+ * already exists for the (entity_type, canonical_id, snapshot_at) triple.
+ *
+ * Notes / known limits:
+ *   - market_commentary has a UNIQUE (entity_type, entity_id, tab_context)
+ *     constraint (see migration 20260419), so there is at most one row per
+ *     entity tab today. The backfill produces ONE historical point per
+ *     entity — enough to make vs-30d / vs-12mo deltas non-null once a fresh
+ *     agent_run or cron_snapshot lands, but not a dense series. As soon as
+ *     historical commentary archival lands (or agent_runs starts retaining
+ *     prior commentary outputs), this same driver can be re-pointed at that
+ *     source with no signature change.
+ *   - Snapshots whose `generated_at` predates the entity's first
+ *     m28_rate_environment row get NULL macro — we never fabricate a
+ *     forward-looking UMCSI value backward in time.
+ */
+export async function backfillFromMarketCommentary(
+  options: BackfillOptions = {},
+): Promise<BackfillResult> {
+  const result: BackfillResult = {
+    considered: 0,
+    written: 0,
+    skippedExisting: 0,
+    failed: 0,
+    byType: { msa: 0, submarket: 0 },
+  };
+
+  const limitClause = options.limit && options.limit > 0 ? `LIMIT ${Math.floor(options.limit)}` : '';
+  const r = await query(
+    `SELECT entity_type, entity_id, commentary, generated_at
+       FROM market_commentary
+      WHERE entity_type IN ('msa','submarket')
+        AND (tab_context = 'commentary' OR tab_context IS NULL)
+      ORDER BY generated_at ASC
+      ${limitClause}`,
+  );
+
+  result.considered = r.rows.length;
+
+  for (const row of r.rows) {
+    const entityType = String(row.entity_type) as 'msa' | 'submarket';
+    const rawEntityId = String(row.entity_id);
+    const generatedAt = row.generated_at instanceof Date
+      ? row.generated_at
+      : new Date(String(row.generated_at));
+
+    if (Number.isNaN(generatedAt.getTime())) {
+      result.failed += 1;
+      logger.warn('sentiment-history backfill: invalid generated_at, skipping', {
+        entityType,
+        entityId: rawEntityId,
+      });
+      continue;
+    }
+
+    // Per-row guard: a single malformed commentary blob must NOT abort the
+    // whole batch. Treat parse failures as "agent score unavailable".
+    let agentScore: -1 | 0 | 1 | null = null;
+    try {
+      const commentary = typeof row.commentary === 'string'
+        ? JSON.parse(row.commentary)
+        : row.commentary;
+      const narrative = commentary?.marketNarrative as { sentiment?: unknown } | undefined;
+      const raw = narrative?.sentiment;
+      if (raw === 'bullish' || raw === 'neutral' || raw === 'bearish') {
+        agentScore = labelToScore(raw);
+      }
+    } catch (parseErr) {
+      logger.warn('sentiment-history backfill: malformed commentary row', {
+        err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        entityType,
+        entityId: rawEntityId,
+      });
+    }
+
+    try {
+      const resolved = await resolveEntityForStorage(entityType, rawEntityId);
+      const canonicalId = resolved.canonicalId;
+
+      // Idempotency: skip if we already backfilled this exact snapshot.
+      const exists = await query(
+        `SELECT 1 FROM market_sentiment_history
+          WHERE entity_type = $1 AND entity_id = $2
+            AND source = 'backfill'
+            AND snapshot_at = $3
+          LIMIT 1`,
+        [entityType, canonicalId, generatedAt.toISOString()],
+      );
+      if (exists.rows.length > 0) {
+        result.skippedExisting += 1;
+        continue;
+      }
+
+      const news = resolved.newsScope
+        ? await computeNews30dAvgAt(resolved.newsScope, generatedAt)
+        : { avg: null, count: null, topIds: [] };
+      const macro = await macroConsumerSentimentAt(generatedAt);
+
+      if (options.dryRun) {
+        result.written += 1;
+        result.byType[entityType] += 1;
+        continue;
+      }
+
+      await query(
+        `INSERT INTO market_sentiment_history
+           (entity_type, entity_id, snapshot_at, agent_score, news_30d_avg,
+            news_count_30d, macro_consumer_sentiment, top_driver_news_ids, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'backfill')`,
+        [
+          entityType,
+          canonicalId,
+          generatedAt.toISOString(),
+          agentScore,
+          news.avg,
+          news.count,
+          macro,
+          JSON.stringify(news.topIds),
+        ],
+      );
+
+      result.written += 1;
+      result.byType[entityType] += 1;
+    } catch (err) {
+      result.failed += 1;
+      logger.warn('sentiment-history backfill: row failed', {
+        err: err instanceof Error ? err.message : String(err),
+        entityType,
+        entityId: rawEntityId,
+        generatedAt: generatedAt.toISOString(),
+      });
+    }
+  }
+
+  return result;
 }
