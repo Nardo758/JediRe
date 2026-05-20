@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { BT } from '@/components/deal/bloomberg-ui';
 import RecipientConnectModal from '../components/capsule/RecipientConnectModal';
@@ -12,6 +12,7 @@ interface ShareLandingData {
   share: {
     share_type: string;
     agent_enabled: boolean;
+    allow_document_download: boolean;
     expires_at: string | null;
     preview_text: string | null;
     recipient_email: string | null;
@@ -59,6 +60,27 @@ export default function ShareLandingPage() {
   const [platformUser, setPlatformUser] = useState<boolean | null>(null);
   const [forkLoading, setForkLoading] = useState(false);
   const [forkDone, setForkDone] = useState(false);
+  const [exportingFmt, setExportingFmt] = useState<'excel' | 'pdf' | null>(null);
+
+  const downloadExport = useCallback(async (format: 'excel' | 'pdf', propertyAddress: string | null) => {
+    if (!shortcode) return;
+    setExportingFmt(format);
+    try {
+      const res = await fetch(`/api/v1/shares/${shortcode}/export/${format}`);
+      if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+      const blob = await res.blob();
+      const ext = format === 'excel' ? 'xlsx' : 'pdf';
+      const safeName = (propertyAddress ?? 'deal').replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 50);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${safeName}_capsule.${ext}`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+    } finally {
+      setExportingFmt(null);
+    }
+  }, [shortcode]);
 
   useEffect(() => {
     if (!shortcode) { setError('Invalid share link.'); setLoading(false); return; }
@@ -416,6 +438,42 @@ export default function ShareLandingPage() {
                   )}
                 </button>
               )
+            )}
+
+            {/* DOWNLOAD — visible only when sender enabled document download */}
+            {share.allow_document_download && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => downloadExport('excel', capsule.property_address)}
+                  disabled={!!exportingFmt}
+                  style={{
+                    flex: 1, padding: '11px 16px', fontSize: 10, fontWeight: 700,
+                    letterSpacing: 1, background: 'rgba(59,176,80,0.06)',
+                    color: '#3BB050', border: '1px solid rgba(59,176,80,0.28)',
+                    cursor: exportingFmt ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    opacity: exportingFmt && exportingFmt !== 'excel' ? 0.5 : 1,
+                    ...mono,
+                  }}
+                >
+                  {exportingFmt === 'excel' ? '↓ DOWNLOADING…' : '↓ EXCEL (.XLSX)'}
+                </button>
+                <button
+                  onClick={() => downloadExport('pdf', capsule.property_address)}
+                  disabled={!!exportingFmt}
+                  style={{
+                    flex: 1, padding: '11px 16px', fontSize: 10, fontWeight: 700,
+                    letterSpacing: 1, background: 'rgba(248,81,73,0.06)',
+                    color: '#F85149', border: '1px solid rgba(248,81,73,0.28)',
+                    cursor: exportingFmt ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    opacity: exportingFmt && exportingFmt !== 'pdf' ? 0.5 : 1,
+                    ...mono,
+                  }}
+                >
+                  {exportingFmt === 'pdf' ? '↓ DOWNLOADING…' : '↓ PITCH DECK (.PDF)'}
+                </button>
+              </div>
             )}
 
             {/* TERTIARY — Sign up / Log in (hidden for logged-in users) */}

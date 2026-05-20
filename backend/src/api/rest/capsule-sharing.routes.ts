@@ -507,6 +507,195 @@ router.get('/shares/:shortcode', async (req: Request, res: Response) => {
   }
 });
 
+// ─── GET /shares/:shortcode/export/excel — shortcode XLSX export ─────────────
+// allow_document_download must be true; no platform auth required.
+
+router.get('/shares/:shortcode/export/excel', async (req: Request, res: Response) => {
+  const { shortcode } = req.params;
+  try {
+    const pool = getPool();
+    const shareResult = await pool.query(
+      `SELECT ces.capsule_id, ces.allow_document_download
+       FROM capsule_external_shares ces
+       WHERE ces.shortcode = $1 AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW()) LIMIT 1`,
+      [shortcode]
+    );
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Share link is invalid, expired, or has been revoked.' });
+    }
+    if (!shareResult.rows[0].allow_document_download) {
+      return res.status(403).json({ error: 'Document download is not permitted for this share.' });
+    }
+    const capsuleId = shareResult.rows[0].capsule_id;
+    const result = await pool.query(
+      `SELECT property_address, asset_class, jedi_score, collision_score,
+              deal_data, platform_intel, user_adjustments, module_outputs, created_at
+       FROM deal_capsules WHERE id = $1 LIMIT 1`,
+      [capsuleId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Capsule not found.' });
+    const wb = buildCapsuleWorkbook(result.rows[0]);
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', bookSST: true });
+    const safeName = (result.rows[0].property_address ?? capsuleId)
+      .replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 60);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_capsule.xlsx"`);
+    res.setHeader('Content-Length', buf.length);
+    return res.send(buf);
+  } catch (err: any) {
+    logger.error('Shortcode Excel export failed', { error: err?.message, shortcode });
+    if (!res.headersSent) return res.status(500).json({ error: err?.message ?? 'Export failed' });
+  }
+});
+
+// ─── GET /shares/:shortcode/export/pdf — shortcode PDF export ────────────────
+
+router.get('/shares/:shortcode/export/pdf', async (req: Request, res: Response) => {
+  const { shortcode } = req.params;
+  try {
+    const pool = getPool();
+    const shareResult = await pool.query(
+      `SELECT ces.capsule_id, ces.allow_document_download,
+              ubs.company_name, ubs.logo_url
+       FROM capsule_external_shares ces
+       JOIN deal_capsules dc ON dc.id = ces.capsule_id
+       LEFT JOIN user_branding_settings ubs ON ubs.user_id = dc.user_id
+       WHERE ces.shortcode = $1 AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW()) LIMIT 1`,
+      [shortcode]
+    );
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Share link is invalid, expired, or has been revoked.' });
+    }
+    if (!shareResult.rows[0].allow_document_download) {
+      return res.status(403).json({ error: 'Document download is not permitted for this share.' });
+    }
+    const { capsule_id: capsuleId, company_name, logo_url } = shareResult.rows[0];
+    const result = await pool.query(
+      `SELECT property_address, asset_class, jedi_score, collision_score,
+              deal_data, platform_intel, created_at
+       FROM deal_capsules WHERE id = $1 LIMIT 1`,
+      [capsuleId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Capsule not found.' });
+
+    const capsule = result.rows[0];
+    const dd = flattenLV((capsule.deal_data as Record<string, unknown>) ?? {});
+    const pi = flattenLV((capsule.platform_intel as Record<string, unknown>) ?? {});
+    const companyName: string = company_name ?? 'JEDI RE';
+    const address: string = capsule.property_address ?? 'Undisclosed Address';
+    const assetClass: string = capsule.asset_class ?? '';
+    const logoBuffer = logo_url ? await safeFetchLogoBuffer(String(logo_url)) : null;
+
+    const fmtM = (v: unknown): string => {
+      const n = parseFloat(String(v ?? ''));
+      if (isNaN(n)) return '—';
+      if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+      if (Math.abs(n) >= 1_000) return `$${n.toLocaleString()}`;
+      return `$${n}`;
+    };
+    const fmtP = (v: unknown): string => {
+      const n = parseFloat(String(v ?? ''));
+      if (isNaN(n)) return '—';
+      return `${(n > 1 ? n : n * 100).toFixed(2)}%`;
+    };
+
+    const safeName = address.replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 60);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_capsule.pdf"`);
+
+    const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: address, Author: companyName } });
+    doc.pipe(res);
+
+    const W = 595.28, H = 841.89;
+    const NAVY_SC = '#0D1B2A', AMBER_SC = '#F0B429', SLATE_SC = '#1A2A3E';
+    const WHITE_SC = '#FFFFFF', LIGHT_SC = '#E8ECF1', MID_SC = '#8B9CB0';
+
+    // ── Cover page ──
+    doc.rect(0, 0, W, H).fill(NAVY_SC);
+    doc.rect(0, 0, W, 8).fill(AMBER_SC);
+
+    if (logoBuffer) {
+      try {
+        doc.image(logoBuffer, 50, 50, { fit: [120, 40], align: 'left' });
+        doc.fillColor(MID_SC).font('Helvetica').fontSize(9).text('DEAL CAPSULE — CONFIDENTIAL', 50, 96);
+      } catch {
+        doc.fillColor(AMBER_SC).font('Helvetica-Bold').fontSize(14).text(companyName.toUpperCase(), 50, 60, { width: W - 100 });
+        doc.fillColor(MID_SC).font('Helvetica').fontSize(9).text('DEAL CAPSULE — CONFIDENTIAL', 50, 80);
+      }
+    } else {
+      doc.fillColor(AMBER_SC).font('Helvetica-Bold').fontSize(14).text(companyName.toUpperCase(), 50, 60, { width: W - 100 });
+      doc.fillColor(MID_SC).font('Helvetica').fontSize(9).text('DEAL CAPSULE — CONFIDENTIAL', 50, 80);
+    }
+
+    doc.rect(50, 140, W - 100, 2).fill(AMBER_SC);
+    doc.fillColor(WHITE_SC).font('Helvetica-Bold').fontSize(26).text(address, 50, 160, { width: W - 100, lineGap: 4 });
+    if (assetClass) doc.fillColor(AMBER_SC).font('Helvetica-Bold').fontSize(11).text(assetClass.toUpperCase(), 50, doc.y + 10);
+
+    if (capsule.jedi_score != null) {
+      doc.rect(50, 300, 120, 80).fill(SLATE_SC);
+      doc.fillColor(AMBER_SC).font('Helvetica-Bold').fontSize(36).text(String(capsule.jedi_score), 50, 312, { width: 120, align: 'center' });
+      doc.fillColor(MID_SC).font('Helvetica').fontSize(8).text('JEDI SCORE', 50, 352, { width: 120, align: 'center' });
+    }
+    doc.fillColor(MID_SC).font('Helvetica').fontSize(8)
+      .text(`Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, 50, H - 80, { width: W - 100 });
+
+    // ── Metrics page ──
+    doc.addPage();
+    doc.rect(0, 0, W, H).fill(WHITE_SC);
+    doc.rect(0, 0, W, 8).fill(AMBER_SC);
+    doc.rect(0, 8, W, 50).fill(NAVY_SC);
+    doc.fillColor(AMBER_SC).font('Helvetica-Bold').fontSize(13).text('KEY METRICS', 50, 22);
+    doc.fillColor(LIGHT_SC).font('Helvetica').fontSize(9).text(address, 50, 40);
+
+    const metricsList2: [string, string][] = [
+      ['Purchase Price / Asking Price', fmtM(dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice)],
+      ['Annual NOI', fmtM(dd.noi ?? dd.annual_noi)],
+      ['Going-In Cap Rate', fmtP(dd.cap_rate ?? dd.going_in_cap_rate)],
+      ['Exit Cap Rate', fmtP(dd.exit_cap_rate ?? dd.exitCapRate)],
+      ['Hold Period', dd.hold_period ?? dd.holdPeriod ? `${dd.hold_period ?? dd.holdPeriod} years` : '—'],
+      ['LTV', fmtP(dd.ltv ?? dd.loan_to_value)],
+      ['Total Units', String(dd.total_units ?? dd.totalUnits ?? '—')],
+      ['Asset Class', assetClass || '—'],
+    ];
+
+    let my3 = 80;
+    metricsList2.forEach(([label, value], i) => {
+      const rowBg = i % 2 === 0 ? '#F8F9FA' : WHITE_SC;
+      doc.rect(50, my3, W - 100, 28).fill(rowBg);
+      doc.fillColor('#333333').font('Helvetica').fontSize(10).text(label, 60, my3 + 8, { width: 220 });
+      doc.fillColor(NAVY_SC).font('Helvetica-Bold').fontSize(10).text(value, 300, my3 + 8, { width: 200, align: 'right' });
+      my3 += 28;
+    });
+
+    const piEntries3 = Object.entries(pi)
+      .filter(([, v]) => v !== null && v !== undefined && typeof v !== 'object').slice(0, 6);
+    if (piEntries3.length > 0) {
+      my3 += 20;
+      doc.fillColor(NAVY_SC).font('Helvetica-Bold').fontSize(11).text('MARKET INTELLIGENCE', 50, my3);
+      doc.rect(50, my3 + 16, W - 100, 1).fill(AMBER_SC);
+      my3 += 24;
+      piEntries3.forEach(([k, v], i) => {
+        const rowBg = i % 2 === 0 ? '#F8F9FA' : WHITE_SC;
+        doc.rect(50, my3, W - 100, 24).fill(rowBg);
+        doc.fillColor('#555555').font('Helvetica').fontSize(9).text(humanizeKey(k), 60, my3 + 6, { width: 220 });
+        doc.fillColor(NAVY_SC).font('Helvetica-Bold').fontSize(9).text(String(v ?? '—'), 300, my3 + 6, { width: 200, align: 'right' });
+        my3 += 24;
+      });
+    }
+
+    doc.fillColor(MID_SC).font('Helvetica').fontSize(8)
+      .text(`${companyName} · JEDI RE Platform · ${new Date().toLocaleDateString()}`, 50, H - 50, { width: W - 100, align: 'center' });
+
+    doc.end();
+    return;
+  } catch (err: any) {
+    logger.error('Shortcode PDF export failed', { error: err?.message, shortcode });
+    if (!res.headersSent) return res.status(500).json({ error: err?.message ?? 'Export failed' });
+  }
+});
+
 // ─── PATCH /shares/:shortcode/overlay ────────────────────────────────────────
 
 router.patch('/shares/:shortcode/overlay', async (req: Request, res: Response) => {
@@ -2056,13 +2245,16 @@ router.get('/capsule-links/:accessToken/export/excel', async (req: Request, res:
     const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
 
     const shareResult = await pool.query(
-      `SELECT capsule_id FROM capsule_external_shares
+      `SELECT capsule_id, allow_document_download FROM capsule_external_shares
        WHERE access_token = $1 AND revoked_at IS NULL
          AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
       [tokenHash]
     );
     if (shareResult.rows.length === 0) {
       return res.status(404).json({ error: 'Invalid or expired share link' });
+    }
+    if (!shareResult.rows[0].allow_document_download) {
+      return res.status(403).json({ error: 'Document download is not permitted for this share.' });
     }
 
     const capsuleId = shareResult.rows[0].capsule_id;
@@ -2097,7 +2289,7 @@ router.get('/capsule-links/:accessToken/export/pdf', async (req: Request, res: R
     const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
 
     const shareResult = await pool.query(
-      `SELECT ces.capsule_id, ubs.company_name, ubs.logo_url
+      `SELECT ces.capsule_id, ces.allow_document_download, ubs.company_name, ubs.logo_url
        FROM capsule_external_shares ces
        JOIN deal_capsules dc ON dc.id = ces.capsule_id
        LEFT JOIN user_branding_settings ubs ON ubs.user_id = dc.user_id
@@ -2107,6 +2299,9 @@ router.get('/capsule-links/:accessToken/export/pdf', async (req: Request, res: R
     );
     if (shareResult.rows.length === 0) {
       return res.status(404).json({ error: 'Invalid or expired share link' });
+    }
+    if (!shareResult.rows[0].allow_document_download) {
+      return res.status(403).json({ error: 'Document download is not permitted for this share.' });
     }
 
     const { capsule_id: capsuleId, company_name, logo_url } = shareResult.rows[0];
