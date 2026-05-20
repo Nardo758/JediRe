@@ -3,14 +3,16 @@
  *
  * Provider auto-detection order (first match wins):
  *   1. EMAIL_PROVIDER env var explicitly set → use that provider
- *   2. SENDGRID_API_KEY present              → sendgrid
- *   3. POSTMARK_SERVER_TOKEN present          → postmark
- *   4. Fallback                               → noop (logs only)
+ *   2. RESEND_API_KEY present                → resend (preferred)
+ *   3. SENDGRID_API_KEY present              → sendgrid
+ *   4. POSTMARK_SERVER_TOKEN present          → postmark
+ *   5. Fallback                               → noop (logs only)
  *
  * Required env vars:
  *   EMAIL_FROM            — "Sender Name <from@yourdomain.com>"
- *   SENDGRID_API_KEY      — SendGrid API key (starts with SG.)
- *   POSTMARK_SERVER_TOKEN — Postmark server token (alternative to SendGrid)
+ *   RESEND_API_KEY        — Resend API key (starts with re_)
+ *   SENDGRID_API_KEY      — SendGrid API key (alternative to Resend)
+ *   POSTMARK_SERVER_TOKEN — Postmark server token (alternative to Resend)
  */
 
 import logger from '../utils/logger';
@@ -39,6 +41,43 @@ class NoOpEmailProvider implements EmailProvider {
       to: payload.to,
       subject: payload.subject,
     });
+  }
+}
+
+class ResendEmailProvider implements EmailProvider {
+  readonly name = 'resend';
+  private readonly apiKey: string;
+  private readonly from: string;
+
+  constructor() {
+    this.apiKey = process.env.RESEND_API_KEY!;
+    this.from = process.env.EMAIL_FROM ?? 'JediRe <onboarding@resend.dev>';
+  }
+
+  async send(payload: EmailPayload): Promise<void> {
+    const body = {
+      from: this.from,
+      to: [payload.to],
+      subject: payload.subject,
+      html: payload.html,
+      text: payload.text,
+    };
+
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw new Error(`Resend error ${resp.status}: ${errText}`);
+    }
+
+    logger.info('[email:resend] Email dispatched', { to: payload.to, subject: payload.subject });
   }
 }
 
@@ -133,6 +172,15 @@ function createProvider(): EmailProvider {
   const explicit = (process.env.EMAIL_PROVIDER ?? '').toLowerCase();
 
   // Explicit override takes priority
+  if (explicit === 'resend') {
+    if (!process.env.RESEND_API_KEY) {
+      logger.warn('[email] EMAIL_PROVIDER=resend but RESEND_API_KEY is missing — falling back to noop');
+      return new NoOpEmailProvider();
+    }
+    logger.info('[email] Provider: resend (explicit)');
+    return new ResendEmailProvider();
+  }
+
   if (explicit === 'sendgrid') {
     if (!process.env.SENDGRID_API_KEY) {
       logger.warn('[email] EMAIL_PROVIDER=sendgrid but SENDGRID_API_KEY is missing — falling back to noop');
@@ -153,6 +201,10 @@ function createProvider(): EmailProvider {
 
   // Auto-detect from key presence when EMAIL_PROVIDER is not set
   if (!explicit || explicit === 'noop') {
+    if (process.env.RESEND_API_KEY) {
+      logger.info('[email] Provider: resend (auto-detected from RESEND_API_KEY)');
+      return new ResendEmailProvider();
+    }
     if (process.env.SENDGRID_API_KEY) {
       logger.info('[email] Provider: sendgrid (auto-detected from SENDGRID_API_KEY)');
       return new SendGridEmailProvider();
