@@ -1141,7 +1141,12 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     }
   }, [assumptions, modelResults]);
 
-  /** Apply a solved goal-seek value directly into the proforma assumptions. */
+  const handleAssumptionsChange = useCallback((partial: Partial<ModelAssumptions>) => {
+    setAssumptions(prev => prev ? { ...prev, ...partial } : null);
+    // Mark the model stale when the user edits assumptions after a build.
+    setStaleModel(prev => prev || modelResults !== null);
+  }, [modelResults]);
+
   const handleApplyGoalSeekSolved = useCallback((variable: SolveVariable, value: number) => {
     if (!assumptions) return;
     switch (variable) {
@@ -1169,12 +1174,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         break;
     }
   }, [assumptions, handleAssumptionsChange]);
-
-  const handleAssumptionsChange = useCallback((partial: Partial<ModelAssumptions>) => {
-    setAssumptions(prev => prev ? { ...prev, ...partial } : null);
-    // Mark the model stale when the user edits assumptions after a build.
-    setStaleModel(prev => prev || modelResults !== null);
-  }, [modelResults]);
 
   useEffect(() => {
     if (opusScrollRef.current) {
