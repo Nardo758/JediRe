@@ -28,6 +28,7 @@
 
 import { z } from 'zod';
 import { logger } from '../../utils/logger';
+import { ABSOLUTE_MAX_HOLD_YEARS } from '../../services/hold-period-profiles';
 import { optimizeCapitalStructure } from './optimize_capital_structure';
 import { DEBT_BUNDLES, computePlausibility } from '../../services/sigma/sigma-engine';
 import { query } from '../../database/connection';
@@ -200,7 +201,7 @@ const InputSchema = z.object({
   purchase_price: z.number().positive().describe(
     'Property purchase price ($).'
   ),
-  hold_years: z.number().int().min(1).max(36).default(5).describe(
+  hold_years: z.number().int().min(1).max(ABSOLUTE_MAX_HOLD_YEARS).default(5).describe(
     'Hold period in years.'
   ),
   exit_cap_rate: z.number().min(0.02).max(0.20).default(0.055).describe(

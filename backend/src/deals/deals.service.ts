@@ -4,6 +4,7 @@ import { CreateDealDto, UpdateDealDto, DealQueryDto } from './dto';
 import { DealAnalysisService } from '../services/dealAnalysis';
 import { DealTriageService } from '../services/DealTriageService';
 import { openclawNotifier } from '../services/notifications/openclawNotifier';
+import { resolveTypicalHold, type DevelopmentType } from '../services/hold-period-profiles';
 
 @Injectable()
 export class DealsService {
@@ -957,14 +958,15 @@ export class DealsService {
     
     // Determine if pipeline or assets owned
     const isPipeline = deal.stage !== 'closed' && deal.stage !== 'assets_owned';
-    const strategyType = deal.development_type === 'value-add' ? 'value-add' :
-                         deal.development_type === 'core-plus' ? 'core-plus' :
-                         deal.development_type === 'opportunistic' ? 'opportunistic' : 'core';
-    
+    const strategyType: DevelopmentType =
+      deal.development_type === 'value-add' ? 'value-add' :
+      deal.development_type === 'core-plus' ? 'core-plus' :
+      deal.development_type === 'opportunistic' ? 'opportunistic' : 'core';
+
     // Calculate dates
-    const acquisitionDate = deal.stage === 'closed' || deal.stage === 'assets_owned' ? 
+    const acquisitionDate = deal.stage === 'closed' || deal.stage === 'assets_owned' ?
                            deal.entered_stage_at : null;
-    const holdPeriodYears = strategyType === 'value-add' ? 5 : 7;
+    const holdPeriodYears = resolveTypicalHold({ strategy: strategyType });
     const targetExitDate = acquisitionDate ? 
       new Date(new Date(acquisitionDate).getTime() + holdPeriodYears * 365 * 24 * 60 * 60 * 1000).toISOString() :
       new Date(Date.now() + holdPeriodYears * 365 * 24 * 60 * 60 * 1000).toISOString();

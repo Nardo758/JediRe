@@ -15,6 +15,11 @@ import { getDealFinancials } from '../../services/proforma-adjustment.service';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
 import { buildProjectionsForExport } from '../../services/f9-financial-export.service';
 import {
+  ABSOLUTE_MAX_HOLD_YEARS,
+  resolveTypicalHold,
+  type DevelopmentType,
+} from '../../services/hold-period-profiles';
+import {
   getStanceForDeal,
   applyStanceToFinancials,
   type StanceModulation,
@@ -1817,7 +1822,24 @@ router.patch('/:dealId/proforma/year1/override', requireAuth, async (req: Authen
 router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { dealId } = req.params;
-    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 36);
+    // Hold period resolution: explicit ?hold= query > deal's strategy-typical hold
+    // (from STRATEGY_HOLD_PROFILES) > 5-year fallback. The cap is the absolute
+    // ceiling derived from the longest profile.max across all strategy/debt
+    // profiles — see services/hold-period-profiles.ts.
+    const requestedHold = parseInt(req.query.hold as string);
+    let dealStrategy: DevelopmentType | null = null;
+    if (!Number.isFinite(requestedHold) || requestedHold <= 0) {
+      const stratRes = await pool.query(
+        `SELECT development_type FROM deals WHERE id = $1`,
+        [dealId],
+      );
+      dealStrategy = (stratRes.rows[0]?.development_type as DevelopmentType) ?? null;
+    }
+    const defaultHold = resolveTypicalHold({ strategy: dealStrategy });
+    const holdYears = Math.min(
+      Math.max(Number.isFinite(requestedHold) && requestedHold > 0 ? requestedHold : defaultHold, 1),
+      ABSOLUTE_MAX_HOLD_YEARS,
+    );
     const runSeed = req.query.seed === 'true';
 
     if (runSeed) {

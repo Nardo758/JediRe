@@ -20,6 +20,7 @@ import { pool } from '../database';
 import { logger } from '../utils/logger';
 import type { ProjectionResult, ProjectionSummary } from './tenYearProjectionService';
 import type { LearnedRates } from './trafficLearningService';
+import { ABSOLUTE_MAX_HOLD_YEARS } from './hold-period-profiles';
 
 // ============================================================================
 // Interfaces
@@ -874,7 +875,7 @@ export interface TrafficProjectionResult {
  *
  * @param pool   DB pool
  * @param dealId Deal UUID
- * @param holdYears Number of hold years (1–36, default 10)
+ * @param holdYears Number of hold years (defense-in-depth clamped at ABSOLUTE_MAX_HOLD_YEARS; default 10)
  * @returns TrafficProjectionResult or null if no traffic data for this deal
  */
 export async function getTrafficProjection(
@@ -1105,7 +1106,7 @@ export async function getTrafficProjection(
 
   // Aggregate monthly → annual by hold-year buckets
   const yearly: TrafficProjectionYear[] = [];
-  for (let yr = 1; yr <= Math.min(holdYears, 36); yr++) {
+  for (let yr = 1; yr <= Math.min(holdYears, ABSOLUTE_MAX_HOLD_YEARS); yr++) {
     const startMonth = (yr - 1) * 12 + 1;
     const endMonth = yr * 12;
     const occSlice = occTraj.filter(p => p.month >= startMonth && p.month <= endMonth);
