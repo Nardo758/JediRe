@@ -1807,6 +1807,21 @@ router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedReque
     const address: string = capsule.property_address ?? 'Undisclosed Address';
     const assetClass: string = capsule.asset_class ?? '';
 
+    // Fetch logo buffer BEFORE piping so we can embed it synchronously in PDFKit
+    let logoBuffer: Buffer | null = null;
+    if (capsule.logo_url && typeof capsule.logo_url === 'string') {
+      try {
+        const logoRes = await (globalThis.fetch as typeof fetch)(capsule.logo_url, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (logoRes.ok) {
+          logoBuffer = Buffer.from(await logoRes.arrayBuffer());
+        }
+      } catch {
+        // logo fetch failed — continue without it
+      }
+    }
+
     const fmtMoney = (v: unknown): string => {
       const n = parseFloat(String(v ?? ''));
       if (isNaN(n)) return '—';
@@ -1840,11 +1855,25 @@ router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedReque
     doc.rect(0, 0, W, H).fill(NAVY);
     doc.rect(0, 0, W, 8).fill(AMBER_PDF);
 
-    // Company branding
-    doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(14)
-      .text(companyName.toUpperCase(), 50, 60, { width: W - 100 });
-    doc.fillColor(MID).font('Helvetica').fontSize(9)
-      .text('DEAL CAPSULE — CONFIDENTIAL', 50, 80);
+    // Company branding — embed logo if available, else text fallback
+    if (logoBuffer) {
+      try {
+        doc.image(logoBuffer, 50, 50, { fit: [120, 40], align: 'left' });
+        doc.fillColor(MID).font('Helvetica').fontSize(9)
+          .text('DEAL CAPSULE — CONFIDENTIAL', 50, 96);
+      } catch {
+        // Image format not supported by pdfkit (e.g. WebP) — fall back to text
+        doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(14)
+          .text(companyName.toUpperCase(), 50, 60, { width: W - 100 });
+        doc.fillColor(MID).font('Helvetica').fontSize(9)
+          .text('DEAL CAPSULE — CONFIDENTIAL', 50, 80);
+      }
+    } else {
+      doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(14)
+        .text(companyName.toUpperCase(), 50, 60, { width: W - 100 });
+      doc.fillColor(MID).font('Helvetica').fontSize(9)
+        .text('DEAL CAPSULE — CONFIDENTIAL', 50, 80);
+    }
 
     // Property address (large)
     doc.rect(50, 140, W - 100, 2).fill(AMBER_PDF);

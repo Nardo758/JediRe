@@ -12,9 +12,9 @@
  *   POST /api/v1/capsules-ext/:id/shares/:shareId/revoke → revoke a link
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Copy, Check, X, ExternalLink, Loader2, AlertTriangle, RefreshCw, Users, FileText, TrendingUp, Clock, Mail } from 'lucide-react';
+import { ChevronLeft, Copy, Check, X, ExternalLink, Loader2, AlertTriangle, RefreshCw, Users, FileText, TrendingUp, Clock, Mail, Download, FileSpreadsheet, ChevronDown } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { useAuthStore } from '../stores/authStore';
 
@@ -441,6 +441,41 @@ export default function CapsuleDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'shares'>('shares');
+  const [exportOpen, setExportOpen]     = useState(false);
+  const [exportingFmt, setExportingFmt] = useState<'excel' | 'pdf' | null>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const downloadCapsule = useCallback(async (format: 'excel' | 'pdf') => {
+    if (!capsuleId) return;
+    setExportOpen(false);
+    setExportingFmt(format);
+    try {
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token') || '';
+      const res = await fetch(`/api/v1/capsules-ext/${capsuleId}/export/${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+      const blob = await res.blob();
+      const ext = format === 'excel' ? 'xlsx' : 'pdf';
+      const safeName = (capsule?.property_address ?? capsuleId).replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 50);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${safeName}_capsule.${ext}`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+    } finally {
+      setExportingFmt(null);
+    }
+  }, [capsuleId, capsule]);
 
   useEffect(() => {
     if (!capsuleId) { navigate('/capsules', { replace: true }); return; }
@@ -537,6 +572,66 @@ export default function CapsuleDetailPage() {
             </span>
           </div>
         )}
+
+        {/* Export dropdown */}
+        <div ref={exportRef} style={{ position: 'relative', marginLeft: 16 }}>
+          <button
+            onClick={() => setExportOpen(o => !o)}
+            disabled={!!exportingFmt}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px',
+              background: exportOpen ? T.bg.active : T.bg.panel,
+              border: `1px solid ${exportOpen ? T.text.amber + '60' : T.border.subtle}`,
+              color: exportingFmt ? T.text.muted : T.text.amber,
+              fontSize: 9, fontWeight: 700, fontFamily: T.font.mono,
+              cursor: exportingFmt ? 'not-allowed' : 'pointer', letterSpacing: 0.8,
+            }}
+          >
+            {exportingFmt
+              ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
+              : <Download size={11} />
+            }
+            EXPORT
+            <ChevronDown size={9} />
+          </button>
+
+          {exportOpen && (
+            <div style={{
+              position: 'absolute', top: '100%', right: 0, zIndex: 60, marginTop: 4,
+              background: T.bg.panel, border: `1px solid ${T.border.medium}`,
+              minWidth: 190, boxShadow: '0 8px 24px rgba(0,0,0,0.55)',
+            }}>
+              <button
+                onClick={() => downloadCapsule('excel')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  width: '100%', padding: '10px 14px', background: 'none', border: 'none',
+                  color: T.text.primary, fontSize: 10, fontFamily: T.font.mono, cursor: 'pointer', textAlign: 'left',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = T.bg.hover}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              >
+                <FileSpreadsheet size={13} color={T.text.green} />
+                Excel Workbook (.xlsx)
+              </button>
+              <div style={{ height: 1, background: T.border.subtle, margin: '0 14px' }} />
+              <button
+                onClick={() => downloadCapsule('pdf')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  width: '100%', padding: '10px 14px', background: 'none', border: 'none',
+                  color: T.text.primary, fontSize: 10, fontFamily: T.font.mono, cursor: 'pointer', textAlign: 'left',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = T.bg.hover}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              >
+                <FileText size={13} color={T.text.red} />
+                Pitch Deck (.pdf)
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Tab bar ── */}
