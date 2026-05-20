@@ -121,7 +121,7 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
               { label: 'EQUITY MULT', value: displayEM != null ? fmtX(displayEM) : '—', color: BT.text.amber },
               { label: 'CASH-ON-CASH', value: displayCoC != null ? fmtPct(displayCoC) : '—', color: BT.met.occupancy },
               { label: 'YEAR 1 NOI', value: summary?.noi != null ? fmt$(summary.noi) : '—', color: BT.text.cyan },
-              { label: 'DSCR', value: summary?.dscr != null ? `${summary.dscr.toFixed(2)}×` : '—', color: BT.text.green },
+              { label: 'DSCR', value: summary?.dscr != null ? `${parseFloat(String(summary.dscr)).toFixed(2)}×` : '—', color: BT.text.green },
             ].map(k => (
               <div key={k.label} style={{ flex: 1 }}><KpiTile label={k.label} value={k.value} color={k.color} /></div>
             ))}
