@@ -411,15 +411,61 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
       // LEFT JOINs:
       //   properties              -> propertyId for Property Terminal drill-through
       //   apartment_locator_props -> management_company surfaced as developer/sponsor
+      //
+      // Property matching is layered (most-confident wins, via LATERAL):
+      //   1. exact lowercase address + state
+      //   2. normalized address (normalize_street_address) + state
+      //      — handles STREET↔ST, AVE/AVENUE, stripped APT/UNIT suffixes, etc.
+      //   3. exact lowercase name + city + state
+      //      — picks up properties recorded under their marketing name when
+      //        the street address on either side is null/garbled.
+      // Match #1 has confidence 1.00, #2 0.90, #3 0.75. All three exceed the
+      // 0.70 click-through threshold; we surface the id regardless of which
+      // tier hit and let the frontend treat them uniformly.
       const rowsResult = await client.query(
         `SELECT asp.id, asp.name, asp.address, asp.city, asp.state, asp.total_units,
                 asp.property_class, asp.available_date, asp.units_delivering,
-                p.id::text AS property_id,
+                pm.property_id::text AS property_id,
                 alp.management_company AS developer
            FROM apartment_supply_pipeline asp
-           LEFT JOIN properties p
-             ON LOWER(p.address_line1) = LOWER(asp.address)
-            AND p.state_code = asp.state
+           LEFT JOIN LATERAL (
+             SELECT p.id AS property_id
+               FROM properties p
+              WHERE p.state_code = asp.state
+                AND (
+                  -- Tier 1: exact lowercase address
+                  (asp.address IS NOT NULL
+                   AND p.address_line1 IS NOT NULL
+                   AND LOWER(p.address_line1) = LOWER(asp.address))
+                  OR
+                  -- Tier 2: normalized address (suffix/abbrev/whitespace tolerant)
+                  (asp.address IS NOT NULL
+                   AND p.address_line1 IS NOT NULL
+                   AND normalize_street_address(p.address_line1)
+                       = normalize_street_address(asp.address))
+                  OR
+                  -- Tier 3: name + city fallback
+                  (asp.name IS NOT NULL
+                   AND p.name IS NOT NULL
+                   AND asp.city IS NOT NULL
+                   AND p.city IS NOT NULL
+                   AND LOWER(p.name) = LOWER(asp.name)
+                   AND LOWER(p.city) = LOWER(asp.city))
+                )
+              ORDER BY
+                CASE
+                  WHEN asp.address IS NOT NULL
+                   AND p.address_line1 IS NOT NULL
+                   AND LOWER(p.address_line1) = LOWER(asp.address) THEN 1
+                  WHEN asp.address IS NOT NULL
+                   AND p.address_line1 IS NOT NULL
+                   AND normalize_street_address(p.address_line1)
+                       = normalize_street_address(asp.address) THEN 2
+                  ELSE 3
+                END,
+                p.id
+              LIMIT 1
+           ) pm ON true
            LEFT JOIN apartment_locator_properties alp
              ON LOWER(alp.address) = LOWER(asp.address)
             AND alp.state = asp.state
