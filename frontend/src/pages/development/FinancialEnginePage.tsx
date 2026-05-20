@@ -60,6 +60,16 @@ function normalizeModelResults(raw: ModelResults): ModelResults {
   if (raw.waterfallDistributions != null && !Array.isArray(raw.waterfallDistributions)) {
     (raw as any).waterfallDistributions = [];
   }
+  // Backend persists the deterministic runner's field names (lpEquityMultiple /
+  // gpEquityMultiple) on result.summary, but OverviewTab reads summary.lpEm /
+  // summary.gpEm. normalizeBuildResponse already aliases these on the build
+  // path; we must do the same on the DB-load path or LP/GP EM render as "—"
+  // on every page reload until the user triggers a rebuild.
+  if (raw.summary) {
+    const s = raw.summary as Record<string, unknown>;
+    if (s.lpEm == null && typeof s.lpEquityMultiple === 'number') s.lpEm = s.lpEquityMultiple;
+    if (s.gpEm == null && typeof s.gpEquityMultiple === 'number') s.gpEm = s.gpEquityMultiple;
+  }
   return raw;
 }
 
@@ -111,7 +121,13 @@ function mergeModelIntoFinancials(
   out.returns.totalGpPromote    = s.gpPromoteEarned ?? null;
   out.returns.gpCoInvestIrr     = s.gpIrr ?? null;
   out.returns.gpCoInvestEm      = s.gpEm ?? null;
-  out.returns.gpAllInMultiple   = s.gpEm != null ? s.gpEm * 1.3 : null;
+  // gpAllInMultiple is LP+GP combined including fees/promote attribution —
+  // not derivable from gpEm alone. Previous code multiplied gpEm × 1.3 with
+  // no derivation, producing a confidently-wrong number on the ReturnsTab
+  // KPI tile. Same pattern as stabilizedCapRate above: return null rather
+  // than fabricate. Wire the real calculation when waterfall attribution
+  // surfaces totalGpFees / totalGpPromote per the type contract.
+  out.returns.gpAllInMultiple   = null;
   out.returns.peakEquityDeployed = null;
   out.returns.prefAccrued       = null;
   out.returns.prefPaid          = null;

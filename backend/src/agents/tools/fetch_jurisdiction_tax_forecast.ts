@@ -20,6 +20,9 @@ const InputSchema = z.object({
   purchase_price: z.number().positive().nullable().optional(),
   loan_amount: z.number().nonnegative().nullable().optional(),
   units: z.number().int().positive().default(1),
+  // ABSOLUTE_MAX_HOLD_YEARS is the outer ceiling across all profiles. Per-deal
+  // bounds (e.g. bridge max 5yr) are enforced at the route layer via
+  // resolveMaxHold() — Zod cannot see deal context here.
   hold_years: z.number().int().min(1).max(ABSOLUTE_MAX_HOLD_YEARS).default(10),
   t12_annual_tax: z.number().nonnegative().nullable().optional()
     .describe('Annual property tax from T-12 operating statement'),
