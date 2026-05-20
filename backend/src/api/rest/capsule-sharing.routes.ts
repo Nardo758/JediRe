@@ -1495,6 +1495,21 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
 
     const newDeal = insertResult.rows[0];
 
+    // Attribution — write fork event to capsule_fork_log (non-fatal)
+    try {
+      await pool.query(
+        `INSERT INTO capsule_fork_log
+           (shortcode, capsule_id, source_share_id, forked_by_user_id, new_deal_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [shortcode, capsuleId, shareResult.rows[0].share_id, userId, newDeal.id]
+      );
+    } catch (forkLogErr) {
+      logger.warn('Failed to write fork attribution log (non-fatal)', {
+        error: (forkLogErr as Error).message,
+        shortcode, capsuleId, newDealId: newDeal.id,
+      });
+    }
+
     logger.info('Deal forked from share', {
       userId, shortcode, capsuleId, newDealId: newDeal.id,
     });

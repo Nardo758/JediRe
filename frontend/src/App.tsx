@@ -26,6 +26,7 @@ import DealDetailPage from './pages/DealDetailPage';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleRedirectPage from './pages/CapsuleRedirectPage';
 import ShareLandingPage from './pages/ShareLandingPage';
+import CapsuleLinkPage from './pages/CapsuleLinkPage';
 import M35EventDetailPage from './pages/m35/M35EventDetailPage';
 import M35ConnectorAdminPage from './pages/m35/M35ConnectorAdminPage';
 import PlaybookLibraryPage from './pages/m35/PlaybookLibraryPage';
@@ -218,6 +219,7 @@ function AppContent() {
         {/* ═══ Deal workflow pages — own internal nav, no layout chrome ═══ */}
         <Route path="/share/:shortcode" element={<ShareLandingPage />} />
         <Route path="/share/:shortcode/deal" element={<DealDetailPage />} />
+        <Route path="/capsule-links/:accessToken" element={<CapsuleLinkPage />} />
         <Route path="/deals/create" element={<CreateDealPage />} />
         <Route path="/deals/:dealId/detail" element={<DealDetailPage />} />
         <Route path="/deals/:dealId/flywheel" element={<DealFlywheelDashboard />} />

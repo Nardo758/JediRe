@@ -705,6 +705,29 @@ const DealDetailPage: React.FC = () => {
       .catch(() => setRecipientApiConnected(false));
   }, [isRecipient, shortcode, agentEnabled]);
 
+  // Fork state — tracks the "Add to Pipeline" call for platform-user recipients
+  const [forkLoading, setForkLoading] = useState(false);
+  const [forkDone, setForkDone] = useState(false);
+
+  const handleFork = useCallback(async () => {
+    if (!shortcode || forkLoading || forkDone) return;
+    setForkLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token') ?? '';
+      const resp = await fetch(`/api/v1/shares/${shortcode}/fork`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const { deal_id, already_existed } = await resp.json();
+      setForkDone(true);
+      setTimeout(() => navigate(`/deals/${deal_id}/detail`), 600);
+    } catch (err) {
+      console.error('[Fork] Failed:', err);
+      setForkLoading(false);
+    }
+  }, [shortcode, forkLoading, forkDone, navigate]);
+
   // Recipient CTA: check if the viewer is a logged-in platform user via /me.
   // Used to show "Add to Pipeline" vs "Sign Up Free" in the recipient footer banner.
   useEffect(() => {
@@ -1632,14 +1655,16 @@ const DealDetailPage: React.FC = () => {
             </span>
             {recipientIsPlatformUser === true ? (
               <button
-                onClick={() => navigate('/deals')}
+                onClick={handleFork}
+                disabled={forkLoading || forkDone}
                 style={{
-                  background: AMBER, color: '#0A0E17', border: 'none', borderRadius: 4,
+                  background: forkDone ? GREEN : AMBER, color: '#0A0E17', border: 'none', borderRadius: 4,
                   padding: '6px 18px', fontSize: 11, fontWeight: 700, fontFamily: MONO,
-                  letterSpacing: 1, cursor: 'pointer', flexShrink: 0,
+                  letterSpacing: 1, cursor: forkLoading || forkDone ? 'default' : 'pointer', flexShrink: 0,
+                  opacity: forkLoading ? 0.7 : 1, transition: 'background 0.2s',
                 }}
               >
-                + ADD TO PIPELINE
+                {forkDone ? '✓ ADDED TO PIPELINE' : forkLoading ? 'SAVING…' : '+ ADD TO PIPELINE'}
               </button>
             ) : (
               <button

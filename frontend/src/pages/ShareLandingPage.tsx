@@ -56,6 +56,9 @@ export default function ShareLandingPage() {
   const [loading, setLoading] = useState(true);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [agentConnected, setAgentConnected] = useState(false);
+  const [platformUser, setPlatformUser] = useState<boolean | null>(null);
+  const [forkLoading, setForkLoading] = useState(false);
+  const [forkDone, setForkDone] = useState(false);
 
   useEffect(() => {
     if (!shortcode) { setError('Invalid share link.'); setLoading(false); return; }
@@ -79,6 +82,34 @@ export default function ShareLandingPage() {
       .then(body => setAgentConnected(body.connected === true))
       .catch(() => {});
   }, [shortcode, data?.share.agent_enabled]);
+
+  // Detect if the viewer is already a logged-in platform user
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) { setPlatformUser(false); return; }
+    fetch('/api/v1/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => setPlatformUser(r.ok))
+      .catch(() => setPlatformUser(false));
+  }, []);
+
+  const handleFork = async () => {
+    if (!shortcode || forkLoading || forkDone) return;
+    setForkLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token') ?? '';
+      const resp = await fetch(`/api/v1/shares/${shortcode}/fork`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const { deal_id } = await resp.json();
+      setForkDone(true);
+      setTimeout(() => navigate(`/deals/${deal_id}/detail`), 600);
+    } catch (err) {
+      console.error('[Fork] Failed:', err);
+      setForkLoading(false);
+    }
+  };
 
   const page: React.CSSProperties = {
     minHeight: '100vh',
@@ -349,42 +380,82 @@ export default function ShareLandingPage() {
               )
             )}
 
-            {/* TERTIARY — Sign up / Log in */}
-            <div style={{ textAlign: 'center', paddingTop: 4 }}>
-              <span style={{ fontSize: 10, color: BT.text.muted }}>
-                Want full access to JediRe?{' '}
-                <Link
-                  to={shortcode ? `/login?mode=register&share=${shortcode}` : `/login?mode=register`}
-                  onClick={() => {
-                    if (shortcode) sessionStorage.setItem('jedi_pending_share', shortcode);
-                  }}
+            {/* FORK CTA — visible only to logged-in platform users */}
+            {platformUser === true && (
+              forkDone ? (
+                <div style={{
+                  width: '100%', padding: '13px 24px', fontSize: 11, fontWeight: 700,
+                  letterSpacing: 1.5, background: 'rgba(16,185,129,0.08)',
+                  color: '#10B981', border: '1px solid rgba(16,185,129,0.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  ...mono,
+                }}>
+                  <span>✓</span> FORKED TO PIPELINE — OPENING…
+                </div>
+              ) : (
+                <button
+                  onClick={handleFork}
+                  disabled={forkLoading}
                   style={{
-                    color: BT.text.cyan,
-                    textDecoration: 'none',
-                    fontWeight: 700,
-                    letterSpacing: 0.5,
-                  }}
-                  onMouseEnter={e => (e.target as HTMLAnchorElement).style.textDecoration = 'underline'}
-                  onMouseLeave={e => (e.target as HTMLAnchorElement).style.textDecoration = 'none'}
-                >
-                  Create a free account →
-                </Link>
-                <span style={{ color: BT.text.muted }}> or </span>
-                <Link
-                  to={shortcode ? `/login?share=${shortcode}` : `/login`}
-                  onClick={() => {
-                    if (shortcode) sessionStorage.setItem('jedi_pending_share', shortcode);
-                  }}
-                  style={{
-                    color: BT.text.muted,
-                    textDecoration: 'underline',
-                    fontWeight: 600,
+                    width: '100%', padding: '13px 24px', fontSize: 11, fontWeight: 700,
+                    letterSpacing: 1.5, background: 'rgba(16,185,129,0.08)',
+                    color: '#10B981', border: '1px solid rgba(16,185,129,0.3)',
+                    cursor: forkLoading ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    opacity: forkLoading ? 0.7 : 1, transition: 'opacity 0.15s',
+                    ...mono,
                   }}
                 >
-                  log in
-                </Link>
-              </span>
-            </div>
+                  {forkLoading ? 'SAVING…' : '+ FORK TO MY PIPELINE'}
+                  {!forkLoading && (
+                    <span style={{
+                      fontSize: 8, fontWeight: 700, letterSpacing: 1, padding: '2px 6px',
+                      background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)',
+                      color: '#10B981',
+                    }}>SAVE</span>
+                  )}
+                </button>
+              )
+            )}
+
+            {/* TERTIARY — Sign up / Log in (hidden for logged-in users) */}
+            {platformUser !== true && (
+              <div style={{ textAlign: 'center', paddingTop: 4 }}>
+                <span style={{ fontSize: 10, color: BT.text.muted }}>
+                  Want full access to JediRe?{' '}
+                  <Link
+                    to={shortcode ? `/login?mode=register&share=${shortcode}` : `/login?mode=register`}
+                    onClick={() => {
+                      if (shortcode) sessionStorage.setItem('jedi_pending_share', shortcode);
+                    }}
+                    style={{
+                      color: BT.text.cyan,
+                      textDecoration: 'none',
+                      fontWeight: 700,
+                      letterSpacing: 0.5,
+                    }}
+                    onMouseEnter={e => (e.target as HTMLAnchorElement).style.textDecoration = 'underline'}
+                    onMouseLeave={e => (e.target as HTMLAnchorElement).style.textDecoration = 'none'}
+                  >
+                    Create a free account →
+                  </Link>
+                  <span style={{ color: BT.text.muted }}> or </span>
+                  <Link
+                    to={shortcode ? `/login?share=${shortcode}` : `/login`}
+                    onClick={() => {
+                      if (shortcode) sessionStorage.setItem('jedi_pending_share', shortcode);
+                    }}
+                    style={{
+                      color: BT.text.muted,
+                      textDecoration: 'underline',
+                      fontWeight: 600,
+                    }}
+                  >
+                    log in
+                  </Link>
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Divider */}
