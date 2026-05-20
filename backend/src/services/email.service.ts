@@ -1,15 +1,16 @@
 /**
  * Email Service — abstraction layer for transactional email delivery.
  *
- * EMAIL_PROVIDER env var controls which provider is active:
- *   'noop'      — default; emails are logged but not sent (development / staging)
- *   'sendgrid'  — TODO: implement SendGridEmailProvider when ready to send
- *   'postmark'  — TODO: implement PostmarkEmailProvider when ready to send
+ * Provider auto-detection order (first match wins):
+ *   1. EMAIL_PROVIDER env var explicitly set → use that provider
+ *   2. SENDGRID_API_KEY present              → sendgrid
+ *   3. POSTMARK_SERVER_TOKEN present          → postmark
+ *   4. Fallback                               → noop (logs only)
  *
- * To connect a real provider:
- *   1. Add a new class implementing EmailProvider below
- *   2. Add its case to createProvider()
- *   3. Set EMAIL_PROVIDER + provider-specific API key env vars
+ * Required env vars:
+ *   EMAIL_FROM            — "Sender Name <from@yourdomain.com>"
+ *   SENDGRID_API_KEY      — SendGrid API key (starts with SG.)
+ *   POSTMARK_SERVER_TOKEN — Postmark server token (alternative to SendGrid)
  */
 
 import logger from '../utils/logger';
@@ -25,40 +26,148 @@ interface EmailPayload {
 
 interface EmailProvider {
   send(payload: EmailPayload): Promise<void>;
+  readonly name: string;
 }
 
 // ─── Providers ────────────────────────────────────────────────────────────────
 
 class NoOpEmailProvider implements EmailProvider {
+  readonly name = 'noop';
+
   async send(payload: EmailPayload): Promise<void> {
-    logger.info('[email:noop] Email not sent — EMAIL_PROVIDER is unset or noop', {
+    logger.info('[email:noop] Email not sent — no provider configured', {
       to: payload.to,
       subject: payload.subject,
     });
   }
 }
 
-// Future providers — uncomment and implement when ready:
-//
-// class SendGridEmailProvider implements EmailProvider {
-//   private readonly apiKey = process.env.SENDGRID_API_KEY!;
-//   async send(payload: EmailPayload): Promise<void> { ... }
-// }
-//
-// class PostmarkEmailProvider implements EmailProvider {
-//   private readonly apiKey = process.env.POSTMARK_SERVER_TOKEN!;
-//   async send(payload: EmailPayload): Promise<void> { ... }
-// }
+class SendGridEmailProvider implements EmailProvider {
+  readonly name = 'sendgrid';
+  private readonly apiKey: string;
+  private readonly from: string;
+
+  constructor() {
+    this.apiKey = process.env.SENDGRID_API_KEY!;
+    this.from = process.env.EMAIL_FROM ?? 'JediRe <noreply@jedire.com>';
+  }
+
+  async send(payload: EmailPayload): Promise<void> {
+    const fromParsed = this.parseAddress(this.from);
+    const body = {
+      personalizations: [{ to: [{ email: payload.to }] }],
+      from: fromParsed,
+      subject: payload.subject,
+      content: [
+        { type: 'text/plain', value: payload.text },
+        { type: 'text/html',  value: payload.html },
+      ],
+    };
+
+    const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw new Error(`SendGrid error ${resp.status}: ${errText}`);
+    }
+
+    logger.info('[email:sendgrid] Email dispatched', { to: payload.to, subject: payload.subject });
+  }
+
+  private parseAddress(raw: string): { email: string; name?: string } {
+    const m = raw.match(/^(.+?)\s*<(.+?)>$/);
+    if (m) return { name: m[1].trim(), email: m[2].trim() };
+    return { email: raw.trim() };
+  }
+}
+
+class PostmarkEmailProvider implements EmailProvider {
+  readonly name = 'postmark';
+  private readonly token: string;
+  private readonly from: string;
+
+  constructor() {
+    this.token = process.env.POSTMARK_SERVER_TOKEN!;
+    this.from = process.env.EMAIL_FROM ?? 'JediRe <noreply@jedire.com>';
+  }
+
+  async send(payload: EmailPayload): Promise<void> {
+    const body = {
+      From: this.from,
+      To: payload.to,
+      Subject: payload.subject,
+      TextBody: payload.text,
+      HtmlBody: payload.html,
+      MessageStream: 'outbound',
+    };
+
+    const resp = await fetch('https://api.postmarkapp.com/email', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'X-Postmark-Server-Token': this.token,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw new Error(`Postmark error ${resp.status}: ${errText}`);
+    }
+
+    logger.info('[email:postmark] Email dispatched', { to: payload.to, subject: payload.subject });
+  }
+}
+
+// ─── Provider factory ─────────────────────────────────────────────────────────
 
 function createProvider(): EmailProvider {
-  const name = (process.env.EMAIL_PROVIDER ?? 'noop').toLowerCase();
-  switch (name) {
-    // case 'sendgrid': return new SendGridEmailProvider();
-    // case 'postmark': return new PostmarkEmailProvider();
-    case 'noop':
-    default:
+  const explicit = (process.env.EMAIL_PROVIDER ?? '').toLowerCase();
+
+  // Explicit override takes priority
+  if (explicit === 'sendgrid') {
+    if (!process.env.SENDGRID_API_KEY) {
+      logger.warn('[email] EMAIL_PROVIDER=sendgrid but SENDGRID_API_KEY is missing — falling back to noop');
       return new NoOpEmailProvider();
+    }
+    logger.info('[email] Provider: sendgrid (explicit)');
+    return new SendGridEmailProvider();
   }
+
+  if (explicit === 'postmark') {
+    if (!process.env.POSTMARK_SERVER_TOKEN) {
+      logger.warn('[email] EMAIL_PROVIDER=postmark but POSTMARK_SERVER_TOKEN is missing — falling back to noop');
+      return new NoOpEmailProvider();
+    }
+    logger.info('[email] Provider: postmark (explicit)');
+    return new PostmarkEmailProvider();
+  }
+
+  // Auto-detect from key presence when EMAIL_PROVIDER is not set
+  if (!explicit || explicit === 'noop') {
+    if (process.env.SENDGRID_API_KEY) {
+      logger.info('[email] Provider: sendgrid (auto-detected from SENDGRID_API_KEY)');
+      return new SendGridEmailProvider();
+    }
+    if (process.env.POSTMARK_SERVER_TOKEN) {
+      logger.info('[email] Provider: postmark (auto-detected from POSTMARK_SERVER_TOKEN)');
+      return new PostmarkEmailProvider();
+    }
+  }
+
+  if (explicit && explicit !== 'noop') {
+    logger.warn(`[email] Unknown EMAIL_PROVIDER="${explicit}" — falling back to noop`);
+  }
+
+  return new NoOpEmailProvider();
 }
 
 const provider = createProvider();
@@ -158,7 +267,12 @@ function buildShareInvitationText(params: {
 export const emailService = {
   /** Returns true if a real provider (non-noop) is configured. */
   isEnabled(): boolean {
-    return (process.env.EMAIL_PROVIDER ?? 'noop').toLowerCase() !== 'noop';
+    return provider.name !== 'noop';
+  },
+
+  /** Name of the active provider ('sendgrid' | 'postmark' | 'noop'). */
+  providerName(): string {
+    return provider.name;
   },
 
   /**
