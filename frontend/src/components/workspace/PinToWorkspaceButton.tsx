@@ -52,6 +52,7 @@ export function PinToWorkspaceButton({ payload, size = 'sm' }: Props) {
   const [workspaces, setWs]   = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(false);
   const [pinned, setPinned]   = useState<string | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,8 +75,8 @@ export function PinToWorkspaceButton({ payload, size = 'sm' }: Props) {
   }, [open]);
 
   const pin = async (wsId: string) => {
+    setPinError(null);
     try {
-      // Fetch current layout to compute next position
       const ws = await apiClient.get(`/api/v1/workspaces/${wsId}`);
       const layout: any[] = ws.data?.data?.layout ?? [];
       const pos = nextGridPos(layout);
@@ -91,18 +92,20 @@ export function PinToWorkspaceButton({ payload, size = 'sm' }: Props) {
       });
       setPinned(wsId);
       setTimeout(() => { setOpen(false); setPinned(null); }, 1200);
-    } catch {
-      // silent
+    } catch (e: any) {
+      setPinError(e?.response?.data?.error ?? e?.message ?? 'Pin failed');
     }
   };
 
   const createAndPin = async () => {
+    setPinError(null);
     try {
       const res = await apiClient.post('/api/v1/workspaces', { name: 'My Workspace' });
       const wsId = res.data?.data?.id;
       if (wsId) await pin(wsId);
-    } catch {
-      // silent
+      else setPinError('Failed to create workspace');
+    } catch (e: any) {
+      setPinError(e?.response?.data?.error ?? e?.message ?? 'Create failed');
     }
   };
 
@@ -139,6 +142,11 @@ export function PinToWorkspaceButton({ payload, size = 'sm' }: Props) {
           }}>
             PIN TO WORKSPACE
           </div>
+          {pinError && (
+            <div style={{ padding: '6px 10px', fontFamily: T.mono, fontSize: 9, color: '#FF4757', borderBottom: `1px solid ${T.border}` }}>
+              ⚠ {pinError}
+            </div>
+          )}
           {loading && (
             <div style={{ padding: '8px 10px', fontFamily: T.mono, fontSize: 9, color: T.muted }}>
               loading…

@@ -263,8 +263,13 @@ function LegacySignalMatrixTab({ city, state: st }: { city: string; state: strin
         )}
       </div>
 
-      <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
-        COR-01–30 · {report.market}, {report.state} · {report.metricsComputed}/{report.correlations?.length ?? 30} computed · {report.computedAt ? new Date(report.computedAt).toLocaleString() : ''}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+          COR-01–30 · {report.market}, {report.state} · {report.metricsComputed}/{report.correlations?.length ?? 30} computed · {report.computedAt ? new Date(report.computedAt).toLocaleString() : ''}
+        </div>
+        <PinToWorkspaceButton
+          payload={{ panel_type: 'module_table', entity_id: `${city}, ${st}`, label: `${city} COR-01–30 Output` }}
+        />
       </div>
     </div>
   );

@@ -546,6 +546,7 @@ export default function WorkspacePage() {
   const [error, setError]      = useState<string | null>(null);
   const [showAdd, setShowAdd]  = useState(false);
   const [saving, setSaving]    = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [editName, setEditName] = useState(false);
   const [nameInput, setNameInput] = useState('');
 
@@ -570,11 +571,15 @@ export default function WorkspacePage() {
     if (!id) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSaving(true);
+    setSaveError(null);
     saveTimer.current = setTimeout(async () => {
       try {
         await apiClient.patch(`/api/v1/workspaces/${id}`, { layout });
-      } catch { /* non-fatal */ }
-      finally { setSaving(false); }
+      } catch (e: any) {
+        setSaveError(e?.response?.data?.error ?? e?.message ?? 'Save failed');
+      } finally {
+        setSaving(false);
+      }
     }, 600);
   }, [id]);
 
@@ -691,6 +696,11 @@ export default function WorkspacePage() {
 
         {saving && (
           <span style={{ fontFamily: T.mono, fontSize: 9, color: T.muted }}>saving…</span>
+        )}
+        {saveError && !saving && (
+          <span style={{ fontFamily: T.mono, fontSize: 9, color: '#FF4757' }} title={saveError}>
+            ⚠ save failed
+          </span>
         )}
 
         <button
