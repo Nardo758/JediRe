@@ -15,6 +15,8 @@
 import { Router } from 'express';
 import { scorePlausibility, invalidateSigmaCache } from '../../services/sigma/sigma-plausibility.service';
 import { runGoalSeek } from '../../services/sigma/sigma-goal-seeking.service';
+import { runBroaderGoalSeek } from '../../services/sigma/broader-goal-seek.service';
+import type { SolveVariable, TargetMetric } from '../../services/sigma/broader-goal-seek.service';
 import { FACTORS } from '../../services/sigma/sigma-variable-registry';
 import { DEBT_BUNDLES } from '../../services/sigma/debt-bundle-registry';
 import { buildHeuristicSigma } from '../../services/sigma/heuristic-sigma-builder';
@@ -145,6 +147,82 @@ router.get('/regime/current', async (req, res) => {
     });
   } catch (err: any) {
     logger.error(`[sigma] regime error: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Broader Goal Seek ───────────────────────────────────────────────────────
+//
+//   POST /api/v2/sigma/broader-goal-seek
+//
+//   Bisection solver for any (input variable → target metric) pair.
+//   Variables: purchase_price, exit_cap_rate, rent_growth, hold_period, ltv, interest_rate
+//   Metrics:   irr, equity_multiple, cash_on_cash
+
+const VALID_SOLVE_VARS = new Set([
+  'purchase_price', 'exit_cap_rate', 'rent_growth',
+  'hold_period', 'ltv', 'interest_rate',
+]);
+const VALID_METRICS = new Set(['irr', 'equity_multiple', 'cash_on_cash']);
+
+router.post('/broader-goal-seek', async (req, res) => {
+  try {
+    const {
+      solveFor,
+      targetMetric,
+      targetValue,
+      purchasePrice,
+      noiYear1,
+      holdYears,
+      exitCapRate,
+      debtRate,
+      ltv,
+      noiGrowthRate,
+      sellingCostsPct,
+      ioPeriodYears,
+      amortYears,
+      searchLo,
+      searchHi,
+    } = req.body;
+
+    if (!solveFor || !VALID_SOLVE_VARS.has(solveFor)) {
+      return res.status(400).json({
+        error: `Invalid or missing solveFor. Must be one of: ${[...VALID_SOLVE_VARS].join(', ')}`,
+      });
+    }
+    if (!targetMetric || !VALID_METRICS.has(targetMetric)) {
+      return res.status(400).json({
+        error: `Invalid or missing targetMetric. Must be one of: ${[...VALID_METRICS].join(', ')}`,
+      });
+    }
+    if (targetValue === undefined || typeof targetValue !== 'number') {
+      return res.status(400).json({ error: 'Missing required field: targetValue (number)' });
+    }
+    if (!purchasePrice || !noiYear1) {
+      return res.status(400).json({ error: 'Missing required fields: purchasePrice, noiYear1' });
+    }
+
+    const result = await runBroaderGoalSeek({
+      solveFor: solveFor as SolveVariable,
+      targetMetric: targetMetric as TargetMetric,
+      targetValue,
+      purchasePrice: Number(purchasePrice),
+      noiYear1: Number(noiYear1),
+      holdYears: Number(holdYears ?? 5),
+      exitCapRate: Number(exitCapRate ?? 0.055),
+      debtRate: Number(debtRate ?? 0.065),
+      ltv: Number(ltv ?? 0.70),
+      noiGrowthRate: Number(noiGrowthRate ?? 0.03),
+      sellingCostsPct: Number(sellingCostsPct ?? 0.02),
+      ioPeriodYears: ioPeriodYears != null ? Number(ioPeriodYears) : undefined,
+      amortYears: amortYears != null ? Number(amortYears) : undefined,
+      searchLo: searchLo != null ? Number(searchLo) : undefined,
+      searchHi: searchHi != null ? Number(searchHi) : undefined,
+    });
+
+    return res.json(result);
+  } catch (err: any) {
+    logger.error(`[sigma] broader-goal-seek error: ${err.message}`);
     return res.status(500).json({ error: err.message });
   }
 });

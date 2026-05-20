@@ -17,6 +17,7 @@ import PlausibilityBadge from '../../F9/PlausibilityBadge';
 import { scorePlausibility } from '../../../api/sigmaApi';
 import type { PlausibilityResult } from '../../../api/sigmaApi';
 import GoalSeekWidget from '../../F9/GoalSeekWidget';
+import type { BroaderGoalSeekResult, SolveVariable, TargetMetric } from '../../F9/GoalSeekWidget';
 import GoalSeekRoadmap from '../../F9/GoalSeekRoadmap';
 import type { RoadmapStep, ApplyPayload } from '../../F9/GoalSeekRoadmap';
 import { flattenAssumptionsForSolver, applySolverToAssumptions } from '@/services/sigma/assumptionBridge';
@@ -183,6 +184,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   } | null>(null);
   const [goalSeekSteps, setGoalSeekSteps] = useState<RoadmapStep[]>([]);
   const [goalSeekApplyPayload, setGoalSeekApplyPayload] = useState<ApplyPayload | null>(null);
+  const [broaderGoalSeekResult, setBroaderGoalSeekResult] = useState<BroaderGoalSeekResult | null>(null);
 
   // — M36 Plausibility Scoring —
   const [plausibilityResult, setPlausibilityResult] = useState<PlausibilityResult | null>(null);
@@ -721,6 +723,41 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     setTimeout(() => handleBuildModel(), 100);
   };
 
+  const handleBroaderGoalSeek = async (
+    solveFor: SolveVariable,
+    targetMetric: TargetMetric,
+    targetValue: number,
+  ) => {
+    setSolving(true);
+    setBroaderGoalSeekResult(null);
+    try {
+      const noiYear1 = modelResults?.summary?.noi ?? modelResults?.summary?.year1NOI ?? modelResults?.summary?.noiYear1 ?? 0;
+      const currentLtv = loanAmount > 0 && purchasePrice > 0 ? loanAmount / purchasePrice : 0.70;
+      const res = await apiClient.post('/api/v2/sigma/broader-goal-seek', {
+        solveFor,
+        targetMetric,
+        targetValue,
+        purchasePrice,
+        noiYear1,
+        holdYears: holdPeriod,
+        exitCapRate,
+        debtRate: interestRate > 0 ? interestRate / 100 : 0.065,
+        ltv: currentLtv,
+        noiGrowthRate: rentGrowth[0] ?? 0.03,
+        sellingCostsPct: sellingCosts,
+        ioPeriodYears: ioPeriod,
+        amortYears: amortization,
+      });
+      const data = (res as any)?.data ?? (res as any);
+      setBroaderGoalSeekResult(data as BroaderGoalSeekResult);
+    } catch (err: any) {
+      console.error('Broader goal seek failed:', err);
+      alert('Goal seek failed: ' + (err?.response?.data?.error || err.message));
+    } finally {
+      setSolving(false);
+    }
+  };
+
   const handleOverride = (expenseKey: string, rate: number | null) => {
     setSensitivityOverrides(prev => ({ ...prev, [expenseKey]: rate }));
   };
@@ -936,9 +973,22 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           <div className="mt-3">
             <GoalSeekWidget
               currentIRR={modelResults.summary?.irr ?? 0}
+              currentEquityMultiple={modelResults.summary?.equityMultiple ?? undefined}
+              currentCashOnCash={
+                Array.isArray(modelResults.summary?.cashOnCash)
+                  ? modelResults.summary.cashOnCash[0]
+                  : (modelResults.summary?.cashOnCash ?? undefined)
+              }
+              currentPurchasePrice={purchasePrice}
+              currentExitCapRate={exitCapRate}
+              currentRentGrowth={rentGrowth[0] ?? 0.03}
+              currentHoldYears={holdPeriod}
+              currentLtv={loanAmount > 0 && purchasePrice > 0 ? loanAmount / purchasePrice : undefined}
+              currentInterestRate={interestRate > 0 ? interestRate / 100 : undefined}
+              onSolveBroader={handleBroaderGoalSeek}
               onSolve={handleGoalSeek}
               solving={solving}
-              result={goalSeekResult}
+              result={broaderGoalSeekResult}
             />
           </div>
           {goalSeekSteps.length > 0 && goalSeekApplyPayload && goalSeekResult && (
