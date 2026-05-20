@@ -1,0 +1,56 @@
+Review the changes on branch `claude/fix-f9-blank-fields-eS9tz` (commits e5963f1b9, 7063d5875, and the merge of master in between). Don't read this conversation — read the diff and the resulting code.
+
+## What was being fixed
+
+The F9 Overview tab was showing blank fields across all deals (Top KPIs, LP+GP Returns Breakdown, Year table) with Sources/Uses only intermittently populated. Three independent bugs caused this, and a follow-up refactor removed a hardcoded-literal smell that surfaced during the fix.
+
+## Commit e5963f1b9 — F9 blank-fields fix
+
+Files: `backend/src/services/financial-model-engine.service.ts`, `frontend/src/pages/development/FinancialEnginePage.tsx`.
+
+1. The LLM result from `POST /financial-model/build` had no LP/GP partition fields (lpIrr, lpEm, lpProfit, gpIrr, gpEm, gpTotalDistributions, gpPromoteEarned, totalProfit) because the LLM schema doesn't emit them. The deterministic runner computes them but was only used for cross-check then discarded. Fix: after the deterministic run, copy partition + scalar summary fields into result.summary. The pattern mirrors how result.evidence / result.reasoning are already injected.
+
+2. `normalizeBuildResponse` in FinancialEnginePage.tsx read deterministic-shaped keys (cashOnCashByYear, noiByYear, dscrByYear) but the LLM emits cashOnCash, noiYear1, dscr — with cashOnCash and dscr as `number[]`, not scalars. The DSCR path returned the array, and OverviewTab's `summary.dscr.toFixed(2)` threw TypeError, tripping the error boundary. Fix: handle both shapes safely, average arrays to scalars.
+
+3. `handleBuildModel` swallowed build errors to console only — users saw blank fields with no explanation. Fix: added buildError state, red banner near the BUILD MODEL button, button flips to RETRY BUILD when an error is pending.
+
+Verify:
+- Does the merge of deterministic LP/GP into result.summary catch every field OverviewTab and the Returns Breakdown read? Cross-check OverviewTab.tsx / ReturnsTab.tsx against the fields copied in financial-model-engine.service.ts lines ~636-657.
+- Is the dscr / cashOnCash array→scalar coercion in normalizeBuildResponse safe against undefined / mixed-shape responses?
+- Does the build-error banner reset correctly on retry, and does the server's actual error message reach the UI (vs. a generic "Build failed")?
+
+## Commit 7063d5875 — hold-period profile refactor
+
+Files: new `backend/src/services/hold-period-profiles.ts`; 8 call sites updated.
+
+Context: a prior intermediate commit (since superseded) bumped six downstream caps from 30 to 36 to match a route-level cap bump. That was the wrong shape — replacing one hardcoded number with another. The user's directive: "These are period profiles that are the typical hold periods based on industry standards and debt."
+
+The refactor introduces:
+- STRATEGY_HOLD_PROFILES keyed by development_type (value-add / core / core-plus / opportunistic) with {typical, min, max}
+- DEBT_HOLD_PROFILES keyed by loanType (agency / cmbs / bank / bridge / life_co / debt_fund), mirroring fetch_debt_assumptions.ts
+- ABSOLUTE_MAX_HOLD_YEARS — computed at module load from `Math.max(...profile.max)`, NOT a literal
+- resolveTypicalHold(ctx) and resolveMaxHold(ctx) — resolvers preferring strategy over debt, falling back to 5yr / absolute max
+
+Eight sites refactored:
+- 4 Zod schemas (run_joint_goal_seek, fetch_jurisdiction_tax_forecast, generate_roadmap, optimize_capital_structure) → .max(ABSOLUTE_MAX_HOLD_YEARS)
+- cashflow.postprocess.ts:769 → Math.min(ABSOLUTE_MAX_HOLD_YEARS, …)
+- trafficToProFormaService.ts:1108 → projection-loop cap uses constant
+- deals.service.ts:967 → the legacy `strategyType === 'value-add' ? 5 : 7` now calls resolveTypicalHold({ strategy })
+- inline-deals.routes.ts /financials handler → default hold (was hardcoded 10) now resolves from deal's development_type via STRATEGY_HOLD_PROFILES; cap uses ABSOLUTE_MAX_HOLD_YEARS
+
+Behavior intent: existing deals should see ZERO number change. Profile `typical` values were calibrated to match the legacy 5/7 split.
+
+Verify:
+- Run `grep -rnE "\b(30|36)\b" backend/src --include="*.ts" | grep -i "hold"` and confirm only the profiles.ts file (where the numbers belong) contains hold-year literals.
+- Check that STRATEGY_HOLD_PROFILES.value-add.typical === 5 and the other three === 7. If they don't match the legacy split, every deal's targetExitDate calculation in deals.service.ts shifts.
+- Confirm ABSOLUTE_MAX_HOLD_YEARS computes to 36 (the core.max). If profile maxes change, the four Zod schemas pick up the new ceiling automatically — this is intentional, but verify the cashflow agent's hold_years input doesn't get tighter than the route's accepted range.
+- The route's deal-strategy lookup runs an extra SELECT on /financials when ?hold isn't supplied. Confirm this is acceptable latency-wise (it's a single-row indexed lookup).
+- Check the route's fallback chain: ?hold present → use it; ?hold absent → SELECT development_type → resolveTypicalHold; both absent → 5. Edge case: what if dealId doesn't exist? The strategy query returns no rows, dealStrategy is null, resolveTypicalHold returns 5. Acceptable.
+
+## What NOT to change
+
+- Don't widen the data.returns passthrough in inline-deals.routes.ts:1909 — the inline comment block at lines 1846-1855 documents WHY the simplified {irr, equityMultiple, cashOnCash} overwrite was wrong and broke ReturnsTab. Preserving the rich getDealFinancials returns is load-bearing.
+- Don't collapse the explanatory comments above the profile maps — they document the industry-norm sources (NCREIF / NMHC / IPA / fetch_debt_assumptions.ts alignment) that justify the numbers.
+- Don't change profile.typical values without checking deals.service.ts:967 fan-out — that single resolveTypicalHold call drives targetExitDate for every deal in the pipeline.
+
+Report findings in three sections: bugs (blocking), risks (worth attention), and nits (style/optional). Skip the "looks good!" filler.
