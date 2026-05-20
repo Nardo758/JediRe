@@ -9,3 +9,4 @@ export { MarketSentimentTrend } from './MarketSentimentTrend';
 export { BrokerNarrativesFeed } from './BrokerNarrativesFeed';
 export { ReplacementCostPanel } from './ReplacementCostPanel';
 export { RefreshIntelligenceButton } from './RefreshIntelligenceButton';
+export { PropertyMarketIntelligencePanel } from './PropertyMarketIntelligencePanel';

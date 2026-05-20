@@ -66,6 +66,7 @@ import { DealStatusSection } from '../components/deal/sections/DealStatusSection
 import { PresenceIndicator } from '../components/deal/PresenceIndicator';
 
 import { MarketIntelligencePage } from './development/MarketIntelligencePage';
+import { PropertyMarketIntelligencePanel } from '../components/terminal/commentary';
 import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
 
@@ -159,7 +160,13 @@ const OverviewScreen = (props: ScreenProps) => {
   );
 };
 const MarketScreen = (props: ScreenProps) => (
-  <MarketIntelligencePage dealId={props.dealId} deal={props.deal} dealType={props.dealType} />
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    {/* Broker OM Intelligence — narratives + replacement-cost benchmarks
+        scoped to this deal's submarket / MSA (Task #392). Reuses the same
+        trio surfaced on the MSA / Submarket Commentary tabs. */}
+    <PropertyMarketIntelligencePanel deal={props.deal as Record<string, any> | undefined} />
+    <MarketIntelligencePage dealId={props.dealId} deal={props.deal} dealType={props.dealType} />
+  </div>
 );
 const StrategyScreen = (props: ScreenProps) => (
   <StrategyArbitragePage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />

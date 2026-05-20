@@ -8,6 +8,7 @@ import { Users, TrendingUp, Building2, MapPin, Percent, DollarSign } from 'lucid
 import { BT, fmt, terminalStyles } from '../theme';
 import { ContextIndicator } from '../../intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
+import { PropertyMarketIntelligencePanel } from '../commentary';
 
 interface MarketTabProps {
   dealId: string;
@@ -131,6 +132,10 @@ export const MarketTab: React.FC<MarketTabProps> = ({ dealId, deal }) => {
 
       {activeView === 'intel' && (
         <>
+          {/* Broker OM Intelligence — narratives + replacement-cost benchmarks
+              scoped to this property's submarket / MSA (Task #392). */}
+          <PropertyMarketIntelligencePanel deal={deal} />
+
           {/* Key Market Metrics */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
             <div style={terminalStyles.card}>
