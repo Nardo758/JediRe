@@ -3,180 +3,199 @@
 **Date:** 2026-05-20  
 **Task:** #949 — F9 Composer endpoint audit (investigation only)  
 **Type:** Investigation — no code changes  
+**Evidence source:** All data captured directly from `getDealFinancials()` (the live route service) via `ts-node` test harness  
 
 ---
 
 ## Architecture Clarification (Critical)
 
-Before interpreting the per-deal audit, one architectural fact must be established:
-
 **The GET `/api/v1/deals/:dealId/financials` route does NOT use `composeDealFinancials`.**
 
-- The route handler (inline-deals.routes.ts line 1811) calls **`getDealFinancials`** from `proforma-adjustment.service.ts`
+- Route handler (inline-deals.routes.ts line 1811) calls **`getDealFinancials`** from `proforma-adjustment.service.ts`
 - `composeDealFinancials` (financials-composer.service.ts) is only called by the PATCH unit-mix override handler at line 2159
-- `composeDealFinancials` hardcodes `returns: null`, `taxes: null`, `debt: null`, `sourcesUses: null`, `waterfall: null`, `capital: null` at lines 634–649 — this is **intentional** because it is not the primary data pipeline
-- `getDealFinancials` DOES compute all these fields (returns via IIFE at line 4529, taxes at line 3422, sourcesUses at line 3853, waterfall at line 4146, capital at line 4132)
+- `composeDealFinancials` hardcodes `returns: null`, `taxes: null`, `debt: null`, `sourcesUses: null`, `waterfall: null`, `capital: null` at lines 634–649 — this is the override-path service, not the main pipeline
+- `getDealFinancials` DOES compute all fields at runtime (returns IIFE at line 4529, taxes at 3422, sourcesUses at 3853, waterfall at 4146, capital at 4132)
 
-Both services were audited; per-deal results below are from `getDealFinancials` (the live route).
+All per-deal audit values below are from `getDealFinancials` — the live endpoint.
 
 ---
 
-## Three-Deal Summary Table
+## Per-Deal Field Audit
 
-| Field | Bishop (464) | Sentosa Epperson | Jaguar Redevelopment |
+All three deals share `user_id = 6253ba3f-d40d-4597-86ab-270c8397a857`.
+
+| Tracked Field | Bishop (464) | Sentosa Epperson | Jaguar Redevelopment |
 |---|---|---|---|
-| `totalUnits` | 232 | 304 | 0 ⚠️ |
+| **Deal ID** | `3f32276f-aacd-4da3-b306-317c5109b403` | `3d96f62d-d986-448f-8ea4-10853021a8cb` | `8aa4c42a-9f1f-47ba-b9d4-9def37b0b323` |
+| **totalUnits** | 232 | 304 | **0** ⚠️ |
 | `purchasePrice` | $60,000,000 | **null** ⚠️ | $9,000,000 |
 | `loanAmount` | $42,000,000 | **null** | $5,850,000 |
 | `equityAtClose` | $15,000,000 | **null** | $3,150,000 |
-| `proforma.year1` resolved | 29/32 | 29/32 | 2/32 ⚠️ |
-| `unitEconomics` non-null | 5/6 | 5/6 | 0/6 |
-| `valuationSnapshot` non-null fields | 4/12+ | 0 | 1 |
-| `returns.lpNetIrr` | -5.44% (computed) | **null** | **null** |
-| `returns.lpEquityMultiple` | 0.671x | **null** | -0.785x (bad data) |
-| `returns.avgCashOnCash` | -4.1% | **null** | -23.3% (bad data) |
-| `returns.goingInCapRate` | 2.55% | **null** | -2.1% (bad data) |
-| `capitalStack` | ✅ fully populated | ⚠️ all null | ✅ populated |
-| `sourcesUses.totalSources` | $60,000,000 | **null** | $9,000,000 |
-| `sourcesUses.totalUses` | $63,669,600 | $1,611,200 (capex only) | $15,265,332 |
-| `trafficProjection.yearly` | 0 rows | N/A | 0 rows |
-| `projections` | 10 rows | 10 rows | 10 rows |
-| `waterfall.tiers` | 3 tiers | 3 tiers | 3 tiers |
-| `capital.schedule` | 11 rows | 0 rows | 11 rows |
-| `capital.metrics.lpIrr` | 9.76% | **null** | 38.47% (bad data) |
-| `taxes.reTax.platformAnnualTax` | $696,000 | $0 | $191,489 |
-| `debt` | PRESENT | PRESENT | PRESENT |
+| `proforma.year1` resolved | 29 / 32 rows | 29 / 32 rows | 2 / 32 rows ⚠️ |
+| `proforma.unitEconomics` non-null | 5 / 6 fields | 5 / 6 fields | 0 / 6 fields |
+| `proforma.valuationSnapshot` non-null fields | 4 of ~12 | 0 | 1 |
+| `returns.lpNetIrr` | -5.44% ✅ computed | **null** | **null** |
+| `returns.lpEquityMultiple` | 0.671x ✅ computed | **null** | -0.785x (bad data) |
+| `returns.avgCashOnCash` | -4.1% ✅ computed | **null** | -23.3% (bad data) |
+| `returns.goingInCapRate` | 2.55% ✅ | **null** | -2.1% (bad data) |
+| `returns.unleveragedIrr` | 0.58% ✅ | **null** | **null** |
+| `returns.gpPromoteEarned` | $5,866,992 ✅ | $0 (no equity) | $13,933,051 (bad data) |
+| `returns.minDscr` | 0.607 ✅ | **null** | -1.008 (bad data) |
+| `capitalStack.purchasePrice` | $60,000,000 ✅ | **null** | $9,000,000 ✅ |
+| `rentRollSummary.unitMix` length | **11 rows** ✅ | **6 rows** ✅ | **2 rows** ✅ |
+| `waterfall.tiers` length | 3 tiers ✅ | 3 tiers ✅ | 3 tiers ✅ |
+| `capital.schedule` length | 11 rows ✅ | **0 rows** (no equity) | 11 rows ✅ |
+| `capital.metrics.lpIrr` | 9.76% ✅ | **null** | 38.5% (bad data) |
+| `sourcesUses.totalSources` | $60,000,000 ✅ | **null** (no PP) | $9,000,000 ✅ |
+| `sourcesUses.totalUses` | $63,669,600 ✅ | $1,611,200 (capex only) | $15,265,332 ✅ |
+| `trafficProjection.yearly` length | **0 rows** (placeholder) | **0 rows** | **0 rows** |
+| `trafficProjection.calibrated.exitCap` | **null** | **null** | **null** |
+| `projections` length | 10 rows ✅ | 10 rows ✅ | 10 rows ✅ |
+| `taxes.reTax.platformAnnualTax` | $696,000 ✅ | $0 (no geo) | $191,489 ✅ |
+| `debt` (present/null) | PRESENT ✅ | PRESENT ✅ | PRESENT ✅ |
+| `leaseVelocity` (on response) | **NULL** | **NULL** | **NULL** |
+
+### Notes on `leaseVelocity`
+`leaseVelocity` is not a field on `DealFinancials` and is not returned by `getDealFinancials`. It is referenced in `FinancialEnginePage.tsx` via `f9Financials?.trafficProjection?.leasingSignals` (the M07 lease velocity signals). `leasingSignals` is null for all three deals because no `subject_traffic_history` row exists (M07 hasn't run). `leaseVelocity` as a standalone top-level field on the financials response does not exist in the current schema.
 
 ---
 
 ## Per-Field Null Categorization
 
-### Category (a) — Composer doesn't compute it
+### (a) Composer doesn't compute it — structural gap
 
 | Field | Deals affected | Evidence |
 |---|---|---|
-| `proforma.valuationSnapshot.pricePerSF` | All | `buildValuationSnapshot` requires `deal_data.net_rentable_sf` — not set on any deal |
-| `proforma.valuationSnapshot.*SubmarketMedian` / `*Percentile` | All | `buildValuationSnapshot` has no market data integration; submarket medians are always null (no query to `deal_market_data` or `apartment_market_snapshots`) |
-| `trafficProjection.peerBenchmark` | All | `buildTrafficProjection()` in `composeDealFinancials` is a static placeholder (always returns empty shell); `getDealFinancials` calls `getTrafficProjection()` which returns null peerBenchmark until M07 runs |
-| `returns.valuation.*SubmarketMedian` | All | `getDealFinancials` returns IIFE builds valuation metrics but leaves `submarketMedian: null` explicitly — no market data lookup |
-| `returns.strategyAlternative` | All | Hardcoded `null as any` in the returns IIFE — M25 strategy analysis output is never merged here |
+| `proforma.valuationSnapshot.pricePerSF` | All | `buildValuationSnapshot` reads `deal_data.net_rentable_sf` — field not set on any deal |
+| `proforma.valuationSnapshot.*SubmarketMedian` / `*Percentile` | All | No query to `deal_market_data` or `apartment_market_snapshots` in either service; these fields are built as `null as number | null` literals |
+| `returns.valuation.perUnit.submarketMedian` / `percentile` | All | Returns IIFE line 4726 hardcodes `null as number | null` — no submarket lookup |
+| `returns.strategyAlternative` | All | Returns IIFE hardcodes `null as any` — M25 output never merged |
+| `proforma.unitEconomics.opexRatioPct` | All | Neither `getDealFinancials` nor `buildUnitEconomics` in `composeDealFinancials` computes this ratio; `totalOpex` and `egi` are both non-null in the row set for Bishop |
+| `returns.debtMetrics.stress.dscrAtPlus200bps` | All | Hardcoded `null as number | null` at line 4679 — rate sensitivity engine stub |
+| `returns.debtMetrics.refi.events` | All | Hardcoded empty array at line 4683 — refi event detection not built |
 
-### Category (b) — Composer computes but writes null due to missing source data
+### (b) Composer computes but writes null due to missing source data
 
 | Field | Deal | Missing source | Evidence |
 |---|---|---|---|
-| `returns.*` (all fields) | Sentosa Epperson | No purchase price → `equityAtClose = null` → XIRR guard triggers `return null` at line 4530 | `capitalStack_purchasePrice: null` confirmed |
-| `sourcesUses.sources` | Sentosa | No purchase price → no equity/debt rows built | `totalSources: null` |
-| `capital.schedule` | Sentosa | `projEquityOuter = 0` → waterfall distribution loop produces no rows | `capital_schedule_len: 0` |
-| `proforma.unitEconomics.*` | Jaguar | `totalUnits = 0` → all per-unit divisions return null | `totalUnits: 0` confirmed |
-| `proforma.year1` (30/32 rows null) | Jaguar | `totalUnits = 0` blocks GPR/vacancy/opex seeding | `proforma_year1_resolved_pct: 2/32` |
-| `taxes.reTax.platformAnnualTax` = 0 | Sentosa | No `city`/`state_code` on deal row → jurisdiction resolves to default 0 | Requires deal geo data |
-| `proforma.valuationSnapshot` | Sentosa/Jaguar | No purchase price (Sentosa) / all-null NOI (Jaguar) → `buildValuationSnapshot` returns null | |
-| `proforma.unitEconomics.opexPerUnit`/`opexRatioPct` | All (from `composeDealFinancials`) | `buildUnitEconomics` in `composeDealFinancials` cannot compute opex ratio — the `total_opex` row's resolved depends on debt_service resolution which is unseeded | Different to `getDealFinancials` which correctly computes opex from expense row sum |
+| `returns.*` (all) | Sentosa Epperson | No purchase price → `equityAtClose = null` → XIRR guard at line 4530 returns null | `capitalStack.purchasePrice = null` confirmed |
+| `sourcesUses.totalSources` / `.sources` | Sentosa | No purchase price → no equity/debt rows constructed | `totalSources = null` |
+| `capital.schedule` | Sentosa | `projEquityOuter = 0` → distribution loop produces zero rows | `capital_schedule_len = 0` |
+| `proforma.year1` (30/32 rows null) | Jaguar | `totalUnits = 0` blocks all per-unit GPR, vacancy, opex seeding | `totalUnits = 0` confirmed |
+| `proforma.unitEconomics.*` | Jaguar | All divide by `totalUnits` → 0 division → all null | |
+| `proforma.valuationSnapshot` | Sentosa/Jaguar | No purchase price (Sentosa) / all-null NOI + garbage ratios (Jaguar) | |
+| `taxes.reTax.platformAnnualTax = 0` | Sentosa | No `city`/`state_code` on deal row → jurisdiction falls back to default $0 | |
+| `proforma.valuationSnapshot.pricePerSF` | Bishop | `deal_data.net_rentable_sf` not set — otherwise computable | Resolved value: $60M / 0 SF = skip |
+| `proforma.year1.water_sewer` / `.electric` / `.gas_fuel` | Bishop | T-12 extraction captured aggregate `utilities` but not individual sub-utility GL lines — 3 rows fully null | All three rows: broker/platform/t12/rentRoll/resolved all null, resolution="platform_fallback" |
 
-### Category (c) — Field not in schema
+### (c) Field not in schema
 
 None identified. All currently-null fields exist in `F9DealFinancials` type.
 
-### Category (d) — Upstream engine hasn't run for this deal
+### (d) Upstream engine hasn't run
 
 | Field | Deals affected | Engine needed | Evidence |
 |---|---|---|---|
-| `trafficProjection.yearly` | All (0 rows) | M07 Traffic Engine | `getTrafficProjection` returns empty yearly[] until rent roll uploaded + M07 engine calibrated |
-| `trafficProjection.calibrated.exitCap` | All (null) | M07 calibration | Required for OverviewTab Broker vs Platform exit cap row |
-| `trafficProjection.calibrated.vacancyPct` | All (null) | M07 calibration | Required for OverviewTab Vacancy (M07) row |
-| `trafficProjection.leasingSignals` | All (null) | M07 rent roll S1 aggregation | Requires `subject_traffic_history` row |
-| `returns.debtMetrics.stress.dscrAtPlus200bps` | All (null) | Hardcoded null in IIFE (line 4679) — stub pending rate sensitivity engine | |
-| `returns.debtMetrics.refi.events` | All (empty array) | Hardcoded empty (line 4683) — requires refinancing event detection engine | |
+| `trafficProjection.yearly` | All (0 rows) | M07 Traffic Engine | `getTrafficProjection` returns empty `yearly[]` until M07 calibrated for deal |
+| `trafficProjection.calibrated.exitCap` / `.vacancyPct` | All (null) | M07 calibration | All three `calibrated` fields null |
+| `trafficProjection.leasingSignals` | All (null) | M07 S1 aggregation | Requires `subject_traffic_history` row |
+| `trafficProjection.peerBenchmark` | All (null) | Submarket peer registration | Requires deal `submarketId` + registered peers |
 
 ---
 
-## Bishop Source-Slot Coverage Matrix (Proforma Year 1)
+## Bishop Year-1 Source-Slot Coverage Matrix (from getDealFinancials — live route)
 
-Data from `composeDealFinancials` (consistent with `getDealFinancials` source layers — resolution values differ slightly due to different row-building code paths).
+32-row operating statement as returned by `getDealFinancials`. Values are raw numbers; columns marked ✅ = non-null, — = null.
 
-| Field | Broker | Platform | T-12 | Rent Roll | Resolved | Resolution |
-|---|---|---|---|---|---|---|
-| `gpr` | ✅ | ✅ | ✅ | ✅ | ✅ | aggregated |
-| `vacancy_loss` | ✅ | ✅ | — | ✅ | ✅ | proforma |
-| `loss_to_lease` | ✅ | ✅ | — | ✅ | ✅ | proforma |
-| `concessions` | ✅ | ✅ | — | — | ✅ | proforma |
-| `bad_debt` | — | — | ✅ | — | ✅ | proforma |
-| `non_revenue_units` | — | ✅ | — | — | ✅ | proforma |
-| `net_rental_income` | ✅ | ✅ | ✅ | — | ✅ | aggregated |
-| `other_income` | ✅ | ✅ | — | — | ✅ | proforma |
-| `egi` | ✅ | ✅ | ✅ | — | ✅ | aggregated |
-| `payroll` | ✅ | ✅ | ✅ | — | ✅ | proforma |
-| `repairs_maintenance` | ✅ | ✅ | ✅ | — | ✅ | proforma |
-| `turnover` | ✅ | ✅ | ✅ | — | ✅ | proforma |
-| `contract_services` | — | ✅ | ✅ | — | ✅ | proforma |
-| `marketing` | ✅ | ✅ | ✅ | — | ✅ | proforma |
-| `utilities` | ✅ | ✅ | ✅ | — | ✅ | proforma |
-| `g_and_a` | ✅ | ✅ | ✅ | — | ✅ | proforma |
-| `management_fee` | ✅ | ✅ | ✅ | — | ✅ | proforma |
-| `insurance` | ✅ | ✅ | ✅ | — | ✅ | proforma |
-| `real_estate_taxes` | ✅ | — | ✅ | — | ✅ | proforma |
-| `replacement_reserves` | ✅ | — | — | — | ✅ | proforma |
-| `total_opex` | ✅ | ✅ | ✅ | — | ✅ | aggregated |
-| `noi` | ✅ | ✅ | ✅ | — | ✅ | aggregated |
-| *(one opex sub-row, field missing in compose path)* | — | ✅ | ✅ | — | ✅ | proforma |
-| `pre_tax_cash_flow` | — | — | — | — | **null** | aggregated |
-| `debt_service` | — | — | — | — | **null** | unseeded |
+| # | Field | Broker | Platform | T-12 | Rent Roll | Tax Bill | Resolved | Resolution |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `gpr` | ✅ $4,849,260 | ✅ $4,849,260 | ✅ $4,849,260 | ✅ $4,849,260 | — | ✅ $4,849,260 | t12 |
+| 2 | `loss_to_lease_pct` | — | ✅ 0.003 | ✅ 0.078 | ✅ 0.013 | — | ✅ 0.078 | t12 |
+| 3 | `vacancy_pct` | ✅ 0.05 | ✅ 0.07 | — | ✅ 0.198 | — | ✅ 0.05 | om |
+| 4 | `concessions_pct` | ✅ 0 | ✅ 0.02 | — | ✅ 0 | — | ✅ 0 | om |
+| 5 | `bad_debt_pct` | — | ✅ 0.01 | ✅ 0.0086 | — | — | ✅ 0.0086 | t12 |
+| 6 | `non_revenue_units_pct` | — | — | ✅ 0 | — | — | ✅ 0 | t12 |
+| 7 | `other_income_per_unit` | ✅ $857 | — | ✅ $169 | ✅ $58 | — | ✅ $64.76 | rent_roll |
+| 8 | `net_rental_income` | ✅ $4,656,330 | ✅ $3,715,805 | ✅ $1,239,509 | — | — | ✅ $4,488,154 | platform_fallback |
+| 9 | `egi` | ✅ $4,855,206 | ✅ $3,715,805 | ✅ $1,278,761 | — | — | ✅ $4,830,061 | agent |
+| 10 | `loss_to_lease` | ✅ $0 | — | ✅ $16,960 | ✅ $63,899 | — | ✅ $16,960 | t12 |
+| 11 | `vacancy_loss` | ✅ $242,463 | ✅ $339,448 | ✅ $3,200,995 | ✅ $961,491 | — | ✅ $246,615 | agent |
+| 12 | `concessions` | ✅ $0 | ✅ $96,985 | ✅ $377,249 | ✅ $0 | — | ✅ $0 | agent |
+| 13 | `bad_debt` | — | ✅ $48,493 | ✅ $41,822 | — | — | ✅ $97,531 | agent |
+| 14 | `non_revenue_units` | — | — | ✅ $0 | — | — | ✅ $0 | t12 |
+| 15 | `other_income` | ✅ $198,876 | — | ✅ $39,252 | ✅ $13,560 | — | ✅ $341,907 | agent |
+| 16 | `repairs_maintenance` | ✅ $69,600 | ✅ $127,600 | ✅ $134,208 | — | — | ✅ $69,600 | agent |
+| 17 | `contract_services` | ✅ $38,083 | ✅ $46,400 | ✅ $19,640 | — | — | ✅ $69,600 | agent |
+| 18 | `payroll` | ✅ $324,800 | ✅ $324,800 | ✅ $194,388 | — | — | ✅ $324,800 | agent |
+| 19 | `marketing` | ✅ $69,600 | ✅ $46,400 | ✅ $43,897 | — | — | ✅ $69,600 | agent |
+| 20 | `g_and_a` | ✅ $69,600 | ✅ $46,400 | ✅ $22,496 | — | — | ✅ $58,000 | agent |
+| 21 | `turnover` | ✅ $41,760 | ✅ $46,400 | ✅ $1,540 | — | — | ✅ $41,760 | agent |
+| 22 | `water_sewer` | — | — | — | — | — | **null** | platform_fallback |
+| 23 | `electric` | — | — | — | — | — | **null** | platform_fallback |
+| 24 | `gas_fuel` | — | — | — | — | — | **null** | platform_fallback |
+| 25 | `utilities` | ✅ $187,094 | ✅ $208,800 | ✅ $184,968 | — | — | ✅ $187,094 | agent |
+| 26 | `insurance` | ✅ $46,400 | ✅ $69,600 | ✅ $63,699 | — | — | ✅ $125,280 | agent |
+| 27 | `real_estate_tax` | ✅ $977,287 | ✅ $696,000 | ✅ $1,127,126 | — | ✅ $20,731 | ✅ $696,000 | **platform** (tax engine) |
+| 28 | `management_fee_pct` | ✅ 2.75% | ✅ 4.5% | ✅ 11.4% | — | — | ✅ 11.4% | t12 |
+| 29 | `replacement_reserves` | ✅ $46,400 | — | — | — | — | ✅ $46,400 | agent |
+| 30 | `total_opex` | ✅ $1,855,642 | ✅ $1,083,611 | ✅ $2,323,931 | — | — | ✅ $1,660,183 | platform_fallback |
+| 31 | `management_fee` | ✅ $128,049 | ✅ $209,535 | ✅ $531,970 | — | — | ✅ $128,049 | agent |
+| 32 | `noi` | ✅ $2,999,564 | ✅ $2,632,194 | ✅ -$1,045,170 | — | — | ✅ $3,169,878 | platform_fallback |
 
-**Coverage: 22/24 rows resolved (91.7%).** Two rows are blank:
-- `pre_tax_cash_flow`: requires debt service to be seeded first (debt_service row also null)
-- `debt_service`: needs operator to enter interest rate + LTV (or agent to populate). Bishop has `loanAmount=$42M` and `interestRate` set, but the seeder did not write this into `year1.debt_service`
+**Coverage: 29 / 32 rows resolved (90.6%).**  
+Three null rows: `water_sewer`, `electric`, `gas_fuel` — T-12 extraction captured aggregate `utilities` ($184,968) but not individual sub-utility GL lines. All three have `resolution = "platform_fallback"` with null resolved because `getDealFinancials` has no seeded platform values for these sub-lines. The `utilities` aggregate row (#25) IS resolved and carries the real figure.
+
+**Key observations:**
+- `real_estate_tax` row #27: Broker ($977K) vs Platform ($696K) vs T-12 ($1.13M) — wide spread; resolved = $696K (tax engine override). TaxBill slot shows only $20,731 (partial parcel record).
+- `management_fee_pct` row #28: T-12 shows 11.4% (likely partial year denominator issue or GL mapping problem). Resolved = 11.4% (T-12 wins); the `management_fee` dollar row #31 resolved = $128K (agent-computed from EGI × 2.75%), creating an implied management_fee_pct inconsistency between the two rows.
+- NOI T-12 is -$1,045,170 — suspicious; likely reflects partial-year T-12 extraction window. Resolved NOI = $3.17M (platform_fallback).
 
 ---
 
-## Bishop Returns — Explanation of Negative Values
+## Bishop Returns — Exit Math Explanation
 
-Bishop's returns are computed and non-null but negative. This is mathematically correct given the current deal assumptions:
+Returns are computed and non-null but negative. Correct per current assumptions.
 
-| Metric | Value | Implication |
+| Metric | Value | Notes |
 |---|---|---|
 | Y1 GPR | $4,849,260 | 232 units × $1,744/unit/mo |
-| Y1 NOI | $1,528,956 | 31.5% NOI margin (very thin) |
-| Y1 Debt Service | $2,520,000 | IO loan at ~6% × $42M |
-| Y1 DSCR | 0.607 | Deep undercoverage (need >1.25) |
-| Y1 CoC (unleveraged) | -6.6% | Negative leverage |
-| Exit (Y10) NOI | $2,148,109 | After 10-year growth |
-| Exit Cap (assumption) | 5.0% | Deal's configured exit cap |
+| Y1 NOI | $1,528,956 | 31.6% NOI margin |
+| Y1 Debt Service | $2,520,000 | IO at ~6% × $42M |
+| Y1 DSCR | 0.607 | Deep undercoverage |
+| Y1 CoC | -6.6% | Negative leverage |
+| Exit (Y10) NOI | $2,148,109 | After 3% annual growth |
+| Exit Cap | 5.0% | Deal assumption |
 | Gross Sale Value | $44,036,240 | NOI / exitCap |
-| Loan Payoff | $42,000,000 | IO loan — no amortization in 10 years |
+| Loan Payoff | $42,000,000 | IO — no amortization (10-yr outstandingBalance = $42M) |
 | Net Sale Proceeds | $1,551,842 | $44M − $42M − fees |
-| LP Equity Multiple | 0.671x | Investor recovers 67c per $1 invested |
-| LP Net IRR | -5.44% | NPV-negative deal as modeled |
+| LP Net IRR | -5.44% | Correct — NPV-negative deal as modeled |
+| LP EM | 0.671x | Investor recovers 67¢ per $1 invested |
 
-Root cause: The loan ($42M) is interest-only for the full hold period. The Y10 exit value ($44M) barely exceeds the loan payoff. The going-in cap rate (2.55%) is far below the debt cost (~6%), creating severe negative leverage from day 1. These are correct computations — the deal as currently underwritten is a loss. No code bug.
+Root cause: IO loan ($42M) never amortizes; exit value barely covers payoff. No code bug. The deal returns negative because the going-in cap (2.55%) is far below debt cost (6.61%).
 
-The `capital.metrics.lpIrr = 9.76%` discrepancy (vs `returns.lpNetIrr = -5.44%`) is expected: the capital schedule uses a waterfall distribution model that includes promote earnings and fee structures; `returns.lpNetIrr` is the raw XIRR of equity-invested cashflows.
+Note: `capital.metrics.lpIrr = 9.76%` vs `returns.lpNetIrr = -5.44%` — expected discrepancy. The capital schedule applies the waterfall model (pref + promote tiers) and computes LP IRR after accounting for fee/promote distributions; `returns.lpNetIrr` is the raw XIRR of equity-invested project cashflows.
 
 ---
 
-## OverviewTab Tile → Data Source Mapping
+## OverviewTab Tile → Source Mapping and Status
 
-Critical: the OverviewTab reads from **two different data sources** for different tile groups. This matters for understanding which tiles require a build run vs. which are populated from the Composer route.
-
-| Overview Tile / Panel | Data Source | Bishop Status | Blocking Condition |
+| Overview Tile | Source field | Bishop status | Blank because |
 |---|---|---|---|
-| KPI: IRR | `f9Financials.returns.lpNetIrr` (Task #948 fix) | **-5.44%** (was blank before #948) | Returns non-null; negative value is correct |
-| KPI: Equity Multiple | `f9Financials.returns.lpEquityMultiple` | **0.671x** (was blank before #948) | Correct |
-| KPI: Cash-on-Cash | `f9Financials.returns.avgCashOnCash` | **-4.1%** (was blank before #948) | Correct |
-| KPI: NOI | `summary.noi` (from build) | Blank until build runs | Build required |
-| KPI: Price/Unit | `f9Financials.capitalStack.pricePerUnit` | $60M (pricePerUnit = $258,621) | Populated ✅ |
-| Broker vs Platform table | `f9Financials.trafficProjection.calibrated.exitCap` + strategy analyses | All blank (exitCap null; no M25 run) | (d) M07 trigger needed |
-| JEDI Position score | LV engine / rent roll scores | Blank | (d) LV engine + rent roll required |
-| Unit Economics: GPR/EGI/NOI per unit | `f9Financials.proforma.unitEconomics` | ✅ Populated | |
-| Unit Economics: OPEX / unit | `f9Financials.proforma.unitEconomics.opexPerUnit` | ✅ Populated in getDealFinancials (5/6 non-null) | composeDealFinancials shows null here — minor discrepancy |
-| Unit Economics: OPEX RATIO | `f9Financials.proforma.unitEconomics.opexRatioPct` | **null** — not in getDealFinancials 5 non-null | `opexRatioPct` is the missing 6th field |
-| Valuation: GRM / Price/Unit / Going-In Cap | `f9Financials.proforma.valuationSnapshot` | ✅ 4 fields present | |
-| Valuation: submarket comparisons | `f9Financials.proforma.valuationSnapshot.*SubmarketMedian` | **null** (category a) | No market data integration |
-| Sources panel | `modelResults.sourcesAndUses` (line 33 — BUILD output) | **Blank** (build not run) | ⚠️ Wiring gap: `f9Financials.sourcesUses` IS populated ($60M/$63.7M) but OverviewTab reads `modelResults.sourcesAndUses` (the LV engine output), not `f9Financials.sourcesUses` |
-| Uses panel | Same as Sources panel | **Blank** | Same wiring gap |
-| RETURNS BREAKDOWN | `summary.lpTotalDistributions`, `summary.gpIrr`, etc. | Blank until build runs | Build required |
-| RETURNS BY YEAR | `normalizeBuildResponse` annualCashFlow | Blank until build runs | Build required |
-| Traffic projection yearly | `f9Financials.trafficProjection.yearly` | 0 rows (all deals) | (d) M07 trigger needed |
+| KPI: IRR | `f9Financials.returns.lpNetIrr` | ✅ -5.44% (was blank pre-#948) | Fixed in Task #948 |
+| KPI: Equity Multiple | `f9Financials.returns.lpEquityMultiple` | ✅ 0.671x | Fixed in Task #948 |
+| KPI: Cash-on-Cash | `f9Financials.returns.avgCashOnCash` | ✅ -4.1% | Fixed in Task #948 |
+| KPI: NOI | `summary.noi` (build output) | Blank | Build required |
+| UNIT ECONOMICS: GPR/EGI/NOI per unit | `f9Financials.proforma.unitEconomics` | ✅ 5/6 fields | |
+| UNIT ECONOMICS: OPEX RATIO | `f9Financials.proforma.unitEconomics.opexRatioPct` | null | (a) Not computed in either service |
+| VALUATION: GRM/pricePerUnit/goingInCap | `f9Financials.proforma.valuationSnapshot` | ✅ 4 fields | |
+| VALUATION: submarket comparisons | `f9Financials.proforma.valuationSnapshot.*SubmarketMedian` | null | (a) No market data integration |
+| BROKER vs PLATFORM table | `trafficProjection.calibrated.exitCap` + strategy analyses | Blank | (d) M07 not triggered |
+| SOURCES panel | `modelResults?.sourcesAndUses` (line 33) | **Blank** ⚠️ | Wiring gap — reads LV BUILD output; `f9Financials.sourcesUses` IS populated ($60M) but not read |
+| USES panel | Same | **Blank** ⚠️ | Same wiring gap |
+| RETURNS BREAKDOWN | `summary.lpTotalDistributions` etc. | Blank | Build required |
+| RETURNS BY YEAR | `normalizeBuildResponse` annualCashFlow | Blank | Build required |
+| JEDI Position | LV engine / scores | Blank | (d) LV engine + rent roll required |
+| Traffic yearly tiles | `trafficProjection.yearly` | Blank | (d) M07 not triggered |
 
 ---
 
@@ -184,47 +203,14 @@ Critical: the OverviewTab reads from **two different data sources** for differen
 
 Ordered by tiles-unblocked per session of effort:
 
-### Priority 1 — Re-wire Overview Sources/Uses to f9Financials (High impact, Low effort)
-**Estimated effort: 0.5 sessions**
-The OverviewTab Sources/Uses panels read from `modelResults.sourcesAndUses` (the LV build output) while the Composer already provides `f9Financials.sourcesUses` with fully-computed $60M sources / $63.7M uses for Bishop. Changing the OverviewTab to prefer `f9Financials.sourcesUses` as primary source would populate the Sources and Uses panels immediately for any deal with a purchase price, without requiring a build run. The `modelResults.sourcesAndUses` can remain as a secondary fallback (it reflects the LV engine's version if it differs).
-Files: `frontend/src/pages/development/financial-engine/OverviewTab.tsx` (lines 80-83 + S&U section)
+1. **Re-wire Overview Sources/Uses to `f9Financials.sourcesUses`** (0.5 sessions) — `f9Financials.sourcesUses` is already populated ($60M/$63.7M for Bishop) but OverviewTab reads the wrong field. One-line change to prefer `f9Financials.sourcesUses` unblocks both panels immediately without a build. Tracked as proposed Task #954.
 
-### Priority 2 — Wire M07 engine triggers for Bishop (High impact, Medium effort)
-**Estimated effort: 1 session**  
-All traffic-derived Overview tiles (exit cap, vacancy M07, platform projections, peer benchmark) are gated behind `trafficProjection.yearly.length > 0`. `getTrafficProjection` returns an empty array until the M07 engine runs for the deal. Triggering M07 for Bishop specifically (with at least a baseline calibration run using the rent roll summary already present) would unblock these tiles. This is tracked as Task #951.
+2. **Trigger M07 for Bishop** (1 session) — All traffic/calibration/exit-cap tiles are gated on `trafficProjection.yearly.length > 0`. Tracked as Task #951.
 
-### Priority 3 — Re-wire Overview `opexRatioPct` to use expense row sum
-**Estimated effort: 0.25 sessions**  
-`opexRatioPct` is null in both Composer paths because neither explicitly computes it. But `totalOpex` and `egi` rows are both non-null and resolved. Adding `opexRatioPct: totalOpex.resolved / egi.resolved` to `buildUnitEconomics` in `composeDealFinancials` and the equivalent in `getDealFinancials` would fill this metric without any new data dependencies.
+3. **Add `opexRatioPct` to unit economics** (0.25 sessions) — `totalOpex` and `egi` both non-null; ratio is trivially computable. Tracked as proposed Task #955.
 
-### Priority 4 — Add `net_rentable_sf` to Bishop deal data (Quick win)
-**Estimated effort: 0.25 sessions**  
-`pricePerSF` in the valuationSnapshot is always null because `deal_data.net_rentable_sf` is not set on any deal. Adding this field (232 units × ~900 SF/unit typical for Atlanta MF = ~208,800 SF) would unlock `pricePerSF`, `exitPricePerSF`, and all three submarket-relative metrics once market data is available.
+4. **Add `net_rentable_sf` to Bishop deal data** (0.25 sessions) — Unlocks `pricePerSF` in valuationSnapshot.
 
-### Priority 5 — Sentosa Epperson purchase price entry (Operator action — no code)
-**Estimated effort: operator action**  
-All returns, valuation metrics, sourcesUses sources, and capital schedule for Sentosa are null because no purchase price has been entered. No code change required. Once entered, the Composer auto-populates all derived fields.
+5. **Sentosa purchase price** — Operator action. Unblocks all returns, sources, capital schedule, valuation.
 
-### Priority 6 — Jaguar Redevelopment unit count (Operator action — no code)
-**Estimated effort: operator action**  
-`totalUnits = 0` for Jaguar. Once the operator sets target_units, all 30 remaining unseeded year1 rows will populate and computed returns will correct.
-
----
-
-## Source of Truth for Submarket Comparisons (Long-term gap)
-
-`proforma.valuationSnapshot.*SubmarketMedian` and `*Percentile` fields are always null across all three deals. These require:
-1. `deal_market_data` rows linked to the deal's `submarketId`, OR
-2. `apartment_market_snapshots` for the MSA/submarket
-
-Neither is populated for any deal in this environment (Bishop has no `submarketId` in `deal_data`). This is a **category (a)** gap — the Composer has no query path to these tables. Requires a separate Dispatch to (a) ensure Bishop has a `submarketId`, and (b) add submarket lookup logic to `buildValuationSnapshot`.
-
----
-
-## Appendix — Service Call Confirmation
-
-Both services were called directly via `ts-node` in the dev environment:
-- `composeDealFinancials`: always returns `returns: null, taxes: null, debt: null, sourcesUses: null, waterfall: null, capital: null` (hardcoded) — confirmed at lines 634–649
-- `getDealFinancials`: computes all fields at runtime; returns populated objects as documented above
-
-The 10-year `projections` array is populated by both services (via `buildProjections` in `composeDealFinancials` and inline IIFE in `getDealFinancials`) for all deals with year1 seed data. Jaguar has 10 projection rows despite totalUnits=0 — the projections contain nonsense values (negative NOI, negative netSaleProceeds) because the underlying operating assumptions are all near-zero.
+6. **Jaguar unit count** — Operator action. Sets `totalUnits > 0` to seed 30 remaining null year1 rows.
