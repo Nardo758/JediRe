@@ -17,10 +17,23 @@ type Phase = 'form' | 'validating' | 'success' | 'error';
 const PROVIDERS = [
   {
     id: 'anthropic',
-    label: 'Anthropic (Claude)',
+    label: 'Anthropic (Claude Sonnet)',
     keyPrefix: 'sk-ant-',
     placeholder: 'sk-ant-api03-…',
-    model: 'claude-sonnet-4',
+    model: 'claude-sonnet-4-20250514',
+    costInput: '$3.00',
+    costOutput: '$15.00',
+    costRange: '$0.003–0.02 per query',
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI (GPT-4o)',
+    keyPrefix: 'sk-',
+    placeholder: 'sk-proj-…',
+    model: 'gpt-4o',
+    costInput: '$2.50',
+    costOutput: '$10.00',
+    costRange: '$0.002–0.015 per query',
   },
 ];
 
@@ -214,11 +227,24 @@ export default function RecipientConnectModal({ shortcode, onConnected, onClose 
                 padding: '10px 12px', marginBottom: 20,
                 background: 'rgba(6,182,212,0.04)',
                 border: `1px solid rgba(6,182,212,0.15)`,
-                fontSize: 10, color: BT.text.muted, lineHeight: 1.5,
+                fontSize: 10, color: BT.text.muted, lineHeight: 1.6,
               }}>
-                🔒 Your key is encrypted with AES-256-GCM and never visible to the sender
-                or other parties. Estimated cost: $0.002–0.02 per query depending on
-                response length.
+                <div style={{ marginBottom: 6 }}>
+                  🔒 Your key is encrypted with AES-256-GCM and never visible to the sender or other parties.
+                </div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <span>
+                    <span style={{ color: BT.text.primary, fontWeight: 700 }}>Model:</span>{' '}
+                    {selectedProvider.model}
+                  </span>
+                  <span>
+                    <span style={{ color: BT.text.primary, fontWeight: 700 }}>Est. cost:</span>{' '}
+                    {selectedProvider.costRange}
+                  </span>
+                </div>
+                <div style={{ marginTop: 4, fontSize: 9, opacity: 0.75 }}>
+                  {selectedProvider.costInput}/M input · {selectedProvider.costOutput}/M output tokens
+                </div>
               </div>
 
               {/* Submit */}

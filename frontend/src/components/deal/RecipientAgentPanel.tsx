@@ -27,13 +27,28 @@ function formatCost(usd: number): string {
   return `$${usd.toFixed(4)}`;
 }
 
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: 'Claude',
+  openai: 'GPT-4o',
+};
+
 export default function RecipientAgentPanel({ shortcode, onDisconnect }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [querying, setQuerying] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [activeProvider, setActiveProvider] = useState<string | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch(`/api/v1/shares/${shortcode}/connection`)
+      .then(r => r.ok ? r.json() : null)
+      .then(body => {
+        if (body?.connected && body.provider) setActiveProvider(body.provider);
+      })
+      .catch(() => {});
+  }, [shortcode]);
 
   useEffect(() => {
     if (open && threadRef.current) {
@@ -152,6 +167,17 @@ export default function RecipientAgentPanel({ shortcode, onDisconnect }: Props) 
           <span style={{ fontSize: 10, fontWeight: 700, color: BT.text.cyan, letterSpacing: 1 }}>
             DEAL AGENT
           </span>
+          {activeProvider && (
+            <span style={{
+              fontSize: 8, fontWeight: 700, letterSpacing: 0.8,
+              padding: '1px 6px',
+              background: 'rgba(6,182,212,0.08)',
+              border: `1px solid rgba(6,182,212,0.25)`,
+              color: BT.text.cyan,
+            }}>
+              {PROVIDER_LABELS[activeProvider] ?? activeProvider.toUpperCase()}
+            </span>
+          )}
           {totalCost > 0 && (
             <span style={{ fontSize: 9, color: BT.text.muted }}>
               · {formatCost(totalCost)} total
