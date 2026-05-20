@@ -1433,7 +1433,7 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
 
     // Fetch capsule data
     const capsuleResult = await pool.query(
-      `SELECT property_address, asset_class, jedi_score,
+      `SELECT property_address, asset_class, jedi_score, collision_score,
               deal_data, platform_intel, user_adjustments, module_outputs
        FROM deal_capsules WHERE id = $1 LIMIT 1`,
       [capsuleId]
@@ -1459,9 +1459,13 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
 
     // Check if the user has already forked this share to avoid duplicates
     const dupeCheck = await pool.query(
-      `SELECT id FROM deals
-       WHERE user_id = $1
-         AND deal_data->>'forked_from_share' = $2
+      `SELECT d.id, dc.id AS capsule_id
+       FROM deals d
+       LEFT JOIN deal_capsules dc
+         ON dc.user_id = d.user_id
+        AND dc.deal_data->>'forked_from_share' = $2
+       WHERE d.user_id = $1
+         AND d.deal_data->>'forked_from_share' = $2
        LIMIT 1`,
       [userId, shortcode]
     );
@@ -1470,32 +1474,70 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
       logger.info('Share fork skipped — already forked', { userId, shortcode, existingDealId: dupeCheck.rows[0].id });
       return res.json({
         deal_id: dupeCheck.rows[0].id,
+        capsule_id: dupeCheck.rows[0].capsule_id ?? null,
         property_address: propertyAddress,
         already_existed: true,
       });
     }
 
-    // Create the pipeline deal (no boundary required — minimal insert)
-    const insertResult = await pool.query(
-      `INSERT INTO deals (
-         user_id, name, status, deal_category,
-         address, property_address,
-         strategy, deal_data
-       ) VALUES ($1, $2, 'active', 'pipeline', $3, $4, $5, $6)
-       RETURNING id, name`,
-      [
-        userId,
-        propertyAddress,
-        propertyAddress,
-        propertyAddress,
-        assetClass,
-        JSON.stringify(seededDealData),
-      ]
-    );
+    // ── Atomic transaction: create deal + recipient capsule clone ────────────
+    // Both rows must exist or neither should — use a client for BEGIN/COMMIT.
+    const client = await pool.connect();
+    let newDeal: { id: string; name: string };
+    let newCapsuleId: string;
 
-    const newDeal = insertResult.rows[0];
+    try {
+      await client.query('BEGIN');
 
-    // Attribution — write fork event to capsule_fork_log (non-fatal)
+      // 1. Create the pipeline deal
+      const dealInsert = await client.query(
+        `INSERT INTO deals (
+           user_id, name, status, deal_category,
+           address, property_address,
+           strategy, deal_data
+         ) VALUES ($1, $2, 'active', 'pipeline', $3, $4, $5, $6)
+         RETURNING id, name`,
+        [
+          userId,
+          propertyAddress,
+          propertyAddress,
+          propertyAddress,
+          assetClass,
+          JSON.stringify(seededDealData),
+        ]
+      );
+      newDeal = dealInsert.rows[0];
+
+      // 2. Clone the source capsule for the recipient (their own working copy)
+      // user_adjustments reset to {} — recipient starts fresh on top of the snapshot.
+      const capsuleInsert = await client.query(
+        `INSERT INTO deal_capsules (
+           user_id, deal_data, platform_intel, user_adjustments, module_outputs,
+           property_address, asset_class, jedi_score, collision_score, status
+         ) VALUES ($1, $2, $3, '{}'::jsonb, $4, $5, $6, $7, $8, 'DISCOVER')
+         RETURNING id`,
+        [
+          userId,
+          JSON.stringify(seededDealData),
+          JSON.stringify((capsule.platform_intel as Record<string, unknown>) ?? {}),
+          JSON.stringify((capsule.module_outputs as Record<string, unknown>) ?? {}),
+          propertyAddress,
+          assetClass,
+          capsule.jedi_score ?? null,
+          capsule.collision_score ?? null,
+        ]
+      );
+      newCapsuleId = capsuleInsert.rows[0].id;
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    // Attribution — write fork event to capsule_fork_log (non-fatal, outside tx)
     try {
       await pool.query(
         `INSERT INTO capsule_fork_log
@@ -1511,11 +1553,12 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
     }
 
     logger.info('Deal forked from share', {
-      userId, shortcode, capsuleId, newDealId: newDeal.id,
+      userId, shortcode, capsuleId, newDealId: newDeal.id, newCapsuleId,
     });
 
     return res.status(201).json({
       deal_id: newDeal.id,
+      capsule_id: newCapsuleId,
       deal_name: newDeal.name,
       property_address: propertyAddress,
       already_existed: false,
