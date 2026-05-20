@@ -747,6 +747,9 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         sellingCostsPct: sellingCosts,
         ioPeriodYears: ioPeriod,
         amortYears: amortization,
+        // Full ProForma assumptions enable backend runModel() evaluation so
+        // solved values match what the user sees in the F9 proforma.
+        proFormaAssumptions: buildAssumptionsPayload(),
       });
       const data = (res as any)?.data ?? (res as any);
       setBroaderGoalSeekResult(data as BroaderGoalSeekResult);
@@ -755,6 +758,30 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       alert('Goal seek failed: ' + (err?.response?.data?.error || err.message));
     } finally {
       setSolving(false);
+    }
+  };
+
+  /** Apply a solved goal-seek value directly into the proforma state. */
+  const handleApplyGoalSeekSolved = (variable: SolveVariable, value: number) => {
+    switch (variable) {
+      case 'purchase_price':
+        setPurchasePrice(value);
+        break;
+      case 'exit_cap_rate':
+        setExitCapRate(value);
+        break;
+      case 'rent_growth':
+        setRentGrowth(rentGrowth.map(() => value));
+        break;
+      case 'hold_period':
+        setHoldPeriod(Math.round(value));
+        break;
+      case 'ltv':
+        setLoanAmount(purchasePrice * value);
+        break;
+      case 'interest_rate':
+        setInterestRate(value * 100);
+        break;
     }
   };
 
@@ -989,6 +1016,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
               onSolve={handleGoalSeek}
               solving={solving}
               result={broaderGoalSeekResult}
+              onApplySolved={handleApplyGoalSeekSolved}
             />
           </div>
           {goalSeekSteps.length > 0 && goalSeekApplyPayload && goalSeekResult && (

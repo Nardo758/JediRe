@@ -183,6 +183,7 @@ router.post('/broader-goal-seek', async (req, res) => {
       amortYears,
       searchLo,
       searchHi,
+      proFormaAssumptions,
     } = req.body;
 
     if (!solveFor || !VALID_SOLVE_VARS.has(solveFor)) {
@@ -218,6 +219,9 @@ router.post('/broader-goal-seek', async (req, res) => {
       amortYears: amortYears != null ? Number(amortYears) : undefined,
       searchLo: searchLo != null ? Number(searchLo) : undefined,
       searchHi: searchHi != null ? Number(searchHi) : undefined,
+      // When the client sends full ProForma assumptions, the service will use
+      // the real deterministic runModel() engine for each bisection iteration.
+      proFormaAssumptions: proFormaAssumptions ?? undefined,
     });
 
     return res.json(result);
