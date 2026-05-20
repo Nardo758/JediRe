@@ -12,7 +12,7 @@
  */
 
 import React, { useState } from 'react';
-import { Loader2, Target, ChevronDown, ChevronUp, Zap, CheckCircle2, AlertTriangle, XCircle, ArrowRight } from 'lucide-react';
+import { Loader2, Target, ChevronDown, ChevronUp, Zap, CheckCircle2, AlertTriangle, XCircle, ArrowRight, FlaskConical } from 'lucide-react';
 
 // ─── Variable + metric config ─────────────────────────────────────────────────
 
@@ -107,6 +107,8 @@ export interface BroaderGoalSeekResult {
   rangeTriedHi: number;
   metricAtLo: number | null;
   metricAtHi: number | null;
+  /** true when the solver evaluated via the full deterministic F9 runModel engine */
+  usedFullEngine?: boolean;
 }
 
 export interface GoalSeekWidgetProps {
@@ -126,6 +128,12 @@ export interface GoalSeekWidgetProps {
   ) => void;
   solving: boolean;
   result: BroaderGoalSeekResult | null;
+  /**
+   * When provided, a button is shown in the success result panel to apply the
+   * solved value directly into the proforma assumptions so the model can be
+   * rebuilt with the new value.
+   */
+  onApplySolved?: (variable: SolveVariable, value: number) => void;
   /** Legacy: still supported for backward compat */
   onSolve?: (targetIRR: number, bundleId: string) => void;
 }
@@ -159,7 +167,7 @@ function getCurrentValue(variable: SolveVariable, props: GoalSeekWidgetProps): n
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const GoalSeekWidget: React.FC<GoalSeekWidgetProps> = (props) => {
-  const { currentIRR, solving, result, onSolveBroader } = props;
+  const { currentIRR, solving, result, onSolveBroader, onApplySolved } = props;
 
   const [expanded,      setExpanded]      = useState(false);
   const [solveFor,      setSolveFor]      = useState<SolveVariable>('purchase_price');
@@ -296,7 +304,7 @@ const GoalSeekWidget: React.FC<GoalSeekWidgetProps> = (props) => {
           </button>
 
           {/* Result panel */}
-          {result && <GoalSeekResult result={result} props={props} />}
+          {result && <GoalSeekResult result={result} props={props} onApplySolved={onApplySolved} />}
         </div>
       )}
     </div>
@@ -305,7 +313,12 @@ const GoalSeekWidget: React.FC<GoalSeekWidgetProps> = (props) => {
 
 // ─── Result display ───────────────────────────────────────────────────────────
 
-const GoalSeekResult: React.FC<{ result: BroaderGoalSeekResult; props: GoalSeekWidgetProps }> = ({ result, props }) => {
+const GoalSeekResult: React.FC<{
+  result: BroaderGoalSeekResult;
+  props: GoalSeekWidgetProps;
+  onApplySolved?: (variable: SolveVariable, value: number) => void;
+}> = ({ result, props, onApplySolved }) => {
+  const [applied, setApplied] = useState(false);
   const varMeta    = VARIABLE_OPTIONS.find(v => v.id === result.solveFor)!;
   const metricMeta = METRIC_OPTIONS.find(m => m.id === result.targetMetric)!;
 
@@ -400,6 +413,36 @@ const GoalSeekResult: React.FC<{ result: BroaderGoalSeekResult; props: GoalSeekW
             Achieved
             <span className="font-mono font-semibold ml-1">{achievedDisplay}</span>
           </div>
+        </div>
+
+        {/* Apply / engine indicator row */}
+        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-emerald-200">
+          {result.usedFullEngine !== false && (
+            <div className="flex items-center gap-1 text-[9px] text-emerald-500">
+              <FlaskConical size={9} />
+              <span>Full F9 engine</span>
+            </div>
+          )}
+          {!result.usedFullEngine && (
+            <div className="text-[9px] text-amber-500">Analytic estimate</div>
+          )}
+          {onApplySolved && !applied && (
+            <button
+              onClick={() => {
+                onApplySolved(result.solveFor, result.solvedValue!);
+                setApplied(true);
+              }}
+              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+            >
+              Apply to Proforma
+            </button>
+          )}
+          {applied && (
+            <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+              <CheckCircle2 size={10} />
+              Applied — rebuild to confirm
+            </span>
+          )}
         </div>
       </div>
     </div>

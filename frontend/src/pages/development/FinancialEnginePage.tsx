@@ -1127,6 +1127,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         sellingCostsPct,
         ioPeriodYears,
         amortYears,
+        // Send the full ProForma assumptions so the backend can evaluate via
+        // the real deterministic runModel() engine rather than the analytic
+        // approximation, ensuring solved values are consistent with F9 output.
+        proFormaAssumptions: assumptions ?? undefined,
       });
       const data = (res as any)?.data ?? (res as any);
       setBroaderGoalSeekResult(data as BroaderGoalSeekResult);
@@ -1136,6 +1140,35 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       setBroaderGoalSeekSolving(false);
     }
   }, [assumptions, modelResults]);
+
+  /** Apply a solved goal-seek value directly into the proforma assumptions. */
+  const handleApplyGoalSeekSolved = useCallback((variable: SolveVariable, value: number) => {
+    if (!assumptions) return;
+    switch (variable) {
+      case 'purchase_price':
+        handleAssumptionsChange({ acquisition: { ...assumptions.acquisition, purchasePrice: value } });
+        break;
+      case 'exit_cap_rate':
+        handleAssumptionsChange({ disposition: { ...assumptions.disposition, exitCapRate: value } });
+        break;
+      case 'rent_growth': {
+        const filled = (assumptions.revenue?.rentGrowth ?? []).map(() => value);
+        handleAssumptionsChange({ revenue: { ...assumptions.revenue, rentGrowth: filled } });
+        break;
+      }
+      case 'hold_period':
+        handleAssumptionsChange({ holdPeriod: Math.round(value) });
+        break;
+      case 'ltv': {
+        const pp = assumptions.acquisition?.purchasePrice ?? 0;
+        handleAssumptionsChange({ financing: { ...assumptions.financing, loanAmount: pp * value } });
+        break;
+      }
+      case 'interest_rate':
+        handleAssumptionsChange({ financing: { ...assumptions.financing, interestRate: value } });
+        break;
+    }
+  }, [assumptions, handleAssumptionsChange]);
 
   const handleAssumptionsChange = useCallback((partial: Partial<ModelAssumptions>) => {
     setAssumptions(prev => prev ? { ...prev, ...partial } : null);
@@ -1778,6 +1811,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                 onSolveBroader={handleBroaderGoalSeek}
                 broaderSolving={broaderGoalSeekSolving}
                 broaderGoalSeekResult={broaderGoalSeekResult}
+                onApplySolved={handleApplyGoalSeekSolved}
               />
             </BtTabWrapper>
           )}

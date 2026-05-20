@@ -36,11 +36,12 @@ interface SensitivityTabProps extends FinancialEngineTabProps {
   onSolveBroader?: (solveFor: SolveVariable, targetMetric: TargetMetric, targetValue: number) => void;
   broaderSolving?: boolean;
   broaderGoalSeekResult?: BroaderGoalSeekResult | null;
+  onApplySolved?: (variable: SolveVariable, value: number) => void;
 }
 
 export function SensitivityTab({
   dealId, dealType, assumptions, modelResults,
-  onSolveBroader, broaderSolving, broaderGoalSeekResult,
+  onSolveBroader, broaderSolving, broaderGoalSeekResult, onApplySolved,
 }: SensitivityTabProps) {
   const [activeTable, setActiveTable] = useState<TableType>('irr');
   const resolvedDealType = dealType || 'existing';
@@ -258,6 +259,7 @@ export function SensitivityTab({
             onSolveBroader={onSolveBroader!}
             solving={broaderSolving ?? false}
             result={broaderGoalSeekResult ?? null}
+            onApplySolved={onApplySolved}
           />
         ) : (
           <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, padding: '8px 0' }}>

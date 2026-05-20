@@ -11,9 +11,17 @@
  * |metric(x) - target| < TOLERANCE, or no-solution if target is not bracketed.
  *
  * Hold period uses integer scan (not bisection) because it is discrete.
+ *
+ * When proFormaAssumptions is provided the solver calls runModel() (the real
+ * deterministic F9 engine) for each iteration step, ensuring results are fully
+ * consistent with what the user sees in the proforma.  Without it the solver
+ * falls back to a lightweight analytic approximation.
  */
 
 import { logger } from '../../utils/logger';
+import { runModel, ModelAssumptions as FlatModelAssumptions } from '../deterministic/deterministic-model-runner';
+import { mapProFormaAssumptionsToModelAssumptions } from '../deterministic/proforma-assumptions-bridge';
+import type { ProFormaAssumptions } from '../financial-model-engine.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,6 +40,7 @@ export interface BroaderGoalSeekInput {
   targetMetric: TargetMetric;
   targetValue: number;
 
+  // ── Simplified fallback params (used when proFormaAssumptions is absent) ──
   purchasePrice: number;
   noiYear1: number;
   holdYears: number;
@@ -42,6 +51,10 @@ export interface BroaderGoalSeekInput {
   sellingCostsPct: number;
   ioPeriodYears?: number;
   amortYears?: number;
+
+  // ── Full F9 assumptions (enables runModel-backed evaluation) ──────────────
+  proFormaAssumptions?: ProFormaAssumptions;
+
   searchLo?: number;
   searchHi?: number;
 }
@@ -61,9 +74,66 @@ export interface BroaderGoalSeekResult {
   rangeTriedHi: number;
   metricAtLo: number | null;
   metricAtHi: number | null;
+  /** true when the solver used the full deterministic runModel engine */
+  usedFullEngine: boolean;
 }
 
-// ─── Financial math (self-contained, mirrors optimize_capital_structure) ──────
+// ─── runModel-backed evaluation ───────────────────────────────────────────────
+
+function applyToFlat(a: FlatModelAssumptions, variable: SolveVariable, val: number): FlatModelAssumptions {
+  const copy: FlatModelAssumptions = { ...a, rentGrowth: [...a.rentGrowth] };
+  switch (variable) {
+    case 'purchase_price':
+      copy.purchasePrice = val;
+      copy.loanAmount = val * a.ltv;
+      break;
+    case 'exit_cap_rate':
+      copy.exitCap = val;
+      break;
+    case 'rent_growth':
+      copy.rentGrowth = copy.rentGrowth.map(() => val);
+      break;
+    case 'hold_period':
+      copy.holdYears = Math.round(val);
+      copy.term = Math.max(copy.term, Math.round(val));
+      break;
+    case 'ltv':
+      copy.ltv = Math.min(0.9999, Math.max(0.0001, val));
+      copy.loanAmount = a.purchasePrice * copy.ltv;
+      break;
+    case 'interest_rate':
+      copy.rate = val;
+      break;
+  }
+  return copy;
+}
+
+function extractFromFlat(a: FlatModelAssumptions, variable: SolveVariable): number {
+  switch (variable) {
+    case 'purchase_price': return a.purchasePrice;
+    case 'exit_cap_rate':  return a.exitCap;
+    case 'rent_growth':    return a.rentGrowth[0] ?? 0.03;
+    case 'hold_period':    return a.holdYears;
+    case 'ltv':            return a.ltv;
+    case 'interest_rate':  return a.rate;
+  }
+}
+
+function extractMetricFromRunModelResult(
+  result: ReturnType<typeof runModel>,
+  metric: TargetMetric,
+): number | null {
+  switch (metric) {
+    case 'irr':             return result.summary.irr;
+    case 'equity_multiple': return result.summary.equityMultiple;
+    case 'cash_on_cash':    return result.summary.cashOnCashByYear?.[0] ?? result.summary.avgCoC ?? null;
+  }
+}
+
+// ─── Simplified fallback (analytic approximation) ─────────────────────────────
+//
+// Used when proFormaAssumptions is not provided.  Gives a fast approximation
+// that may diverge slightly from the full engine for edge cases.
 
 function monthlyPayment(principal: number, annualRate: number, termMonths: number): number {
   if (principal <= 0 || termMonths <= 0) return 0;
@@ -120,10 +190,6 @@ interface DealMetrics {
   cash_on_cash: number | null;
 }
 
-/**
- * Core financial model: build levered equity cash flows and compute the
- * three supported target metrics.
- */
 function computeMetrics(p: DealParams): DealMetrics {
   if (
     p.purchasePrice <= 0 ||
@@ -198,7 +264,6 @@ const VARIABLE_META: Record<SolveVariable, VariableMeta> = {
     unit: 'dollars',
     defaultLo: (p) => Math.max(100_000, p.purchasePrice * 0.20),
     defaultHi: (p) => {
-      // Cap at price where annual debt service ≈ NOI (break-even), with 20% cushion
       const maxByDs = p.ltv > 0 && p.debtRate > 0
         ? (p.noiYear1 / (p.ltv * p.debtRate)) * 0.80
         : p.purchasePrice * 2.0;
@@ -271,7 +336,6 @@ const METRIC_LABELS: Record<TargetMetric, string> = {
 
 const BISECT_TOLERANCE = 1e-6;
 const MAX_ITER = 100;
-const HOLD_SCAN_STEPS = 15;
 
 function getMetricValue(metrics: DealMetrics, target: TargetMetric): number | null {
   return metrics[target];
@@ -284,6 +348,55 @@ export async function runBroaderGoalSeek(
   if (!varMeta) {
     throw new Error(`Unknown solve variable: ${input.solveFor}`);
   }
+
+  // ── Choose evaluation strategy ──────────────────────────────────────────
+  // When the caller supplies the full ProForma assumptions, bridge them to the
+  // flat ModelAssumptions shape and call runModel() for each bisection step so
+  // the solver works against the SAME deterministic engine the user sees in F9.
+
+  let flatBase: FlatModelAssumptions | null = null;
+  if (input.proFormaAssumptions) {
+    try {
+      flatBase = mapProFormaAssumptionsToModelAssumptions(input.proFormaAssumptions);
+    } catch (err) {
+      logger.warn('[broader-goal-seek] mapProFormaAssumptionsToModelAssumptions failed, falling back to simplified model', { err });
+      flatBase = null;
+    }
+  }
+
+  const usedFullEngine = flatBase !== null;
+
+  const evalAt = usedFullEngine
+    ? (val: number): number | null => {
+        const mutated = applyToFlat(flatBase!, input.solveFor, val);
+        try {
+          const result = runModel(mutated, { skipSensitivity: true });
+          return extractMetricFromRunModelResult(result, input.targetMetric);
+        } catch {
+          return null;
+        }
+      }
+    : (val: number): number | null => {
+        const p = varMeta.applyTo(baseParams, val);
+        const m = computeMetrics(p);
+        return getMetricValue(m, input.targetMetric);
+      };
+
+  // ── Derive original value and base params ────────────────────────────────
+  const originalValue = usedFullEngine
+    ? extractFromFlat(flatBase!, input.solveFor)
+    : varMeta.extractFrom({
+        purchasePrice: input.purchasePrice,
+        noiYear1: input.noiYear1,
+        holdYears: input.holdYears,
+        exitCapRate: input.exitCapRate,
+        debtRate: input.debtRate,
+        ltv: input.ltv,
+        noiGrowthRate: input.noiGrowthRate,
+        sellingCostsPct: input.sellingCostsPct,
+        ioPeriodYears: input.ioPeriodYears ?? 0,
+        amortYears: input.amortYears ?? 30,
+      });
 
   const baseParams: DealParams = {
     purchasePrice: input.purchasePrice,
@@ -298,7 +411,6 @@ export async function runBroaderGoalSeek(
     amortYears: input.amortYears ?? 30,
   };
 
-  const originalValue = varMeta.extractFrom(baseParams);
   const lo = input.searchLo ?? varMeta.defaultLo(baseParams);
   const hi = input.searchHi ?? varMeta.defaultHi(baseParams);
 
@@ -306,14 +418,9 @@ export async function runBroaderGoalSeek(
     solveFor: input.solveFor,
     targetMetric: input.targetMetric,
     targetValue: input.targetValue,
+    usedFullEngine,
     lo, hi,
   });
-
-  const evalAt = (val: number): number | null => {
-    const params = varMeta.applyTo(baseParams, val);
-    const m = computeMetrics(params);
-    return getMetricValue(m, input.targetMetric);
-  };
 
   // ── Integer scan for hold_period ────────────────────────────────────────
   if (varMeta.isInteger) {
@@ -363,22 +470,17 @@ export async function runBroaderGoalSeek(
       rangeTriedHi: intHi,
       metricAtLo,
       metricAtHi,
+      usedFullEngine,
     };
   }
 
   // ── Continuous bisection ────────────────────────────────────────────────
-  //
-  // Find valid boundaries: some variables (purchase_price, interest_rate) make
-  // the metric undefined (null) at extreme values because the deal goes
-  // underwater. Scan inward from the null boundary to find a valid endpoint.
-
   const nullAtHigh = varMeta.nullAtHigh ?? true;
   const BOUNDARY_STEPS = 20;
 
   let effectiveLo = lo;
   let effectiveHi = hi;
 
-  // Scan inward if lo is null (uncommon, but possible for rent_growth negative extreme)
   let mLo = evalAt(effectiveLo);
   if (mLo === null) {
     const step = (hi - lo) / BOUNDARY_STEPS;
@@ -389,7 +491,6 @@ export async function runBroaderGoalSeek(
     }
   }
 
-  // Scan inward if hi is null (common for purchase_price at high prices)
   let mHi = evalAt(effectiveHi);
   if (mHi === null) {
     const step = (hi - lo) / BOUNDARY_STEPS;
@@ -419,6 +520,7 @@ export async function runBroaderGoalSeek(
       rangeTriedHi: hi,
       metricAtLo,
       metricAtHi,
+      usedFullEngine,
     };
   }
 
@@ -426,7 +528,6 @@ export async function runBroaderGoalSeek(
   const diff1 = mHi - input.targetValue;
 
   if (diff0 * diff1 > 0) {
-    // Target is not bracketed — no solution in range
     const closerSide = Math.abs(diff0) < Math.abs(diff1) ? 'low end' : 'high end';
     const metricLow  = formatMetricValue(mLo, input.targetMetric);
     const metricHigh = formatMetricValue(mHi, input.targetMetric);
@@ -448,11 +549,10 @@ export async function runBroaderGoalSeek(
       rangeTriedHi: effectiveHi,
       metricAtLo,
       metricAtHi,
+      usedFullEngine,
     };
   }
 
-  // Bisect — null handling: when evalAt(mid) is null, the deal is infeasible at
-  // that point. Pull the boundary inward (toward the valid side).
   let a = effectiveLo, b = effectiveHi;
   let mA = mLo;
   let iter = 0;
@@ -464,11 +564,10 @@ export async function runBroaderGoalSeek(
     mMid = evalAt(mid);
 
     if (mMid === null) {
-      // Treat null as "too extreme" in the nullAtHigh direction
       if (nullAtHigh) {
-        b = mid; // pull hi inward
+        b = mid;
       } else {
-        a = mid; // pull lo inward
+        a = mid;
       }
       continue;
     }
@@ -498,6 +597,7 @@ export async function runBroaderGoalSeek(
     achievedMetricValue,
     converged,
     iterations: iter,
+    usedFullEngine,
   });
 
   return {
@@ -517,6 +617,7 @@ export async function runBroaderGoalSeek(
     rangeTriedHi: hi,
     metricAtLo,
     metricAtHi,
+    usedFullEngine,
   };
 }
 
