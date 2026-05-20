@@ -1024,7 +1024,7 @@ const DealDetailPage: React.FC = () => {
   const SANS = "'IBM Plex Sans',-apple-system,sans-serif";
 
   const pageContent = (
-    <DealModuleProvider dealId={effectiveDealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
+    <DealModuleProvider dealId={isRecipient ? null : (effectiveDealId || null)} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
 
         {/* ── Bar 1: Top Status Bar (JEDI RE branding + context label + status metrics) ── */}

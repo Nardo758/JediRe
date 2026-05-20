@@ -12,6 +12,7 @@ import {
   BT_CSS, AlertBanner, BT as BTV,
 } from '../bloomberg-ui';
 import { AlertCounter, IdentityGateBanner } from '../AlertCounter';
+import { useRecipient } from '../../../contexts/RecipientContext';
 import { OverviewRouter } from '../OverviewRouter';
 import { TradePressWidget } from '../TradePressWidget';
 
@@ -119,6 +120,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     capitalStructure, financial, market,
     assumptions, computedReturns,
   } = useDealModule();
+  const { isRecipient } = useRecipient();
 
   const [jediScoreData, setJediScoreData] = useState<JEDIScoreData | null>(null);
   const [signals, setSignals] = useState<SignalScore[]>([]);
@@ -262,7 +264,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
   }, [deal?.id]);
 
   useEffect(() => {
-    if (!deal?.id) return;
+    if (!deal?.id || isRecipient) return;
     let stopPolling: (() => void) | undefined;
     loadJediScore();
     loadCapitalStack();
@@ -525,8 +527,8 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     }}>
       <style>{BT_CSS}</style>
 
-      <IdentityGateBanner />
-      <AlertCounter />
+      {!isRecipient && <IdentityGateBanner />}
+      {!isRecipient && <AlertCounter />}
 
       {/* ── Underwriting collision review banner ── */}
       {uwEvidenceSummary && uwEvidenceSummary.severe_count > 0 && !isBannerDismissed && (
@@ -847,10 +849,12 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         </SectionPanel>
       </div>
 
-      {/* ── Row 7: Trade Press News (per-deal) ── */}
-      <div style={{ background: BTV.border.subtle, flexShrink: 0 }}>
-        <TradePressWidget dealId={String(deal?.id ?? '')} limit={6} />
-      </div>
+      {/* ── Row 7: Trade Press News (per-deal, owner only) ── */}
+      {!isRecipient && (
+        <div style={{ background: BTV.border.subtle, flexShrink: 0 }}>
+          <TradePressWidget dealId={String(deal?.id ?? '')} limit={6} />
+        </div>
+      )}
     </div>
   );
 };
