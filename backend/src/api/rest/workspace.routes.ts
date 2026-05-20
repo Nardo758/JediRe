@@ -109,9 +109,10 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response) => {
     }
     params.push(id);
 
+    params.push(userId);
     const { rows } = await pool.query(
       `UPDATE user_workspaces SET ${sets.join(', ')}
-       WHERE id = $${p}
+       WHERE id = $${p} AND user_id = $${p + 1}
        RETURNING id, name, layout, created_at, updated_at`,
       params
     );

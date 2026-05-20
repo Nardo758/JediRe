@@ -13,6 +13,7 @@ import {
 import { BT } from '../../components/terminal/theme';
 import { useAuthStore } from '../../stores/authStore';
 import { apiClient } from '../../api/client';
+import { PinToWorkspaceButton } from '../../components/workspace/PinToWorkspaceButton';
 
 interface MSACard {
   id: string;
@@ -727,24 +728,31 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
                       </div>
                     </div>
                   </div>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '4px 10px',
-                    background: `${getHealthColor(market.healthScore)}22`,
-                    borderRadius: 4,
-                    border: `1px solid ${getHealthColor(market.healthScore)}44`,
-                  }}>
-                    <Award size={14} color={getHealthColor(market.healthScore)} />
-                    <span style={{
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: getHealthColor(market.healthScore),
-                      fontFamily: "'JetBrains Mono', monospace",
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 10px',
+                      background: `${getHealthColor(market.healthScore)}22`,
+                      borderRadius: 4,
+                      border: `1px solid ${getHealthColor(market.healthScore)}44`,
                     }}>
-                      {market.healthScore}
-                    </span>
+                      <Award size={14} color={getHealthColor(market.healthScore)} />
+                      <span style={{
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: getHealthColor(market.healthScore),
+                        fontFamily: "'JetBrains Mono', monospace",
+                      }}>
+                        {market.healthScore}
+                      </span>
+                    </div>
+                    <div onClick={e => e.stopPropagation()}>
+                      <PinToWorkspaceButton
+                        payload={{ panel_type: 'market_chart', entity_id: `${market.name}, ${market.state}`, label: `${market.name} Market Signals` }}
+                      />
+                    </div>
                   </div>
                 </div>
 

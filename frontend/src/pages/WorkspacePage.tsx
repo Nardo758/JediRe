@@ -85,9 +85,22 @@ function DealSummaryPanel({ entityId, height }: { entityId: string; height: numb
 
   useEffect(() => {
     setLoad(true);
+    // Try the deals endpoint first; fall back to capsules if not found
     apiClient.get(`/api/v1/deals/${entityId}`)
-      .then(r => { setDeal(r.data?.data ?? r.data ?? null); setError(null); })
-      .catch(e => setError(e.message ?? 'Failed'))
+      .then(r => {
+        const d = r.data?.data ?? r.data ?? null;
+        if (d && d.id) { setDeal(d); setError(null); }
+        else throw new Error('empty');
+      })
+      .catch(() =>
+        apiClient.get(`/api/v1/capsules/${entityId}`)
+          .then(r => {
+            const d = r.data?.data ?? r.data ?? null;
+            setDeal(d);
+            setError(d ? null : 'Not found');
+          })
+          .catch(e => setError(e.message ?? 'Failed'))
+      )
       .finally(() => setLoad(false));
   }, [entityId]);
 
