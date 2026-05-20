@@ -79,6 +79,40 @@ interface SupplyProperty {
   total_units: number;
   units_available: number;
   concessions: string;
+  // Forward-delivery fields — upstream Apartment Locator AI is expected to
+  // start emitting one of these as it begins tracking in-progress construction
+  // (today's payload carries none of them, so available_date stays NULL and
+  // the 8-quarter chart correctly degrades to its empty state). When any of
+  // these arrive, syncCity() persists them into apartment_supply_pipeline
+  // .available_date and the chart turns on automatically. Field names mirror
+  // common shapes seen across rental/permit data providers — accept any.
+  available_date?: string | null;
+  expected_delivery?: string | null;
+  delivery_date?: string | null;
+  available_starting?: string | null;
+  estimated_delivery?: string | null;
+}
+
+/**
+ * Pull a delivery date out of an upstream SupplyProperty payload, trying
+ * known field names. Returns a value parseable as a SQL DATE/TIMESTAMP or
+ * null when no usable date is present. Invalid dates (NaN) are rejected so
+ * a malformed upstream string never corrupts apartment_supply_pipeline.
+ */
+function extractDeliveryDate(prop: SupplyProperty): string | null {
+  const candidates = [
+    prop.available_date,
+    prop.expected_delivery,
+    prop.delivery_date,
+    prop.available_starting,
+    prop.estimated_delivery,
+  ];
+  for (const c of candidates) {
+    if (!c) continue;
+    const d = new Date(c);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+  return null;
 }
 
 export class ApartmentLocatorSyncService {
@@ -318,6 +352,11 @@ export class ApartmentLocatorSyncService {
         try {
           const totalUnits = safeInt(prop.total_units);
           if (!totalUnits || totalUnits < 4) continue;
+          // Pull any forward-delivery date the upstream provides; today this
+          // is null for all records, so the chart correctly empty-states.
+          // Once upstream begins emitting it, available_date flows through
+          // without further code changes and the 8-quarter chart lights up.
+          const deliveryDate = extractDeliveryDate(prop);
           await pool.query(`
             INSERT INTO apartment_supply_pipeline (
               name, address, city, state,
@@ -329,6 +368,10 @@ export class ApartmentLocatorSyncService {
               name            = EXCLUDED.name,
               total_units     = EXCLUDED.total_units,
               units_delivering= EXCLUDED.units_delivering,
+              -- Only overwrite available_date with a non-null upstream value;
+              -- preserve any prior date if upstream drops the field on a
+              -- later sync (defensive against transient API regressions).
+              available_date  = COALESCE(EXCLUDED.available_date, apartment_supply_pipeline.available_date),
               synced_at       = EXCLUDED.synced_at
           `, [
             prop.name || null,
@@ -337,7 +380,7 @@ export class ApartmentLocatorSyncService {
             prop.state,
             totalUnits,
             safeInt(prop.units_available),
-            null,
+            deliveryDate,
             syncedAt,
           ]);
           supplyInserted++;
