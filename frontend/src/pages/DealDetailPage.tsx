@@ -45,7 +45,6 @@ import {
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
-import { DealSharesTab } from '../components/deal/DealSharesTab';
 import { apiClient } from '../services/api.client';
 import { useDealStore, useDealTypeConfig, useDealType } from '../stores/dealStore';
 import { useDealJourney } from '../stores/dealJourney.selector';
@@ -958,7 +957,7 @@ const DealDetailPage: React.FC = () => {
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));
 
   useEffect(() => {
-    if (dealScreens.length > 0 && !dealScreens.find(s => s.id === activeTab) && activeTab !== 'shares') {
+    if (dealScreens.length > 0 && !dealScreens.find(s => s.id === activeTab)) {
       setActiveTab(dealScreens[0].id);
     }
   // hook intentionally captures dealScreens via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
@@ -1473,25 +1472,6 @@ const DealDetailPage: React.FC = () => {
             );
           })}
 
-          {/* SHARES tab — owner only (Task B) */}
-          {!isRecipient && dealId && (
-            <button
-              onClick={() => setActiveTab('shares')}
-              style={{
-                fontFamily: MONO, fontSize: 10, fontWeight: 600,
-                padding: '0 12px', height: 32,
-                cursor: 'pointer',
-                background: activeTab === 'shares' ? AMBER : 'transparent',
-                color: activeTab === 'shares' ? BG_NAV : TEXT_MID,
-                border: 'none',
-                display: 'flex', alignItems: 'center', gap: 5,
-                whiteSpace: 'nowrap', flexShrink: 0,
-              }}
-            >
-              <Share2 size={12} style={{ opacity: 0.7 }} />
-              SHARES
-            </button>
-          )}
 
           {/* Right side: SHARE + JOURNEY + search */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
@@ -1597,11 +1577,7 @@ const DealDetailPage: React.FC = () => {
             {isRecipient && <RecipientAssumptionsPanel />}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BG, padding: '0 8px' }}>
               {/* Data gap awareness now lives on the GAPS / CLOSE DEAL header button */}
-              {activeTab === 'shares' && !isRecipient && dealId ? (
-                <DealSharesTab dealId={dealId} />
-              ) : (
-                <ActiveComponent deal={deal} dealId={effectiveDealId} dealType={dealType} embedded={true} isRecipient={isRecipient} onUpdate={() => !isRecipient && dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
-              )}
+              <ActiveComponent deal={deal} dealId={effectiveDealId} dealType={dealType} embedded={true} isRecipient={isRecipient} onUpdate={() => !isRecipient && dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
             </div>
 
             {showUnitMixCTA && (
