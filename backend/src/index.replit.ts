@@ -395,6 +395,7 @@ import { historicalObservationsBackfill } from './inngest/functions/historicalOb
 import { dataCorpusReminderCron } from './inngest/functions/dataCorpusReminderCron';
 import { weeklyCorpusDigestCron } from './inngest/functions/weeklyCorpusDigestCron';
 import { trafficCalibrationCron } from './inngest/functions/trafficCalibrationCron';
+import { correlationRollingComputeCron } from './inngest/functions/correlation-rolling-compute';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -428,6 +429,8 @@ app.use(
       weeklyCorpusDigestCron,
       // M07 Traffic Engine (FIX-1): weekly Bayesian calibration update
       trafficCalibrationCron,
+      // Task #919: nightly rolling correlation compute (12m + 36m windows → correlation_history)
+      correlationRollingComputeCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,

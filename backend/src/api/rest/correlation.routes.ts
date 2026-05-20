@@ -355,6 +355,35 @@ router.post('/seed-presets', requireAdminApiKey, async (_req: Request, res: Resp
   }
 });
 
+// Task #919 — GET /history — sparkline + stability for a metric pair
+router.get('/history', async (req: Request, res: Response) => {
+  try {
+    const metricA = req.query.metric_a as string | undefined;
+    const metricB = req.query.metric_b as string | undefined;
+    const geographyType = (req.query.geography_type as string) || 'msa';
+    const geographyId = (req.query.geography_id as string) || null;
+    const windowMonths = parseInt((req.query.window_months as string) || '36', 10);
+    const limitParam = parseInt((req.query.limit as string) || '24', 10);
+    const limit = Math.max(1, Math.min(limitParam, 120));
+
+    if (metricA && metricB) {
+      const result = await engine.getCorrelationHistory(
+        metricA, metricB, geographyType, geographyId, windowMonths, limit
+      );
+      return res.json({ success: true, data: result });
+    }
+
+    // No pair specified — return geography-level stability summary
+    const result = await engine.getGeographyStabilityScore(
+      geographyType, geographyId, windowMonths
+    );
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Correlation history error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Public endpoint: Get pre-computed correlations for a geography
 router.get('/:geographyType/:geographyId', async (req: Request, res: Response) => {
   try {

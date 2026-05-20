@@ -370,6 +370,19 @@ export class CorrelationEngineService {
         [metricA, metricB, geographyType, geographyId, windowMonths, correlation.r, lagResults.bestLag, pValue, n, obsStart, obsEnd]
       );
 
+      // Append to correlation_history (Task #919) — append-only, one row per calendar day per pair
+      await this.pool.query(
+        `INSERT INTO correlation_history
+         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, p_value, sample_size, observation_start, observation_end)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT (metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
+         DO NOTHING`,
+        [metricA, metricB, geographyType, geographyId, windowMonths, correlation.r, pValue, n, obsStart, obsEnd]
+      ).catch(err => {
+        // Non-fatal: table may not exist yet (migration pending)
+        logger.warn(`correlation_history insert skipped: ${String(err?.message ?? err)}`);
+      });
+
       return true;
     } catch (error) {
       logger.error(`Error computing pair correlation ${metricA}-${metricB}: ${String(error)}`);
@@ -708,6 +721,18 @@ export class CorrelationEngineService {
              VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10, NOW())`,
             [mA, mB, scope, windowMonths, parseFloat(agg.avg_r), parseInt(agg.avg_lag) || 0, parseFloat(agg.avg_p), parseInt(agg.total_samples), agg.obs_start, agg.obs_end]
           );
+
+          // Append aggregated correlation to correlation_history (Task #919)
+          await this.pool.query(
+            `INSERT INTO correlation_history
+             (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, p_value, sample_size, observation_start, observation_end)
+             VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9)
+             ON CONFLICT (metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
+             DO NOTHING`,
+            [mA, mB, scope, windowMonths, parseFloat(agg.avg_r), parseFloat(agg.avg_p), parseInt(agg.total_samples), agg.obs_start, agg.obs_end]
+          ).catch((err: unknown) => {
+            logger.warn(`correlation_history aggregated insert skipped: ${String((err as any)?.message ?? err)}`);
+          });
         }
       }
     }
@@ -3158,6 +3183,124 @@ export class CorrelationEngineService {
       );
     } catch (error) {
       logger.error(`Error caching recommendations: ${String(error)}`);
+    }
+  }
+
+  // ── Task #919: Correlation History ─────────────────────────────────────────
+
+  /**
+   * Returns sparkline data for a metric pair from correlation_history.
+   * Stability score = 1 − (stddev of last N r-values / 0.3), clamped [0, 1].
+   * A score of 1.0 means the correlation has been perfectly stable.
+   * A score of 0.0 means it fluctuates by ≥ 0.3 in standard deviation.
+   */
+  async getCorrelationHistory(
+    rawMetricA: string,
+    rawMetricB: string,
+    geographyType: string,
+    geographyId: string | null,
+    windowMonths: number = 36,
+    limit: number = 24
+  ): Promise<{
+    points: Array<{ computed_at: string; r: number }>;
+    stability_score: number | null;
+    latest_r: number | null;
+  }> {
+    const [metricA, metricB] = [rawMetricA, rawMetricB].sort();
+    try {
+      const res = await this.pool.query<{ computed_at: Date; correlation_r: string }>(
+        `SELECT computed_at, correlation_r
+         FROM correlation_history
+         WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3
+           AND ($4::text IS NULL AND geography_id IS NULL OR geography_id = $4)
+           AND window_months = $5
+         ORDER BY computed_at DESC
+         LIMIT $6`,
+        [metricA, metricB, geographyType, geographyId, windowMonths, limit]
+      );
+
+      // Return in chronological order for sparkline rendering
+      const points = res.rows
+        .map(r => ({
+          computed_at: r.computed_at instanceof Date ? r.computed_at.toISOString() : String(r.computed_at),
+          r: parseFloat(r.correlation_r),
+        }))
+        .reverse();
+
+      let stability_score: number | null = null;
+      if (points.length >= 3) {
+        const values = points.map(p => p.r);
+        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
+        const stddev = Math.sqrt(variance);
+        stability_score = Math.max(0, Math.min(1, 1 - stddev / 0.3));
+      }
+
+      const latest_r = points.length > 0 ? points[points.length - 1].r : null;
+      return { points, stability_score, latest_r };
+    } catch (error) {
+      logger.error(`Error retrieving correlation history: ${String(error)}`);
+      return { points: [], stability_score: null, latest_r: null };
+    }
+  }
+
+  /**
+   * Returns average stability score across all pairs for a geography.
+   * Used by the M08 Signal Matrix UI to show an overall stability badge.
+   */
+  async getGeographyStabilityScore(
+    geographyType: string,
+    geographyId: string | null,
+    windowMonths: number = 36,
+    minPoints: number = 3
+  ): Promise<{ stability_score: number | null; pair_count: number; data_points: number }> {
+    try {
+      const res = await this.pool.query<{
+        metric_a: string; metric_b: string; correlation_r: string; computed_at: Date;
+      }>(
+        `SELECT metric_a, metric_b, correlation_r, computed_at
+         FROM correlation_history
+         WHERE geography_type = $1
+           AND ($2::text IS NULL AND geography_id IS NULL OR geography_id = $2)
+           AND window_months = $3
+         ORDER BY metric_a, metric_b, computed_at DESC`,
+        [geographyType, geographyId, windowMonths]
+      );
+
+      if (res.rows.length === 0) {
+        return { stability_score: null, pair_count: 0, data_points: 0 };
+      }
+
+      // Group by pair
+      const pairMap = new Map<string, number[]>();
+      for (const row of res.rows) {
+        const key = `${row.metric_a}||${row.metric_b}`;
+        if (!pairMap.has(key)) pairMap.set(key, []);
+        pairMap.get(key)!.push(parseFloat(row.correlation_r));
+      }
+
+      const pairScores: number[] = [];
+      for (const values of pairMap.values()) {
+        if (values.length < minPoints) continue;
+        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
+        const stddev = Math.sqrt(variance);
+        pairScores.push(Math.max(0, Math.min(1, 1 - stddev / 0.3)));
+      }
+
+      if (pairScores.length === 0) {
+        return { stability_score: null, pair_count: pairMap.size, data_points: res.rows.length };
+      }
+
+      const avg = pairScores.reduce((a, b) => a + b, 0) / pairScores.length;
+      return {
+        stability_score: Math.round(avg * 1000) / 1000,
+        pair_count: pairScores.length,
+        data_points: res.rows.length,
+      };
+    } catch (error) {
+      logger.error(`Error computing geography stability score: ${String(error)}`);
+      return { stability_score: null, pair_count: 0, data_points: 0 };
     }
   }
 }

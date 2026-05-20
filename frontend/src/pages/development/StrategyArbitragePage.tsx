@@ -4,7 +4,7 @@
  * True detection gating: scoring/evidence/plan are locked until confidence confirmed.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   BT, BT_CSS, PanelHeader, SubTabBar, Bd,
@@ -14,14 +14,86 @@ import { V2FullAnalysis } from '../../components/deal/sections/StrategyV2Compone
 import { useCorrelationReport } from '../../hooks/useCorrelationReport';
 import { CustomScreenTab } from '../../components/deal/sections/CustomScreenTab';
 import { useDealStore } from '../../stores/dealStore';
+import { apiClient } from '../../services/api.client';
 
 const MONO = BT.font.mono;
 const TAB_LABELS = ['M08 v2 ANALYSIS', 'SIGNAL MATRIX', 'CUSTOM SCREENS'];
+
+// ─── Stability badge helpers ──────────────────────────────────────────────────
+
+interface StabilityData {
+  stability_score: number | null;
+  pair_count: number;
+  data_points: number;
+}
+
+function stabilityColor(score: number | null): string {
+  if (score === null) return BT.text.muted;
+  if (score >= 0.8) return BT.text.green;
+  if (score >= 0.5) return BT.text.amber;
+  return BT.text.red;
+}
+
+function stabilityLabel(score: number | null): string {
+  if (score === null) return 'NO HISTORY';
+  if (score >= 0.8) return 'STABLE';
+  if (score >= 0.5) return 'MODERATE';
+  return 'VOLATILE';
+}
+
+function StabilitySparkBar({ score }: { score: number | null }) {
+  const pct = score !== null ? Math.round(score * 100) : 0;
+  const color = stabilityColor(score);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+      <div style={{ flex: 1, height: 3, background: BT.border.subtle, borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{
+          width: `${pct}%`, height: '100%',
+          background: color, transition: 'width 0.4s ease',
+        }} />
+      </div>
+      <span style={{ fontFamily: MONO, fontSize: 9, color, minWidth: 28, textAlign: 'right' }}>
+        {score !== null ? `${pct}%` : '—'}
+      </span>
+    </div>
+  );
+}
 
 // ─── Legacy Signal Matrix Tab ─────────────────────────────────────────────────
 
 function LegacySignalMatrixTab({ city, state: st }: { city: string; state: string }) {
   const { report, loading, error } = useCorrelationReport(city, st);
+  const [stability, setStability] = useState<StabilityData | null>(null);
+  const [stabilityLoading, setStabilityLoading] = useState(true);
+
+  useEffect(() => {
+    if (!city) { setStabilityLoading(false); return; }
+    setStabilityLoading(true);
+    // Geography ID format used by the correlation engine: {city-slug}-{state}-{state}
+    // e.g. Atlanta + GA → atlanta-ga-ga
+    const stLower = st.toLowerCase();
+    const geoId = `${city.toLowerCase().replace(/\s+/g, '-')}-${stLower}-${stLower}`;
+    apiClient.get('/api/v1/correlations/history', {
+      params: { geography_type: 'msa', geography_id: geoId, window_months: 36 },
+    })
+      .then(res => {
+        const d = res.data?.data as StabilityData | undefined;
+        // Fall back to national data if MSA has no history yet
+        if (d && d.data_points > 0) {
+          setStability(d);
+        } else {
+          return apiClient.get('/api/v1/correlations/history', {
+            params: { geography_type: 'national', geography_id: 'US', window_months: 36 },
+          }).then(r => {
+            const nd = r.data?.data as StabilityData | undefined;
+            setStability(nd ?? null);
+          });
+        }
+      })
+      .catch(() => setStability(null))
+      .finally(() => setStabilityLoading(false));
+  }, [city, st]);
+
   if (loading) return (
     <div style={{ padding: 24, textAlign: 'center', fontFamily: MONO, fontSize: 11, color: BT.text.secondary }}>
       Loading signal matrix...
@@ -36,14 +108,17 @@ function LegacySignalMatrixTab({ city, state: st }: { city: string; state: strin
     </div>
   );
   const sum = report.summary ?? { bullishSignals: 0, bearishSignals: 0, neutralSignals: 0, insufficientData: 0 };
+  const score = stability?.stability_score ?? null;
+
   return (
     <div style={{ padding: 8 }}>
+      {/* Signal direction summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: BT.border.subtle, marginBottom: 4 }}>
         {[
-          { l: 'BULLISH', v: sum.bullishSignals, c: BT.text.green },
-          { l: 'BEARISH', v: sum.bearishSignals, c: BT.text.red },
-          { l: 'NEUTRAL', v: sum.neutralSignals, c: BT.text.secondary },
-          { l: 'INSUFF', v: sum.insufficientData, c: BT.text.muted },
+          { l: 'BULLISH', v: sum.bullishSignals,    c: BT.text.green },
+          { l: 'BEARISH', v: sum.bearishSignals,    c: BT.text.red },
+          { l: 'NEUTRAL', v: sum.neutralSignals,    c: BT.text.secondary },
+          { l: 'INSUFF',  v: sum.insufficientData,  c: BT.text.muted },
         ].map(item => (
           <div key={item.l} style={{ background: BT.bg.panel, padding: '6px 10px' }}>
             <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{item.l}</div>
@@ -51,6 +126,41 @@ function LegacySignalMatrixTab({ city, state: st }: { city: string; state: strin
           </div>
         ))}
       </div>
+
+      {/* Task #919 — Signal stability indicator */}
+      <div style={{
+        background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`,
+        padding: '6px 10px', marginBottom: 4,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>SIGNAL STABILITY · 36M ROLLING</span>
+          {stabilityLoading
+            ? <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>computing…</span>
+            : (
+              <span style={{
+                fontFamily: MONO, fontSize: 9, fontWeight: 700,
+                color: stabilityColor(score),
+                background: `${stabilityColor(score)}18`,
+                padding: '1px 6px', borderRadius: 2,
+              }}>
+                {stabilityLabel(score)}
+              </span>
+            )
+          }
+        </div>
+        <StabilitySparkBar score={stabilityLoading ? null : score} />
+        {!stabilityLoading && stability && (stability.pair_count > 0 || stability.data_points > 0) && (
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginTop: 3 }}>
+            {stability.pair_count} pairs · {stability.data_points} observations
+          </div>
+        )}
+        {!stabilityLoading && !stability?.pair_count && (
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginTop: 3 }}>
+            Nightly job seeds history · first run pending
+          </div>
+        )}
+      </div>
+
       <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
         COR-01–30 · {report.market}, {report.state} · {report.metricsComputed}/{report.correlations?.length ?? 30} computed · {report.computedAt ? new Date(report.computedAt).toLocaleString() : ''}
       </div>
