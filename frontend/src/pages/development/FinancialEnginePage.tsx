@@ -852,6 +852,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     if (!f9Financials || assumptions !== null) return;
     const ff = f9Financials;
     const cs = ff.capitalStack;
+    // Guard: if purchasePrice is 0 or missing the financials haven't been composed
+    // with real deal assumptions yet. Skip and wait for the next f9Financials update
+    // so we don't auto-build with purchasePrice=0, which blanks every derived cell.
+    if (!cs?.purchasePrice || cs.purchasePrice <= 0) return;
     const fa = ff.assumptions;
     const getY1 = (field: string): number | null => {
       const v = ff.proforma.year1.find(r => r.field === field)?.resolved;
