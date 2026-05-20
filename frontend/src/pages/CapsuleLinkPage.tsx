@@ -14,7 +14,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { Send, ChevronDown, ChevronRight, Loader2, Bot, User, AlertCircle, ShieldOff } from 'lucide-react';
+import { Send, ChevronDown, ChevronRight, Loader2, Bot, User, AlertCircle, ShieldOff, Download, FileSpreadsheet, FileText } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const BG       = '#0A0E17';
@@ -493,6 +494,74 @@ export default function CapsuleLinkPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeLayer, setActiveLayer] = useState<'deal' | 'intel' | 'adjustments'>('deal');
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleExcelExport = useCallback((capsule: DealBookCapsule) => {
+    setExportOpen(false);
+    const wb = XLSX.utils.book_new();
+
+    const flat = (obj: Record<string, unknown>): Record<string, unknown> => {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (v && typeof v === 'object' && !Array.isArray(v) && 'resolved' in (v as Record<string, unknown>)) {
+          out[k] = (v as Record<string, unknown>).resolved;
+        } else { out[k] = v; }
+      }
+      return out;
+    };
+    const hk = (k: string) => k.replace(/_lv$/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const toKV = (obj: Record<string, unknown>) =>
+      Object.entries(flat(obj))
+        .filter(([, v]) => v !== null && v !== undefined && typeof v !== 'object')
+        .map(([k, v]) => [hk(k), typeof v === 'number' ? v : String(v ?? '')]);
+
+    const dd = flat(capsule.deal_data);
+    const summaryRows = [
+      ['Property Address', capsule.property_address ?? ''],
+      ['Asset Class', capsule.asset_class ?? ''],
+      ['JEDI Score', capsule.jedi_score ?? ''],
+      ['Collision Score', capsule.collision_score ?? ''],
+      ['', ''],
+      ['Purchase Price / Asking Price', String(dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice ?? '—')],
+      ['Annual NOI', String(dd.noi ?? dd.annual_noi ?? '—')],
+      ['Going-In Cap Rate', String(dd.cap_rate ?? dd.going_in_cap_rate ?? '—')],
+      ['Exit Cap Rate', String(dd.exit_cap_rate ?? dd.exitCapRate ?? '—')],
+      ['Hold Period (Years)', String(dd.hold_period ?? dd.holdPeriod ?? '—')],
+      ['LTV', String(dd.ltv ?? dd.loan_to_value ?? '—')],
+    ];
+    const ws1 = XLSX.utils.aoa_to_sheet([['METRIC', 'VALUE'], ...summaryRows]);
+    ws1['!cols'] = [{ wch: 32 }, { wch: 26 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+
+    const ddRows = toKV(capsule.deal_data);
+    if (ddRows.length > 0) {
+      const ws2 = XLSX.utils.aoa_to_sheet([['FIELD', 'VALUE'], ...ddRows]);
+      ws2['!cols'] = [{ wch: 30 }, { wch: 30 }];
+      XLSX.utils.book_append_sheet(wb, ws2, 'Deal Data');
+    }
+    const piRows = toKV(capsule.platform_intel);
+    if (piRows.length > 0) {
+      const ws3 = XLSX.utils.aoa_to_sheet([['FIELD', 'VALUE'], ...piRows]);
+      ws3['!cols'] = [{ wch: 30 }, { wch: 30 }];
+      XLSX.utils.book_append_sheet(wb, ws3, 'Market Intel');
+    }
+    const safeName = (capsule.property_address ?? 'deal').replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 50);
+    XLSX.writeFile(wb, `${safeName}_capsule.xlsx`);
+  }, []);
+
+  const handlePrintPdf = useCallback(() => {
+    setExportOpen(false);
+    window.print();
+  }, []);
 
   useEffect(() => {
     if (!accessToken) { setError('Missing access token.'); setLoading(false); return; }
@@ -642,18 +711,73 @@ export default function CapsuleLinkPage() {
               </div>
             </div>
 
-            {/* JEDI Score */}
-            {capsule.jedi_score !== null && (
-              <div style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                padding: '12px 20px', background: BG_NAV, border: `2px solid ${AMBER}40`,
-              }}>
-                <span style={{ fontSize: 22, fontWeight: 900, color: AMBER }}>
-                  {fmtScore(capsule.jedi_score)}
-                </span>
-                <span style={{ fontSize: 8, color: TEXT_DIM, letterSpacing: 1.5 }}>JEDI SCORE</span>
+            {/* JEDI Score + Export */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {capsule.jedi_score !== null && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  padding: '12px 20px', background: BG_NAV, border: `2px solid ${AMBER}40`,
+                }}>
+                  <span style={{ fontSize: 22, fontWeight: 900, color: AMBER }}>
+                    {fmtScore(capsule.jedi_score)}
+                  </span>
+                  <span style={{ fontSize: 8, color: TEXT_DIM, letterSpacing: 1.5 }}>JEDI SCORE</span>
+                </div>
+              )}
+
+              {/* Export dropdown */}
+              <div ref={exportRef} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setExportOpen(o => !o)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '8px 12px', background: exportOpen ? '#1A2A3A' : BG_NAV,
+                    border: `1px solid ${exportOpen ? AMBER + '60' : BORDER}`,
+                    color: AMBER, fontSize: 9, fontWeight: 700, fontFamily: MONO,
+                    cursor: 'pointer', letterSpacing: 0.8,
+                  }}
+                >
+                  <Download size={12} />
+                  EXPORT
+                  <ChevronDown size={9} />
+                </button>
+                {exportOpen && (
+                  <div style={{
+                    position: 'absolute', top: '100%', right: 0, zIndex: 50, marginTop: 4,
+                    background: '#0F1319', border: `1px solid ${BORDER}`,
+                    minWidth: 180, boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                  }}>
+                    <button
+                      onClick={() => handleExcelExport(capsule)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        width: '100%', padding: '10px 14px', background: 'none', border: 'none',
+                        color: TEXT, fontSize: 10, fontFamily: MONO, cursor: 'pointer', textAlign: 'left',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#1A2A3A'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    >
+                      <FileSpreadsheet size={13} color="#3FB950" />
+                      Excel Workbook (.xlsx)
+                    </button>
+                    <div style={{ height: 1, background: BORDER, margin: '0 14px' }} />
+                    <button
+                      onClick={handlePrintPdf}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        width: '100%', padding: '10px 14px', background: 'none', border: 'none',
+                        color: TEXT, fontSize: 10, fontFamily: MONO, cursor: 'pointer', textAlign: 'left',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#1A2A3A'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    >
+                      <FileText size={13} color="#F85149" />
+                      Print / Save as PDF
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
 

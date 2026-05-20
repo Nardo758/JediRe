@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Download, Share2, TrendingUp, Loader2, AlertTriangle, X } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Plus, Search, Filter, Download, Share2, TrendingUp, Loader2, AlertTriangle, X, FileSpreadsheet, FileText, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import { useAuthStore } from '../stores/authStore';
@@ -63,6 +63,44 @@ const DealCapsulesPage: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportingId, setExportingId] = useState<Record<string, 'excel' | 'pdf'>>({});
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const downloadCapsule = useCallback(async (capsuleId: string, format: 'excel' | 'pdf', address: string) => {
+    setExportingId(prev => ({ ...prev, [capsuleId]: format }));
+    setOpenDropdown(null);
+    try {
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token') || '';
+      const res = await fetch(`/api/v1/capsules-ext/${capsuleId}/export/${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+      const blob = await res.blob();
+      const ext = format === 'excel' ? 'xlsx' : 'pdf';
+      const safeName = address.replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 50);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeName}_capsule.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+    } finally {
+      setExportingId(prev => { const n = { ...prev }; delete n[capsuleId]; return n; });
+    }
+  }, []);
 
   useEffect(() => {
     const userId = user?.id || 'demo-user';
@@ -349,7 +387,7 @@ const DealCapsulesPage: React.FC = () => {
             {/* Table Header */}
             <div style={{ 
               display: 'grid', 
-              gridTemplateColumns: '2fr 1fr 1fr 100px 100px 120px',
+              gridTemplateColumns: '2fr 1fr 1fr 100px 100px 120px 88px',
               gap: 1,
               background: T.bg.header,
               padding: '8px 12px',
@@ -361,30 +399,33 @@ const DealCapsulesPage: React.FC = () => {
               <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1, textAlign: 'right' }}>PRICE</div>
               <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1, textAlign: 'center' }}>JEDI</div>
               <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1, textAlign: 'center' }}>STATUS</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1, textAlign: 'center' }}>EXPORT</div>
             </div>
 
             {/* Table Rows */}
+            <div ref={dropdownRef}>
             {capsules.map((capsule) => {
               const scoreStyle = getScoreColor(capsule.jedi_score);
               const statusStyle = getStatusStyle(capsule.status);
+              const isExporting = !!exportingId[capsule.id];
+              const isDropdownOpen = openDropdown === capsule.id;
               return (
                 <div
                   key={capsule.id}
-                  onClick={() => navigate(`/capsules/${capsule.id}`)}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '2fr 1fr 1fr 100px 100px 120px',
+                    gridTemplateColumns: '2fr 1fr 1fr 100px 100px 120px 88px',
                     gap: 1,
                     background: T.bg.panel,
                     padding: '12px',
                     borderBottom: `1px solid ${T.border.subtle}`,
-                    cursor: 'pointer',
-                    transition: 'background 0.15s'
+                    transition: 'background 0.15s',
+                    position: 'relative',
                   }}
                   onMouseEnter={(e) => e.currentTarget.style.background = T.bg.hover}
                   onMouseLeave={(e) => e.currentTarget.style.background = T.bg.panel}
                 >
-                  <div>
+                  <div style={{ cursor: 'pointer' }} onClick={() => navigate(`/capsules/${capsule.id}`)}>
                     <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary, marginBottom: 2 }}>
                       {capsule.property_address}
                     </div>
@@ -392,16 +433,16 @@ const DealCapsulesPage: React.FC = () => {
                       Created {new Date(capsule.created_at).toLocaleDateString()}
                     </div>
                   </div>
-                  <div style={{ fontSize: 10, color: T.text.secondary, display: 'flex', alignItems: 'center' }}>
+                  <div style={{ fontSize: 10, color: T.text.secondary, display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => navigate(`/capsules/${capsule.id}`)}>
                     {capsule.asset_class}
                   </div>
-                  <div style={{ fontSize: 10, color: T.text.secondary, display: 'flex', alignItems: 'center' }}>
+                  <div style={{ fontSize: 10, color: T.text.secondary, display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => navigate(`/capsules/${capsule.id}`)}>
                     {capsule.broker_name || '—'}
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: T.text.cyan, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: T.text.cyan, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', cursor: 'pointer' }} onClick={() => navigate(`/capsules/${capsule.id}`)}>
                     {capsule.asking_price > 0 ? `$${(capsule.asking_price / 1000000).toFixed(1)}M` : '—'}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }} onClick={() => navigate(`/capsules/${capsule.id}`)}>
                     {capsule.jedi_score > 0 ? (
                       <div style={{
                         display: 'flex',
@@ -420,7 +461,7 @@ const DealCapsulesPage: React.FC = () => {
                       <span style={{ color: T.text.muted }}>—</span>
                     )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }} onClick={() => navigate(`/capsules/${capsule.id}`)}>
                     <span style={{
                       padding: '4px 10px',
                       background: statusStyle.bg,
@@ -432,9 +473,74 @@ const DealCapsulesPage: React.FC = () => {
                       {capsule.status}
                     </span>
                   </div>
+
+                  {/* Export dropdown cell */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setOpenDropdown(isDropdownOpen ? null : capsule.id); }}
+                      disabled={isExporting}
+                      title="Export capsule"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        padding: '4px 8px',
+                        background: isDropdownOpen ? T.bg.active : T.bg.panelAlt,
+                        border: `1px solid ${isDropdownOpen ? T.text.amber + '60' : T.border.subtle}`,
+                        color: isExporting ? T.text.muted : T.text.amber,
+                        fontSize: 9, fontWeight: 700, fontFamily: T.font.mono,
+                        cursor: isExporting ? 'not-allowed' : 'pointer',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {isExporting ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Download size={11} />}
+                      <ChevronDown size={9} />
+                    </button>
+
+                    {isDropdownOpen && (
+                      <div style={{
+                        position: 'absolute', top: '100%', right: 0, zIndex: 50,
+                        background: T.bg.panel,
+                        border: `1px solid ${T.border.medium}`,
+                        minWidth: 160,
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); downloadCapsule(capsule.id, 'excel', capsule.property_address); }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            width: '100%', padding: '10px 14px',
+                            background: 'none', border: 'none',
+                            color: T.text.primary, fontSize: 10, fontFamily: T.font.mono,
+                            cursor: 'pointer', textAlign: 'left',
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = T.bg.hover}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                        >
+                          <FileSpreadsheet size={13} color={T.text.green} />
+                          Excel Workbook (.xlsx)
+                        </button>
+                        <div style={{ height: 1, background: T.border.subtle, margin: '0 14px' }} />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); downloadCapsule(capsule.id, 'pdf', capsule.property_address); }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            width: '100%', padding: '10px 14px',
+                            background: 'none', border: 'none',
+                            color: T.text.primary, fontSize: 10, fontFamily: T.font.mono,
+                            cursor: 'pointer', textAlign: 'left',
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = T.bg.hover}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                        >
+                          <FileText size={13} color={T.text.red} />
+                          Pitch Deck (.pdf)
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
+            </div>
           </div>
         )}
       </div>

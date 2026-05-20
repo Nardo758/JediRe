@@ -34,6 +34,8 @@ import { emailService } from '../../services/email.service';
 import { NotificationService } from '../../services/NotificationService';
 import { NotificationType } from '../../types/notification.types';
 import * as crypto from 'crypto';
+import * as XLSX from 'xlsx';
+import PDFDocument from 'pdfkit';
 
 const router = Router();
 
@@ -1646,6 +1648,293 @@ router.post('/:capsuleId/shares/:shareId/revoke', requireAuth, async (req: Authe
     });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message ?? 'Failed to revoke share' });
+  }
+});
+
+// ─── Capsule export helpers ───────────────────────────────────────────────────
+
+function flattenLV(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && 'resolved' in (v as Record<string, unknown>)) {
+      out[k] = (v as Record<string, unknown>).resolved;
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+function humanizeKey(k: string): string {
+  return k.replace(/_lv$/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function jsonToKVRows(obj: Record<string, unknown>): (string | number | null)[][] {
+  const flat = flattenLV(obj);
+  return Object.entries(flat)
+    .filter(([, v]) => v !== null && v !== undefined && typeof v !== 'object')
+    .map(([k, v]) => [humanizeKey(k), typeof v === 'number' ? v : String(v ?? '')]);
+}
+
+function buildCapsuleWorkbook(capsule: {
+  property_address: string | null;
+  asset_class: string | null;
+  jedi_score: number | null;
+  collision_score: number | null;
+  deal_data: Record<string, unknown>;
+  platform_intel: Record<string, unknown>;
+  user_adjustments: Record<string, unknown>;
+  module_outputs: Record<string, unknown>;
+  created_at: string;
+}): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+  const dd = flattenLV(capsule.deal_data ?? {});
+
+  const summaryRows: (string | number | null)[][] = [
+    ['DEAL SUMMARY', ''],
+    ['Property Address', capsule.property_address ?? ''],
+    ['Asset Class', capsule.asset_class ?? ''],
+    ['JEDI Score', capsule.jedi_score ?? ''],
+    ['Collision Score', capsule.collision_score ?? ''],
+    ['Created', new Date(capsule.created_at).toLocaleDateString()],
+    ['', ''],
+    ['KEY FINANCIAL METRICS', ''],
+    ['Purchase Price / Asking Price', (dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice ?? '') as string | number],
+    ['NOI (Annual)', (dd.noi ?? dd.annual_noi ?? '') as string | number],
+    ['Going-In Cap Rate', (dd.cap_rate ?? dd.going_in_cap_rate ?? '') as string | number],
+    ['Exit Cap Rate', (dd.exit_cap_rate ?? dd.exitCapRate ?? '') as string | number],
+    ['Hold Period (Years)', (dd.hold_period ?? dd.holdPeriod ?? '') as string | number],
+    ['LTV', (dd.ltv ?? dd.loan_to_value ?? '') as string | number],
+    ['Total Units', (dd.total_units ?? dd.totalUnits ?? '') as string | number],
+    ['Vacancy Rate', (dd.vacancy_rate ?? dd.vacancy ?? '') as string | number],
+  ];
+
+  const ws1 = XLSX.utils.aoa_to_sheet([['METRIC', 'VALUE'], ...summaryRows]);
+  ws1['!cols'] = [{ wch: 34 }, { wch: 24 }];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+
+  const ddRows = jsonToKVRows(capsule.deal_data ?? {});
+  if (ddRows.length > 0) {
+    const ws2 = XLSX.utils.aoa_to_sheet([['FIELD', 'VALUE'], ...ddRows]);
+    ws2['!cols'] = [{ wch: 30 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Deal Data');
+  }
+
+  const piRows = jsonToKVRows(capsule.platform_intel ?? {});
+  if (piRows.length > 0) {
+    const ws3 = XLSX.utils.aoa_to_sheet([['FIELD', 'VALUE'], ...piRows]);
+    ws3['!cols'] = [{ wch: 30 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Market Intel');
+  }
+
+  const uaRows = jsonToKVRows(capsule.user_adjustments ?? {});
+  if (uaRows.length > 0) {
+    const ws4 = XLSX.utils.aoa_to_sheet([['FIELD', 'VALUE'], ...uaRows]);
+    ws4['!cols'] = [{ wch: 30 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, ws4, 'User Inputs');
+  }
+
+  const moRows = jsonToKVRows(capsule.module_outputs ?? {});
+  if (moRows.length > 0) {
+    const ws5 = XLSX.utils.aoa_to_sheet([['FIELD', 'VALUE'], ...moRows]);
+    ws5['!cols'] = [{ wch: 30 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, ws5, 'Module Outputs');
+  }
+
+  return wb;
+}
+
+// ─── GET /:capsuleId/export/excel — XLSX workbook download ───────────────────
+
+router.get('/:capsuleId/export/excel', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { capsuleId } = req.params;
+  const userId = req.user?.userId ?? (req as any).user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT property_address, asset_class, jedi_score, collision_score,
+              deal_data, platform_intel, user_adjustments, module_outputs, created_at
+       FROM deal_capsules WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [capsuleId, userId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(403).json({ error: 'Capsule not found or access denied' });
+    }
+
+    const capsule = result.rows[0];
+    const wb = buildCapsuleWorkbook(capsule);
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', bookSST: true });
+
+    const safeName = (capsule.property_address ?? capsuleId).replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 60);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_capsule.xlsx"`);
+    res.setHeader('Content-Length', buf.length);
+    return res.send(buf);
+  } catch (err: any) {
+    logger.error('Capsule Excel export failed', { error: err?.message, capsuleId });
+    if (!res.headersSent) return res.status(500).json({ error: err?.message ?? 'Export failed' });
+  }
+});
+
+// ─── GET /:capsuleId/export/pdf — PDF pitch deck download ────────────────────
+
+router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { capsuleId } = req.params;
+  const userId = req.user?.userId ?? (req as any).user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT dc.property_address, dc.asset_class, dc.jedi_score, dc.collision_score,
+              dc.deal_data, dc.platform_intel, dc.module_outputs, dc.created_at,
+              ubs.company_name, ubs.logo_url
+       FROM deal_capsules dc
+       LEFT JOIN user_branding_settings ubs ON ubs.user_id = dc.user_id
+       WHERE dc.id = $1 AND dc.user_id = $2 LIMIT 1`,
+      [capsuleId, userId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(403).json({ error: 'Capsule not found or access denied' });
+    }
+
+    const capsule = result.rows[0];
+    const dd = flattenLV((capsule.deal_data as Record<string, unknown>) ?? {});
+    const pi = flattenLV((capsule.platform_intel as Record<string, unknown>) ?? {});
+    const companyName: string = capsule.company_name ?? 'JEDI RE';
+    const address: string = capsule.property_address ?? 'Undisclosed Address';
+    const assetClass: string = capsule.asset_class ?? '';
+
+    const fmtMoney = (v: unknown): string => {
+      const n = parseFloat(String(v ?? ''));
+      if (isNaN(n)) return '—';
+      if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+      if (Math.abs(n) >= 1_000) return `$${n.toLocaleString()}`;
+      return `$${n}`;
+    };
+    const fmtPct = (v: unknown): string => {
+      const n = parseFloat(String(v ?? ''));
+      if (isNaN(n)) return '—';
+      return `${(n > 1 ? n : n * 100).toFixed(2)}%`;
+    };
+
+    const safeName = address.replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 60);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_pitch_deck.pdf"`);
+
+    const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: address, Author: companyName } });
+    doc.pipe(res);
+
+    const W = 595.28;
+    const H = 841.89;
+    const NAVY = '#0D1B2A';
+    const AMBER_PDF = '#F0B429';
+    const SLATE = '#1A2A3E';
+    const WHITE = '#FFFFFF';
+    const LIGHT = '#E8ECF1';
+    const MID = '#8B9CB0';
+
+    // ── Page 1: Cover ──
+    doc.rect(0, 0, W, H).fill(NAVY);
+    doc.rect(0, 0, W, 8).fill(AMBER_PDF);
+
+    // Company branding
+    doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(14)
+      .text(companyName.toUpperCase(), 50, 60, { width: W - 100 });
+    doc.fillColor(MID).font('Helvetica').fontSize(9)
+      .text('DEAL CAPSULE — CONFIDENTIAL', 50, 80);
+
+    // Property address (large)
+    doc.rect(50, 140, W - 100, 2).fill(AMBER_PDF);
+    doc.fillColor(WHITE).font('Helvetica-Bold').fontSize(26)
+      .text(address, 50, 160, { width: W - 100, lineGap: 4 });
+
+    if (assetClass) {
+      doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(11)
+        .text(assetClass.toUpperCase(), 50, doc.y + 10);
+    }
+
+    // JEDI Score badge
+    if (capsule.jedi_score != null) {
+      const scoreY = 300;
+      doc.rect(50, scoreY, 120, 80).fill(SLATE);
+      doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(36)
+        .text(String(capsule.jedi_score), 50, scoreY + 12, { width: 120, align: 'center' });
+      doc.fillColor(MID).font('Helvetica').fontSize(8)
+        .text('JEDI SCORE', 50, scoreY + 52, { width: 120, align: 'center' });
+    }
+
+    // Date
+    doc.fillColor(MID).font('Helvetica').fontSize(9)
+      .text(`Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, 50, H - 80, { width: W - 100 });
+    doc.fillColor(MID).font('Helvetica').fontSize(8)
+      .text('This document contains confidential and proprietary information.', 50, H - 60, { width: W - 100 });
+
+    // ── Page 2: Key Metrics ──
+    doc.addPage();
+    doc.rect(0, 0, W, H).fill(WHITE);
+    doc.rect(0, 0, W, 8).fill(AMBER_PDF);
+    doc.rect(0, 8, W, 50).fill(NAVY);
+
+    doc.fillColor(AMBER_PDF).font('Helvetica-Bold').fontSize(13)
+      .text('KEY METRICS', 50, 22);
+    doc.fillColor(LIGHT).font('Helvetica').fontSize(9)
+      .text(address, 50, 40);
+
+    const metrics: [string, string][] = [
+      ['Purchase Price / Asking Price', fmtMoney(dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice)],
+      ['Annual NOI', fmtMoney(dd.noi ?? dd.annual_noi)],
+      ['Going-In Cap Rate', fmtPct(dd.cap_rate ?? dd.going_in_cap_rate)],
+      ['Exit Cap Rate', fmtPct(dd.exit_cap_rate ?? dd.exitCapRate)],
+      ['Hold Period', dd.hold_period || dd.holdPeriod ? `${dd.hold_period ?? dd.holdPeriod} years` : '—'],
+      ['LTV', fmtPct(dd.ltv ?? dd.loan_to_value)],
+      ['Total Units', String(dd.total_units ?? dd.totalUnits ?? '—')],
+      ['Vacancy Rate', fmtPct(dd.vacancy_rate ?? dd.vacancy)],
+      ['Asset Class', assetClass || '—'],
+      ['Status', capsule.asset_class ?? '—'],
+    ];
+
+    let my = 80;
+    metrics.forEach(([label, value], i) => {
+      const rowBg = i % 2 === 0 ? '#F8F9FA' : WHITE;
+      doc.rect(50, my, W - 100, 28).fill(rowBg);
+      doc.fillColor('#333333').font('Helvetica').fontSize(10).text(label, 60, my + 8, { width: 220 });
+      doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(10).text(value, 300, my + 8, { width: 200, align: 'right' });
+      my += 28;
+    });
+
+    // Platform intel highlights
+    const piEntries = Object.entries(pi)
+      .filter(([, v]) => v !== null && v !== undefined && typeof v !== 'object')
+      .slice(0, 8);
+
+    if (piEntries.length > 0) {
+      my += 20;
+      doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(11)
+        .text('MARKET INTELLIGENCE', 50, my);
+      doc.rect(50, my + 16, W - 100, 1).fill(AMBER_PDF);
+      my += 24;
+
+      piEntries.forEach(([k, v], i) => {
+        const rowBg = i % 2 === 0 ? '#F8F9FA' : WHITE;
+        doc.rect(50, my, W - 100, 24).fill(rowBg);
+        doc.fillColor('#555555').font('Helvetica').fontSize(9).text(humanizeKey(k), 60, my + 6, { width: 220 });
+        doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9).text(String(v ?? '—'), 300, my + 6, { width: 200, align: 'right' });
+        my += 24;
+      });
+    }
+
+    // Footer
+    doc.fillColor(MID).font('Helvetica').fontSize(8)
+      .text(`${companyName} · JEDI RE Platform · ${new Date().toLocaleDateString()}`, 50, H - 50, { width: W - 100, align: 'center' });
+
+    doc.end();
+    return;
+  } catch (err: any) {
+    logger.error('Capsule PDF export failed', { error: err?.message, capsuleId });
+    if (!res.headersSent) return res.status(500).json({ error: err?.message ?? 'Export failed' });
   }
 });
 
