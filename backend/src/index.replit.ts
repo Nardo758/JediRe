@@ -464,6 +464,12 @@ app.use('/api/v1/lead-lag', leadLagRoutes);
 import newsConnectionsRoutes from './api/rest/news-connections.routes';
 app.use('/api/v1/news-connections', newsConnectionsRoutes);
 
+// Archive management routes — mounted BEFORE all catch-all '/api/v1' requireAuth
+// middleware so that /ingest-rows (secret-header auth) is reachable externally.
+// Existing archive routes carry per-route requireAuth guards internally.
+import archiveRouter from './api/rest/archive.routes';
+app.use('/api/v1/archive', archiveRouter);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -628,12 +634,6 @@ app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
 app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
 app.use('/api/v1/calibration', requireAuth, m07CalibrationRouter);
 app.use('/api/v1/macro', requireAuth, macroIndicatorsRouter);
-
-// Archive management routes — mounted BEFORE the catch-all `/api/v1` requireAuth
-// below so that /ingest-rows (which uses x-ingest-secret instead of JWT) is reachable.
-// Individual archive routes still carry their own per-route requireAuth guards.
-import archiveRouter from './api/rest/archive.routes';
-app.use('/api/v1/archive', archiveRouter);
 
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
