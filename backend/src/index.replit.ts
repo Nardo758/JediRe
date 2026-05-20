@@ -1079,6 +1079,37 @@ io.on('connection', (socket) => {
   });
 });
 
+// ─── Legacy /capsule-link/:token → /share/:shortcode (301) ───────────────────
+// Old token-based share links are redirected server-side to their shortcode
+// equivalents. The token is hashed (sha256) and matched against access_token
+// in capsule_external_shares. Works for both production static serving and
+// dev (where Vite handles other routes) so old bookmarked URLs always resolve.
+app.get('/capsule-link/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { getPool } = await import('./database/connection');
+    const crypto = await import('crypto');
+    const pool = getPool();
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    const result = await pool.query(
+      `SELECT shortcode FROM capsule_external_shares
+       WHERE access_token = $1
+         AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW())
+       LIMIT 1`,
+      [hash]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).send('Share link not found, expired, or revoked.');
+    }
+    const { shortcode } = result.rows[0];
+    return res.redirect(301, `/share/${shortcode}`);
+  } catch (err: any) {
+    console.error('[capsule-link redirect] DB error:', err?.message);
+    return res.status(500).send('Failed to resolve share link.');
+  }
+});
+
 if (isProduction) {
   const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
   console.log(`Serving static files from: ${frontendPath}`);

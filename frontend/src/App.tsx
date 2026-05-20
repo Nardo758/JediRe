@@ -179,9 +179,6 @@ function AppContent() {
         <Route path="/showcase/modules" element={<ModuleShowcasePage />} />
         <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
 
-        {/* Capsule Link — legacy token URL; renders DealDetailPage in recipient mode (Phase 1 backward compat) */}
-        <Route path="/capsule-link/:token" element={<DealDetailPage />} />
-
         {/* Pricing page */}
         <Route path="/pricing" element={<PricingPage />} />
 

@@ -2,9 +2,8 @@
  * RecipientContext — Phase 1 of Task #907
  *
  * Provides state and overlay helpers for DealDetailPage in recipient mode.
- * Recipients access deals via /share/:shortcode (new) or /capsule-link/:token (legacy).
- * Overlay operations use the shortcode as credential when available; fall back to
- * token-based routes for backward-compat legacy links.
+ * Recipients access deals via /share/:shortcode. Legacy /capsule-link/:token
+ * URLs are redirected server-side (301) to /share/:shortcode by the backend.
  */
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
@@ -37,7 +36,6 @@ export interface RecipientCapsule {
 
 export interface RecipientDealBook {
   shortcode: string;
-  access_token?: string;
   share: SharePermissions;
   capsule: RecipientCapsule;
   overlay: Record<string, unknown>;
@@ -59,7 +57,7 @@ interface RecipientContextValue {
   resetOverlay: (path?: string) => Promise<void>;
 }
 
-// ─── applyOverlay — pure function, same logic as was in CapsuleLinkPage ───────
+// ─── applyOverlay — pure, applies overlay patches onto a capsule snapshot ────
 
 export function applyOverlay(
   capsule: Record<string, unknown>,
@@ -108,16 +106,10 @@ export function RecipientProvider({
 }) {
   const [overlay, setOverlay] = useState<Record<string, unknown>>(dealBook.overlay ?? {});
   const sc = dealBook.shortcode;
-  const tok = dealBook.access_token;
 
-  // Build the overlay endpoint URL — shortcode-based (new) or token-based (legacy).
-  const overlayUrl = sc
-    ? (path?: string) => path
-        ? `/api/v1/shares/${sc}/overlay?path=${encodeURIComponent(path)}`
-        : `/api/v1/shares/${sc}/overlay`
-    : (path?: string) => path
-        ? `/api/v1/capsule-links/${tok}/overlay?path=${encodeURIComponent(path)}`
-        : `/api/v1/capsule-links/${tok}/overlay`;
+  const overlayUrl = (path?: string) => path
+    ? `/api/v1/shares/${sc}/overlay?path=${encodeURIComponent(path)}`
+    : `/api/v1/shares/${sc}/overlay`;
 
   const patchOverlay = useCallback(async (path: string, value: number) => {
     const previous = overlay[path];
@@ -139,7 +131,7 @@ export function RecipientProvider({
         });
       }
     } catch { /* keep optimistic */ }
-  }, [sc, tok, overlay]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sc, overlay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resetOverlay = useCallback(async (path?: string) => {
     const previous = { ...overlay };
@@ -150,7 +142,7 @@ export function RecipientProvider({
       const res = await fetch(url, { method: 'DELETE' });
       if (!res.ok) setOverlay(previous);
     } catch { /* keep optimistic */ }
-  }, [sc, tok, overlay]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sc, overlay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: RecipientContextValue = {
     isRecipient: true,
