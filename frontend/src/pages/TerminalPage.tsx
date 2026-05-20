@@ -1199,7 +1199,7 @@ export default function TerminalPage() {
     liveDeals.forEach(d => { if (s[d.stage] !== undefined) s[d.stage]++; });
     return s;
   }, [liveDeals]);
-  const gc = "30px 1.5fr 0.8fr 44px 40px 60px 52px 48px 56px 48px 46px 42px 42px";
+  const gc = "30px 1.5fr 0.8fr 44px 40px 60px 52px 48px 56px 48px 46px 42px 42px 28px";
 
   // ─── DEAL GRID (F2) ────────────────────────────────────────
   const dealGridEl = useMemo(() => (
@@ -1222,8 +1222,8 @@ export default function TerminalPage() {
         <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.cyan:T.bg.input,color:mapOpen?T.bg.terminal:T.text.cyan,border:`1px solid ${mapOpen?T.text.cyan:T.text.cyan}44`,padding:"2px 12px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-        {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h,i)=>(
-          <div key={i} onClick={()=>h.c&&toggleSort(h.c)} style={{padding:"3px 4px",fontSize:10,fontWeight:700,color:sortBy===h.c?T.text.amber:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,cursor:h.c?"pointer":"default",userSelect:"none"}}>
+        {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"},{l:""}].map((h,i)=>(
+          <div key={i} onClick={()=>h.c&&toggleSort(h.c)} style={{padding:"3px 4px",fontSize:10,fontWeight:700,color:sortBy===h.c?T.text.amber:T.text.muted,letterSpacing:0.5,borderRight:i<13?`1px solid ${T.border.subtle}`:"none",cursor:h.c?"pointer":"default",userSelect:"none"}}>
             {h.l}{h.c&&sortBy===h.c&&<span style={{color:T.text.amber,marginLeft:1}}>{sortDir==="desc"?"v":"^"}</span>}
           </div>
         ))}
@@ -1259,7 +1259,17 @@ export default function TerminalPage() {
             <div style={{padding:4,fontSize:10,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.ppu}</div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}><StageBd stage={d.stage} T={T}/></div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}><RiskDot level={d.risk} T={T}/></div>
-            <div style={{padding:4,fontSize:10,color:d.days>30?T.text.orange:T.text.secondary,display:"flex",alignItems:"center"}}>{d.days>0?`${d.days}d`:"—"}</div>
+            <div style={{padding:4,fontSize:10,color:d.days>30?T.text.orange:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.days>0?`${d.days}d`:"—"}</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}
+              onClick={(e)=>{e.stopPropagation();openPipelineShare(d);}}>
+              <button
+                disabled={pipelineShareFetching}
+                title="Share deal"
+                style={{background:"none",border:"none",padding:"2px 4px",cursor:pipelineShareFetching?"wait":"pointer",color:T.text.muted,fontSize:12,lineHeight:1,opacity:pipelineShareFetching?0.4:1,display:"flex",alignItems:"center",justifyContent:"center"}}
+                onMouseEnter={e=>{if(!pipelineShareFetching)(e.currentTarget as HTMLButtonElement).style.color=T.text.cyan;}}
+                onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.color=T.text.muted;}}
+              >↗</button>
+            </div>
           </div>
         ))}
         {selDealId&&(()=>{const d=sorted.find(x=>x.id===selDealId);return d?(
