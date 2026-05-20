@@ -13,6 +13,12 @@ import { processDocument, processDealDocuments } from '../../services/document-e
 import { computeAndPersistTrafficSnapshot } from '../../services/traffic-analytics.service';
 import { getDealFinancials } from '../../services/proforma-adjustment.service';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
+import { buildProjectionsForExport } from '../../services/f9-financial-export.service';
+import {
+  getStanceForDeal,
+  applyStanceToFinancials,
+  type StanceModulation,
+} from '../../services/operatorStance.service';
 import { cashflowRuntime } from '../../agents/cashflow.config';
 import { researchRuntime } from '../../agents/research.config';
 import { supplyRuntime } from '../../agents/supply.config';
@@ -1811,7 +1817,7 @@ router.patch('/:dealId/proforma/year1/override', requireAuth, async (req: Authen
 router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { dealId } = req.params;
-    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 30);
+    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 36);
     const runSeed = req.query.seed === 'true';
 
     if (runSeed) {
@@ -1819,6 +1825,37 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
     }
 
     const data = await getDealFinancials(pool, dealId, holdYears);
+
+    // ── OperatorStance modulation ──────────────────────────────────────────────
+    // MUST run BEFORE buildProjectionsForExport: applyStanceToFinancials mutates
+    // data.assumptions.perYear (rentGrowthPct, vacancyPct, exitCap) which
+    // buildProjectionsForExport reads to derive per-year cash flows. Running
+    // modulation first means returned projections, NOI, and IRR all reflect the
+    // operator's current stance. stanceModulations provides per-field trace for
+    // UI amber markers.
+    let stanceModulations: StanceModulation[] = [];
+    let stanceDefaulted = true;
+    try {
+      const stance = await getStanceForDeal(dealId, req.user!.userId);
+      stanceDefaulted = stance.defaulted ?? true;
+      if (!stance.defaulted && data.assumptions) {
+        stanceModulations = applyStanceToFinancials(data, stance);
+      }
+    } catch (_stanceErr) {
+      // Non-fatal — stance failure must not block the financials response.
+    }
+
+    // ── Per-year projections ───────────────────────────────────────────────────
+    // Build after stance modulation so modulated perYear assumptions flow into
+    // the projection recomputation. cfads is aliased from cfbt so existing
+    // ReturnsTab / FinancialEnginePage consumers that read r.cfads keep working.
+    // NOTE: data.returns is intentionally passed through unchanged — getDealFinancials
+    // already computes the full rich returns object (lpNetIrr, lpEquityMultiple, …).
+    // Overwriting it with a simplified {irr,equityMultiple,cashOnCash} stripped
+    // those fields and left the ReturnsTab hero strip blank for every deal that
+    // hadn't yet run the cashflow model.
+    const projs = buildProjectionsForExport(data, holdYears);
+    const projections = projs.map(p => ({ ...p, cfads: p.cfbt }));
 
     // Fetch close/sale dates stored in deal_data jsonb
     const dateRes = await pool.query(
@@ -1859,16 +1896,15 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       }
     } catch (mathErr: unknown) {
       // Non-fatal — UI degrades gracefully without reconciliation data.
-      // Log at warn so ops can detect persistent query failures.
       logger.warn('math_correction_report fetch failed (non-fatal):', mathErr instanceof Error ? mathErr.message : String(mathErr));
     }
 
-    // getDealFinancials already computes the full rich returns object
-    // (lpNetIrr, lpEquityMultiple, avgCashOnCash, gpPromoteEarned, debtMetrics, …)
-    // via its internal IIFE. Overwriting it with a simplified {irr,equityMultiple,cashOnCash}
-    // stripped those fields, leaving the ReturnsTab hero strip blank (lpNetIrr === undefined)
-    // on every deal that hadn't yet run the cashflow model. Pass data.returns through as-is.
-    res.json({ success: true, data: { ...data, closeDate, saleDate, mathCorrectionReport } });
+    res.json({
+      success: true,
+      data: { ...data, closeDate, saleDate, mathCorrectionReport, projections },
+      stanceModulations,
+      stanceDefaulted,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     logger.error('Financials endpoint error:', message);
