@@ -15,9 +15,11 @@ import { ReturnsHubTab } from './financial-engine/ReturnsHubTab';
 import { CompareHubTab } from './financial-engine/CompareHubTab';
 import { DecisionTab } from './financial-engine/DecisionTab';
 import { RoadmapTab } from './financial-engine/RoadmapTab';
+import { SensitivityTab } from './financial-engine/SensitivityTab';
 import { CustomTabRenderer } from './financial-engine/CustomTabRenderer';
 import { exportToExcel } from './financial-engine/excel-export';
 import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials, EvidenceFieldMeta, LeasingCostTreatment } from './financial-engine/types';
+import type { BroaderGoalSeekResult, SolveVariable, TargetMetric } from '../../components/F9/GoalSeekWidget';
 import { fmt$, fmtPct, fmtX } from './financial-engine/types';
 import { apiClient } from '../../services/api.client';
 import { useDealStore } from '../../stores/dealStore';
@@ -398,11 +400,12 @@ const BUILTIN_TAB_LABELS = [
   '% RETURNS',
   '◐ SCENARIOS',
   '⇔ COMPARE',
+  '⊙ GOAL SEEK',
   '⊛ ROADMAP',
 ];
 const BUILTIN_TAB_COUNT = BUILTIN_TAB_LABELS.length;
 
-// Roadmap tab (index 8) is only surfaced for value-add and redevelopment deals.
+// Roadmap tab (index 9) is only surfaced for value-add and redevelopment deals.
 // Uses a regex matcher rather than DealType[] because the backend project_type
 // field can arrive as 'value-add', 'value_add', 'rehab', 'renovation', etc.
 function isRoadmapEligibleDealType(dt: string): boolean {
@@ -426,7 +429,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     || (propDeal?.project_type as DealType | undefined)
     || 'existing';
 
-  // Roadmap tab (index 8) is only surfaced for value-add and redevelopment deals.
+  // Roadmap tab (index 9) is only surfaced for value-add and redevelopment deals.
   // Declared early so all subsequent callbacks close over the correct binding.
   const isRoadmapEligible = isRoadmapEligibleDealType(resolvedDealType);
   // When ROADMAP is hidden the custom-tabs strip starts one index earlier.
@@ -463,6 +466,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   // Used as the assumptionsHash query param on subsequent GET /latest calls so the
   // backend can detect cross-session staleness (another session built a newer model).
   const [lastBuiltHash, setLastBuiltHash] = useState<string | null>(null);
+  const [broaderGoalSeekSolving, setBroaderGoalSeekSolving] = useState(false);
+  const [broaderGoalSeekResult, setBroaderGoalSeekResult] = useState<BroaderGoalSeekResult | null>(null);
   const [opusInput, setOpusInput] = useState('');
   const [opusSending, setOpusSending] = useState(false);
   const [opusMessages, setOpusMessages] = useState<Array<{ role: 'user' | 'opus'; text: string; ts: number }>>([]);
@@ -1086,6 +1091,51 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       exportToExcel(assumptions, modelResults, assumptions?.dealInfo?.dealName);
     }
   }, [resolvedDealId, assumptions, modelResults]);
+
+  const handleBroaderGoalSeek = useCallback(async (
+    solveFor: SolveVariable,
+    targetMetric: TargetMetric,
+    targetValue: number,
+  ) => {
+    setBroaderGoalSeekSolving(true);
+    setBroaderGoalSeekResult(null);
+    try {
+      const purchasePrice = assumptions?.acquisition?.purchasePrice ?? 0;
+      const noiYear1 = modelResults?.summary?.noi ?? 0;
+      const holdYears = assumptions?.holdPeriod ?? 5;
+      const exitCapRate = assumptions?.disposition?.exitCapRate ?? 0.055;
+      const rawRate = assumptions?.financing?.interestRate ?? 0;
+      const debtRate = rawRate > 1 ? rawRate / 100 : rawRate > 0 ? rawRate : 0.065;
+      const loanAmount = assumptions?.financing?.loanAmount ?? 0;
+      const ltv = purchasePrice > 0 && loanAmount > 0 ? loanAmount / purchasePrice : 0.70;
+      const noiGrowthRate = assumptions?.revenue?.rentGrowth?.[0] ?? 0.03;
+      const sellingCostsPct = assumptions?.disposition?.sellingCosts ?? 0.02;
+      const ioPeriodYears = assumptions?.financing?.ioPeriod ?? 0;
+      const amortYears = assumptions?.financing?.amortization ?? 30;
+
+      const res = await apiClient.post('/api/v2/sigma/broader-goal-seek', {
+        solveFor,
+        targetMetric,
+        targetValue,
+        purchasePrice,
+        noiYear1,
+        holdYears,
+        exitCapRate,
+        debtRate,
+        ltv,
+        noiGrowthRate,
+        sellingCostsPct,
+        ioPeriodYears,
+        amortYears,
+      });
+      const data = (res as any)?.data ?? (res as any);
+      setBroaderGoalSeekResult(data as BroaderGoalSeekResult);
+    } catch (err: any) {
+      console.error('[F9] Broader goal seek failed:', err);
+    } finally {
+      setBroaderGoalSeekSolving(false);
+    }
+  }, [assumptions, modelResults]);
 
   const handleAssumptionsChange = useCallback((partial: Partial<ModelAssumptions>) => {
     setAssumptions(prev => prev ? { ...prev, ...partial } : null);
@@ -1721,7 +1771,17 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 5 && <BtTabWrapper><ReturnsHubTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 6 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 7 && <BtTabWrapper><CompareHubTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 8 && isRoadmapEligible && <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><RoadmapTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 8 && (
+            <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <SensitivityTab
+                {...tabProps}
+                onSolveBroader={handleBroaderGoalSeek}
+                broaderSolving={broaderGoalSeekSolving}
+                broaderGoalSeekResult={broaderGoalSeekResult}
+              />
+            </BtTabWrapper>
+          )}
+          {activeTab === 9 && isRoadmapEligible && <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><RoadmapTab {...tabProps} /></BtTabWrapper>}
           {activeCustomTab && (
             <BtTabWrapper>
               <CustomTabRenderer

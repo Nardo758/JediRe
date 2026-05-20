@@ -4,6 +4,8 @@ import { Bd } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps } from './types';
 import { fmtPct, fmtX } from './types';
 import { computeExitReturns } from '../../../shared/calculations/returns';
+import GoalSeekWidget from '../../../components/F9/GoalSeekWidget';
+import type { BroaderGoalSeekResult, SolveVariable, TargetMetric } from '../../../components/F9/GoalSeekWidget';
 
 const MONO = BT.font.mono;
 
@@ -30,7 +32,16 @@ function emHeatmapColor(em: number): string {
   return BT.text.red;
 }
 
-export function SensitivityTab({ dealId, dealType, assumptions }: FinancialEngineTabProps) {
+interface SensitivityTabProps extends FinancialEngineTabProps {
+  onSolveBroader?: (solveFor: SolveVariable, targetMetric: TargetMetric, targetValue: number) => void;
+  broaderSolving?: boolean;
+  broaderGoalSeekResult?: BroaderGoalSeekResult | null;
+}
+
+export function SensitivityTab({
+  dealId, dealType, assumptions, modelResults,
+  onSolveBroader, broaderSolving, broaderGoalSeekResult,
+}: SensitivityTabProps) {
   const [activeTable, setActiveTable] = useState<TableType>('irr');
   const resolvedDealType = dealType || 'existing';
 
@@ -62,8 +73,26 @@ export function SensitivityTab({ dealId, dealType, assumptions }: FinancialEngin
     opex: 'IRR × EXIT CAP × OPEX GROWTH',
   };
 
+  // Derive current values for GoalSeekWidget from live assumptions / results
+  const currentIRR   = modelResults?.summary?.irr ?? 0;
+  const currentEM    = modelResults?.summary?.equityMultiple ?? undefined;
+  const currentCoC   = modelResults?.summary?.cashOnCash ?? undefined;
+  const currentPP    = assumptions?.acquisition?.purchasePrice ?? undefined;
+  const currentExit  = assumptions?.disposition?.exitCapRate ?? undefined;
+  const currentRG    = assumptions?.revenue?.rentGrowth?.[0] ?? undefined;
+  const currentHold  = assumptions?.holdPeriod ?? undefined;
+  const currentLtv   = assumptions && assumptions.financing.loanAmount > 0 && assumptions.acquisition.purchasePrice > 0
+    ? assumptions.financing.loanAmount / assumptions.acquisition.purchasePrice
+    : undefined;
+  const currentRate  = assumptions?.financing?.interestRate
+    ? assumptions.financing.interestRate / 100
+    : undefined;
+
+  const hasGoalSeek = typeof onSolveBroader === 'function';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
+      {/* ── Two-way Sensitivity Tables ── */}
       <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>TWO-WAY DATA TABLES</span>
         {(['irr', 'em', 'opex'] as TableType[]).map(t => (
@@ -198,6 +227,44 @@ export function SensitivityTab({ dealId, dealType, assumptions }: FinancialEngin
           </table>
         </div>
       )}
+
+      {/* ── Goal Seek ─────────────────────────────────────────────────────────── */}
+      <div style={{
+        borderTop: `1px solid ${BT.border.medium}`,
+        background: BT.bg.panel,
+        padding: 12,
+      }}>
+        <div style={{
+          fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5,
+          marginBottom: 10,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span>◎ GOAL SEEK</span>
+          <span style={{ color: BT.border.medium }}>·</span>
+          <span style={{ color: BT.text.secondary }}>Solve backwards from any target metric</span>
+        </div>
+
+        {hasGoalSeek ? (
+          <GoalSeekWidget
+            currentIRR={currentIRR}
+            currentEquityMultiple={currentEM}
+            currentCashOnCash={currentCoC}
+            currentPurchasePrice={currentPP}
+            currentExitCapRate={currentExit}
+            currentRentGrowth={currentRG}
+            currentHoldYears={currentHold}
+            currentLtv={currentLtv}
+            currentInterestRate={currentRate}
+            onSolveBroader={onSolveBroader!}
+            solving={broaderSolving ?? false}
+            result={broaderGoalSeekResult ?? null}
+          />
+        ) : (
+          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, padding: '8px 0' }}>
+            Build the financial model first to enable Goal Seek.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
