@@ -5,6 +5,7 @@ import { findHeaderRow, parseSheetFromRow } from './parsers/workbook-utils';
 const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: DocumentType }> = [
   { pattern: /aged[\s_-]*receiv/i, type: 'AGED_RECEIVABLES' },
   { pattern: /box[\s_-]*score/i, type: 'BOX_SCORE' },
+  { pattern: /leasing/i, type: 'LEASING_STATS' },
   { pattern: /concession[\s_-]*burn/i, type: 'CONCESSION_BURNOFF' },
   { pattern: /trade[\s_-]*out|t30[\s_-]*lto|lto[\s_-]*report|lease[\s_-]*trade/i, type: 'T30_LTO' },
   { pattern: /tax[\s_-]*bill|tax[\s_-]*statement|property[\s_-]*tax/i, type: 'TAX_BILL' },

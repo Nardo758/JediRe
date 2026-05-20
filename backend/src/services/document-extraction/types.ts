@@ -8,6 +8,7 @@ export type DocumentType =
   | 'TAX_BILL'
   | 'OTHER_INCOME'
   | 'OM'
+  | 'LEASING_STATS'
   | 'UNKNOWN';
 
 export interface ClassificationResult {
@@ -16,7 +17,7 @@ export interface ClassificationResult {
   hints: string[];
 }
 
-export type ExtractionData = T12Data | RentRollData | AgedReceivablesData | BoxScoreData | ConcessionBurnoffData | LTOData | TaxBillData | OtherIncomeData;
+export type ExtractionData = T12Data | RentRollData | AgedReceivablesData | BoxScoreData | ConcessionBurnoffData | LTOData | TaxBillData | OtherIncomeData | LeasingStatsData;
 
 export interface ExtractionResult {
   documentType: DocumentType;
@@ -290,6 +291,53 @@ export interface OtherIncomeData {
     totalMonthly: number;
     categoryCount: number;
     perUnitTotal: number | null;
+  };
+}
+
+export interface LeasingStatsLease {
+  signed_date: string | null;
+  unit: string;
+  floor_plan: string | null;
+  term_months: number | null;
+  market_rent: number | null;
+  lease_rent: number | null;
+  effective_rent: number | null;
+  concession: number | null;
+  source: string | null;
+  tenant_name: string | null;
+}
+
+export interface LeasingStatsActivity {
+  floor_plan: string;
+  units: number;
+  move_ins: number;
+  move_outs: number;
+  net_change: number;
+  units_reserved: number;
+  signed_renewals: number;
+  transferring: number;
+  cancelled_denied: number;
+  net_leases: number;
+  waitlist: number;
+  waitlist_cancelled: number;
+  net_waitlist: number;
+}
+
+export interface LeasingStatsData {
+  reporting_period: { start: string; end: string };
+  new_leases: LeasingStatsLease[];
+  activity: LeasingStatsActivity[];
+  summary: {
+    total_move_ins: number;
+    total_move_outs: number;
+    net_absorption: number;
+    total_new_leases: number;
+    total_renewals: number;
+    total_cancelled: number;
+    total_waitlist: number;
+    total_units: number;
+    total_occupied: number;
+    occupancy_pct: number;
   };
 }
 

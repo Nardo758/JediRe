@@ -26,7 +26,7 @@ import { realizedOutputsService } from './realized-outputs.service';
 import type {
   PartialHistoricalObservationRow,
 } from '../historical-observations/types';
-import type { T12Data, T12Month, RentRollData, RentRollUnit } from '../../services/document-extraction/types';
+import type { T12Data, T12Month, RentRollData, RentRollUnit, LeasingStatsData } from '../../services/document-extraction/types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -34,10 +34,11 @@ export interface ParsedPropertyDocument {
   dealId: string;
   propertyId: string;
   parcelId: string;
-  documentType: 'T12' | 'RENT_ROLL';
+  documentType: 'T12' | 'RENT_ROLL' | 'LEASING_STATS';
   observationDate: Date;          // the month this document covers
   t12Data?: T12Data;
   rentRollData?: RentRollData;
+  leasingStatsData?: LeasingStatsData;
 }
 
 export interface IngestionResult {
@@ -129,6 +130,50 @@ export function t12ToCorpusRow(
     propertyUnitCount: monthWithUnits?.totalUnits ?? summary.totalUnits ?? null,
     propertyOccupancy: avgOccupancy,
     propertyAvgRent: avgRent,
+  };
+}
+
+// ─── Leasing stats → corpus row ──────────────────────────────────────────────
+
+export function leasingStatsToCorpusRow(
+  data: LeasingStatsData,
+  parcelId: string,
+  observationDate: Date,
+  propertyId: string,
+  isSubjectProperty = true,
+): PartialHistoricalObservationRow {
+  const { summary, activity } = data;
+
+  // Signing velocity: total new leases (not renewals) per month
+  // BoxScore period is typically weekly, so compute monthly-equivalent rate
+  const propertySigningVelocity = summary.total_new_leases > 0 ? summary.total_new_leases : null;
+
+  // Concession estimate from average concession in individual lease records
+  const leasesWithConcession = data.new_leases.filter(l => l.concession != null && l.concession > 0);
+  const avgConcession = leasesWithConcession.length > 0
+    ? leasesWithConcession.reduce((s, l) => s + (l.concession ?? 0), 0) / leasesWithConcession.length
+    : null;
+
+  // Occupancy not directly available from leasing activity section
+  // (unit status section is separate) — leave null for BoxScore-only docs
+  const qualityFlags: string[] = [];
+  if (summary.total_occupied === 0) {
+    qualityFlags.push('occupancy_not_in_leasing_section');
+  }
+
+  return {
+    parcelId,
+    observationDate,
+    geographyLevel: 'parcel',
+    observationWindow: 'monthly',
+    isSubjectProperty,
+    sourceSignals: ['leasing_stats'],
+    propertyUnitCount: summary.total_units > 0 ? summary.total_units : null,
+    propertyOccupancy: summary.total_units > 0 ? (summary.total_occupied / summary.total_units) : null,
+    propertyConcessionPerUnit: avgConcession,
+    propertySigningVelocity,
+    dataQualityFlags: qualityFlags.length > 0 ? qualityFlags : null,
+    dataQualityTier: 'C1',
   };
 }
 
@@ -243,6 +288,15 @@ export async function ingestPropertyPerformance(
     obsDate = extractMonthFromT12(doc.t12Data, doc.observationDate);
   } else if (doc.documentType === 'RENT_ROLL' && doc.rentRollData) {
     obsDate = extractMonthFromRentRoll(doc.rentRollData, doc.observationDate);
+  } else if (doc.documentType === 'LEASING_STATS' && doc.leasingStatsData) {
+    // Use reporting_period.start if available, fall back to doc date
+    const lsStart = doc.leasingStatsData.reporting_period?.start;
+    if (lsStart) {
+      const parsed = new Date(lsStart);
+      obsDate = isNaN(parsed.getTime()) ? doc.observationDate : parsed;
+    } else {
+      obsDate = doc.observationDate;
+    }
   } else {
     obsDate = doc.observationDate;
   }
@@ -278,6 +332,8 @@ export async function ingestPropertyPerformance(
     row = t12ToCorpusRow(doc.t12Data, doc.parcelId, obsDate, doc.propertyId, isSubjectProperty);
   } else if (doc.documentType === 'RENT_ROLL' && doc.rentRollData) {
     row = rentRollToCorpusRow(doc.rentRollData, doc.parcelId, obsDate, doc.propertyId, isSubjectProperty);
+  } else if (doc.documentType === 'LEASING_STATS' && doc.leasingStatsData) {
+    row = leasingStatsToCorpusRow(doc.leasingStatsData, doc.parcelId, obsDate, doc.propertyId, isSubjectProperty);
   } else {
     warnings.push(`Unsupported document type: ${doc.documentType} or missing parsed data`);
     return { inserted: false, backfillCount: 0, warnings };

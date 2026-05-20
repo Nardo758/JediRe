@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { getPool } from '../../database/connection';
-import { ExtractionResult, DocumentType, T12Data, RentRollData, AgedReceivablesData, BoxScoreData, ConcessionBurnoffData, LTOData, TaxBillData, OtherIncomeData } from './types';
+import { ExtractionResult, DocumentType, T12Data, RentRollData, AgedReceivablesData, BoxScoreData, ConcessionBurnoffData, LTOData, TaxBillData, OtherIncomeData, LeasingStatsData } from './types';
 import type { OMExtraction } from './parsers/om-parser';
 import { buildOmKgEventData } from './om-distribution.service';
 import { getGraphIngestionListener } from '../neural-network/graph-ingestion-listener';
@@ -123,6 +123,9 @@ export async function routeExtractionResult(
       break;
     case 'OTHER_INCOME':
       rowsInserted = await routeOtherIncome(pool, result.data as OtherIncomeData, ctx.dealId, sourceRef, sourceDate);
+      break;
+    case 'LEASING_STATS':
+      rowsInserted = await routeLeasingStats(pool, result.data as LeasingStatsData, ctx.dealId, sourceRef, sourceDate);
       break;
     case 'OM':
       rowsInserted = await routeOM(pool, result.data as unknown as OMExtraction, ctx.dealId, sourceRef, sourceDate, alerts);
@@ -1589,5 +1592,100 @@ async function persistAlert(
      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW())`,
     [dealId, alertType, severity, title, JSON.stringify(detail), sourceDocumentType, sourceRef]
   );
+}
+
+async function routeLeasingStats(
+  pool: Pool,
+  data: LeasingStatsData,
+  dealId: string,
+  sourceRef: string,
+  sourceDate: string
+): Promise<number> {
+  let rowsInserted = 0;
+
+  // Write the Leasing Stats section as a deal_monthly_actuals row
+  const propertyResult = await pool.query(
+    `SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1`,
+    [dealId]
+  );
+  const propertyId = propertyResult.rows[0]?.property_id;
+
+  if (propertyId && data.reporting_period.start) {
+    await pool.query(
+      `INSERT INTO deal_monthly_actuals (
+        deal_id, property_id, period_start, period_end,
+        move_ins, move_outs, net_absorption,
+        new_leases, renewals, cancelled,
+        waitlist, occupancy_pct,
+        leasing_data_source, source_ref, source_date,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+      ON CONFLICT (deal_id, property_id, period_start, source_ref)
+      DO UPDATE SET
+        move_ins = EXCLUDED.move_ins,
+        move_outs = EXCLUDED.move_outs,
+        net_absorption = EXCLUDED.net_absorption,
+        new_leases = EXCLUDED.new_leases,
+        renewals = EXCLUDED.renewals,
+        cancelled = EXCLUDED.cancelled,
+        waitlist = EXCLUDED.waitlist,
+        occupancy_pct = EXCLUDED.occupancy_pct,
+        updated_at = NOW()`,
+      [
+        dealId, propertyId,
+        data.reporting_period.start, data.reporting_period.end,
+        data.summary.total_move_ins, data.summary.total_move_outs,
+        data.summary.net_absorption,
+        data.summary.total_new_leases, data.summary.total_renewals,
+        data.summary.total_cancelled,
+        data.summary.total_waitlist,
+        data.summary.occupancy_pct * 100,
+        'leasing_stats', sourceRef, sourceDate,
+      ]
+    );
+    rowsInserted = 1;
+
+    // Write per-floor-plan activity rows to a leasing_activity_log (fire-and-forget)
+    if (data.activity.length > 0) {
+      for (const act of data.activity) {
+        await pool.query(
+          `INSERT INTO deal_monthly_actuals (
+            deal_id, property_id, period_start, period_end,
+            floor_plan, units,
+            move_ins, move_outs, net_change,
+            units_reserved, signed_renewals, transferring,
+            cancelled_denied, net_leases,
+            waitlist, waitlist_cancelled, net_waitlist,
+            leasing_data_source, source_ref, source_date,
+            created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW(), NOW())
+          ON CONFLICT (deal_id, property_id, period_start, floor_plan, source_ref)
+          DO UPDATE SET
+            move_ins = EXCLUDED.move_ins,
+            move_outs = EXCLUDED.move_outs,
+            net_change = EXCLUDED.net_change,
+            units_reserved = EXCLUDED.units_reserved,
+            signed_renewals = EXCLUDED.signed_renewals,
+            cancelled_denied = EXCLUDED.cancelled_denied,
+            net_leases = EXCLUDED.net_leases,
+            waitlist = EXCLUDED.waitlist,
+            updated_at = NOW()`,
+          [
+            dealId, propertyId,
+            data.reporting_period.start, data.reporting_period.end,
+            act.floor_plan, act.units,
+            act.move_ins, act.move_outs, act.net_change,
+            act.units_reserved, act.signed_renewals, act.transferring,
+            act.cancelled_denied, act.net_leases,
+            act.waitlist, act.waitlist_cancelled, act.net_waitlist,
+            'leasing_stats', sourceRef, sourceDate,
+          ]
+        );
+        rowsInserted++;
+      }
+    }
+  }
+
+  return rowsInserted;
 }
 
