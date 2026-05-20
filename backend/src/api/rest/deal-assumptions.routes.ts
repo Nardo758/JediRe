@@ -21,7 +21,7 @@ import {
 import * as XLSX from 'xlsx';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
 import { getDealFinancials, applyFinancialsOverride } from '../../services/proforma-adjustment.service';
-import { buildF9Workbook, buildProjectionsForExport } from '../../services/f9-financial-export.service';
+import { buildF9Workbook } from '../../services/f9-financial-export.service';
 import { randomUUID } from 'crypto';
 import {
   getStanceForDeal,
@@ -32,29 +32,6 @@ import {
   type StanceModulation,
 } from '../../services/operatorStance.service';
 import type { OperatorStancePatch } from '../../types/operator-stance';
-
-// ─── IRR bisection helper ─────────────────────────────────────────────────────
-/**
- * Compute Internal Rate of Return via bisection.
- * cashFlows[0] is the t=0 outflow (negative equityAtClose).
- * cashFlows[i] for i>0 are the annual free cash flows.
- * Returns null if equity is zero, no sign change exists, or solution diverges.
- */
-function computeIrr(cashFlows: number[]): number | null {
-  if (cashFlows.length < 2) return null;
-  const npv = (r: number) => cashFlows.reduce((s, cf, i) => s + cf / Math.pow(1 + r, i), 0);
-  const v0 = npv(0);
-  if (v0 === 0) return 0;
-  let lo = -0.9999, hi = 10.0;
-  if (npv(lo) * npv(hi) > 0) return null;
-  for (let i = 0; i < 200; i++) {
-    const mid = (lo + hi) / 2;
-    const m = npv(mid);
-    if (Math.abs(m) < 1e-4 || (hi - lo) < 1e-8) return +mid.toFixed(6);
-    if (v0 > 0 ? m > 0 : m < 0) lo = mid; else hi = mid;
-  }
-  return +((lo + hi) / 2).toFixed(6);
-}
 
 // ─── AI Coordinator config ────────────────────────────────────────────────────
 const ANTHROPIC_API_KEY  = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
@@ -477,91 +454,6 @@ router.get('/:dealId/full-context', requireAuth, async (req: AuthenticatedReques
   } catch (error: any) {
     logger.error('Error fetching deal context:', error);
     res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * GET /:dealId/financials
- *
- * Thin controller — delegates to getDealFinancials() in proforma-adjustment.service.
- * Returns the full DealFinancials contract: { proforma, trafficProjection, assumptions }
- *
- * Query params:
- *   seed=true — (re)run seedProFormaYear1 before assembly (default: false)
- *   hold=N    — hold period in years for traffic projections (default: 10)
- */
-router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { dealId } = req.params;
-    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 36);
-    const runSeed = req.query.seed === 'true';
-
-    if (runSeed) {
-      await seedProFormaYear1(pool, dealId);
-    }
-
-    const data = await getDealFinancials(pool, dealId, holdYears);
-
-    // Fetch close/sale dates stored in deal_data jsonb
-    const dateRes = await pool.query(
-      `SELECT deal_data->>'close_date' AS close_date, deal_data->>'sale_date' AS sale_date FROM deals WHERE id = $1`,
-      [dealId]
-    );
-    const closeDate: string | null = dateRes.rows[0]?.close_date ?? null;
-    const saleDate: string | null  = dateRes.rows[0]?.sale_date  ?? null;
-
-    // ── In-place stance modulation ──────────────────────────────────────────
-    // MUST run BEFORE buildProjectionsForExport: applyStanceToFinancials
-    // mutates data.assumptions.perYear (rentGrowthPct, vacancyPct, exitCap)
-    // which buildProjectionsForExport reads to derive per-year cash flows.
-    // Running modulation first means the returned projections, NOI, and IRR
-    // all reflect the operator's current stance — not just the assumptions panel.
-    // stanceModulations provides per-field trace for UI amber markers.
-    let stanceModulations: StanceModulation[] = [];
-    let stanceDefaulted = true;
-    try {
-      const userId = req.user!.userId;
-      const stance = await getStanceForDeal(dealId, userId);
-      stanceDefaulted = stance.defaulted ?? true;
-      if (!stance.defaulted && data.assumptions) {
-        stanceModulations = applyStanceToFinancials(data, stance);
-      }
-    } catch (_stanceErr) {
-      // Non-fatal — stance modulation failure must not block financials response
-    }
-
-    // Compute hold-period returns from F9 projection engine.
-    // Called AFTER applyStanceToFinancials so modulated perYear assumptions
-    // (rentGrowthPct, vacancyPct, exitCap) flow into the projection recomputation.
-    const projs = buildProjectionsForExport(data, holdYears);
-    const equity = data.capitalStack.equityAtClose ?? 0;
-    let returns: typeof data.returns = null;
-    if (equity > 0 && projs.length > 0) {
-      const lastProj = projs[projs.length - 1];
-      // Build IRR cash flows: [-equity, cfbt_1, ..., cfbt_n-1, cfbt_n + netSaleProceeds_n]
-      const cashFlows: number[] = [-equity];
-      for (let i = 0; i < projs.length - 1; i++) {
-        cashFlows.push(projs[i].cfbt);
-      }
-      cashFlows.push((lastProj.cfbt ?? 0) + (lastProj.netSaleProceeds ?? 0));
-      const irr = computeIrr(cashFlows);
-      const equityMultiple = lastProj.cumulativeEM ?? null;
-      const cashOnCash = projs.length > 0 ? (projs[0].coc ?? null) : null;
-      returns = { irr, equityMultiple, cashOnCash } as any;
-    }
-
-    // Surface per-year projections so the frontend can read exit-year values
-    // (Stabilized NOI at Exit, Exit Value, Net Sale Proceeds) without a
-    // separate round-trip.  cfads is aliased from cfbt (= cash flow after
-    // debt service in this model) so existing ReturnsTab / FinancialEnginePage
-    // consumers that read r.cfads keep working.
-    const projectionsForResponse = projs.map(p => ({ ...p, cfads: p.cfbt }));
-
-    res.json({ success: true, data: { ...data, returns, closeDate, saleDate, projections: projectionsForResponse }, stanceModulations, stanceDefaulted });
-  } catch (error: any) {
-    logger.error('Error fetching deal financials:', error);
-    const status = (error as Error).message?.includes('not found') ? 404 : 500;
-    res.status(status).json({ error: error.message });
   }
 });
 
