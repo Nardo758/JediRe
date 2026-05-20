@@ -489,8 +489,13 @@ async function main(): Promise<void> {
       .sort((a, b) => a.localeCompare(b));
   }
 
+  // Apply limit
+  if (LIMIT < propertyFolders.length) {
+    propertyFolders = propertyFolders.slice(0, LIMIT);
+  }
+
   stats.propertiesFound = propertyFolders.length;
-  log('info', `Found ${propertyFolders.length} property folders`);
+  log('info', `Found ${propertyFolders.length} property folders (LIMIT=${LIMIT})`);
   log('info', '');
 
   // If resume mode, check which properties already have corpus data
@@ -588,7 +593,7 @@ async function main(): Promise<void> {
     }
 
     // Progress bar
-    const processedSoFar = stats.propertiesProcessed;
+    const processedSoFar = Math.min(stats.propertiesProcessed, queue.length);
     const total = Math.min(queue.length, LIMIT);
     progressBar(processedSoFar, total, `last: ${batchResults.map(r => r.name).join(', ')}`);
   }
