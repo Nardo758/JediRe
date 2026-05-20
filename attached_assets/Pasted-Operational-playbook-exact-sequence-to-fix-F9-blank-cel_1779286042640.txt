@@ -1,0 +1,164 @@
+Operational playbook — exact sequence to fix F9 blank cells
+You have the analytical framework. Here's the execution sequence, ordered by what to do, when to do it, and what to look at between steps.
+
+Step 1 — Wait for purchasePrice fix to verify (in flight)
+Bot is working on Dispatch A. When it returns its closing note, confirm:
+
+INV-6 no longer fires
+modelResults populates
+KPI tiles (IRR, EM, CoC, NOI, DSCR) show real numbers
+
+If yes → proceed to Step 2. If no → diagnose what's still failing before continuing.
+
+Step 2 — Fire Dispatch C and Dispatch D in parallel
+These are independent. Send both, let bot work them sequentially or in parallel.
+Dispatch C (copy-paste):
+F9 SURGICAL FIXES — BATCH C
+Two bugs in one PR. Both identified in F9_DATA_FLOW_TRACE.md.
+
+CONTEXT
+After the purchasePrice fix landed, the F9 trace identified two
+remaining surgical bug classes producing blank Overview tiles
+independent of the build itself.
+
+STEPS
+
+1. FIELD NAME ALIGNMENT in f9Financials.returns
+   - OverviewTab reads f9Returns?.irr, .equityMultiple, .cashOnCash
+   - mergeModelIntoFinancials writes .lpNetIrr, .lpEquityMultiple,
+     .avgCashOnCash
+   - Silent dead code path — tab falls through to summary; the
+     f9Returns object isn't actually used
+   - Pick direction: rename reader to match writer (recommended —
+     lpNetIrr is more semantically accurate than generic irr in a
+     waterfall context)
+   - Apply rename across reader, writer, type def. TypeScript will
+     surface all consumers.
+
+2. EXTEND normalizeBuildResponse with missing field mappings
+   - Six fields are returned by the backend build but never mapped
+     into the normalized result:
+     * annualCashFlow[i].cumulativeReturn
+     * annualCashFlow[i].runningEM
+     * summary.lpTotalDistributions
+     * summary.gpIrr
+     * summary.gpEm
+     * summary.gpTotalDistributions
+   - Before patching: log a raw response from POST /financial-model/build
+     for Bishop to confirm the exact backend field names
+   - Add the mappings; if a field isn't actually in the backend response,
+     log it and skip (don't fabricate)
+
+3. VERIFY on 464 Bishop
+   - Reload F9 Overview
+   - Confirm these tiles populate (vs. dashes):
+     * Returns Breakdown — LP IRR, LP EM, LP CoC
+     * Returns by Year table — CUM RETURN column, EM column
+     * LP Distributions
+     * GP IRR / GP EM / GP Distributions
+   - If a tile is still blank, log which and root cause
+
+4. CLOSING NOTE in docs/operations/:
+   (a) Field name alignment diff
+   (b) normalizeBuildResponse mappings added + raw backend response sample
+   (c) Per-tile verification (which populated, which still blank, why)
+
+DO NOT
+- Touch the backend build engine
+- Try to fix tiles blank for other reasons
+- Refactor unrelated paths
+Dispatch D (copy-paste):
+F9 COMPOSER ENDPOINT AUDIT — INVESTIGATION ONLY
+
+CONTEXT
+The F9 trace identified Pipeline 1 (Composer engine, /financials
+endpoint) as the source of most systemic blank cells. Need a
+categorical inventory of which fields are null on which deals
+and why. No code changes — investigation only.
+
+STEPS
+
+1. Sample three deals: 464 Bishop, Sentosa Epperson, and one
+   additional active deal of your choosing
+
+2. For each deal, call GET /api/v1/deals/{id}/financials and
+   dump the raw response
+
+3. Per-field null/present audit. For each deal report status of:
+   - proforma.year1[i].resolved (group: "X of Y rows have resolved")
+   - proforma.year1[i].broker, .platform, .t12, .rent_roll source slots
+   - proforma.unitEconomics (present/null/empty)
+   - proforma.valuationSnapshot (present/null/empty)
+   - projections (array length, or empty/null)
+   - rentRollSummary.unitMix (array length)
+   - waterfall.tiers (array length)
+   - capital.schedule (array length)
+   - capital.metrics (object content)
+   - returns (object content)
+   - trafficProjection (present/null)
+   - leaseVelocity (present/null)
+
+4. For each null field, categorize the cause:
+   (a) Composer doesn't compute it → needs compute spec + wire
+   (b) Composer computes, writes null due to missing source data
+       → upstream data issue (Ticket A or extraction gap)
+   (c) Field not in schema → schema gap, type def + composer extension
+   (d) Engine hasn't run for this deal → trigger needed
+       (M25, M07, lease velocity, etc.)
+
+5. ProForma year1 source slot coverage table for Bishop:
+   Build a per-row matrix showing broker | platform | t12 | rent_roll |
+   resolved for every operating statement field. Identifies which fields
+   are systematically anchored vs. which fall through to null resolution.
+
+6. CLOSING NOTE in docs/operations/:
+   (a) Per-deal composer state (null/present per field per deal)
+   (b) Field-by-field categorization (compute / data / schema / trigger)
+   (c) ProForma year1 source slot coverage table for Bishop
+   (d) Recommended next dispatch priorities — which fix unblocks most tiles
+
+DO NOT
+- Patch any code in this dispatch
+- Trigger any engines in this dispatch
+- Assume whether a null field is a bug vs. expected state — the
+  categorization IS the deliverable
+
+Step 3 — After Dispatch C lands
+Visually inspect Bishop's F9 Overview. The tiles populated should match this prediction:
+TileShould populate after C?If still blank →KPI strip (IRR, EM, CoC, NOI, DSCR)Yes (was purchasePrice's job)Build engine issue, separate investigationReturns Breakdown (LP IRR/EM/CoC)YesField rename didn't take, re-investigateReturns by Year CUM RETURNYesnormalizeBuildResponse mapping wrongReturns by Year EMYesSame as aboveLP DistributionsYesBackend may not actually return — verify in raw responseGP IRR/EM/DistributionsYesSame as aboveSources / Uses panelNo — Composer-side gapWait for Dispatch D categorizationF9 Unit Economics panelNo — Composer doesn't returnWait for Dispatch DValuation Metrics panelNo — Composer doesn't returnWait for Dispatch DYR-1 NOI (F9)No — proforma.resolved nullTicket A / Dispatch DJEDI Position scoreNo — LV engine hasn't runEngine trigger (Step 5)Broker vs Platform tableNo — no strategy analysis storedM25 trigger (Step 5)
+The tiles that should populate validate Dispatch C worked. The tiles that should not yet populate validate the trace's analysis. If reality matches both predictions, the framework is sound and you can keep executing on it.
+
+Step 4 — Read Dispatch D's closing note and queue next batch
+The audit closing note will give you a categorical list. For each category, the fix shape is:
+CategoryFix shapeCostComposer doesn't compute (e.g., unitEconomics)Spec the calculation + wire into composer service1 session per fieldComposer writes null from missing source (resolved nulls)Ticket A / broker_claims write race / seeder fixAlready-scoped Ticket A workSchema gap (field not in composer at all)Add to type def + composer + endpoint contract0.5 session per fieldEngine trigger needed (M25, LV, M07)Trigger the engine for the dealPer-deal data action (not code)
+For each field surfaced in the audit, dispatch the matching fix in priority order — pick the fixes that unblock the most tiles per session of effort.
+
+Step 5 — Trigger upstream engines for Bishop
+These aren't code fixes; they're operational actions on the deal itself. Run them once Dispatches C and D have landed:
+EngineWhat it unblocksHow to triggerM25 strategy analysisBroker vs Platform table on OverviewBot can run via API (POST /api/v1/deals/{id}/strategy-analyses or similar — bot identifies endpoint)Lease Velocity engineJEDI Position score on Overview, LV sub-tab on ProjectionsRequires rent roll already uploaded; trigger via POST /api/v1/deals/{id}/lease-velocity per the traceM07 TrafficPlatform exit cap, vacancy projection on OverviewBot identifies trigger
+These can run in parallel with the dispatches above. Each is a one-shot run that populates the relevant tile if the upstream data is present.
+
+Step 6 — Projections decoupling decision (Dispatch E, defer until C+D land)
+The bot flagged that mergeModelIntoFinancials intentionally doesn't write build's annualCashFlow into f9Financials.projections per a comment at lines 196-201. Before deciding, you need to know the original intent. Add this micro-dispatch when bandwidth allows:
+F9 PROJECTIONS DECOUPLING — DESIGN INVESTIGATION
+
+Read lines 195-210 of mergeModelIntoFinancials (financials-merge.ts
+or similar). Quote the comment block verbatim in a closing note.
+
+Report:
+- What the comment says about why the decoupling exists
+- Whether it's stated as intentional design or a TODO
+- What the trade-off described is
+
+No code changes. Reading + quoting only.
+Then decide based on the comment:
+
+"Composer projections are LayeredValue-anchored, build projections are scenario math — don't mix" → leave decoupled, accept that Projections tab needs composer to populate
+"TODO: revisit" → couple them, write build's annualCashFlow into projections when build succeeds
+Anything else → decide case by case
+
+
+"When is F9 fixed?"
+F9 is "fixed" when, for a fully-prepared deal (Bishop), every tile that should have data displays data. The path there is:
+StageWhat's populatedAfter Dispatch A (purchasePrice)KPI stripAfter Dispatch C (surgical batch)Returns Breakdown, Returns by Year, LP/GP distributionsAfter Dispatch D categorization → individual composer fixesUnit Economics, Valuation Snapshot, ProForma resolved valuesAfter engine triggers (M25, LV, M07)Broker vs Platform, JEDI Position, Platform exit capAfter Dispatch E + decisionProjections tab populated (or accepted as composer-only)After Ticket AProForma year1 source slots fully anchored across all deals
+Each is a discrete unblock. After all of them land, F9 stops showing systemic blanks. Tiles that remain blank afterward will be for deal-specific reasons (no rent roll uploaded, no T-12 uploaded, etc.) — not systemic gaps.
