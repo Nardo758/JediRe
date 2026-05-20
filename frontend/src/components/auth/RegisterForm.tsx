@@ -132,6 +132,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
         const pendingShare = sessionStorage.getItem('jedi_pending_share');
         if (pendingShare) {
           sessionStorage.removeItem('jedi_pending_share');
+          let forkAddress: string | null = null;
           try {
             const token = localStorage.getItem('auth_token');
             const forkRes = await fetch(`/api/v1/shares/${pendingShare}/fork`, {
@@ -143,15 +144,14 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
             });
             if (forkRes.ok) {
               const forkData = await forkRes.json();
-              sessionStorage.setItem(
-                'jedi_fork_success',
-                forkData.property_address ?? 'Shared Deal'
-              );
+              forkAddress = forkData.property_address ?? 'Shared Deal';
             }
           } catch {
             // fork is best-effort; don't block navigation
           }
-          navigate('/terminal/pipeline');
+          navigate('/terminal/pipeline', {
+            state: forkAddress ? { forkSuccess: forkAddress } : undefined,
+          });
         } else {
           navigate('/app');
         }

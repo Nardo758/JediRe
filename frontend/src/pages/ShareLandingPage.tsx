@@ -354,7 +354,7 @@ export default function ShareLandingPage() {
               <span style={{ fontSize: 10, color: BT.text.muted }}>
                 Want full access to JediRe?{' '}
                 <Link
-                  to={`/login?mode=register`}
+                  to={shortcode ? `/login?mode=register&share=${shortcode}` : `/login?mode=register`}
                   onClick={() => {
                     if (shortcode) sessionStorage.setItem('jedi_pending_share', shortcode);
                   }}
@@ -371,7 +371,7 @@ export default function ShareLandingPage() {
                 </Link>
                 <span style={{ color: BT.text.muted }}> or </span>
                 <Link
-                  to="/login"
+                  to={shortcode ? `/login?share=${shortcode}` : `/login`}
                   onClick={() => {
                     if (shortcode) sessionStorage.setItem('jedi_pending_share', shortcode);
                   }}

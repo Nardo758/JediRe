@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useCallback, useState } from 'react';
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorFallback } from './components/fallbacks/ErrorFallback';
@@ -102,17 +102,26 @@ function useResponsiveZoom() {
 }
 
 function ForkSuccessBanner() {
+  const location = useLocation();
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const msg = sessionStorage.getItem('jedi_fork_success');
-    if (msg) {
-      sessionStorage.removeItem('jedi_fork_success');
-      setMessage(msg);
+    // Primary: navigation state passed by Login/RegisterForm after fork
+    const stateMsg = (location.state as any)?.forkSuccess as string | undefined;
+    if (stateMsg) {
+      setMessage(stateMsg);
       const timer = setTimeout(() => setMessage(null), 7000);
       return () => clearTimeout(timer);
     }
-  }, []);
+    // Fallback: sessionStorage (written before navigate if state was unavailable)
+    const storageMsg = sessionStorage.getItem('jedi_fork_success');
+    if (storageMsg) {
+      sessionStorage.removeItem('jedi_fork_success');
+      setMessage(storageMsg);
+      const timer = setTimeout(() => setMessage(null), 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [location]);
 
   if (!message) return null;
 

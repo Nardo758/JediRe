@@ -7,7 +7,16 @@ import { Shield } from 'lucide-react';
 export default function AuthPage() {
   const [searchParams] = useSearchParams();
   const mode = searchParams.get('mode');
+  const shareParam = searchParams.get('share');
   const [isLogin, setIsLogin] = useState(mode !== 'register');
+
+  // Persist ?share= into sessionStorage so LoginForm/RegisterForm can read it
+  // even if the user refreshes the auth page or the click handler missed it.
+  useEffect(() => {
+    if (shareParam) {
+      sessionStorage.setItem('jedi_pending_share', shareParam);
+    }
+  }, [shareParam]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
