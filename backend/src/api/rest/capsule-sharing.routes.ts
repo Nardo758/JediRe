@@ -1508,8 +1508,14 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
       );
       newDeal = dealInsert.rows[0];
 
-      // 2. Clone the source capsule for the recipient (their own working copy)
+      // 2. Clone the source capsule for the recipient (their own working copy).
+      // Stamp deal_id = newDeal.id so capsule-bridge.findCapsuleByDeal can resolve it.
       // user_adjustments reset to {} — recipient starts fresh on top of the snapshot.
+      const capsuleDealData: Record<string, unknown> = {
+        ...seededDealData,
+        deal_id: newDeal.id,
+      };
+
       const capsuleInsert = await client.query(
         `INSERT INTO deal_capsules (
            user_id, deal_data, platform_intel, user_adjustments, module_outputs,
@@ -1518,7 +1524,7 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
          RETURNING id`,
         [
           userId,
-          JSON.stringify(seededDealData),
+          JSON.stringify(capsuleDealData),
           JSON.stringify((capsule.platform_intel as Record<string, unknown>) ?? {}),
           JSON.stringify((capsule.module_outputs as Record<string, unknown>) ?? {}),
           propertyAddress,
