@@ -19,7 +19,7 @@ const InputSchema = z.object({
   purchase_price: z.number().positive().nullable().optional(),
   loan_amount: z.number().nonnegative().nullable().optional(),
   units: z.number().int().positive().default(1),
-  hold_years: z.number().int().min(1).max(30).default(10),
+  hold_years: z.number().int().min(1).max(36).default(10),
   t12_annual_tax: z.number().nonnegative().nullable().optional()
     .describe('Annual property tax from T-12 operating statement'),
   assessed_value_override: z.number().positive().nullable().optional(),

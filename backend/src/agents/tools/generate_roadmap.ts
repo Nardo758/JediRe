@@ -15,7 +15,7 @@ const InputSchema = z.object({
     value: z.number().positive().describe(
       'Target value — IRR/CoC/NOI-growth as decimal (e.g. 0.15 for 15%), equity multiple as ratio (e.g. 2.0)'
     ),
-    hold_years: z.number().int().min(1).max(30).describe(
+    hold_years: z.number().int().min(1).max(36).describe(
       'Holding period in years'
     ),
   }).describe('Target return specification'),

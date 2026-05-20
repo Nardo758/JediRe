@@ -200,7 +200,7 @@ const InputSchema = z.object({
   purchase_price: z.number().positive().describe(
     'Property purchase price ($).'
   ),
-  hold_years: z.number().int().min(1).max(30).default(5).describe(
+  hold_years: z.number().int().min(1).max(36).default(5).describe(
     'Hold period in years.'
   ),
   exit_cap_rate: z.number().min(0.02).max(0.20).default(0.055).describe(

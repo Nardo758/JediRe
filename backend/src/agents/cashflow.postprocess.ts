@@ -766,7 +766,7 @@ export async function cashflowPostProcess(
             if (noiYear1 && noiYear1 > 0 && purchasePrice && purchasePrice > 0) {
               const exitCapRate = resolveLv('exit_cap_rate') ?? 0.055;
               const rawHold = resolveLv('hold_years') ?? resolveLv('hold_period') ?? 5;
-              const holdYears = Math.max(1, Math.min(30, Math.round(rawHold)));
+              const holdYears = Math.max(1, Math.min(36, Math.round(rawHold)));
               const debtRate = resolveLv('debt_rate') ?? resolveLv('interest_rate') ?? 0.065;
 
               let gprYear1: number | undefined;
