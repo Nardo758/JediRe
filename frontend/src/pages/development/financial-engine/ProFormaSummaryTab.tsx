@@ -546,6 +546,59 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     const t = setTimeout(() => setSigmaField(null), 4000);
     return () => clearTimeout(t);
   }, [sigmaField]);
+
+  // M36 — persistent aggregate plausibility badge (fires on mount + after each correction load)
+  const [sigmaBand, setSigmaBand] = useState<{
+    band: string;
+    topVariable: string | null;
+    topDScore: number | null;
+  } | null>(null);
+
+  // Proforma field name → sigma variable name (mirrors backend FIELD_TO_SIGMA_VAR)
+  const PROFORMA_TO_SIGMA: Record<string, string> = {
+    vacancy_loss:         'vacancyAtStabilization',
+    loss_to_lease:        'lossToLeasePct',
+    concessions:          'concessionsPct',
+    management_fee:       'managementFeePct',
+    insurance:            'insurancePerUnit',
+    real_estate_taxes:    'propertyTaxPctOfRevenue',
+    replacement_reserves: 'replacementReservesPerUnit',
+    other_income:         'otherIncomePerUnit',
+  };
+
+  const fireFullPlausibility = useCallback(async (year1Rows: OperatingStatementRow[]) => {
+    const assumptions: Record<string, number> = {};
+    for (const row of year1Rows) {
+      const sigmaVar = PROFORMA_TO_SIGMA[row.field];
+      if (sigmaVar && row.resolved != null) {
+        assumptions[sigmaVar] = row.resolved;
+      }
+    }
+    if (Object.keys(assumptions).length === 0) return;
+    try {
+      const res = await apiClient.post<{
+        success: boolean;
+        data: {
+          band: string;
+          topContributors: Array<{ variable: string; contribution: number }>;
+        };
+      }>('/api/v1/sigma/plausibility', { assumptions });
+      if (res.data?.success && res.data.data?.band) {
+        const top = res.data.data.topContributors?.[0] ?? null;
+        setSigmaBand({
+          band: res.data.data.band,
+          topVariable: top?.variable ?? null,
+          topDScore: top?.contribution ?? null,
+        });
+      }
+    } catch { /* non-fatal */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!data) return;
+    fireFullPlausibility(data.proforma.year1);
+  }, [data, fireFullPlausibility]);
+
   const [showAncillary, setShowAncillary] = useState(false);
   const [showUtilitiesBreakdown, setShowUtilitiesBreakdown] = useState(false);
   // Pattern A — GPR floor-plan grid expand
@@ -1018,6 +1071,32 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <ShieldCheck size={8} />
             </span>
           )}
+          {/* M36 — persistent aggregate plausibility badge */}
+          {sigmaBand && (() => {
+            const band = sigmaBand.band;
+            const isRealistic = band === 'Realistic' || band === 'Stretch';
+            const isAggressive = band === 'Aggressive';
+            const tc = isRealistic ? '#22c55e' : isAggressive ? '#f59e0b' : '#ef4444';
+            const bg = isRealistic ? '#0a1c10' : isAggressive ? '#1a1200' : '#1c0a0a';
+            const topTip = sigmaBand.topVariable
+              ? `Top contributor: ${sigmaBand.topVariable}${sigmaBand.topDScore != null ? ` (d=${sigmaBand.topDScore.toFixed(2)})` : ''}`
+              : '';
+            const tooltip = `M36 Σ plausibility: ${band}${topTip ? ' · ' + topTip : ''}`;
+            return (
+              <span
+                title={tooltip}
+                style={{
+                  display: 'inline-flex', alignItems: 'center',
+                  padding: '2px 6px', borderRadius: 2,
+                  background: bg, border: `1px solid ${tc}33`,
+                  fontFamily: MONO, fontSize: 8, color: tc, fontWeight: 700, letterSpacing: 0.4,
+                  cursor: 'default',
+                }}
+              >
+                Σ {band.toUpperCase()}
+              </span>
+            );
+          })()}
         </div>
 
         {/* ── View mode + Y1 source controls ── */}
