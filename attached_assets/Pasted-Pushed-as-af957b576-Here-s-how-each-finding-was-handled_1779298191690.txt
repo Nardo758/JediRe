@@ -1,0 +1,19 @@
+Pushed as af957b576. Here's how each finding was handled:
+
+Finding	Action	Why
+Bug #1 (LP/GP EM blank on reload)	Fixed — alias added to normalizeModelResults	Confirmed in code: build path aliased, DB-load path didn't, OverviewTab reads lpEm/gpEm directly. The agent's diagnosis was exact.
+Risk #3 (Zod ceiling absolute, not per-deal)	Fixed — inline comment in all 4 schemas	Single-line comment costs nothing and prevents the next reader from tightening Zod and breaking long-hold core deals.
+Nit #6 (fabricated gpEm × 1.3)	Fixed — set to null with comment	Same pattern as the existing stabilizedCapRate removal at lines 105-107. A KPI tile showing a fabricated number is worse than showing —. Treated as latent correctness, not style.
+Risk #2 (DSCR string handling)	No action — already covered	Agent confirmed OverviewTab.tsx:124 already has parseFloat(String(...)) guard. The two paths are complementary.
+Risk #4 (cashOnCash?.[0] empty-array case)	No action — low consequence	A snapshot field, not a computation input. Adding a fallback to avgCoC would change semantics (year-1 ≠ avg) and the LLM emitting [] is an upstream bug worth surfacing rather than papering over.
+Risk #5 (timeout message UX)	No action — minor UX	The verbatim Axios message is informative enough. Friendlier strings are a separate UX pass, not a fix.
+Nit #7 (DEBT_HOLD_PROFILES drift test)	No action — out of scope	Worth doing but warrants its own commit with the test infrastructure.
+Nit #8 (comment clarification on fallback 5)	No action — bikeshed	Existing comment is adequate; rewording for theoretical readers isn't worth a commit.
+Branch state after this commit
+Commit	What
+af957b576	Review fixes — DB-load alias + 1.3× removal + Zod comments
+7063d5875	Hold-period profile refactor
+(merge)	Replit's route dedup from master
+0e2a28593	(superseded by refactor) downstream 30→36
+e5963f1b9	F9 LP/GP + build-error surfacing
+TypeScript compiles clean on both backend and frontend. The branch is ready for the Replit agent to re-review or for merge to master.
