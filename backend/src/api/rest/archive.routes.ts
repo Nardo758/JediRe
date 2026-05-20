@@ -561,4 +561,141 @@ router.post('/refresh-all', requireAuth, async (req: AuthenticatedRequest, res: 
   }
 });
 
+/**
+ * POST /api/v1/archive/ingest-rows
+ *
+ * Bulk-write pre-parsed corpus rows into historical_observations.
+ * Designed for the Windows-side archive-bulk-ingest.ts script, which cannot
+ * reach the internal Postgres host directly.
+ *
+ * Auth: x-ingest-secret header must match ARCHIVE_INGEST_SECRET env var.
+ * Body: { rows: CorpusRow[], dryRun?: boolean }
+ *
+ * Each row (snake_case) must include at minimum:
+ *   parcel_id, observation_date, source_signals, data_quality_tier
+ *
+ * Upsert logic: if a row with the same (parcel_id, observation_date, geography_level)
+ * already exists, source_signals are merged and non-null fields are updated.
+ * New rows are inserted. Returns { inserted, updated, skipped, errors[] }.
+ */
+router.post('/ingest-rows', async (req: Request, res: Response) => {
+  const secret = process.env.ARCHIVE_INGEST_SECRET;
+  if (!secret) {
+    return res.status(503).json({ success: false, error: 'ARCHIVE_INGEST_SECRET not configured on server' });
+  }
+  const provided = req.headers['x-ingest-secret'];
+  if (!provided || provided !== secret) {
+    return res.status(401).json({ success: false, error: 'Invalid or missing x-ingest-secret header' });
+  }
+
+  const { rows, dryRun = false } = req.body as {
+    rows: Record<string, unknown>[];
+    dryRun?: boolean;
+  };
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ success: false, error: 'Body must contain a non-empty rows array' });
+  }
+
+  const pool = getPool();
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
+  const errors: { index: number; parcelId: unknown; error: string }[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const parcelId = row['parcel_id'] as string | undefined;
+    const observationDate = row['observation_date'] as string | undefined;
+    const newSignals: string[] = Array.isArray(row['source_signals'])
+      ? (row['source_signals'] as string[])
+      : [];
+    const geographyLevel = (row['geography_level'] as string | undefined) ?? 'parcel';
+
+    if (!parcelId || !observationDate) {
+      errors.push({ index: i, parcelId, error: 'Missing parcel_id or observation_date' });
+      skipped++;
+      continue;
+    }
+
+    if (dryRun) {
+      inserted++;
+      continue;
+    }
+
+    try {
+      const existing = await pool.query(
+        `SELECT id, source_signals FROM historical_observations
+         WHERE parcel_id = $1 AND observation_date = $2::DATE AND geography_level = $3
+         LIMIT 1`,
+        [parcelId, observationDate, geographyLevel],
+      );
+
+      if (existing.rows[0]) {
+        const existingId = existing.rows[0].id as string;
+        const existingSignals: string[] = (existing.rows[0].source_signals as string[]) ?? [];
+        const mergedSignals = Array.from(new Set([...existingSignals, ...newSignals]));
+
+        const assignments: string[] = ['source_signals = $1', 'updated_at = NOW()'];
+        const params: unknown[] = [mergedSignals];
+        let idx = params.length;
+
+        const SKIP_COLS = new Set(['id', 'parcel_id', 'observation_date', 'geography_level',
+          'source_signals', 'created_at', 'updated_at']);
+
+        for (const [col, val] of Object.entries(row)) {
+          if (SKIP_COLS.has(col) || val === null || val === undefined) continue;
+          idx++;
+          params.push(val);
+          assignments.push(`${col} = $${idx}`);
+        }
+
+        params.push(existingId);
+        idx++;
+
+        await pool.query(
+          `UPDATE historical_observations SET ${assignments.join(', ')} WHERE id = $${idx}`,
+          params,
+        );
+        updated++;
+      } else {
+        const allFields: Record<string, unknown> = {
+          geography_level: geographyLevel,
+          observation_window: 'monthly',
+          is_subject_property: false,
+          ...row,
+          source_signals: newSignals,
+        };
+
+        const cols = Object.keys(allFields);
+        const vals = Object.values(allFields);
+        const placeholders = vals.map((_, pi) => `$${pi + 1}`);
+
+        await pool.query(
+          `INSERT INTO historical_observations (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`,
+          vals,
+        );
+        inserted++;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('[archive/ingest-rows] Row error', { index: i, parcelId, error: msg });
+      errors.push({ index: i, parcelId, error: msg });
+      skipped++;
+    }
+  }
+
+  logger.info('[archive/ingest-rows] Batch complete', { inserted, updated, skipped, errors: errors.length, dryRun });
+
+  return res.json({
+    success: true,
+    dryRun,
+    inserted,
+    updated,
+    skipped,
+    errorCount: errors.length,
+    errors: errors.slice(0, 20),
+  });
+});
+
 export default router;
