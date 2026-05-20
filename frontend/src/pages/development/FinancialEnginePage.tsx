@@ -37,6 +37,31 @@ function toArr<T>(v: unknown): T[] {
 // The engine stores sourcesAndUses.sources / .uses as Record<string,number>
 // objects; ModelResults and all tabs expect {label,amount}[] arrays.
 // Apply this before every setModelResults call.
+// AnnualCashFlow row field-name reconciliation. Three sources of truth disagree:
+//   - Deterministic runner: preTaxCashFlow / grossPotentialRent / effectiveGrossIncome / totalExpenses
+//   - LLM schema:           beforeTaxCashFlow|leveredCashFlow / potentialRent / effectiveGrossRevenue / totalExpenses
+//   - Frontend OverviewTab: cashFlow / gpr / egr / opex / totalRevenue
+// This adapter coerces any input shape into the keys OverviewTab reads, leaving
+// the original keys intact (so consumers that depend on them keep working).
+function normalizeCashFlowRow(r: Record<string, unknown>): Record<string, unknown> {
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const pick = (...keys: string[]): number | null => {
+    for (const k of keys) {
+      const v = num(r[k]);
+      if (v != null) return v;
+    }
+    return null;
+  };
+  return {
+    ...r,
+    cashFlow:     r.cashFlow     ?? pick('beforeTaxCashFlow', 'leveredCashFlow', 'preTaxCashFlow'),
+    gpr:          r.gpr          ?? pick('potentialRent', 'grossPotentialRent'),
+    egr:          r.egr          ?? pick('effectiveGrossRevenue', 'effectiveGrossIncome'),
+    totalRevenue: r.totalRevenue ?? pick('effectiveGrossRevenue', 'effectiveGrossIncome'),
+    opex:         r.opex         ?? pick('totalExpenses'),
+  };
+}
+
 function normalizeModelResults(raw: ModelResults): ModelResults {
   if (!raw) return raw;
   // sourcesAndUses normalization
@@ -59,6 +84,10 @@ function normalizeModelResults(raw: ModelResults): ModelResults {
   }
   if (raw.waterfallDistributions != null && !Array.isArray(raw.waterfallDistributions)) {
     (raw as any).waterfallDistributions = [];
+  }
+  // Reconcile cash-flow row field names across runners (see normalizeCashFlowRow).
+  if (Array.isArray(raw.annualCashFlow)) {
+    raw.annualCashFlow = raw.annualCashFlow.map(r => normalizeCashFlowRow(r as unknown as Record<string, unknown>)) as ModelResults['annualCashFlow'];
   }
   // Backend persists the deterministic runner's field names (lpEquityMultiple /
   // gpEquityMultiple) on result.summary, but OverviewTab reads summary.lpEm /

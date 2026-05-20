@@ -656,6 +656,34 @@ export class FinancialModelEngineService {
         result.summary.gpPromoteEarned      = detSum.gpPromoteEarned;
         result.summary.totalProfit          = detSum.totalProfit;
 
+        // The LLM schema declares summary.exitValue / summary.netProceeds as
+        // required, but the deterministic runner canonicalises both under
+        // `disposition.*` (grossSalePrice / netSaleProceeds). Map them onto
+        // summary so the F9 Overview Disposition Summary panel reads them
+        // directly, matching the contract OverviewTab.tsx expects.
+        const detDisp = (deterministicResult as { disposition?: { grossSalePrice?: number; netSaleProceeds?: number } }).disposition;
+        if (detDisp) {
+          if (detDisp.grossSalePrice != null) result.summary.exitValue = detDisp.grossSalePrice;
+          if (detDisp.netSaleProceeds != null) result.summary.netProceeds = detDisp.netSaleProceeds;
+        }
+
+        // sourcesAndUses and annualCashFlow: the deterministic runner is the
+        // canonical source for both — it emits well-formed arrays with stable
+        // field names. The LLM frequently emits sparse Records or omits rows.
+        // Prefer the deterministic shape so the F9 Overview Sources/Uses panel
+        // and Returns By Year table populate consistently. Frontend
+        // normalize{Build,Model}Results handles the row-key aliasing.
+        const detResultAny = deterministicResult as {
+          sourcesAndUses?: unknown;
+          annualCashFlow?: unknown[];
+        };
+        if (detResultAny.sourcesAndUses) {
+          (result as { sourcesAndUses?: unknown }).sourcesAndUses = detResultAny.sourcesAndUses;
+        }
+        if (Array.isArray(detResultAny.annualCashFlow) && detResultAny.annualCashFlow.length > 0) {
+          (result as { annualCashFlow?: unknown[] }).annualCashFlow = detResultAny.annualCashFlow;
+        }
+
         const checks = runIntegrityChecks(modelAssumptions, deterministicResult);
         // Only INV-* checks are hard invariants that halt the build.
         // SOFT checks (e.g. DSCR_BREACH) may have status='error' but are advisory only.
