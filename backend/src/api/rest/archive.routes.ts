@@ -22,6 +22,10 @@ import {
 } from '../../services/archive-benchmark-aggregator';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import multer from 'multer';
+import { parseOM } from '../../services/document-extraction/parsers/om-parser';
+
+const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -739,6 +743,113 @@ router.post('/ingest-rows', async (req: Request, res: Response) => {
     errorCount: errors.length,
     errors: errors.slice(0, 20),
   });
+});
+
+/**
+ * POST /api/v1/archive/parse-om
+ *
+ * Upload a scanned/image-based OM PDF and extract year_built (+ full OM data).
+ * Uses the existing parseOM() pipeline which automatically falls back to
+ * pdftoppm + tesseract.js OCR when the PDF has no embedded text layer.
+ *
+ * Auth: x-ingest-secret header (same secret as /ingest-rows).
+ * Body: multipart/form-data with field "file" = the PDF.
+ * Query params (all optional):
+ *   parcel_id  — if provided, upserts property_year_built into historical_observations
+ *   observation_date — ISO date for the upsert (defaults to today)
+ *
+ * Returns: { success, yearBuilt, usedOcr, extraction } where extraction is the
+ * full OMExtraction object for the caller to use as needed.
+ */
+router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Response) => {
+  const secret = process.env.ARCHIVE_INGEST_SECRET;
+  if (!secret || req.headers['x-ingest-secret'] !== secret) {
+    return res.status(401).json({ success: false, error: 'Invalid or missing x-ingest-secret header' });
+  }
+
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (!file) {
+    return res.status(400).json({ success: false, error: 'No file uploaded. Send PDF as multipart field "file".' });
+  }
+  if (!file.originalname.toLowerCase().endsWith('.pdf')) {
+    return res.status(400).json({ success: false, error: 'Only PDF files are accepted.' });
+  }
+
+  const parcelId = (req.query['parcel_id'] as string | undefined)?.trim() || null;
+  const observationDate = (req.query['observation_date'] as string | undefined)?.trim()
+    || new Date().toISOString().slice(0, 10);
+
+  logger.info('[archive/parse-om] Received OM for OCR extraction', {
+    filename: file.originalname,
+    sizeKb: Math.round(file.size / 1024),
+    parcelId,
+  });
+
+  try {
+    const result = await parseOM(file.buffer, file.originalname);
+
+    if (!result.success || !result.data) {
+      return res.status(422).json({
+        success: false,
+        error: result.error ?? 'parseOM returned no data',
+        usedOcr: result.meta?.usedOcr ?? false,
+        ocrError: result.meta?.ocrError,
+      });
+    }
+
+    const extraction = result.data;
+    const yearBuilt: number | null = extraction.property?.yearBuilt ?? null;
+
+    // Optional: write property_year_built back to historical_observations
+    if (parcelId && yearBuilt !== null) {
+      const pool = getPool();
+      const existing = await pool.query(
+        `SELECT id FROM historical_observations
+         WHERE parcel_id = $1 AND observation_date = $2::DATE AND geography_level = 'parcel'
+         LIMIT 1`,
+        [parcelId, observationDate],
+      );
+
+      if (existing.rows[0]) {
+        await pool.query(
+          `UPDATE historical_observations
+           SET property_year_built = $1,
+               source_signals = array(SELECT DISTINCT unnest(source_signals || ARRAY['om'])),
+               updated_at = NOW()
+           WHERE id = $2`,
+          [yearBuilt, existing.rows[0].id],
+        );
+        logger.info('[archive/parse-om] Updated property_year_built', { parcelId, yearBuilt });
+      } else {
+        await pool.query(
+          `INSERT INTO historical_observations
+             (parcel_id, observation_date, geography_level, observation_window,
+              is_subject_property, source_signals, data_quality_tier, property_year_built)
+           VALUES ($1, $2::DATE, 'parcel', 'monthly', false, ARRAY['om'], 'C2', $3)`,
+          [parcelId, observationDate, yearBuilt],
+        );
+        logger.info('[archive/parse-om] Inserted new row with property_year_built', { parcelId, yearBuilt });
+      }
+    }
+
+    return res.json({
+      success: true,
+      yearBuilt,
+      usedOcr: result.meta?.usedOcr ?? false,
+      propertyName: extraction.property?.name ?? null,
+      units: extraction.property?.units ?? null,
+      yearRenovated: extraction.property?.yearRenovated ?? null,
+      address: extraction.property?.address ?? null,
+      city: extraction.property?.city ?? null,
+      state: extraction.property?.state ?? null,
+      dbWritten: parcelId !== null && yearBuilt !== null,
+      extraction,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/parse-om] Unexpected error', { filename: file.originalname, error: msg });
+    return res.status(500).json({ success: false, error: msg });
+  }
 });
 
 export default router;
