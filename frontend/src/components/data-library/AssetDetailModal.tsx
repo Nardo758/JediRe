@@ -40,12 +40,19 @@ interface AssetDetails {
   address: string;
   city: string;
   state: string;
+  zipCode: string;
+  county: string;
+  msaName: string;
+  submarket: string;
   propertyType: string;
   assetClass: string;
   dealType: string;
+  constructionType: string;
   units: string;
   yearBuilt: string;
   stories: string;
+  lotSizeAcres: string;
+  parkingRatio: string;
   avgRent: string;
   occupancyPct: string;
   capRate: string;
@@ -146,6 +153,14 @@ const DEAL_TYPES = [
   { value: 'distressed', label: 'Distressed — REO / Foreclosure' },
 ];
 
+const CONSTRUCTION_TYPES = [
+  { value: 'Wood Frame',   label: 'Wood Frame' },
+  { value: 'Concrete',     label: 'Concrete' },
+  { value: 'Steel Frame',  label: 'Steel Frame' },
+  { value: 'Masonry',      label: 'Masonry' },
+  { value: 'Mixed',        label: 'Mixed' },
+];
+
 export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   assetId,
   customLabel,
@@ -158,12 +173,19 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     address: '',
     city: '',
     state: '',
+    zipCode: '',
+    county: '',
+    msaName: '',
+    submarket: '',
     propertyType: '',
     assetClass: '',
     dealType: '',
+    constructionType: '',
     units: '',
     yearBuilt: '',
     stories: '',
+    lotSizeAcres: '',
+    parkingRatio: '',
     avgRent: '',
     occupancyPct: '',
     capRate: '',
@@ -245,23 +267,30 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         const occPct = fractionToPercentString(a.occupancy_rate);
         const capPct = fractionToPercentString(a.cap_rate);
         setDetails({
-          propertyName: a.property_name || customLabel || '',
-          address: a.address || '',
-          city: a.city || '',
-          state: a.state || '',
-          propertyType: a.property_type || '',
-          assetClass: a.asset_class || '',
-          dealType: a.deal_type || '',
-          units: a.unit_count != null ? String(a.unit_count) : '',
-          yearBuilt: a.year_built != null ? String(a.year_built) : '',
-          stories: a.stories != null ? String(a.stories) : '',
-          avgRent: a.avg_rent != null ? String(Number(a.avg_rent)) : '',
-          occupancyPct: occPct,
-          capRate: capPct,
-          askingPrice: a.asking_price != null ? String(Number(a.asking_price)) : '',
-          soldPrice: a.sale_price != null ? String(Number(a.sale_price)) : '',
-          soldDate: a.sale_date ? String(a.sale_date).slice(0, 10) : '',
-          noi: a.noi != null ? String(Number(a.noi)) : '',
+          propertyName:     a.property_name || customLabel || '',
+          address:          a.address || '',
+          city:             a.city || '',
+          state:            a.state || '',
+          zipCode:          a.zip_code || '',
+          county:           a.county || '',
+          msaName:          a.msa_name || '',
+          submarket:        a.submarket_name || '',
+          propertyType:     a.property_type || '',
+          assetClass:       a.asset_class || '',
+          dealType:         a.deal_type || '',
+          constructionType: a.construction_type || '',
+          units:            a.unit_count != null ? String(a.unit_count) : '',
+          yearBuilt:        a.year_built != null ? String(a.year_built) : '',
+          stories:          a.stories != null ? String(a.stories) : '',
+          lotSizeAcres:     a.lot_size_acres != null ? String(Number(a.lot_size_acres)) : '',
+          parkingRatio:     a.parking_ratio != null ? String(Number(a.parking_ratio)) : '',
+          avgRent:          a.avg_rent != null ? String(Number(a.avg_rent)) : '',
+          occupancyPct:     occPct,
+          capRate:          capPct,
+          askingPrice:      a.asking_price != null ? String(Number(a.asking_price)) : '',
+          soldPrice:        a.sale_price != null ? String(Number(a.sale_price)) : '',
+          soldDate:         a.sale_date ? String(a.sale_date).slice(0, 10) : '',
+          noi:              a.noi != null ? String(Number(a.noi)) : '',
         });
       } catch (err) {
         console.error('Failed to load asset:', err);
@@ -297,23 +326,30 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
             const ex = omRes.data.extracted as Record<string, string | null>;
             // Fill blank fields only — never overwrite what the user already typed.
             setDetails(d => ({
-              propertyName: !d.propertyName || d.propertyName === customLabel ? (ex.propertyName ?? d.propertyName) : d.propertyName,
-              address:      d.address      || ex.address      || '',
-              city:         d.city         || ex.city         || '',
-              state:        d.state        || ex.state        || '',
-              propertyType: d.propertyType || '',
-              assetClass:   d.assetClass   || '',
-              dealType:     d.dealType     || '',
-              units:        d.units        || ex.units        || '',
-              yearBuilt:    d.yearBuilt    || ex.yearBuilt    || '',
-              stories:      d.stories      || ex.stories      || '',
-              avgRent:      d.avgRent      || ex.avgRent      || '',
-              occupancyPct: d.occupancyPct || ex.occupancyPct || '',
-              capRate:      d.capRate      || ex.capRate      || '',
-              askingPrice:  d.askingPrice  || ex.askingPrice  || '',
-              soldPrice:    d.soldPrice    || ex.soldPrice    || '',
-              soldDate:     d.soldDate     || '',
-              noi:          d.noi          || ex.noi          || '',
+              propertyName:     !d.propertyName || d.propertyName === customLabel ? (ex.propertyName ?? d.propertyName) : d.propertyName,
+              address:          d.address          || ex.address          || '',
+              city:             d.city             || ex.city             || '',
+              state:            d.state            || ex.state            || '',
+              zipCode:          d.zipCode          || ex.zipCode          || '',
+              county:           d.county           || ex.county           || '',
+              msaName:          d.msaName          || ex.msaName          || '',
+              submarket:        d.submarket        || ex.submarket        || '',
+              propertyType:     d.propertyType     || ex.propertyType     || '',
+              assetClass:       d.assetClass       || ex.assetClass       || '',
+              dealType:         d.dealType         || '',
+              constructionType: d.constructionType || ex.constructionType || '',
+              units:            d.units            || ex.units            || '',
+              yearBuilt:        d.yearBuilt        || ex.yearBuilt        || '',
+              stories:          d.stories          || ex.stories          || '',
+              lotSizeAcres:     d.lotSizeAcres     || ex.lotSizeAcres     || '',
+              parkingRatio:     d.parkingRatio     || ex.parkingRatio     || '',
+              avgRent:          d.avgRent          || ex.avgRent          || '',
+              occupancyPct:     d.occupancyPct     || ex.occupancyPct     || '',
+              capRate:          d.capRate          || ex.capRate          || '',
+              askingPrice:      d.askingPrice      || ex.askingPrice      || '',
+              soldPrice:        d.soldPrice        || ex.soldPrice        || '',
+              soldDate:         d.soldDate         || '',
+              noi:              d.noi              || ex.noi              || '',
             }));
             setUploadStatus(omRes.data.usedOcr ? 'OCR complete — fields filled' : 'OM parsed — fields filled');
           }
@@ -550,23 +586,30 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
       //   sale_price               → ACTUAL sold price (only set when soldPrice provided)
       //   sale_date                → ISO date string for sold date
       const payload: Record<string, unknown> = {
-        property_name: details.propertyName || customLabel,
-        address: details.address || null,
-        city: details.city || null,
-        state: details.state || null,
-        property_type: details.propertyType || null,
-        asset_class: details.assetClass || null,
-        deal_type: details.dealType || null,
-        unit_count: details.units ? parseInt(details.units) : null,
-        year_built: details.yearBuilt ? parseInt(details.yearBuilt) : null,
-        stories: details.stories ? parseInt(details.stories) : null,
-        avg_rent: details.avgRent ? parseFloat(details.avgRent) : null,
-        occupancy_rate: details.occupancyPct ? parseFloat(details.occupancyPct) / 100 : null,
-        cap_rate: details.capRate ? parseFloat(details.capRate) / 100 : null,
-        asking_price: details.askingPrice ? parseFloat(details.askingPrice) : null,
-        sale_price: details.soldPrice ? parseFloat(details.soldPrice) : null,
-        sale_date: details.soldDate || null,
-        noi: details.noi ? parseFloat(details.noi) : null,
+        property_name:    details.propertyName || customLabel,
+        address:          details.address    || null,
+        city:             details.city       || null,
+        state:            details.state      || null,
+        zip_code:         details.zipCode    || null,
+        county:           details.county     || null,
+        msa_name:         details.msaName    || null,
+        submarket_name:   details.submarket  || null,
+        property_type:    details.propertyType    || null,
+        asset_class:      details.assetClass      || null,
+        deal_type:        details.dealType         || null,
+        construction_type:details.constructionType || null,
+        unit_count:       details.units        ? parseInt(details.units)        : null,
+        year_built:       details.yearBuilt    ? parseInt(details.yearBuilt)    : null,
+        stories:          details.stories      ? parseInt(details.stories)      : null,
+        lot_size_acres:   details.lotSizeAcres ? parseFloat(details.lotSizeAcres) : null,
+        parking_ratio:    details.parkingRatio ? parseFloat(details.parkingRatio) : null,
+        avg_rent:         details.avgRent      ? parseFloat(details.avgRent)      : null,
+        occupancy_rate:   details.occupancyPct ? parseFloat(details.occupancyPct) / 100 : null,
+        cap_rate:         details.capRate      ? parseFloat(details.capRate)      / 100 : null,
+        asking_price:     details.askingPrice  ? parseFloat(details.askingPrice)  : null,
+        sale_price:       details.soldPrice    ? parseFloat(details.soldPrice)    : null,
+        sale_date:        details.soldDate     || null,
+        noi:              details.noi          ? parseFloat(details.noi)          : null,
         data_quality_score: calculateDQScore(),
       };
 
@@ -969,6 +1012,87 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                 value={details.stories}
                 onChange={e => updateField('stories', e.target.value)}
                 placeholder="3"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          {/* Property Details — enriched fields from OM / Auto-Enrich */}
+          <div style={{ fontSize: 10, fontWeight: 600, color: C.cyan, marginBottom: 10, marginTop: 20, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <MapPin size={12} />
+            PROPERTY DETAILS
+          </div>
+
+          {/* County · MSA · ZIP */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 90px', gap: 12, marginBottom: 12 }}>
+            <div>
+              <label style={labelStyle}>County</label>
+              <input
+                value={details.county}
+                onChange={e => updateField('county', e.target.value)}
+                placeholder="Fulton"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>MSA</label>
+              <input
+                value={details.msaName}
+                onChange={e => updateField('msaName', e.target.value)}
+                placeholder="Atlanta-Sandy Springs-Roswell, GA"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>ZIP</label>
+              <input
+                value={details.zipCode}
+                onChange={e => updateField('zipCode', e.target.value)}
+                placeholder="30309"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          {/* Submarket */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={labelStyle}>Submarket</label>
+            <input
+              value={details.submarket}
+              onChange={e => updateField('submarket', e.target.value)}
+              placeholder="Midtown / Buckhead"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Construction · Lot Size · Parking Ratio */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={labelStyle}>Construction Type</label>
+              <select value={details.constructionType} onChange={e => updateField('constructionType', e.target.value)} style={selectStyle}>
+                <option value="">Select...</option>
+                {CONSTRUCTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Lot Size (acres)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={details.lotSizeAcres}
+                onChange={e => updateField('lotSizeAcres', e.target.value)}
+                placeholder="4.2"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Parking Ratio (sp/unit)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={details.parkingRatio}
+                onChange={e => updateField('parkingRatio', e.target.value)}
+                placeholder="1.5"
                 style={inputStyle}
               />
             </div>
