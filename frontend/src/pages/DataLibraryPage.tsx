@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { dataLibraryService, type DataLibraryFile, type DataLibrarySearchParams } from '@/services/dataLibrary.service';
 import { apiClient } from '@/services/api.client';
 import { DealFolderView } from '@/components/data-library/DealFolderView';
@@ -149,6 +149,7 @@ export const DataLibraryPage: React.FC = () => {
   const pstInputRef = useRef<HTMLInputElement>(null);
 
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const [uploadMeta, setUploadMeta] = useState({
     dealId: '', city: '', zipCode: '', propertyType: 'Multifamily', propertyHeight: '',
@@ -158,7 +159,8 @@ export const DataLibraryPage: React.FC = () => {
   // Deals list for the deal-association selector in the upload form
   const [deals, setDeals] = useState<{ id: string; name: string }[]>([]);
 
-  const [activeTab, setActiveTab] = useState<'folders' | 'search' | 'archive'>('folders');
+  const initialTab = (['folders', 'search', 'archive'] as const).find(t => t === searchParams.get('tab')) ?? 'folders';
+  const [activeTab, setActiveTab] = useState<'folders' | 'search' | 'archive'>(initialTab);
 
   // Archive Properties tab state
   const [archiveAssets, setArchiveAssets] = useState<any[]>([]);
@@ -535,6 +537,12 @@ export const DataLibraryPage: React.FC = () => {
                 Clear
               </button>
             )}
+            <button
+              onClick={() => navigate('/cohorts/query')}
+              style={{ padding: '7px 14px', background: 'none', border: '1px solid #f59e0b', borderRadius: 6, color: '#f59e0b', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              Cohort Compare →
+            </button>
           </div>
 
           {archiveLoading ? (
@@ -568,8 +576,9 @@ export const DataLibraryPage: React.FC = () => {
                     display: 'grid', gridTemplateColumns: '2.5fr 1fr 0.7fr 0.8fr 0.8fr 0.8fr 0.7fr',
                     gap: 8, padding: '9px 12px', borderBottom: '1px solid #111827',
                     fontSize: 12, alignItems: 'center',
-                    transition: 'background 0.1s',
+                    transition: 'background 0.1s', cursor: 'pointer',
                   }}
+                    onClick={() => navigate(`/archive/properties/${a.parcel_id ?? a.id}`)}
                     onMouseEnter={e => (e.currentTarget.style.background = '#1a1a2e')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   >
