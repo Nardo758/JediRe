@@ -1,0 +1,38 @@
+[5/20/2026 9:05 PM] RocketManOpenClaw2: Yeah, I'm here. Not stuck — it was grinding through 42 OM PDFs one by one. Here's where we landed:
+
+17/42 OM PDFs uploaded with yearBuilt extracted ✅
+
+| Property                        | Year Built | City                  |
+| ------------------------------- | ---------- | --------------------- |
+| Addison on Long Beach           | 2019       | Seminole, FL          |
+| Alta Lakehouse                  | 2020       | Orlando, FL           |
+| Alta Tech Ridge                 | 2019       | Austin, TX            |
+| Ardmore at Flowers              | 2023       | Clayton, NC           |
+| Ashley River                    | 1984       | Charleston, SC        |
+| Avril Cambridge                 | 2022       | Denver, NC            |
+| Azola Palm Beach                | 2019       | West Palm Beach, FL   |
+| Cadence at Nocatee              | 2022       | Jacksonville, FL      |
+| Carrington at Brier Creek       | 2003       | Raleigh, NC           |
+| Crescent                        | 2008       | Austin, TX            |
+| East Point at Altamonte         | 1973       | Altamonte Springs, FL |
+| Enclave on East                 | 1986       | Largo, FL             |
+| Exchange Orange Park            | 2023       | Jacksonville, FL      |
+| Ferry Pike (Markham East)       | 2022       | Nashville, TN         |
+| Ferry Pike (Radius at Donelson) | 2021       | Nashville, TN         |
+| Legacy Crossroads               | 2009       | —                     |
+| Heron Pointe                    | 1981       | Boynton Beach, FL     |
+
+1 with null — Parkview Greer (new development, no year built)
+
+24 failed — server hit OpenAI 400 token limit on large PDFs (10-28MB). The Replit agent's parseOM endpoint needs text truncation before sending to the AI. I left the details in docs/OM_UPLOAD_RESULTS.txt.
+
+Want me to relay the truncation fix needed to the Replit agent, or handle it another way?
+[5/20/2026 9:20 PM] Leon D: yes
+[5/20/2026 9:20 PM] RocketManOpenClaw2: Let me check what the exact status of the first batch was — actually I need the full error message to send the right fix. Let me check the parse-om endpoint code to know exactly where to suggest the truncation:
+[5/20/2026 9:20 PM] RocketManOpenClaw2: The parse-om endpoint isn't in the local codebase — it was added by the Replit agent. Let me send them the message:
+[5/20/2026 9:20 PM] RocketManOpenClaw2: No sub-agent session exists for the Replit agent. Let me check if there's a way to reach it:
+[5/20/2026 9:20 PM] RocketManOpenClaw2: No active Replit agent session to send to. That makes sense — the Replit agent's message you quoted earlier was from a separate session that's no longer active.
+
+You'll need to relay the fix to the Replit side yourself, or I can draft the message for you. The gist:
+
+Fix for parse-om endpoint: After extracting text from the PDF (via pdfjs-dist or pdftoppm), truncate to the first 30-50K characters before sending to Claude. The yearBuild is always in the first few pages — no need to send the full 100K+ char output for large OMs.
