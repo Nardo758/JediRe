@@ -1,0 +1,2666 @@
+[
+  {
+    "parcel_id": "100 Inverness",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "1420 Magnolia",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "33 West",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "45 Eighty Dunwoody",
+    "msa": "Atlanta-Sandy Springs-Roswell, GA",
+    "state": "GA",
+    "cbsa_code": "12060",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "464 Bishop - ATL",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "72 West",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "7900 Park Central",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "841 Memorial",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "860 South",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "900 Dwell",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Accent 2050",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Addison on Long Beach",
+    "msa": "Los Angeles-Long Beach-Anaheim, CA",
+    "state": "CA",
+    "cbsa_code": "31080",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Advenir at Prestonwood",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Alexan Avondale",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Alpharetta City Center",
+    "msa": "Atlanta-Sandy Springs-Roswell, GA",
+    "state": "GA",
+    "cbsa_code": "12060",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Alta at Health Village",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Alta Dairies",
+    "msa": "Atlanta-Sandy Springs-Roswell, GA",
+    "state": "GA",
+    "cbsa_code": "12060",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Alta East",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Alta Lakehouse",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Alta Tech Ridge",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Alta Warehouse",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Altis & Altra",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Amberwood",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Andorra Apartments",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Ansley at Princeton Lakes",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Arden at Midtown",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Ardmore at Flowers",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Artistry",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Ascen Varina Gateway",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Ashley River",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Austin Deals",
+    "msa": "Austin-Round Rock-Georgetown, TX",
+    "state": "TX",
+    "cbsa_code": "12420",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Avril Cambridge",
+    "msa": "Charlotte-Concord-Gastonia, NC-SC",
+    "state": "NC",
+    "cbsa_code": "16740",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Axiom",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Axis Berewick",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Azola Palm Beach",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Bainbridge Aviation Crossings",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Bainbridge Matthews",
+    "msa": "Charlotte-Concord-Gastonia, NC-SC",
+    "state": "NC",
+    "cbsa_code": "16740",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Bainbridge Research Park",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Bainbridge Sunlake",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Barcelona Apartments",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Beckett Farms",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Bell Bishop arts",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Bell LightHouse Point",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Bell Parkland",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Bellevue Spring Creek",
+    "msa": "Seattle-Tacoma-Bellevue, WA",
+    "state": "WA",
+    "cbsa_code": "42660",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Biscayne 112",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Bridgeview Apartments",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Broadstone Highland Creek",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Broadstone Junction",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Broadstone Lemmond Farm",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Broadstone Station",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Broadstone Sugar Hill",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Broadstone Trailside",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Build to Rent",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Cadence at Nocatee",
+    "msa": "Jacksonville, FL",
+    "state": "FL",
+    "cbsa_code": "27260",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Cadence Music Factory",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Cadence Sugar Hill",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Carrington at Brier Creek",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Casa Mara",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "CasaMara",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Chapel Hill",
+    "msa": "Raleigh-Cary, NC",
+    "state": "NC",
+    "cbsa_code": "39580",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Charlotte Pike",
+    "msa": "Charlotte-Concord-Gastonia, NC-SC",
+    "state": "NC",
+    "cbsa_code": "16740",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Charlotte Two Pack",
+    "msa": "Charlotte-Concord-Gastonia, NC-SC",
+    "state": "NC",
+    "cbsa_code": "16740",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Citadel Lookout",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Citizen House",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Citron Allen",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "City North - TX",
+    "msa": "Unknown (TX)",
+    "state": "TX",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Coddle Creek",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Colums at Wakefield",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Cornerstone",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Cottages at emerald Creek",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Courtney Lake",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Creekside Ranch",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Crescent",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Crest at Flower Branch",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Crestmont at Thornblade",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Crown at James Landing",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Curv",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Debartolo Portfolio",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "District South",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "District Station",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "East Point at Altamonte",
+    "msa": "Orlando-Kissimmee-Sanford, FL",
+    "state": "FL",
+    "cbsa_code": "36740",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Easton Portfolio",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Echo  Lakeside",
+    "msa": "Unknown (SC)",
+    "state": "SC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Eden Crystal Lake",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Edinborough Commons",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Elan Powers Ferry",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Element Galleria",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Elevate Powell and Broad",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Emblem Greyson",
+    "msa": "Miami-Fort Lauderdale-West Palm Beach, FL",
+    "state": "FL",
+    "cbsa_code": "33100",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Enclave at Rivergate",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Enclave on East",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Encore",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Estates at Crossroads",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Eve at the District",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Exchange at Indian Trail",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Exchange Orange Park",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Factory at Garco",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Ferry Pike",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Ferry Pike - Nashville",
+    "msa": "Nashville-Davidson-Murfreesboro-Franklin, TN",
+    "state": "TN",
+    "cbsa_code": "34980",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "FieldHouse",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Florida Crystals Deal",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Folksong at Flowery Branch",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Franklin Jones",
+    "msa": "Nashville-Davidson-Murfreesboro-Franklin, TN",
+    "state": "TN",
+    "cbsa_code": "34980",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Gateway at Hartfield",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Harbor at Westshore",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Hardy Oak",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Hawthorne at Clairmont",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Heights at Sugarloaf",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Heron Pointe",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Highlands at Preston",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Highlnad Ridge Apartments",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Hoover Two Pack",
+    "msa": "Birmingham-Hoover, AL",
+    "state": "AL",
+    "cbsa_code": "13820",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Hudson Commons",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Hudson Northridge",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Hunter Pointe",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Indigo Run",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Infield Orlando",
+    "msa": "Orlando-Kissimmee-Sanford, FL",
+    "state": "FL",
+    "cbsa_code": "36740",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Jade at Hyde Park",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Jade hyde Park",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Jefferson Apartment Building",
+    "msa": "Louisville/Jefferson County, KY-IN",
+    "state": "KY",
+    "cbsa_code": "31140",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Jones Grant",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Junction at Antiquity",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Kennesaw Deals",
+    "msa": "Atlanta-Sandy Springs-Roswell, GA",
+    "state": "GA",
+    "cbsa_code": "12060",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Kia Ora",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Knox at Metrocenter",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Lake Ridge",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Legacy Crossroads",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "legacy Village",
+    "msa": "Charlotte-Concord-Gastonia, NC-SC",
+    "state": "NC",
+    "cbsa_code": "16740",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Leo Loso",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Linvingston",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Linz Holy Springs",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Liv Deals",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Livano Canyon Falls",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Livano Pflugerville",
+    "msa": "Dallas-Fort Worth-Arlington, TX",
+    "state": "TX",
+    "cbsa_code": "19100",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Lofts at Weston",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Lucent",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Luxary Apartments at Foxwood",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "MAdison Farms",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Magnolia Vinings",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Manor 6 forks",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Matthews Reserve",
+    "msa": "Charlotte-Concord-Gastonia, NC-SC",
+    "state": "NC",
+    "cbsa_code": "16740",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Mercer Park",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Mira Flores",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Mirabella Lakes",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Modena",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Morningside",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "New folder",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Novel Research Park",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Novel Upper Westside",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Oasis - Dania Pointe",
+    "msa": "Miami-Fort Lauderdale-West Palm Beach, FL",
+    "state": "FL",
+    "cbsa_code": "33100",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Octave Apartments",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Paces Brook",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Palmetto Place",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Palmetto Pointe",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Parc",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Parc at 1695",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Parian Apartments",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Park 2300",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Park Ave",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Park on Clairmont",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Park Plaza",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Park Vista",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Parkside at Towncenter - Georgia",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Parkview Greer",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Patterson Place",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "PGA Development",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Pointe Grand Apartments",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Portfolio",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Portiva - Jacksonville",
+    "msa": "Jacksonville, FL",
+    "state": "FL",
+    "cbsa_code": "27260",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Preserve at Godley",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Preserve at Mill Creek",
+    "msa": "Unknown (CA)",
+    "state": "CA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Preserve at Mountain",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Preston Pointe at windermere",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Princeton Pac",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Pringle Square",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Promenade at Carillon",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Raleigh Exchange",
+    "msa": "Raleigh-Cary, NC",
+    "state": "NC",
+    "cbsa_code": "39580",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Raleigh Portfolio",
+    "msa": "Raleigh-Cary, NC",
+    "state": "NC",
+    "cbsa_code": "39580",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Ravella Town Center",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Regatta at Lake Lynn",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Reserve at Bridford",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Reserve at Magnolia",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Residences at Shilo Crossings",
+    "msa": "Unknown (SC)",
+    "state": "SC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Retreat at Johns Creek",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Richmond Row",
+    "msa": "Richmond, VA",
+    "state": "VA",
+    "cbsa_code": "40060",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Rivera At Seaside",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Riverbend",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Riverbend Apartments",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Rivertree",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Santori",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Sentosa Riverview",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Serramar",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Seventeen West",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Shoreview",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Siena Round Rock",
+    "msa": "Austin-Round Rock-Georgetown, TX",
+    "state": "TX",
+    "cbsa_code": "12420",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Sixes Ridge",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Sodo Duluth",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Solis Ballantyne",
+    "msa": "Charlotte-Concord-Gastonia, NC-SC",
+    "state": "NC",
+    "cbsa_code": "16740",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Solis Carraway",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Solis City Park",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Solis Cummings",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Solis Decatur",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Solis Interlock",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Solis Millennium",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Solis Reynolds Place",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Solis Suwanaee Town Center",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "St Tropez",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Steele Creek rivergate",
+    "msa": "Unknown (TX)",
+    "state": "TX",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Stone Ridge",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Stonebriar",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Sugarloaf Grove",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Sugarloaf Trials",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "SUR Southside",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Sweetwater Vista",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Tapestry Town Center",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Terrabella",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Texas Deals",
+    "msa": "Unknown (TX)",
+    "state": "TX",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Ace",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The apartments at Areboretum",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Archer",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Bohemian",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Bradford",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Brazos",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Brooke",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Catherine",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Cove at Covington",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Darby",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Eddy",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Edison",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Elliott",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Fields Lincoln Green",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Helix",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Hillson",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Hollows",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Jaxon",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Julington",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Kensley",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Linden",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Mason Sugarloaf",
+    "msa": "Atlanta-Sandy Springs-Roswell, GA",
+    "state": "GA",
+    "cbsa_code": "12060",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Maven",
+    "msa": "Atlanta-Sandy Springs-Roswell, GA",
+    "state": "GA",
+    "cbsa_code": "12060",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Mc Coy Apartments",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Mid",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Mid - Lake worth",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Milan",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Mile",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Mosby",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Newton",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The palms",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Park at Kensington",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Parker",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Parkstone Gallatin",
+    "msa": "Nashville-Davidson-Murfreesboro-Franklin, TN",
+    "state": "TN",
+    "cbsa_code": "34980",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Piedmont",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Pioneer",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Place at 1825",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The pointe @ Preston Ridge",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Quincy",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Reid",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The reserve at Cary Park",
+    "msa": "Raleigh-Cary, NC",
+    "state": "NC",
+    "cbsa_code": "39580",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Resever at Glenn Laurel",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Residences at 3000 Bardin",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The retreat at Fuquay",
+    "msa": "Raleigh-Cary, NC",
+    "state": "NC",
+    "cbsa_code": "39580",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Rey on Reynolds",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Sagefield",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Statesman",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Station Fleming Island",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The View of Forth Worth",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Village at Westland Cove",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Villlage",
+    "msa": "Charlotte-Concord-Gastonia, NC-SC",
+    "state": "NC",
+    "cbsa_code": "16740",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "The Vineyard",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Thornhill",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Town Southern",
+    "msa": "Unknown (FL)",
+    "state": "FL",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Trailside at Reedy Point",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Trailside Verde",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Trilogy Cameron Village",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Trilogy Chapel Hill",
+    "msa": "Raleigh-Cary, NC",
+    "state": "NC",
+    "cbsa_code": "39580",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Tuscan Heights",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Uptown at Liberty Park",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Uptown Boca",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "V & 3 Apartments",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "V & Three",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Vail Village",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Vantage at Wildwood",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Vecina",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Vestavia Reserve",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "View at Woodstock",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Village at Lake Front",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Village on the Green",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Vista Verde",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Vista Verde - Miami",
+    "msa": "Miami-Fort Lauderdale-West Palm Beach, FL",
+    "state": "FL",
+    "cbsa_code": "33100",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Waterford Place - Morrisville",
+    "msa": "Raleigh-Cary, NC",
+    "state": "NC",
+    "cbsa_code": "39580",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Waterlynn",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "West End",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Whitehall Estates",
+    "msa": null,
+    "state": null,
+    "cbsa_code": null,
+    "year_built": null,
+    "msa_source": "unresolved",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Windsor Landing",
+    "msa": "Unknown (GA)",
+    "state": "GA",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "om_doc",
+    "year_built_source": null
+  },
+  {
+    "parcel_id": "Windsor Landings - NC",
+    "msa": "Unknown (NC)",
+    "state": "NC",
+    "cbsa_code": "",
+    "year_built": null,
+    "msa_source": "folder_name",
+    "year_built_source": null
+  }
+]
