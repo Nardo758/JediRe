@@ -470,6 +470,9 @@ app.use('/api/v1/news-connections', newsConnectionsRoutes);
 import archiveRouter from './api/rest/archive.routes';
 app.use('/api/v1/archive', archiveRouter);
 
+import cohortRouter from './api/rest/cohorts.routes';
+app.use('/api/v1/cohorts', cohortRouter);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
