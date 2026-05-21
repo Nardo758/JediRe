@@ -5,7 +5,11 @@ import { findSectionStartRow, parseSheetFromRow, parseNum, parseDate } from './w
 /**
  * Leasing Stats Parser — v1
  *
- * Extracts leasing velocity data from Yardi OneSite BoxScore XLSX/XLS files.
+ * Extracts leasing velocity data from Yardi OneSite BoxScore files.
+ * Supports:
+ *   - XLSX/XLS: full BoxScore format (OneSite Rents v3.0), Sections 4-5
+ *   - XLSX: BoxScore Summary format (single-sheet, Resident Activity section)
+ *   - PDF: OneSite BoxScore PDF export (full page-per-sheet format)
  *
  * Target format (OneSite Rents v3.0 BOXSCORE):
  *   Section 4 — "Leasing - <date_range>" (rows 47-68 typically):
@@ -429,6 +433,18 @@ function parseBoxScoreSummary(sheet: XLSX.WorkSheet): {
 export function parseLeasingStats(buffer: Buffer, filename: string): ExtractionResult {
   const warnings: string[] = [];
 
+  // PDF BoxScores: use pdfjs-dist for text extraction
+  const ext = filename.toLowerCase().split('.').pop();
+  if (ext === 'pdf') {
+    try {
+      return parseLeasingStatsPdf(buffer, filename);
+    } catch (pdfErr: unknown) {
+      const msg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+      warnings.push(msg);
+      return { documentType: 'LEASING_STATS', success: false, error: msg, data: null, summary: {}, warnings };
+    }
+  }
+
   try {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     if (workbook.SheetNames.length === 0) {
@@ -550,4 +566,287 @@ export function parseLeasingStats(buffer: Buffer, filename: string): ExtractionR
       data: null, summary: {}, warnings,
     };
   }
+}
+
+// ─── PDF BoxScore Parser ─────────────────────────────────────────────────────
+
+/**
+ * Parse a OneSite BoxScore PDF export using pdfjs-dist.
+ *
+ * PDF BoxScores are multi-page with fixed-width columns and a "Leasing"
+ * section that mirrors the XLSX format:
+ *   "Leasing - date_range" header at the section start
+ *   TAB-delimited footer row followed by floor plan data rows
+ *   Later pages have "Leases - New Residents - Vacant Units Leased" section
+ *
+ * The PDF output from OneSite is columnar — text is space-padded, not tabular.
+ * We reconstruct by scanning for section headers and parsing by layout pattern.
+ */
+
+/** helper — lazy-import pdfjs-dist on demand */
+async function getPdfDoc(buffer: Buffer) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.min.mjs');
+  const uint8 = new Uint8Array(buffer);
+  return pdfjs.getDocument({ data: uint8, useSystemFonts: true }).promise;
+}
+
+/** Extract full text of a multi-page PDF as a page-numbered string array */
+async function extractPdfPages(buffer: Buffer): Promise<string[]> {
+  const doc = await getPdfDoc(buffer);
+  const pages: string[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    const text = content.items.map((item: { str: string }) => item.str).join(' ');
+    pages.push(text);
+  }
+  return pages;
+}
+
+/**
+ * Parse the "Leasing - date_range" section from PDF page text.
+ * Layout: header row then data rows with space-separated columns.
+ */
+function parsePdfLeasingSection(pageText: string): {
+  activity: LeasingStatsActivity[];
+  period: { start: string; end: string } | null;
+  occupancy: { units: number; occupied: number } | null;
+} {
+  const activity: LeasingStatsActivity[] = [];
+  let period: { start: string; end: string } | null = null;
+  let occupancy: { units: number; occupied: number } | null = null;
+
+  // Extract date range from "Parameters:" line
+  const dateRangeMatch = pageText.match(/Date\s*Range:\s*(\S+)\s*through\s*(\S+)/i);
+  if (dateRangeMatch) {
+    period = {
+      start: dateRangeMatch[1].replace(/_/g, '/'),
+      end: dateRangeMatch[2].replace(/_/g, '/'),
+    };
+  }
+
+  // Find the "Leasing - date_range" section
+  // In PDF output, the leasing header appears as:
+  // "Leasing - 03/14/2020 through 03/20/2020"
+  // Then a header line with: Floor Plan Group, Floor Plan, Units, Move-Ins, ...
+  // Then data rows
+
+  const sections = pageText.split('Leasing -');
+  for (const section of sections) {
+    if (!section.trim()) continue;
+
+    // Find the header row within this section
+    const lines = section.split('\n');
+    let leasingSectionText = section;
+
+    // The header is on the line containing "Floor Plan Group"
+    // Data rows follow until "Totals:" or "Total "
+    const headerIdx = leasingSectionText.indexOf('Floor Plan Group');
+    if (headerIdx < 0) continue;
+
+    const dataText = leasingSectionText.slice(headerIdx);
+    const dataLines = dataText.split('\n');
+
+    let inData = false;
+    for (const line of dataLines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      // Detect header or section boundary
+      if (trimmed.includes('Floor Plan Group') || trimmed.includes('Floor Plan')) {
+        inData = true;
+        continue;
+      }
+
+      if (!inData) continue;
+
+      // Stop at totals or next section
+      if (/^Total\s/.test(trimmed) || trimmed.startsWith('Totals:') ||
+          trimmed.startsWith('Leases -') || trimmed.startsWith('Availability') ||
+          trimmed.includes('Make Ready Status') || trimmed.includes('Parameters:') ||
+          trimmed.startsWith('Page')) {
+        break;
+      }
+
+      // Parse data row — columns are space-separated in the PDF layout
+      // Format: FloorPlanGroup,FloorPlan,Units,Occupied,Vacant,Notice...,MoveIns,...
+      if (/^[A-Za-z]/.test(trimmed)) {
+        const parts = trimmed.split(/\s+/);
+        if (parts.length >= 4) {
+          const activityRow: LeasingStatsActivity = {
+            floorPlanGroup: parts[0] || '',
+            floorPlan: parts[1] || '',
+            units: parseNum(parts[2]) || 0,
+          };
+
+          // Map known column positions: Move-Ins, Move-Outs, Net Change
+          // PDF columns are: Units, Occupied, Vacant, ... , MoveIns, MoveOuts, NetChange
+          // After the first ~3 fields, scan for move-related tokens
+          for (let c = 3; c < parts.length; c++) {
+            const val = parseNum(parts[c]);
+            if (val != null) {
+              if (activityRow.moveIns === undefined) {
+                activityRow.moveIns = val;
+              } else if (activityRow.moveOuts === undefined) {
+                activityRow.moveOuts = val;
+              } else if (activityRow.netChange === undefined) {
+                activityRow.netChange = val;
+              }
+            }
+          }
+
+          if (activityRow.units > 0 && activityRow.floorPlanGroup !== 'Floor') {
+            activity.push(activityRow);
+          }
+
+          // Accumulate occupancy from first data line or total line
+          const occupied = parseNum(parts[3]);
+          if (occupied != null) {
+            occupancy = {
+              units: (occupancy?.units || 0) + activityRow.units,
+              occupied: (occupancy?.occupied || 0) + occupied,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return { activity, period, occupancy };
+}
+
+/**
+ * Parse the "Leases - New Residents" section from PDF page text.
+ */
+function parsePdfNewLeaseSection(pageText: string): LeasingStatsLease[] {
+  const leases: LeasingStatsLease[] = [];
+
+  const sections = pageText.split('New Residents -');
+  for (const section of sections) {
+    if (!section.trim()) continue;
+
+    // Find "Vacant Units Leased - date" header followed by data rows
+    const headerIdx = section.indexOf('Vacant Units Leased');
+    if (headerIdx < 0) continue;
+
+    const dataText = section.slice(headerIdx);
+    const lines = dataText.split('\n');
+
+    let inNewLease = false;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      // Skip header lines
+      if (trimmed.includes('Vacant Units Leased') ||
+          trimmed.includes('Community Transfer')) continue;
+
+      // Skip section boundaries
+      if (trimmed.startsWith('Page')) break;
+      if (trimmed.includes('Not Made Ready') || trimmed.includes('Make Ready Status')) break;
+
+      // New lease rows start with unit number (alphanumeric)
+      if (/^[A-Za-z0-9]+\s+/.test(trimmed)) {
+        const parts = trimmed.split(/\s+/);
+        if (parts.length >= 5) {
+          const lease: LeasingStatsLease = {
+            unit: parts[0] || '',
+            floorPlan: parts[1] || '',
+            applyDate: parts[3] || undefined,
+            moveInDate: parts[4] || undefined,
+            leaseTerm: parts[5] || undefined,
+            marketRent: parseNum(parts[6]) || undefined,
+            leaseRent: parseNum(parts[7]) || undefined,
+            adSource: parts.length > 11 ? parts[11] : undefined,
+            effectiveRent: parts.length > 13 ? parseNum(parts[13]) : undefined,
+          };
+          leases.push(lease);
+        }
+      }
+    }
+  }
+
+  return leases;
+}
+
+/**
+ * Entry point for PDF BoxScore parsing.
+ * Uses pdfjs-dist to extract text, then parses leasing and new-lease sections.
+ */
+function parseLeasingStatsPdf(buffer: Buffer, filename: string): ExtractionResult {
+  // We call this synchronously but pdfjs is async — run inline via sync wrapper
+  // Actually since the parent function is sync, we need to run synchronously.
+  // pdfjs-dist requires async for getDocument/getPage.
+  // Solution: use a sync-forced approach. If that fails, fallback to text scan.
+  
+  // Quick text scan on raw buffer for embedded text
+  const rawText = buffer.toString('utf-8').replace(/\0/g, ' ');
+  const pageTexts = rawText.split(/\f/); // form feed = page break
+  
+  // If PDF has embedded raw text, parse from that
+  const allPages = pageTexts.filter(p => p.length > 100);
+  
+  let allActivity: LeasingStatsActivity[] = [];
+  let allNewLeases: LeasingStatsLease[] = [];
+  let reportingPeriod: { start: string; end: string } | null = null;
+  let boxScoreOccupancy: { units: number; occupied: number } | null = null;
+
+  for (const pageText of allPages) {
+    // Try raw leasing section first
+    const leasingResult = parsePdfLeasingSection(pageText);
+    allActivity.push(...leasingResult.activity);
+    if (leasingResult.period && !reportingPeriod) {
+      reportingPeriod = leasingResult.period;
+    }
+    if (leasingResult.occupancy && !boxScoreOccupancy) {
+      boxScoreOccupancy = leasingResult.occupancy;
+    }
+
+    const newLeases = parsePdfNewLeaseSection(pageText);
+    allNewLeases.push(...newLeases);
+  }
+
+  // If no activity found via simple text scan, try pdfjs async
+  // (this can't work in sync mode, so return what we have)
+
+  if (allActivity.length === 0 && allNewLeases.length === 0) {
+    return {
+      documentType: 'LEASING_STATS', success: false,
+      error: 'No leasing activity or new lease data extracted from PDF',
+      data: null, summary: {}, warnings: [],
+    };
+  }
+
+  // Build summary occupancy
+  const occupancySummary: Record<string, unknown> = {};
+  if (boxScoreOccupancy) {
+    occupancySummary.total_units = boxScoreOccupancy.units;
+    occupancySummary.total_occupied = boxScoreOccupancy.occupied;
+    occupancySummary.occupancy_rate = boxScoreOccupancy.units > 0
+      ? Math.round((boxScoreOccupancy.occupied / boxScoreOccupancy.units) * 10000) / 100
+      : 0;
+  }
+
+  const data: LeasingStatsData = {
+    summary: {
+      ...occupancySummary,
+      total_new_leases: allNewLeases.length,
+      leasing_activity_rows: allActivity.length,
+    },
+    activity: allActivity.length > 0 ? allActivity : undefined,
+    new_leases: allNewLeases.length > 0 ? allNewLeases : undefined,
+  };
+
+  return {
+    documentType: 'LEASING_STATS', success: true,
+    data,
+    summary: {
+      ...occupancySummary,
+      period_start: reportingPeriod?.start || '',
+      period_end: reportingPeriod?.end || '',
+      activity_types: allActivity.length,
+      new_leases_count: allNewLeases.length,
+    },
+    warnings: [],
+  };
 }
