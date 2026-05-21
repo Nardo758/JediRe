@@ -5,7 +5,7 @@
  * This enables proper categorization for the underwriting agent to use as comps.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Building2, MapPin, DollarSign, Percent, Calendar, Layers, CheckCircle, Upload, FileText, Loader2 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { cloudStorageService } from '../../services/cloudStorage.service';
@@ -181,6 +181,25 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  interface AttachedFile {
+    id: number;
+    file_name: string;
+    file_size: number;
+    mime_type: string | null;
+    parsing_status: string;
+    parsing_stage: string | null;
+    uploaded_at: string;
+  }
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+
+  const fetchAttachedFiles = useCallback(async () => {
+    if (!assetId || !editMode) return;
+    try {
+      const res = await apiClient.get(`/api/v1/data-library-assets/${assetId}/files`);
+      setAttachedFiles(res.data?.files ?? []);
+    } catch { /* non-critical */ }
+  }, [assetId, editMode]);
+
   // Auto-Enrich state. The flow is:
   //   1) Click "Auto-Enrich" → POST /enrich/:assetId (preview only, no DB write)
   //   2) Stage per-field decisions in `decisions` state (no API calls yet)
@@ -205,6 +224,11 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   // avoids caret-jump glitches that happen when a controlled <input>'s value
   // shifts character count between keystrokes.
   const [focusedMoneyField, setFocusedMoneyField] = useState<keyof AssetDetails | null>(null);
+
+  // Load attached files on mount (edit mode only)
+  useEffect(() => {
+    fetchAttachedFiles();
+  }, [fetchAttachedFiles]);
 
   // Prefill from existing asset when in edit mode
   useEffect(() => {
@@ -256,6 +280,49 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     setError(null);
     try {
       const fileArray = Array.from(files);
+
+      // ── OM auto-fill: if exactly one PDF was dropped, parse it for field extraction first ──
+      const singlePdf = fileArray.length === 1 && fileArray[0].name.toLowerCase().endsWith('.pdf');
+      if (singlePdf && editMode) {
+        setUploadStatus('Reading OM...');
+        try {
+          const form = new FormData();
+          form.append('file', fileArray[0]);
+          const omRes = await apiClient.post(
+            `/api/v1/data-library-assets/${assetId}/parse-om`,
+            form,
+            { headers: { 'Content-Type': 'multipart/form-data' } },
+          );
+          if (omRes.data?.success && omRes.data?.extracted) {
+            const ex = omRes.data.extracted as Record<string, string | null>;
+            // Fill blank fields only — never overwrite what the user already typed.
+            setDetails(d => ({
+              propertyName: !d.propertyName || d.propertyName === customLabel ? (ex.propertyName ?? d.propertyName) : d.propertyName,
+              address:      d.address      || ex.address      || '',
+              city:         d.city         || ex.city         || '',
+              state:        d.state        || ex.state        || '',
+              propertyType: d.propertyType || '',
+              assetClass:   d.assetClass   || '',
+              dealType:     d.dealType     || '',
+              units:        d.units        || ex.units        || '',
+              yearBuilt:    d.yearBuilt    || ex.yearBuilt    || '',
+              stories:      d.stories      || ex.stories      || '',
+              avgRent:      d.avgRent      || ex.avgRent      || '',
+              occupancyPct: d.occupancyPct || ex.occupancyPct || '',
+              capRate:      d.capRate      || ex.capRate      || '',
+              askingPrice:  d.askingPrice  || ex.askingPrice  || '',
+              soldPrice:    d.soldPrice    || ex.soldPrice    || '',
+              soldDate:     d.soldDate     || '',
+              noi:          d.noi          || ex.noi          || '',
+            }));
+            setUploadStatus(omRes.data.usedOcr ? 'OCR complete — fields filled' : 'OM parsed — fields filled');
+          }
+        } catch {
+          // OM parse failing should not block the regular upload
+          setUploadStatus('Uploading...');
+        }
+      }
+
       // If exactly one ZIP was dropped, send it to the zip endpoint so it gets unpacked.
       const isSingleZip = fileArray.length === 1 && fileArray[0].name.toLowerCase().endsWith('.zip');
       const job = isSingleZip
@@ -303,6 +370,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               noi: a.noi != null ? String(Number(a.noi)) : d.noi,
             }));
             onSave(); // notify parent so list refreshes
+            fetchAttachedFiles(); // refresh the file list in this modal
           } catch { /* ignore */ }
           setTimeout(() => { setUploadStatus(null); setUploading(false); }, 1200);
           return;
@@ -1077,8 +1145,56 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
             <>
               <div style={{ fontSize: 10, fontWeight: 600, color: C.amber, marginBottom: 10, marginTop: 24, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <FileText size={12} />
-                ATTACH DOCUMENTS
+                ATTACHED DOCUMENTS{attachedFiles.length > 0 && ` (${attachedFiles.length})`}
               </div>
+
+              {/* Existing file list */}
+              {attachedFiles.length > 0 && (
+                <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {attachedFiles.map(f => {
+                    const ext = f.file_name.split('.').pop()?.toLowerCase() ?? '';
+                    const sizeKb = f.file_size > 0 ? (f.file_size / 1024).toFixed(0) : null;
+                    const statusColor =
+                      f.parsing_status === 'complete' ? C.green :
+                      f.parsing_status === 'error'    ? C.red    : C.amber;
+                    const statusLabel =
+                      f.parsing_status === 'complete' ? (f.parsing_stage ?? 'parsed') :
+                      f.parsing_status === 'error'    ? 'error'   : 'processing';
+                    const uploadedDate = new Date(f.uploaded_at).toLocaleDateString(undefined, {
+                      month: 'short', day: 'numeric', year: '2-digit',
+                    });
+                    return (
+                      <div
+                        key={f.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          background: C.input, padding: '7px 10px',
+                          border: `1px solid ${C.border}`,
+                          fontFamily: MONO, fontSize: 10,
+                        }}
+                      >
+                        <FileText size={11} style={{ color: C.cyan, flexShrink: 0 }} />
+                        <span style={{ color: C.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {f.file_name}
+                        </span>
+                        {ext && (
+                          <span style={{ color: C.muted, fontSize: 9, background: C.bg, padding: '1px 4px', borderRadius: 2, flexShrink: 0 }}>
+                            {ext.toUpperCase()}
+                          </span>
+                        )}
+                        {sizeKb && (
+                          <span style={{ color: C.muted, fontSize: 9, flexShrink: 0 }}>
+                            {Number(sizeKb) >= 1024 ? `${(Number(sizeKb)/1024).toFixed(1)} MB` : `${sizeKb} KB`}
+                          </span>
+                        )}
+                        <span style={{ color: C.muted, fontSize: 9, flexShrink: 0 }}>{uploadedDate}</span>
+                        <span style={{ color: statusColor, fontSize: 9, flexShrink: 0 }}>{statusLabel}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               <input
                 ref={fileInputRef}
                 type="file"

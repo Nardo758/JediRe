@@ -481,19 +481,31 @@ async function extractWithAI(
   filename: string,
   ctx?: OMParseContext
 ): Promise<OMExtraction> {
-  // Truncate text if too long (Claude context limit; DeepSeek is similar)
-  const maxChars = 180000; // ~45k tokens
+  // Truncate text before sending to the AI.
+  // DeepSeek (default model for om_parsing) has a 64K-token context window.
+  // Dense PDF text (tables, figures, financial schedules) tokenises at ~3-3.5
+  // chars/token, so 180K chars → ~50K+ tokens.  Add the extraction prompt
+  // (~3K tokens) and 8K reserved output and you're over the limit for large
+  // OMs (10–28 MB files).
+  // Key OM fields (year built, unit count, asking price, broker pro-forma)
+  // appear in the first 10–20 pages, so 50K chars is more than enough.
+  const maxChars = 50000; // ~14k tokens — safely under any routing target
   const truncatedText = text.length > maxChars
-    ? text.slice(0, maxChars) + '\n\n[TRUNCATED - Document continues...]'
+    ? text.slice(0, maxChars) + '\n\n[TRUNCATED - Document continues beyond this point]'
     : text;
   const userMessage = `${OM_EXTRACTION_PROMPT}\n\n---\n\nDocument: ${filename}\n\n${truncatedText}`;
 
   let responseText: string;
 
-  if (ctx?.userId) {
+  if (ctx != null) {
     // Route through JediAIService so per-user / per-surface model preferences
     // (pipeline:om_parsing) take effect — and so usage hits the credit ledger
     // and Stripe meter just like agent calls.
+    // NOTE: ctx.userId may be an empty string for internal / system calls.
+    // JediAIService handles that gracefully (skips credit deduction and Stripe
+    // reporting) while still routing through the DeepSeek path.  Do NOT gate
+    // on ctx.userId truthiness — empty string is falsy and would cause every
+    // file-without-owner upload to fall through to the legacy Anthropic branch.
     let stripeCustomerId = '';
     try {
       const r = await query(

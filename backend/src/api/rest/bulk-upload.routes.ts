@@ -76,6 +76,7 @@ interface UploadJob {
   fileMetadata?: string; // JSON-encoded per-file classification: [{docType, obsDate}]
   fileClassificationMap?: Record<string, { docType: 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER'; obsDate?: string }>; // safeName → {docType, obsDate}
   assetsNeedingDetails: string[]; // Asset IDs with low DQ scores
+  fileRowIds?: number[]; // IDs of data_library_files rows created for this upload batch
   enrichment?: {
     status: 'pending' | 'running' | 'complete' | 'skipped';
     triggered: number;
@@ -152,7 +153,25 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
   };
   
   uploadJobs.set(jobId, job);
-  
+
+  // Always persist file metadata immediately so the asset's file list is visible
+  // in the UI even before the background parse finishes. When assetId is known
+  // upfront we set it now; otherwise asset_id is backfilled by processUploadJob
+  // once ingestArchiveDeals returns the newly-created asset IDs.
+  Promise.all(
+    files.map(f =>
+      dbQuery(
+        `INSERT INTO data_library_files
+           (user_id, asset_id, file_name, file_path, file_size, mime_type, source_type, parsing_status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'owned', 'pending')
+         RETURNING id`,
+        [req.user!.userId, assetId ?? null, f.originalname, f.path, f.size || 0, f.mimetype || 'application/octet-stream'],
+      )
+    )
+  ).then(results => {
+    job.fileRowIds = results.map(r => r.rows[0]?.id).filter(Boolean) as number[];
+  }).catch(err => logger.warn('[bulk-upload] Failed to record file metadata:', err));
+
   // Return immediately with job ID
   res.json({ 
     success: true, 
@@ -210,7 +229,18 @@ router.post('/zip', requireAuth, upload.single('file'), async (req: Authenticate
   };
   
   uploadJobs.set(jobId, job);
-  
+
+  // Record the ZIP file metadata so it appears in the asset's file list immediately.
+  if (assetId) {
+    dbQuery(
+      `INSERT INTO data_library_files
+         (user_id, asset_id, file_name, file_path, file_size, mime_type, source_type, parsing_status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'owned', 'pending')
+       ON CONFLICT DO NOTHING`,
+      [req.user!.userId, assetId, file.originalname, file.path, file.size || 0, file.mimetype || 'application/zip'],
+    ).catch(err => logger.warn('[bulk-upload] Failed to record ZIP metadata for asset:', err));
+  }
+
   // Return immediately with job ID
   res.json({ 
     success: true, 
@@ -402,6 +432,17 @@ async function processUploadJob(job: UploadJob): Promise<void> {
       const merged = new Set([...(job.assetsNeedingDetails || []), ...ingestedIds]);
       job.assetsNeedingDetails = Array.from(merged);
       if (!job.assetId) job.assetId = ingestedIds[0];
+
+      // Backfill asset_id on the file rows recorded at upload time.
+      if (job.fileRowIds && job.fileRowIds.length > 0) {
+        await dbQuery(
+          `UPDATE data_library_files
+              SET asset_id = $1
+            WHERE id = ANY($2::int[])
+              AND asset_id IS NULL`,
+          [ingestedIds[0], job.fileRowIds],
+        ).catch(err => logger.warn('[bulk-upload] Failed to backfill asset_id on file rows:', err));
+      }
     }
 
     job.status = 'complete';
@@ -504,6 +545,17 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
       const merged = new Set([...(job.assetsNeedingDetails || []), ...ingestedIds]);
       job.assetsNeedingDetails = Array.from(merged);
       if (!job.assetId) job.assetId = ingestedIds[0];
+
+      // Backfill asset_id on the file rows recorded at upload time.
+      if (job.fileRowIds && job.fileRowIds.length > 0) {
+        await dbQuery(
+          `UPDATE data_library_files
+              SET asset_id = $1
+            WHERE id = ANY($2::int[])
+              AND asset_id IS NULL`,
+          [ingestedIds[0], job.fileRowIds],
+        ).catch(err => logger.warn('[bulk-upload] Failed to backfill asset_id on ZIP file rows:', err));
+      }
     }
 
     job.status = 'complete';

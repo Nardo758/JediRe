@@ -22,6 +22,10 @@ import {
 } from '../../services/archive-benchmark-aggregator';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import multer from 'multer';
+import { parseOM } from '../../services/document-extraction/parsers/om-parser';
+
+const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -558,6 +562,295 @@ router.post('/refresh-all', requireAuth, async (req: AuthenticatedRequest, res: 
       success: false, 
       error: err instanceof Error ? err.message : 'Refresh failed' 
     });
+  }
+});
+
+/**
+ * POST /api/v1/archive/ingest-rows
+ *
+ * Bulk-write pre-parsed corpus rows into historical_observations.
+ * Designed for the Windows-side archive-bulk-ingest.ts script, which cannot
+ * reach the internal Postgres host directly.
+ *
+ * Auth: x-ingest-secret header must match ARCHIVE_INGEST_SECRET env var.
+ * Body: { rows: CorpusRow[], dryRun?: boolean }
+ *
+ * Each row (snake_case) must include at minimum:
+ *   parcel_id, observation_date, source_signals, data_quality_tier
+ *
+ * Upsert logic: if a row with the same (parcel_id, observation_date, geography_level)
+ * already exists, source_signals are merged and non-null fields are updated.
+ * New rows are inserted. Returns { inserted, updated, skipped, errors[] }.
+ */
+router.post('/ingest-rows', async (req: Request, res: Response) => {
+  const secret = process.env.ARCHIVE_INGEST_SECRET;
+  if (!secret) {
+    return res.status(503).json({ success: false, error: 'ARCHIVE_INGEST_SECRET not configured on server' });
+  }
+  const provided = req.headers['x-ingest-secret'];
+  if (!provided || provided !== secret) {
+    return res.status(401).json({ success: false, error: 'Invalid or missing x-ingest-secret header' });
+  }
+
+  const { rows, dryRun = false } = req.body as {
+    rows: Record<string, unknown>[];
+    dryRun?: boolean;
+  };
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ success: false, error: 'Body must contain a non-empty rows array' });
+  }
+
+  // Allowlist of every valid snake_case column in historical_observations.
+  // Any field sent by the client that isn't in this set is silently dropped
+  // so unknown field names never blow up the INSERT/UPDATE.
+  const VALID_COLS = new Set([
+    'msa_id','submarket_id','parcel_id','latitude','longitude',
+    'geography_level','observation_date','observation_window',
+    'commute_shed_workers','commute_shed_wage_pct',
+    'mobility_visits_monthly','mobility_unique_visitors','mobility_visits_psf',
+    'active_event_count','event_employer_jobs_added','event_employer_jobs_lost',
+    'event_supply_units_delivered','event_supply_units_announced','event_subtypes',
+    'msa_employment_total','msa_employment_growth_yoy','msa_avg_wage',
+    'msa_wage_growth_yoy','msa_unemployment_rate','msa_population',
+    'msa_household_growth_yoy','msa_in_migration_net','msa_treasury_10y','msa_fed_funds_rate',
+    'submarket_avg_asking_rent','submarket_avg_effective_rent','submarket_vacancy_rate',
+    'submarket_concession_pct','submarket_under_construction','submarket_pipeline_units_24mo',
+    'submarket_class_a_share',
+    'property_occupancy','property_avg_rent','property_concession_per_unit',
+    'property_unit_count','property_year_built','property_class',
+    'property_asking_rent','property_signing_velocity',
+    'realized_rent_change_t3','realized_rent_change_t12','realized_rent_change_t24',
+    'realized_occupancy_change_t3','realized_occupancy_change_t12',
+    'realized_concession_change_t12',
+    'realized_signing_velocity_t3','realized_signing_velocity_t12',
+    'realized_cap_rate_change_t12_bps','realized_cap_rate_change_t24_bps',
+    'realized_walkins_psf_t12',
+    'source_signals','signal_freshness_days','is_subject_property',
+    'realization_complete','realization_complete_date',
+    'data_quality_flags','data_quality_tier',
+    'capital_event_type','capital_event_amount','capital_event_metadata',
+    'redistribution_restricted',
+    'costar_submarket_rent','costar_submarket_vacancy','costar_submarket_absorption',
+    'costar_submarket_concession_pct','costar_submarket_new_supply',
+    'market_survey_source','market_survey_snapshot',
+    'deal_id',
+    'rezone_upzoning_event_count','rezone_approval_event_count',
+    'rezone_moratorium_active','rezone_outcome','rezone_window_months',
+  ]);
+
+  const SKIP_ALWAYS = new Set(['id','created_at','updated_at']);
+
+  const pool = getPool();
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
+  const errors: { index: number; parcelId: unknown; error: string }[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const parcelId = row['parcel_id'] as string | undefined;
+    const observationDate = row['observation_date'] as string | undefined;
+    const newSignals: string[] = Array.isArray(row['source_signals'])
+      ? (row['source_signals'] as string[])
+      : [];
+    const geographyLevel = (row['geography_level'] as string | undefined) ?? 'parcel';
+
+    if (!parcelId || !observationDate) {
+      errors.push({ index: i, parcelId, error: 'Missing parcel_id or observation_date' });
+      skipped++;
+      continue;
+    }
+
+    if (dryRun) {
+      inserted++;
+      continue;
+    }
+
+    try {
+      const existing = await pool.query(
+        `SELECT id, source_signals FROM historical_observations
+         WHERE parcel_id = $1 AND observation_date = $2::DATE AND geography_level = $3
+         LIMIT 1`,
+        [parcelId, observationDate, geographyLevel],
+      );
+
+      if (existing.rows[0]) {
+        const existingId = existing.rows[0].id as string;
+        const existingSignals: string[] = (existing.rows[0].source_signals as string[]) ?? [];
+        const mergedSignals = Array.from(new Set([...existingSignals, ...newSignals]));
+
+        const assignments: string[] = ['source_signals = $1', 'updated_at = NOW()'];
+        const params: unknown[] = [mergedSignals];
+        let idx = params.length;
+
+        for (const [col, val] of Object.entries(row)) {
+          if (SKIP_ALWAYS.has(col) || col === 'source_signals') continue;
+          if (!VALID_COLS.has(col) || val === null || val === undefined) continue;
+          idx++;
+          params.push(val);
+          assignments.push(`${col} = $${idx}`);
+        }
+
+        params.push(existingId);
+        idx++;
+
+        await pool.query(
+          `UPDATE historical_observations SET ${assignments.join(', ')} WHERE id = $${idx}`,
+          params,
+        );
+        updated++;
+      } else {
+        const allFields: Record<string, unknown> = {
+          geography_level: geographyLevel,
+          observation_window: 'monthly',
+          is_subject_property: false,
+        };
+
+        for (const [col, val] of Object.entries(row)) {
+          if (SKIP_ALWAYS.has(col) || val === null || val === undefined) continue;
+          if (!VALID_COLS.has(col)) continue;
+          allFields[col] = val;
+        }
+        allFields['source_signals'] = newSignals;
+
+        const cols = Object.keys(allFields);
+        const vals = Object.values(allFields);
+        const placeholders = vals.map((_, pi) => `$${pi + 1}`);
+
+        await pool.query(
+          `INSERT INTO historical_observations (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`,
+          vals,
+        );
+        inserted++;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('[archive/ingest-rows] Row error', { index: i, parcelId, error: msg });
+      errors.push({ index: i, parcelId, error: msg });
+      skipped++;
+    }
+  }
+
+  logger.info('[archive/ingest-rows] Batch complete', { inserted, updated, skipped, errors: errors.length, dryRun });
+
+  return res.json({
+    success: true,
+    dryRun,
+    inserted,
+    updated,
+    skipped,
+    errorCount: errors.length,
+    errors: errors.slice(0, 20),
+  });
+});
+
+/**
+ * POST /api/v1/archive/parse-om
+ *
+ * Upload a scanned/image-based OM PDF and extract year_built (+ full OM data).
+ * Uses the existing parseOM() pipeline which automatically falls back to
+ * pdftoppm + tesseract.js OCR when the PDF has no embedded text layer.
+ *
+ * Auth: x-ingest-secret header (same secret as /ingest-rows).
+ * Body: multipart/form-data with field "file" = the PDF.
+ * Query params (all optional):
+ *   parcel_id  — if provided, upserts property_year_built into historical_observations
+ *   observation_date — ISO date for the upsert (defaults to today)
+ *
+ * Returns: { success, yearBuilt, usedOcr, extraction } where extraction is the
+ * full OMExtraction object for the caller to use as needed.
+ */
+router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Response) => {
+  const secret = process.env.ARCHIVE_INGEST_SECRET;
+  if (!secret || req.headers['x-ingest-secret'] !== secret) {
+    return res.status(401).json({ success: false, error: 'Invalid or missing x-ingest-secret header' });
+  }
+
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (!file) {
+    return res.status(400).json({ success: false, error: 'No file uploaded. Send PDF as multipart field "file".' });
+  }
+  if (!file.originalname.toLowerCase().endsWith('.pdf')) {
+    return res.status(400).json({ success: false, error: 'Only PDF files are accepted.' });
+  }
+
+  const parcelId = (req.query['parcel_id'] as string | undefined)?.trim() || null;
+  const observationDate = (req.query['observation_date'] as string | undefined)?.trim()
+    || new Date().toISOString().slice(0, 10);
+
+  logger.info('[archive/parse-om] Received OM for OCR extraction', {
+    filename: file.originalname,
+    sizeKb: Math.round(file.size / 1024),
+    parcelId,
+  });
+
+  try {
+    const result = await parseOM(file.buffer, file.originalname, {
+      userId: req.user?.userId ?? '',
+    });
+
+    if (!result.success || !result.data) {
+      return res.status(422).json({
+        success: false,
+        error: result.error ?? 'parseOM returned no data',
+        usedOcr: result.meta?.usedOcr ?? false,
+        ocrError: result.meta?.ocrError,
+      });
+    }
+
+    const extraction = result.data;
+    const yearBuilt: number | null = extraction.property?.yearBuilt ?? null;
+
+    // Optional: write property_year_built back to historical_observations
+    if (parcelId && yearBuilt !== null) {
+      const pool = getPool();
+      const existing = await pool.query(
+        `SELECT id FROM historical_observations
+         WHERE parcel_id = $1 AND observation_date = $2::DATE AND geography_level = 'parcel'
+         LIMIT 1`,
+        [parcelId, observationDate],
+      );
+
+      if (existing.rows[0]) {
+        await pool.query(
+          `UPDATE historical_observations
+           SET property_year_built = $1,
+               source_signals = array(SELECT DISTINCT unnest(source_signals || ARRAY['om'])),
+               updated_at = NOW()
+           WHERE id = $2`,
+          [yearBuilt, existing.rows[0].id],
+        );
+        logger.info('[archive/parse-om] Updated property_year_built', { parcelId, yearBuilt });
+      } else {
+        await pool.query(
+          `INSERT INTO historical_observations
+             (parcel_id, observation_date, geography_level, observation_window,
+              is_subject_property, source_signals, data_quality_tier, property_year_built)
+           VALUES ($1, $2::DATE, 'parcel', 'monthly', false, ARRAY['om'], 'C2', $3)`,
+          [parcelId, observationDate, yearBuilt],
+        );
+        logger.info('[archive/parse-om] Inserted new row with property_year_built', { parcelId, yearBuilt });
+      }
+    }
+
+    return res.json({
+      success: true,
+      yearBuilt,
+      usedOcr: result.meta?.usedOcr ?? false,
+      propertyName: extraction.property?.name ?? null,
+      units: extraction.property?.units ?? null,
+      yearRenovated: extraction.property?.yearRenovated ?? null,
+      address: extraction.property?.address ?? null,
+      city: extraction.property?.city ?? null,
+      state: extraction.property?.state ?? null,
+      dbWritten: parcelId !== null && yearBuilt !== null,
+      extraction,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/parse-om] Unexpected error', { filename: file.originalname, error: msg });
+    return res.status(500).json({ success: false, error: msg });
   }
 });
 

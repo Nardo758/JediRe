@@ -145,25 +145,30 @@ interface RankedPortfolioAsset {
   movement?: number; trajectory?: string;
 }
 
-const PORTFOLIO_NAV = [
-  {key:"F1",label:"DASHBOARD"},
-  {key:"F2",label:"PIPELINE"},
-  {key:"F3",label:"PORTFOLIO"},
-  {key:"F5",label:"MARKETS"},
-  {key:"F6",label:"EMAIL"},
-  {key:"F7",label:"NEWS"},
-  {key:"F8",label:"STRATEGIES"},
-  {key:"F9",label:"ADMIN"},
-  {key:"F10",label:"SETTINGS"},
+/**
+ * Single source of truth for all F-key navigation.
+ *   key   = fkey state value  |  slug = URL segment  |  label = nav bar text
+ * F4 is a keyboard-only alias for Markets — the keyboard handler remaps it to
+ * "F5" before it ever reaches the router, so F4 has no registry entry.
+ */
+export interface TabMeta { key: string; slug: string; label: string }
+export const TABS_META: TabMeta[] = [
+  { key: "F1",  slug: "dashboard",  label: "DASHBOARD"  },
+  { key: "F2",  slug: "pipeline",   label: "PIPELINE"   },
+  { key: "F3",  slug: "portfolio",  label: "PORTFOLIO"  },
+  { key: "F4",  slug: "markets",    label: "MARKETS"    },
+  { key: "F6",  slug: "email",      label: "EMAIL"      },
+  { key: "F7",  slug: "news",       label: "NEWS"       },
+  { key: "F8",  slug: "strategies", label: "STRATEGIES" },
+  { key: "F9",  slug: "admin",      label: "ADMIN"      },
+  { key: "F10", slug: "settings",   label: "SETTINGS"   },
 ];
-
-const FKEY_SLUG: Record<string,string> = {
-  F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"portfolio", F5:"markets",
-  F6:"email",     F7:"news",     F8:"strategies", F9:"admin", F10:"settings",
-};
-const SLUG_FKEY: Record<string,string> = Object.fromEntries(
-  Object.entries(FKEY_SLUG).map(([k,v])=>[v,k])
-);
+export const FKEY_SLUG: Record<string,string> = Object.fromEntries(TABS_META.map(t=>[t.key,  t.slug]));
+export const SLUG_FKEY: Record<string,string> = Object.fromEntries(TABS_META.map(t=>[t.slug, t.key]));
+/** Keys that have a render entry in RENDER_MAP (inside the component). Must stay in sync. */
+export const RENDER_MAP_KEYS: ReadonlySet<string> = new Set(["F1","F2","F3","F4","F6","F7","F8","F9","F10"]);
+/** Keyboard → fkey mapping. F5 aliases F4 (Markets). Must cover all TABS_META keys. */
+export const FKEY_KBD_MAP: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F4", F6:"F6", F7:"F7", F8:"F8", F9:"F9", F10:"F10" };
 
 const WIDGET_CATALOG = [
   {id:"pipeline",   label:"Deal Pipeline",         desc:"Live scrollable deal list with JEDI scores",            category:"DEALS",  color:"#F5A623"},
@@ -836,7 +841,7 @@ export default function TerminalPage() {
   // Sync URL slug + browser tab title whenever fkey changes
   useEffect(() => {
     const slug = FKEY_SLUG[fkey] || "dashboard";
-    const label = PORTFOLIO_NAV.find(n=>n.key===fkey)?.label || "DASHBOARD";
+    const label = TABS_META.find(t=>t.key===fkey)?.label || "DASHBOARD";
     document.title = `JediRE | ${label}`;
     const target = `/terminal/${slug}`;
     if (window.location.pathname !== target) navigate(target, { replace: true });
@@ -1038,8 +1043,7 @@ export default function TerminalPage() {
       }
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if(tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
-      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8", F9:"F9", F10:"F10" };
-      if(fKeyMap[e.key]) { e.preventDefault(); setFkey(fKeyMap[e.key]); }
+      if(FKEY_KBD_MAP[e.key]) { e.preventDefault(); setFkey(FKEY_KBD_MAP[e.key]); }
       if(e.key === "/") { e.preventDefault(); cmdInputRef.current?.focus(); }
     };
     window.addEventListener("keydown", handler);
@@ -2596,21 +2600,22 @@ export default function TerminalPage() {
     </div>
   );
 
-  // ─── MAIN CONTENT ROUTER ───────────────────────────────────
-  const renderContent = () => {
-    switch(fkey) {
-      case "F1": return ViewDashboard();
-      case "F2": return dealGridEl;
-      case "F3": return <F3PortfolioView theme={T} />;
-      case "F4": return <F4MarketsView onTopMovers={handleTopMovers} />;
-      case "F5": return ViewEmail();
-      case "F6": return ViewNews();
-      case "F7": return ViewStrategies();
-      case "F8": return <F8AdminView T={T} />;
-      case "F9": return ViewSettings();
-      default: return null;
-    }
+  // ─── TAB RENDER MAP ─────────────────────────────────────────────────────────
+  // One entry per TABS_META row. F4 is remapped to "F5" by the keyboard handler
+  // so it never arrives here as "F4". Adding a new tab = one entry here + one
+  // row in TABS_META above. No switch, no magic string drift.
+  const RENDER_MAP: Record<string, () => React.ReactNode> = {
+    F1:  () => ViewDashboard(),
+    F2:  () => dealGridEl,
+    F3:  () => <F3PortfolioView theme={T} />,
+    F4:  () => <F4MarketsView onTopMovers={handleTopMovers} />,
+    F6:  () => ViewEmail(),
+    F7:  () => ViewNews(),
+    F8:  () => ViewStrategies(),
+    F9:  () => <F8AdminView T={T} />,
+    F10: () => ViewSettings(),
   };
+  const renderContent = () => RENDER_MAP[fkey]?.() ?? null;
 
   // ─── BOTTOM PANEL CONTENT ──────────────────────────────────
   const renderBottomTab = () => {
@@ -2889,7 +2894,7 @@ export default function TerminalPage() {
       {/* ═══ F-KEY NAV BAR ═══ */}
       <div style={{display:"flex",alignItems:"center",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
         <div style={{display:"flex",flex:1,overflowX:"auto"}}>
-          {PORTFOLIO_NAV.map(n=>(
+          {TABS_META.map(n=>(
             <button key={n.key} onClick={()=>setFkey(n.key)} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,padding:"0 12px",height:32,cursor:"pointer",background:fkey===n.key?T.text.amber:"transparent",color:fkey===n.key?T.bg.terminal:T.text.secondary,border:"none",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:1,minWidth:0}}>
               <span style={{fontSize:10,fontWeight:700,opacity:0.7,color:fkey===n.key?T.bg.terminal:T.text.muted}}>{n.key}</span>
               {n.label}
