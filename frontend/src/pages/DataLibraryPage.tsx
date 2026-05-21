@@ -367,15 +367,26 @@ export const DataLibraryPage: React.FC = () => {
             Upload historical data for Opus to learn from. Files are matched to deals by property characteristics.
           </p>
         </div>
-        <button
-          onClick={() => setShowUpload(!showUpload)}
-          style={{
-            padding: '8px 20px', background: '#00d4ff', border: 'none', borderRadius: 8,
-            color: '#0d1117', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          }}
-        >
-          + Upload File
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button
+            onClick={() => navigate('/cohorts/query')}
+            style={{
+              padding: '8px 16px', background: 'none', border: '1px solid #f59e0b', borderRadius: 8,
+              color: '#f59e0b', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Cohort Compare →
+          </button>
+          <button
+            onClick={() => setShowUpload(!showUpload)}
+            style={{
+              padding: '8px 20px', background: '#00d4ff', border: 'none', borderRadius: 8,
+              color: '#0d1117', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            + Upload File
+          </button>
+        </div>
       </div>
 
       {/* ── Tab bar ────────────────────────────────────────────────────────── */}
