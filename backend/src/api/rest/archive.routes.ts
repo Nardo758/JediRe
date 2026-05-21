@@ -24,6 +24,7 @@ import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import multer from 'multer';
 import { parseOM } from '../../services/document-extraction/parsers/om-parser';
+import { classifyDocument } from '../../services/document-extraction/classifier';
 import { createHash } from 'crypto';
 import { uploadFile } from '../../services/storage/r2-client';
 
@@ -915,6 +916,171 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('[archive/parse-om] Unexpected error', { filename: file.originalname, error: msg });
+    return res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /files/check?sha256=<hex>
+// Lightweight dedup probe — batch script calls this before uploading each file
+// to avoid sending large payloads for already-stored files.
+// Auth: x-ingest-secret header.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/files/check', async (req: Request, res: Response) => {
+  const secret = process.env.ARCHIVE_INGEST_SECRET;
+  if (!secret || req.headers['x-ingest-secret'] !== secret) {
+    return res.status(401).json({ success: false, error: 'Invalid or missing x-ingest-secret header' });
+  }
+
+  const sha256 = (req.query['sha256'] as string | undefined)?.trim();
+  if (!sha256 || !/^[a-f0-9]{64}$/i.test(sha256)) {
+    return res.status(400).json({ success: false, error: 'sha256 query param required (64 hex chars)' });
+  }
+
+  const pool = getPool();
+  const row = await pool.query(
+    `SELECT id, storage_key FROM data_library_files WHERE sha256 = $1 LIMIT 1`,
+    [sha256],
+  );
+
+  return res.json({
+    exists: row.rows.length > 0,
+    fileId: row.rows[0]?.id ?? null,
+    storageKey: row.rows[0]?.storage_key ?? null,
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /files/ingest
+// Generic file upload: R2 + data_library_files registration + source_file_ids
+// backlink. No AI extraction — use parse-om for OMs that need extraction.
+//
+// Auth: x-ingest-secret header.
+// Body: multipart/form-data
+//   file            — required
+//   parcel_id       — required
+//   document_type   — optional; auto-classified from filename if omitted
+//   observation_date — optional ISO date (defaults to today)
+//   parser_status   — optional (default: 'unparsed')
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/files/ingest', memUpload.single('file'), async (req: Request, res: Response) => {
+  const secret = process.env.ARCHIVE_INGEST_SECRET;
+  if (!secret || req.headers['x-ingest-secret'] !== secret) {
+    return res.status(401).json({ success: false, error: 'Invalid or missing x-ingest-secret header' });
+  }
+
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (!file) {
+    return res.status(400).json({ success: false, error: 'No file uploaded. Send file as multipart field "file".' });
+  }
+
+  const parcelId = (req.body?.parcel_id as string | undefined)?.trim();
+  if (!parcelId) {
+    return res.status(400).json({ success: false, error: 'parcel_id body field is required.' });
+  }
+
+  const observationDate = (req.body?.observation_date as string | undefined)?.trim()
+    || new Date().toISOString().slice(0, 10);
+
+  const parserStatus: string = (['success','partial','failed','unparsed'] as const)
+    .includes(req.body?.parser_status)
+    ? req.body.parser_status
+    : 'unparsed';
+
+  try {
+    // Resolve document_type: explicit field → filename classifier → 'OTHER'
+    let documentType: string = (req.body?.document_type as string | undefined)?.trim().toUpperCase() || '';
+    if (!documentType) {
+      const classified = await classifyDocument(file.buffer, file.originalname);
+      documentType = classified.documentType === 'UNKNOWN' ? 'OTHER' : classified.documentType;
+      logger.info('[archive/files/ingest] Auto-classified', {
+        filename: file.originalname, documentType, confidence: classified.confidence,
+      });
+    }
+
+    const pool = getPool();
+    const sha256 = createHash('sha256').update(file.buffer).digest('hex');
+
+    // ── Dedup check ───────────────────────────────────────────────────────
+    const existingFile = await pool.query(
+      `SELECT id, storage_key FROM data_library_files WHERE sha256 = $1 LIMIT 1`,
+      [sha256],
+    );
+
+    if (existingFile.rows[0]) {
+      const fileId = existingFile.rows[0].id as string;
+      const storageKey = existingFile.rows[0].storage_key as string;
+      logger.info('[archive/files/ingest] Duplicate — skipping upload', {
+        sha256: sha256.slice(0, 16), fileId, parcelId,
+      });
+      return res.json({
+        success: true,
+        duplicate: true,
+        fileId,
+        sha256,
+        storageKey,
+        metadata: { size_bytes: file.size, mime_type: file.mimetype },
+      });
+    }
+
+    // ── R2 upload ─────────────────────────────────────────────────────────
+    const r2Ready = !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_BUCKET_NAME);
+    if (!r2Ready) {
+      return res.status(503).json({ success: false, error: 'R2 storage not configured. Set R2_* env vars.' });
+    }
+
+    const safeParcelId = parcelId.replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const storageKey = `${documentType.toLowerCase()}/${safeParcelId}/${sha256.slice(0, 16)}_${file.originalname}`;
+    const storageBucket = process.env.R2_BUCKET_NAME!;
+    const mimeType = file.mimetype || 'application/octet-stream';
+
+    await uploadFile(storageKey, file.buffer, mimeType);
+    logger.info('[archive/files/ingest] Uploaded to R2', { storageKey, parcelId });
+
+    // ── Register in data_library_files ────────────────────────────────────
+    const reg = await pool.query(
+      `INSERT INTO data_library_files
+         (parcel_id, original_filename, sha256, mime_type, size_bytes,
+          storage_provider, storage_bucket, storage_key,
+          document_type, parser_status, source_signal, license_restricted)
+       VALUES ($1, $2, $3, $4, $5,
+               'r2', $6, $7,
+               $8, $9, $10, false)
+       ON CONFLICT (sha256) DO UPDATE SET sha256 = EXCLUDED.sha256
+       RETURNING id`,
+      [
+        parcelId, file.originalname, sha256, mimeType, file.size,
+        storageBucket, storageKey,
+        documentType, parserStatus, documentType.toLowerCase(),
+      ],
+    );
+    const fileId = reg.rows[0]?.id as string;
+
+    // ── Link source_file_ids on historical_observations ───────────────────
+    const linked = await pool.query(
+      `UPDATE historical_observations
+       SET source_file_ids = array_append(COALESCE(source_file_ids, '{}'), $1::uuid)
+       WHERE parcel_id = $2 AND geography_level = 'parcel'
+         AND (source_file_ids IS NULL OR NOT (source_file_ids @> ARRAY[$1::uuid]))`,
+      [fileId, parcelId],
+    );
+
+    logger.info('[archive/files/ingest] Registered', {
+      fileId, parcelId, documentType, hoRowsLinked: linked.rowCount,
+    });
+
+    return res.json({
+      success: true,
+      duplicate: false,
+      fileId,
+      sha256,
+      storageKey,
+      metadata: { size_bytes: file.size, mime_type: mimeType },
+    });
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/files/ingest] Unexpected error', { filename: file.originalname, error: msg });
     return res.status(500).json({ success: false, error: msg });
   }
 });
