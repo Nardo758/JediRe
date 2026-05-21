@@ -1,6 +1,6 @@
 ﻿# JediRE Project Tracker â€” Complete
 
-**Last Updated:** 2026-05-15
+**Last Updated:** 2026-05-21
 
 This tracker consolidates all active work streams. The platform has evolved from the original MVP plan (map + 3 agents) into a full real estate inference system with M36 Joint Distribution Engine, M37 Analog Engine, M38 Calibration Ledger, and the F9 Financial Engine.
 
@@ -135,7 +135,25 @@ Architectural invariants: single injection point per event, multiplicative cause
 ### Stream 7: Pipeline/Infrastructure (Ongoing)
 Migration scripts, missing tables, import paths, build fixes.
 
-**Status: ðŸ”µ Ongoing** â€” Most critical items resolved
+**Status: ✅ Complete** — Most critical items resolved
+
+#### Archive Seeding (Completed 2026-05-21)
+
+**Bulk document parsing:**
+- 296 property folders processed via `archive-bulk-ingest.ts`
+- 1,034 corpus rows uploaded to DB (648 rent rolls, 329 T12s, 30 concession burnoffs, 24 BoxScores, 3 other income)
+- 296 MSA enrichment records uploaded
+- HTTP mode (`--http`) used throughout — bypasses unreachable `helium` hostname from Windows
+
+**OM PDF year-built extraction:**
+- 42 OM PDFs found across all property folders
+- 41 extracted with yearBuilt via DeepSeek and written to DB
+- 1 null (Parkview Greer — new development)
+- Bug fixed: `archive.routes.ts:789` was calling `parseOM(buffer, filename)` with no `ctx` arg, routing all requests to Anthropic (depleted credits) instead of DeepSeek
+- Documents: `docs/operations/OM_INGEST_FINAL.md`, `docs/operations/SEEDING_SESSION3_CLOSING.md`
+
+**Pilot validation:**
+- 15 pilot properties confirmed recognized by ingest endpoint
 
 ---
 ### Stream 8: Self-Hosted DocuSeal eSignature (Planned)
