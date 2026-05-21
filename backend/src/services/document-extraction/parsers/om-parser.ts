@@ -59,17 +59,21 @@ export interface OMPropertyData {
   state: string | null;
   zip: string | null;
   county: string | null;
+  msaName: string | null;
   yearBuilt: number | null;
   yearRenovated: number | null;
   units: number | null;
   netRentableSF: number | null;
   avgUnitSF: number | null;
+  lotSizeAcres: number | null;
   stories: number | null;
   buildings: number | null;
   parkingSpaces: number | null;
   parkingRatio: number | null;
   amenities: string[];
   propertyType: 'garden' | 'mid-rise' | 'high-rise' | 'townhome' | null;
+  buildingClass: string | null;
+  constructionType: string | null;
 }
 
 export interface OMReplacementCost {
@@ -300,7 +304,11 @@ Return ONLY valid JSON matching this schema:
     "parkingSpaces": "number or null",
     "parkingRatio": "number or null",
     "amenities": ["array of strings"],
-    "propertyType": "garden|mid-rise|high-rise|townhome or null"
+    "propertyType": "garden|mid-rise|high-rise|townhome or null",
+    "buildingClass": "Class A+|Class A|Class A-|Class B+|Class B|Class B-|Class C|Class D or null",
+    "constructionType": "Wood Frame|Concrete|Steel Frame|Masonry|Mixed or null",
+    "msaName": "full MSA name e.g. Atlanta-Sandy Springs-Roswell, GA or null",
+    "lotSizeAcres": "decimal or null"
   },
   "replacementCost": {
     "landValue": "number or null",
@@ -621,6 +629,10 @@ function normalizeExtraction(raw: any, textLength: number): OMExtraction {
       parkingRatio: raw.property?.parkingRatio ?? null,
       amenities: raw.property?.amenities ?? [],
       propertyType: raw.property?.propertyType ?? null,
+      buildingClass: raw.property?.buildingClass ?? null,
+      constructionType: raw.property?.constructionType ?? null,
+      msaName: raw.property?.msaName ?? null,
+      lotSizeAcres: typeof raw.property?.lotSizeAcres === 'number' ? raw.property.lotSizeAcres : null,
     },
     replacementCost: {
       landValue: raw.replacementCost?.landValue ?? null,

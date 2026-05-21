@@ -1,8 +1,87 @@
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
 import multer from 'multer';
-import { parseOM } from '../../services/document-extraction/parsers/om-parser';
+import { parseOM, OMExtraction } from '../../services/document-extraction/parsers/om-parser';
 import { logger } from '../../utils/logger';
+
+// ─── property_descriptions LayeredValue upsert ───────────────────────────────
+
+function makeLV(value: unknown, confidence: number): string {
+  return JSON.stringify({ value, source: 'om_extraction', confidence, updatedAt: new Date().toISOString() });
+}
+
+function normalizeAssetClass(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const m = raw.match(/([A-D][+-]?)/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+async function upsertPropertyDescriptionsFromOM(
+  pool: Pool,
+  parcelId: string,
+  e: OMExtraction,
+): Promise<void> {
+  const prop = e.property;
+  const risk = e.riskFactors;
+  const mkt  = e.marketComps;
+
+  const fullAddress = [prop.address, prop.city, prop.state, prop.zip].filter(Boolean).join(', ');
+  const storiesBand = prop.stories == null ? null
+    : prop.stories <= 3 ? '1-3'
+    : prop.stories <= 6 ? '4-6'
+    : '7+';
+
+  const candidates: Array<{ col: string; lval: string }> = [];
+  const maybe = (col: string, val: unknown, conf = 0.85) => {
+    if (val == null || (Array.isArray(val) && val.length === 0)) return;
+    candidates.push({ col, lval: makeLV(val, conf) });
+  };
+
+  maybe('property_name',    prop.name, 0.9);
+  maybe('address',          fullAddress || null, 0.9);
+  maybe('county',           prop.county, 0.9);
+  maybe('msa',              prop.msaName, 0.75);
+  maybe('year_built',       prop.yearBuilt, 0.9);
+  maybe('year_renovated',   prop.yearRenovated, 0.9);
+  maybe('unit_count',       prop.units, 0.9);
+  maybe('building_count',   prop.buildings, 0.85);
+  maybe('stories',          prop.stories, 0.9);
+  maybe('stories_band',     storiesBand, 0.95);
+  maybe('rentable_sqft',    prop.netRentableSF, 0.85);
+  maybe('lot_size_acres',   prop.lotSizeAcres, 0.85);
+  maybe('construction_type',prop.constructionType, 0.85);
+  maybe('parking_spaces',   prop.parkingSpaces, 0.85);
+  maybe('parking_ratio',    prop.parkingRatio, 0.85);
+  maybe('asset_class',      normalizeAssetClass(prop.buildingClass), 0.8);
+  maybe('property_type',    prop.propertyType, 0.9);
+  maybe('amenities',        prop.amenities.length ? prop.amenities : null, 0.9);
+  maybe('zoning_code',      risk?.zoningCode, 0.8);
+  maybe('flood_zone',       risk?.floodZone, 0.8);
+  maybe('submarket',        mkt?.submarketName, 0.75);
+  maybe('narrative',        e.investmentThesis, 0.7);
+
+  if (candidates.length === 0) return;
+
+  const colNames    = candidates.map(c => c.col).join(', ');
+  const placeholders = candidates.map((_, i) => `$${i + 2}::jsonb`).join(', ');
+  const updates     = candidates
+    .map(c => `${c.col} = COALESCE(property_descriptions.${c.col}, EXCLUDED.${c.col})`)
+    .join(',\n    ');
+
+  await pool.query(
+    `INSERT INTO property_descriptions (parcel_id, ${colNames}, updated_at)
+     VALUES ($1, ${placeholders}, NOW())
+     ON CONFLICT (parcel_id) DO UPDATE SET
+       ${updates},
+       updated_at = NOW()`,
+    [parcelId, ...candidates.map(c => c.lval)],
+  );
+
+  logger.info('[parse-om] upserted property_descriptions', {
+    parcelId,
+    fields: candidates.map(c => c.col),
+  });
+}
 
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
@@ -319,6 +398,16 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
           params,
         );
         logger.info('[data-library-assets/parse-om] Updated asset with OM fields', { assetId: id, fields: updates.length });
+      }
+
+      // Optional: also upsert to property_descriptions (COALESCE — never overwrites existing data)
+      const parcelId = typeof req.query.parcel_id === 'string' ? req.query.parcel_id.trim() : null;
+      if (parcelId) {
+        try {
+          await upsertPropertyDescriptionsFromOM(pool, parcelId, e);
+        } catch (pdErr) {
+          logger.warn('[parse-om] property_descriptions upsert failed (non-fatal)', { parcelId, error: String(pdErr) });
+        }
       }
 
       // Percent display helpers (stored as 0–1 fraction → displayed as 0–100)
