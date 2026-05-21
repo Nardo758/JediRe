@@ -158,7 +158,7 @@ const PORTFOLIO_NAV = [
 ];
 
 const FKEY_SLUG: Record<string,string> = {
-  F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"portfolio", F5:"markets",
+  F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"markets", F5:"markets",
   F6:"email",     F7:"news",     F8:"strategies", F9:"admin", F10:"settings",
 };
 const SLUG_FKEY: Record<string,string> = Object.fromEntries(
@@ -2602,12 +2602,12 @@ export default function TerminalPage() {
       case "F1": return ViewDashboard();
       case "F2": return dealGridEl;
       case "F3": return <F3PortfolioView theme={T} />;
-      case "F4": return <F4MarketsView onTopMovers={handleTopMovers} />;
-      case "F5": return ViewEmail();
-      case "F6": return ViewNews();
-      case "F7": return ViewStrategies();
-      case "F8": return <F8AdminView T={T} />;
-      case "F9": return ViewSettings();
+      case "F4": // keyboard shortcut — falls through to F5 nav button
+      case "F5": return <F4MarketsView onTopMovers={handleTopMovers} />;
+      case "F6": return ViewEmail();
+      case "F7": return ViewNews();
+      case "F8": return ViewStrategies();
+      case "F9": return <F8AdminView T={T} />;
       case "F10": return ViewSettings();
       default: return null;
     }
