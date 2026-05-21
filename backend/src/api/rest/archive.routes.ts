@@ -786,7 +786,9 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
   });
 
   try {
-    const result = await parseOM(file.buffer, file.originalname);
+    const result = await parseOM(file.buffer, file.originalname, {
+      userId: req.user?.userId ?? '',
+    });
 
     if (!result.success || !result.data) {
       return res.status(422).json({
