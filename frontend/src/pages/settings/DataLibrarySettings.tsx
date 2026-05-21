@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BT } from '@/components/deal/bloomberg-ui';
 import { apiClient } from '../../services/api.client';
 import { CloudStoragePanel, BulkUploadPanel } from '../../components/data-library';
@@ -62,6 +63,7 @@ const CLASS_COLORS: Record<string, string> = {
 };
 
 export function DataLibrarySettings() {
+  const navigate = useNavigate();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -229,10 +231,21 @@ export function DataLibrarySettings() {
               Structured asset database for like-kind comp matching
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ fontSize: 10, color: BT.text.muted, fontFamily: MONO }}>
               {total} ASSETS
             </span>
+            <button
+              onClick={() => navigate('/cohorts/query')}
+              style={{
+                padding: '5px 12px', background: 'none',
+                border: `1px solid ${BT.text.amber}`, color: BT.text.amber,
+                fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                letterSpacing: '0.05em', cursor: 'pointer',
+              }}
+            >
+              COHORT COMPARE →
+            </button>
           </div>
         </div>
 
