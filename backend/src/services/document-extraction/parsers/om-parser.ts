@@ -497,10 +497,15 @@ async function extractWithAI(
 
   let responseText: string;
 
-  if (ctx?.userId) {
+  if (ctx != null) {
     // Route through JediAIService so per-user / per-surface model preferences
     // (pipeline:om_parsing) take effect — and so usage hits the credit ledger
     // and Stripe meter just like agent calls.
+    // NOTE: ctx.userId may be an empty string for internal / system calls.
+    // JediAIService handles that gracefully (skips credit deduction and Stripe
+    // reporting) while still routing through the DeepSeek path.  Do NOT gate
+    // on ctx.userId truthiness — empty string is falsy and would cause every
+    // file-without-owner upload to fall through to the legacy Anthropic branch.
     let stripeCustomerId = '';
     try {
       const r = await query(
