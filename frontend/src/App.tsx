@@ -49,6 +49,7 @@ const DriverAnalysisPage = lazy(() => import('./pages/DriverAnalysisPage'));
 const PropertyCardPage = lazy(() => import('./pages/PropertyCardPage'));
 const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
 const WorkspaceListPage = lazy(() => import('./pages/WorkspaceListPage'));
+const PropertyArchivePage = lazy(() => import('./pages/archive/PropertyArchivePage'));
 
 /**
  * Redirect legacy /deals/:id/:module routes to /deals/:id/detail?tab=:module
@@ -220,6 +221,7 @@ function AppContent() {
         <Route path="/property-card" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
         <Route path="/property-card/:id" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
         <Route path="/terminal/property/:id" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
+        <Route path="/archive/properties/:parcelId" element={<Suspense fallback={<PageLoadingFallback />}><PropertyArchivePage /></Suspense>} />
 
         {/* ═══ Deal workflow pages — own internal nav, no layout chrome ═══ */}
         <Route path="/share/:shortcode" element={<ShareLandingPage />} />

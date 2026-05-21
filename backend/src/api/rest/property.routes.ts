@@ -410,4 +410,109 @@ router.post('/scrape/fulton', requireAuth, async (req: AuthenticatedRequest, res
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /:parcelId/summary
+// Returns all property_descriptions columns as LayeredValue<T> JSONB.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:parcelId/summary', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { parcelId } = req.params;
+    const result = await query(
+      `SELECT * FROM property_descriptions WHERE parcel_id = $1 LIMIT 1`,
+      [parcelId],
+    );
+
+    if (!result.rows[0]) {
+      return res.status(404).json({
+        success: false,
+        error: `No property description found for parcel_id "${parcelId}"`,
+      });
+    }
+
+    const row = result.rows[0];
+    const KNOWN_LV_FIELDS = [
+      'property_name','address','msa','county','year_built','year_renovated',
+      'unit_count','building_count','stories','stories_band','total_sqft',
+      'rentable_sqft','lot_size_acres','construction_type','parking_type',
+      'parking_spaces','parking_ratio','asset_class','property_type',
+      'amenities','zoning_code','flood_zone','in_opportunity_zone',
+      'narrative','submarket',
+    ];
+
+    const propertyDescription: Record<string, unknown> = {};
+    const sources: Record<string, string[]> = {};
+
+    for (const field of KNOWN_LV_FIELDS) {
+      const lv = row[field];
+      propertyDescription[field] = lv ?? null;
+      if (lv && typeof lv === 'object' && lv.resolvedFrom) {
+        sources[field] = Array.isArray(lv.resolvedFrom) ? lv.resolvedFrom : [lv.resolvedFrom];
+      }
+    }
+
+    return res.json({
+      parcelId: row.parcel_id,
+      propertyDescription,
+      propertyDescriptionMetadata: {
+        sources,
+        lastUpdated: row.updated_at,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /:parcelId/time-series?signals=property_occupancy,property_avg_rent,...
+// Returns temporal data from historical_observations for the given parcel.
+// Allowed signals: property_occupancy | property_avg_rent |
+//                  property_signing_velocity | property_concession_per_unit
+// ─────────────────────────────────────────────────────────────────────────────
+const ALLOWED_TS_SIGNALS = new Set([
+  'property_occupancy',
+  'property_avg_rent',
+  'property_signing_velocity',
+  'property_concession_per_unit',
+]);
+
+router.get('/:parcelId/time-series', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { parcelId } = req.params;
+    const rawSignals = ((req.query['signals'] as string) ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const signals = rawSignals.length > 0
+      ? rawSignals.filter((s) => ALLOWED_TS_SIGNALS.has(s))
+      : [...ALLOWED_TS_SIGNALS];
+
+    if (signals.length === 0) {
+      return res.status(400).json({ success: false, error: `No valid signals. Allowed: ${[...ALLOWED_TS_SIGNALS].join(', ')}` });
+    }
+
+    const cols = signals.join(', ');
+    const result = await query(
+      `SELECT observation_date, ${cols}
+       FROM historical_observations
+       WHERE parcel_id = $1 AND geography_level = 'parcel'
+       ORDER BY observation_date ASC`,
+      [parcelId],
+    );
+
+    const series: Record<string, Array<{ date: string; value: number | null }>> = {};
+    for (const sig of signals) {
+      series[sig] = result.rows
+        .filter((r) => r[sig] !== null && r[sig] !== undefined)
+        .map((r) => ({
+          date: (r.observation_date instanceof Date
+            ? r.observation_date.toISOString().slice(0, 10)
+            : String(r.observation_date).slice(0, 10)),
+          value: r[sig] !== null ? parseFloat(r[sig]) : null,
+        }));
+    }
+
+    return res.json({ parcelId, series });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

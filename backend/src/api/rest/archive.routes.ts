@@ -921,6 +921,68 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /files?parcel_id=X
+// List all data_library_files rows for a parcel, newest first.
+// Auth: requireAuth (JWT cookie)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/files', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const parcelId = (req.query['parcel_id'] as string | undefined)?.trim();
+  if (!parcelId) {
+    return res.status(400).json({ success: false, error: 'parcel_id query param is required' });
+  }
+
+  const pool = getPool();
+  const rows = await pool.query(
+    `SELECT id, parcel_id, original_filename, mime_type, size_bytes, sha256,
+            document_type, parser_status, storage_key, uploaded_at, created_at
+     FROM data_library_files
+     WHERE parcel_id = $1
+     ORDER BY COALESCE(uploaded_at, created_at) DESC`,
+    [parcelId],
+  );
+
+  return res.json({
+    files: rows.rows.map((r) => ({
+      id: r.id,
+      parcelId: r.parcel_id,
+      originalFilename: r.original_filename,
+      mimeType: r.mime_type,
+      sizeBytes: r.size_bytes,
+      sha256: r.sha256,
+      documentType: r.document_type,
+      parserStatus: r.parser_status,
+      storageKey: r.storage_key,
+      createdAt: r.uploaded_at ?? r.created_at,
+    })),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /files/:fileId/signed-url
+// Returns a 1-hour pre-signed R2 URL for inline viewing.
+// Auth: requireAuth (JWT cookie)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/files/:fileId/signed-url', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { fileId } = req.params;
+
+  const pool = getPool();
+  const row = await pool.query(
+    `SELECT storage_key FROM data_library_files WHERE id = $1 LIMIT 1`,
+    [fileId],
+  );
+
+  if (!row.rows[0]) {
+    return res.status(404).json({ success: false, error: 'File not found' });
+  }
+
+  const storageKey = row.rows[0].storage_key as string;
+  const { getSignedViewUrl } = await import('../../services/storage/r2-client');
+  const url = await getSignedViewUrl(storageKey, 3600);
+
+  return res.json({ url, expiresIn: 3600 });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /files/check?sha256=<hex>
 // Lightweight dedup probe — batch script calls this before uploading each file
 // to avoid sending large payloads for already-stored files.
