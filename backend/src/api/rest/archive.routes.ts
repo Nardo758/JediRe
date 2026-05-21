@@ -24,6 +24,8 @@ import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import multer from 'multer';
 import { parseOM } from '../../services/document-extraction/parsers/om-parser';
+import { createHash } from 'crypto';
+import { uploadFile } from '../../services/storage/r2-client';
 
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
@@ -801,15 +803,64 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
 
     const extraction = result.data;
     const yearBuilt: number | null = extraction.property?.yearBuilt ?? null;
+    const pool = getPool();
 
-    // Optional: write property_year_built back to historical_observations
+    // ── Part B: R2 upload + data_library_files registration ──────────────
+    let fileId: string | null = null;
+    const sha256 = createHash('sha256').update(file.buffer).digest('hex');
+    const r2Ready = !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_BUCKET_NAME);
+
+    if (parcelId && r2Ready) {
+      try {
+        // Dedup — skip R2 upload if sha256 already registered
+        const existingFile = await pool.query(
+          `SELECT id FROM data_library_files WHERE sha256 = $1 LIMIT 1`,
+          [sha256],
+        );
+
+        if (existingFile.rows[0]) {
+          fileId = existingFile.rows[0].id as string;
+          logger.info('[archive/parse-om] R2 skipped — sha256 match', { sha256: sha256.slice(0, 16), fileId });
+        } else {
+          const safeParcelId = parcelId.replace(/[^a-zA-Z0-9_\-]/g, '_');
+          const storageKey = `oms/${safeParcelId}/${sha256.slice(0, 16)}_${file.originalname}`;
+          const storageBucket = process.env.R2_BUCKET_NAME!;
+
+          await uploadFile(storageKey, file.buffer, 'application/pdf');
+          logger.info('[archive/parse-om] Uploaded to R2', { storageKey });
+
+          const reg = await pool.query(
+            `INSERT INTO data_library_files
+               (parcel_id, original_filename, sha256, mime_type, size_bytes,
+                storage_provider, storage_bucket, storage_key,
+                document_type, parser_status, source_signal, license_restricted)
+             VALUES ($1, $2, $3, 'application/pdf', $4,
+                     'r2', $5, $6,
+                     'OM', 'success', 'om_extraction', false)
+             ON CONFLICT (sha256) DO UPDATE SET sha256 = EXCLUDED.sha256
+             RETURNING id`,
+            [parcelId, file.originalname, sha256, file.size, storageBucket, storageKey],
+          );
+          fileId = reg.rows[0]?.id as string ?? null;
+          logger.info('[archive/parse-om] Registered in data_library_files', { fileId, parcelId });
+        }
+      } catch (r2Err) {
+        const r2Msg = r2Err instanceof Error ? r2Err.message : String(r2Err);
+        logger.warn('[archive/parse-om] R2 upload failed (non-fatal)', { parcelId, error: r2Msg });
+      }
+    }
+
+    // ── Part A: write property_year_built to historical_observations ──────
+    // SELECT fix: match on parcel_id only (no observation_date filter) to
+    // prevent ghost stub creation on re-runs. Prefer C1 tier, newest date.
+    let hoWritten = false;
     if (parcelId && yearBuilt !== null) {
-      const pool = getPool();
       const existing = await pool.query(
         `SELECT id FROM historical_observations
-         WHERE parcel_id = $1 AND observation_date = $2::DATE AND geography_level = 'parcel'
+         WHERE parcel_id = $1 AND geography_level = 'parcel'
+         ORDER BY data_quality_tier ASC, observation_date DESC
          LIMIT 1`,
-        [parcelId, observationDate],
+        [parcelId],
       );
 
       if (existing.rows[0]) {
@@ -832,6 +883,18 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
         );
         logger.info('[archive/parse-om] Inserted new row with property_year_built', { parcelId, yearBuilt });
       }
+      hoWritten = true;
+    }
+
+    // ── Link source_file_ids on the observation row ───────────────────────
+    if (parcelId && fileId) {
+      await pool.query(
+        `UPDATE historical_observations
+         SET source_file_ids = array_append(COALESCE(source_file_ids, '{}'), $1::uuid)
+         WHERE parcel_id = $2 AND geography_level = 'parcel'
+           AND (source_file_ids IS NULL OR NOT (source_file_ids @> ARRAY[$1::uuid]))`,
+        [fileId, parcelId],
+      );
     }
 
     return res.json({
@@ -844,7 +907,9 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
       address: extraction.property?.address ?? null,
       city: extraction.property?.city ?? null,
       state: extraction.property?.state ?? null,
-      dbWritten: parcelId !== null && yearBuilt !== null,
+      dbWritten: hoWritten,
+      fileId,
+      storageKey: fileId ? `oms/${(parcelId ?? '').replace(/[^a-zA-Z0-9_\-]/g, '_')}/${sha256.slice(0, 16)}_${file.originalname}` : null,
       extraction,
     });
   } catch (err) {
