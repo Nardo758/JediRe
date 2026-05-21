@@ -44,10 +44,27 @@ import { routeExtractionResult } from '../services/document-extraction/data-rout
 import type { DocumentType, ExtractionResult } from '../services/document-extraction/types';
 import type { Pool } from 'pg';
 
+// ─── HTTP endpoint config (set --http to use Replit proxy instead of direct DB) ─
+const JSON_OUTPUT = process.argv.includes('--json');
+const JSON_OUTPUT_PATH = process.argv.includes('--json')
+  ? (() => {
+      const idx = process.argv.indexOf('--json');
+      return idx >= 0 && idx + 1 < process.argv.length && !process.argv[idx + 1].startsWith('-')
+        ? process.argv[idx + 1]
+        : 'archive-ingest-output.json';
+    })()
+  : null;
+
+// HTTP endpoint mode — post rows instead of writing to DB
+const HTTP_MODE = process.argv.includes('--http');
+const INGEST_ENDPOINT = process.env.INGEST_ENDPOINT ||
+  'https://381d5707-51e5-4d3d-b340-02537a082e98-00-2gk8jsdbkwoy5.worf.replit.dev/api/v1/archive/ingest-rows';
+const INGEST_SECRET = process.env.INGEST_SECRET || 'jedire-archive-2026';
+
 // DB connection — lazy-loaded so dry-run can skip it
 let _pool: Pool | null = null;
 async function getDbPool(): Promise<Pool | null> {
-  if (DRY_RUN) return null;
+  if (DRY_RUN || HTTP_MODE || JSON_OUTPUT) return null;
   if (_pool) return _pool;
   try {
     const { getPool } = await import('../database/connection');
@@ -113,6 +130,16 @@ interface RunStats {
   parserBreakdown: Record<string, { success: number; failure: number }>;
 }
 
+// ─── Accumulated rows for JSON output ────────────────────────────────────────
+const collectedRows: Array<{
+  parcelId: string;
+  folderName: string;
+  filename: string;
+  docType: DocumentType;
+  data: unknown;
+  extraction: ExtractionResult;
+}> = [];
+
 const stats: RunStats = {
   started: new Date(),
   propertiesFound: 0,
@@ -163,10 +190,13 @@ function progressBar(current: number, total: number, message: string): void {
 async function resolvePropertyIdentity(
   pool: Pool | null,
   folderName: string,
-): Promise<{ dealId: string | null; propertyId: string | null }> {
+): Promise<{ dealId: string | null; propertyId: string | null; parcelId?: string }> {
   if (!pool) {
-    // Dry-run: return a deterministic synthetic ID for logging
+    // Dry-run / HTTP mode: return folder name as parcel ID
     const safeName = folderName.replace(/[^a-zA-Z0-9]/g, '_');
+    if (HTTP_MODE) {
+      return { dealId: null, propertyId: null, parcelId: folderName };
+    }
     return { dealId: `dry-run-${safeName}`, propertyId: `dry-run-prop-${safeName}` };
   }
 
@@ -221,7 +251,205 @@ async function resolvePropertyIdentity(
     log('warn', `Identity resolution failed for ${folderName}: ${msg}`);
   }
 
-  return { dealId: null, propertyId: null };
+  return { dealId: null, propertyId: null, parcelId: null };
+}
+
+// ─── HTTP Batch Accumulator ───────────────────────────────────────────────────
+
+/** Batches of corpus rows waiting to be POSTed */
+const httpRowBatch: Array<Record<string, unknown>> = [];
+let httpTotalPosted = 0;
+const HTTP_BATCH_SIZE = 100;
+
+/**
+ * Map a T12 / rent roll / leasing-stats parsed data blob
+ * to the corpus observation columns that the DB actually has.
+ *
+ * Property-level columns accepted by the endpoint:
+ *   property_occupancy, property_avg_rent, property_asking_rent,
+ *   property_unit_count, property_year_built, property_class,
+ *   property_concession_per_unit, property_signing_velocity
+ *
+ * Realized changes (year-over-year):
+ *   realized_rent_change_t3/t12/t24, realized_occupancy_change_t3/t12,
+ *   realized_concession_change_t12, realized_signing_velocity_t3/t12
+ *
+ * Required on every row:
+ *   parcel_id, observation_date, source_signals[], data_quality_tier
+ */
+function extractCorpusColumns(
+  docType: DocumentType,
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const cols: Record<string, unknown> = {};
+
+  // Determine source signal based on doc type
+  if (docType === 'T12') {
+    cols.source_signals = ['t12'];
+    // T12 typically has monthlySummary or per-month income/expense
+    const d = data as Record<string, unknown>;
+    if (d.monthlySummary && typeof d.monthlySummary === 'object') {
+      const ms = d.monthlySummary as Record<string, unknown>;
+      if (ms.occupancy != null) cols.property_occupancy = Number(ms.occupancy);
+      if (ms.avgRent != null) cols.property_avg_rent = Number(ms.avgRent);
+      if (ms.unitCount != null) cols.property_unit_count = Number(ms.unitCount);
+    }
+    // Also check data-level occupancy field (some T12s have it at root)
+    if (d.occupancyRate != null && cols.property_occupancy == null) cols.property_occupancy = Number(d.occupancyRate);
+    if (d.total_units != null && cols.property_unit_count == null) cols.property_unit_count = Number(d.total_units);
+    if (d.averageRent != null && cols.property_avg_rent == null) cols.property_avg_rent = Number(d.averageRent);
+  } else if (docType === 'RENT_ROLL') {
+    cols.source_signals = ['rent_roll'];
+    const units = Array.isArray((data as Record<string, unknown>).units) ? (data as Record<string, unknown>).units as Array<Record<string, unknown>> : [];
+    if (units.length > 0) {
+      cols.property_unit_count = units.length;
+      const occupied = units.filter(u => {
+        const s = String(u.status || '').toLowerCase();
+        return /occupied|leased|rented/.test(s);
+      });
+      cols.property_occupancy = units.length > 0 ? occupied.length / units.length : null;
+      const unitsWithRent = units.filter(u => u.effectiveRent != null || u.marketRent != null);
+      cols.property_avg_rent = unitsWithRent.length > 0
+        ? unitsWithRent.reduce((s, u) => s + Number(u.effectiveRent ?? u.marketRent ?? 0), 0) / unitsWithRent.length
+        : null;
+    }
+    // Root-level fields may override
+    const d = data as Record<string, unknown>;
+    if (d.totalUnits != null) cols.property_unit_count = Number(d.totalUnits);
+    if (d.occupancy != null) cols.property_occupancy = Number(d.occupancy);
+    if (d.avgRent != null) cols.property_avg_rent = Number(d.avgRent);
+  } else if (docType === 'BOX_SCORE' || docType === 'LEASING_STATS') {
+    cols.source_signals = ['leasing_stats'];
+    const d = data as Record<string, unknown>;
+    if (d.summary && typeof d.summary === 'object') {
+      const s = d.summary as Record<string, unknown>;
+      if (s.total_units != null) cols.property_unit_count = Number(s.total_units);
+      if (s.total_occupied != null && Number(s.total_units) > 0) {
+        cols.property_occupancy = Number(s.total_occupied) / Number(s.total_units);
+      }
+      if (s.total_new_leases != null) cols.property_signing_velocity = Number(s.total_new_leases);
+    }
+    // Concession: extract from new_leases if available
+    const newLeases = Array.isArray(d.new_leases) ? d.new_leases as Array<Record<string, unknown>> : [];
+    if (newLeases.length > 0) {
+      const withConcession = newLeases.filter(l => l.concession != null && Number(l.concession) > 0);
+      if (withConcession.length > 0) {
+        cols.property_concession_per_unit = withConcession.reduce((s, l) => s + Number(l.concession), 0) / withConcession.length;
+      }
+    }
+    // Activity-level signing velocity
+    if (d.activity && Array.isArray(d.activity)) {
+      const totalNewLeases = (d.activity as Array<Record<string, unknown>>).reduce((s, a) => s + (Number(a.net_leases) || 0), 0);
+      if (totalNewLeases > 0) cols.property_signing_velocity = (cols.property_signing_velocity as number || 0) + totalNewLeases;
+    }
+  } else if (docType === 'CONCESSION_BURNOFF') {
+    cols.source_signals = ['concession_burnoff'];
+    const d = data as Record<string, unknown>;
+    if (d.averageConcession != null) cols.property_concession_per_unit = Number(d.averageConcession);
+    if (d.totalUnits != null) cols.property_unit_count = Number(d.totalUnits);
+  } else if (docType === 'OTHER_INCOME') {
+    cols.source_signals = ['other_income'];
+    // No standard property-level fields for other income
+  } else {
+    cols.source_signals = [docType.toLowerCase()];
+  }
+
+  return cols;
+}
+
+/**
+ * Convert an extraction result into one or more corpus-row-shaped records
+ * and add them to the outbound batch. Flushes when batch reaches target size.
+ */
+async function accumulateForHttp(
+  result: ExtractionResult,
+  parcelId: string,
+  filename: string,
+): Promise<boolean> {
+  if (!result.success || !result.data) return false;
+
+  const now = new Date().toISOString().split('T')[0];
+  const docType = result.documentType;
+  const data = result.data as Record<string, unknown>;
+
+  // Determine observation date from parsed data
+  let obsDate = now;
+  if (data) {
+    if (data.period && typeof data.period === 'object') {
+      const p = data.period as Record<string, unknown>;
+      obsDate = String(p.end || p.start || now);
+    } else if (data.date) {
+      obsDate = String(data.date);
+    } else if (data.observationDate) {
+      obsDate = String(data.observationDate);
+    }
+  }
+
+  // Extract recognized corpus columns from the parsed data
+  const columnOverrides = extractCorpusColumns(docType, data);
+
+  // Build the final row — required fields + any extracted columns
+  const row: Record<string, unknown> = {
+    parcel_id: parcelId,
+    observation_date: obsDate,
+    data_quality_tier: 'C1',
+    source_file: filename,
+    ...columnOverrides,
+  };
+
+  // Send individual row (endpoint handles column stripping)
+  httpRowBatch.push(row);
+
+  // Flush if batch is full
+  if (httpRowBatch.length >= HTTP_BATCH_SIZE) {
+    return await flushHttpBatch();
+  }
+  return true;
+}
+
+/**
+ * Flush accumulated rows to the Replit endpoint.
+ */
+async function flushHttpBatch(): Promise<boolean> {
+  if (httpRowBatch.length === 0) return true;
+
+  const batch = httpRowBatch.splice(0);
+  try {
+    const response = await fetch(INGEST_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-ingest-secret': INGEST_SECRET,
+      },
+      body: JSON.stringify({ rows: batch, dryRun: false }),
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => 'unknown');
+      log('warn', `POST failed [${response.status}]: ${text.slice(0, 300)}`);
+      // Put rows back for retry? For now just log
+      httpRowBatch.unshift(...batch);
+      return false;
+    }
+
+    const body = await response.json() as { success?: boolean; inserted?: number; updated?: number; skipped?: number };
+    if (!body.success) {
+      log('warn', `Server rejected batch of ${batch.length}: ${JSON.stringify(body).slice(0, 300)}`);
+      httpRowBatch.unshift(...batch);
+      return false;
+    }
+
+    httpTotalPosted += batch.length;
+    if (body.inserted) httpTotalPosted += body.inserted;
+    log('info', `HTTP batch: ${batch.length} rows sent (${body.inserted ?? 0} inserted, ${body.updated ?? 0} updated)`);
+    return true;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log('warn', `HTTP POST error: ${msg}`);
+    httpRowBatch.unshift(...batch);
+    return false;
+  }
 }
 
 // ─── File Processing ────────────────────────────────────────────────────────
@@ -342,7 +570,7 @@ async function processProperty(
   pool: Pool,
   folderName: string,
   folderPath: string,
-  identity: { dealId: string | null; propertyId: string | null },
+  identity: { dealId: string | null; propertyId: string | null; parcelId?: string },
   typeFilter?: string,
   isDryRun: boolean = false,
 ): Promise<PropertyResult> {
@@ -358,9 +586,13 @@ async function processProperty(
   };
 
   if (!identity.dealId || !identity.propertyId) {
-    result.status = 'skipped';
-    result.errorDetails.push('Property identity not resolved in database');
-    return result;
+    // HTTP/JSON mode: use folder name as parcel identity (server-side resolution)
+    if (!HTTP_MODE && !JSON_OUTPUT) {
+      result.status = 'skipped';
+      result.errorDetails.push('Property identity not resolved in database');
+      return result;
+    }
+    identity.parcelId = folderName;
   }
 
   // Enumerate files recursively
@@ -409,7 +641,31 @@ async function processProperty(
 
     // Parse succeeded — now route to corpus / monthly_actuals
     try {
-      if (!isDryRun) {
+      if (isDryRun) {
+        // Dry-run: count it but don't write anything
+        result.ingested++;
+      } else if (HTTP_MODE) {
+        // HTTP mode: accumulate rows and batch-POST to Replit endpoint
+        const httpOk = await accumulateForHttp(processed.result!, identity.parcelId || identity.dealId || folderName, filename);
+        if (httpOk) {
+          result.ingested++;
+        } else {
+          result.errors++;
+          result.errorDetails.push(`${filename}: HTTP POST failed`);
+        }
+      } else if (JSON_OUTPUT) {
+        // JSON mode: accumulate rows for later export
+        collectedRows.push({
+          parcelId: identity.parcelId || identity.dealId || folderName,
+          folderName,
+          filename,
+          docType: processed.docType,
+          data: processed.result!.data,
+          extraction: processed.result!,
+        });
+        result.ingested++;
+      } else {
+        // Normal mode: write to DB via data router
         const routeResult = await routeExtractionResult(processed.result!, {
           dealId: identity.dealId,
           filename,
@@ -420,8 +676,6 @@ async function processProperty(
         if (rowsInserted === 0) {
           result.skipped++;
         }
-      } else {
-        result.ingested++;
       }
 
       // Track parser stats
@@ -526,10 +780,10 @@ async function main(): Promise<void> {
 
   // Pre-resolve identities for all properties
   log('info', 'Resolving property identities...');
-  const identityCache = new Map<string, { dealId: string | null; propertyId: string | null }>();
+  const identityCache = new Map<string, { dealId: string | null; propertyId: string | null; parcelId?: string }>();
   for (const folder of propertyFolders) {
     if (skipSet.has(folder)) {
-      identityCache.set(folder, { dealId: null, propertyId: null });
+      identityCache.set(folder, { dealId: null, propertyId: null, parcelId: null });
       continue;
     }
     const identity = await resolvePropertyIdentity(pool, folder);
@@ -559,17 +813,21 @@ async function main(): Promise<void> {
 
       const identity = identityCache.get(folder);
       if (!identity || (!identity.dealId && !identity.propertyId)) {
-        const result: PropertyResult = {
-          name: folder,
-          status: 'skipped',
-          totalFiles: 0,
-          ingested: 0,
-          skipped: 0,
-          errors: 0,
-          docTypes: {},
-          errorDetails: ['Property not found in database'],
-        };
-        return result;
+        // HTTP/JSON mode: proceed with folder name as parcel identity
+        if (!HTTP_MODE && !JSON_OUTPUT) {
+          const result: PropertyResult = {
+            name: folder,
+            status: 'skipped',
+            totalFiles: 0,
+            ingested: 0,
+            skipped: 0,
+            errors: 0,
+            docTypes: {},
+            errorDetails: ['Property not found in database'],
+          };
+          return result;
+        }
+        // Allow processProperty to create synthetic identity from folder name
       }
 
       const folderPath = path.join(ARCHIVE_ROOT, folder);
@@ -596,6 +854,17 @@ async function main(): Promise<void> {
     const processedSoFar = Math.min(stats.propertiesProcessed, queue.length);
     const total = Math.min(queue.length, LIMIT);
     progressBar(processedSoFar, total, `last: ${batchResults.map(r => r.name).join(', ')}`);
+  }
+
+  // ─── Final HTTP/JSON flush ────────────────────────────────────────────────
+  if (HTTP_MODE && httpRowBatch.length > 0) {
+    log('info', `Flushing final HTTP batch (${httpRowBatch.length} rows)...`);
+    await flushHttpBatch();
+  }
+  if (JSON_OUTPUT && collectedRows.length > 0) {
+    const outPath = JSON_OUTPUT_PATH || 'archive-ingest-output.json';
+    fs.writeFileSync(outPath, JSON.stringify(collectedRows, null, 2));
+    log('info', `Wrote ${collectedRows.length} rows to ${outPath}`);
   }
 
   // ─── Final Report ────────────────────────────────────────────────────────
