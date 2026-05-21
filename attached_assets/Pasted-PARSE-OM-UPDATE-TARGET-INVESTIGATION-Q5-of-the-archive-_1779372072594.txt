@@ -1,0 +1,51 @@
+PARSE-OM UPDATE TARGET INVESTIGATION
+
+Q5 of the archive audit confirmed parse-om writes are not landing
+in historical_observations.property_year_built despite "Updated 
+property_year_built" log messages. Investigation only — no fixes
+until findings are reported.
+
+STEPS
+
+1. Read the parse-om endpoint source on the Replit side. Identify:
+   - The exact SQL/ORM call that writes year_built  
+   - The table name being targeted
+   - The WHERE clause (what predicate is used to match the parcel)
+
+2. Inspect the live database for related tables:
+   - Is there a `properties` table separate from 
+     `historical_observations`?
+   - If yes, does it have a `year_built` column?
+   - Run: SELECT count(*) FROM properties WHERE year_built IS NOT NULL
+   - List the parcel_ids/identifiers with year_built in `properties`
+   - Compare against the parse-om batch results (~40 expected)
+
+3. Cross-check the 38 rows that DO have year_built in 
+   historical_observations:
+   - What's the source? Bulk-seed CSV? An earlier ingest?
+   - List the 38 parcels by name
+   - Are they a subset of the parse-om batch, or from a different
+     ingestion path entirely?
+
+4. Identify the WHERE clause mismatch (if applicable):
+   - parse-om receives `?parcel_id=Alta%20Dairies` from the upload script
+   - What column does the UPDATE compare this against?
+   - Is there a normalization step? (case folding, space handling, 
+     ID lookup vs name match)
+
+REPORT BACK:
+(a) The literal SQL/ORM write statement from parse-om
+(b) Table inventory: which tables have year_built columns
+(c) Where the 38 populated rows came from
+(d) Root cause of the zero-update (table mismatch, WHERE clause 
+    mismatch, or both)
+(e) Decision tree for fix:
+    - Option 1: change parse-om to also write to 
+      historical_observations
+    - Option 2: leave parse-om as-is, change readers to JOIN
+      properties for year_built
+    - Option 3: backfill historical_observations from properties
+      via a one-time SQL
+
+No code changes. Investigation deliverable is a decision tree, not
+an implementation.
