@@ -156,7 +156,7 @@ const TABS_META: TabMeta[] = [
   { key: "F1",  slug: "dashboard",  label: "DASHBOARD"  },
   { key: "F2",  slug: "pipeline",   label: "PIPELINE"   },
   { key: "F3",  slug: "portfolio",  label: "PORTFOLIO"  },
-  { key: "F5",  slug: "markets",    label: "MARKETS"    },
+  { key: "F4",  slug: "markets",    label: "MARKETS"    },
   { key: "F6",  slug: "email",      label: "EMAIL"      },
   { key: "F7",  slug: "news",       label: "NEWS"       },
   { key: "F8",  slug: "strategies", label: "STRATEGIES" },
@@ -1039,7 +1039,7 @@ export default function TerminalPage() {
       }
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if(tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
-      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F5", F5:"F5", F6:"F6", F7:"F7", F8:"F8", F9:"F9", F10:"F10" }; // F4 aliases F5 (Markets)
+      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F4", F6:"F6", F7:"F7", F8:"F8", F9:"F9", F10:"F10" }; // F5 key aliases F4 (Markets)
       if(fKeyMap[e.key]) { e.preventDefault(); setFkey(fKeyMap[e.key]); }
       if(e.key === "/") { e.preventDefault(); cmdInputRef.current?.focus(); }
     };
@@ -2605,7 +2605,7 @@ export default function TerminalPage() {
     F1:  () => ViewDashboard(),
     F2:  () => dealGridEl,
     F3:  () => <F3PortfolioView theme={T} />,
-    F5:  () => <F4MarketsView onTopMovers={handleTopMovers} />,
+    F4:  () => <F4MarketsView onTopMovers={handleTopMovers} />,
     F6:  () => ViewEmail(),
     F7:  () => ViewNews(),
     F8:  () => ViewStrategies(),
