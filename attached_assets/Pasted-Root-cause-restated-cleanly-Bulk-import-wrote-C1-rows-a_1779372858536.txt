@@ -1,0 +1,137 @@
+Root cause restated cleanly
+Bulk import wrote C1 rows at observation_date = 2026-05-20
+Parse-om batch called with ?observation_date = 2025-01-01
+Parse-om's WHERE clause: (parcel_id + observation_date + geography_level)
+                                         ↑ never matched
+→ Else-branch fired
+→ Created C2 ghost rows at 2025-01-01 with year_built values
+→ dbWritten=true returned on BOTH branches → batch script saw "success"
+The data exists. It's just in the wrong rows. 38 ghost C2 rows at 2025-01-01 hold the real year_built values. 296 C1 rows at 2026-05-20 (what readers look at) are NULL.
+
+Approved — Option 2 backfill, then Option 1 prevention
+Dispatch 1 — Option 2 (backfill, run now):
+ARCHIVE YEAR_BUILT BACKFILL — OPTION 2
+
+CONTEXT
+Investigation confirmed parse-om INSERTed C2 ghost rows at 
+observation_date='2025-01-01' instead of UPDATEing the C1 batch rows 
+at '2026-05-20'. 38 year_built values exist in ghost rows; 296 C1 
+rows are NULL. Backfill moves the data to where readers look.
+
+STEPS
+
+1. PRE-CHECK — count what will be affected:
+   - C1 rows at 2026-05-20 with NULL year_built that have a matching 
+     C2 ghost: expected ~38
+   - C2 ghost rows at 2025-01-01 with non-null year_built: expected ~38
+
+2. EXECUTE the backfill UPDATE (from investigation report (e)):
+   UPDATE historical_observations ho
+   SET property_year_built = c2.property_year_built,
+       source_signals = array(SELECT DISTINCT unnest(ho.source_signals || ARRAY['om']))
+   FROM historical_observations c2
+   WHERE c2.parcel_id = ho.parcel_id
+     AND c2.data_quality_tier = 'C2'
+     AND c2.observation_date = '2025-01-01'
+     AND c2.property_year_built IS NOT NULL
+     AND ho.data_quality_tier = 'C1'
+     AND ho.observation_date = '2026-05-20'
+     AND ho.property_year_built IS NULL;
+
+3. POST-CHECK:
+   SELECT count(*) FROM historical_observations 
+   WHERE data_quality_tier = 'C1' 
+     AND observation_date = '2026-05-20' 
+     AND property_year_built IS NOT NULL
+   -- Expected: ~38
+
+4. DELETE the now-redundant C2 ghosts — but ONLY where backfill 
+   succeeded (orphan safety):
+   
+   DELETE FROM historical_observations
+   WHERE data_quality_tier = 'C2'
+     AND observation_date = '2025-01-01'
+     AND source_signals @> ARRAY['om']
+     AND parcel_id IN (
+       SELECT parcel_id FROM historical_observations
+       WHERE data_quality_tier = 'C1'
+         AND observation_date = '2026-05-20'
+         AND property_year_built IS NOT NULL
+     );
+   -- Orphan ghosts (no matching C1) stay for manual review.
+
+5. FINAL AUDIT — re-run Q1 and Q5 from the original audit:
+   - Q1 expected: ~38 (same number, now in correct C1 rows)
+   - Q5 expected: zero anomalies (no parse-om-success-with-DB-NULL)
+
+CLOSING NOTE:
+(a) Pre-check counts
+(b) UPDATE rows affected
+(c) DELETE rows affected  
+(d) Post-audit numbers
+(e) Any orphan C2 ghosts retained for review
+
+DO NOT
+- Modify parse-om code in this dispatch (Dispatch 2)
+- Drop the source_signals merge — preserves 'om' provenance
+- DELETE without the IN(...) safety filter
+Dispatch 2 — Option 1 (parse-om SELECT fix, after backfill verified):
+ARCHIVE PARSE-OM SELECT FIX — OPTION 1
+
+CONTEXT
+After the Option 2 backfill closes the data gap, this prevents 
+recurrence by changing parse-om's lookup to find the most recent 
+row for a parcel regardless of observation_date parameter.
+
+STEPS
+
+1. Locate parse-om at archive.routes.ts lines 806-834
+
+2. Change SELECT lookup:
+   FROM:
+     WHERE parcel_id = $1 AND observation_date = $2::DATE 
+       AND geography_level = 'parcel'
+     LIMIT 1
+   TO:
+     WHERE parcel_id = $1 AND geography_level = 'parcel'
+     ORDER BY observation_date DESC
+     LIMIT 1
+
+3. Remove the now-unused observationDate from the SELECT params
+
+4. Add a comment above the else-branch:
+   // If no observation row exists for this parcel, create a C2 stub.
+   // Future bulk imports will UPSERT against this row by date.
+
+5. TEST on a known parcel (e.g., Mirabella Lakes):
+   - Confirm SELECT returns the existing 2026-05-20 C1 row
+   - Confirm UPDATE fires (not INSERT)  
+   - Confirm year_built lands in the C1 row directly
+   - Confirm no new C2 ghost is created
+
+6. COMMIT, DEPLOY, restart backend
+
+CLOSING NOTE:
+(a) Diff of the SELECT change
+(b) Mirabella Lakes test result (before/after row state)
+(c) Confirm row count unchanged (UPDATE not INSERT)
+Sequence both: Dispatch 1 first, verify clean, then Dispatch 2.
+
+Two broader observations worth flagging
+1. This is the 5th instance of the same architectural pattern.
+#SiteWriter → Reader mismatch1Ticket Abroker_claims.proforma → deal_assumptions.year12F9 returns.lpNetIrr → .irr3F9 purchasePricecapital stack → build payload (omitted)4F-key navigationnav button F-key string → switch case (off-by-one)5parse-om year_builtobservation_date param → WHERE clause (date mismatch)
+Five recurring instances of "producer writes here, reader reads there, no compile-time link, silent failure" is enough to treat as systemic, not coincidental. The platform doesn't have a discipline of: when you add a write site, you grep for the reader and confirm alignment, and ideally make them share a type or registry that prevents drift. Worth naming as a working principle: any new write path requires identifying every reader of that field and confirming the contract holds.
+2. 35 tables have year_built columns.
+The bot mentioned this in passing. It's a significant data-model redundancy. Each redundant column is a potential silent failure site. Not urgent, but worth queueing a substrate-cleanup session at some point to:
+
+Identify which is canonical (likely properties.year_built)
+Identify which are denormalized convenience columns
+Document the propagation expectation (does a write to canonical propagate to denorm?)
+Or remove the denorm columns and JOIN at read time
+
+Defer this. But put it on the deferred list — it will cause more bugs of this shape if left.
+
+Status
+Work itemStatusArchive seedRow count complete; silent write bug identified, fix dispatches readyDispatch 1 — Option 2 backfillReady to send (run now)Dispatch 2 — Option 1 parse-om fixReady to send (after backfill verified)DB audit verificationWill be re-run as step 5 of Dispatch 1Time-series query layer specHold until backfill landsPhase 4 — CoStar MSA enrichmentQueuedF9 fixes (purchasePrice ✅, surgical batch, composer audit)Separate work streamDeferred substrate cleanup: 35-year_built-table redundancyNote for future
+Fire Dispatch 1 first. After it returns clean (Q1 = 38, Q5 = zero anomalies), fire Dispatch 2.
+The verify-first discipline is now five-for-five at catching things that would have broken downstream work. This is the way.
