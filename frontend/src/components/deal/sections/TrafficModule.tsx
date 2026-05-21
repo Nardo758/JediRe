@@ -1001,7 +1001,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 </div>
               )}
               <a
-                href="/data-library"
+                href="/terminal/settings?tab=data-library"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', border: `1px solid ${BT2.border.subtle}`, color: BT2.text.secondary, textDecoration: 'none', fontSize: 10, fontFamily: bMono }}
               >
                 <Database size={11} /> Data Library <ExternalLink size={9} />
@@ -1022,7 +1022,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 <Upload size={12} /> Upload Weekly Report
               </button>
               <a
-                href="/data-library"
+                href="/terminal/settings?tab=data-library"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: `1px solid ${BT2.border.subtle}`, color: BT2.text.secondary, textDecoration: 'none', fontSize: 10, fontFamily: bMono }}
               >
                 <Database size={12} /> Data Library <ExternalLink size={9} />
