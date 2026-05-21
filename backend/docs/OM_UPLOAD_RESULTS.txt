@@ -1,0 +1,6 @@
+OM PDF Ingest — COMPLETE (2026-05-21)
+See docs/operations/OM_INGEST_FINAL.md for full results.
+
+All 42 OM PDFs processed. 41 with yearBuilt in DB.
+1 null (Parkview Greer — new development).
+0 failures.
