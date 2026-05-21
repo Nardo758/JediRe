@@ -89,6 +89,29 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
     }
   });
 
+  /**
+   * GET /:id/files
+   * List all files attached to a data-library asset.
+   * Returns file name, size, mime type, upload date, and parse status.
+   */
+  router.get('/:id/files', async (req: Request, res: Response) => {
+    try {
+      const result = await pool.query(
+        `SELECT
+           id, file_name, file_size, mime_type, parsing_status, parsing_stage,
+           uploaded_at, source_type
+         FROM data_library_files
+         WHERE asset_id = $1
+         ORDER BY uploaded_at DESC`,
+        [req.params.id],
+      );
+      res.json({ files: result.rows });
+    } catch (err: any) {
+      console.error('Asset files list error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/', async (req: Request, res: Response) => {
     try {
       const fields = [

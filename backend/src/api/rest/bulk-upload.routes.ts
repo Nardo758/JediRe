@@ -152,7 +152,23 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
   };
   
   uploadJobs.set(jobId, job);
-  
+
+  // When targeting an existing asset, persist file metadata immediately so the
+  // asset's file list is visible in the UI even before the background parse finishes.
+  if (assetId) {
+    Promise.all(
+      files.map(f =>
+        dbQuery(
+          `INSERT INTO data_library_files
+             (user_id, asset_id, file_name, file_path, file_size, mime_type, source_type, parsing_status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'owned', 'pending')
+           ON CONFLICT DO NOTHING`,
+          [req.user!.userId, assetId, f.originalname, f.path, f.size || 0, f.mimetype || 'application/octet-stream'],
+        )
+      )
+    ).catch(err => logger.warn('[bulk-upload] Failed to record file metadata for asset:', err));
+  }
+
   // Return immediately with job ID
   res.json({ 
     success: true, 
@@ -210,7 +226,18 @@ router.post('/zip', requireAuth, upload.single('file'), async (req: Authenticate
   };
   
   uploadJobs.set(jobId, job);
-  
+
+  // Record the ZIP file metadata so it appears in the asset's file list immediately.
+  if (assetId) {
+    dbQuery(
+      `INSERT INTO data_library_files
+         (user_id, asset_id, file_name, file_path, file_size, mime_type, source_type, parsing_status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'owned', 'pending')
+       ON CONFLICT DO NOTHING`,
+      [req.user!.userId, assetId, file.originalname, file.path, file.size || 0, file.mimetype || 'application/zip'],
+    ).catch(err => logger.warn('[bulk-upload] Failed to record ZIP metadata for asset:', err));
+  }
+
   // Return immediately with job ID
   res.json({ 
     success: true, 
