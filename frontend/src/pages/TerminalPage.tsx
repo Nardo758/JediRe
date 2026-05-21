@@ -2608,6 +2608,7 @@ export default function TerminalPage() {
       case "F7": return ViewStrategies();
       case "F8": return <F8AdminView T={T} />;
       case "F9": return ViewSettings();
+      case "F10": return ViewSettings();
       default: return null;
     }
   };
