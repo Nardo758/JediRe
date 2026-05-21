@@ -158,7 +158,14 @@ export const DataLibraryPage: React.FC = () => {
   // Deals list for the deal-association selector in the upload form
   const [deals, setDeals] = useState<{ id: string; name: string }[]>([]);
 
-  const [activeTab, setActiveTab] = useState<'folders' | 'search'>('folders');
+  const [activeTab, setActiveTab] = useState<'folders' | 'search' | 'archive'>('folders');
+
+  // Archive Properties tab state
+  const [archiveAssets, setArchiveAssets] = useState<any[]>([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveTotal, setArchiveTotal] = useState(0);
+  const [archiveSearch, setArchiveSearch] = useState('');
+  const [archiveSearchInput, setArchiveSearchInput] = useState('');
 
   const [pstJob, setPstJob] = useState<PstJobStatus | null>(null);
   const [pstEntities, setPstEntities] = useState<PstEntity[]>([]);
@@ -207,6 +214,25 @@ export const DataLibraryPage: React.FC = () => {
     }
     setLoading(false);
   };
+
+  const loadArchive = useCallback(async (search: string) => {
+    setArchiveLoading(true);
+    try {
+      const params: Record<string, string> = { limit: '300', offset: '0', sort_by: 'property_name', sort_dir: 'asc' };
+      if (search.trim()) params.search = search.trim();
+      const { data } = await apiClient.get('/api/v1/data-library-assets', { params });
+      setArchiveAssets(data.assets ?? []);
+      setArchiveTotal(data.total ?? 0);
+    } catch (e: any) {
+      setError(e.message);
+    }
+    setArchiveLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'archive') loadArchive(archiveSearch);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, archiveSearch]);
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -352,8 +378,8 @@ export const DataLibraryPage: React.FC = () => {
 
       {/* ── Tab bar ────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid #1e2740' }}>
-        {(['folders', 'search'] as const).map(tab => {
-          const label = tab === 'folders' ? 'Deal Folders' : 'Search & Filter';
+        {(['folders', 'search', 'archive'] as const).map(tab => {
+          const label = tab === 'folders' ? 'Deal Folders' : tab === 'search' ? 'Search & Filter' : `Archive (${archiveTotal || 300})`;
           const active = activeTab === tab;
           return (
             <button
@@ -479,6 +505,105 @@ export const DataLibraryPage: React.FC = () => {
       {showPstResults && pstJob && <PstProgressPanel job={pstJob} entities={pstEntities} onClose={() => setShowPstResults(false)} />}
 
       {activeTab === 'folders' && <DealFolderView />}
+
+      {activeTab === 'archive' && (
+        <div>
+          {/* Search bar */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <input
+              type="text"
+              placeholder="Search properties by name, city..."
+              value={archiveSearchInput}
+              onChange={e => setArchiveSearchInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') setArchiveSearch(archiveSearchInput); }}
+              style={{
+                flex: 1, background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 6,
+                color: '#ccd6f6', padding: '7px 12px', fontSize: 13, outline: 'none',
+              }}
+            />
+            <button
+              onClick={() => setArchiveSearch(archiveSearchInput)}
+              style={{ padding: '7px 16px', background: '#00d4ff', border: 'none', borderRadius: 6, color: '#0d1117', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Search
+            </button>
+            {archiveSearch && (
+              <button
+                onClick={() => { setArchiveSearch(''); setArchiveSearchInput(''); }}
+                style={{ padding: '7px 12px', background: 'none', border: '1px solid #2a2a4a', borderRadius: 6, color: '#8892b0', fontSize: 13, cursor: 'pointer' }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {archiveLoading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#8892b0' }}>Loading archive...</div>
+          ) : archiveAssets.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#8892b0' }}>
+              <p style={{ fontSize: 16, marginBottom: 8 }}>No properties found</p>
+            </div>
+          ) : (
+            <>
+              <div style={{ color: '#8892b0', fontSize: 11, marginBottom: 10 }}>
+                {archiveAssets.length} properties{archiveSearch ? ` matching "${archiveSearch}"` : ''}
+              </div>
+              {/* Table header */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: '2.5fr 1fr 0.7fr 0.8fr 0.8fr 0.8fr 0.7fr',
+                gap: 8, padding: '6px 12px', borderBottom: '1px solid #1e2740',
+                color: '#4a5568', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}>
+                <span>Property</span>
+                <span>Class / Type</span>
+                <span>Units</span>
+                <span>Year Built</span>
+                <span>Avg Rent</span>
+                <span>Occupancy</span>
+                <span>Cap Rate</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {archiveAssets.map((a: any) => (
+                  <div key={a.id} style={{
+                    display: 'grid', gridTemplateColumns: '2.5fr 1fr 0.7fr 0.8fr 0.8fr 0.8fr 0.7fr',
+                    gap: 8, padding: '9px 12px', borderBottom: '1px solid #111827',
+                    fontSize: 12, alignItems: 'center',
+                    transition: 'background 0.1s',
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#1a1a2e')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <div>
+                      <div style={{ color: '#ccd6f6', fontWeight: 500 }}>{a.property_name}</div>
+                      {(a.city || a.state) && (
+                        <div style={{ color: '#4a5568', fontSize: 10, marginTop: 2 }}>
+                          {[a.city, a.state].filter(Boolean).join(', ')}
+                          {a.msa_name && ` · ${a.msa_name}`}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ color: '#8892b0' }}>
+                      {a.asset_class || '—'}
+                      {a.property_type && <span style={{ color: '#4a5568', fontSize: 10, display: 'block' }}>{a.property_type}</span>}
+                    </div>
+                    <div style={{ color: a.unit_count ? '#ccd6f6' : '#4a5568' }}>{a.unit_count ?? '—'}</div>
+                    <div style={{ color: a.year_built ? '#ccd6f6' : '#4a5568' }}>{a.year_built ?? '—'}</div>
+                    <div style={{ color: a.avg_rent ? '#4ade80' : '#4a5568' }}>
+                      {a.avg_rent ? `$${Number(a.avg_rent).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—'}
+                    </div>
+                    <div style={{ color: a.occupancy_rate ? '#ccd6f6' : '#4a5568' }}>
+                      {a.occupancy_rate ? `${(Number(a.occupancy_rate) * 100).toFixed(1)}%` : '—'}
+                    </div>
+                    <div style={{ color: a.cap_rate ? '#f59e0b' : '#4a5568' }}>
+                      {a.cap_rate ? `${(Number(a.cap_rate) * 100).toFixed(2)}%` : '—'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {activeTab === 'search' && (
         <>
