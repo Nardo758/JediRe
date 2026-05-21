@@ -256,6 +256,49 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     setError(null);
     try {
       const fileArray = Array.from(files);
+
+      // ── OM auto-fill: if exactly one PDF was dropped, parse it for field extraction first ──
+      const singlePdf = fileArray.length === 1 && fileArray[0].name.toLowerCase().endsWith('.pdf');
+      if (singlePdf && editMode) {
+        setUploadStatus('Reading OM...');
+        try {
+          const form = new FormData();
+          form.append('file', fileArray[0]);
+          const omRes = await apiClient.post(
+            `/api/v1/data-library-assets/${assetId}/parse-om`,
+            form,
+            { headers: { 'Content-Type': 'multipart/form-data' } },
+          );
+          if (omRes.data?.success && omRes.data?.extracted) {
+            const ex = omRes.data.extracted as Record<string, string | null>;
+            // Fill blank fields only — never overwrite what the user already typed.
+            setDetails(d => ({
+              propertyName: !d.propertyName || d.propertyName === customLabel ? (ex.propertyName ?? d.propertyName) : d.propertyName,
+              address:      d.address      || ex.address      || '',
+              city:         d.city         || ex.city         || '',
+              state:        d.state        || ex.state        || '',
+              propertyType: d.propertyType || '',
+              assetClass:   d.assetClass   || '',
+              dealType:     d.dealType     || '',
+              units:        d.units        || ex.units        || '',
+              yearBuilt:    d.yearBuilt    || ex.yearBuilt    || '',
+              stories:      d.stories      || ex.stories      || '',
+              avgRent:      d.avgRent      || ex.avgRent      || '',
+              occupancyPct: d.occupancyPct || ex.occupancyPct || '',
+              capRate:      d.capRate      || ex.capRate      || '',
+              askingPrice:  d.askingPrice  || ex.askingPrice  || '',
+              soldPrice:    d.soldPrice    || ex.soldPrice    || '',
+              soldDate:     d.soldDate     || '',
+              noi:          d.noi          || ex.noi          || '',
+            }));
+            setUploadStatus(omRes.data.usedOcr ? 'OCR complete — fields filled' : 'OM parsed — fields filled');
+          }
+        } catch {
+          // OM parse failing should not block the regular upload
+          setUploadStatus('Uploading...');
+        }
+      }
+
       // If exactly one ZIP was dropped, send it to the zip endpoint so it gets unpacked.
       const isSingleZip = fileArray.length === 1 && fileArray[0].name.toLowerCase().endsWith('.zip');
       const job = isSingleZip

@@ -1,5 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
+import multer from 'multer';
+import { parseOM } from '../../services/document-extraction/parsers/om-parser';
+import { logger } from '../../utils/logger';
+
+const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 export function createDataLibraryAssetsRoutes(pool: Pool): Router {
   const router = Router();
@@ -171,6 +176,152 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
     } catch (err: any) {
       console.error('Data library asset update error:', err);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  /**
+   * POST /:id/parse-om
+   * Upload a PDF OM, run OCR-backed extraction, and backfill any blank
+   * fields on the data_library_assets row. Returns the extracted fields so
+   * the frontend can pre-populate the edit form without a page reload.
+   */
+  router.post('/:id/parse-om', memUpload.single('file'), async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const file = (req as Request & { file?: Express.Multer.File }).file;
+
+    if (!file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded. Send PDF as multipart field "file".' });
+    }
+    if (!file.originalname.toLowerCase().endsWith('.pdf')) {
+      return res.status(400).json({ success: false, error: 'Only PDF files are accepted.' });
+    }
+
+    logger.info('[data-library-assets/parse-om] Parsing OM PDF', {
+      assetId: id,
+      filename: file.originalname,
+      sizeKb: Math.round(file.size / 1024),
+    });
+
+    try {
+      const result = await parseOM(file.buffer, file.originalname);
+
+      if (!result.success || !result.data) {
+        return res.status(422).json({
+          success: false,
+          error: result.error ?? 'parseOM returned no data',
+          usedOcr: result.meta?.usedOcr ?? false,
+        });
+      }
+
+      const e = result.data;
+      const prop = e.property;
+      const meta = e.metadata;
+      const pf   = e.brokerProforma;
+      const mix  = e.unitMix ?? [];
+
+      // Derive weighted avg in-place rent from unit mix (inPlaceRent × count / totalUnits)
+      const mixWithRent = mix.filter(m => m.inPlaceRent != null && m.count != null);
+      const totalMixUnits = mixWithRent.reduce((s, m) => s + (m.count ?? 0), 0);
+      const weightedRent = totalMixUnits > 0
+        ? mixWithRent.reduce((s, m) => s + (m.inPlaceRent ?? 0) * (m.count ?? 0), 0) / totalMixUnits
+        : null;
+
+      // Derive market-rate avg rent if no in-place rent available
+      const mixWithMarket = mix.filter(m => m.marketRent != null && m.count != null);
+      const totalMarketUnits = mixWithMarket.reduce((s, m) => s + (m.count ?? 0), 0);
+      const weightedMarketRent = totalMarketUnits > 0
+        ? mixWithMarket.reduce((s, m) => s + (m.marketRent ?? 0) * (m.count ?? 0), 0) / totalMarketUnits
+        : null;
+
+      const avgRent = weightedRent ?? weightedMarketRent;
+
+      // Cap rate: prefer going-in cap, fall back to guidance cap from metadata
+      const rawCapRate = pf?.goingInCapRate ?? meta?.guidanceCapRate ?? null;
+      const capRateStored = rawCapRate != null
+        ? (rawCapRate > 1 ? rawCapRate / 100 : rawCapRate) : null;
+
+      // Occupancy: broker advertises (1 - stabilizedVacancy) as going-in occupancy
+      const rawVacancy = pf?.stabilizedVacancy ?? null;
+      const occStored = rawVacancy != null
+        ? 1 - (rawVacancy > 1 ? rawVacancy / 100 : rawVacancy) : null;
+
+      // NOI: prefer yearOneNOI, fall back to stabilizedNOI
+      const noi = pf?.yearOneNOI ?? pf?.stabilizedNOI ?? null;
+
+      // Property type mapping: OM uses 'garden'|'mid-rise'|'high-rise'|'townhome'
+      // data_library_assets stores it verbatim in property_type
+      const propertyType = prop?.propertyType ?? null;
+
+      // Map OM extraction fields → data_library_assets columns.
+      // COALESCE: only fills NULL columns — never overwrites user-entered data.
+      const updates: string[] = [];
+      const params: any[] = [];
+      let idx = 1;
+
+      const maybe = (col: string, val: unknown) => {
+        if (val == null || val === '') return;
+        updates.push(`${col} = COALESCE(${col}, $${idx++})`);
+        params.push(val);
+      };
+
+      maybe('property_name', prop?.name);
+      maybe('address', prop?.address);
+      maybe('city', prop?.city);
+      maybe('state', prop?.state);
+      maybe('property_type', propertyType);
+      maybe('unit_count', prop?.units != null ? Math.round(Number(prop.units)) : null);
+      maybe('year_built', prop?.yearBuilt != null ? Math.round(Number(prop.yearBuilt)) : null);
+      maybe('year_renovated', prop?.yearRenovated != null ? Math.round(Number(prop.yearRenovated)) : null);
+      maybe('stories', prop?.stories != null ? Math.round(Number(prop.stories)) : null);
+      maybe('avg_rent', avgRent != null ? Math.round(avgRent) : null);
+      maybe('occupancy_rate', occStored);
+      maybe('cap_rate', capRateStored);
+      maybe('asking_price', meta?.askingPrice != null ? Number(meta.askingPrice) : null);
+      maybe('noi', noi != null ? Math.round(Number(noi)) : null);
+      maybe('gross_potential_rent', pf?.stabilizedGpr != null ? Math.round(Number(pf.stabilizedGpr)) : null);
+      maybe('management_fee_pct', pf?.managementFeePct != null
+        ? (Number(pf.managementFeePct) > 1 ? Number(pf.managementFeePct) / 100 : Number(pf.managementFeePct))
+        : null);
+
+      if (updates.length > 0) {
+        updates.push(`data_type = COALESCE(data_type, 'om')`);
+        updates.push(`updated_at = NOW()`);
+        params.push(id);
+        await pool.query(
+          `UPDATE data_library_assets SET ${updates.join(', ')} WHERE id = $${idx}`,
+          params,
+        );
+        logger.info('[data-library-assets/parse-om] Updated asset with OM fields', { assetId: id, fields: updates.length });
+      }
+
+      // Percent display helpers (stored as 0–1 fraction → displayed as 0–100)
+      const toDisplayPct = (frac: number | null): string | null =>
+        frac == null ? null : String(parseFloat((frac * 100).toFixed(4)).toString().replace(/\.?0+$/, ''));
+
+      // Return extracted values as frontend-friendly field names
+      return res.json({
+        success: true,
+        usedOcr: result.meta?.usedOcr ?? false,
+        extracted: {
+          propertyName: prop?.name ?? null,
+          address:      prop?.address ?? null,
+          city:         prop?.city ?? null,
+          state:        prop?.state ?? null,
+          units:        prop?.units != null ? String(Math.round(Number(prop.units))) : null,
+          yearBuilt:    prop?.yearBuilt != null ? String(Math.round(Number(prop.yearBuilt))) : null,
+          stories:      prop?.stories != null ? String(Math.round(Number(prop.stories))) : null,
+          avgRent:      avgRent != null ? String(Math.round(avgRent)) : null,
+          occupancyPct: toDisplayPct(occStored),
+          capRate:      toDisplayPct(capRateStored),
+          askingPrice:  meta?.askingPrice != null ? String(Math.round(Number(meta.askingPrice))) : null,
+          noi:          noi != null ? String(Math.round(Number(noi))) : null,
+          soldPrice:    null,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('[data-library-assets/parse-om] Error', { assetId: id, error: msg });
+      return res.status(500).json({ success: false, error: msg });
     }
   });
 
