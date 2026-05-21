@@ -1,8 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { Pool } from 'pg';
 import { logger } from '../../utils/logger';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const DEEPSEEK_BASE_URL =
+  process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
 
 // ─── Job tracking (in-memory) ─────────────────────────────────────────────────
 
@@ -35,7 +35,42 @@ function normalizeClass(raw: string | null | undefined): string | null {
   return m ? m[1].toUpperCase() : null;
 }
 
-// ─── Claude web-research extraction ──────────────────────────────────────────
+// ─── DeepSeek call ────────────────────────────────────────────────────────────
+
+async function callDeepSeek(prompt: string): Promise<string> {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY not configured');
+
+  const res = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a real estate data researcher with deep knowledge of US commercial and multifamily properties. Return only valid JSON — no markdown fences, no commentary.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: 1024,
+      temperature: 0,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`DeepSeek API error ${res.status}: ${body.slice(0, 400)}`);
+  }
+
+  const data = await res.json() as any;
+  return data.choices?.[0]?.message?.content ?? '';
+}
+
+// ─── DeepSeek property research ───────────────────────────────────────────────
 
 interface EnrichedFields {
   yearBuilt?: number | null;
@@ -61,7 +96,7 @@ async function researchProperty(
   address: string | null,
   city: string | null,
   state: string | null,
-  sources: string[],
+  _sources: string[],
 ): Promise<EnrichedFields | null> {
   const identity = [propertyName, address, city, state].filter(Boolean).join(', ');
   if (!identity) {
@@ -69,23 +104,11 @@ async function researchProperty(
     return null;
   }
 
-  const sourcePriority = [
-    sources.includes('county') ? 'county assessor records' : null,
-    sources.includes('apartments_com') ? 'apartments.com' : null,
-    sources.includes('apartment_list') ? 'Apartment List' : null,
-    sources.includes('web') ? 'public real estate databases' : null,
-  ].filter(Boolean).join(', ');
-
-  const prompt = `You are a real estate data researcher. Look up this apartment property and extract the fields listed below.
+  const prompt = `Look up this apartment/commercial property and extract the fields listed below using your training data on US real estate records, county assessor data, and listing platforms.
 
 Property: ${identity}
 
-Search ${sourcePriority || 'any available public records'} to find accurate data. Focus on:
-- County assessor / appraisal district records for year built, lot size, construction type
-- Listing platforms (apartments.com, Apartment List) for unit count, amenities, building class
-- Any authoritative public source for the remaining fields
-
-Return ONLY a JSON object — no markdown fences, no commentary. Use null for anything you cannot find with confidence.
+Return ONLY a JSON object — no markdown fences, no commentary. Use null for anything you cannot determine with confidence.
 
 {
   "yearBuilt": null,
@@ -106,28 +129,15 @@ Return ONLY a JSON object — no markdown fences, no commentary. Use null for an
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
-      max_tokens: 1024,
-      tools: [{ type: 'web_search_20250305' as any, name: 'web_search' }],
-      messages: [{ role: 'user', content: prompt }],
-    });
-
-    for (const block of response.content) {
-      if (block.type === 'text') {
-        const match = block.text.match(/\{[\s\S]*\}/);
-        if (match) {
-          try {
-            return JSON.parse(match[0]) as EnrichedFields;
-          } catch {
-            logger.warn('[enrichment] JSON parse failed', { parcelId, raw: match[0].slice(0, 200) });
-          }
-        }
-      }
+    const text = await callDeepSeek(prompt);
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]) as EnrichedFields;
     }
+    logger.warn('[enrichment] no JSON found in DeepSeek response', { parcelId, preview: text.slice(0, 200) });
     return null;
   } catch (err) {
-    logger.warn('[enrichment] Claude extraction failed', { parcelId, error: String(err) });
+    logger.warn('[enrichment] DeepSeek extraction failed', { parcelId, error: String(err) });
     return null;
   }
 }
@@ -148,20 +158,20 @@ async function upsertEnrichedFields(
     candidates.push({ col, lval: makeLV(val, sourceName, conf) });
   };
 
-  maybe('year_built',       fields.yearBuilt);
-  maybe('asset_class',      normalizeClass(fields.buildingClass));
-  maybe('stories',          fields.stories);
-  maybe('unit_count',       fields.unitCount);
-  maybe('construction_type',fields.constructionType);
-  maybe('lot_size_acres',   fields.lotSizeAcres);
-  maybe('parking_spaces',   fields.parkingSpaces);
-  maybe('parking_ratio',    fields.parkingRatio);
-  maybe('amenities',        fields.amenities?.length ? fields.amenities : null);
-  maybe('submarket',        fields.submarket);
-  maybe('msa',              fields.msaName);
-  maybe('county',           fields.county);
-  maybe('rentable_sqft',    fields.rentableSqft);
-  maybe('property_type',    fields.propertyType);
+  maybe('year_built',        fields.yearBuilt);
+  maybe('asset_class',       normalizeClass(fields.buildingClass));
+  maybe('stories',           fields.stories);
+  maybe('unit_count',        fields.unitCount);
+  maybe('construction_type', fields.constructionType);
+  maybe('lot_size_acres',    fields.lotSizeAcres);
+  maybe('parking_spaces',    fields.parkingSpaces);
+  maybe('parking_ratio',     fields.parkingRatio);
+  maybe('amenities',         fields.amenities?.length ? fields.amenities : null);
+  maybe('submarket',         fields.submarket);
+  maybe('msa',               fields.msaName);
+  maybe('county',            fields.county);
+  maybe('rentable_sqft',     fields.rentableSqft);
+  maybe('property_type',     fields.propertyType);
 
   if (candidates.length === 0) return;
 

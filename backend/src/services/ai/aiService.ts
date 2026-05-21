@@ -274,6 +274,7 @@ export class JediAIService {
 
   /**
    * Streaming variant for real-time chat responses.
+   * Supports both Anthropic (SSE via SDK) and DeepSeek (SSE via fetch).
    */
   async *stream(
     context: AICallContext,
@@ -281,37 +282,25 @@ export class JediAIService {
     messages: Anthropic.MessageParam[]
   ): AsyncGenerator<string> {
     const tier = await this.getUserTier(context.userId);
-    // Pass routingSurface so per-surface preferences and SURFACE_DEFAULTS
-    // apply to streamed calls too — otherwise streaming silently bypasses
-    // any non-agent override the user set in /settings.
-    let model = await this.resolveModel(
+    const model = await this.resolveModel(
       context.userId,
       tier,
       context.agentId,
       context.routingSurface
     );
 
-    // The streaming path only supports Anthropic. If the resolved model is
-    // a DeepSeek model (now the default for research/supply), fall back to a
-    // tier-appropriate Claude model so the stream still works. Non-streaming
-    // generate() handles DeepSeek natively.
-    if (getModelFamily(model) === 'deepseek') {
-      const fallback = MODEL_ROUTING[tier]?.[context.agentId];
-      const claudeFallback =
-        fallback && getModelFamily(fallback) === 'claude'
-          ? fallback
-          : 'claude-sonnet-4-5';
-      logger.info('JediAIService.stream: DeepSeek not supported in stream path, falling back to Claude', {
-        requested: model,
-        fallback: claudeFallback,
-        agentId: context.agentId,
-      });
-      model = claudeFallback;
-    }
-
     const creditCost = this.getCreditCost(context.operationType, model);
     await this.checkAndDeductCredits(context.userId, creditCost);
 
+    const family = getModelFamily(model);
+
+    if (family === 'deepseek') {
+      // DeepSeek SSE streaming via fetch
+      yield* this.streamDeepSeek(context, model, systemPrompt, messages, creditCost);
+      return;
+    }
+
+    // Anthropic SSE streaming
     const stream = this.anthropic.messages.stream({
       model,
       max_tokens: 4096,
@@ -337,7 +326,108 @@ export class JediAIService {
       }
     }
 
-    // Report after stream completes
+    await this.reportStripeUsage(context, model, {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    } as any);
+    await this.logUsage(
+      context,
+      model,
+      {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      } as any,
+      creditCost,
+      0
+    );
+  }
+
+  /**
+   * DeepSeek SSE streaming — yields text chunks as they arrive.
+   * Uses the OpenAI-compatible streaming endpoint.
+   */
+  private async *streamDeepSeek(
+    context: AICallContext,
+    model: string,
+    systemPrompt: string,
+    messages: Anthropic.MessageParam[],
+    creditCost: number
+  ): AsyncGenerator<string> {
+    const apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) throw new Error('DEEPSEEK_API_KEY not configured');
+
+    const oaMessages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: systemPrompt },
+    ];
+    for (const m of messages) {
+      const text = typeof m.content === 'string'
+        ? m.content
+        : (m.content as any[])
+            .filter((b: any) => b.type === 'text')
+            .map((b: any) => b.text)
+            .join('\n');
+      oaMessages.push({ role: m.role, content: text });
+    }
+
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: oaMessages,
+        max_tokens: 4096,
+        temperature: 0,
+        stream: true,
+      }),
+    });
+
+    if (!res.ok || !res.body) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`DeepSeek stream error ${res.status}: ${body.slice(0, 400)}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let buf = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === 'data: [DONE]') continue;
+          if (!trimmed.startsWith('data: ')) continue;
+          try {
+            const chunk = JSON.parse(trimmed.slice(6)) as any;
+            const delta = chunk.choices?.[0]?.delta?.content;
+            if (delta) yield delta;
+            if (chunk.usage) {
+              inputTokens  = chunk.usage.prompt_tokens ?? 0;
+              outputTokens = chunk.usage.completion_tokens ?? 0;
+            }
+          } catch {
+            // malformed SSE chunk — skip
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
     await this.reportStripeUsage(context, model, {
       input_tokens: inputTokens,
       output_tokens: outputTokens,
