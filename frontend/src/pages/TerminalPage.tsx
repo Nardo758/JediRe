@@ -151,8 +151,8 @@ interface RankedPortfolioAsset {
  * F4 is a keyboard-only alias for Markets — the keyboard handler remaps it to
  * "F5" before it ever reaches the router, so F4 has no registry entry.
  */
-interface TabMeta { key: string; slug: string; label: string }
-const TABS_META: TabMeta[] = [
+export interface TabMeta { key: string; slug: string; label: string }
+export const TABS_META: TabMeta[] = [
   { key: "F1",  slug: "dashboard",  label: "DASHBOARD"  },
   { key: "F2",  slug: "pipeline",   label: "PIPELINE"   },
   { key: "F3",  slug: "portfolio",  label: "PORTFOLIO"  },
@@ -163,8 +163,12 @@ const TABS_META: TabMeta[] = [
   { key: "F9",  slug: "admin",      label: "ADMIN"      },
   { key: "F10", slug: "settings",   label: "SETTINGS"   },
 ];
-const FKEY_SLUG: Record<string,string> = Object.fromEntries(TABS_META.map(t=>[t.key,  t.slug]));
-const SLUG_FKEY: Record<string,string> = Object.fromEntries(TABS_META.map(t=>[t.slug, t.key]));
+export const FKEY_SLUG: Record<string,string> = Object.fromEntries(TABS_META.map(t=>[t.key,  t.slug]));
+export const SLUG_FKEY: Record<string,string> = Object.fromEntries(TABS_META.map(t=>[t.slug, t.key]));
+/** Keys that have a render entry in RENDER_MAP (inside the component). Must stay in sync. */
+export const RENDER_MAP_KEYS: ReadonlySet<string> = new Set(["F1","F2","F3","F4","F6","F7","F8","F9","F10"]);
+/** Keyboard → fkey mapping. F5 aliases F4 (Markets). Must cover all TABS_META keys. */
+export const FKEY_KBD_MAP: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F4", F6:"F6", F7:"F7", F8:"F8", F9:"F9", F10:"F10" };
 
 const WIDGET_CATALOG = [
   {id:"pipeline",   label:"Deal Pipeline",         desc:"Live scrollable deal list with JEDI scores",            category:"DEALS",  color:"#F5A623"},
@@ -1039,8 +1043,7 @@ export default function TerminalPage() {
       }
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if(tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
-      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F4", F6:"F6", F7:"F7", F8:"F8", F9:"F9", F10:"F10" }; // F5 key aliases F4 (Markets)
-      if(fKeyMap[e.key]) { e.preventDefault(); setFkey(fKeyMap[e.key]); }
+      if(FKEY_KBD_MAP[e.key]) { e.preventDefault(); setFkey(FKEY_KBD_MAP[e.key]); }
       if(e.key === "/") { e.preventDefault(); cmdInputRef.current?.focus(); }
     };
     window.addEventListener("keydown", handler);
