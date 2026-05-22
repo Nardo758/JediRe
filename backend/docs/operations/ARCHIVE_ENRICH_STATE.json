@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-05-22T19:27:26.293Z",
+  "updated": "2026-05-22T22:29:54.945Z",
   "properties": {
     "100 Inverness": {
       "parcelId": "100 Inverness",
@@ -158,23 +158,33 @@
     },
     "Alta East": {
       "parcelId": "Alta East",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "777 Memorial Dr SE",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "Alta Lakehouse": {
       "parcelId": "Alta Lakehouse",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "7600 Majorca Place",
+        "city": "Orlando",
+        "state": "FL"
+      },
+      "note": "3 fields"
     },
     "Alta Tech Ridge": {
       "parcelId": "Alta Tech Ridge",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "60 Day Trend - 8.5.19"
+        "address": "12408 Dessau Road",
+        "city": "Austin",
+        "state": "TX"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Alta Warehouse": {
       "parcelId": "Alta Warehouse",
@@ -185,8 +195,11 @@
     "Alta at Health Village": {
       "parcelId": "Alta at Health Village",
       "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "enriched": {
+        "city": "Orlando",
+        "state": "FL"
+      },
+      "note": "2 fields"
     },
     "Altis & Altra": {
       "parcelId": "Altis & Altra",
@@ -206,17 +219,23 @@
     },
     "Andorra Apartments": {
       "parcelId": "Andorra Apartments",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "42 CAS ANA July 2020 Rent Roll"
+        "address": "4000 Coleway Drive",
+        "city": "Holly Springs",
+        "state": "NC"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Ansley at Princeton Lakes": {
       "parcelId": "Ansley at Princeton Lakes",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "3871 Redwine Road",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "Arden at Midtown": {
       "parcelId": "Arden at Midtown",
@@ -226,19 +245,23 @@
     },
     "Ardmore at Flowers": {
       "parcelId": "Ardmore at Flowers",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "345 Ardmore (002)"
+        "address": "380 Topwater Dr",
+        "city": "Clayton",
+        "state": "NC"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Artistry": {
       "parcelId": "Artistry",
-      "done": false,
+      "done": true,
       "enriched": {
+        "city": "Charlotte",
+        "state": "NC",
         "address": "21 Solis LoSo Package"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Ascen Varina Gateway": {
       "parcelId": "Ascen Varina Gateway",
@@ -258,11 +281,13 @@
     },
     "Austin Deals": {
       "parcelId": "Austin Deals",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "100 Marshall Cir"
+        "address": "100 Marshall Circle",
+        "city": "Round Rock",
+        "state": "TX"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Avril Cambridge": {
       "parcelId": "Avril Cambridge",
@@ -684,21 +709,33 @@
     },
     "Creekside Ranch": {
       "parcelId": "Creekside Ranch",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "11209 Ranch Creek Ter",
+        "city": "Bradenton",
+        "state": "FL"
+      },
+      "note": "3 fields"
     },
     "Crescent": {
       "parcelId": "Crescent",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "127 East Riverside Drive",
+        "city": "Austin",
+        "state": "TX"
+      },
+      "note": "3 fields"
     },
     "Crest at Flower Branch": {
       "parcelId": "Crest at Flower Branch",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "900 Crest Village Circle",
+        "city": "Flowery Branch",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "Crestmont at Thornblade": {
       "parcelId": "Crestmont at Thornblade",
@@ -714,15 +751,21 @@
     },
     "Curv": {
       "parcelId": "Curv",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "410 SE 16th Court",
+        "city": "Fort Lauderdale",
+        "state": "FL"
+      },
+      "note": "3 fields"
     },
     "Debartolo Portfolio": {
       "parcelId": "Debartolo Portfolio",
       "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "enriched": {
+        "state": "FL"
+      },
+      "note": "1 fields"
     },
     "District South": {
       "parcelId": "District South",
@@ -732,17 +775,23 @@
     },
     "District Station": {
       "parcelId": "District Station",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "2312 Bristol Creek Drive",
+        "city": "Morrisville",
+        "state": "NC"
+      },
+      "note": "3 fields"
     },
     "East Point at Altamonte": {
       "parcelId": "East Point at Altamonte",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "12 Apr-2019"
+        "address": "828/850 Orienta Avenue",
+        "city": "Altamonte Springs",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Easton Portfolio": {
       "parcelId": "Easton Portfolio",
@@ -752,9 +801,13 @@
     },
     "Echo  Lakeside": {
       "parcelId": "Echo  Lakeside",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "510 Guthridge Ct NW",
+        "city": "Peachtree Corners",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "Eden Crystal Lake": {
       "parcelId": "Eden Crystal Lake",
@@ -770,29 +823,43 @@
     },
     "Elan Powers Ferry": {
       "parcelId": "Elan Powers Ferry",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "30 Applications (2022.02.18)"
+        "address": "1945 Powers Ferry Rd SE",
+        "city": "Atlanta",
+        "state": "GA"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Element Galleria": {
       "parcelId": "Element Galleria",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "800 Galleria Parkway",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "Elevate Powell and Broad": {
       "parcelId": "Elevate Powell and Broad",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "141 Stobhill Ln",
+        "city": "Fuquay-Varina",
+        "state": "NC"
+      },
+      "note": "3 fields"
     },
     "Emblem Greyson": {
       "parcelId": "Emblem Greyson",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "ATHENS HWY, LOGANVILLE 30052",
+        "city": "Loganville",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "Enclave at Rivergate": {
       "parcelId": "Enclave at Rivergate",
@@ -802,11 +869,13 @@
     },
     "Enclave on East": {
       "parcelId": "Enclave on East",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2018 RE Tax Bill - Enclave on East (Pinellas County)"
+        "address": "3660 E. Bay Drive",
+        "city": "Largo",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Encore": {
       "parcelId": "Encore",
@@ -828,11 +897,13 @@
     },
     "Exchange Orange Park": {
       "parcelId": "Exchange Orange Park",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "23 modified"
+        "address": "4295 Collins Road",
+        "city": "Jacksonville",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Exchange at Indian Trail": {
       "parcelId": "Exchange at Indian Trail",
@@ -856,11 +927,13 @@
     },
     "Ferry Pike - Nashville": {
       "parcelId": "Ferry Pike - Nashville",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "600 Stewarts Ferry Pike 2022-Myers Apartment Group"
+        "address": "2841 Lebanon Pike",
+        "city": "Nashville",
+        "state": "TN"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "FieldHouse": {
       "parcelId": "FieldHouse",
@@ -1513,9 +1586,13 @@
     },
     "Preserve at Mill Creek": {
       "parcelId": "Preserve at Mill Creek",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "1400 Mall of Georgia Boulevard",
+        "city": "Buford",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "Preserve at Mountain": {
       "parcelId": "Preserve at Mountain",
@@ -1555,8 +1632,11 @@
     "Raleigh Exchange": {
       "parcelId": "Raleigh Exchange",
       "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "enriched": {
+        "city": "Raleigh",
+        "state": "NC"
+      },
+      "note": "2 fields"
     },
     "Raleigh Portfolio": {
       "parcelId": "Raleigh Portfolio",
@@ -1574,17 +1654,23 @@
     },
     "Regatta at Lake Lynn": {
       "parcelId": "Regatta at Lake Lynn",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2017 corrected_Regatta at Lake Lynn"
+        "address": "3000 Inland Trail",
+        "city": "Raleigh",
+        "state": "NC"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Reserve at Bridford": {
       "parcelId": "Reserve at Bridford",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "1402 Bridford Parkway",
+        "city": "Greensboro",
+        "state": "NC"
+      },
+      "note": "3 fields"
     },
     "Reserve at Magnolia": {
       "parcelId": "Reserve at Magnolia",
@@ -1594,9 +1680,13 @@
     },
     "Residences at Shilo Crossings": {
       "parcelId": "Residences at Shilo Crossings",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "3000 Dominion Ridge Circle",
+        "city": "Morrisville",
+        "state": "NC"
+      },
+      "note": "3 fields"
     },
     "Retreat at Johns Creek": {
       "parcelId": "Retreat at Johns Creek",
@@ -1620,11 +1710,13 @@
     },
     "Riverbend": {
       "parcelId": "Riverbend",
-      "done": false,
+      "done": true,
       "enriched": {
+        "city": "Charlotte",
+        "state": "NC",
         "address": "12 Riverbend Apts 9.30.2020"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Riverbend Apartments": {
       "parcelId": "Riverbend Apartments",
@@ -1634,11 +1726,13 @@
     },
     "Rivertree": {
       "parcelId": "Rivertree",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "12 Operating Statement (through Nov 17) techno"
+        "address": "5959 Bandera Springs Place",
+        "city": "Riverview",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "SUR Southside": {
       "parcelId": "SUR Southside",
@@ -1656,31 +1750,43 @@
     },
     "Sentosa Riverview": {
       "parcelId": "Sentosa Riverview",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "10110 US Hwy 301",
+        "city": "Riverview",
+        "state": "FL"
+      },
+      "note": "3 fields"
     },
     "Serramar": {
       "parcelId": "Serramar",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2019 T12 Financials"
+        "address": "6701 W. Oakland Park Blvd.",
+        "city": "Fort Lauderdale",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Seventeen West": {
       "parcelId": "Seventeen West",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "17 West Comps"
+        "address": "391 17th St NW",
+        "city": "Atlanta",
+        "state": "GA"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Shoreview": {
       "parcelId": "Shoreview",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "1161 3rd Avenue East",
+        "city": "Bradenton",
+        "state": "FL"
+      },
+      "note": "3 fields"
     },
     "Siena Round Rock": {
       "parcelId": "Siena Round Rock",
@@ -1696,11 +1802,13 @@
     },
     "Sodo Duluth": {
       "parcelId": "Sodo Duluth",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "23 SODO report"
+        "address": "3256 Buford Hwy",
+        "city": "Duluth",
+        "state": "GA"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Solis Ballantyne": {
       "parcelId": "Solis Ballantyne",
@@ -1712,25 +1820,32 @@
     },
     "Solis Carraway": {
       "parcelId": "Solis Carraway",
-      "done": false,
+      "done": true,
       "enriched": {
+        "city": "Atlanta",
+        "state": "GA",
         "address": "2019 Tax Bill - 3661427"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Solis City Park": {
       "parcelId": "Solis City Park",
-      "done": false,
+      "done": true,
       "enriched": {
+        "city": "Charlotte",
+        "state": "NC",
         "address": "21 Deleted 2 Columns"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Solis Cummings": {
       "parcelId": "Solis Cummings",
       "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "enriched": {
+        "city": "Cumming",
+        "state": "GA"
+      },
+      "note": "2 fields"
     },
     "Solis Decatur": {
       "parcelId": "Solis Decatur",
@@ -1773,19 +1888,23 @@
     },
     "St Tropez": {
       "parcelId": "St Tropez",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2019 T12 Financials"
+        "address": "8000 Cleary Boulevard",
+        "city": "Plantation",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Steele Creek rivergate": {
       "parcelId": "Steele Creek rivergate",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "21 Tenant Detail Report"
+        "address": "12509 Crown Park Ct",
+        "city": "Charlotte",
+        "state": "NC"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Stone Ridge": {
       "parcelId": "Stone Ridge",
@@ -1799,15 +1918,23 @@
     },
     "Stonebriar": {
       "parcelId": "Stonebriar",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "5620 S Colony Blvd",
+        "city": "The Colony",
+        "state": "TX"
+      },
+      "note": "3 fields"
     },
     "Sugarloaf Grove": {
       "parcelId": "Sugarloaf Grove",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "1850 Duluth Highway",
+        "city": "Lawrenceville",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "Sugarloaf Trials": {
       "parcelId": "Sugarloaf Trials",
@@ -1829,11 +1956,13 @@
     },
     "Terrabella": {
       "parcelId": "Terrabella",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2020 Keltonwood Portiva Property Premium Breakdown"
+        "address": "915 S Dixie Highway",
+        "city": "West Palm Beach",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Texas Deals": {
       "parcelId": "Texas Deals",
@@ -1865,9 +1994,13 @@
     },
     "The Bradford": {
       "parcelId": "The Bradford",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "21035 Bradford Green Square",
+        "city": "Cary",
+        "state": "NC"
+      },
+      "note": "3 fields"
     },
     "The Brazos": {
       "parcelId": "The Brazos",
@@ -1889,9 +2022,13 @@
     },
     "The Cove at Covington": {
       "parcelId": "The Cove at Covington",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "12301 Town Center Dr",
+        "city": "Covington",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "The Darby": {
       "parcelId": "The Darby",
@@ -1907,9 +2044,10 @@
       "parcelId": "The Eddy",
       "done": false,
       "enriched": {
-        "address": "6025 River View Rd (2020)"
+        "address": "6025 River View Rd",
+        "state": "GA"
       },
-      "note": "1 fields"
+      "note": "2 fields"
     },
     "The Edison": {
       "parcelId": "The Edison",
@@ -1925,17 +2063,23 @@
     },
     "The Fields Lincoln Green": {
       "parcelId": "The Fields Lincoln Green",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "2205 New Garden Rd",
+        "city": "Greensboro",
+        "state": "NC"
+      },
+      "note": "3 fields"
     },
     "The Helix": {
       "parcelId": "The Helix",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2020 Real Estate Tax Bill - 962 Bentstation Lane"
+        "address": "962 Bentstation Lane",
+        "city": "Lake Mary",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "The Hillson": {
       "parcelId": "The Hillson",
@@ -1958,14 +2102,21 @@
     "The Julington": {
       "parcelId": "The Julington",
       "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "enriched": {
+        "city": "Jacksonville",
+        "state": "FL"
+      },
+      "note": "2 fields"
     },
     "The Kensley": {
       "parcelId": "The Kensley",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "6371 Collins Road",
+        "city": "Jacksonville",
+        "state": "FL"
+      },
+      "note": "3 fields"
     },
     "The Linden": {
       "parcelId": "The Linden",
@@ -1987,11 +2138,13 @@
     },
     "The Maven": {
       "parcelId": "The Maven",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2019 Property Tax Bill"
+        "address": "4255 Suwanee Dam Road",
+        "city": "Suwanee",
+        "state": "GA"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "The Mc Coy Apartments": {
       "parcelId": "The Mc Coy Apartments",
@@ -2015,11 +2168,13 @@
     },
     "The Milan": {
       "parcelId": "The Milan",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "240 units) - techno"
+        "address": "500 Jordan Stuart Circle",
+        "city": "Apopka",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "The Mile": {
       "parcelId": "The Mile",
@@ -2035,17 +2190,23 @@
     },
     "The Newton": {
       "parcelId": "The Newton",
-      "done": false,
+      "done": true,
       "enriched": {
+        "city": "Charlotte",
+        "state": "NC",
         "address": "12 Month Budget 1.31.20"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "The Park at Kensington": {
       "parcelId": "The Park at Kensington",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "6218 Watermark Drive",
+        "city": "Riverview",
+        "state": "FL"
+      },
+      "note": "3 fields"
     },
     "The Parker": {
       "parcelId": "The Parker",
@@ -2055,11 +2216,13 @@
     },
     "The Parkstone Gallatin": {
       "parcelId": "The Parkstone Gallatin",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2021 Tax Bill - City of Gallatin"
+        "address": "270 Douglas Bend Rd",
+        "city": "Gallatin",
+        "state": "TN"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "The Piedmont": {
       "parcelId": "The Piedmont",
@@ -2094,17 +2257,23 @@
     },
     "The Reid": {
       "parcelId": "The Reid",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "2190 Northlake Pkwy",
+        "city": "Tucker",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "The Resever at Glenn Laurel": {
       "parcelId": "The Resever at Glenn Laurel",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "20 Pine Hall Dr - The Pines at Glen Laurel _ CoStar"
+        "address": "20 Pine Hall Dr",
+        "city": "Clayton",
+        "state": "NC"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "The Residences at 3000 Bardin": {
       "parcelId": "The Residences at 3000 Bardin",
@@ -2120,9 +2289,13 @@
     },
     "The Rey on Reynolds": {
       "parcelId": "The Rey on Reynolds",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "3360 Steve Reynolds Blvd",
+        "city": "Duluth",
+        "state": "GA"
+      },
+      "note": "3 fields"
     },
     "The Sagefield": {
       "parcelId": "The Sagefield",
@@ -2150,17 +2323,23 @@
     },
     "The Village at Westland Cove": {
       "parcelId": "The Village at Westland Cove",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2020 techno"
+        "address": "9635 Westland Cove Way",
+        "city": "Knoxville",
+        "state": "TN"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "The Villlage": {
       "parcelId": "The Villlage",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "8810 Autumn Winds Drive",
+        "city": "Raleigh",
+        "state": "NC"
+      },
+      "note": "3 fields"
     },
     "The Vineyard": {
       "parcelId": "The Vineyard",
@@ -2178,11 +2357,13 @@
     },
     "The palms": {
       "parcelId": "The palms",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2019 to 4.2020 - techno"
+        "address": "11000 Cameron Court",
+        "city": "Davie",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "The pointe @ Preston Ridge": {
       "parcelId": "The pointe @ Preston Ridge",
@@ -2192,9 +2373,13 @@
     },
     "The reserve at Cary Park": {
       "parcelId": "The reserve at Cary Park",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "2000 Cary Reserve Drive",
+        "city": "Cary",
+        "state": "NC"
+      },
+      "note": "3 fields"
     },
     "The retreat at Fuquay": {
       "parcelId": "The retreat at Fuquay",
@@ -2210,11 +2395,13 @@
     },
     "Town Southern": {
       "parcelId": "Town Southern",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "17 Rent Roll"
+        "address": "11020 Town Circle",
+        "city": "Royal Palm Beach",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Trailside Verde": {
       "parcelId": "Trailside Verde",
@@ -2224,17 +2411,21 @@
     },
     "Trailside at Reedy Point": {
       "parcelId": "Trailside at Reedy Point",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2018 Tax Bill"
+        "address": "200 South Academy Street",
+        "city": "Greenville",
+        "state": "SC"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Trilogy Cameron Village": {
       "parcelId": "Trilogy Cameron Village",
       "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "enriched": {
+        "city": "Chapel Hill"
+      },
+      "note": "1 fields"
     },
     "Trilogy Chapel Hill": {
       "parcelId": "Trilogy Chapel Hill",
@@ -2250,11 +2441,13 @@
     },
     "Uptown Boca": {
       "parcelId": "Uptown Boca",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2020 WHP Rents - 07.07.20"
+        "address": "20940 Uptown Ave",
+        "city": "Boca Raton",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Uptown at Liberty Park": {
       "parcelId": "Uptown at Liberty Park",
@@ -2298,25 +2491,33 @@
     },
     "Vestavia Reserve": {
       "parcelId": "Vestavia Reserve",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2018 techno"
+        "address": "2300 Reserve Trail",
+        "city": "Vestavia Hills",
+        "state": "AL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "View at Woodstock": {
       "parcelId": "View at Woodstock",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2019 Tax Bill for 15N12 017 A"
+        "address": "900 View Drive",
+        "city": "Woodstock",
+        "state": "GA"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Village at Lake Front": {
       "parcelId": "Village at Lake Front",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "201 E. Eldorado Pkwy.",
+        "city": "Little Elm",
+        "state": "TX"
+      },
+      "note": "3 fields"
     },
     "Village on the Green": {
       "parcelId": "Village on the Green",
@@ -2326,25 +2527,33 @@
     },
     "Vista Verde": {
       "parcelId": "Vista Verde",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "12 Month Recap - Vista Verde 01-18 - Modified"
+        "address": "1658 S Hiawassee Rd",
+        "city": "Orlando",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Vista Verde - Miami": {
       "parcelId": "Vista Verde - Miami",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "12 March 2017 thru Feb 2018 modified"
+        "address": "10491 SW 14th Terrace",
+        "city": "Miami",
+        "state": "FL"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Waterford Place - Morrisville": {
       "parcelId": "Waterford Place - Morrisville",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "1000 Park Place",
+        "city": "Morrisville",
+        "state": "NC"
+      },
+      "note": "3 fields"
     },
     "Waterlynn": {
       "parcelId": "Waterlynn",
@@ -2366,11 +2575,13 @@
     },
     "Windsor Landing": {
       "parcelId": "Windsor Landing",
-      "done": false,
+      "done": true,
       "enriched": {
-        "address": "2018 Tax Bill"
+        "address": "7124 Southlake Parkway",
+        "city": "Morrow",
+        "state": "GA"
       },
-      "note": "1 fields"
+      "note": "3 fields"
     },
     "Windsor Landings - NC": {
       "parcelId": "Windsor Landings - NC",
@@ -2382,9 +2593,13 @@
     },
     "legacy Village": {
       "parcelId": "legacy Village",
-      "done": false,
-      "enriched": {},
-      "note": "0 fields"
+      "done": true,
+      "enriched": {
+        "address": "121 Village Green Lane",
+        "city": "Mooresville",
+        "state": "NC"
+      },
+      "note": "3 fields"
     }
   }
 }
