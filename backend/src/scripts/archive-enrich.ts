@@ -272,8 +272,87 @@ async function searchTavily(
     console.log('  [TAV] Error: ' + (e.message || '').slice(0, 80));
   }
 
-  const n = Object.keys(result).length;
-  if (n > 0) console.log('  [TAV] ' + n + ' fields found');
+  return result;
+}
+
+/**
+ * Step 3b: Municipal/county property appraiser search.
+ * For properties with address + city + state, searches county assessor
+ * sites, tax records, and property parcel databases. These contain
+ * authoritative data on year built, units, stories, sqft, etc.
+ */
+async function searchCounty(pid: string, known: Record<string,string>): Promise<Record<string,string>> {
+  const addr = known.address || '';
+  const city = known.city || '';
+  const state = known.state || '';
+  if (!addr || !city || !state) return {};
+
+  const result: Record<string,string> = {};
+
+  // Build multiple search queries targeting county/tax data
+  const queries = [
+    addr + ' ' + city + ' ' + state + ' property appraiser parcel year built',
+    addr + ' ' + city + ' ' + state + ' county property tax records',
+    addr + ' ' + city + ' ' + state + ' real property assessment',
+    addr + ' ' + city + ' ' + state + ' building permit year built',
+  ];
+
+  console.log('  [CNTY] Searching county records for ' + addr);
+
+  // Try each query until we get useful data
+  for (const q of queries) {
+    try {
+      const sr = await httpsPostJson(TAVILY_SEARCH, {
+        api_key: TAVILY_KEY,
+        query: q,
+        search_depth: 'advanced',
+        include_answer: true,
+        max_results: 3,
+      });
+      if (!sr || !sr.results) continue;
+
+      // Check AI answer first
+      if (sr.answer) {
+        const before = Object.keys(result).length;
+        mapTextToFields(sr.answer, result);
+        if (Object.keys(result).length > before) {
+          console.log('  [CNTY] AI answer gave ' + (Object.keys(result).length - before) + ' field(s)');
+        }
+      }
+
+      // Try extracting from assessor/county/gov sites
+      const govUrls = sr.results.filter((r: any) =>
+        r.url && /(assessor|propertyappraiser|taxcollector|qpublic|beacon|county\.|gov\.)/i.test(r.url)
+      ).map((r: any) => r.url);
+
+      for (const u of govUrls.slice(0, 2)) {
+        try {
+          const ex = await httpsPostJson(TAVILY_EXTRACT, {
+            api_key: TAVILY_KEY,
+            urls: [u],
+            include_images: false,
+          });
+          if (ex && ex.results && ex.results.length > 0) {
+            const content = ex.results[0].raw_content || '';
+            if (content.length > 200) {
+              console.log('  [CNTY] Extracted ' + content.length + ' chars from ' + u.slice(0,60));
+              const before = Object.keys(result).length;
+              mapTextToFields(content, result);
+              const after = Object.keys(result).length;
+              if (after > before) console.log('  [CNTY] +' + (after - before) + ' field(s)');
+            }
+          }
+        } catch {}
+      }
+
+      // If we have year_built + units + stories, we're done
+      if (result.year_built && result.unit_count && result.stories) break;
+    } catch {}
+
+    // Throttle
+    await new Promise(r => setTimeout(r, 300));
+  }
+
   return result;
 }
 
@@ -478,6 +557,15 @@ async function main() {
       }
     } else {
       console.log('  [TAV] Skipped (all core fields present)');
+    }
+
+    // Step 4: County assessor / tax records for precise data
+    const stillMissing = ['year_built', 'unit_count', 'stories', 'building_class'].filter(k => !f[k]);
+    if (stillMissing.length > 0 && (f.address || f.city)) {
+      const cty = await searchCounty(pid, f);
+      for (const [k, v] of Object.entries(cty)) {
+        if (!f[k]) f[k] = v;
+      }
     }
 
     enriched[pid] = f;
