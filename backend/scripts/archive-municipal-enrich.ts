@@ -86,10 +86,16 @@ interface JsonbLayers {
   resolution_rule?: string;
 }
 
+interface AddressObject {
+  resolved?: string | { street?: string; city?: string; state?: string; zip?: string; address?: string };
+  layers?: Record<string, unknown>;
+  resolution_rule?: string;
+}
+
 interface ArchiveProperty {
   parcel_id: string;
   property_name: string | null;
-  address: string | null;
+  address_jsonb: AddressObject | null;
   city: string | null;
   state: string | null;
   zip: string | null;
@@ -105,8 +111,7 @@ async function fetchProperties(): Promise<ArchiveProperty[]> {
     SELECT 
       pd.parcel_id,
       pd.property_name,
-      pd.address->>'resolved' as address,
-      pd.address->'layers'->>'municipal' as address_municipal,
+      pd.address as address_jsonb,
       pd.msa as msa_jsonb,
       pd.year_built as year_built_jsonb,
       pd.unit_count as unit_count_jsonb,
@@ -118,42 +123,39 @@ async function fetchProperties(): Promise<ArchiveProperty[]> {
   
   return r.rows.map((row: Record<string, unknown>) => {
     // Extract address from property_descriptions
-    // The resolved field can be either a flat string ("123 Main St, Atlanta, GA")
-    // or a JSON string ("{"street":"123 Main St","city":"Atlanta","state":"GA"}")
+    // pg auto-parses JSONB into objects, so address_jsonb is already an object
     let address: string | null = null;
     let city: string | null = null;
     let state: string | null = null;
     let zip: string | null = null;
     
-    const addrRaw = row.address;
-    if (addrRaw && typeof addrRaw === 'object') {
-      const addrObj = addrRaw as Record<string, unknown>;
-      const resolved = addrObj['resolved'];
+    const addrObj = row.address_jsonb;
+    if (addrObj) {
+      const resolved = addrObj.resolved;
       
       if (resolved) {
         if (typeof resolved === 'object') {
-          // Already parsed JSON object {street, city, state, zip}
-          const r = resolved as Record<string, string>;
-          address = r['street'] || r['address'] || null;
-          city = r['city'] || null;
-          state = r['state'] || null;
-          zip = r['zip'] || r['zip_code'] || null;
+          // { "street": "...", "city": "...", "state": "..." }
+          const r = resolved as Record<string, string | undefined>;
+          address = r.street || r.address || null;
+          city = r.city || null;
+          state = r.state || null;
+          zip = r.zip || null;
         } else if (typeof resolved === 'string') {
-          // Try parsing as JSON
-          try {
-            const parsed = JSON.parse(resolved);
-            if (typeof parsed === 'object') {
-              address = parsed.street || parsed.address || null;
-              city = parsed.city || null;
-              state = parsed.state || null;
-              zip = parsed.zip || null;
-            } else {
-              address = resolved;
-            }
-          } catch {
-            // Flat string — use as-is
-            address = resolved;
+          // Could be JSON string or flat address string
+          if (resolved.startsWith('{')) {
+            try {
+              const parsed = JSON.parse(resolved);
+              if (typeof parsed === 'object') {
+                const p = parsed as Record<string, string | undefined>;
+                address = p.street || p.address || null;
+                city = p.city || null;
+                state = p.state || null;
+                zip = p.zip || null;
+              }
+            } catch { /* not JSON — fall through */ }
           }
+          if (!address) address = resolved;
         }
       }
     }
