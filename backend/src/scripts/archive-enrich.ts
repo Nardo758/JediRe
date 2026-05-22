@@ -2,7 +2,10 @@
  * archive-enrich.ts — Property metadata enrichment pipeline
  *  1. OM PDF -> AI extraction via parse-om endpoint
  *  2. Address from file names
- *  3. apartments.com search for missing fields
+ *  3. Tavily search for property details (year built, units, stories, class)
+ *
+ * Uses Tavily API for the web search step — handles JS rendering,
+ * returns clean structured text from apartments.com and other listing sites.
  *
  * Usage:
  *   npx ts-node --transpile-only src/scripts/archive-enrich.ts
@@ -15,6 +18,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import * as http from 'http';
+import * as https from 'https';
 
 const ARCHIVE_ROOT = 'C:\\Users\\Leon\\OneDrive - Myers Apartment Group\\Deals\\Archive';
 const CATALOG_PATH = path.join(__dirname, '..', '..', 'docs', 'operations', 'ARCHIVE_PROPERTY_CATALOG.csv');
@@ -22,6 +27,14 @@ const STATE_PATH = path.join(__dirname, '..', '..', 'docs', 'operations', 'ARCHI
 const OUTPUT_PATH = path.join(__dirname, '..', '..', 'docs', 'operations', 'ARCHIVE_PROPERTY_CATALOG_ENRICHED.csv');
 const REAPER = 'https://381d5707-51e5-4d3d-b340-02537a082e98-00-2gk8jsdbkwoy5.worf.replit.dev/api/v1/archive';
 const SECRET = 'jedire-archive-2026';
+
+// ---- Tavily config ----
+
+const TAVILY_KEY = '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';
+const TAVILY_SEARCH = 'https://api.tavily.com/search';
+const TAVILY_EXTRACT = 'https://api.tavily.com/extract';
+
+// ---- Field definitions ----
 
 const ALL_FIELDS = [
   'address','city','state','zip','county','msa','submarket',
@@ -46,6 +59,37 @@ const FIELD_MAP: Record<string,string> = {
   parking_type:'ParkingType', parking_ratio:'ParkingRatio',
   lot_size_acres:'LotSizeAcres', management_company:'ManagementCompany',
 };
+
+// ---- HTTP helpers ----
+
+function httpsPostJson(url: string, body: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const mod = u.protocol === 'https:' ? https : http;
+    const data = JSON.stringify(body);
+    const req = mod.request(u, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+      timeout: 30000,
+    }, (res) => {
+      let buf = '';
+      res.on('data', (c: Buffer) => buf += c.toString());
+      res.on('end', () => {
+        try { resolve(JSON.parse(buf)); }
+        catch { resolve({ raw: buf }); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    req.write(data);
+    req.end();
+  });
+}
+
+// ---- CSV parser ----
 
 function parseCSVLine(line: string): string[] {
   const r: string[] = []; let c = ''; let q = false;
@@ -97,7 +141,10 @@ async function doOm(pid: string): Promise<Record<string,string>> {
     const cmd = 'curl.exe -s "' + REAPER + '/parse-om?parcel_id='
       + encodeURIComponent(pid) + '&observation_date=2025-01-01" -H "x-ingest-secret: '
       + SECRET + '" -F "file=@' + pdf + '" --connect-timeout 30 --max-time 180 2>&1';
-    const buf = execSync(cmd, { timeout:190000, encoding:'buffer', maxBuffer:10*1024*1024, stdio:['pipe','pipe','pipe'] });
+    const buf = execSync(cmd, {
+      timeout: 190000, encoding: 'buffer',
+      maxBuffer: 10 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe']
+    });
     const txt = buf.toString('utf8').trim();
     if (!txt) return {};
     const r = JSON.parse(txt);
@@ -107,7 +154,7 @@ async function doOm(pid: string): Promise<Record<string,string>> {
     console.log('  [OM] ' + Object.keys(f).length + ' fields');
     return f;
   } catch (e: any) {
-    console.log('  [OM] Failed: ' + (e.message||'').slice(0,80));
+    console.log('  [OM] Failed: ' + (e.message || '').slice(0, 80));
     return {};
   }
 }
@@ -120,153 +167,228 @@ function extractAddr(pid: string): string|null {
   for (const f of fs.readdirSync(dp)) {
     const n = path.basename(f, path.extname(f));
     const m = n.match(/(\d{2,5})\s+([A-Za-z].{4,50})/);
-    if (m) { const c = m[1] + ' ' + m[2]; if (c.length > 8 && !/^\d{4}$/.test(c)) return c; }
+    if (m) {
+      const c = m[1] + ' ' + m[2];
+      if (c.length > 8 && !/^\d{4}$/.test(c)) return c;
+    }
   }
   return null;
 }
 
-// ---- Step 3: apartments.com (try mobile + desktop + JSON-LD) ----
+// ---- Step 3: Tavily search for property details ----
 
-async function searchApt(pid: string, known: Record<string,string>): Promise<Record<string,string>> {
-  const parts: string[] = [];
-  if (known.address) { parts.push(known.address); }
-  else { parts.push(pid); }
-  if (known.city) parts.push(known.city);
-  if (known.state) parts.push(known.state);
-  const searchUrl = 'https://www.apartments.com/search/'
-    + encodeURIComponent(parts.join(' ')) + '/';
-  const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36';
-  const tmpDir = require('os').tmpdir();
-  const ck = pid.replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
+async function searchTavily(
+  pid: string,
+  known: Record<string,string>
+): Promise<Record<string,string>> {
+  const city = known.city || '';
+  const state = known.state || '';
+  const addr = known.address || '';
 
-  console.log('  [APT] Searching: ' + parts.join(', '));
+  // Build search query
+  const parts: string[] = [pid];
+  if (addr) parts.push(addr);
+  if (city) parts.push(city);
+  if (state) parts.push(state);
+  parts.push('apartment', 'property', 'details', 'year built', 'units');
+  const query = parts.join(' ');
+
+  console.log('  [TAV] Searching: ' + pid + (addr ? ' at ' + addr : ''));
+
+  const result: Record<string,string> = {};
 
   try {
-    // Get search results
-    const sf = path.join(tmpDir, '_s_' + ck + '.html');
-    try {
-      execSync('curl.exe -s -L "' + searchUrl + '" -H "User-Agent: ' + ua
-        + '" --connect-timeout 15 --max-time 45 --max-filesize 3000000 -o "' + sf + '" 2>&1',
-        { timeout:50000 });
-    } catch {}
-    if (fs.existsSync(sf) && fs.statSync(sf).size >= 1000) {
-      const h = fs.readFileSync(sf, 'utf8').slice(0,500000);
+    // Step 3a: Tavily search to find the right URL
+    const searchResult = await httpsPostJson(TAVILY_SEARCH, {
+      api_key: TAVILY_KEY,
+      query: query,
+      search_depth: 'advanced',
+      include_answer: true,
+      include_raw_content: false,
+      max_results: 5,
+    });
 
-      // Extract listing slugs
-      const slugs: string[] = [];
-      const slugRx = /href="\/([a-z0-9\-]+\/[0-9]+[^"]*)"/gi;
-      let m;
-      while ((m = slugRx.exec(h)) !== null) {
-        if (!slugs.includes(m[1])) slugs.push(m[1]);
-      }
+    if (!searchResult || !searchResult.results) return result;
 
-      if (slugs.length > 0) {
-        console.log('  [APT] ' + slugs.length + ' listing(s)');
-      }
+    // Check the AI answer first — Tavily sometimes summarizes from multiple sources
+    if (searchResult.answer) {
+      const answer = searchResult.answer;
+      console.log('  [TAV] AI answer available (' + answer.length + ' chars)');
+      mapTextToFields(answer, result);
+    }
 
-      // Try each slug on desktop + mobile
-      for (const slug of slugs.slice(0, 3)) {
-        const dl = 'https://www.apartments.com/' + slug;
-        const ml = 'https://m.apartments.com/' + slug;
+    // Find apartments.com URL from results
+    const aptUrl = searchResult.results
+      .filter((r: any) => r.url && /apartments\.com/i.test(r.url))
+      .map((r: any) => r.url);
 
-        for (const [url, agent] of [
-          [dl, ua],
-          [ml, 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36'],
-        ] as [string,string][]) {
-          const dk = url.replace(/https?:\/\//,'').replace(/[^a-zA-Z0-9]/g,'_').slice(0,50);
-          const df = path.join(tmpDir, '_d_' + dk + '.html');
-          try {
-            execSync('curl.exe -s -L "' + url + '" -H "User-Agent: ' + agent
-              + '" --connect-timeout 15 --max-time 30 --max-filesize 3000000 -o "' + df + '" 2>&1',
-              { timeout:35000 });
-          } catch {}
+    if (aptUrl.length > 0) {
+      console.log('  [TAV] Found apartments.com: ' + aptUrl[0]);
+      // Step 3b: Extract the page content via Tavily extract
+      const extractResult = await httpsPostJson(TAVILY_EXTRACT, {
+        api_key: TAVILY_KEY,
+        urls: [aptUrl[0]],
+        include_images: false,
+      });
 
-          if (!fs.existsSync(df) || fs.statSync(df).size < 1000) continue;
-          const dh = fs.readFileSync(df, 'utf8').slice(0,500000);
-          const f: Record<string,string> = {};
-
-          // JSON-LD structured data
-          const ldRx = /<script type="application\/ld\+json">([^<]+)<\/script>/g;
-          let ldM;
-          while ((ldM = ldRx.exec(dh)) !== null) {
-            try {
-              const ld: any = JSON.parse(ldM[1]);
-              const t = ld['@type'] || '';
-              if (t === 'Product' || t === 'ApartmentComplex' || t === 'Place') {
-                if (ld.name) f.pname = ld.name;
-                if (ld.additionalProperty && Array.isArray(ld.additionalProperty)) {
-                  for (const ap of ld.additionalProperty) {
-                    if (!ap.name || !ap.value) continue;
-                    const key = String(ap.name).toLowerCase().replace(/[\s-]+/g,'_');
-                    const val = String(ap.value);
-                    if (key.includes('year') && /^\d{4}$/.test(val)) f.year_built = val;
-                    if ((key.includes('unit') || key.includes('dwelling')) && /^\d{2,4}$/.test(val)) f.unit_count = val;
-                    if ((key.includes('floor') || key.includes('storie')) && /^\d+$/.test(val)) f.stories = val;
-                  }
-                }
-              }
-            } catch {}
-          }
-
-          // Inline JSON from page scripts
-          const street = dh.match(/"streetAddress"\s*:\s*"([^"]+)"/);
-          if (street) f.address = street[1];
-          const city = dh.match(/"addressLocality"\s*:\s*"([^"]+)"/);
-          if (city) f.city = city[1];
-          const state = dh.match(/"addressRegion"\s*:\s*"([^"]+)"/);
-          if (state) f.stateApt = state[1];
-          const zip = dh.match(/"postalCode"\s*:\s*"(\d{5})"/);
-          if (zip) f.zip = zip[1];
-          const totalU = dh.match(/"totalNumberOfUnits"\s*:\s*(\d+)/);
-          if (totalU && !f.unit_count) f.unit_count = totalU[1];
-          const floors = dh.match(/"numberOfFloors"\s*:\s*(\d+)/);
-          if (floors && !f.stories) f.stories = floors[1];
-
-          // Meta description for year built
-          const desc = dh.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
-          if (desc) {
-            const yb = desc[1].match(/(?:built|constructed)\s+(?:in\s+)?(\d{4})/i);
-            if (yb && !f.year_built) f.year_built = yb[1];
-            if (!f.building_class) {
-              const cls = desc[1].match(/Class\s+([ABC])/i);
-              if (cls) f.building_class = cls[1].toUpperCase();
-            }
-          }
-
-          // Title fallback
-          const title = dh.match(/<title>([^<]+)<\/title>/i);
-          if (title && /luxury/i.test(title[1]) && !f.building_class) f.building_class = 'A';
-
-          const nFields = Object.keys(f).length;
-          if (nFields > 3) {
-            console.log('  [APT] ' + nFields + ' fields');
-            return f;
-          }
+      if (extractResult && extractResult.results && extractResult.results.length > 0) {
+        const content = extractResult.results[0].raw_content || '';
+        if (content.length > 100) {
+          console.log('  [TAV] Extracted ' + content.length + ' chars');
+          mapTextToFields(content, result);
         }
       }
     }
+
+    // Also check other listing sites (apartmentlist, rent, realtor)
+    for (const r of searchResult.results) {
+      const url = r.url || '';
+      if (!/(apartments\.com|apartmentlist\.com|realtor\.com|rent\.com|zillow\.com)/i.test(url)) continue;
+      if (url === aptUrl[0]) continue; // already processed
+
+      console.log('  [TAV] Also extracting: ' + url);
+      try {
+        const ex = await httpsPostJson(TAVILY_EXTRACT, {
+          api_key: TAVILY_KEY,
+          urls: [url],
+          include_images: false,
+        });
+        if (ex && ex.results && ex.results.length > 0) {
+          mapTextToFields(ex.results[0].raw_content || '', result);
+        }
+      } catch {}
+    }
+
   } catch (e: any) {
-    console.log('  [APT] Error: ' + (e.message||'').slice(0,60));
+    console.log('  [TAV] Error: ' + (e.message || '').slice(0, 80));
   }
-  return {};
+
+  const n = Object.keys(result).length;
+  if (n > 0) console.log('  [TAV] ' + n + ' fields found');
+  return result;
+}
+
+/**
+ * Parse property details from Tavily text content (from AI answer or extract).
+ * Looks for year built, units, stories, class, construction, parking, etc.
+ */
+function mapTextToFields(text: string, target: Record<string,string>) {
+  if (!text || text.length < 20) return;
+
+  // Year built
+  if (!target.year_built) {
+    const yb = text.match(/(?:year\s+built|built|constructed|opened|developed)\s*(?::|in)?\s*(19|20)\d{2}/i);
+    if (yb) target.year_built = yb[0].match(/(19|20)\d{2}/)?.[0] || '';
+  }
+
+  // Units
+  if (!target.unit_count) {
+    const uc = text.match(/(\d{2,4})\s*(?:unit|apartment|home|residence)[^a-zA-Z]/i);
+    if (uc) target.unit_count = uc[1];
+    // Also: "XX units"
+    const uc2 = text.match(/\b(\d{2,4})\s+units?\b/i);
+    if (uc2 && !target.unit_count) target.unit_count = uc2[1];
+    // Total units:
+    const uc3 = text.match(/(?:total|number\s+of)\s+units?\s*[:\-]?\s*(\d{2,4})/i);
+    if (uc3 && !target.unit_count) target.unit_count = uc3[1];
+  }
+
+  // Stories
+  if (!target.stories) {
+    const st = text.match(/(\d+)\s*(?:-story|-stories|-floor|story|stories|floors?)\s/);
+    if (st) target.stories = st[1];
+    const st2 = text.match(/(?:stories|floors?|number\s+of\s+stories)\s*[:\-]?\s*(\d+)/i);
+    if (st2 && !target.stories) target.stories = st2[1];
+  }
+
+  // Building class
+  if (!target.building_class) {
+    const cl = text.match(/(?:class\s+)([ABCD])(?:\s|$|[,\-])/i);
+    if (cl) target.building_class = cl[1].toUpperCase();
+    // Luxury often means Class A
+    if (!target.building_class && /luxury/i.test(text)) target.building_class = 'A';
+  }
+
+  // Property type
+  if (!target.property_type) {
+    for (const t of ['Garden', 'Mid-Rise', 'Mid Rise', 'High-Rise', 'High Rise', 'Townhouse', 'Walk-Up']) {
+      if (new RegExp(t, 'i').test(text)) {
+        target.property_type = t;
+        break;
+      }
+    }
+  }
+
+  // Construction type
+  if (!target.construction_type) {
+    for (const t of ['Wood Frame', 'Concrete', 'Steel Frame', 'Masonry', 'Podium', 'Slab']) {
+      if (new RegExp(t, 'i').test(text)) {
+        target.construction_type = t;
+        break;
+      }
+    }
+  }
+
+  // Parking
+  if (!target.parking_type) {
+    if (/garage\s+parking/i.test(text)) target.parking_type = 'Garage';
+    else if (/covered\s+parking/i.test(text)) target.parking_type = 'Covered';
+    else if (/surface\s+parking/i.test(text)) target.parking_type = 'Surface';
+    if (!target.parking_type && /parking/i.test(text)) target.parking_type = 'Surface';
+  }
+
+  // Address
+  if (!target.address) {
+    const ad = text.match(/\b(\d{2,5}\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}(?:\s+(?:Dr|Drive|St|Street|Rd|Road|Blvd|Boulevard|Ave|Avenue|Ln|Lane|Ct|Court|Cir|Circle|Way|Pkwy|Parkway|Hwy)))\b/);
+    if (ad) target.address = ad[1];
+  }
+
+  // Square footage
+  if (!target.avg_unit_sqft) {
+    const sq = text.match(/(\d{3,4})\s*(?:sq\.?\s*ft|square\s*feet|SF)\s*(?:avg|average)?/i);
+    if (sq) target.avg_unit_sqft = sq[1];
+  }
+
+  if (!target.net_rentable_sqft) {
+    const sq2 = text.match(/(\d{3,6})\s*(?:sq\.?\s*ft|square\s*feet|SF)\s*(?:building|total|rentable|gross)?/i);
+    if (sq2) target.net_rentable_sqft = sq2[1];
+  }
+
+  // Management company
+  if (!target.management_company) {
+    const mgmt = text.match(/(?:managed\s+by|management|property\s+manager)\s*[:\-]?\s*([A-Z][A-Za-z\s.&]+?)(?:\s+\d|[A-Z]{2}|$)/i);
+    if (mgmt) target.management_company = mgmt[1].trim().replace(/\s+/g, ' ');
+  }
+
+  // Lot size
+  if (!target.lot_size_acres) {
+    const lot = text.match(/(\d+\.?\d*)\s*(?:acres?|acre)\b/i);
+    if (lot) target.lot_size_acres = lot[1];
+  }
+
+  // Year renovated
+  if (!target.year_renovated) {
+    const yr = text.match(/(?:renovated|renovation|year\s+renovated)\s*(?::|in)?\s*(\d{4})/i);
+    if (yr) target.year_renovated = yr[1];
+  }
 }
 
 // ---- State persistence ----
 
 function loadState(): any {
   try { return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); }
-  catch { return { version:1, updated:new Date().toISOString(), properties:{} }; }
+  catch {
+    return {
+      version: 1,
+      updated: new Date().toISOString(),
+      properties: {}
+    };
+  }
 }
 
 function saveState(s: any) {
   s.updated = new Date().toISOString();
   fs.writeFileSync(STATE_PATH, JSON.stringify(s, null, 2));
-}
-
-// ---- Helpers ----
-
-function getSeedVal(seed: Record<string,Record<string,string>>, pid: string, col: string): string {
-  return seed[pid]?.[col] || '';
 }
 
 // ---- Main ----
@@ -277,13 +399,16 @@ async function main() {
   const resume = args.includes('--resume');
   const skipOm = args.includes('--skip-om');
   const singleI = args.indexOf('--property');
-  const singleP = singleI >= 0 ? args[singleI+1] : null;
+  const singleP = singleI >= 0 ? args[singleI + 1] : null;
 
   const seed = loadSeed();
   const state = loadState();
 
   const dirs = fs.readdirSync(ARCHIVE_ROOT)
-    .filter(d => fs.statSync(path.join(ARCHIVE_ROOT, d)).isDirectory() && !d.startsWith('_') && !d.startsWith('.'))
+    .filter(d =>
+      fs.statSync(path.join(ARCHIVE_ROOT, d)).isDirectory() &&
+      !d.startsWith('_') && !d.startsWith('.')
+    )
     .sort();
 
   const target = singleP
@@ -292,7 +417,7 @@ async function main() {
 
   console.log('\nEnriching ' + target.length + '/' + dirs.length + ' properties'
     + (dryRun ? ' (dry-run)' : ''));
-  if (resume) console.log('Resume mode');
+  if (resume) console.log('Resume mode (skip done)');
   if (skipOm) console.log('Skipping OM extraction');
   console.log('');
 
@@ -305,7 +430,7 @@ async function main() {
       continue;
     }
 
-    console.log('[' + (i+1) + '/' + target.length + '] ' + pid);
+    console.log('[' + (i + 1) + '/' + target.length + '] ' + pid);
     const f: Record<string,string> = {};
     const sr = seed[pid];
 
@@ -317,30 +442,33 @@ async function main() {
       if (sr['YearBuilt']) f.year_built = sr['YearBuilt'];
     }
 
-    // Step 1: OM
+    // Step 1: OM extraction
     if (!skipOm) {
       const omf = await doOm(pid);
-      for (const [k,v] of Object.entries(omf)) if (!f[k]) f[k] = v;
+      for (const [k, v] of Object.entries(omf)) {
+        if (!f[k]) f[k] = v;
+      }
     }
 
-    // Step 2: Address
+    // Step 2: Address from files
     if (!f.address) {
       const a = extractAddr(pid);
-      if (a) { f.address = a; console.log('  [ADDR] ' + a); }
+      if (a) {
+        f.address = a;
+        console.log('  [ADDR] ' + a);
+      }
     }
 
-    // Step 3: apartments.com (only if missing core fields)
-    const core = ['building_class','stories','year_built','property_type','unit_count'];
+    // Step 3: Tavily search for missing core fields
+    const core = ['building_class', 'stories', 'year_built', 'property_type', 'unit_count'];
     const missing = core.filter(k => !f[k]);
     if (missing.length > 0) {
-      const apt = await searchApt(pid, f);
-      for (const [k,v] of Object.entries(apt)) {
-        // Map stateApt -> state
-        const key = k === 'stateApt' ? 'state' : k;
-        if (!f[key]) f[key] = v;
+      const tav = await searchTavily(pid, f);
+      for (const [k, v] of Object.entries(tav)) {
+        if (!f[k]) f[k] = v;
       }
     } else {
-      console.log('  [APT] Skipped (all core fields present)');
+      console.log('  [TAV] Skipped (all core fields present)');
     }
 
     enriched[pid] = f;
@@ -354,10 +482,11 @@ async function main() {
       note: nFields + ' fields',
     };
 
-    if ((i+1) % 5 === 0 || singleP) saveState(state);
+    if ((i + 1) % 5 === 0 || singleP) saveState(state);
   }
 
-  // Write output
+  // ---- Write enriched CSV ----
+
   if (!dryRun) {
     const rows: string[] = [CATALOG_COLS.join(',')];
 
@@ -368,23 +497,27 @@ async function main() {
       for (const col of CATALOG_COLS) rec[col] = '';
 
       rec.ParcelId = pid;
-      for (const [k,v] of Object.entries(f)) {
+      for (const [k, v] of Object.entries(f)) {
         const col = FIELD_MAP[k as keyof typeof FIELD_MAP];
         if (col) rec[col] = v;
       }
       // Fallback to seed
-      for (const col of ['Address','City','State','ZIP','MSA','YearBuilt','County','Submarket','AssetClass','Stories','PropertyType','UnitCount','ConstructionType','ParkingType','ManagementCompany']) {
+      for (const col of [
+        'Address', 'City', 'State', 'ZIP', 'MSA', 'YearBuilt',
+        'County', 'Submarket', 'AssetClass', 'Stories', 'PropertyType',
+        'UnitCount', 'ConstructionType', 'ParkingType', 'ManagementCompany',
+      ]) {
         if (!rec[col] && sr[col]) rec[col] = sr[col];
       }
 
       // Confidence
-      const core = ['City','State','MSA','YearBuilt','AssetClass','Stories','PropertyType','UnitCount'];
+      const core = ['City', 'State', 'MSA', 'YearBuilt', 'AssetClass', 'Stories', 'PropertyType', 'UnitCount'];
       const filled = core.filter(c => rec[c]).length;
       rec.DataConfidence = filled >= 6 ? 'high' : filled >= 3 ? 'medium' : filled >= 1 ? 'low' : 'none';
       rec.SourceFiles = sr['SourceFiles'] || '';
 
       const vals = CATALOG_COLS.map(col => {
-        const v = (rec[col]||'').replace(/"/g,'""');
+        const v = (rec[col] || '').replace(/"/g, '""');
         return /[,"\n]/.test(v) ? '"' + v + '"' : v;
       });
       rows.push(vals.join(','));
@@ -395,12 +528,15 @@ async function main() {
     console.log('\nWrote ' + nOut + ' rows to ' + OUTPUT_PATH);
 
     const withYb = rows.filter(r => /,(?:19|20)\d{2},/.test(r)).length - 1;
-    const withUnits = rows.filter(r => /^\d{2,4}$/.test(r.split(',')[14]||'')).length;
-    const withClass = rows.filter(r => /[ABC]/.test(r.split(',')[10]||'')).length;
+    const withUnits = rows.filter(r => /^\d{2,4}$/.test(r.split(',')[14] || '')).length;
+    const withClass = rows.filter(r => /[ABC]/.test(r.split(',')[10] || '')).length;
     console.log('Coverage: YearBuilt=' + withYb + ' UnitCount=' + withUnits + ' Class=' + withClass);
   }
 
   saveState(state);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(e => {
+  console.error(e);
+  process.exit(1);
+});
