@@ -117,35 +117,44 @@ async function fetchProperties(): Promise<ArchiveProperty[]> {
   `);
   
   return r.rows.map((row: Record<string, unknown>) => {
-    // Extract address from property_descriptions — try resolved, then municipal layer, then om layer
+    // Extract address from property_descriptions
+    // The resolved field can be either a flat string ("123 Main St, Atlanta, GA")
+    // or a JSON string ("{"street":"123 Main St","city":"Atlanta","state":"GA"}")
     let address: string | null = null;
-    const addrJsonb = row.address as Record<string, unknown> | null;
-    if (addrJsonb?.resolved) {
-      const resolved = addrJsonb.resolved as string;
-      // resolved might be JSON object '{street, city, state, zip}'
-      try {
-        const parsed = typeof resolved === 'string' && resolved.startsWith('{') ? JSON.parse(resolved) : resolved;
-        if (typeof parsed === 'object') {
-          address = `${parsed.street || ''} ${parsed.city || ''} ${parsed.state || ''}`.trim();
-        } else {
-          address = resolved;
-        }
-      } catch { address = resolved; }
-    }
-
-    // Try to get city/state from the address jsonb
     let city: string | null = null;
     let state: string | null = null;
     let zip: string | null = null;
-    if (addrJsonb?.resolved) {
-      const r = addrJsonb.resolved;
-      if (typeof r === 'string' && r.startsWith('{')) {
-        try {
-          const p = JSON.parse(r);
-          city = p.city || null;
-          state = p.state || null;
-          zip = p.zip || null;
-        } catch {}
+    
+    const addrRaw = row.address;
+    if (addrRaw && typeof addrRaw === 'object') {
+      const addrObj = addrRaw as Record<string, unknown>;
+      const resolved = addrObj['resolved'];
+      
+      if (resolved) {
+        if (typeof resolved === 'object') {
+          // Already parsed JSON object {street, city, state, zip}
+          const r = resolved as Record<string, string>;
+          address = r['street'] || r['address'] || null;
+          city = r['city'] || null;
+          state = r['state'] || null;
+          zip = r['zip'] || r['zip_code'] || null;
+        } else if (typeof resolved === 'string') {
+          // Try parsing as JSON
+          try {
+            const parsed = JSON.parse(resolved);
+            if (typeof parsed === 'object') {
+              address = parsed.street || parsed.address || null;
+              city = parsed.city || null;
+              state = parsed.state || null;
+              zip = parsed.zip || null;
+            } else {
+              address = resolved;
+            }
+          } catch {
+            // Flat string — use as-is
+            address = resolved;
+          }
+        }
       }
     }
 
@@ -335,29 +344,29 @@ async function main(): Promise<void> {
       continue;
     }
 
-    // Check if we have a resolvable address
+    // Check if we have a resolvable address or at least city/state
     const address = prop.address;
-    if (!address) {
-      console.log(`  ⚠ No address resolved for this property — try running archive-enrich.ts --resume first to populate addresses from OMs`);
-      state.perProperty[prop.parcel_id] = { status: 'skipped', fieldsFilled: [], error: 'no_address' };
-      skipped++;
-      saveState(state);
-      continue;
-    }
-
-    // Determine city/state from available data
     const city = prop.city || '';
     const stateCode = prop.state || '';
-    const zip = prop.zip || undefined;
-    const county = prop.county || undefined;
-
+    
     if (!stateCode || stateCode.length !== 2) {
-      console.log(`  ⚠ No state code available — skipping`);
+      console.log(`  ⚠ No state code available — skipping. Try archive-enrich.ts --resume to populate addresses from OM PDFs first.`);
       state.perProperty[prop.parcel_id] = { status: 'skipped', fieldsFilled: [], error: 'no_state' };
       skipped++;
       saveState(state);
       continue;
     }
+
+    if (!address || !city) {
+      console.log(`  ⚠ Address/city not resolved. State: ${stateCode}. Try archive-enrich.ts --resume first.`);
+      state.perProperty[prop.parcel_id] = { status: 'skipped', fieldsFilled: [], error: 'no_address' };
+      skipped++;
+      saveState(state);
+      continue;
+    }
+    
+    const zip = prop.zip || undefined;
+    const county = prop.county || undefined;
 
     // Skip properties that already have municipal data populated for all desired fields
     const hasMunicipalYearBuilt = prop.year_built_jsonb?.layers?.municipal !== undefined;
