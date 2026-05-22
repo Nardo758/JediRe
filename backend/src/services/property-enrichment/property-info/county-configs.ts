@@ -608,6 +608,107 @@ export const COBB_COUNTY_GA: CountyAPIConfig = {
 };
 
 /**
+ * Miami-Dade County, FL
+ * 
+ * Large county with comprehensive GIS via ArcGIS
+ */
+export const MIAMI_DADE_COUNTY_FL: CountyAPIConfig = {
+  county: 'Miami-Dade',
+  state: 'FL',
+  fipsCode: '12086',
+  pattern: 'arcgis_featureserver',
+  
+  baseUrl: 'https://gisws-live.miamidade.gov/arcgis/rest/services',
+  parcelsEndpoint: 'https://gisws-live.miamidade.gov/arcgis/rest/services/Parcel/Parcels/FeatureServer',
+  
+  parcelsLayerId: 0,
+  
+  searchField: 'SITE_ADDRESS',
+  searchType: 'address',
+  
+  fieldMappings: {
+    parcelId: 'FOLIO',
+    parcelNumber: 'FOLIO',
+    
+    fullAddress: 'SITE_ADDRESS',
+    city: 'SITE_CITY',
+    zip: 'SITE_ZIP',
+    
+    yearBuilt: 'YR_BUILT',
+    numberOfUnits: 'UNITS',
+    livingArea: 'LIVING_AREA',
+    landSqFt: 'LAND_SF',
+    acres: 'ACREAGE',
+    
+    zoning: 'ZONING',
+    landUseCode: 'LAND_USE_CODE',
+    landUseDescription: 'LAND_USE_DESC',
+    
+    ownerName: 'OWNER_NAME',
+    ownerAddress: 'OWNER_ADDR',
+    ownerCity: 'OWNER_CITY',
+    ownerState: 'OWNER_STATE',
+    ownerZip: 'OWNER_ZIP',
+    
+    justValue: 'JUST_VALUE',
+    landValue: 'LAND_VALUE',
+    buildingValue: 'BLDG_VALUE',
+    taxableValue: 'TAXABLE_VALUE',
+    
+    saleDate: 'SALE_DATE',
+    saleAmount: 'SALE_PRICE',
+  }
+};
+
+/**
+ * Broward County, FL (Fort Lauderdale)
+ */
+export const BROWARD_COUNTY_FL: CountyAPIConfig = {
+  county: 'Broward',
+  state: 'FL',
+  fipsCode: '12011',
+  pattern: 'arcgis_featureserver',
+  
+  baseUrl: 'https://gis.broward.org/arcgis/rest/services',
+  parcelsEndpoint: 'https://gis.broward.org/arcgis/rest/services/PropertySearch/MapServer',
+  
+  parcelsLayerId: 0,
+  
+  searchField: 'SITE_ADDRESS',
+  searchType: 'address',
+  
+  fieldMappings: {
+    parcelId: 'FOLIO',
+    parcelNumber: 'FOLIO',
+    
+    fullAddress: 'SITE_ADDRESS',
+    city: 'SITE_CITY',
+    zip: 'SITE_ZIP',
+    
+    yearBuilt: 'YEAR_BUILT',
+    numberOfUnits: 'UNITS',
+    livingArea: 'LIVING_SQFT',
+    landSqFt: 'LAND_SQFT',
+    acres: 'ACRES',
+    
+    zoning: 'ZONING',
+    landUseCode: 'LAND_USE_CODE',
+    landUseDescription: 'LAND_USE_DESC',
+    
+    ownerName: 'OWNER_NAME',
+    ownerAddress: 'OWNER_ADDR',
+    ownerCity: 'OWNER_CITY',
+    ownerState: 'OWNER_STATE',
+    ownerZip: 'OWNER_ZIP',
+    
+    justValue: 'JUST_VALUE',
+    landValue: 'LAND_VALUE',
+    buildingValue: 'BUILDING_VALUE',
+    taxableValue: 'TAXABLE_VALUE',
+  }
+};
+
+/**
  * Dallas County, TX
  */
 export const DALLAS_COUNTY_TX: CountyAPIConfig = {
@@ -670,6 +771,9 @@ export const COUNTY_CONFIGS: CountyAPIConfig[] = [
   COBB_COUNTY_GA,
   // Arizona
   MARICOPA_COUNTY_AZ,
+  // Florida (continued)
+  MIAMI_DADE_COUNTY_FL,
+  BROWARD_COUNTY_FL,
   // Texas
   HARRIS_COUNTY_TX,
   DALLAS_COUNTY_TX,
