@@ -1,7 +1,7 @@
 /**
  * archive-bulk-file-upload.ts
  *
- * Batch upload script for Phase 1 — runs on Leon's Windows machine.
+ * Batch upload script for bulk archive ingestion — runs on Leon's Windows machine.
  * Walks a root folder, classifies each file, sha256-dedup checks against
  * the server, then POSTs new files to /api/v1/archive/files/ingest.
  *
@@ -11,7 +11,9 @@
  *     --endpoint "https://<replit-dev-domain>/api/v1/archive" \
  *     --secret "jedire-archive-2026" \
  *     [--concurrency 6] \
- *     [--dry-run]
+ *     [--dry-run] \
+ *     [--limit 50] \
+ *     [--resume "path/to/manifest.json"]
  *
  * Output: manifest JSON written to ./upload-manifest-<timestamp>.json
  */
@@ -38,25 +40,27 @@ const ENDPOINT     = (arg('endpoint')   ?? process.env.ARCHIVE_ENDPOINT ?? '').r
 const SECRET       = arg('secret')      ?? process.env.ARCHIVE_INGEST_SECRET ?? '';
 const CONCURRENCY  = parseInt(arg('concurrency') ?? '6', 10);
 const DRY_RUN      = flag('dry-run');
+const LIMIT        = arg('limit') ? parseInt(arg('limit')!, 10) : Infinity;
+const RESUME_FROM  = arg('resume') ?? null;
 
 if (!ROOT_FOLDER || !ENDPOINT || !SECRET) {
   console.error('Usage: archive-bulk-file-upload --root <path> --endpoint <url> --secret <secret>');
   process.exit(1);
 }
 
-// ── Document type classifier (filename-only, no buffer parse needed here) ─────
+// ── Document type classifier ──────────────────────────────────────────────────
 
 const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: string }> = [
-  { pattern: /aged[\s_-]*receiv/i,                                          type: 'AGED_RECEIVABLES' },
-  { pattern: /box[\s_-]*score/i,                                            type: 'BOX_SCORE' },
-  { pattern: /leasing/i,                                                    type: 'LEASING_STATS' },
-  { pattern: /concession[\s_-]*burn/i,                                      type: 'CONCESSION_BURNOFF' },
-  { pattern: /trade[\s_-]*out|t30[\s_-]*lto|lto[\s_-]*report|lease[\s_-]*trade/i, type: 'T30_LTO' },
-  { pattern: /tax[\s_-]*bill|tax[\s_-]*statement|property[\s_-]*tax/i,     type: 'TAX_BILL' },
-  { pattern: /market[\s_-]*rent[\s_-]*sched|other[\s_-]*income/i,          type: 'OTHER_INCOME' },
+  { pattern: /aged[\s_-]*receiv/i,                                                    type: 'AGED_RECEIVABLES' },
+  { pattern: /box[\s_-]*score/i,                                                      type: 'BOX_SCORE' },
+  { pattern: /leasing/i,                                                               type: 'LEASING_STATS' },
+  { pattern: /concession[\s_-]*burn/i,                                                 type: 'CONCESSION_BURNOFF' },
+  { pattern: /trade[\s_-]*out|t30[\s_-]*lto|lto[\s_-]*report|lease[\s_-]*trade/i,    type: 'T30_LTO' },
+  { pattern: /tax[\s_-]*bill|tax[\s_-]*statement|property[\s_-]*tax/i,               type: 'TAX_BILL' },
+  { pattern: /market[\s_-]*rent[\s_-]*sched|other[\s_-]*income/i,                    type: 'OTHER_INCOME' },
   { pattern: /offering[\s_-]*memorandum|investment[\s_-]*summary|property[\s_-]*offering/i, type: 'OM' },
-  { pattern: /rent[\s_+\-]*roll|rr[\s_-]*w[\s_-]*lc|rrwlc/i,              type: 'RENT_ROLL' },
-  { pattern: /t[\s_-]*12|trailing[\s_-]*12|income[\s_-]*statement|ysi[\s_-]*is/i, type: 'T12' },
+  { pattern: /rent[\s_+\-]*roll|rr[\s_-]*w[\s_-]*lc|rrwlc/i,                        type: 'RENT_ROLL' },
+  { pattern: /t[\s_-]*12|trailing[\s_-]*12|income[\s_-]*statement|ysi[\s_-]*is/i,   type: 'T12' },
 ];
 
 const SUPPORTED_EXTENSIONS = new Set([
@@ -71,17 +75,11 @@ function classifyByFilename(filename: string): string {
 }
 
 // ── parcel_id resolution ──────────────────────────────────────────────────────
-// Convention: the immediate parent folder of the file is the parcel/deal name.
-// Override by setting PARCEL_ID_DEPTH env var:
-//   0 = parent dir (default)
-//   1 = grandparent dir
-// If the folder name looks like a date or generic word, walk up one more level.
 
 const GENERIC_FOLDER_NAMES = /^(archive|deals|documents|files|uploads|data|\d{4})$/i;
 
 function resolveParcelId(filePath: string): string {
   const parts = filePath.split(path.sep);
-  // parts[-1] = filename, parts[-2] = immediate parent
   for (let i = parts.length - 2; i >= 0; i--) {
     const candidate = parts[i];
     if (!GENERIC_FOLDER_NAMES.test(candidate)) return candidate;
@@ -101,6 +99,7 @@ function walkDir(dir: string): string[] {
   }
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
+    if (entry.name.startsWith('~$') || entry.name.startsWith('.')) continue;
     if (entry.isDirectory()) {
       results.push(...walkDir(full));
     } else if (entry.isFile()) {
@@ -145,7 +144,6 @@ function multipartPost(
   return new Promise((resolve, reject) => {
     const boundary = `----JediReBoundary${Date.now().toString(16)}`;
     const fileBuffer = fs.readFileSync(filePath);
-
     const parts: Buffer[] = [];
 
     for (const [k, v] of Object.entries(fields)) {
@@ -161,7 +159,6 @@ function multipartPost(
     parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
 
     const body = Buffer.concat(parts);
-
     const parsedUrl = new URL(url);
     const options = {
       hostname: parsedUrl.hostname,
@@ -193,14 +190,12 @@ function multipartPost(
 async function pool<T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> {
   const results: T[] = [];
   let idx = 0;
-
   async function worker() {
     while (idx < tasks.length) {
       const i = idx++;
       results[i] = await tasks[i]();
     }
   }
-
   await Promise.all(Array.from({ length: concurrency }, worker));
   return results;
 }
@@ -220,17 +215,15 @@ interface FileResult {
 }
 
 async function processFile(filePath: string): Promise<FileResult> {
-  const filename   = path.basename(filePath);
-  const parcelId   = resolveParcelId(filePath);
-  const docType    = classifyByFilename(filename);
-  const sizeBytes  = fs.statSync(filePath).size;
-  const sha256     = sha256File(filePath);
+  const filename  = path.basename(filePath);
+  const parcelId  = resolveParcelId(filePath);
+  const docType   = classifyByFilename(filename);
+  const sizeBytes = fs.statSync(filePath).size;
+  const sha256    = sha256File(filePath);
 
   const base: Omit<FileResult, 'status'> = { filePath, parcelId, documentType: docType, sha256, sizeBytes };
 
-  if (DRY_RUN) {
-    return { ...base, status: 'dry_run' };
-  }
+  if (DRY_RUN) return { ...base, status: 'dry_run' };
 
   // 1. Dedup probe
   try {
@@ -248,9 +241,9 @@ async function processFile(filePath: string): Promise<FileResult> {
 
   // 2. Upload
   const ext = path.extname(filename).toLowerCase();
-  const mimeType = ext === '.pdf' ? 'application/pdf'
-    : (ext === '.xlsx' || ext === '.xls') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    : ext === '.csv' ? 'text/csv'
+  const mimeType = ext === '.pdf'               ? 'application/pdf'
+    : (ext === '.xlsx' || ext === '.xls')       ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    : ext === '.csv'                            ? 'text/csv'
     : 'application/octet-stream';
 
   try {
@@ -282,16 +275,47 @@ async function main() {
   console.log(`Root:        ${ROOT_FOLDER}`);
   console.log(`Endpoint:    ${ENDPOINT}`);
   console.log(`Concurrency: ${CONCURRENCY}`);
-  console.log(`Dry run:     ${DRY_RUN}\n`);
+  console.log(`Dry run:     ${DRY_RUN}`);
+  if (LIMIT !== Infinity) console.log(`Limit:       ${LIMIT}`);
+  if (RESUME_FROM)        console.log(`Resume:      ${RESUME_FROM}`);
+  console.log('');
 
   if (!fs.existsSync(ROOT_FOLDER)) {
     console.error(`Root folder not found: ${ROOT_FOLDER}`);
     process.exit(1);
   }
 
+  // Load resume manifest — skip already-uploaded sha256s
+  const skipShas = new Set<string>();
+  if (RESUME_FROM) {
+    const existing = JSON.parse(fs.readFileSync(RESUME_FROM, 'utf8'));
+    for (const r of existing.results as FileResult[]) {
+      if (r.status === 'uploaded' || r.status === 'skipped_dup') skipShas.add(r.sha256);
+    }
+    console.log(`Resumed: ${skipShas.size} files already processed from ${RESUME_FROM}\n`);
+  }
+
   console.log('Discovering files...');
-  const files = walkDir(ROOT_FOLDER);
-  console.log(`Found ${files.length} files\n`);
+  let files = walkDir(ROOT_FOLDER);
+
+  // Dedup by sha256 across the tree
+  const seenShas = new Map<string, string>();
+  files = files.filter(fp => {
+    const h = sha256File(fp);
+    if (seenShas.has(h)) return false;
+    seenShas.set(h, fp);
+    return true;
+  });
+
+  // Apply resume skip + limit
+  if (skipShas.size > 0) {
+    files = files.filter(fp => !skipShas.has(sha256File(fp)));
+  }
+  if (LIMIT !== Infinity) {
+    files = files.slice(0, LIMIT);
+  }
+
+  console.log(`Processing ${files.length} files\n`);
 
   const tasks = files.map((fp) => () => {
     process.stdout.write(`  ${path.relative(ROOT_FOLDER, fp).slice(0, 70).padEnd(70)} `);
@@ -307,16 +331,17 @@ async function main() {
 
   const results = await pool(tasks, CONCURRENCY);
 
-  const uploaded    = results.filter((r) => r.status === 'uploaded').length;
-  const skipped     = results.filter((r) => r.status === 'skipped_dup').length;
-  const failed      = results.filter((r) => r.status === 'failed');
-  const dryRun      = results.filter((r) => r.status === 'dry_run').length;
+  const uploaded = results.filter((r) => r.status === 'uploaded');
+  const skipped  = results.filter((r) => r.status === 'skipped_dup');
+  const failed   = results.filter((r) => r.status === 'failed');
+  const dryRun   = results.filter((r) => r.status === 'dry_run');
+  const totalMB  = (uploaded.reduce((s, r) => s + r.sizeBytes, 0) / (1024 * 1024)).toFixed(1);
 
   console.log(`\n=== Summary ===`);
   console.log(`Total files:   ${results.length}`);
-  console.log(`Uploaded:      ${uploaded}`);
-  console.log(`Skipped (dup): ${skipped}`);
-  console.log(`Dry-run:       ${dryRun}`);
+  console.log(`Uploaded:      ${uploaded.length} (${totalMB} MiB)`);
+  console.log(`Skipped (dup): ${skipped.length}`);
+  console.log(`Dry-run:       ${dryRun.length}`);
   console.log(`Failed:        ${failed.length}`);
 
   if (failed.length > 0) {
@@ -327,7 +352,10 @@ async function main() {
   }
 
   const manifestPath = `./upload-manifest-${Date.now()}.json`;
-  fs.writeFileSync(manifestPath, JSON.stringify({ summary: { total: results.length, uploaded, skipped, failed: failed.length, dryRun }, results }, null, 2));
+  fs.writeFileSync(manifestPath, JSON.stringify({
+    summary: { total: results.length, uploaded: uploaded.length, skipped: skipped.length, failed: failed.length, dryRun: dryRun.length, totalMB },
+    results,
+  }, null, 2));
   console.log(`\nManifest written to: ${manifestPath}`);
 
   process.exit(failed.length > 0 ? 1 : 0);
