@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "updated": "2026-05-22T13:51:29.082Z",
+  "properties": {
+    "Alta Dairies": {
+      "parcelId": "Alta Dairies",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "2019",
+        "address": "777 Memorial Dr SE"
+      },
+      "note": "5 fields"
+    }
+  }
+}
