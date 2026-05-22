@@ -137,13 +137,22 @@ async function doOm(pid: string): Promise<Record<string,string>> {
   const pdf = findOmPdf(pid);
   if (!pdf) return {};
   console.log('  [OM] ' + path.basename(pdf));
+
+  // Skip PDFs > 50MB — curl upload + parse will timeout
+  const sz = fs.statSync(pdf).size;
+  if (sz > 50 * 1024 * 1024) {
+    console.log('  [OM] Skipped (' + Math.round(sz/1024/1024) + 'MB — too large)');
+    return {};
+  }
+
   try {
+    const timeoutSec = Math.min(180, Math.max(45, Math.round(sz / (100 * 1024))));
     const cmd = 'curl.exe -s "' + REAPER + '/parse-om?parcel_id='
       + encodeURIComponent(pid) + '&observation_date=2025-01-01" -H "x-ingest-secret: '
-      + SECRET + '" -F "file=@' + pdf + '" --connect-timeout 30 --max-time 180 2>&1';
+      + SECRET + '" -F "file=@' + pdf + '" --connect-timeout 30 --max-time ' + timeoutSec + ' 2>&1';
     const buf = execSync(cmd, {
-      timeout: 190000, encoding: 'buffer',
-      maxBuffer: 10 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe']
+      timeout: (timeoutSec + 10) * 1000, encoding: 'buffer',
+      maxBuffer: 5 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe']
     });
     const txt = buf.toString('utf8').trim();
     if (!txt) return {};

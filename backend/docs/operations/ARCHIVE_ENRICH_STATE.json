@@ -1,7 +1,149 @@
 {
   "version": 1,
-  "updated": "2026-05-22T14:56:42.455Z",
+  "updated": "2026-05-22T17:06:31.164Z",
   "properties": {
+    "100 Inverness": {
+      "parcelId": "100 Inverness",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "100 Inverness Ln"
+      },
+      "note": "4 fields"
+    },
+    "1420 Magnolia": {
+      "parcelId": "1420 Magnolia",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "1420 Magnolia - Charlotte - Teaser "
+      },
+      "note": "4 fields"
+    },
+    "33 West": {
+      "parcelId": "33 West",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "6300 Southwest 24th Place"
+      },
+      "note": "4 fields"
+    },
+    "45 Eighty Dunwoody": {
+      "parcelId": "45 Eighty Dunwoody",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Dunwoody",
+        "state": "GA",
+        "address": "45 eighty"
+      },
+      "note": "4 fields"
+    },
+    "464 Bishop - ATL": {
+      "parcelId": "464 Bishop - ATL",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "72 West": {
+      "parcelId": "72 West",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "72 West T12 - 5.31.2019"
+      },
+      "note": "4 fields"
+    },
+    "7900 Park Central": {
+      "parcelId": "7900 Park Central",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "7900 at Park Central - Debt Summary"
+      },
+      "note": "4 fields"
+    },
+    "841 Memorial": {
+      "parcelId": "841 Memorial",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "860 South": {
+      "parcelId": "860 South",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Marietta",
+        "state": "GA",
+        "address": "860 Rock Quarry Road & 900 Rock Quarry Road"
+      },
+      "note": "4 fields"
+    },
+    "900 Dwell": {
+      "parcelId": "900 Dwell",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "900 Dwell"
+      },
+      "note": "4 fields"
+    },
+    "Accent 2050": {
+      "parcelId": "Accent 2050",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Addison on Long Beach": {
+      "parcelId": "Addison on Long Beach",
+      "done": true,
+      "enriched": {
+        "msa": "Los Angeles-Long Beach-Anaheim, CA",
+        "city": "Long Beach",
+        "state": "CA",
+        "year_built": "2022",
+        "address": "10405 Addison Way"
+      },
+      "note": "5 fields"
+    },
+    "Advenir at Prestonwood": {
+      "parcelId": "Advenir at Prestonwood",
+      "done": false,
+      "enriched": {
+        "address": "05 T12 - Techno"
+      },
+      "note": "1 fields"
+    },
+    "Alexan Avondale": {
+      "parcelId": "Alexan Avondale",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Alpharetta City Center": {
+      "parcelId": "Alpharetta City Center",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
     "Alta Dairies": {
       "parcelId": "Alta Dairies",
       "done": true,
@@ -13,6 +155,2469 @@
         "address": "777 Memorial Dr SE"
       },
       "note": "5 fields"
+    },
+    "Alta East": {
+      "parcelId": "Alta East",
+      "done": true,
+      "enriched": {
+        "address": "777 Memorial Dr SE",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Alta Lakehouse": {
+      "parcelId": "Alta Lakehouse",
+      "done": true,
+      "enriched": {
+        "address": "7600 Majorca Place",
+        "city": "Orlando",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Alta Tech Ridge": {
+      "parcelId": "Alta Tech Ridge",
+      "done": true,
+      "enriched": {
+        "address": "12408 Dessau Road",
+        "city": "Austin",
+        "state": "TX"
+      },
+      "note": "3 fields"
+    },
+    "Alta Warehouse": {
+      "parcelId": "Alta Warehouse",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Alta at Health Village": {
+      "parcelId": "Alta at Health Village",
+      "done": false,
+      "enriched": {
+        "city": "Orlando",
+        "state": "FL"
+      },
+      "note": "2 fields"
+    },
+    "Altis & Altra": {
+      "parcelId": "Altis & Altra",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Amberwood": {
+      "parcelId": "Amberwood",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Andorra Apartments": {
+      "parcelId": "Andorra Apartments",
+      "done": true,
+      "enriched": {
+        "address": "4000 Coleway Drive",
+        "city": "Holly Springs",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Ansley at Princeton Lakes": {
+      "parcelId": "Ansley at Princeton Lakes",
+      "done": true,
+      "enriched": {
+        "address": "3871 Redwine Road",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Arden at Midtown": {
+      "parcelId": "Arden at Midtown",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Ardmore at Flowers": {
+      "parcelId": "Ardmore at Flowers",
+      "done": true,
+      "enriched": {
+        "address": "380 Topwater Dr",
+        "city": "Clayton",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Artistry": {
+      "parcelId": "Artistry",
+      "done": true,
+      "enriched": {
+        "city": "Charlotte",
+        "state": "NC",
+        "address": "21 Solis LoSo Package"
+      },
+      "note": "3 fields"
+    },
+    "Ascen Varina Gateway": {
+      "parcelId": "Ascen Varina Gateway",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Ashley River": {
+      "parcelId": "Ashley River",
+      "done": true,
+      "enriched": {
+        "msa": "Charleston-North Charleston, SC",
+        "city": "Charleston",
+        "state": "SC",
+        "address": "1850 Ashley Crossing Lane"
+      },
+      "note": "4 fields"
+    },
+    "Austin Deals": {
+      "parcelId": "Austin Deals",
+      "done": true,
+      "enriched": {
+        "address": "100 Marshall Circle",
+        "city": "Round Rock",
+        "state": "TX"
+      },
+      "note": "3 fields"
+    },
+    "Avril Cambridge": {
+      "parcelId": "Avril Cambridge",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "2023",
+        "address": "1332 Holly Rush Lane"
+      },
+      "note": "5 fields"
+    },
+    "Axiom": {
+      "parcelId": "Axiom",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC",
+        "year_built": "2014"
+      },
+      "note": "4 fields"
+    },
+    "Axis Berewick": {
+      "parcelId": "Axis Berewick",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC",
+        "address": "7015 Skye Bridge Way"
+      },
+      "note": "4 fields"
+    },
+    "Azola Palm Beach": {
+      "parcelId": "Azola Palm Beach",
+      "done": true,
+      "enriched": {
+        "msa": "Miami-Fort Lauderdale-West Palm Beach, FL",
+        "city": "West Palm Beach",
+        "state": "FL",
+        "address": "1990 Augustine Road"
+      },
+      "note": "4 fields"
+    },
+    "Bainbridge Aviation Crossings": {
+      "parcelId": "Bainbridge Aviation Crossings",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "4555 McCrimmon Pky"
+      },
+      "note": "4 fields"
+    },
+    "Bainbridge Matthews": {
+      "parcelId": "Bainbridge Matthews",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Matthews",
+        "state": "NC",
+        "address": "2020 Tax Bill"
+      },
+      "note": "4 fields"
+    },
+    "Bainbridge Research Park": {
+      "parcelId": "Bainbridge Research Park",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "7110 Verdant Hill Road"
+      },
+      "note": "4 fields"
+    },
+    "Bainbridge Sunlake": {
+      "parcelId": "Bainbridge Sunlake",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "19049 State Road 54"
+      },
+      "note": "4 fields"
+    },
+    "Barcelona Apartments": {
+      "parcelId": "Barcelona Apartments",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "21 Barcelona RR"
+      },
+      "note": "4 fields"
+    },
+    "Beckett Farms": {
+      "parcelId": "Beckett Farms",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Bell Bishop arts": {
+      "parcelId": "Bell Bishop arts",
+      "done": true,
+      "enriched": {
+        "msa": "Dallas-Fort Worth-Arlington, TX",
+        "city": "Dallas",
+        "state": "TX",
+        "year_built": "2022",
+        "address": "1836 West Davis Street"
+      },
+      "note": "5 fields"
+    },
+    "Bell LightHouse Point": {
+      "parcelId": "Bell LightHouse Point",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Bell Parkland": {
+      "parcelId": "Bell Parkland",
+      "done": true,
+      "enriched": {
+        "msa": "Dallas-Fort Worth-Arlington, TX",
+        "city": "Dallas",
+        "state": "TX",
+        "year_built": "2007"
+      },
+      "note": "4 fields"
+    },
+    "Bellevue Spring Creek": {
+      "parcelId": "Bellevue Spring Creek",
+      "done": true,
+      "enriched": {
+        "msa": "Dallas-Fort Worth-Arlington, TX",
+        "city": "Dallas",
+        "state": "TX",
+        "year_built": "2006"
+      },
+      "note": "4 fields"
+    },
+    "Biscayne 112": {
+      "parcelId": "Biscayne 112",
+      "done": true,
+      "enriched": {
+        "msa": "Miami-Fort Lauderdale-West Palm Beach, FL",
+        "city": "Miami",
+        "state": "FL",
+        "year_built": "2015",
+        "address": "11200 Biscayne Blvd"
+      },
+      "note": "5 fields"
+    },
+    "Bridgeview Apartments": {
+      "parcelId": "Bridgeview Apartments",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "5307 Reflections Club Drive"
+      },
+      "note": "4 fields"
+    },
+    "Broadstone Highland Creek": {
+      "parcelId": "Broadstone Highland Creek",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC",
+        "year_built": "2018"
+      },
+      "note": "4 fields"
+    },
+    "Broadstone Junction": {
+      "parcelId": "Broadstone Junction",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Broadstone Lemmond Farm": {
+      "parcelId": "Broadstone Lemmond Farm",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC",
+        "year_built": "2022",
+        "address": "12009 Lemmond Farm Dr"
+      },
+      "note": "5 fields"
+    },
+    "Broadstone Station": {
+      "parcelId": "Broadstone Station",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC",
+        "address": "1000 Broadstone Way"
+      },
+      "note": "4 fields"
+    },
+    "Broadstone Sugar Hill": {
+      "parcelId": "Broadstone Sugar Hill",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Sugar Hill",
+        "state": "GA",
+        "year_built": "2004"
+      },
+      "note": "4 fields"
+    },
+    "Broadstone Trailside": {
+      "parcelId": "Broadstone Trailside",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC",
+        "year_built": "2015",
+        "address": "5802 McCrimmon Parkway"
+      },
+      "note": "5 fields"
+    },
+    "Build to Rent": {
+      "parcelId": "Build to Rent",
+      "done": false,
+      "enriched": {
+        "address": "2022 Renewal"
+      },
+      "note": "1 fields"
+    },
+    "Cadence Music Factory": {
+      "parcelId": "Cadence Music Factory",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "606 NC Music Factory Blvd"
+      },
+      "note": "4 fields"
+    },
+    "Cadence Sugar Hill": {
+      "parcelId": "Cadence Sugar Hill",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Sugar Hill",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Cadence at Nocatee": {
+      "parcelId": "Cadence at Nocatee",
+      "done": true,
+      "enriched": {
+        "msa": "Jacksonville, FL",
+        "city": "Nocatee",
+        "state": "FL",
+        "year_built": "2020",
+        "address": "380 Burbank Ave"
+      },
+      "note": "5 fields"
+    },
+    "Carrington at Brier Creek": {
+      "parcelId": "Carrington at Brier Creek",
+      "done": true,
+      "enriched": {
+        "msa": "Raleigh-Durham-Chapel Hill, NC",
+        "city": "Raleigh",
+        "state": "NC",
+        "year_built": "1999"
+      },
+      "note": "4 fields"
+    },
+    "Casa Mara": {
+      "parcelId": "Casa Mara",
+      "done": true,
+      "enriched": {
+        "msa": "Miami-Fort Lauderdale-West Palm Beach, FL",
+        "city": "Miami",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "CasaMara": {
+      "parcelId": "CasaMara",
+      "done": true,
+      "enriched": {
+        "msa": "Miami-Fort Lauderdale-West Palm Beach, FL",
+        "city": "West Palm Beach",
+        "state": "FL",
+        "address": "0411 CM lease tracker (1)"
+      },
+      "note": "4 fields"
+    },
+    "Chapel Hill": {
+      "parcelId": "Chapel Hill",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "12 January 2018 -t echno"
+      },
+      "note": "4 fields"
+    },
+    "Charlotte Pike": {
+      "parcelId": "Charlotte Pike",
+      "done": true,
+      "enriched": {
+        "msa": "Nashville-Davidson-Murfreesboro-Franklin, TN",
+        "city": "Nashville",
+        "state": "TN",
+        "address": "10927 Charlotte Pike Proforma_Final_Expenses"
+      },
+      "note": "4 fields"
+    },
+    "Charlotte Two Pack": {
+      "parcelId": "Charlotte Two Pack",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC",
+        "address": "12 Combined (2020.07)"
+      },
+      "note": "4 fields"
+    },
+    "Citadel Lookout": {
+      "parcelId": "Citadel Lookout",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "2022"
+      },
+      "note": "4 fields"
+    },
+    "Citizen House": {
+      "parcelId": "Citizen House",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "2801 FM 685"
+      },
+      "note": "4 fields"
+    },
+    "Citron Allen": {
+      "parcelId": "Citron Allen",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "City North - TX": {
+      "parcelId": "City North - TX",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Coddle Creek": {
+      "parcelId": "Coddle Creek",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Colums at Wakefield": {
+      "parcelId": "Colums at Wakefield",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Cornerstone": {
+      "parcelId": "Cornerstone",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "1983",
+        "address": "100 Terrastone Pl"
+      },
+      "note": "5 fields"
+    },
+    "Cottages at emerald Creek": {
+      "parcelId": "Cottages at emerald Creek",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "100 Shellbark Way"
+      },
+      "note": "4 fields"
+    },
+    "Courtney Lake": {
+      "parcelId": "Courtney Lake",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Creekside Ranch": {
+      "parcelId": "Creekside Ranch",
+      "done": true,
+      "enriched": {
+        "address": "11209 Ranch Creek Ter",
+        "city": "Bradenton",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Crescent": {
+      "parcelId": "Crescent",
+      "done": true,
+      "enriched": {
+        "address": "127 East Riverside Drive",
+        "city": "Austin",
+        "state": "TX"
+      },
+      "note": "3 fields"
+    },
+    "Crest at Flower Branch": {
+      "parcelId": "Crest at Flower Branch",
+      "done": true,
+      "enriched": {
+        "address": "900 Crest Village Circle",
+        "city": "Flowery Branch",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Crestmont at Thornblade": {
+      "parcelId": "Crestmont at Thornblade",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Crown at James Landing": {
+      "parcelId": "Crown at James Landing",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Curv": {
+      "parcelId": "Curv",
+      "done": true,
+      "enriched": {
+        "address": "410 SE 16th Court",
+        "city": "Fort Lauderdale",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Debartolo Portfolio": {
+      "parcelId": "Debartolo Portfolio",
+      "done": false,
+      "enriched": {
+        "state": "FL"
+      },
+      "note": "1 fields"
+    },
+    "District South": {
+      "parcelId": "District South",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "District Station": {
+      "parcelId": "District Station",
+      "done": true,
+      "enriched": {
+        "address": "2312 Bristol Creek Drive",
+        "city": "Morrisville",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "East Point at Altamonte": {
+      "parcelId": "East Point at Altamonte",
+      "done": true,
+      "enriched": {
+        "address": "828/850 Orienta Avenue",
+        "city": "Altamonte Springs",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Easton Portfolio": {
+      "parcelId": "Easton Portfolio",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Echo  Lakeside": {
+      "parcelId": "Echo  Lakeside",
+      "done": true,
+      "enriched": {
+        "address": "510 Guthridge Ct NW",
+        "city": "Peachtree Corners",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Eden Crystal Lake": {
+      "parcelId": "Eden Crystal Lake",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Edinborough Commons": {
+      "parcelId": "Edinborough Commons",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Elan Powers Ferry": {
+      "parcelId": "Elan Powers Ferry",
+      "done": true,
+      "enriched": {
+        "address": "1945 Powers Ferry Rd SE",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Element Galleria": {
+      "parcelId": "Element Galleria",
+      "done": true,
+      "enriched": {
+        "address": "800 Galleria Parkway",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Elevate Powell and Broad": {
+      "parcelId": "Elevate Powell and Broad",
+      "done": true,
+      "enriched": {
+        "address": "141 Stobhill Ln",
+        "city": "Fuquay-Varina",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Emblem Greyson": {
+      "parcelId": "Emblem Greyson",
+      "done": true,
+      "enriched": {
+        "address": "ATHENS HWY, LOGANVILLE 30052",
+        "city": "Loganville",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Enclave at Rivergate": {
+      "parcelId": "Enclave at Rivergate",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Enclave on East": {
+      "parcelId": "Enclave on East",
+      "done": true,
+      "enriched": {
+        "address": "3660 E. Bay Drive",
+        "city": "Largo",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Encore": {
+      "parcelId": "Encore",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Estates at Crossroads": {
+      "parcelId": "Estates at Crossroads",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Eve at the District": {
+      "parcelId": "Eve at the District",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Exchange Orange Park": {
+      "parcelId": "Exchange Orange Park",
+      "done": true,
+      "enriched": {
+        "address": "4295 Collins Road",
+        "city": "Jacksonville",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Exchange at Indian Trail": {
+      "parcelId": "Exchange at Indian Trail",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Factory at Garco": {
+      "parcelId": "Factory at Garco",
+      "done": false,
+      "enriched": {
+        "address": "2017 Property Taxes_Factory"
+      },
+      "note": "1 fields"
+    },
+    "Ferry Pike": {
+      "parcelId": "Ferry Pike",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Ferry Pike - Nashville": {
+      "parcelId": "Ferry Pike - Nashville",
+      "done": true,
+      "enriched": {
+        "address": "2841 Lebanon Pike",
+        "city": "Nashville",
+        "state": "TN"
+      },
+      "note": "3 fields"
+    },
+    "FieldHouse": {
+      "parcelId": "FieldHouse",
+      "done": false,
+      "enriched": {
+        "address": "21 DemographicSummary"
+      },
+      "note": "1 fields"
+    },
+    "Florida Crystals Deal": {
+      "parcelId": "Florida Crystals Deal",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Folksong at Flowery Branch": {
+      "parcelId": "Folksong at Flowery Branch",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Franklin Jones": {
+      "parcelId": "Franklin Jones",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "930 Vintage Jones Way"
+      },
+      "note": "4 fields"
+    },
+    "Gateway at Hartfield": {
+      "parcelId": "Gateway at Hartfield",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Harbor at Westshore": {
+      "parcelId": "Harbor at Westshore",
+      "done": true,
+      "enriched": {
+        "msa": "Tampa-St. Petersburg-Clearwater, FL",
+        "city": "Tampa",
+        "state": "FL",
+        "year_built": "2002",
+        "address": "2021 Harbour at Westshore Rentable Items Summary"
+      },
+      "note": "5 fields"
+    },
+    "Hardy Oak": {
+      "parcelId": "Hardy Oak",
+      "done": true,
+      "enriched": {
+        "msa": "San Antonio-New Braunfels, TX",
+        "city": "San Antonio",
+        "state": "TX"
+      },
+      "note": "3 fields"
+    },
+    "Hawthorne at Clairmont": {
+      "parcelId": "Hawthorne at Clairmont",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Heights at Sugarloaf": {
+      "parcelId": "Heights at Sugarloaf",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Heron Pointe": {
+      "parcelId": "Heron Pointe",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "2000",
+        "address": "10492 Boynton Place Circle"
+      },
+      "note": "5 fields"
+    },
+    "Highlands at Preston": {
+      "parcelId": "Highlands at Preston",
+      "done": true,
+      "enriched": {
+        "msa": "Dallas-Fort Worth-Arlington, TX",
+        "city": "Dallas",
+        "state": "TX",
+        "year_built": "2001"
+      },
+      "note": "4 fields"
+    },
+    "Highlnad Ridge Apartments": {
+      "parcelId": "Highlnad Ridge Apartments",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Hoover Two Pack": {
+      "parcelId": "Hoover Two Pack",
+      "done": true,
+      "enriched": {
+        "msa": "Birmingham-Hoover, AL",
+        "city": "Hoover",
+        "state": "AL"
+      },
+      "note": "3 fields"
+    },
+    "Hudson Commons": {
+      "parcelId": "Hudson Commons",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Hudson Northridge": {
+      "parcelId": "Hudson Northridge",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Hunter Pointe": {
+      "parcelId": "Hunter Pointe",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "22 Rent+Roll+Detail+-+Excel (8)"
+      },
+      "note": "4 fields"
+    },
+    "Indigo Run": {
+      "parcelId": "Indigo Run",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "9255 Blue House Road"
+      },
+      "note": "4 fields"
+    },
+    "Infield Orlando": {
+      "parcelId": "Infield Orlando",
+      "done": true,
+      "enriched": {
+        "msa": "Orlando-Kissimmee-Sanford, FL",
+        "city": "Orlando",
+        "state": "FL",
+        "address": "1900 Ballpark Road"
+      },
+      "note": "4 fields"
+    },
+    "Jade at Hyde Park": {
+      "parcelId": "Jade at Hyde Park",
+      "done": true,
+      "enriched": {
+        "msa": "Tampa-St. Petersburg-Clearwater, FL",
+        "city": "Tampa",
+        "state": "FL",
+        "address": "22 Rent Roll w Lease Charges- Jade"
+      },
+      "note": "4 fields"
+    },
+    "Jade hyde Park": {
+      "parcelId": "Jade hyde Park",
+      "done": true,
+      "enriched": {
+        "msa": "Tampa-St. Petersburg-Clearwater, FL",
+        "city": "Tampa",
+        "state": "FL",
+        "address": "608 N Willow Ave"
+      },
+      "note": "4 fields"
+    },
+    "Jefferson Apartment Building": {
+      "parcelId": "Jefferson Apartment Building",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Jones Grant": {
+      "parcelId": "Jones Grant",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Junction at Antiquity": {
+      "parcelId": "Junction at Antiquity",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Kennesaw Deals": {
+      "parcelId": "Kennesaw Deals",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Kennesaw",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Kia Ora": {
+      "parcelId": "Kia Ora",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "9300 Coit Rd"
+      },
+      "note": "4 fields"
+    },
+    "Knox at Metrocenter": {
+      "parcelId": "Knox at Metrocenter",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Lake Ridge": {
+      "parcelId": "Lake Ridge",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Legacy Crossroads": {
+      "parcelId": "Legacy Crossroads",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "1010 Legacy Village Drive"
+      },
+      "note": "4 fields"
+    },
+    "Leo Loso": {
+      "parcelId": "Leo Loso",
+      "done": true,
+      "enriched": {
+        "msa": "Dallas-Fort Worth-Arlington, TX",
+        "city": "Dallas",
+        "state": "TX",
+        "year_built": "2021",
+        "address": "4520 Charlotte Park Dr."
+      },
+      "note": "5 fields"
+    },
+    "Linvingston": {
+      "parcelId": "Linvingston",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Linz Holy Springs": {
+      "parcelId": "Linz Holy Springs",
+      "done": true,
+      "enriched": {
+        "msa": "Raleigh-Durham-Chapel Hill, NC",
+        "city": "Raleigh",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Liv Deals": {
+      "parcelId": "Liv Deals",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Livano Canyon Falls": {
+      "parcelId": "Livano Canyon Falls",
+      "done": true,
+      "enriched": {
+        "msa": "San Antonio-New Braunfels, TX",
+        "city": "San Antonio",
+        "state": "TX"
+      },
+      "note": "3 fields"
+    },
+    "Livano Pflugerville": {
+      "parcelId": "Livano Pflugerville",
+      "done": true,
+      "enriched": {
+        "msa": "Austin-Round Rock, TX",
+        "city": "Pflugerville",
+        "state": "TX"
+      },
+      "note": "3 fields"
+    },
+    "Lofts at Weston": {
+      "parcelId": "Lofts at Weston",
+      "done": true,
+      "enriched": {
+        "msa": "Miami-Fort Lauderdale-West Palm Beach, FL",
+        "city": "Weston",
+        "state": "FL",
+        "address": "2101 Lakeside Lofts Circle"
+      },
+      "note": "4 fields"
+    },
+    "Lucent": {
+      "parcelId": "Lucent",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "2023",
+        "address": "12201 Dessau Road"
+      },
+      "note": "5 fields"
+    },
+    "Luxary Apartments at Foxwood": {
+      "parcelId": "Luxary Apartments at Foxwood",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "MAdison Farms": {
+      "parcelId": "MAdison Farms",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "2022",
+        "address": "12525 Oldehurst Place"
+      },
+      "note": "5 fields"
+    },
+    "Magnolia Vinings": {
+      "parcelId": "Magnolia Vinings",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Manor 6 forks": {
+      "parcelId": "Manor 6 forks",
+      "done": true,
+      "enriched": {
+        "msa": "Raleigh-Durham-Chapel Hill, NC",
+        "city": "Raleigh",
+        "state": "NC",
+        "address": "900 E Six Forks Road"
+      },
+      "note": "4 fields"
+    },
+    "Matthews Reserve": {
+      "parcelId": "Matthews Reserve",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Matthews",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Mercer Park": {
+      "parcelId": "Mercer Park",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Mira Flores": {
+      "parcelId": "Mira Flores",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "11900 Valencia Gardens Avenue"
+      },
+      "note": "4 fields"
+    },
+    "Mirabella Lakes": {
+      "parcelId": "Mirabella Lakes",
+      "done": true,
+      "enriched": {
+        "msa": "Miami-Fort Lauderdale-West Palm Beach, FL",
+        "city": "Miami",
+        "state": "FL",
+        "year_built": "2022",
+        "address": "12101 Fountainbrook Boulevard"
+      },
+      "note": "5 fields"
+    },
+    "Modena": {
+      "parcelId": "Modena",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "8275 Walnut Hill Ln"
+      },
+      "note": "4 fields"
+    },
+    "Morningside": {
+      "parcelId": "Morningside",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "2050 Cheshire Bridge Rd. NE"
+      },
+      "note": "4 fields"
+    },
+    "New folder": {
+      "parcelId": "New folder",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Novel Research Park": {
+      "parcelId": "Novel Research Park",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "2022"
+      },
+      "note": "4 fields"
+    },
+    "Novel Upper Westside": {
+      "parcelId": "Novel Upper Westside",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "2023",
+        "address": "2021 techno"
+      },
+      "note": "5 fields"
+    },
+    "Oasis - Dania Pointe": {
+      "parcelId": "Oasis - Dania Pointe",
+      "done": true,
+      "enriched": {
+        "msa": "Miami-Fort Lauderdale-West Palm Beach, FL",
+        "city": "Dania Beach",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Octave Apartments": {
+      "parcelId": "Octave Apartments",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "PGA Development": {
+      "parcelId": "PGA Development",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Paces Brook": {
+      "parcelId": "Paces Brook",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "1984",
+        "address": "113 Paces Brook Avenue"
+      },
+      "note": "5 fields"
+    },
+    "Palmetto Place": {
+      "parcelId": "Palmetto Place",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Palmetto Pointe": {
+      "parcelId": "Palmetto Pointe",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Parc": {
+      "parcelId": "Parc",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Parc at 1695": {
+      "parcelId": "Parc at 1695",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Parian Apartments": {
+      "parcelId": "Parian Apartments",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "1989"
+      },
+      "note": "4 fields"
+    },
+    "Park 2300": {
+      "parcelId": "Park 2300",
+      "done": true,
+      "enriched": {
+        "msa": "Dallas-Fort Worth-Arlington, TX",
+        "city": "Dallas",
+        "state": "TX",
+        "address": "2300 Rent Break down "
+      },
+      "note": "4 fields"
+    },
+    "Park Ave": {
+      "parcelId": "Park Ave",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "2020",
+        "address": "8745 Palm Breeze Rd"
+      },
+      "note": "5 fields"
+    },
+    "Park Plaza": {
+      "parcelId": "Park Plaza",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Park Vista": {
+      "parcelId": "Park Vista",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Park on Clairmont": {
+      "parcelId": "Park on Clairmont",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Parkside at Towncenter - Georgia": {
+      "parcelId": "Parkside at Towncenter - Georgia",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Parkview Greer": {
+      "parcelId": "Parkview Greer",
+      "done": true,
+      "enriched": {
+        "msa": "Greenville-Anderson-Mauldin, SC",
+        "city": "Greer",
+        "state": "SC",
+        "address": "15 at 12.05.43 PM (2)"
+      },
+      "note": "4 fields"
+    },
+    "Patterson Place": {
+      "parcelId": "Patterson Place",
+      "done": true,
+      "enriched": {
+        "msa": "Charlotte-Concord-Gastonia, NC-SC",
+        "city": "Charlotte",
+        "state": "NC",
+        "address": "3625 SOUTHWEST DURHAM DR"
+      },
+      "note": "4 fields"
+    },
+    "Pointe Grand Apartments": {
+      "parcelId": "Pointe Grand Apartments",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Portfolio": {
+      "parcelId": "Portfolio",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Portiva - Jacksonville": {
+      "parcelId": "Portiva - Jacksonville",
+      "done": false,
+      "enriched": {
+        "address": "12 Month Trend 0518"
+      },
+      "note": "1 fields"
+    },
+    "Preserve at Godley": {
+      "parcelId": "Preserve at Godley",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Preserve at Mill Creek": {
+      "parcelId": "Preserve at Mill Creek",
+      "done": true,
+      "enriched": {
+        "address": "1400 Mall of Georgia Boulevard",
+        "city": "Buford",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Preserve at Mountain": {
+      "parcelId": "Preserve at Mountain",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Preston Pointe at windermere": {
+      "parcelId": "Preston Pointe at windermere",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Princeton Pac": {
+      "parcelId": "Princeton Pac",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Pringle Square": {
+      "parcelId": "Pringle Square",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "13387 Brown-Grier Road"
+      },
+      "note": "4 fields"
+    },
+    "Promenade at Carillon": {
+      "parcelId": "Promenade at Carillon",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Raleigh Exchange": {
+      "parcelId": "Raleigh Exchange",
+      "done": false,
+      "enriched": {
+        "city": "Raleigh",
+        "state": "NC"
+      },
+      "note": "2 fields"
+    },
+    "Raleigh Portfolio": {
+      "parcelId": "Raleigh Portfolio",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Ravella Town Center": {
+      "parcelId": "Ravella Town Center",
+      "done": false,
+      "enriched": {
+        "address": "2022 ConcessionMatrix"
+      },
+      "note": "1 fields"
+    },
+    "Regatta at Lake Lynn": {
+      "parcelId": "Regatta at Lake Lynn",
+      "done": true,
+      "enriched": {
+        "address": "3000 Inland Trail",
+        "city": "Raleigh",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Reserve at Bridford": {
+      "parcelId": "Reserve at Bridford",
+      "done": true,
+      "enriched": {
+        "address": "1402 Bridford Parkway",
+        "city": "Greensboro",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Reserve at Magnolia": {
+      "parcelId": "Reserve at Magnolia",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Residences at Shilo Crossings": {
+      "parcelId": "Residences at Shilo Crossings",
+      "done": true,
+      "enriched": {
+        "address": "3000 Dominion Ridge Circle",
+        "city": "Morrisville",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Retreat at Johns Creek": {
+      "parcelId": "Retreat at Johns Creek",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Richmond Row": {
+      "parcelId": "Richmond Row",
+      "done": false,
+      "enriched": {
+        "address": "23 modified"
+      },
+      "note": "1 fields"
+    },
+    "Rivera At Seaside": {
+      "parcelId": "Rivera At Seaside",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Riverbend": {
+      "parcelId": "Riverbend",
+      "done": true,
+      "enriched": {
+        "city": "Charlotte",
+        "state": "NC",
+        "address": "12 Riverbend Apts 9.30.2020"
+      },
+      "note": "3 fields"
+    },
+    "Riverbend Apartments": {
+      "parcelId": "Riverbend Apartments",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Rivertree": {
+      "parcelId": "Rivertree",
+      "done": true,
+      "enriched": {
+        "address": "5959 Bandera Springs Place",
+        "city": "Riverview",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "SUR Southside": {
+      "parcelId": "SUR Southside",
+      "done": false,
+      "enriched": {
+        "address": "21 SUR Rent Roll with Lease Charges - techno"
+      },
+      "note": "1 fields"
+    },
+    "Santori": {
+      "parcelId": "Santori",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Sentosa Riverview": {
+      "parcelId": "Sentosa Riverview",
+      "done": true,
+      "enriched": {
+        "address": "10110 US Hwy 301",
+        "city": "Riverview",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Serramar": {
+      "parcelId": "Serramar",
+      "done": true,
+      "enriched": {
+        "address": "6701 W. Oakland Park Blvd.",
+        "city": "Fort Lauderdale",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Seventeen West": {
+      "parcelId": "Seventeen West",
+      "done": true,
+      "enriched": {
+        "address": "391 17th St NW",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Shoreview": {
+      "parcelId": "Shoreview",
+      "done": true,
+      "enriched": {
+        "address": "1161 3rd Avenue East",
+        "city": "Bradenton",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Siena Round Rock": {
+      "parcelId": "Siena Round Rock",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Sixes Ridge": {
+      "parcelId": "Sixes Ridge",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Sodo Duluth": {
+      "parcelId": "Sodo Duluth",
+      "done": true,
+      "enriched": {
+        "address": "3256 Buford Hwy",
+        "city": "Duluth",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Solis Ballantyne": {
+      "parcelId": "Solis Ballantyne",
+      "done": false,
+      "enriched": {
+        "address": "2018 T12 (1)"
+      },
+      "note": "1 fields"
+    },
+    "Solis Carraway": {
+      "parcelId": "Solis Carraway",
+      "done": true,
+      "enriched": {
+        "city": "Atlanta",
+        "state": "GA",
+        "address": "2019 Tax Bill - 3661427"
+      },
+      "note": "3 fields"
+    },
+    "Solis City Park": {
+      "parcelId": "Solis City Park",
+      "done": true,
+      "enriched": {
+        "city": "Charlotte",
+        "state": "NC",
+        "address": "21 Deleted 2 Columns"
+      },
+      "note": "3 fields"
+    },
+    "Solis Cummings": {
+      "parcelId": "Solis Cummings",
+      "done": false,
+      "enriched": {
+        "city": "Cumming",
+        "state": "GA"
+      },
+      "note": "2 fields"
+    },
+    "Solis Decatur": {
+      "parcelId": "Solis Decatur",
+      "done": false,
+      "enriched": {
+        "address": "2019 Taxes - Solis Decatur"
+      },
+      "note": "1 fields"
+    },
+    "Solis Interlock": {
+      "parcelId": "Solis Interlock",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA",
+        "year_built": "2022",
+        "address": "1115 Howell Mill Rd NW"
+      },
+      "note": "5 fields"
+    },
+    "Solis Millennium": {
+      "parcelId": "Solis Millennium",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Solis Reynolds Place": {
+      "parcelId": "Solis Reynolds Place",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Solis Suwanaee Town Center": {
+      "parcelId": "Solis Suwanaee Town Center",
+      "done": false,
+      "enriched": {
+        "address": "15 retail Matrix "
+      },
+      "note": "1 fields"
+    },
+    "St Tropez": {
+      "parcelId": "St Tropez",
+      "done": true,
+      "enriched": {
+        "address": "8000 Cleary Boulevard",
+        "city": "Plantation",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Steele Creek rivergate": {
+      "parcelId": "Steele Creek rivergate",
+      "done": true,
+      "enriched": {
+        "address": "12509 Crown Park Ct",
+        "city": "Charlotte",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Stone Ridge": {
+      "parcelId": "Stone Ridge",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Stonebriar": {
+      "parcelId": "Stonebriar",
+      "done": true,
+      "enriched": {
+        "address": "5620 S Colony Blvd",
+        "city": "The Colony",
+        "state": "TX"
+      },
+      "note": "3 fields"
+    },
+    "Sugarloaf Grove": {
+      "parcelId": "Sugarloaf Grove",
+      "done": true,
+      "enriched": {
+        "address": "1850 Duluth Highway",
+        "city": "Lawrenceville",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Sugarloaf Trials": {
+      "parcelId": "Sugarloaf Trials",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Sweetwater Vista": {
+      "parcelId": "Sweetwater Vista",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Tapestry Town Center": {
+      "parcelId": "Tapestry Town Center",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Terrabella": {
+      "parcelId": "Terrabella",
+      "done": true,
+      "enriched": {
+        "address": "915 S Dixie Highway",
+        "city": "West Palm Beach",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Texas Deals": {
+      "parcelId": "Texas Deals",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Ace": {
+      "parcelId": "The Ace",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Archer": {
+      "parcelId": "The Archer",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "The Bohemian": {
+      "parcelId": "The Bohemian",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Bradford": {
+      "parcelId": "The Bradford",
+      "done": true,
+      "enriched": {
+        "address": "21035 Bradford Green Square",
+        "city": "Cary",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "The Brazos": {
+      "parcelId": "The Brazos",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Brooke": {
+      "parcelId": "The Brooke",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Catherine": {
+      "parcelId": "The Catherine",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Cove at Covington": {
+      "parcelId": "The Cove at Covington",
+      "done": true,
+      "enriched": {
+        "address": "12301 Town Center Dr",
+        "city": "Covington",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "The Darby": {
+      "parcelId": "The Darby",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Atlanta",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "The Eddy": {
+      "parcelId": "The Eddy",
+      "done": false,
+      "enriched": {
+        "address": "6025 River View Rd",
+        "state": "GA"
+      },
+      "note": "2 fields"
+    },
+    "The Edison": {
+      "parcelId": "The Edison",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Elliott": {
+      "parcelId": "The Elliott",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Fields Lincoln Green": {
+      "parcelId": "The Fields Lincoln Green",
+      "done": true,
+      "enriched": {
+        "address": "2205 New Garden Rd",
+        "city": "Greensboro",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "The Helix": {
+      "parcelId": "The Helix",
+      "done": true,
+      "enriched": {
+        "address": "962 Bentstation Lane",
+        "city": "Lake Mary",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "The Hillson": {
+      "parcelId": "The Hillson",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Hollows": {
+      "parcelId": "The Hollows",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Jaxon": {
+      "parcelId": "The Jaxon",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Julington": {
+      "parcelId": "The Julington",
+      "done": false,
+      "enriched": {
+        "city": "Jacksonville",
+        "state": "FL"
+      },
+      "note": "2 fields"
+    },
+    "The Kensley": {
+      "parcelId": "The Kensley",
+      "done": true,
+      "enriched": {
+        "address": "6371 Collins Road",
+        "city": "Jacksonville",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "The Linden": {
+      "parcelId": "The Linden",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Mason Sugarloaf": {
+      "parcelId": "The Mason Sugarloaf",
+      "done": true,
+      "enriched": {
+        "msa": "Atlanta-Sandy Springs-Roswell, GA",
+        "city": "Sugar Hill",
+        "state": "GA",
+        "year_built": "2021",
+        "address": "12 Month 2022-10"
+      },
+      "note": "5 fields"
+    },
+    "The Maven": {
+      "parcelId": "The Maven",
+      "done": true,
+      "enriched": {
+        "address": "4255 Suwanee Dam Road",
+        "city": "Suwanee",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "The Mc Coy Apartments": {
+      "parcelId": "The Mc Coy Apartments",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Mid": {
+      "parcelId": "The Mid",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Mid - Lake worth": {
+      "parcelId": "The Mid - Lake worth",
+      "done": false,
+      "enriched": {
+        "address": "2022 Renewals MID"
+      },
+      "note": "1 fields"
+    },
+    "The Milan": {
+      "parcelId": "The Milan",
+      "done": true,
+      "enriched": {
+        "address": "500 Jordan Stuart Circle",
+        "city": "Apopka",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "The Mile": {
+      "parcelId": "The Mile",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Mosby": {
+      "parcelId": "The Mosby",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Newton": {
+      "parcelId": "The Newton",
+      "done": true,
+      "enriched": {
+        "city": "Charlotte",
+        "state": "NC",
+        "address": "12 Month Budget 1.31.20"
+      },
+      "note": "3 fields"
+    },
+    "The Park at Kensington": {
+      "parcelId": "The Park at Kensington",
+      "done": true,
+      "enriched": {
+        "address": "6218 Watermark Drive",
+        "city": "Riverview",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "The Parker": {
+      "parcelId": "The Parker",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Parkstone Gallatin": {
+      "parcelId": "The Parkstone Gallatin",
+      "done": true,
+      "enriched": {
+        "address": "270 Douglas Bend Rd",
+        "city": "Gallatin",
+        "state": "TN"
+      },
+      "note": "3 fields"
+    },
+    "The Piedmont": {
+      "parcelId": "The Piedmont",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Pioneer": {
+      "parcelId": "The Pioneer",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Place at 1825": {
+      "parcelId": "The Place at 1825",
+      "done": true,
+      "enriched": {
+        "msa": "Austin-Round Rock, TX",
+        "city": "Pflugerville",
+        "state": "TX",
+        "address": "1825 Solar Feasibility-Proposal"
+      },
+      "note": "4 fields"
+    },
+    "The Quincy": {
+      "parcelId": "The Quincy",
+      "done": false,
+      "enriched": {
+        "address": "21 techno"
+      },
+      "note": "1 fields"
+    },
+    "The Reid": {
+      "parcelId": "The Reid",
+      "done": true,
+      "enriched": {
+        "address": "2190 Northlake Pkwy",
+        "city": "Tucker",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "The Resever at Glenn Laurel": {
+      "parcelId": "The Resever at Glenn Laurel",
+      "done": true,
+      "enriched": {
+        "address": "20 Pine Hall Dr",
+        "city": "Clayton",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "The Residences at 3000 Bardin": {
+      "parcelId": "The Residences at 3000 Bardin",
+      "done": true,
+      "enriched": {
+        "msa": "Dallas-Fort Worth-Arlington, TX",
+        "city": "Grand Prairie",
+        "state": "TX",
+        "year_built": "2022",
+        "address": "3000 Bardin Road"
+      },
+      "note": "5 fields"
+    },
+    "The Rey on Reynolds": {
+      "parcelId": "The Rey on Reynolds",
+      "done": true,
+      "enriched": {
+        "address": "3360 Steve Reynolds Blvd",
+        "city": "Duluth",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "The Sagefield": {
+      "parcelId": "The Sagefield",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Statesman": {
+      "parcelId": "The Statesman",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Station Fleming Island": {
+      "parcelId": "The Station Fleming Island",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The View of Forth Worth": {
+      "parcelId": "The View of Forth Worth",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The Village at Westland Cove": {
+      "parcelId": "The Village at Westland Cove",
+      "done": true,
+      "enriched": {
+        "address": "9635 Westland Cove Way",
+        "city": "Knoxville",
+        "state": "TN"
+      },
+      "note": "3 fields"
+    },
+    "The Villlage": {
+      "parcelId": "The Villlage",
+      "done": true,
+      "enriched": {
+        "address": "8810 Autumn Winds Drive",
+        "city": "Raleigh",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "The Vineyard": {
+      "parcelId": "The Vineyard",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The apartments at Areboretum": {
+      "parcelId": "The apartments at Areboretum",
+      "done": false,
+      "enriched": {
+        "address": "12 Financials"
+      },
+      "note": "1 fields"
+    },
+    "The palms": {
+      "parcelId": "The palms",
+      "done": true,
+      "enriched": {
+        "address": "11000 Cameron Court",
+        "city": "Davie",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "The pointe @ Preston Ridge": {
+      "parcelId": "The pointe @ Preston Ridge",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "The reserve at Cary Park": {
+      "parcelId": "The reserve at Cary Park",
+      "done": true,
+      "enriched": {
+        "address": "2000 Cary Reserve Drive",
+        "city": "Cary",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "The retreat at Fuquay": {
+      "parcelId": "The retreat at Fuquay",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Thornhill": {
+      "parcelId": "Thornhill",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Town Southern": {
+      "parcelId": "Town Southern",
+      "done": true,
+      "enriched": {
+        "address": "11020 Town Circle",
+        "city": "Royal Palm Beach",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Trailside Verde": {
+      "parcelId": "Trailside Verde",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Trailside at Reedy Point": {
+      "parcelId": "Trailside at Reedy Point",
+      "done": true,
+      "enriched": {
+        "address": "200 South Academy Street",
+        "city": "Greenville",
+        "state": "SC"
+      },
+      "note": "3 fields"
+    },
+    "Trilogy Cameron Village": {
+      "parcelId": "Trilogy Cameron Village",
+      "done": false,
+      "enriched": {
+        "city": "Chapel Hill",
+        "state": "NC"
+      },
+      "note": "2 fields"
+    },
+    "Trilogy Chapel Hill": {
+      "parcelId": "Trilogy Chapel Hill",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Tuscan Heights": {
+      "parcelId": "Tuscan Heights",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Uptown Boca": {
+      "parcelId": "Uptown Boca",
+      "done": true,
+      "enriched": {
+        "address": "20940 Uptown Ave",
+        "city": "Boca Raton",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Uptown at Liberty Park": {
+      "parcelId": "Uptown at Liberty Park",
+      "done": false,
+      "enriched": {
+        "address": "19 Uptown thru 7.21.19"
+      },
+      "note": "1 fields"
+    },
+    "V & 3 Apartments": {
+      "parcelId": "V & 3 Apartments",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "V & Three": {
+      "parcelId": "V & Three",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Vail Village": {
+      "parcelId": "Vail Village",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Vantage at Wildwood": {
+      "parcelId": "Vantage at Wildwood",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Vecina": {
+      "parcelId": "Vecina",
+      "done": false,
+      "enriched": {
+        "address": "12 through Feb 21"
+      },
+      "note": "1 fields"
+    },
+    "Vestavia Reserve": {
+      "parcelId": "Vestavia Reserve",
+      "done": true,
+      "enriched": {
+        "address": "2300 Reserve Trail",
+        "city": "Vestavia Hills",
+        "state": "AL"
+      },
+      "note": "3 fields"
+    },
+    "View at Woodstock": {
+      "parcelId": "View at Woodstock",
+      "done": true,
+      "enriched": {
+        "address": "900 View Drive",
+        "city": "Woodstock",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Village at Lake Front": {
+      "parcelId": "Village at Lake Front",
+      "done": true,
+      "enriched": {
+        "address": "201 E. Eldorado Pkwy.",
+        "city": "Little Elm",
+        "state": "TX"
+      },
+      "note": "3 fields"
+    },
+    "Village on the Green": {
+      "parcelId": "Village on the Green",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Vista Verde": {
+      "parcelId": "Vista Verde",
+      "done": true,
+      "enriched": {
+        "address": "1658 S Hiawassee Rd",
+        "city": "Orlando",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Vista Verde - Miami": {
+      "parcelId": "Vista Verde - Miami",
+      "done": true,
+      "enriched": {
+        "address": "10491 SW 14th Terrace",
+        "city": "Miami",
+        "state": "FL"
+      },
+      "note": "3 fields"
+    },
+    "Waterford Place - Morrisville": {
+      "parcelId": "Waterford Place - Morrisville",
+      "done": true,
+      "enriched": {
+        "address": "1000 Park Place",
+        "city": "Morrisville",
+        "state": "NC"
+      },
+      "note": "3 fields"
+    },
+    "Waterlynn": {
+      "parcelId": "Waterlynn",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "West End": {
+      "parcelId": "West End",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Whitehall Estates": {
+      "parcelId": "Whitehall Estates",
+      "done": false,
+      "enriched": {},
+      "note": "0 fields"
+    },
+    "Windsor Landing": {
+      "parcelId": "Windsor Landing",
+      "done": true,
+      "enriched": {
+        "address": "7124 Southlake Parkway",
+        "city": "Morrow",
+        "state": "GA"
+      },
+      "note": "3 fields"
+    },
+    "Windsor Landings - NC": {
+      "parcelId": "Windsor Landings - NC",
+      "done": false,
+      "enriched": {
+        "address": "23 Rent Roll - modified "
+      },
+      "note": "1 fields"
+    },
+    "legacy Village": {
+      "parcelId": "legacy Village",
+      "done": true,
+      "enriched": {
+        "address": "121 Village Green Lane",
+        "city": "Mooresville",
+        "state": "NC"
+      },
+      "note": "3 fields"
     }
   }
 }
