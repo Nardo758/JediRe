@@ -106,6 +106,34 @@ async function callDeepSeek(prompt: string): Promise<string> {
   return data.choices?.[0]?.message?.content ?? '';
 }
 
+// ── Classify the name so we can tailor the prompt ───────────────────────────
+
+function classifyName(name: string): 'address_fragment' | 'branded_community' | 'descriptive' | 'generic' {
+  // Starts with a number → likely a street address fragment (e.g. "1420 Magnolia")
+  if (/^\d/.test(name.trim())) return 'address_fragment';
+
+  // Generic portfolio / deal labels
+  if (/\b(portfolio|deals?|build to rent|pack|two pack)\b/i.test(name)) return 'generic';
+
+  // Known multifamily developer brands embedded in name
+  const brands = ['bainbridge', 'broadstone', 'elan', 'alta ', 'bell ', 'ember', 'echo ',
+    'enclave', 'estates', 'hawthorne', 'emblem', 'ascen', 'axiom',
+    'cadence', 'artistry', 'accent', 'citizen', 'citron', 'citadel',
+    'corvalla', 'encore', 'curv', 'fieldhouse', 'folksong', 'jefferson',
+    'harbor', 'hardy', 'heron', 'heights', 'hudson', 'indigo', 'infield',
+    'jade', 'junction', 'eden', 'edinborough', 'district ', 'exchange ',
+    'eve at', 'factory at', 'ferry pike', 'florida crystal', 'franklin',
+    'gateway', 'elevate', 'element ', 'enclave', 'encore', 'cornerstone',
+    'cottage', 'creekside', 'crescent', 'crest ', 'crestmont', 'coddle',
+    'ansley', 'arden ', 'ardmore', 'avril'];
+  if (brands.some(b => name.toLowerCase().includes(b))) return 'branded_community';
+
+  // Has a location hint embedded ("at X", "of X", "on X", "@ X", "- CITY")
+  if (/\b(at|of|on|at the|near|@)\b/i.test(name) || / - [A-Z]{2}$/.test(name)) return 'descriptive';
+
+  return 'branded_community'; // default: treat as a specific named community
+}
+
 // ── Research one property ────────────────────────────────────────────────────
 
 async function researchAsset(asset: AssetRow): Promise<EnrichedProfile | null> {
@@ -113,11 +141,31 @@ async function researchAsset(asset: AssetRow): Promise<EnrichedProfile | null> {
   if (asset.unit_count) hints.push(`~${asset.unit_count} units`);
   if (asset.avg_rent)   hints.push(`avg rent ~$${Math.round(parseFloat(asset.avg_rent))}/mo`);
 
-  const prompt = `Look up the US apartment community named "${asset.property_name}"${hints.length ? ` (${hints.join(', ')})` : ''}.
+  const kind = classifyName(asset.property_name);
 
-Using your knowledge of US real estate, return the property profile as a JSON object. Use null for fields you are not confident about. Do NOT guess — only populate fields you know with reasonable confidence.
+  if (kind === 'generic') return null; // not a real property
 
-Return this exact JSON structure (no markdown, no extra keys):
+  let context = '';
+  if (kind === 'address_fragment') {
+    context = `The name "${asset.property_name}" appears to be a street address fragment for an apartment complex — for example "1420 Magnolia" likely refers to an apartment community at 1420 Magnolia Ave/Dr/Blvd/St. Search for the apartment complex located at this address.`;
+  } else if (kind === 'branded_community') {
+    // Extract potential location from the name
+    const locationHints = asset.property_name.match(/(?:at|at the|on|near|@)\s+(.+)/i)?.[1] ||
+      asset.property_name.split(/\s+/).slice(-2).join(' ');
+    context = `"${asset.property_name}" is a specific US apartment community. This may be a developer-branded community (e.g. Bainbridge, Alta, Bell, Elan, Broadstone, etc.) with the location embedded in the name. The location clue in the name may be "${locationHints}". Search for this specific apartment community by its full name.`;
+  } else {
+    context = `"${asset.property_name}" is a US apartment community. The name includes a location or descriptor clue — use it to narrow the search.`;
+  }
+
+  const hintStr = hints.length ? `\n\nAdditional hints: ${hints.join(', ')}` : '';
+
+  const prompt = `You are researching a specific US multifamily apartment community.
+
+${context}${hintStr}
+
+Using your knowledge of US real estate properties, apartment communities, and addresses, look up this property and return what you know. Even partial information is useful — provide what you can with confidence and null for the rest. Do NOT fabricate data.
+
+Return this exact JSON (no markdown fences, no extra keys):
 {
   "address": null,
   "city": null,
@@ -132,7 +180,6 @@ Return this exact JSON structure (no markdown, no extra keys):
   "stories": null,
   "construction_type": "Wood Frame|Concrete|Steel Frame|Masonry|Mixed or null",
   "property_type": "garden|mid-rise|high-rise|townhome|mixed-use or null",
-  "height_class": "low-rise|mid-rise|high-rise or null",
   "parking_type": "surface|garage|covered|mixed or null",
   "parking_ratio": null,
   "lot_size_acres": null,
@@ -144,7 +191,7 @@ Return this exact JSON structure (no markdown, no extra keys):
   "latitude": null,
   "longitude": null,
   "confidence": 0.0,
-  "source_note": null
+  "source_note": "brief note on how you identified the property, or null"
 }`;
 
   try {
