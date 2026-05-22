@@ -1,0 +1,110 @@
+{
+  "startedAt": "2026-05-22T21:27:19.330Z",
+  "completedAt": "2026-05-22T21:52:13.958Z",
+  "totalProperties": 296,
+  "enriched": 0,
+  "errors": 0,
+  "skippedNoAddress": 0,
+  "perProperty": {
+    "100 Inverness": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "1420 Magnolia": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "33 West": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "45 Eighty Dunwoody": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "464 Bishop - ATL": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_state"
+    },
+    "72 West": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "7900 Park Central": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "841 Memorial": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_state"
+    },
+    "860 South": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "900 Dwell": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Accent 2050": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Addison on Long Beach": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Advenir at Prestonwood": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Alexan Avondale": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Alpharetta City Center": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Alta Dairies": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Alta East": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Alta Lakehouse": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Alta Tech Ridge": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Alta Warehouse": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    }
+  }
+}
