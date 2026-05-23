@@ -896,7 +896,7 @@ router.post('/update-pd', async (req: Request, res: Response) => {
       },
       resolution_rule: 'highest_confidence'
     });
-    sets.push(`address = CASE WHEN property_descriptions.address IS NULL OR (property_descriptions.address->>'resolution_rule' IS DISTINCT FROM 'manual_override') THEN $${idx}::jsonb ELSE property_descriptions.address END`);
+    sets.push(`address = CASE WHEN property_descriptions.address IS NULL OR (property_descriptions.address->>'resolution_rule' IS DISTINCT FROM 'manual_override') OR (property_descriptions.address->>'resolution_rule' IS NULL AND property_descriptions.address->'resolved'->>'street' IS NOT NULL AND (property_descriptions.address->'resolved'->>'street' ILIKE '%pdf%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%RR%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%Teaser%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%T12%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%modified%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%Rent Roll%')) THEN $${idx}::jsonb ELSE property_descriptions.address END`);
     params.push(addrJson);
   }
 
@@ -908,7 +908,7 @@ router.post('/update-pd', async (req: Request, res: Response) => {
       layers: { om: { value: year_built, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
       resolution_rule: 'highest_confidence'
     });
-    sets.push(`year_built = CASE WHEN property_descriptions.year_built IS NULL THEN $${idx}::jsonb ELSE property_descriptions.year_built END`);
+    sets.push(`year_built = CASE WHEN property_descriptions.year_built IS NULL OR (property_descriptions.year_built->>'resolved' IS NULL) OR property_descriptions.year_built->>'resolved' = '' THEN $${idx}::jsonb ELSE property_descriptions.year_built END`);
     params.push(ybJson);
   }
 
@@ -920,7 +920,7 @@ router.post('/update-pd', async (req: Request, res: Response) => {
       layers: { om: { value: unit_count, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
       resolution_rule: 'highest_confidence'
     });
-    sets.push(`unit_count = CASE WHEN property_descriptions.unit_count IS NULL THEN $${idx}::jsonb ELSE property_descriptions.unit_count END`);
+    sets.push(`unit_count = CASE WHEN property_descriptions.unit_count IS NULL OR (property_descriptions.unit_count->>'resolved' IS NULL) OR property_descriptions.unit_count->>'resolved' = '' THEN $${idx}::jsonb ELSE property_descriptions.unit_count END`);
     params.push(ucJson);
   }
 
@@ -932,7 +932,7 @@ router.post('/update-pd', async (req: Request, res: Response) => {
       layers: { om: { value: stories, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
       resolution_rule: 'highest_confidence'
     });
-    sets.push(`stories = CASE WHEN property_descriptions.stories IS NULL THEN $${idx}::jsonb ELSE property_descriptions.stories END`);
+    sets.push(`stories = CASE WHEN property_descriptions.stories IS NULL OR (property_descriptions.stories->>'resolved' IS NULL) THEN $${idx}::jsonb ELSE property_descriptions.stories END`);
     params.push(stJson);
   }
 
