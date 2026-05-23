@@ -97,6 +97,7 @@ const PORTFOLIO_NAV = [
   { key: 'F8', label: 'REPORTS',   path: '/reports' },
   { key: 'F9', label: 'SETTINGS',  path: '/settings' },
   { key: 'WS', label: 'WORKSPACE', path: '/workspaces' },
+  { key: 'AR', label: 'ARCHIVE',   path: '/archive/library' },
 ];
 
 const DEAL_NAV = [

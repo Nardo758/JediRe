@@ -1193,4 +1193,141 @@ router.post('/municipal-result', async (req: Request, res: Response) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/archive/files
+// Paginated browse of all data_library_files with optional filters.
+// Joins property_descriptions.property_name for display.
+// Query params: parcel_id, document_type, parser_status, page (1-based), limit
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/files', requireAuth, async (req: Request, res: Response) => {
+  const pool = getPool();
+  const {
+    parcel_id,
+    document_type,
+    parser_status,
+    search,
+    page = '1',
+    limit = '50',
+  } = req.query as Record<string, string>;
+
+  const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+  const offset   = (pageNum - 1) * limitNum;
+
+  const conditions: string[] = [];
+  const params: unknown[]    = [];
+  let i = 1;
+
+  if (parcel_id) {
+    conditions.push(`f.parcel_id = $${i++}`);
+    params.push(parcel_id);
+  }
+  if (document_type && document_type !== 'ALL') {
+    conditions.push(`f.document_type = $${i++}`);
+    params.push(document_type);
+  }
+  if (parser_status && parser_status !== 'ALL') {
+    conditions.push(`f.parser_status = $${i++}`);
+    params.push(parser_status);
+  }
+  if (search) {
+    conditions.push(`(f.original_filename ILIKE $${i} OR f.parcel_id ILIKE $${i})`);
+    params.push(`%${search}%`);
+    i++;
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  try {
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM data_library_files f ${where}`,
+      params,
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const dataResult = await pool.query(
+      `SELECT
+         f.id, f.parcel_id, f.deal_id,
+         f.original_filename, f.mime_type, f.size_bytes,
+         f.storage_provider, f.storage_key, f.cdn_url,
+         f.document_type, f.parser_used, f.parser_status,
+         f.parser_error, f.uploaded_at, f.uploaded_by, f.source_signal,
+         f.license_restricted,
+         pd.property_name->>'resolved' AS property_display_name
+       FROM data_library_files f
+       LEFT JOIN property_descriptions pd ON pd.parcel_id = f.parcel_id
+       ${where}
+       ORDER BY f.uploaded_at DESC
+       LIMIT $${i} OFFSET $${i + 1}`,
+      [...params, limitNum, offset],
+    );
+
+    return res.json({
+      files: dataResult.rows,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/files] Error', { error: msg });
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/archive/files/:fileId/url
+// Returns a download URL for a single file.
+// Uses cdn_url if present; otherwise returns the storage_key for direct access.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/files/:fileId/url', requireAuth, async (req: Request, res: Response) => {
+  const pool = getPool();
+  const { fileId } = req.params;
+
+  try {
+    const result = await pool.query(
+      `SELECT id, original_filename, cdn_url, storage_key, storage_provider, mime_type
+       FROM data_library_files WHERE id = $1`,
+      [fileId],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const file = result.rows[0];
+
+    // Prefer CDN URL if already present
+    if (file.cdn_url) {
+      return res.json({
+        url: file.cdn_url,
+        filename: file.original_filename,
+        mime_type: file.mime_type,
+      });
+    }
+
+    // R2 signed URL (if env vars present) — placeholder until R2 client is wired
+    if (file.storage_provider === 'r2' && file.storage_key) {
+      const accountId = process.env.R2_ACCOUNT_ID;
+      const bucket    = process.env.R2_BUCKET_NAME;
+      if (accountId && bucket) {
+        // Return a direct R2 public URL (works when bucket has public access)
+        const url = `https://${bucket}.${accountId}.r2.cloudflarestorage.com/${file.storage_key}`;
+        return res.json({ url, filename: file.original_filename, mime_type: file.mime_type });
+      }
+    }
+
+    return res.status(404).json({
+      error: 'No download URL available for this file',
+      storage_key: file.storage_key,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: msg });
+  }
+});
+
 export default router;
