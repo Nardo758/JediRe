@@ -961,4 +961,185 @@ router.post('/update-pd', async (req: Request, res: Response) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /municipal-queue
+// Returns properties that have clean addresses but haven't been municipally
+// enriched yet. Leon's machine calls this, does the GIS lookups locally
+// (bypassing Replit IP blocks), then POSTs results to /municipal-result.
+//
+// Auth: x-ingest-secret header.
+// Query params:
+//   limit   — max rows to return (default 50)
+//   state   — filter to a specific state (e.g. GA, NC)
+//   resume  — if "true", skip parcels that already have a municipal layer
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/municipal-queue', async (req: Request, res: Response) => {
+  const secret = process.env.ARCHIVE_INGEST_SECRET;
+  if (!secret || req.headers['x-ingest-secret'] !== secret) {
+    return res.status(401).json({ success: false, error: 'Invalid or missing x-ingest-secret header' });
+  }
+
+  const limit  = Math.min(parseInt((req.query['limit']  as string) || '50', 10), 500);
+  const state  = (req.query['state']  as string | undefined)?.trim().toUpperCase() || null;
+  const resume = req.query['resume'] === 'true';
+
+  const pool = getPool();
+
+  const conditions: string[] = [
+    // Must have a real street address (not a filename — real addresses start with a digit)
+    `address->'resolved'->>'street' ~ '^[0-9]'`,
+    `length(address->'resolved'->>'street') < 100`,
+    `address->'resolved'->>'state' IS NOT NULL`,
+    `length(address->'resolved'->>'state') = 2`,
+  ];
+  const params: unknown[] = [];
+
+  if (state) {
+    params.push(state);
+    conditions.push(`address->'resolved'->>'state' = $${params.length}`);
+  }
+
+  if (resume) {
+    // Skip parcels that already have a municipal layer on year_built
+    conditions.push(`(year_built IS NULL OR year_built->'layers'->'municipal' IS NULL)`);
+  }
+
+  params.push(limit);
+
+  const rows = await pool.query(
+    `SELECT
+       parcel_id,
+       property_name,
+       address->'resolved'->>'street' AS street,
+       address->'resolved'->>'city'   AS city,
+       address->'resolved'->>'state'  AS state,
+       address->'resolved'->>'zip'    AS zip
+     FROM property_descriptions
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY parcel_id
+     LIMIT $${params.length}`,
+    params,
+  );
+
+  return res.json({
+    success: true,
+    count: rows.rows.length,
+    properties: rows.rows,
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /municipal-result
+// Accepts GIS lookup results from Leon's machine and writes them back to
+// property_descriptions as LayeredValue JSONB with municipal provenance.
+//
+// Auth: x-ingest-secret header.
+// Body: {
+//   parcel_id: string,
+//   provider: string,          — e.g. "FultonCountyGA"
+//   api_endpoint: string,      — ArcGIS endpoint URL used
+//   year_built?: number,
+//   unit_count?: number,
+//   stories?: number,
+//   total_sqft?: number,
+//   lot_size_acres?: number,
+//   zoning?: string,
+//   address?: string,          — confirmed street address from assessor
+//   city?: string,
+//   state?: string,
+//   zip?: string,
+// }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/municipal-result', async (req: Request, res: Response) => {
+  const secret = process.env.ARCHIVE_INGEST_SECRET;
+  if (!secret || req.headers['x-ingest-secret'] !== secret) {
+    return res.status(401).json({ success: false, error: 'Invalid or missing x-ingest-secret header' });
+  }
+
+  const {
+    parcel_id, provider, api_endpoint,
+    year_built, unit_count, stories, total_sqft, lot_size_acres, zoning,
+    address, city, state, zip,
+  } = req.body;
+
+  if (!parcel_id) return res.status(400).json({ success: false, error: 'parcel_id is required' });
+  if (!provider)  return res.status(400).json({ success: false, error: 'provider is required' });
+
+  const now = new Date().toISOString();
+  const pool = getPool();
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  let idx = 0;
+
+  const buildLayer = (value: unknown) => JSON.stringify({
+    resolved: value,
+    layers: {
+      municipal: { value, source: provider, fetched_at: now, api_endpoint: api_endpoint || provider },
+    },
+    resolution_rule: 'municipal_canonical',
+  });
+
+  const pushField = (col: string, value: unknown) => {
+    if (value === null || value === undefined) return;
+    idx++;
+    // municipal_canonical wins over everything except manual_override
+    sets.push(
+      `${col} = CASE
+         WHEN ${col} IS NULL OR (${col}->>'resolution_rule' IS DISTINCT FROM 'manual_override')
+         THEN $${idx}::jsonb
+         ELSE ${col}
+       END`,
+    );
+    params.push(buildLayer(value));
+  };
+
+  pushField('year_built',     year_built);
+  pushField('unit_count',     unit_count);
+  pushField('stories',        stories);
+  pushField('total_sqft',     total_sqft);
+  pushField('lot_size_acres', lot_size_acres);
+  pushField('zoning_code',    zoning);
+
+  if (address && city && state) {
+    idx++;
+    sets.push(
+      `address = CASE
+         WHEN address IS NULL OR (address->>'resolution_rule' IS DISTINCT FROM 'manual_override')
+         THEN $${idx}::jsonb
+         ELSE address
+       END`,
+    );
+    params.push(JSON.stringify({
+      resolved: { street: address, city, state, zip: zip || '' },
+      layers: {
+        municipal: {
+          value: { street: address, city, state, zip: zip || '' },
+          source: provider, fetched_at: now, api_endpoint: api_endpoint || provider,
+        },
+      },
+      resolution_rule: 'municipal_canonical',
+    }));
+  }
+
+  if (sets.length === 0) {
+    return res.status(400).json({ success: false, error: 'No fields to write' });
+  }
+
+  idx++;
+  params.push(parcel_id);
+
+  try {
+    await pool.query(
+      `UPDATE property_descriptions SET ${sets.join(', ')}, updated_at = NOW() WHERE parcel_id = $${idx}`,
+      params,
+    );
+    logger.info('[archive/municipal-result] Written', { parcel_id, provider, fields: sets.length });
+    return res.json({ success: true, parcel_id, fieldsWritten: sets.length });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/municipal-result] Error', { parcel_id, error: msg });
+    return res.status(500).json({ success: false, error: msg });
+  }
+});
+
 export default router;
