@@ -1,0 +1,60 @@
+{
+  "startedAt": "2026-05-23T20:01:33.407Z",
+  "completedAt": "2026-05-23T20:08:33.444Z",
+  "totalProperties": 296,
+  "enriched": 0,
+  "errors": 0,
+  "skippedNoAddress": 0,
+  "perProperty": {
+    "100 Inverness": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "1420 Magnolia": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "33 West": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "45 Eighty Dunwoody": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "464 Bishop - ATL": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_state"
+    },
+    "72 West": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "7900 Park Central": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "841 Memorial": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_state"
+    },
+    "860 South": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "900 Dwell": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    }
+  }
+}

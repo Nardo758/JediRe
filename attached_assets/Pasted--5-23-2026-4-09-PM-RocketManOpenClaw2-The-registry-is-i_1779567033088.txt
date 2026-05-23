@@ -1,0 +1,27 @@
+[5/23/2026 4:09 PM] RocketManOpenClaw2: The registry is iterating through all 14 providers trying to find the right county by trying each one. It doesn't know that "33 West" is in Broward County, so it tries every FL provider. The problem is:
+
+1. No routing by county — the registry can't determine the county from the address because there's no geocoding step
+2. It should use the address's city/state to pick the right county, not brute-force all providers
+3. Broward's endpoint is refusing connection (ECONNREFUSED 205.166.161.235:443)
+
+The county configs are pointing at internal network addresses that aren't resolvable from Replit. These ArcGIS endpoints are designed for the main app environment, not the Replit sandbox.
+
+Let me check what the Broward config looks like — maybe the endpoint is a county-internal server that's only accessible from certain networks:
+[5/23/2026 4:09 PM] RocketManOpenClaw2: The Broward endpoint is gis.broward.org and the error was ECONNREFUSED 205.166.161.235:443 — it resolved to an IP but connection was refused. This means the Replit VM is blocked from accessing the county GIS servers (likely firewall/geo-restricted).
+
+The municipal ArcGIS enrichment requires either:
+
+1. Running from a trusted IP (your local machine or a VPS with access to county servers)
+2. Or finding alternative endpoints that are publicly accessible
+
+This is a significant blocker. The county ArcGIS servers (Broward, Miami-Dade, etc.) are refusing connections from Replit's cloud IP range. However, we have 7 GA providers which might be more permissive. Let me test one GA property:
+
+cd ~/workspace/backend && npx ts-node --transpile-only scripts/archive-municipal-enrich.ts --parcel "The Piedmont" --dry-run
+
+First check if The Piedmont has a real address:
+
+psql $DATABASE_URL -c "SELECT parcel_id, address->'resolved'->>'street' as street, address->'resolved'->>'city' as city FROM property_descriptions WHERE parcel_id = 'The Piedmont';"
+
+Also let me check what state the 121 addressed properties are in:
+
+psql $DATABASE_URL -c "SELECT address->'resolved'->>'state' as state, count(*) FROM property_descriptions WHERE address->'resolved'->>'street' IS NOT NULL AND address->'resolved'->>'street' NOT ILIKE '%pdf%' AND length(address->'resolved'->>'street') > 5 GROUP BY state ORDER BY count DESC;"
