@@ -1,6 +1,6 @@
 {
   "startedAt": "2026-05-22T21:27:19.330Z",
-  "completedAt": "2026-05-22T21:52:13.958Z",
+  "completedAt": "2026-05-23T18:12:25.448Z",
   "totalProperties": 296,
   "enriched": 0,
   "errors": 0,
@@ -64,47 +64,47 @@
     "Addison on Long Beach": {
       "status": "skipped",
       "fieldsFilled": [],
-      "error": "no_address"
+      "error": "no_municipal_data"
     },
     "Advenir at Prestonwood": {
       "status": "skipped",
       "fieldsFilled": [],
-      "error": "no_address"
+      "error": "no_state"
     },
     "Alexan Avondale": {
       "status": "skipped",
       "fieldsFilled": [],
-      "error": "no_address"
+      "error": "no_state"
     },
     "Alpharetta City Center": {
       "status": "skipped",
       "fieldsFilled": [],
-      "error": "no_address"
+      "error": "no_state"
     },
     "Alta Dairies": {
       "status": "skipped",
       "fieldsFilled": [],
-      "error": "no_address"
+      "error": "no_municipal_data"
     },
     "Alta East": {
       "status": "skipped",
       "fieldsFilled": [],
-      "error": "no_address"
+      "error": "no_state"
     },
     "Alta Lakehouse": {
       "status": "skipped",
       "fieldsFilled": [],
-      "error": "no_address"
+      "error": "no_state"
     },
     "Alta Tech Ridge": {
       "status": "skipped",
       "fieldsFilled": [],
-      "error": "no_address"
+      "error": "no_state"
     },
     "Alta Warehouse": {
       "status": "skipped",
       "fieldsFilled": [],
-      "error": "no_address"
+      "error": "no_state"
     }
   }
 }

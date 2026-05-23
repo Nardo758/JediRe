@@ -1,0 +1,85 @@
+{
+  "properties": {
+    "100 Inverness": {
+      "done": true,
+      "error": "No OM PDF in R2"
+    },
+    "1420 Magnolia": {
+      "done": true,
+      "error": "No OM PDF in R2"
+    },
+    "33 West": {
+      "done": true,
+      "error": "No OM PDF in R2"
+    },
+    "45 Eighty Dunwoody": {
+      "done": true,
+      "address": "45 eighty"
+    },
+    "464 Bishop - ATL": {
+      "done": true,
+      "error": "No OM PDF in R2"
+    },
+    "72 West": {
+      "done": true,
+      "error": "No OM PDF in R2"
+    },
+    "7900 Park Central": {
+      "done": true,
+      "address": "7900 at Park Central - Debt Summary"
+    },
+    "841 Memorial": {
+      "done": true,
+      "error": "No OM PDF in R2"
+    },
+    "860 South": {
+      "done": true,
+      "address": "860 South "
+    },
+    "900 Dwell": {
+      "done": true,
+      "address": "900 Dwell"
+    },
+    "Accent 2050": {
+      "done": true,
+      "error": "HTTP 400: {\"success\":false,\"error\":\"No file uploaded. Send PDF as multipart field \\\"file\\\".\"}"
+    },
+    "Addison on Long Beach": {
+      "done": true,
+      "address": "21 to 6-9-21"
+    },
+    "Advenir at Prestonwood": {
+      "done": true,
+      "error": "HTTP 400: {\"success\":false,\"error\":\"No file uploaded. Send PDF as multipart field \\\"file\\\".\"}"
+    },
+    "Alexan Avondale": {
+      "done": true,
+      "error": "HTTP 400: {\"success\":false,\"error\":\"No file uploaded. Send PDF as multipart field \\\"file\\\".\"}"
+    },
+    "Alpharetta City Center": {
+      "done": true,
+      "error": "HTTP 400: {\"success\":false,\"error\":\"No file uploaded. Send PDF as multipart field \\\"file\\\".\"}"
+    },
+    "Alta Dairies": {
+      "done": true,
+      "address": "2020 Garage Operating Budget"
+    },
+    "Alta East": {
+      "done": true,
+      "error": "HTTP 400: {\"success\":false,\"error\":\"No file uploaded. Send PDF as multipart field \\\"file\\\".\"}"
+    },
+    "Alta Lakehouse": {
+      "done": true,
+      "error": "HTTP 400: {\"success\":false,\"error\":\"No file uploaded. Send PDF as multipart field \\\"file\\\".\"}"
+    },
+    "Alta Tech Ridge": {
+      "done": true,
+      "error": "HTTP 400: {\"success\":false,\"error\":\"No file uploaded. Send PDF as multipart field \\\"file\\\".\"}"
+    },
+    "Alta Warehouse": {
+      "done": true,
+      "error": "HTTP 400: {\"success\":false,\"error\":\"No file uploaded. Send PDF as multipart field \\\"file\\\".\"}"
+    }
+  },
+  "updatedAt": "2026-05-23T18:22:06.158Z"
+}
