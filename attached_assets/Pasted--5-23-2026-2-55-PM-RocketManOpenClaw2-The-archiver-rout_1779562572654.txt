@@ -1,0 +1,32 @@
+[5/23/2026 2:55 PM] RocketManOpenClaw2: The archiver/routes may need a Replit-side restart. Let me check the logs on the Replit shell:
+
+cd ~/workspace/backend && psql $DATABASE_URL -c "SELECT parcel_id, address FROM property_descriptions WHERE parcel_id IN ('100 Inverness', '33 West') LIMIT 1;" -x
+
+Let's check if the update-pd endpoint actually processed the POST. Run Invoke-WebRequest directly from Windows PowerShell (not through my exec):
+
+$body = @{parcel_id="100 Inverness"; address="100 Inverness Ln"; city="Birmingham"; state="AL"; zip=""; year_built=1974; unit_count=322} | ConvertTo-Json -Compress
+Write-Host $body
+Invoke-WebRequest -Uri "https://381d5707-51e5-4d3d-b340-02537a082e98-00-2gk8jsdbkwoy5.worf.replit.dev/api/v1/archive/update-pd" -Method Post -Headers @{"x-ingest-secret"="jedire-archive-2026"} -Body $body -ContentType "application/json" -UseBasicParsing
+
+This should tell us if the endpoint is returning an error. The batch script's [pd OK] might be misleading — maybe the endpoint responded 200 but the JSONB update didn't actually match.
+
+Actually, let me just check the SQL more carefully. The issue might be that the address was already set to a non-null JSONB value (even though it's garbage), so my COALESCE sees it as "already has a value" and skips it:
+
+CASE WHEN property_descriptions.address IS NULL ... THEN ...
+
+But the current address IS {"resolved": {"street": "100 Inverness RR 06.26.2019 modified", "city": "Atlanta"}} — it's not NULL! The COALESCE logic needs updating. Let me add a resolution_rule check:
+[5/23/2026 2:55 PM] RocketManOpenClaw2: On the Replit shell, pull the update and restart:
+
+cd ~/workspace/backend && git pull origin master
+
+Then restart the app so the route changes take effect. If it was started with npm run dev or similar, hit Ctrl+C and restart. Otherwise use:
+
+kill -9 $(lsof -t -i:3000) 2>/dev/null; npm run dev
+
+Or if you started it differently, just restart however you were running it. Then re-run the batch script again — it'll now overwrite the garbage filenames with real addresses. But once the server is restarted, clear the state and redo the first 5:
+
+Windows PowerShell:
+
+cd C:\Users\Leon\.openclaw\workspace\JediRe\backend\scripts
+Remove-Item OM_BATCH_STATE.json -ErrorAction SilentlyContinue
+.\batch-parse-om.ps1 -Limit 5
