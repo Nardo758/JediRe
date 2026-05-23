@@ -96,7 +96,7 @@ foreach ($om in $omFiles) {
       # Use native PowerShell HTTP (more reliable than curl for JSON POST)
       try {
         $jsonBody = $body | ConvertTo-Json -Compress
-        pdResp = Invoke-WebRequest -Uri "$Endpoint/update-pd" -Method Post -Headers @{ "x-ingest-secret" = $Secret } -Body $jsonBody -ContentType "application/json" -TimeoutSec 30 -UseBasicParsing
+        $null = Invoke-WebRequest -Uri "$Endpoint/update-pd" -Method Post -Headers @{ "x-ingest-secret" = $Secret } -Body $jsonBody -ContentType "application/json" -TimeoutSec 30 -UseBasicParsing
         Write-Host " [pd OK]"
       } catch {
         Write-Host " [pd FAIL: $($_.Exception.Message)]"

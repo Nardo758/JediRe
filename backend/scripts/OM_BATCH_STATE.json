@@ -1,47 +1,40 @@
 {
     "33 West":  {
+                    "state":  "FL",
                     "done":  true,
-                    "units":  376,
-                    "stateCode":  "FL",
-                    "zip":  null,
+                    "yearBuilt":  2014,
+                    "zip":  "",
                     "city":  "Davie",
-                    "address":  "6300 Southwest 24th Place",
-                    "yearBuilt":  2014
+                    "units":  376,
+                    "stories":  3,
+                    "address":  "6300 Southwest 24th Place"
                 },
     "900 Dwell":  {
-                      "done":  true,
                       "units":  null,
-                      "stateCode":  "GA",
-                      "zip":  null,
-                      "city":  null,
-                      "address":  "900 Rock Quarry Rd",
-                      "yearBuilt":  null
+                      "done":  true,
+                      "yearBuilt":  null,
+                      "address":  ""
                   },
     "860 South":  {
-                      "done":  true,
                       "units":  null,
-                      "stateCode":  "GA",
-                      "zip":  null,
-                      "city":  null,
-                      "address":  "860 Rock Quarry Road",
-                      "yearBuilt":  null
+                      "done":  true,
+                      "yearBuilt":  null,
+                      "address":  ""
                   },
     "1420 Magnolia":  {
-                          "done":  true,
                           "units":  null,
-                          "stateCode":  null,
-                          "zip":  null,
-                          "city":  null,
-                          "address":  null,
-                          "yearBuilt":  null
+                          "done":  true,
+                          "yearBuilt":  null,
+                          "address":  ""
                       },
     "100 Inverness":  {
+                          "state":  "AL",
                           "done":  true,
-                          "units":  322,
-                          "stateCode":  "AL",
-                          "zip":  null,
+                          "yearBuilt":  1974,
+                          "zip":  "",
                           "city":  "Birmingham",
-                          "address":  "100 Inverness Ln",
-                          "yearBuilt":  1974
+                          "units":  322,
+                          "stories":  2,
+                          "address":  "100 Inverness Ln"
                       }
 }
