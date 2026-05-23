@@ -1,0 +1,1318 @@
+# Per-Property Visibility — Substrate + UI Spec
+
+**Status:** Draft architecture spec — implementation contract for sequenced build sessions
+**Owner:** Leon / JEDI RE
+**Pairs with:** `HISTORICAL_OBSERVATIONS_SPEC.md`, `M09_PROFORMA_SPEC.md`, `DEAL_CAPSULE_ROADMAP.md`
+**Related:** Comp ProForma Reconstruction (downstream consumer), F9 source pills (parallel surface)
+
+---
+
+## 1. Purpose
+
+The platform has 1,034 corpus rows ingested across 296 archived properties and ~40 OM PDFs parsed for year_built. The data substrate exists. **What's missing is the user-facing surface that makes it visible, manageable, and usable.** Four independent product needs converge on the same architecture:
+
+1. **Property Description fill** — agents aren't populating the property description modal because no agent is responsible for the archive properties; the rich extraction from parse-om isn't routed to the modal's read path.
+2. **Data Library file visibility** — users can't see the source files agents are reasoning against. Source pills on F9 are designed to drill to a source but there's no surface to drill to.
+3. **Asset profile time-series** — users need to see trends per asset, not just point-in-time facts.
+4. **Active intake pipeline** — uploads shouldn't end at storage. They should trigger automatic property identification, classification, and enrichment. When the agent can't figure it out from documents + municipal records + web research, it should prompt the user for the minimum identifier needed to unblock.
+
+These four are not separate features. They share the **same substrate**: property attributes (Stream A), source documents (Stream B), time-keyed observations (Stream C), and the **intake orchestrator** that coordinates all three when new data arrives.
+
+This spec defines that substrate, the three streams, the orchestrator, and the surfaces users interact with.
+
+## 2. Scope
+
+**In scope:**
+- Property attribute schema with LayeredValue source provenance (Stream A)
+- File storage architecture using Cloudflare R2 (Stream B)
+- File metadata table (`data_library_files`) + intake job tracking (`intake_jobs`)
+- Time-series query layer over `historical_observations` (Stream C)
+- **In-app upload UI** — drag-drop folder (with structure preservation) + multi-file fallback
+- Standalone CLI uploader for initial 3,744-file seeding
+- **Intake Orchestrator service** — automated classification → parse → enrichment chain with promptable-blocker pattern
+- **Intake Inbox UI** — surface for jobs needing user input (ambiguous matches, missing identifiers, manual review)
+- File operations: download original, delete, replace, re-parse, bulk select
+- Browse / search / discovery surface across all files
+- Bulk operations: zip download of selected files, CSV export of corpus data
+- Unified per-property API endpoint
+- Per-property page UI (description header + file list + time-series view)
+- File viewer infrastructure (PDF, XLSX inline; fallback download)
+- Source pill infrastructure linking displayed values to source files
+- Municipal API enrichment (Florida-first, then Atlanta/Dallas)
+- Research Agent archive enrichment mode (web + Google Places integration)
+- Multi-source reconciliation UX for conflicting values
+- **Cohort Rollup view** — multi-dimensional aggregation surface (Product × Class × MSA × vintage) with T-12 line-item rollups (see Section 14)
+
+**Out of scope (deferred):**
+- Mode 4 workspace expansion (sharing, collaboration)
+- Multi-account permission scoping beyond "private to current operator"
+- Email-to-library forwarding
+- Watched folder sync (Dropbox/Drive connectors)
+- Full-text search across parsed content (deferred to follow-on)
+- Tags / custom metadata fields
+- Comp ProForma reconstruction itself (this spec is the structural-features substrate it consumes)
+
+---
+
+## 3. Architectural Frame
+
+**Unified substrate, three views.** The mistake to avoid is treating these as three separate workstreams. They share schema, API, and UI infrastructure. Splitting them produces duplicate work and divergent shapes that re-introduce the producer-writes-here-reader-reads-elsewhere pattern that has already cost six bug investigations on this platform.
+
+```
+                 PER-PROPERTY VISIBILITY STACK
+
+```
+                 PER-PROPERTY VISIBILITY STACK
+
+
+         ┌──────────────────────────────────────────────┐
+         │  USER INTERACTION SURFACES                    │
+         ├──────────────────────────────────────────────┤
+         │  /archive/upload      - Drag-drop upload UI  │
+         │  /archive/intake      - Intake Inbox         │
+         │  /archive/library     - Browse all files     │
+         │  /archive/properties/:id  - Per-property pg  │
+         │  /archive/cohort-rollup   - Cohort analytics │
+         └─────────────────────┬────────────────────────┘
+                               │
+              ┌────────────────┴────────────────┐
+              │                                 │
+              ▼                                 ▼
+    ┌──────────────────┐              ┌──────────────────┐
+    │  INTAKE          │              │  UNIFIED API     │
+    │  ORCHESTRATOR    │              │  endpoints       │
+    │                  │              │                  │
+    │  ┌────────────┐ │              │  • property      │
+    │  │ classify   │ │              │  • files         │
+    │  │    ↓       │ │              │  • timeseries    │
+    │  │ parse      │ │              │  • cohort        │
+    │  │    ↓       │ │              │  • intake jobs   │
+    │  │ enrich     │ │              │                  │
+    │  │    ↓       │ │              │                  │
+    │  │ done OR    │ │              │                  │
+    │  │ block-and- │ │              │                  │
+    │  │ prompt     │ │              │                  │
+    │  └────────────┘ │              │                  │
+    └────────┬─────────┘              └────────┬─────────┘
+             │                                 │
+             ▼                                 ▼
+     ┌───────────────────────────────────────────────┐
+     │           DATA LAYER (4 STREAMS)              │
+     ├───────────────────────────────────────────────┤
+     │  Stream A: property_descriptions              │
+     │           (attributes w/ LayeredValue)         │
+     │  Stream B: data_library_files + R2 storage    │
+     │           (file metadata + object storage)     │
+     │  Stream C: historical_observations            │
+     │           (time-keyed corpus)                  │
+     │  Intake : intake_jobs                         │
+     │           (orchestrator state machine)         │
+     └───────────────────────────────────────────────┘
+```
+
+Every displayed number on the per-property page has a source pill. The pill resolves through the streams to either a property attribute (with `LayeredValue` provenance), a source document (linked file), or a time-series observation (with the underlying parser run).
+
+**The Intake Orchestrator is the active intelligence layer.** When users upload files (whether one document or a thousand), the orchestrator drives a state machine: classify → parse → enrich → resolve-or-block. When the agent can't resolve a property identifier, it doesn't silently fail; it surfaces a specific, contextual question in the Intake Inbox for the user to answer.
+
+---
+
+## 4. Shared Substrate
+
+### 4.1 Property Descriptions Table
+
+`property_descriptions` — one row per parcel_id. Each mutable attribute is a `LayeredValue` with source provenance.
+
+```sql
+CREATE TABLE property_descriptions (
+  parcel_id              text PRIMARY KEY,
+  -- Identity
+  property_name          jsonb,  -- LayeredValue<string>
+  address                jsonb,  -- LayeredValue<{ street, city, state, zip }>
+  msa                    jsonb,  -- LayeredValue<string>
+  county                 jsonb,  -- LayeredValue<string>
+  -- Physical
+  year_built             jsonb,  -- LayeredValue<number>
+  year_renovated         jsonb,  -- LayeredValue<number>
+  unit_count             jsonb,  -- LayeredValue<number>
+  building_count         jsonb,  -- LayeredValue<number>
+  stories                jsonb,  -- LayeredValue<number>
+  stories_band           jsonb,  -- LayeredValue<'walkup'|'midrise'|'highrise'|'super_highrise'>
+  total_sqft             jsonb,  -- LayeredValue<number>
+  rentable_sqft          jsonb,  -- LayeredValue<number>
+  lot_size_acres         jsonb,  -- LayeredValue<number>
+  construction_type      jsonb,  -- LayeredValue<'wood_frame'|'concrete'|'steel'|'mixed'>
+  parking_type           jsonb,  -- LayeredValue<'surface'|'structured'|'wrap'|'podium'>
+  parking_spaces         jsonb,
+  parking_ratio          jsonb,
+  -- Asset class
+  asset_class            jsonb,  -- LayeredValue<'A'|'B'|'C'>
+  property_type          jsonb,  -- LayeredValue<'multifamily'|'office'|'retail'|...>
+  -- Amenities (boolean flags)
+  has_pool               jsonb,  -- LayeredValue<boolean>
+  has_fitness            jsonb,
+  has_clubhouse          jsonb,
+  has_concierge          jsonb,
+  has_business_center    jsonb,
+  has_dog_park           jsonb,
+  is_master_metered      jsonb,
+  is_individual_metered  jsonb,
+  -- Regulatory
+  zoning_code            jsonb,  -- LayeredValue<string>
+  flood_zone             jsonb,  -- LayeredValue<string> (FEMA NFHL)
+  in_opportunity_zone    jsonb,  -- LayeredValue<boolean>
+  -- Description text
+  narrative              jsonb,  -- LayeredValue<string> (Research Agent generated)
+  -- Metadata
+  created_at             timestamptz DEFAULT now(),
+  updated_at             timestamptz DEFAULT now()
+);
+```
+
+**LayeredValue schema per field:**
+
+```typescript
+type LayeredValue<T> = {
+  resolved: T | null;           // The final value the UI displays
+  layers: {
+    om?:        { value: T; source_file_id: uuid; confidence: number; extracted_at: timestamp };
+    municipal?: { value: T; source: string; fetched_at: timestamp; api_endpoint: string };
+    web?:       { value: T; source_url: string; fetched_at: timestamp };
+    manual?:    { value: T; user: string; entered_at: timestamp; note?: string };
+  };
+  resolution_rule: 'manual_override' | 'municipal_canonical' | 'om_canonical' | 'highest_confidence';
+};
+```
+
+**Resolution rules** (which layer wins when sources disagree):
+
+| Field class | Default winner | Rationale |
+|---|---|---|
+| Legal attributes (year_built, sqft, parcel #, zoning) | Municipal canonical | County appraiser is authoritative |
+| Asset class, narrative, amenity tier | OM canonical | Marketing context not in public records |
+| Current state (photos, reviews) | Web | Most recent |
+| All fields | Manual override (when present) | User explicit input always wins |
+
+### 4.2 Data Library Files Table
+
+`data_library_files` — one row per ingested file.
+
+```sql
+CREATE TABLE data_library_files (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Linkage
+  parcel_id           text,
+  deal_id             uuid,  -- NULL for archive-only files
+  -- File identity
+  original_filename   text NOT NULL,
+  sha256              text NOT NULL UNIQUE,
+  mime_type           text,
+  size_bytes          bigint,
+  -- Storage
+  storage_provider    text NOT NULL,  -- 'r2' | 's3' | 'replit' | 'local_pending'
+  storage_bucket      text,
+  storage_key         text,           -- path within bucket
+  cdn_url             text,           -- public signed URL or CDN endpoint, nullable
+  -- Classification + parsing
+  document_type       text,           -- T12 | RENT_ROLL | TAX_BILL | LEASING_STATS | OM | OTHER
+  parser_used         text,
+  parser_version      text,
+  parser_status       text,           -- 'success' | 'partial' | 'failed' | 'unparsed'
+  parser_run_id       uuid,
+  parser_error        text,
+  -- Provenance
+  uploaded_at         timestamptz DEFAULT now(),
+  uploaded_by         text,
+  source_signal       text,           -- 'archive_seed' | 'pipeline_upload' | 'portfolio_monthly'
+  -- License
+  license_restricted  boolean DEFAULT false,
+  license_source      text,           -- 'costar' | 'yardi_matrix' | etc.
+  -- Constraints
+  CONSTRAINT parcel_or_deal CHECK (parcel_id IS NOT NULL OR deal_id IS NOT NULL),
+  CONSTRAINT valid_status CHECK (parser_status IN ('success','partial','failed','unparsed'))
+);
+
+CREATE INDEX idx_dlf_parcel ON data_library_files(parcel_id);
+CREATE INDEX idx_dlf_deal ON data_library_files(deal_id);
+CREATE INDEX idx_dlf_sha256 ON data_library_files(sha256);
+CREATE INDEX idx_dlf_document_type ON data_library_files(document_type);
+```
+
+### 4.3 Corpus-to-File Linkage
+
+Extend `historical_observations`:
+
+```sql
+ALTER TABLE historical_observations 
+  ADD COLUMN source_file_ids uuid[];
+
+CREATE INDEX idx_ho_source_files ON historical_observations USING GIN (source_file_ids);
+```
+
+When the parser writes a corpus row, it records the file_ids that contributed. For the 1,034 already-ingested rows, a one-time backfill SQL reconstructs the linkage from parser logs and folder convention (parcel_id + document_type + observation_date).
+
+### 4.4 Time-Series Query Layer
+
+```typescript
+interface TimeSeriesQuery {
+  parcel_id: string;
+  metrics: TimeSeriesMetric[];   // ['gpr', 'noi', 'occupancy', 'signing_velocity', ...]
+  range: { start: Date; end: Date };
+  granularity?: 'monthly' | 'quarterly' | 'annual';  // default: monthly
+  include_provenance?: boolean;  // default: true
+}
+
+interface TimeSeriesResult {
+  parcel_id: string;
+  series: {
+    [metric: string]: Array<{
+      observation_date: Date;
+      value: number | null;
+      tier: 'S1' | 'S2' | 'C1' | 'C2' | 'M1' | 'M2';
+      source_file_ids: uuid[];  // when include_provenance
+    }>;
+  };
+  coverage: {
+    [metric: string]: {
+      observations_count: number;
+      date_range: { start: Date; end: Date };
+      gaps: Array<{ start: Date; end: Date }>;  // periods with no data
+    };
+  };
+}
+
+async function getAssetTimeSeries(query: TimeSeriesQuery): Promise<TimeSeriesResult>
+```
+
+Implementation: standard SQL against `historical_observations`, grouped by metric, ordered by observation_date. Pre-aggregated where reasonable (avoid per-request computation of stable values). Coverage diagnostics surface gaps so UI can render them as visible discontinuities rather than misleading interpolations.
+
+### 4.5 Unified Per-Property API Endpoint
+
+```
+GET /api/v1/properties/:parcelId/summary
+```
+
+Returns:
+
+```typescript
+{
+  parcel_id: string;
+  description: PropertyDescription;  // Stream A — the entire property_descriptions row
+  files: DataLibraryFile[];          // Stream B — list of all files for this parcel
+  time_series: TimeSeriesResult;     // Stream C — default metrics, last 5 years
+  coverage_diagnostics: {
+    has_om: boolean;
+    has_t12_count: number;
+    has_rent_roll_count: number;
+    has_tax_bill: boolean;
+    has_leasing_stats: boolean;
+    description_completeness: number;  // 0-1, % of description fields populated
+    time_series_completeness: number;   // 0-1, % of expected obs present
+  };
+}
+```
+
+Single endpoint, single page. The UI calls this once and renders everything.
+
+---
+
+## 5. Stream A — Property Description Fill
+
+### 5.1 Sources, in priority order
+
+| Priority | Source | What it provides | When it runs |
+|---|---|---|---|
+| 1 | Manual override | Any field, user-explicit | On user edit |
+| 2 | Municipal API | year_built, sqft, lot_size, parcel #, assessed value, zoning | Batch backfill + on-demand |
+| 3 | OM extraction (already exists) | name, address, units, asset class, narrative, amenities | At OM parse time (already happening, just not routed) |
+| 4 | Web research (Research Agent) | photos, reviews, news, current operator | Agent-triggered |
+| 5 | Default/null | When no source has it | Implicit |
+
+### 5.2 Municipal API integrations
+
+**Phase 1 — Florida-first, then GA/TX:**
+
+| Source | API | Fields extracted | Priority |
+|---|---|---|---|
+| Florida county property appraisers | County-specific (Palm Beach, Orange, Hillsborough, Pinellas, Broward, Miami-Dade, Duval, Hillsborough, etc.) | year_built, sqft, lot_size, parcel #, assessed value, owner, building characteristics | High — densest archive coverage |
+| Fulton County (Atlanta) | qpublic.net API | Same as above | High |
+| Dallas Central Appraisal District | DCAD API | Same | High |
+| Municode | Municode API (already wired) | Zoning code, FAR, setbacks, allowed uses | Medium |
+| FEMA NFHL (already wired) | NFHL API | Flood zone | Medium |
+| Census/ACS (already wired) | Census API | Submarket demographics | Low (submarket-level, not property) |
+
+**Wrapper service pattern** (`src/services/municipal/`):
+
+```typescript
+// src/services/municipal/index.ts
+async function fetchPropertyAttributes(parcelId: string): Promise<MunicipalResult>
+
+// src/services/municipal/florida/palm-beach.ts
+// src/services/municipal/florida/orange.ts
+// src/services/municipal/georgia/fulton.ts
+// src/services/municipal/texas/dallas-central.ts
+```
+
+Each county wrapper returns a normalized `MunicipalResult` shape. The aggregator picks the right wrapper based on parcel address/county and merges results.
+
+### 5.3 OM extraction routing fix
+
+Per the project memory and prior diagnosis, parse-om already extracts: unit_mix, proforma, investment_thesis, asset_class, units, address, year_built. **This extraction is currently being persisted only for year_built (and only after the just-shipped backfill).** All other fields are returned in the response and discarded.
+
+The fix:
+1. Extend the parse-om persistence to write all extracted fields to `property_descriptions` with `layers.om` provenance
+2. UPSERT semantics: if `property_descriptions` row exists for parcel_id, MERGE (don't overwrite manual overrides or higher-priority municipal data)
+3. Mirror to `historical_observations` denormalized columns where present (year_built, unit_count) for backward-compatible reads
+
+### 5.4 Research Agent enrichment mode
+
+New mode on Research Agent, lighter than DealContext assembly:
+
+```typescript
+async function runArchiveEnrichment(parcelId: string): Promise<EnrichmentResult> {
+  // 1. Read available files from data_library_files for parcel
+  // 2. Read current property_descriptions row (what's already known)
+  // 3. Identify gaps (which description fields are still null)
+  // 4. Call municipal APIs for gap-filling
+  // 5. Web-search property name + address for supplementary info
+  //    - Tools: web_search, google_places_search
+  // 6. Synthesize narrative description with citations
+  // 7. Write to property_descriptions with appropriate layer provenance
+  // 8. Return diff + confidence per field
+}
+```
+
+Triggered: manually (user clicks "Enrich" on per-property page), batch (overnight job for newly-added parcels), or by Coordinator (when a downstream module needs a field that's null).
+
+### 5.5 Multi-source reconciliation UI
+
+When sources disagree, the per-property page shows:
+
+```
+Year built: 2003 [Municipal: Fulton County, Aug 2024]
+  ⚠ OM reports 2005. View conflict →
+```
+
+Conflict viewer shows all layers side-by-side, lets user accept one as override.
+
+---
+
+## 6. Stream B — Data Library (Vault + Workbench)
+
+The Data Library is the platform's two-way data store. Files come in, files come out. The user can dump bulk data in, browse what's there, download what they uploaded, and export the corpus to other tools. It is not a one-way ingest sink.
+
+### 6.1 Storage architecture decision
+
+3,744 files, estimated 5-20GB total, requiring:
+- Inline viewing (high egress for PDF rendering)
+- Scalable to multi-user later
+- S3-compatible API (broad SDK support)
+- Cost-efficient at small scale
+
+**Decided: Cloudflare R2.** Zero egress fees is the deciding factor for a platform that will display many PDFs inline. S3-compatible API, $0.015/GB/month storage.
+
+**Configuration:**
+- Bucket: `jedire-archive` (private by default)
+- Access: signed URLs with short expiration (1 hour) for inline viewing
+- Optional: Cloudflare CDN in front for cached delivery to repeat viewers
+- Lifecycle: no automatic deletion (manual cleanup only)
+
+### 6.2 Upload Modalities
+
+The Data Library supports four upload paths. Each routes through the Intake Orchestrator (§7) for classification and enrichment.
+
+**6.2.1 In-app drag-drop folder upload (primary)**
+
+- Browser File System Access API for folder upload with structure preservation
+- Drops entire property folders containing T-12 + rent roll + tax bill + leasing stats + OM
+- Folder name → tentative `parcel_id` (orchestrator confirms or prompts)
+- Drag-drop zone on `/archive/upload` and on each per-property page
+- Progress UI per file with classification result and enrichment status
+- File System Access API fallback to multi-file selection when browser doesn't support directory access (Safari, older browsers)
+
+**6.2.2 Drag-drop multi-file (fallback)**
+
+When browser doesn't support folder access, accept multi-file selection. Loses folder structure but preserves bulk-upload capability. Orchestrator handles each file independently and uses filename + content classification.
+
+**6.2.3 Standalone CLI uploader (initial seeding)**
+
+For the 3,744 local archive files, a standalone Node.js script bypasses the browser entirely. Direct R2 upload from the local machine, then registers via the file registration API. See §6.3.
+
+**6.2.4 Programmatic API upload**
+
+`POST /api/v1/archive/files/upload` for integrations. Multipart form upload, returns file_id + intake_job_id. Same orchestration chain applies.
+
+### 6.3 Standalone CLI uploader (for initial 3,744-file seed)
+
+Standalone Node.js script that runs on Leon's local machine, uploads files directly to R2:
+
+```typescript
+// scripts/archive-bulk-file-upload.ts
+
+interface UploadConfig {
+  rootFolder: string;              // path to 296-property folder root
+  parcelIdResolver: (folderPath: string) => string;  // folder → parcel_id
+  documentTypeResolver: (filename: string) => DocumentType;
+  concurrency: number;             // default: 8 parallel uploads
+  resumeFromManifest?: string;     // path to manifest of prior run
+}
+
+async function bulkUpload(config: UploadConfig): Promise<UploadReport>
+```
+
+**Pipeline per file:**
+1. Compute sha256
+2. Check `data_library_files` via API for existing row with same sha256 → skip if present (idempotent)
+3. Identify parcel_id from folder structure
+4. Classify document_type via filename + `classifyDocument()` logic
+5. Multipart upload to R2 (chunks of 5MB for files >10MB)
+6. POST to backend: `POST /api/v1/archive/files/register` with file metadata + storage_key
+7. Backend writes `data_library_files` row, creates `intake_jobs` record, orchestrator picks up
+8. Log progress
+
+**Manifest output** (resumable):
+```json
+{
+  "started_at": "2026-05-21T...",
+  "completed_at": null,
+  "total_files": 3744,
+  "uploaded": 1847,
+  "skipped_dup": 23,
+  "failed": 5,
+  "intake_jobs_created": 1847,
+  "failures": [
+    { "file": "...", "error": "...", "retry_count": 3 }
+  ]
+}
+```
+
+Run can be interrupted and resumed without re-uploading completed files. **Estimated runtime:** 8 parallel uploads × ~2-3MB average × 3,744 files ≈ 30-90 minutes.
+
+### 6.4 File registration endpoint
+
+```
+POST /api/v1/archive/files/register
+
+Body:
+{
+  parcel_id: string | null,    // null when CLI uploader can't resolve from folder
+  sha256: string,
+  original_filename: string,
+  mime_type: string,
+  size_bytes: number,
+  storage_key: string,
+  document_type: string | null   // null when classifier didn't trigger yet
+}
+
+Response:
+{
+  file_id: uuid,
+  status: 'registered' | 'duplicate',
+  intake_job_id: uuid,           // orchestrator job created/linked
+  linked_observations: number    // count of historical_observations rows now linked
+}
+```
+
+Backend:
+1. INSERT into `data_library_files` (handles `ON CONFLICT (sha256) DO NOTHING`)
+2. Create `intake_jobs` row in `pending` state
+3. Backfill `historical_observations.source_file_ids` for matching rows (if parcel_id present)
+4. Return file_id, intake_job_id, and link count
+
+### 6.5 File operations
+
+User-facing operations on individual files or in bulk.
+
+**Per-file operations (file row in browse view or per-property page):**
+
+| Operation | Endpoint | Notes |
+|---|---|---|
+| View inline | `GET /api/v1/archive/files/:fileId/url` (signed URL) | PDF/XLSX/CSV/TXT inline |
+| Download original | `GET /api/v1/archive/files/:fileId/url?download=1` | Browser save dialog, original file as uploaded |
+| Download parsed JSON | `GET /api/v1/archive/files/:fileId/parsed` | The parser's extraction output as JSON |
+| Replace | `POST /api/v1/archive/files/:fileId/replace` (multipart) | Uploads new version, supersedes old (old kept, marked as superseded) |
+| Re-parse | `POST /api/v1/archive/files/:fileId/reparse` | Triggers parser + orchestrator re-run; parser_version updated |
+| Delete | `DELETE /api/v1/archive/files/:fileId` | Soft-delete (marks as deleted; file remains in R2 with 30-day TTL for recovery) |
+| Move to different property | `POST /api/v1/archive/files/:fileId/move` (body: `{ new_parcel_id }`) | Re-runs enrichment with new parcel context |
+
+**Bulk operations:**
+
+| Operation | Endpoint | Notes |
+|---|---|---|
+| Bulk download (zip) | `POST /api/v1/archive/files/bulk-download` (body: `{ file_ids[] }`) | Returns a download URL for a zip; zip generated server-side (or via Cloudflare Worker) |
+| Bulk delete | `POST /api/v1/archive/files/bulk-delete` | Soft-delete N files |
+| Bulk re-parse | `POST /api/v1/archive/files/bulk-reparse` | Useful when parser improves |
+| Bulk export corpus (CSV) | `GET /api/v1/archive/corpus/export?format=csv&filter=...` | Streams CSV of `historical_observations` rows matching filter |
+
+### 6.6 Browse / search / discovery
+
+Standalone Data Library page at `/archive/library`.
+
+**Layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│ DATA LIBRARY                                       [Upload]    │
+│                                                                │
+│ Filter: Document Type [All ▾]  Property [All ▾]  Status [All ▾]│
+│ Date range: [All ▾]                                            │
+│                                                                │
+│ Search: [____________________________________]                │
+├────────────────────────────────────────────────────────────────┤
+│ ☐ FILE                            PROPERTY      TYPE   STATUS  │
+│ ☐ Mirabella_T12_Dec2024.xlsx     Mirabella Lks  T-12   ✓      │
+│ ☐ Mirabella_RR_Dec2024.xlsx      Mirabella Lks  RR     ✓      │
+│ ☐ Mirabella_OM_2024.pdf          Mirabella Lks  OM     ✓      │
+│ ☐ Mirabella_TaxBill_2024.pdf     Mirabella Lks  Tax    ✓      │
+│ ☐ unknown_export.xlsx            (unresolved)   T-12   ⚠      │
+│ ...                                                            │
+│                                                                │
+│ Showing 3,744 files · 296 properties · 12 unresolved          │
+│                                                                │
+│ [Select All Visible] [Download Zip] [Delete] [Re-parse]        │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Filters available:**
+- Document type (T-12, RR, Tax, OM, Leasing Stats, Other)
+- Property (search-as-you-type from `property_descriptions.property_name` or `parcel_id`)
+- Parser status (success / partial / failed / unparsed)
+- Date range (upload date or document date)
+- Has source pill linkage / no linkage (for finding orphaned files)
+
+**Search:** by filename. Full-text search across parsed content is deferred per §2.
+
+**Bulk select:** checkbox per row, "select all visible" affordance, action bar appears when N>0 selected with bulk operations.
+
+### 6.7 File viewer infrastructure
+
+| File type | Render approach | Library |
+|---|---|---|
+| PDF | Inline rendering with pdf.js, page-by-page lazy load for >10 page files | `pdfjs-dist` |
+| XLSX/XLS | Table preview (first sheet, first 100 rows), full data via SheetJS | `xlsx` |
+| CSV | Table preview | Native + papaparse |
+| TXT | Plain text view | Native |
+| Other (images, etc.) | Native browser rendering or download fallback | — |
+
+**Signed URL pattern:**
+
+UI calls `GET /api/v1/archive/files/:fileId/url` → backend generates short-lived signed R2 URL → UI fetches file content. No file content ever passes through the backend for viewing (saves bandwidth, latency).
+
+### 6.8 Access control
+
+For this spec scope: all files are private to the current operator's account. The `data_library_files` table doesn't yet have multi-account scoping. When Mode 4 (workspace expansion) ships, file-level sharing layers on top.
+
+**License-restricted handling:** files with `license_restricted = true` cannot be shared via the recipient-sharing flow even if Mode 4 is active. Per `HISTORICAL_OBSERVATIONS_SPEC §7.4`, this is the seam where licensing terms are enforced.
+
+**For the 296 archive properties:** all files are Leon's firm's data with no licensing restrictions (decision per §11). Default `license_restricted = false` for the initial bulk seed.
+
+---
+
+## 7. Intake Orchestrator + Intake Inbox
+
+The active intelligence layer. When files arrive (via any upload path), the orchestrator coordinates classification → parsing → enrichment, and surfaces user prompts when blocked. This is the difference between a passive vault and an agent that helps you onboard data.
+
+### 7.1 Orchestrator state machine
+
+```
+                        ┌─────────────┐
+                        │   pending   │  file uploaded, awaiting pickup
+                        └──────┬──────┘
+                               │
+                        ┌──────▼──────┐
+                        │   parsing   │  classifyDocument() + parser invoked
+                        └──────┬──────┘
+                               │
+                  ┌────────────┼────────────┐
+                  │            │            │
+            (parse OK)   (parse fail)  (no parser fit)
+                  │            │            │
+                  │            ▼            ▼
+                  │      ┌─────────────────────────┐
+                  │      │  blocked_needs_user     │
+                  │      │  blocked_reason:        │
+                  │      │  parser_failed OR       │
+                  │      │  unrecognized_format    │
+                  │      └─────────────────────────┘
+                  │
+            ┌─────▼─────┐
+            │ enriching │  Try to resolve parcel_id + fill description gaps:
+            │           │  1. Other files for same parcel
+            │           │  2. Municipal API by address
+            │           │  3. Web search by name + address
+            │           │  4. Google Places by name + address
+            └─────┬─────┘
+                  │
+        ┌─────────┼─────────┐
+        │         │         │
+   (resolved)  (ambig)  (no_match)
+        │         │         │
+        ▼         ▼         ▼
+    ┌────────┐ ┌─────────────────┐
+    │complete│ │blocked_needs_user│
+    └────────┘ │ (ambiguous_match│
+               │  or no_identifier│
+               │  or municipal_   │
+               │  lookup_failed)  │
+               └─────────────────┘
+                       │
+              (user provides input)
+                       │
+                       ▼
+                  (re-run enrichment from blocked point)
+                       │
+              ┌────────┴────────┐
+              │                 │
+        (resolved)        (still stuck)
+              │                 │
+              ▼                 ▼
+          complete           failed
+                             (manual review required)
+```
+
+### 7.2 Prompting behavior
+
+**Moderate prompting policy (decided):** Agent tries all four resolution sources (other docs → municipal API → web search → Google Places) before prompting the user. Does not give up on first failure; does not retry indefinitely. When it has exhausted its capability surface and is genuinely stuck, surfaces a specific contextual question.
+
+**Block reasons and corresponding prompts:**
+
+| Block reason | When it fires | Prompt to user |
+|---|---|---|
+| `parser_failed` | Parser threw error or returned no data | "I couldn't parse this file. It looks like a [classified type] but the format isn't matching. Can you confirm what type of document this is?" |
+| `unrecognized_format` | Classifier couldn't determine type | "What kind of document is this? [T-12 / Rent Roll / Tax Bill / OM / Leasing Stats / Other]" |
+| `no_property_identifier` | Parsed but no address/name found in document | "I found [summary of extracted data]. Can you tell me the property name or address?" |
+| `ambiguous_match` | Resolver found multiple candidates | "There are N properties matching this. Which one? [list]" |
+| `municipal_lookup_failed` | Resolved name+address but county API returned no record | "I resolved this to [property], but I couldn't find it in [county] records. Is the address correct?" |
+| `multiple_municipal_matches` | County API returned >1 record for the address | "[N] municipal records match this address. Which parcel? [list]" |
+| `manual_review_required` | Post-user-input attempts still failed | "I'm marking this file as unresolved. You can retry or mark it as ignored." |
+
+The prompt is **specific to what's known and what's missing**. Not a generic "agent failed" message. Each prompt has actionable user options.
+
+### 7.3 Re-trigger logic
+
+When user submits input via Intake Inbox, the orchestrator does NOT re-run from scratch. It resumes from the blocked point with the new input merged into the job's `user_input` field. This:
+- Saves API calls (no redundant municipal lookups)
+- Saves time (no re-parsing)
+- Preserves the enrichment chain in `enrichment_log` for audit
+
+If the resumed attempt still fails, the job blocks again with a different reason or escalates to `manual_review_required`.
+
+### 7.4 Intake Inbox UI
+
+Route: `/archive/intake`
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ INTAKE INBOX                              [Refresh] [Filter: All]│
+├──────────────────────────────────────────────────────────────────┤
+│ 🟢 COMPLETE (1,243)         🟡 NEEDS INPUT (47)   🔴 STUCK (8)  │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│ 🟡 NEEDS YOUR INPUT                                              │
+│                                                                  │
+│ ┌────────────────────────────────────────────────────────────┐  │
+│ │ unknown_t12_export.xlsx                            5m ago  │  │
+│ │ T-12 · 240 units · $4.2M GPR · 2024                        │  │
+│ │                                                            │  │
+│ │ "I found a T-12 with 240 units and $4.2M annual GPR for   │  │
+│ │  2024, but no property identifier in the document. Can    │  │
+│ │  you tell me the property name or address?"               │  │
+│ │                                                            │  │
+│ │ Property name: [_____________________]                    │  │
+│ │ Address:       [_____________________]                    │  │
+│ │                                                            │  │
+│ │ [Skip for now]  [Submit]                                  │  │
+│ └────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│ ┌────────────────────────────────────────────────────────────┐  │
+│ │ The_Oaks_OM.pdf                                    12m ago │  │
+│ │ OM · "The Oaks" · 180 units                                │  │
+│ │                                                            │  │
+│ │ "I found an OM for 'The Oaks'. There are 12 properties    │  │
+│ │  named 'The Oaks' in our coverage area. Which one?"       │  │
+│ │                                                            │  │
+│ │ ○ The Oaks at Cypress · Tampa, FL · 200 units             │  │
+│ │ ○ The Oaks at Riverside · Orlando, FL · 168 units         │  │
+│ │ ○ The Oaks Apartments · Atlanta, GA · 192 units           │  │
+│ │ ○ [None of these — let me specify]                        │  │
+│ │                                                            │  │
+│ │ [Skip for now]  [Submit]                                  │  │
+│ └────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│ 🔴 STUCK                                                         │
+│ ┌────────────────────────────────────────────────────────────┐  │
+│ │ broker_email_attachment.pdf                        1h ago  │  │
+│ │ "Resolved 'Hampton Pointe' to Boynton Beach but municipal │  │
+│ │  records show no parcel at the address. File saved as     │  │
+│ │  unresolved."                                              │  │
+│ │ [Retry with new info]  [Mark as ignore]                   │  │
+│ └────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+During bulk seeding, this is a high-traffic surface — most of the 3,744 files will route through here. After seeding, it becomes low-traffic, used when new uploads come in.
+
+### 7.5 Enrichment chain detail
+
+When orchestrator enters `enriching` state, the chain runs in order:
+
+**Step 1 — Other documents for same parcel.** If parcel_id is already known from another file in the same folder, use it directly. Cheapest resolution path.
+
+**Step 2 — Municipal API by address.** If address was extracted, look up in the appropriate county property appraiser API. Returns canonical year_built, sqft, lot_size, owner, parcel #. Stream A gets populated.
+
+**Step 3 — Web search by name + address.** If name and address (or partial) are known, web-search for the property. Looks for: property website, ApartmentRatings, ApartmentList, news articles, developer announcements. Web findings inform the narrative field and supplement amenity / asset class detection.
+
+**Step 4 — Google Places by name + address.** Returns lat/long, business hours, photos, reviews, place_id. Reviews are an important secondary signal — concession trajectory often shows up in reviews before it shows up in market reports.
+
+After each step, the orchestrator updates `property_descriptions` with appropriate `LayeredValue` provenance and logs the step in `enrichment_log`. The user sees the full chain in the Intake Inbox when the job is in any blocked state.
+
+### 7.6 Bulk seed backfill
+
+For the 3,744 archive files already uploaded via CLI (pre-orchestrator), a one-time backfill creates retroactive IntakeJob records. Each job runs through the orchestrator. Many will resolve cleanly (parcel_id already in folder structure, classification already correct). Some will block in the Intake Inbox — which is the right outcome, those are files with bad/missing identification anyway.
+
+---
+
+## 8. Stream C — Asset Profile Time-Series UI
+
+### 8.1 Per-property page layout
+
+Route: `/archive/properties/:parcelId`
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ HEADER                                                            │
+│ Mirabella Lakes · 240 units · 2000 · Class B · Orlando MSA        │
+│ Address · MSA · Coverage tier · [Enrich] [Edit]                   │
+├──────────────────────────────────────────────────────────────────┤
+│ DESCRIPTION                                                       │
+│ Narrative paragraph from Research Agent with citations.          │
+│ Amenity tags · Construction details · Zoning · Flood zone        │
+├──────────────────────────────────────────────────────────────────┤
+│ TIME SERIES (sparkline grid)                                     │
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐             │
+│ │ Rent     │ │ Occup    │ │ NOI      │ │ Velocity │             │
+│ │ ╱╲╱╲╱╲   │ │ ─╲   ╱─  │ │ ─╱╲╱─    │ │ ╱╲╱╲     │             │
+│ └──────────┘ └──────────┘ └──────────┘ └──────────┘             │
+│ Time range: [1Y] [3Y] [5Y] [ALL]                                 │
+├──────────────────────────────────────────────────────────────────┤
+│ SOURCE DOCUMENTS                  [Upload more files for this →] │
+│ ▸ T-12 (2024-12).xlsx              [view] [download] [⋯]  ✓     │
+│ ▸ Rent Roll (2024-12).xlsx         [view] [download] [⋯]  ✓     │
+│ ▸ Mirabella_OM_2024.pdf            [view] [download] [⋯]  ✓     │
+│ ▸ 2024_Tax_Bill.pdf                [view] [download] [⋯]  ✓     │
+│ ▸ BoxScore_December_2024.pdf       [view] [download] [⋯]  ✓     │
+│                                                                  │
+│ [⋯] menu per file: View · Download · Re-parse · Replace ·       │
+│                    Move · Delete                                 │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 8.2 Sparkline grid
+
+Default metrics shown:
+- Gross potential rent
+- Effective rent (GPR - concessions)
+- Occupancy %
+- NOI (computed)
+- Signing velocity (rent-roll-derived)
+- Concessions $/lease (if available)
+- Renewal rate (if multi-snapshot)
+- OpEx total
+
+Click any sparkline → detail modal with full chart, overlay options, source pills, anomaly markers.
+
+### 8.3 Detail chart modal
+
+```
+Metric: NOI
+Range: 2020-01 → 2024-12
+
+[Line chart with monthly NOI values]
+
+Overlay: [None] [Submarket median] [Cohort (N=12 similar properties)]
+Annotations: Vacancy spike Q3 2022 (M07 event), Major renovation Q1 2023 (capex event)
+
+Data points: 60 monthly observations
+Coverage: 100%
+Sources: 5 T-12s, 5 rent rolls, 5 leasing reports → 12 source files
+[View source files →]
+```
+
+### 8.4 Source pills throughout
+
+Every displayed value has a hoverable source pill:
+
+```
+NOI: $1.2M  [src: T-12 Dec 2024 + Rent Roll Dec 2024]
+       ↑ hover shows file links
+       ↓ click opens file viewer
+```
+
+This is the substrate's mirror that the platform has been missing.
+
+---
+
+## 9. Phased Build Plan
+
+### Phase 0 — Substrate foundations (4 sessions)
+
+**Goal:** Schema, R2 storage, file registration, source pill wiring on a thin pilot slice.
+
+| Session | Scope |
+|---|---|
+| 0.1 | Schema migrations: `property_descriptions`, `data_library_files`, `intake_jobs`, `historical_observations.source_file_ids`. Reversible up/down migrations. R2 client wired and connectivity-tested. |
+| 0.2 | File registration endpoint (`POST /api/v1/archive/files/register`). IntakeJob creation on register. Backfill SQL for existing 1,034 corpus rows linking to file metadata reconstructed from local folder walk. |
+| 0.3 | Standalone CLI uploader. Run pilot upload of 15 pilot properties' files to R2. Verify file metadata, registration flow, source_file_ids linkage. |
+| 0.4 | Unified API endpoint (`GET /api/v1/properties/:parcelId/summary`). Returns description + files + time-series for the 15 pilot properties. |
+
+**Acceptance:** For each pilot property, API endpoint returns complete summary with R2-stored files, time-series with source_file_ids populated, and sparse description from existing OM extractions.
+
+**STOP. Review checkpoint before Phase 1.**
+
+### Phase 1 — In-app upload + Intake Inbox foundation (3 sessions)
+
+**Goal:** Browser drag-drop upload works. IntakeJob lifecycle scaffolded. Inbox renders pending jobs.
+
+| Session | Scope |
+|---|---|
+| 1.1 | Drag-drop upload UI (`/archive/upload`). File System Access API for folder upload with structure preservation. Multi-file fallback for unsupported browsers. Progress per file. Direct-to-R2 upload via signed URLs (no backend bottleneck for file body). |
+| 1.2 | Intake Orchestrator service skeleton (`src/services/intake-orchestrator/`). State machine: pending → parsing → enriching → complete/blocked. Wired to file registration endpoint. Logs all transitions to `intake_jobs.enrichment_log`. |
+| 1.3 | Intake Inbox UI (`/archive/intake`). Renders pending/complete/blocked job columns. Empty-state for no jobs. No prompting logic yet — that's Phase 2. |
+
+**Acceptance:** User can drag a property folder onto the upload page; files appear in Intake Inbox as `pending` then progress through `parsing`. R2 storage populated. IntakeJob records created and visible.
+
+### Phase 2 — Intake Orchestrator enrichment + prompting (3 sessions)
+
+**Goal:** Orchestrator runs the full enrichment chain. Promptable-blocker pattern works end-to-end.
+
+| Session | Scope |
+|---|---|
+| 2.1 | Enrichment chain: other-docs → municipal stub → web stub → Google Places stub. Initially most steps are placeholder; Phase 7 + 8 fill in real implementations. Block-reason classification based on what each step returns. |
+| 2.2 | Promptable-blocker pattern: when orchestrator blocks, generates targeted user prompt based on block_reason. Prompt rendering in Intake Inbox with form inputs (text, radio for ambiguous matches, etc.). Submit → orchestrator resumes from blocked state. |
+| 2.3 | OM extraction routing fix (moved here from old Phase 2 because it's coupled to orchestrator): extend parse-om persistence to write all extracted fields to `property_descriptions` with `layers.om` provenance. Backfill from prior parse-om runs. |
+
+**Acceptance:** Uploading a file with no parcel identifier triggers a prompt in Intake Inbox; user provides identifier; orchestrator resumes and completes the job. Properties with parsed OMs now have rich `property_descriptions` populated.
+
+### Phase 3 — File operations layer (2 sessions)
+
+**Goal:** Users can manage files individually.
+
+| Session | Scope |
+|---|---|
+| 3.1 | Per-file operations: download original, download parsed JSON, view inline, re-parse, delete (soft). Endpoint implementations + UI action menu. |
+| 3.2 | Replace + move operations: upload new version (supersede old, keep audit trail), move file to different parcel_id (re-runs enrichment for new context). |
+
+**Acceptance:** All per-file operations work from both browse view and per-property page. Deleted files are recoverable for 30 days; superseded files marked but retained.
+
+### Phase 4 — Data Library browse surface (3 sessions)
+
+**Goal:** Users can browse, filter, and search across all files.
+
+| Session | Scope |
+|---|---|
+| 4.1 | Browse page (`/archive/library`) with file list, multi-column sortable, pagination. |
+| 4.2 | Filters: document type, property, parser status, date range. Filter chip UX. Search by filename. |
+| 4.3 | Bulk select + bulk action bar: select all visible, select all in filter, action bar for bulk operations (download zip, delete, re-parse). |
+
+**Acceptance:** User can find any file via filters in under 30 seconds. Bulk operations work on up to 500 selected files.
+
+### Phase 5 — Per-property page UI (3 sessions)
+
+**Goal:** The flagship per-property view.
+
+| Session | Scope |
+|---|---|
+| 5.1 | Page shell + header + description section. Renders existing data from unified API. Source pills (display-only, no viewer yet). |
+| 5.2 | File list section with per-file operations from Phase 3. File viewer infrastructure: PDF inline via pdf.js, XLSX preview via SheetJS, fallback download. Signed-URL flow. |
+| 5.3 | Time-series sparkline grid. Click-through to detail modal. Source pill click → opens file viewer to relevant document. |
+
+**Acceptance:** Navigation to `/archive/properties/:parcelId` renders a complete per-property view. PDF and XLSX files render inline. All source pills are click-functional.
+
+### Phase 6 — Bulk operations + export (2 sessions)
+
+**Goal:** Users can take their data out.
+
+| Session | Scope |
+|---|---|
+| 6.1 | Bulk file download (zip): backend-generated zip via Cloudflare Worker or zip stream. Per-property folder export (all files for a parcel in a single zip). |
+| 6.2 | CSV corpus export: streams filtered `historical_observations` rows as CSV. Filter parameters match the browse surface. Excel export option (formatted) for smaller exports. |
+
+**Acceptance:** User can download all files for a property as a single zip. User can export filtered corpus data as CSV.
+
+### Phase 7 — Municipal API enrichment (3 sessions)
+
+**Goal:** Replace orchestrator's municipal stub with real implementations. Backfill across full archive.
+
+| Session | Scope |
+|---|---|
+| 7.1 | Municipal wrapper service (`src/services/municipal/`). Implementations for top 3 Florida counties (highest archive density). Normalized result shape. Wired into orchestrator's enrichment chain (replaces stub). |
+| 7.2 | Fulton County (Atlanta) + Dallas Central Appraisal District. Batch enrichment runner. |
+| 7.3 | Run batch enrichment across all 296 archive properties via orchestrator backfill. Populate `property_descriptions.year_built` (canonical), sqft, lot_size, zoning. Layer provenance preserved. |
+
+**Acceptance:** Coverage of legal attributes (year_built, sqft, lot_size) approaches 100% for archive properties (limited only by counties not yet implemented). Intake Orchestrator auto-resolves new uploads via municipal API as the second resolution step.
+
+### Phase 8 — Research Agent archive enrichment mode (3 sessions)
+
+**Goal:** Replace web/Google Places stubs with real implementations. Narrative descriptions generated.
+
+| Session | Scope |
+|---|---|
+| 8.1 | Replace orchestrator's web search stub: Research Agent's web research capability wired into enrichment chain. Property name + address → search → extract relevant signals. |
+| 8.2 | Replace Google Places stub: real Google Places API integration. Photos, reviews, amenities extracted. Stream A amenity flags populated. |
+| 8.3 | Narrative description generation. Research Agent synthesizes a paragraph with citations to source files and external URLs. Writes to `property_descriptions.narrative`. |
+
+**Acceptance:** Property descriptions for archive properties are filled with municipal canonical for legal attributes, OM extraction for structural attributes, web research for narrative + reviews + photos. Source pills work end-to-end.
+
+### Phase 9 — Multi-source reconciliation UI (2 sessions)
+
+**Goal:** Conflicting values surface as a flag with a resolution path.
+
+| Session | Scope |
+|---|---|
+| 9.1 | Conflict detection: when multiple layers disagree on a field, flag on the per-property page. |
+| 9.2 | Conflict viewer UI: side-by-side layer comparison, accept-one button, manual override flow. |
+
+**Acceptance:** Conflicting source values are visible to the user with clear provenance and a one-click resolution path.
+
+### Phase 10 — Cohort Rollup view (5 sessions)
+
+See §14 for full detail. Phase 10 = Sessions 14.11.1 through 14.11.5.
+
+**Acceptance:** Multi-dimensional cohort rollup with T-12 line-item aggregates across user-selected (Product × Class × MSA × vintage) cuts.
+
+---
+
+## 10. Sizing Summary
+
+| Phase | Sessions | Cumulative | Outcome |
+|---|---|---|---|
+| 0 — Substrate foundations | 4 | 4 | Schema + R2 + pilot working |
+| 1 — In-app upload + Intake Inbox foundation | 3 | 7 | Users can upload via browser |
+| 2 — Orchestrator enrichment + prompting | 3 | 10 | Agent runs chain, blocks with prompts |
+| 3 — File operations layer | 2 | 12 | Download, delete, replace, re-parse |
+| 4 — Data Library browse surface | 3 | 15 | Browse, filter, search across files |
+| 5 — Per-property page UI | 3 | 18 | The flagship per-property view |
+| 6 — Bulk operations + export | 2 | 20 | Zip download, CSV corpus export |
+| 7 — Municipal API enrichment | 3 | 23 | Real auto-resolution via county APIs |
+| 8 — Research Agent enrichment | 3 | 26 | Web + Google Places integration |
+| 9 — Multi-source reconciliation | 2 | 28 | Conflict resolution UX |
+| 10 — Cohort Rollup view (§14) | 5 | 33 | Multi-dimensional analytics |
+
+Wait — that's 33. Let me reconcile: original 17 + Cohort Rollup 5 + intake/upload/file ops/browse/export = +12 (split as 3+2+3+2+2). Total should be 34 per the commitment. Re-checking phasing: yes, Phase 2 absorbs the OM extraction routing as session 2.3 (preserves the originally-separate session), while Phase 1 adds 3 net new sessions for upload+orchestrator+inbox foundation. Recount: 4+3+3+2+3+3+2+3+3+2+5 = 33. Spec captured 33; original commitment was 34 because OM extraction routing was a standalone phase. **Final total: 33 sessions** with the OM routing fix absorbed into Phase 2 as session 2.3. Net same scope, one cleaner phase boundary.
+
+**Total: 33 sessions for the complete per-property visibility + Data Library + cohort rollup stack.**
+
+Most visible win to the user lands at end of Phase 5 (18 sessions): users can upload, see all files, browse, search, download, and view the flagship per-property page. The remaining 15 sessions (Phases 6-10) deepen the surface with export, enrichment, conflict resolution, and analytical capability.
+
+**Recommended progress checkpoints with Leon:**
+- After Phase 0 — substrate validated, fire Phase 1
+- After Phase 2 — orchestrator working end-to-end, fire Phase 3
+- After Phase 5 — flagship UI shipped, decide whether to push through Phases 6-10 sequentially or interleave with other roadmap items (Comp ProForma reconstruction, F9 polish)
+
+---
+
+## 11. Open Decisions Before Phase 0 Dispatches
+
+All decisions resolved:
+
+1. **Storage provider:** Cloudflare R2 ✓
+2. **R2 account setup:** Leon-side ops, pre-Phase-0.1 ✓
+3. **License-restricted default:** `false` for all 296 archive files ✓
+4. **Property attributes table:** New `property_descriptions` table (not extending existing `properties`) ✓
+5. **Data Library scope:** Must + Should from capabilities matrix ✓
+6. **Bulk upload mechanism:** Both folder + multi-file ✓
+7. **Download format:** Configurable per-download (default original, parsed JSON optional) ✓
+8. **Intake orchestrator architecture:** Committed, 33 sessions ✓
+9. **Prompting behavior:** Moderate (try all four resolution sources before prompting) ✓
+
+Pre-Phase-0 ops (Leon-side, ~15-20 minutes):
+- Cloudflare account
+- R2 bucket: `jedire-archive`
+- R2 API tokens scoped to bucket
+- Add to Replit env vars: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_ENDPOINT`
+
+When complete, Phase 0.1 dispatch fires.
+
+---
+2. **R2 account setup.** Cloudflare account, R2 bucket created, API tokens generated. Pre-Phase-0 ops, not a build session.
+3. **License-restricted flag default.** Are any of the 296 archive files from licensed sources (CoStar exports, Yardi Matrix)? If yes, those need `license_restricted = true` set on upload. Default: false unless source detection identifies otherwise.
+4. **`property_descriptions` vs extending `properties`.** This spec proposes a new `property_descriptions` table. Alternative: extend the existing `properties` table (33 rows currently) with all the new fields. The new-table approach is cleaner because property_descriptions is fundamentally LayeredValue-shaped while existing `properties` columns are plain scalars; mixing them confuses the schema. Recommend new table; existing `properties` becomes a derived view or gets deprecated.
+
+---
+
+## 12. Pattern Discipline (carry forward)
+
+Per recent failures (Ticket A, F9 returns, F9 purchasePrice, F-key nav, parse-om year_built, OM extraction routing), the platform has accumulated 6 instances of the producer-writes-here-reader-reads-elsewhere pattern. **Every phase of this spec ships a paired test: a reader actually retrieves what a writer wrote.** Specifically:
+
+- Phase 0.4 acceptance: API endpoint returns the data written in 0.1-0.3.
+- Phase 2 acceptance: per-property page reads OM-extracted fields that parse-om persisted.
+- Phase 3 acceptance: source pill click opens the same file the parser ingested.
+- Phase 4 acceptance: municipal data written in 4.3 is read by the API endpoint in 0.4 (regression check).
+- Phase 5 acceptance: agent-written narrative is displayed by the page.
+
+Without these tests, the spec is just another set of write sites; the pattern recurs. With them, the substrate stays coherent.
+
+---
+
+## 13. Downstream Consumers (informative)
+
+This substrate unblocks:
+
+| Downstream | Substrate it consumes | Becomes possible |
+|---|---|---|
+| Comp ProForma Reconstruction | property_descriptions (structural features) + historical_observations (operating data) | Property-specific implied cap rates with nearest-neighbor OpEx estimation |
+| Inverse-Mode Cashflow Agent | Comp-derived exit caps from above | Solving max bid price against target IRR with defended assumptions |
+| M22 Post-Close Intelligence | Time-series query layer + corpus | Tracking deal performance against archived comparables |
+| M07 BASELINE_COEFFICIENTS empirical fit | Time-series with structural feature context | Regime-conditional traffic coefficients |
+| M35 playbook re-derivation | Historical observation pairings | Empirically-grounded event playbooks |
+
+This is the substrate's mirror. Everything downstream sharpens once the platform can see what it knows.
+
+---
+
+## 14. Addendum — Cohort Rollup View
+
+### 14.1 Purpose
+
+Per-Property Visibility surfaces single-property data. Cohort Rollup surfaces aggregate data across multiple properties grouped by user-selected dimensions. The two views are complementary: drill into a single property (per-property page) or zoom out to see how a segment is trending (Cohort Rollup).
+
+Bloomberg has a sector index for every category and lets users slice equities by any combination of (industry × geography × market cap × style). This is the same idea applied to RE — cohort indices selectable by any combination of (product type × asset class × MSA × vintage), with T-12 financial rollups normalized per-unit for comparability.
+
+The decision per Section 14 is **multi-dimensional grid as the primary cohort dimension** — not fixed cuts. Users define their cohort by selecting which dimensions to facet by and which to filter on; the system aggregates accordingly with cohort-size confidence indicators.
+
+### 14.2 Cohort Dimensions
+
+Available dimensions for cohort definition:
+
+| Dimension | Values | Source field |
+|---|---|---|
+| **Product type** | Garden, Mid-rise, High-rise, Townhome, SFR | `property_descriptions.stories_band` + structural inference |
+| **Asset class** | A, A-, B+, B, B-, C+, C | `property_descriptions.asset_class` |
+| **MSA** | All resolved MSAs in the corpus | `property_descriptions.msa` |
+| **Submarket** | Submarkets within MSA (deeper drill) | `property_descriptions.submarket` |
+| **Vintage band** | pre-1980, 1980-2000, 2000-2015, 2015+ | derived from `property_descriptions.year_built` |
+| **Unit count band** | <50, 50-200, 200+ | derived from `property_descriptions.unit_count` |
+| **Construction type** | Wood frame, Concrete, Steel, Mixed | `property_descriptions.construction_type` |
+| **Parking type** | Surface, Structured, Wrap, Podium | `property_descriptions.parking_type` |
+
+Each dimension can be used as:
+- **Facet** — splits the rollup grid (e.g., "facet by MSA" produces one row per MSA)
+- **Filter** — constrains cohort membership (e.g., "filter to Class B only")
+- **Drill-through** — click into a cohort cell to navigate into deeper detail
+
+A single cohort selection might be: `facet=[product_type, msa], filter={asset_class: 'B', vintage_band: ['2000-2015','2015+']}`. The result: one rollup row per (product_type, msa) cell, only including Class B properties built 2000+.
+
+### 14.3 Metrics Displayed
+
+Per cohort × year cell, the rollup shows:
+
+**Revenue (per-unit, annual):**
+- GPR/unit
+- Loss-to-lease/unit
+- Vacancy/unit
+- Concessions/unit
+- Other income/unit
+- EGI/unit (Effective Gross Income)
+
+**Expenses (per-unit, annual):**
+- Real estate tax/unit (often the dominant trajectory)
+- Insurance/unit (the FL story right now — material in any FL cohort)
+- Repairs & Maintenance/unit
+- Management fee/unit
+- Utilities/unit (split by metering type when known)
+- Marketing & advertising/unit
+- Payroll/unit
+- Replacement reserve/unit
+- Total OpEx/unit
+
+**Performance:**
+- NOI/unit
+- Operating margin %
+- Occupancy %
+- CAGR per line across the displayed period
+
+**Sale events (when applicable):**
+- Cap rate at sale (median + IQR across cohort sales in period)
+- Price/unit at sale
+- N of sales in cohort during period
+
+**Cohort metadata:**
+- N (number of contributing properties)
+- Confidence indicator (based on N + time-series completeness)
+- Coverage (% of contributing properties with data in the displayed year)
+
+### 14.4 Aggregation Method
+
+Default: **median** (resistant to outliers; appropriate for skewed financial distributions where one large property could dominate a mean).
+
+User-selectable aggregation modes:
+- Median (default)
+- Mean
+- Unit-count-weighted mean (for per-unit metrics where unit-weighted is more representative)
+- Distribution view (render P25 / P50 / P75 instead of single number)
+
+### 14.5 Cohort Size Guardrails
+
+Statistical confidence depends on N. The view enforces visibility of cohort size so users don't over-interpret thin cuts:
+
+| N | Treatment |
+|---|---|
+| ≥ 12 | Full aggregation, all metrics shown, high-confidence indicator (green) |
+| 6 ≤ N < 12 | Aggregation shown with medium-confidence indicator (yellow) |
+| 3 ≤ N < 6 | Aggregation shown with low-confidence indicator (red), individual properties listed below the aggregate |
+| < 3 | Aggregation suppressed; individual properties listed instead with a "cohort too small to aggregate" message |
+
+This prevents the failure mode of users drilling into Garden × Class B+ × Tampa × pre-1980 × Wood-frame, getting N=2, and treating the resulting average as a market signal.
+
+### 14.6 Time Dimension
+
+The rollup is yearly by default:
+- Annual T-12 rollups (typically 5-year window: 2020-2024)
+- Optional T-12 trailing window (current date - 12 months)
+- Optional custom range (user-picked start/end)
+
+### 14.7 Comparison Mode
+
+Side-by-side comparison of cohorts:
+
+```
+Garden × Class B × Atlanta        │   Mid-rise × Class B × Atlanta
+N = 84 · Confidence: HIGH         │   N = 23 · Confidence: HIGH
+                                  │
+GPR/unit   $14,820 → $18,120      │   GPR/unit   $19,240 → $24,180
+NOI/unit   $7,920 → $9,480        │   NOI/unit   $10,840 → $12,920
+OpEx/unit  $5,720 → $7,330        │   OpEx/unit  $7,440 → $9,580
+                                  │
+Δ NOI/unit Garden:    +19.7%      │   Δ NOI/unit Mid-rise:   +19.2%
+Δ OpEx Garden:        +28.1%      │   Δ OpEx Mid-rise:       +28.8%
+Cap @ sale (N=12):    5.7%        │   Cap @ sale (N=4):      5.3%
+```
+
+At-a-glance: Garden vs Mid-rise per-unit deltas, which segment is widening/narrowing in spread, where OpEx growth is concentrated, cap rate differential between product types within the same submarket.
+
+Also supports cohort vs MSA index ("how does Garden Class B Atlanta compare to all Atlanta multifamily?") and cohort vs national norm (where data permits).
+
+### 14.8 Export
+
+- Excel export of the rollup table (matches displayed shape)
+- Underlying property list as a separate sheet (N contributing parcel_ids with names + links to per-property pages)
+
+### 14.9 Multi-Dimensional Cohort Query Layer
+
+New service at `src/services/cohort-rollup/`:
+
+```typescript
+type CohortDimension = 
+  | 'product_type' | 'asset_class' | 'msa' | 'submarket' 
+  | 'vintage_band' | 'unit_count_band' | 'construction_type' | 'parking_type';
+
+type CohortMetric = 
+  | 'gpr' | 'egi' | 'noi' | 'opex_total' 
+  | 'opex_tax' | 'opex_insurance' | 'opex_rm' | 'opex_mgmt' 
+  | 'opex_utilities' | 'opex_marketing' | 'opex_payroll' | 'opex_reserves'
+  | 'occupancy' | 'cap_rate_at_sale';
+
+interface CohortQuery {
+  facets: CohortDimension[];
+  filters: Partial<Record<CohortDimension, string[]>>;
+  metrics: CohortMetric[];
+  range: { start: Date; end: Date };
+  granularity?: 'annual' | 't12_trailing';
+  aggregation?: 'median' | 'mean' | 'weighted_mean' | 'distribution';
+}
+
+interface CohortResult {
+  cells: Array<{
+    facet_values: Record<CohortDimension, string>;
+    n: number;
+    confidence: 'high' | 'medium' | 'low' | 'suppressed';
+    contributing_parcel_ids: string[];
+    metrics: Record<CohortMetric, YearlyValue[]>;
+  }>;
+}
+
+async function getCohortRollup(query: CohortQuery): Promise<CohortResult>
+```
+
+SQL-level aggregation: medians via `PERCENTILE_CONT(0.5) WITHIN GROUP`, IQR via `PERCENTILE_CONT(0.25)` and `PERCENTILE_CONT(0.75)`, distribution snapshots stored as pre-aggregated arrays where reasonable.
+
+### 14.10 Page Layout
+
+Route: `/archive/cohort-rollup`
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ COHORT ROLLUP                                                     │
+│                                                                   │
+│ DIMENSIONS:                                                       │
+│   Facet by:  [Product type ▾]                                    │
+│   Filter:    Asset Class [B ▾]  MSA [All ▾]                      │
+│             Vintage [All ▾]  Construction [All ▾]                │
+│                                                                   │
+│ Showing: Garden × Class B (across MSAs)                           │
+│ Cohort: N=84 properties · Confidence: HIGH                        │
+├──────────────────────────────────────────────────────────────────┤
+│ T-12 ROLLUP (PER UNIT, MEDIAN)                                    │
+│                                                                   │
+│             2020      2021      2022      2023      2024  CAGR    │
+│ GPR/unit   $14,820   $15,940   $17,210   $17,840   $18,120  4.8%  │
+│ Vacancy    $  984    $  831    $1,188    $1,479    $1,392  9.0%   │
+│ Concessns  $  198    $  219    $  324    $  468    $  410  20.0%  │
+│ EGI/unit   $13,640   $14,720   $15,890   $16,510   $16,810  5.4%  │
+│                                                                   │
+│ Tax/unit   $1,840    $1,920    $2,140    $2,310    $2,480  7.7%   │
+│ Insur/unit $  320    $  380    $  480    $  620    $  760  24.1%⚠ │
+│ R&M/unit   $1,180    $1,290    $1,360    $1,440    $1,510  6.4%   │
+│ Mgmt/unit  $  540    $  590    $  640    $  660    $  670  5.5%   │
+│ Util/unit  $  620    $  680    $  720    $  780    $  810  6.9%   │
+│ Mktg/unit  $  280    $  290    $  320    $  360    $  370  7.2%   │
+│ Payroll    $  940    $1,030    $  900    $  830    $  730 -6.1%↘  │
+│ Reserve    $    0    $    0    $    0    $    0    $    0   —     │
+│ OpEx total $5,720    $6,180    $6,560    $7,000    $7,330  6.4%   │
+│                                                                   │
+│ NOI/unit   $7,920    $8,540    $9,330    $9,510    $9,480  4.6%   │
+│ Op margin  58.1%    58.0%    58.7%    57.6%    56.4%             │
+│ Occupancy  93.4%    94.8%    93.1%    91.7%    92.3%             │
+│                                                                   │
+│ Cap rate at sale (N=12 sales): Median 5.7% · IQR 5.4-6.0%        │
+├──────────────────────────────────────────────────────────────────┤
+│ [Compare to: Mid-rise × Class B]                                  │
+│ [Compare to: Atlanta MSA index]                                   │
+│ [Export to Excel] [View 84 contributing properties →]             │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 14.11 Phase 10 Build Plan
+
+| Session | Scope |
+|---|---|
+| 7.1 | Multi-dimensional cohort query layer (`src/services/cohort-rollup/`). Accept arbitrary dimension combinations as facets/filters. SQL-level aggregation with median/mean/weighted-mean. Cohort-size guardrails enforced in query layer. Pre-aggregation where reasonable for performance. |
+| 7.2 | Cohort definition UI — dimension picker with clear facet-vs-filter UX, filter chip selection, cohort size live preview as dimensions change (debounced queries against the cohort count endpoint). |
+| 7.3 | Rollup table rendering — T-12 line items, per-unit, multi-year, with cohort size + confidence indicators. CAGR computation per line. Anomaly highlighting (lines with >2× cohort-average growth get visual flag). |
+| 7.4 | Comparison mode — side-by-side two-cohort layout. MSA index overlay ("cohort vs all MSA"). National norm overlay where data exists. |
+| 7.5 | Drill-down + export — click cohort cell → see contributing properties (linked to per-property pages). Excel export of rollup table + contributing properties sheet. Configurable column visibility for export. |
+
+**Phase 10: 5 sessions.** Depends on Phase 7 (municipal enrichment) populating `product_type` / `asset_class` for the full cohort. Cannot ship before then because the dimensions don't exist yet on the data.
+
+### 14.12 Acceptance Criteria
+
+- Selecting Garden × Class B × Atlanta returns a cohort with N ≥ 8 (assuming archive density supports it); cohort properties match independently-verified list
+- Per-line per-year metrics computed correctly (cross-check 3 random cohort cells against raw `historical_observations`)
+- Cohort size guardrails enforce confidence thresholds correctly (drill-down test: tightening filters to N=2 triggers suppression)
+- Side-by-side comparison renders two cohorts in a single view with delta computations
+- Drill-down click on cohort cell navigates to a property list filtered to the contributing parcels
+- Excel export produces a valid file matching displayed shape, with contributing properties on a second sheet
+
+### 14.13 Strategic Value
+
+This view delivers analytical capability competitors don't have:
+
+- **CoStar** publishes submarket averages but doesn't expose product-type cross-cuts with full OpEx line-item visibility
+- **RealPage / Yardi Matrix** have data but at proprietary aggregate level — not exposed as a user-driven analytical tool with arbitrary dimension selection
+- **Bloomberg** does this beautifully for equities but doesn't exist for RE at this granularity
+
+Combined with comp ProForma reconstruction and per-property visibility, Cohort Rollup is what makes the "Bloomberg Terminal for RE" positioning real. Multi-dimensional segment analysis with line-item granularity is exactly what equity traders use Bloomberg for. This is the surface that demos best — "show me how Garden Class B Atlanta OpEx has trended over 5 years, with insurance broken out" is a question every multifamily operator wants answered and no platform answers well today.
+
+---
+
+## END OF SPEC
+
+Implementation contract. Hand to bot in sequenced dispatches per Section 8. Each phase has acceptance criteria; each cumulative checkpoint enables the next.

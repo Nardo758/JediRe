@@ -70,6 +70,9 @@ export interface OMPropertyData {
   parkingRatio: number | null;
   amenities: string[];
   propertyType: 'garden' | 'mid-rise' | 'high-rise' | 'townhome' | null;
+  assetClass: 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C' | null;
+  constructionType: 'wood_frame' | 'concrete' | 'steel' | 'mixed' | null;
+  parkingType: 'surface' | 'structured' | 'wrap' | 'podium' | null;
 }
 
 export interface OMReplacementCost {
@@ -300,7 +303,10 @@ Return ONLY valid JSON matching this schema:
     "parkingSpaces": "number or null",
     "parkingRatio": "number or null",
     "amenities": ["array of strings"],
-    "propertyType": "garden|mid-rise|high-rise|townhome or null"
+    "propertyType": "garden|mid-rise|high-rise|townhome or null",
+    "assetClass": "A|A-|B+|B|B-|C+|C or null (infer from broker language: 'Class A', 'luxury', 'institutional quality' → A; 'Class B', 'workforce', 'value-add' → B; 'Class C', 'affordable' → C; use +/- suffixes when evident)",
+    "constructionType": "wood_frame|concrete|steel|mixed or null (infer from document description of building construction)",
+    "parkingType": "surface|structured|wrap|podium or null (infer from parking description)"
   },
   "replacementCost": {
     "landValue": "number or null",
@@ -621,6 +627,9 @@ function normalizeExtraction(raw: any, textLength: number): OMExtraction {
       parkingRatio: raw.property?.parkingRatio ?? null,
       amenities: raw.property?.amenities ?? [],
       propertyType: raw.property?.propertyType ?? null,
+      assetClass: raw.property?.assetClass ?? null,
+      constructionType: raw.property?.constructionType ?? null,
+      parkingType: raw.property?.parkingType ?? null,
     },
     replacementCost: {
       landValue: raw.replacementCost?.landValue ?? null,

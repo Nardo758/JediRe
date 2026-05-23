@@ -857,16 +857,23 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
 /**
  * POST /api/v1/archive/update-pd
  *
- * Write extracted address/fields from parse-om to property_descriptions.
- * Accepts parcel_id + extracted address/city/state/yearBuilt/units as JSON body.
- * UPSERTs with LayeredValue JSONB format, COALESCE so manual overrides are preserved.
+ * Write extracted fields from parse-om to property_descriptions.
+ * All mutable fields use LayeredValue JSONB with `layers.om` provenance.
+ * CASE guard preserves manual_override values and skips null-resolved fields.
  *
- * Auth: x-ingest-secret header (same as /ingest-rows).
+ * Auth: x-ingest-secret header.
  * Body: {
  *   parcel_id: string,
  *   address?: string, city?: string, state?: string, zip?: string,
  *   year_built?: number, unit_count?: number, stories?: number,
- *   property_name?: string
+ *   property_name?: string,
+ *   -- New full-routing fields:
+ *   asset_class?: string, construction_type?: string, parking_type?: string,
+ *   parking_spaces?: number, parking_ratio?: number,
+ *   property_type?: string, rentable_sqft?: number, building_count?: number,
+ *   year_renovated?: number, county?: string,
+ *   amenities?: string[],   -- mapped to has_pool/has_fitness/... boolean LVs
+ *   narrative?: string      -- investment thesis text
  * }
  */
 router.post('/update-pd', async (req: Request, res: Response) => {
@@ -875,7 +882,17 @@ router.post('/update-pd', async (req: Request, res: Response) => {
     return res.status(401).json({ success: false, error: 'Invalid or missing x-ingest-secret header' });
   }
 
-  const { parcel_id, address, city, state, zip, year_built, unit_count, stories, property_name } = req.body;
+  const {
+    parcel_id, address, city, state, zip,
+    year_built, unit_count, stories, property_name,
+    asset_class, construction_type, parking_type,
+    parking_spaces, parking_ratio,
+    property_type, rentable_sqft, building_count,
+    year_renovated, county,
+    amenities,
+    narrative,
+  } = req.body;
+
   if (!parcel_id) {
     return res.status(400).json({ success: false, error: 'parcel_id is required' });
   }
@@ -886,65 +903,99 @@ router.post('/update-pd', async (req: Request, res: Response) => {
   const params: unknown[] = [];
   let idx = 0;
 
-  // Address
+  // Helper: build a LayeredValue JSONB parameter and a CASE-guarded SET clause.
+  // Fields with resolution_rule 'om_canonical' always take the OM value unless
+  // a manual_override is present. Fields with 'highest_confidence' only fill
+  // if the column is currently null/empty.
+  function pushOmLV(
+    col: string,
+    value: unknown,
+    rule: 'highest_confidence' | 'om_canonical' = 'highest_confidence',
+  ) {
+    if (value === undefined || value === null) return;
+    idx++;
+    const lv = JSON.stringify({
+      resolved: value,
+      layers: { om: { value, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
+      resolution_rule: rule,
+    });
+    if (rule === 'om_canonical') {
+      sets.push(`${col} = CASE WHEN (property_descriptions.${col}->>'resolution_rule') = 'manual_override' THEN property_descriptions.${col} ELSE $${idx}::jsonb END`);
+    } else {
+      sets.push(`${col} = CASE WHEN property_descriptions.${col} IS NULL OR (property_descriptions.${col}->>'resolved') IS NULL OR (property_descriptions.${col}->>'resolved') = '' THEN $${idx}::jsonb ELSE property_descriptions.${col} END`);
+    }
+    params.push(lv);
+  }
+
+  // ── Address ───────────────────────────────────────────────────────────────
   if (address && city) {
     idx++;
+    const addrVal = { street: address, city, state: state || '', zip: zip || '' };
     const addrJson = JSON.stringify({
-      resolved: { street: address, city, state: state || '', zip: zip || '' },
-      layers: {
-        om: { value: { street: address, city, state: state || '', zip: zip || '' }, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' }
-      },
-      resolution_rule: 'highest_confidence'
+      resolved: addrVal,
+      layers: { om: { value: addrVal, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
+      resolution_rule: 'highest_confidence',
     });
-    sets.push(`address = CASE WHEN property_descriptions.address IS NULL OR (property_descriptions.address->>'resolution_rule' IS DISTINCT FROM 'manual_override') OR (property_descriptions.address->>'resolution_rule' IS NULL AND property_descriptions.address->'resolved'->>'street' IS NOT NULL AND (property_descriptions.address->'resolved'->>'street' ILIKE '%pdf%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%RR%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%Teaser%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%T12%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%modified%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%Rent Roll%')) THEN $${idx}::jsonb ELSE property_descriptions.address END`);
+    // Override garbage filename-derived addresses but preserve real addresses + manual overrides
+    sets.push(`address = CASE WHEN property_descriptions.address IS NULL OR (property_descriptions.address->>'resolution_rule' IS DISTINCT FROM 'manual_override') AND (property_descriptions.address->'resolved'->>'street' IS NULL OR property_descriptions.address->'resolved'->>'street' ILIKE '%pdf%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%RR%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%Teaser%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%T12%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%modified%' OR property_descriptions.address->'resolved'->>'street' ILIKE '%Rent Roll%') THEN $${idx}::jsonb ELSE property_descriptions.address END`);
     params.push(addrJson);
   }
 
-  // year_built
-  if (year_built !== undefined && year_built !== null) {
-    idx++;
-    const ybJson = JSON.stringify({
-      resolved: year_built,
-      layers: { om: { value: year_built, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
-      resolution_rule: 'highest_confidence'
-    });
-    sets.push(`year_built = CASE WHEN property_descriptions.year_built IS NULL OR (property_descriptions.year_built->>'resolved' IS NULL) OR property_descriptions.year_built->>'resolved' = '' THEN $${idx}::jsonb ELSE property_descriptions.year_built END`);
-    params.push(ybJson);
+  // ── County ────────────────────────────────────────────────────────────────
+  if (county) pushOmLV('county', county);
+
+  // ── Physical: numeric LayeredValues ───────────────────────────────────────
+  if (year_built !== undefined && year_built !== null) pushOmLV('year_built', year_built);
+  if (year_renovated !== undefined && year_renovated !== null) pushOmLV('year_renovated', year_renovated);
+  if (unit_count !== undefined && unit_count !== null) pushOmLV('unit_count', unit_count);
+  if (stories !== undefined && stories !== null) pushOmLV('stories', stories);
+  if (building_count !== undefined && building_count !== null) pushOmLV('building_count', building_count);
+  if (rentable_sqft !== undefined && rentable_sqft !== null) pushOmLV('rentable_sqft', rentable_sqft);
+  if (parking_spaces !== undefined && parking_spaces !== null) pushOmLV('parking_spaces', parking_spaces);
+  if (parking_ratio !== undefined && parking_ratio !== null) pushOmLV('parking_ratio', parking_ratio);
+
+  // ── Classification: OM is canonical for these (marketing context) ─────────
+  if (asset_class) pushOmLV('asset_class', asset_class, 'om_canonical');
+  if (construction_type) pushOmLV('construction_type', construction_type, 'om_canonical');
+  if (parking_type) pushOmLV('parking_type', parking_type, 'om_canonical');
+  if (property_type) pushOmLV('property_type', property_type, 'om_canonical');
+
+  // ── Narrative (investment thesis) ─────────────────────────────────────────
+  if (narrative) pushOmLV('narrative', narrative, 'om_canonical');
+
+  // ── Amenities: string array → keep legacy column + map to boolean flags ────
+  if (Array.isArray(amenities) && amenities.length > 0) {
+    const lower = amenities.map((a: string) => a.toLowerCase());
+    const matches = (keywords: string[]) => lower.some(a => keywords.some(k => a.includes(k)));
+
+    const amenityMap: Record<string, boolean> = {
+      has_pool:              matches(['pool', 'swimming']),
+      has_fitness:           matches(['fitness', 'gym', 'workout']),
+      has_clubhouse:         matches(['clubhouse', 'club house', 'club room', 'resident lounge', 'community room']),
+      has_concierge:         matches(['concierge']),
+      has_business_center:   matches(['business center', 'co-working', 'coworking', 'business lounge', 'work lounge']),
+      has_dog_park:          matches(['dog park', 'pet park', 'bark park', 'dog run']),
+      is_master_metered:     matches(['master meter', 'master-meter', 'master metered']),
+      is_individual_metered: matches(['individual meter', 'sub-meter', 'submeter', 'individually metered']),
+    };
+
+    for (const [col, val] of Object.entries(amenityMap)) {
+      pushOmLV(col, val, 'om_canonical');
+    }
+
+    // Also update the legacy array-valued amenities JSONB column
+    pushOmLV('amenities', amenities, 'om_canonical');
   }
 
-  // unit_count
-  if (unit_count !== undefined && unit_count !== null) {
+  // ── Property name ─────────────────────────────────────────────────────────
+  if (property_name) {
     idx++;
-    const ucJson = JSON.stringify({
-      resolved: unit_count,
-      layers: { om: { value: unit_count, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
-      resolution_rule: 'highest_confidence'
-    });
-    sets.push(`unit_count = CASE WHEN property_descriptions.unit_count IS NULL OR (property_descriptions.unit_count->>'resolved' IS NULL) OR property_descriptions.unit_count->>'resolved' = '' THEN $${idx}::jsonb ELSE property_descriptions.unit_count END`);
-    params.push(ucJson);
-  }
-
-  // stories
-  if (stories !== undefined && stories !== null) {
-    idx++;
-    const stJson = JSON.stringify({
-      resolved: stories,
-      layers: { om: { value: stories, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
-      resolution_rule: 'highest_confidence'
-    });
-    sets.push(`stories = CASE WHEN property_descriptions.stories IS NULL OR (property_descriptions.stories->>'resolved' IS NULL) THEN $${idx}::jsonb ELSE property_descriptions.stories END`);
-    params.push(stJson);
+    sets.push(`property_name = CASE WHEN property_descriptions.property_name IS NULL THEN $${idx}::jsonb ELSE property_descriptions.property_name END`);
+    params.push(JSON.stringify({ resolved: property_name, layers: { om: { value: property_name, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } }, resolution_rule: 'highest_confidence' }));
   }
 
   if (sets.length === 0) {
     return res.status(400).json({ success: false, error: 'No fields to update' });
-  }
-
-  // Property name (not LayeredValue, just plain text)
-  if (property_name) {
-    idx++;
-    sets.push(`property_name = CASE WHEN property_descriptions.property_name IS NULL THEN $${idx} ELSE property_descriptions.property_name END`);
-    params.push(property_name);
   }
 
   idx++;
@@ -952,7 +1003,7 @@ router.post('/update-pd', async (req: Request, res: Response) => {
 
   try {
     await pool.query(`UPDATE property_descriptions SET ${sets.join(', ')}, updated_at = NOW() WHERE parcel_id = $${idx}`, params);
-    logger.info('[archive/update-pd] Updated', { parcel_id, address, city, year_built, unit_count });
+    logger.info('[archive/update-pd] Updated', { parcel_id, address, city, year_built, unit_count, asset_class, construction_type, has_narrative: !!narrative, amenity_count: Array.isArray(amenities) ? amenities.length : 0 });
     return res.json({ success: true, parcel_id });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

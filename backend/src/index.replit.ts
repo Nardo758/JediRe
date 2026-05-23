@@ -470,6 +470,11 @@ app.use('/api/v1/news-connections', newsConnectionsRoutes);
 import archiveRouter from './api/rest/archive.routes';
 app.use('/api/v1/archive', archiveRouter);
 
+// Per-Property Visibility Substrate — unified summary + file-list endpoints.
+// Mounted before requireAuth catch-alls; each route guards itself.
+import { createArchivePropertiesRouter } from './api/rest/archive-properties.routes';
+app.use('/api/v1/properties', requireAuth, createArchivePropertiesRouter(pool));
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);

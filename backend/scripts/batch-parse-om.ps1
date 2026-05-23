@@ -75,13 +75,29 @@ foreach ($om in $omFiles) {
     $yb = $obj.yearBuilt
     $uc = $obj.units
 
-    # Count stories from extraction
-    $stories = if ($obj.extraction -and $obj.extraction.property -and $obj.extraction.property.stories) { $obj.extraction.property.stories } else { $null }
+    # Pull all extraction fields from property section
+    $prop = if ($obj.extraction -and $obj.extraction.property) { $obj.extraction.property } else { $null }
+
+    $stories      = if ($prop -and $prop.stories)      { $prop.stories }      else { $null }
+    $buildings    = if ($prop -and $prop.buildings)    { $prop.buildings }    else { $null }
+    $netRentSF    = if ($prop -and $prop.netRentableSF){ $prop.netRentableSF } else { $null }
+    $yrRenovated  = if ($prop -and $prop.yearRenovated){ $prop.yearRenovated } else { $null }
+    $county       = if ($prop -and $prop.county)       { $prop.county }       else { $null }
+    $parkSpaces   = if ($prop -and $prop.parkingSpaces){ $prop.parkingSpaces } else { $null }
+    $parkRatio    = if ($prop -and $prop.parkingRatio) { $prop.parkingRatio }  else { $null }
+    $amenities    = if ($prop -and $prop.amenities)    { $prop.amenities }     else { @() }
+    $propType     = if ($prop -and $prop.propertyType) { $prop.propertyType }  else { $null }
+    $assetClass   = if ($prop -and $prop.assetClass)   { $prop.assetClass }    else { $null }
+    $constType    = if ($prop -and $prop.constructionType) { $prop.constructionType } else { $null }
+    $parkType     = if ($prop -and $prop.parkingType)  { $prop.parkingType }   else { $null }
+
+    # Investment thesis → narrative
+    $narrative    = if ($obj.extraction -and $obj.extraction.investmentThesis) { $obj.extraction.investmentThesis } else { $null }
 
     if ($addr -and $city) {
-      Write-Host " OK $addr, $city, $stateCode | yb=$yb units=$uc" -NoNewline
+      Write-Host " OK $addr, $city, $stateCode | yb=$yb units=$uc class=$assetClass" -NoNewline
 
-      # Step 2: POST to update-pd to write to property_descriptions
+      # Step 2: POST to update-pd to write all extracted fields to property_descriptions
       $body = @{
         parcel_id = $parcelId
         address = $addr
@@ -89,24 +105,59 @@ foreach ($om in $omFiles) {
         state = $stateCode
         zip = $zip
       }
-      if ($yb) { $body.year_built = [int]$yb }
-      if ($uc) { $body.unit_count = [int]$uc }
-      if ($stories) { $body.stories = [int]$stories }
+      if ($yb)           { $body.year_built      = [int]$yb }
+      if ($uc)           { $body.unit_count       = [int]$uc }
+      if ($stories)      { $body.stories          = [int]$stories }
+      if ($buildings)    { $body.building_count   = [int]$buildings }
+      if ($netRentSF)    { $body.rentable_sqft    = [int]$netRentSF }
+      if ($yrRenovated)  { $body.year_renovated   = [int]$yrRenovated }
+      if ($county)       { $body.county           = [string]$county }
+      if ($parkSpaces)   { $body.parking_spaces   = [int]$parkSpaces }
+      if ($parkRatio)    { $body.parking_ratio    = [double]$parkRatio }
+      if ($propType)     { $body.property_type    = [string]$propType }
+      if ($assetClass)   { $body.asset_class      = [string]$assetClass }
+      if ($constType)    { $body.construction_type = [string]$constType }
+      if ($parkType)     { $body.parking_type     = [string]$parkType }
+      if ($narrative)    { $body.narrative        = [string]$narrative }
+      if ($amenities -and $amenities.Count -gt 0) {
+        $body.amenities = $amenities
+      }
 
       # Use native PowerShell HTTP (more reliable than curl for JSON POST)
       try {
-        $jsonBody = $body | ConvertTo-Json -Compress
+        $jsonBody = $body | ConvertTo-Json -Compress -Depth 5
         $null = Invoke-WebRequest -Uri "$Endpoint/update-pd" -Method Post -Headers @{ "x-ingest-secret" = $Secret } -Body $jsonBody -ContentType "application/json" -TimeoutSec 30 -UseBasicParsing
         Write-Host " [pd OK]"
       } catch {
         Write-Host " [pd FAIL: $($_.Exception.Message)]"
       }
 
-      $state[$parcelId] = @{ done = $true; address = $addr; city = $city; state = $stateCode; zip = $zip; yearBuilt = $yb; units = $uc; stories = $stories }
+      $state[$parcelId] = @{ done = $true; address = $addr; city = $city; state = $stateCode; zip = $zip; yearBuilt = $yb; units = $uc; stories = $stories; assetClass = $assetClass }
       $success++
     } else {
-      Write-Host " OK (no address) | yb=$yb units=$uc"
-      $state[$parcelId] = @{ done = $true; address = ""; yearBuilt = $yb; units = $uc }
+      Write-Host " OK (no address) | yb=$yb units=$uc class=$assetClass"
+
+      # Still write non-address fields even when address is missing
+      if ($yb -or $uc -or $assetClass -or $narrative -or ($amenities -and $amenities.Count -gt 0)) {
+        $body = @{ parcel_id = $parcelId }
+        if ($yb)         { $body.year_built      = [int]$yb }
+        if ($uc)         { $body.unit_count       = [int]$uc }
+        if ($assetClass) { $body.asset_class      = [string]$assetClass }
+        if ($constType)  { $body.construction_type = [string]$constType }
+        if ($parkType)   { $body.parking_type     = [string]$parkType }
+        if ($propType)   { $body.property_type    = [string]$propType }
+        if ($narrative)  { $body.narrative        = [string]$narrative }
+        if ($amenities -and $amenities.Count -gt 0) { $body.amenities = $amenities }
+        try {
+          $jsonBody = $body | ConvertTo-Json -Compress -Depth 5
+          $null = Invoke-WebRequest -Uri "$Endpoint/update-pd" -Method Post -Headers @{ "x-ingest-secret" = $Secret } -Body $jsonBody -ContentType "application/json" -TimeoutSec 30 -UseBasicParsing
+          Write-Host " [pd OK (no-addr)]"
+        } catch {
+          Write-Host " [pd FAIL: $($_.Exception.Message)]"
+        }
+      }
+
+      $state[$parcelId] = @{ done = $true; address = ""; yearBuilt = $yb; units = $uc; assetClass = $assetClass }
       $success++
     }
   } else {
