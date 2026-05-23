@@ -42,7 +42,7 @@ interface EnrichState {
   }>;
 }
 
-const STATE_PATH = path.resolve(__dirname, '..', 'docs', 'operations', 'ARCHIVE_MUNICIPAL_STATE.json');
+const STATE_PATH = path.resolve(__dirname, '..', 'docs', 'operations', 'ARCHIVE_MUNICIPAL_HTTP_STATE.json');
 
 function loadState(): EnrichState {
   try {

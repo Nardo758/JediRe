@@ -1,0 +1,349 @@
+{
+  "startedAt": "2026-05-23T23:51:31.716Z",
+  "completedAt": "2026-05-23T23:52:47.548Z",
+  "totalProperties": 296,
+  "enriched": 0,
+  "errors": 0,
+  "skippedNoAddress": 0,
+  "perProperty": {
+    "1420 Magnolia": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "45 Eighty Dunwoody": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "72 West": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "7900 Park Central": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "860 South": {
+      "status": "done",
+      "apiEndpoint": "fulton_ga",
+      "fieldsFilled": [
+        "unit_count",
+        "address"
+      ]
+    },
+    "900 Dwell": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Accent 2050": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Alta Dairies": {
+      "status": "done",
+      "apiEndpoint": "fulton_ga",
+      "fieldsFilled": [
+        "address"
+      ]
+    },
+    "Alta East": {
+      "status": "done",
+      "apiEndpoint": "fulton_ga",
+      "fieldsFilled": [
+        "address"
+      ]
+    },
+    "Altis & Altra": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Ansley at Princeton Lakes": {
+      "status": "done",
+      "apiEndpoint": "fulton_ga",
+      "fieldsFilled": [
+        "unit_count",
+        "address"
+      ]
+    },
+    "Bainbridge Aviation Crossings": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Barcelona Apartments": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Broadstone Sugar Hill": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Cadence Sugar Hill": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Chapel Hill": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Citadel Lookout": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Citizen House": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Citron Allen": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Cottages at emerald Creek": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Crest at Flower Branch": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Echo  Lakeside": {
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
+    },
+    "Elan Powers Ferry": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Element Galleria": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Emblem Greyson": {
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
+    },
+    "Gateway at Hartfield": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Hawthorne at Clairmont": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Heights at Sugarloaf": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Highlnad Ridge Apartments": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Hunter Pointe": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Jefferson Apartment Building": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Junction at Antiquity": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Kennesaw Deals": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Lake Ridge": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Linvingston": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Mercer Park": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Morningside": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Novel Research Park": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Novel Upper Westside": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Palmetto Pointe": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Parian Apartments": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Park Ave": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Park on Clairmont": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Pointe Grand Apartments": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Preserve at Mill Creek": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Seventeen West": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Sodo Duluth": {
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
+    },
+    "Solis Cummings": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Solis Decatur": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Solis Interlock": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Solis Suwanaee Town Center": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Stone Ridge": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Sugarloaf Grove": {
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
+    },
+    "The Archer": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "The Cove at Covington": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Darby": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "The Mason Sugarloaf": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Maven": {
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
+    },
+    "The Reid": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Rey on Reynolds": {
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
+    },
+    "View at Woodstock": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    }
+  }
+}
