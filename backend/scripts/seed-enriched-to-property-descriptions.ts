@@ -1,19 +1,13 @@
 /**
- * seed-enriched-to-property-descriptions.ts
- *
- * Reads the enriched CSV (ARCHIVE_PROPERTY_CATALOG_ENRICHED.csv) and generates
- * INSERT/UPSERT SQL to update property_descriptions on the Replit DB.
- *
- * Usage:
- *   npx ts-node --transpile-only scripts/seed-enriched-to-property-descriptions.ts > seed.sql
- *   # copy seed.sql to Replit
- *   psql $DATABASE_URL < seed.sql
+ * Generate clean UPSERT SQL for property_descriptions.
+ * Writes JSONB as literal JSON-like strings that pg understands,
+ * wrapping in $$ dollar-quoting to avoid quote-escaping hell.
  */
-
 import * as fs from 'fs';
 import * as path from 'path';
 
 const CSV_PATH = path.resolve(__dirname, '..', 'docs', 'operations', 'ARCHIVE_PROPERTY_CATALOG_ENRICHED.csv');
+const OUTPUT_PATH = path.resolve(__dirname, '..', 'docs', 'operations', 'seed_pd_v3.sql');
 
 if (!fs.existsSync(CSV_PATH)) {
   console.error('Enriched CSV not found at:', CSV_PATH);
@@ -22,40 +16,13 @@ if (!fs.existsSync(CSV_PATH)) {
 
 const csv = fs.readFileSync(CSV_PATH, 'utf-8');
 const lines = csv.trim().split('\n').filter(Boolean);
-const out: string[] = [];
-out.push('-- Seed property_descriptions with enriched addresses from OM extraction');
-
-let count = 0;
-let hasAddress = 0;
 
 function esc(v: string): string {
   return v.replace(/'/g, "''");
 }
 
-function buildField(val: unknown, source: string = 'om'): string {
-  if (val === null || val === undefined || val === '') return 'NULL';
-  const now = new Date().toISOString();
-  const obj = {
-    resolved: val,
-    layers: {
-      [source]: { value: val, source_file_id: null, confidence: 0.7, extracted_at: now, source: source === 'om' ? 'om_extraction' : source }
-    },
-    resolution_rule: 'highest_confidence'
-  };
-  return `'${esc(JSON.stringify(obj))}'::jsonb`;
-}
-
-function buildAddr(street: string, city: string, state: string, zip: string): string {
-  if (!street && !city) return 'NULL';
-  const now = new Date().toISOString();
-  const obj = {
-    resolved: { street, city, state, zip },
-    layers: {
-      om: { value: { street, city, state, zip }, source_file_id: null, confidence: 0.7, extracted_at: now, source: 'om_extraction' }
-    },
-    resolution_rule: 'highest_confidence'
-  };
-  return `'${esc(JSON.stringify(obj))}'::jsonb`;
+function escJs(v: string): string {
+  return v.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 function hasRealAddr(addr: string): boolean {
@@ -65,11 +32,19 @@ function hasRealAddr(addr: string): boolean {
   if (a.includes('modified') || a.includes('teaser') || a.includes('preliminary') || a.includes('financials')) return false;
   if (/^\d+$/.test(addr.trim())) return false;
   if (a.includes('through') || a.includes('budget') || a.includes('renewals') || a.includes('concessions')) return false;
-  // Must have at least one letter and one number (typical street address)
+  if (a.includes('t12') || a.includes('rent roll') || a.includes('operating')) return false;
   if (/[a-z]/i.test(addr) && /\d/.test(addr)) return true;
   if (addr.length > 15 && /[a-z]/i.test(addr)) return true;
   return false;
 }
+
+const now = new Date().toISOString();
+const out: string[] = [];
+out.push('-- Seed property_descriptions v3 with real addresses from OM extraction');
+out.push('-- Generated: ' + now);
+
+let count = 0;
+let hasAddress = 0;
 
 for (let i = 1; i < lines.length; i++) {
   const line = lines[i];
@@ -104,73 +79,158 @@ for (let i = 1; i < lines.length; i++) {
   const asstCls = vals[10] || '';
   const mgmt = vals[20] || '';
 
-  const hasAddr = hasRealAddr(addr);
-  if (hasAddr) hasAddress++;
+  const realAddrFlag = hasRealAddr(addr);
+  if (realAddrFlag) hasAddress++;
 
-  const cols: string[] = ['parcel_id', 'property_name'];
-  const inserts: string[] = [`'${esc(pid)}'`, `'${esc(pid)}'`]; // property_name = parcel_id as default
-  const sets: string[] = ['property_name = EXCLUDED.property_name'];
+  // Build UPSERT
+  const sets: string[] = [];
+  const inserts: string[] = [];
 
-  if (hasAddr) {
-    const addrCol = buildAddr(esc(addr), esc(city), esc(st), esc(zip));
-    cols.push('address');
-    inserts.push(addrCol);
-    sets.push(`address = CASE WHEN property_descriptions.address IS NULL OR (property_descriptions.address->>'resolution_rule' IS DISTINCT FROM 'manual_override') THEN EXCLUDED.address ELSE property_descriptions.address END`);
+  // COL 1: parcel_id
+  inserts.push(`'${esc(pid)}'`); // parcel_id
+
+  // COL 2: property_name
+  inserts.push(`'${esc(pid)}'`); // property_name
+  sets.push(`property_name = '${esc(pid)}'`);
+
+  // COL 3: address
+  if (realAddrFlag) {
+    const addrJson = JSON.stringify({
+      resolved: { street: addr, city, state: st, zip },
+      layers: {
+        om: { value: { street: addr, city, state: st, zip }, source_file_id: null, confidence: 0.7, extracted_at: now, source: 'om_extraction' }
+      },
+      resolution_rule: 'highest_confidence'
+    });
+    inserts.push(`'${esc(addrJson)}'::jsonb`);
+    sets.push(`address = CASE WHEN property_descriptions.address IS NULL OR (property_descriptions.address->>'resolution_rule' IS DISTINCT FROM 'manual_override') THEN '${esc(addrJson)}'::jsonb ELSE property_descriptions.address END`);
+  } else {
+    inserts.push('DEFAULT');
   }
-  
+
+  // COL 4: year_built
   if (yb) {
-    const col = buildField(yb);
-    cols.push('year_built'); inserts.push(col);
-    sets.push('year_built = EXCLUDED.year_built');
+    const ybJson = JSON.stringify({
+      resolved: yb,
+      layers: { om: { value: yb, source_file_id: null, confidence: 0.7, extracted_at: now, source: 'om_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    inserts.push(`'${esc(ybJson)}'::jsonb`);
+    sets.push(`year_built = '${esc(ybJson)}'::jsonb`);
+  } else {
+    inserts.push('DEFAULT');
   }
+
+  // COL 5: unit_count
   if (uc) {
-    const col = buildField(uc);
-    cols.push('unit_count'); inserts.push(col);
-    sets.push('unit_count = EXCLUDED.unit_count');
+    const ucJson = JSON.stringify({
+      resolved: uc,
+      layers: { om: { value: uc, source_file_id: null, confidence: 0.7, extracted_at: now, source: 'om_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    inserts.push(`'${esc(ucJson)}'::jsonb`);
+    sets.push(`unit_count = '${esc(ucJson)}'::jsonb`);
+  } else {
+    inserts.push('DEFAULT');
   }
+
+  // COL 6: stories
   if (stories) {
-    const col = buildField(stories);
-    cols.push('stories'); inserts.push(col);
-    sets.push('stories = EXCLUDED.stories');
+    const stJson = JSON.stringify({
+      resolved: stories,
+      layers: { om: { value: stories, source_file_id: null, confidence: 0.7, extracted_at: now, source: 'om_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    inserts.push(`'${esc(stJson)}'::jsonb`);
+    sets.push(`stories = '${esc(stJson)}'::jsonb`);
+  } else {
+    inserts.push('DEFAULT');
   }
+
+  // COL 7: total_sqft
   if (sqft) {
-    const col = buildField(sqft);
-    cols.push('total_sqft'); inserts.push(col);
-    sets.push('total_sqft = EXCLUDED.total_sqft');
+    const sqftJson = JSON.stringify({
+      resolved: sqft,
+      layers: { om: { value: sqft, source_file_id: null, confidence: 0.7, extracted_at: now, source: 'om_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    inserts.push(`'${esc(sqftJson)}'::jsonb`);
+    sets.push(`total_sqft = '${esc(sqftJson)}'::jsonb`);
+  } else {
+    inserts.push('DEFAULT');
   }
+
+  // COL 8: lot_size_acres
   if (lotAcres) {
-    const col = buildField(lotAcres);
-    cols.push('lot_size_acres'); inserts.push(col);
-    sets.push('lot_size_acres = EXCLUDED.lot_size_acres');
+    const lotJson = JSON.stringify({
+      resolved: lotAcres,
+      layers: { om: { value: lotAcres, source_file_id: null, confidence: 0.7, extracted_at: now, source: 'om_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    inserts.push(`'${esc(lotJson)}'::jsonb`);
+    sets.push(`lot_size_acres = '${esc(lotJson)}'::jsonb`);
+  } else {
+    inserts.push('DEFAULT');
   }
+
+  // COL 9: asset_class
   if (asstCls) {
-    const col = buildField(asstCls);
-    cols.push('asset_class'); inserts.push(col);
-    sets.push('asset_class = EXCLUDED.asset_class');
+    const clsJson = JSON.stringify({
+      resolved: asstCls,
+      layers: { om: { value: asstCls, source_file_id: null, confidence: 0.7, extracted_at: now, source: 'om_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    inserts.push(`'${esc(clsJson)}'::jsonb`);
+    sets.push(`asset_class = '${esc(clsJson)}'::jsonb`);
+  } else {
+    inserts.push('DEFAULT');
   }
+
+  // COL 10: construction_type
   if (constType) {
-    cols.push('construction_type'); inserts.push(buildField(constType));
-    sets.push('construction_type = EXCLUDED.construction_type');
+    const ctJson = JSON.stringify({
+      resolved: constType,
+      layers: { om: { value: constType, source_file_id: null, confidence: 0.7, extracted_at: now, source: 'om_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    inserts.push(`'${esc(ctJson)}'::jsonb`);
+    sets.push(`construction_type = '${esc(ctJson)}'::jsonb`);
+  } else {
+    inserts.push('DEFAULT');
   }
+
+  // COL 11: parking_type
   if (parking) {
-    cols.push('parking_type'); inserts.push(buildField(parking));
-    sets.push('parking_type = EXCLUDED.parking_type');
+    const pkJson = JSON.stringify({
+      resolved: parking,
+      layers: { om: { value: parking, source_file_id: null, confidence: 0.7, extracted_at: now, source: 'om_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    inserts.push(`'${esc(pkJson)}'::jsonb`);
+    sets.push(`parking_type = '${esc(pkJson)}'::jsonb`);
+  } else {
+    inserts.push('DEFAULT');
   }
 
-  cols.push('updated_at'); inserts.push('NOW()'); sets.push('updated_at = NOW()');
-  cols.push('created_at'); inserts.push('NOW()');
+  // COL 12: updated_at
+  inserts.push('NOW()');
+  sets.push('updated_at = NOW()');
 
-  const insertSql = `INSERT INTO property_descriptions (${cols.join(', ')}) VALUES (${inserts.join(', ')}) ON CONFLICT (parcel_id) DO UPDATE SET ${sets.join(', ')};`;
-  out.push(insertSql);
+  // COL 13: created_at
+  inserts.push('NOW()');
+
+  const cols = ['parcel_id', 'property_name', 'address', 'year_built', 'unit_count', 'stories', 'total_sqft', 'lot_size_acres', 'asset_class', 'construction_type', 'parking_type', 'updated_at', 'created_at'];
+  const sql = `INSERT INTO property_descriptions (${cols.join(', ')}) VALUES (${inserts.join(', ')}) ON CONFLICT (parcel_id) DO UPDATE SET ${sets.join(', ')};`;
+  out.push(sql);
   count++;
-
-  if (count % 50 === 0) {
-    out.push(`-- ${count}/${lines.length - 1}`);
-  }
 }
 
+out.push('');
 out.push(`-- Total: ${count} properties upserted (${hasAddress} with real street addresses)`);
-const outputPath = path.resolve(__dirname, '..', 'docs', 'operations', 'seed_pd_v2.sql');
-fs.writeFileSync(outputPath, out.join('\n'));
-console.log(`Wrote ${count} statements to /tmp/seed_pd_v2.sql`);
+
+fs.writeFileSync(OUTPUT_PATH, out.join('\n'));
+console.log(`Wrote ${count} statements to ${OUTPUT_PATH}`);
 console.log(`${hasAddress} properties have real-looking street addresses`);
+console.log('');
+console.log('Run on Replit:');
+console.log(`  psql $DATABASE_URL < docs/operations/seed_pd_v3.sql`);
