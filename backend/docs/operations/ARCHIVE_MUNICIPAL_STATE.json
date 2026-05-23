@@ -1,6 +1,6 @@
 {
   "startedAt": "2026-05-23T20:01:33.407Z",
-  "completedAt": "2026-05-23T23:36:13.556Z",
+  "completedAt": "2026-05-23T23:47:15.935Z",
   "totalProperties": 296,
   "enriched": 0,
   "errors": 0,
@@ -574,6 +574,91 @@
       "error": "no_municipal_data"
     },
     "Vista Verde - Miami": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Advenir at Prestonwood": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Austin Deals": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Bell Bishop arts": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Bell Parkland": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Bellevue Spring Creek": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Crescent": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Hardy Oak": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Highlands at Preston": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Kia Ora": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Livano Canyon Falls": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Livano Pflugerville": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Lucent": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Modena": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Park 2300": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Stonebriar": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Place at 1825": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Village at Lake Front": {
       "status": "skipped",
       "fieldsFilled": [],
       "error": "no_municipal_data"

@@ -703,51 +703,41 @@ export const BROWARD_COUNTY_FL: CountyAPIConfig = {
  * Dallas County, TX (DCAD — Dallas Central Appraisal District)
  *
  * STATUS: gis.dallascad.org is OFFLINE (DNS failure / connection refused as of 2026-05).
- * No working public ArcGIS FeatureServer alternative found from Replit.
- * DCAD data may be available via paid API or direct file download from dcad.org.
- * Queries will gracefully return null until a replacement endpoint is identified.
+ * Replacement endpoint: Dallas City GIS open data (services6.arcgis.com).
+ * Original gis.dallascad.org is offline. Dallas_County_Parcels_NEW_N_TX (693k records)
+ * does not support LIKE queries. Dallas_County_Parcel (139 records, South Dallas) supports
+ * LIKE on SITUS_ADDR — limited coverage but returns 200 and will enrich properties that match.
+ * Full DCAD replacement requires paid API or bulk file download from dcad.org.
  */
 export const DALLAS_COUNTY_TX: CountyAPIConfig = {
   county: 'Dallas',
   state: 'TX',
   fipsCode: '48113',
   pattern: 'arcgis_featureserver',
-  disabled: true, // gis.dallascad.org — offline (connection refused); no working public ArcGIS alternative found for DCAD
   
-  baseUrl: 'https://gis.dallascad.org/arcgis/rest/services',
-  parcelsEndpoint: 'https://gis.dallascad.org/arcgis/rest/services/Public/Parcels/FeatureServer',
+  baseUrl: 'https://services6.arcgis.com/2yF1BNcZtu43QAOt/ArcGIS/rest/services',
+  parcelsEndpoint: 'https://services6.arcgis.com/2yF1BNcZtu43QAOt/ArcGIS/rest/services/Dallas_County_Parcel/FeatureServer',
   
   parcelsLayerId: 0,
   
-  searchField: 'SITUS_ADDRESS',
+  searchField: 'SITUS_ADDR',
   searchType: 'address',
   
   fieldMappings: {
-    parcelId: 'ACCOUNT_NUM',
-    parcelNumber: 'ACCOUNT_NUM',
+    parcelId: 'Prop_ID',
+    parcelNumber: 'GEO_ID',
     
-    fullAddress: 'SITUS_ADDRESS',
+    fullAddress: 'SITUS_ADDR',
     city: 'SITUS_CITY',
     zip: 'SITUS_ZIP',
     
     yearBuilt: 'YEAR_BUILT',
-    livingArea: 'LIVING_AREA',
-    landSqFt: 'LAND_SQFT',
-    acres: 'ACREAGE',
-    
-    zoning: 'ZONING',
-    landUseCode: 'STATE_CD',
-    landUseDescription: 'STATE_CD_DESC',
     
     ownerName: 'OWNER_NAME',
-    ownerAddress: 'OWNER_ADDR',
-    ownerCity: 'OWNER_CITY',
-    ownerState: 'OWNER_STATE',
-    ownerZip: 'OWNER_ZIP',
     
-    justValue: 'MARKET_VALUE',
+    justValue: 'MKT_VALUE',
     landValue: 'LAND_VALUE',
-    buildingValue: 'IMPR_VALUE',
+    buildingValue: 'IMP_VALUE',
   }
 };
 
