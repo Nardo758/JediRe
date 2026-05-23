@@ -1,0 +1,5 @@
+{
+  "status": "up",
+  "checked_at": "2026-05-22T17:06:00-04:00",
+  "note": "App is reachable and returns JSON (not HTML landing page). However, API key 'jedire-archive-2026' is rejected as invalid."
+}
