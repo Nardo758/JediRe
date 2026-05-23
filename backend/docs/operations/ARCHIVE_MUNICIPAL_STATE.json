@@ -1,6 +1,6 @@
 {
   "startedAt": "2026-05-23T20:01:33.407Z",
-  "completedAt": "2026-05-23T22:41:14.815Z",
+  "completedAt": "2026-05-23T23:27:45.395Z",
   "totalProperties": 296,
   "enriched": 0,
   "errors": 0,
@@ -47,11 +47,519 @@
       "error": "no_state"
     },
     "860 South": {
+      "status": "done",
+      "apiEndpoint": "fulton_ga",
+      "fieldsFilled": [
+        "unit_count",
+        "address"
+      ]
+    },
+    "900 Dwell": {
       "status": "skipped",
       "fieldsFilled": [],
       "error": "no_municipal_data"
     },
-    "900 Dwell": {
+    "Accent 2050": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Alta Dairies": {
+      "status": "done",
+      "apiEndpoint": "fulton_ga",
+      "fieldsFilled": [
+        "address"
+      ]
+    },
+    "Alta East": {
+      "status": "done",
+      "apiEndpoint": "fulton_ga",
+      "fieldsFilled": [
+        "address"
+      ]
+    },
+    "Altis & Altra": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Ansley at Princeton Lakes": {
+      "status": "done",
+      "apiEndpoint": "fulton_ga",
+      "fieldsFilled": [
+        "unit_count",
+        "address"
+      ]
+    },
+    "Bainbridge Aviation Crossings": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Barcelona Apartments": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Broadstone Sugar Hill": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Cadence Sugar Hill": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Chapel Hill": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Citadel Lookout": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Citizen House": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Citron Allen": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Cottages at emerald Creek": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Crest at Flower Branch": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Echo  Lakeside": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Elan Powers Ferry": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Element Galleria": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Emblem Greyson": {
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
+    },
+    "Gateway at Hartfield": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Hawthorne at Clairmont": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Heights at Sugarloaf": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Highlnad Ridge Apartments": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Hunter Pointe": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Jefferson Apartment Building": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Junction at Antiquity": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Kennesaw Deals": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Lake Ridge": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Linvingston": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Mercer Park": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Morningside": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Novel Research Park": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Novel Upper Westside": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Palmetto Pointe": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Parian Apartments": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Park Ave": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Park on Clairmont": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Pointe Grand Apartments": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Preserve at Mill Creek": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Seventeen West": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Sodo Duluth": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Solis Cummings": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Solis Decatur": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Solis Interlock": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Solis Suwanaee Town Center": {
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
+    },
+    "Stone Ridge": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Sugarloaf Grove": {
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
+    },
+    "The Archer": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "The Cove at Covington": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Darby": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "The Mason Sugarloaf": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Maven": {
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
+    },
+    "The Reid": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Rey on Reynolds": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "View at Woodstock": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Alta Lakehouse": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Azola Palm Beach": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Bainbridge Sunlake": {
+      "status": "done",
+      "apiEndpoint": "pasco_fl",
+      "fieldsFilled": [
+        "address"
+      ]
+    },
+    "Biscayne 112": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Bridgeview Apartments": {
+      "status": "done",
+      "apiEndpoint": "hillsborough_fl",
+      "fieldsFilled": [
+        "year_built",
+        "total_sqft",
+        "lot_size_acres",
+        "address"
+      ]
+    },
+    "Cadence at Nocatee": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Casa Mara": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "CasaMara": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Creekside Ranch": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Curv": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "East Point at Altamonte": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Enclave on East": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Exchange Orange Park": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Harbor at Westshore": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Heron Pointe": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Infield Orlando": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Jade at Hyde Park": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Jade hyde Park": {
+      "status": "done",
+      "apiEndpoint": "hillsborough_fl",
+      "fieldsFilled": [
+        "year_built",
+        "total_sqft",
+        "lot_size_acres",
+        "address"
+      ]
+    },
+    "Mira Flores": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Mirabella Lakes": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Oasis - Dania Pointe": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_address"
+    },
+    "Portiva - Jacksonville": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Rivertree": {
+      "status": "done",
+      "apiEndpoint": "hillsborough_fl",
+      "fieldsFilled": [
+        "year_built",
+        "total_sqft",
+        "lot_size_acres",
+        "address"
+      ]
+    },
+    "Sentosa Riverview": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Serramar": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Shoreview": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "St Tropez": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Terrabella": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Helix": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Kensley": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Milan": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "The Park at Kensington": {
+      "status": "done",
+      "apiEndpoint": "hillsborough_fl",
+      "fieldsFilled": [
+        "year_built",
+        "total_sqft",
+        "lot_size_acres",
+        "address"
+      ]
+    },
+    "The palms": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Town Southern": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Uptown Boca": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Uptown at Liberty Park": {
+      "status": "skipped",
+      "fieldsFilled": [],
+      "error": "no_municipal_data"
+    },
+    "Vista Verde - Miami": {
       "status": "skipped",
       "fieldsFilled": [],
       "error": "no_municipal_data"

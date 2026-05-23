@@ -261,23 +261,22 @@ async function updatePropertyDescription(
     return;
   }
 
-  sets.push(`updated_at = NOW()`);
-  
-  // COALESCE: only set if column is null or existing layer is not manual override
-  // Use COALESCE + jsonb concatenation for merge semantics
-  // This preserves existing layers that aren't being replaced
-  const mergeSql = `
-    UPDATE property_descriptions 
-    SET 
-      ${sets.map((set, i) => {
-        const [col] = set.split(' = ');
-        // Only update if existing has no manual override
-        return `${col} = CASE 
-          WHEN ${col} IS NULL OR (${col}->>'resolution_rule' != 'manual_override' OR ${col}->>'resolution_rule' IS NULL) 
+  // Build CASE-guarded SET clauses only for JSONB columns.
+  // updated_at is a plain timestamp — it must NOT go through the ->> JSONB path.
+  const jsonbCaseSets = sets.map((set) => {
+    const [col] = set.split(' = ');
+    return `${col} = CASE 
+          WHEN ${col} IS NULL OR (${col}->>'resolution_rule' IS NULL OR ${col}->>'resolution_rule' != 'manual_override') 
           THEN ${set.split(' = ')[1]} 
           ELSE ${col} 
         END`;
-      }).join(',\n      ')}
+  }).join(',\n      ');
+
+  const mergeSql = `
+    UPDATE property_descriptions 
+    SET 
+      ${jsonbCaseSets},
+      updated_at = NOW()
     WHERE parcel_id = $${paramIdx}
   `;
 

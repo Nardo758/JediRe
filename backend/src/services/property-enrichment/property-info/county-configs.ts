@@ -215,6 +215,7 @@ export const OSCEOLA_COUNTY_FL: CountyAPIConfig = {
   state: 'FL',
   fipsCode: '12097',
   pattern: 'arcgis_featureserver',
+  disabled: true, // FeatureServer layer has only 22 fields — no searchable address field (SITUS_ADDR does not exist)
   
   baseUrl: 'https://services8.arcgis.com/FmKMwUEmDSC75SQm/ArcGIS/rest/services',
   parcelsEndpoint: 'https://services8.arcgis.com/FmKMwUEmDSC75SQm/ArcGIS/rest/services/OsceolaCountyParcels_view/FeatureServer',
@@ -265,6 +266,7 @@ export const PINELLAS_COUNTY_FL: CountyAPIConfig = {
   state: 'FL',
   fipsCode: '12103',
   pattern: 'arcgis_featureserver',
+  disabled: true, // egis.pinellascounty.org:443 — connection timeout from Replit (IP-blocked)
   
   baseUrl: 'https://egis.pinellascounty.org/arcgis/rest/services',
   parcelsEndpoint: 'https://egis.pinellascounty.org/arcgis/rest/services/PropertyAppraiser/Parcels/FeatureServer',
@@ -407,12 +409,12 @@ export const HARRIS_COUNTY_TX: CountyAPIConfig = {
 /**
  * Fulton County, GA (Atlanta)
  *
- * STATUS: gis.fultoncountyga.gov is OFFLINE (404 on all paths as of 2026-05).
- * baseUrl updated to Atlanta Regional Commission ArcGIS portal (returns 200 + currentVersion)
- * so health checks pass. parcelsEndpoint still needs a valid Fulton parcel service —
- * the original MapServer is gone and no equivalent public ArcGIS FeatureServer found yet.
- * Queries will gracefully return null until a replacement endpoint is identified.
- * Candidate: fultoncountyatlasnext.hub.arcgis.com (requires org-level auth).
+ * gis.fultoncountyga.gov is OFFLINE. Using the City of Atlanta Planning Department's
+ * TaxParcel layer (OpenDataService1/MapServer/25) as the replacement.
+ * Verified working 2026-05: returns SITEADDRESS, OWNERNME1, LIVUNITS, ZONING1,
+ * LNDVALUE, IMPR_APPR, TOT_APPR, CNTASSDVAL. Does NOT contain year_built or sqft.
+ * NOTE: Covers City of Atlanta parcels only; Fulton County suburban properties
+ * (Sandy Springs, Alpharetta, etc.) will not be found by this layer.
  */
 export const FULTON_COUNTY_GA: CountyAPIConfig = {
   county: 'Fulton',
@@ -420,35 +422,38 @@ export const FULTON_COUNTY_GA: CountyAPIConfig = {
   fipsCode: '13121',
   pattern: 'arcgis_featureserver',
   
-  baseUrl: 'https://services1.arcgis.com/Ug5xGQbHsD8zuZzM/arcgis/rest/services',
-  parcelsEndpoint: 'https://services1.arcgis.com/Ug5xGQbHsD8zuZzM/arcgis/rest/services/Parcels4_2026_HUB/FeatureServer',
+  baseUrl: 'https://gis.atlantaga.gov/dpcd/rest/services/OpenDataService1',
+  parcelsEndpoint: 'https://gis.atlantaga.gov/dpcd/rest/services/OpenDataService1/MapServer',
   
-  parcelsLayerId: 0,
+  parcelsLayerId: 25,
   
-  searchField: 'PhisicalAddress',
+  searchField: 'SITEADDRESS',
   searchType: 'address',
   
   fieldMappings: {
-    parcelId: 'PARCEL_NO',
-    parcelNumber: 'PARCEL_NO',
+    parcelId: 'PARCELID',
+    parcelNumber: 'LOWPARCELID',
     
-    fullAddress: 'PhisicalAddress',
-    city: 'CITY',
-    zip: 'ZIP',
+    fullAddress: 'SITEADDRESS',
+    city: 'SITECITY',
+    zip: 'SITEZIP',
     
-    yearBuilt: 'YEAR_BUILT',
-    livingArea: 'TOTAL_SQFT',
-    acres: 'TOTALACRES',
+    zoning: 'ZONING1',
+    landUseCode: 'CVTTXCD',
+    landUseDescription: 'CVTTXDSCRP',
     
-    zoning: 'ZONING',
-    landUseCode: 'LAND_USE_CODE',
+    numberOfUnits: 'LIVUNITS',
     
-    ownerName: 'Owner',
-    ownerAddress: 'MailAddress',
+    ownerName: 'OWNERNME1',
+    ownerAddress: 'PSTLADDRESS',
+    ownerCity: 'PSTLCITY',
+    ownerState: 'PSTLSTATE',
+    ownerZip: 'PSTLZIP5',
     
-    justValue: 'Value',
-    landValue: 'LAND_VALUE',
-    buildingValue: 'IMPR_VALUE',
+    justValue: 'TOT_APPR',
+    landValue: 'LNDVALUE',
+    buildingValue: 'IMPR_APPR',
+    taxableValue: 'CNTASSDVAL',
   }
 };
 
@@ -581,6 +586,7 @@ export const COBB_COUNTY_GA: CountyAPIConfig = {
     parcelId: 'PARCEL_ID',
     parcelNumber: 'PARCEL_ID2',
     
+    fullAddress: 'PARCEL_ID',
     streetNumber: 'ST_NUMBER',
     
     landSqFt: 'LAND_SQFT',
@@ -598,6 +604,7 @@ export const MIAMI_DADE_COUNTY_FL: CountyAPIConfig = {
   state: 'FL',
   fipsCode: '12086',
   pattern: 'arcgis_featureserver',
+  disabled: true, // gisws-live.miamidade.gov — DNS not found (dead endpoint)
   
   baseUrl: 'https://gisws-live.miamidade.gov/arcgis/rest/services',
   parcelsEndpoint: 'https://gisws-live.miamidade.gov/arcgis/rest/services/Parcel/Parcels/FeatureServer',
@@ -649,6 +656,7 @@ export const BROWARD_COUNTY_FL: CountyAPIConfig = {
   state: 'FL',
   fipsCode: '12011',
   pattern: 'arcgis_featureserver',
+  disabled: true, // 205.166.161.235:443 — ECONNREFUSED (dead IP / blocked)
   
   baseUrl: 'https://gis.broward.org/arcgis/rest/services',
   parcelsEndpoint: 'https://gis.broward.org/arcgis/rest/services/PropertySearch/MapServer',

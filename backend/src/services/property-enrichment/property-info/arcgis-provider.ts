@@ -186,18 +186,32 @@ export class ArcGISFeatureServerProvider extends BasePropertyInfoProvider {
     
     const mappings = countyConfig.fieldMappings;
     const normalizedAddress = this.normalizeAddress(address);
-    
-    // Try to find an address field in parcel layer
     const addressField = mappings.fullAddress || 'SITE_ADDRESS';
-    const whereClause = `UPPER(${addressField}) LIKE '%${normalizedAddress}%'`;
-    
-    const url = this.buildQueryUrl(
+
+    // Pass 1: exact normalised full-address LIKE
+    const url1 = this.buildQueryUrl(
       countyConfig.parcelsEndpoint,
       countyConfig.parcelsLayerId,
-      whereClause
+      `UPPER(${addressField}) LIKE '%${normalizedAddress}%'`
     );
-    
-    return this.executeQuery(url);
+    const result1 = await this.executeQuery(url1);
+    if (result1) return result1;
+
+    // Pass 2: fuzzy fallback — number + street name without suffix.
+    // Catches cases where DB has "Place" but GIS has "Cir" etc.
+    const streetNumber = this.extractStreetNumber(address);
+    const streetNameNoSuffix = this.extractStreetName(address); // already strips last word (type)
+    if (streetNumber && streetNameNoSuffix) {
+      const fuzzy = `${streetNumber} ${streetNameNoSuffix}`;
+      const url2 = this.buildQueryUrl(
+        countyConfig.parcelsEndpoint,
+        countyConfig.parcelsLayerId,
+        `UPPER(${addressField}) LIKE '%${fuzzy}%'`
+      );
+      return this.executeQuery(url2);
+    }
+
+    return null;
   }
   
   private async searchByCoordinates(

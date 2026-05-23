@@ -23,6 +23,7 @@ export class PropertyInfoProviderRegistry {
     if (this.initialized) return;
     
     for (const config of COUNTY_CONFIGS) {
+      if (config.disabled) continue; // skip dead/blocked endpoints
       const provider = new ArcGISFeatureServerProvider(config);
       const key = `${config.county.toLowerCase()}_${config.state.toLowerCase()}`;
       this.providers.set(key, provider);

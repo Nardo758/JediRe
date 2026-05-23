@@ -344,6 +344,9 @@ export interface CountyAPIConfig {
   // Quirks
   requiresGeometry?: boolean;
   spatialReferenceWkid?: number;
+
+  // Set true to skip this provider during enrichment runs (e.g. endpoint is dead/blocked)
+  disabled?: boolean;
 }
 
 /**
