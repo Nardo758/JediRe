@@ -1,0 +1,47 @@
+{
+    "33 West":  {
+                    "done":  true,
+                    "units":  376,
+                    "stateCode":  "FL",
+                    "zip":  null,
+                    "city":  "Davie",
+                    "address":  "6300 Southwest 24th Place",
+                    "yearBuilt":  2014
+                },
+    "900 Dwell":  {
+                      "done":  true,
+                      "units":  null,
+                      "stateCode":  "GA",
+                      "zip":  null,
+                      "city":  null,
+                      "address":  "900 Rock Quarry Rd",
+                      "yearBuilt":  null
+                  },
+    "860 South":  {
+                      "done":  true,
+                      "units":  null,
+                      "stateCode":  "GA",
+                      "zip":  null,
+                      "city":  null,
+                      "address":  "860 Rock Quarry Road",
+                      "yearBuilt":  null
+                  },
+    "1420 Magnolia":  {
+                          "done":  true,
+                          "units":  null,
+                          "stateCode":  null,
+                          "zip":  null,
+                          "city":  null,
+                          "address":  null,
+                          "yearBuilt":  null
+                      },
+    "100 Inverness":  {
+                          "done":  true,
+                          "units":  322,
+                          "stateCode":  "AL",
+                          "zip":  null,
+                          "city":  "Birmingham",
+                          "address":  "100 Inverness Ln",
+                          "yearBuilt":  1974
+                      }
+}

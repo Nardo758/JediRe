@@ -854,4 +854,111 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
   }
 });
 
+/**
+ * POST /api/v1/archive/update-pd
+ *
+ * Write extracted address/fields from parse-om to property_descriptions.
+ * Accepts parcel_id + extracted address/city/state/yearBuilt/units as JSON body.
+ * UPSERTs with LayeredValue JSONB format, COALESCE so manual overrides are preserved.
+ *
+ * Auth: x-ingest-secret header (same as /ingest-rows).
+ * Body: {
+ *   parcel_id: string,
+ *   address?: string, city?: string, state?: string, zip?: string,
+ *   year_built?: number, unit_count?: number, stories?: number,
+ *   property_name?: string
+ * }
+ */
+router.post('/update-pd', async (req: Request, res: Response) => {
+  const secret = process.env.ARCHIVE_INGEST_SECRET;
+  if (!secret || req.headers['x-ingest-secret'] !== secret) {
+    return res.status(401).json({ success: false, error: 'Invalid or missing x-ingest-secret header' });
+  }
+
+  const { parcel_id, address, city, state, zip, year_built, unit_count, stories, property_name } = req.body;
+  if (!parcel_id) {
+    return res.status(400).json({ success: false, error: 'parcel_id is required' });
+  }
+
+  const now = new Date().toISOString();
+  const pool = getPool();
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  let idx = 0;
+
+  // Address
+  if (address && city) {
+    idx++;
+    const addrJson = JSON.stringify({
+      resolved: { street: address, city, state: state || '', zip: zip || '' },
+      layers: {
+        om: { value: { street: address, city, state: state || '', zip: zip || '' }, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' }
+      },
+      resolution_rule: 'highest_confidence'
+    });
+    sets.push(`address = CASE WHEN property_descriptions.address IS NULL OR (property_descriptions.address->>'resolution_rule' IS DISTINCT FROM 'manual_override') THEN $${idx}::jsonb ELSE property_descriptions.address END`);
+    params.push(addrJson);
+  }
+
+  // year_built
+  if (year_built !== undefined && year_built !== null) {
+    idx++;
+    const ybJson = JSON.stringify({
+      resolved: year_built,
+      layers: { om: { value: year_built, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    sets.push(`year_built = CASE WHEN property_descriptions.year_built IS NULL THEN $${idx}::jsonb ELSE property_descriptions.year_built END`);
+    params.push(ybJson);
+  }
+
+  // unit_count
+  if (unit_count !== undefined && unit_count !== null) {
+    idx++;
+    const ucJson = JSON.stringify({
+      resolved: unit_count,
+      layers: { om: { value: unit_count, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    sets.push(`unit_count = CASE WHEN property_descriptions.unit_count IS NULL THEN $${idx}::jsonb ELSE property_descriptions.unit_count END`);
+    params.push(ucJson);
+  }
+
+  // stories
+  if (stories !== undefined && stories !== null) {
+    idx++;
+    const stJson = JSON.stringify({
+      resolved: stories,
+      layers: { om: { value: stories, source_file_id: parcel_id, confidence: 0.8, extracted_at: now, source: 'om_pdf_extraction' } },
+      resolution_rule: 'highest_confidence'
+    });
+    sets.push(`stories = CASE WHEN property_descriptions.stories IS NULL THEN $${idx}::jsonb ELSE property_descriptions.stories END`);
+    params.push(stJson);
+  }
+
+  if (sets.length === 0) {
+    return res.status(400).json({ success: false, error: 'No fields to update' });
+  }
+
+  // Property name (not LayeredValue, just plain text)
+  if (property_name) {
+    idx++;
+    sets.push(`property_name = CASE WHEN property_descriptions.property_name IS NULL THEN $${idx} ELSE property_descriptions.property_name END`);
+    params.push(property_name);
+  }
+
+  idx++;
+  params.push(parcel_id);
+
+  try {
+    await pool.query(`UPDATE property_descriptions SET ${sets.join(', ')}, updated_at = NOW() WHERE parcel_id = $${idx}`, params);
+    logger.info('[archive/update-pd] Updated', { parcel_id, address, city, year_built, unit_count });
+    return res.json({ success: true, parcel_id });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/update-pd] Error', { parcel_id, error: msg });
+    return res.status(500).json({ success: false, error: msg });
+  }
+});
+
 export default router;
