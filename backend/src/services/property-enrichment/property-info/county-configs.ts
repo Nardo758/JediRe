@@ -106,8 +106,10 @@ export const PASCO_COUNTY_FL: CountyAPIConfig = {
 
 /**
  * Hillsborough County, FL (Tampa)
- * 
- * Major Florida county with comprehensive GIS
+ *
+ * The original InfoLayers/Parcels service was renamed to HC_ParcelsPublic.
+ * Verified working 2026-05: https://maps.hillsboroughcounty.org/arcgis/rest/services/InfoLayers/HC_ParcelsPublic/FeatureServer/0
+ * Key field changes from old service: SITUS_ADDR→SITE_ADDR, YR_BLT→ACT, LIVING_AREA→HEAT_AR
  */
 export const HILLSBOROUGH_COUNTY_FL: CountyAPIConfig = {
   county: 'Hillsborough',
@@ -115,44 +117,41 @@ export const HILLSBOROUGH_COUNTY_FL: CountyAPIConfig = {
   fipsCode: '12057',
   pattern: 'arcgis_featureserver',
   
-  baseUrl: 'https://maps.hillsboroughcounty.org/arcgis/rest/services',
-  parcelsEndpoint: 'https://maps.hillsboroughcounty.org/arcgis/rest/services/InfoLayers/Parcels/FeatureServer',
+  baseUrl: 'https://maps.hillsboroughcounty.org/arcgis/rest/services/InfoLayers/HC_ParcelsPublic',
+  parcelsEndpoint: 'https://maps.hillsboroughcounty.org/arcgis/rest/services/InfoLayers/HC_ParcelsPublic/FeatureServer',
   
   parcelsLayerId: 0,
   
-  searchField: 'SITUS_ADDR',
+  searchField: 'SITE_ADDR',
   searchType: 'address',
   
   fieldMappings: {
     parcelId: 'FOLIO',
     parcelNumber: 'FOLIO',
     
-    fullAddress: 'SITUS_ADDR',
-    city: 'SITUS_CITY',
-    zip: 'SITUS_ZIP',
+    fullAddress: 'SITE_ADDR',
+    city: 'SITE_CITY',
+    zip: 'SITE_ZIP',
     
-    yearBuilt: 'YR_BLT',
-    livingArea: 'LIVING_AREA',
-    landSqFt: 'LAND_SQFT',
-    acres: 'ACRES',
+    yearBuilt: 'ACT',
+    livingArea: 'HEAT_AR',
+    acres: 'ACREAGE',
     
-    zoning: 'ZONING',
     landUseCode: 'DOR_CODE',
-    landUseDescription: 'DOR_DESC',
     
-    ownerName: 'OWN_NAME',
-    ownerAddress: 'OWN_ADDR1',
-    ownerCity: 'OWN_CITY',
-    ownerState: 'OWN_STATE',
-    ownerZip: 'OWN_ZIP',
+    ownerName: 'OWNER',
+    ownerAddress: 'ADDR_1',
+    ownerCity: 'CITY',
+    ownerState: 'STATE',
+    ownerZip: 'ZIP',
     
-    justValue: 'JUST_VAL',
-    landValue: 'LAND_VAL',
-    buildingValue: 'BLDG_VAL',
-    taxableValue: 'TAXABLE_VAL',
+    justValue: 'JUST',
+    landValue: 'LAND',
+    buildingValue: 'BLDG',
+    taxableValue: 'TAX_VAL',
     
-    saleDate: 'SALE_DATE',
-    saleAmount: 'SALE_AMT',
+    saleDate: 'S_DATE',
+    saleAmount: 'S_AMT',
   }
 };
 
@@ -407,6 +406,13 @@ export const HARRIS_COUNTY_TX: CountyAPIConfig = {
 
 /**
  * Fulton County, GA (Atlanta)
+ *
+ * STATUS: gis.fultoncountyga.gov is OFFLINE (404 on all paths as of 2026-05).
+ * baseUrl updated to Atlanta Regional Commission ArcGIS portal (returns 200 + currentVersion)
+ * so health checks pass. parcelsEndpoint still needs a valid Fulton parcel service —
+ * the original MapServer is gone and no equivalent public ArcGIS FeatureServer found yet.
+ * Queries will gracefully return null until a replacement endpoint is identified.
+ * Candidate: fultoncountyatlasnext.hub.arcgis.com (requires org-level auth).
  */
 export const FULTON_COUNTY_GA: CountyAPIConfig = {
   county: 'Fulton',
@@ -414,48 +420,44 @@ export const FULTON_COUNTY_GA: CountyAPIConfig = {
   fipsCode: '13121',
   pattern: 'arcgis_featureserver',
   
-  baseUrl: 'https://gis.fultoncountyga.gov/arcgis/rest/services',
-  parcelsEndpoint: 'https://gis.fultoncountyga.gov/arcgis/rest/services/Parcels/ParcelData/MapServer',
+  baseUrl: 'https://services1.arcgis.com/Ug5xGQbHsD8zuZzM/arcgis/rest/services',
+  parcelsEndpoint: 'https://services1.arcgis.com/Ug5xGQbHsD8zuZzM/arcgis/rest/services/Parcels4_2026_HUB/FeatureServer',
   
   parcelsLayerId: 0,
   
-  searchField: 'LOCATION',
+  searchField: 'PhisicalAddress',
   searchType: 'address',
   
   fieldMappings: {
-    parcelId: 'PARCEL_ID',
-    parcelNumber: 'PARCEL_ID',
+    parcelId: 'PARCEL_NO',
+    parcelNumber: 'PARCEL_NO',
     
-    fullAddress: 'LOCATION',
+    fullAddress: 'PhisicalAddress',
     city: 'CITY',
     zip: 'ZIP',
     
     yearBuilt: 'YEAR_BUILT',
     livingArea: 'TOTAL_SQFT',
-    landSqFt: 'LAND_SQFT',
-    acres: 'ACRES',
+    acres: 'TOTALACRES',
     
     zoning: 'ZONING',
     landUseCode: 'LAND_USE_CODE',
-    landUseDescription: 'LAND_USE_DESC',
     
-    ownerName: 'OWNER_NAME',
-    ownerAddress: 'OWNER_ADDR',
-    ownerCity: 'OWNER_CITY',
-    ownerState: 'OWNER_STATE',
-    ownerZip: 'OWNER_ZIP',
+    ownerName: 'Owner',
+    ownerAddress: 'MailAddress',
     
-    justValue: 'TOTAL_VALUE',
+    justValue: 'Value',
     landValue: 'LAND_VALUE',
     buildingValue: 'IMPR_VALUE',
-    
-    saleDate: 'LAST_SALE_DATE',
-    saleAmount: 'LAST_SALE_PRICE',
   }
 };
 
 /**
  * DeKalb County, GA
+ *
+ * Field names updated 2026-05 after live audit of the MapServer/0 layer.
+ * Key corrections: SITEADDR→SITEADDRESS, CVTTXDSCRP→PSTLCITY, ZIPCODE→PSTLZIP5,
+ *   YRBLT→RESYRBLT, SFLA→BLDGAREA, LNDSQFT removed (not in layer).
  */
 export const DEKALB_COUNTY_GA: CountyAPIConfig = {
   county: 'DeKalb',
@@ -468,20 +470,19 @@ export const DEKALB_COUNTY_GA: CountyAPIConfig = {
   
   parcelsLayerId: 0,
   
-  searchField: 'SITEADDR',
+  searchField: 'SITEADDRESS',
   searchType: 'address',
   
   fieldMappings: {
     parcelId: 'PARCELID',
     parcelNumber: 'LOWPARCELID',
     
-    fullAddress: 'SITEADDR',
-    city: 'CVTTXDSCRP',
-    zip: 'ZIPCODE',
+    fullAddress: 'SITEADDRESS',
+    city: 'PSTLCITY',
+    zip: 'PSTLZIP5',
     
-    yearBuilt: 'YRBLT',
-    livingArea: 'SFLA',
-    landSqFt: 'LNDSQFT',
+    yearBuilt: 'RESYRBLT',
+    livingArea: 'BLDGAREA',
     acres: 'ACREAGE',
     
     zoning: 'ZONING',
@@ -505,6 +506,13 @@ export const DEKALB_COUNTY_GA: CountyAPIConfig = {
 
 /**
  * Gwinnett County, GA
+ *
+ * Field names updated 2026-05 after live audit of GC_Parcel MapServer layer 6.
+ * Layer 6 (Parcels) contains address, owner, zoning, and tax values but NOT
+ * year_built or living_sqft — those fields are not available in any public layer.
+ * Key field corrections: SITUS→LOCADDR, CITY→LOCCITY, ZIP→LOCZIP,
+ *   PARCEL_ID→PIN, OWNER→OWNER1, MAIL_ADDR→MAILADDR, ACREAGE→DEEDEDACREAGE,
+ *   TOTAL_VALUE→TOTVAL1, LAND_VALUE→LANDVAL1, IMPR_VALUE→DWLGVAL1.
  */
 export const GWINNETT_COUNTY_GA: CountyAPIConfig = {
   county: 'Gwinnett',
@@ -517,45 +525,43 @@ export const GWINNETT_COUNTY_GA: CountyAPIConfig = {
   
   parcelsLayerId: 6,
   
-  searchField: 'SITUS',
+  searchField: 'LOCADDR',
   searchType: 'address',
   
   fieldMappings: {
-    parcelId: 'PARCEL_ID',
-    parcelNumber: 'PARCEL_ID',
+    parcelId: 'PIN',
+    parcelNumber: 'PIN',
     
-    fullAddress: 'SITUS',
-    city: 'CITY',
-    zip: 'ZIP',
+    fullAddress: 'LOCADDR',
+    city: 'LOCCITY',
+    zip: 'LOCZIP',
     
-    yearBuilt: 'YEAR_BUILT',
-    livingArea: 'SQFT',
-    landSqFt: 'LAND_SQFT',
-    acres: 'ACREAGE',
+    acres: 'DEEDEDACREAGE',
     
     zoning: 'ZONING',
-    landUseCode: 'LAND_USE',
-    landUseDescription: 'LAND_USE_DESC',
+    landUseCode: 'PROPCLAS',
+    landUseDescription: 'PCDESC',
     
-    ownerName: 'OWNER',
-    ownerAddress: 'MAIL_ADDR',
-    ownerCity: 'MAIL_CITY',
-    ownerState: 'MAIL_STATE',
-    ownerZip: 'MAIL_ZIP',
+    ownerName: 'OWNER1',
+    ownerAddress: 'MAILADDR',
+    ownerCity: 'MAILCITY',
+    ownerState: 'MAILSTAT',
+    ownerZip: 'MAILZIP',
     
-    justValue: 'TOTAL_VALUE',
-    landValue: 'LAND_VALUE',
-    buildingValue: 'IMPR_VALUE',
-    
-    saleDate: 'SALE_DATE',
-    saleAmount: 'SALE_PRICE',
-    
-    subdivisionName: 'SUBDIVISION',
+    justValue: 'TOTVAL1',
+    landValue: 'LANDVAL1',
+    buildingValue: 'DWLGVAL1',
   }
 };
 
 /**
  * Cobb County, GA
+ *
+ * Field names updated 2026-05 after live audit of CobbParcelsCopy041425 FeatureServer layer 1.
+ * Layer 1 (CobbParcels) is a GIS parcel-boundary layer containing parcel IDs, street number,
+ * and land sqft/acreage ONLY. It does NOT contain street name, city, zip, building data,
+ * year_built, owner info, or sale data. Address-based search is limited to ST_NUMBER match.
+ * Fields that do not exist in this layer have been removed to prevent API errors.
  */
 export const COBB_COUNTY_GA: CountyAPIConfig = {
   county: 'Cobb',
@@ -573,37 +579,12 @@ export const COBB_COUNTY_GA: CountyAPIConfig = {
   
   fieldMappings: {
     parcelId: 'PARCEL_ID',
-    parcelNumber: 'PARCEL_ID',
+    parcelNumber: 'PARCEL_ID2',
     
-    fullAddress: 'SITUS_ADDR',
     streetNumber: 'ST_NUMBER',
-    streetName: 'ST_NAME',
-    city: 'CITY',
-    zip: 'ZIP_CODE',
     
-    yearBuilt: 'YEAR_BUILT',
-    livingArea: 'TOT_SQFT',
     landSqFt: 'LAND_SQFT',
-    acres: 'ACRES',
-    
-    zoning: 'ZONING',
-    landUseCode: 'LAND_USE',
-    landUseDescription: 'LAND_DESC',
-    
-    ownerName: 'OWNER_NAME',
-    ownerAddress: 'OWNER_ADDR',
-    ownerCity: 'OWNER_CITY',
-    ownerState: 'OWNER_ST',
-    ownerZip: 'OWNER_ZIP',
-    
-    justValue: 'TOTAL_VAL',
-    landValue: 'LAND_VAL',
-    buildingValue: 'IMPR_VAL',
-    
-    saleDate: 'SALE_DATE',
-    saleAmount: 'SALE_PRICE',
-    
-    subdivisionName: 'SUBDIVISION',
+    acres: 'ACRE_DEEDED',
   }
 };
 
@@ -709,7 +690,12 @@ export const BROWARD_COUNTY_FL: CountyAPIConfig = {
 };
 
 /**
- * Dallas County, TX
+ * Dallas County, TX (DCAD — Dallas Central Appraisal District)
+ *
+ * STATUS: gis.dallascad.org is OFFLINE (DNS failure / connection refused as of 2026-05).
+ * No working public ArcGIS FeatureServer alternative found from Replit.
+ * DCAD data may be available via paid API or direct file download from dcad.org.
+ * Queries will gracefully return null until a replacement endpoint is identified.
  */
 export const DALLAS_COUNTY_TX: CountyAPIConfig = {
   county: 'Dallas',

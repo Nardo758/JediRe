@@ -14,6 +14,9 @@
  *   npx ts-node --transpile-only scripts/archive-municipal-enrich.ts --dry-run
  *   npx ts-node --transpile-only scripts/archive-municipal-enrich.ts --parcel "mirabella_lakes"
  *   npx ts-node --transpile-only scripts/archive-municipal-enrich.ts --limit 20
+ *   npx ts-node --transpile-only scripts/archive-municipal-enrich.ts --state GA
+ *   npx ts-node --transpile-only scripts/archive-municipal-enrich.ts --state FL
+ *   npx ts-node --transpile-only scripts/archive-municipal-enrich.ts --state GA --state FL
  */
 
 import * as fs from 'fs';
@@ -76,6 +79,15 @@ const flags = {
   limit: (() => {
     const idx = process.argv.indexOf('--limit');
     return idx >= 0 && idx + 1 < process.argv.length ? parseInt(process.argv[idx + 1], 10) : 9999;
+  })(),
+  states: (() => {
+    const states: string[] = [];
+    for (let i = 0; i < process.argv.length - 1; i++) {
+      if (process.argv[i] === '--state') {
+        states.push(process.argv[i + 1].toUpperCase());
+      }
+    }
+    return states.length > 0 ? states : null;
   })(),
 };
 
@@ -291,6 +303,7 @@ async function main(): Promise<void> {
   if (flags.dryRun) console.log('🧪 DRY RUN — no data will be written');
   if (flags.resume) console.log('↻ Resume mode — skipping already-enriched properties');
   if (flags.parcel) console.log(`→ Filtering to parcel: ${flags.parcel}`);
+  if (flags.states) console.log(`→ Filtering to state(s): ${flags.states.join(', ')}`);
   if (flags.limit < 9999) console.log(`→ Limit: ${flags.limit} properties`);
 
   const state = loadState();
@@ -317,6 +330,19 @@ async function main(): Promise<void> {
       console.log(`❌ No properties matching "${flags.parcel}"`);
       process.exit(1);
     }
+    props.length = 0;
+    props.push(...filtered);
+  }
+
+  if (flags.states) {
+    const stateSet = new Set(flags.states);
+    const filtered = props.filter(p => p.state && stateSet.has(p.state.toUpperCase()));
+    if (filtered.length === 0) {
+      console.log(`❌ No properties with state(s): ${flags.states!.join(', ')}`);
+      console.log(`   Found states in DB: ${[...new Set(props.map(p => p.state).filter(Boolean))].join(', ')}`);
+      process.exit(1);
+    }
+    console.log(`   (filtered ${props.length} → ${filtered.length} for state(s): ${flags.states!.join(', ')})`);
     props.length = 0;
     props.push(...filtered);
   }
