@@ -1,6 +1,6 @@
 {
   "startedAt": "2026-05-23T20:01:33.407Z",
-  "completedAt": "2026-05-23T23:27:45.395Z",
+  "completedAt": "2026-05-23T23:36:13.556Z",
   "totalProperties": 296,
   "enriched": 0,
   "errors": 0,
@@ -142,9 +142,13 @@
       "error": "no_municipal_data"
     },
     "Echo  Lakeside": {
-      "status": "skipped",
-      "fieldsFilled": [],
-      "error": "no_municipal_data"
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
     },
     "Elan Powers Ferry": {
       "status": "skipped",
@@ -271,9 +275,13 @@
       "error": "no_municipal_data"
     },
     "Sodo Duluth": {
-      "status": "skipped",
-      "fieldsFilled": [],
-      "error": "no_municipal_data"
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
     },
     "Solis Cummings": {
       "status": "skipped",
@@ -292,10 +300,9 @@
     },
     "Solis Suwanaee Town Center": {
       "status": "done",
-      "apiEndpoint": "gwinnett_ga",
+      "apiEndpoint": "dekalb_ga",
       "fieldsFilled": [
         "lot_size_acres",
-        "zoning_code",
         "address"
       ]
     },
@@ -343,14 +350,21 @@
       ]
     },
     "The Reid": {
-      "status": "skipped",
-      "fieldsFilled": [],
-      "error": "no_municipal_data"
+      "status": "done",
+      "apiEndpoint": "dekalb_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "address"
+      ]
     },
     "The Rey on Reynolds": {
-      "status": "skipped",
-      "fieldsFilled": [],
-      "error": "no_municipal_data"
+      "status": "done",
+      "apiEndpoint": "gwinnett_ga",
+      "fieldsFilled": [
+        "lot_size_acres",
+        "zoning_code",
+        "address"
+      ]
     },
     "View at Woodstock": {
       "status": "skipped",

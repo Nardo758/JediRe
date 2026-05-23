@@ -573,6 +573,9 @@ export const COBB_COUNTY_GA: CountyAPIConfig = {
   state: 'GA',
   fipsCode: '13067',
   pattern: 'arcgis_featureserver',
+  disabled: true, // CobbParcelsCopy041425 layer 1 has no full address or street name field —
+                  // only ST_NUMBER (street number). Address-based lookup is not possible.
+                  // The layer lacks SITE_ADDRESS, FULL_ADDRESS, or any street name column.
   
   baseUrl: 'https://services.arcgis.com/HYLRafMc4Ux6DA8c/ArcGIS/rest/services',
   parcelsEndpoint: 'https://services.arcgis.com/HYLRafMc4Ux6DA8c/ArcGIS/rest/services/CobbParcelsCopy041425/FeatureServer',
@@ -586,7 +589,6 @@ export const COBB_COUNTY_GA: CountyAPIConfig = {
     parcelId: 'PARCEL_ID',
     parcelNumber: 'PARCEL_ID2',
     
-    fullAddress: 'PARCEL_ID',
     streetNumber: 'ST_NUMBER',
     
     landSqFt: 'LAND_SQFT',
@@ -710,6 +712,7 @@ export const DALLAS_COUNTY_TX: CountyAPIConfig = {
   state: 'TX',
   fipsCode: '48113',
   pattern: 'arcgis_featureserver',
+  disabled: true, // gis.dallascad.org — offline (connection refused); no working public ArcGIS alternative found for DCAD
   
   baseUrl: 'https://gis.dallascad.org/arcgis/rest/services',
   parcelsEndpoint: 'https://gis.dallascad.org/arcgis/rest/services/Public/Parcels/FeatureServer',
