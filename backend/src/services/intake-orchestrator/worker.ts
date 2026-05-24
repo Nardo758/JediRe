@@ -16,6 +16,7 @@
 
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { municipalEnrichment } from '../municipal-enrichment';
 
 const POLL_INTERVAL_MS = parseInt(process.env.INTAKE_POLL_INTERVAL_MS || '30000', 10);
 const BATCH_SIZE = parseInt(process.env.INTAKE_BATCH_SIZE || '20', 10);
@@ -106,15 +107,68 @@ async function stepOtherDocs(
   return { resolved: fileCount > 0, fileCount, docTypes };
 }
 
-// ── Step (b): municipal lookup stub ─────────────────────────────────────────
+// ── Step (b): municipal lookup ────────────────────────────────────────────────
 
-async function stepMunicipalLookup(jobId: string): Promise<void> {
+interface MunicipalStepResult {
+  resolved: boolean;
+  parcel_id: string | null;
+}
+
+async function stepMunicipalLookup(
+  jobId: string,
+  address: string | null,
+  state: string | null,
+): Promise<MunicipalStepResult> {
+  if (!address || !state) {
+    await appendLog(jobId, {
+      step: 'municipal_lookup',
+      status: 'blocked',
+      ts: ts(),
+      detail: { reason: 'missing_address_or_state', address, state },
+    });
+    return { resolved: false, parcel_id: null };
+  }
+
+  let result: Awaited<ReturnType<typeof municipalEnrichment.lookup>>;
+  try {
+    result = await municipalEnrichment.lookup(address, state);
+  } catch (err: any) {
+    await appendLog(jobId, {
+      step: 'municipal_lookup',
+      status: 'error',
+      ts: ts(),
+      detail: { error: err?.message ?? String(err), address, state },
+    });
+    return { resolved: false, parcel_id: null };
+  }
+
+  const logStatus =
+    result.status === 'ok'              ? 'ok'              :
+    result.status === 'not_implemented' ? 'not_implemented' :
+    result.status === 'not_found'       ? 'blocked'         : 'error';
+
   await appendLog(jobId, {
     step: 'municipal_lookup',
-    status: 'not_implemented',
+    status: logStatus,
     ts: ts(),
-    detail: { note: 'Real municipal calls wired in Phase 2.2 (Task #988)' },
+    detail: {
+      status:        result.status,
+      address,
+      state,
+      source:        result.source ?? null,
+      parcel_id:     result.parcel_id ?? null,
+      assessed_value: result.assessed_value ?? null,
+      county:        result.county ?? null,
+      candidates:    result.candidates ?? null,
+      ...(result.error ? { error: result.error } : {}),
+    },
   });
+
+  if (result.status === 'ok' && result.parcel_id) {
+    return { resolved: true, parcel_id: result.parcel_id };
+  }
+
+  return { resolved: false, parcel_id: null };
 }
 
 // ── Step (c): web search stub ────────────────────────────────────────────────
@@ -198,21 +252,54 @@ async function processJob(job: {
       detail: { parcel_id: parcel_id ?? null },
     });
 
+    // Extract address and state for municipal lookup from source_data
+    const sd = source_data ?? {};
+    const lookupAddress = (sd.address as string | undefined)?.trim() || null;
+    const lookupState   = (sd.state   as string | undefined)?.trim() || null;
+
     const otherDocs = await stepOtherDocs(id, parcel_id);
-    await stepMunicipalLookup(id);
+    const municipal = await stepMunicipalLookup(id, lookupAddress, lookupState);
     await stepWebSearch(id);
     await stepGooglePlaces(id);
 
+    // If municipal lookup found a real county parcel_id that differs from the
+    // current parcel_id (which is often just the property name), update the row.
+    // Use a conditional UPDATE that skips if another row already holds the same
+    // parcel_id (partial UNIQUE index on parcel_id WHERE parcel_id IS NOT NULL).
+    if (municipal.resolved && municipal.parcel_id && municipal.parcel_id !== parcel_id) {
+      try {
+        await query(
+          `UPDATE intake_jobs SET parcel_id = $1, updated_at = NOW()
+           WHERE id = $2 AND NOT EXISTS (
+             SELECT 1 FROM intake_jobs WHERE parcel_id = $1 AND id != $2
+           )`,
+          [municipal.parcel_id, id]
+        );
+        parcel_id = municipal.parcel_id;
+        logger.debug(`[intake-worker] job ${id} parcel_id updated to ${parcel_id} via municipal lookup`);
+      } catch (pErr: any) {
+        logger.warn(`[intake-worker] job ${id} parcel_id update skipped: ${pErr.message}`);
+      }
+    }
+
     // ── Terminal state ────────────────────────────────────────────────────────
-    if (otherDocs.resolved) {
+    const resolved = otherDocs.resolved || municipal.resolved;
+
+    if (resolved) {
       await setState(id, 'complete');
       await appendLog(id, {
         step: 'resolution',
         status: 'ok',
         ts: ts(),
-        detail: { result: 'complete', file_count: otherDocs.fileCount, doc_types: otherDocs.docTypes },
+        detail: {
+          result: 'complete',
+          resolved_by: otherDocs.resolved ? 'other_docs' : 'municipal_lookup',
+          file_count: otherDocs.fileCount,
+          doc_types: otherDocs.docTypes,
+          parcel_id: parcel_id ?? null,
+        },
       });
-      logger.debug(`[intake-worker] job ${id} → complete (${otherDocs.fileCount} matching docs)`);
+      logger.debug(`[intake-worker] job ${id} → complete (${otherDocs.resolved ? 'other_docs' : 'municipal'})`);
     } else {
       await setState(id, 'blocked_needs_user', {
         block_reason: 'no_municipal_or_web_resolution_available',
