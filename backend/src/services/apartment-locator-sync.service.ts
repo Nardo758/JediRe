@@ -125,7 +125,7 @@ async function upsertIntakeJob(prop: SupplyProperty): Promise<void> {
     await dbQuery(
       `INSERT INTO intake_jobs (parcel_id, state, source_type, source_data)
        VALUES ($1, 'pending', 'apartment_locator', $2::jsonb)
-       ON CONFLICT (parcel_id) DO NOTHING`,
+       ON CONFLICT (parcel_id) WHERE parcel_id IS NOT NULL DO NOTHING`,
       [
         parcelId,
         JSON.stringify({

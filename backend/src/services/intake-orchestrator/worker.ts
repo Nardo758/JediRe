@@ -139,39 +139,89 @@ async function stepGooglePlaces(jobId: string): Promise<void> {
   });
 }
 
+// ── Parcel-id extraction from source_data ────────────────────────────────────
+
+function extractParcelId(sourceData: Record<string, unknown> | null): string | null {
+  if (!sourceData) return null;
+  // Prefer name (human-readable display key used by Apartment Locator properties),
+  // then address, then any generic 'parcel_id' field stored in source_data.
+  for (const key of ['name', 'address', 'parcel_id']) {
+    const v = sourceData[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 // ── Main job processor ───────────────────────────────────────────────────────
 
 async function processJob(job: {
   id: string;
   parcel_id: string | null;
+  source_data: Record<string, unknown> | null;
 }): Promise<void> {
-  const { id, parcel_id } = job;
+  const { id, source_data } = job;
+  let parcel_id = job.parcel_id;
 
   try {
-    // parsing: extract/normalize parcel_id if still missing
+    // ── State: parsing ────────────────────────────────────────────────────────
     await setState(id, 'parsing');
+
+    // If parcel_id is missing, attempt extraction from source_data
+    if (!parcel_id) {
+      const extracted = extractParcelId(source_data);
+      if (extracted) {
+        parcel_id = extracted;
+        // Persist the recovered parcel_id so later steps and API callers see it
+        await query(
+          `UPDATE intake_jobs SET parcel_id = $1, updated_at = NOW() WHERE id = $2`,
+          [parcel_id, id]
+        );
+      }
+    }
+
     await appendLog(id, {
       step: 'parsing',
       status: 'ok',
       ts: ts(),
-      detail: { parcel_id: parcel_id ?? null },
+      detail: {
+        parcel_id: parcel_id ?? null,
+        extracted_from_source: !job.parcel_id && !!parcel_id,
+      },
     });
 
-    // enriching: run chain
+    // ── State: enriching ──────────────────────────────────────────────────────
     await setState(id, 'enriching');
+    await appendLog(id, {
+      step: 'enriching_started',
+      status: 'ok',
+      ts: ts(),
+      detail: { parcel_id: parcel_id ?? null },
+    });
 
     const otherDocs = await stepOtherDocs(id, parcel_id);
     await stepMunicipalLookup(id);
     await stepWebSearch(id);
     await stepGooglePlaces(id);
 
-    // completion logic: if other-docs found matching files, mark complete
+    // ── Terminal state ────────────────────────────────────────────────────────
     if (otherDocs.resolved) {
       await setState(id, 'complete');
+      await appendLog(id, {
+        step: 'resolution',
+        status: 'ok',
+        ts: ts(),
+        detail: { result: 'complete', file_count: otherDocs.fileCount, doc_types: otherDocs.docTypes },
+      });
       logger.debug(`[intake-worker] job ${id} → complete (${otherDocs.fileCount} matching docs)`);
     } else {
       await setState(id, 'blocked_needs_user', {
         block_reason: 'no_municipal_or_web_resolution_available',
+      });
+      await appendLog(id, {
+        step: 'resolution',
+        status: 'blocked',
+        ts: ts(),
+        detail: { result: 'blocked_needs_user', reason: 'no_municipal_or_web_resolution_available' },
       });
       logger.debug(`[intake-worker] job ${id} → blocked_needs_user`);
     }
@@ -197,8 +247,8 @@ async function poll(): Promise<void> {
   if (running) return;
   running = true;
   try {
-    const res = await query<{ id: string; parcel_id: string | null }>(
-      `SELECT id, parcel_id
+    const res = await query<{ id: string; parcel_id: string | null; source_data: Record<string, unknown> | null }>(
+      `SELECT id, parcel_id, source_data
        FROM intake_jobs
        WHERE state = 'pending'
        ORDER BY created_at ASC
