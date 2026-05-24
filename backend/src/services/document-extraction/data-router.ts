@@ -147,6 +147,7 @@ export async function routeExtractionResult(
     const capturedType = result.documentType;
     const capturedDealId = ctx.dealId;
     const capturedPropertyId = resolvedPropertyId;
+    const capturedDocumentId = ctx.documentId;
     setImmediate(async () => {
       try {
         const { writeOMToCorpus, writeTaxBillToCorpus } =
@@ -175,6 +176,21 @@ export async function routeExtractionResult(
           const taxData = capturedData as TaxBillData;
           const taxYear = taxData.taxYear ?? new Date().getFullYear();
           await writeTaxBillToCorpus(pool, capturedDealId, taxData, taxYear);
+        }
+
+        // Wire-through: mark the source file as successfully parsed now that
+        // corpus rows have been written. Best-effort — a failure here must not
+        // block the corpus write that already succeeded.
+        if (capturedDocumentId) {
+          const parserName = capturedType.toLowerCase() + '-to-corpus';
+          await pool.query(
+            `UPDATE data_library_files
+                SET parser_status = 'success', parser_used = $1
+              WHERE id = $2`,
+            [parserName, capturedDocumentId],
+          ).catch((updateErr: Error) => {
+            console.warn('[data-router] parser_status write-back failed (non-fatal):', updateErr.message);
+          });
         }
       } catch (corpusErr) {
         // Non-fatal — corpus ingestion must never surface to the user

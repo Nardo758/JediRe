@@ -26,8 +26,8 @@ export interface DataLibraryFile {
   source_type: string;
   tags: string[];
   parsed_data: any;
-  parsing_status: string;
-  parsing_errors: string | null;
+  parser_status: string;
+  parser_error: string | null;
   uploaded_at: Date;
 }
 
@@ -147,11 +147,11 @@ export class DataLibraryService {
   private async setStage(fileId: number, stage: string): Promise<void> {
     await this.pool.query(
       `UPDATE data_library_files
-          SET parsing_stage = $2,
-              parsing_status = CASE
-                WHEN $2 IN ('routed','complete') THEN 'complete'
-                WHEN $2 = 'error' THEN 'error'
-                ELSE 'parsing'
+          SET parser_used = $2,
+              parser_status = CASE
+                WHEN $2 IN ('routed','complete') THEN 'success'
+                WHEN $2 = 'error' THEN 'failed'
+                ELSE 'running'
               END
         WHERE id = $1`,
       [fileId, stage],
@@ -171,7 +171,7 @@ export class DataLibraryService {
         const parsedData = await this.parseCSV(filePath);
         await this.pool.query(
           `UPDATE data_library_files
-              SET parsing_status='complete', parsing_stage='complete', parsed_data=$1, parsing_errors=NULL
+              SET parser_status='success', parser_used='csv-parser', parsed_data=$1, parser_error=NULL
             WHERE id=$2`,
           [JSON.stringify(parsedData), fileId],
         );
@@ -184,7 +184,7 @@ export class DataLibraryService {
         const parsedData = { type: 'excel', status: 'requires_xlsx_parser', fileName: path.basename(filePath) };
         await this.pool.query(
           `UPDATE data_library_files
-              SET parsing_status='complete', parsing_stage='complete', parsed_data=$1, parsing_errors=NULL
+              SET parser_status='success', parser_used='xlsx-stub', parsed_data=$1, parser_error=NULL
             WHERE id=$2`,
           [JSON.stringify(parsedData), fileId],
         );
@@ -199,7 +199,7 @@ export class DataLibraryService {
       const parsedData = { type: 'unknown', mimeType };
       await this.pool.query(
         `UPDATE data_library_files
-            SET parsing_status='complete', parsing_stage='complete', parsed_data=$1
+            SET parser_status='success', parser_used='unknown-stub', parsed_data=$1
           WHERE id=$2`,
         [JSON.stringify(parsedData), fileId],
       );
@@ -209,18 +209,18 @@ export class DataLibraryService {
       // 'error'. The set of preserved stages is the shared
       // OM_TERMINAL_FAILURE_STAGES constant — keep it as the single source
       // of truth across backend + frontend.
-      const cur = await this.pool.query<{ parsing_stage: string | null }>(
-        `SELECT parsing_stage FROM data_library_files WHERE id=$1`,
+      const cur = await this.pool.query<{ parser_used: string | null }>(
+        `SELECT parser_used FROM data_library_files WHERE id=$1`,
         [fileId],
       );
-      const existing = cur.rows[0]?.parsing_stage ?? null;
+      const existing = cur.rows[0]?.parser_used ?? null;
       if (isOmTerminalFailureStage(existing)) {
         // Stage + parsing_errors are already set by the inner handler.
         return;
       }
       await this.pool.query(
         `UPDATE data_library_files
-            SET parsing_status='error', parsing_stage='error', parsing_errors=$1
+            SET parser_status='failed', parser_used='error', parser_error=$1
           WHERE id=$2`,
         [err?.message ?? 'unknown error', fileId],
       );
@@ -262,7 +262,7 @@ export class DataLibraryService {
       const usedOcr = result.meta?.usedOcr === true;
       await this.pool.query(
         `UPDATE data_library_files
-            SET parsing_status='error', parsing_stage=$2, parsing_errors=$1
+            SET parser_status='failed', parser_used=$2, parser_error=$1
           WHERE id=$3`,
         [result.error ?? 'OM parse failed', usedOcr ? 'ocr_failed' : 'parse_failed', fileId],
       );
@@ -283,7 +283,7 @@ export class DataLibraryService {
               msa_key = $2,
               submarket_key = $3,
               parsed_data = $4::jsonb,
-              parsing_errors = NULL
+              parser_error = NULL
         WHERE id = $5`,
       [
         JSON.stringify(result.data),
@@ -310,8 +310,8 @@ export class DataLibraryService {
       const msg = err instanceof Error ? err.message : String(err);
       await this.pool.query(
         `UPDATE data_library_files
-            SET parsing_status='error', parsing_stage='distribute_failed',
-                parsing_errors=$1
+            SET parser_status='failed', parser_used='distribute_failed',
+                parser_error=$1
           WHERE id=$2`,
         [msg, fileId],
       );
@@ -334,8 +334,8 @@ export class DataLibraryService {
       const msg = err instanceof Error ? err.message : String(err);
       await this.pool.query(
         `UPDATE data_library_files
-            SET parsing_status='error', parsing_stage='sentiment_failed',
-                parsing_errors=$1
+            SET parser_status='failed', parser_used='sentiment_failed',
+                parser_error=$1
           WHERE id=$2`,
         [`sentiment: ${msg}`, fileId],
       );
@@ -344,8 +344,8 @@ export class DataLibraryService {
 
     await this.pool.query(
       `UPDATE data_library_files
-          SET parsing_status='complete', parsing_stage='routed',
-              parsing_errors = NULL
+          SET parser_status='success', parser_used='om-pipeline',
+              parser_error = NULL
         WHERE id=$1`,
       [fileId],
     );
@@ -548,11 +548,11 @@ export class DataLibraryService {
     const params: (number | string)[] = userId !== undefined ? [id, userId] : [id];
     const result = await this.pool.query<DataLibraryFile>(
       `UPDATE data_library_files
-          SET parsing_status = 'parsing',
-              parsing_stage  = 'pending',
-              parsing_errors = NULL
+          SET parser_status = 'running',
+              parser_used   = 'pending',
+              parser_error  = NULL
         WHERE id = $1 ${ownerClause}
-          AND parsing_status <> 'parsing'
+          AND parser_status <> 'running'
         RETURNING *`,
       params,
     );
@@ -706,7 +706,7 @@ export class DataLibraryService {
   }
 
   async findComparables(params: { city?: string; propertyType?: string; unitCount?: number; propertyHeight?: string }): Promise<DataLibraryFile[]> {
-    const conditions: string[] = ['parsing_status = \'complete\''];
+    const conditions: string[] = ['parser_status = \'success\''];
     const values: any[] = [];
     let idx = 1;
 

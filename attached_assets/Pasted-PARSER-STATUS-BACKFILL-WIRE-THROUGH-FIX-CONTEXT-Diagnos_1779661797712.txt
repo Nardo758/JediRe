@@ -1,0 +1,163 @@
+PARSER_STATUS BACKFILL + WIRE-THROUGH FIX
+
+CONTEXT
+Diagnostic confirmed Classification A: 1,651 of 1,652 "unparsed" 
+files have corpus rows in historical_observations, meaning parsers 
+ran successfully but parser_status was never written back. 9th 
+instance of the producer/reader pattern.
+
+This dispatch:
+1. Backfills parser_status for the 1,651 affected files
+2. Wires all existing ingestion paths to write parser_status 
+   going forward
+3. Verifies via paired-read that the Files tab now reflects 
+   reality
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. BACKFILL FIRST, WIRE-THROUGH SECOND. The backfill is a simple 
+   one-time SQL update. The wire-through is the real work — 
+   without it, future ingestions will recreate the same problem.
+
+2. PARSED_AT GETS A REASONABLE TIMESTAMP. Not NULL. Use the 
+   earliest corpus row's created_at for the file, or fall back to 
+   the file's uploaded_at.
+
+3. EVERY PARSER PATH GETS THE SAME PATTERN. The May 2026 OM upload 
+   path is the reference; replicate it across the other ingest 
+   paths.
+
+4. PAIRED-READ VERIFICATION. After fix, the Files tab Status filter 
+   chips must show realistic counts: most files in 'success', some 
+   in 'unparsed' (files genuinely not yet processed), some in 
+   'failed' (if any historical errors).
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — BACKFILL
+═══════════════════════════════════════════════════════════════════
+
+A. Run the backfill in a transaction with verification:
+
+   BEGIN;
+   
+   -- Backfill parser_status
+   UPDATE data_library_files dlf
+   SET parser_status = 'success',
+       parsed_at = COALESCE(
+         (SELECT MIN(ho.created_at) 
+          FROM historical_observations ho 
+          WHERE dlf.id = ANY(ho.source_file_ids)),
+         dlf.uploaded_at
+       )
+   WHERE dlf.parser_status = 'unparsed'
+     AND EXISTS (
+       SELECT 1 FROM historical_observations ho
+       WHERE dlf.id = ANY(ho.source_file_ids)
+     );
+   
+   -- Verify: expected 1,651
+   SELECT count(*) FROM data_library_files
+   WHERE parser_status = 'success';
+   
+   -- If count is reasonable (1,651 + 43 existing = 1,694):
+   COMMIT;
+   -- If not:
+   -- ROLLBACK; and report
+
+B. Verify the test artifact is untouched:
+   SELECT id, original_filename, parser_status FROM data_library_files
+   WHERE parcel_id = 'TEST-PARCEL-001';
+   -- Should still be 'unparsed'
+
+C. Final counts:
+   SELECT parser_status, count(*) FROM data_library_files 
+   GROUP BY parser_status;
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — WIRE-THROUGH (parser paths write status going forward)
+═══════════════════════════════════════════════════════════════════
+
+A. Identify the ingest paths that need wiring (per diagnostic):
+   - Bulk OneSite BoxScore ingestion
+   - T-12 parser invocation
+   - Rent roll parser invocation
+   - Tax bill parser invocation
+   - Any other path that produces corpus rows but doesn't update 
+     parser_status
+
+B. Find the reference pattern: the May 2026 OM upload path that 
+   correctly writes parser_status='success' on completion. Document 
+   the pattern (what it writes, when, on success vs. failure vs. 
+   partial).
+
+C. For each non-OM ingest path, apply the same pattern:
+   - On parser success → UPDATE data_library_files SET 
+     parser_status = 'success', parsed_at = now(), 
+     parser_used = '<parser_name>'
+   - On parser partial → parser_status = 'partial'
+   - On parser failure → parser_status = 'failed', plus log the 
+     error
+   - Use transactions where appropriate so corpus row + status 
+     update are atomic
+
+D. Add the parser_used column write where missing. The diagnostic 
+   mentioned this; populate it consistently across all paths.
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — PAIRED-READ VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+A. Backfill verification:
+   - Open Files tab in browser
+   - Click each Status filter chip: All, success, partial, failed, 
+     unparsed
+   - Document the count shown for each
+   - Expected: ~1,694 success, ~1 unparsed (the test artifact), 
+     0 failed (unless there's failure history), 0 partial
+
+B. Spot-check 5 files:
+   - Pick 5 files (mix of T-12, rent roll, OM, tax bill)
+   - Confirm each shows 'success' in the UI
+   - Click into each (or check via API) — confirm parsed_at is 
+     populated with a reasonable timestamp (not 1970, not NULL)
+
+C. Wire-through verification (post Step 2):
+   - Pick one existing parser path that was just wired
+   - Trigger a re-parse on one file (any method available)
+   - Confirm parser_status updates to 'success' and parsed_at 
+     refreshes
+   - This verifies the wire-through is functional, not just code-
+     present
+
+D. If any of A-C fail, STOP. Don't mark complete.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/PARSER_STATUS_FIX_CLOSING.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Backfill results: rows affected, before/after parser_status 
+    distribution
+(b) Wire-through diffs: which files changed, what pattern was applied
+(c) Reference pattern from May 2026 OM path (what was copied)
+(d) Paired-read verification: filter chip counts, 5-file spot 
+    check, wire-through re-parse test
+(e) The test artifact (TEST-PARCEL-001) confirmed untouched
+(f) Pending: substrate hardening (wrapping parser invocation in a 
+    single function that writes status atomically). Deferred; logged 
+    as a future cleanup.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Skip the transaction wrapping in Step 1 — backfilling 1,651 rows 
+  uncommitted is a recipe for partial state if anything fails
+- Touch the test artifact (TEST-PARCEL-001)
+- Refactor parser invocation into a wrapper pattern in this 
+  dispatch (substrate work, deferred)
+- Modify the parser logic itself — only the status-write wiring
+- Skip Step 3D — if paired-read fails, the fix isn't done
+- "While I'm here" cleanups
+- Re-run the parsers themselves
