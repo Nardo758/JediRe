@@ -17,7 +17,8 @@
  *       → Gwinnett County ArcGIS adapter   (FIPS 13135 / Duluth/Lawrenceville/Norcross)
  *       → Cherokee County ArcGIS adapter   (FIPS 13057 / Canton/Woodstock)
  *       → Clayton County ArcGIS adapter    (FIPS 13063 / Jonesboro/Forest Park)
- *       [Henry County FIPS 13151: no publicly accessible ArcGIS endpoint found]
+ *       → Henry County stub                (FIPS 13151 / McDonough/Stockbridge — not_implemented;
+ *                                           no public ArcGIS endpoint accessible from cloud IPs)
  *   NC → Mecklenburg County ArcGIS adapter (Charlotte)
  *   TN → Davidson County ArcGIS adapter    (Nashville)
  *   TX → Dallas County DCAD adapter        (Dallas)
@@ -41,6 +42,7 @@ import { lookupCobbGA, lookupCobbGAByParcelId }               from './adapters/c
 import { lookupGwinnettGA, lookupGwinnettGAByParcelId }       from './adapters/gwinnett-ga.adapter';
 import { lookupCherokeeGA, lookupCherokeeGAByParcelId }       from './adapters/cherokee-ga.adapter';
 import { lookupClaytonGA, lookupClaytonGAByParcelId }         from './adapters/clayton-ga.adapter';
+import { lookupHenryGA, lookupHenryGAByParcelId }             from './adapters/henry-ga.adapter';
 import { lookupMecklenburgNC, lookupMecklenburgNCByParcelId } from './adapters/mecklenburg-nc.adapter';
 import { lookupDavidsonTN, lookupDavidsonTNByParcelId }       from './adapters/davidson-tn.adapter';
 import { lookupDallasTX, lookupDallasTXByParcelId }           from './adapters/dallas-tx.adapter';
@@ -121,6 +123,7 @@ class MunicipalEnrichmentService {
             case '13135': fipsResult = await lookupGwinnettGA(lookupAddr, knownCoords);     break;
             case '13057': fipsResult = await lookupCherokeeGA(lookupAddr);                  break;
             case '13063': fipsResult = await lookupClaytonGA(lookupAddr);                   break;
+            case '13151': fipsResult = await lookupHenryGA(lookupAddr);                     break;
             default:
               logger.debug(
                 `[municipal-enrichment] GA unknown FIPS ${fips} — falling back to sequential chain`,
@@ -167,7 +170,12 @@ class MunicipalEnrichmentService {
         logger.debug(
           `[municipal-enrichment] Cherokee miss (${cherokeeResult.status}), falling back to Clayton for "${lookupAddr}"`,
         );
-        return lookupClaytonGA(lookupAddr);
+        const claytonResult = await lookupClaytonGA(lookupAddr);
+        if (claytonResult.status === 'ok') return claytonResult;
+        logger.debug(
+          `[municipal-enrichment] Clayton miss (${claytonResult.status}), falling back to Henry for "${lookupAddr}"`,
+        );
+        return lookupHenryGA(lookupAddr);
       }
 
       case 'NC':
@@ -251,7 +259,10 @@ class MunicipalEnrichmentService {
         if (cherokeeResult.status === 'ok') return cherokeeResult;
         // Cherokee miss → try Clayton (Jonesboro/Forest Park/Morrow/Riverdale area)
         logger.debug(`[municipal-enrichment] Cherokee parcel-id miss (${cherokeeResult.status}), falling back to Clayton for "${parcelId}"`);
-        return lookupClaytonGAByParcelId(parcelId.trim());
+        const claytonParcelResult = await lookupClaytonGAByParcelId(parcelId.trim());
+        if (claytonParcelResult.status === 'ok') return claytonParcelResult;
+        logger.debug(`[municipal-enrichment] Clayton parcel-id miss (${claytonParcelResult.status}), falling back to Henry for "${parcelId}"`);
+        return lookupHenryGAByParcelId(parcelId.trim());
       }
 
       case 'NC':

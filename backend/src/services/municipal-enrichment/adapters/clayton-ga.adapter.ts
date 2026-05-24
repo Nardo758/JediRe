@@ -64,6 +64,7 @@ const OUT_FIELDS = [
   'STRUCTYPE',
   'YEARBUILT', 'SQRFT',
   'SALEPRICE', 'SALEDATE',
+  'STREETNO', 'STREETNAME',
 ].join(',');
 
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -173,19 +174,27 @@ function cityMatchScore(attrs: Record<string, any>, inputAddress: string): numbe
 
 function mapAttrsToResult(attrs: Record<string, any>, inputAddress?: string): Partial<MunicipalLookupResult> {
   const acres = (typeof attrs.ACERAGE === 'number' && attrs.ACERAGE > 0) ? attrs.ACERAGE : undefined;
-  const appraisedVal = attrs.APPRVAL ? parseFloat(attrs.APPRVAL) : undefined;
+
+  // APPRVAL = appraised (market) value; ASSESSVAL = assessed (40% of appraised) value.
+  // Both are stored as strings despite being numeric fields.
+  const appraisedRaw = attrs.APPRVAL  ? parseFloat(attrs.APPRVAL)  : undefined;
+  const assessedRaw  = attrs.ASSESSVAL ? parseFloat(attrs.ASSESSVAL) : undefined;
+
+  const appraisedVal = (appraisedRaw !== undefined && !isNaN(appraisedRaw) && appraisedRaw > 0)
+    ? appraisedRaw : undefined;
+  const assessedVal  = (assessedRaw  !== undefined && !isNaN(assessedRaw)  && assessedRaw  > 0)
+    ? assessedRaw  : undefined;
 
   return {
-    parcel_id:        attrs.PARCELID        ?? null,
-    address:          attrs.SITEADDRES      ?? (inputAddress ?? null),
-    owner:            attrs.OWNERNME?.trim() ?? null,
+    parcel_id:        attrs.PARCELID         ?? null,
+    address:          attrs.SITEADDRES       ?? (inputAddress ?? null),
+    owner:            attrs.OWNERNME?.trim()  ?? null,
     land_acres:       acres,
-    land_use_code:    attrs.LANDUSEC        ?? attrs.ZONE ?? null,
+    land_use_code:    attrs.LANDUSEC         ?? attrs.ZONE ?? null,
     neighborhood:     attrs.NEIGHBORHOODDESC ?? attrs.SUBDNAME ?? null,
     tax_district:     null,
-    assessed_value:   (!isNaN(appraisedVal as number) && (appraisedVal as number) > 0)
-                        ? appraisedVal
-                        : undefined,
+    assessed_value:   assessedVal,
+    appraised_value:  appraisedVal,
     county:           'Clayton',
     state:            'GA',
     source:           'arcgis_clayton_ga',

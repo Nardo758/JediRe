@@ -61,7 +61,9 @@ const OUT_FIELDS = [
   'TaxDistrict',
 ].join(',');
 
-const REQUEST_TIMEOUT_MS = 12_000;
+// Cherokee County GIS is hosted on a slower server — observed response times of
+// 14–18 seconds in testing. Timeout is set to 25 seconds to avoid false timeouts.
+const REQUEST_TIMEOUT_MS = 25_000;
 
 // ─── Retry helpers ────────────────────────────────────────────────────────────
 
