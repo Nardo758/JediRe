@@ -232,16 +232,121 @@ async function queryArcGIS(
   };
 }
 
-// ─── WGS84 spatial intersect ──────────────────────────────────────────────────
+// ─── WGS84 spatial intersect + envelope fallback ─────────────────────────────
 
 /**
- * Spatial intersect using WGS84 lat/lng (WKID 4326).
- * Used when Census Geocoder already provided coordinates — skips the address
- * WHERE-clause search entirely.  ArcGIS auto-reprojects from 4326 to the
- * layer's native SR via the inSR parameter.
+ * Bounding-box half-width for the envelope fallback (≈50 m at Atlanta's
+ * latitude). Matches the constant used in the Cobb and Fulton adapters.
+ */
+const ENVELOPE_BUF_DEG = 0.0005;
+
+/**
+ * Street-number tolerance for the envelope candidate filter.
  *
- * Recovers addresses whose Census-normalized form doesn't match the stored
- * SITEADDRES string but whose geocoded point falls inside the parcel polygon.
+ * DeKalb's urban/suburban density is higher than Cobb's, so we use a tighter
+ * tolerance (±10 vs Cobb's ±50) to keep the single-candidate gate meaningful.
+ * Empirical probe: ±50 leaves 2–4 ambiguous candidates for most benchmark
+ * failures; ±10 resolves "3108 Briarcliff Rd NE" → single candidate 3110
+ * while still filtering out roads that don't share the street keyword.
+ */
+const ADDR_NUM_TOLERANCE = 10;
+
+/**
+ * Envelope fallback: issues a ±ENVELOPE_BUF_DEG bounding-box query and
+ * accepts the result only when exactly ONE parcel survives a dual filter:
+ *   1. Native ADDRESS_NU integer field within ±ADDR_NUM_TOLERANCE of the
+ *      input house number (uses the dedicated field rather than parsing a
+ *      string, making the comparison more reliable than Cobb's ST_NUMBER
+ *      approach).
+ *   2. FULL_STREE field (stored street name) contains the input street
+ *      keyword — prevents adjacent-street false positives where two nearby
+ *      streets share similar house numbers.
+ *
+ * Zero or multiple candidates → not_found (caller falls back to WHERE query).
+ * Transport/ArcGIS errors → not_found (degrades gracefully).
+ */
+async function queryParcelByEnvelope(
+  lat: number,
+  lng: number,
+  inputStreetNum: number,
+  inputKeyword: string | null,
+  inputAddress: string,
+): Promise<MunicipalLookupResult> {
+  const envelope = JSON.stringify({
+    xmin: lng - ENVELOPE_BUF_DEG,
+    ymin: lat - ENVELOPE_BUF_DEG,
+    xmax: lng + ENVELOPE_BUF_DEG,
+    ymax: lat + ENVELOPE_BUF_DEG,
+    spatialReference: { wkid: 4326 },
+  });
+
+  const params = new URLSearchParams({
+    geometry:     envelope,
+    geometryType: 'esriGeometryEnvelope',
+    spatialRel:   'esriSpatialRelIntersects',
+    inSR:         '4326',
+    outFields:    OUT_FIELDS,
+    returnGeometry: 'false',
+    f: 'json',
+  });
+
+  const { data, error } = await fetchArcGIS(`${DEKALB_PARCELS_URL}?${params.toString()}`);
+  if (error) {
+    logger.debug(`[dekalb-ga] envelope fallback fetch error: ${error} — skipping`);
+    return { status: 'not_found' };
+  }
+
+  const features: any[] = data?.features ?? [];
+
+  const candidates = features.filter(f => {
+    const addrNum   = f.attributes?.ADDRESS_NU as number | null;
+    const fullStreet = (f.attributes?.FULL_STREE ?? '') as string;
+
+    if (addrNum == null || Math.abs(addrNum - inputStreetNum) > ADDR_NUM_TOLERANCE) return false;
+    if (inputKeyword && !fullStreet.toUpperCase().includes(inputKeyword.toUpperCase())) return false;
+    return true;
+  });
+
+  if (candidates.length !== 1) {
+    logger.debug(
+      `[dekalb-ga] envelope fallback: ${candidates.length} candidate(s) after dual filter` +
+      ` (inputNum=${inputStreetNum}, keyword=${inputKeyword}) — ` +
+      (candidates.length === 0 ? 'no match' : 'ambiguous'),
+    );
+    return { status: 'not_found' };
+  }
+
+  const attrs: Record<string, any> = candidates[0].attributes ?? {};
+  const mapped = mapAttrsToResult(attrs, inputAddress);
+
+  logger.debug(
+    `[dekalb-ga] envelope fallback resolved → parcel ${mapped.parcel_id},` +
+    ` siteAddr: ${attrs.SITEADDRES}`,
+  );
+
+  return {
+    status:     mapped.parcel_id ? 'ok' : 'not_found',
+    candidates: 1,
+    ...mapped,
+  };
+}
+
+/**
+ * Two-stage spatial lookup using WGS84 lat/lng (WKID 4326).
+ *
+ * Stage 1 — point intersect:
+ *   Issues an esriSpatialRelIntersects query with the Census-resolved
+ *   coordinate.  A hit is returned immediately (no number validation needed —
+ *   the point-in-polygon guarantee is sufficient for DeKalb's parcel density).
+ *
+ * Stage 2 — envelope fallback (road-centerline misses):
+ *   When Stage 1 returns 0 features (Census point lands in a street ROW gap),
+ *   issues a ±ENVELOPE_BUF_DEG bounding-box query filtered by:
+ *     • ADDRESS_NU within ±ADDR_NUM_TOLERANCE of the input house number
+ *     • FULL_STREE contains the input street keyword
+ *   Only accepted when exactly one candidate survives.
+ *
+ * Returns not_found on any miss so the caller falls back to the WHERE query.
  */
 async function queryParcelByWgs84(lat: number, lng: number, inputAddress: string): Promise<MunicipalLookupResult> {
   const geometry = JSON.stringify({
@@ -260,23 +365,38 @@ async function queryParcelByWgs84(lat: number, lng: number, inputAddress: string
     f: 'json',
   });
 
-  const url = `${DEKALB_PARCELS_URL}?${params.toString()}`;
-  const { data, error } = await fetchArcGIS(url);
-  if (error) return { status: 'error', error };
+  const { data, error } = await fetchArcGIS(`${DEKALB_PARCELS_URL}?${params.toString()}`);
+  if (error) return { status: 'not_found' };
 
   const features: any[] = data?.features ?? [];
-  if (features.length === 0) return { status: 'not_found' };
 
-  const attrs: Record<string, any> = features[0].attributes ?? {};
-  const mapped = mapAttrsToResult(attrs, inputAddress);
+  // Stage 1 hit — return immediately.
+  if (features.length > 0) {
+    const attrs: Record<string, any> = features[0].attributes ?? {};
+    const mapped = mapAttrsToResult(attrs, inputAddress);
+    logger.debug(`[dekalb-ga] WGS84 point resolved → parcel ${mapped.parcel_id}`);
+    return {
+      status:     mapped.parcel_id ? 'ok' : 'not_found',
+      candidates: features.length,
+      ...mapped,
+    };
+  }
 
-  logger.debug(`[dekalb-ga] WGS84 spatial resolved → parcel ${mapped.parcel_id}`);
+  // Stage 2 — envelope fallback for road-centerline / ROW gap misses.
+  const normalized       = normalizeAddress(inputAddress);
+  const inputStreetNumStr = extractStreetNumber(normalized);
+  const inputNum          = inputStreetNumStr ? parseInt(inputStreetNumStr, 10) : NaN;
 
-  return {
-    status:     mapped.parcel_id ? 'ok' : 'not_found',
-    candidates: features.length,
-    ...mapped,
-  };
+  if (!isNaN(inputNum)) {
+    const inputKeyword = extractStreetKeyword(normalized) ?? null;
+    logger.debug(
+      `[dekalb-ga] WGS84 point miss — trying envelope fallback` +
+      ` (inputNum=${inputNum}, keyword=${inputKeyword})`,
+    );
+    return queryParcelByEnvelope(lat, lng, inputNum, inputKeyword, inputAddress);
+  }
+
+  return { status: 'not_found' };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
