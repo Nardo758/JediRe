@@ -1,0 +1,86 @@
+COLUMN-RENAME DRIFT AUDIT — POST PARSER_STATUS FIX
+
+CONTEXT
+The parser_status fix revealed that dataLibrary.service.ts had 14 
+SQL write sites using pre-migration column names (parsing_status, 
+parsing_stage, parsing_errors). These writes were silently no-ops 
+for some period of time — the producer attempted to write, nothing 
+landed, no errors surfaced.
+
+This is a worse pattern than the producer/reader drift we've been 
+tracking: it's writes that LOOK like they're happening but aren't, 
+with no observable failure signal.
+
+Audit whether the same drift exists for other column renames.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — IDENTIFY ALL COLUMN RENAMES IN MIGRATION HISTORY
+═══════════════════════════════════════════════════════════════════
+
+A. Search the migrations directory for ALTER TABLE ... RENAME COLUMN 
+   statements. Document each rename:
+   - Table
+   - Old column name
+   - New column name  
+   - Migration date
+
+B. Also search for column DROP + ADD patterns that effectively 
+   renamed (sometimes migrations DROP an old column and ADD the new 
+   one rather than RENAME).
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — FOR EACH RENAMED COLUMN, FIND STALE REFERENCES
+═══════════════════════════════════════════════════════════════════
+
+For each (old_column_name, new_column_name) pair:
+
+A. grep -ri "<old_column_name>" backend/src/ frontend/src/
+   - Capture every occurrence
+   - Determine: is this a stale reference or legitimate (e.g., a 
+     variable named the same as the old column, an old migration 
+     file)?
+   - Stale reference: SQL fragments, query builders, ORM model 
+     definitions still using the old name
+
+B. Document the stale references in a table:
+   | Table | Old Col | New Col | File:Line | Type (read/write) |
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — CLASSIFY THE SILENT-FAILURE PATTERN
+═══════════════════════════════════════════════════════════════════
+
+For the dataLibrary.service.ts case specifically, identify WHY the 
+writes were silent no-ops:
+
+A. Read the query execution code
+   - Is there a try/catch swallowing errors?
+   - Is the query going through an ORM that ignores unknown columns?
+   - Is the code path dead (never actually invoked)?
+   - Is there error logging that's getting filtered out somewhere?
+
+B. Document the mechanism so it's clear how to prevent the same 
+   pattern elsewhere.
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — REPORT
+═══════════════════════════════════════════════════════════════════
+
+Single document at docs/operations/COLUMN_RENAME_DRIFT_AUDIT.md:
+
+(a) All column renames in migration history (Step 1)
+(b) Stale references per rename, with file:line (Step 2)
+(c) Silent-failure mechanism for dataLibrary.service.ts case 
+    (Step 3)
+(d) For each stale reference: classify severity
+    - Critical: write site that silently no-ops on a column the 
+      app depends on
+    - High: read site returning stale/missing data
+    - Low: variable name only, no SQL impact, or in old migration 
+      files
+(e) Recommended fix per critical/high finding
+
+DO NOT
+- Apply fixes in this dispatch — audit only
+- Touch the parser_status work that just shipped (already verified)
+- Search migrations in archived/legacy directories that aren't 
+  active
