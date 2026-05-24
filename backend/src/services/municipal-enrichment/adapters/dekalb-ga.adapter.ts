@@ -29,6 +29,12 @@
 
 import { logger } from '../../../utils/logger';
 import type { MunicipalLookupResult } from '../types';
+import {
+  normalizeAddressFull as normalizeAddress,
+  extractStreetNumber,
+  extractStreetKeyword,
+  sanitize,
+} from '../address-normalize';
 
 const DEKALB_PARCELS_URL =
   'https://services2.arcgis.com/IxVN2oUE9EYLSnPE/arcgis/rest/services/Parcels/FeatureServer/0/query';
@@ -46,78 +52,7 @@ const OUT_FIELDS = [
 
 const REQUEST_TIMEOUT_MS = 12_000;
 
-// ─── Street-type abbreviation map (USPS standard) ────────────────────────────
-
-const STREET_TYPE_MAP: Record<string, string> = {
-  STREET: 'ST', ROAD: 'RD', BOULEVARD: 'BLVD', DRIVE: 'DR',
-  AVENUE: 'AVE', COURT: 'CT', CIRCLE: 'CIR', PLACE: 'PL',
-  LANE: 'LN', PARKWAY: 'PKWY', HIGHWAY: 'HWY', TERRACE: 'TER',
-  TRAIL: 'TRL', POINT: 'PT', POINTE: 'PT', WAY: 'WAY',
-};
-
 // ─── Address helpers ──────────────────────────────────────────────────────────
-
-function normalizeAddress(addr: string): string {
-  let s = addr
-    .toUpperCase()
-    .replace(/\./g, '')
-    .replace(/,/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // Normalize spelled-out compound directions before street-type expansion
-  s = s
-    .replace(/\bNORTHEAST\b/g, 'NE')
-    .replace(/\bNORTHWEST\b/g, 'NW')
-    .replace(/\bSOUTHEAST\b/g, 'SE')
-    .replace(/\bSOUTHWEST\b/g, 'SW');
-
-  // Normalize spelled-out street types
-  for (const [long, abbr] of Object.entries(STREET_TYPE_MAP)) {
-    s = s.replace(new RegExp(`\\b${long}\\b`, 'g'), abbr);
-  }
-
-  return s.replace(/\s+/g, ' ').trim();
-}
-
-function extractStreetNumber(normalized: string): string {
-  const m = normalized.match(/^(\d+)\s/);
-  return m ? m[1] : '';
-}
-
-/**
- * Extract the core street keyword for the LIKE query.
- * Strips: leading number, single-letter directional prefix, trailing type
- * abbreviation, trailing directional suffix.
- * Returns the remaining words lowercase — used as the %keyword% token.
- *
- * Examples:
- *   "2696 N DRUID HILLS RD NE"  → "druid hills"
- *   "3108 BRIARCLIFF RD NE"     → "briarcliff"
- *   "4685 CHAMBLEE DUNWOODY RD" → "chamblee dunwoody"
- *   "1105 TOWN BLVD"            → "town"
- */
-function extractStreetKeyword(normalized: string): string {
-  // Strip leading street number
-  let s = normalized.replace(/^\d+\s+/, '');
-
-  // Strip leading single-direction abbreviation (N, S, E, W, NE, NW, SE, SW)
-  s = s.replace(/^(NE|NW|SE|SW|N|S|E|W)\s+/, '');
-
-  // Strip trailing directional suffix
-  s = s.replace(/\s+(NE|NW|SE|SW|N|S|E|W)$/, '').trim();
-
-  // Strip trailing street type abbreviation
-  const typeAbbrs = Object.values(STREET_TYPE_MAP);
-  const uniqueAbbrs = [...new Set(typeAbbrs)].join('|');
-  s = s.replace(new RegExp(`\\s+(${uniqueAbbrs})$`), '').trim();
-
-  return s.toLowerCase();
-}
-
-function sanitize(value: string): string {
-  return value.replace(/'/g, "''").replace(/[;\\]/g, '').substring(0, 120);
-}
 
 function buildAddressWhere(address: string): string {
   const normalized = normalizeAddress(address);

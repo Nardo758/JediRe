@@ -19,6 +19,12 @@
 
 import { logger } from '../../../utils/logger';
 import type { MunicipalLookupResult } from '../types';
+import {
+  normalizeAddressFull as normalizeAddress,
+  extractStreetNumber,
+  extractStreetName,
+  sanitize,
+} from '../address-normalize';
 
 const FULTON_ARCGIS_URL =
   'https://services1.arcgis.com/AQDHTHDrZzfsFsB5/ArcGIS/rest/services/Tax_Parcels_2025/FeatureServer/0/query';
@@ -36,54 +42,7 @@ const OUT_FIELDS = [
 
 const REQUEST_TIMEOUT_MS = 12_000;
 
-// ─── Address helpers (mirror benchmark-enrichment.service.ts) ────────────────
-
-/** Maps spelled-out street types to USPS abbreviations */
-const STREET_TYPE_MAP: Record<string, string> = {
-  STREET: 'ST', ROAD: 'RD', BOULEVARD: 'BLVD', DRIVE: 'DR',
-  AVENUE: 'AVE', COURT: 'CT', CIRCLE: 'CIR', PLACE: 'PL',
-  LANE: 'LN', PARKWAY: 'PKWY', HIGHWAY: 'HWY', TERRACE: 'TER',
-  TRAIL: 'TRL', POINT: 'PT', POINTE: 'PT', WAY: 'WAY',
-};
-
-function normalizeAddress(addr: string): string {
-  let s = addr
-    .toUpperCase()
-    .replace(/\./g, '')
-    .replace(/,/g, ' ')          // comma → space (preserve directionals like "St, NW")
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // Normalize spelled-out compound directions first (before single-letter N/S/E/W)
-  s = s
-    .replace(/\bNORTHEAST\b/g, 'NE')
-    .replace(/\bNORTHWEST\b/g, 'NW')
-    .replace(/\bSOUTHEAST\b/g, 'SE')
-    .replace(/\bSOUTHWEST\b/g, 'SW');
-
-  // Normalize spelled-out street types to USPS abbreviations
-  for (const [long, abbr] of Object.entries(STREET_TYPE_MAP)) {
-    s = s.replace(new RegExp(`\\b${long}\\b`, 'g'), abbr);
-  }
-
-  return s.replace(/\s+/g, ' ').trim();
-}
-
-function extractStreetNumber(addr: string): string {
-  const m = addr.match(/^(\d+)\s/);
-  return m ? m[1] : '';
-}
-
-function extractStreetName(addr: string): string {
-  return addr
-    .replace(/^\d+\s+/, '')
-    .replace(/\s+(NW|NE|SW|SE|N|S|E|W)$/i, '')
-    .trim();
-}
-
-function sanitize(value: string): string {
-  return value.replace(/'/g, "''").replace(/[;\\]/g, '').substring(0, 100);
-}
+// ─── Address helpers ──────────────────────────────────────────────────────────
 
 function buildAddressWhere(address: string): string {
   const normalized = normalizeAddress(address);

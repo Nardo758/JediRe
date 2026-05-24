@@ -12,6 +12,12 @@
 
 import { logger } from '../../../utils/logger';
 import type { MunicipalLookupResult } from '../types';
+import {
+  normalizeAddress,
+  extractStreetNumber,
+  extractStreetNameFull as extractStreetName,
+  sanitize,
+} from '../address-normalize';
 
 const MECK_URL =
   'https://meckgis.mecklenburgcountync.gov/server/rest/services/TaxParcel_camadata/FeatureServer/0/query';
@@ -27,27 +33,6 @@ const OUT_FIELDS = [
 ].join(',');
 
 const REQUEST_TIMEOUT_MS = 12_000;
-
-function normalizeAddress(addr: string): string {
-  return addr.toUpperCase().replace(/\s+/g, ' ').replace(/\./g, '').replace(/,.*$/, '').trim();
-}
-
-function extractStreetNumber(addr: string): string {
-  const m = addr.match(/^(\d+)\s/);
-  return m ? m[1] : '';
-}
-
-function extractStreetName(addr: string): string {
-  return addr
-    .replace(/^\d+\s+/, '')
-    .replace(/^(N|S|E|W|NE|NW|SE|SW)\s+/i, '')
-    .replace(/\s+(NW|NE|SW|SE|N|S|E|W)$/i, '')
-    .trim();
-}
-
-function sanitize(v: string): string {
-  return v.replace(/'/g, "''").replace(/[;\\]/g, '').substring(0, 100);
-}
 
 function buildWhere(address: string): string {
   const normalized = normalizeAddress(address);
