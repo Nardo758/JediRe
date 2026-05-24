@@ -78,6 +78,68 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
     }
   });
 
+  router.get('/file-counts', async (_req: Request, res: Response) => {
+    try {
+      const result = await pool.query(`
+        SELECT asset_id, COUNT(*)::int AS cnt
+        FROM data_library_files
+        WHERE asset_id IS NOT NULL
+        GROUP BY asset_id
+      `);
+      const counts: Record<string, number> = {};
+      for (const row of result.rows) {
+        counts[row.asset_id as string] = row.cnt as number;
+      }
+      res.json({ counts });
+    } catch (err: any) {
+      console.error('Data library file-counts error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/rollup-stub', async (_req: Request, res: Response) => {
+    try {
+      const [ptResult, msaResult, unclResult] = await Promise.all([
+        pool.query(`
+          SELECT
+            COALESCE(property_type, 'Unknown') AS product_type,
+            COUNT(*)::int AS count,
+            ROUND(AVG(unit_count))::int AS avg_units,
+            ROUND(AVG(avg_rent))::int AS avg_rent
+          FROM data_library_assets
+          GROUP BY property_type
+          ORDER BY count DESC
+          LIMIT 20
+        `),
+        pool.query(`
+          SELECT
+            msa_name,
+            COUNT(*)::int AS count,
+            ROUND(AVG(unit_count))::int AS avg_units,
+            ROUND(AVG(avg_rent))::int AS avg_rent
+          FROM data_library_assets
+          WHERE msa_name IS NOT NULL AND msa_name <> ''
+          GROUP BY msa_name
+          ORDER BY count DESC
+          LIMIT 20
+        `),
+        pool.query(`
+          SELECT COUNT(*)::int AS cnt
+          FROM data_library_assets
+          WHERE property_type IS NULL
+        `),
+      ]);
+      res.json({
+        product_type_groups: ptResult.rows,
+        msa_groups: msaResult.rows,
+        unclassified: unclResult.rows[0]?.cnt ?? 0,
+      });
+    } catch (err: any) {
+      console.error('Data library rollup-stub error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.get('/:id', async (req: Request, res: Response) => {
     try {
       const result = await pool.query('SELECT * FROM data_library_assets WHERE id = $1', [req.params.id]);

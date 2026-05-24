@@ -562,6 +562,10 @@ app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(poo
 app.use('/api/v1/opus', requireAuth, createOpusRoutes(pool));
 app.use('/api/v1/data-library', requireAuth, createDataLibraryRoutes(pool));
 app.use('/api/v1/data-library-assets', requireAuth, createDataLibraryAssetsRoutes(pool));
+import { createDataLibraryFilesRoutes } from './api/rest/data-library-files.routes';
+app.use('/api/v1/data-library-files', requireAuth, createDataLibraryFilesRoutes(pool));
+import { createIntakeJobsRoutes } from './api/rest/intake-jobs.routes';
+app.use('/api/v1/intake-jobs', requireAuth, createIntakeJobsRoutes(pool));
 app.use('/api/v1/replacement-cost', createReplacementCostRoutes(pool));
 app.use('/api/v1/broker-narratives', createBrokerNarrativesRoutes(pool));
 app.use('/api/v1/intelligence', createIntelligenceRefreshRoutes());
