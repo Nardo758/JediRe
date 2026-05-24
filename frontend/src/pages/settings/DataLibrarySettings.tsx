@@ -22,13 +22,13 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export function DataLibrarySettings() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab: TabKey = (searchParams.get('tab') as TabKey) || 'assets';
+  const activeTab: TabKey = (searchParams.get('dlTab') as TabKey) || 'assets';
 
   const setTab = (tab: TabKey) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
-      next.delete('tab');
-      if (tab !== 'assets') next.set('tab', tab);
+      next.delete('dlTab');
+      if (tab !== 'assets') next.set('dlTab', tab);
       next.delete('page');
       return next;
     });

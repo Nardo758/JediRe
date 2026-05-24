@@ -2900,10 +2900,6 @@ export default function TerminalPage() {
               {n.label}
             </button>
           ))}
-          <button onClick={()=>navigate("/settings/data-library?tab=assets")} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,padding:"0 12px",height:32,cursor:"pointer",background:"transparent",color:T.text.secondary,border:"none",borderLeft:`1px solid ${T.border.medium}`,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:0}}>
-            <span style={{fontSize:10,fontWeight:700,opacity:0.7,color:T.text.muted}}>AR</span>
-            ARCHIVE
-          </button>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`,flexShrink:0}}>
           <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"3px 9px",cursor:"pointer",height:22,letterSpacing:0.3,flexShrink:0}}>+ DEAL</button>

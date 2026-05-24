@@ -82,6 +82,18 @@ const RedirectDealViewToTab: React.FC = () => {
   return <Navigate to={`/deals/${id}/detail?tab=${tab}`} replace />;
 };
 
+function DataLibraryRedirect() {
+  const location = useLocation();
+  const inParams = new URLSearchParams(location.search);
+  const innerTab = inParams.get('tab');
+  const parcelId = inParams.get('parcel_id');
+  const out = new URLSearchParams();
+  out.set('tab', 'data-library');
+  if (innerTab && innerTab !== 'data-library') out.set('dlTab', innerTab);
+  if (parcelId) out.set('parcel_id', parcelId);
+  return <Navigate to={`/terminal/settings?${out.toString()}`} replace />;
+}
+
 function DealIdRedirect() {
   const { id } = useParams<{ id: string }>();
   return <Navigate to={`/assets-owned/${id}/property`} replace />;
@@ -278,6 +290,7 @@ function AppContent() {
         <Route path="/competitive-intelligence/acquisition" element={<Navigate to="/terminal/markets" replace />} />
         <Route path="/competitive-intelligence/comps" element={<Navigate to="/terminal/markets" replace />} />
         <Route path="/competitive-intelligence/alerts" element={<Navigate to="/terminal/markets" replace />} />
+        <Route path="/settings/data-library" element={<DataLibraryRedirect />} />
         <Route path="/settings" element={<Navigate to="/terminal/settings" replace />} />
         <Route path="/settings/modules" element={<Navigate to="/terminal/settings" replace />} />
         <Route path="/settings/module-libraries" element={<Navigate to="/terminal/settings" replace />} />

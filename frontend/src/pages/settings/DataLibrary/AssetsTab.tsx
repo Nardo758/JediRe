@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { BT } from '@/components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import AssetDetailModal from '../../../components/data-library/AssetDetailModal';
@@ -62,7 +62,7 @@ const CLASS_COLORS: Record<string, string> = {
 };
 
 export function AssetsTab() {
-  const navigate = useNavigate();
+  const [, setSearchParams] = useSearchParams();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -129,7 +129,12 @@ export function AssetsTab() {
   };
 
   const navigateToFiles = (assetId: string) => {
-    navigate(`?tab=files&parcel_id=${assetId}`);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('dlTab', 'files');
+      next.set('parcel_id', assetId);
+      return next;
+    });
   };
 
   return (

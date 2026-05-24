@@ -75,7 +75,7 @@ export function FilesTab() {
   const setParam = useCallback((key: string, val: string) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
-      next.set('tab', 'files');
+      next.set('dlTab', 'files');
       if (val === '' || val === 'ALL' || val === '1') next.delete(key);
       else next.set(key, val);
       next.delete('page');
@@ -86,7 +86,7 @@ export function FilesTab() {
   const setPage = useCallback((p: number) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
-      next.set('tab', 'files');
+      next.set('dlTab', 'files');
       if (p === 1) next.delete('page');
       else next.set('page', String(p));
       return next;
@@ -138,7 +138,7 @@ export function FilesTab() {
   const clearParcelFilter = () => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
-      next.set('tab', 'files');
+      next.set('dlTab', 'files');
       next.delete('parcel_id');
       next.delete('page');
       return next;
@@ -248,7 +248,7 @@ export function FilesTab() {
                   <td style={{ padding: '8px', fontSize: '12px', verticalAlign: 'middle', maxWidth: '320px' }}>
                     <span style={{ color: '#cdd9e5', wordBreak: 'break-all' }}>{file.original_filename}</span>
                   </td>
-                  <td style={{ padding: '8px', fontSize: '12px', verticalAlign: 'middle', maxWidth: '200px', cursor: 'pointer' }} onClick={() => navigate('?tab=assets')}>
+                  <td style={{ padding: '8px', fontSize: '12px', verticalAlign: 'middle', maxWidth: '200px', cursor: 'pointer' }} onClick={() => setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('dlTab'); n.delete('parcel_id'); return n; })}>
                     <span style={{ color: '#388bfd', fontSize: '12px' }}>{propName}</span>
                   </td>
                   <td style={{ padding: '8px', fontSize: '12px', verticalAlign: 'middle' }}>
