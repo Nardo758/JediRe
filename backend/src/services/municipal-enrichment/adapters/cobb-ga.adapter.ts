@@ -1,0 +1,258 @@
+/**
+ * Cobb County GA — ArcGIS Parcels adapter
+ *
+ * Supports two lookup modes:
+ *   - lookupCobbGA(address)          — geocode address → spatial intersect CobbParcels
+ *   - lookupCobbGAByParcelId(id)     — query CobbParcels by PIN (exact match)
+ *
+ * Two-step address lookup strategy:
+ *   1. CAM_Locator geocoder (no auth required) converts address → X, Y
+ *      in WKID 2240 (NAD83 / Georgia State Plane West, US Survey Feet).
+ *      Endpoint: https://gis.cobbcounty.org/gisserver/rest/services/locators/CAM_Locator/GeocodeServer
+ *   2. CobbParcels FeatureServer spatial intersect finds the parcel polygon
+ *      that contains the geocoded point. ArcGIS auto-reprojects from inSR 2240
+ *      to the layer's native WKID 102100 (Web Mercator).
+ *      Endpoint: https://services.arcgis.com/HYLRafMc4Ux6DA8c/arcgis/rest/services/CobbParcels/FeatureServer/0/query
+ *
+ * CobbParcels fields (public GIS layer — no assessment/owner data available):
+ *   PIN, PARCEL_ID, CLASS (land use class code), LAND_SQFT, ACRE_DEEDE,
+ *   TAX_DIST, NBHDSUBD_I (neighborhood+subdivision ID), ST_NUMBER
+ *
+ * Parcel ID query strategy (lookupCobbGAByParcelId):
+ *   PIN = '{id}'  (direct equality; Cobb PINs are numeric strings, no spaces)
+ */
+
+import { logger } from '../../../utils/logger';
+import type { MunicipalLookupResult } from '../types';
+
+// ─── Endpoints ────────────────────────────────────────────────────────────────
+
+const CAM_LOCATOR_URL =
+  'https://gis.cobbcounty.org/gisserver/rest/services/locators/CAM_Locator/GeocodeServer/findAddressCandidates';
+
+const COBB_PARCELS_URL =
+  'https://services.arcgis.com/HYLRafMc4Ux6DA8c/arcgis/rest/services/CobbParcels/FeatureServer/0/query';
+
+const PARCEL_OUT_FIELDS = [
+  'PIN', 'PARCEL_ID', 'CLASS', 'LAND_SQFT', 'ACRE_DEEDE', 'ACRE_CALC',
+  'TAX_DIST', 'NBHDSUBD_I', 'ST_NUMBER',
+].join(',');
+
+const REQUEST_TIMEOUT_MS = 12_000;
+
+// ─── Retry helpers ────────────────────────────────────────────────────────────
+
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 800;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url: string, tag: string): Promise<{ data?: any; error?: string }> {
+  let lastError = '';
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1) + Math.random() * 200;
+      logger.debug(`[cobb-ga] ${tag} retry ${attempt}/${MAX_RETRIES - 1} after ${Math.round(delay)}ms`);
+      await sleep(delay);
+    }
+
+    let resp: Response;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      resp = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+    } catch (err: any) {
+      lastError = err?.name === 'AbortError' ? 'timeout' : (err?.message ?? String(err));
+      logger.warn(`[cobb-ga] ${tag} fetch attempt ${attempt + 1} error: ${lastError}`);
+      continue;
+    }
+
+    if (!resp.ok) {
+      lastError = `HTTP ${resp.status}`;
+      logger.warn(`[cobb-ga] ${tag} HTTP ${resp.status} (attempt ${attempt + 1})`);
+      if (resp.status !== 429 && resp.status < 500 && resp.status !== 400) break;
+      continue;
+    }
+
+    let data: any;
+    try {
+      data = await resp.json();
+    } catch {
+      lastError = 'JSON parse error';
+      continue;
+    }
+
+    if (data?.error) {
+      const msg: string = data.error?.message ?? JSON.stringify(data.error);
+      lastError = msg;
+      logger.warn(`[cobb-ga] ${tag} ArcGIS body error (attempt ${attempt + 1}): ${msg}`);
+      if (msg.toLowerCase().includes('invalid query') || msg.toLowerCase().includes('invalid parameter')) {
+        continue;
+      }
+      return { error: msg };
+    }
+
+    return { data };
+  }
+
+  logger.warn(`[cobb-ga] ${tag} all ${MAX_RETRIES} attempts failed: ${lastError}`);
+  return { error: lastError };
+}
+
+// ─── Geocode step ─────────────────────────────────────────────────────────────
+
+interface GeocodedPoint {
+  x: number;
+  y: number;
+  matchAddr: string;
+  score: number;
+}
+
+async function geocodeAddress(address: string): Promise<{ point?: GeocodedPoint; error?: string }> {
+  const params = new URLSearchParams({
+    SingleLine: address,
+    outFields: 'X,Y,Match_addr,Score',
+    maxLocations: '3',
+    f: 'json',
+  });
+
+  const url = `${CAM_LOCATOR_URL}?${params.toString()}`;
+  const { data, error } = await fetchWithRetry(url, 'geocode');
+  if (error) return { error };
+
+  const candidates: any[] = data?.candidates ?? [];
+  if (candidates.length === 0) return { error: 'no_candidates' };
+
+  // Pick highest-scoring candidate
+  const best = candidates.reduce((a: any, b: any) =>
+    (b.score ?? 0) > (a.score ?? 0) ? b : a
+  );
+
+  const attrs = best.attributes ?? {};
+  const x = typeof attrs.X === 'number' ? attrs.X : best.location?.x;
+  const y = typeof attrs.Y === 'number' ? attrs.Y : best.location?.y;
+
+  if (!x || !y) return { error: 'no_coordinates' };
+
+  return {
+    point: {
+      x,
+      y,
+      matchAddr: attrs.Match_addr ?? best.address ?? address,
+      score: best.score ?? 0,
+    },
+  };
+}
+
+// ─── CobbParcels spatial query ─────────────────────────────────────────────────
+
+async function queryParcelByPoint(pt: GeocodedPoint, inputAddress: string): Promise<MunicipalLookupResult> {
+  const geometry = JSON.stringify({
+    x: pt.x,
+    y: pt.y,
+    spatialReference: { wkid: 2240 },
+  });
+
+  const params = new URLSearchParams({
+    geometry,
+    geometryType: 'esriGeometryPoint',
+    spatialRel: 'esriSpatialRelIntersects',
+    inSR: '2240',
+    outFields: PARCEL_OUT_FIELDS,
+    returnGeometry: 'false',
+    f: 'json',
+  });
+
+  const url = `${COBB_PARCELS_URL}?${params.toString()}`;
+  const { data, error } = await fetchWithRetry(url, 'spatial-query');
+  if (error) return { status: 'error', error };
+
+  const features: any[] = data?.features ?? [];
+  if (features.length === 0) return { status: 'not_found' };
+
+  const attrs: Record<string, any> = features[0].attributes ?? {};
+  return mapAttrsToResult(attrs, pt.matchAddr || inputAddress, features.length);
+}
+
+// ─── CobbParcels PIN query ─────────────────────────────────────────────────────
+
+async function queryParcelByPin(pin: string): Promise<MunicipalLookupResult> {
+  const params = new URLSearchParams({
+    where: `PIN='${pin.replace(/'/g, "''")}'`,
+    outFields: PARCEL_OUT_FIELDS,
+    returnGeometry: 'false',
+    f: 'json',
+  });
+
+  const url = `${COBB_PARCELS_URL}?${params.toString()}`;
+  const { data, error } = await fetchWithRetry(url, 'pin-query');
+  if (error) return { status: 'error', error };
+
+  const features: any[] = data?.features ?? [];
+  if (features.length === 0) return { status: 'not_found' };
+
+  const attrs: Record<string, any> = features[0].attributes ?? {};
+  return mapAttrsToResult(attrs, null, features.length);
+}
+
+// ─── Result mapping ────────────────────────────────────────────────────────────
+
+function mapAttrsToResult(
+  attrs: Record<string, any>,
+  resolvedAddress: string | null,
+  candidateCount: number,
+): MunicipalLookupResult {
+  const pin      = attrs.PIN       ?? attrs.PARCEL_ID ?? null;
+  const landSqft = attrs.LAND_SQFT !== undefined && attrs.LAND_SQFT !== null
+    ? Math.round(Number(attrs.LAND_SQFT))
+    : undefined;
+  const acres = (attrs.ACRE_DEEDE && Number(attrs.ACRE_DEEDE) > 0)
+    ? Number(attrs.ACRE_DEEDE)
+    : (attrs.ACRE_CALC && Number(attrs.ACRE_CALC) > 0)
+      ? Number(attrs.ACRE_CALC)
+      : undefined;
+
+  logger.debug(`[cobb-ga] resolved → PIN ${pin}, class ${attrs.CLASS}, ${acres}ac`);
+
+  return {
+    status:             pin ? 'ok' : 'not_found',
+    candidates:         candidateCount,
+    parcel_id:          pin,
+    address:            resolvedAddress ?? null,
+    land_acres:         acres,
+    geometry_area_sqft: landSqft,
+    class_code:         attrs.CLASS       ?? null,
+    tax_district:       attrs.TAX_DIST    ?? null,
+    neighborhood:       attrs.NBHDSUBD_I  ?? null,
+    county:             'Cobb',
+    state:              'GA',
+    source:             'arcgis_cobb_ga',
+    raw:                attrs,
+  };
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/** Look up a Cobb County parcel by street address (geocode → spatial intersect). */
+export async function lookupCobbGA(address: string): Promise<MunicipalLookupResult> {
+  logger.debug(`[cobb-ga] address lookup: "${address}"`);
+
+  const { point, error: geocodeErr } = await geocodeAddress(address);
+  if (geocodeErr) {
+    if (geocodeErr === 'no_candidates') return { status: 'not_found' };
+    return { status: 'error', error: `geocode: ${geocodeErr}` };
+  }
+
+  logger.debug(`[cobb-ga] geocoded "${address}" → (${point!.x.toFixed(0)}, ${point!.y.toFixed(0)}) score=${point!.score}`);
+  return queryParcelByPoint(point!, address);
+}
+
+/** Look up a Cobb County parcel by its PIN (exact match). */
+export async function lookupCobbGAByParcelId(parcelId: string): Promise<MunicipalLookupResult> {
+  logger.debug(`[cobb-ga] parcel-id lookup: "${parcelId}"`);
+  return queryParcelByPin(parcelId.trim());
+}

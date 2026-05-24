@@ -12,6 +12,7 @@
  * Currently implements:
  *   GA → Fulton County ArcGIS adapter      (Atlanta/Fulton)
  *       → DeKalb County ArcGIS adapter     (fallback for non-Fulton GA addresses)
+ *       → Cobb County ArcGIS adapter       (Cumberland/Vinings/Smyrna area)
  *   NC → Mecklenburg County ArcGIS adapter (Charlotte)
  *   TN → Davidson County ArcGIS adapter    (Nashville)
  *   TX → Dallas County DCAD adapter        (Dallas)
@@ -30,6 +31,7 @@
 import { logger } from '../../utils/logger';
 import { lookupFultonGA, lookupFultonGAByParcelId }           from './adapters/fulton-ga.adapter';
 import { lookupDeKalbGA, lookupDeKalbGAByParcelId }           from './adapters/dekalb-ga.adapter';
+import { lookupCobbGA, lookupCobbGAByParcelId }               from './adapters/cobb-ga.adapter';
 import { lookupMecklenburgNC, lookupMecklenburgNCByParcelId } from './adapters/mecklenburg-nc.adapter';
 import { lookupDavidsonTN, lookupDavidsonTNByParcelId }       from './adapters/davidson-tn.adapter';
 import { lookupDallasTX, lookupDallasTXByParcelId }           from './adapters/dallas-tx.adapter';
@@ -68,9 +70,13 @@ class MunicipalEnrichmentService {
         logger.debug(`[municipal-enrichment] GA address lookup for "${address}" — trying Fulton first`);
         const fultonResult = await lookupFultonGA(address.trim());
         if (fultonResult.status === 'ok') return fultonResult;
-        // Fulton returned not_found or error → try DeKalb
+        // Fulton miss → try DeKalb
         logger.debug(`[municipal-enrichment] Fulton miss (${fultonResult.status}), falling back to DeKalb for "${address}"`);
-        return lookupDeKalbGA(address.trim());
+        const dekalbResult = await lookupDeKalbGA(address.trim());
+        if (dekalbResult.status === 'ok') return dekalbResult;
+        // DeKalb miss → try Cobb (Cumberland/Vinings/Smyrna area)
+        logger.debug(`[municipal-enrichment] DeKalb miss (${dekalbResult.status}), falling back to Cobb for "${address}"`);
+        return lookupCobbGA(address.trim());
       }
 
       case 'NC':
@@ -138,7 +144,11 @@ class MunicipalEnrichmentService {
         if (fultonResult.status === 'ok') return fultonResult;
         // Fulton miss → try DeKalb
         logger.debug(`[municipal-enrichment] Fulton parcel-id miss (${fultonResult.status}), falling back to DeKalb for "${parcelId}"`);
-        return lookupDeKalbGAByParcelId(parcelId.trim());
+        const dekalbResult = await lookupDeKalbGAByParcelId(parcelId.trim());
+        if (dekalbResult.status === 'ok') return dekalbResult;
+        // DeKalb miss → try Cobb
+        logger.debug(`[municipal-enrichment] DeKalb parcel-id miss (${dekalbResult.status}), falling back to Cobb for "${parcelId}"`);
+        return lookupCobbGAByParcelId(parcelId.trim());
       }
 
       case 'NC':
