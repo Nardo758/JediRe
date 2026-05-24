@@ -299,11 +299,11 @@ export default function ArchivePropertyPage() {
     <div style={S.page}>
       {/* ── Top bar ── */}
       <div style={S.topBar}>
-        <button style={S.backBtn} onClick={() => navigate(-1)}>← Back</button>
+        <button style={S.backBtn} onClick={() => navigate('/archive/library')}>← Library</button>
         <div style={S.breadcrumb}>
           <span>Archive</span>
           <span style={S.crumbSep}>/</span>
-          <span>Properties</span>
+          <span style={{ cursor: 'pointer', color: '#8892b0' }} onClick={() => navigate('/archive/library')}>Library</span>
           <span style={S.crumbSep}>/</span>
           <span style={S.crumbActive}>{displayName}</span>
         </div>
@@ -454,6 +454,28 @@ export default function ArchivePropertyPage() {
               </div>
 
               <div style={S.sparkCard}>
+                <div style={S.sparkLabel}>Avg Rent</div>
+                {ts.series.avg_rent.slice(-1)[0]?.value != null && (
+                  <div style={S.sparkValue}>${ts.series.avg_rent.slice(-1)[0].value!.toLocaleString()}</div>
+                )}
+                <Sparkline points={ts.series.avg_rent} />
+                <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '4px' }}>
+                  {ts.coverage.avg_rent?.observations_count ?? 0} obs
+                </div>
+              </div>
+
+              <div style={S.sparkCard}>
+                <div style={S.sparkLabel}>Occupancy</div>
+                {ts.series.occupancy.slice(-1)[0]?.value != null && (
+                  <div style={S.sparkValue}>{ts.series.occupancy.slice(-1)[0].value!.toFixed(1)}%</div>
+                )}
+                <Sparkline points={ts.series.occupancy} />
+                <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '4px' }}>
+                  {ts.coverage.occupancy?.observations_count ?? 0} obs
+                </div>
+              </div>
+
+              <div style={S.sparkCard}>
                 <div style={S.sparkLabel}>Signing Velocity</div>
                 {lastVelocity != null && (
                   <div style={S.sparkValue}>{lastVelocity} leases/mo</div>
@@ -463,9 +485,20 @@ export default function ArchivePropertyPage() {
                   {ts.coverage.signing_velocity?.observations_count ?? 0} obs
                 </div>
               </div>
+
+              <div style={S.sparkCard}>
+                <div style={S.sparkLabel}>Concession / Unit</div>
+                {ts.series.concession_per_unit.slice(-1)[0]?.value != null && (
+                  <div style={S.sparkValue}>${ts.series.concession_per_unit.slice(-1)[0].value!.toLocaleString()}</div>
+                )}
+                <Sparkline points={ts.series.concession_per_unit} />
+                <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '4px' }}>
+                  {ts.coverage.concession_per_unit?.observations_count ?? 0} obs
+                </div>
+              </div>
             </div>
 
-            {(ts.series.asking_rent.length === 0 && ts.series.signing_velocity.length === 0) && (
+            {(ts.series.asking_rent.length === 0 && ts.series.avg_rent.length === 0 && ts.series.occupancy.length === 0) && (
               <div style={{ color: '#8892b0', fontSize: '12px', padding: '12px 0' }}>
                 No time-series data yet for this property. Upload T-12 or rent roll files to populate.
               </div>
@@ -535,8 +568,8 @@ function FileRow({ file }: { file: DataLibraryFile }) {
   const handleDownload = () => {
     if (file.cdn_url) {
       window.open(file.cdn_url, '_blank', 'noopener');
-    } else if (file.storage_key) {
-      void apiClient.get(`/api/v1/archive/files/${file.id}/download-url`)
+    } else {
+      void apiClient.get(`/api/v1/archive/files/${file.id}/url`)
         .then(({ data }) => { if (data.url) window.open(data.url, '_blank', 'noopener'); })
         .catch(() => alert('Download URL unavailable'));
     }
@@ -576,20 +609,18 @@ function FileRow({ file }: { file: DataLibraryFile }) {
       </td>
       {/* actions */}
       <td style={{ ...td, whiteSpace: 'nowrap' }}>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          {(file.cdn_url || file.storage_key) && (
-            <button
-              onClick={handleDownload}
-              style={{
-                background: 'none', border: '1px solid #30363d', color: '#8892b0',
-                borderRadius: '3px', padding: '2px 8px', cursor: 'pointer',
-                fontFamily: 'inherit', fontSize: '10px',
-              }}
-            >
-              ↓ Download
-            </button>
-          )}
-        </div>
+        <button
+          onClick={handleDownload}
+          style={{
+            background: 'none', border: '1px solid #30363d', color: '#8892b0',
+            borderRadius: '3px', padding: '2px 8px', cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: '10px',
+          }}
+          onMouseEnter={e => { (e.currentTarget.style.borderColor = '#388bfd'); (e.currentTarget.style.color = '#4fc3f7'); }}
+          onMouseLeave={e => { (e.currentTarget.style.borderColor = '#30363d'); (e.currentTarget.style.color = '#8892b0'); }}
+        >
+          ↓ Download
+        </button>
       </td>
     </tr>
   );

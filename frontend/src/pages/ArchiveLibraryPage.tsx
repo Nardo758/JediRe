@@ -213,7 +213,7 @@ export default function ArchiveLibraryPage() {
     <div style={page_style}>
       {/* ── Top bar ── */}
       <div style={topBar}>
-        <button style={backBtn} onClick={() => navigate(-1)}>← Back</button>
+        <button style={backBtn} onClick={() => navigate('/terminal/dashboard')}>← Terminal</button>
         <span style={{ color: '#8892b0', fontSize: '11px', letterSpacing: '0.08em' }}>
           Archive <span style={{ color: '#30363d', margin: '0 6px' }}>/</span>
           <span style={{ color: '#cdd9e5' }}>Library</span>

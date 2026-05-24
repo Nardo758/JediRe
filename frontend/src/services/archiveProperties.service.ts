@@ -82,9 +82,17 @@ export interface TimeSeries {
   parcel_id: string;
   series: {
     asking_rent: TimeSeriesPoint[];
+    avg_rent: TimeSeriesPoint[];
+    occupancy: TimeSeriesPoint[];
     signing_velocity: TimeSeriesPoint[];
+    concession_per_unit: TimeSeriesPoint[];
   };
-  coverage: Record<string, { observations_count: number; date_range: { start: string | null; end: string | null } }>;
+  coverage: Record<string, {
+    observations_count: number;
+    date_range: { start: string | null; end: string | null };
+    gap_diagnostic?: { coverage_pct: number; gap_count: number; gap_months: string[] } | null;
+  }>;
+  range?: { start: string; end: string };
 }
 
 export interface CoverageDiagnostics {
