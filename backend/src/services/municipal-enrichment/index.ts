@@ -34,6 +34,7 @@
  */
 
 import { logger } from '../../utils/logger';
+import { stripUnitSuffix } from './address-normalize';
 import { lookupFultonGA, lookupFultonGAByParcelId }           from './adapters/fulton-ga.adapter';
 import { lookupDeKalbGA, lookupDeKalbGAByParcelId }           from './adapters/dekalb-ga.adapter';
 import { lookupCobbGA, lookupCobbGAByParcelId }               from './adapters/cobb-ga.adapter';
@@ -81,10 +82,18 @@ class MunicipalEnrichmentService {
       return { status: 'not_found', error: 'address is empty' };
     }
 
+    // Strip unit/apartment/suite qualifiers (e.g. "Apt 4", "Suite 200", "#501")
+    // before any adapter sees the address.  County GIS layers store parcel-level
+    // addresses without unit designators; these suffixes would cause LIKE misses.
+    const baseAddress = stripUnitSuffix(address.trim());
+
     switch (normalizedState) {
       case 'GA': {
         // Use Census-normalized street address if available, otherwise raw input.
-        const lookupAddr = (options?.normalizedAddress ?? address).trim();
+        // Also strip unit suffix from the Census-normalized form in case Census
+        // preserves the unit designator.
+        const rawLookup    = options?.normalizedAddress ?? baseAddress;
+        const lookupAddr   = stripUnitSuffix(rawLookup.trim());
 
         // ── FIPS-direct route ────────────────────────────────────────────────
         // When the Census Geocoder has already resolved the county, skip straight
@@ -154,36 +163,36 @@ class MunicipalEnrichmentService {
 
       case 'NC':
         if (!normalizedCity || normalizedCity.includes('charlotte') || normalizedCity.includes('mecklenburg')) {
-          logger.debug(`[municipal-enrichment] NC/Mecklenburg address lookup for "${address}"`);
-          return lookupMecklenburgNC(address.trim());
+          logger.debug(`[municipal-enrichment] NC/Mecklenburg address lookup for "${baseAddress}"`);
+          return lookupMecklenburgNC(baseAddress);
         }
         logger.debug(`[municipal-enrichment] NC city "${city}" not implemented`);
         return { status: 'not_implemented', state: normalizedState, source: 'stub' };
 
       case 'TN':
         if (!normalizedCity || normalizedCity.includes('nashville') || normalizedCity.includes('davidson')) {
-          logger.debug(`[municipal-enrichment] TN/Davidson address lookup for "${address}"`);
-          return lookupDavidsonTN(address.trim());
+          logger.debug(`[municipal-enrichment] TN/Davidson address lookup for "${baseAddress}"`);
+          return lookupDavidsonTN(baseAddress);
         }
         logger.debug(`[municipal-enrichment] TN city "${city}" not implemented`);
         return { status: 'not_implemented', state: normalizedState, source: 'stub' };
 
       case 'TX':
         if (normalizedCity.includes('dallas')) {
-          logger.debug(`[municipal-enrichment] TX/Dallas address lookup for "${address}"`);
-          return lookupDallasTX(address.trim());
+          logger.debug(`[municipal-enrichment] TX/Dallas address lookup for "${baseAddress}"`);
+          return lookupDallasTX(baseAddress);
         }
         if (normalizedCity.includes('houston')) {
-          logger.debug(`[municipal-enrichment] TX/Harris address lookup for "${address}"`);
-          return lookupHarrisTX(address.trim());
+          logger.debug(`[municipal-enrichment] TX/Harris address lookup for "${baseAddress}"`);
+          return lookupHarrisTX(baseAddress);
         }
         logger.debug(`[municipal-enrichment] TX city "${city}" not implemented`);
         return { status: 'not_implemented', state: normalizedState, source: 'stub' };
 
       case 'FL':
         if (normalizedCity.includes('jacksonville')) {
-          logger.debug(`[municipal-enrichment] FL/Duval address lookup for "${address}"`);
-          return lookupDuvalFL(address.trim());
+          logger.debug(`[municipal-enrichment] FL/Duval address lookup for "${baseAddress}"`);
+          return lookupDuvalFL(baseAddress);
         }
         logger.debug(`[municipal-enrichment] FL city "${city}" not implemented`);
         return { status: 'not_implemented', state: normalizedState, source: 'stub' };

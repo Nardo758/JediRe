@@ -17,6 +17,7 @@
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { municipalEnrichment } from '../municipal-enrichment';
+import { stripUnitSuffix } from '../municipal-enrichment/address-normalize';
 import { censusGeocode } from '../geocoder/census/census-geocoder.client';
 import {
   getCachedGeocode,
@@ -156,7 +157,10 @@ async function stepMunicipalLookup(
           // Append city + state so Census can disambiguate short street addresses.
           // Without this, "691 14th Street Northwest" could match any US city.
           // Cache key remains the raw address (city/state are stable for a job).
-          const geoQuery = city ? `${address}, ${city}, ${state}` : `${address}, ${state}`;
+          // Strip unit suffix before Census so "3703 Peachtree Rd NE Apt 4"
+          // geocodes as the street address, not the unit.
+          const geoBase  = stripUnitSuffix(address);
+          const geoQuery = city ? `${geoBase}, ${city}, ${state}` : `${geoBase}, ${state}`;
           const geocodeResult = await censusGeocode(geoQuery);
           if (geocodeResult) {
             await setCachedGeocode(address, geocodeResult);

@@ -121,6 +121,47 @@ export function extractStreetKeyword(normalized: string): string {
 }
 
 /**
+ * Strip common unit / apartment / suite qualifiers from the **end** of a
+ * street address before passing it to any county ArcGIS adapter.
+ *
+ * County tax-parcel GIS layers store parcel-level addresses without unit
+ * designators; suffixes like "Apt 4" or "Suite 200" cause LIKE queries to
+ * miss entirely.  Anchoring to `$` prevents false matches on street names
+ * that happen to contain a keyword (e.g. "100 Building Court NE").
+ *
+ * Handled patterns:
+ *   APT / APARTMENT / UNIT / STE / SUITE / BLDG / FL / FLOOR / RM / ROOM /
+ *   NO / LOT / SPC / SPACE / DEPT / NUM   followed by an optional identifier
+ *   BUILDING   followed by a short identifier (1-5 chars) — avoids matching
+ *              "Building Court" which is a legitimate street-name fragment
+ *   #NNN       e.g. "#501" or "# 101"
+ *
+ * Examples:
+ *   "3703 Peachtree Road NE Apt 4"    → "3703 Peachtree Road NE"
+ *   "1000 Main St, Suite 200"         → "1000 Main St"
+ *   "100 Park Ave #501"               → "100 Park Ave"
+ *   "565 Northside Dr SW Building A"  → "565 Northside Dr SW"
+ *   "100 Building Court NE"           → "100 Building Court NE"  (no change)
+ */
+export function stripUnitSuffix(address: string): string {
+  let s = address;
+
+  // BUILDING followed by a short identifier (≤5 chars) — unit suffix only
+  s = s.replace(/[,\s]+\bBUILDING\s+[A-Z0-9]{1,5}$/i, '');
+
+  // All other common unit-designator keywords
+  s = s.replace(
+    /[,\s]+\b(?:APT|APARTMENT|UNIT|STE|SUITE|BLDG|FL|FLOOR|RM|ROOM|NO|LOT|SPC|SPACE|DEPT|NUM)\b\.?\s*\S*$/i,
+    '',
+  );
+
+  // Bare "#" patterns: " #501" or " # 101"
+  s = s.replace(/\s+#\s*\S+$/i, '');
+
+  return s.trim();
+}
+
+/**
  * Sanitize a string for safe interpolation into ArcGIS SQL WHERE clauses.
  * Escapes single quotes, strips semicolons and backslashes, and truncates.
  *
