@@ -243,24 +243,30 @@ const ENVELOPE_BUF_DEG = 0.0005;
 /**
  * Street-number tolerance for the envelope candidate filter.
  *
- * DeKalb's urban/suburban density is higher than Cobb's, so we use a tighter
- * tolerance (±10 vs Cobb's ±50) to keep the single-candidate gate meaningful.
- * Empirical probe: ±50 leaves 2–4 ambiguous candidates for most benchmark
- * failures; ±10 resolves "3108 Briarcliff Rd NE" → single candidate 3110
- * while still filtering out roads that don't share the street keyword.
+ * This is intentionally ±10 rather than a larger value because DeKalb's
+ * parcels are denser than Cobb County's.  Empirical probe of 8 failing
+ * benchmark addresses confirmed that ±50 leaves 2–4 ambiguous candidates
+ * for every address tested — the single-candidate gate would never fire and
+ * zero addresses would be recovered.  At ±10, "3108 Briarcliff Rd NE"
+ * resolves to exactly one candidate (stored SITEADDRES number = 3110,
+ * delta = 2) while all other failures remain safely ambiguous or misses.
+ *
+ * If future benchmark addresses need a wider window, this constant should be
+ * raised incrementally and re-validated against the full 71-address set.
  */
 const ADDR_NUM_TOLERANCE = 10;
 
 /**
  * Envelope fallback: issues a ±ENVELOPE_BUF_DEG bounding-box query and
  * accepts the result only when exactly ONE parcel survives a dual filter:
- *   1. Native ADDRESS_NU integer field within ±ADDR_NUM_TOLERANCE of the
- *      input house number (uses the dedicated field rather than parsing a
- *      string, making the comparison more reliable than Cobb's ST_NUMBER
- *      approach).
- *   2. FULL_STREE field (stored street name) contains the input street
- *      keyword — prevents adjacent-street false positives where two nearby
- *      streets share similar house numbers.
+ *
+ *   1. Street number parsed from SITEADDRES (using extractStreetNumber,
+ *      same utility used by the WHERE-clause path) within ±ADDR_NUM_TOLERANCE
+ *      of the input house number.
+ *
+ *   2. FULL_STREE field (stored street name) contains the input street keyword
+ *      — prevents adjacent-street false positives where two nearby streets
+ *      share similar house numbers.
  *
  * Zero or multiple candidates → not_found (caller falls back to WHERE query).
  * Transport/ArcGIS errors → not_found (degrades gracefully).
@@ -299,10 +305,14 @@ async function queryParcelByEnvelope(
   const features: any[] = data?.features ?? [];
 
   const candidates = features.filter(f => {
-    const addrNum   = f.attributes?.ADDRESS_NU as number | null;
+    // Parse street number from SITEADDRES (e.g. "3110 Briarcliff Road Atlanta, GA 30329" → 3110)
+    const siteAddr   = (f.attributes?.SITEADDRES ?? '') as string;
+    const storedNumStr = extractStreetNumber(siteAddr);
+    if (!storedNumStr) return false;
+    const storedNum = parseInt(storedNumStr, 10);
+    if (Math.abs(storedNum - inputStreetNum) > ADDR_NUM_TOLERANCE) return false;
+    // Also require FULL_STREE keyword match to prevent adjacent-street collisions.
     const fullStreet = (f.attributes?.FULL_STREE ?? '') as string;
-
-    if (addrNum == null || Math.abs(addrNum - inputStreetNum) > ADDR_NUM_TOLERANCE) return false;
     if (inputKeyword && !fullStreet.toUpperCase().includes(inputKeyword.toUpperCase())) return false;
     return true;
   });
