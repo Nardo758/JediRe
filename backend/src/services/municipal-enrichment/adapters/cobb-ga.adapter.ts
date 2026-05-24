@@ -1,9 +1,9 @@
 /**
- * Cobb County GA — ArcGIS Parcels adapter
+ * Cobb County GA — ArcGIS Parcels adapter (with assessment enrichment)
  *
  * Supports two lookup modes:
- *   - lookupCobbGA(address)          — geocode address → spatial intersect CobbParcels
- *   - lookupCobbGAByParcelId(id)     — query CobbParcels by PIN (exact match)
+ *   - lookupCobbGA(address)          — geocode address → spatial intersect CobbParcels → enrich
+ *   - lookupCobbGAByParcelId(id)     — query CobbParcels by PIN → enrich
  *
  * Two-step address lookup strategy:
  *   1. CAM_Locator geocoder (no auth required) converts address → X, Y
@@ -14,9 +14,24 @@
  *      to the layer's native WKID 102100 (Web Mercator).
  *      Endpoint: https://services.arcgis.com/HYLRafMc4Ux6DA8c/arcgis/rest/services/CobbParcels/FeatureServer/0/query
  *
- * CobbParcels fields (public GIS layer — no assessment/owner data available):
+ * Assessment enrichment (step 3 — best-effort, non-blocking):
+ *   After the PIN is resolved, a secondary query to the Cobb County Tax Assessors
+ *   daily-updated MapServer layer fetches owner and valuation data keyed by PIN.
+ *   Endpoint: https://gis.cobbcounty.org/gisserver/rest/services/tax/taxassessorsdaily/MapServer/0/query
+ *   If this query fails, the result still returns status:'ok' with the geometry data
+ *   from CobbParcels (owner/value fields are simply omitted).
+ *
+ * CobbParcels fields (public GIS layer — geometry + classification):
  *   PIN, PARCEL_ID, CLASS (land use class code), LAND_SQFT, ACRE_DEEDE,
  *   TAX_DIST, NBHDSUBD_I (neighborhood+subdivision ID), ST_NUMBER
+ *
+ * taxassessorsdaily fields (assessment layer — daily refresh):
+ *   PIN, SITUS_ADDR                            — parcel address
+ *   OWNER_NAM1, OWNER_NAM2                     — owner names
+ *   OWNER_ADDR, OWNER_CITY, OWNER_STAT, OWNER_ZIP — owner mailing address
+ *   FMV_LAND, FMV_BLDG, FMV_TOTAL             — appraised (fair market) values
+ *   ASV_LAND, ASV_BLDG, ASV_TOTAL             — assessed values
+ *   ACRE_DEEDED, CLASS, TAXDIST               — acreage, class, tax district
  *
  * Parcel ID query strategy (lookupCobbGAByParcelId):
  *   PIN = '{id}'  (direct equality; Cobb PINs are numeric strings, no spaces)
@@ -33,9 +48,21 @@ const CAM_LOCATOR_URL =
 const COBB_PARCELS_URL =
   'https://services.arcgis.com/HYLRafMc4Ux6DA8c/arcgis/rest/services/CobbParcels/FeatureServer/0/query';
 
+const COBB_TAX_ASSESSORS_DAILY_URL =
+  'https://gis.cobbcounty.org/gisserver/rest/services/tax/taxassessorsdaily/MapServer/0/query';
+
 const PARCEL_OUT_FIELDS = [
   'PIN', 'PARCEL_ID', 'CLASS', 'LAND_SQFT', 'ACRE_DEEDE', 'ACRE_CALC',
   'TAX_DIST', 'NBHDSUBD_I', 'ST_NUMBER',
+].join(',');
+
+const ASSESSMENT_OUT_FIELDS = [
+  'PIN', 'SITUS_ADDR',
+  'OWNER_NAM1', 'OWNER_NAM2',
+  'OWNER_ADDR', 'OWNER_CITY', 'OWNER_STAT', 'OWNER_ZIP',
+  'FMV_LAND', 'FMV_BLDG', 'FMV_TOTAL',
+  'ASV_LAND', 'ASV_BLDG', 'ASV_TOTAL',
+  'ACRE_DEEDED', 'CLASS', 'TAXDIST',
 ].join(',');
 
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -148,6 +175,37 @@ async function geocodeAddress(address: string): Promise<{ point?: GeocodedPoint;
   };
 }
 
+// ─── Assessment enrichment (taxassessorsdaily) ────────────────────────────────
+
+/**
+ * Fetch owner and valuation data from the Cobb County Tax Assessors daily layer.
+ * Returns null on any failure — caller treats this as a graceful degradation.
+ */
+async function fetchAssessmentByPin(pin: string): Promise<Record<string, any> | null> {
+  const params = new URLSearchParams({
+    where: `PIN='${pin.replace(/'/g, "''")}'`,
+    outFields: ASSESSMENT_OUT_FIELDS,
+    returnGeometry: 'false',
+    f: 'json',
+  });
+
+  const url = `${COBB_TAX_ASSESSORS_DAILY_URL}?${params.toString()}`;
+  const { data, error } = await fetchWithRetry(url, 'assessment');
+
+  if (error) {
+    logger.warn(`[cobb-ga] assessment enrichment failed for PIN ${pin}: ${error}`);
+    return null;
+  }
+
+  const features: any[] = data?.features ?? [];
+  if (features.length === 0) {
+    logger.debug(`[cobb-ga] no assessment record found for PIN ${pin}`);
+    return null;
+  }
+
+  return features[0].attributes ?? null;
+}
+
 // ─── CobbParcels spatial query ─────────────────────────────────────────────────
 
 async function queryParcelByPoint(pt: GeocodedPoint, inputAddress: string): Promise<MunicipalLookupResult> {
@@ -174,8 +232,13 @@ async function queryParcelByPoint(pt: GeocodedPoint, inputAddress: string): Prom
   const features: any[] = data?.features ?? [];
   if (features.length === 0) return { status: 'not_found' };
 
-  const attrs: Record<string, any> = features[0].attributes ?? {};
-  return mapAttrsToResult(attrs, pt.matchAddr || inputAddress, features.length);
+  const parcelAttrs: Record<string, any> = features[0].attributes ?? {};
+  const pin = parcelAttrs.PIN ?? parcelAttrs.PARCEL_ID ?? null;
+
+  // Enrich with assessment data (best-effort — non-blocking on failure)
+  const assessmentAttrs = pin ? await fetchAssessmentByPin(pin) : null;
+
+  return mapAttrsToResult(parcelAttrs, assessmentAttrs, pt.matchAddr || inputAddress, features.length);
 }
 
 // ─── CobbParcels PIN query ─────────────────────────────────────────────────────
@@ -195,49 +258,89 @@ async function queryParcelByPin(pin: string): Promise<MunicipalLookupResult> {
   const features: any[] = data?.features ?? [];
   if (features.length === 0) return { status: 'not_found' };
 
-  const attrs: Record<string, any> = features[0].attributes ?? {};
-  return mapAttrsToResult(attrs, null, features.length);
+  const parcelAttrs: Record<string, any> = features[0].attributes ?? {};
+  const resolvedPin = parcelAttrs.PIN ?? parcelAttrs.PARCEL_ID ?? pin;
+
+  // Enrich with assessment data (best-effort)
+  const assessmentAttrs = await fetchAssessmentByPin(resolvedPin);
+
+  return mapAttrsToResult(parcelAttrs, assessmentAttrs, null, features.length);
 }
 
 // ─── Result mapping ────────────────────────────────────────────────────────────
 
 function mapAttrsToResult(
-  attrs: Record<string, any>,
+  parcelAttrs: Record<string, any>,
+  assessmentAttrs: Record<string, any> | null,
   resolvedAddress: string | null,
   candidateCount: number,
 ): MunicipalLookupResult {
-  const pin      = attrs.PIN       ?? attrs.PARCEL_ID ?? null;
-  const landSqft = attrs.LAND_SQFT !== undefined && attrs.LAND_SQFT !== null
-    ? Math.round(Number(attrs.LAND_SQFT))
+  const pin      = parcelAttrs.PIN       ?? parcelAttrs.PARCEL_ID ?? null;
+  const landSqft = parcelAttrs.LAND_SQFT !== undefined && parcelAttrs.LAND_SQFT !== null
+    ? Math.round(Number(parcelAttrs.LAND_SQFT))
     : undefined;
-  const acres = (attrs.ACRE_DEEDE && Number(attrs.ACRE_DEEDE) > 0)
-    ? Number(attrs.ACRE_DEEDE)
-    : (attrs.ACRE_CALC && Number(attrs.ACRE_CALC) > 0)
-      ? Number(attrs.ACRE_CALC)
-      : undefined;
 
-  logger.debug(`[cobb-ga] resolved → PIN ${pin}, class ${attrs.CLASS}, ${acres}ac`);
+  // Prefer ACRE_DEEDE from parcel layer; fall back to ACRE_CALC, then assessment ACRE_DEEDED
+  const acres =
+    (parcelAttrs.ACRE_DEEDE && Number(parcelAttrs.ACRE_DEEDE) > 0)
+      ? Number(parcelAttrs.ACRE_DEEDE)
+      : (parcelAttrs.ACRE_CALC && Number(parcelAttrs.ACRE_CALC) > 0)
+        ? Number(parcelAttrs.ACRE_CALC)
+        : (assessmentAttrs?.ACRE_DEEDED && Number(assessmentAttrs.ACRE_DEEDED) > 0)
+          ? Number(assessmentAttrs.ACRE_DEEDED)
+          : undefined;
+
+  // Assessment-layer owner data
+  const ownerParts = [assessmentAttrs?.OWNER_NAM1, assessmentAttrs?.OWNER_NAM2].filter(Boolean);
+  const ownerMailParts = [
+    assessmentAttrs?.OWNER_ADDR,
+    assessmentAttrs?.OWNER_CITY,
+    assessmentAttrs?.OWNER_STAT,
+    assessmentAttrs?.OWNER_ZIP,
+  ].filter(Boolean);
+
+  // Prefer the assessment-layer address over the geocoded matchAddr
+  const address = assessmentAttrs?.SITUS_ADDR?.trim() || resolvedAddress || null;
+
+  // Prefer assessment-layer CLASS if parcel CLASS is absent
+  const classCode = parcelAttrs.CLASS ?? assessmentAttrs?.CLASS ?? null;
+
+  logger.debug(
+    `[cobb-ga] resolved → PIN ${pin}, class ${classCode}, ${acres}ac` +
+    (assessmentAttrs ? `, owner: ${ownerParts.join(' & ')}, FMV: ${assessmentAttrs.FMV_TOTAL}` : ' (no assessment data)'),
+  );
 
   return {
-    status:             pin ? 'ok' : 'not_found',
-    candidates:         candidateCount,
-    parcel_id:          pin,
-    address:            resolvedAddress ?? null,
-    land_acres:         acres,
-    geometry_area_sqft: landSqft,
-    class_code:         attrs.CLASS       ?? null,
-    tax_district:       attrs.TAX_DIST    ?? null,
-    neighborhood:       attrs.NBHDSUBD_I  ?? null,
-    county:             'Cobb',
-    state:              'GA',
-    source:             'arcgis_cobb_ga',
-    raw:                attrs,
+    status:               pin ? 'ok' : 'not_found',
+    candidates:           candidateCount,
+    parcel_id:            pin,
+    address,
+    // Owner (from assessment layer)
+    owner:                ownerParts.length ? ownerParts.join(', ') : null,
+    owner_address:        ownerMailParts.length ? ownerMailParts.join(', ') : null,
+    // Valuations (from assessment layer; undefined when assessment fetch failed)
+    assessed_value:       assessmentAttrs?.ASV_TOTAL   !== undefined ? Number(assessmentAttrs.ASV_TOTAL)   : undefined,
+    assessed_land:        assessmentAttrs?.ASV_LAND     !== undefined ? Number(assessmentAttrs.ASV_LAND)    : undefined,
+    assessed_improvement: assessmentAttrs?.ASV_BLDG     !== undefined ? Number(assessmentAttrs.ASV_BLDG)    : undefined,
+    appraised_value:      assessmentAttrs?.FMV_TOTAL    !== undefined ? Number(assessmentAttrs.FMV_TOTAL)   : undefined,
+    appraised_land:       assessmentAttrs?.FMV_LAND     !== undefined ? Number(assessmentAttrs.FMV_LAND)    : undefined,
+    // Physical
+    land_acres:           acres,
+    geometry_area_sqft:   landSqft,
+    // Classification
+    class_code:           classCode,
+    tax_district:         assessmentAttrs?.TAXDIST ?? parcelAttrs.TAX_DIST ?? null,
+    neighborhood:         parcelAttrs.NBHDSUBD_I ?? null,
+    county:               'Cobb',
+    state:                'GA',
+    source:               'arcgis_cobb_ga',
+    raw:                  { ...parcelAttrs, ...(assessmentAttrs ?? {}) },
   };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/** Look up a Cobb County parcel by street address (geocode → spatial intersect). */
+/** Look up a Cobb County parcel by street address (geocode → spatial intersect → assessment enrich). */
 export async function lookupCobbGA(address: string): Promise<MunicipalLookupResult> {
   logger.debug(`[cobb-ga] address lookup: "${address}"`);
 
@@ -251,7 +354,7 @@ export async function lookupCobbGA(address: string): Promise<MunicipalLookupResu
   return queryParcelByPoint(point!, address);
 }
 
-/** Look up a Cobb County parcel by its PIN (exact match). */
+/** Look up a Cobb County parcel by its PIN (exact match + assessment enrich). */
 export async function lookupCobbGAByParcelId(parcelId: string): Promise<MunicipalLookupResult> {
   logger.debug(`[cobb-ga] parcel-id lookup: "${parcelId}"`);
   return queryParcelByPin(parcelId.trim());
