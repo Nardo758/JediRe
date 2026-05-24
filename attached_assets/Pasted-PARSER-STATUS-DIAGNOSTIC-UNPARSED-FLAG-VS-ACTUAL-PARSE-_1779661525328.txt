@@ -1,0 +1,77 @@
+PARSER_STATUS DIAGNOSTIC — UNPARSED FLAG VS ACTUAL PARSE STATE
+
+CONTEXT
+Files tab shows all files (266 T-12s, similar for other types) with 
+parser_status='unparsed' despite the platform having 1,034 historical_
+observations corpus rows and 170+ property_descriptions populated.
+
+Suspect: parsers ran and produced data but never updated 
+data_library_files.parser_status. The 9th instance of the producer/
+reader contract pattern.
+
+STEPS
+
+1. COUNT FILES BY ACTUAL PARSE EVIDENCE
+
+   Run these queries:
+   
+   -- Files with status='unparsed' that have corpus rows linked
+   SELECT count(*) FROM data_library_files dlf
+   WHERE dlf.parser_status = 'unparsed'
+     AND EXISTS (
+       SELECT 1 FROM historical_observations ho
+       WHERE dlf.id = ANY(ho.source_file_ids)
+     );
+   -- If this number is > 0: parsers ran, status is wrong
+   
+   -- Total breakdown
+   SELECT parser_status, count(*) FROM data_library_files 
+   GROUP BY parser_status;
+
+2. SAMPLE 5 FILES
+
+   For 5 random files marked 'unparsed':
+   a. SELECT id, original_filename, document_type, parser_status, 
+      parsed_at FROM data_library_files WHERE id = <sample>;
+   b. SELECT count(*) FROM historical_observations 
+      WHERE <sample_file_id> = ANY(source_file_ids);
+   c. SELECT count(*) FROM property_descriptions 
+      WHERE parcel_id = (SELECT parcel_id FROM data_library_files 
+                        WHERE id = <sample>);
+   
+   Report each: filename, parser_status, corpus rows, 
+   property_descriptions populated for that parcel.
+
+3. CLASSIFY THE BUG
+
+   Based on Step 1 & 2:
+   A. If 'unparsed' files HAVE corpus rows linked → producer/reader 
+      pattern; parser_status field is stale, needs backfill
+   B. If 'unparsed' files have NO corpus rows → parsers never ran 
+      on these files; different problem (parsers exist but weren't 
+      invoked; or these files were ingested via a path that skips 
+      parsing)
+   C. Mixed → some of both; report the split
+
+4. REPORT FINDINGS
+
+   In docs/operations/PARSER_STATUS_DIAGNOSIS.md:
+   (a) Total files by parser_status
+   (b) Of 'unparsed' files: how many actually have corpus rows
+   (c) Sample of 5 files with full evidence
+   (d) Classification (A / B / C above)
+   (e) Recommended fix:
+       - If A: backfill parser_status='success' for files with 
+         corpus rows linked; wire parsers to update status 
+         going forward
+       - If B: parsers never ran on these; separate decision 
+         about whether to run them
+       - If C: do both
+
+   DO NOT patch yet. Report first.
+
+DO NOT
+- Update parser_status in this dispatch
+- Re-run parsers in this dispatch
+- Touch the Files tab UI
+- Skip the diagnostic — the fix path depends on which classification
