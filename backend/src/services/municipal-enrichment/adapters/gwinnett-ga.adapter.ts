@@ -250,10 +250,24 @@ async function queryArcGIS(
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/** Look up a Gwinnett County parcel by street address. */
-export async function lookupGwinnettGA(address: string): Promise<MunicipalLookupResult> {
+/**
+ * Look up a Gwinnett County parcel by street address.
+ *
+ * knownCoords (WGS84 lat/lng from Census Geocoder) is accepted for API
+ * consistency with the Cobb and DeKalb adapters, but Gwinnett's
+ * Property_and_Tax FeatureServer does not support esriSpatialRelIntersects
+ * on any of its layers — spatial queries always return "Invalid query
+ * parameters".  Until Gwinnett publishes a spatial-capable parcel service,
+ * knownCoords is intentionally ignored and the address WHERE-clause is used
+ * unconditionally.
+ */
+export async function lookupGwinnettGA(
+  address: string,
+  knownCoords?: { lat: number; lng: number },  // reserved — spatial not supported by Gwinnett GIS
+): Promise<MunicipalLookupResult> {
+  logger.debug(`[gwinnett-ga] address lookup: "${address}"`);
   const where = buildAddressWhere(address);
-  logger.debug(`[gwinnett-ga] address lookup: "${address}" → where: ${where}`);
+  logger.debug(`[gwinnett-ga] address WHERE: ${where}`);
   return queryArcGIS(where, address);
 }
 

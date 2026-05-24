@@ -146,7 +146,7 @@ async function stepMunicipalLookup(
     // Cache in address_geocode_cache: once resolved, never calls the API again.
     // Any failure (5xx, timeout, no match) is logged and falls through to the
     // raw address chain — Census is never a hard dependency.
-    let geocoderOptions: { countyFips?: string; normalizedAddress?: string } | undefined;
+    let geocoderOptions: { countyFips?: string; normalizedAddress?: string; lat?: number; lng?: number } | undefined;
     if (state?.toUpperCase() === 'GA') {
       let cacheHit = false;
       try {

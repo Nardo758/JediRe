@@ -232,13 +232,88 @@ async function queryArcGIS(
   };
 }
 
+// ─── WGS84 spatial intersect ──────────────────────────────────────────────────
+
+/**
+ * Spatial intersect using WGS84 lat/lng (WKID 4326).
+ * Used when Census Geocoder already provided coordinates — skips the address
+ * WHERE-clause search entirely.  ArcGIS auto-reprojects from 4326 to the
+ * layer's native SR via the inSR parameter.
+ *
+ * Recovers addresses whose Census-normalized form doesn't match the stored
+ * SITEADDRES string but whose geocoded point falls inside the parcel polygon.
+ */
+async function queryParcelByWgs84(lat: number, lng: number, inputAddress: string): Promise<MunicipalLookupResult> {
+  const geometry = JSON.stringify({
+    x: lng,
+    y: lat,
+    spatialReference: { wkid: 4326 },
+  });
+
+  const params = new URLSearchParams({
+    geometry,
+    geometryType: 'esriGeometryPoint',
+    spatialRel:   'esriSpatialRelIntersects',
+    inSR:         '4326',
+    outFields:    OUT_FIELDS,
+    returnGeometry: 'false',
+    f: 'json',
+  });
+
+  const url = `${DEKALB_PARCELS_URL}?${params.toString()}`;
+  const { data, error } = await fetchArcGIS(url);
+  if (error) return { status: 'error', error };
+
+  const features: any[] = data?.features ?? [];
+  if (features.length === 0) return { status: 'not_found' };
+
+  const attrs: Record<string, any> = features[0].attributes ?? {};
+  const mapped = mapAttrsToResult(attrs, inputAddress);
+
+  logger.debug(`[dekalb-ga] WGS84 spatial resolved → parcel ${mapped.parcel_id}`);
+
+  return {
+    status:     mapped.parcel_id ? 'ok' : 'not_found',
+    candidates: features.length,
+    ...mapped,
+  };
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/** Look up a DeKalb County parcel by street address. */
-export async function lookupDeKalbGA(address: string): Promise<MunicipalLookupResult> {
+/**
+ * Look up a DeKalb County parcel by street address.
+ *
+ * Two-path strategy:
+ *   A) knownCoords provided (WGS84 lat/lng from Census Geocoder)
+ *      → try spatial intersect first; fall back to address WHERE-clause on not_found.
+ *        Recovers addresses whose stored SITEADDRES doesn't match the Census-
+ *        normalized form (e.g. "500 Briarvista Way", "1000 Barone Ave").
+ *   B) No knownCoords → address WHERE-clause query (existing path).
+ */
+export async function lookupDeKalbGA(
+  address: string,
+  knownCoords?: { lat: number; lng: number },
+): Promise<MunicipalLookupResult> {
+  logger.debug(
+    `[dekalb-ga] address lookup: "${address}"` +
+    (knownCoords ? ` (pre-geocoded lat=${knownCoords.lat.toFixed(5)}, lng=${knownCoords.lng.toFixed(5)})` : ''),
+  );
+
+  // Path A: Census Geocoder already resolved coordinates — try spatial intersect.
+  if (knownCoords) {
+    const result = await queryParcelByWgs84(knownCoords.lat, knownCoords.lng, address);
+    if (result.status === 'ok') return result;
+    // not_found or transient error — fall back to address WHERE-clause (graceful degradation)
+    logger.debug(
+      `[dekalb-ga] WGS84 spatial ${result.status} for "${address}", falling back to address WHERE query`,
+    );
+  }
+
+  // Path B: address WHERE-clause query.
   const normalized = normalizeAddress(address);
   const where      = buildAddressWhere(address);
-  logger.debug(`[dekalb-ga] address lookup: "${address}" → where: ${where}`);
+  logger.debug(`[dekalb-ga] address WHERE: ${where}`);
   return queryArcGIS(where, normalized, address);
 }
 
