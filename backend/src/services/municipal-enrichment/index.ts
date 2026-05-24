@@ -115,7 +115,7 @@ class MunicipalEnrichmentService {
               : undefined;
 
           switch (fips) {
-            case '13121': fipsResult = await lookupFultonGA(lookupAddr);                    break;
+            case '13121': fipsResult = await lookupFultonGA(lookupAddr, knownCoords);        break;
             case '13089': fipsResult = await lookupDeKalbGA(lookupAddr, knownCoords);         break;
             case '13067': fipsResult = await lookupCobbGA(lookupAddr, knownCoords);         break;
             case '13135': fipsResult = await lookupGwinnettGA(lookupAddr, knownCoords);     break;
