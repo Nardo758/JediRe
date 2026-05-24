@@ -6,6 +6,9 @@
  */
 
 import { Router, Request, Response } from 'express';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { 
   ingestArchiveDeals, 
@@ -1326,6 +1329,231 @@ router.get('/files/:fileId/url', requireAuth, async (req: Request, res: Response
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/archive/upload
+// Accept a user file upload, write to local disk, create data_library_files
+// row and intake_jobs row. Returns { file_id, job_id, filename }.
+// Body: multipart/form-data — fields: file (required), parcel_id?, document_type?
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LIBRARY_UPLOAD_DIR = path.join(__dirname, '../../../../uploads/library');
+if (!fs.existsSync(LIBRARY_UPLOAD_DIR)) {
+  fs.mkdirSync(LIBRARY_UPLOAD_DIR, { recursive: true });
+}
+
+const ALLOWED_UPLOAD_EXTS = ['.pdf', '.xlsx', '.xls', '.csv', '.docx', '.doc'];
+
+const libraryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ALLOWED_UPLOAD_EXTS.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type not allowed: ${ext}. Allowed: ${ALLOWED_UPLOAD_EXTS.join(', ')}`));
+    }
+  },
+});
+
+const VALID_DOC_TYPES = new Set(['OM', 'T12', 'RENT_ROLL', 'TAX_BILL', 'LEASING_STATS', 'OTHER']);
+
+router.post('/upload', requireAuth, libraryUpload.single('file'), async (req: Request, res: Response) => {
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (!file) {
+    return res.status(400).json({ error: 'No file uploaded. Attach file as multipart field "file".' });
+  }
+
+  const parcelId  = ((req.body.parcel_id as string | undefined) ?? '').trim() || null;
+  const rawType   = ((req.body.document_type as string | undefined) ?? 'OTHER').trim().toUpperCase();
+  const docType   = VALID_DOC_TYPES.has(rawType) ? rawType : 'OTHER';
+  const userId    = (req as AuthenticatedRequest).user?.userId ?? null;
+
+  // Write to local disk
+  const uniqueName = `${crypto.randomUUID()}${path.extname(file.originalname)}`;
+  const localPath  = path.join(LIBRARY_UPLOAD_DIR, uniqueName);
+  fs.writeFileSync(localPath, file.buffer);
+
+  const pool = getPool();
+  try {
+    const sha256  = crypto.createHash('sha256').update(file.buffer).digest('hex');
+    const fileRes = await pool.query(
+      `INSERT INTO data_library_files
+         (original_filename, sha256, mime_type, size_bytes,
+          storage_provider, storage_key,
+          document_type, parser_status, parcel_id, uploaded_by)
+       VALUES ($1, $2, $3, $4, 'local', $5, $6, 'unparsed', $7, $8)
+       RETURNING id`,
+      [
+        file.originalname,
+        sha256,
+        file.mimetype,
+        file.size,
+        `uploads/library/${uniqueName}`,
+        docType,
+        parcelId,
+        userId,
+      ],
+    );
+    const fileId = fileRes.rows[0].id as string;
+
+    const jobRes = await pool.query(
+      `INSERT INTO intake_jobs (file_id, parcel_id, state, source_type, source_data)
+       VALUES ($1, $2, 'pending', 'file_upload', $3::jsonb)
+       RETURNING id`,
+      [
+        fileId,
+        parcelId,
+        JSON.stringify({
+          original_filename: file.originalname,
+          document_type: docType,
+          size_bytes: file.size,
+          mime_type: file.mimetype,
+          uploaded_by: userId,
+        }),
+      ],
+    );
+    const jobId = jobRes.rows[0].id as string;
+
+    logger.info('[archive/upload] File uploaded', {
+      file_id: fileId, job_id: jobId, filename: file.originalname, size_bytes: file.size,
+    });
+
+    return res.status(201).json({
+      file_id: fileId,
+      job_id: jobId,
+      filename: file.originalname,
+      size_bytes: file.size,
+      document_type: docType,
+      parcel_id: parcelId,
+    });
+  } catch (err) {
+    try { fs.unlinkSync(localPath); } catch (_) {}
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/upload] Error', { error: msg });
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/archive/inbox
+// Paginated list of intake_jobs with optional state filter.
+// Query params: state (optional), page (1-based), limit
+// Returns: { jobs, pagination, summary }
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get('/inbox', requireAuth, async (req: Request, res: Response) => {
+  const { state, page = '1', limit = '50' } = req.query as Record<string, string>;
+
+  const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+  const offset   = (pageNum - 1) * limitNum;
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let i = 1;
+
+  if (state && state !== 'ALL') {
+    conditions.push(`ij.state = $${i++}`);
+    params.push(state);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const pool = getPool();
+
+  try {
+    const [countResult, dataResult, summaryResult] = await Promise.all([
+      pool.query(`SELECT COUNT(*) FROM intake_jobs ij ${where}`, params),
+      pool.query(
+        `SELECT
+           ij.id, ij.file_id, ij.parcel_id, ij.state,
+           ij.block_reason, ij.user_input, ij.source_type,
+           ij.source_data, ij.enrichment_log,
+           ij.created_at, ij.updated_at,
+           dlf.original_filename, dlf.document_type, dlf.size_bytes, dlf.mime_type
+         FROM intake_jobs ij
+         LEFT JOIN data_library_files dlf ON dlf.id = ij.file_id
+         ${where}
+         ORDER BY ij.updated_at DESC
+         LIMIT $${i} OFFSET $${i + 1}`,
+        [...params, limitNum, offset],
+      ),
+      pool.query(
+        `SELECT state, COUNT(*)::text AS cnt FROM intake_jobs GROUP BY state ORDER BY state`,
+      ),
+    ]);
+
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const summary: Record<string, number> = {};
+    for (const r of summaryResult.rows) {
+      summary[r.state as string] = parseInt(r.cnt, 10);
+    }
+
+    return res.json({
+      jobs: dataResult.rows,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
+      },
+      summary,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/inbox] GET error', { error: msg });
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/archive/inbox/:jobId
+// Supply missing information for a blocked_needs_user job.
+// Body: { user_input: { parcel_id?, address?, property_name? } }
+// Resets state to 'pending' so the orchestrator re-runs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.patch('/inbox/:jobId', requireAuth, async (req: Request, res: Response) => {
+  const { jobId } = req.params;
+  const { user_input } = req.body as { user_input?: Record<string, string> };
+
+  if (!user_input || typeof user_input !== 'object' || Array.isArray(user_input)) {
+    return res.status(400).json({ error: 'Body must include user_input object with parcel_id, address, or property_name' });
+  }
+
+  // Use the first non-empty field as the new parcel_id if the job doesn't have one yet
+  const newParcelId =
+    (user_input.parcel_id || user_input.address || user_input.property_name || '').trim() || null;
+
+  const pool = getPool();
+  try {
+    const result = await pool.query(
+      `UPDATE intake_jobs
+       SET user_input    = $1::jsonb,
+           state         = 'pending',
+           block_reason  = NULL,
+           parcel_id     = COALESCE($2, parcel_id),
+           enrichment_log = '[]'::jsonb,
+           updated_at    = NOW()
+       WHERE id = $3
+       RETURNING id, state, parcel_id, user_input, updated_at`,
+      [JSON.stringify(user_input), newParcelId, jobId],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    logger.info('[archive/inbox] Job requeued', { jobId, newParcelId });
+    return res.json({ job: result.rows[0] });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/inbox] PATCH error', { jobId, error: msg });
     return res.status(500).json({ error: msg });
   }
 });

@@ -2,6 +2,17 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 
+// ─── Upload helpers ───────────────────────────────────────────────────────────
+
+interface UploadToast {
+  id: number;
+  type: 'progress' | 'success' | 'error';
+  message: string;
+  filename?: string;
+}
+
+let toastSeq = 0;
+
 // ─── types ────────────────────────────────────────────────────────────────────
 
 interface LibraryFile {
@@ -71,6 +82,12 @@ export default function ArchiveLibraryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Upload state
+  const [isDragging, setIsDragging] = useState(false);
+  const [toasts, setToasts] = useState<UploadToast[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dragCounterRef = useRef(0);
+
   // filters (derived from URL search params for shareability)
   const docType     = searchParams.get('document_type') ?? 'ALL';
   const parserStat  = searchParams.get('parser_status') ?? 'ALL';
@@ -138,6 +155,93 @@ export default function ArchiveLibraryPage() {
   }, [docType, parserStat, search, page]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // ── Upload helpers ──────────────────────────────────────────────────────────
+
+  const addToast = useCallback((toast: Omit<UploadToast, 'id'>) => {
+    const id = ++toastSeq;
+    setToasts(prev => [...prev, { ...toast, id }]);
+    if (toast.type !== 'progress') {
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
+    }
+    return id;
+  }, []);
+
+  const removeToast = useCallback((id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const uploadFiles = useCallback(async (fileList: File[]) => {
+    for (const f of fileList) {
+      const toastId = addToast({ type: 'progress', message: `Uploading ${f.name}…`, filename: f.name });
+      try {
+        const formData = new FormData();
+        formData.append('file', f);
+        const { data } = await apiClient.post('/api/v1/archive/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        removeToast(toastId);
+        addToast({ type: 'success', message: `Uploaded ${f.name} — queued for enrichment`, filename: f.name });
+        // Prepend the new file to the list optimistically
+        const newFile: LibraryFile = {
+          id: data.file_id,
+          parcel_id: data.parcel_id ?? null,
+          deal_id: null,
+          original_filename: f.name,
+          mime_type: f.type || null,
+          size_bytes: f.size,
+          storage_provider: 'local',
+          storage_key: null,
+          cdn_url: null,
+          document_type: data.document_type ?? 'OTHER',
+          parser_used: null,
+          parser_status: 'unparsed',
+          parser_error: null,
+          uploaded_at: new Date().toISOString(),
+          uploaded_by: null,
+          source_signal: null,
+          license_restricted: false,
+          property_display_name: null,
+        };
+        setFiles(prev => [newFile, ...prev]);
+        setPagination(prev => prev ? { ...prev, total: prev.total + 1 } : prev);
+      } catch (err: unknown) {
+        removeToast(toastId);
+        const msg = err instanceof Error ? err.message : 'Upload failed';
+        addToast({ type: 'error', message: `Failed: ${f.name} — ${msg}`, filename: f.name });
+      }
+    }
+  }, [addToast, removeToast]);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    if (dragCounterRef.current === 1) setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current === 0) setIsDragging(false);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length > 0) void uploadFiles(droppedFiles);
+  }, [uploadFiles]);
+
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length > 0) void uploadFiles(picked);
+    e.target.value = '';
+  }, [uploadFiles]);
 
   const handleDownload = async (file: LibraryFile) => {
     try {
@@ -209,15 +313,97 @@ export default function ArchiveLibraryPage() {
   const totalFiles = pagination?.total ?? 0;
   const uniqueProps = new Set(files.map(f => f.parcel_id).filter(Boolean)).size;
 
+  const navLink = (active: boolean): React.CSSProperties => ({
+    background: 'none', border: 'none', cursor: 'pointer',
+    fontFamily: 'inherit', fontSize: '11px', letterSpacing: '0.08em',
+    color: active ? '#f0f6fc' : '#8892b0',
+    borderBottom: active ? '2px solid #388bfd' : '2px solid transparent',
+    padding: '2px 8px', textTransform: 'uppercase',
+  });
+
   return (
-    <div style={page_style}>
+    <div
+      style={{ ...page_style, position: 'relative' }}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* ── Drag-drop overlay ── */}
+      {isDragging && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(13,17,23,0.85)',
+          border: '3px dashed #388bfd',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: '12px',
+          pointerEvents: 'none',
+        }}>
+          <div style={{ fontSize: '48px' }}>📂</div>
+          <div style={{ fontSize: '18px', color: '#4fc3f7', fontFamily: "'JetBrains Mono', monospace" }}>
+            Drop files to upload
+          </div>
+          <div style={{ fontSize: '12px', color: '#8892b0', fontFamily: "'JetBrains Mono', monospace" }}>
+            PDF, XLSX, CSV, DOCX — max 100 MB each
+          </div>
+        </div>
+      )}
+
+      {/* ── Toast stack ── */}
+      <div style={{
+        position: 'fixed', bottom: '24px', right: '24px', zIndex: 900,
+        display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '380px',
+      }}>
+        {toasts.map(t => (
+          <div key={t.id} style={{
+            background: t.type === 'success' ? '#0d2118' : t.type === 'error' ? '#1c0a0a' : '#161b22',
+            border: `1px solid ${t.type === 'success' ? '#4ade80' : t.type === 'error' ? '#e06c75' : '#388bfd'}`,
+            borderRadius: '6px', padding: '10px 14px',
+            color: t.type === 'success' ? '#4ade80' : t.type === 'error' ? '#e06c75' : '#4fc3f7',
+            fontFamily: "'JetBrains Mono', monospace", fontSize: '12px',
+            display: 'flex', gap: '10px', alignItems: 'center',
+          }}>
+            <span style={{ flex: 1, wordBreak: 'break-word' }}>{t.message}</span>
+            {t.type !== 'progress' && (
+              <button
+                onClick={() => removeToast(t.id)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: '14px', lineHeight: 1, padding: '0 2px' }}
+              >×</button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Hidden file input ── */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.xlsx,.xls,.csv,.docx,.doc"
+        style={{ display: 'none' }}
+        onChange={handleFileInput}
+      />
+
       {/* ── Top bar ── */}
       <div style={topBar}>
         <button style={backBtn} onClick={() => navigate('/terminal/dashboard')}>← Terminal</button>
-        <span style={{ color: '#8892b0', fontSize: '11px', letterSpacing: '0.08em' }}>
-          Archive <span style={{ color: '#30363d', margin: '0 6px' }}>/</span>
-          <span style={{ color: '#cdd9e5' }}>Library</span>
-        </span>
+        <span style={{ color: '#8892b0', fontSize: '11px', letterSpacing: '0.08em' }}>Archive</span>
+        <span style={{ color: '#30363d' }}>/</span>
+        <button style={navLink(true)}>Library</button>
+        <button style={navLink(false)} onClick={() => navigate('/archive/inbox')}>Inbox</button>
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          style={{
+            background: '#1f3a5c', border: '1px solid #388bfd', color: '#4fc3f7',
+            borderRadius: '4px', padding: '5px 14px', cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: '11px', letterSpacing: '0.05em',
+          }}
+          onMouseEnter={e => { (e.currentTarget.style.background = '#264d7c'); }}
+          onMouseLeave={e => { (e.currentTarget.style.background = '#1f3a5c'); }}
+        >
+          + Upload
+        </button>
       </div>
 
       <div style={main}>

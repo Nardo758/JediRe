@@ -51,6 +51,7 @@ const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
 const WorkspaceListPage = lazy(() => import('./pages/WorkspaceListPage'));
 const ArchivePropertyPage = lazy(() => import('./pages/ArchivePropertyPage'));
 const ArchiveLibraryPage = lazy(() => import('./pages/ArchiveLibraryPage'));
+const ArchiveInboxPage = lazy(() => import('./pages/ArchiveInboxPage'));
 
 /**
  * Redirect legacy /deals/:id/:module routes to /deals/:id/detail?tab=:module
@@ -216,6 +217,7 @@ function AppContent() {
         <Route path="/workspaces/:id" element={<Suspense fallback={<PageLoadingFallback />}><WorkspacePage /></Suspense>} />
         <Route path="/events/:eventId" element={<M35EventDetailPage />} />
         <Route path="/archive/library" element={<Suspense fallback={<PageLoadingFallback />}><ArchiveLibraryPage /></Suspense>} />
+        <Route path="/archive/inbox" element={<Suspense fallback={<PageLoadingFallback />}><ArchiveInboxPage /></Suspense>} />
         <Route path="/archive/properties/:parcelId" element={<Suspense fallback={<PageLoadingFallback />}><ArchivePropertyPage /></Suspense>} />
         <Route path="/playbooks" element={<PlaybookLibraryPage />} />
         <Route path="/admin/events" element={<AdminEventsPage />} />
