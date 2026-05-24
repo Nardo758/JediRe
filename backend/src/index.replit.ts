@@ -1371,6 +1371,15 @@ async function startServer() {
     console.error('Failed to start email sync scheduler:', error);
   }
 
+  // Intake orchestrator worker — processes intake_jobs WHERE state='pending'
+  // through the enrichment chain (other-docs check, municipal/web stubs).
+  try {
+    const { startIntakeWorker } = await import('./services/intake-orchestrator/worker');
+    startIntakeWorker();
+  } catch (error) {
+    console.error('[intake-worker] Failed to start (non-fatal):', error);
+  }
+
   // Task #329 Phase 2 â€” hourly poller for per-user authenticated RSS feeds.
   try {
     const { startRssPoller } = await import('./services/news-connections/rss-feeds');

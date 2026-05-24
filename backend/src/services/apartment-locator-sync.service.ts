@@ -5,7 +5,7 @@
  * Base URL: https://apartment-locator-ai-real.replit.app/api/jedi/
  */
 
-import { getPool } from '../database/connection';
+import { getPool, query as dbQuery } from '../database/connection';
 import { logger } from '../utils/logger';
 
 const pool = getPool();
@@ -114,6 +114,39 @@ function extractDeliveryDate(prop: SupplyProperty): string | null {
   }
   return null;
 }
+
+// ── Intake-jobs upsert helper ────────────────────────────────────────────────
+// Creates (or no-ops on duplicate parcel_id) an intake_jobs row so the
+// orchestrator worker can enrich the property through the pipeline.
+async function upsertIntakeJob(prop: SupplyProperty): Promise<void> {
+  const parcelId = prop.name || prop.address;
+  if (!parcelId) return;
+  try {
+    await dbQuery(
+      `INSERT INTO intake_jobs (parcel_id, state, source_type, source_data)
+       VALUES ($1, 'pending', 'apartment_locator', $2::jsonb)
+       ON CONFLICT (parcel_id) DO NOTHING`,
+      [
+        parcelId,
+        JSON.stringify({
+          apartment_locator_id: prop.id,
+          name: prop.name,
+          address: prop.address,
+          city: prop.city,
+          state: prop.state,
+          zip_code: prop.zip_code,
+          total_units: prop.total_units,
+          rent: prop.rent,
+        }),
+      ]
+    );
+  } catch (err: any) {
+    // Non-fatal — log and continue; the property itself was already written
+    logger.warn('[intake-jobs] upsert failed for property', { parcelId, error: err.message });
+  }
+}
+
+// ── ApartmentLocatorSyncService ──────────────────────────────────────────────
 
 export class ApartmentLocatorSyncService {
   /**
@@ -333,6 +366,9 @@ export class ApartmentLocatorSyncService {
             ]);
             inserted++;
           }
+          // Wire property into the intake pipeline so the orchestrator
+          // can enrich it (other-docs check, municipal stub, etc.)
+          await upsertIntakeJob(prop);
         } catch (error: any) {
           logger.error('Failed to sync property', { 
             property: prop.name, 
