@@ -1,0 +1,204 @@
+ATLANTA COUNTY ADAPTER COMPLETION — GWINNETT, CLAYTON, CHEROKEE, HENRY
+
+CONTEXT
+Tasks A + B + C shipped. Apartment Locator adapter is live. 
+property_descriptions write-back verified. Atlanta currently has 3 
+adapters working (Fulton, DeKalb, Cobb). 
+
+The 71 GA blocked records distribute across counties that don't yet 
+have adapters. This dispatch completes the Atlanta blueprint by 
+building adapters for the remaining 4 major metro counties: Gwinnett, 
+Clayton, Cherokee, Henry.
+
+After this dispatch, "Atlanta complete" is a real claim rather than 
+aspirational. The completed pattern documents the per-metro template 
+for Phase 10.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVESTIGATION (no code yet)
+═══════════════════════════════════════════════════════════════════
+
+For each county (Gwinnett, Clayton, Cherokee, Henry):
+
+A. Identify the property appraiser website + API/search endpoint
+   - Gwinnett: gwinnettassessor.com or qpublic
+   - Clayton: claytoncountyga.gov assessor
+   - Cherokee: cherokeega-cas.publicaccessnow.com or similar
+   - Henry: henrycounty-ga.com tax-assessor or similar
+   - Confirm each is publicly accessible from Replit's IP range
+
+B. For each, identify the API/search shape:
+   - Is there a JSON API or only HTML scraping needed?
+   - What input format works (address, parcel ID, owner)?
+   - Authentication required?
+   - Rate limits observable?
+   - Response format (paste 1 sample response per county)
+
+C. Cross-reference: how does the Census Geocoder FIPS routing know 
+   to send to these adapters? Need to add FIPS → adapter mapping:
+   - Gwinnett FIPS: 13135
+   - Clayton FIPS: 13063
+   - Cherokee FIPS: 13057
+   - Henry FIPS: 13151
+
+REPORT FINDINGS TO LEON BEFORE WRITING ADAPTER CODE. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — BUILD ADAPTERS (one per county)
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/municipal/georgia/
+
+Pattern: follow the existing Fulton/DeKalb/Cobb adapter shape. Each 
+exposes a single function:
+
+  async function lookupGwinnett(normalizedAddress): Promise<MunicipalResult>
+
+Returns the normalized MunicipalResult shape:
+  - year_built
+  - units (if available)
+  - sqft / lot_size_acres
+  - parcel_id (canonical)
+  - assessed_value
+  - appraised_value
+  - owner
+  - address (county's normalized form)
+  - county (always "Gwinnett" / "Clayton" / "Cherokee" / "Henry")
+  - source (e.g., 'arcgis_gwinnett_ga' — match the existing source 
+    tag convention)
+
+For ArcGIS-backed counties: reuse the existing ArcGIS query pattern. 
+For HTML-only counties: light scraping with appropriate retry + 
+timeout. Match the error-handling shape of the existing GA adapters.
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — REGISTER ADAPTERS IN ROUTER
+═══════════════════════════════════════════════════════════════════
+
+Update the county-FIPS-to-adapter mapping in the GA lookup chain so 
+Census Geocoder's FIPS code resolution lands at the right adapter:
+
+  13057 → cherokee
+  13063 → clayton
+  13135 → gwinnett
+  13151 → henry
+  (existing: 13089 dekalb, 13067 cobb, 13121 fulton)
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — TEST EACH ADAPTER
+═══════════════════════════════════════════════════════════════════
+
+For each of the 4 new adapters:
+
+A. Identify 3 sample blocked addresses from intake_jobs where the 
+   address falls in that county (use Census Geocoder to confirm 
+   county if county isn't already known).
+
+B. For each sample:
+   - Run through the new adapter
+   - Confirm HTTP 200 + non-empty response
+   - Confirm extracted fields match expected schema (year_built, 
+     parcel_id, assessed_value, appraised_value, owner at minimum)
+
+C. Sample responses go in the closing note (literal JSON, not 
+   paraphrased).
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — UNBLOCK PASS ON EXISTING BLOCKED RECORDS
+═══════════════════════════════════════════════════════════════════
+
+The 71 GA blocked intake_jobs may now be resolvable. Re-queue them 
+through the orchestrator:
+
+A. Identify which of the 71 GA blocked records fall in the 4 new 
+   counties (Census Geocoder, or address parsing).
+
+B. Reset their state from blocked_needs_user back to pending. 
+   Orchestrator picks them up on next poll, runs through enrichment 
+   chain including the new adapters.
+
+C. Wait for the poll cycle to complete (or trigger manually).
+
+D. Report:
+   - How many records re-queued
+   - How many transitioned to complete
+   - How many remained blocked (likely because address parsing 
+     failed even with Geocoder)
+   - Distribution by county
+
+═══════════════════════════════════════════════════════════════════
+STEP 6 — PAIRED-READ VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+Pick 5 properties that went from blocked → complete in Step 5 (mix 
+across the 4 new counties).
+
+For each:
+a. Show the intake_jobs.enrichment_log entry (literal JSON) from 
+   the orchestrator's run
+b. Hit GET /api/v1/properties/:parcelId/summary
+c. Confirm the new adapter's data is visible with correct 
+   provenance (municipal:arcgis_<county>_ga)
+d. Confirm assessed_value, appraised_value, owner populate (these 
+   came in via the Task B follow-ons)
+
+If verification fails on any of the 5, STOP. Don't mark complete.
+
+═══════════════════════════════════════════════════════════════════
+STEP 7 — DOCUMENT THE PER-METRO TEMPLATE
+═══════════════════════════════════════════════════════════════════
+
+Atlanta is now complete (7 adapters across 7 counties). Document the 
+pattern for Phase 10 (Metro Expansion Blueprint).
+
+Brief structure for docs/operations/PER_METRO_ADAPTER_TEMPLATE.md:
+
+1. Adapter file structure (where to place, naming convention)
+2. Required functions (lookup signature, MunicipalResult shape)
+3. FIPS-to-adapter mapping registration
+4. Source tag naming convention (arcgis_<county>_<state>)
+5. Common edge cases observed across the 7 GA counties:
+   - HTML-only vs JSON API
+   - Address format quirks (e.g., MLK Jr Dr Sw vs MLK Drive Southwest)
+   - Parcel ID format variations
+   - IP-blocked counties (requires local-CLI proxy — note pattern)
+6. Testing checklist: 3 sample addresses, full field extraction, 
+   error handling
+7. Worked example: "Add Forsyth County" walkthrough using these 
+   patterns
+
+This is the deliverable that makes future per-metro work cheap. 
+The TX/FL/NC/TN adapter work after this dispatch becomes 
+"follow the template" rather than "design each one bespoke."
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/ATLANTA_COMPLETION_CLOSING.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Investigation findings per county (data source identified, 
+    sample response shape, any quirks)
+(b) 4 adapter diffs + file paths
+(c) Router update diff
+(d) Test results: 3 samples per county = 12 total successful 
+    lookups (literal JSON)
+(e) Unblock pass results: N re-queued, N completed, N still blocked, 
+    distribution by county
+(f) Paired-read verification: 5 properties before/after with 
+    literal JSON
+(g) Per-metro template documented (link to file)
+(h) Total Atlanta coverage status: 7 of 7 metro counties working
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Skip Step 1 investigation gate
+- Mark complete without paired-read verification
+- Build TX/FL/NC/TN adapters in this dispatch (separate scope)
+- Modify the existing Fulton/DeKalb/Cobb adapters
+- Skip the per-metro template documentation — it's the dispatch's 
+  most important long-term deliverable
+- Hardcode credentials for any county that requires auth (use env 
+  vars consistently)
+- Build the Apartment Locator scope filter or any scrape-side 
+  changes

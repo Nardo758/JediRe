@@ -1,0 +1,273 @@
+PPV PHASE 1.3 — DATA LIBRARY UPLOAD UI
+
+CONTEXT
+Apartment Locator adapter is live as one upstream source. Data Library 
+uploads are the second planned source. The orchestrator's source-
+adapter pattern is already established (Task B). This dispatch adds:
+
+1. Browser drag-drop upload UI at /archive/upload  
+2. Direct-to-R2 upload via signed URLs (no backend body bottleneck)
+3. File registration endpoint (POST /api/v1/archive/files/register)  
+4. Data Library source adapter for the orchestrator
+
+After this dispatch, users can drag a property folder onto a web 
+page and watch files flow through the same orchestrator that 
+Apartment Locator scrapes go through.
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. SAME ORCHESTRATOR, NEW ADAPTER. Don't build a parallel ingest 
+   path. The Data Library adapter normalizes to IntakeJob payload, 
+   the orchestrator handles the rest. Same idempotency, same retry, 
+   same paired-read flow.
+
+2. DIRECT-TO-R2 UPLOAD. Files don't pass through the backend's 
+   request body. Backend issues a signed PUT URL, browser uploads 
+   directly to R2, then notifies backend via the registration 
+   endpoint. Reasons:
+   - Replit body size limits would block large OMs (10-28MB)
+   - Latency / memory pressure on backend reduced
+   - Standard pattern for R2/S3 uploads
+
+3. SOURCE ADAPTER PATTERN SHIPPED IN TASK B. Reuse the structure. 
+   New adapter in src/services/intake-sources/data-library-upload/. 
+   Same upsertJob() conventions, same source_record_id usage (use 
+   sha256 of file contents as source_record_id for idempotency — 
+   re-uploading the same file produces the same hash and UPSERTs 
+   cleanly).
+
+4. PAIRED-READ VERIFICATION IS THE GATE. End-to-end: drag file 
+   onto page → see it appear in Intake Inbox → orchestrator picks 
+   up → see data in property_descriptions if address resolves → 
+   visible at /archive/properties/:parcelId.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVESTIGATION (no code yet)
+═══════════════════════════════════════════════════════════════════
+
+A. R2 SIGNED URL CAPABILITY
+   - Confirm R2 client supports presigned PUT URL generation
+   - Identify the SDK function (likely getSignedUrl from 
+     @aws-sdk/s3-request-presigner)
+   - Confirm CORS configuration on the R2 bucket allows browser PUT 
+     requests from the platform domain
+   - Identify the signed URL expiration default (recommend 15 min 
+     for upload PUT URLs)
+
+B. EXISTING FILE STORAGE PATH
+   - How does the current system handle file uploads (if at all)? 
+     Some files are presumably already in R2 (1,695 files per Task 
+     982 — confirm they're R2-stored)
+   - What's the storage_key convention? (e.g., 
+     'parcel/<parcel_id>/<doc_type>/<sha256>.<ext>')
+   - data_library_files schema reminder + sample row
+
+C. INTAKE_JOBS SHAPE FOR FILE-BASED SOURCES
+   - Files have a file_id (data_library_files.id) — intake_jobs 
+     should link via file_id column (already exists)
+   - source_record_id for file uploads: use the sha256 (file 
+     content uniquely identifies the upload)
+   - For folder upload: each file is a separate IntakeJob; folder 
+     name becomes a tentative parcel_id
+
+REPORT FINDINGS. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — FILE REGISTRATION ENDPOINT
+═══════════════════════════════════════════════════════════════════
+
+POST /api/v1/archive/files/register
+
+Body:
+  {
+    parcel_id: string | null,        // from folder name, or null
+    sha256: string,                   // computed client-side before upload
+    original_filename: string,
+    mime_type: string,
+    size_bytes: number,
+    storage_key: string,              // where it landed in R2
+    document_type: string | null      // from classifier, or null if unsure
+  }
+
+Response:
+  {
+    file_id: uuid,
+    status: 'registered' | 'duplicate',
+    intake_job_id: uuid,
+    linked_observations: number
+  }
+
+Backend:
+1. INSERT into data_library_files with ON CONFLICT (sha256) DO 
+   NOTHING semantics (idempotent — re-uploading same file returns 
+   'duplicate' status with existing file_id)
+2. Create intake_jobs row with status='pending', source_type=
+   'data_library_upload', source_record_id=sha256, file_id=<new>
+3. ON CONFLICT (source_type, source_record_id): UPDATE raw_input, 
+   refresh updated_at, do NOT touch status (same idempotency 
+   pattern as Apartment Locator adapter)
+4. Backfill: if data_library_files row was newly inserted, link 
+   to existing historical_observations rows where 
+   (parcel_id, observation_date, document_type) match
+5. Return file_id, intake_job_id, linked_observations count
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — SIGNED URL ENDPOINT
+═══════════════════════════════════════════════════════════════════
+
+POST /api/v1/archive/files/signed-upload-url
+
+Body:
+  {
+    proposed_storage_key: string,    // 'parcel/.../sha256.ext'
+    mime_type: string,
+    size_bytes: number
+  }
+
+Response:
+  {
+    signed_url: string,             // presigned PUT URL, 15-min expiry
+    storage_key: string,            // confirmed final storage_key
+    upload_method: 'PUT',
+    expires_at: timestamp
+  }
+
+Backend:
+1. Validate size (cap at 100MB for now; flag larger for review)
+2. Generate signed PUT URL via R2 SDK
+3. Return signed URL to client
+4. Client uploads file directly to R2 via PUT
+5. Client then calls /files/register to record metadata + create 
+   intake_job
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — DATA LIBRARY SOURCE ADAPTER
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/intake-sources/data-library-upload/
+
+Function: registerUploadedFile(metadata) — called by the 
+registration endpoint internally. Encapsulates:
+1. Idempotency check (sha256 dedup)
+2. data_library_files INSERT  
+3. intake_jobs UPSERT
+4. backfill of historical_observations.source_file_ids
+
+Pattern mirrors Task B's apartment-locator adapter.
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — UPLOAD UI
+═══════════════════════════════════════════════════════════════════
+
+Route: /archive/upload (new page)
+
+Layout:
+┌────────────────────────────────────────────────────────────────┐
+│ UPLOAD                                                          │
+│                                                                 │
+│ ┌────────────────────────────────────────────────────────────┐ │
+│ │                                                            │ │
+│ │   📁  Drag a folder here, or click to select files        │ │
+│ │                                                            │ │
+│ │   Folder structure preserved — files grouped by property  │ │
+│ │   Each upload creates an intake job processed automatically│ │
+│ │                                                            │ │
+│ └────────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│ Tips:                                                           │
+│ • For best results, name folders by property                   │
+│ • Supported: PDF, XLSX, XLS, CSV, TXT                         │
+│ • Files >100MB: contact support                                │
+│                                                                 │
+│ ─────────────────────────────────────────────────────────────  │
+│                                                                 │
+│ RECENT UPLOADS                                                  │
+│                                                                 │
+│ Mirabella_T12_Dec2024.xlsx              ✓ Processed            │
+│ Bishop_OM_2024.pdf                      ⟳ Enriching             │
+│ The_Oaks_RR_Dec2024.xlsx                ⚠ Needs identifier      │
+│ ...                                                             │
+└────────────────────────────────────────────────────────────────┘
+
+Implementation:
+1. Use File System Access API for folder selection (showOpenFilePicker 
+   or webkitdirectory fallback)
+2. For each file:
+   a. Compute sha256 client-side (use Web Crypto API)
+   b. Request signed URL via /files/signed-upload-url
+   c. PUT file directly to R2 via the signed URL
+   d. On success, POST to /files/register
+   e. Show progress per file (uploading → uploaded → processing → 
+      complete/blocked)
+3. Recent uploads list polls intake_jobs status every 5 seconds for 
+   files visible in the current session
+4. Click on a recent upload → navigate to /archive/properties/:parcelId 
+   (when known) or /archive/intake (when blocked needs identifier)
+
+Stack: match existing frontend conventions (whatever React patterns 
+ArchiveLibraryPage and ArchivePropertyPage use). No new framework 
+dependencies.
+
+═══════════════════════════════════════════════════════════════════
+STEP 6 — END-TO-END VERIFICATION (THE GATE)
+═══════════════════════════════════════════════════════════════════
+
+A. Manual test sequence:
+   1. Navigate to /archive/upload
+   2. Drag a small test folder (3 files: T-12, rent roll, tax bill) 
+      with folder name matching a known property
+   3. Confirm progress UI shows each file uploading → registered
+   4. Wait for orchestrator poll cycle
+   5. Confirm intake_jobs rows created (3 rows, source_type=
+      'data_library_upload')
+   6. Confirm orchestrator processes them (status moves through 
+      states)
+   7. Visit /archive/properties/:parcelId for the test property
+   8. Confirm the uploaded files appear in the source documents 
+      table
+
+B. Idempotency test:
+   1. Re-drag the same folder onto /archive/upload
+   2. Confirm: NO new data_library_files rows, NO new intake_jobs 
+      rows
+   3. Confirm: registration endpoint returns status='duplicate' 
+      for each file
+
+C. Large file test:
+   1. Upload one 20MB OM PDF
+   2. Confirm direct-to-R2 path works (backend doesn't choke on 
+      the body)
+   3. Confirm OM appears in property's source documents
+
+If any of A/B/C fail, STOP. Don't mark complete.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/PHASE_1_3_CLOSING.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Investigation findings (R2 capability, CORS, storage_key 
+    convention)
+(b) Endpoint diffs (registration + signed-url)
+(c) Adapter diff (data-library-upload source adapter)
+(d) UI implementation summary + route added
+(e) End-to-end verification: manual test sequence results
+(f) Idempotency proof: re-upload test result
+(g) Large file proof: 20MB upload result
+(h) Sample data: 1 uploaded file's full journey from upload → 
+    intake_job → orchestrator → property_descriptions → API 
+    response (literal JSON at each step)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build the Intake Inbox UI in this dispatch (Phase 1.4, separate)
+- Build the file viewer beyond what exists (Phase 5.2 already 
+  shipped that for some types)
+- Add tagging, custom metadata, or other "while I'm here" features
+- Route file body through the backend — direct-to-R2 only
+- Skip Step 6 end-to-end verification
+- Modify the orchestrator state machine
+- Build any new file operations (download/delete/replace are Phase 3)
