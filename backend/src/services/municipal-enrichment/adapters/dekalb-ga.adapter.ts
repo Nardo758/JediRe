@@ -241,46 +241,26 @@ async function queryArcGIS(
 const ENVELOPE_BUF_DEG = 0.0005;
 
 /**
- * Initial street-number filter range for the envelope fallback.
- * All parcels whose SITEADDRES number is within ±50 of the input house
- * number (and whose FULL_STREE matches the input keyword) are considered
- * candidates.  When more than one candidate survives, disambiguation is
- * attempted via NEAREST_CLEAR_WIN_GAP before returning not_found.
+ * Street-number tolerance for the envelope candidate filter.
+ * Parcels whose SITEADDRES number is within ±50 of the input house number are
+ * eligible; this matches the ±50 convention used by the Cobb and Fulton adapters
+ * and provides a reasonable window for minor address-range discrepancies.
  */
 const ADDR_NUM_TOLERANCE = 50;
 
 /**
- * Minimum gap (in house-number units) between the closest and second-closest
- * candidate required to declare a "clear winner" when multiple parcels survive
- * the ±ADDR_NUM_TOLERANCE filter.
- *
- * Example: "3108 Briarcliff Rd NE" → candidates at deltas 2, 12, 24, 37.
- * Gap between closest (delta=2) and second-closest (delta=12) is 10 ≥ 10 →
- * parcel 3110 is accepted as the clear winner.
- *
- * Counter-example: "1555 La Vista Rd" → deltas 0, 3, 9, 32.
- * Gap = 3 < 10 → ambiguous → not_found (falls back to WHERE query).
- *
- * The value 10 was calibrated empirically against the full 71-address
- * benchmark set: it recovers "3108 Briarcliff Rd NE" without producing any
- * false positives for the other 13 tested DeKalb benchmark addresses.
- */
-const NEAREST_CLEAR_WIN_GAP = 10;
-
-/**
  * Envelope fallback: issues a ±ENVELOPE_BUF_DEG bounding-box query and
- * selects a parcel through a two-tier disambiguation strategy:
+ * accepts the result only when EXACTLY ONE parcel survives a dual filter:
  *
- *   Tier 1 (strict): return the single parcel that survives the dual filter
- *     (SITEADDRES number within ±ADDR_NUM_TOLERANCE AND FULL_STREE keyword).
+ *   1. Street number parsed from SITEADDRES (using extractStreetNumber,
+ *      same utility used by the WHERE-clause path) within ±ADDR_NUM_TOLERANCE
+ *      of the input house number.
  *
- *   Tier 2 (nearest-clear-winner): when multiple parcels survive Tier 1,
- *     sort by |storedNum − inputNum|.  Accept the closest parcel only when
- *     its delta-gap to the second-closest is ≥ NEAREST_CLEAR_WIN_GAP.
- *     This resolves cases like "3108 Briarcliff Rd NE" where a single parcel
- *     (3110, delta=2) sits far closer than all other candidates (next delta=12).
+ *   2. FULL_STREE field (stored street name) contains the input street keyword
+ *      — prevents adjacent-street false positives where two nearby streets
+ *      share similar house numbers.
  *
- * Zero candidates or tied ambiguity → not_found (caller falls back to WHERE).
+ * Zero or 2+ candidates → not_found (caller falls back to WHERE query).
  * Transport/ArcGIS errors → not_found (degrades gracefully).
  */
 async function queryParcelByEnvelope(
@@ -316,49 +296,30 @@ async function queryParcelByEnvelope(
 
   const features: any[] = data?.features ?? [];
 
-  // Compute delta for each parcel (SITEADDRES-based number extraction).
-  type Candidate = { feat: any; delta: number };
-  const candidates: Candidate[] = [];
-  for (const f of features) {
+  // Filter: SITEADDRES street number within ±ADDR_NUM_TOLERANCE AND FULL_STREE keyword match.
+  const candidates = features.filter(f => {
     // Parse street number from SITEADDRES (e.g. "3110 Briarcliff Road Atlanta, GA 30329" → 3110)
     const siteAddr     = (f.attributes?.SITEADDRES ?? '') as string;
     const storedNumStr = extractStreetNumber(siteAddr);
-    if (!storedNumStr) continue;
+    if (!storedNumStr) return false;
     const storedNum = parseInt(storedNumStr, 10);
-    const delta = Math.abs(storedNum - inputStreetNum);
-    if (delta > ADDR_NUM_TOLERANCE) continue;
+    if (Math.abs(storedNum - inputStreetNum) > ADDR_NUM_TOLERANCE) return false;
     // FULL_STREE keyword guard: prevents adjacent-street false positives.
     const fullStreet = (f.attributes?.FULL_STREE ?? '') as string;
-    if (inputKeyword && !fullStreet.toUpperCase().includes(inputKeyword.toUpperCase())) continue;
-    candidates.push({ feat: f, delta });
-  }
+    if (inputKeyword && !fullStreet.toUpperCase().includes(inputKeyword.toUpperCase())) return false;
+    return true;
+  });
 
-  // Tier 1: exactly one candidate after dual filter.
-  if (candidates.length === 1) {
-    // fall through to acceptance below
-  } else if (candidates.length === 0) {
-    logger.debug(`[dekalb-ga] envelope fallback: 0 candidates (inputNum=${inputStreetNum}, keyword=${inputKeyword})`);
-    return { status: 'not_found' };
-  } else {
-    // Tier 2: nearest-clear-winner disambiguation.
-    candidates.sort((a, b) => a.delta - b.delta);
-    const gapToSecond = candidates[1].delta - candidates[0].delta;
-    if (gapToSecond < NEAREST_CLEAR_WIN_GAP) {
-      logger.debug(
-        `[dekalb-ga] envelope fallback: ${candidates.length} candidates, gap=${gapToSecond} < ${NEAREST_CLEAR_WIN_GAP}` +
-        ` (inputNum=${inputStreetNum}) — ambiguous`,
-      );
-      return { status: 'not_found' };
-    }
+  if (candidates.length !== 1) {
     logger.debug(
-      `[dekalb-ga] envelope fallback: nearest-clear-winner selected` +
-      ` (delta=${candidates[0].delta}, gap=${gapToSecond} ≥ ${NEAREST_CLEAR_WIN_GAP})`,
+      `[dekalb-ga] envelope fallback: ${candidates.length} candidate(s) after dual filter` +
+      ` (inputNum=${inputStreetNum}, keyword=${inputKeyword}) — ` +
+      (candidates.length === 0 ? 'no match' : 'ambiguous'),
     );
-    // candidates[0] is the winner — single item used below.
-    candidates.splice(1);
+    return { status: 'not_found' };
   }
 
-  const attrs: Record<string, any> = candidates[0].feat.attributes ?? {};
+  const attrs: Record<string, any> = candidates[0].attributes ?? {};
   const mapped = mapAttrsToResult(attrs, inputAddress);
 
   logger.debug(
