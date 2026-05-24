@@ -56,7 +56,7 @@ export async function lookupHenryGA(_address: string): Promise<MunicipalLookupRe
     status:  'not_implemented',
     county:  'Henry',
     state:   'GA',
-    source:  'henry_ga_stub',
+    source:  'arcgis_henry_ga',
     error:   'Henry County GA ArcGIS endpoint not publicly accessible from cloud IPs',
   };
 }
@@ -70,7 +70,7 @@ export async function lookupHenryGAByParcelId(_parcelId: string): Promise<Munici
     status:  'not_implemented',
     county:  'Henry',
     state:   'GA',
-    source:  'henry_ga_stub',
+    source:  'arcgis_henry_ga',
     error:   'Henry County GA ArcGIS endpoint not publicly accessible from cloud IPs',
   };
 }

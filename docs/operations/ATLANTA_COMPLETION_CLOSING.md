@@ -77,7 +77,20 @@ After: `const REQUEST_TIMEOUT_MS = 25000;`
 ### 2.3 Henry stub (new file)
 **File:** `backend/src/services/municipal-enrichment/adapters/henry-ga.adapter.ts`
 
-New file implementing `lookupHenryGA` and `lookupHenryGAByParcelId`. Both return `status: 'not_implemented'` immediately. Full endpoint-search documentation inline. FIPS 13151 wired into `index.ts`.
+New file implementing `lookupHenryGA` and `lookupHenryGAByParcelId`. Both return `status: 'not_implemented'` immediately with `source: 'arcgis_henry_ga'`. Full endpoint-search documentation inline. FIPS 13151 wired into `index.ts`.
+
+### 2.4 GA fallback chain — `not_implemented` bleed fix
+**File:** `backend/src/services/municipal-enrichment/index.ts`
+
+After adding Henry to both the address and parcel-ID sequential chains, the chain terminators were `return lookupHenryGA(...)` / `return lookupHenryGAByParcelId(...)`. Since Henry always returns `not_implemented`, any GA address that misses all 7 adapters would surface `not_implemented` to the orchestrator instead of `not_found`, silently breaking the blocking-flow semantics.
+
+Fixed: both chain terminators now call Henry, check for `ok`, and if Henry misses, return a clean `{ status: 'not_found' }`:
+```ts
+const henryResult = await lookupHenryGA(lookupAddr);
+if (henryResult.status === 'ok') return henryResult;
+return { status: 'not_found' };
+```
+Verified with a synthetic GA address — result is `not_found`, not `not_implemented`.
 
 ---
 

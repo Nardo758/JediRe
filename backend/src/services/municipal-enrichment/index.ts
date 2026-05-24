@@ -175,7 +175,15 @@ class MunicipalEnrichmentService {
         logger.debug(
           `[municipal-enrichment] Clayton miss (${claytonResult.status}), falling back to Henry for "${lookupAddr}"`,
         );
-        return lookupHenryGA(lookupAddr);
+        const henryResult = await lookupHenryGA(lookupAddr);
+        if (henryResult.status === 'ok') return henryResult;
+        // All 7 GA county adapters exhausted — address not found in any known county.
+        // Do NOT propagate not_implemented from the Henry stub; return not_found so the
+        // orchestrator routes this to blocked_needs_user (not a system error).
+        logger.debug(
+          `[municipal-enrichment] Henry miss (${henryResult.status}), all GA adapters exhausted for "${lookupAddr}"`,
+        );
+        return { status: 'not_found' };
       }
 
       case 'NC':
@@ -262,7 +270,11 @@ class MunicipalEnrichmentService {
         const claytonParcelResult = await lookupClaytonGAByParcelId(parcelId.trim());
         if (claytonParcelResult.status === 'ok') return claytonParcelResult;
         logger.debug(`[municipal-enrichment] Clayton parcel-id miss (${claytonParcelResult.status}), falling back to Henry for "${parcelId}"`);
-        return lookupHenryGAByParcelId(parcelId.trim());
+        const henryParcelResult = await lookupHenryGAByParcelId(parcelId.trim());
+        if (henryParcelResult.status === 'ok') return henryParcelResult;
+        // All 7 GA county parcel-id adapters exhausted.
+        logger.debug(`[municipal-enrichment] Henry parcel-id miss (${henryParcelResult.status}), all GA adapters exhausted for "${parcelId}"`);
+        return { status: 'not_found' };
       }
 
       case 'NC':
