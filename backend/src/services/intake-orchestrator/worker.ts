@@ -118,54 +118,153 @@ async function stepMunicipalLookup(
   jobId: string,
   address: string | null,
   state: string | null,
+  existingParcelId: string | null,
 ): Promise<MunicipalStepResult> {
-  if (!address || !state) {
+  if (!state) {
     await appendLog(jobId, {
       step: 'municipal_lookup',
       status: 'blocked',
       ts: ts(),
-      detail: { reason: 'missing_address_or_state', address, state },
+      detail: { reason: 'missing_state', address, state },
     });
     return { resolved: false, parcel_id: null };
   }
 
-  let result: Awaited<ReturnType<typeof municipalEnrichment.lookup>>;
-  try {
-    result = await municipalEnrichment.lookup(address, state);
-  } catch (err: any) {
+  // ── Primary path: address lookup ─────────────────────────────────────────
+  if (address) {
+    let result: Awaited<ReturnType<typeof municipalEnrichment.lookup>>;
+    try {
+      result = await municipalEnrichment.lookup(address, state);
+    } catch (err: any) {
+      await appendLog(jobId, {
+        step: 'municipal_lookup',
+        status: 'error',
+        ts: ts(),
+        detail: { lookup_mode: 'address', error: err?.message ?? String(err), address, state },
+      });
+      return { resolved: false, parcel_id: null };
+    }
+
+    if (result.status === 'ok' && result.parcel_id) {
+      await appendLog(jobId, {
+        step: 'municipal_lookup',
+        status: 'ok',
+        ts: ts(),
+        detail: {
+          lookup_mode:    'address',
+          status:         result.status,
+          address,
+          state,
+          source:         result.source ?? null,
+          parcel_id:      result.parcel_id,
+          owner:          result.owner ?? null,
+          legal_description: result.legal_description ?? null,
+          assessed_value: result.assessed_value ?? null,
+          appraised_value: result.appraised_value ?? null,
+          land_acres:     result.land_acres ?? null,
+          geometry_area_sqft: result.geometry_area_sqft ?? null,
+          units:          result.units ?? null,
+          neighborhood:   result.neighborhood ?? null,
+          county:         result.county ?? null,
+          candidates:     result.candidates ?? null,
+        },
+      });
+      return { resolved: true, parcel_id: result.parcel_id };
+    }
+
+    // Address lookup returned not_found / not_implemented / error — fall through
+    if (result.status !== 'not_implemented') {
+      // Log the address-lookup non-match before attempting parcel-id fallback
+      await appendLog(jobId, {
+        step: 'municipal_lookup',
+        status: result.status === 'error' ? 'error' : 'blocked',
+        ts: ts(),
+        detail: {
+          lookup_mode: 'address',
+          status:      result.status,
+          address,
+          state,
+          source:      result.source ?? null,
+          candidates:  result.candidates ?? null,
+          ...(result.error ? { error: result.error } : {}),
+        },
+      });
+    }
+
+    // If not_implemented there is nothing more to try
+    if (result.status === 'not_implemented') {
+      await appendLog(jobId, {
+        step: 'municipal_lookup',
+        status: 'not_implemented',
+        ts: ts(),
+        detail: { lookup_mode: 'address', status: result.status, state, source: result.source ?? null },
+      });
+      return { resolved: false, parcel_id: null };
+    }
+  }
+
+  // ── Fallback path: parcel-id lookup ──────────────────────────────────────
+  // Attempt only when we have an explicit parcel_id from source_data that
+  // differs from the property name (a real county-style ID has no spaces
+  // beyond the internal digit separator, or contains digits mixed with letters).
+  const sourceParcelId = existingParcelId;
+  const looksLikeRealParcelId =
+    !!sourceParcelId &&
+    /\d/.test(sourceParcelId) &&           // contains at least one digit
+    sourceParcelId.trim().length <= 30;    // not a long property name
+
+  if (looksLikeRealParcelId && sourceParcelId) {
+    let fallbackResult: Awaited<ReturnType<typeof municipalEnrichment.lookupByParcelId>>;
+    try {
+      fallbackResult = await municipalEnrichment.lookupByParcelId(sourceParcelId, state);
+    } catch (err: any) {
+      await appendLog(jobId, {
+        step: 'municipal_lookup',
+        status: 'error',
+        ts: ts(),
+        detail: { lookup_mode: 'parcel_id', error: err?.message ?? String(err), parcel_id: sourceParcelId, state },
+      });
+      return { resolved: false, parcel_id: null };
+    }
+
+    const fallbackLogStatus =
+      fallbackResult.status === 'ok'              ? 'ok'              :
+      fallbackResult.status === 'not_implemented' ? 'not_implemented' :
+      fallbackResult.status === 'not_found'       ? 'blocked'         : 'error';
+
     await appendLog(jobId, {
       step: 'municipal_lookup',
-      status: 'error',
+      status: fallbackLogStatus,
       ts: ts(),
-      detail: { error: err?.message ?? String(err), address, state },
+      detail: {
+        lookup_mode:    'parcel_id',
+        status:         fallbackResult.status,
+        parcel_id:      sourceParcelId,
+        state,
+        source:         fallbackResult.source ?? null,
+        owner:          fallbackResult.owner ?? null,
+        legal_description: fallbackResult.legal_description ?? null,
+        assessed_value: fallbackResult.assessed_value ?? null,
+        appraised_value: fallbackResult.appraised_value ?? null,
+        land_acres:     fallbackResult.land_acres ?? null,
+        geometry_area_sqft: fallbackResult.geometry_area_sqft ?? null,
+        county:         fallbackResult.county ?? null,
+        candidates:     fallbackResult.candidates ?? null,
+        ...(fallbackResult.error ? { error: fallbackResult.error } : {}),
+      },
     });
-    return { resolved: false, parcel_id: null };
-  }
 
-  const logStatus =
-    result.status === 'ok'              ? 'ok'              :
-    result.status === 'not_implemented' ? 'not_implemented' :
-    result.status === 'not_found'       ? 'blocked'         : 'error';
-
-  await appendLog(jobId, {
-    step: 'municipal_lookup',
-    status: logStatus,
-    ts: ts(),
-    detail: {
-      status:        result.status,
-      address,
-      state,
-      source:        result.source ?? null,
-      parcel_id:     result.parcel_id ?? null,
-      assessed_value: result.assessed_value ?? null,
-      county:        result.county ?? null,
-      candidates:    result.candidates ?? null,
-      ...(result.error ? { error: result.error } : {}),
-    },
-  });
-
-  if (result.status === 'ok' && result.parcel_id) {
-    return { resolved: true, parcel_id: result.parcel_id };
+    if (fallbackResult.status === 'ok' && fallbackResult.parcel_id) {
+      return { resolved: true, parcel_id: fallbackResult.parcel_id };
+    }
+  } else if (!address) {
+    // No address and parcel_id doesn't look like a county ID — nothing to try
+    await appendLog(jobId, {
+      step: 'municipal_lookup',
+      status: 'blocked',
+      ts: ts(),
+      detail: { reason: 'no_address_and_no_county_parcel_id', state },
+    });
   }
 
   return { resolved: false, parcel_id: null };
@@ -258,7 +357,7 @@ async function processJob(job: {
     const lookupState   = (sd.state   as string | undefined)?.trim() || null;
 
     const otherDocs = await stepOtherDocs(id, parcel_id);
-    const municipal = await stepMunicipalLookup(id, lookupAddress, lookupState);
+    const municipal = await stepMunicipalLookup(id, lookupAddress, lookupState, parcel_id);
     await stepWebSearch(id);
     await stepGooglePlaces(id);
 
@@ -268,15 +367,20 @@ async function processJob(job: {
     // parcel_id (partial UNIQUE index on parcel_id WHERE parcel_id IS NOT NULL).
     if (municipal.resolved && municipal.parcel_id && municipal.parcel_id !== parcel_id) {
       try {
-        await query(
+        const updateRes = await query(
           `UPDATE intake_jobs SET parcel_id = $1, updated_at = NOW()
            WHERE id = $2 AND NOT EXISTS (
              SELECT 1 FROM intake_jobs WHERE parcel_id = $1 AND id != $2
            )`,
           [municipal.parcel_id, id]
         );
-        parcel_id = municipal.parcel_id;
-        logger.debug(`[intake-worker] job ${id} parcel_id updated to ${parcel_id} via municipal lookup`);
+        // Only update in-memory value if the DB row was actually changed
+        if (updateRes.rowCount && updateRes.rowCount > 0) {
+          parcel_id = municipal.parcel_id;
+          logger.debug(`[intake-worker] job ${id} parcel_id updated to ${parcel_id} via municipal lookup`);
+        } else {
+          logger.warn(`[intake-worker] job ${id} parcel_id ${municipal.parcel_id} not written (conflict or no-op)`);
+        }
       } catch (pErr: any) {
         logger.warn(`[intake-worker] job ${id} parcel_id update skipped: ${pErr.message}`);
       }
