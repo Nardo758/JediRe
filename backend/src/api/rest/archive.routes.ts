@@ -1284,7 +1284,7 @@ router.get('/files', requireAuth, async (req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/archive/files/:fileId/url
 // Returns a download URL for a single file.
-// Uses cdn_url if present; otherwise returns the storage_key for direct access.
+// Priority: cdn_url → R2 signed URL → local proxy download endpoint.
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/files/:fileId/url', requireAuth, async (req: Request, res: Response) => {
   const pool = getPool();
@@ -1303,7 +1303,7 @@ router.get('/files/:fileId/url', requireAuth, async (req: Request, res: Response
 
     const file = result.rows[0];
 
-    // Prefer CDN URL if already present
+    // 1. CDN URL (fastest, no auth needed)
     if (file.cdn_url) {
       return res.json({
         url: file.cdn_url,
@@ -1312,15 +1312,26 @@ router.get('/files/:fileId/url', requireAuth, async (req: Request, res: Response
       });
     }
 
-    // R2 signed URL (if env vars present) — placeholder until R2 client is wired
+    // 2. R2 signed URL (if env vars present)
     if (file.storage_provider === 'r2' && file.storage_key) {
       const accountId = process.env.R2_ACCOUNT_ID;
       const bucket    = process.env.R2_BUCKET_NAME;
       if (accountId && bucket) {
-        // Return a direct R2 public URL (works when bucket has public access)
         const url = `https://${bucket}.${accountId}.r2.cloudflarestorage.com/${file.storage_key}`;
         return res.json({ url, filename: file.original_filename, mime_type: file.mime_type });
       }
+    }
+
+    // 3. Local storage — return the authenticated proxy download endpoint URL.
+    //    The client must call this URL with its session token; the /download
+    //    endpoint streams the file directly from disk.
+    if (file.storage_provider === 'local' && file.storage_key) {
+      return res.json({
+        url: `/api/v1/archive/files/${fileId}/download`,
+        filename: file.original_filename,
+        mime_type: file.mime_type,
+        local: true,
+      });
     }
 
     return res.status(404).json({
@@ -1334,10 +1345,63 @@ router.get('/files/:fileId/url', requireAuth, async (req: Request, res: Response
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/archive/files/:fileId/download
+// Stream a locally-stored file directly from disk.
+// Only serves files with storage_provider='local'; all other providers redirect
+// callers to /url which returns a CDN/R2 URL.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/files/:fileId/download', requireAuth, async (req: Request, res: Response) => {
+  const pool = getPool();
+  const { fileId } = req.params;
+
+  try {
+    const result = await pool.query(
+      `SELECT id, original_filename, cdn_url, storage_key, storage_provider, mime_type, size_bytes
+       FROM data_library_files WHERE id = $1`,
+      [fileId],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const file = result.rows[0];
+
+    if (file.storage_provider !== 'local' || !file.storage_key) {
+      return res.status(400).json({
+        error: 'This file is not stored locally. Use /url endpoint to get a download URL.',
+      });
+    }
+
+    // Reconstruct the absolute path from the relative storage_key.
+    // storage_key is always "uploads/library/<uuid>.<ext>"
+    const absPath = path.join(__dirname, '../../../../', file.storage_key as string);
+
+    if (!fs.existsSync(absPath)) {
+      logger.error('[archive/download] Local file missing from disk', { fileId, storage_key: file.storage_key });
+      return res.status(404).json({ error: 'File not found on disk' });
+    }
+
+    const safeName = path.basename(file.original_filename as string).replace(/[^\w.\- ]/g, '_');
+    res.setHeader('Content-Type', file.mime_type ?? 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    if (file.size_bytes) res.setHeader('Content-Length', String(file.size_bytes));
+
+    fs.createReadStream(absPath).pipe(res);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/download] Error', { fileId, error: msg });
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/archive/upload
 // Accept a user file upload, write to local disk, create data_library_files
-// row and intake_jobs row. Returns { file_id, job_id, filename }.
+// row and intake_jobs row inside a single DB transaction.
+// Returns { file_id, job_id, filename }.
 // Body: multipart/form-data — fields: file (required), parcel_id?, document_type?
+// Uses the existing memUpload (memoryStorage, 100 MB) with an extra extension guard.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const LIBRARY_UPLOAD_DIR = path.join(__dirname, '../../../../uploads/library');
@@ -1345,43 +1409,46 @@ if (!fs.existsSync(LIBRARY_UPLOAD_DIR)) {
   fs.mkdirSync(LIBRARY_UPLOAD_DIR, { recursive: true });
 }
 
-const ALLOWED_UPLOAD_EXTS = ['.pdf', '.xlsx', '.xls', '.csv', '.docx', '.doc'];
+const ALLOWED_LIBRARY_EXTS = new Set(['.pdf', '.xlsx', '.xls', '.csv', '.docx', '.doc']);
+const VALID_DOC_TYPES       = new Set(['OM', 'T12', 'RENT_ROLL', 'TAX_BILL', 'LEASING_STATS', 'OTHER']);
 
-const libraryUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (ALLOWED_UPLOAD_EXTS.includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`File type not allowed: ${ext}. Allowed: ${ALLOWED_UPLOAD_EXTS.join(', ')}`));
-    }
-  },
-});
-
-const VALID_DOC_TYPES = new Set(['OM', 'T12', 'RENT_ROLL', 'TAX_BILL', 'LEASING_STATS', 'OTHER']);
-
-router.post('/upload', requireAuth, libraryUpload.single('file'), async (req: Request, res: Response) => {
+// Reuse the project-standard memUpload middleware (memory storage, 100 MB).
+// Extension validation is enforced inline so we don't need a separate multer instance.
+router.post('/upload', requireAuth, memUpload.single('file'), async (req: Request, res: Response) => {
   const file = (req as Request & { file?: Express.Multer.File }).file;
   if (!file) {
     return res.status(400).json({ error: 'No file uploaded. Attach file as multipart field "file".' });
   }
 
-  const parcelId  = ((req.body.parcel_id as string | undefined) ?? '').trim() || null;
-  const rawType   = ((req.body.document_type as string | undefined) ?? 'OTHER').trim().toUpperCase();
-  const docType   = VALID_DOC_TYPES.has(rawType) ? rawType : 'OTHER';
-  const userId    = (req as AuthenticatedRequest).user?.userId ?? null;
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (!ALLOWED_LIBRARY_EXTS.has(ext)) {
+    return res.status(400).json({
+      error: `File type not allowed: ${ext}. Allowed: ${[...ALLOWED_LIBRARY_EXTS].join(', ')}`,
+    });
+  }
 
-  // Write to local disk
-  const uniqueName = `${crypto.randomUUID()}${path.extname(file.originalname)}`;
+  const parcelId = ((req.body.parcel_id as string | undefined) ?? '').trim() || null;
+  const rawType  = ((req.body.document_type as string | undefined) ?? 'OTHER').trim().toUpperCase();
+  const docType  = VALID_DOC_TYPES.has(rawType) ? rawType : 'OTHER';
+  const userId   = (req as AuthenticatedRequest).user?.userId ?? null;
+
+  // Write buffer to local disk before opening the DB transaction so the file
+  // is durable before we start writing metadata rows.
+  const uniqueName = `${crypto.randomUUID()}${ext}`;
   const localPath  = path.join(LIBRARY_UPLOAD_DIR, uniqueName);
+  const storageKey = `uploads/library/${uniqueName}`;
   fs.writeFileSync(localPath, file.buffer);
 
-  const pool = getPool();
+  const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
+  const pool   = getPool();
+  const client = await pool.connect();
+
+  let fileId: string | null = null;
   try {
-    const sha256  = crypto.createHash('sha256').update(file.buffer).digest('hex');
-    const fileRes = await pool.query(
+    await client.query('BEGIN');
+
+    // 1. data_library_files row — storage_provider='local', storage_key=relative path
+    const fileRes = await client.query(
       `INSERT INTO data_library_files
          (original_filename, sha256, mime_type, size_bytes,
           storage_provider, storage_key,
@@ -1393,15 +1460,16 @@ router.post('/upload', requireAuth, libraryUpload.single('file'), async (req: Re
         sha256,
         file.mimetype,
         file.size,
-        `uploads/library/${uniqueName}`,
+        storageKey,
         docType,
         parcelId,
         userId,
       ],
     );
-    const fileId = fileRes.rows[0].id as string;
+    fileId = fileRes.rows[0].id as string;
 
-    const jobRes = await pool.query(
+    // 2. intake_jobs row — links back to the new file
+    const jobRes = await client.query(
       `INSERT INTO intake_jobs (file_id, parcel_id, state, source_type, source_data)
        VALUES ($1, $2, 'pending', 'file_upload', $3::jsonb)
        RETURNING id`,
@@ -1419,6 +1487,8 @@ router.post('/upload', requireAuth, libraryUpload.single('file'), async (req: Re
     );
     const jobId = jobRes.rows[0].id as string;
 
+    await client.query('COMMIT');
+
     logger.info('[archive/upload] File uploaded', {
       file_id: fileId, job_id: jobId, filename: file.originalname, size_bytes: file.size,
     });
@@ -1430,12 +1500,19 @@ router.post('/upload', requireAuth, libraryUpload.single('file'), async (req: Re
       size_bytes: file.size,
       document_type: docType,
       parcel_id: parcelId,
+      storage_key: storageKey,
     });
   } catch (err) {
-    try { fs.unlinkSync(localPath); } catch (_) {}
+    await client.query('ROLLBACK').catch(() => {});
+    // Remove the local file only if we never committed a DB row pointing to it
+    if (!fileId) {
+      try { fs.unlinkSync(localPath); } catch (_) {}
+    }
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('[archive/upload] Error', { error: msg });
     return res.status(500).json({ error: msg });
+  } finally {
+    client.release();
   }
 });
 
