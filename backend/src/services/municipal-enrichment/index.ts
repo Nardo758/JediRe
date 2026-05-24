@@ -4,23 +4,44 @@
  * State router for county property-records lookups.
  *
  * Supports two lookup modes:
- *   lookup(address, state)          — primary path (address → county ArcGIS)
- *   lookupByParcelId(id, state)     — fallback path when address is unavailable
+ *   lookup(address, state, city?)      — primary path (address → county ArcGIS)
+ *   lookupByParcelId(id, state, city?) — fallback path when address is unavailable
  *
- * Currently implements: GA → Fulton County ArcGIS adapter.
- * All other states return status:'not_implemented' (no regression).
+ * City is used to disambiguate multi-county states (TX, FL).
+ *
+ * Currently implements:
+ *   GA → Fulton County ArcGIS adapter      (Atlanta)
+ *   NC → Mecklenburg County ArcGIS adapter (Charlotte)
+ *   TN → Davidson County ArcGIS adapter    (Nashville)
+ *   TX → Dallas County DCAD adapter        (Dallas)
+ *       → Harris County HCAD adapter       (Houston)
+ *   FL → Duval County COJ adapter          (Jacksonville)
+ *
+ * All other states/cities return status:'not_implemented' (no regression).
  *
  * Usage:
  *   import { municipalEnrichment } from '../municipal-enrichment';
  *   const result = await municipalEnrichment.lookup('720 Ralph McGill Blvd NE', 'GA');
+ *   const result = await municipalEnrichment.lookup('900 Church St', 'TN', 'Nashville');
  *   const result = await municipalEnrichment.lookupByParcelId('14 001800080417', 'GA');
  */
 
 import { logger } from '../../utils/logger';
-import { lookupFultonGA, lookupFultonGAByParcelId } from './adapters/fulton-ga.adapter';
+import { lookupFultonGA, lookupFultonGAByParcelId }           from './adapters/fulton-ga.adapter';
+import { lookupMecklenburgNC, lookupMecklenburgNCByParcelId } from './adapters/mecklenburg-nc.adapter';
+import { lookupDavidsonTN, lookupDavidsonTNByParcelId }       from './adapters/davidson-tn.adapter';
+import { lookupDallasTX, lookupDallasTXByParcelId }           from './adapters/dallas-tx.adapter';
+import { lookupHarrisTX, lookupHarrisTXByParcelId }           from './adapters/harris-tx.adapter';
+import { lookupDuvalFL, lookupDuvalFLByParcelId }             from './adapters/duval-fl.adapter';
 import type { MunicipalLookupResult } from './types';
 
 export type { MunicipalLookupResult } from './types';
+
+// ─── City normalization ────────────────────────────────────────────────────────
+
+function normalizeCity(city?: string | null): string {
+  return (city ?? '').toLowerCase().trim();
+}
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
@@ -30,9 +51,11 @@ class MunicipalEnrichmentService {
    *
    * @param address  Street address (e.g. "720 Ralph McGill Blvd NE")
    * @param state    Two-letter state code (e.g. "GA")
+   * @param city     City name — used to route multi-county states (e.g. TX, FL)
    */
-  async lookup(address: string, state: string): Promise<MunicipalLookupResult> {
+  async lookup(address: string, state: string, city?: string | null): Promise<MunicipalLookupResult> {
     const normalizedState = (state ?? '').trim().toUpperCase();
+    const normalizedCity  = normalizeCity(city);
 
     if (!address || !address.trim()) {
       return { status: 'not_found', error: 'address is empty' };
@@ -42,6 +65,42 @@ class MunicipalEnrichmentService {
       case 'GA':
         logger.debug(`[municipal-enrichment] GA address lookup for "${address}"`);
         return lookupFultonGA(address.trim());
+
+      case 'NC':
+        if (!normalizedCity || normalizedCity.includes('charlotte') || normalizedCity.includes('mecklenburg')) {
+          logger.debug(`[municipal-enrichment] NC/Mecklenburg address lookup for "${address}"`);
+          return lookupMecklenburgNC(address.trim());
+        }
+        logger.debug(`[municipal-enrichment] NC city "${city}" not implemented`);
+        return { status: 'not_implemented', state: normalizedState, source: 'stub' };
+
+      case 'TN':
+        if (!normalizedCity || normalizedCity.includes('nashville') || normalizedCity.includes('davidson')) {
+          logger.debug(`[municipal-enrichment] TN/Davidson address lookup for "${address}"`);
+          return lookupDavidsonTN(address.trim());
+        }
+        logger.debug(`[municipal-enrichment] TN city "${city}" not implemented`);
+        return { status: 'not_implemented', state: normalizedState, source: 'stub' };
+
+      case 'TX':
+        if (normalizedCity.includes('dallas')) {
+          logger.debug(`[municipal-enrichment] TX/Dallas address lookup for "${address}"`);
+          return lookupDallasTX(address.trim());
+        }
+        if (normalizedCity.includes('houston')) {
+          logger.debug(`[municipal-enrichment] TX/Harris address lookup for "${address}"`);
+          return lookupHarrisTX(address.trim());
+        }
+        logger.debug(`[municipal-enrichment] TX city "${city}" not implemented`);
+        return { status: 'not_implemented', state: normalizedState, source: 'stub' };
+
+      case 'FL':
+        if (normalizedCity.includes('jacksonville')) {
+          logger.debug(`[municipal-enrichment] FL/Duval address lookup for "${address}"`);
+          return lookupDuvalFL(address.trim());
+        }
+        logger.debug(`[municipal-enrichment] FL city "${city}" not implemented`);
+        return { status: 'not_implemented', state: normalizedState, source: 'stub' };
 
       default:
         logger.debug(`[municipal-enrichment] state ${normalizedState} not implemented`);
@@ -55,9 +114,11 @@ class MunicipalEnrichmentService {
    *
    * @param parcelId  County parcel ID (e.g. "14 001800080417")
    * @param state     Two-letter state code (e.g. "GA")
+   * @param city      City name — used to route multi-county states (e.g. TX, FL)
    */
-  async lookupByParcelId(parcelId: string, state: string): Promise<MunicipalLookupResult> {
+  async lookupByParcelId(parcelId: string, state: string, city?: string | null): Promise<MunicipalLookupResult> {
     const normalizedState = (state ?? '').trim().toUpperCase();
+    const normalizedCity  = normalizeCity(city);
 
     if (!parcelId || !parcelId.trim()) {
       return { status: 'not_found', error: 'parcelId is empty' };
@@ -67,6 +128,42 @@ class MunicipalEnrichmentService {
       case 'GA':
         logger.debug(`[municipal-enrichment] GA parcel-id lookup for "${parcelId}"`);
         return lookupFultonGAByParcelId(parcelId.trim());
+
+      case 'NC':
+        if (!normalizedCity || normalizedCity.includes('charlotte') || normalizedCity.includes('mecklenburg')) {
+          logger.debug(`[municipal-enrichment] NC/Mecklenburg parcel-id lookup for "${parcelId}"`);
+          return lookupMecklenburgNCByParcelId(parcelId.trim());
+        }
+        logger.debug(`[municipal-enrichment] NC city "${city}" parcel-id not implemented`);
+        return { status: 'not_implemented', state: normalizedState, source: 'stub' };
+
+      case 'TN':
+        if (!normalizedCity || normalizedCity.includes('nashville') || normalizedCity.includes('davidson')) {
+          logger.debug(`[municipal-enrichment] TN/Davidson parcel-id lookup for "${parcelId}"`);
+          return lookupDavidsonTNByParcelId(parcelId.trim());
+        }
+        logger.debug(`[municipal-enrichment] TN city "${city}" parcel-id not implemented`);
+        return { status: 'not_implemented', state: normalizedState, source: 'stub' };
+
+      case 'TX':
+        if (normalizedCity.includes('dallas')) {
+          logger.debug(`[municipal-enrichment] TX/Dallas parcel-id lookup for "${parcelId}"`);
+          return lookupDallasTXByParcelId(parcelId.trim());
+        }
+        if (normalizedCity.includes('houston')) {
+          logger.debug(`[municipal-enrichment] TX/Harris parcel-id lookup for "${parcelId}"`);
+          return lookupHarrisTXByParcelId(parcelId.trim());
+        }
+        logger.debug(`[municipal-enrichment] TX city "${city}" parcel-id not implemented`);
+        return { status: 'not_implemented', state: normalizedState, source: 'stub' };
+
+      case 'FL':
+        if (normalizedCity.includes('jacksonville')) {
+          logger.debug(`[municipal-enrichment] FL/Duval parcel-id lookup for "${parcelId}"`);
+          return lookupDuvalFLByParcelId(parcelId.trim());
+        }
+        logger.debug(`[municipal-enrichment] FL city "${city}" parcel-id not implemented`);
+        return { status: 'not_implemented', state: normalizedState, source: 'stub' };
 
       default:
         logger.debug(`[municipal-enrichment] state ${normalizedState} parcel-id lookup not implemented`);

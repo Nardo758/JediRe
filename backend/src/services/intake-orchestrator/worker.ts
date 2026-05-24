@@ -119,6 +119,7 @@ async function stepMunicipalLookup(
   address: string | null,
   state: string | null,
   existingParcelId: string | null,
+  city?: string | null,
 ): Promise<MunicipalStepResult> {
   if (!state) {
     await appendLog(jobId, {
@@ -134,7 +135,7 @@ async function stepMunicipalLookup(
   if (address) {
     let result: Awaited<ReturnType<typeof municipalEnrichment.lookup>>;
     try {
-      result = await municipalEnrichment.lookup(address, state);
+      result = await municipalEnrichment.lookup(address, state, city);
     } catch (err: any) {
       await appendLog(jobId, {
         step: 'municipal_lookup',
@@ -216,7 +217,7 @@ async function stepMunicipalLookup(
   if (looksLikeRealParcelId && sourceParcelId) {
     let fallbackResult: Awaited<ReturnType<typeof municipalEnrichment.lookupByParcelId>>;
     try {
-      fallbackResult = await municipalEnrichment.lookupByParcelId(sourceParcelId, state);
+      fallbackResult = await municipalEnrichment.lookupByParcelId(sourceParcelId, state, city);
     } catch (err: any) {
       await appendLog(jobId, {
         step: 'municipal_lookup',
@@ -351,13 +352,14 @@ async function processJob(job: {
       detail: { parcel_id: parcel_id ?? null },
     });
 
-    // Extract address and state for municipal lookup from source_data
+    // Extract address, state, and city for municipal lookup from source_data
     const sd = source_data ?? {};
     const lookupAddress = (sd.address as string | undefined)?.trim() || null;
     const lookupState   = (sd.state   as string | undefined)?.trim() || null;
+    const lookupCity    = (sd.city    as string | undefined)?.trim() || null;
 
     const otherDocs = await stepOtherDocs(id, parcel_id);
-    const municipal = await stepMunicipalLookup(id, lookupAddress, lookupState, parcel_id);
+    const municipal = await stepMunicipalLookup(id, lookupAddress, lookupState, parcel_id, lookupCity);
     await stepWebSearch(id);
     await stepGooglePlaces(id);
 
