@@ -8,16 +8,26 @@
  *   Stream C — historical_observations time-series (default metrics, last 5 years)
  *
  * Also returns coverage_diagnostics so the UI knows what data is present.
+ *
+ * Auth: requireAuth (applied at mount time in index.replit.ts)
  */
 
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
+import {
+  getAssetTimeSeries,
+  DEFAULT_METRICS,
+  type SupportedMetric,
+} from '../../services/property-visibility/asset-time-series.service';
 
 export function createArchivePropertiesRouter(pool: Pool): Router {
   const router = Router();
 
   // ─────────────────────────────────────────────────────────────────────────
   // GET /api/v1/properties/:parcelId/summary
+  //
+  // Spec §4.5 response shape:
+  //   { parcel_id, description, files, time_series, coverage_diagnostics }
   // ─────────────────────────────────────────────────────────────────────────
   router.get('/:parcelId/summary', async (req: Request, res: Response) => {
     const { parcelId } = req.params;
@@ -47,68 +57,21 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       );
       const files = filesResult.rows;
 
-      // ── Stream C: historical_observations time-series ─────────────────────
-      // Returns a sparse time-series of the available per-property signals
-      // over the last 5 years, grouped by observation_date.
+      // ── Stream C: time-series via getAssetTimeSeries service ──────────────
       const fiveYearsAgo = new Date();
       fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
 
-      const tsResult = await pool.query(
-        `SELECT
-           observation_date,
-           data_quality_tier         AS tier,
-           property_asking_rent      AS asking_rent,
-           property_signing_velocity AS signing_velocity,
-           source_signals,
-           source_file_ids,
-           created_at
-         FROM historical_observations
-         WHERE parcel_id = $1
-           AND observation_date >= $2
-         ORDER BY observation_date ASC`,
-        [parcelId, fiveYearsAgo.toISOString().split('T')[0]],
-      );
-
-      // Shape time_series into metric-keyed series for easy UI consumption
-      const timeSeries: Record<string, Array<{
-        observation_date: string;
-        value: number | null;
-        tier: string | null;
-        source_file_ids: string[] | null;
-      }>> = {
-        asking_rent: [],
-        signing_velocity: [],
-      };
-
-      let minDate: string | null = null;
-      let maxDate: string | null = null;
-
-      for (const row of tsResult.rows) {
-        const d = row.observation_date instanceof Date
-          ? row.observation_date.toISOString().split('T')[0]
-          : String(row.observation_date);
-
-        if (!minDate || d < minDate) minDate = d;
-        if (!maxDate || d > maxDate) maxDate = d;
-
-        const base = { tier: row.tier ?? null, source_file_ids: row.source_file_ids ?? null };
-
-        if (row.asking_rent != null) {
-          timeSeries.asking_rent.push({ observation_date: d, value: parseFloat(row.asking_rent), ...base });
-        }
-        if (row.signing_velocity != null) {
-          timeSeries.signing_velocity.push({ observation_date: d, value: parseFloat(row.signing_velocity), ...base });
-        }
+      // Allow caller to override metrics via ?metrics=asking_rent,occupancy
+      let metrics: SupportedMetric[] = DEFAULT_METRICS;
+      if (req.query.metrics) {
+        const requested = (req.query.metrics as string).split(',').map(s => s.trim());
+        const valid = requested.filter((m): m is SupportedMetric =>
+          DEFAULT_METRICS.includes(m as SupportedMetric),
+        );
+        if (valid.length > 0) metrics = valid;
       }
 
-      // Coverage diagnostics for each metric
-      const tsCoverage: Record<string, { observations_count: number; date_range: { start: string | null; end: string | null } }> = {};
-      for (const [metric, points] of Object.entries(timeSeries)) {
-        tsCoverage[metric] = {
-          observations_count: points.length,
-          date_range: { start: minDate, end: maxDate },
-        };
-      }
+      const timeSeries = await getAssetTimeSeries(parcelId, metrics, fiveYearsAgo);
 
       // ── Coverage diagnostics ──────────────────────────────────────────────
       const filesByType: Record<string, number> = {};
@@ -116,7 +79,7 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
         filesByType[f.document_type] = (filesByType[f.document_type] ?? 0) + 1;
       }
 
-      // Description completeness: count non-null JSONB fields
+      // Description completeness: count non-null JSONB fields with a resolved value
       const DESCRIPTION_FIELDS = [
         'property_name', 'address', 'msa', 'county',
         'year_built', 'unit_count', 'stories', 'total_sqft', 'rentable_sqft',
@@ -131,22 +94,24 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
         }
       }
 
-      const tsTotalObs = tsResult.rows.length;
-      // Expected: ~60 monthly observations over 5 years; use observed max as proxy
-      const tsCompleteness = tsTotalObs > 0
-        ? Math.min(1, tsTotalObs / 60)
+      // Time-series completeness: average across all metrics (0–1)
+      const metricCompleteness = Object.values(timeSeries.coverage).map(c =>
+        c.gap_diagnostic ? c.gap_diagnostic.coverage_pct : 0,
+      );
+      const tsCompleteness = metricCompleteness.length > 0
+        ? metricCompleteness.reduce((a, b) => a + b, 0) / metricCompleteness.length
         : 0;
 
       const coverageDiagnostics = {
-        has_om:                (filesByType['OM'] ?? 0) > 0,
-        has_t12_count:          filesByType['T12'] ?? 0,
-        has_rent_roll_count:    filesByType['RENT_ROLL'] ?? 0,
-        has_tax_bill:          (filesByType['TAX_BILL'] ?? 0) > 0,
-        has_leasing_stats:     (filesByType['LEASING_STATS'] ?? 0) > 0,
-        description_completeness: description
+        has_om:                   (filesByType['OM'] ?? 0) > 0,
+        has_t12_count:             filesByType['T12'] ?? 0,
+        has_rent_roll_count:       filesByType['RENT_ROLL'] ?? 0,
+        has_tax_bill:             (filesByType['TAX_BILL'] ?? 0) > 0,
+        has_leasing_stats:        (filesByType['LEASING_STATS'] ?? 0) > 0,
+        description_completeness:  description
           ? Math.round((filledFields / DESCRIPTION_FIELDS.length) * 100) / 100
           : 0,
-        time_series_completeness: Math.round(tsCompleteness * 100) / 100,
+        time_series_completeness:  Math.round(tsCompleteness * 100) / 100,
       };
 
       if (!description && files.length === 0) {
@@ -160,11 +125,7 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
         parcel_id: parcelId,
         description,
         files,
-        time_series: {
-          parcel_id: parcelId,
-          series: timeSeries,
-          coverage: tsCoverage,
-        },
+        time_series: timeSeries,
         coverage_diagnostics: coverageDiagnostics,
       });
     } catch (err) {
