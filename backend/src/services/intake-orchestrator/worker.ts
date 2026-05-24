@@ -451,9 +451,24 @@ async function poll(): Promise<void> {
 
     if (res.rows.length > 0) {
       logger.info(`[intake-worker] processing ${res.rows.length} pending jobs`);
+      let batchComplete = 0;
+      let batchBlocked = 0;
+      let batchFailed = 0;
       for (const job of res.rows) {
         await processJob(job);
+        // Read final state to tally batch summary
+        const stateRow = await query<{ state: string }>(
+          `SELECT state FROM intake_jobs WHERE id = $1`, [job.id]
+        );
+        const finalState = stateRow.rows[0]?.state;
+        if (finalState === 'complete')            batchComplete++;
+        else if (finalState === 'blocked_needs_user') batchBlocked++;
+        else if (finalState === 'failed')          batchFailed++;
       }
+      logger.info(
+        `[intake-worker] batch done — complete: ${batchComplete}, blocked: ${batchBlocked}, failed: ${batchFailed}` +
+        ` (of ${res.rows.length} processed)`
+      );
     }
   } catch (err: any) {
     logger.error('[intake-worker] poll error', { error: err.message });
