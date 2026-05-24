@@ -13,13 +13,16 @@
  * - Wraps all writes in a single transaction per parcel.
  *
  * Fields mapped from municipal_lookup → property_descriptions:
- *   address    → address       (LayeredValue<string>)
- *   county     → county        (LayeredValue<string>)
- *   units      → unit_count    (LayeredValue<number>)
- *   land_acres → lot_size_acres (LayeredValue<number>)
+ *   address          → address         (LayeredValue<string>)
+ *   county           → county          (LayeredValue<string>)
+ *   units            → unit_count      (LayeredValue<number>)
+ *   land_acres       → lot_size_acres  (LayeredValue<number>)
+ *   assessed_value   → assessed_value  (LayeredValue<number>)
+ *   appraised_value  → appraised_value (LayeredValue<number>)
+ *   owner            → owner           (LayeredValue<string>)
  *
  * Intentionally NOT mapped (no matching column in property_descriptions):
- *   owner, assessed_value, appraised_value, neighborhood, geometry_area_sqft
+ *   neighborhood, geometry_area_sqft
  */
 
 import { query } from '../../database/connection';
@@ -97,6 +100,15 @@ export async function writeBackToPropertyDescriptions(
   }
   if (d.land_acres != null && typeof d.land_acres === 'number') {
     fields.push({ col: 'lot_size_acres', value: d.land_acres });
+  }
+  if (d.assessed_value != null && typeof d.assessed_value === 'number') {
+    fields.push({ col: 'assessed_value', value: d.assessed_value });
+  }
+  if (d.appraised_value != null && typeof d.appraised_value === 'number') {
+    fields.push({ col: 'appraised_value', value: d.appraised_value });
+  }
+  if (typeof d.owner === 'string' && d.owner.trim()) {
+    fields.push({ col: 'owner', value: d.owner.trim() });
   }
 
   if (fields.length === 0) {

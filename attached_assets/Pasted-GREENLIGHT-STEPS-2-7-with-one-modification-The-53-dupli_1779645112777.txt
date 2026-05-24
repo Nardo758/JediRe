@@ -1,0 +1,60 @@
+GREENLIGHT STEPS 2-7 with one modification.
+
+The 53 duplicates finding (1B) is more consequential than the original 
+dispatch anticipated. The Task A migration's "winner" selection was 
+inverted — the losers actually have the canonical ArcGIS parcel_ids; 
+the winners use display-string fallbacks that are inherently unstable.
+
+This needs to be fixed in this dispatch, not deferred.
+
+MODIFICATION TO STEP 6:
+
+Step 6 was "duplicate-cleanup verification" (passive — document final 
+disposition). Change to "duplicate consolidation" (active fix):
+
+A. For each of the 53 historical duplicate pairs:
+   - Identify which row has the real ArcGIS parcel_id 
+     (typically the one from the 00:44 batch per 1B findings)
+   - Identify which row has the display-string fallback parcel_id 
+     (typically the 07:30 batch)
+   - This may differ per pair — don't assume; verify each
+
+B. Consolidate to the real-ArcGIS row:
+   - If property_descriptions has data on both rows for any 
+     parcel_id pair, merge: real-ArcGIS row wins, display-string 
+     row's unique data merged in (where compatible)
+   - Delete the display-string row from property_descriptions
+   - Update any downstream references (intake_jobs.parcel_id, 
+     historical_observations.parcel_id, data_library_files.parcel_id) 
+     to point at the real-ArcGIS parcel_id
+   - Within intake_jobs: keep both rows (audit trail), but stamp 
+     the display-string-rooted row with source_record_id = 
+     apartment_locator_id (matching its pair's identifier) so the 
+     unique partial index now correctly applies to both
+
+C. The 1100 winner rows backfilled in Task A also need the same 
+   check: did any of THEM also have a display-string parcel_id that 
+   should have been the loser? Sample 10 of the 1100 to verify the 
+   selection logic was correct in the non-duplicate case.
+
+D. Document the consolidation in the closing note: count of 
+   pairs consolidated, parcel_ids redirected, any pairs that 
+   couldn't be merged cleanly (orphan).
+
+The rest of Steps 2-7 proceeds as in the original dispatch.
+
+Two small clarifications:
+
+- Daily volume question (1A finding): in Step 7C stress test, also 
+  confirm what the actual scrape schedule is. The "daily backlog 
+  growing" framing in the original dispatch may have been overstated. 
+  If scrape is on-demand or one-time, idempotency matters before the 
+  next run rather than as ongoing protection. Not blocking, but 
+  worth knowing.
+
+- Two LV shapes coexist in property_descriptions (1C finding). Use 
+  the simple { value, source, runAt } shape for the three new 
+  columns (consistent with Task C). The full-resolve-shape cleanup 
+  is deferred — log as substrate-cleanup debt in the closing note.
+
+Proceed with all of Step 2-7 plus the modified Step 6.

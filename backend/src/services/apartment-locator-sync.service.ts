@@ -116,33 +116,33 @@ function extractDeliveryDate(prop: SupplyProperty): string | null {
 }
 
 // ── Intake-jobs upsert helper ────────────────────────────────────────────────
-// Creates (or no-ops on duplicate parcel_id) an intake_jobs row so the
-// orchestrator worker can enrich the property through the pipeline.
+// Delegates to the dedicated apartment-locator source adapter.
+// Idempotent: ON CONFLICT on (source_type, source_record_id) — refreshes
+// raw_input on re-scrape, never creates duplicate rows or disturbs in-flight
+// processing state.
+import { upsertApartmentLocatorJob } from './intake-sources/apartment-locator';
+
 async function upsertIntakeJob(prop: SupplyProperty): Promise<void> {
-  const parcelId = prop.name || prop.address;
-  if (!parcelId) return;
+  if (!prop.id) return;
   try {
-    await dbQuery(
-      `INSERT INTO intake_jobs (parcel_id, state, source_type, source_data)
-       VALUES ($1, 'pending', 'apartment_locator', $2::jsonb)
-       ON CONFLICT (parcel_id) WHERE parcel_id IS NOT NULL DO NOTHING`,
-      [
-        parcelId,
-        JSON.stringify({
-          apartment_locator_id: prop.id,
-          name: prop.name,
-          address: prop.address,
-          city: prop.city,
-          state: prop.state,
-          zip_code: prop.zip_code,
-          total_units: prop.total_units,
-          rent: prop.rent,
-        }),
-      ]
-    );
+    await upsertApartmentLocatorJob({
+      id:          String(prop.id),
+      name:        prop.name,
+      address:     prop.address,
+      city:        prop.city,
+      state:       prop.state,
+      zip_code:    prop.zip_code ?? null,
+      total_units: prop.total_units ?? null,
+      rent:        prop.rent ?? null,
+      bedrooms:    prop.bedrooms ?? null,
+      bathrooms:   prop.bathrooms ?? null,
+      square_feet: prop.square_feet ?? null,
+      units_available: prop.units_available ?? null,
+      concessions: prop.concessions ?? null,
+    });
   } catch (err: any) {
     // Non-fatal — log and continue; the property itself was already written
-    logger.warn('[intake-jobs] upsert failed for property', { parcelId, error: err.message });
+    logger.warn('[intake-jobs] upsert failed for property', { id: prop.id, error: err.message });
   }
 }
 
