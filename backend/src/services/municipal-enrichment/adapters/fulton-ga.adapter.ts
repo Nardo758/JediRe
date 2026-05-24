@@ -176,31 +176,127 @@ async function queryArcGIS(
 // ─── WGS84 spatial intersect ──────────────────────────────────────────────────
 
 /**
- * Address-number tolerance for WGS84 spatial intersect validation.
+ * Address-number tolerance used by both the WGS84 point and envelope paths.
  *
  * The Census geocoded point sometimes lands on a neighbouring parcel rather
- * than the exact target.  We accept the spatial result only when the parcel's
+ * than the exact target.  We accept a spatial result only when the parcel's
  * stored Address number is within ±ADDR_NUM_TOLERANCE of the input house
- * number, which filters out clear wrong-parcel misses (e.g. input=357 but
- * returned parcel Address starts with "115 HILLIARD ST").
+ * number, which filters out clear wrong-parcel hits (e.g. input=357 but
+ * returned parcel Address starts with "115 HILLIARD ST", delta=242).
  *
  * ±50 is conservative enough to reject wrong streets while accommodating
- * rooftop-vs-centroid jitter (e.g. input=1050, stored=1054).
+ * rooftop-vs-centroid jitter (e.g. input=1050, stored=1054, delta=4).
  */
 const ADDR_NUM_TOLERANCE = 50;
 
 /**
- * Spatial intersect using WGS84 lat/lng (WKID 4326).
- * Used when Census Geocoder already provided coordinates — skips the
- * address LIKE query entirely.
+ * Bounding-box half-width used for the envelope fallback (≈50 m at Atlanta's
+ * latitude).  Identical to the constant used in the Cobb and DeKalb adapters.
+ */
+const ENVELOPE_BUF_DEG = 0.0005;
+
+// ─── Envelope fallback ────────────────────────────────────────────────────────
+
+/**
+ * Secondary spatial fallback: issues a ±ENVELOPE_BUF_DEG bounding-box query
+ * and accepts the result only when exactly ONE parcel whose Address number is
+ * within ±ADDR_NUM_TOLERANCE of `inputStreetNum` is returned.
  *
- * Returns not_found when the spatial result's Address number differs from
- * the input house number by more than ADDR_NUM_TOLERANCE, so the caller
- * can fall back to the WHERE-clause query without accepting a wrong parcel.
+ * Zero or multiple candidates → not_found (caller falls back to WHERE query).
+ * Transport/parse errors → not_found (degrades gracefully; does not swallow
+ * the error into a hard failure so the WHERE-clause path still runs).
  *
- * Note: envelope fallback is intentionally omitted for Fulton.  Atlanta's
- * dense urban parcel grid produces 100+ parcels with similar address numbers
- * in a 50m radius, making the single-candidate gate never satisfiable.
+ * NOTE: In Atlanta's dense urban core this gate is almost never satisfiable —
+ * empirical probes found 2–117 candidates within the envelope for most downtown
+ * Fulton addresses.  The function is still provided so road-centerline misses in
+ * lower-density Fulton areas (outer-city, Alpharetta, etc.) can benefit from
+ * the same pattern used in Cobb County.
+ */
+async function queryParcelByEnvelope(
+  lat: number,
+  lng: number,
+  inputStreetNum: number,
+  inputKeyword: string | null,
+): Promise<MunicipalLookupResult> {
+  const envelope = JSON.stringify({
+    xmin: lng - ENVELOPE_BUF_DEG,
+    ymin: lat - ENVELOPE_BUF_DEG,
+    xmax: lng + ENVELOPE_BUF_DEG,
+    ymax: lat + ENVELOPE_BUF_DEG,
+    spatialReference: { wkid: 4326 },
+  });
+
+  const params = new URLSearchParams({
+    geometry:     envelope,
+    geometryType: 'esriGeometryEnvelope',
+    spatialRel:   'esriSpatialRelIntersects',
+    inSR:         '4326',
+    outFields:    OUT_FIELDS,
+    returnGeometry: 'false',
+    f: 'json',
+  });
+
+  const { data, error } = await fetchFulton(`${FULTON_ARCGIS_URL}?${params.toString()}`);
+  if (error) {
+    // Degrade gracefully — envelope transport failure must not block WHERE fallback.
+    logger.debug(`[fulton-ga] envelope fallback fetch error: ${error} — skipping`);
+    return { status: 'not_found' };
+  }
+
+  const features: any[] = data?.features ?? [];
+
+  const candidates = features.filter(f => {
+    const storedAddr   = (f.attributes?.Address ?? '') as string;
+    const storedNumStr = extractStreetNumber(storedAddr);
+    if (!storedNumStr) return false;
+    if (Math.abs(parseInt(storedNumStr, 10) - inputStreetNum) > ADDR_NUM_TOLERANCE) return false;
+    // Also require that the stored address contains the input street keyword so that
+    // two adjacent streets with similar house numbers don't collapse (e.g. "357 Auburn
+    // Pointe Dr" vs "322 Decatur St", delta=35 ≤ 50 but streets are unrelated).
+    if (inputKeyword && !storedAddr.toUpperCase().includes(inputKeyword.toUpperCase())) return false;
+    return true;
+  });
+
+  if (candidates.length !== 1) {
+    logger.debug(
+      `[fulton-ga] envelope fallback: ${candidates.length} candidate(s) after AddrNumber filter` +
+      ` (inputNum=${inputStreetNum}) — ${candidates.length === 0 ? 'no match' : 'ambiguous'}`,
+    );
+    return { status: 'not_found' };
+  }
+
+  const attrs: Record<string, any> = candidates[0].attributes ?? {};
+  const mapped = mapAttrsToResult(attrs);
+
+  logger.debug(
+    `[fulton-ga] envelope fallback resolved → parcel ${mapped.parcel_id}, addr: ${attrs.Address}`,
+  );
+
+  return {
+    status: mapped.parcel_id ? 'ok' : 'not_found',
+    candidates: 1,
+    ...mapped,
+  };
+}
+
+// ─── WGS84 spatial intersect (point + envelope) ───────────────────────────────
+
+/**
+ * Two-stage spatial lookup using WGS84 lat/lng (WKID 4326).
+ *
+ * Stage 1 — point intersect:
+ *   Issues an esriSpatialRelIntersects query with the Census-resolved coordinate.
+ *   On a hit, validates that the returned parcel's Address number is within
+ *   ±ADDR_NUM_TOLERANCE of the input house number to filter wrong-parcel returns.
+ *   A valid match is returned immediately; an invalid-number hit is discarded.
+ *
+ * Stage 2 — envelope fallback (road-centerline misses):
+ *   When Stage 1 returns 0 features (Census point lands in a street ROW gap),
+ *   issues a ±ENVELOPE_BUF_DEG bounding-box query and applies the same
+ *   AddrNumber filter.  Only accepted when exactly one candidate survives.
+ *
+ * Returns not_found on any non-fatal failure so the caller can fall back to the
+ * address LIKE WHERE-clause query without losing the lookup entirely.
  */
 async function queryParcelByWgs84(
   lat: number,
@@ -215,51 +311,58 @@ async function queryParcelByWgs84(
 
   const params = new URLSearchParams({
     geometry,
-    geometryType: 'esriGeometryPoint',
-    spatialRel:   'esriSpatialRelIntersects',
-    inSR:         '4326',
-    outFields:    OUT_FIELDS,
+    geometryType:      'esriGeometryPoint',
+    spatialRel:        'esriSpatialRelIntersects',
+    inSR:              '4326',
+    outFields:         OUT_FIELDS,
     resultRecordCount: '1',
-    returnGeometry: 'false',
-    f: 'json',
+    returnGeometry:    'false',
+    f:                 'json',
   });
 
   const { data, error } = await fetchFulton(`${FULTON_ARCGIS_URL}?${params.toString()}`);
-  if (error) return { status: 'error', error };
+  if (error) return { status: 'not_found' };
 
   const features: any[] = data?.features ?? [];
-  if (features.length === 0) return { status: 'not_found' };
 
-  const attrs: Record<string, any> = features[0].attributes ?? {};
-  const mapped = mapAttrsToResult(attrs);
+  // Stage 1 hit — validate address-number proximity before accepting.
+  if (features.length > 0) {
+    const attrs: Record<string, any> = features[0].attributes ?? {};
+    const inputStreetNumStr  = extractStreetNumber(normalizeAddress(inputAddress));
+    const storedStreetNumStr = extractStreetNumber(attrs.Address ?? '');
+    const inputNum  = inputStreetNumStr  ? parseInt(inputStreetNumStr,  10) : NaN;
+    const storedNum = storedStreetNumStr ? parseInt(storedStreetNumStr, 10) : NaN;
 
-  // Validate address-number proximity to guard against wrong-parcel returns.
-  // extractStreetNumber returns the leading numeric token from the stored Address.
-  const inputStreetNumStr  = extractStreetNumber(normalizeAddress(inputAddress));
-  const storedStreetNumStr = extractStreetNumber(attrs.Address ?? '');
-  const inputNum  = inputStreetNumStr  ? parseInt(inputStreetNumStr,  10) : NaN;
-  const storedNum = storedStreetNumStr ? parseInt(storedStreetNumStr, 10) : NaN;
-
-  if (!isNaN(inputNum) && !isNaN(storedNum)) {
-    const delta = Math.abs(storedNum - inputNum);
-    if (delta > ADDR_NUM_TOLERANCE) {
+    if (!isNaN(inputNum) && !isNaN(storedNum) && Math.abs(storedNum - inputNum) > ADDR_NUM_TOLERANCE) {
       logger.debug(
-        `[fulton-ga] WGS84 spatial rejected: input num ${inputNum}, stored num ${storedNum}` +
-        ` (delta ${delta} > ${ADDR_NUM_TOLERANCE}) — falling back to WHERE query`,
+        `[fulton-ga] WGS84 point rejected: input num ${inputNum}, stored num ${storedNum}` +
+        ` (delta ${Math.abs(storedNum - inputNum)} > ${ADDR_NUM_TOLERANCE}) — trying envelope`,
       );
-      return { status: 'not_found' };
+      // Fall through to Stage 2 — point landed on wrong parcel.
+    } else {
+      const mapped = mapAttrsToResult(attrs);
+      logger.debug(
+        `[fulton-ga] WGS84 point resolved → parcel ${mapped.parcel_id}, addr: ${attrs.Address}`,
+      );
+      return {
+        status:     mapped.parcel_id ? 'ok' : 'not_found',
+        candidates: features.length,
+        ...mapped,
+      };
     }
   }
 
-  logger.debug(
-    `[fulton-ga] WGS84 spatial resolved → parcel ${mapped.parcel_id}, addr: ${attrs.Address}`,
-  );
+  // Stage 2 — envelope fallback for ROW misses (0 features) or number-mismatch rejects.
+  const inputStreetNumStr = extractStreetNumber(normalizeAddress(inputAddress));
+  const inputNum = inputStreetNumStr ? parseInt(inputStreetNumStr, 10) : NaN;
 
-  return {
-    status:     mapped.parcel_id ? 'ok' : 'not_found',
-    candidates: features.length,
-    ...mapped,
-  };
+  if (!isNaN(inputNum)) {
+    const inputKeyword = extractStreetKeyword(normalizeAddress(inputAddress)) ?? null;
+    logger.debug(`[fulton-ga] WGS84 point miss — trying envelope fallback (inputNum=${inputNum}, keyword=${inputKeyword})`);
+    return queryParcelByEnvelope(lat, lng, inputNum, inputKeyword);
+  }
+
+  return { status: 'not_found' };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
