@@ -1,0 +1,224 @@
+TASK A + TASK C BUNDLE — SCHEMA ADDITIONS + ORCHESTRATOR WRITE-BACK
+
+CONTEXT
+Two coupled fixes in one dispatch. The orchestrator processes 
+intake_jobs through the enrichment chain but enrichment results land 
+only in intake_jobs.enrichment_log (JSONB audit). They never 
+propagate to property_descriptions. Result: per-property page sees 
+no enrichment data even when orchestrator successfully resolved a 
+property.
+
+This is a silent failure of the producer/reader contract. The spec 
+§12 required paired-read verification at end of Phase 1.1+1.2; that 
+gate was not honored when the phase shipped.
+
+SEVERITY: HIGH — silent failure, downstream consumers see nothing 
+even though work is being done. All 978 currently-blocked records, 
+PLUS any currently-marked-complete records, may have valid 
+enrichment data trapped in the log.
+
+Coupled with the write-back fix: schema additions to intake_jobs 
+for proper idempotency, retry semantics, and source-record tracking. 
+These are foundational to write-back working reliably and are 
+intentionally bundled — separating them creates a window where 
+write-back works but cannot be properly retried or deduplicated.
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. PAIRED-READ VERIFICATION IS THE GATE. The dispatch is not 
+   complete until 5 sample properties' enrichment data is visible 
+   via GET /api/v1/properties/:parcelId/summary. If verification 
+   fails on any, STOP and report — do not mark complete.
+
+2. PROVENANCE IS NEVER OPTIONAL. Every write to property_descriptions 
+   includes LayeredValue layer + source tag. No silent writes.
+
+3. THE LOG IS THE SOURCE OF TRUTH FOR BACKFILL. Don't re-run 
+   enrichment to populate property_descriptions for existing complete 
+   jobs. Replay the cached log values. Re-running enrichment makes 
+   the operation non-idempotent and risks duplicate external API calls.
+
+4. INVESTIGATION FIRST. Both Task A and Task C have an investigation 
+   gate before code is written. Stop and report findings; don't write 
+   the schema migration before reading the existing schema.
+
+═══════════════════════════════════════════════════════════════════
+TASK A — SCHEMA ADDITIONS (do this first; write-back depends on it)
+═══════════════════════════════════════════════════════════════════
+
+STEP A1 — Investigate current intake_jobs schema
+
+   - Read the current intake_jobs CREATE TABLE statement
+   - List existing columns and constraints
+   - Identify which proposed additions are already present (avoid 
+     duplicate migration)
+   - Report before patching
+
+STEP A2 — Schema migration (reversible up/down)
+
+   Add to intake_jobs (only if not already present):
+   - raw_input jsonb         — preserve original source record for 
+                                audit/reprocessing
+   - source_record_id text   — source's primary identifier 
+                                (e.g., Apartment Locator's record ID)
+   - attempts int DEFAULT 0  — retry counter
+   - last_attempt_at timestamptz
+   - last_error text         — most recent failure detail
+
+   Update CHECK constraint on status to include 'ignored':
+   CHECK (status IN ('pending','parsing','enriching',
+                     'blocked_needs_user','complete','failed',
+                     'ignored'))
+
+   Add unique constraint for idempotency:
+   UNIQUE (source, source_record_id) WHERE source IS NOT NULL 
+                                       AND source_record_id IS NOT NULL
+
+   Add index:
+   CREATE INDEX idx_intake_jobs_source_record 
+   ON intake_jobs(source, source_record_id);
+
+STEP A3 — Retry logic in orchestrator
+
+   - Failed jobs: increment `attempts`, set `last_attempt_at`, 
+     `last_error`
+   - Max retries: 3 for status='failed', then mark permanently 
+     failed (status stays 'failed' but won't be retried)
+   - `ignored` state: user explicitly marks a job as not-worth-
+     pursuing; orchestrator never picks it up again
+   - Backoff: 2^attempts seconds between retries (max 1 hour)
+
+═══════════════════════════════════════════════════════════════════
+TASK C — ORCHESTRATOR WRITE-BACK
+═══════════════════════════════════════════════════════════════════
+
+STEP C1 — Investigation first (no code changes yet)
+
+   - Read the current orchestrator implementation
+   - Identify exactly where the enrichment chain produces results 
+     (which functions, which file paths)
+   - Identify which property_descriptions fields each enrichment 
+     step should write to
+   - Identify the LayeredValue schema for each field that should 
+     be populated (per spec §4.1)
+   - Count current state:
+     SELECT status, count(*) FROM intake_jobs GROUP BY status
+     SELECT count(*) FROM intake_jobs 
+     WHERE status = 'complete' 
+       AND jsonb_array_length(enrichment_log) > 0
+   - Report findings before writing any code
+
+STEP C2 — Write path implementation
+
+   For each enrichment step that returns data, write to the 
+   corresponding property_descriptions field with proper LayeredValue 
+   provenance:
+
+   | Enrichment step       | LayeredValue layer | Source tag                  |
+   | --------------------- | ------------------ | --------------------------- |
+   | other_docs match      | platform           | source_file_id reference    |
+   | municipal lookup      | municipal          | e.g., 'fulton_county_appraiser' |
+   | web search            | web                | source_url                  |
+   | google_places         | web                | 'google_places'             |
+
+   Semantics:
+   - UPSERT: do not overwrite manual_override layer if present
+   - Re-evaluate resolved value after each layer write per the 
+     field's resolution_rule (spec §4.1)
+   - Wrap each property_descriptions update in a transaction
+   - If property_descriptions row doesn't exist for parcel_id, 
+     INSERT first then UPDATE
+
+STEP C3 — Backfill (replay existing log to recover trapped data)
+
+   - For each intake_job in 'complete' status with non-empty 
+     enrichment_log:
+     a. Read log entries that contained enrichment data
+     b. Write to property_descriptions via the new path 
+        (Step C2)
+     c. Use cached log values — DO NOT re-run the enrichment chain
+   - Report:
+     * Total jobs replayed
+     * Total property_descriptions rows updated
+     * Total fields populated (by layer breakdown)
+     * Parcels affected (distinct count)
+   - Orphan log entries (data exists in log but couldn't write to 
+     property_descriptions for some reason): flag for manual review, 
+     don't fail the dispatch
+
+STEP C4 — PAIRED-READ VERIFICATION — THE GATE
+
+   Pick 5 properties from this set:
+   - intake_jobs.status = 'complete'
+   - intake_jobs.enrichment_log has data entries (non-trivial)
+   - Distinct parcel_ids
+   - Mix of source types if possible (apartment_locator, 
+     data_library_upload, parse_om)
+
+   For each of the 5:
+   a. Paste 1-2 log entries from enrichment_log that contained data 
+      (literal JSON, not paraphrased)
+   b. Hit GET /api/v1/properties/:parcelId/summary  
+   c. Show the relevant section of the API response (literal JSON)
+   d. Confirm:
+      - The enrichment data is visible
+      - Source provenance tag is correct
+      - Resolved value reflects the new layer per resolution_rule
+
+   IF VERIFICATION FAILS ON ANY OF THE 5:
+   - STOP. Do NOT mark dispatch complete.
+   - Report which property failed and which expected field is missing 
+     or has wrong provenance.
+   - Diagnose: was the log entry valid? Was the write path triggered? 
+     Did the write succeed but not propagate to the API response?
+   - Do not propose fixes; report and wait for Leon's review.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/TASKS_A_C_CLOSING.md
+═══════════════════════════════════════════════════════════════════
+
+(a) SEVERITY classification: HIGH — silent failure of producer/reader 
+    contract; downstream consumers were blind to orchestrator output
+
+(b) Task A — schema migration diff, idempotency unique constraint, 
+    retry logic implementation
+
+(c) Task C — investigation findings (Step C1), write path 
+    implementation diff
+
+(d) Backfill — total jobs replayed, fields populated by layer, 
+    parcels affected
+
+(e) Paired-read verification — 5 properties with literal before/after 
+    JSON snippets (both the enrichment_log entry and the API response)
+
+(f) Any orphan log entries that couldn't write (flagged for manual 
+    review)
+
+(g) Confirmation: the producer/reader contract is now verified working 
+    for the orchestrator → property_descriptions → API path
+
+(h) Pattern note: this is the 7th instance of producer-writes-here-
+    reader-reads-elsewhere caught in the platform. Recommend that 
+    every future orchestrator-touching dispatch include an explicit 
+    paired-read verification step as a non-skippable acceptance gate.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Mark complete without paired-read verification passing (Step C4)
+- Skip LayeredValue provenance tagging
+- Touch the enrichment chain itself — we trust the log; just need to 
+  propagate
+- Re-run enrichment during backfill — replay from cached log only
+- Add new enrichment sources, modify existing ones, or fix unrelated 
+  issues "while I'm here"
+- Add an Apartment Locator adapter in this dispatch (Task B, 
+  separate)
+- Build any county adapters in this dispatch (multi-metro work is 
+  separate)
+- Fake success in any return path — explicit error states are 
+  required

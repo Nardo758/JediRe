@@ -24,9 +24,13 @@ import {
   setCachedGeocode,
   setCachedGeocodeFailed,
 } from '../geocoder/census/geocode-cache';
+import { writeBackToPropertyDescriptions } from './property-writeback';
 
 const POLL_INTERVAL_MS = parseInt(process.env.INTAKE_POLL_INTERVAL_MS || '30000', 10);
 const BATCH_SIZE = parseInt(process.env.INTAKE_BATCH_SIZE || '20', 10);
+
+/** Max attempts before a failed job is permanently abandoned (no more retries). */
+const MAX_ATTEMPTS = 3;
 
 export type IntakeJobState =
   | 'pending'
@@ -34,7 +38,8 @@ export type IntakeJobState =
   | 'enriching'
   | 'complete'
   | 'blocked_needs_user'
-  | 'failed';
+  | 'failed'
+  | 'ignored';
 
 interface LogEntry {
   step: string;
@@ -60,19 +65,32 @@ async function appendLog(jobId: string, entry: LogEntry): Promise<void> {
 async function setState(
   jobId: string,
   state: IntakeJobState,
-  extra?: { block_reason?: string }
+  extra?: { block_reason?: string; last_error?: string }
 ): Promise<void> {
-  if (extra?.block_reason !== undefined) {
+  if (state === 'failed' && extra?.last_error !== undefined) {
+    // Increment attempts counter and record the error detail
     await query(
       `UPDATE intake_jobs
-       SET state = $1, block_reason = $2, updated_at = NOW()
-       WHERE id = $3`,
-      [state, extra.block_reason, jobId]
+          SET state            = $1,
+              block_reason     = $2,
+              last_error       = $2,
+              attempts         = COALESCE(attempts, 0) + 1,
+              last_attempt_at  = NOW(),
+              updated_at       = NOW()
+        WHERE id = $3`,
+      [state, extra.last_error, jobId],
+    );
+  } else if (extra?.block_reason !== undefined) {
+    await query(
+      `UPDATE intake_jobs
+          SET state = $1, block_reason = $2, updated_at = NOW()
+        WHERE id = $3`,
+      [state, extra.block_reason, jobId],
     );
   } else {
     await query(
       `UPDATE intake_jobs SET state = $1, updated_at = NOW() WHERE id = $2`,
-      [state, jobId]
+      [state, jobId],
     );
   }
 }
@@ -479,6 +497,39 @@ async function processJob(job: {
 
     if (resolved) {
       await setState(id, 'complete');
+
+      // ── Task C: write enrichment data to property_descriptions ─────────────
+      if (parcel_id) {
+        try {
+          // Re-read the final enrichment_log so we capture all steps written
+          // above (avoids keeping a mutable in-memory copy through the chain).
+          const logRow = await query<{ enrichment_log: LogEntry[] }>(
+            `SELECT enrichment_log FROM intake_jobs WHERE id = $1`,
+            [id],
+          );
+          const log: LogEntry[] = logRow.rows[0]?.enrichment_log ?? [];
+          const wb = await writeBackToPropertyDescriptions(parcel_id, log);
+          if (!wb.skipped) {
+            await appendLog(id, {
+              step: 'property_writeback',
+              status: 'ok',
+              ts: ts(),
+              detail: { parcel_id, fields_written: wb.fieldsWritten, source: wb.source },
+            });
+          }
+        } catch (wbErr: any) {
+          // Write-back failure is non-fatal: job is already complete.
+          // Log it so operators can diagnose without blocking the job.
+          logger.warn(`[intake-worker] job ${id} write-back failed: ${wbErr.message}`);
+          await appendLog(id, {
+            step: 'property_writeback',
+            status: 'error',
+            ts: ts(),
+            detail: { parcel_id, error: wbErr.message },
+          }).catch(() => {});
+        }
+      }
+
       await appendLog(id, {
         step: 'resolution',
         status: 'ok',
@@ -507,7 +558,7 @@ async function processJob(job: {
   } catch (err: any) {
     logger.error(`[intake-worker] job ${id} failed`, { error: err.message });
     try {
-      await setState(id, 'failed', { block_reason: err.message });
+      await setState(id, 'failed', { last_error: err.message });
       await appendLog(id, {
         step: 'worker_error',
         status: 'error',
@@ -526,6 +577,18 @@ async function poll(): Promise<void> {
   if (running) return;
   running = true;
   try {
+    // Pick up pending jobs AND failed jobs eligible for retry (attempts < MAX_ATTEMPTS).
+    // Failed jobs are reset to 'pending' so the existing processJob path handles them
+    // uniformly — no special retry branch needed.
+    await query(
+      `UPDATE intake_jobs
+          SET state = 'pending', updated_at = NOW()
+        WHERE state = 'failed'
+          AND attempts < $1
+          AND (last_attempt_at IS NULL OR last_attempt_at < NOW() - INTERVAL '30 seconds')`,
+      [MAX_ATTEMPTS],
+    );
+
     const res = await query<{ id: string; parcel_id: string | null; source_data: Record<string, unknown> | null }>(
       `SELECT id, parcel_id, source_data
        FROM intake_jobs

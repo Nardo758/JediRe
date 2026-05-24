@@ -1,0 +1,67 @@
+TASK C — ORCHESTRATOR WRITE-BACK TO property_descriptions
+
+CONTEXT
+The orchestrator is processing intake_jobs through the enrichment 
+chain but enrichment results land only in intake_jobs.enrichment_log 
+(JSONB audit array). They never propagate to property_descriptions. 
+Result: the per-property page (and every downstream consumer) sees 
+no enrichment data even when the orchestrator successfully resolved 
+a property.
+
+This is a silent failure of the producer/reader contract. The spec 
+§12 explicitly required paired-read verification at end of Phase 
+1.1+1.2; that gate was not honored.
+
+STEPS
+
+1. INVESTIGATION FIRST (do not write code yet)
+   - Read the current orchestrator implementation
+   - Identify where the enrichment chain produces results
+   - Identify where results SHOULD be written to property_descriptions
+   - Identify the LayeredValue schema for each field that gets 
+     written (per spec §4.1)
+   - Report findings before patching
+
+2. WRITE PATH IMPLEMENTATION
+   - For each enrichment step that returns data, write to the 
+     corresponding property_descriptions field with proper 
+     LayeredValue provenance:
+     * other_docs result → layer 'om' or 'platform' depending on source
+     * municipal result → layer 'municipal' with county source tag
+     * web result → layer 'web' with source_url
+     * places result → layer 'web' with google_places tag
+   - UPSERT semantics: don't overwrite manual_override layer
+   - Resolution: re-evaluate the resolved value after each layer 
+     write per the resolution_rule for that field
+
+3. BACKFILL
+   - For each currently 'complete' intake_job, replay the 
+     enrichment_log entries that have data, write them through the 
+     new path
+   - Don't re-run the enrichment; use the cached results from the log
+   - Report: total jobs replayed, fields populated, parcels affected
+
+4. PAIRED-READ VERIFICATION (the gate)
+   - Pick 5 properties that the orchestrator marked 'complete'
+   - For each:
+     a. Show the enrichment_log entries that contained data
+     b. Hit GET /api/v1/properties/:parcelId/summary
+     c. Confirm the data is visible in the response
+   - If verification fails on any of the 5, STOP. Don't mark dispatch 
+     complete.
+
+5. CLOSING NOTE in docs/operations/TASK_C_CLOSING.md
+   - Investigation findings (Step 1)
+   - Write path diff
+   - Backfill counts
+   - Paired-read verification: 5 properties with before/after API 
+     responses
+   - SEVERITY classification: what failure mode this fix addresses 
+     (silent-failure of producer/reader contract)
+
+DO NOT
+- Mark complete without paired-read verification passing
+- Skip the LayeredValue provenance tagging
+- Touch the enrichment chain itself (we trust the log; just need 
+  to write what's there to property_descriptions)
+- Add new enrichment sources or modify existing ones
