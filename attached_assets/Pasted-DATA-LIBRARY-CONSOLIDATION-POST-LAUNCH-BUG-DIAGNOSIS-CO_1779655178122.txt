@@ -1,0 +1,152 @@
+DATA LIBRARY CONSOLIDATION — POST-LAUNCH BUG DIAGNOSIS
+
+CONTEXT
+The Data Library consolidation shipped. Two issues surfaced:
+
+1. Files tab filter toggles return 404 (AxiosError)
+2. Pre-existing files (1,695 files in data_library_files before 
+   consolidation) are not appearing in the Files tab
+
+These may be one bug or two. Investigation first — no patches in 
+this dispatch.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — REPRODUCE AND CAPTURE THE 404
+═══════════════════════════════════════════════════════════════════
+
+A. Open the Files tab on /settings/data-library?tab=files
+   (or whatever the new route is)
+   
+B. Capture network requests:
+   - What endpoint does the Files tab call to load file list?
+   - What endpoint do the filter chips (Type / Status) call?
+   - What endpoint does the search input call?
+   
+C. For each request that returns 404:
+   - Document the literal URL requested
+   - Document the HTTP method, query params, headers
+   - Document the error response body (if any)
+   
+D. Compare to the OLD /archive/library implementation:
+   - What endpoint did the OLD Files surface call?
+   - Is that endpoint still mounted on the backend?
+   - Did the consolidation rename, move, or remove it?
+
+REPORT FINDINGS.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — VERIFY DATA STILL EXISTS IN DB
+═══════════════════════════════════════════════════════════════════
+
+A. Query the database directly:
+   SELECT count(*) FROM data_library_files;
+   - Expected: 1,695 (matches what was there pre-consolidation)
+   - Actual: ?
+   
+B. Spot check:
+   SELECT id, original_filename, parcel_id, document_type, 
+          parser_status, created_at
+   FROM data_library_files
+   ORDER BY created_at DESC LIMIT 10;
+   - Confirm rows look as expected
+   - Note any unexpected NULL fields
+   
+C. Schema check:
+   \d data_library_files
+   - Confirm the schema matches what the new Files tab expects
+   - Note any column renames, additions, or removals during 
+     consolidation
+   
+D. Permissions check (if applicable):
+   - Does data_library_files have any RLS policies?
+   - Did the user/role context change during consolidation that 
+     could filter rows out?
+
+REPORT FINDINGS.
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — TRACE THE READ PATH
+═══════════════════════════════════════════════════════════════════
+
+For the endpoint the Files tab calls (whether or not it returns 404):
+
+A. Find the route definition in the backend
+   - File path
+   - HTTP method + URL pattern
+   - Mounted at what base path
+   - Was this endpoint renamed/moved during consolidation?
+
+B. Find the query implementation
+   - What SQL/ORM query runs against data_library_files?
+   - Are there any default filters applied (e.g., WHERE user_id = ?, 
+     WHERE deleted_at IS NULL, WHERE parcel_id IS NOT NULL)?
+   - Could any of these filters be excluding the 1,695 pre-existing 
+     rows?
+
+C. Find the frontend caller
+   - What component calls this endpoint?
+   - What query params/body does it send?
+   - Compare to what the backend route expects
+
+D. Diff against the OLD /archive/library implementation
+   - Was the old endpoint a different URL pattern?
+   - Did the old endpoint query with different filters?
+   - The "pre-consolidation data not showing" symptom suggests the 
+     new endpoint applies a filter the old one didn't
+
+REPORT FINDINGS.
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — CLASSIFY THE BUGS
+═══════════════════════════════════════════════════════════════════
+
+Based on Steps 1-3, classify:
+
+A. Is the 404 a missing endpoint or a wrong URL pattern?
+   - Missing: backend route was deleted during consolidation
+   - Wrong URL: frontend calls a URL the backend never mounted
+   - Renamed: backend has the route at a new path, frontend not 
+     updated
+
+B. Is the data-not-showing issue:
+   - Same root cause as the 404 (no data because endpoint returns 
+     404 / empty)?
+   - OR a separate filter scope issue (endpoint returns 200 but 
+     excludes the 1,695 rows)?
+
+C. Are there any other broken paths?
+   - Test: clicking download on a file
+   - Test: clicking property name to navigate to Assets tab
+   - Test: search input
+   - Test: pagination
+   
+   Document anything else that doesn't work as it did before 
+   consolidation.
+
+REPORT FINDINGS.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING REPORT
+═══════════════════════════════════════════════════════════════════
+
+Single document at docs/operations/DATA_LIBRARY_BUG_DIAGNOSIS.md:
+
+(a) The 404 — literal endpoint URL, why it 404s, the root cause 
+    (missing/renamed/wrong)
+(b) The data-not-showing issue — root cause classification 
+    (no data vs filtered-out data)
+(c) Whether 1 and 2 share a root cause or are separate
+(d) Schema state of data_library_files (still has 1,695 rows? 
+    schema unchanged?)
+(e) Proposed fix per issue — specific files to modify, specific 
+    changes needed
+(f) Any additional broken paths discovered (Step 4C)
+
+DO NOT
+- Apply patches in this dispatch — diagnosis only
+- Skip the OLD /archive/library comparison — the bug is in the 
+  delta between old and new behavior
+- Assume the data is gone — verify with direct DB queries (Step 2)
+- Fix unrelated issues
+- Modify the schema even if it looks wrong — surface it in the 
+  report and Leon decides

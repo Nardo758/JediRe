@@ -1,0 +1,165 @@
+ATLANTA GIS URL PROBE — M02 ZONING DATA SOURCE FIX
+
+CONTEXT
+M02 substrate shipped. RegulatoryConstraints interface, adapter 
+pattern, FIPS routing, and the City of Atlanta zoning code lookup 
+table (R-1 through OCR) are all working. 6 Atlanta properties 
+verified end-to-end via paired-read.
+
+What's not working: ATLANTA_GIS_URLS in atlanta.ts return 404 and 
+"wrong org ID" from Replit. The architecture degrades correctly 
+(jurisdiction resolves, source_chain records the attempt, zone_code 
+stays null), but no actual zoning data flows through.
+
+This dispatch finds the current working endpoint(s) and updates 
+the URL constants. No structural changes needed.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — IDENTIFY THE CURRENT WORKING ENDPOINT
+═══════════════════════════════════════════════════════════════════
+
+A. Document the currently-configured URLs in atlanta.ts:
+   - Paste the exact URL constants
+   - Note the specific error each returns (404 / wrong org ID / 
+     timeout / etc.)
+   - This is the "before" state for the closing note
+
+B. Search for the current City of Atlanta zoning data endpoint. 
+   Try these in order:
+
+   1. gis.atlantaga.gov — the official City Planning GIS portal
+      - Look for an ArcGIS REST services directory at:
+        gis.atlantaga.gov/arcgis/rest/services
+      - List MapServer / FeatureServer entries
+      - Identify zoning-related layer (likely named "Zoning", 
+        "Zoning_Districts", or similar)
+      - Test the layer's /query endpoint with a known Atlanta 
+        address or coordinates
+
+   2. atlantaga.gov/government/departments/city-planning/maps-and-gis
+      - May link to current zoning data services
+      - Check the page's network calls in DevTools to find the 
+        actual API endpoint backing any embedded maps
+
+   3. opendata.atlantaregional.com — ARC's open data hub
+      - Search for "Atlanta zoning" or "City of Atlanta zoning"
+      - Note: ARC is regional, may aggregate but not host the 
+        canonical City of Atlanta zoning
+
+   4. ArcGIS Online directly — search hub.arcgis.com or 
+      arcgis.com for "City of Atlanta zoning"
+      - The "wrong org ID" error suggests the previous URL pointed 
+        at an ArcGIS Online org that moved; finding the current 
+        org's hosted layer resolves this
+
+C. For each endpoint candidate found, verify from Replit:
+   - HTTP request from the Replit environment (the actual deployment 
+     context that matters)
+   - Expected response: 200 with valid ArcGIS REST metadata
+   - Sample a /query call with a known Atlanta lat/lng to confirm 
+     zoning data returns
+
+D. Document each candidate tested:
+   - URL
+   - Response (status code, sample payload if 200)
+   - Whether it returned zoning code data
+   - Whether it can be queried by lat/lng (preferred) or parcel_id 
+     or address
+
+REPORT FINDINGS BEFORE UPDATING THE CONSTANTS. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — UPDATE ATLANTA_GIS_URLS
+═══════════════════════════════════════════════════════════════════
+
+A. Update the ATLANTA_GIS_URLS constants in atlanta.ts with the 
+   verified working endpoint(s).
+
+B. If the new endpoint requires different query parameters or 
+   response parsing than the old one, update the adapter logic 
+   accordingly. Keep the changes minimal — same interface contract, 
+   just different upstream source.
+
+C. If multiple endpoints are needed (e.g., one for City of Atlanta 
+   inside city limits, another for outer jurisdictions), document 
+   each.
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — RE-RUN PAIRED-READ VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+The same 6 Atlanta properties that were verified end-to-end in the 
+M02 dispatch should now return populated zone_code values (and 
+downstream fields where derivable from the zoning code lookup 
+table).
+
+A. Pick the same 6 properties.
+
+B. For each:
+   - Trigger re-enrichment (reset orchestrator state to pending, 
+     or call the lookupRegulatory step directly)
+   - Confirm zone_code now populates (not null)
+   - Confirm downstream fields (density_max, far_max, height_max, 
+     setbacks, etc.) populate per the City of Atlanta zoning lookup 
+     table
+   - Confirm source_chain shows the successful endpoint call
+
+C. Hit GET /api/v1/properties/by-parcel/:parcelId/summary for each
+   - Confirm regulatory_constraints now contains real zone codes
+   - Confirm provenance tags correct (source: 'gis:city_of_atlanta' 
+     or whatever the verified source identifies as)
+
+IF VERIFICATION FAILS:
+- The URL update didn't produce real data. Don't claim success.
+- Report which property failed and why (response shape mismatch, 
+  parse error, layer missing zone field, etc.)
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — RESET BLOCKED OR PARTIAL JOBS
+═══════════════════════════════════════════════════════════════════
+
+A. Identify intake_jobs where regulatory_constraints is null but 
+   the job is in 'complete' state and the parcel is in City of 
+   Atlanta jurisdiction.
+
+B. Reset these jobs to pending so the orchestrator re-runs them 
+   with the new working endpoint.
+
+C. Report:
+   - Number of jobs re-queued
+   - Number that successfully populated regulatory_constraints
+   - Number that still failed (and why)
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/M02_ATLANTA_URL_FIX.md
+═══════════════════════════════════════════════════════════════════
+
+(a) BEFORE state: ATLANTA_GIS_URLS that were failing, with error 
+    details
+(b) Candidate endpoints tested (Step 1) — each with response status
+(c) Selected endpoint(s) — final working URL(s)
+(d) AFTER state: updated ATLANTA_GIS_URLS in atlanta.ts (diff)
+(e) Adapter logic changes (if any) needed for the new endpoint shape
+(f) Paired-read verification — 6 properties with zone_code populated, 
+    literal JSON sample
+(g) Backfill results — how many Atlanta jobs re-ran and populated 
+    successfully
+(h) Pending: any other GA counties (Fulton suburban, DeKalb, Cobb, 
+    Gwinnett, Cherokee, Clayton) — note that these have their own 
+    GIS URL configurations that will need similar verification when 
+    those adapters are wired
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build adapters for other counties (separate work)
+- Modify the RegulatoryConstraints interface
+- Touch the Atlanta zoning code lookup table (R-1 through OCR is 
+  already correct)
+- Touch the orchestrator or downstream wiring
+- "While I'm here" improvements
+- Mark complete without paired-read verification passing on the 
+  same 6 properties M02 originally verified
+- Hardcode URLs that may need to be configurable later — use the 
+  existing constants pattern
