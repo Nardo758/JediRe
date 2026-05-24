@@ -246,7 +246,25 @@ export default function ArchiveLibraryPage() {
   const handleDownload = async (file: LibraryFile) => {
     try {
       const { data } = await apiClient.get(`/api/v1/archive/files/${file.id}/url`);
-      if (data.url) window.open(data.url, '_blank', 'noopener');
+      if (!data.url) {
+        alert('Download URL unavailable for this file.');
+        return;
+      }
+      if (data.local) {
+        // Locally-stored file: fetch as authenticated blob so the Authorization
+        // header is included (window.open would not send it).
+        const blobRes = await apiClient.get(data.url, { responseType: 'blob' });
+        const objectUrl = URL.createObjectURL(blobRes.data as Blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = data.filename ?? file.original_filename ?? 'download';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+      } else {
+        window.open(data.url, '_blank', 'noopener');
+      }
     } catch {
       alert('Download URL unavailable for this file.');
     }

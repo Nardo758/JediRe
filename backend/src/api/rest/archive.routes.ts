@@ -1443,7 +1443,7 @@ router.post('/upload', requireAuth, memUpload.single('file'), async (req: Reques
   const pool   = getPool();
   const client = await pool.connect();
 
-  let fileId: string | null = null;
+  let committed = false;
   try {
     await client.query('BEGIN');
 
@@ -1466,7 +1466,7 @@ router.post('/upload', requireAuth, memUpload.single('file'), async (req: Reques
         userId,
       ],
     );
-    fileId = fileRes.rows[0].id as string;
+    const fileId = fileRes.rows[0].id as string;
 
     // 2. intake_jobs row — links back to the new file
     const jobRes = await client.query(
@@ -1488,6 +1488,7 @@ router.post('/upload', requireAuth, memUpload.single('file'), async (req: Reques
     const jobId = jobRes.rows[0].id as string;
 
     await client.query('COMMIT');
+    committed = true;
 
     logger.info('[archive/upload] File uploaded', {
       file_id: fileId, job_id: jobId, filename: file.originalname, size_bytes: file.size,
@@ -1504,8 +1505,9 @@ router.post('/upload', requireAuth, memUpload.single('file'), async (req: Reques
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    // Remove the local file only if we never committed a DB row pointing to it
-    if (!fileId) {
+    // Delete the local file whenever the transaction did not commit — this covers
+    // all failure points including failures after fileId was assigned.
+    if (!committed) {
       try { fs.unlinkSync(localPath); } catch (_) {}
     }
     const msg = err instanceof Error ? err.message : String(err);
