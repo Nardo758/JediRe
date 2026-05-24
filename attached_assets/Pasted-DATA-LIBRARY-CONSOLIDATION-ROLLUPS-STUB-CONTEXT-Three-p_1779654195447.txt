@@ -1,0 +1,426 @@
+DATA LIBRARY CONSOLIDATION + ROLLUPS STUB
+
+CONTEXT
+Three problems converge in this dispatch:
+
+1. Parallel "Data Library" surfaces exist. F10 Settings → Data → 
+   Data Library shows 299 assets. /archive/library shows 1,695 
+   files. Both call themselves "Data Library." Same underlying 
+   data, two competing UI surfaces with the same name.
+
+2. The AR ARCHIVE button on the Terminal F-key bar shouldn't 
+   exist. Data Library is a Settings/Data area, not a Terminal 
+   page. F-key bar should be F1-F10 only.
+
+3. A Rollups view is needed (cohort analytics — expense and 
+   trend rollups by asset type, with curation). Full design 
+   specced separately. This dispatch ships a placeholder tab 
+   that shows asset-type groupings using already-populated 
+   fields; full Rollups implementation comes after M02 zoning 
+   + Atlanta enrichment populate the cohort dimensions.
+
+After this dispatch:
+- F10 Settings → Data → Data Library is the single canonical home
+- Four tabs: Assets | Files | Inbox | Rollups
+- AR ARCHIVE button removed from Terminal F-key bar
+- Old /archive/library and /archive/intake routes either redirect 
+  to the new structure or render the same component as the 
+  corresponding tab
+- Cross-linking between Assets and Files tabs is interactive
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. INFORMATION ARCHITECTURE AUDIT IS MANDATORY. Before any code 
+   changes, grep the codebase for every place "Data Library" is 
+   referenced. Report findings. The audit that should have happened 
+   when Phase 4 was dispatched. Catch any third or fourth parallel 
+   surface I haven't seen.
+
+2. ONE CANONICAL HOME. F10 Settings → Data → Data Library is the 
+   single Data Library page. Every other entry point either 
+   redirects here or is removed. No exceptions.
+
+3. PRESERVE EXISTING FUNCTIONALITY. Both the Asset view (currently 
+   on Data Library page) and the File browser (currently at 
+   /archive/library) must continue to work. This dispatch 
+   relocates and connects them, doesn't redesign either.
+
+4. THE ROLLUPS TAB IS A STUB, NOT A FULL IMPLEMENTATION. Show 
+   asset-type grouping with currently-populated fields. Reserve 
+   the navigation slot. Make it clear that full cohort analytics 
+   ship later. Don't fake depth.
+
+5. CROSS-LINKING IS THE INTEGRATION. Tabs don't just coexist; 
+   they reference each other. Clicking a file count on an asset 
+   row navigates to Files tab filtered to that asset. Clicking 
+   a property name in Files navigates to the Asset row.
+
+6. PAIRED-READ VERIFICATION. After consolidation, both old 
+   workflows still produce the same data: a user can find any 
+   file they found before, see any asset they saw before, with 
+   no data loss.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INFORMATION ARCHITECTURE AUDIT (no code yet)
+═══════════════════════════════════════════════════════════════════
+
+A. Search the codebase for every reference to "Data Library":
+   - grep -ri "data library" frontend/src/
+   - grep -ri "data_library" backend/src/
+   - grep -ri "DataLibrary" frontend/src/
+   - Search for routes: /archive/library, /archive/intake, 
+     /settings/data-library (or whatever the F10 Settings page 
+     route is)
+   - Search F-key bar nav entries
+   - Search the Settings sidebar for "DATA LIBRARY"
+
+B. For each occurrence, document:
+   - File path and line
+   - What context (route definition, component, nav entry, label, 
+     breadcrumb, page title, link, documentation)
+   - Whether it refers to: asset database view, file browser, 
+     something else
+
+C. Map the current state in a structured table. Report this 
+   before proceeding to consolidation.
+
+D. Document the existing routes structure:
+   - What's at /archive/library? (component path, what it renders)
+   - What's at /archive/intake? (component path, what it renders)
+   - What's at the F10 Settings → Data Library route? (path, 
+     component)
+   - Any other "Data Library" surfaces?
+
+E. Locate the Terminal F-key bar component. Document the current 
+   F-key entries and the AR ARCHIVE button placement.
+
+REPORT FINDINGS TO LEON. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — TAB NAVIGATION ON DATA LIBRARY PAGE
+═══════════════════════════════════════════════════════════════════
+
+Modify the existing F10 Settings → Data → Data Library page to 
+add tab navigation: ASSETS | FILES | INBOX | ROLLUPS
+
+A. Match the Bloomberg breadcrumb pattern used at /archive/library 
+   (which currently shows "Archive / LIBRARY | INBOX"). Use the 
+   same component style.
+
+B. Tab routing via query parameter or hash for shareable URLs:
+   - /settings/data-library (or current route) → Assets tab (default)
+   - /settings/data-library?tab=files → Files tab
+   - /settings/data-library?tab=inbox → Inbox tab
+   - /settings/data-library?tab=rollups → Rollups tab
+
+C. Active tab indicator matches the existing Bloomberg styling 
+   (orange highlight per the F-key bar pattern).
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — ASSETS TAB (default — current view, lightly extended)
+═══════════════════════════════════════════════════════════════════
+
+A. Keep the existing asset database rendering exactly as-is. 
+   Don't redesign it. The headers (TOTAL ASSETS / TOTAL UNITS / 
+   CITIES / MSAs / AVG QUALITY / SOURCES), the table columns 
+   (PROPERTY / LOCATION / TYPE / CLASS / UNITS / VINTAGE / 
+   AVG RENT / OCC / CAP / SALE $ / SOURCE / DQ), and the 
+   search/filter chips all remain.
+
+B. ADD one new column: FILES
+   - Shows count of associated files per asset (queried from 
+     data_library_files joined on parcel_id)
+   - The count is a clickable link
+   - Clicking navigates to Files tab filtered to that asset's 
+     parcel_id
+
+C. Bulk Upload & Cloud Sync section stays where it is at the top 
+   of the Data Library page (visible across all tabs, since 
+   uploading is cross-cutting).
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — FILES TAB (relocated from /archive/library)
+═══════════════════════════════════════════════════════════════════
+
+A. Move the existing /archive/library component into the Files 
+   tab of Data Library.
+
+B. Preserve ALL existing functionality:
+   - File count header (1,695 files · 8 properties)
+   - Search (filename or property)
+   - Type filter chips (All / OM / T-12 / Rent Roll / Tax Bill / 
+     Leasing / Other)
+   - Status filter chips (All / success / partial / failed / 
+     unparsed)
+   - Table columns (FILENAME / PROPERTY / TYPE / STATUS / SIZE / 
+     UPLOADED + download button)
+   - Pagination
+
+C. Add cross-linking:
+   - Property name in each row is a link → clicking navigates 
+     to Assets tab focused on that property's row (scroll to + 
+     highlight)
+   - URL query param to support "filtered to asset" state:
+     /settings/data-library?tab=files&parcel_id=<id>
+   - When parcel_id is in the URL, Files tab shows only that 
+     asset's files with a "Showing files for <Property Name> · 
+     [Show all files]" indicator at top
+
+D. The breadcrumb at the top of the previous /archive/library 
+   page ("← Terminal | Archive / LIBRARY | INBOX") is removed. 
+   Tab navigation replaces it. Users are inside the Settings 
+   page; the existing Settings sidebar navigation handles 
+   "where am I."
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — INBOX TAB (relocated from /archive/intake or placeholder)
+═══════════════════════════════════════════════════════════════════
+
+A. If /archive/intake exists as a built component:
+   - Move it into the Inbox tab
+   - Preserve all functionality (pending/blocked/complete job 
+     queues, user prompts for blocked jobs)
+
+B. If /archive/intake doesn't exist yet or is incomplete:
+   - Render a placeholder showing the current intake_jobs queue:
+     - N pending jobs
+     - N blocked_needs_user jobs
+     - N complete jobs  
+     - N failed jobs
+   - Note at bottom: "Full Inbox workflow (user prompts for 
+     blocked jobs, ambiguous match resolution) shipping in 
+     Phase 1.4"
+
+═══════════════════════════════════════════════════════════════════
+STEP 6 — ROLLUPS TAB (STUB)
+═══════════════════════════════════════════════════════════════════
+
+A. Render a lightweight asset-type grouping using already-
+   populated fields from property_descriptions:
+
+   ROLLUPS                              [Trends][Per Unit][Distribution]
+                                        (preview — limited data)
+   
+   By Product Type:
+     Garden       N=87   Avg Units: 142   Avg Rent: $1,310
+     Mid-rise     N=23   Avg Units: 198   Avg Rent: $1,720
+     High-rise    N=4    Avg Units: 312   Avg Rent: $2,180
+     Unclassified N=185  (awaiting enrichment)
+   
+   By MSA:
+     Atlanta MSA  N=84   ...
+     Tampa MSA    N=23   ...
+     ...
+   
+   ┌──────────────────────────────────────────────────────────┐
+   │ FULL ROLLUPS COMING SOON                                  │
+   │                                                            │
+   │ The complete Cohort Rollup view ships in Phase 11 with:   │
+   │ • T-12 line-item rollups (GPR, NOI, OpEx components)      │
+   │ • Per-unit normalization across the cohort                │
+   │ • Trends view: time-series chart across cohort           │
+   │ • Per Unit view: matrix table by year                    │
+   │ • Distribution view: P25/P50/P75 instead of single median │
+   │ • Cohort curation: add/remove specific assets             │
+   │ • Saved named cohorts                                     │
+   │ • Multi-dimensional cohort definition (Product × Class    │
+   │   × MSA × vintage)                                        │
+   │                                                            │
+   │ Prerequisites: M02 Zoning module + Atlanta enrichment     │
+   │ to populate product_type and asset_class across cohort.   │
+   └──────────────────────────────────────────────────────────┘
+
+B. The aggregation queries for the stub:
+   - GROUP BY product_type (where populated), with count + 
+     avg(units) + avg(rent)
+   - GROUP BY msa (where populated), with count + avg(units) + 
+     avg(rent)
+   - Show the count of unclassified assets explicitly (don't 
+     hide them)
+
+C. The [Trends][Per Unit][Distribution] toggle is non-functional 
+   in the stub — render the buttons visually but they don't 
+   switch views yet. Reserves the navigation pattern for the 
+   full implementation.
+
+═══════════════════════════════════════════════════════════════════
+STEP 7 — REMOVE PARALLEL SURFACES
+═══════════════════════════════════════════════════════════════════
+
+A. Remove AR ARCHIVE button from the Terminal F-key bar.
+   - Restore F-key bar to F1-F10
+   - Delete the nav entry component
+   - Search for any other references to the AR ARCHIVE label 
+     and remove them
+
+B. Handle the /archive/library route:
+   - Redirect /archive/library → /settings/data-library?tab=files
+   - Preserve query params (e.g., search, filter state) in the 
+     redirect when possible
+   - If /archive/library has bookmarkable URL variants 
+     (?type=T-12, etc.), translate them in the redirect
+
+C. Handle the /archive/intake route:
+   - Redirect /archive/intake → /settings/data-library?tab=inbox
+
+D. Remove any other parallel surface discovered in Step 1 IA audit.
+   - For each: redirect to the canonical location or delete
+
+E. Audit links throughout the app that point to old routes:
+   - Update them to point to /settings/data-library?tab=<x>
+   - Common places: per-property pages (links to "see files"), 
+     dashboard cards, settings sidebar, any "back to library" 
+     buttons
+
+═══════════════════════════════════════════════════════════════════
+STEP 8 — CROSS-LINKING INTEGRATION
+═══════════════════════════════════════════════════════════════════
+
+Verify the following user journeys work end-to-end:
+
+A. Assets → Files journey:
+   1. User on Assets tab clicks the FILES count for a specific asset
+   2. Navigates to Files tab with that asset's parcel_id filter applied
+   3. Files tab header shows "Showing files for <Property Name> · 
+      [Show all files]"
+   4. Clicking [Show all files] removes the filter
+
+B. Files → Assets journey:
+   1. User on Files tab clicks a property name in a row
+   2. Navigates to Assets tab
+   3. The asset row is scrolled into view and highlighted briefly
+   4. URL reflects the focused asset (for sharing)
+
+C. Per-property page → Data Library journey:
+   1. User on per-property page (/archive/properties/:parcelId) 
+      clicks a "back to library" or similar link
+   2. Navigates to Assets tab with that asset highlighted
+
+═══════════════════════════════════════════════════════════════════
+STEP 9 — PAIRED-READ VERIFICATION (THE GATE)
+═══════════════════════════════════════════════════════════════════
+
+A. Asset view preservation:
+   - Open Assets tab on the new consolidated Data Library
+   - Confirm all 299 assets visible with same data as before
+   - Confirm the new FILES column populates correctly (counts 
+     match data_library_files join)
+   - Spot-check 3 assets — file counts on the row match the 
+     count visible when drilling into Files tab for that asset
+
+B. File view preservation:
+   - Open Files tab on the new consolidated Data Library
+   - Confirm all 1,695 files visible with same filters and 
+     functionality as the old /archive/library
+   - Test each filter chip (Type, Status) — confirms results 
+     match what the old surface showed
+   - Test search — confirms filename + property search both work
+
+C. Redirect verification:
+   - Navigate to /archive/library directly → confirms redirect 
+     to /settings/data-library?tab=files
+   - Navigate to /archive/intake directly → confirms redirect 
+     to /settings/data-library?tab=inbox
+   - Old bookmarked URLs (if any with query params) still resolve
+
+D. Removal verification:
+   - Open Terminal page → confirm F-key bar has no AR ARCHIVE 
+     button
+   - Search the running app for any remaining "Data Library" 
+     references that point to old surfaces — none should exist
+
+E. Cross-link verification:
+   - From Assets tab, click FILES count on 3 different assets → 
+     each navigates to Files tab properly filtered
+   - From Files tab, click property name on 3 different files → 
+     each navigates to Assets tab properly focused
+
+If ANY of A-E fail, STOP. Don't mark dispatch complete. Report 
+which check failed and why.
+
+═══════════════════════════════════════════════════════════════════
+STEP 10 — SPEC UPDATE
+═══════════════════════════════════════════════════════════════════
+
+Update PER_PROPERTY_VISIBILITY_SPEC.md:
+
+A. §3 (Architectural Frame) — update the user interaction surfaces 
+   list:
+   - REMOVE: /archive/upload, /archive/library, /archive/intake, 
+     /archive/cohort-rollup as separate routes
+   - ADD: /settings/data-library with tabs (Assets | Files | 
+     Inbox | Rollups)
+   - KEEP: /archive/properties/:parcelId (the per-property drilldown)
+
+B. §6 (Stream B — Data Library) — update to reflect the unified 
+   surface:
+   - The "browse / search / discovery surface" subsection (was §6.6) 
+     now describes the Files tab within Data Library
+   - All references to /archive/library replaced with 
+     /settings/data-library?tab=files
+
+C. §7 (Intake Orchestrator + Intake Inbox) — update:
+   - All references to /archive/intake replaced with 
+     /settings/data-library?tab=inbox
+
+D. §14 (Cohort Rollup Addendum) — significantly expand to reflect 
+   the new design Leon committed to:
+   - Add curation layer: excluded_ids, manual_ids, saved cohorts
+   - Add Trends/Per Unit/Distribution view toggle
+   - Add the cohort math display (84 base · 3 excluded · 2 manual)
+   - Update the page layout sketch to reflect the design from 
+     the design doc Leon approved
+   - Update sizing: was 5 sessions, now 7-8 sessions (curation + 
+     save/load layer)
+   - Add the saved_cohorts table schema
+   - Note that Phase 11 (full Rollups) depends on M02 + Atlanta 
+     enrichment
+
+E. §9 (Phased Build Plan) — add a new bullet to the appropriate 
+   phase noting this dispatch shipped the consolidation + stub.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/DATA_LIBRARY_CONSOLIDATION.md
+═══════════════════════════════════════════════════════════════════
+
+(a) IA audit findings (Step 1) — table of all "Data Library" 
+    references in the codebase with disposition
+(b) Tab navigation implementation — file paths + component diff
+(c) Assets tab — FILES column addition diff
+(d) Files tab — relocation diff (was /archive/library, now 
+    embedded in Data Library)
+(e) Inbox tab — relocation or placeholder
+(f) Rollups tab stub — implementation
+(g) Parallel surfaces removed: AR ARCHIVE button removed, routes 
+    redirected
+(h) Cross-link verification — all three journeys (A/B/C above) 
+    working
+(i) Paired-read verification — all five checks (A-E above) passed
+(j) Spec updates applied
+(k) Pending: full Rollups implementation depends on M02 Zoning 
+    + Atlanta enrichment. Sized at 7-8 sessions, queued post-
+    prerequisites.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Skip Step 1 IA audit — that's the gate that should have happened 
+  originally and is mandatory now
+- Build the full Rollups view (Phase 11 work, separate dispatch 
+  after M02 + enrichment)
+- Build the saved_cohorts table (full Rollups work)
+- Build the cohort curation UI (full Rollups work)
+- Redesign the Assets table — only add the FILES column
+- Redesign the Files table — only relocate it
+- Mark complete without paired-read verification passing
+- Leave parallel surfaces live — every old surface either redirects 
+  or is removed
+- Build a new Inbox UI from scratch — use existing if present, 
+  placeholder if not
+- Touch the per-property page (/archive/properties/:parcelId)
+- Touch the orchestrator or any backend services beyond the 
+  read-side queries the tabs need
+- "While I'm in here" fixes — keep scope tight
