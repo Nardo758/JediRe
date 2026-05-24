@@ -67,7 +67,10 @@ function extractMunicipalDetail(
 function extractRegulatoryDetail(
   log: LogEntry[],
 ): { constraints: Record<string, unknown>; ts: string } | null {
-  const entry = log.find(
+  // Use findLast so that re-runs override stale historical entries in the
+  // appended enrichment_log (the most-recently appended entry wins).
+  const logCopy = [...log];
+  const entry = logCopy.reverse().find(
     (e) => e.step === 'regulatory_lookup' && e.status === 'ok' && e.detail?.constraints,
   );
   if (!entry) return null;

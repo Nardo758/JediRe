@@ -25,12 +25,22 @@ import { emptyRegulatoryConstraints } from '../../types';
 import coaZoningCodes from '../../zoning-codes/city-of-atlanta.json';
 
 // ── Atlanta GIS zoning layer ───────────────────────────────────────────────
-// City of Atlanta ArcGIS zoning FeatureServer (point-in-polygon query).
-// Returns ZONING_CODE attribute for the parcel.
-// Fallback URLs tried in order if primary fails.
+// City of Atlanta DPCD (Dept of Planning & Community Development) GIS zoning
+// layers — point-in-polygon queries.  Both layers return parcel zoning code.
+//
+// Primary  — LotsWithZoning: parcel-joined zoning; field ZONING_CLASSIFICATION
+//             (may be compound e.g. "I-2,RG-2" — take first token).
+// Fallback — OpenDataService1 Zoning District layer 22; field ZONECLASS.
+//
+// IMPORTANT: both services use WKID 103028 (GA West State Plane) internally;
+// queries MUST include inSR=4326 to pass WGS84 coordinates.
+//
+// Replaced 2026-05-24: old gis.atlantaga.gov/server ADHI_zoning path (404)
+// and services1.arcgis.com/Hp6G80Pky0om7QvQ org (HTTP 200 but ArcGIS
+// {"error":{"code":400,"message":"Invalid URL"}} — wrong org ID).
 const ATLANTA_GIS_URLS = [
-  'https://gis.atlantaga.gov/server/rest/services/ADHI/ADHI_zoning/MapServer/0/query',
-  'https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Zoning/FeatureServer/0/query',
+  'https://gis.atlantaga.gov/dpcd/rest/services/LandUsePlanning/LotsWithZoning/MapServer/0/query',
+  'https://gis.atlantaga.gov/dpcd/rest/services/OpenDataService1/MapServer/22/query',
 ];
 
 const GIS_TIMEOUT_MS = 10_000;
@@ -74,10 +84,27 @@ async function queryAtlantaGisZoneCode(lat: number, lng: number): Promise<GisQue
     geometry: `${lng},${lat}`,
     geometryType: 'esriGeometryPoint',
     spatialRel: 'esriSpatialRelIntersects',
-    outFields: 'ZONING_CODE,ZONING,ZONING_DIST,ZONE_TYPE,TYPE,LABEL',
+    // inSR=4326 required: DPCD services use WKID 103028 (GA West State Plane)
+    // internally but accept WGS84 input coordinates when inSR is declared.
+    inSR: '4326',
+    // outFields=* returns all available fields; using a specific list causes
+    // "Failed to execute query" because DPCD layers have different schemas
+    // (ZONING_CLASSIFICATION on LotsWithZoning, ZONECLASS on OpenDataService1).
+    outFields: '*',
     returnGeometry: 'false',
     f: 'json',
   });
+
+  // Track the last URL that returned HTTP 200 with a valid (non-error) JSON
+  // response.  Used to distinguish "outside city limits" (a good 200 response
+  // but empty features) from "GIS completely unavailable" (every URL threw /
+  // returned a non-200 / returned an ArcGIS error object).
+  //
+  // IMPORTANT: do NOT short-circuit on empty features — LotsWithZoning is a
+  // parcel-joined layer and will miss roads, parks, and some civic parcels.
+  // The fallback layer (OpenDataService1 Zoning District) covers all zone
+  // polygons and must always be tried before declaring "outside CoA limits".
+  let lastResponsiveUrl: string | null = null;
 
   for (const baseUrl of ATLANTA_GIS_URLS) {
     try {
@@ -105,15 +132,27 @@ async function queryAtlantaGisZoneCode(lat: number, lng: number): Promise<GisQue
         continue;
       }
 
+      // This URL returned a valid response — record it for "outside CoA" fallback
+      lastResponsiveUrl = baseUrl;
+
       const feature = json.features?.[0];
       if (!feature) {
-        // No feature = outside City of Atlanta limits
-        return { zoneCode: null, urlUsed: baseUrl };
+        // No feature from this layer — continue to the next URL.
+        // LotsWithZoning misses roads and parks; the Zoning District fallback
+        // covers full polygon coverage and must be tried first.
+        logger.debug(`[m02-atlanta] GIS ${baseUrl} returned 0 features for ${lat},${lng} — trying next URL`);
+        continue;
       }
 
       const attrs = feature.attributes;
-      // Try multiple field name variants (different ArcGIS layers use different names)
-      const zoneCode =
+      // Try field name variants across DPCD layers (primary fields first):
+      //   ZONING_CLASSIFICATION — LotsWithZoning layer (may be compound "I-2,RG-2";
+      //                           take first comma-delimited token as the base zone)
+      //   ZONECLASS             — OpenDataService1 Zoning District layer 22
+      //   ZONING_CODE / ZONING / ZONING_DIST — legacy / future layer aliases
+      const rawCode =
+        (attrs.ZONING_CLASSIFICATION as string | null) ??
+        (attrs.ZONECLASS as string | null) ??
         (attrs.ZONING_CODE as string | null) ??
         (attrs.ZONING as string | null) ??
         (attrs.ZONING_DIST as string | null) ??
@@ -122,13 +161,19 @@ async function queryAtlantaGisZoneCode(lat: number, lng: number): Promise<GisQue
         (attrs.LABEL as string | null) ??
         null;
 
-      return { zoneCode: zoneCode?.trim() ?? null, urlUsed: baseUrl };
+      // Normalise compound codes (e.g. "I-2,RG-2") — use the first token only
+      const zoneCode = rawCode ? rawCode.split(',')[0].trim() : null;
+
+      return { zoneCode: zoneCode ?? null, urlUsed: baseUrl };
     } catch (err: any) {
       logger.debug(`[m02-atlanta] GIS ${baseUrl} error: ${err?.message ?? String(err)}`);
     }
   }
 
-  return { zoneCode: null, urlUsed: null };
+  // All URLs exhausted without returning a feature.
+  // If at least one URL gave a valid 200 response, the coordinate is genuinely
+  // outside City of Atlanta limits.  Otherwise all GIS calls failed.
+  return { zoneCode: null, urlUsed: lastResponsiveUrl };
 }
 
 // ── Lookup table cross-reference ────────────────────────────────────────────
