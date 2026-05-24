@@ -10,13 +10,14 @@
  * City is used to disambiguate multi-county states (TX, FL).
  *
  * Currently implements:
- *   GA → Fulton County ArcGIS adapter      (Atlanta/Fulton)
- *       → DeKalb County ArcGIS adapter     (fallback for non-Fulton GA addresses)
- *       → Cobb County ArcGIS adapter       (Cumberland/Vinings/Smyrna area)
- *       → Gwinnett County ArcGIS adapter   (Duluth/Lawrenceville/Peachtree Corners/Norcross)
- *       → Cherokee County ArcGIS adapter   (Canton/Woodstock/Ball Ground area)
- *       → Clayton County ArcGIS adapter   (Jonesboro/Forest Park/Morrow/Riverdale area)
- *       [Henry County: no publicly accessible ArcGIS endpoint found]
+ *   GA → Census Geocoder preprocessing (county FIPS → direct adapter route)
+ *       → Fulton County ArcGIS adapter      (FIPS 13121 / Atlanta/Fulton)
+ *       → DeKalb County ArcGIS adapter     (FIPS 13089 / fallback for non-Fulton GA)
+ *       → Cobb County ArcGIS adapter       (FIPS 13067 / Cumberland/Vinings/Smyrna)
+ *       → Gwinnett County ArcGIS adapter   (FIPS 13135 / Duluth/Lawrenceville/Norcross)
+ *       → Cherokee County ArcGIS adapter   (FIPS 13057 / Canton/Woodstock)
+ *       → Clayton County ArcGIS adapter    (FIPS 13063 / Jonesboro/Forest Park)
+ *       [Henry County FIPS 13151: no publicly accessible ArcGIS endpoint found]
  *   NC → Mecklenburg County ArcGIS adapter (Charlotte)
  *   TN → Davidson County ArcGIS adapter    (Nashville)
  *   TX → Dallas County DCAD adapter        (Dallas)
@@ -63,8 +64,16 @@ class MunicipalEnrichmentService {
    * @param address  Street address (e.g. "720 Ralph McGill Blvd NE")
    * @param state    Two-letter state code (e.g. "GA")
    * @param city     City name — used to route multi-county states (e.g. TX, FL)
+   * @param options  Optional geocoder hints:
+   *   countyFips        — 5-digit FIPS (e.g. "13121") → skip directly to the right adapter
+   *   normalizedAddress — Census-normalized street+number to use instead of raw input
    */
-  async lookup(address: string, state: string, city?: string | null): Promise<MunicipalLookupResult> {
+  async lookup(
+    address: string,
+    state: string,
+    city?: string | null,
+    options?: { countyFips?: string; normalizedAddress?: string },
+  ): Promise<MunicipalLookupResult> {
     const normalizedState = (state ?? '').trim().toUpperCase();
     const normalizedCity  = normalizeCity(city);
 
@@ -74,28 +83,73 @@ class MunicipalEnrichmentService {
 
     switch (normalizedState) {
       case 'GA': {
-        logger.debug(`[municipal-enrichment] GA address lookup for "${address}" — trying Fulton first`);
-        const fultonResult = await lookupFultonGA(address.trim());
+        // Use Census-normalized street address if available, otherwise raw input.
+        const lookupAddr = (options?.normalizedAddress ?? address).trim();
+
+        // ── FIPS-direct route ────────────────────────────────────────────────
+        // When the Census Geocoder has already resolved the county, skip straight
+        // to the right adapter. On a not_found we still fall through to the full
+        // sequential chain (with the normalized address) so nothing is lost.
+        if (options?.countyFips) {
+          const fips = options.countyFips;
+          logger.debug(
+            `[municipal-enrichment] GA FIPS-direct route: FIPS=${fips}, addr="${lookupAddr}"`,
+          );
+          let fipsResult: MunicipalLookupResult | null = null;
+          switch (fips) {
+            case '13121': fipsResult = await lookupFultonGA(lookupAddr);   break;
+            case '13089': fipsResult = await lookupDeKalbGA(lookupAddr);   break;
+            case '13067': fipsResult = await lookupCobbGA(lookupAddr);     break;
+            case '13135': fipsResult = await lookupGwinnettGA(lookupAddr); break;
+            case '13057': fipsResult = await lookupCherokeeGA(lookupAddr); break;
+            case '13063': fipsResult = await lookupClaytonGA(lookupAddr);  break;
+            default:
+              logger.debug(
+                `[municipal-enrichment] GA unknown FIPS ${fips} — falling back to sequential chain`,
+              );
+          }
+          if (fipsResult !== null) {
+            if (fipsResult.status === 'ok') return fipsResult;
+            // Adapter returned not_found / error → fall through to sequential chain
+            logger.debug(
+              `[municipal-enrichment] GA FIPS-${fips} adapter returned ${fipsResult.status} ` +
+              `for "${lookupAddr}" — falling back to sequential chain`,
+            );
+          }
+        }
+
+        // ── Sequential fallback chain ────────────────────────────────────────
+        // Try all GA county adapters in order. Uses the normalized address
+        // (from Census) if available, which improves match rates.
+        logger.debug(
+          `[municipal-enrichment] GA sequential lookup for "${lookupAddr}" — trying Fulton first`,
+        );
+        const fultonResult = await lookupFultonGA(lookupAddr);
         if (fultonResult.status === 'ok') return fultonResult;
-        // Fulton miss → try DeKalb
-        logger.debug(`[municipal-enrichment] Fulton miss (${fultonResult.status}), falling back to DeKalb for "${address}"`);
-        const dekalbResult = await lookupDeKalbGA(address.trim());
+        logger.debug(
+          `[municipal-enrichment] Fulton miss (${fultonResult.status}), falling back to DeKalb for "${lookupAddr}"`,
+        );
+        const dekalbResult = await lookupDeKalbGA(lookupAddr);
         if (dekalbResult.status === 'ok') return dekalbResult;
-        // DeKalb miss → try Cobb (Cumberland/Vinings/Smyrna area)
-        logger.debug(`[municipal-enrichment] DeKalb miss (${dekalbResult.status}), falling back to Cobb for "${address}"`);
-        const cobbResult = await lookupCobbGA(address.trim());
+        logger.debug(
+          `[municipal-enrichment] DeKalb miss (${dekalbResult.status}), falling back to Cobb for "${lookupAddr}"`,
+        );
+        const cobbResult = await lookupCobbGA(lookupAddr);
         if (cobbResult.status === 'ok') return cobbResult;
-        // Cobb miss → try Gwinnett (Duluth/Lawrenceville/Peachtree Corners/Norcross)
-        logger.debug(`[municipal-enrichment] Cobb miss (${cobbResult.status}), falling back to Gwinnett for "${address}"`);
-        const gwinnettResult = await lookupGwinnettGA(address.trim());
+        logger.debug(
+          `[municipal-enrichment] Cobb miss (${cobbResult.status}), falling back to Gwinnett for "${lookupAddr}"`,
+        );
+        const gwinnettResult = await lookupGwinnettGA(lookupAddr);
         if (gwinnettResult.status === 'ok') return gwinnettResult;
-        // Gwinnett miss → try Cherokee (Canton/Woodstock/Ball Ground area)
-        logger.debug(`[municipal-enrichment] Gwinnett miss (${gwinnettResult.status}), falling back to Cherokee for "${address}"`);
-        const cherokeeResult = await lookupCherokeeGA(address.trim());
+        logger.debug(
+          `[municipal-enrichment] Gwinnett miss (${gwinnettResult.status}), falling back to Cherokee for "${lookupAddr}"`,
+        );
+        const cherokeeResult = await lookupCherokeeGA(lookupAddr);
         if (cherokeeResult.status === 'ok') return cherokeeResult;
-        // Cherokee miss → try Clayton (Jonesboro/Forest Park/Morrow/Riverdale area)
-        logger.debug(`[municipal-enrichment] Cherokee miss (${cherokeeResult.status}), falling back to Clayton for "${address}"`);
-        return lookupClaytonGA(address.trim());
+        logger.debug(
+          `[municipal-enrichment] Cherokee miss (${cherokeeResult.status}), falling back to Clayton for "${lookupAddr}"`,
+        );
+        return lookupClaytonGA(lookupAddr);
       }
 
       case 'NC':

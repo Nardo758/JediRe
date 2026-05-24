@@ -1,0 +1,126 @@
+Yes, wire it in. The diagnosis is sound and the architecture is cleaner than the per-adapter parsing approach. Two things to add to the plan before dispatching.
+
+Why this is the right call
+The bot's framing is correct: Census Geocoder solves a class of problems upstream (address normalization + county routing) instead of repeatedly per-adapter. Three structural wins:
+
+Each new metro inherits the normalization for free — adding FL/TX counties later, they don't each need to reimplement address parsing
+Reduces sequential adapter calls — FIPS routing means one adapter call per property instead of "try Fulton, try DeKalb, try Cobb..." which compounds latency
+Scopes Tasks #1007-#1011 to oblivion — the bot is right that those become unnecessary if the upstream fix works
+
+The +200-500ms latency is acceptable. Adapter calls themselves are typically 500-2000ms, so the relative cost is small. And it only fires once per property (cached after).
+
+Two implementation requirements before greenlighting
+1. Cache + fallback are non-negotiable. Census Geocoder is a gov API with no SLA. If it goes down or rate-limits, the entire enrichment chain shouldn't break:
+
+Cache normalized addresses + FIPS in property_descriptions — once resolved, never look up again. Add columns: normalized_address jsonb, county_fips text, geocoded_at timestamptz.
+Fallback path: if Census API returns 5xx or times out (>3s), fall back to current behavior (raw address against all adapters). Log the fallback. Don't fail the enrichment chain.
+Rate limit protection: implement basic exponential backoff if Census starts returning 429.
+
+2. Verification is the gate. Don't declare success on architecture; declare it on benchmark improvement:
+
+Before: 66 of 66 Atlanta addresses currently blocked
+After: re-run the same 66 through the new chain
+Acceptance bar: ≥50 of 66 unblocked. If <50, investigate why before continuing.
+
+This is the paired-read discipline applied to enrichment: show that the writer (geocoder + adapter) produces what the reader (per-property page) sees.
+
+Dispatch shape
+CENSUS GEOCODER PREPROCESSING — ATLANTA UNBLOCK
+
+CONTEXT
+Investigation revealed 66 Atlanta addresses are blocked because the 
+GA county adapters can't parse long-form input ("Martin Luther King 
+Junior Drive Southwest", unit suffixes, etc.). Census Geocoder 
+normalizes addresses and returns county FIPS, solving both problems 
+upstream of the adapters.
+
+This dispatch wires Census Geocoder as a preprocessing step in the 
+GA lookup chain. If successful, Tasks #1007-#1011 become unnecessary.
+
+STEPS
+
+1. SCHEMA — add three columns to property_descriptions:
+   - normalized_address jsonb (the Census Geocoder normalized form)
+   - county_fips text (5-digit FIPS code)
+   - geocoded_at timestamptz
+   Reversible migration.
+
+2. CENSUS GEOCODER CLIENT
+   - Location: src/services/geocoder/census/
+   - Endpoint: geocoding.geo.census.gov/geocoder/locations/onelineaddress
+   - Single-record API (batch is overkill for ongoing flow)
+   - 3-second timeout
+   - Returns: { matched_address, county_fips, lat, lng } or null
+
+3. CACHE LAYER
+   - Before calling Census, check property_descriptions.normalized_address
+   - If present and not null, skip the API call
+   - On successful geocode, write the three new columns
+   - Treat null geocoded_at as "never tried"
+
+4. FALLBACK PATH
+   - If Census returns 5xx or times out:
+     * Log the failure to a structured log (timestamp, address, error)
+     * Fall through to current behavior (raw address against all 
+       GA adapters)
+     * Do NOT fail the enrichment chain
+   - If Census returns 429 (rate limit):
+     * Exponential backoff: 2s, 4s, 8s
+     * If all three fail, treat as 5xx (fallback)
+
+5. ROUTER UPDATE
+   - In the GA lookup chain, after geocoder step:
+     * county_fips = '13121' → Fulton adapter
+     * county_fips = '13089' → DeKalb adapter
+     * county_fips = '13067' → Cobb adapter
+     * county_fips = '13135' → Gwinnett adapter
+     * county_fips = '13063' → Clayton adapter (if implemented)
+     * county_fips = '13151' → Henry adapter (if implemented)
+     * unknown FIPS → log + fallback to "try all GA adapters" 
+       (current behavior)
+   - Pass the Census-normalized address to the resolved adapter, 
+     not the raw input
+
+6. BENCHMARK
+   - Re-run the 66 blocked Atlanta addresses through the new chain
+   - Report:
+     * Of 66, how many got a Census normalized address
+     * Of those, how many resolved to a known FIPS code
+     * Of those, how many successfully returned property data from 
+       the routed adapter
+     * Final unblock count
+   - ACCEPTANCE BAR: ≥50 of 66 unblocked. Below that, STOP and 
+     investigate before declaring complete.
+
+7. CLOSING NOTE
+   (a) Schema migration applied
+   (b) Census client implementation (file path + diff summary)
+   (c) Cache hit rate during benchmark (should be 0% on first run, 
+       100% on a repeat run)
+   (d) Fallback path triggered count (should be 0 in clean run)
+   (e) Benchmark: 66 → N unblocked (with target ≥50)
+   (f) If below target, the specific addresses that still failed 
+       and their failure mode (Census couldn't normalize, FIPS not 
+       routed, adapter returned 0 records, etc.)
+
+DO NOT
+- Implement batch endpoint (single-record is fine for current volume)
+- Add geocoder as a hard dependency (fallback to current behavior 
+  is mandatory)
+- Skip the benchmark — that's the gate
+- Modify county adapter internals beyond accepting the normalized 
+  address parameter
+- Add geocoder to non-GA chains in this dispatch (separate dispatch 
+  once GA is proven)
+
+One thing worth flagging in the broader frame
+This is the second time this week the bot has identified an upstream architectural fix that scopes downstream work to zero (this one, and the earlier Apartment Locator unified pipe insight). That's a pattern worth naming positively — when the bot proposes "this small change at the top of the chain eliminates 5 sessions of bespoke work downstream," that's the kind of architectural thinking that makes the substrate-over-features framing actually pay off.
+Worth letting the bot know explicitly: "When you find these upstream fixes, prioritize them — they're worth more than the downstream tasks they replace." Not as praise; as a working principle to reinforce. Future dispatches benefit from the bot orienting toward upstream simplification rather than per-instance patches.
+
+Status update
+Work itemStatusTask #980 — Fulton + Dallas URL fixReady, pending dispatchCensus Geocoder preprocessingDispatch above readyPhase 1.1 + 1.2 — Orchestrator runtime + Apartment Locator adapterReady, drafted, queuedTasks #1007-#1011Likely obsolete if Geocoder dispatch succeeds
+Suggested send order:
+
+Census Geocoder dispatch (now — most upstream, highest leverage)
+Task #980 (after Census lands — may resolve some of Fulton/Dallas issues automatically)
+Phase 1.1 + 1.2 orchestrator (after both above, since orchestrator's enrichment chain benefits from the geocoder layer)

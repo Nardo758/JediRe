@@ -17,6 +17,12 @@
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { municipalEnrichment } from '../municipal-enrichment';
+import { censusGeocode } from '../geocoder/census/census-geocoder.client';
+import {
+  getCachedGeocode,
+  setCachedGeocode,
+  setCachedGeocodeFailed,
+} from '../geocoder/census/geocode-cache';
 
 const POLL_INTERVAL_MS = parseInt(process.env.INTAKE_POLL_INTERVAL_MS || '30000', 10);
 const BATCH_SIZE = parseInt(process.env.INTAKE_BATCH_SIZE || '20', 10);
@@ -133,9 +139,83 @@ async function stepMunicipalLookup(
 
   // ── Primary path: address lookup ─────────────────────────────────────────
   if (address) {
+    // ── Census Geocoder pre-step (GA only) ──────────────────────────────────
+    // Normalizes the address and resolves county FIPS so the router can jump
+    // directly to the right county adapter instead of trying all 6 in sequence.
+    // Cache in address_geocode_cache: once resolved, never calls the API again.
+    // Any failure (5xx, timeout, no match) is logged and falls through to the
+    // raw address chain — Census is never a hard dependency.
+    let geocoderOptions: { countyFips?: string; normalizedAddress?: string } | undefined;
+    if (state?.toUpperCase() === 'GA') {
+      let cacheHit = false;
+      try {
+        let cached = await getCachedGeocode(address);
+        cacheHit = cached !== null;
+
+        if (cached === null) {
+          // Append city + state so Census can disambiguate short street addresses.
+          // Without this, "691 14th Street Northwest" could match any US city.
+          // Cache key remains the raw address (city/state are stable for a job).
+          const geoQuery = city ? `${address}, ${city}, ${state}` : `${address}, ${state}`;
+          const geocodeResult = await censusGeocode(geoQuery);
+          if (geocodeResult) {
+            await setCachedGeocode(address, geocodeResult);
+            cached = {
+              matchedAddress: geocodeResult.matchedAddress,
+              streetOnly:     geocodeResult.streetOnly,
+              countyFips:     geocodeResult.countyFips,
+              lat:            geocodeResult.lat,
+              lng:            geocodeResult.lng,
+              geocodeFailed:  false,
+            };
+          } else {
+            await setCachedGeocodeFailed(address);
+            cached = {
+              matchedAddress: null,
+              streetOnly:     null,
+              countyFips:     null,
+              lat:            null,
+              lng:            null,
+              geocodeFailed:  true,
+            };
+          }
+        }
+
+        if (!cached.geocodeFailed && cached.countyFips) {
+          geocoderOptions = {
+            countyFips:        cached.countyFips,
+            normalizedAddress: cached.streetOnly ?? undefined,
+          };
+        }
+
+        await appendLog(jobId, {
+          step:   'census_geocoder',
+          status: cached.geocodeFailed ? 'no_match' : (cached.countyFips ? 'ok' : 'no_fips'),
+          ts:     ts(),
+          detail: {
+            address,
+            matched_address: cached.matchedAddress,
+            county_fips:     cached.countyFips,
+            cache_hit:       cacheHit,
+          },
+        });
+      } catch (geoErr: any) {
+        logger.warn(
+          `[intake-worker] Census geocoder error for "${address}": ${geoErr?.message ?? String(geoErr)}`,
+        );
+        await appendLog(jobId, {
+          step:   'census_geocoder',
+          status: 'error',
+          ts:     ts(),
+          detail: { address, error: geoErr?.message ?? String(geoErr) },
+        });
+        // geocoderOptions stays undefined → raw address chain runs as before
+      }
+    }
+
     let result: Awaited<ReturnType<typeof municipalEnrichment.lookup>>;
     try {
-      result = await municipalEnrichment.lookup(address, state, city);
+      result = await municipalEnrichment.lookup(address, state, city, geocoderOptions);
     } catch (err: any) {
       await appendLog(jobId, {
         step: 'municipal_lookup',

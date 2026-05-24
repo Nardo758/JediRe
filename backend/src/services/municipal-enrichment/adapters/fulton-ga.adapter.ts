@@ -22,7 +22,7 @@ import type { MunicipalLookupResult } from '../types';
 import {
   normalizeAddressFull as normalizeAddress,
   extractStreetNumber,
-  extractStreetName,
+  extractStreetKeyword,
   sanitize,
 } from '../address-normalize';
 
@@ -47,12 +47,14 @@ const REQUEST_TIMEOUT_MS = 12_000;
 function buildAddressWhere(address: string): string {
   const normalized = normalizeAddress(address);
   const streetNum  = extractStreetNumber(normalized);
-  const streetName = extractStreetName(normalized);
+  const keyword    = extractStreetKeyword(normalized);
 
-  if (streetNum && streetName) {
-    return `Address LIKE '${sanitize(streetNum)} ${sanitize(streetName)}%'`;
+  // Mid-wildcard on the keyword (DeKalb-style): avoids prefix-directional
+  // mismatches where Fulton stores "WEST PEACHTREE" but Census returns "W PEACHTREE".
+  if (streetNum && keyword) {
+    return `UPPER(Address) LIKE '${sanitize(streetNum.toUpperCase())} %${sanitize(keyword.toUpperCase())}%'`;
   }
-  return `Address LIKE '${sanitize(normalized)}%'`;
+  return `UPPER(Address) LIKE '${sanitize(normalized.toUpperCase())}%'`;
 }
 
 function buildParcelWhere(parcelId: string): string {
