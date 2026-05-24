@@ -135,7 +135,7 @@ export async function getAssetTimeSeries(
     WHERE parcel_id = $1
       AND observation_date >= $2
       AND observation_date <= $3
-      AND geography_level = 'property'
+      AND geography_level = 'parcel'
     ORDER BY observation_date ASC
   `;
 
