@@ -37,7 +37,7 @@
 import { logger } from '../../../utils/logger';
 import type { MunicipalLookupResult } from '../types';
 import {
-  normalizeAddress,
+  normalizeAddressFull,
   extractStreetNumber,
   extractStreetKeyword,
   sanitize,
@@ -130,7 +130,13 @@ async function fetchArcGIS(url: string): Promise<{ data?: any; error?: string }>
 // ─── WHERE clause builders ─────────────────────────────────────────────────────
 
 function buildAddressWhere(address: string): string {
-  const normalized = normalizeAddress(address);
+  // Strip city/state/zip (everything from the first comma onward) before
+  // normalizing, so "5500 Peachtree Pkwy, Peachtree Corners, GA 30092"
+  // becomes "5500 PEACHTREE PKWY" — preventing city tokens from leaking
+  // into the keyword while still allowing normalizeAddressFull to expand
+  // street types like "Drive" → "DR", "Road" → "RD".
+  const streetOnly = address.replace(/,.*$/, '');
+  const normalized = normalizeAddressFull(streetOnly);
   const num     = extractStreetNumber(normalized);
   const keyword = extractStreetKeyword(normalized);
 
