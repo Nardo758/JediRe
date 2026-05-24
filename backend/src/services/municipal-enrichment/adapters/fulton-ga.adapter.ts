@@ -38,13 +38,35 @@ const REQUEST_TIMEOUT_MS = 12_000;
 
 // ─── Address helpers (mirror benchmark-enrichment.service.ts) ────────────────
 
+/** Maps spelled-out street types to USPS abbreviations */
+const STREET_TYPE_MAP: Record<string, string> = {
+  STREET: 'ST', ROAD: 'RD', BOULEVARD: 'BLVD', DRIVE: 'DR',
+  AVENUE: 'AVE', COURT: 'CT', CIRCLE: 'CIR', PLACE: 'PL',
+  LANE: 'LN', PARKWAY: 'PKWY', HIGHWAY: 'HWY', TERRACE: 'TER',
+  TRAIL: 'TRL', POINT: 'PT', POINTE: 'PT', WAY: 'WAY',
+};
+
 function normalizeAddress(addr: string): string {
-  return addr
+  let s = addr
     .toUpperCase()
-    .replace(/\s+/g, ' ')
     .replace(/\./g, '')
-    .replace(/,.*$/, '')
+    .replace(/,/g, ' ')          // comma → space (preserve directionals like "St, NW")
+    .replace(/\s+/g, ' ')
     .trim();
+
+  // Normalize spelled-out compound directions first (before single-letter N/S/E/W)
+  s = s
+    .replace(/\bNORTHEAST\b/g, 'NE')
+    .replace(/\bNORTHWEST\b/g, 'NW')
+    .replace(/\bSOUTHEAST\b/g, 'SE')
+    .replace(/\bSOUTHWEST\b/g, 'SW');
+
+  // Normalize spelled-out street types to USPS abbreviations
+  for (const [long, abbr] of Object.entries(STREET_TYPE_MAP)) {
+    s = s.replace(new RegExp(`\\b${long}\\b`, 'g'), abbr);
+  }
+
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 function extractStreetNumber(addr: string): string {
