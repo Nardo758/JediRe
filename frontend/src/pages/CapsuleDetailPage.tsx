@@ -377,7 +377,7 @@ function OverviewTab({ capsule }: { capsule: CapsuleMeta }) {
   const dd = (capsule.deal_data ?? {}) as Record<string, unknown>;
   const askingPrice = dd.asking_price ?? dd.purchasePrice ?? dd.purchase_price;
   const noi         = dd.noi ?? dd.annual_noi;
-  const capRate     = dd.cap_rate ?? dd.going_in_cap_rate;
+  const capRate     = dd.cap_rate;
   const holdPeriod  = dd.hold_period ?? dd.holdPeriod;
   const ltv         = dd.ltv ?? dd.loan_to_value;
 

@@ -574,7 +574,7 @@ export default function CapsuleLinkPage() {
 
   const purchasePrice = dig(dd as Record<string, unknown>, 'purchase_price') ?? dig(dd as Record<string, unknown>, 'purchasePrice');
   const noi = dig(dd as Record<string, unknown>, 'noi') ?? dig(dd as Record<string, unknown>, 'annual_noi');
-  const capRate = dig(dd as Record<string, unknown>, 'cap_rate') ?? dig(dd as Record<string, unknown>, 'going_in_cap_rate');
+  const capRate = dig(dd as Record<string, unknown>, 'cap_rate');
   const holdPeriod = dig(dd as Record<string, unknown>, 'hold_period') ?? dig(dd as Record<string, unknown>, 'holdPeriod');
   const exitCap = dig(dd as Record<string, unknown>, 'exit_cap_rate') ?? dig(dd as Record<string, unknown>, 'exitCapRate');
   const ltv = dig(dd as Record<string, unknown>, 'ltv') ?? dig(dd as Record<string, unknown>, 'loan_to_value');

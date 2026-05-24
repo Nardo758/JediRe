@@ -4,7 +4,7 @@
  *
  * Each test drives the whole pipeline by calling `parseFileAsync` with a
  * PDF mime type and inspects the in-memory FakePool to verify the file
- * row ended in the correct `parsing_stage` / `parsing_status`. The four
+ * row ended in the correct `parser_used` / `parser_status`. The four
  * downstream collaborators (`parseOM`, `tagOmWithMarket`,
  * `distributeOmExtraction`, `scoreBrokerSentiment`) are mocked so we can
  * force each terminal-failure branch independently:
@@ -14,7 +14,7 @@
  *                                OmDistributionError surfaces with partial counts
  *   - sentiment LLM failure    → file ends in `sentiment_failed`
  *                                (outer catch must NOT clobber back to 'error')
- *   - happy path               → file ends in `routed`/`complete`, comps +
+ *   - happy path               → file ends in `om-pipeline`/`success`, comps +
  *                                cost + narratives distributed, sentiment
  *                                scoring invoked
  */
@@ -81,9 +81,9 @@ interface FakeFileRow {
   file_name: string;
   file_path: string;
   user_id: string | null;
-  parsing_stage: string | null;
-  parsing_status: string | null;
-  parsing_errors: string | null;
+  parser_used: string | null;
+  parser_status: string | null;
+  parser_error: string | null;
   om_extraction: any;
   msa_key: string | null;
   submarket_key: string | null;
@@ -101,8 +101,8 @@ class FakePool {
   async query(sql: string, params: readonly unknown[] = []): Promise<any> {
     this.queries.push({ sql, params });
 
-    if (/^\s*SELECT\s+parsing_stage\s+FROM\s+data_library_files/i.test(sql)) {
-      return { rows: [{ parsing_stage: this.row.parsing_stage }] };
+    if (/^\s*SELECT\s+parser_used\s+FROM\s+data_library_files/i.test(sql)) {
+      return { rows: [{ parser_used: this.row.parser_used }] };
     }
 
     if (/^\s*SELECT\s+\*\s+FROM\s+data_library_files/i.test(sql)) {
@@ -110,37 +110,37 @@ class FakePool {
     }
 
     // setStage helper — params=[id, stage]
-    if (/parsing_stage\s*=\s*\$2/.test(sql) && /parsing_status\s*=\s*CASE/i.test(sql)) {
+    if (/parser_used\s*=\s*\$2/.test(sql) && /parser_status\s*=\s*CASE/i.test(sql)) {
       const stage = params[1] as string;
-      this.row.parsing_stage = stage;
-      this.row.parsing_status =
-        stage === 'routed' || stage === 'complete' ? 'complete'
-        : stage === 'error' ? 'error'
-        : 'parsing';
+      this.row.parser_used = stage;
+      this.row.parser_status =
+        stage === 'routed' || stage === 'complete' ? 'success'
+        : stage === 'error' ? 'failed'
+        : 'running';
       return { rows: [], rowCount: 1 };
     }
 
-    // parse_failed / ocr_failed — params=[error, stage, id]
-    if (/parsing_status='error'/.test(sql) && /parsing_stage=\$2/.test(sql) && /WHERE id=\$3/.test(sql)) {
-      this.row.parsing_status = 'error';
-      this.row.parsing_stage = params[1] as string;
-      this.row.parsing_errors = params[0] as string;
+    // ocr_failed / parse_failed — params=[error, stage, id]
+    if (/parser_status='failed'/.test(sql) && /parser_used=\$2/.test(sql) && /WHERE id=\$3/.test(sql)) {
+      this.row.parser_status = 'failed';
+      this.row.parser_used = params[1] as string;
+      this.row.parser_error = params[0] as string;
       return { rows: [], rowCount: 1 };
     }
 
     // distribute_failed — params=[msg, id]
-    if (/parsing_stage='distribute_failed'/.test(sql)) {
-      this.row.parsing_status = 'error';
-      this.row.parsing_stage = 'distribute_failed';
-      this.row.parsing_errors = params[0] as string;
+    if (/parser_used='distribute_failed'/.test(sql)) {
+      this.row.parser_status = 'failed';
+      this.row.parser_used = 'distribute_failed';
+      this.row.parser_error = params[0] as string;
       return { rows: [], rowCount: 1 };
     }
 
     // sentiment_failed — params=[msg, id]
-    if (/parsing_stage='sentiment_failed'/.test(sql)) {
-      this.row.parsing_status = 'error';
-      this.row.parsing_stage = 'sentiment_failed';
-      this.row.parsing_errors = params[0] as string;
+    if (/parser_used='sentiment_failed'/.test(sql)) {
+      this.row.parser_status = 'failed';
+      this.row.parser_used = 'sentiment_failed';
+      this.row.parser_error = params[0] as string;
       return { rows: [], rowCount: 1 };
     }
 
@@ -150,23 +150,23 @@ class FakePool {
       this.row.msa_key = params[1] as string | null;
       this.row.submarket_key = params[2] as string | null;
       this.row.parsed_data = JSON.parse(params[3] as string);
-      this.row.parsing_errors = null;
+      this.row.parser_error = null;
       return { rows: [], rowCount: 1 };
     }
 
-    // routed — params=[id]
-    if (/parsing_stage='routed'/.test(sql)) {
-      this.row.parsing_status = 'complete';
-      this.row.parsing_stage = 'routed';
-      this.row.parsing_errors = null;
+    // final success — params=[id]
+    if (/parser_used='om-pipeline'/.test(sql)) {
+      this.row.parser_status = 'success';
+      this.row.parser_used = 'om-pipeline';
+      this.row.parser_error = null;
       return { rows: [], rowCount: 1 };
     }
 
     // outer-catch generic 'error' — params=[msg, id]
-    if (/parsing_stage='error'/.test(sql) && /parsing_status='error'/.test(sql)) {
-      this.row.parsing_status = 'error';
-      this.row.parsing_stage = 'error';
-      this.row.parsing_errors = params[0] as string;
+    if (/parser_used='error'/.test(sql) && /parser_status='failed'/.test(sql)) {
+      this.row.parser_status = 'failed';
+      this.row.parser_used = 'error';
+      this.row.parser_error = params[0] as string;
       return { rows: [], rowCount: 1 };
     }
 
@@ -225,9 +225,9 @@ function makeService(): { svc: DataLibraryService; pool: FakePool; tmpPdf: strin
     file_name: 'broker.pdf',
     file_path: tmpPdf,
     user_id: 'user-1',
-    parsing_stage: null,
-    parsing_status: null,
-    parsing_errors: null,
+    parser_used: null,
+    parser_status: null,
+    parser_error: null,
     om_extraction: null,
     msa_key: null,
     submarket_key: null,
@@ -263,9 +263,9 @@ describe('runOmPipeline (via parseFileAsync)', () => {
     try {
       await svc.parseFileAsync(1, tmpPdf, 'application/pdf');
 
-      expect(pool.row.parsing_stage).toBe('routed');
-      expect(pool.row.parsing_status).toBe('complete');
-      expect(pool.row.parsing_errors).toBeNull();
+      expect(pool.row.parser_used).toBe('om-pipeline');
+      expect(pool.row.parser_status).toBe('success');
+      expect(pool.row.parser_error).toBeNull();
       // Distribution + sentiment ran with the parsed extraction
       expect(distributeMock).toHaveBeenCalledTimes(1);
       expect(distributeMock.mock.calls[0][0]).toMatchObject({
@@ -306,9 +306,9 @@ describe('runOmPipeline (via parseFileAsync)', () => {
     try {
       await svc.parseFileAsync(1, tmpPdf, 'application/pdf');
 
-      expect(pool.row.parsing_stage).toBe('ocr_failed');
-      expect(pool.row.parsing_status).toBe('error');
-      expect(pool.row.parsing_errors).toContain('OCR fallback failed');
+      expect(pool.row.parser_used).toBe('ocr_failed');
+      expect(pool.row.parser_status).toBe('failed');
+      expect(pool.row.parser_error).toContain('OCR fallback failed');
       // Distribution + sentiment must NOT have been reached.
       expect(distributeMock).not.toHaveBeenCalled();
       expect(sentimentMock).not.toHaveBeenCalled();
@@ -340,11 +340,11 @@ describe('runOmPipeline (via parseFileAsync)', () => {
     try {
       await svc.parseFileAsync(1, tmpPdf, 'application/pdf');
 
-      // The outer catch in parseFileAsync sees parsing_stage='distribute_failed'
+      // The outer catch in parseFileAsync sees parser_used='distribute_failed'
       // (a terminal failure stage) and preserves it — never clobbers to 'error'.
-      expect(pool.row.parsing_stage).toBe('distribute_failed');
-      expect(pool.row.parsing_status).toBe('error');
-      expect(pool.row.parsing_errors).toContain('insert failure');
+      expect(pool.row.parser_used).toBe('distribute_failed');
+      expect(pool.row.parser_status).toBe('failed');
+      expect(pool.row.parser_error).toContain('insert failure');
       expect(sentimentMock).not.toHaveBeenCalled();
     } finally {
       fs.unlinkSync(tmpPdf);
@@ -371,10 +371,10 @@ describe('runOmPipeline (via parseFileAsync)', () => {
       // CRITICAL: the parseFileAsync outer catch must NOT overwrite
       // 'sentiment_failed' with the generic 'error' stage — that would hide
       // the partial state (distribution committed, sentiment unrecorded).
-      expect(pool.row.parsing_stage).toBe('sentiment_failed');
-      expect(pool.row.parsing_status).toBe('error');
-      expect(pool.row.parsing_errors).toContain('sentiment:');
-      expect(pool.row.parsing_errors).toContain('claude timed out');
+      expect(pool.row.parser_used).toBe('sentiment_failed');
+      expect(pool.row.parser_status).toBe('failed');
+      expect(pool.row.parser_error).toContain('sentiment:');
+      expect(pool.row.parser_error).toContain('claude timed out');
     } finally {
       fs.unlinkSync(tmpPdf);
     }

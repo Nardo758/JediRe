@@ -880,7 +880,7 @@ export interface ArchiveCompStats {
 
 export async function getArchiveCompStats(
   query: ArchiveCompQuery,
-  fields: string[] = ['opex_ratio', 'noi_per_unit', 'opex_per_unit', 'occupancy_pct', 'avg_rent', 'going_in_cap_rate', 'stabilized_cap_rate', 'exit_cap_rate']
+  fields: string[] = ['operating_expense_ratio', 'noi_per_unit', 'opex_per_unit', 'occupancy_pct', 'avg_rent', 'cap_rate', 'stabilized_cap_rate', 'exit_cap_rate']
 ): Promise<ArchiveCompStats[]> {
   const pool = getPool();
   const conditions: string[] = ["source_type = 'archive'"];
@@ -992,10 +992,10 @@ export async function getArchiveComps(
   
   const result = await pool.query(
     `SELECT id, property_name, city, state, unit_count, 
-            trailing_noi, opex_ratio, avg_rent, occupancy_pct
+            noi, operating_expense_ratio, avg_rent, occupancy_pct
      FROM data_library_assets
      WHERE ${conditions.join(' AND ')}
-     ORDER BY trailing_noi DESC NULLS LAST
+     ORDER BY noi DESC NULLS LAST
      LIMIT $${paramIndex}`,
     params
   );
@@ -1006,8 +1006,8 @@ export async function getArchiveComps(
     city: r.city,
     state: r.state,
     units: r.unit_count,
-    trailingNoi: r.trailing_noi ? parseFloat(r.trailing_noi) : null,
-    opexRatio: r.opex_ratio ? parseFloat(r.opex_ratio) : null,
+    trailingNoi: r.noi ? parseFloat(r.noi) : null,
+    opexRatio: r.operating_expense_ratio ? parseFloat(r.operating_expense_ratio) : null,
     avgRent: r.avg_rent ? parseFloat(r.avg_rent) : null,
     occupancyPct: r.occupancy_pct ? parseFloat(r.occupancy_pct) : null,
   }));

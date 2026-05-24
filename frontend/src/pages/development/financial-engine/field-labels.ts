@@ -49,7 +49,7 @@ export const FIELD_LABEL_MAP: Record<string, string> = {
   rent_growth:              'Rent Growth',
   rent_growth_stabilized:   'Rent Growth (Stabilized)',
   exit_cap_rate:            'Exit Cap Rate',
-  going_in_cap_rate:        'Going-In Cap Rate',
+  cap_rate:                 'Going-In Cap Rate',
   expense_growth:           'Expense Growth',
   capex:                    'CapEx',
   capex_per_unit:           'CapEx / Unit',

@@ -652,7 +652,7 @@ router.get('/shares/:shortcode/export/pdf', async (req: Request, res: Response) 
     const metricsList2: [string, string][] = [
       ['Purchase Price / Asking Price', fmtM(dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice)],
       ['Annual NOI', fmtM(dd.noi ?? dd.annual_noi)],
-      ['Going-In Cap Rate', fmtP(dd.cap_rate ?? dd.going_in_cap_rate)],
+      ['Going-In Cap Rate', fmtP(dd.cap_rate)],
       ['Exit Cap Rate', fmtP(dd.exit_cap_rate ?? dd.exitCapRate)],
       ['Hold Period', dd.hold_period ?? dd.holdPeriod ? `${dd.hold_period ?? dd.holdPeriod} years` : '—'],
       ['LTV', fmtP(dd.ltv ?? dd.loan_to_value)],
@@ -1890,7 +1890,7 @@ function buildCapsuleWorkbook(capsule: {
     ['KEY FINANCIAL METRICS', ''],
     ['Purchase Price / Asking Price', (dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice ?? '') as string | number],
     ['NOI (Annual)', (dd.noi ?? dd.annual_noi ?? '') as string | number],
-    ['Going-In Cap Rate', (dd.cap_rate ?? dd.going_in_cap_rate ?? '') as string | number],
+    ['Going-In Cap Rate', (dd.cap_rate ?? '') as string | number],
     ['Exit Cap Rate', (dd.exit_cap_rate ?? dd.exitCapRate ?? '') as string | number],
     ['Hold Period (Years)', (dd.hold_period ?? dd.holdPeriod ?? '') as string | number],
     ['LTV', (dd.ltv ?? dd.loan_to_value ?? '') as string | number],
@@ -2111,7 +2111,7 @@ router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedReque
     const metrics: [string, string][] = [
       ['Purchase Price / Asking Price', fmtMoney(dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice)],
       ['Annual NOI', fmtMoney(dd.noi ?? dd.annual_noi)],
-      ['Going-In Cap Rate', fmtPct(dd.cap_rate ?? dd.going_in_cap_rate)],
+      ['Going-In Cap Rate', fmtPct(dd.cap_rate)],
       ['Exit Cap Rate', fmtPct(dd.exit_cap_rate ?? dd.exitCapRate)],
       ['Hold Period', dd.hold_period || dd.holdPeriod ? `${dd.hold_period ?? dd.holdPeriod} years` : '—'],
       ['LTV', fmtPct(dd.ltv ?? dd.loan_to_value)],
@@ -2166,7 +2166,7 @@ router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedReque
 
     // Percentage metrics bar chart
     const pctMetrics: [string, number | null][] = [
-      ['Going-In Cap Rate', dd.cap_rate ?? dd.going_in_cap_rate ? parseFloat(String(dd.cap_rate ?? dd.going_in_cap_rate)) : null],
+      ['Going-In Cap Rate', dd.cap_rate ? parseFloat(String(dd.cap_rate)) : null],
       ['Exit Cap Rate',     dd.exit_cap_rate ?? dd.exitCapRate   ? parseFloat(String(dd.exit_cap_rate ?? dd.exitCapRate))   : null],
       ['LTV',              dd.ltv ?? dd.loan_to_value           ? parseFloat(String(dd.ltv ?? dd.loan_to_value))           : null],
       ['Vacancy Rate',     dd.vacancy_rate ?? dd.vacancy         ? parseFloat(String(dd.vacancy_rate ?? dd.vacancy))        : null],
@@ -2385,7 +2385,7 @@ router.get('/capsule-links/:accessToken/export/pdf', async (req: Request, res: R
     const metricsList: [string, string][] = [
       ['Purchase Price / Asking Price', fmtM(dd.purchase_price ?? dd.asking_price ?? dd.purchasePrice)],
       ['Annual NOI', fmtM(dd.noi ?? dd.annual_noi)],
-      ['Going-In Cap Rate', fmtP(dd.cap_rate ?? dd.going_in_cap_rate)],
+      ['Going-In Cap Rate', fmtP(dd.cap_rate)],
       ['Exit Cap Rate', fmtP(dd.exit_cap_rate ?? dd.exitCapRate)],
       ['Hold Period', dd.hold_period ?? dd.holdPeriod ? `${dd.hold_period ?? dd.holdPeriod} years` : '—'],
       ['LTV', fmtP(dd.ltv ?? dd.loan_to_value)],

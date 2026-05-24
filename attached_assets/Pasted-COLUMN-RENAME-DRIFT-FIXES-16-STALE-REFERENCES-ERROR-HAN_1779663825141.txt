@@ -1,0 +1,169 @@
+COLUMN-RENAME DRIFT FIXES — 16 STALE REFERENCES + ERROR HANDLING
+
+CONTEXT
+Audit found 16 stale references to renamed columns across 10 files. 
+The unifying mechanism: PostgreSQL 42703 undefined_column errors are 
+silently swallowed by .catch(logger.warn) patterns. Most consequential 
+finding: bulk upload to data_library_files has been silently broken — 
+files land in storage but never get DB rows.
+
+This dispatch fixes the 16 stale references and patches the error-
+swallowing pattern at the specific sites that produced silent failures.
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. CRITICAL → HIGH → MEDIUM → LOW in that order. The bulk upload 
+   fix can't wait; the cosmetic fallback cleanups can.
+
+2. EACH FIX VERIFIED INDEPENDENTLY. After fixing each Critical site, 
+   prove the fix works by triggering the workflow and observing 
+   the DB row that should now exist. Don't batch verification.
+
+3. ERROR-HANDLING POLICY UPDATE AT FIX SITES. Where stale columns 
+   were swallowing 42703 errors, change the .catch to surface 
+   schema errors (don't swallow them). Other categories of errors 
+   can remain non-fatal where the design intent was best-effort.
+
+4. NO SCOPE CREEP. Fix only the 16 references identified in the 
+   audit. Don't refactor the .catch pattern across the entire 
+   codebase — only at the sites this fix touches.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — CRITICAL FIXES (bulk upload silent failure)
+═══════════════════════════════════════════════════════════════════
+
+A. bulk-upload.routes.ts:165 and :237
+   - Both sites INSERT into data_library_files with parsing_status
+   - Update to parser_status, plus any other renamed columns in 
+     those INSERTs (verify against actual schema)
+   - Set parser_status='unparsed' on initial insert (the file just 
+     uploaded; parser hasn't run yet)
+   - parsed_at, parser_used: NULL on insert
+
+B. Error handling at these sites:
+   - Current: .catch(logger.warn)
+   - Change to: catch, check error code; if 42703 (undefined_column) 
+     or 42P01 (undefined_table), log as ERROR and throw — these are 
+     schema bugs, not runtime conditions to swallow. Other error 
+     codes can remain non-fatal if design intent was best-effort.
+
+C. VERIFICATION:
+   - Trigger a bulk upload of 1 file via the actual UI workflow
+   - Confirm: 
+     a. File lands in storage (was already working)
+     b. Row appears in data_library_files (was silently failing)
+     c. parser_status='unparsed' on the new row
+     d. intake_jobs row created (per orchestrator pickup)
+   - Backfill consideration: are there files in storage from 
+     bulk-upload that have no data_library_files row? Report count. 
+     Don't backfill in this dispatch — surface for Leon's decision.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — HIGH FIXES (read sites returning NULL or 500)
+═══════════════════════════════════════════════════════════════════
+
+A. data-library-assets.routes.ts:163
+   - :id/files endpoint SELECT references parsing_status, 
+     parsing_stage
+   - Update to parser_status, parser_stage
+   - Verify: hit the endpoint with a known asset ID, confirm 200 
+     with valid response
+
+B. archive.routes.ts:113 and :216
+   - References to trailing_noi (count + select)
+   - Update to noi
+   - Verify: hit the affected endpoints, confirm response returns 
+     real numbers not NULL for assets that should have NOI data
+
+C. archive-ingestion.service.ts:883, :995, :998
+   - Comp lookup queries using stale column names
+   - Update each:
+     - trailing_noi → noi
+     - opex_ratio → operating_expense_ratio
+     - going_in_cap_rate → cap_rate
+   - Verify: trigger a comp lookup for a property in an MSA with 
+     known comparables, confirm the comp set returns populated 
+     values
+
+D. Same error-handling policy as Step 1B at each fix site.
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — MEDIUM FIX (test mock)
+═══════════════════════════════════════════════════════════════════
+
+A. runOmPipeline.test.ts
+   - Test mock matches on old column name strings
+   - Update strings to current schema
+   - Re-run the test suite; confirm tests still pass against the 
+     correct schema
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — LOW FIXES (graceful fallbacks, types, labels, comments)
+═══════════════════════════════════════════════════════════════════
+
+A. Remove the cap_rate ?? going_in_cap_rate fallback patterns in 
+   capsule/M08 code — the fallback is dead code now that the 
+   column rename is settled
+   
+B. Update TypeScript type definitions to reflect current schema 
+   (parser_status, parser_stage, parser_errors, cap_rate, 
+   operating_expense_ratio, noi)
+
+C. Update UI labels and comments referencing old column names
+
+D. None of these are user-visible behavior changes. Bundle into 
+   a single commit at end of dispatch.
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — REPORT WHAT'S NOW DIFFERENT
+═══════════════════════════════════════════════════════════════════
+
+A. Bulk upload: how many storage objects exist with no 
+   data_library_files row? (orphan count — for Leon's backfill 
+   decision)
+
+B. Comp lookups: now that NOI / opex_ratio / cap_rate read correctly, 
+   re-run a known comp lookup. Show the before (NULLs) and after 
+   (populated) for one example.
+
+C. Test the affected endpoints end-to-end one more time:
+   - Files tab on Data Library: still works
+   - :id/files endpoint: 200 instead of 500
+   - Archive endpoints affected at archive.routes.ts:113, :216: 
+     return real data
+   - Bulk upload: creates DB row
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/COLUMN_RENAME_DRIFT_FIXES.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Critical fixes — bulk upload now writes DB rows. Verification 
+    sample (file uploaded, DB row created, parser_status='unparsed')
+(b) High fixes — :id/files, archive endpoints, comp lookups all 
+    returning correct data. Before/after samples
+(c) Medium fix — test suite passes against current schema
+(d) Low fixes — fallback dead-code removed, types/labels/comments 
+    updated
+(e) Error-handling pattern: where 42703/42P01 errors are now 
+    surfaced rather than swallowed (list of sites)
+(f) Bulk upload orphans: count of storage objects with no DB row 
+    (for Leon's decision; not backfilled in this dispatch)
+(g) Pending: substrate hardening — a global linter/check that 
+    flags .catch(logger.warn) on async DB writes. Future dispatch.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Refactor .catch patterns globally — only at the sites this 
+  dispatch touches
+- Backfill bulk-upload orphans in this dispatch — surface for 
+  Leon's decision
+- Add new tests beyond fixing the runOmPipeline.test.ts mock
+- "While I'm here" cleanups
+- Mark complete without verifying each Critical and High site 
+  independently
+- Run the verification once and assume the rest work — each site 
+  gets its own verification

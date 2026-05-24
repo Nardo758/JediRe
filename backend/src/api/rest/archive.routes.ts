@@ -110,7 +110,7 @@ router.get('/status', requireAuth, async (req: AuthenticatedRequest, res: Respon
       SELECT 
         COUNT(*) as total_assets,
         COUNT(*) FILTER (WHERE source_type = 'archive') as archive_assets,
-        COUNT(*) FILTER (WHERE source_type = 'archive' AND trailing_noi IS NOT NULL) as with_noi,
+        COUNT(*) FILTER (WHERE source_type = 'archive' AND noi IS NOT NULL) as with_noi,
         COUNT(*) FILTER (WHERE source_type = 'archive' AND avg_rent IS NOT NULL) as with_rent_roll,
         COUNT(*) FILTER (WHERE source_type = 'archive' AND parse_status = 'complete') as parsed_complete,
         COUNT(*) FILTER (WHERE source_type = 'archive' AND parse_status = 'error') as parsed_error,
@@ -213,7 +213,7 @@ router.get('/deals', requireAuth, async (req: AuthenticatedRequest, res: Respons
       SELECT 
         id, property_name, city, state, unit_count, year_built,
         property_type, vintage_band, unit_count_band,
-        trailing_noi, trailing_revenue, trailing_opex, opex_ratio,
+        noi, trailing_revenue, trailing_opex, operating_expense_ratio,
         noi_per_unit, opex_per_unit, avg_rent, occupancy_pct,
         parse_status, parsed_at, parse_warnings
       FROM data_library_assets
@@ -318,7 +318,7 @@ router.get('/stats', requireAuth, async (req: AuthenticatedRequest, res: Respons
     };
     
     const fields = (req.query.fields as string)?.split(',') || 
-      ['opex_ratio', 'noi_per_unit', 'opex_per_unit', 'occupancy_pct', 'avg_rent'];
+      ['operating_expense_ratio', 'noi_per_unit', 'opex_per_unit', 'occupancy_pct', 'avg_rent'];
     
     const stats = await getArchiveCompStats(query, fields);
     

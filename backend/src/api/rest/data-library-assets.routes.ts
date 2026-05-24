@@ -160,8 +160,14 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
     try {
       const result = await pool.query(
         `SELECT
-           df.id, df.file_name, df.file_size, df.mime_type, df.parsing_status, df.parsing_stage,
-           df.uploaded_at, df.source_type
+           df.id,
+           df.original_filename AS file_name,
+           df.size_bytes        AS file_size,
+           df.mime_type,
+           df.parser_status,
+           df.parser_used       AS parser_stage,
+           df.uploaded_at,
+           df.source_signal     AS source_type
          FROM data_library_files df
          WHERE df.asset_id = $1
             OR (

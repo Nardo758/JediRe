@@ -208,7 +208,7 @@ export interface ReturnsBlock {
 }
 
 export interface MetricsBlock {
-  going_in_cap_rate: number;
+  cap_rate: number;
   exit_cap_rate: number;
   noi_yr1: number;
   noi_stabilized: number;
@@ -242,7 +242,7 @@ export interface ProFormaSummary {
   irr: number;
   equity_multiple: number;
   cash_on_cash_y1: number;
-  going_in_cap_rate: number;
+  cap_rate: number;
   noi_yr1: number;
   dscr_yr1: number;
   total_equity: number;

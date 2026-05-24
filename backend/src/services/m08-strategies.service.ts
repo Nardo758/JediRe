@@ -781,12 +781,12 @@ export async function getStrategiesForDeal(pool: Pool, dealId: string): Promise<
     acquisitionPrice: Number(deal.budget || deal.tdc || d.acquisition_price || d.purchase_price || 0),
     targetIrr: Number(deal.target_irr || d.target_irr || 0),
     // Extended real-data fields — sourced directly from deal_data JSONB
-    capRate: Number(d.cap_rate || d.going_in_cap_rate || d.going_in_cap || 0) || undefined,
+    capRate: Number(d.cap_rate || d.going_in_cap || 0) || undefined,
     noi: Number(d.noi || d.net_operating_income || d.t12_noi || 0) || undefined,
     arvEstimate: Number(d.arv_estimate || d.after_repair_value || d.arv || 0) || undefined,
     rehabCost: Number(d.rehab_cost || d.renovation_cost || d.total_rehab_cost || 0) || undefined,
     exitCapRate: Number(d.exit_cap_rate || d.target_exit_cap || d.exit_cap || 0) || undefined,
-    goingInCapRate: Number(d.going_in_cap_rate || d.cap_rate || 0) || undefined,
+    goingInCapRate: Number(d.cap_rate || 0) || undefined,
     // Comp arrays: parse from deal_data arrays if present (M05 dual-lens integration)
     rentComps: parseLiveComps(d.rent_comps || d.comparable_rents || d.m05_rent_comps || []),
     salesComps: parseLiveComps(d.sales_comps || d.comparable_sales || d.m05_sales_comps || []),
