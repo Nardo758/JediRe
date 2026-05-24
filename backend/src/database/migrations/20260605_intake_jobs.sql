@@ -1,6 +1,8 @@
 -- Intake orchestrator state machine persistence.
 -- One row per file-ingest job, tracking the file through the
 -- classify → parse → enrich → complete/blocked lifecycle.
+--
+-- ── UP ──────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS intake_jobs (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -20,3 +22,9 @@ CREATE TABLE IF NOT EXISTS intake_jobs (
 CREATE INDEX IF NOT EXISTS idx_intake_jobs_parcel ON intake_jobs(parcel_id);
 CREATE INDEX IF NOT EXISTS idx_intake_jobs_state   ON intake_jobs(state);
 CREATE INDEX IF NOT EXISTS idx_intake_jobs_file_id ON intake_jobs(file_id);
+
+-- ── DOWN (run manually to reverse) ──────────────────────────────────────────
+-- DROP INDEX IF EXISTS idx_intake_jobs_file_id;
+-- DROP INDEX IF EXISTS idx_intake_jobs_state;
+-- DROP INDEX IF EXISTS idx_intake_jobs_parcel;
+-- DROP TABLE IF EXISTS intake_jobs;
