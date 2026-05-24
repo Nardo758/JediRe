@@ -208,6 +208,10 @@ async function fetchAssessmentByPin(pin: string): Promise<Record<string, any> | 
 
 // ─── CobbParcels spatial query ─────────────────────────────────────────────────
 
+/**
+ * Spatial intersect using Cobb State-Plane coordinates (WKID 2240).
+ * Used after the CAM_Locator geocoder step.
+ */
 async function queryParcelByPoint(pt: GeocodedPoint, inputAddress: string): Promise<MunicipalLookupResult> {
   const geometry = JSON.stringify({
     x: pt.x,
@@ -239,6 +243,44 @@ async function queryParcelByPoint(pt: GeocodedPoint, inputAddress: string): Prom
   const assessmentAttrs = pin ? await fetchAssessmentByPin(pin) : null;
 
   return mapAttrsToResult(parcelAttrs, assessmentAttrs, pt.matchAddr || inputAddress, features.length);
+}
+
+/**
+ * Spatial intersect using WGS84 lat/lng (WKID 4326).
+ * Used when Census Geocoder already provided coordinates — skips the Cobb
+ * CAM_Locator entirely.  ArcGIS auto-reprojects from 4326 to the layer's
+ * native WKID (102100 Web Mercator) via the inSR parameter.
+ */
+async function queryParcelByWgs84(lat: number, lng: number, inputAddress: string): Promise<MunicipalLookupResult> {
+  const geometry = JSON.stringify({
+    x: lng,
+    y: lat,
+    spatialReference: { wkid: 4326 },
+  });
+
+  const params = new URLSearchParams({
+    geometry,
+    geometryType: 'esriGeometryPoint',
+    spatialRel: 'esriSpatialRelIntersects',
+    inSR: '4326',
+    outFields: PARCEL_OUT_FIELDS,
+    returnGeometry: 'false',
+    f: 'json',
+  });
+
+  const url = `${COBB_PARCELS_URL}?${params.toString()}`;
+  const { data, error } = await fetchWithRetry(url, 'spatial-query-wgs84');
+  if (error) return { status: 'error', error };
+
+  const features: any[] = data?.features ?? [];
+  if (features.length === 0) return { status: 'not_found' };
+
+  const parcelAttrs: Record<string, any> = features[0].attributes ?? {};
+  const pin = parcelAttrs.PIN ?? parcelAttrs.PARCEL_ID ?? null;
+
+  const assessmentAttrs = pin ? await fetchAssessmentByPin(pin) : null;
+
+  return mapAttrsToResult(parcelAttrs, assessmentAttrs, inputAddress, features.length);
 }
 
 // ─── CobbParcels PIN query ─────────────────────────────────────────────────────
@@ -340,10 +382,32 @@ function mapAttrsToResult(
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/** Look up a Cobb County parcel by street address (geocode → spatial intersect → assessment enrich). */
-export async function lookupCobbGA(address: string): Promise<MunicipalLookupResult> {
-  logger.debug(`[cobb-ga] address lookup: "${address}"`);
+/**
+ * Look up a Cobb County parcel by street address.
+ *
+ * Two-path strategy:
+ *   A) knownCoords provided (WGS84 lat/lng from Census Geocoder)
+ *      → skip the CAM_Locator and go straight to CobbParcels spatial intersect.
+ *        This recovers addresses the CAM_Locator can't find (e.g. "3000 Shadowood
+ *        Pkwy SE", "5900 Suffex Green Ln") even though Census has valid coordinates.
+ *   B) No knownCoords
+ *      → geocode via CAM_Locator (WKID 2240) → spatial intersect (existing path).
+ */
+export async function lookupCobbGA(
+  address: string,
+  knownCoords?: { lat: number; lng: number },
+): Promise<MunicipalLookupResult> {
+  logger.debug(`[cobb-ga] address lookup: "${address}"${knownCoords ? ` (pre-geocoded lat=${knownCoords.lat.toFixed(5)}, lng=${knownCoords.lng.toFixed(5)})` : ''}`);
 
+  // Path A: Census Geocoder already resolved coordinates — skip CAM_Locator.
+  if (knownCoords) {
+    const result = await queryParcelByWgs84(knownCoords.lat, knownCoords.lng, address);
+    // If WGS84 spatial query fails, fall back to CAM_Locator (graceful degradation).
+    if (result.status !== 'not_found') return result;
+    logger.debug(`[cobb-ga] WGS84 spatial miss for "${address}", falling back to CAM_Locator`);
+  }
+
+  // Path B: Use Cobb CAM_Locator geocoder.
   const { point, error: geocodeErr } = await geocodeAddress(address);
   if (geocodeErr) {
     if (geocodeErr === 'no_candidates') return { status: 'not_found' };

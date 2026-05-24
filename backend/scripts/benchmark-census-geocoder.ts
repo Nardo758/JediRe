@@ -84,6 +84,8 @@ async function main() {
     // ── Step 1: Census Geocoder ──────────────────────────────────────────────
     let countyFips: string | null = null;
     let normalizedAddress: string | null = null;
+    let geoLat: number | undefined;
+    let geoLng: number | undefined;
 
     try {
       // Include city + state so Census can disambiguate short street addresses
@@ -93,6 +95,8 @@ async function main() {
         geocoded++;
         normalizedAddress = geo.streetOnly;
         countyFips = geo.countyFips;
+        geoLat = geo.lat ?? undefined;
+        geoLng = geo.lng ?? undefined;
         if (countyFips) fipsResolved++;
       }
     } catch {
@@ -104,7 +108,7 @@ async function main() {
 
     // ── Step 2: Municipal adapter via lookup() ───────────────────────────────
     const options = countyFips
-      ? { countyFips, normalizedAddress: normalizedAddress ?? undefined }
+      ? { countyFips, normalizedAddress: normalizedAddress ?? undefined, lat: geoLat, lng: geoLng }
       : undefined;
 
     let result: Awaited<ReturnType<typeof municipalEnrichment.lookup>>;

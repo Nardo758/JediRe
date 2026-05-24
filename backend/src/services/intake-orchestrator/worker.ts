@@ -189,6 +189,8 @@ async function stepMunicipalLookup(
           geocoderOptions = {
             countyFips:        cached.countyFips,
             normalizedAddress: cached.streetOnly ?? undefined,
+            lat:               cached.lat  ?? undefined,
+            lng:               cached.lng  ?? undefined,
           };
         }
 

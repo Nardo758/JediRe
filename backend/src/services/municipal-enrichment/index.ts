@@ -68,12 +68,15 @@ class MunicipalEnrichmentService {
    * @param options  Optional geocoder hints:
    *   countyFips        — 5-digit FIPS (e.g. "13121") → skip directly to the right adapter
    *   normalizedAddress — Census-normalized street+number to use instead of raw input
+   *   lat / lng         — WGS84 coordinates from Census Geocoder; forwarded to adapters
+   *                       that can use them directly (e.g. Cobb, which has a weaker local
+   *                       geocoder that misses some addresses Census can resolve)
    */
   async lookup(
     address: string,
     state: string,
     city?: string | null,
-    options?: { countyFips?: string; normalizedAddress?: string },
+    options?: { countyFips?: string; normalizedAddress?: string; lat?: number; lng?: number },
   ): Promise<MunicipalLookupResult> {
     const normalizedState = (state ?? '').trim().toUpperCase();
     const normalizedCity  = normalizeCity(city);
@@ -105,13 +108,19 @@ class MunicipalEnrichmentService {
             `[municipal-enrichment] GA FIPS-direct route: FIPS=${fips}, addr="${lookupAddr}"`,
           );
           let fipsResult: MunicipalLookupResult | null = null;
+          // Build WGS84 coords object for adapters that can use Census lat/lng directly.
+          const knownCoords =
+            options?.lat != null && options?.lng != null
+              ? { lat: options.lat, lng: options.lng }
+              : undefined;
+
           switch (fips) {
-            case '13121': fipsResult = await lookupFultonGA(lookupAddr);   break;
-            case '13089': fipsResult = await lookupDeKalbGA(lookupAddr);   break;
-            case '13067': fipsResult = await lookupCobbGA(lookupAddr);     break;
-            case '13135': fipsResult = await lookupGwinnettGA(lookupAddr); break;
-            case '13057': fipsResult = await lookupCherokeeGA(lookupAddr); break;
-            case '13063': fipsResult = await lookupClaytonGA(lookupAddr);  break;
+            case '13121': fipsResult = await lookupFultonGA(lookupAddr);                    break;
+            case '13089': fipsResult = await lookupDeKalbGA(lookupAddr);                    break;
+            case '13067': fipsResult = await lookupCobbGA(lookupAddr, knownCoords);         break;
+            case '13135': fipsResult = await lookupGwinnettGA(lookupAddr);                  break;
+            case '13057': fipsResult = await lookupCherokeeGA(lookupAddr);                  break;
+            case '13063': fipsResult = await lookupClaytonGA(lookupAddr);                   break;
             default:
               logger.debug(
                 `[municipal-enrichment] GA unknown FIPS ${fips} — falling back to sequential chain`,

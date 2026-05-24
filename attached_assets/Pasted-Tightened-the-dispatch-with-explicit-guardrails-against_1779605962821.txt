@@ -1,0 +1,286 @@
+Tightened the dispatch with explicit guardrails against the failure modes seen so far in this build. Two parts — Task #980 stays compact, then the main one.
+
+Dispatch A — Task #980 (Municipal URL Fix)
+Copy-paste, fire first:
+TASK #980 — MUNICIPAL WRAPPER STALE URL FIX (Fulton GA + Dallas TX)
+
+CONTEXT
+Carrying over from the prior four-task batch. Both wrappers return 404. 
+Server is alive on both sides; URL paths have moved. This is a 
+contained ~30 minute task.
+
+STEPS
+
+1. FULTON COUNTY, GA
+   - Browse to fultonpropertyappraiser.org OR qpublic.net/fulton 
+     (whichever currently resolves)
+   - Find the current property search endpoint by inspecting the 
+     site's own search form in browser DevTools (Network tab)
+   - Document the literal URL pattern, required params, and any 
+     auth headers
+   - Update src/services/municipal/georgia/fulton.ts
+
+2. DALLAS CENTRAL APPRAISAL DISTRICT, TX
+   - Browse to dallascad.org
+   - Find current property search endpoint via DevTools
+   - Document URL pattern, params, headers
+   - Update src/services/municipal/texas/dallas-central.ts
+
+3. TEST EACH WRAPPER with 2-3 real Atlanta/Dallas properties from 
+   the archive. NOT mock data. Real parcel addresses.
+   - Confirm HTTP 200
+   - Confirm response shape matches the normalized MunicipalResult 
+     interface
+   - Confirm year_built, sqft, lot_size, parcel# extract correctly
+
+CLOSING NOTE
+(a) Fulton: old URL → new URL, sample successful response (literal 
+    JSON, not paraphrased)
+(b) Dallas: old URL → new URL, sample successful response
+(c) Any new auth/headers/params required
+(d) Any rate limit observations
+
+DO NOT
+- Modify the broader municipal wrapper service interface
+- Touch other county wrappers
+- Add caching, retry logic, or other "while I'm here" improvements
+- Mock the test responses — verify against the live county sites
+
+Dispatch B — Phase 1.1 + 1.2 (Orchestrator Runtime + Apartment Locator)
+This is the urgent one. Has explicit guardrails against the patterns we've seen go sideways:
+PPV PHASE 1.1 + 1.2 — ORCHESTRATOR RUNTIME + APARTMENT LOCATOR ADAPTER
+
+CONTEXT  
+Read PER_PROPERTY_VISIBILITY_SPEC.md §7 (Intake Orchestrator) and §9 
+(Phase 1 description) BEFORE starting. This dispatch implements the 
+two-session phase that stops the daily Apartment Locator backlog from 
+growing further while preserving the option for future enrichment 
+sources to plug in cleanly.
+
+intake_jobs table already exists from Task #981. data_library_files 
+exists. property_descriptions exists. This dispatch adds the 
+orchestrator runtime that processes intake_jobs and the Apartment 
+Locator source adapter that routes scrape records through it.
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES (read these before any code is written)
+═══════════════════════════════════════════════════════════════════
+
+1. STUB CORRECTLY, DON'T FAKE: Stubs for municipal/web/Places must 
+   return an explicit { status: 'not_yet_implemented', step: 'municipal' } 
+   value. They must NOT return null or fake success. The orchestrator 
+   tracks "tried but stub" differently from "tried and got no data."
+
+2. NO SILENT WRITES: every write to property_descriptions during 
+   enrichment must include source/layer provenance per the LayeredValue 
+   schema. No writes that bypass provenance tagging.
+
+3. EVERY JOB LANDS IN ONE OF FOUR STATES — no "stuck in enriching 
+   forever" possible:
+   - complete (all expected fields populated or genuinely unavailable)
+   - blocked_needs_user (orchestrator exhausted its chain, prompt 
+     would be needed — even though Inbox UI ships in Phase 1.4)
+   - failed (system error, not data problem — retry-able)
+   - ignored (manual mark-as-ignore)
+
+4. PAIRED READ CHECK: after writing through orchestrator, the 
+   per-property page reads back what was written. Add a 
+   verification step that for 3 sample backfilled properties, the 
+   per-property API endpoint returns the orchestrator's enrichment 
+   results. If readers can't see writes, this dispatch failed.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVESTIGATION FIRST (do not write code yet)
+═══════════════════════════════════════════════════════════════════
+
+A. Locate the Apartment Locator API integration point.
+   - Where does scrape data currently land?
+   - What's the data shape (paste 1 raw sample record)?
+   - Where in the codebase does the "dump into DB" currently happen?
+   - What fields can be reliably extracted from a scrape record:
+     property_name? address? lat/long? unit_count? rent ranges? 
+     amenities?
+
+B. Count the existing un-enriched backlog.
+   - SELECT count(*) FROM <table where Apartment Locator dumps>
+     WHERE <criterion for "not enriched">
+   - Report this count BEFORE writing any code
+   - Sample 5 backlog records, show their data shape
+
+C. Inspect intake_jobs schema.
+   - Confirm the columns can hold what the adapter needs to write
+   - Identify any schema gaps (likely: a `source` column to 
+     distinguish 'apartment_locator' from 'data_library_upload' 
+     from 'parse_om')
+   - If a column is missing, propose the migration BEFORE writing 
+     the adapter
+
+REPORT FINDINGS BACK TO LEON BEFORE WRITING ANY CODE.
+This is a STOP gate. Investigation deliverable only.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — ORCHESTRATOR RUNTIME (only after Step 1 reported back)
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/intake-orchestrator/
+
+Implementation:
+
+A. Worker pattern — pick ONE and document why:
+   - Option 1: setInterval poll every N seconds for pending jobs
+   - Option 2: Postgres LISTEN/NOTIFY trigger
+   - Option 3: Job queue (BullMQ, etc.) 
+   - Recommend Option 1 for this phase (simplest, deterministic, 
+     easy to debug); migrate later if scale requires
+   - Poll interval: 30 seconds (configurable via env var)
+
+B. Job processor:
+processJob(job_id):
+transition: pending → parsing
+attempt parse if file_id exists and not yet parsed
+log step to enrichment_log
+ transition: parsing → enriching
+ for each enrichment_source in [other_docs, municipal_stub, 
+                                 web_stub, places_stub]:
+   result = invoke(enrichment_source, job_context)
+   log step to enrichment_log with result + provenance
+   if result has data:
+     merge into property_descriptions with appropriate 
+     LayeredValue layer + provenance tag
+ 
+ evaluate completeness:
+   if blocked_reason determinable from gaps → 
+     transition to blocked_needs_user with reason
+   else → transition to complete
+
+C. Error handling:
+   - System errors (DB failure, network) → status = failed, 
+     attempts++, retryable
+   - Data problems (no identifier, ambiguous) → status = 
+     blocked_needs_user, NOT failed
+   - Max retries: 3 for failed status, then mark as permanently 
+     failed with manual review required
+
+D. Enrichment chain step implementations:
+   - other_docs: real implementation. Query data_library_files 
+     for same parcel_id. If existing files have parsed data, use 
+     their resolved values.
+   - municipal_stub: return { status: 'not_yet_implemented', 
+     step: 'municipal', message: 'Wired in Phase 2.2' }
+   - web_stub: similar stub
+   - places_stub: similar stub
+
+E. Logging:
+   - Every state transition writes a structured entry to 
+     enrichment_log JSONB array
+   - Schema: { timestamp, from_status, to_status, step, result, 
+     duration_ms }
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — APARTMENT LOCATOR SOURCE ADAPTER
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/intake-sources/apartment-locator/
+
+A. Replace existing "dump into DB" path with orchestrator routing:
+   - For each scrape record:
+     1. Normalize to IntakeJob payload (source: 'apartment_locator')
+     2. If the scrape has a downloadable file artifact, create 
+        data_library_files row first; store file in R2 if R2 is 
+        configured, otherwise leave storage_url null and flag as 
+        "pending_storage"
+     3. Create intake_jobs row with status='pending'
+     4. Orchestrator picks it up on next poll cycle
+
+B. Preserve raw scrape record:
+   - Add to intake_jobs a `raw_input` jsonb column (if not 
+     present, propose migration in Step 1)
+   - Store the original scrape record for audit/reprocessing
+
+C. Idempotency:
+   - Don't create duplicate intake_jobs for the same scrape record
+   - Dedup key: (source='apartment_locator', source_record_id) 
+     where source_record_id is the scrape's primary identifier
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — BACKFILL EXISTING BACKLOG
+═══════════════════════════════════════════════════════════════════
+
+After orchestrator + adapter are working on new records:
+
+A. Migrate existing un-enriched scrape records into intake_jobs:
+   - Batch in chunks of 100 to avoid runtime explosion
+   - Create intake_jobs rows with status='pending'
+   - Orchestrator processes them via the same path
+
+B. Report backfill progress:
+   - Total queued
+   - Total processed
+   - Distribution by end state (complete / blocked / failed)
+   - Expected: most will land in blocked_needs_user because 
+     municipal/web/Places stubs return not_yet_implemented. 
+     That's correct. Real enrichment lights up in Phase 2.2 / 7.
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — PAIRED READ VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+For 3 Atlanta properties from the backfilled set:
+
+A. Pick 3 with file artifacts (so other_docs enrichment can match 
+   against existing data_library_files)
+B. After orchestrator processes them:
+   - Hit GET /api/v1/properties/:parcelId/summary
+   - Confirm property_descriptions has the orchestrator's writes 
+     visible
+   - Confirm enrichment_log on intake_jobs shows the chain 
+     traversal
+   - Confirm source provenance is correctly tagged
+
+If readers don't see what writers wrote, STOP and report. Do not 
+mark the dispatch complete with paired-read failure.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE (in docs/operations/PHASE_1_1_1_2_CLOSING.md)
+═══════════════════════════════════════════════════════════════════
+
+(a) Investigation findings from Step 1 (data shape, backlog count, 
+    schema gaps)
+(b) Schema migrations applied (if any)
+(c) Orchestrator architecture: worker pattern chosen, poll 
+    interval, error handling
+(d) Apartment Locator adapter diff
+(e) Backfill: total queued, total processed, end-state distribution
+(f) Paired-read verification: 3 sample properties showing 
+    end-to-end visibility
+(g) Pending: what does NOT work yet (real municipal/web/Places — 
+    those are Phase 2.2 / 7)
+(h) Estimated impact when Phase 2.2 (real municipal) ships: how 
+    many currently-blocked jobs will unblock
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement real municipal API calls (Phase 2.2)
+- Implement real web search (Phase 7.1)  
+- Implement real Google Places (Phase 7.2)
+- Build the Intake Inbox UI (Phase 1.4)
+- Modify the per-property page or library page
+- Skip Step 1's investigation gate
+- Mark complete without paired-read verification
+- Add features beyond the stated scope ("while I'm here")
+- Fake success returns from stubs — they must explicitly return 
+  not_yet_implemented status
+
+Why the dispatch is shaped this way
+Four explicit guardrails against patterns we've seen go sideways:
+1. Investigation gate before code. The bot's recent dispatches have benefited from "stop and report before patching" structure. Step 1 enforces this: backlog count, data shape, schema gaps — reported before any code.
+2. Stub-correctness requirement. Stubs that return null or fake success silently corrupt downstream work. Stubs that return { status: 'not_yet_implemented' } make the gap visible. Same pattern that would have prevented the year_built ghost-row bug.
+3. Paired-read verification. The producer-writes/reader-reads-elsewhere pattern has now bitten 6+ times. Step 5 makes the paired-read check mandatory before marking the dispatch complete. Not optional, not "I'll verify later."
+4. Explicit DO NOT list. Bot has sometimes accumulated workarounds or "while I'm here" improvements. The list scopes the work tightly so the build stays surgical and the next dispatches' scope stays clean.
+
+Suggested send order
+#DispatchExpected durationWhy this order1Task #980 — Municipal URL fix~30 minCheap, contained, already overdue, gets out of the way2Phase 1.1 + 1.2Multi-hour, real sessionHas STOP gate at Step 1; let it process
+Or fire both in parallel if the bot can handle two threads — they don't conflict.
+When the Phase 1.1+1.2 investigation comes back (Step 1 closing), review it with me before greenlighting Steps 2-5. That STOP gate is where bad assumptions surface; using it is the verify-first discipline in action.
