@@ -68,7 +68,7 @@ export function createDataLibraryFilesRoutes(pool: Pool): Router {
              dlf.uploaded_by,
              dlf.source_signal,
              COALESCE(dlf.license_restricted, false) AS license_restricted,
-             COALESCE(p.address, '')           AS property_display_name
+             COALESCE(p.address_line1, '')      AS property_display_name
            FROM data_library_files dlf
            LEFT JOIN properties p ON p.parcel_id = dlf.parcel_id
            ${where}

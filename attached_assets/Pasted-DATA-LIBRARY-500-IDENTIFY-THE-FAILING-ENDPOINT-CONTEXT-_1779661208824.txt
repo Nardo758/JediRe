@@ -1,0 +1,93 @@
+DATA LIBRARY 500 — IDENTIFY THE FAILING ENDPOINT
+
+CONTEXT
+Prior dispatch fixed four route issues (file-counts 500, intake-jobs 
+404s, data-library-files 404, missing asset_id column). Now seeing 
+a NEW 500 error in the Data Library UI:
+
+  AxiosError: Request failed with status code 500
+
+This is a different failure than the one just fixed. Need to identify 
+which specific endpoint is throwing before patching.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — IDENTIFY THE FAILING REQUEST
+═══════════════════════════════════════════════════════════════════
+
+A. Reproduce the error in the browser:
+   - Open /settings/data-library (or wherever the new route is)
+   - Open browser DevTools → Network tab BEFORE clicking
+   - Click through each tab: Assets, Files, Inbox, Rollups
+   - Try each filter chip on Files tab (Type / Status)
+   - Try search
+   - Note which click triggers the 500
+
+B. In the Network tab, find the failing request:
+   - HTTP method
+   - Full URL with query params (literal, not paraphrased)
+   - Request body if any
+   - Response status (confirm 500)
+   - Response body — this is critical, it usually contains the 
+     error message or stack trace
+
+C. If the response body is generic ("Internal Server Error") with 
+   no detail, the server is suppressing the error. Check the 
+   backend logs for the actual exception.
+
+REPORT FINDINGS BEFORE PATCHING.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — TRACE THE EXCEPTION
+═══════════════════════════════════════════════════════════════════
+
+A. Find the matching backend log entry for the 500
+   - Match by timestamp + URL
+   - Capture the full stack trace
+   - Identify the exact line throwing
+
+B. Common causes to check:
+   - Column reference mismatch (e.g., the route queries a column 
+     that doesn't exist — same pattern as the prior fix's 
+     license_restricted issue)
+   - Type coercion failure (e.g., parameter expected as int comes 
+     in as string)
+   - Missing JOIN target (e.g., property_descriptions row doesn't 
+     exist for a data_library_files row)
+   - JSONB field access on null (e.g., .value on a null LayeredValue)
+   - SQL syntax error introduced by recent migrations
+   - Permissions / RLS policy failure
+
+C. Run the offending query directly against the DB:
+   - psql with the same parameter values
+   - See if the query itself fails or if it's the surrounding code
+
+REPORT FINDINGS.
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — DIAGNOSTIC REPORT (no patches yet)
+═══════════════════════════════════════════════════════════════════
+
+In docs/operations/DATA_LIBRARY_500_DIAGNOSIS.md:
+
+(a) Which endpoint returns 500 (URL + method + query params)
+(b) Backend stack trace (literal, not summarized)
+(c) Root cause classification (column / type / join / null / 
+    other)
+(d) Proposed fix (specific file + specific lines + specific change)
+(e) Are there other endpoints likely affected by the same root 
+    cause (e.g., if a column rename broke one endpoint, others 
+    that reference the same column will also break)
+(f) Whether the bug existed pre-consolidation or was introduced 
+    by recent dispatches
+
+REPORT THIS BEFORE PATCHING.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Patch the 500 in this dispatch — diagnose only
+- Guess at the cause — read the stack trace
+- Skip the backend log inspection — that's where the truth is
+- Fix unrelated issues
+- Mark complete without producing the diagnostic report
