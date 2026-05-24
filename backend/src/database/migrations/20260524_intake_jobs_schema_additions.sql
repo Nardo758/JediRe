@@ -43,12 +43,20 @@ CREATE INDEX IF NOT EXISTS idx_intake_jobs_retry
   ON intake_jobs (state, attempts)
   WHERE state = 'failed';
 
--- Backfill source_record_id from existing apartment_locator rows
+-- Backfill source_record_id from existing apartment_locator rows.
+-- Guard: skip any row whose apartment_locator_id already appears as a
+-- source_record_id in another row — the unique index would reject it.
 UPDATE intake_jobs
 SET source_record_id = source_data->>'apartment_locator_id'
 WHERE source_type = 'apartment_locator'
   AND source_data->>'apartment_locator_id' IS NOT NULL
-  AND source_record_id IS NULL;
+  AND source_record_id IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM intake_jobs ij2
+    WHERE ij2.source_type      = 'apartment_locator'
+      AND ij2.source_record_id = intake_jobs.source_data->>'apartment_locator_id'
+  );
 
 -- ── DOWN (run manually to reverse) ───────────────────────────────────────────
 -- DROP INDEX IF EXISTS idx_intake_jobs_retry;

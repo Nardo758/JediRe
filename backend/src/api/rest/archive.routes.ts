@@ -27,6 +27,9 @@ import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import multer from 'multer';
 import { parseOM } from '../../services/document-extraction/parsers/om-parser';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { registerUploadedFile } from '../../services/intake-sources/data-library-upload';
 
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
@@ -1633,6 +1636,151 @@ router.patch('/inbox/:jobId', requireAuth, async (req: Request, res: Response) =
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('[archive/inbox] PATCH error', { jobId, error: msg });
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/archive/files/signed-upload-url
+// Generate a presigned R2 PUT URL so the browser can upload directly.
+// Body: { original_filename, mime_type, size_bytes, file_ext? }
+// Returns: { signed_url, storage_key, upload_method: 'PUT', expires_at }
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
+
+function buildR2Client(): S3Client {
+  const accountId = process.env.R2_ACCOUNT_ID;
+  if (!accountId) throw new Error('R2_ACCOUNT_ID not configured');
+  return new S3Client({
+    region: 'auto',
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId:     process.env.R2_ACCESS_KEY_ID     ?? '',
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? '',
+    },
+  });
+}
+
+router.post('/files/signed-upload-url', requireAuth, async (req: Request, res: Response) => {
+  const { original_filename, mime_type, size_bytes, file_ext } = req.body as {
+    original_filename?: string;
+    mime_type?: string;
+    size_bytes?: number;
+    file_ext?: string;
+  };
+
+  if (!mime_type) {
+    return res.status(400).json({ error: 'mime_type is required' });
+  }
+
+  if (size_bytes && size_bytes > MAX_UPLOAD_BYTES) {
+    return res.status(400).json({
+      error: `File too large: ${size_bytes} bytes. Maximum is ${MAX_UPLOAD_BYTES} bytes (100 MB).`,
+      flagged_for_review: true,
+    });
+  }
+
+  // Derive extension from filename or file_ext param
+  let ext = '.bin';
+  if (file_ext) {
+    ext = file_ext.startsWith('.') ? file_ext.toLowerCase() : `.${file_ext.toLowerCase()}`;
+  } else if (original_filename) {
+    const parts = original_filename.split('.');
+    if (parts.length > 1) ext = `.${parts.pop()!.toLowerCase()}`;
+  }
+
+  const bucket = process.env.R2_BUCKET_NAME;
+  if (!bucket) {
+    return res.status(500).json({ error: 'R2_BUCKET_NAME not configured' });
+  }
+
+  const storageKey = `uploads/library/${crypto.randomUUID()}${ext}`;
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+  try {
+    const s3 = buildR2Client();
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: storageKey,
+      ContentType: mime_type,
+      ...(size_bytes ? { ContentLength: size_bytes } : {}),
+    });
+
+    const signedUrl = await getSignedUrl(s3, command, { expiresIn: 900 });
+
+    logger.info('[archive/signed-upload-url] issued presigned URL', {
+      storage_key: storageKey,
+      mime_type,
+      size_bytes,
+    });
+
+    return res.json({
+      signed_url: signedUrl,
+      storage_key: storageKey,
+      upload_method: 'PUT',
+      expires_at: expiresAt,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/signed-upload-url] error', { error: msg });
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/archive/files/register
+// Create (or deduplicate) a data_library_files row and matching intake_jobs row
+// after the browser has completed the R2 PUT. sha256 is the dedup key.
+//
+// Body: { parcel_id?, sha256, original_filename, mime_type?, size_bytes?,
+//         storage_key, document_type? }
+// Returns: { file_id, status: 'registered'|'duplicate', intake_job_id,
+//            linked_observations }
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post('/files/register', requireAuth, async (req: Request, res: Response) => {
+  const {
+    parcel_id,
+    sha256,
+    original_filename,
+    mime_type,
+    size_bytes,
+    storage_key,
+    document_type,
+  } = req.body as {
+    parcel_id?: string;
+    sha256: string;
+    original_filename: string;
+    mime_type?: string;
+    size_bytes?: number;
+    storage_key: string;
+    document_type?: string;
+  };
+
+  if (!sha256) return res.status(400).json({ error: 'sha256 is required' });
+  if (!original_filename) return res.status(400).json({ error: 'original_filename is required' });
+  if (!storage_key) return res.status(400).json({ error: 'storage_key is required' });
+
+  const userId = (req as AuthenticatedRequest).user?.userId ?? null;
+
+  try {
+    const result = await registerUploadedFile({
+      parcel_id:         parcel_id ?? null,
+      sha256,
+      original_filename,
+      mime_type:         mime_type  ?? null,
+      size_bytes:        size_bytes ?? null,
+      storage_key,
+      storage_bucket:    process.env.R2_BUCKET_NAME ?? null,
+      document_type:     document_type ?? null,
+      uploaded_by:       userId,
+    });
+
+    return res.status(result.status === 'registered' ? 201 : 200).json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive/files/register] error', { error: msg });
     return res.status(500).json({ error: msg });
   }
 });

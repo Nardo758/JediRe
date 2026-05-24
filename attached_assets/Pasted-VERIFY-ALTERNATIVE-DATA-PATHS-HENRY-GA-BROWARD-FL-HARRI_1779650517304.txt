@@ -1,0 +1,82 @@
+VERIFY ALTERNATIVE DATA PATHS — HENRY GA, BROWARD FL, HARRIS TX, 
+MIAMI-DADE FL
+
+CONTEXT
+The earlier validation Worker probe tested one endpoint per county 
+and concluded "origin offline." Web research has surfaced 3-5 
+alternative data paths per county. Before closing #1029 and 
+accepting these counties as unreachable, verify the alternatives.
+
+The Cloudflare Workers approach is still shelved (some of these 
+alternatives are reachable from Replit directly per the earlier 
+probe — Miami-Dade primary endpoint already confirmed reachable).
+
+STEPS
+
+1. For each of the 4 counties, probe the alternative paths listed 
+   below from Replit (no Worker needed for this probe). Use the 
+   same test address pattern as the earlier Worker validation.
+
+   HENRY GA — try in this priority order:
+   - qpublic.schneidercorp.com/Application.aspx?App=HenryCountyGA  
+     (Schneider-hosted, likely different infrastructure than failed 
+     primary)
+   - henrycountyga.gov/320/GIS (official county GIS office, separate 
+     from tax assessor)
+   - app.regrid.com/us/ga/henry (third-party data)
+
+   HARRIS TX — try in this priority order:
+   - gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer  
+     (Harris County GIS, separate from HCAD primary)
+   - arcweb.hcad.org/parcel-viewer-v2.0/ (HCAD alternative subdomain)
+   - hcad.org/pdata/pdata-property-downloads.html (bulk data — 
+     verify the download URL is current and files are recent)
+
+   BROWARD FL — try in this priority order:
+   - gisweb-adapters.bcpa.net/bcpawebmap_ex/bcpawebmap.aspx  
+     (note: gisweb-adapters, not bcweb-adapters — likely the old 
+     URL that failed)
+   - bcpa.net main site (verify it responds at all)
+   - web.bcpa.net/bcpaclient/index.html (official client)
+
+   MIAMI-DADE FL — try in this priority order:
+   - opendata.miamidade.gov (open data portal — already verified 
+     accessible from external)
+   - gis-mdc.opendata.arcgis.com (MDC Open Data Hub)
+   - Direct GeoJSON: 
+     opendata.arcgis.com/api/v3/datasets/ed0468f5e579464b84727a4ab614fd40_0/downloads/data?format=geojson&spatialRefId=4326&where=1=1
+     (Property Boundary View - all Miami-Dade properties)
+
+2. For each alternative that returns 200 with valid data, document:
+   - URL pattern used
+   - Sample response (literal JSON)
+   - Whether assessment values (assessed_value, appraised_value, 
+     owner) are present or null
+
+3. Categorize each county based on probe results:
+   - REACHABLE WITH VIABLE DATA — at least one alternative returned 
+     200 with non-null assessment data. Implementation path exists.
+   - REACHABLE BUT DATA LIMITED — endpoint responds but values are 
+     null/sparse (like Miami-Dade primary). May need different layer 
+     or auth.
+   - GENUINELY OFFLINE — no alternative reachable. Defer per #1029.
+
+4. CLOSING NOTE in docs/operations/ALTERNATIVE_ENDPOINT_PROBES.md:
+   (a) Per-county probe results (literal HTTP responses for each 
+       URL tested)
+   (b) Updated classification per county
+   (c) For reachable counties: which endpoint to use for the adapter 
+       implementation
+   (d) Updated per-metro template guidance: when a primary endpoint 
+       returns 5xx, test these standard alternative patterns before 
+       concluding unreachable
+
+DO NOT
+- Build adapters in this dispatch — verification only
+- Conclude "unreachable" from a single endpoint test — test the 
+  full alternative list per county
+- Re-test the previously-failed primary endpoints — those are 
+  documented as failed; we're testing alternatives
+- Skip Miami-Dade — even though it was partially reachable before, 
+  the Open Data Hub may have richer data than the layer originally 
+  tested
