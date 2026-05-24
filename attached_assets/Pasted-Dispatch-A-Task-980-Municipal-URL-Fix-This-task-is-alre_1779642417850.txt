@@ -1,0 +1,106 @@
+Dispatch A — Task #980 (Municipal URL Fix)
+This task is already solved by a different architecture — but the dispatch doesn't know it.
+
+The paths it references don't exist:
+
+src/services/municipal/georgia/fulton.ts ✗
+src/services/municipal/texas/dallas-central.ts ✗
+Both were replaced entirely with ArcGIS REST adapters that have been live since well before these tasks were written:
+
+County	Current file	Endpoint	Status
+Fulton GA	adapters/fulton-ga.adapter.ts	ArcGIS Tax_Parcels_2025 FeatureServer	Working — Task #1009 added mid-wildcard fix
+Dallas TX	adapters/dallas-tx.adapter.ts	ArcGIS DallasTaxParcels FeatureServer	Working — queries by ST_NUM + ST_NAME LIKE
+There are no 404s. There is no broken scraper to fix. Task #980 as written should be marked superseded. If there's a specific address in Dallas TX that's failing, that's a normalization bug to debug against dallas-tx.adapter.ts — not a dead URL.
+
+Dispatch B — Phase 1.1 + 1.2
+The dispatch describes what it thinks is a green-field build. The actual build is significantly ahead. Here's the exact state:
+
+What's already shipped
+Orchestrator Runtime (Phase 1.1) — Fully live
+
+backend/src/services/intake-orchestrator/worker.ts implements everything the dispatch specifies:
+
+Dispatch requirement	Build status
+setInterval worker pattern (Option 1)	✓ 30s poll, INTAKE_POLL_INTERVAL_MS env var
+pending → parsing → enriching → complete / blocked_needs_user / failed	✓ Full state machine
+other_docs step (real, non-stub)	✓ Queries data_library_files by parcel_id
+municipal_stub returning not_yet_implemented	✗ This is NOT a stub — it's the live adapter chain (Fulton, DeKalb, Cobb, Gwinnett, Cherokee, Clayton, NC, TN, TX, FL). 105 jobs are complete because the municipal lookup resolved real parcel IDs.
+web_search stub	✓ Returns not_implemented, "Phase 7" note
+google_places stub	✓ Returns not_implemented, "Phase 7" note
+Structured enrichment_log per state transition	✓ JSONB append on every step
+Worker started on app boot	✓ index.replit.ts calls startIntakeWorker()
+Backlog — Already processed
+
+Total intake_jobs:     1,078  (all source_type='apartment_locator')
+  complete:              105  (municipal adapter resolved a county parcel ID)
+  blocked_needs_user:    973  (adapter exhausted — no parcel found)
+  ignored/failed:          0
+apartment_locator_properties not yet in intake_jobs: 7
+
+The dispatch's Step 1B ("count the un-enriched backlog") — the answer is 7. The rest have already been processed.
+
+Sample complete job showing what the orchestrator captures:
+
+address:      "100 Fulton Street SE"  →  parcel_id: "14 005300042215"
+municipal_ok: source=arcgis_fulton_ga_2025, owner=RE PLUS SUMMERHILL LLC,
+              county=Fulton, units=276
+
+What's genuinely missing
+1. intake_jobs schema gaps
+
+Current columns: id, file_id, parcel_id, state, block_reason, user_input, enrichment_log, created_at, updated_at, source_data, source_type
+
+Missing vs. dispatch requirements:
+
+Column	Dispatch requirement	Impact
+raw_input JSONB	Store original scrape record verbatim	Audit/reprocessing impossible without it
+source_record_id text	Dedup key: (source_type, source_record_id)	Currently source_data.apartment_locator_id has this but no unique index guards against duplicates
+attempts integer	Max 3 retries on failed status	Currently jobs fail with no retry
+ignored state	Manual mark-as-ignore flow	State machine incomplete per Principle 3
+2. property_descriptions write-back (Principle 2 / Step 5) — missing entirely
+
+The orchestrator logs municipal data to enrichment_log but never writes to property_descriptions. When a job resolves complete, the parcel ID is updated on intake_jobs but the resolved owner, assessed value, land acres, county, etc. are trapped in the JSON log — not surfaced to any property page.
+
+property_descriptions currently has 296 rows populated through a different path. The paired-read verification described in Step 5 would fail today: GET /api/v1/properties/:parcelId/summary cannot show orchestrator enrichment results because the write never happens.
+
+3. Apartment Locator source adapter as a proper routing layer
+
+The intake_jobs rows exist and have source_type='apartment_locator', but there's no src/services/intake-sources/apartment-locator/ directory. The dispatch wants a formal adapter class that:
+
+Accepts a scrape record and normalizes it to an IntakeJob payload
+Guards idempotency via (source_type, source_record_id) unique index
+Stores raw_input verbatim
+Currently it appears jobs were bulk-created via a migration or script rather than through a typed adapter. This means new Apartment Locator scrape records have no clear path into intake_jobs — sync-table.service.ts only pumps data into apartment_locator_properties, not intake_jobs.
+
+4. Max retry logic — not implemented
+
+processJob catches errors and sets state to failed but there's no attempts counter and no retry loop. A job that hits a transient DB failure goes permanently to failed with no recovery.
+
+5. Closing doc — not written
+
+docs/operations/PHASE_1_1_1_2_CLOSING.md doesn't exist.
+
+Recommended task breakdown
+Given what's built, the real remaining work is tighter than the dispatch describes:
+
+Task A — Schema migration + idempotency hardening (~1 session)
+
+Add raw_input JSONB, source_record_id TEXT, attempts INT DEFAULT 0 to intake_jobs
+Add unique index (source_type, source_record_id)
+Add 'ignored' as valid state
+Add retry logic: on failed, increment attempts; re-queue if attempts < 3; mark permanently_failed at 3
+Backfill source_record_id from source_data->>'apartment_locator_id' for existing rows
+Task B — Apartment Locator source adapter (~1 session)
+
+Create src/services/intake-sources/apartment-locator/index.ts
+Takes a scrape record → normalizes → upserts intake_jobs row with raw_input, source_record_id
+Wire into the existing sync path so new scrapes enter the queue (currently they land in apartment_locator_properties only)
+Populate raw_input for the 7 AL properties not yet in intake_jobs
+Task C — property_descriptions write-back + paired read (~1–2 sessions)
+
+When municipal step resolves ok, write to property_descriptions with LayeredValue provenance (source=arcgis_{county}_ga, layer=platform)
+When other_docs step resolves, trigger property_descriptions upsert with document-layer values
+Verify: hit GET /api/v1/properties/:parcelId/summary for 3 sample complete jobs and confirm visibility
+Task D — Closing doc (30 min, after A–C done)
+
+Task #980 should be marked superseded — no action needed.
