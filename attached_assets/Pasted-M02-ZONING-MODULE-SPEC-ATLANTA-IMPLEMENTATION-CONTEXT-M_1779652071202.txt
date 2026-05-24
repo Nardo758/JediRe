@@ -1,0 +1,275 @@
+M02 ZONING MODULE — SPEC + ATLANTA IMPLEMENTATION
+
+CONTEXT
+M02 Zoning is the keystone module in the spec — it cascades to M03 
+Dev Capacity, M08 Strategy Arbitrage, M09 ProForma, M25 JEDI Score. 
+Currently no implementation exists. The Atlanta adapter completion 
+(#1026) populates assessor data only.
+
+The decision: M02 ships as an interface architecture, not a single-
+jurisdiction implementation. Standard zoning is one implementation; 
+Houston-style deed-restriction model will be another (Option A from 
+earlier discussion). This dispatch builds the interface + the 
+standard-zoning implementation for Atlanta. Houston implementation 
+is deferred until Houston becomes sales-priority.
+
+After this dispatch, downstream modules (M03/M08/M09/M25) can begin 
+consuming RegulatoryConstraints from M02.
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. INTERFACE BEFORE IMPLEMENTATION. The RegulatoryConstraints shape 
+   must be specced before any data source is integrated. Each future 
+   metro implements the interface; the interface itself doesn't 
+   change per jurisdiction.
+
+2. NORMALIZED OUTPUT, JURISDICTION-SPECIFIC INPUT. M02 consumers 
+   (M03/M08/M09/M25) receive the same shape whether the source is 
+   Atlanta zoning codes, Miami-Dade zoning, or Houston deed 
+   restrictions. The jurisdiction details are abstracted away.
+
+3. LayeredValue PROVENANCE PRESERVED. Same as everywhere else in 
+   property_descriptions — each populated field tracks source layer 
+   and which adapter produced it.
+
+4. INVESTIGATION FIRST. Don't write code until the interface design 
+   is reported and reviewed. M02 is foundational — getting the 
+   interface wrong means refactoring four downstream modules later.
+
+5. PAIRED-READ VERIFICATION. M02 output must be visible via 
+   GET /api/v1/properties/:parcelId/summary in the regulatory 
+   section. Same gate discipline as Tasks A/B/C.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INTERFACE DESIGN (no code yet)
+═══════════════════════════════════════════════════════════════════
+
+Investigate and propose the RegulatoryConstraints interface. 
+Report findings BEFORE writing code.
+
+A. Read the existing spec's M02 / M03 / M08 / M09 / M25 sections.
+   Identify what fields each downstream module needs from M02.
+
+B. Propose the RegulatoryConstraints shape. Working draft for 
+   discussion:
+
+   type RegulatoryConstraints = {
+     // === Use & density ===
+     permitted_uses: LayeredValue<UseClassification[]>;
+       // Multifamily, mixed-use, retail, office, industrial, etc.
+       // Plus conditional uses requiring approval.
+     density_max_units_per_acre: LayeredValue<number | null>;
+     far_max: LayeredValue<number | null>;  
+       // Floor Area Ratio — buildable sqft / lot sqft
+     
+     // === Form ===
+     height_max_feet: LayeredValue<number | null>;
+     stories_max: LayeredValue<number | null>;
+     setback_front_feet: LayeredValue<number | null>;
+     setback_side_feet: LayeredValue<number | null>;
+     setback_rear_feet: LayeredValue<number | null>;
+     lot_coverage_max_pct: LayeredValue<number | null>;
+     
+     // === Parking ===
+     parking_min_per_unit: LayeredValue<number | null>;
+     parking_min_method: LayeredValue<'per_unit'|'per_sqft'|'matrix'>;
+     
+     // === Jurisdictional context ===
+     zone_code: LayeredValue<string | null>;
+       // Native zoning string (e.g., "MR-1", "T6-12-O", or 
+       // "No zoning ordinance" for Houston). Always populated for 
+       // audit; downstream consumers use the normalized fields above.
+     jurisdiction: LayeredValue<string>;
+       // E.g., "City of Atlanta", "Unincorporated Fulton", 
+       // "Miami-Dade County", "City of Houston"
+     regulatory_model: LayeredValue<'zoning'|'deed_restriction'|'mixed'>;
+       // Tells consumers how to interpret the data.
+       // 'zoning' = standard zoning code (most US)
+       // 'deed_restriction' = Houston model
+       // 'mixed' = some areas zoned, others not
+     
+     // === Special overlays ===
+     overlay_districts: LayeredValue<OverlayDistrict[]>;
+       // Historic, transit-oriented, opportunity zone, etc.
+     
+     // === Source provenance ===
+     resolved_at: timestamp;
+     source_chain: string[];  // List of M02 sources consulted
+   };
+
+C. Identify which fields each downstream module needs:
+   - M03 Dev Capacity: density_max, far_max, height_max, stories_max, 
+     setbacks, lot_coverage_max, parking_min — for massing/buildable 
+     envelope calculation
+   - M08 Strategy Arbitrage: permitted_uses (matters for STR vs rental 
+     vs flip vs build-to-sell), overlay_districts (some zones permit 
+     short-term rentals; others ban)
+   - M09 ProForma: parking_min (capex), far_max (revenue ceiling for 
+     development)
+   - M25 JEDI Score: regulatory_model (Position component scoring; 
+     more flexible jurisdictions score differently than restrictive)
+
+D. Schema migration plan:
+   New column on property_descriptions: regulatory_constraints jsonb
+   Indexed: GIN on (regulatory_constraints->'jurisdiction'->>'value')
+   for jurisdiction-based queries.
+
+REPORT FINDINGS. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SCHEMA + INTERFACE
+═══════════════════════════════════════════════════════════════════
+
+A. Schema migration:
+   ALTER TABLE property_descriptions
+     ADD COLUMN regulatory_constraints jsonb;
+   CREATE INDEX idx_pd_jurisdiction
+     ON property_descriptions
+     USING gin ((regulatory_constraints->'jurisdiction'->>'value'));
+   Reversible migration.
+
+B. TypeScript interface at:
+   src/services/regulatory/types.ts
+   - RegulatoryConstraints type definition
+   - UseClassification enum
+   - OverlayDistrict type
+   - Plus the empty/null-safe constructor (every metro adapter 
+     returns a complete shape; unknowns are LayeredValue with 
+     null value)
+
+C. M02 module skeleton at:
+   src/services/regulatory/m02-zoning/
+   - index.ts: entry point with adapter registry
+   - adapter-interface.ts: each adapter implements lookupRegulatory(
+       parcel_id, normalized_address): RegulatoryConstraints
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — ATLANTA IMPLEMENTATION (Reference adapter)
+═══════════════════════════════════════════════════════════════════
+
+Build the Atlanta-area zoning implementation. Atlanta has the 
+City-of-Atlanta-vs-suburban-county split (Atlanta straddles Fulton 
+and DeKalb). This is one of the harder jurisdictional cases, 
+which makes it a good reference.
+
+A. Atlanta data sources (per prior web research):
+   - City of Atlanta GIS: gis.atlantaga.gov 
+     (for properties inside Atlanta city limits)
+   - Fulton County GIS: official Fulton GIS portal 
+     (for unincorporated Fulton + Fulton-suburban cities)
+   - DeKalb County GIS: official DeKalb GIS portal
+     (for unincorporated DeKalb + DeKalb-suburban cities)
+   - Cobb, Gwinnett, Cherokee, Clayton: respective county GIS portals
+   - ARC LandPro for land-use overlay (regional data covering all 21 
+     metro counties)
+
+B. Jurisdiction resolution logic:
+   Given a normalized address, determine which jurisdiction's zoning 
+   applies:
+   1. Use Census Geocoder to get the county FIPS
+   2. Check City of Atlanta boundary polygon (cached) — if inside, 
+      jurisdiction = "City of Atlanta", source = City Planning
+   3. If outside Atlanta but in Fulton/DeKalb, jurisdiction = 
+      unincorporated county or suburban city (need city-limits 
+      polygon check)
+   4. For other counties, jurisdiction = that county
+   
+   This logic gets re-used by every metro adapter. Document it as 
+   reusable.
+
+C. Field-level lookup chain (Atlanta example):
+   - zone_code: from county/city GIS zoning layer
+   - density_max, far_max, height_max, setbacks: from zoning code 
+     reference table (zone_code → constraints). Build a static lookup 
+     for City of Atlanta zoning codes first; add Fulton/DeKalb tables 
+     after.
+   - permitted_uses: from zoning code reference table  
+   - overlay_districts: from overlay layers in GIS
+   - regulatory_model: always 'zoning' for Atlanta
+   
+   Zoning code lookup tables go in: 
+   src/services/regulatory/zoning-codes/<jurisdiction>.json
+
+D. Wire into orchestrator's enrichment chain. After municipal 
+   lookup, M02 lookup runs and writes regulatory_constraints to 
+   property_descriptions.
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — PAIRED-READ VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+Pick 5 Atlanta properties (mix of jurisdictions: City of Atlanta, 
+unincorporated Fulton, unincorporated DeKalb, Cobb, Gwinnett).
+
+For each:
+a. Run through M02 lookup
+b. Show the raw zoning layer response (literal JSON)
+c. Show the resolved RegulatoryConstraints (literal JSON from 
+   property_descriptions.regulatory_constraints)
+d. Hit GET /api/v1/properties/:parcelId/summary
+e. Confirm regulatory_constraints visible in API response with 
+   correct provenance
+
+If verification fails on any of the 5, STOP. Don't mark complete.
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — DOCUMENT THE INTERFACE FOR MIAMI-DADE / FUTURE METROS
+═══════════════════════════════════════════════════════════════════
+
+In docs/operations/M02_ADAPTER_TEMPLATE.md:
+
+1. RegulatoryConstraints interface reference (full TypeScript)
+2. Adapter implementation checklist:
+   - Identify zoning data source for the metro
+   - Build zoning_codes/<jurisdiction>.json lookup table  
+   - Implement jurisdiction resolution (city limits, county lines)
+   - Wire into orchestrator
+   - Verify via paired-read on 5 sample properties
+3. Worked example: Atlanta (just-shipped reference)
+4. Houston-specific path (placeholder section to be filled when 
+   Houston ships): regulatory_model='deed_restriction', different 
+   data sources, different normalization. The interface stays the 
+   same; the source-side logic differs.
+5. Common edge cases:
+   - Multi-jurisdiction parcels (rare but happens at boundaries)
+   - Recently-rezoned parcels (data lag)
+   - Overlay districts that supersede base zoning
+   - No data found (return RegulatoryConstraints with all-null 
+     LayeredValues + source_chain tracking what was attempted)
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/M02_ZONING_CLOSING.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Interface design (Step 1) — final RegulatoryConstraints shape
+(b) Schema migration applied
+(c) Atlanta implementation — source endpoints, lookup tables, 
+    jurisdiction resolution logic
+(d) Field-level lookup chain documented
+(e) Paired-read verification — 5 Atlanta properties with literal 
+    before/after JSON
+(f) M02 Adapter Template documented (link to file)
+(g) Pending: downstream module wiring. M03/M08/M09/M25 don't yet 
+    consume RegulatoryConstraints. Flag what those modules will 
+    need when they're updated to consume M02 output.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build Miami-Dade implementation in this dispatch (separate 
+  dispatch, drafted next)
+- Build Houston implementation in this dispatch (deferred until 
+  Houston becomes sales priority)
+- Modify M03/M08/M09/M25 to consume M02 output (separate scope —  
+  M02 ships first, then those modules get updated)
+- Skip Step 1 interface design — getting this wrong means 
+  refactoring later
+- Skip paired-read verification — same gate as Tasks A/B/C
+- Build zoning_codes lookup tables for every Atlanta jurisdiction 
+  in one dispatch. Start with City of Atlanta. Add Fulton/DeKalb 
+  in a follow-on if needed for the paired-read 5 samples to pass.
+- Hard-code parcel_id format — use the same jurisdiction-agnostic 
+  pattern other adapters use

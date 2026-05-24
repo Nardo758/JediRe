@@ -1,0 +1,161 @@
+MIAMI-DADE COMPLETE ADAPTER (Assessor + Zoning)
+
+CONTEXT
+Miami-Dade is the natural first non-Atlanta metro. Both assessor 
+and zoning data are viable per the per-county matrix:
+- Assessor: apps.miamidadepa.gov/PApublicServiceProxy/PaServicesProxy.ashx 
+  (clean JSON, includes ZoningCode field cross-referencing to 
+  Zones Dade Table)
+- Zoning: gis-mdc.opendata.arcgis.com (county Open Data Hub with 
+  Zoning category)
+
+This dispatch builds the complete Miami-Dade adapter using the M02 
+interface specced in the previous dispatch. Both data publishers in 
+one metro means a complete demo-able implementation.
+
+PREREQUISITE
+M02 Zoning module dispatch must have shipped first. This dispatch 
+consumes M02's RegulatoryConstraints interface.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVESTIGATION
+═══════════════════════════════════════════════════════════════════
+
+A. Probe the Miami-Dade endpoints (confirm they still work):
+   - apps.miamidadepa.gov/PApublicServiceProxy/PaServicesProxy.ashx
+     (address search, folio lookup)
+   - gis-mdc.opendata.arcgis.com (Zoning category)
+   - gisweb.miamidade.gov/landmanagement/CommonApp/index.html?config=appConfigs%2Fcdmp.json
+     (zoning viewer — for any data the open data hub doesn't expose)
+   - Zones Dade Table: 
+     gis-mdc.opendata.arcgis.com/datasets/zones-dade-table/explore
+
+B. Sample responses (literal JSON):
+   - Address search response
+   - Folio lookup response
+   - Zoning layer query response
+
+C. Identify jurisdictions within Miami-Dade:
+   - Unincorporated Miami-Dade (county zoning applies)
+   - City of Miami (separate zoning code, separate jurisdiction)
+   - Other incorporated cities (Coral Gables, Miami Beach, Hialeah, 
+     etc.) — each may have separate zoning authority
+   - Jurisdiction resolution logic needs to handle this
+
+D. Houston-style finding: confirm Miami-Dade is purely a 
+   'zoning' regulatory_model (no deed-restriction equivalent), 
+   so the implementation matches the Atlanta pattern.
+
+REPORT FINDINGS. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — ASSESSOR ADAPTER
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/municipal/florida/miami-dade.ts
+
+Implement lookupMiamiDade(normalized_address):
+- POST to apps.miamidadepa.gov/PApublicServiceProxy/PaServicesProxy.ashx
+- Extract: parcel_id (folio), owner, address, units, assessed_value, 
+  appraised_value, year_built, sqft, lot_size
+- Return normalized MunicipalResult shape (matches Atlanta adapters)
+- Source tag: 'municipal:miamidade_fl_pa'
+
+Register in FIPS routing: 12086 → miamiDade
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — ZONING ADAPTER (via M02 interface)
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/regulatory/m02-zoning/miami-dade.ts
+
+Implement lookupMiamiDadeRegulatory(parcel_id, normalized_address):
+- Use ZoningCode field from assessor response when available 
+  (cross-reference shortcut)
+- For full zoning constraints, query gis-mdc.opendata.arcgis.com
+  zoning layer
+- Cross-reference zone_code against Zones Dade Table (download once, 
+  cache as zoning_codes/miami-dade-county.json)
+- For City of Miami parcels: query datahub-miamigis.opendata.arcgis.com
+  separately (different jurisdiction)
+- Return normalized RegulatoryConstraints shape
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — JURISDICTION RESOLUTION
+═══════════════════════════════════════════════════════════════════
+
+Use the same jurisdiction-resolution pattern from M02 Atlanta:
+1. Census Geocoder gives Miami-Dade FIPS (12086)
+2. Check City of Miami boundary polygon (cached) → City of Miami 
+   jurisdiction
+3. Check other Miami-Dade municipality boundary polygons → 
+   appropriate city jurisdiction
+4. Otherwise: unincorporated Miami-Dade
+
+Each jurisdiction has its own zoning_codes lookup table.
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — UNBLOCK PASS ON EXISTING BLOCKED RECORDS
+═══════════════════════════════════════════════════════════════════
+
+Per the prior 978 blocked records: 352 FL records are blocked. 
+Of those, some fraction are Miami-Dade.
+
+A. Identify blocked records that resolve to Miami-Dade via Census 
+   Geocoder.
+B. Reset state from blocked_needs_user → pending.
+C. Orchestrator processes via the new adapters.
+D. Report: how many re-queued, how many complete, how many still 
+   blocked (likely some in other FL counties that still need 
+   adapters).
+
+═══════════════════════════════════════════════════════════════════
+STEP 6 — PAIRED-READ VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+Pick 5 Miami-Dade properties that unblocked in Step 5:
+- Mix of jurisdictions (City of Miami, unincorporated, suburban 
+  city if any apply)
+- Mix of property types if possible
+
+For each:
+a. Show enrichment_log entries from orchestrator (literal JSON)
+b. Hit GET /api/v1/properties/:parcelId/summary
+c. Confirm visible: assessor fields (year_built, units, owner, 
+   assessed_value, appraised_value) AND regulatory_constraints 
+   (zone_code, density_max, far_max, height_max, setbacks, 
+   permitted_uses)
+d. Confirm provenance tags correct
+
+If verification fails on any of the 5, STOP.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/MIAMI_DADE_ADAPTER_CLOSING.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Investigation findings — endpoint sample responses, jurisdiction 
+    mapping
+(b) Assessor adapter diff
+(c) Zoning adapter diff
+(d) Jurisdiction resolution logic
+(e) Unblock pass results — N re-queued, N completed, breakdown by 
+    jurisdiction
+(f) Paired-read verification — 5 properties with literal JSON
+(g) Total Miami-Dade coverage status
+(h) Pattern note: this is the second metro complete; the M02 
+    Adapter Template was successfully reused. Document any 
+    deviations from Atlanta's pattern that future metros will see.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Skip Step 1 investigation gate
+- Mark complete without paired-read verification
+- Build other Florida county adapters (separate scope)
+- Modify the M02 interface — use it as-is; if changes needed, 
+  separate dispatch
+- Hardcode zone code lookup tables — use the Zones Dade Table 
+  download mechanism
+- Build downstream module wiring (M03 etc. still don't consume M02; 
+  separate scope)
