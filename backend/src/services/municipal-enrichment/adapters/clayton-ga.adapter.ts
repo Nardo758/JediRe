@@ -1,41 +1,40 @@
 /**
- * Cherokee County GA — ArcGIS Parcels adapter
+ * Clayton County GA — ArcGIS TaxAssessor Parcels adapter
  *
  * Supports two lookup modes:
- *   - lookupCherokeeGA(address)          — query by street address
- *   - lookupCherokeeGAByParcelId(id)     — query by PIN (exact match)
+ *   - lookupClaytonGA(address)          — query by street address
+ *   - lookupClaytonGAByParcelId(id)     — query by PARCELID (exact match)
  *
- * Endpoint — Cherokee County GIS, MainLayersOnline MapServer, Parcels layer (layer 1):
- *   https://gis.cherokeecountyga.gov/arcgis/rest/services/MainLayersOnline/MapServer/1/query
+ * Endpoint — Clayton County GIS, TaxAssessor/Parcels MapServer, layer 0:
+ *   https://gis.claytoncountyga.gov/server/rest/services/TaxAssessor/Parcels/MapServer/0/query
  *
- * Available fields (Parcels layer):
- *   PIN, TIN, TINNoSpace               — parcel identifiers
- *   OWNER                              — owner name
- *   Property_Address                   — situs address (e.g. "508 Custer Way")
- *   Property_City, Property_Zip        — city and zip
- *   Acreage                            — parcel size in acres
- *   Zoning                             — zoning code
- *   TaxDistrict                        — tax district code
+ * Available fields (Tax Parcels layer):
+ *   PARCELID                           — parcel identifier (e.g. "04204 205001")
+ *   OWNERNME                           — owner name (uppercase)
+ *   SITEADDRES                         — site address (uppercase, e.g. "505 HALL RD")
+ *   SITECITY, SITEZIP5                 — city and zip (SITECITY uppercase)
+ *   APPRVAL, ASSESSVAL                 — appraised and assessed values (string)
+ *   ACERAGE                            — parcel size in acres (double)
+ *   ZONE                               — zoning code
+ *   LANDUSEC, LANDUSED                 — land use code and description
+ *   SUBDNAME                           — subdivision name
+ *   NEIGHBORHOODDESC                   — neighborhood description
+ *   STREETNO, STREETNAME               — split street number and name (uppercase)
+ *   STRUCTYPE                          — structure type
+ *   YEARBUILT, SQRFT                   — building attributes
+ *   SALEPRICE, SALEDATE               — most recent sale
  *
- * Note: Assessment/valuation data is not available in the public Parcels layer.
- *       The adapter returns PIN, owner, acreage, and zoning; assessed_value is omitted.
+ * Note: APPRVAL and ASSESSVAL are stored as strings despite being numeric values.
  *
  * Address query strategy:
- *   Property_Address LIKE '{num} %' AND UPPER(Property_Address) LIKE '%{keyword}%'
- *   Property_Address is stored in title-case with abbreviated street types
- *   (e.g. "508 Custer Way", "100 Pink Marble Dr").
- *   The two-clause pattern filters first by street number prefix then by a
- *   mid-wildcard keyword derived from the primary street-name token.
- *   When multiple hits return, the one whose city best matches the input is preferred.
+ *   UPPER(SITEADDRES) LIKE '{NUM} %' AND UPPER(SITEADDRES) LIKE '%{KEYWORD}%'
+ *   Addresses are stored in ALL CAPS (e.g. "505 HALL RD").
  *
- * Parcel ID query strategy (lookupCherokeeGAByParcelId):
- *   PIN = '{id}'   — Cherokee PINs look like "15-1237-0075" or "13-0243-0001".
- *   The input is matched exactly against the PIN field; callers must pass the
- *   canonical dashed form (e.g. "15-1237-0075"). No dash normalization is applied
- *   because the stored PIN format is always dashed in the Cherokee GIS layer.
+ * Parcel ID query strategy (lookupClaytonGAByParcelId):
+ *   PARCELID = '{id}'  — format: "04204 205001" (alphanumeric with space)
  *
- * Covers: Canton, Woodstock, Ball Ground, Holly Springs, Waleska, Waleska,
- *         Marble Hill, Nelson, Tate, and surrounding Cherokee County communities.
+ * Covers: Jonesboro (county seat), Forest Park, Morrow, Riverdale, Lake City,
+ *         Lovejoy, Rex, Ellenwood, Palmetto, Hampton, and surrounding Clayton County.
  */
 
 import { logger } from '../../../utils/logger';
@@ -49,16 +48,22 @@ import {
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
-const CHEROKEE_PARCELS_URL =
-  'https://gis.cherokeecountyga.gov/arcgis/rest/services/MainLayersOnline/MapServer/1/query';
+const CLAYTON_PARCELS_URL =
+  'https://gis.claytoncountyga.gov/server/rest/services/TaxAssessor/Parcels/MapServer/0/query';
 
 const OUT_FIELDS = [
-  'PIN', 'TIN', 'TINNoSpace',
-  'OWNER',
-  'Property_Address', 'Property_City', 'Property_Zip',
-  'Acreage',
-  'Zoning',
-  'TaxDistrict',
+  'PARCELID',
+  'OWNERNME',
+  'SITEADDRES', 'SITECITY', 'SITEZIP5',
+  'APPRVAL', 'ASSESSVAL',
+  'ACERAGE',
+  'ZONE',
+  'LANDUSEC', 'LANDUSED',
+  'SUBDNAME',
+  'NEIGHBORHOODDESC',
+  'STRUCTYPE',
+  'YEARBUILT', 'SQRFT',
+  'SALEPRICE', 'SALEDATE',
 ].join(',');
 
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -78,7 +83,7 @@ async function fetchArcGIS(url: string): Promise<{ data?: any; error?: string }>
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     if (attempt > 0) {
       const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1) + Math.random() * 200;
-      logger.debug(`[cherokee-ga] retry ${attempt}/${MAX_RETRIES - 1} after ${Math.round(delay)}ms`);
+      logger.debug(`[clayton-ga] retry ${attempt}/${MAX_RETRIES - 1} after ${Math.round(delay)}ms`);
       await sleep(delay);
     }
 
@@ -90,13 +95,13 @@ async function fetchArcGIS(url: string): Promise<{ data?: any; error?: string }>
       clearTimeout(timer);
     } catch (err: any) {
       lastError = err?.name === 'AbortError' ? 'timeout' : (err?.message ?? String(err));
-      logger.warn(`[cherokee-ga] fetch attempt ${attempt + 1} error: ${lastError}`);
+      logger.warn(`[clayton-ga] fetch attempt ${attempt + 1} error: ${lastError}`);
       continue;
     }
 
     if (!resp.ok) {
       lastError = `HTTP ${resp.status}`;
-      logger.warn(`[cherokee-ga] ArcGIS HTTP ${resp.status} (attempt ${attempt + 1})`);
+      logger.warn(`[clayton-ga] ArcGIS HTTP ${resp.status} (attempt ${attempt + 1})`);
       if (resp.status !== 429 && resp.status < 500) {
         if (resp.status !== 400) break;
       }
@@ -114,7 +119,7 @@ async function fetchArcGIS(url: string): Promise<{ data?: any; error?: string }>
     if (data?.error) {
       const msg: string = data.error?.message ?? JSON.stringify(data.error);
       lastError = msg;
-      logger.warn(`[cherokee-ga] ArcGIS body error (attempt ${attempt + 1}): ${msg}`);
+      logger.warn(`[clayton-ga] ArcGIS body error (attempt ${attempt + 1}): ${msg}`);
       if (msg.toLowerCase().includes('invalid query') || msg.toLowerCase().includes('invalid parameter')) {
         continue;
       }
@@ -124,7 +129,7 @@ async function fetchArcGIS(url: string): Promise<{ data?: any; error?: string }>
     return { data };
   }
 
-  logger.warn(`[cherokee-ga] all ${MAX_RETRIES} attempts failed: ${lastError}`);
+  logger.warn(`[clayton-ga] all ${MAX_RETRIES} attempts failed: ${lastError}`);
   return { error: lastError };
 }
 
@@ -132,35 +137,33 @@ async function fetchArcGIS(url: string): Promise<{ data?: any; error?: string }>
 
 function buildAddressWhere(address: string): string {
   // Strip city/state/zip (everything after first comma), then normalize.
-  // normalizeAddressFull abbreviates street types (Road→RD, Drive→DR etc.)
-  // and expands compound directions (Northeast→NE etc.).
   const streetOnly = address.replace(/,.*$/, '');
   const normalized = normalizeAddressFull(streetOnly);
   const num     = extractStreetNumber(normalized);
   const keyword = extractStreetKeyword(normalized);
 
   if (num && keyword) {
-    // Property_Address stored as "508 Custer Way" — LIKE '{num} %' pins the street number,
-    // mid-wildcard on keyword handles stored abbreviations vs. input variants.
-    return `Property_Address LIKE '${sanitize(num, 12)} %' AND UPPER(Property_Address) LIKE '%${sanitize(keyword.toUpperCase(), 80)}%'`;
+    // SITEADDRES is stored in ALL CAPS (e.g. "505 HALL RD").
+    // UPPER() is applied for safety; keyword is uppercased for the mid-wildcard.
+    return `UPPER(SITEADDRES) LIKE '${sanitize(num, 12)} %' AND UPPER(SITEADDRES) LIKE '%${sanitize(keyword.toUpperCase(), 80)}%'`;
   }
 
-  // Fallback: full address LIKE scan
-  const safeAddr = sanitize(normalized.replace(/\s+/g, '%'), 100);
-  return `UPPER(Property_Address) LIKE '%${safeAddr}%'`;
+  // Fallback: full address wildcard scan
+  const safeAddr = sanitize(normalized.toUpperCase().replace(/\s+/g, '%'), 100);
+  return `UPPER(SITEADDRES) LIKE '%${safeAddr}%'`;
 }
 
 function buildParcelWhere(parcelId: string): string {
-  // Cherokee PINs are formatted like "15-1237-0075".
-  // Accept both forms with and without dashes.
+  // Clayton PINs use format "04204 205001" (alphanumeric with embedded space/hyphens).
+  // Accept the ID as-is after sanitization; callers must pass the canonical form.
   const trimmed = sanitize(parcelId.trim(), 30);
-  return `PIN = '${trimmed}'`;
+  return `PARCELID = '${trimmed}'`;
 }
 
 // ─── City-match scoring (prefer parcel whose city matches input) ───────────────
 
 function cityMatchScore(attrs: Record<string, any>, inputAddress: string): number {
-  const stored = (attrs.Property_City ?? '').toLowerCase();
+  const stored = (attrs.SITECITY ?? '').toLowerCase().trim();
   const input  = inputAddress.toLowerCase();
   if (!stored) return 0;
   return input.includes(stored) || stored.split(' ').some((w: string) => w.length > 3 && input.includes(w)) ? 1 : 0;
@@ -169,20 +172,24 @@ function cityMatchScore(attrs: Record<string, any>, inputAddress: string): numbe
 // ─── Response mapping ─────────────────────────────────────────────────────────
 
 function mapAttrsToResult(attrs: Record<string, any>, inputAddress?: string): Partial<MunicipalLookupResult> {
-  const acres = (typeof attrs.Acreage === 'number' && attrs.Acreage > 0) ? attrs.Acreage : undefined;
+  const acres = (typeof attrs.ACERAGE === 'number' && attrs.ACERAGE > 0) ? attrs.ACERAGE : undefined;
+  const appraisedVal = attrs.APPRVAL ? parseFloat(attrs.APPRVAL) : undefined;
 
   return {
-    parcel_id:    attrs.PIN              ?? null,
-    address:      attrs.Property_Address ?? (inputAddress ?? null),
-    owner:        attrs.OWNER            ?? null,
-    land_acres:   acres,
-    land_use_code: attrs.Zoning          ?? null,
-    tax_district: attrs.TaxDistrict      ?? null,
-    neighborhood: null,
-    county:       'Cherokee',
-    state:        'GA',
-    source:       'arcgis_cherokee_ga',
-    raw:          attrs,
+    parcel_id:        attrs.PARCELID        ?? null,
+    address:          attrs.SITEADDRES      ?? (inputAddress ?? null),
+    owner:            attrs.OWNERNME?.trim() ?? null,
+    land_acres:       acres,
+    land_use_code:    attrs.LANDUSEC        ?? attrs.ZONE ?? null,
+    neighborhood:     attrs.NEIGHBORHOODDESC ?? attrs.SUBDNAME ?? null,
+    tax_district:     null,
+    assessed_value:   (!isNaN(appraisedVal as number) && (appraisedVal as number) > 0)
+                        ? appraisedVal
+                        : undefined,
+    county:           'Clayton',
+    state:            'GA',
+    source:           'arcgis_clayton_ga',
+    raw:              attrs,
   };
 }
 
@@ -199,7 +206,7 @@ async function queryArcGIS(
     f: 'json',
   });
 
-  const url = `${CHEROKEE_PARCELS_URL}?${params.toString()}`;
+  const url = `${CLAYTON_PARCELS_URL}?${params.toString()}`;
   const { data, error } = await fetchArcGIS(url);
   if (error) return { status: 'error', error };
 
@@ -221,8 +228,8 @@ async function queryArcGIS(
   const mapped = mapAttrsToResult(attrs, inputAddress);
 
   logger.debug(
-    `[cherokee-ga] resolved → PIN ${mapped.parcel_id}, owner: ${mapped.owner}, ` +
-    `city: ${attrs.Property_City ?? '?'}, zoning: ${attrs.Zoning ?? '?'}`,
+    `[clayton-ga] resolved → PARCELID ${mapped.parcel_id}, owner: ${mapped.owner}, ` +
+    `city: ${attrs.SITECITY ?? '?'}, zone: ${attrs.ZONE ?? '?'}, appraised: ${attrs.APPRVAL ?? '?'}`,
   );
 
   return {
@@ -234,16 +241,16 @@ async function queryArcGIS(
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/** Look up a Cherokee County parcel by street address. */
-export async function lookupCherokeeGA(address: string): Promise<MunicipalLookupResult> {
+/** Look up a Clayton County parcel by street address. */
+export async function lookupClaytonGA(address: string): Promise<MunicipalLookupResult> {
   const where = buildAddressWhere(address);
-  logger.debug(`[cherokee-ga] address lookup: "${address}" → where: ${where}`);
+  logger.debug(`[clayton-ga] address lookup: "${address}" → where: ${where}`);
   return queryArcGIS(where, address);
 }
 
-/** Look up a Cherokee County parcel by its PIN (exact match). */
-export async function lookupCherokeeGAByParcelId(parcelId: string): Promise<MunicipalLookupResult> {
+/** Look up a Clayton County parcel by its PARCELID (exact match, e.g. "04204 205001"). */
+export async function lookupClaytonGAByParcelId(parcelId: string): Promise<MunicipalLookupResult> {
   const where = buildParcelWhere(parcelId);
-  logger.debug(`[cherokee-ga] parcel-id lookup: "${parcelId}" → where: ${where}`);
+  logger.debug(`[clayton-ga] parcel-id lookup: "${parcelId}" → where: ${where}`);
   return queryArcGIS(where);
 }

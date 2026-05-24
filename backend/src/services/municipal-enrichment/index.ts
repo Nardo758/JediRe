@@ -15,6 +15,8 @@
  *       → Cobb County ArcGIS adapter       (Cumberland/Vinings/Smyrna area)
  *       → Gwinnett County ArcGIS adapter   (Duluth/Lawrenceville/Peachtree Corners/Norcross)
  *       → Cherokee County ArcGIS adapter   (Canton/Woodstock/Ball Ground area)
+ *       → Clayton County ArcGIS adapter   (Jonesboro/Forest Park/Morrow/Riverdale area)
+ *       [Henry County: no publicly accessible ArcGIS endpoint found]
  *   NC → Mecklenburg County ArcGIS adapter (Charlotte)
  *   TN → Davidson County ArcGIS adapter    (Nashville)
  *   TX → Dallas County DCAD adapter        (Dallas)
@@ -36,6 +38,7 @@ import { lookupDeKalbGA, lookupDeKalbGAByParcelId }           from './adapters/d
 import { lookupCobbGA, lookupCobbGAByParcelId }               from './adapters/cobb-ga.adapter';
 import { lookupGwinnettGA, lookupGwinnettGAByParcelId }       from './adapters/gwinnett-ga.adapter';
 import { lookupCherokeeGA, lookupCherokeeGAByParcelId }       from './adapters/cherokee-ga.adapter';
+import { lookupClaytonGA, lookupClaytonGAByParcelId }         from './adapters/clayton-ga.adapter';
 import { lookupMecklenburgNC, lookupMecklenburgNCByParcelId } from './adapters/mecklenburg-nc.adapter';
 import { lookupDavidsonTN, lookupDavidsonTNByParcelId }       from './adapters/davidson-tn.adapter';
 import { lookupDallasTX, lookupDallasTXByParcelId }           from './adapters/dallas-tx.adapter';
@@ -88,7 +91,11 @@ class MunicipalEnrichmentService {
         if (gwinnettResult.status === 'ok') return gwinnettResult;
         // Gwinnett miss → try Cherokee (Canton/Woodstock/Ball Ground area)
         logger.debug(`[municipal-enrichment] Gwinnett miss (${gwinnettResult.status}), falling back to Cherokee for "${address}"`);
-        return lookupCherokeeGA(address.trim());
+        const cherokeeResult = await lookupCherokeeGA(address.trim());
+        if (cherokeeResult.status === 'ok') return cherokeeResult;
+        // Cherokee miss → try Clayton (Jonesboro/Forest Park/Morrow/Riverdale area)
+        logger.debug(`[municipal-enrichment] Cherokee miss (${cherokeeResult.status}), falling back to Clayton for "${address}"`);
+        return lookupClaytonGA(address.trim());
       }
 
       case 'NC':
@@ -168,7 +175,11 @@ class MunicipalEnrichmentService {
         if (gwinnettResult.status === 'ok') return gwinnettResult;
         // Gwinnett miss → try Cherokee (Canton/Woodstock/Ball Ground area)
         logger.debug(`[municipal-enrichment] Gwinnett parcel-id miss (${gwinnettResult.status}), falling back to Cherokee for "${parcelId}"`);
-        return lookupCherokeeGAByParcelId(parcelId.trim());
+        const cherokeeResult = await lookupCherokeeGAByParcelId(parcelId.trim());
+        if (cherokeeResult.status === 'ok') return cherokeeResult;
+        // Cherokee miss → try Clayton (Jonesboro/Forest Park/Morrow/Riverdale area)
+        logger.debug(`[municipal-enrichment] Cherokee parcel-id miss (${cherokeeResult.status}), falling back to Clayton for "${parcelId}"`);
+        return lookupClaytonGAByParcelId(parcelId.trim());
       }
 
       case 'NC':
