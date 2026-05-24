@@ -39,6 +39,7 @@
 
 import { logger } from '../../../utils/logger';
 import type { MunicipalLookupResult } from '../types';
+import { extractStreetNumber } from '../address-normalize';
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
@@ -250,6 +251,10 @@ async function queryParcelByPoint(pt: GeocodedPoint, inputAddress: string): Prom
  * Used when Census Geocoder already provided coordinates — skips the Cobb
  * CAM_Locator entirely.  ArcGIS auto-reprojects from 4326 to the layer's
  * native WKID (102100 Web Mercator) via the inSR parameter.
+ *
+ * When the point lands on a road right-of-way (0 features returned), falls
+ * back to a 50m envelope search filtered by street-number proximity before
+ * giving up and returning not_found to the caller (which then tries CAM_Locator).
  */
 async function queryParcelByWgs84(lat: number, lng: number, inputAddress: string): Promise<MunicipalLookupResult> {
   const geometry = JSON.stringify({
@@ -273,14 +278,109 @@ async function queryParcelByWgs84(lat: number, lng: number, inputAddress: string
   if (error) return { status: 'error', error };
 
   const features: any[] = data?.features ?? [];
-  if (features.length === 0) return { status: 'not_found' };
 
-  const parcelAttrs: Record<string, any> = features[0].attributes ?? {};
+  if (features.length > 0) {
+    const parcelAttrs: Record<string, any> = features[0].attributes ?? {};
+    const pin = parcelAttrs.PIN ?? parcelAttrs.PARCEL_ID ?? null;
+    const assessmentAttrs = pin ? await fetchAssessmentByPin(pin) : null;
+    return mapAttrsToResult(parcelAttrs, assessmentAttrs, inputAddress, features.length);
+  }
+
+  // ── Envelope fallback ───────────────────────────────────────────────────────
+  // The Census point landed on a road centerline rather than a parcel polygon
+  // (e.g. "3000 Shadowood Pkwy SE").  Try a ±0.0005° (≈50m) bounding-box
+  // search and return the single parcel whose ST_NUMBER is within ±50 of the
+  // input house number.  If zero or multiple candidates survive, return
+  // not_found so the caller can fall back to the CAM_Locator.
+  const rawStreetNum = extractStreetNumber(inputAddress);
+  if (rawStreetNum) {
+    const inputStreetNum = parseInt(rawStreetNum, 10);
+    if (!isNaN(inputStreetNum)) {
+      logger.debug(
+        `[cobb-ga] WGS84 point miss for "${inputAddress}" — trying envelope fallback ` +
+        `(streetNum=${inputStreetNum}, lat=${lat.toFixed(5)}, lng=${lng.toFixed(5)})`,
+      );
+      const envelopeResult = await queryParcelByEnvelope(lat, lng, inputStreetNum, inputAddress);
+      if (envelopeResult.status !== 'not_found') return envelopeResult;
+    }
+  }
+
+  return { status: 'not_found' };
+}
+
+// Tolerance constants for envelope fallback
+const ENVELOPE_BUF_DEG = 0.0005;   // ≈50m at mid-latitudes
+const ST_NUM_TOLERANCE = 50;       // parcel ST_NUMBER must be within ±50 of input
+
+/**
+ * Envelope fallback for road-centerline Census point misses.
+ *
+ * Issues a ±ENVELOPE_BUF_DEG (≈50m) bounding-box query around the Census
+ * point and returns the single parcel whose ST_NUMBER is within ±ST_NUM_TOLERANCE
+ * of the input house number.  Returns not_found when zero or multiple parcels
+ * survive — ambiguous results are never guessed.
+ */
+async function queryParcelByEnvelope(
+  lat: number,
+  lng: number,
+  inputStreetNum: number,
+  inputAddress: string,
+): Promise<MunicipalLookupResult> {
+  const envelope = JSON.stringify({
+    xmin: lng - ENVELOPE_BUF_DEG,
+    ymin: lat - ENVELOPE_BUF_DEG,
+    xmax: lng + ENVELOPE_BUF_DEG,
+    ymax: lat + ENVELOPE_BUF_DEG,
+    spatialReference: { wkid: 4326 },
+  });
+
+  const params = new URLSearchParams({
+    geometry:       envelope,
+    geometryType:   'esriGeometryEnvelope',
+    spatialRel:     'esriSpatialRelIntersects',
+    inSR:           '4326',
+    outFields:      PARCEL_OUT_FIELDS,
+    returnGeometry: 'false',
+    f:              'json',
+  });
+
+  const url = `${COBB_PARCELS_URL}?${params.toString()}`;
+  const { data, error } = await fetchWithRetry(url, 'envelope-fallback');
+  if (error) {
+    logger.warn(`[cobb-ga] envelope fallback error for "${inputAddress}": ${error}`);
+    return { status: 'error', error };
+  }
+
+  const features: any[] = data?.features ?? [];
+  logger.debug(
+    `[cobb-ga] envelope fallback: ${features.length} raw candidates for "${inputAddress}"`,
+  );
+
+  // Filter to parcels whose ST_NUMBER is within ±ST_NUM_TOLERANCE of input
+  const candidates = features.filter((f) => {
+    const stNum = f.attributes?.ST_NUMBER;
+    if (stNum == null) return false;
+    return Math.abs(Number(stNum) - inputStreetNum) <= ST_NUM_TOLERANCE;
+  });
+
+  logger.debug(
+    `[cobb-ga] envelope fallback: ${candidates.length} candidate(s) after ST_NUMBER±${ST_NUM_TOLERANCE} filter ` +
+    `(input=${inputStreetNum}): ${candidates.map((f) => `ST_NUMBER=${f.attributes?.ST_NUMBER} PIN=${f.attributes?.PIN}`).join(', ')}`,
+  );
+
+  // Ambiguous — two or more parcels pass the filter, so we can't choose safely
+  if (candidates.length !== 1) return { status: 'not_found' };
+
+  const parcelAttrs: Record<string, any> = candidates[0].attributes ?? {};
   const pin = parcelAttrs.PIN ?? parcelAttrs.PARCEL_ID ?? null;
 
   const assessmentAttrs = pin ? await fetchAssessmentByPin(pin) : null;
 
-  return mapAttrsToResult(parcelAttrs, assessmentAttrs, inputAddress, features.length);
+  logger.debug(
+    `[cobb-ga] envelope fallback resolved → PIN ${pin}, ST_NUMBER=${parcelAttrs.ST_NUMBER}`,
+  );
+
+  return mapAttrsToResult(parcelAttrs, assessmentAttrs, inputAddress, candidates.length);
 }
 
 // ─── CobbParcels PIN query ─────────────────────────────────────────────────────
