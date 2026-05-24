@@ -46,8 +46,20 @@
 | SAGIS statewide parcels | `https://maps.sagis.org/arcgis/rest/services/` | Unreachable |
 | Georgia DOT geocortex | `https://geocortex.gis.georgia.gov/arcgis/` | Unreachable |
 
-- **Root cause:** Henry County GIS servers are on a county-managed network that blocks cloud/datacenter IP ranges. All 5 Henry County-operated GIS domains are unreachable. Their ArcGIS Online org (`hcgov.maps.arcgis.com`) has zero public-facing feature services. Regrid returns a 400 for that FeatureServer path. qPublic is Cloudflare-WAF-blocked (documented limitation in `replit.md`).
-- **Outcome:** `henry-ga.adapter.ts` stub created; FIPS 13151 wired into router. Returns `status: 'not_implemented'` with `source: 'arcgis_henry_ga'`. Follow-up #1029 will implement when Henry's endpoint is made publicly accessible.
+- **Root cause:** Henry County GIS servers are not publicly accessible from any external IP — the servers are entirely offline to the internet (not merely IP-filtered). All 5 county-operated GIS domains return connection refused or DNS timeout. Their ArcGIS Online org (`hcgov.maps.arcgis.com`) has zero public-facing feature services. Regrid returns a 400 for that FeatureServer path. qPublic is Cloudflare-WAF-blocked (documented limitation in `replit.md`).
+
+- **Cloudflare Workers proxy validation (Phase A — 2026-05-24):** A CF Worker (`jedire-county-proxy-validation`) was deployed to confirm whether the blocks are IP-range-based (bypassable via CF edge) or server-level. Results:
+
+  | County | From Replit | From CF Worker | CF error | Conclusion |
+  |---|---|---|---|---|
+  | Henry GA | refused | 530 (code 1016) | Origin unreachable | Server offline — not IP-filtered |
+  | Broward FL | refused | 521 | Web server down | Server offline |
+  | Harris TX | refused | 530 (code 1016) | Origin unreachable | Server offline |
+  | Miami-Dade FL | 200 | 200 | N/A | Already reachable directly |
+
+  CF error 1016 = Cloudflare cannot resolve or reach the origin host. This confirms the servers are genuinely offline to the public internet; the Workers proxy provides no benefit. The validation Worker was deleted after Phase A.
+
+- **Outcome:** `henry-ga.adapter.ts` stub created; FIPS 13151 wired into router. Returns `status: 'not_implemented'` with `source: 'arcgis_henry_ga'`. GA fallback chain fixed to return `not_found` (not `not_implemented`) when all 7 adapters miss. Follow-up #1029 will implement when Henry's endpoint is made publicly accessible.
 - **FIPS router:** Added as 13151 in this task.
 
 ---
@@ -328,7 +340,7 @@ All tests run 2026-05-24 against live production ArcGIS servers.
 }
 ```
 
-Note: Henry County GIS infrastructure is not accessible from cloud IP ranges. All 10+ endpoints enumerated in §1.4 were tested exhaustively on 2026-05-24. Follow-up #1029 tracks live implementation when Henry's endpoint becomes accessible.
+Note: Henry County GIS infrastructure is not accessible from cloud IP ranges. All 10+ endpoints enumerated in §1.4 were tested exhaustively on 2026-05-24, including via a Cloudflare Workers proxy (see §1.4 addendum). Follow-up #1029 tracks live implementation when Henry's endpoint becomes accessible.
 
 ---
 
