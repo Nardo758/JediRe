@@ -1,0 +1,80 @@
+Implement the Data Library Consolidation + Rollups Stub dispatch for the JediRe project.
+
+## Context
+Multiple "Data Library" surfaces exist. Consolidate them into one tabbed view under Settings.
+
+## Existing files to work with:
+
+1. `frontend/src/pages/settings/DataLibrarySettings.tsx` — asset database view (299 assets). Becomes tabbed container.
+2. `frontend/src/pages/ArchiveLibraryPage.tsx` — file browser (1695 files). Content moves to Files tab.
+3. `frontend/src/pages/ArchiveInboxPage.tsx` — intake job queue viewer. Content moves to Inbox tab.
+4. `frontend/src/pages/TerminalPage.tsx` line 2903 — AR ARCHIVE button to remove.
+5. `frontend/src/components/layout/MainLayout.tsx` line 100 — AR ARCHIVE nav entry, update path.
+6. `frontend/src/App.tsx` — routes for /archive/library, /archive/inbox, /archive/upload, /archive/properties/:parcelId
+7. `frontend/src/pages/ArchivePropertyPage.tsx` — per-property page, update breadcrumb links.
+
+## Implementation
+
+### 1. Tab navigation on DataLibrarySettings
+Modify DataLibrarySettings.tsx to add Bloomberg-style tab navigation: ASSETS | FILES | INBOX | ROLLUPS
+- Tab routing via URL query param: ?tab=assets (default), ?tab=files, ?tab=inbox, ?tab=rollups
+- Active tab has orange highlight
+- Bulk Upload & Cloud Sync section stays at top visible across all tabs
+
+### 2. Assets tab (default)
+Keep existing asset database rendering as-is. Add FILES column showing count of files per asset. Count is clickable -> navigates to Files tab filtered to that asset's parcel_id.
+
+### 3. Files tab
+Copy the file browser from ArchiveLibraryPage.tsx into a subcomponent within DataLibrarySettings.tsx. Preserve ALL functionality:
+- File count header
+- Search (filename or property)
+- Type filter chips (All / OM / T-12 / Rent Roll / Tax Bill / Leasing / Other)
+- Status filter chips (All / success / partial / failed / unparsed)
+- Table columns (FILENAME / PROPERTY / TYPE / STATUS / SIZE / UPLOADED + download)
+- Pagination
+Add cross-linking: property name links to Assets tab, ?tab=files&parcel_id=X filter support.
+
+### 4. Inbox tab
+Copy intake job queue from ArchiveInboxPage.tsx into subcomponent. Preserve all functionality.
+
+### 5. Rollups tab (STUB)
+Lightweight grouping from property_descriptions:
+- GROUP BY product_type (where populated): N=count Avg Units: avg Avg Rent: avg
+- GROUP BY msa (where populated): N=count Avg Units: avg Avg Rent: avg
+- Show unclassified count
+- [Trends][Per Unit][Distribution] buttons visible but non-functional
+- "FULL ROLLUPS COMING SOON" info box
+
+### 6. Redirect old routes
+- /archive/library -> /settings/data-library?tab=files
+- /archive/inbox -> /settings/data-library?tab=inbox
+Keep /archive/upload and /archive/properties/:parcelId as-is.
+
+### 7. Remove AR ARCHIVE from Terminal F-key bar
+In TerminalPage.tsx line ~2903, remove the button.
+
+### 8. Update MainLayout sidebar AR nav
+Change path from /archive/library to /settings/data-library?tab=assets
+
+### 9. Update per-property page breadcrumbs
+In ArchivePropertyPage.tsx, update "Library" and "Back to Library" links to /settings/data-library?tab=files
+
+### 10. Backend API endpoint
+Add GET /api/v1/archive/asset-file-counts returning { [parcel_id]: count } from data_library_files joined on parcel_id or asset_id. Add it to an appropriate routes file.
+
+### Style
+- Match existing Bloomberg terminal theme (dark bg, orange accents, monospace)
+- Tab bar matches the breadcrumb style from ArchiveLibraryPage
+- Don't redesign existing components — just relocate them
+
+### What NOT to do
+- Don't touch ArchivePropertyPage.tsx per-property page (only breadcrumb links)
+- Don't touch ArchiveUploadPage.tsx
+- Don't build full Rollups
+- Don't add saved_cohorts table
+- Don't redesign Assets table (only add FILES column)
+- Don't redesign Files table (only relocate)
+- No "while I'm in here" fixes
+
+### Git
+Commit all changes with message: "feat(archive): consolidate Data Library surfaces into tabbed view"

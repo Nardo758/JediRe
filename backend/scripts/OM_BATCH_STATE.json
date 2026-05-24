@@ -1,4 +1,616 @@
 {
+    "The Mosby":  {
+                      "units":  null,
+                      "done":  true,
+                      "yearBuilt":  null,
+                      "address":  ""
+                  },
+    "Preserve at Mill Creek":  {
+                                   "state":  "GA",
+                                   "done":  true,
+                                   "yearBuilt":  2001,
+                                   "zip":  "",
+                                   "city":  "Buford",
+                                   "units":  400,
+                                   "stories":  null,
+                                   "address":  "1400 Mall of Georgia Boulevard"
+                               },
+    "Factory at Garco":  {
+                             "state":  "SC",
+                             "done":  true,
+                             "yearBuilt":  null,
+                             "zip":  "",
+                             "city":  "North Charleston",
+                             "units":  null,
+                             "stories":  null,
+                             "address":  "4993 Ohear Ave"
+                         },
+    "Charlotte Pike":  {
+                           "units":  298,
+                           "done":  true,
+                           "yearBuilt":  null,
+                           "address":  ""
+                       },
+    "Cadence Music Factory":  {
+                                  "state":  "NC",
+                                  "done":  true,
+                                  "yearBuilt":  2017,
+                                  "zip":  "",
+                                  "city":  "Charlotte",
+                                  "units":  205,
+                                  "stories":  5,
+                                  "address":  "606 NC Music Factory Blvd"
+                              },
+    "1420 Magnolia":  {
+                          "units":  null,
+                          "done":  true,
+                          "yearBuilt":  null,
+                          "address":  ""
+                      },
+    "Park Ave":  {
+                     "units":  null,
+                     "done":  true,
+                     "yearBuilt":  null,
+                     "address":  ""
+                 },
+    "The Residences at 3000 Bardin":  {
+                                          "units":  252,
+                                          "done":  true,
+                                          "yearBuilt":  null,
+                                          "address":  ""
+                                      },
+    "Broadstone Sugar Hill":  {
+                                  "units":  null,
+                                  "done":  true,
+                                  "yearBuilt":  null,
+                                  "address":  ""
+                              },
+    "Uptown at Liberty Park":  {
+                                   "state":  "FL",
+                                   "done":  true,
+                                   "yearBuilt":  null,
+                                   "zip":  "",
+                                   "city":  "Cape Coral",
+                                   "units":  null,
+                                   "stories":  null,
+                                   "address":  "2505-2585 Liberty Park Dr"
+                               },
+    "The Mid - Lake worth":  {
+                                 "units":  null,
+                                 "done":  true,
+                                 "yearBuilt":  null,
+                                 "address":  ""
+                             },
+    "Patterson Place":  {
+                            "units":  null,
+                            "done":  true,
+                            "yearBuilt":  null,
+                            "address":  ""
+                        },
+    "The Maven":  {
+                      "state":  "GA",
+                      "done":  true,
+                      "yearBuilt":  null,
+                      "zip":  "",
+                      "city":  "SUWANEE",
+                      "units":  null,
+                      "stories":  null,
+                      "address":  "0 STONECYPHER RD"
+                  },
+    "Siena Round Rock":  {
+                             "error":  "Unknown error",
+                             "done":  true
+                         },
+    "The Station Fleming Island":  {
+                                       "units":  null,
+                                       "done":  true,
+                                       "yearBuilt":  null,
+                                       "address":  ""
+                                   },
+    "District Station":  {
+                             "units":  null,
+                             "done":  true,
+                             "yearBuilt":  null,
+                             "address":  ""
+                         },
+    "Alta Tech Ridge":  {
+                            "units":  null,
+                            "done":  true,
+                            "yearBuilt":  2019,
+                            "address":  ""
+                        },
+    "Stonebriar":  {
+                       "state":  "TX",
+                       "done":  true,
+                       "yearBuilt":  2006,
+                       "zip":  "",
+                       "city":  "The Colony",
+                       "units":  294,
+                       "stories":  3,
+                       "address":  "5620 S Colony Blvd."
+                   },
+    "Harbor at Westshore":  {
+                                "error":  "PDF appears to be empty or unparseable",
+                                "done":  true
+                            },
+    "Addison on Long Beach":  {
+                                  "units":  null,
+                                  "done":  true,
+                                  "yearBuilt":  null,
+                                  "address":  ""
+                              },
+    "Sugarloaf Grove":  {
+                            "state":  "GA",
+                            "done":  true,
+                            "yearBuilt":  null,
+                            "zip":  "",
+                            "city":  "Lawrenceville",
+                            "units":  null,
+                            "stories":  null,
+                            "address":  "1850 Duluth Highway"
+                        },
+    "Alta East":  {
+                      "state":  "GA",
+                      "done":  true,
+                      "yearBuilt":  2021,
+                      "zip":  "",
+                      "city":  "Atlanta",
+                      "units":  250,
+                      "stories":  6,
+                      "address":  "777 Memorial Dr SE"
+                  },
+    "Vista Verde":  {
+                        "units":  440,
+                        "done":  true,
+                        "yearBuilt":  null,
+                        "address":  ""
+                    },
+    "Broadstone Highland Creek":  {
+                                      "units":  null,
+                                      "done":  true,
+                                      "yearBuilt":  null,
+                                      "address":  ""
+                                  },
+    "Sentosa Riverview":  {
+                              "state":  "FL",
+                              "done":  true,
+                              "yearBuilt":  2022,
+                              "zip":  "",
+                              "city":  "Riverview",
+                              "units":  368,
+                              "stories":  3,
+                              "address":  "10110 US Hwy 301"
+                          },
+    "Exchange Orange Park":  {
+                                 "state":  "FL",
+                                 "done":  true,
+                                 "yearBuilt":  2023,
+                                 "zip":  "",
+                                 "city":  "Jacksonville",
+                                 "units":  312,
+                                 "stories":  3,
+                                 "address":  "4295 Collins Road"
+                             },
+    "Franklin Jones":  {
+                           "state":  "NC",
+                           "done":  true,
+                           "yearBuilt":  null,
+                           "zip":  "",
+                           "city":  "Raleigh",
+                           "units":  null,
+                           "stories":  null,
+                           "address":  "930 Vintage Jones Way"
+                       },
+    "Matthews Reserve":  {
+                             "units":  null,
+                             "done":  true,
+                             "yearBuilt":  null,
+                             "address":  ""
+                         },
+    "Citadel Lookout":  {
+                            "units":  303,
+                            "done":  true,
+                            "yearBuilt":  null,
+                            "address":  ""
+                        },
+    "Novel Upper Westside":  {
+                                 "units":  345,
+                                 "done":  true,
+                                 "yearBuilt":  null,
+                                 "address":  ""
+                             },
+    "The Village at Westland Cove":  {
+                                         "state":  "TN",
+                                         "done":  true,
+                                         "yearBuilt":  2019,
+                                         "zip":  "",
+                                         "city":  "Knoxville",
+                                         "units":  240,
+                                         "stories":  null,
+                                         "address":  "9635 Westland Cove Way"
+                                     },
+    "Waterford Place - Morrisville":  {
+                                          "state":  "NC",
+                                          "done":  true,
+                                          "yearBuilt":  null,
+                                          "zip":  "",
+                                          "city":  "Morrisville",
+                                          "units":  300,
+                                          "stories":  null,
+                                          "address":  "1100 China Dr"
+                                      },
+    "Riverbend":  {
+                      "units":  470,
+                      "done":  true,
+                      "yearBuilt":  null,
+                      "address":  ""
+                  },
+    "Lucent":  {
+                   "state":  "TX",
+                   "done":  true,
+                   "yearBuilt":  2021,
+                   "zip":  "",
+                   "city":  "Austin",
+                   "units":  368,
+                   "stories":  3,
+                   "address":  "12201 Dessau Road"
+               },
+    "Citizen House":  {
+                          "units":  334,
+                          "done":  true,
+                          "yearBuilt":  2023,
+                          "address":  ""
+                      },
+    "The Resever at Glenn Laurel":  {
+                                        "state":  "NC",
+                                        "done":  true,
+                                        "yearBuilt":  2019,
+                                        "zip":  "",
+                                        "city":  "Clayton",
+                                        "units":  240,
+                                        "stories":  3,
+                                        "address":  "20 Pine Hall Dr"
+                                    },
+    "Sweetwater Vista":  {
+                             "units":  null,
+                             "done":  true,
+                             "yearBuilt":  null,
+                             "address":  ""
+                         },
+    "860 South":  {
+                      "units":  null,
+                      "done":  true,
+                      "yearBuilt":  null,
+                      "address":  ""
+                  },
+    "The Piedmont":  {
+                         "error":  "PDF appears to be empty or unparseable",
+                         "done":  true
+                     },
+    "Bainbridge Research Park":  {
+                                     "state":  "NC",
+                                     "done":  true,
+                                     "yearBuilt":  2020,
+                                     "zip":  "",
+                                     "city":  "Charlotte",
+                                     "units":  304,
+                                     "stories":  null,
+                                     "address":  "7110 Verdant Hill Road"
+                                 },
+    "Junction at Antiquity":  {
+                                  "units":  null,
+                                  "done":  true,
+                                  "yearBuilt":  null,
+                                  "address":  ""
+                              },
+    "Build to Rent":  {
+                          "units":  null,
+                          "done":  true,
+                          "yearBuilt":  null,
+                          "address":  ""
+                      },
+    "Broadstone Trailside":  {
+                                 "units":  263,
+                                 "done":  true,
+                                 "yearBuilt":  null,
+                                 "address":  ""
+                             },
+    "Vecina":  {
+                   "units":  297,
+                   "done":  true,
+                   "yearBuilt":  null,
+                   "address":  ""
+               },
+    "Cadence Sugar Hill":  {
+                               "units":  598,
+                               "done":  true,
+                               "yearBuilt":  null,
+                               "address":  ""
+                           },
+    "Azola Palm Beach":  {
+                             "state":  "FL",
+                             "done":  true,
+                             "yearBuilt":  2019,
+                             "zip":  "",
+                             "city":  "West Palm Beach",
+                             "units":  179,
+                             "stories":  4,
+                             "address":  "1990 Augustine Road"
+                         },
+    "The Vineyard":  {
+                         "units":  null,
+                         "done":  true,
+                         "yearBuilt":  null,
+                         "address":  ""
+                     },
+    "Austin Deals":  {
+                         "state":  "TX",
+                         "done":  true,
+                         "yearBuilt":  null,
+                         "zip":  "",
+                         "city":  "Round Rock",
+                         "units":  null,
+                         "stories":  4,
+                         "address":  "100 Marshall Circle"
+                     },
+    "Artistry":  {
+                     "units":  290,
+                     "done":  true,
+                     "yearBuilt":  2023,
+                     "address":  ""
+                 },
+    "Kia Ora":  {
+                    "state":  "TX",
+                    "done":  true,
+                    "yearBuilt":  2007,
+                    "zip":  "",
+                    "city":  "Plano",
+                    "units":  250,
+                    "stories":  2,
+                    "address":  "9300 Coit Rd"
+                },
+    "Bainbridge Aviation Crossings":  {
+                                          "units":  null,
+                                          "done":  true,
+                                          "yearBuilt":  null,
+                                          "address":  ""
+                                      },
+    "The Park at Kensington":  {
+                                   "state":  "FL",
+                                   "done":  true,
+                                   "yearBuilt":  1990,
+                                   "zip":  "",
+                                   "city":  "Riverview",
+                                   "units":  204,
+                                   "stories":  2,
+                                   "address":  "6218 Watermark Drive"
+                               },
+    "Alta at Health Village":  {
+                                   "units":  285,
+                                   "done":  true,
+                                   "yearBuilt":  2022,
+                                   "address":  ""
+                               },
+    "Infield Orlando":  {
+                            "state":  "FL",
+                            "done":  true,
+                            "yearBuilt":  null,
+                            "zip":  "",
+                            "city":  "Kissimmee",
+                            "units":  384,
+                            "stories":  null,
+                            "address":  "1900 Ballpark Road"
+                        },
+    "Avril Cambridge":  {
+                            "state":  "NC",
+                            "done":  true,
+                            "yearBuilt":  2022,
+                            "zip":  "",
+                            "city":  "Denver",
+                            "units":  247,
+                            "stories":  3,
+                            "address":  "1332 Holly Rush Lane"
+                        },
+    "The Eddy":  {
+                     "units":  null,
+                     "done":  true,
+                     "yearBuilt":  null,
+                     "address":  ""
+                 },
+    "The Fields Lincoln Green":  {
+                                     "units":  null,
+                                     "done":  true,
+                                     "yearBuilt":  null,
+                                     "address":  ""
+                                 },
+    "Kennesaw Deals":  {
+                           "units":  null,
+                           "done":  true,
+                           "yearBuilt":  null,
+                           "address":  ""
+                       },
+    "Solis Decatur":  {
+                          "units":  null,
+                          "done":  true,
+                          "yearBuilt":  null,
+                          "address":  ""
+                      },
+    "Hunter Pointe":  {
+                          "units":  216,
+                          "done":  true,
+                          "yearBuilt":  null,
+                          "address":  ""
+                      },
+    "Solis Suwanaee Town Center":  {
+                                       "state":  "GA",
+                                       "done":  true,
+                                       "yearBuilt":  null,
+                                       "zip":  "",
+                                       "city":  "SUWANEE",
+                                       "units":  null,
+                                       "stories":  null,
+                                       "address":  "500 BUFORD HWY"
+                                   },
+    "Andorra Apartments":  {
+                               "state":  "NC",
+                               "done":  true,
+                               "yearBuilt":  2019,
+                               "zip":  "",
+                               "city":  "Holly Springs",
+                               "units":  288,
+                               "stories":  null,
+                               "address":  "4000 Coleway Drive"
+                           },
+    "The Darby":  {
+                      "units":  null,
+                      "done":  true,
+                      "yearBuilt":  null,
+                      "address":  ""
+                  },
+    "Residences at Shilo Crossings":  {
+                                          "state":  "NC",
+                                          "done":  true,
+                                          "yearBuilt":  2020,
+                                          "zip":  "",
+                                          "city":  "Morrisville",
+                                          "units":  318,
+                                          "stories":  null,
+                                          "address":  "3000 Dominion Ridge Circle"
+                                      },
+    "The Parkstone Gallatin":  {
+                                   "state":  "TN",
+                                   "done":  true,
+                                   "yearBuilt":  2021,
+                                   "zip":  "",
+                                   "city":  "Gallatin",
+                                   "units":  240,
+                                   "stories":  2,
+                                   "address":  "270 Douglas Bend Rd"
+                               },
+    "Jones Grant":  {
+                        "units":  692,
+                        "done":  true,
+                        "yearBuilt":  2012,
+                        "address":  ""
+                    },
+    "Broadstone Lemmond Farm":  {
+                                    "state":  "NC",
+                                    "done":  true,
+                                    "yearBuilt":  null,
+                                    "zip":  "",
+                                    "city":  "Charlotte",
+                                    "units":  336,
+                                    "stories":  null,
+                                    "address":  "12009 Lemmond Farm Dr"
+                                },
+    "Accent 2050":  {
+                        "units":  198,
+                        "done":  true,
+                        "yearBuilt":  null,
+                        "address":  ""
+                    },
+    "Village at Lake Front":  {
+                                  "state":  "TX",
+                                  "done":  true,
+                                  "yearBuilt":  2018,
+                                  "zip":  "",
+                                  "city":  "Little Elm",
+                                  "units":  242,
+                                  "stories":  null,
+                                  "address":  "201 E. Eldorado Pkwy."
+                              },
+    "Texas Deals":  {
+                        "units":  null,
+                        "done":  true,
+                        "yearBuilt":  null,
+                        "address":  ""
+                    },
+    "Shoreview":  {
+                      "state":  "FL",
+                      "done":  true,
+                      "yearBuilt":  2021,
+                      "zip":  "",
+                      "city":  "Bradenton",
+                      "units":  216,
+                      "stories":  4,
+                      "address":  "1161 3rd Avenue East"
+                  },
+    "The Quincy":  {
+                       "units":  null,
+                       "done":  true,
+                       "yearBuilt":  null,
+                       "address":  ""
+                   },
+    "Bainbridge Matthews":  {
+                                "state":  "NC",
+                                "done":  true,
+                                "yearBuilt":  null,
+                                "zip":  "",
+                                "city":  "MATTHEWS",
+                                "units":  null,
+                                "stories":  null,
+                                "address":  "1725 MATTHEWS-MINT HILL RD"
+                            },
+    "Leo Loso":  {
+                     "state":  "NC",
+                     "done":  true,
+                     "yearBuilt":  2023,
+                     "zip":  "",
+                     "city":  "Charlotte",
+                     "units":  284,
+                     "stories":  4,
+                     "address":  "4520 Charlotte Park Dr."
+                 },
+    "Solis Interlock":  {
+                            "units":  349,
+                            "done":  true,
+                            "yearBuilt":  null,
+                            "address":  ""
+                        },
+    "The Bradford":  {
+                         "state":  "NC",
+                         "done":  true,
+                         "yearBuilt":  2015,
+                         "zip":  "",
+                         "city":  "Cary",
+                         "units":  390,
+                         "stories":  4,
+                         "address":  "21035 Bradford Green Square"
+                     },
+    "The Ace":  {
+                    "units":  null,
+                    "done":  true,
+                    "yearBuilt":  null,
+                    "address":  ""
+                },
+    "West End":  {
+                     "units":  null,
+                     "done":  true,
+                     "yearBuilt":  null,
+                     "address":  ""
+                 },
+    "FieldHouse":  {
+                       "units":  252,
+                       "done":  true,
+                       "yearBuilt":  null,
+                       "address":  ""
+                   },
+    "The Julington":  {
+                          "units":  260,
+                          "done":  true,
+                          "yearBuilt":  null,
+                          "address":  ""
+                      },
+    "Bridgeview Apartments":  {
+                                  "state":  "FL",
+                                  "done":  true,
+                                  "yearBuilt":  1986,
+                                  "zip":  "",
+                                  "city":  "Tampa",
+                                  "units":  348,
+                                  "stories":  null,
+                                  "address":  "5307 Reflections Club Drive"
+                              },
     "33 West":  {
                     "state":  "FL",
                     "done":  true,
@@ -9,24 +621,444 @@
                     "stories":  3,
                     "address":  "6300 Southwest 24th Place"
                 },
+    "Trailside at Reedy Point":  {
+                                     "state":  "SC",
+                                     "done":  true,
+                                     "yearBuilt":  2017,
+                                     "zip":  "",
+                                     "city":  "Greenville",
+                                     "units":  215,
+                                     "stories":  4,
+                                     "address":  "200 South Academy Street"
+                                 },
+    "Heron Pointe":  {
+                         "state":  "FL",
+                         "done":  true,
+                         "yearBuilt":  1988,
+                         "zip":  "",
+                         "city":  "Boynton Beach",
+                         "units":  192,
+                         "stories":  3,
+                         "address":  "10492 Boynton Place Circle"
+                     },
+    "Modena":  {
+                   "state":  "TX",
+                   "done":  true,
+                   "yearBuilt":  2017,
+                   "zip":  "",
+                   "city":  "Dallas",
+                   "units":  230,
+                   "stories":  5,
+                   "address":  "8275 Walnut Hill Ln"
+               },
+    "Solis Millennium":  {
+                             "error":  "PDF appears to be empty or unparseable",
+                             "done":  true
+                         },
+    "Ashley River":  {
+                         "state":  "SC",
+                         "done":  true,
+                         "yearBuilt":  1984,
+                         "zip":  "",
+                         "city":  "Charleston",
+                         "units":  200,
+                         "stories":  null,
+                         "address":  "1850 Ashley Crossing Lane"
+                     },
+    "Novel Research Park":  {
+                                "units":  280,
+                                "done":  true,
+                                "yearBuilt":  2019,
+                                "address":  ""
+                            },
+    "Elevate Powell and Broad":  {
+                                     "state":  "NC",
+                                     "done":  true,
+                                     "yearBuilt":  2021,
+                                     "zip":  "",
+                                     "city":  "Fuquay-Varina",
+                                     "units":  384,
+                                     "stories":  3,
+                                     "address":  "141 Stobhill Ln"
+                                 },
+    "Terrabella":  {
+                       "state":  "FL",
+                       "done":  true,
+                       "yearBuilt":  null,
+                       "zip":  "",
+                       "city":  "West Palm Beach",
+                       "units":  null,
+                       "stories":  null,
+                       "address":  "915 S Dixie Highway"
+                   },
     "900 Dwell":  {
                       "units":  null,
                       "done":  true,
                       "yearBuilt":  null,
                       "address":  ""
                   },
-    "860 South":  {
-                      "units":  null,
+    "Vista Verde - Miami":  {
+                                "state":  "FL",
+                                "done":  true,
+                                "yearBuilt":  1993,
+                                "zip":  "",
+                                "city":  "Miami",
+                                "units":  302,
+                                "stories":  null,
+                                "address":  "10491 SW 14th Terrace"
+                            },
+    "The palms":  {
+                      "state":  "FL",
                       "done":  true,
                       "yearBuilt":  null,
-                      "address":  ""
+                      "zip":  "",
+                      "city":  "Davie",
+                      "units":  null,
+                      "stories":  null,
+                      "address":  "11000 Cameron Court"
                   },
-    "1420 Magnolia":  {
-                          "units":  null,
+    "Heights at Sugarloaf":  {
+                                 "units":  330,
+                                 "done":  true,
+                                 "yearBuilt":  2017,
+                                 "address":  ""
+                             },
+    "Serramar":  {
+                     "state":  "FL",
+                     "done":  true,
+                     "yearBuilt":  1986,
+                     "zip":  "",
+                     "city":  "Fort Lauderdale",
+                     "units":  302,
+                     "stories":  2,
+                     "address":  "6701 W. Oakland Park Blvd."
+                 },
+    "St Tropez":  {
+                      "state":  "FL",
+                      "done":  true,
+                      "yearBuilt":  1994,
+                      "zip":  "",
+                      "city":  "Plantation",
+                      "units":  376,
+                      "stories":  3,
+                      "address":  "8000 Cleary Boulevard"
+                  },
+    "Crescent":  {
+                     "state":  "TX",
+                     "done":  true,
+                     "yearBuilt":  2008,
+                     "zip":  "",
+                     "city":  "Austin",
+                     "units":  163,
+                     "stories":  5,
+                     "address":  "127 East Riverside Drive"
+                 },
+    "The Newton":  {
+                       "units":  274,
+                       "done":  true,
+                       "yearBuilt":  2019,
+                       "address":  ""
+                   },
+    "Cornerstone":  {
+                        "state":  "NC",
+                        "done":  true,
+                        "yearBuilt":  null,
+                        "zip":  "",
+                        "city":  "Cary",
+                        "units":  302,
+                        "stories":  null,
+                        "address":  "200 Terrastone Pl"
+                    },
+    "Cottages at emerald Creek":  {
+                                      "state":  "GA",
+                                      "done":  true,
+                                      "yearBuilt":  2017,
+                                      "zip":  "",
+                                      "city":  "Savannah",
+                                      "units":  300,
+                                      "stories":  2,
+                                      "address":  "100 Shellbark Way"
+                                  },
+    "Mirabella Lakes":  {
+                            "state":  "FL",
+                            "done":  true,
+                            "yearBuilt":  2000,
+                            "zip":  "",
+                            "city":  "Orlando",
+                            "units":  400,
+                            "stories":  3,
+                            "address":  "12101 Fountainbrook Boulevard"
+                        },
+    "Ansley at Princeton Lakes":  {
+                                      "state":  "GA",
+                                      "done":  true,
+                                      "yearBuilt":  2009,
+                                      "zip":  "",
+                                      "city":  "Atlanta",
+                                      "units":  306,
+                                      "stories":  null,
+                                      "address":  "3871 Redwine Road"
+                                  },
+    "Reserve at Bridford":  {
+                                "state":  "NC",
+                                "done":  true,
+                                "yearBuilt":  null,
+                                "zip":  "",
+                                "city":  "Greensboro",
+                                "units":  null,
+                                "stories":  null,
+                                "address":  "1402 Bridford Parkway"
+                            },
+    "Steele Creek rivergate":  {
+                                   "state":  "NC",
+                                   "done":  true,
+                                   "yearBuilt":  2021,
+                                   "zip":  "",
+                                   "city":  "Charlotte",
+                                   "units":  408,
+                                   "stories":  3,
+                                   "address":  "12509 Crown Park Ct"
+                               },
+    "Elan Powers Ferry":  {
+                              "state":  "GA",
+                              "done":  true,
+                              "yearBuilt":  null,
+                              "zip":  "",
+                              "city":  "Atlanta",
+                              "units":  null,
+                              "stories":  null,
+                              "address":  "1945 Powers Ferry Rd SE"
+                          },
+    "Mira Flores":  {
+                        "state":  "FL",
+                        "done":  true,
+                        "yearBuilt":  1996,
+                        "zip":  "",
+                        "city":  "Palm Beach Gardens",
+                        "units":  352,
+                        "stories":  2,
+                        "address":  "11900 Valencia Gardens Avenue"
+                    },
+    "Exchange at Indian Trail":  {
+                                     "units":  null,
+                                     "done":  true,
+                                     "yearBuilt":  null,
+                                     "address":  ""
+                                 },
+    "Morningside":  {
+                        "state":  "GA",
+                        "done":  true,
+                        "yearBuilt":  null,
+                        "zip":  "",
+                        "city":  "Atlanta",
+                        "units":  null,
+                        "stories":  null,
+                        "address":  "2050 Cheshire Bridge Rd. NE"
+                    },
+    "The reserve at Cary Park":  {
+                                     "units":  null,
+                                     "done":  true,
+                                     "yearBuilt":  null,
+                                     "address":  ""
+                                 },
+    "Solis City Park":  {
+                            "units":  null,
+                            "done":  true,
+                            "yearBuilt":  null,
+                            "address":  ""
+                        },
+    "The Reid":  {
+                     "state":  "GA",
+                     "done":  true,
+                     "yearBuilt":  2021,
+                     "zip":  "",
+                     "city":  "Tucker",
+                     "units":  242,
+                     "stories":  5,
+                     "address":  "2190 Northlake Pkwy"
+                 },
+    "Carrington at Brier Creek":  {
+                                      "state":  "NC",
+                                      "done":  true,
+                                      "yearBuilt":  2003,
+                                      "zip":  "",
+                                      "city":  "Raleigh",
+                                      "units":  270,
+                                      "stories":  3,
+                                      "address":  "11010 Eastlake Club Drive"
+                                  },
+    "Axiom":  {
+                  "state":  "NC",
+                  "done":  true,
+                  "yearBuilt":  1987,
+                  "zip":  "",
+                  "city":  "Charlotte",
+                  "units":  202,
+                  "stories":  null,
+                  "address":  "5625 Keyway Boulevard"
+              },
+    "Bell Bishop arts":  {
+                             "state":  "TX",
+                             "done":  true,
+                             "yearBuilt":  2013,
+                             "zip":  "",
+                             "city":  "Dallas",
+                             "units":  207,
+                             "stories":  3,
+                             "address":  "1836 West Davis Street"
+                         },
+    "View at Woodstock":  {
+                              "state":  "GA",
+                              "done":  true,
+                              "yearBuilt":  null,
+                              "zip":  "",
+                              "city":  "WOODSTOCK",
+                              "units":  null,
+                              "stories":  null,
+                              "address":  "FITCHBURG DR"
+                          },
+    "Uptown Boca":  {
+                        "state":  "FL",
+                        "done":  true,
+                        "yearBuilt":  2021,
+                        "zip":  "",
+                        "city":  "Boca Raton",
+                        "units":  456,
+                        "stories":  5,
+                        "address":  "20940 Uptown Ave"
+                    },
+    "Solis Cummings":  {
+                           "state":  "GA",
+                           "done":  true,
+                           "yearBuilt":  null,
+                           "zip":  "",
+                           "city":  "Cumming",
+                           "units":  null,
+                           "stories":  null,
+                           "address":  "MEADOW DR 30040"
+                       },
+    "The Elliott":  {
+                        "units":  null,
+                        "done":  true,
+                        "yearBuilt":  null,
+                        "address":  ""
+                    },
+    "The Rey on Reynolds":  {
+                                "state":  "GA",
+                                "done":  true,
+                                "yearBuilt":  2021,
+                                "zip":  "",
+                                "city":  "Duluth",
+                                "units":  286,
+                                "stories":  null,
+                                "address":  "3360 Steve Reynolds Blvd"
+                            },
+    "Trilogy Cameron Village":  {
+                                    "units":  null,
+                                    "done":  true,
+                                    "yearBuilt":  null,
+                                    "address":  ""
+                                },
+    "East Point at Altamonte":  {
+                                    "state":  "FL",
+                                    "done":  true,
+                                    "yearBuilt":  1973,
+                                    "zip":  "",
+                                    "city":  "Altamonte Springs",
+                                    "units":  354,
+                                    "stories":  2,
+                                    "address":  "828/850 Orienta Avenue"
+                                },
+    "Legacy Crossroads":  {
+                              "state":  "NC",
+                              "done":  true,
+                              "yearBuilt":  2009,
+                              "zip":  "",
+                              "city":  "Cary",
+                              "units":  344,
+                              "stories":  3,
+                              "address":  "1010 Legacy Village Drive"
+                          },
+    "Arden at Midtown":  {
+                             "units":  null,
+                             "done":  true,
+                             "yearBuilt":  null,
+                             "address":  ""
+                         },
+    "Vestavia Reserve":  {
+                             "state":  "AL",
+                             "done":  true,
+                             "yearBuilt":  2016,
+                             "zip":  "",
+                             "city":  "Vestavia Hills",
+                             "units":  272,
+                             "stories":  null,
+                             "address":  "2300 Reserve Trail"
+                         },
+    "Town Southern":  {
+                          "state":  "FL",
                           "done":  true,
-                          "yearBuilt":  null,
-                          "address":  ""
+                          "yearBuilt":  2019,
+                          "zip":  "",
+                          "city":  "Royal Palm Beach",
+                          "units":  392,
+                          "stories":  null,
+                          "address":  "11020 Town Circle"
                       },
+    "Axis Berewick":  {
+                          "state":  "NC",
+                          "done":  true,
+                          "yearBuilt":  2017,
+                          "zip":  "",
+                          "city":  "Charlotte",
+                          "units":  266,
+                          "stories":  4,
+                          "address":  "7015 Skye Bridge Way"
+                      },
+    "Solis Carraway":  {
+                           "units":  198,
+                           "done":  true,
+                           "yearBuilt":  null,
+                           "address":  ""
+                       },
+    "Parkview Greer":  {
+                           "units":  null,
+                           "done":  true,
+                           "yearBuilt":  null,
+                           "address":  ""
+                       },
+    "Alta Lakehouse":  {
+                           "state":  "FL",
+                           "done":  true,
+                           "yearBuilt":  2020,
+                           "zip":  "",
+                           "city":  "Orlando",
+                           "units":  299,
+                           "stories":  5,
+                           "address":  "7600 Majorca Place"
+                       },
+    "Seventeen West":  {
+                           "state":  "GA",
+                           "done":  true,
+                           "yearBuilt":  2005,
+                           "zip":  "",
+                           "city":  "Atlanta",
+                           "units":  473,
+                           "stories":  4,
+                           "address":  "391 17th St NW"
+                       },
+    "Windsor Landing":  {
+                            "units":  null,
+                            "done":  true,
+                            "yearBuilt":  null,
+                            "address":  ""
+                        },
+    "CasaMara":  {
+                     "units":  null,
+                     "done":  true,
+                     "yearBuilt":  null,
+                     "address":  ""
+                 },
     "100 Inverness":  {
                           "state":  "AL",
                           "done":  true,
@@ -36,5 +1068,421 @@
                           "units":  322,
                           "stories":  2,
                           "address":  "100 Inverness Ln"
-                      }
+                      },
+    "Biscayne 112":  {
+                         "state":  "FL",
+                         "done":  true,
+                         "yearBuilt":  null,
+                         "zip":  "",
+                         "city":  "Miami",
+                         "units":  402,
+                         "stories":  8,
+                         "address":  "11200 Biscayne Blvd"
+                     },
+    "Linvingston":  {
+                        "units":  null,
+                        "done":  true,
+                        "yearBuilt":  null,
+                        "address":  ""
+                    },
+    "Curv":  {
+                 "state":  "FL",
+                 "done":  true,
+                 "yearBuilt":  2020,
+                 "zip":  "",
+                 "city":  "Fort Lauderdale",
+                 "units":  243,
+                 "stories":  8,
+                 "address":  "410 SE 16th Court"
+             },
+    "Crest at Flower Branch":  {
+                                   "state":  "GA",
+                                   "done":  true,
+                                   "yearBuilt":  2020,
+                                   "zip":  "",
+                                   "city":  "Flowery Branch",
+                                   "units":  336,
+                                   "stories":  null,
+                                   "address":  "900 Crest Village Circle"
+                               },
+    "Enclave on East":  {
+                            "state":  "FL",
+                            "done":  true,
+                            "yearBuilt":  1986,
+                            "zip":  "",
+                            "city":  "Largo",
+                            "units":  196,
+                            "stories":  2,
+                            "address":  "3660 E. Bay Drive"
+                        },
+    "Debartolo Portfolio":  {
+                                "units":  966,
+                                "done":  true,
+                                "yearBuilt":  null,
+                                "address":  ""
+                            },
+    "The Helix":  {
+                      "state":  "FL",
+                      "done":  true,
+                      "yearBuilt":  null,
+                      "zip":  "",
+                      "city":  "Lake Mary",
+                      "units":  null,
+                      "stories":  null,
+                      "address":  "962 Bentstation Ln"
+                  },
+    "The Mason Sugarloaf":  {
+                                "units":  312,
+                                "done":  true,
+                                "yearBuilt":  null,
+                                "address":  ""
+                            },
+    "Advenir at Prestonwood":  {
+                                   "state":  "TX",
+                                   "done":  true,
+                                   "yearBuilt":  1994,
+                                   "zip":  "",
+                                   "city":  "Dallas",
+                                   "units":  208,
+                                   "stories":  3,
+                                   "address":  "14827 Preston Rd."
+                               },
+    "Creekside Ranch":  {
+                            "state":  "FL",
+                            "done":  true,
+                            "yearBuilt":  2015,
+                            "zip":  "",
+                            "city":  "Bradenton",
+                            "units":  256,
+                            "stories":  4,
+                            "address":  "11209 Ranch Creek Ter"
+                        },
+    "Pringle Square":  {
+                           "state":  "NC",
+                           "done":  true,
+                           "yearBuilt":  null,
+                           "zip":  "",
+                           "city":  "Charlotte",
+                           "units":  null,
+                           "stories":  null,
+                           "address":  "13387 Brown-Grier Road"
+                       },
+    "Ferry Pike - Nashville":  {
+                                   "state":  "TN",
+                                   "done":  true,
+                                   "yearBuilt":  2024,
+                                   "zip":  "",
+                                   "city":  "Nashville",
+                                   "units":  318,
+                                   "stories":  null,
+                                   "address":  "600 Stewarts Ferry Pike"
+                               },
+    "The Milan":  {
+                      "state":  "FL",
+                      "done":  true,
+                      "yearBuilt":  2000,
+                      "zip":  "",
+                      "city":  "Apopka",
+                      "units":  240,
+                      "stories":  2,
+                      "address":  "500 Jordan Stuart Circle"
+                  },
+    "Paces Brook":  {
+                        "state":  "SC",
+                        "done":  true,
+                        "yearBuilt":  1990,
+                        "zip":  "",
+                        "city":  "Columbia",
+                        "units":  260,
+                        "stories":  3,
+                        "address":  "113 Paces Brook Avenue"
+                    },
+    "Bainbridge Sunlake":  {
+                               "state":  "FL",
+                               "done":  true,
+                               "yearBuilt":  null,
+                               "zip":  "",
+                               "city":  "LAND O LAKES",
+                               "units":  null,
+                               "stories":  null,
+                               "address":  "2794 DOWN HOME DRIVE"
+                           },
+    "Element Galleria":  {
+                             "state":  "GA",
+                             "done":  true,
+                             "yearBuilt":  2021,
+                             "zip":  "",
+                             "city":  "Atlanta",
+                             "units":  283,
+                             "stories":  7,
+                             "address":  "800 Galleria Parkway"
+                         },
+    "Regatta at Lake Lynn":  {
+                                 "state":  "NC",
+                                 "done":  true,
+                                 "yearBuilt":  1984,
+                                 "zip":  "",
+                                 "city":  "Raleigh",
+                                 "units":  392,
+                                 "stories":  null,
+                                 "address":  "3000 Inland Trail"
+                             },
+    "legacy Village":  {
+                           "state":  "NC",
+                           "done":  true,
+                           "yearBuilt":  2017,
+                           "zip":  "",
+                           "city":  "Mooresville",
+                           "units":  229,
+                           "stories":  null,
+                           "address":  "121 Village Green Lane"
+                       },
+    "Rivertree":  {
+                      "state":  "FL",
+                      "done":  true,
+                      "yearBuilt":  2004,
+                      "zip":  "",
+                      "city":  "Riverview",
+                      "units":  251,
+                      "stories":  null,
+                      "address":  "5959 Bandera Springs Place"
+                  },
+    "Indigo Run":  {
+                       "state":  "SC",
+                       "done":  true,
+                       "yearBuilt":  2018,
+                       "zip":  "",
+                       "city":  "Ladson",
+                       "units":  302,
+                       "stories":  4,
+                       "address":  "9255 Blue House Road"
+                   },
+    "The Mc Coy Apartments":  {
+                                  "units":  null,
+                                  "done":  true,
+                                  "yearBuilt":  null,
+                                  "address":  ""
+                              },
+    "Gateway at Hartfield":  {
+                                 "units":  null,
+                                 "done":  true,
+                                 "yearBuilt":  null,
+                                 "address":  ""
+                             },
+    "Manor 6 forks":  {
+                          "state":  "NC",
+                          "done":  true,
+                          "yearBuilt":  2010,
+                          "zip":  "",
+                          "city":  "Raleigh",
+                          "units":  298,
+                          "stories":  5,
+                          "address":  "900 E Six Forks Road"
+                      },
+    "Sodo Duluth":  {
+                        "state":  "GA",
+                        "done":  true,
+                        "yearBuilt":  null,
+                        "zip":  "",
+                        "city":  "Duluth",
+                        "units":  260,
+                        "stories":  4,
+                        "address":  "3256 Buford Hwy"
+                    },
+    "Echo  Lakeside":  {
+                           "state":  "GA",
+                           "done":  true,
+                           "yearBuilt":  2018,
+                           "zip":  "",
+                           "city":  "Peachtree Corners",
+                           "units":  296,
+                           "stories":  null,
+                           "address":  "510 Guthridge Ct NW"
+                       },
+    "Broadstone Junction":  {
+                                "units":  606,
+                                "done":  true,
+                                "yearBuilt":  2021,
+                                "address":  ""
+                            },
+    "Riverbend Apartments":  {
+                                 "error":  "PDF appears to be empty or unparseable",
+                                 "done":  true
+                             },
+    "Linz Holy Springs":  {
+                              "units":  null,
+                              "done":  true,
+                              "yearBuilt":  null,
+                              "address":  ""
+                          },
+    "Broadstone Station":  {
+                               "units":  null,
+                               "done":  true,
+                               "yearBuilt":  null,
+                               "address":  ""
+                           },
+    "Emblem Greyson":  {
+                           "state":  "GA",
+                           "done":  true,
+                           "yearBuilt":  null,
+                           "zip":  "",
+                           "city":  "LOGANVILLE",
+                           "units":  null,
+                           "stories":  null,
+                           "address":  "ATHENS HWY"
+                       },
+    "Lofts at Weston":  {
+                            "state":  "NC",
+                            "done":  true,
+                            "yearBuilt":  2013,
+                            "zip":  "",
+                            "city":  "Cary",
+                            "units":  215,
+                            "stories":  5,
+                            "address":  "2101 Lakeside Lofts Circle"
+                        },
+    "The Kensley":  {
+                        "state":  "FL",
+                        "done":  true,
+                        "yearBuilt":  2004,
+                        "zip":  "",
+                        "city":  "Jacksonville",
+                        "units":  300,
+                        "stories":  2,
+                        "address":  "6371 Collins Road"
+                    },
+    "Jade hyde Park":  {
+                           "state":  "FL",
+                           "done":  true,
+                           "yearBuilt":  2022,
+                           "zip":  "",
+                           "city":  "Tampa",
+                           "units":  192,
+                           "stories":  5,
+                           "address":  "608 N Willow Ave"
+                       },
+    "Raleigh Exchange":  {
+                             "units":  305,
+                             "done":  true,
+                             "yearBuilt":  null,
+                             "address":  ""
+                         },
+    "MAdison Farms":  {
+                          "state":  "NC",
+                          "done":  true,
+                          "yearBuilt":  2022,
+                          "zip":  "",
+                          "city":  "Charlotte",
+                          "units":  248,
+                          "stories":  3,
+                          "address":  "12525 Oldehurst Place"
+                      },
+    "Mercer Park":  {
+                        "units":  51,
+                        "done":  true,
+                        "yearBuilt":  null,
+                        "address":  ""
+                    },
+    "Cadence at Nocatee":  {
+                               "state":  "FL",
+                               "done":  true,
+                               "yearBuilt":  2022,
+                               "zip":  "",
+                               "city":  "Jacksonville",
+                               "units":  291,
+                               "stories":  3,
+                               "address":  "380 Burbank Ave"
+                           },
+    "Alta Dairies":  {
+                         "state":  "GA",
+                         "done":  true,
+                         "yearBuilt":  null,
+                         "zip":  "",
+                         "city":  "Atlanta",
+                         "units":  null,
+                         "stories":  8,
+                         "address":  "777 Memorial Dr SE"
+                     },
+    "Eden Crystal Lake":  {
+                              "error":  "Unknown error",
+                              "done":  true
+                          },
+    "The Hillson":  {
+                        "units":  248,
+                        "done":  true,
+                        "yearBuilt":  null,
+                        "address":  ""
+                    },
+    "Windsor Landings - NC":  {
+                                  "units":  null,
+                                  "done":  true,
+                                  "yearBuilt":  null,
+                                  "address":  ""
+                              },
+    "Lake Ridge":  {
+                       "units":  null,
+                       "done":  true,
+                       "yearBuilt":  null,
+                       "address":  ""
+                   },
+    "The Cove at Covington":  {
+                                  "state":  "GA",
+                                  "done":  true,
+                                  "yearBuilt":  2022,
+                                  "zip":  "",
+                                  "city":  "Covington",
+                                  "units":  350,
+                                  "stories":  null,
+                                  "address":  "12301 Town Center Dr"
+                              },
+    "Portiva - Jacksonville":  {
+                                   "state":  "FL",
+                                   "done":  true,
+                                   "yearBuilt":  null,
+                                   "zip":  "",
+                                   "city":  "JACKSONVILLE",
+                                   "units":  null,
+                                   "stories":  null,
+                                   "address":  "6898 A C SKINNER PKWY"
+                               },
+    "Ravella Town Center":  {
+                                "units":  714,
+                                "done":  true,
+                                "yearBuilt":  null,
+                                "address":  ""
+                            },
+    "Ardmore at Flowers":  {
+                               "state":  "NC",
+                               "done":  true,
+                               "yearBuilt":  2023,
+                               "zip":  "",
+                               "city":  "Clayton",
+                               "units":  396,
+                               "stories":  null,
+                               "address":  "380 Topwater Dr"
+                           },
+    "Barcelona Apartments":  {
+                                 "error":  "PDF appears to be empty or unparseable",
+                                 "done":  true
+                             },
+    "The Villlage":  {
+                         "state":  "NC",
+                         "done":  true,
+                         "yearBuilt":  1997,
+                         "zip":  "",
+                         "city":  "Raleigh",
+                         "units":  300,
+                         "stories":  null,
+                         "address":  "8810 Autumn Winds Drive"
+                     },
+    "The Place at 1825":  {
+                              "state":  "TX",
+                              "done":  true,
+                              "yearBuilt":  null,
+                              "zip":  "",
+                              "city":  "Pflugerville",
+                              "units":  null,
+                              "stories":  null,
+                              "address":  "15835 Foothill Farms Loop"
+                          }
 }

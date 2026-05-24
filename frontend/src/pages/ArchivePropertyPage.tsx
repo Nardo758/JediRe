@@ -299,11 +299,11 @@ export default function ArchivePropertyPage() {
     <div style={S.page}>
       {/* ── Top bar ── */}
       <div style={S.topBar}>
-        <button style={S.backBtn} onClick={() => navigate('/archive/library')}>← Library</button>
+        <button style={S.backBtn} onClick={() => navigate('/settings/data-library?tab=files')}>← Library</button>
         <div style={S.breadcrumb}>
           <span>Archive</span>
           <span style={S.crumbSep}>/</span>
-          <span style={{ cursor: 'pointer', color: '#8892b0' }} onClick={() => navigate('/archive/library')}>Library</span>
+          <span style={{ cursor: 'pointer', color: '#8892b0' }} onClick={() => navigate('/settings/data-library?tab=files')}>Library</span>
           <span style={S.crumbSep}>/</span>
           <span style={S.crumbActive}>{displayName}</span>
         </div>
