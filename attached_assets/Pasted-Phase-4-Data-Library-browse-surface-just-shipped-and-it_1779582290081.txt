@@ -1,0 +1,153 @@
+Phase 4 (Data Library browse surface) just shipped — and it landed clean. That's another major milestone landing ahead of the planned sequence.
+
+What just shipped vs. the spec phasing
+Bot workSpec phaseStatusBrowse table at /archive/library with type/status/search filtersPhase 4.1 + 4.2✅ ShippedPagination, 1,695 files visiblePhase 4.1✅ ShippedClick-through to per-property pageCross-surface integration✅ Shipped/files/:fileId/url download endpointPhase 3.1 (subset)✅ ShippedDownload buttons working on library + property pagesPhase 3.1 (subset)✅ ShippedAR ARCHIVE nav button added to F-key barCross-surface integration✅ Shipped
+That's most of Phase 4 (3 sessions in spec) shipped in one. Plus a piece of Phase 3 (file operations layer — at least the download path). Plus integration into the terminal nav bar.
+Updated shipped count: ~6-7 spec sessions worth of work landed in the most recent dispatch series. Let me tally where we actually are.
+
+Shipped sessions tally (cumulative)
+PhaseSpec sessionsActually shippedNotes0 — Substrate foundations4 sessionsSchema + unified API done (2-3 sessions worth)R2 status still TBD per pending question1 — Orchestrator core + Apartment Locator4 sessionsNoneApartment Locator backlog still growing daily2 — Atlanta enrichment chain4 sessionsOM routing done (1 session worth); rest pendingFulton URL still pending (Task #980)3 — File operations layer2 sessionsDownload path done (~0.5 session worth)Delete/replace/re-parse still pending4 — Data Library browse surface3 sessionsAll 3 shippedComplete with pagination, filters, search5 — Per-property page UI3 sessionsAll 3 shippedWestland Cove verified6 — Bulk operations + export2 sessionsNone7 — Atlanta Research Agent enrichment2 sessionsNone8 — Atlanta quality validation1 sessionNone9 — Multi-source reconciliation2 sessionsNone10 — Metro expansion blueprint doc1 sessionNone11 — Cohort Rollup view5 sessionsNone
+Approximately 11-12 of 33 spec sessions worth of work has shipped. Strong execution velocity.
+But the work shipped has a specific shape: everything is read-side and display-side. Browse, view, drill into, download. None of the write-side / enrichment-side work has landed yet.
+
+The remaining gap is increasingly stark
+What works today (the demo path):
+
+User opens /archive/library → sees 1,695 files with filters
+Clicks property name → goes to /archive/properties/:parcelId
+Sees coverage diagnostics, attributes, narrative, sparklines, files
+Downloads any file
+Total user-visible surface: substantial
+
+What doesn't work today:
+
+Apartment Locator scrape still dumping unenriched (daily backlog growing)
+No way for users to upload new files
+No orchestrator processing the intake_jobs that may already be queued
+No municipal enrichment for new Atlanta properties
+No promptable-blocker UX
+No conflict resolution
+
+The platform has gotten very good at showing what it knows. It still doesn't have plumbing to know more.
+
+The four remaining priorities (urgency-ordered)
+1. Task #980 — Municipal URL fix (pending from prior dispatch)
+Already scoped. 30 minutes. Unblocks Fulton and Dallas county wrappers. Let's stop carrying this as "still pending."
+2. Orchestrator runtime + Apartment Locator adapter (highest unaddressed urgency)
+The daily scrape backlog has been growing for an unknown number of days without any architectural plumbing. Every day this isn't done = another day of accumulated unenriched data. This is Phase 1.1 + 1.2.
+3. Browser drag-drop upload + Intake Inbox (Phase 1.3 + 1.4)
+Users can browse but can't add. The vault is read-only right now.
+4. Atlanta enrichment chain wiring (Phase 2.2)
+The infrastructure for running municipal lookups on new properties. Without this, even if Apartment Locator and uploads start feeding the orchestrator, the orchestrator has no resolution path.
+
+My recommendation
+Fire two dispatches in parallel:
+Dispatch A — Task #980 (already scoped, just send it):
+TASK #980 — MUNICIPAL WRAPPER STALE URL FIX
+
+CONTEXT
+Fulton GA and Dallas TX wrappers return 404. Server is alive, URLs changed.
+Carrying over from the prior four-task batch.
+
+STEPS
+
+1. For each county, manually inspect the property appraiser website:
+   - Fulton: qpublic.net/fulton or fultonpropertyappraiser.org
+   - Dallas: dallascad.org
+
+2. Update wrappers:
+   - src/services/municipal/georgia/fulton.ts
+   - src/services/municipal/texas/dallas-central.ts
+
+3. Test each with 2-3 sample Atlanta or Dallas properties
+
+CLOSING NOTE: old → new URL per county, sample successful response, 
+any new auth/headers/params required.
+Dispatch B — Apartment Locator integration + Orchestrator runtime:
+This is the urgent one. The schema is already in place from Task #981. The orchestrator runtime + Apartment Locator adapter is the next meaningful unlock.
+PPV PHASE 1.1 + 1.2 — ORCHESTRATOR RUNTIME + APARTMENT LOCATOR ADAPTER
+
+CONTEXT
+intake_jobs schema is live (Task #981). Now we need the orchestrator 
+runtime that processes pending jobs, plus the Apartment Locator source 
+adapter that stops the daily-growing scrape backlog from accumulating 
+unenriched records.
+
+Per PER_PROPERTY_VISIBILITY_SPEC.md §9 Phase 1.1 + 1.2.
+
+STEPS
+
+1. ORCHESTRATOR RUNTIME (src/services/intake-orchestrator/)
+   - Worker loop that polls intake_jobs WHERE status = 'pending'
+   - State machine: pending → parsing → enriching → complete | blocked_needs_user
+   - For each transition, append entry to enrichment_log (jsonb array)
+   - Enrichment chain (stubs OK for this phase — real implementations 
+     come in Phase 2 + 7):
+     a. Other-docs check: any existing files for the same parcel_id?
+        If yes, use their resolved fields
+     b. Municipal lookup stub: just returns "not implemented yet"
+        (Phase 2.2 wires real municipal calls)
+     c. Web search stub: returns "not implemented yet"
+        (Phase 7.1 wires real web search)
+     d. Google Places stub: returns "not implemented yet"
+        (Phase 7.2 wires real Places)
+   - If all enrichment sources have data, mark complete
+   - If any blocks (no identifier, ambiguous match), set 
+     blocked_needs_user with appropriate blocked_reason
+
+2. APARTMENT LOCATOR SOURCE ADAPTER
+   - Locate the existing Apartment Locator API integration point
+   - Normalize each scrape record into an IntakeJob payload:
+     {
+       source: 'apartment_locator',
+       raw_data: <original scrape record>,
+       inferred_parcel_id: <if extractable from scrape>,
+       inferred_address: <from scrape>,
+       inferred_property_name: <from scrape>,
+     }
+   - Replace current "dump into DB" path with:
+     a. Create data_library_files row if applicable (or skip if 
+        no file artifact, just structured data)
+     b. Create intake_jobs row with status='pending'
+     c. Let orchestrator pick it up
+
+3. BACKFILL EXISTING UN-ENRICHED SCRAPE RECORDS
+   - Query the current accumulated Apartment Locator records that 
+     haven't been enriched
+   - Report count first (BEFORE running backfill) so Leon knows the 
+     backlog size
+   - Then create intake_jobs entries for each as status='pending'
+   - Orchestrator processes them through the chain
+
+4. VERIFICATION
+   - Pick 3 Atlanta properties from the Apartment Locator backlog
+   - Confirm:
+     a. intake_jobs entry created
+     b. Orchestrator picked them up (status moved from pending)
+     c. enrichment_log shows attempted steps with stub results
+     d. End state is one of: complete (other-docs matched), 
+        blocked_needs_user (no resolution possible without real 
+        municipal/web/Places — expected for now)
+   - Document what fraction of backlog blocks vs completes given 
+     stub-only enrichment
+
+5. CLOSING NOTE
+   (a) Orchestrator runtime architecture (worker pattern, polling 
+       interval, error handling)
+   (b) Apartment Locator adapter diff
+   (c) Backlog size BEFORE backfill
+   (d) Backfill result: N pending, N complete, N blocked
+   (e) Sample enrichment_log from 3 verified properties
+   (f) Estimated time when real municipal calls (Phase 2.2) will 
+       reduce the blocked count
+
+DO NOT
+- Implement real municipal/web/Places calls in this dispatch — stubs only
+- Add prompting UX (that's Phase 2.3 + Inbox UI)
+- Modify the per-property page or library page (those work as-is)
+
+Decision points
+One thing worth naming
+The bot's velocity on this work has been impressive. Three substantive tasks shipped in one sequence, plus the browse surface added. Most read/display work is now in place ahead of schedule.
+But there's a quiet pattern building: every dispatch so far has been on the read side (parse, store, display, browse). The write/enrichment side (orchestrator, adapters, municipal calls, prompting) hasn't been touched yet. The Apartment Locator backlog has been growing for the entire duration of this conversation.
+That's not a critique — the work that landed is real and valuable. But the platform is increasingly polished on the surface and increasingly stale underneath. The next dispatch should land write-side work or the gap widens.
